@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-test-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Restore
+        run: dotnet restore FinApp.sln
+
+      - name: Build
+        run: dotnet build FinApp.sln --configuration Release --no-restore
+
+      - name: Test
+        run: dotnet test FinApp.sln --configuration Release --no-build
+
+      # Fail the build if any (including transitive) package has a known vulnerability.
+      - name: Vulnerable package scan
+        run: |
+          set -euo pipefail
+          dotnet list FinApp.sln package --vulnerable --include-transitive 2>&1 | tee vuln.txt
+          if grep -q -E "Critical|High|Moderate|Low" vuln.txt; then
+            echo "::error::Vulnerable NuGet packages found (see log above)."
+            exit 1
+          fi
+          echo "No vulnerable packages."

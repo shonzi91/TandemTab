@@ -17,6 +17,9 @@ public sealed class FinAppServerFactory : WebApplicationFactory<Program>
 
     protected override void ConfigureWebHost(Microsoft.AspNetCore.Hosting.IWebHostBuilder builder)
     {
+        // Development disables the auth rate limiter (see Program.cs) so the suite's many rapid
+        // registrations aren't throttled. Dev CORS is harmless here — tests aren't cross-origin.
+        builder.UseSetting("environment", "Development");
         builder.UseSetting("ConnectionStrings:FinApp", $"Data Source={_dbPath}");
         // Keep tests hermetic: never inherit a developer's real provider credentials from user-secrets/env,
         // so "feature is off when unconfigured" assertions hold regardless of the machine running them.

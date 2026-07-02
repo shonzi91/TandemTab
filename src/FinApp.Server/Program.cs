@@ -122,6 +122,19 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     });
 builder.Services.AddAuthorization();
 
+// Throttle sensitive endpoints (login/register) per client IP to blunt brute-force + abuse. Disabled in
+// Development so the test suite (many rapid registrations) isn't throttled.
+var throttleAuth = !builder.Environment.IsDevelopment();
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.AddPolicy("auth", context => throttleAuth
+        ? System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
+            context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions { PermitLimit = 10, Window = TimeSpan.FromMinutes(1) })
+        : System.Threading.RateLimiting.RateLimitPartition.GetNoLimiter("dev"));
+});
+
 var app = builder.Build();
 
 // Behind Cloud Run's TLS-terminating proxy the request reads as http; honour X-Forwarded-Proto so
@@ -153,17 +166,45 @@ using (var scope = app.Services.CreateScope())
     await archives.PurgeExpiredAsync();
 }
 
-// Translate ApiException into a JSON problem response; everything else bubbles to the default handler.
+// Security response headers on everything (incl. static files + errors). Set before next() so they're
+// applied before any body is written. CSP allows what Blazor WASM needs (wasm-unsafe-eval) and external
+// image sources for bank/vendor logos + data-URL avatars; script-src keeps 'unsafe-inline' only because the
+// static index.html has inline bootstrap scripts (tightening to hashes/nonces is a Tier-2 follow-up).
 app.Use(async (context, next) =>
 {
+    var h = context.Response.Headers;
+    h["X-Content-Type-Options"] = "nosniff";
+    h["X-Frame-Options"] = "DENY";
+    h["Referrer-Policy"] = "strict-origin-when-cross-origin";
+    h["Permissions-Policy"] = "camera=(), microphone=(), geolocation=(), payment=(), usb=()";
+    h["Strict-Transport-Security"] = "max-age=63072000; includeSubDomains; preload";
+    h["Content-Security-Policy"] =
+        "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; " +
+        "img-src 'self' data: https:; font-src 'self'; connect-src 'self'; style-src 'self' 'unsafe-inline'; " +
+        "script-src 'self' 'wasm-unsafe-eval' 'unsafe-inline'";
+
+    // Translate our ApiException into a JSON problem response; log and mask everything else (no stack traces to clients).
     try
     {
         await next();
     }
     catch (ApiException ex)
     {
-        context.Response.StatusCode = ex.StatusCode;
-        await context.Response.WriteAsJsonAsync(new { error = ex.Message });
+        if (!context.Response.HasStarted)
+        {
+            context.Response.StatusCode = ex.StatusCode;
+            await context.Response.WriteAsJsonAsync(new { error = ex.Message });
+        }
+    }
+    catch (Exception ex)
+    {
+        context.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("Global")
+            .LogError(ex, "Unhandled exception on {Method} {Path}", context.Request.Method, context.Request.Path);
+        if (!context.Response.HasStarted)
+        {
+            context.Response.StatusCode = StatusCodes.Status500InternalServerError;
+            await context.Response.WriteAsJsonAsync(new { error = "Something went wrong. Please try again." });
+        }
     }
 });
 
@@ -191,15 +232,16 @@ app.UseStaticFiles(new StaticFileOptions
 if (app.Environment.IsDevelopment())
     app.UseCors(WasmCorsPolicy);
 
+app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
 
 // --- Auth ----------------------------------------------------------------
 var auth = app.MapGroup("/auth");
 auth.MapPost("/register", async (RegisterRequest req, AuthService svc, CancellationToken ct) =>
-    Results.Ok(await svc.RegisterAsync(req, ct)));
+    Results.Ok(await svc.RegisterAsync(req, ct))).RequireRateLimiting("auth");
 auth.MapPost("/login", async (LoginRequest req, AuthService svc, CancellationToken ct) =>
-    Results.Ok(await svc.LoginAsync(req, ct)));
+    Results.Ok(await svc.LoginAsync(req, ct))).RequireRateLimiting("auth");
 auth.MapPost("/password", async (ChangePasswordRequest req, ClaimsPrincipal user, AuthService svc, CancellationToken ct) =>
 {
     await svc.ChangePasswordAsync(user.UserId(), req, ct);
