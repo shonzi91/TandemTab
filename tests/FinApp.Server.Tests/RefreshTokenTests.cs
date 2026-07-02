@@ -92,4 +92,12 @@ public class RefreshTokenTests : IClassFixture<FinAppServerFactory>
         var resp = await client.PostAsJsonAsync("/auth/refresh", new RefreshRequest("not-a-real-token"));
         Assert.Equal(HttpStatusCode.Unauthorized, resp.StatusCode);
     }
+
+    [Fact]
+    public async Task Exchange_rejects_an_invalid_code()
+    {
+        var client = _factory.CreateClient();
+        var resp = await client.PostAsJsonAsync("/auth/exchange", new ExchangeCodeRequest("bogus-code"));
+        Assert.Equal(HttpStatusCode.Unauthorized, resp.StatusCode);
+    }
 }

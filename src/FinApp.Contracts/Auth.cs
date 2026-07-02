@@ -17,6 +17,9 @@ public record RefreshRequest(string RefreshToken);
 /// <summary>Revoke a refresh token on sign-out so it can't be used again.</summary>
 public record LogoutRequest(string RefreshToken);
 
+/// <summary>Exchange a one-time external-sign-in code (from the OAuth redirect) for real session tokens.</summary>
+public record ExchangeCodeRequest(string Code);
+
 /// <summary>A user as seen over the wire (never includes the password hash). <see cref="Avatar"/> is a data-URL profile picture.
 /// <see cref="Provider"/> names the external sign-in provider (e.g. "google") when the user signed up that way — null for
 /// password users; <see cref="IsExternal"/> is the convenience flag used to hide the password-change UI.</summary>

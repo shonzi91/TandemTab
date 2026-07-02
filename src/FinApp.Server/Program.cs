@@ -70,6 +70,7 @@ if (!builder.Environment.IsDevelopment() &&
 builder.Services.AddSingleton<IPasswordHasher, Pbkdf2PasswordHasher>();
 builder.Services.AddSingleton<JwtTokenService>();
 builder.Services.AddScoped<RefreshTokenService>();
+builder.Services.AddScoped<AuthCodeService>();
 builder.Services.AddScoped<AuthService>();
 builder.Services.AddScoped<AvatarService>();
 builder.Services.AddScoped<ExternalIdentityService>();
@@ -163,6 +164,8 @@ using (var scope = app.Services.CreateScope())
     await scope.ServiceProvider.GetRequiredService<ConsentService>().EnsureSchemaAsync();
     // Refresh-token store (rotation + reuse detection) — same idempotent-create pattern.
     await scope.ServiceProvider.GetRequiredService<RefreshTokenService>().EnsureSchemaAsync();
+    // One-time auth codes for external sign-in (keeps session tokens out of the redirect URL).
+    await scope.ServiceProvider.GetRequiredService<AuthCodeService>().EnsureSchemaAsync();
     // Archived-accounts table + purge anything past its 30-day grace window on startup.
     var archives = scope.ServiceProvider.GetRequiredService<ArchivedAccountsService>();
     await archives.EnsureSchemaAsync();
@@ -254,6 +257,9 @@ auth.MapPost("/logout", async (LogoutRequest req, AuthService svc, CancellationT
     await svc.LogoutAsync(req.RefreshToken, ct);
     return Results.NoContent();
 });
+// Exchange a one-time external-sign-in code (from the OAuth redirect) for an access + refresh token.
+auth.MapPost("/exchange", async (ExchangeCodeRequest req, AuthService svc, CancellationToken ct) =>
+    Results.Ok(await svc.ExchangeAsync(req.Code, ct))).RequireRateLimiting("auth");
 auth.MapPost("/password", async (ChangePasswordRequest req, ClaimsPrincipal user, AuthService svc, CancellationToken ct) =>
 {
     await svc.ChangePasswordAsync(user.UserId(), req, ct);
@@ -277,7 +283,8 @@ auth.MapGet("/external/{provider}", (string provider, HttpContext http, External
 });
 
 auth.MapGet("/external/{provider}/callback", async (string provider, string? code, string? state,
-    HttpContext http, ExternalAuthService ext, AuthService authSvc, AvatarService avatars, ExternalIdentityService identities, IConfiguration cfg, CancellationToken ct) =>
+    HttpContext http, ExternalAuthService ext, AuthService authSvc, AuthCodeService authCodes,
+    AvatarService avatars, ExternalIdentityService identities, IConfiguration cfg, CancellationToken ct) =>
 {
     if (!ext.IsEnabled(provider) || string.IsNullOrEmpty(code)) return Results.Redirect("/?authError=1");
     var expectedState = http.Request.Cookies["finapp_oauth_state"];
@@ -287,13 +294,15 @@ auth.MapGet("/external/{provider}/callback", async (string provider, string? cod
     {
         var redirectUri = ExternalRedirectUri(http, cfg, provider);
         var (email, name, picture) = await ext.CompleteAsync(provider, code, redirectUri, ct);
-        var result = await authSvc.FindOrCreateExternalUserAsync(email, name, ct);
-        await identities.MarkAsync(result.UserId, provider, ct);   // so the UI can hide "change password" for them
+        var userId = await authSvc.FindOrCreateExternalUserAsync(email, name, ct);
+        await identities.MarkAsync(userId, provider, ct);   // so the UI can hide "change password" for them
         // Adopt the provider's profile picture only if the user hasn't set one of their own.
-        if (!string.IsNullOrWhiteSpace(picture) && await avatars.GetAsync(result.UserId, ct) is null)
-            await avatars.SetAsync(result.UserId, picture, ct);
-        // Hand the token to the SPA via the URL fragment (never sent to the server again; the client reads + clears it).
-        return Results.Redirect($"/#access_token={Uri.EscapeDataString(result.Token)}");
+        if (!string.IsNullOrWhiteSpace(picture) && await avatars.GetAsync(userId, ct) is null)
+            await avatars.SetAsync(userId, picture, ct);
+        // Hand the SPA a one-time code (not a token) in the query string. The client POSTs it to /auth/exchange
+        // for the real access + refresh token, keeping session tokens out of the URL/history/Referer.
+        var authCode = await authCodes.IssueAsync(userId, ct);
+        return Results.Redirect($"/?authCode={Uri.EscapeDataString(authCode)}");
     }
     catch { return Results.Redirect("/?authError=1"); }
 });

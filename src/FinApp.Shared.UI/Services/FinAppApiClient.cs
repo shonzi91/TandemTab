@@ -39,6 +39,8 @@ public sealed class FinAppApiClient(HttpClient http)
         SendAsync<AuthResponse>(HttpMethod.Post, "/auth/refresh", new RefreshRequest(refreshToken), ct);
     public Task LogoutAsync(string refreshToken, CancellationToken ct = default) =>
         SendAsync(HttpMethod.Post, "/auth/logout", new LogoutRequest(refreshToken), ct);
+    public Task<AuthResponse> ExchangeCodeAsync(string code, CancellationToken ct = default) =>
+        SendAsync<AuthResponse>(HttpMethod.Post, "/auth/exchange", new ExchangeCodeRequest(code), ct);
     public Task<UserDto> MeAsync(CancellationToken ct = default) =>
         SendAsync<UserDto>(HttpMethod.Get, "/me", null, ct);
     public Task<ExternalProvidersDto> GetProvidersAsync(CancellationToken ct = default) =>
@@ -146,7 +148,7 @@ public sealed class FinAppApiClient(HttpClient http)
     // --- Plumbing ---------------------------------------------------------
     // Auth endpoints must never trigger the 401→refresh→retry path (a failing /auth/refresh would recurse).
     private static bool IsAuthPath(string path) =>
-        path is "/auth/refresh" or "/auth/login" or "/auth/register" or "/auth/logout";
+        path is "/auth/refresh" or "/auth/login" or "/auth/register" or "/auth/logout" or "/auth/exchange";
 
     private async Task<T> SendAsync<T>(HttpMethod method, string path, object? body, CancellationToken ct)
     {

@@ -35,10 +35,16 @@
         };
         window.finappNavigate = (url) => { window.location.href = url; };
         window.finappScrollIntoView = (id) => { const el = document.getElementById(id); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); };
-        window.finappTakeAuthToken = () => {
+        window.finappTakeAuthCode = () => {
             try {
-                const m = (window.location.hash || '').match(/access_token=([^&]+)/);
-                if (m) { history.replaceState(null, '', window.location.pathname + window.location.search); return decodeURIComponent(m[1]); }
+                const params = new URLSearchParams(window.location.search);
+                const code = params.get('authCode');
+                if (code) {
+                    params.delete('authCode');
+                    const qs = params.toString();
+                    history.replaceState(null, '', window.location.pathname + (qs ? '?' + qs : '') + window.location.hash);
+                    return code;
+                }
             } catch (e) { }
             return null;
         };

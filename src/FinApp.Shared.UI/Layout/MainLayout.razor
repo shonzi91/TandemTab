@@ -222,13 +222,14 @@
         Auth.Changed += OnChanged;
         Loc.Changed += OnChanged;
         await Loc.InitializeAsync();
-        // An external (Google/Facebook) sign-in redirects back with the token in the URL fragment.
-        string? externalToken = null;
-        try { externalToken = await JS.InvokeAsync<string?>("finappTakeAuthToken"); } catch { /* host without the helper */ }
+        // An external (Google/Facebook) sign-in redirects back with a one-time code in the query string,
+        // which we exchange (over POST) for real session tokens — keeping tokens out of the URL.
+        string? authCode = null;
+        try { authCode = await JS.InvokeAsync<string?>("finappTakeAuthCode"); } catch { /* host without the helper */ }
         var signedIn = false;
-        if (!string.IsNullOrEmpty(externalToken))
+        if (!string.IsNullOrEmpty(authCode))
         {
-            try { signedIn = await Auth.SignInWithTokenAsync(externalToken); } catch { /* fall through */ }
+            try { signedIn = await Auth.SignInWithCodeAsync(authCode); } catch { /* fall through */ }
         }
         if (!signedIn)
         {

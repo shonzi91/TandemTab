@@ -55,15 +55,13 @@ public sealed class AuthState
         }
     }
 
-    /// <summary>Complete an external (Google/Facebook) sign-in from a token handed back in the redirect URL.</summary>
-    public async Task<bool> SignInWithTokenAsync(string token)
+    /// <summary>Complete an external (Google/Facebook) sign-in by exchanging the one-time code from the redirect
+    /// URL for real session tokens (access + refresh), which are then stored like a normal login.</summary>
+    public async Task<bool> SignInWithCodeAsync(string code)
     {
-        _api.Token = token;
         try
         {
-            CurrentUser = await _api.MeAsync();
-            await _tokens.SetAsync(token);
-            Changed?.Invoke();
+            await ApplyAsync(() => _api.ExchangeCodeAsync(code));
             return true;
         }
         catch

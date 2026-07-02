@@ -8,7 +8,9 @@ using Microsoft.EntityFrameworkCore;
 namespace FinApp.Server.Auth;
 
 /// <summary>Registers and authenticates users, returning an access token + refresh token on success.</summary>
-public sealed class AuthService(FinAppDbContext db, IPasswordHasher hasher, JwtTokenService tokens, RefreshTokenService refreshTokens)
+public sealed class AuthService(
+    FinAppDbContext db, IPasswordHasher hasher, JwtTokenService tokens,
+    RefreshTokenService refreshTokens, AuthCodeService authCodes)
 {
     private const int MinPasswordLength = 8;
 
@@ -33,6 +35,16 @@ public sealed class AuthService(FinAppDbContext db, IPasswordHasher hasher, JwtT
     /// <summary>Revoke a refresh token on sign-out (best-effort; unknown tokens are ignored).</summary>
     public Task LogoutAsync(string refreshToken, CancellationToken ct = default) =>
         refreshTokens.RevokeAsync(refreshToken, ct);
+
+    /// <summary>Redeem a one-time external-sign-in code (from the OAuth redirect) for an access + refresh token.</summary>
+    public async Task<AuthResponse> ExchangeAsync(string code, CancellationToken ct = default)
+    {
+        var userId = await authCodes.RedeemAsync(code, ct)
+            ?? throw new UnauthorizedException("This sign-in link is invalid or has expired. Please try again.");
+        var user = await db.Users.FirstOrDefaultAsync(u => u.Id == userId, ct)
+            ?? throw new UnauthorizedException("This sign-in link is invalid or has expired. Please try again.");
+        return await IssueAsync(user, ct);
+    }
 
     public async Task<AuthResponse> RegisterAsync(RegisterRequest request, CancellationToken ct = default)
     {
@@ -78,9 +90,10 @@ public sealed class AuthService(FinAppDbContext db, IPasswordHasher hasher, JwtT
         return await IssueAsync(user, ct);
     }
 
-    /// <summary>Find an existing user by email or create one for an external (Google/Facebook) sign-in, then issue a token.
-    /// External users get a random password hash (they sign in via the provider, not a password).</summary>
-    public async Task<AuthResponse> FindOrCreateExternalUserAsync(string email, string? displayName, CancellationToken ct = default)
+    /// <summary>Find an existing user by email or create one for an external (Google/Facebook) sign-in, returning the
+    /// user id. External users get a random password hash (they sign in via the provider, not a password). The caller
+    /// hands the user a one-time code (see <see cref="AuthCodeService"/>) rather than a token in the URL.</summary>
+    public async Task<Guid> FindOrCreateExternalUserAsync(string email, string? displayName, CancellationToken ct = default)
     {
         email = (email ?? "").Trim().ToLowerInvariant();
         if (string.IsNullOrWhiteSpace(email) || !email.Contains('@'))
@@ -100,7 +113,7 @@ public sealed class AuthService(FinAppDbContext db, IPasswordHasher hasher, JwtT
             db.Users.Add(user);
             await db.SaveChangesAsync(ct);
         }
-        return await IssueAsync(user, ct);
+        return user.Id;
     }
 
     private static string MakeUsername(string? displayName, string email)
