@@ -7,10 +7,32 @@ using Microsoft.EntityFrameworkCore;
 
 namespace FinApp.Server.Auth;
 
-/// <summary>Registers and authenticates users, returning a bearer token on success.</summary>
-public sealed class AuthService(FinAppDbContext db, IPasswordHasher hasher, JwtTokenService tokens)
+/// <summary>Registers and authenticates users, returning an access token + refresh token on success.</summary>
+public sealed class AuthService(FinAppDbContext db, IPasswordHasher hasher, JwtTokenService tokens, RefreshTokenService refreshTokens)
 {
     private const int MinPasswordLength = 8;
+
+    /// <summary>Issue an access token plus a fresh refresh token for a user.</summary>
+    private async Task<AuthResponse> IssueAsync(User user, CancellationToken ct)
+    {
+        var response = tokens.Issue(user);
+        var refresh = await refreshTokens.IssueAsync(user.Id, ct);
+        return response with { RefreshToken = refresh };
+    }
+
+    /// <summary>Exchange a valid refresh token for a new access token (rotating the refresh token).</summary>
+    public async Task<AuthResponse> RefreshAsync(string refreshToken, CancellationToken ct = default)
+    {
+        var rotated = await refreshTokens.ValidateAndRotateAsync(refreshToken, ct)
+            ?? throw new UnauthorizedException("Your session has expired. Please sign in again.");
+        var user = await db.Users.FirstOrDefaultAsync(u => u.Id == rotated.UserId, ct)
+            ?? throw new UnauthorizedException("Your session has expired. Please sign in again.");
+        return tokens.Issue(user) with { RefreshToken = rotated.NewToken };
+    }
+
+    /// <summary>Revoke a refresh token on sign-out (best-effort; unknown tokens are ignored).</summary>
+    public Task LogoutAsync(string refreshToken, CancellationToken ct = default) =>
+        refreshTokens.RevokeAsync(refreshToken, ct);
 
     public async Task<AuthResponse> RegisterAsync(RegisterRequest request, CancellationToken ct = default)
     {
@@ -39,7 +61,7 @@ public sealed class AuthService(FinAppDbContext db, IPasswordHasher hasher, JwtT
 
         db.Users.Add(user);
         await db.SaveChangesAsync(ct);
-        return tokens.Issue(user);
+        return await IssueAsync(user, ct);
     }
 
     public async Task<AuthResponse> LoginAsync(LoginRequest request, CancellationToken ct = default)
@@ -53,7 +75,7 @@ public sealed class AuthService(FinAppDbContext db, IPasswordHasher hasher, JwtT
         if (user is null || !hasher.Verify(request.Password ?? "", user.PasswordHash))
             throw new UnauthorizedException("Invalid username or password.");
 
-        return tokens.Issue(user);
+        return await IssueAsync(user, ct);
     }
 
     /// <summary>Find an existing user by email or create one for an external (Google/Facebook) sign-in, then issue a token.
@@ -78,7 +100,7 @@ public sealed class AuthService(FinAppDbContext db, IPasswordHasher hasher, JwtT
             db.Users.Add(user);
             await db.SaveChangesAsync(ct);
         }
-        return tokens.Issue(user);
+        return await IssueAsync(user, ct);
     }
 
     private static string MakeUsername(string? displayName, string email)

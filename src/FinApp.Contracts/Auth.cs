@@ -6,8 +6,16 @@ public record RegisterRequest(string Username, string Email, string Password);
 /// <summary>Sign-in payload; <see cref="UsernameOrEmail"/> accepts either identifier.</summary>
 public record LoginRequest(string UsernameOrEmail, string Password);
 
-/// <summary>Result of register/login: a bearer token plus the authenticated user's identity.</summary>
-public record AuthResponse(string Token, Guid UserId, string Username, string Email, DateTimeOffset ExpiresAt);
+/// <summary>Result of register/login: a short-lived access token plus the authenticated user's identity.
+/// <see cref="RefreshToken"/> is a long-lived opaque token used to obtain a fresh access token via
+/// <c>/auth/refresh</c> (null for flows that don't issue one, e.g. legacy callers).</summary>
+public record AuthResponse(string Token, Guid UserId, string Username, string Email, DateTimeOffset ExpiresAt, string? RefreshToken = null);
+
+/// <summary>Exchange a valid refresh token for a new access token (and a rotated refresh token).</summary>
+public record RefreshRequest(string RefreshToken);
+
+/// <summary>Revoke a refresh token on sign-out so it can't be used again.</summary>
+public record LogoutRequest(string RefreshToken);
 
 /// <summary>A user as seen over the wire (never includes the password hash). <see cref="Avatar"/> is a data-URL profile picture.
 /// <see cref="Provider"/> names the external sign-in provider (e.g. "google") when the user signed up that way — null for

@@ -10,6 +10,7 @@ namespace FinApp.App.Web;
 public sealed class WebTokenStore(IJSRuntime js) : ITokenStore
 {
     private const string Key = "finapp-auth-token";
+    private const string RefreshKey = "finapp-refresh-token";
 
     public async Task<string?> GetAsync()
     {
@@ -23,9 +24,21 @@ public sealed class WebTokenStore(IJSRuntime js) : ITokenStore
         catch { /* storage unavailable — token simply won't persist across reloads */ }
     }
 
+    public async Task<string?> GetRefreshAsync()
+    {
+        try { return await js.InvokeAsync<string?>("localStorage.getItem", RefreshKey); }
+        catch { return null; }
+    }
+
+    public async Task SetRefreshAsync(string refreshToken)
+    {
+        try { await js.InvokeVoidAsync("localStorage.setItem", RefreshKey, refreshToken); }
+        catch { /* storage unavailable — token simply won't persist across reloads */ }
+    }
+
     public async Task ClearAsync()
     {
-        try { await js.InvokeVoidAsync("localStorage.removeItem", Key); }
-        catch { /* ignore */ }
+        try { await js.InvokeVoidAsync("localStorage.removeItem", Key); } catch { /* ignore */ }
+        try { await js.InvokeVoidAsync("localStorage.removeItem", RefreshKey); } catch { /* ignore */ }
     }
 }

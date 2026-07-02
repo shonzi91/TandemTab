@@ -69,6 +69,7 @@ if (!builder.Environment.IsDevelopment() &&
 
 builder.Services.AddSingleton<IPasswordHasher, Pbkdf2PasswordHasher>();
 builder.Services.AddSingleton<JwtTokenService>();
+builder.Services.AddScoped<RefreshTokenService>();
 builder.Services.AddScoped<AuthService>();
 builder.Services.AddScoped<AvatarService>();
 builder.Services.AddScoped<ExternalIdentityService>();
@@ -160,6 +161,8 @@ using (var scope = app.Services.CreateScope())
     await scope.ServiceProvider.GetRequiredService<ExternalIdentityService>().EnsureSchemaAsync();
     // Consent audit log (login / bank-link / bank-sync grants + withdrawals).
     await scope.ServiceProvider.GetRequiredService<ConsentService>().EnsureSchemaAsync();
+    // Refresh-token store (rotation + reuse detection) — same idempotent-create pattern.
+    await scope.ServiceProvider.GetRequiredService<RefreshTokenService>().EnsureSchemaAsync();
     // Archived-accounts table + purge anything past its 30-day grace window on startup.
     var archives = scope.ServiceProvider.GetRequiredService<ArchivedAccountsService>();
     await archives.EnsureSchemaAsync();
@@ -242,6 +245,15 @@ auth.MapPost("/register", async (RegisterRequest req, AuthService svc, Cancellat
     Results.Ok(await svc.RegisterAsync(req, ct))).RequireRateLimiting("auth");
 auth.MapPost("/login", async (LoginRequest req, AuthService svc, CancellationToken ct) =>
     Results.Ok(await svc.LoginAsync(req, ct))).RequireRateLimiting("auth");
+// Exchange a refresh token for a new access token (rotates the refresh token). Rate-limited like login.
+auth.MapPost("/refresh", async (RefreshRequest req, AuthService svc, CancellationToken ct) =>
+    Results.Ok(await svc.RefreshAsync(req.RefreshToken, ct))).RequireRateLimiting("auth");
+// Revoke a refresh token on sign-out. Anonymous: possession of the token is the authorization.
+auth.MapPost("/logout", async (LogoutRequest req, AuthService svc, CancellationToken ct) =>
+{
+    await svc.LogoutAsync(req.RefreshToken, ct);
+    return Results.NoContent();
+});
 auth.MapPost("/password", async (ChangePasswordRequest req, ClaimsPrincipal user, AuthService svc, CancellationToken ct) =>
 {
     await svc.ChangePasswordAsync(user.UserId(), req, ct);

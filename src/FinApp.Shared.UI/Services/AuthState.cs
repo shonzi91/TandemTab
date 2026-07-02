@@ -7,24 +7,44 @@ namespace FinApp.Shared.UI.Services;
 /// hands the token to the <see cref="FinAppApiClient"/>, and raises <see cref="Changed"/> so the UI
 /// can switch between the auth screen and the app.
 /// </summary>
-public sealed class AuthState(FinAppApiClient api, ITokenStore tokens)
+public sealed class AuthState
 {
+    private readonly FinAppApiClient _api;
+    private readonly ITokenStore _tokens;
+
+    public AuthState(FinAppApiClient api, ITokenStore tokens)
+    {
+        _api = api;
+        _tokens = tokens;
+        // Let the API client renew an expired access token mid-session, transparently.
+        _api.OnUnauthorized = RefreshAsync;
+    }
+
     public UserDto? CurrentUser { get; private set; }
     public bool IsAuthenticated => CurrentUser is not null;
     public Guid UserId => CurrentUser?.Id ?? Guid.Empty;
 
     public event Action? Changed;
 
-    /// <summary>Restore a persisted session (validates the token via /me). Safe to call once at startup.</summary>
+    // Single-flight guard so concurrent 401s trigger at most one refresh (rotation makes double-refresh unsafe).
+    private readonly object _refreshGate = new();
+    private Task<bool>? _refreshInFlight;
+
+    /// <summary>Restore a persisted session (validates the token via /me). Safe to call once at startup.
+    /// If the access token has expired, the API client renews it via the refresh token automatically.</summary>
     public async Task<bool> TryRestoreAsync()
     {
-        var token = await tokens.GetAsync();
-        if (string.IsNullOrEmpty(token)) return false;
+        var token = await _tokens.GetAsync();
+        var refresh = await _tokens.GetRefreshAsync();
+        if (string.IsNullOrEmpty(token) && string.IsNullOrEmpty(refresh)) return false;
 
-        api.Token = token;
+        _api.Token = token;
         try
         {
-            CurrentUser = await api.MeAsync();
+            // If the access token is missing/expired but a refresh token exists, renew before calling /me.
+            if (string.IsNullOrEmpty(token) && !string.IsNullOrEmpty(refresh) && !await RefreshAsync(null))
+                return false;
+            CurrentUser = await _api.MeAsync();
             Changed?.Invoke();
             return true;
         }
@@ -38,11 +58,11 @@ public sealed class AuthState(FinAppApiClient api, ITokenStore tokens)
     /// <summary>Complete an external (Google/Facebook) sign-in from a token handed back in the redirect URL.</summary>
     public async Task<bool> SignInWithTokenAsync(string token)
     {
-        api.Token = token;
+        _api.Token = token;
         try
         {
-            CurrentUser = await api.MeAsync();
-            await tokens.SetAsync(token);
+            CurrentUser = await _api.MeAsync();
+            await _tokens.SetAsync(token);
             Changed?.Invoke();
             return true;
         }
@@ -54,17 +74,64 @@ public sealed class AuthState(FinAppApiClient api, ITokenStore tokens)
     }
 
     public Task RegisterAsync(string username, string email, string password) =>
-        ApplyAsync(() => api.RegisterAsync(new RegisterRequest(username, email, password)));
+        ApplyAsync(() => _api.RegisterAsync(new RegisterRequest(username, email, password)));
 
     public Task LogInAsync(string usernameOrEmail, string password) =>
-        ApplyAsync(() => api.LoginAsync(new LoginRequest(usernameOrEmail, password)));
+        ApplyAsync(() => _api.LoginAsync(new LoginRequest(usernameOrEmail, password)));
 
     public async Task SignOutAsync()
     {
+        // Best-effort: revoke the refresh token server-side so it can't be reused.
+        var refresh = await _tokens.GetRefreshAsync();
+        if (!string.IsNullOrEmpty(refresh))
+            try { await _api.LogoutAsync(refresh); } catch { /* offline / already gone — clear locally anyway */ }
+
         CurrentUser = null;
-        api.Token = null;
-        await tokens.ClearAsync();
+        _api.Token = null;
+        await _tokens.ClearAsync();
         Changed?.Invoke();
+    }
+
+    /// <summary>
+    /// Renew the access token using the stored refresh token. Wired into <see cref="FinAppApiClient.OnUnauthorized"/>
+    /// so an expired access token is refreshed transparently. Single-flighted: concurrent 401s share one refresh,
+    /// and a request that already failed with a since-rotated token just retries with the new one (no double-refresh,
+    /// which would trip the server's reuse detection). Returns true when a usable access token is in place.
+    /// </summary>
+    private Task<bool> RefreshAsync(string? tokenThatFailed)
+    {
+        // A concurrent refresh already replaced the token this request used — just retry with the new one.
+        if (!string.IsNullOrEmpty(_api.Token) && tokenThatFailed is not null && _api.Token != tokenThatFailed)
+            return Task.FromResult(true);
+
+        lock (_refreshGate)
+        {
+            return _refreshInFlight ??= RefreshCoreAsync();
+        }
+    }
+
+    private async Task<bool> RefreshCoreAsync()
+    {
+        try
+        {
+            var refresh = await _tokens.GetRefreshAsync();
+            if (string.IsNullOrEmpty(refresh)) return false;
+
+            var auth = await _api.RefreshAsync(refresh);
+            _api.Token = auth.Token;
+            await _tokens.SetAsync(auth.Token);
+            if (!string.IsNullOrEmpty(auth.RefreshToken))
+                await _tokens.SetRefreshAsync(auth.RefreshToken);
+            return true;
+        }
+        catch
+        {
+            return false;  // refresh token invalid/expired — caller surfaces the 401 and the user re-logs in
+        }
+        finally
+        {
+            lock (_refreshGate) { _refreshInFlight = null; }
+        }
     }
 
     /// <summary>Update the signed-in user's avatar in memory (after uploading it to the server).</summary>
@@ -78,11 +145,13 @@ public sealed class AuthState(FinAppApiClient api, ITokenStore tokens)
     private async Task ApplyAsync(Func<Task<AuthResponse>> call)
     {
         var auth = await call();
-        api.Token = auth.Token;
-        await tokens.SetAsync(auth.Token);
+        _api.Token = auth.Token;
+        await _tokens.SetAsync(auth.Token);
+        if (!string.IsNullOrEmpty(auth.RefreshToken))
+            await _tokens.SetRefreshAsync(auth.RefreshToken);
         CurrentUser = new UserDto(auth.UserId, auth.Username, auth.Email);
         Changed?.Invoke();
         // Pull the full profile (incl. avatar) in the background; ignore failures (we're already signed in).
-        try { CurrentUser = await api.MeAsync(); Changed?.Invoke(); } catch { /* best effort */ }
+        try { CurrentUser = await _api.MeAsync(); Changed?.Invoke(); } catch { /* best effort */ }
     }
 }

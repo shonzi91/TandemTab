@@ -23,11 +23,22 @@ public sealed class FinAppApiClient(HttpClient http)
     /// <summary>Set after login; cleared on logout. Null = anonymous calls (register/login).</summary>
     public string? Token { get; set; }
 
+    /// <summary>
+    /// Invoked once when a request comes back 401, given the access token that was used. The handler
+    /// (wired by <see cref="AuthState"/>) should try to refresh <see cref="Token"/> and return true if the
+    /// request is worth retrying. Lets an expired access token be renewed transparently, mid-session.
+    /// </summary>
+    public Func<string?, Task<bool>>? OnUnauthorized { get; set; }
+
     // --- Auth -------------------------------------------------------------
     public Task<AuthResponse> RegisterAsync(RegisterRequest req, CancellationToken ct = default) =>
         SendAsync<AuthResponse>(HttpMethod.Post, "/auth/register", req, ct);
     public Task<AuthResponse> LoginAsync(LoginRequest req, CancellationToken ct = default) =>
         SendAsync<AuthResponse>(HttpMethod.Post, "/auth/login", req, ct);
+    public Task<AuthResponse> RefreshAsync(string refreshToken, CancellationToken ct = default) =>
+        SendAsync<AuthResponse>(HttpMethod.Post, "/auth/refresh", new RefreshRequest(refreshToken), ct);
+    public Task LogoutAsync(string refreshToken, CancellationToken ct = default) =>
+        SendAsync(HttpMethod.Post, "/auth/logout", new LogoutRequest(refreshToken), ct);
     public Task<UserDto> MeAsync(CancellationToken ct = default) =>
         SendAsync<UserDto>(HttpMethod.Get, "/me", null, ct);
     public Task<ExternalProvidersDto> GetProvidersAsync(CancellationToken ct = default) =>
@@ -133,6 +144,10 @@ public sealed class FinAppApiClient(HttpClient http)
     private record AcceptResult(Guid AccountId);
 
     // --- Plumbing ---------------------------------------------------------
+    // Auth endpoints must never trigger the 401→refresh→retry path (a failing /auth/refresh would recurse).
+    private static bool IsAuthPath(string path) =>
+        path is "/auth/refresh" or "/auth/login" or "/auth/register" or "/auth/logout";
+
     private async Task<T> SendAsync<T>(HttpMethod method, string path, object? body, CancellationToken ct)
     {
         using var response = await SendRawAsync(method, path, body, ct);
@@ -146,7 +161,23 @@ public sealed class FinAppApiClient(HttpClient http)
         await EnsureSuccessAsync(response, ct);
     }
 
-    private Task<HttpResponseMessage> SendRawAsync(HttpMethod method, string path, object? body, CancellationToken ct)
+    /// <summary>Send with the bearer token attached. On a 401 for a normal (non-auth) request, ask the
+    /// <see cref="OnUnauthorized"/> handler to refresh the token, then retry the request exactly once.</summary>
+    private async Task<HttpResponseMessage> SendRawAsync(HttpMethod method, string path, object? body, CancellationToken ct)
+    {
+        var tokenUsed = Token;
+        var response = await SendOnceAsync(method, path, body, ct);
+        if (response.StatusCode == HttpStatusCode.Unauthorized
+            && OnUnauthorized is not null && !IsAuthPath(path) && !string.IsNullOrEmpty(tokenUsed))
+        {
+            response.Dispose();
+            await OnUnauthorized(tokenUsed);              // refreshes Token, or clears it if the session is dead
+            response = await SendOnceAsync(method, path, body, ct);  // retry with whatever token we now hold
+        }
+        return response;
+    }
+
+    private Task<HttpResponseMessage> SendOnceAsync(HttpMethod method, string path, object? body, CancellationToken ct)
     {
         var request = new HttpRequestMessage(method, path);
         if (body is not null)

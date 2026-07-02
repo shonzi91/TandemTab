@@ -7,6 +7,7 @@ namespace FinApp.App.Maui;
 public sealed class MauiTokenStore : ITokenStore
 {
     private const string Key = "finapp-auth-token";
+    private const string RefreshKey = "finapp-refresh-token";
 
     public async Task<string?> GetAsync()
     {
@@ -20,10 +21,22 @@ public sealed class MauiTokenStore : ITokenStore
         catch { /* SecureStorage unavailable — token simply won't persist across launches */ }
     }
 
+    public async Task<string?> GetRefreshAsync()
+    {
+        try { return await SecureStorage.Default.GetAsync(RefreshKey); }
+        catch { return null; }
+    }
+
+    public async Task SetRefreshAsync(string refreshToken)
+    {
+        try { await SecureStorage.Default.SetAsync(RefreshKey, refreshToken); }
+        catch { /* SecureStorage unavailable — token simply won't persist across launches */ }
+    }
+
     public Task ClearAsync()
     {
-        try { SecureStorage.Default.Remove(Key); }
-        catch { /* ignore */ }
+        try { SecureStorage.Default.Remove(Key); } catch { /* ignore */ }
+        try { SecureStorage.Default.Remove(RefreshKey); } catch { /* ignore */ }
         return Task.CompletedTask;
     }
 }
