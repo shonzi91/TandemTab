@@ -702,6 +702,10 @@ else
                                 {
                                     <span class="settle-tag" title="@Loc["Settled from another account"]">↩ @Loc["from"] @State.AccountName(e.SettledFromAccountId!.Value)</span>
                                 }
+                                @if (BankRuleFor(e) is not null)
+                                {
+                                    <span class="row-note" title="@($"{Loc["Auto-filed from a saved bank rule"]}: {e.Note} → {MappedLabel(e.Note!)}")">🏦</span>
+                                }
                             </span>
                             <span class="amt">@Fmt(e.Amount)</span>
                             <span class="row-actions">
@@ -1369,6 +1373,11 @@ else
                         </select>
                     </label>
                     <label>@Loc["Note (optional)"] <input type="text" @bind="_note" /></label>
+                    @if (State.FindExpense(_editExpenseId) is { } editExp && BankRuleFor(editExp) is not null)
+                    {
+                        <p class="hint">🏦 @Loc["Auto-filed from a saved bank rule:"] <strong>@editExp.Note</strong> → <strong>@MappedLabel(editExp.Note!)</strong>
+                            <button type="button" class="link" @onclick="() => RemoveBankRuleFor(editExp)" disabled="@_bankBusy">@Loc["Remove rule"]</button></p>
+                    }
                     <div class="modal-actions">
                         <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
                         <button @onclick="SaveEditExpense" disabled="@(_amount <= 0)">@Loc["Save"]</button>
@@ -2475,6 +2484,16 @@ else
             _ => null,
         };
     }
+
+    /// <summary>A saved bank category-rule matching this expense's merchant note — i.e. it was auto-filed from the
+    /// bank by that rule (so we badge it and show the rule on edit). Null when the note has no such mapping.</summary>
+    private (string Kind, Guid TargetId)? BankRuleFor(FinApp.Domain.Budgeting.Expense e) =>
+        string.IsNullOrEmpty(e.Note) ? null
+            : MappingFor(e.Note!) is { Kind: "category" } m ? m : null;
+
+    /// <summary>Remove the merchant→category rule behind an auto-filed expense (leaves the expense; stops future auto-filing).</summary>
+    private Task RemoveBankRuleFor(FinApp.Domain.Budgeting.Expense e) =>
+        string.IsNullOrEmpty(e.Note) ? Task.CompletedTask : UnmapVendorFromCat(BudgetingState.BankMatchKey(e.Note!));
 
     /// <summary>Open the Spending tab focused on today's expenses (clamped into the current period).</summary>
     private void ShowExpensesTab()
