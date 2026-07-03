@@ -33,6 +33,24 @@ public sealed class AuthService(
     public Task<bool> VerifyEmailAsync(string token, CancellationToken ct = default) =>
         emailVerification.VerifyAsync(token, ct);
 
+    /// <summary>Email the freshly-generated 2FA recovery codes to the user — but only if their address is verified
+    /// (never send security material to an unconfirmed inbox). Best-effort: failures are logged, not thrown, so
+    /// enabling 2FA still succeeds. Gives the user a durable copy since the codes are shown only once on screen.</summary>
+    public async Task EmailRecoveryCodesAsync(Guid userId, string toEmail, string[] recoveryCodes, CancellationToken ct = default)
+    {
+        if (!await emailVerification.IsVerifiedAsync(userId, toEmail, ct)) return;
+        var list = string.Join("", recoveryCodes.Select(c => $"<li><code>{c}</code></li>"));
+        var html =
+            "<p>You just turned on two-factor authentication for TandemTab. Keep these one-time recovery codes " +
+            "somewhere safe — each works once if you lose access to your authenticator app:</p>" +
+            $"<ul>{list}</ul><p>If you didn't enable two-factor authentication, secure your account immediately.</p>";
+        var text = "You just turned on two-factor authentication for TandemTab. Keep these one-time recovery codes " +
+                   "somewhere safe — each works once if you lose access to your authenticator app:\n\n" +
+                   string.Join("\n", recoveryCodes) +
+                   "\n\nIf you didn't enable two-factor authentication, secure your account immediately.";
+        await email.SendAsync(toEmail, "Your TandemTab two-factor recovery codes", html, text, ct);
+    }
+
     /// <summary>Issue an access token plus a fresh refresh token for a user.</summary>
     private async Task<AuthResponse> IssueAsync(User user, CancellationToken ct)
     {

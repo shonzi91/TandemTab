@@ -1231,7 +1231,7 @@ else
 
                 case Modal.DeleteAccount:
                     <h3>@Loc["Delete"] @State.Account.Name?</h3>
-                    <p class="hint">@Loc["This permanently deletes the account and"] <strong>@Loc["all its periods, budgets, expenses and savings"]</strong>. @Loc["This can't be undone."]</p>
+                    <p class="hint">@Loc["The account is archived and hidden for 30 days — you can restore it from your profile — then it and"] <strong>@Loc["all its periods, budgets, expenses and savings"]</strong> @Loc["are permanently deleted."]</p>
                     <div class="modal-actions">
                         <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
                         <button class="danger-btn" @onclick="ConfirmDeleteAccount">@Loc["Delete account"]</button>

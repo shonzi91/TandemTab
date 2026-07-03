@@ -124,11 +124,13 @@ public sealed class AccountService(FinAppDbContext db, ArchivedAccountsService a
         await db.SaveChangesAsync(ct);
     }
 
+    /// <summary>"Delete" an account the caller owns — a soft delete: it's archived (hidden, recoverable for
+    /// <see cref="ArchivedAccountsService.RetentionDays"/> days from the profile) and only then hard-deleted by
+    /// the startup purge. Matches leaving as the sole member, so an accidental delete isn't instantly irreversible.</summary>
     public async Task DeleteAsync(Guid userId, Guid accountId, CancellationToken ct = default)
     {
-        var account = await LoadOwnedAsync(userId, accountId, ct);
-        db.Accounts.Remove(account);
-        await db.SaveChangesAsync(ct);
+        await LoadOwnedAsync(userId, accountId, ct);   // owner-only (403/404); account row stays until purged
+        await archives.ArchiveAsync(accountId, ct);
     }
 
     /// <summary>Load an account the user is a member of, or 404.</summary>

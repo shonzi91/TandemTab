@@ -165,11 +165,16 @@
                             <li><code>@rc</code></li>
                         }
                     </ul>
+                    @if (Auth.CurrentUser!.EmailVerified)
+                    {
+                        <p class="pm-hint">@Loc["We've also emailed these codes to your verified address."]</p>
+                    }
                     <button class="ghost" @onclick="() => { _2faRecoveryCodes = null; }">@Loc["Done"]</button>
                 }
                 else if (_2faSetup is not null)
                 {
                     <p class="pm-hint">@Loc["Scan the QR in your authenticator app, or enter this key manually:"]</p>
+                    <p class="pm-hint">@Loc["If your authenticator already lists a TandemTab entry, delete it there first — otherwise it may keep showing the old code and this won't work."]</p>
                     @if (!string.IsNullOrEmpty(_2faSetup.QrImage))
                     {
                         <img class="pm-2fa-qr" src="@_2faSetup.QrImage" alt="@Loc["Two-factor QR code"]" width="180" height="180" />
@@ -202,13 +207,17 @@
                         }
                     </ul>
                 }
-                <div class="pm-actions">
-                    <button class="ghost" @onclick="CloseProfile">@Loc["Close"]</button>
-                    @if (!Auth.CurrentUser!.IsExternal)
-                    {
-                        <button @onclick="ChangePassword" disabled="@(_pwdBusy || _curPwd.Length == 0 || _newPwd.Length < 8)">@Loc["Change password"]</button>
-                    }
-                </div>
+                @* While a 2FA sub-flow is active it has its own Cancel/Done — hide the profile's Close so there's one clear action. *@
+                @if (_2faSetup is null && _2faRecoveryCodes is null)
+                {
+                    <div class="pm-actions">
+                        <button class="ghost" @onclick="CloseProfile">@Loc["Close"]</button>
+                        @if (!Auth.CurrentUser!.IsExternal)
+                        {
+                            <button @onclick="ChangePassword" disabled="@(_pwdBusy || _curPwd.Length == 0 || _newPwd.Length < 8)">@Loc["Change password"]</button>
+                        }
+                    </div>
+                }
             </div>
         </div>
     }

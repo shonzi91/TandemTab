@@ -46,6 +46,21 @@ public class MembershipApiTests : IClassFixture<FinAppServerFactory>
     }
 
     [Fact]
+    public async Task Deleting_an_account_archives_it_recoverably()
+    {
+        var (client, _) = await _factory.RegisterAndAuthAsync("del1");
+        var id = await CreateAccount(client);
+
+        (await client.DeleteAsync($"/accounts/{id}")).EnsureSuccessStatusCode();
+
+        // Delete is a soft delete: hidden from the active list but recoverable from the archived list for 30 days.
+        var active = await client.GetFromJsonAsync<List<AccountSummaryDto>>("/accounts");
+        Assert.DoesNotContain(active!, a => a.Id == id);
+        var archived = await client.GetFromJsonAsync<List<ArchivedAccountDto>>("/accounts/archived");
+        Assert.Contains(archived!, a => a.Id == id);
+    }
+
+    [Fact]
     public async Task Archived_account_can_be_reactivated()
     {
         var (client, _) = await _factory.RegisterAndAuthAsync("solo2");

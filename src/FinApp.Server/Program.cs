@@ -300,12 +300,14 @@ auth.MapPost("/2fa/setup", async (ClaimsPrincipal user, TwoFactorService twoFact
     return Results.Ok(new TwoFactorSetupDto(secret, uri, QrDataUrl(uri)));
 }).RequireAuthorization();
 // Confirm enrollment with a live code; returns one-time recovery codes (shown once).
-auth.MapPost("/2fa/confirm", async (TwoFactorCodeRequest req, ClaimsPrincipal user, TwoFactorService twoFactor, CancellationToken ct) =>
+auth.MapPost("/2fa/confirm", async (TwoFactorCodeRequest req, ClaimsPrincipal user, TwoFactorService twoFactor, AuthService svc, CancellationToken ct) =>
 {
     var codes = await twoFactor.ConfirmAsync(user.UserId(), req.Code, ct);
-    return codes is null
-        ? Results.BadRequest(new { error = "That code isn't right. Check your authenticator app and try again." })
-        : Results.Ok(new TwoFactorRecoveryDto(codes));
+    if (codes is null)
+        return Results.BadRequest(new { error = "That code isn't right. Check your authenticator app and try again." });
+    // Also email the codes to a verified address so the user has a durable copy (shown only once on screen).
+    try { await svc.EmailRecoveryCodesAsync(user.UserId(), user.Email(), codes, ct); } catch { /* logged by EmailSender */ }
+    return Results.Ok(new TwoFactorRecoveryDto(codes));
 }).RequireAuthorization().RequireRateLimiting("auth");
 // Disable 2FA (requires a current code to prove possession of the second factor).
 auth.MapPost("/2fa/disable", async (TwoFactorCodeRequest req, ClaimsPrincipal user, TwoFactorService twoFactor, CancellationToken ct) =>
