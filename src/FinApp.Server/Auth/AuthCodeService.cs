@@ -82,6 +82,29 @@ public sealed class AuthCodeService(FinAppDbContext db)
         finally { if (opened) await conn.CloseAsync(); }
     }
 
+    /// <summary>Resolve a code to its user <b>without consuming it</b> (returns null if unknown/expired/used).
+    /// Used by the 2FA login step so a mistyped code doesn't burn the ticket; redeem separately on success.</summary>
+    public async Task<Guid?> ResolveAsync(string code, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(code)) return null;
+        var conn = db.Database.GetDbConnection();
+        var opened = await OpenAsync(conn, ct);
+        try
+        {
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText =
+                "SELECT \"UserId\", \"ExpiresAt\", \"UsedAt\" FROM \"AuthCodes\" WHERE \"CodeHash\" = @hash";
+            AddParam(cmd, "@hash", Hash(code));
+            await using var reader = await cmd.ExecuteReaderAsync(ct);
+            if (!await reader.ReadAsync(ct)) return null;
+            if (!await reader.IsDBNullAsync(2, ct)) return null;  // used
+            var expiresAt = DateTimeOffset.Parse(reader.GetString(1), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind);
+            if (expiresAt <= DateTimeOffset.UtcNow) return null;
+            return Guid.Parse(reader.GetString(0));
+        }
+        finally { if (opened) await conn.CloseAsync(); }
+    }
+
     private static string Hash(string code) =>
         Convert.ToBase64String(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(code)));
 

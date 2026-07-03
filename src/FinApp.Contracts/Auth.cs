@@ -20,10 +20,28 @@ public record LogoutRequest(string RefreshToken);
 /// <summary>Exchange a one-time external-sign-in code (from the OAuth redirect) for real session tokens.</summary>
 public record ExchangeCodeRequest(string Code);
 
+/// <summary>Result of a login attempt. When <see cref="TwoFactorRequired"/> is true the password was correct but a
+/// second factor is needed: submit <see cref="TwoFactorTicket"/> plus a code to <c>/auth/2fa</c>. Otherwise
+/// <see cref="Auth"/> holds the issued tokens.</summary>
+public record LoginResponse(bool TwoFactorRequired, AuthResponse? Auth = null, string? TwoFactorTicket = null);
+
+/// <summary>Complete a 2FA-gated login: the ticket from the login step plus a TOTP or recovery code.</summary>
+public record TwoFactorLoginRequest(string Ticket, string Code);
+
+/// <summary>Enrollment material for setting up an authenticator app: the Base32 secret and the otpauth:// URI.</summary>
+public record TwoFactorSetupDto(string Secret, string OtpauthUri);
+
+/// <summary>Confirm 2FA enrollment (or disable) with a current code.</summary>
+public record TwoFactorCodeRequest(string Code);
+
+/// <summary>The one-time recovery codes handed out when 2FA is enabled — shown once, stored by the user.</summary>
+public record TwoFactorRecoveryDto(string[] RecoveryCodes);
+
 /// <summary>A user as seen over the wire (never includes the password hash). <see cref="Avatar"/> is a data-URL profile picture.
 /// <see cref="Provider"/> names the external sign-in provider (e.g. "google") when the user signed up that way — null for
 /// password users; <see cref="IsExternal"/> is the convenience flag used to hide the password-change UI.</summary>
-public record UserDto(Guid Id, string Username, string Email, string? Avatar = null, string? Provider = null)
+public record UserDto(Guid Id, string Username, string Email, string? Avatar = null, string? Provider = null,
+    bool EmailVerified = false, bool TwoFactorEnabled = false)
 {
     public bool IsExternal => !string.IsNullOrEmpty(Provider);
 }

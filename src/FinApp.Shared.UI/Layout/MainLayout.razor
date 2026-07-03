@@ -125,6 +125,63 @@
                     <label>@Loc["New password"] <input type="password" @bind="_newPwd" /></label>
                     <label>@Loc["Confirm new password"] <input type="password" @bind="_confirmPwd" /></label>
                 }
+
+                @if (!Auth.CurrentUser!.IsExternal)
+                {
+                    <h4>@Loc["Email"]</h4>
+                    @if (Auth.CurrentUser!.EmailVerified)
+                    {
+                        <p class="pm-hint">✓ @Loc["Your email address is verified."]</p>
+                    }
+                    else
+                    {
+                        <p class="pm-hint">@Loc["Your email address isn't verified yet."]</p>
+                        @if (_resendOk)
+                        {
+                            <div class="pm-msg pm-ok">@Loc["Verification email sent. Check your inbox."]</div>
+                        }
+                        <button class="ghost" @onclick="ResendVerification" disabled="@_resendBusy">@Loc["Resend verification email"]</button>
+                    }
+
+                    <h4>@Loc["Two-factor authentication"]</h4>
+                    @if (_2faError is not null)
+                    {
+                        <div class="pm-msg pm-error">@_2faError</div>
+                    }
+                    @if (Auth.CurrentUser!.TwoFactorEnabled && _2faSetup is null)
+                    {
+                        <p class="pm-hint">✓ @Loc["Two-factor authentication is on."]</p>
+                        <label>@Loc["Enter a code to turn it off"] <input type="text" inputmode="numeric" placeholder="123456" @bind="_2faCode" /></label>
+                        <button class="ghost danger" @onclick="DisableTwoFactor" disabled="@(_2faBusy || string.IsNullOrWhiteSpace(_2faCode))">@Loc["Turn off two-factor"]</button>
+                    }
+                    else if (_2faRecoveryCodes is not null)
+                    {
+                        <div class="pm-msg pm-ok">@Loc["Two-factor is on. Save these recovery codes somewhere safe — each works once if you lose your device."]</div>
+                        <ul class="pm-recovery">
+                            @foreach (var rc in _2faRecoveryCodes)
+                            {
+                                <li><code>@rc</code></li>
+                            }
+                        </ul>
+                        <button class="ghost" @onclick="() => { _2faRecoveryCodes = null; }">@Loc["Done"]</button>
+                    }
+                    else if (_2faSetup is not null)
+                    {
+                        <p class="pm-hint">@Loc["Scan the QR in your authenticator app, or enter this key manually:"]</p>
+                        <p class="pm-2fa-key"><code>@_2faSetup.Secret</code></p>
+                        <label>@Loc["Then enter the 6-digit code to confirm"] <input type="text" inputmode="numeric" placeholder="123456" @bind="_2faCode" /></label>
+                        <div class="pm-actions">
+                            <button class="ghost" @onclick="() => { _2faSetup = null; _2faCode = string.Empty; _2faError = null; }">@Loc["Cancel"]</button>
+                            <button @onclick="ConfirmTwoFactor" disabled="@(_2faBusy || string.IsNullOrWhiteSpace(_2faCode))">@Loc["Confirm"]</button>
+                        </div>
+                    }
+                    else
+                    {
+                        <p class="pm-hint">@Loc["Add a second step at sign-in using an authenticator app (Google Authenticator, Authy, 1Password…)."]</p>
+                        <button class="ghost" @onclick="BeginTwoFactor" disabled="@_2faBusy">@Loc["Enable two-factor"]</button>
+                    }
+                }
+
                 @if (_archived.Count > 0)
                 {
                     <h4>@Loc["Archived accounts"]</h4>
@@ -174,9 +231,17 @@
     private string? _pwdError;
     private List<ArchivedAccountDto> _archived = [];
 
+    // Security section: email verification + two-factor enrollment.
+    private bool _resendBusy, _resendOk, _2faBusy;
+    private string _2faCode = "";
+    private string? _2faError;
+    private TwoFactorSetupDto? _2faSetup;
+    private string[]? _2faRecoveryCodes;
+
     private async Task OpenProfile()
     {
         _profileOpen = true; _curPwd = _newPwd = _confirmPwd = ""; _pwdError = null; _pwdOk = false;
+        _resendOk = false; _2faError = null; _2faCode = ""; _2faSetup = null; _2faRecoveryCodes = null;
         try { _archived = await State.GetArchivedAccounts(); } catch { _archived = []; }
         StateHasChanged();
     }
@@ -215,6 +280,52 @@
         catch (ApiException ex) { _pwdError = ex.Message; }
         catch { _pwdError = Loc["Couldn’t reach the server. Check your connection and try again."]; }
         finally { _pwdBusy = false; }
+    }
+
+    private async Task ResendVerification()
+    {
+        _resendBusy = true; _resendOk = false;
+        try { await Api.ResendVerificationAsync(); _resendOk = true; }
+        catch { /* best-effort; a failure just means try again later */ }
+        finally { _resendBusy = false; }
+    }
+
+    private async Task BeginTwoFactor()
+    {
+        _2faBusy = true; _2faError = null; _2faCode = "";
+        try { _2faSetup = await Api.SetupTwoFactorAsync(); }
+        catch (ApiException ex) { _2faError = ex.Message; }
+        catch { _2faError = Loc["Couldn’t reach the server. Check your connection and try again."]; }
+        finally { _2faBusy = false; }
+    }
+
+    private async Task ConfirmTwoFactor()
+    {
+        _2faBusy = true; _2faError = null;
+        try
+        {
+            var recovery = await Api.ConfirmTwoFactorAsync(_2faCode);
+            _2faRecoveryCodes = recovery.RecoveryCodes;
+            _2faSetup = null; _2faCode = "";
+            await Auth.RefreshProfileAsync();
+        }
+        catch (ApiException ex) { _2faError = ex.Message; }
+        catch { _2faError = Loc["Couldn’t reach the server. Check your connection and try again."]; }
+        finally { _2faBusy = false; }
+    }
+
+    private async Task DisableTwoFactor()
+    {
+        _2faBusy = true; _2faError = null;
+        try
+        {
+            await Api.DisableTwoFactorAsync(_2faCode);
+            _2faCode = "";
+            await Auth.RefreshProfileAsync();
+        }
+        catch (ApiException ex) { _2faError = ex.Message; }
+        catch { _2faError = Loc["Couldn’t reach the server. Check your connection and try again."]; }
+        finally { _2faBusy = false; }
     }
 
     protected override async Task OnInitializedAsync()

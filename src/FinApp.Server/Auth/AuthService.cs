@@ -10,9 +10,28 @@ namespace FinApp.Server.Auth;
 /// <summary>Registers and authenticates users, returning an access token + refresh token on success.</summary>
 public sealed class AuthService(
     FinAppDbContext db, IPasswordHasher hasher, JwtTokenService tokens,
-    RefreshTokenService refreshTokens, AuthCodeService authCodes)
+    RefreshTokenService refreshTokens, AuthCodeService authCodes,
+    EmailVerificationService emailVerification, IEmailSender email, TwoFactorService twoFactor)
 {
     private const int MinPasswordLength = 8;
+
+    /// <summary>Issue a verification token and email the confirmation link. Best-effort: failures don't block sign-up.</summary>
+    public async Task SendVerificationEmailAsync(Guid userId, string toEmail, string linkBaseUrl, CancellationToken ct = default)
+    {
+        var token = await emailVerification.IssueTokenAsync(userId, toEmail, ct);
+        var link = $"{linkBaseUrl.TrimEnd('/')}/auth/verify-email?token={Uri.EscapeDataString(token)}";
+        var html =
+            $"<p>Welcome to TandemTab!</p><p>Please confirm your email address by clicking the link below:</p>" +
+            $"<p><a href=\"{link}\">Confirm my email</a></p>" +
+            $"<p>If you didn't create a TandemTab account, you can ignore this email.</p>";
+        var text = $"Welcome to TandemTab!\n\nConfirm your email address:\n{link}\n\n" +
+                   "If you didn't create a TandemTab account, you can ignore this email.";
+        await email.SendAsync(toEmail, "Confirm your TandemTab email", html, text, ct);
+    }
+
+    /// <summary>Verify an email from the token in the confirmation link. Returns true on success.</summary>
+    public Task<bool> VerifyEmailAsync(string token, CancellationToken ct = default) =>
+        emailVerification.VerifyAsync(token, ct);
 
     /// <summary>Issue an access token plus a fresh refresh token for a user.</summary>
     private async Task<AuthResponse> IssueAsync(User user, CancellationToken ct)
@@ -76,7 +95,7 @@ public sealed class AuthService(
         return await IssueAsync(user, ct);
     }
 
-    public async Task<AuthResponse> LoginAsync(LoginRequest request, CancellationToken ct = default)
+    public async Task<LoginResponse> LoginAsync(LoginRequest request, CancellationToken ct = default)
     {
         var identifier = (request.UsernameOrEmail ?? "").Trim();
         var identifierLower = identifier.ToLowerInvariant();
@@ -87,6 +106,29 @@ public sealed class AuthService(
         if (user is null || !hasher.Verify(request.Password ?? "", user.PasswordHash))
             throw new UnauthorizedException("Invalid username or password.");
 
+        // If 2FA is on, don't hand out tokens yet: return a short-lived ticket proving the password step passed.
+        if (await twoFactor.IsEnabledAsync(user.Id, ct))
+        {
+            var ticket = await authCodes.IssueAsync(user.Id, ct);
+            return new LoginResponse(TwoFactorRequired: true, TwoFactorTicket: ticket);
+        }
+
+        return new LoginResponse(TwoFactorRequired: false, Auth: await IssueAsync(user, ct));
+    }
+
+    /// <summary>Complete a 2FA-gated login: validate the code against the ticket, then issue tokens.</summary>
+    public async Task<AuthResponse> TwoFactorLoginAsync(string ticket, string code, CancellationToken ct = default)
+    {
+        // Resolve (don't consume) the ticket so a mistyped code can be retried within its short TTL.
+        var userId = await authCodes.ResolveAsync(ticket, ct)
+            ?? throw new UnauthorizedException("This sign-in attempt has expired. Please sign in again.");
+        if (!await twoFactor.VerifyAsync(userId, code, ct))
+            throw new UnauthorizedException("That code isn't right. Try again.");
+
+        // Correct code — now consume the ticket (single-use) and issue tokens.
+        await authCodes.RedeemAsync(ticket, ct);
+        var user = await db.Users.FirstOrDefaultAsync(u => u.Id == userId, ct)
+            ?? throw new UnauthorizedException("This sign-in attempt has expired. Please sign in again.");
         return await IssueAsync(user, ct);
     }
 
@@ -113,6 +155,8 @@ public sealed class AuthService(
             db.Users.Add(user);
             await db.SaveChangesAsync(ct);
         }
+        // The provider already confirmed this address, so treat it as verified.
+        await emailVerification.MarkVerifiedAsync(user.Id, user.Email, ct);
         return user.Id;
     }
 

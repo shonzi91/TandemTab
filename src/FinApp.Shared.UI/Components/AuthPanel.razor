@@ -23,7 +23,16 @@
         <div class="alert warn-bg">@_error</div>
     }
 
-    @if (_mode == Mode.Login)
+    @if (_twoFactorTicket is not null)
+    {
+        <p class="hint">@Loc["Enter the 6-digit code from your authenticator app, or a recovery code."]</p>
+        <label>@Loc["Authentication code"] <input type="text" inputmode="numeric" autocomplete="one-time-code" placeholder="123456" @bind="_twoFactorCode" @bind:event="oninput" @onkeydown="OnKey" /></label>
+        <button class="primary" @onclick="CompleteTwoFactor" disabled="@(_busy || string.IsNullOrWhiteSpace(_twoFactorCode))">
+            @(_busy ? Loc["Verifying…"] : Loc["Verify"])
+        </button>
+        <button class="auth-provider" @onclick="CancelTwoFactor">@Loc["Back"]</button>
+    }
+    else if (_mode == Mode.Login)
     {
         <label>@Loc["Username or email"] <input type="text" placeholder="@Loc["you@example.com or username"]" autocomplete="username" @bind="_identifier" @bind:event="oninput" /></label>
         <label>@Loc["Password"] <input type="password" placeholder="@Loc["Your password"]" autocomplete="current-password" @bind="_password" @bind:event="oninput" @onkeydown="OnKey" /></label>
@@ -70,6 +79,10 @@
     private bool _busy;
     private ExternalProvidersDto? _providers;
 
+    // Set after a password login when the account has 2FA on — prompts for the second-factor code.
+    private string? _twoFactorTicket;
+    private string _twoFactorCode = "";
+
     private bool CanRegister =>
         !string.IsNullOrWhiteSpace(_username) && !string.IsNullOrWhiteSpace(_email) && _password.Length >= 8;
 
@@ -95,11 +108,22 @@
 
     private void Switch(Mode mode) { _mode = mode; _error = null; }
 
-    private Task OnKey(KeyboardEventArgs e) =>
-        e.Key == "Enter" ? (_mode == Mode.Login ? SignIn() : Register()) : Task.CompletedTask;
+    private Task OnKey(KeyboardEventArgs e)
+    {
+        if (e.Key != "Enter") return Task.CompletedTask;
+        if (_twoFactorTicket is not null) return CompleteTwoFactor();
+        return _mode == Mode.Login ? SignIn() : Register();
+    }
 
-    private Task SignIn() => Run(() => Auth.LogInAsync(_identifier, _password));
+    private Task SignIn() => Run(async () =>
+    {
+        var outcome = await Auth.LogInAsync(_identifier, _password);
+        if (!outcome.SignedIn) { _twoFactorTicket = outcome.TwoFactorTicket; _twoFactorCode = ""; }
+    });
     private Task Register() => Run(() => Auth.RegisterAsync(_username, _email, _password));
+
+    private Task CompleteTwoFactor() => Run(() => Auth.CompleteTwoFactorLoginAsync(_twoFactorTicket!, _twoFactorCode));
+    private void CancelTwoFactor() { _twoFactorTicket = null; _twoFactorCode = ""; _password = ""; _error = null; }
 
     private async Task Run(Func<Task> action)
     {

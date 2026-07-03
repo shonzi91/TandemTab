@@ -74,8 +74,20 @@ public sealed class AuthState
     public Task RegisterAsync(string username, string email, string password) =>
         ApplyAsync(() => _api.RegisterAsync(new RegisterRequest(username, email, password)));
 
-    public Task LogInAsync(string usernameOrEmail, string password) =>
-        ApplyAsync(() => _api.LoginAsync(new LoginRequest(usernameOrEmail, password)));
+    /// <summary>Attempt a password login. If the account has 2FA on, no tokens are issued yet — the returned
+    /// outcome carries a ticket to complete via <see cref="CompleteTwoFactorLoginAsync"/>.</summary>
+    public async Task<LoginOutcome> LogInAsync(string usernameOrEmail, string password)
+    {
+        var result = await _api.LoginAsync(new LoginRequest(usernameOrEmail, password));
+        if (result.TwoFactorRequired)
+            return new LoginOutcome(SignedIn: false, TwoFactorTicket: result.TwoFactorTicket);
+        await ApplyAuthResponseAsync(result.Auth!);
+        return new LoginOutcome(SignedIn: true, TwoFactorTicket: null);
+    }
+
+    /// <summary>Finish a 2FA-gated login with the ticket from <see cref="LogInAsync"/> plus a TOTP/recovery code.</summary>
+    public Task CompleteTwoFactorLoginAsync(string ticket, string code) =>
+        ApplyAsync(() => _api.TwoFactorLoginAsync(ticket, code));
 
     public async Task SignOutAsync()
     {
@@ -132,6 +144,13 @@ public sealed class AuthState
         }
     }
 
+    /// <summary>Re-fetch the signed-in user's profile (e.g. after enabling 2FA or verifying email).</summary>
+    public async Task RefreshProfileAsync()
+    {
+        if (!IsAuthenticated) return;
+        try { CurrentUser = await _api.MeAsync(); Changed?.Invoke(); } catch { /* best effort */ }
+    }
+
     /// <summary>Update the signed-in user's avatar in memory (after uploading it to the server).</summary>
     public void SetAvatar(string? dataUrl)
     {
@@ -140,9 +159,10 @@ public sealed class AuthState
         Changed?.Invoke();
     }
 
-    private async Task ApplyAsync(Func<Task<AuthResponse>> call)
+    private async Task ApplyAsync(Func<Task<AuthResponse>> call) => await ApplyAuthResponseAsync(await call());
+
+    private async Task ApplyAuthResponseAsync(AuthResponse auth)
     {
-        var auth = await call();
         _api.Token = auth.Token;
         await _tokens.SetAsync(auth.Token);
         if (!string.IsNullOrEmpty(auth.RefreshToken))
@@ -153,3 +173,6 @@ public sealed class AuthState
         try { CurrentUser = await _api.MeAsync(); Changed?.Invoke(); } catch { /* best effort */ }
     }
 }
+
+/// <summary>Outcome of a password login: either signed in, or a 2FA code is needed (carrying the ticket).</summary>
+public sealed record LoginOutcome(bool SignedIn, string? TwoFactorTicket);

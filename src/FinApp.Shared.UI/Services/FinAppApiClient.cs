@@ -33,8 +33,18 @@ public sealed class FinAppApiClient(HttpClient http)
     // --- Auth -------------------------------------------------------------
     public Task<AuthResponse> RegisterAsync(RegisterRequest req, CancellationToken ct = default) =>
         SendAsync<AuthResponse>(HttpMethod.Post, "/auth/register", req, ct);
-    public Task<AuthResponse> LoginAsync(LoginRequest req, CancellationToken ct = default) =>
-        SendAsync<AuthResponse>(HttpMethod.Post, "/auth/login", req, ct);
+    public Task<LoginResponse> LoginAsync(LoginRequest req, CancellationToken ct = default) =>
+        SendAsync<LoginResponse>(HttpMethod.Post, "/auth/login", req, ct);
+    public Task<AuthResponse> TwoFactorLoginAsync(string ticket, string code, CancellationToken ct = default) =>
+        SendAsync<AuthResponse>(HttpMethod.Post, "/auth/2fa", new TwoFactorLoginRequest(ticket, code), ct);
+    public Task ResendVerificationAsync(CancellationToken ct = default) =>
+        SendAsync(HttpMethod.Post, "/auth/resend-verification", null, ct);
+    public Task<TwoFactorSetupDto> SetupTwoFactorAsync(CancellationToken ct = default) =>
+        SendAsync<TwoFactorSetupDto>(HttpMethod.Post, "/auth/2fa/setup", null, ct);
+    public Task<TwoFactorRecoveryDto> ConfirmTwoFactorAsync(string code, CancellationToken ct = default) =>
+        SendAsync<TwoFactorRecoveryDto>(HttpMethod.Post, "/auth/2fa/confirm", new TwoFactorCodeRequest(code), ct);
+    public Task DisableTwoFactorAsync(string code, CancellationToken ct = default) =>
+        SendAsync(HttpMethod.Post, "/auth/2fa/disable", new TwoFactorCodeRequest(code), ct);
     public Task<AuthResponse> RefreshAsync(string refreshToken, CancellationToken ct = default) =>
         SendAsync<AuthResponse>(HttpMethod.Post, "/auth/refresh", new RefreshRequest(refreshToken), ct);
     public Task LogoutAsync(string refreshToken, CancellationToken ct = default) =>
@@ -148,7 +158,8 @@ public sealed class FinAppApiClient(HttpClient http)
     // --- Plumbing ---------------------------------------------------------
     // Auth endpoints must never trigger the 401→refresh→retry path (a failing /auth/refresh would recurse).
     private static bool IsAuthPath(string path) =>
-        path is "/auth/refresh" or "/auth/login" or "/auth/register" or "/auth/logout" or "/auth/exchange";
+        path is "/auth/refresh" or "/auth/login" or "/auth/register" or "/auth/logout"
+             or "/auth/exchange" or "/auth/2fa";
 
     private async Task<T> SendAsync<T>(HttpMethod method, string path, object? body, CancellationToken ct)
     {

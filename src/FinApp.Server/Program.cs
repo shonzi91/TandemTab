@@ -71,6 +71,10 @@ builder.Services.AddSingleton<IPasswordHasher, Pbkdf2PasswordHasher>();
 builder.Services.AddSingleton<JwtTokenService>();
 builder.Services.AddScoped<RefreshTokenService>();
 builder.Services.AddScoped<AuthCodeService>();
+builder.Services.Configure<EmailOptions>(builder.Configuration.GetSection("Email"));
+builder.Services.AddScoped<IEmailSender, EmailSender>();
+builder.Services.AddScoped<EmailVerificationService>();
+builder.Services.AddScoped<TwoFactorService>();
 builder.Services.AddScoped<AuthService>();
 builder.Services.AddScoped<AvatarService>();
 builder.Services.AddScoped<ExternalIdentityService>();
@@ -166,6 +170,10 @@ using (var scope = app.Services.CreateScope())
     await scope.ServiceProvider.GetRequiredService<RefreshTokenService>().EnsureSchemaAsync();
     // One-time auth codes for external sign-in (keeps session tokens out of the redirect URL).
     await scope.ServiceProvider.GetRequiredService<AuthCodeService>().EnsureSchemaAsync();
+    // Email-verification state + one-time confirmation tokens.
+    await scope.ServiceProvider.GetRequiredService<EmailVerificationService>().EnsureSchemaAsync();
+    // Two-factor (TOTP) secrets + recovery codes.
+    await scope.ServiceProvider.GetRequiredService<TwoFactorService>().EnsureSchemaAsync();
     // Archived-accounts table + purge anything past its 30-day grace window on startup.
     var archives = scope.ServiceProvider.GetRequiredService<ArchivedAccountsService>();
     await archives.EnsureSchemaAsync();
@@ -244,10 +252,19 @@ app.UseAuthorization();
 
 // --- Auth ----------------------------------------------------------------
 var auth = app.MapGroup("/auth");
-auth.MapPost("/register", async (RegisterRequest req, AuthService svc, CancellationToken ct) =>
-    Results.Ok(await svc.RegisterAsync(req, ct))).RequireRateLimiting("auth");
+auth.MapPost("/register", async (RegisterRequest req, HttpContext http, AuthService svc, IConfiguration cfg, CancellationToken ct) =>
+{
+    var result = await svc.RegisterAsync(req, ct);
+    // Send the confirmation email (best-effort — never fail the sign-up if email is down/unconfigured).
+    try { await svc.SendVerificationEmailAsync(result.UserId, result.Email, AppBaseUrl(http, cfg), ct); }
+    catch { /* logged by the sender; the user can resend from the app */ }
+    return Results.Ok(result);
+}).RequireRateLimiting("auth");
 auth.MapPost("/login", async (LoginRequest req, AuthService svc, CancellationToken ct) =>
     Results.Ok(await svc.LoginAsync(req, ct))).RequireRateLimiting("auth");
+// Complete a 2FA-gated login with the ticket from /auth/login plus a TOTP or recovery code.
+auth.MapPost("/2fa", async (TwoFactorLoginRequest req, AuthService svc, CancellationToken ct) =>
+    Results.Ok(await svc.TwoFactorLoginAsync(req.Ticket, req.Code, ct))).RequireRateLimiting("auth");
 // Exchange a refresh token for a new access token (rotates the refresh token). Rate-limited like login.
 auth.MapPost("/refresh", async (RefreshRequest req, AuthService svc, CancellationToken ct) =>
     Results.Ok(await svc.RefreshAsync(req.RefreshToken, ct))).RequireRateLimiting("auth");
@@ -260,6 +277,42 @@ auth.MapPost("/logout", async (LogoutRequest req, AuthService svc, CancellationT
 // Exchange a one-time external-sign-in code (from the OAuth redirect) for an access + refresh token.
 auth.MapPost("/exchange", async (ExchangeCodeRequest req, AuthService svc, CancellationToken ct) =>
     Results.Ok(await svc.ExchangeAsync(req.Code, ct))).RequireRateLimiting("auth");
+// Confirm an email address from the link in the verification email, then bounce back into the app.
+auth.MapGet("/verify-email", async (string? token, AuthService svc, CancellationToken ct) =>
+{
+    var ok = !string.IsNullOrEmpty(token) && await svc.VerifyEmailAsync(token!, ct);
+    return Results.Redirect(ok ? "/?emailVerified=1" : "/?emailVerified=0");
+});
+// Re-send the confirmation email to the signed-in user's current address.
+auth.MapPost("/resend-verification", async (ClaimsPrincipal user, HttpContext http, AuthService svc, IConfiguration cfg, CancellationToken ct) =>
+{
+    await svc.SendVerificationEmailAsync(user.UserId(), user.Email(), AppBaseUrl(http, cfg), ct);
+    return Results.NoContent();
+}).RequireAuthorization().RequireRateLimiting("auth");
+
+// --- Two-factor (TOTP) management (signed-in) -----------------------------
+// Begin enrollment: returns the secret + otpauth URI to add to an authenticator app.
+auth.MapPost("/2fa/setup", async (ClaimsPrincipal user, TwoFactorService twoFactor, CancellationToken ct) =>
+{
+    var (secret, uri) = await twoFactor.BeginEnrollAsync(user.UserId(), user.Email(), ct);
+    return Results.Ok(new TwoFactorSetupDto(secret, uri));
+}).RequireAuthorization();
+// Confirm enrollment with a live code; returns one-time recovery codes (shown once).
+auth.MapPost("/2fa/confirm", async (TwoFactorCodeRequest req, ClaimsPrincipal user, TwoFactorService twoFactor, CancellationToken ct) =>
+{
+    var codes = await twoFactor.ConfirmAsync(user.UserId(), req.Code, ct);
+    return codes is null
+        ? Results.BadRequest(new { error = "That code isn't right. Check your authenticator app and try again." })
+        : Results.Ok(new TwoFactorRecoveryDto(codes));
+}).RequireAuthorization().RequireRateLimiting("auth");
+// Disable 2FA (requires a current code to prove possession of the second factor).
+auth.MapPost("/2fa/disable", async (TwoFactorCodeRequest req, ClaimsPrincipal user, TwoFactorService twoFactor, CancellationToken ct) =>
+{
+    if (!await twoFactor.VerifyAsync(user.UserId(), req.Code, ct))
+        return Results.BadRequest(new { error = "That code isn't right." });
+    await twoFactor.DisableAsync(user.UserId(), ct);
+    return Results.NoContent();
+}).RequireAuthorization().RequireRateLimiting("auth");
 auth.MapPost("/password", async (ChangePasswordRequest req, ClaimsPrincipal user, AuthService svc, CancellationToken ct) =>
 {
     await svc.ChangePasswordAsync(user.UserId(), req, ct);
@@ -321,9 +374,12 @@ app.MapPost("/consent", async (RecordConsentRequest req, ClaimsPrincipal user, C
     return Results.NoContent();
 }).RequireAuthorization();
 
-app.MapGet("/me", async (ClaimsPrincipal user, AvatarService avatars, ExternalIdentityService identities, CancellationToken ct) =>
+app.MapGet("/me", async (ClaimsPrincipal user, AvatarService avatars, ExternalIdentityService identities,
+        EmailVerificationService emailVerification, TwoFactorService twoFactor, CancellationToken ct) =>
         Results.Ok(new UserDto(user.UserId(), user.Username(), user.Email(),
-            await avatars.GetAsync(user.UserId(), ct), await identities.GetProviderAsync(user.UserId(), ct))))
+            await avatars.GetAsync(user.UserId(), ct), await identities.GetProviderAsync(user.UserId(), ct),
+            EmailVerified: await emailVerification.IsVerifiedAsync(user.UserId(), user.Email(), ct),
+            TwoFactorEnabled: await twoFactor.IsEnabledAsync(user.UserId(), ct))))
     .RequireAuthorization();
 
 app.MapPut("/me/avatar", async (SetAvatarRequest req, ClaimsPrincipal user, AvatarService avatars, CancellationToken ct) =>
@@ -545,6 +601,11 @@ static string BankCallbackUrl(HttpContext http, IConfiguration cfg)
                   ?? $"{http.Request.Scheme}://{http.Request.Host}";
     return $"{baseUrl}/bank/callback";
 }
+
+// Public base URL the app is reached at, for building links in emails (verification, etc.).
+static string AppBaseUrl(HttpContext http, IConfiguration cfg) =>
+    (cfg["Email:AppBaseUrl"] ?? cfg["Auth:PublicBaseUrl"])?.TrimEnd('/')
+    ?? $"{http.Request.Scheme}://{http.Request.Host}";
 
 /// <summary>Exposed so integration tests can host the app via WebApplicationFactory.</summary>
 public partial class Program;
