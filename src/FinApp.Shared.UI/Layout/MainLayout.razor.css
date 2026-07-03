@@ -88,6 +88,8 @@
 .switch.on .switch-track { background: #13a06e; }
 .switch.on .switch-thumb { transform: translateX(18px); }
 .pm-hint { margin: 0; font-size: .72rem; color: #9ca3af; }
+/* White quiet-zone around the QR so it scans reliably on any theme. */
+.pm-2fa-qr { display: block; margin: 8px 0; padding: 8px; background: #fff; border-radius: 8px; }
 .pm-avatar-row { display: flex; align-items: center; gap: 12px; }
 .pm-avatar {
     width: 56px; height: 56px; border-radius: 50%; overflow: hidden; flex-shrink: 0;

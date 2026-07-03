@@ -170,6 +170,10 @@
                 else if (_2faSetup is not null)
                 {
                     <p class="pm-hint">@Loc["Scan the QR in your authenticator app, or enter this key manually:"]</p>
+                    @if (!string.IsNullOrEmpty(_2faSetup.QrImage))
+                    {
+                        <img class="pm-2fa-qr" src="@_2faSetup.QrImage" alt="@Loc["Two-factor QR code"]" width="180" height="180" />
+                    }
                     <p class="pm-2fa-key"><code>@_2faSetup.Secret</code></p>
                     <label>@Loc["Then enter the 6-digit code to confirm"] <input type="text" inputmode="numeric" placeholder="123456" @bind="_2faCode" /></label>
                     <div class="pm-actions">

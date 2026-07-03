@@ -28,8 +28,9 @@ public record LoginResponse(bool TwoFactorRequired, AuthResponse? Auth = null, s
 /// <summary>Complete a 2FA-gated login: the ticket from the login step plus a TOTP or recovery code.</summary>
 public record TwoFactorLoginRequest(string Ticket, string Code);
 
-/// <summary>Enrollment material for setting up an authenticator app: the Base32 secret and the otpauth:// URI.</summary>
-public record TwoFactorSetupDto(string Secret, string OtpauthUri);
+/// <summary>Enrollment material for setting up an authenticator app: the Base32 secret, the otpauth:// URI, and a
+/// ready-to-render QR image of that URI as a data URL (<c>data:image/png;base64,…</c>) for scanning.</summary>
+public record TwoFactorSetupDto(string Secret, string OtpauthUri, string QrImage = "");
 
 /// <summary>Confirm 2FA enrollment (or disable) with a current code.</summary>
 public record TwoFactorCodeRequest(string Code);

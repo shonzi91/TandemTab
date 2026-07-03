@@ -297,7 +297,7 @@ auth.MapPost("/resend-verification", async (ClaimsPrincipal user, HttpContext ht
 auth.MapPost("/2fa/setup", async (ClaimsPrincipal user, TwoFactorService twoFactor, CancellationToken ct) =>
 {
     var (secret, uri) = await twoFactor.BeginEnrollAsync(user.UserId(), user.Email(), ct);
-    return Results.Ok(new TwoFactorSetupDto(secret, uri));
+    return Results.Ok(new TwoFactorSetupDto(secret, uri, QrDataUrl(uri)));
 }).RequireAuthorization();
 // Confirm enrollment with a live code; returns one-time recovery codes (shown once).
 auth.MapPost("/2fa/confirm", async (TwoFactorCodeRequest req, ClaimsPrincipal user, TwoFactorService twoFactor, CancellationToken ct) =>
@@ -616,6 +616,16 @@ static string BankCallbackUrl(HttpContext http, IConfiguration cfg)
 static string AppBaseUrl(HttpContext http, IConfiguration cfg) =>
     (cfg["Email:AppBaseUrl"] ?? cfg["Auth:PublicBaseUrl"])?.TrimEnd('/')
     ?? $"{http.Request.Scheme}://{http.Request.Host}";
+
+// Render an otpauth:// URI as a PNG QR image, returned as a data URL the client can drop straight into an <img>.
+// PngByteQRCode is System.Drawing-free, so it works on Cloud Run's Linux base image.
+static string QrDataUrl(string text)
+{
+    using var generator = new QRCoder.QRCodeGenerator();
+    using var data = generator.CreateQrCode(text, QRCoder.QRCodeGenerator.ECCLevel.Q);
+    var png = new QRCoder.PngByteQRCode(data).GetGraphic(6);
+    return "data:image/png;base64," + Convert.ToBase64String(png);
+}
 
 // Bank features expose real financial data, so they require a verified email. Returns a 403 result to
 // short-circuit the endpoint with, or null when the caller's email is verified (proceed as normal).
