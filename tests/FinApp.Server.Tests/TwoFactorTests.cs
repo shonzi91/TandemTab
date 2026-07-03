@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using FinApp.Contracts;
 using FinApp.Server.Auth;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace FinApp.Server.Tests;
 
@@ -107,5 +108,56 @@ public class TwoFactorTests : IClassFixture<FinAppServerFactory>
             .Content.ReadFromJsonAsync<LoginResponse>())!;
         Assert.False(login.TwoFactorRequired);
         Assert.NotNull(login.Auth);
+    }
+
+    [Fact]
+    public async Task External_sign_in_exchange_is_also_2fa_gated()
+    {
+        // Set up a user with 2FA on, then simulate the OAuth callback handing the SPA a one-time code for them.
+        var (client, auth) = await _factory.RegisterAndAuthAsync("tfa-fiona", "tfa-fiona@example.com", "supersecret");
+        var setup = (await (await client.PostAsync("/auth/2fa/setup", null))
+            .Content.ReadFromJsonAsync<TwoFactorSetupDto>())!;
+        (await client.PostAsJsonAsync("/auth/2fa/confirm", new TwoFactorCodeRequest(Totp.Generate(setup.Secret))))
+            .EnsureSuccessStatusCode();
+
+        var externalCode = await IssueAuthCodeAsync(auth.UserId);
+
+        var anon = _factory.CreateClient();
+        // Exchanging the code must NOT hand out tokens — it returns a 2FA challenge, just like a password login.
+        var challenge = (await (await anon.PostAsJsonAsync("/auth/exchange", new ExchangeCodeRequest(externalCode)))
+            .Content.ReadFromJsonAsync<LoginResponse>())!;
+        Assert.True(challenge.TwoFactorRequired);
+        Assert.Null(challenge.Auth);
+        Assert.False(string.IsNullOrWhiteSpace(challenge.TwoFactorTicket));
+
+        // The second factor completes it via the shared /auth/2fa endpoint.
+        var ok = await anon.PostAsJsonAsync("/auth/2fa",
+            new TwoFactorLoginRequest(challenge.TwoFactorTicket!, Totp.Generate(setup.Secret)));
+        Assert.Equal(HttpStatusCode.OK, ok.StatusCode);
+        var tokens = (await ok.Content.ReadFromJsonAsync<AuthResponse>())!;
+        Assert.False(string.IsNullOrWhiteSpace(tokens.Token));
+        Assert.False(string.IsNullOrWhiteSpace(tokens.RefreshToken));
+    }
+
+    [Fact]
+    public async Task External_sign_in_exchange_without_2fa_returns_tokens_directly()
+    {
+        var (_, auth) = await _factory.RegisterAndAuthAsync("tfa-gil", "tfa-gil@example.com", "supersecret");
+        var externalCode = await IssueAuthCodeAsync(auth.UserId);
+
+        var anon = _factory.CreateClient();
+        var result = (await (await anon.PostAsJsonAsync("/auth/exchange", new ExchangeCodeRequest(externalCode)))
+            .Content.ReadFromJsonAsync<LoginResponse>())!;
+        Assert.False(result.TwoFactorRequired);
+        Assert.NotNull(result.Auth);
+        Assert.False(string.IsNullOrWhiteSpace(result.Auth!.Token));
+    }
+
+    /// <summary>Mint a one-time sign-in code for a user, exactly as the OAuth callback does after the provider round-trip.</summary>
+    private async Task<string> IssueAuthCodeAsync(Guid userId)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var codes = scope.ServiceProvider.GetRequiredService<AuthCodeService>();
+        return await codes.IssueAsync(userId);
     }
 }

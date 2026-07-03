@@ -93,6 +93,9 @@
     protected override async Task OnInitializedAsync()
     {
         Loc.Changed += OnLocChanged;
+        // An external (Google/Facebook) sign-in whose account has 2FA on lands here with a pending challenge —
+        // drop straight into the code prompt instead of the username/password form.
+        _twoFactorTicket = Auth.PendingTwoFactorTicket;
         try { _providers = await Api.GetProvidersAsync(); } catch { /* providers endpoint unreachable — hide buttons */ }
     }
 
@@ -123,7 +126,7 @@
     private Task Register() => Run(() => Auth.RegisterAsync(_username, _email, _password));
 
     private Task CompleteTwoFactor() => Run(() => Auth.CompleteTwoFactorLoginAsync(_twoFactorTicket!, _twoFactorCode));
-    private void CancelTwoFactor() { _twoFactorTicket = null; _twoFactorCode = ""; _password = ""; _error = null; }
+    private void CancelTwoFactor() { _twoFactorTicket = null; _twoFactorCode = ""; _password = ""; _error = null; Auth.ClearPendingTwoFactor(); }
 
     private async Task Run(Func<Task> action)
     {

@@ -44,20 +44,23 @@ public class MoneyEnvelopeTests
     }
 
     [Fact]
-    public void Budget_is_capped_at_current_minus_savings_plus_spent_savings_stays_advisory()
+    public void Budget_is_advisory_and_uncapped_savings_stays_advisory()
     {
-        // 2000 in, 1000 spent → current 1000; 500 saved → ceiling = current 1000 − saved 500 + spent 1000 = 1500.
+        // 2000 in, 1000 spent → current 1000; 500 saved. BudgetCeilingAfter is still exposed as an advisory
+        // "all your money minus savings" figure, but it no longer blocks planning a bigger budget.
         var period = PeriodWith(opening: 0, contributed: 2000, out _, out var fund, out var category);
         period.AllocateToSavings(Guid.NewGuid(), M(500), new DateOnly(2026, 1, 2));
         period.AddExpense(new Expense(category, M(1000), new DateOnly(2026, 1, 3), Guid.NewGuid(), fund));
 
         Assert.Equal(M(1000), period.ExpectedClosingBalance);       // current after spending
-        Assert.Equal(M(1500), period.BudgetCeilingAfter(M(0)));     // current(1000) − saved(500) + spent(1000)
-        period.SetBudget(category, M(1500));                         // up to the ceiling is allowed
-        Assert.Equal(M(1500), period.BudgetedTotal);
-        Assert.Throws<InvalidOperationException>(() => period.SetBudget(category, M(1501))); // past it is blocked
+        Assert.Equal(M(1500), period.BudgetCeilingAfter(M(0)));     // advisory: current(1000) − saved(500) + spent(1000)
 
-        // Savings is NOT capped — saving past the cash is still advisory (no throw).
+        // Budgets are advisory: setting one well past the ceiling is allowed (no throw) — e.g. budgets copied
+        // forward into a fresh period must be editable before any contributions are recorded.
+        period.SetBudget(category, M(5000));
+        Assert.Equal(M(5000), period.BudgetedTotal);
+
+        // Savings is likewise NOT capped — saving past the cash is advisory (no throw).
         period.AllocateToSavings(Guid.NewGuid(), M(5000), new DateOnly(2026, 1, 4));
     }
 

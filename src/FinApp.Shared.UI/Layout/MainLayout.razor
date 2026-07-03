@@ -340,9 +340,11 @@
         var signedIn = false;
         if (!string.IsNullOrEmpty(authCode))
         {
-            try { signedIn = await Auth.SignInWithCodeAsync(authCode); } catch { /* fall through */ }
+            // May return a 2FA challenge (Auth.PendingTwoFactorTicket) instead of signing in — the sign-in
+            // screen then prompts for the second factor.
+            try { signedIn = (await Auth.SignInWithCodeAsync(authCode)).SignedIn; } catch { /* fall through */ }
         }
-        if (!signedIn)
+        if (!signedIn && Auth.PendingTwoFactorTicket is null)
         {
             try { await Auth.TryRestoreAsync(); }
             catch { /* server unreachable on startup — fall through to the sign-in screen */ }

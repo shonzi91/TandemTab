@@ -1126,7 +1126,7 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     // Budget CRUD
     public Task SaveBudget(Guid categoryId, decimal amount, decimal thresholdPercent, bool notifyEvery)
     {
-        Period.SetBudget(categoryId, Money(amount), thresholdPercent / 100m, notifyEvery, PriorSaved);
+        Period.SetBudget(categoryId, Money(amount), thresholdPercent / 100m, notifyEvery);
         return SaveAsync();
     }
 

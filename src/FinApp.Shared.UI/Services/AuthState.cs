@@ -55,19 +55,35 @@ public sealed class AuthState
         }
     }
 
+    /// <summary>A 2FA ticket left pending after an external (Google/Facebook) sign-in whose account has 2FA on.
+    /// The sign-in screen picks this up to prompt for the second factor, then completes via
+    /// <see cref="CompleteTwoFactorLoginAsync"/>. Null when no external 2FA challenge is outstanding.</summary>
+    public string? PendingTwoFactorTicket { get; private set; }
+
+    /// <summary>Clear a pending external 2FA challenge (e.g. the user backed out of the code prompt).</summary>
+    public void ClearPendingTwoFactor() => PendingTwoFactorTicket = null;
+
     /// <summary>Complete an external (Google/Facebook) sign-in by exchanging the one-time code from the redirect
-    /// URL for real session tokens (access + refresh), which are then stored like a normal login.</summary>
-    public async Task<bool> SignInWithCodeAsync(string code)
+    /// URL. Normally this stores real session tokens like a login; if the account has 2FA on, no tokens are
+    /// issued yet — the returned outcome carries a ticket (also stashed in <see cref="PendingTwoFactorTicket"/>)
+    /// to finish via <see cref="CompleteTwoFactorLoginAsync"/>.</summary>
+    public async Task<LoginOutcome> SignInWithCodeAsync(string code)
     {
         try
         {
-            await ApplyAsync(() => _api.ExchangeCodeAsync(code));
-            return true;
+            var result = await _api.ExchangeCodeAsync(code);
+            if (result.TwoFactorRequired)
+            {
+                PendingTwoFactorTicket = result.TwoFactorTicket;
+                return new LoginOutcome(SignedIn: false, TwoFactorTicket: result.TwoFactorTicket);
+            }
+            await ApplyAuthResponseAsync(result.Auth!);
+            return new LoginOutcome(SignedIn: true, TwoFactorTicket: null);
         }
         catch
         {
             await SignOutAsync();
-            return false;
+            return new LoginOutcome(SignedIn: false, TwoFactorTicket: null);
         }
     }
 
@@ -85,9 +101,13 @@ public sealed class AuthState
         return new LoginOutcome(SignedIn: true, TwoFactorTicket: null);
     }
 
-    /// <summary>Finish a 2FA-gated login with the ticket from <see cref="LogInAsync"/> plus a TOTP/recovery code.</summary>
-    public Task CompleteTwoFactorLoginAsync(string ticket, string code) =>
-        ApplyAsync(() => _api.TwoFactorLoginAsync(ticket, code));
+    /// <summary>Finish a 2FA-gated login (password or external) with the ticket from the first step plus a
+    /// TOTP/recovery code. Clears any pending external challenge on success.</summary>
+    public async Task CompleteTwoFactorLoginAsync(string ticket, string code)
+    {
+        await ApplyAsync(() => _api.TwoFactorLoginAsync(ticket, code));
+        PendingTwoFactorTicket = null;
+    }
 
     public async Task SignOutAsync()
     {
@@ -97,6 +117,7 @@ public sealed class AuthState
             try { await _api.LogoutAsync(refresh); } catch { /* offline / already gone — clear locally anyway */ }
 
         CurrentUser = null;
+        PendingTwoFactorTicket = null;
         _api.Token = null;
         await _tokens.ClearAsync();
         Changed?.Invoke();

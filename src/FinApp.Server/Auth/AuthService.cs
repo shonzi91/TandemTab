@@ -55,14 +55,25 @@ public sealed class AuthService(
     public Task LogoutAsync(string refreshToken, CancellationToken ct = default) =>
         refreshTokens.RevokeAsync(refreshToken, ct);
 
-    /// <summary>Redeem a one-time external-sign-in code (from the OAuth redirect) for an access + refresh token.</summary>
-    public async Task<AuthResponse> ExchangeAsync(string code, CancellationToken ct = default)
+    /// <summary>Redeem a one-time external-sign-in code (from the OAuth redirect). If the account has 2FA enabled,
+    /// no tokens are issued yet: returns a challenge with a fresh ticket to complete via <c>/auth/2fa</c> (same
+    /// second-factor flow as a password login). Otherwise issues an access + refresh token.</summary>
+    public async Task<LoginResponse> ExchangeAsync(string code, CancellationToken ct = default)
     {
         var userId = await authCodes.RedeemAsync(code, ct)
             ?? throw new UnauthorizedException("This sign-in link is invalid or has expired. Please try again.");
         var user = await db.Users.FirstOrDefaultAsync(u => u.Id == userId, ct)
             ?? throw new UnauthorizedException("This sign-in link is invalid or has expired. Please try again.");
-        return await IssueAsync(user, ct);
+
+        // External sign-ins are now 2FA-gated too: the provider proved who the user is, but a second factor
+        // still stands between the OAuth redirect and real session tokens.
+        if (await twoFactor.IsEnabledAsync(user.Id, ct))
+        {
+            var ticket = await authCodes.IssueAsync(user.Id, ct);
+            return new LoginResponse(TwoFactorRequired: true, TwoFactorTicket: ticket);
+        }
+
+        return new LoginResponse(TwoFactorRequired: false, Auth: await IssueAsync(user, ct));
     }
 
     public async Task<AuthResponse> RegisterAsync(RegisterRequest request, CancellationToken ct = default)

@@ -658,8 +658,8 @@ else
                         </div>
                     }
                     <div class="ring-card ring-card-lg">
-                        <button class="ring-plus" title="@Loc["Add category"]" @onclick="() => OpenAdd(null)">+</button>
-                        <div class="ring-label"><span class="ring-muted">@Loc["Add category"]</span></div>
+                        <button class="ring-plus" title="@Loc["Add budget"]" @onclick="OpenAddBudget">+</button>
+                        <div class="ring-label"><span class="ring-muted">@Loc["Add budget"]</span></div>
                     </div>
                 </div>
             </section>
@@ -1027,6 +1027,36 @@ else
                         <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
                         <button @onclick="SaveAddCat" disabled="@(string.IsNullOrWhiteSpace(_fName))">@Loc["Add"]</button>
                     </div>
+                    break;
+
+                case Modal.AddBudget:
+                    <h3>@Loc["Add budget"]</h3>
+                    // Only categories that don't have a budget yet can get one here.
+                    var withoutBudget = State.CategoryOptions.Where(c => !State.HasBudget(c.Category.Id)).ToList();
+                    @if (withoutBudget.Count == 0)
+                    {
+                        <p class="hint">@Loc["Every category already has a budget. Add a new category to budget for it."]</p>
+                        <div class="modal-actions">
+                            <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
+                            <button @onclick="BudgetAddCategory">@Loc["Add category"]</button>
+                        </div>
+                    }
+                    else
+                    {
+                        <label><span class="lbl-row">@Loc["Category"] <button type="button" class="lbl-add" title="@Loc["Add category"]" @onclick="BudgetAddCategory">+</button></span>
+                            <select @bind="_budgetCatId">
+                                @foreach (var (cat, depth) in withoutBudget)
+                                {
+                                    <option value="@cat.Id">@CatOption(cat.Id, cat.Name, depth)</option>
+                                }
+                            </select>
+                        </label>
+                        <label>@Loc["Budget amount"] <input type="number" step="0.01" min="0" @bind="_fBudget" /></label>
+                        <div class="modal-actions">
+                            <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
+                            <button @onclick="SaveAddBudget" disabled="@(_budgetCatId == Guid.Empty || _fBudget <= 0)">@Loc["Add"]</button>
+                        </div>
+                    }
                     break;
 
                 case Modal.EditCat:
@@ -1835,7 +1865,7 @@ else
 }
 
 @code {
-    private enum Modal { None, BankConsent, AddCat, EditCat, DeleteCat, CategoryDetail, AddAccount, EditAccount, DeleteAccount, RemoveMember, LeaveAccount, AddExpense, NextPeriod, RemovePeriod, EditExpense, DeleteExpense, SettleExpense, AddBucket, EditBucket, DeleteBucket, AddFund, EditFund, DeleteFund, Invite, Transfer, Deposit, EditDeposit, DeleteDeposit, ManageContribCats, ContribCat, DeleteContribCat, AddSaving, BudgetSaving, SpendSaving, EditSavingDeposit, DeleteSavingDeposit, EditTransfer, DeleteTransfer, EditPeriod, EditSavingMovement, DeleteSavingMovement, DeleteExternalTransfer }
+    private enum Modal { None, BankConsent, AddCat, AddBudget, EditCat, DeleteCat, CategoryDetail, AddAccount, EditAccount, DeleteAccount, RemoveMember, LeaveAccount, AddExpense, NextPeriod, RemovePeriod, EditExpense, DeleteExpense, SettleExpense, AddBucket, EditBucket, DeleteBucket, AddFund, EditFund, DeleteFund, Invite, Transfer, Deposit, EditDeposit, DeleteDeposit, ManageContribCats, ContribCat, DeleteContribCat, AddSaving, BudgetSaving, SpendSaving, EditSavingDeposit, DeleteSavingDeposit, EditTransfer, DeleteTransfer, EditPeriod, EditSavingMovement, DeleteSavingMovement, DeleteExternalTransfer }
     private enum Tab { Overview, Account, Budgets, Savings, Bank }
 
     private Tab _tab = Tab.Overview;
@@ -2038,6 +2068,7 @@ else
     private Guid? _addParentId;
     private string? _fName;
     private decimal _fBudget;
+    private Guid _budgetCatId;      // selected category in the Add-budget modal
     private decimal _fThreshold = 80;
     private bool _fNotify;
     private string? _fCurrency = "EUR";
@@ -3112,6 +3143,14 @@ else
         _addParentId = parentId; _fName = null; _fBudget = 0; _fIcon = null; _modal = Modal.AddCat;
     }
 
+    /// <summary>Open the "Add budget" modal, pre-selecting the first category that has no budget yet.</summary>
+    private void OpenAddBudget()
+    {
+        _fBudget = 0;
+        _budgetCatId = State.CategoryOptions.FirstOrDefault(c => !State.HasBudget(c.Category.Id)).Category?.Id ?? Guid.Empty;
+        _modal = Modal.AddBudget;
+    }
+
     private void OpenAddSub(Guid parentId) => OpenAdd(parentId);
 
     private void OpenEdit(Guid categoryId)
@@ -3184,6 +3223,8 @@ else
 
     // Add-expense modal → inline-create a budget category / fund (then return to the expense, with it selected).
     private void ExpenseAddCategory() { _afterCreate = id => _categoryId = id; _modalBack.Push(() => _modal = Modal.AddExpense); OpenAdd(null); }
+    // Add-budget modal → inline-create a category (then return to the budget, with it selected).
+    private void BudgetAddCategory() { _afterCreate = id => _budgetCatId = id; _modalBack.Push(() => _modal = Modal.AddBudget); OpenAdd(null); }
     private void ExpenseAddFund() { _afterCreate = id => _fundId = id; _modalBack.Push(() => _modal = Modal.AddExpense); OpenAddFund(); }
 
     // Modal navigation stack: opening a modal from inside another pushes a "reopen the parent" action,
@@ -3263,6 +3304,13 @@ else
         var after = _afterCreate; _afterCreate = null;
         Back();
         after?.Invoke(newId);
+    });
+
+    private Task SaveAddBudget() => RunModal(async () =>
+    {
+        if (_budgetCatId == Guid.Empty || _fBudget <= 0) return;
+        await State.SaveBudget(_budgetCatId, _fBudget, 80, false);
+        CloseModal();
     });
 
     private Task SaveEditCat() => RunModal(async () =>

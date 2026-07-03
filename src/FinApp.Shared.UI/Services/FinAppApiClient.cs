@@ -49,8 +49,8 @@ public sealed class FinAppApiClient(HttpClient http)
         SendAsync<AuthResponse>(HttpMethod.Post, "/auth/refresh", new RefreshRequest(refreshToken), ct);
     public Task LogoutAsync(string refreshToken, CancellationToken ct = default) =>
         SendAsync(HttpMethod.Post, "/auth/logout", new LogoutRequest(refreshToken), ct);
-    public Task<AuthResponse> ExchangeCodeAsync(string code, CancellationToken ct = default) =>
-        SendAsync<AuthResponse>(HttpMethod.Post, "/auth/exchange", new ExchangeCodeRequest(code), ct);
+    public Task<LoginResponse> ExchangeCodeAsync(string code, CancellationToken ct = default) =>
+        SendAsync<LoginResponse>(HttpMethod.Post, "/auth/exchange", new ExchangeCodeRequest(code), ct);
     public Task<UserDto> MeAsync(CancellationToken ct = default) =>
         SendAsync<UserDto>(HttpMethod.Get, "/me", null, ct);
     public Task<ExternalProvidersDto> GetProvidersAsync(CancellationToken ct = default) =>

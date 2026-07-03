@@ -288,22 +288,18 @@ public sealed class Period : Entity
     }
 
     /// <summary>
-    /// Create or update a budget, enforcing the planning cap: budgets + savings can't exceed the money actually
-    /// in the account (<see cref="ExpectedClosingBalance"/>). (Actual expenses are not capped — overspending
-    /// is allowed.)
+    /// Create or update a budget. Budgets are advisory plans and are <b>not</b> capped: they don't reserve cash
+    /// (only savings does), and budgets copied forward into a fresh period must be editable before any
+    /// contributions have been recorded. Savings and actual spending are what constrain real money — planning a
+    /// budget never throws for being "too big". (Overspending an expense is likewise allowed.)
     /// </summary>
-    public Budget SetBudget(Guid categoryId, Money allocated, decimal alertThreshold = 0.80m, bool notifyOnEveryExpense = false, Money? priorSaved = null)
+    public Budget SetBudget(Guid categoryId, Money allocated, decimal alertThreshold = 0.80m, bool notifyOnEveryExpense = false)
     {
         EnsureCurrency(allocated);
         if (allocated.IsNegative)
             throw new ArgumentException("Allocated amount cannot be negative.", nameof(allocated));
 
         var existing = FindBudget(categoryId);
-        var othersBudgeted = BudgetedTotal - (existing?.Allocated ?? Money.Zero(Currency));
-        var ceiling = BudgetCeilingAfter(priorSaved ?? Money.Zero(Currency));
-        if (othersBudgeted + allocated > ceiling)
-            throw new InvalidOperationException($"Budgets can't exceed your money minus savings ({ceiling}).");
-
         if (existing is null)
         {
             existing = new Budget(categoryId, allocated, alertThreshold, notifyOnEveryExpense);
