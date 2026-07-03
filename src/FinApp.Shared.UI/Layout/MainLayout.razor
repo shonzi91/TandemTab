@@ -142,44 +142,45 @@
                         }
                         <button class="ghost" @onclick="ResendVerification" disabled="@_resendBusy">@Loc["Resend verification email"]</button>
                     }
+                }
 
-                    <h4>@Loc["Two-factor authentication"]</h4>
-                    @if (_2faError is not null)
-                    {
-                        <div class="pm-msg pm-error">@_2faError</div>
-                    }
-                    @if (Auth.CurrentUser!.TwoFactorEnabled && _2faSetup is null)
-                    {
-                        <p class="pm-hint">✓ @Loc["Two-factor authentication is on."]</p>
-                        <label>@Loc["Enter a code to turn it off"] <input type="text" inputmode="numeric" placeholder="123456" @bind="_2faCode" /></label>
-                        <button class="ghost danger" @onclick="DisableTwoFactor" disabled="@(_2faBusy || string.IsNullOrWhiteSpace(_2faCode))">@Loc["Turn off two-factor"]</button>
-                    }
-                    else if (_2faRecoveryCodes is not null)
-                    {
-                        <div class="pm-msg pm-ok">@Loc["Two-factor is on. Save these recovery codes somewhere safe — each works once if you lose your device."]</div>
-                        <ul class="pm-recovery">
-                            @foreach (var rc in _2faRecoveryCodes)
-                            {
-                                <li><code>@rc</code></li>
-                            }
-                        </ul>
-                        <button class="ghost" @onclick="() => { _2faRecoveryCodes = null; }">@Loc["Done"]</button>
-                    }
-                    else if (_2faSetup is not null)
-                    {
-                        <p class="pm-hint">@Loc["Scan the QR in your authenticator app, or enter this key manually:"]</p>
-                        <p class="pm-2fa-key"><code>@_2faSetup.Secret</code></p>
-                        <label>@Loc["Then enter the 6-digit code to confirm"] <input type="text" inputmode="numeric" placeholder="123456" @bind="_2faCode" /></label>
-                        <div class="pm-actions">
-                            <button class="ghost" @onclick="() => { _2faSetup = null; _2faCode = string.Empty; _2faError = null; }">@Loc["Cancel"]</button>
-                            <button @onclick="ConfirmTwoFactor" disabled="@(_2faBusy || string.IsNullOrWhiteSpace(_2faCode))">@Loc["Confirm"]</button>
-                        </div>
-                    }
-                    else
-                    {
-                        <p class="pm-hint">@Loc["Add a second step at sign-in using an authenticator app (Google Authenticator, Authy, 1Password…)."]</p>
-                        <button class="ghost" @onclick="BeginTwoFactor" disabled="@_2faBusy">@Loc["Enable two-factor"]</button>
-                    }
+                @* Two-factor is available to every user, including external (Google/Facebook) sign-ins. *@
+                <h4>@Loc["Two-factor authentication"]</h4>
+                @if (_2faError is not null)
+                {
+                    <div class="pm-msg pm-error">@_2faError</div>
+                }
+                @if (Auth.CurrentUser!.TwoFactorEnabled && _2faSetup is null)
+                {
+                    <p class="pm-hint">✓ @Loc["Two-factor authentication is on."]</p>
+                    <label>@Loc["Enter a code to turn it off"] <input type="text" inputmode="numeric" placeholder="123456" @bind="_2faCode" /></label>
+                    <button class="ghost danger" @onclick="DisableTwoFactor" disabled="@(_2faBusy || string.IsNullOrWhiteSpace(_2faCode))">@Loc["Turn off two-factor"]</button>
+                }
+                else if (_2faRecoveryCodes is not null)
+                {
+                    <div class="pm-msg pm-ok">@Loc["Two-factor is on. Save these recovery codes somewhere safe — each works once if you lose your device."]</div>
+                    <ul class="pm-recovery">
+                        @foreach (var rc in _2faRecoveryCodes)
+                        {
+                            <li><code>@rc</code></li>
+                        }
+                    </ul>
+                    <button class="ghost" @onclick="() => { _2faRecoveryCodes = null; }">@Loc["Done"]</button>
+                }
+                else if (_2faSetup is not null)
+                {
+                    <p class="pm-hint">@Loc["Scan the QR in your authenticator app, or enter this key manually:"]</p>
+                    <p class="pm-2fa-key"><code>@_2faSetup.Secret</code></p>
+                    <label>@Loc["Then enter the 6-digit code to confirm"] <input type="text" inputmode="numeric" placeholder="123456" @bind="_2faCode" /></label>
+                    <div class="pm-actions">
+                        <button class="ghost" @onclick="() => { _2faSetup = null; _2faCode = string.Empty; _2faError = null; }">@Loc["Cancel"]</button>
+                        <button @onclick="ConfirmTwoFactor" disabled="@(_2faBusy || string.IsNullOrWhiteSpace(_2faCode))">@Loc["Confirm"]</button>
+                    </div>
+                }
+                else
+                {
+                    <p class="pm-hint">@Loc["Add a second step at sign-in using an authenticator app (Google Authenticator, Authy, 1Password…)."]</p>
+                    <button class="ghost" @onclick="BeginTwoFactor" disabled="@_2faBusy">@Loc["Enable two-factor"]</button>
                 }
 
                 @if (_archived.Count > 0)

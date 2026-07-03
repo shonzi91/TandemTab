@@ -18,7 +18,9 @@ public class BankSyncApiTests : IClassFixture<FinAppServerFactory>
 
     private async Task<(HttpClient Client, Guid AccountId)> AccountAsync(string user)
     {
-        var (client, _) = await _factory.RegisterAndAuthAsync(user);
+        var (client, auth) = await _factory.RegisterAndAuthAsync(user);
+        // Bank features now require a verified email; verify so these tests exercise real bank behavior, not the gate.
+        await _factory.MarkEmailVerifiedAsync(auth.UserId, auth.Email);
         var created = await (await client.PostAsJsonAsync("/accounts",
             new CreateAccountRequest("Main", "GBP"))).Content.ReadFromJsonAsync<AccountSummaryDto>();
         return (client, created!.Id);
@@ -62,11 +64,30 @@ public class BankSyncApiTests : IClassFixture<FinAppServerFactory>
     public async Task Bank_endpoints_are_scoped_to_contributors()
     {
         var (_, accountId) = await AccountAsync("bankOwner");
-        var (stranger, _) = await _factory.RegisterAndAuthAsync("bankStranger");
+        var (stranger, sauth) = await _factory.RegisterAndAuthAsync("bankStranger");
+        await _factory.MarkEmailVerifiedAsync(sauth.UserId, sauth.Email);   // past the email gate, so we test scoping (404), not 403
 
         var resp = await stranger.GetAsync($"/accounts/{accountId}/bank/status");
 
         Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
+    }
+
+    [Fact]
+    public async Task Bank_endpoints_require_a_verified_email()
+    {
+        // A freshly registered user is unverified; bank features expose real financial data, so they're blocked.
+        var (client, auth) = await _factory.RegisterAndAuthAsync("bankUnverified");
+        var accountId = (await (await client.PostAsJsonAsync("/accounts",
+            new CreateAccountRequest("Main", "GBP"))).Content.ReadFromJsonAsync<AccountSummaryDto>())!.Id;
+
+        Assert.Equal(HttpStatusCode.Forbidden, (await client.GetAsync($"/accounts/{accountId}/bank/status")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await client.GetAsync($"/accounts/{accountId}/bank/pending")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await client.PostAsync($"/accounts/{accountId}/bank/sync", null)).StatusCode);
+
+        // Once verified, the same call proceeds (here: reports the provider is unconfigured).
+        await _factory.MarkEmailVerifiedAsync(auth.UserId, auth.Email);
+        var status = await client.GetFromJsonAsync<BankSyncStatusDto>($"/accounts/{accountId}/bank/status");
+        Assert.False(status!.Enabled);
     }
 
     [Fact]

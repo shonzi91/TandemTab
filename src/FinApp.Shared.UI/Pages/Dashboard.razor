@@ -1,6 +1,8 @@
 @page "/"
 @implements IDisposable
 @inject BudgetingState State
+@inject AuthState Auth
+@inject FinAppApiClient Api
 @inject Localizer Loc
 @inject IJSRuntime JS
 @inject NavigationManager Nav
@@ -940,9 +942,35 @@ else
             }
         </div>
         <div class="tabpanel" hidden="@(_tab != Tab.Bank)">
-            @if (_bankStatus?.Enabled == true)
+            @if (Auth.CurrentUser is { EmailVerified: false })
             {
                 <button class="link bank-back" @onclick="() => _tab = Tab.Account">← @Loc["Money"]</button>
+                <section class="panel bank-panel">
+                    <div class="alert warn-bg"><span>@Loc["Verify your email address before you can link a bank or view its data — bank connections show real financial information."]</span></div>
+                    @if (_resendOk)
+                    {
+                        <p class="hint">✓ @Loc["Verification email sent. Check your inbox."]</p>
+                    }
+                    <button class="primary" @onclick="ResendVerificationFromBank" disabled="@_resendBusy">@Loc["Resend verification email"]</button>
+                </section>
+            }
+            else if (_bankStatus?.Enabled == true)
+            {
+                <button class="link bank-back" @onclick="() => _tab = Tab.Account">← @Loc["Money"]</button>
+                @if (!State.IsOwnerOfCurrent && _bankSharedAckKnown && !_bankSharedAck)
+                {
+                    <div class="alert warn-bg">
+                        <span>@Loc["This shared account shows a linked bank's real balances and transactions. Please keep it confidential; we recommend turning on two-factor authentication."]</span>
+                        <button class="link" @onclick="AckBankShared" disabled="@_bankBusy">@Loc["Got it"]</button>
+                    </div>
+                }
+                @if (!Auth.CurrentUser!.TwoFactorEnabled && !_2faRecDismissed)
+                {
+                    <div class="alert warn-bg">
+                        <span>@Loc["We strongly recommend turning on two-factor authentication (Profile → Two-factor) — this account is connected to real financial data."]</span>
+                        <button class="alert-x" title="@Loc["Dismiss"]" @onclick="() => _2faRecDismissed = true">×</button>
+                    </div>
+                }
                 <section class="panel bank-panel">
                     <div class="panel-head">
                         <h2>@Loc["External accounts"] · @State.Account.Name</h2>
@@ -1901,6 +1929,9 @@ else
     private Guid _bankAccountId;        // which account _bankStatus/_bankPending belong to (bank is per-account)
     private bool _bankBusy;
     private string? _bankError;
+    // Bank security gating: email-verification resend + one-time 2FA nudge + the shared-account acknowledgment.
+    private bool _resendBusy, _resendOk, _2faRecDismissed;
+    private bool _bankSharedAck, _bankSharedAckKnown;   // has this member acknowledged seeing a shared account's real bank data
     // Merchant rules + per-row picks (feature 2.3). Rules keyed by normalized merchant; picks keyed by transaction id.
     private Dictionary<string, (string Kind, Guid TargetId)> _bankMappings = new();
     private List<BankAccountDto> _bankAccounts = [];
@@ -2101,6 +2132,9 @@ else
         if (!State.HasAccounts) return;
         _bankAccountId = State.CurrentAccountId;   // the account this status/pending belongs to
         _bankAccounts = []; _bankAccountsOpen = false;   // reset per-account so a switch doesn't reuse another account's list
+        _bankSharedAckKnown = false;
+        // Unverified users can't touch the bank endpoints (they'd 403); the tab shows a "verify first" prompt instead.
+        if (Auth.CurrentUser is { EmailVerified: false }) { _bankStatus = null; return; }
         try
         {
             _bankStatus = await State.GetBankStatus();
@@ -2110,10 +2144,33 @@ else
                 _bankMappings = (await State.GetBankMappings()).ToDictionary(m => m.MatchKey, m => (m.Kind, m.TargetId));
                 DefaultBankPickers();
                 await AutoHandleMappedDebitsAsync();
+                // Invited members see one-time "this shows real bank data" acknowledgment until they confirm it.
+                if (!State.IsOwnerOfCurrent)
+                {
+                    try { _bankSharedAck = (await Api.GetConsentAsync("bank_shared", _bankAccountId)).Active; }
+                    catch { _bankSharedAck = true; }   // don't nag if the consent check is unreachable
+                    _bankSharedAckKnown = true;
+                }
             }
             else { _bankPending = []; _bankMappings = new(); DefaultBankPickers(); }
         }
         catch { _bankStatus = null; } // unreachable/unconfigured — hide the panel/tab entirely
+    }
+
+    private async Task ResendVerificationFromBank()
+    {
+        _resendBusy = true;
+        try { await Api.ResendVerificationAsync(); _resendOk = true; }
+        catch { /* surfaced by the generic banner elsewhere; keep the tab calm */ }
+        finally { _resendBusy = false; }
+    }
+
+    private async Task AckBankShared()
+    {
+        _bankBusy = true;
+        try { await State.RecordConsent("bank_shared", _bankAccountId); _bankSharedAck = true; }
+        catch (Exception ex) { _bankError = ex.Message; }
+        finally { _bankBusy = false; }
     }
 
     /// <summary>Open the Bank tab, refreshing the connection for the current account (it's per-account).</summary>
@@ -2254,7 +2311,7 @@ else
     /// <summary>Linking requires bank-link consent first (recorded each time — re-consent on relink).</summary>
     private void LinkBankAsync() => RequestBankConsent("bank_link",
         Loc["Connect your bank"],
-        Loc["You authorize TandemTab to connect to your bank through our regulated provider (Enable Banking) and to read your account details and transactions on a read-only basis, to show them here. No payments are ever made. You can withdraw this at any time by disconnecting."],
+        Loc["You authorize TandemTab to connect to your bank through our regulated provider (Enable Banking) and to read your account details and transactions on a read-only basis, to show them here. No payments are ever made. You can withdraw this at any time by disconnecting. Your email must be verified to connect a bank, and — because this brings real financial data into the account, visible to everyone you share it with — we strongly recommend turning on two-factor authentication first (Profile → Two-factor)."],
         DoLinkBankAsync);
 
     private async Task DoLinkBankAsync()

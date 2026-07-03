@@ -460,30 +460,38 @@ accounts.MapGet("/{id:guid}/avatars", async (Guid id, ClaimsPrincipal user, Avat
     Results.Ok(await avatars.GetForAccountAsync(user.UserId(), id, ct)));
 
 // --- Bank sync (Open Banking via GoCardless) -----------------------------
-accounts.MapGet("/{id:guid}/bank/status", async (Guid id, ClaimsPrincipal user, BankSyncService svc, CancellationToken ct) =>
-    Results.Ok(await svc.GetStatusAsync(user.UserId(), id, ct)));
+// Because linking a bank exposes REAL financial data (to the linker and to every member of a shared account),
+// these endpoints require the caller's email to be verified — enforced server-side, not just in the UI. This is
+// the legal backstop: an unverified user (or invited member) can never read real balances/transactions.
+accounts.MapGet("/{id:guid}/bank/status", async (Guid id, ClaimsPrincipal user, BankSyncService svc, EmailVerificationService emailVerification, CancellationToken ct) =>
+    await RequireVerifiedEmailAsync(user, emailVerification, ct)
+        ?? Results.Ok(await svc.GetStatusAsync(user.UserId(), id, ct)));
 
 accounts.MapGet("/{id:guid}/bank/institutions", async (Guid id, string? country, ClaimsPrincipal user, BankSyncService svc, CancellationToken ct) =>
     Results.Ok(await svc.SearchInstitutionsAsync(user.UserId(), id, country ?? "GB", ct)));
 
-accounts.MapPost("/{id:guid}/bank/link", async (Guid id, StartBankLinkRequest req, HttpContext http, ClaimsPrincipal user, BankSyncService svc, ConsentService consent, IConfiguration cfg, CancellationToken ct) =>
+accounts.MapPost("/{id:guid}/bank/link", async (Guid id, StartBankLinkRequest req, HttpContext http, ClaimsPrincipal user, BankSyncService svc, ConsentService consent, EmailVerificationService emailVerification, IConfiguration cfg, CancellationToken ct) =>
 {
+    if (await RequireVerifiedEmailAsync(user, emailVerification, ct) is { } notVerified) return notVerified;
     if (!await consent.IsActiveAsync(user.UserId(), id, ConsentService.Scope.BankLink, ct))
         return Results.Json(new { error = "Bank-link consent is required." }, statusCode: StatusCodes.Status403Forbidden);
     return Results.Ok(await svc.StartLinkAsync(user.UserId(), id, req, BankCallbackUrl(http, cfg), ct));
 });
 
-accounts.MapPost("/{id:guid}/bank/sync", async (Guid id, ClaimsPrincipal user, BankSyncService svc, CancellationToken ct) =>
+accounts.MapPost("/{id:guid}/bank/sync", async (Guid id, ClaimsPrincipal user, BankSyncService svc, EmailVerificationService emailVerification, CancellationToken ct) =>
 {
+    if (await RequireVerifiedEmailAsync(user, emailVerification, ct) is { } notVerified) return notVerified;
     await svc.SyncAsync(user.UserId(), id, ct);
     return Results.NoContent();
 });
 
-accounts.MapGet("/{id:guid}/bank/pending", async (Guid id, ClaimsPrincipal user, BankSyncService svc, CancellationToken ct) =>
-    Results.Ok(await svc.GetPendingAsync(user.UserId(), id, ct)));
+accounts.MapGet("/{id:guid}/bank/pending", async (Guid id, ClaimsPrincipal user, BankSyncService svc, EmailVerificationService emailVerification, CancellationToken ct) =>
+    await RequireVerifiedEmailAsync(user, emailVerification, ct)
+        ?? Results.Ok(await svc.GetPendingAsync(user.UserId(), id, ct)));
 
-accounts.MapGet("/{id:guid}/bank/accounts", async (Guid id, ClaimsPrincipal user, BankSyncService svc, CancellationToken ct) =>
-    Results.Ok(await svc.ListAccountsAsync(user.UserId(), id, ct)));
+accounts.MapGet("/{id:guid}/bank/accounts", async (Guid id, ClaimsPrincipal user, BankSyncService svc, EmailVerificationService emailVerification, CancellationToken ct) =>
+    await RequireVerifiedEmailAsync(user, emailVerification, ct)
+        ?? Results.Ok(await svc.ListAccountsAsync(user.UserId(), id, ct)));
 
 accounts.MapPut("/{id:guid}/bank/account", async (Guid id, SelectBankAccountRequest req, ClaimsPrincipal user, BankSyncService svc, CancellationToken ct) =>
 {
@@ -608,6 +616,13 @@ static string BankCallbackUrl(HttpContext http, IConfiguration cfg)
 static string AppBaseUrl(HttpContext http, IConfiguration cfg) =>
     (cfg["Email:AppBaseUrl"] ?? cfg["Auth:PublicBaseUrl"])?.TrimEnd('/')
     ?? $"{http.Request.Scheme}://{http.Request.Host}";
+
+// Bank features expose real financial data, so they require a verified email. Returns a 403 result to
+// short-circuit the endpoint with, or null when the caller's email is verified (proceed as normal).
+static async Task<IResult?> RequireVerifiedEmailAsync(ClaimsPrincipal user, EmailVerificationService emailVerification, CancellationToken ct) =>
+    await emailVerification.IsVerifiedAsync(user.UserId(), user.Email(), ct)
+        ? null
+        : Results.Json(new { error = "Please verify your email address to use bank features." }, statusCode: StatusCodes.Status403Forbidden);
 
 /// <summary>Exposed so integration tests can host the app via WebApplicationFactory.</summary>
 public partial class Program;

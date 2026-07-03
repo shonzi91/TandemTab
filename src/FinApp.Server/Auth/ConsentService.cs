@@ -15,14 +15,17 @@ namespace FinApp.Server.Auth;
 /// </summary>
 public sealed class ConsentService(FinAppDbContext db)
 {
-    /// <summary>Bump when the terms/privacy or the link/sync disclosures change materially — forces re-consent.</summary>
-    public const string PolicyVersion = "2026-07-01";
+    /// <summary>Bump when the terms/privacy or the link/sync disclosures change materially — forces re-consent.
+    /// 2026-07-03: added the email-verification requirement + 2FA recommendation for bank features and the
+    /// shared-account confidentiality acknowledgment.</summary>
+    public const string PolicyVersion = "2026-07-03";
 
     public static class Scope
     {
-        public const string Login = "login";       // accepted the Terms + Privacy (user-level, no account)
-        public const string BankLink = "bank_link"; // authorized linking a bank to an account
-        public const string BankSync = "bank_sync"; // authorized syncing a fund to the linked account
+        public const string Login = "login";        // accepted the Terms + Privacy (user-level, no account)
+        public const string BankLink = "bank_link";  // authorized linking a bank to an account
+        public const string BankSync = "bank_sync";  // authorized syncing a fund to the linked account
+        public const string BankShared = "bank_shared"; // a member acknowledged they can see a shared account's real bank data
     }
 
     public Task EnsureSchemaAsync(CancellationToken ct = default) =>

@@ -1,9 +1,11 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using FinApp.Contracts;
+using FinApp.Server.Auth;
 using Microsoft.AspNetCore.Http.Connections;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.SignalR.Client;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace FinApp.Server.Tests;
 
@@ -42,6 +44,13 @@ public sealed class FinAppServerFactory : WebApplicationFactory<Program>
         var auth = (await resp.Content.ReadFromJsonAsync<AuthResponse>())!;
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", auth.Token);
         return (client, auth);
+    }
+
+    /// <summary>Mark a user's email verified server-side (bank features require it; skips the email round-trip in tests).</summary>
+    public async Task MarkEmailVerifiedAsync(Guid userId, string email)
+    {
+        using var scope = Services.CreateScope();
+        await scope.ServiceProvider.GetRequiredService<EmailVerificationService>().MarkVerifiedAsync(userId, email);
     }
 
     /// <summary>A SignalR client wired through the in-memory test server (long polling), authenticated with the token.</summary>
