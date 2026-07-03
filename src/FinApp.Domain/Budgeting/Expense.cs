@@ -51,6 +51,21 @@ public sealed class Expense : Entity
 
     public void SetFundSynced(bool synced) => FundSynced = synced;
 
+    /// <summary>When set, the id of the bank transaction this expense was imported from — provenance and a dedupe
+    /// key so a later re-sync of the same window doesn't re-add it. Null for purely manual expenses.</summary>
+    public string? BankExternalId { get; private set; }
+
+    /// <summary>True when this expense was filed automatically by a saved merchant rule on bank sync (i.e. not
+    /// individually reviewed), so the UI can badge it for the user to double-check. Cleared once they edit it.</summary>
+    public bool AutoFiled { get; private set; }
+
+    /// <summary>Record (or clear) this expense's bank origin. See <see cref="BankExternalId"/> and <see cref="AutoFiled"/>.</summary>
+    public void SetBankLink(string? externalId, bool autoFiled)
+    {
+        BankExternalId = string.IsNullOrWhiteSpace(externalId) ? null : externalId.Trim();
+        AutoFiled = autoFiled;
+    }
+
     public Expense(
         Guid categoryId,
         Money amount,

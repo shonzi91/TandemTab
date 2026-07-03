@@ -252,7 +252,9 @@ public sealed class FinAppDbContext(DbContextOptions<FinAppDbContext> options) :
             e.Ignore(x => x.IsSettlementSource);
             e.Ignore(x => x.IsSettlementDestination);
             e.Ignore(x => x.OriginalAmount);
-            e.Ignore(x => x.FundSynced);  // body data — synced-fund marker rides in the snapshot
+            e.Ignore(x => x.FundSynced);       // body data — synced-fund marker rides in the snapshot
+            e.Ignore(x => x.BankExternalId);   // body data — bank provenance rides in the snapshot
+            e.Ignore(x => x.AutoFiled);        // body data — auto-filed marker rides in the snapshot
         });
 
         b.Entity<SavingAllocation>(s =>

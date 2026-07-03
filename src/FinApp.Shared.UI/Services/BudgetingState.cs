@@ -538,11 +538,13 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     /// they're driven only by the bank import flow.</summary>
     public IReadOnlyList<Fund> SelectableFunds => Account.RootFunds.Where(f => !f.IsSynced).ToList();
 
-    public Task AddExpense(Guid categoryId, decimal amount, Guid fundId, string? note, DateOnly date, bool onBehalfOfOtherAccount = false)
+    public Task AddExpense(Guid categoryId, decimal amount, Guid fundId, string? note, DateOnly date, bool onBehalfOfOtherAccount = false,
+        string? bankExternalId = null, bool autoFiled = false)
     {
         var expense = new Expense(categoryId, Money(amount), date, CurrentMemberId, fundId, note,
             onBehalfOfOtherAccount: onBehalfOfOtherAccount);
         expense.SetFundSynced(FundIsSynced(fundId));   // synced funds aren't debited (real bank balance handles it)
+        if (bankExternalId is not null || autoFiled) expense.SetBankLink(bankExternalId, autoFiled);
         Period.AddExpense(expense);
         return SaveAsync();
     }
@@ -552,6 +554,8 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
         var before = Period.Expenses.FirstOrDefault(e => e.Id == expenseId);
         var edited = Period.EditExpense(expenseId, categoryId, Money(amount), fundId, note, date);
         edited.SetFundSynced(FundIsSynced(fundId));   // recompute at edit time (moving to/from a synced fund)
+        // Keep the bank provenance (for dedupe) but clear the auto-filed badge — editing means the user reviewed it.
+        edited.SetBankLink(before?.BankExternalId, autoFiled: false);
         await SaveAsync();
         // Editing a settlement-destination expense mirrors the new amount back to the source expense.
         if (before is { IsSettlementDestination: true, SettlementId: { } sid, SettledFromAccountId: { } sourceAccount })
@@ -1022,9 +1026,9 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     public Task SelectBankAccount(string bankAccountRef) => api.SelectBankAccountAsync(CurrentAccountId, bankAccountRef);
 
     /// <summary>Turn a staged bank transaction into an expense in the given category/fund, then mark it handled.</summary>
-    public async Task ConfirmBankTransaction(string externalId, Guid categoryId, decimal amount, Guid fundId, string? note, DateOnly date)
+    public async Task ConfirmBankTransaction(string externalId, Guid categoryId, decimal amount, Guid fundId, string? note, DateOnly date, bool autoFiled = false)
     {
-        await AddExpense(categoryId, amount, fundId, note, date);
+        await AddExpense(categoryId, amount, fundId, note, date, bankExternalId: externalId, autoFiled: autoFiled);
         await api.AckBankTransactionAsync(CurrentAccountId, externalId, confirmed: true);
     }
 

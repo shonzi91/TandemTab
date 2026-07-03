@@ -97,7 +97,7 @@ public static class AccountSnapshotSerializer
         p.InitialBalances.Select(b => new InitialBalanceNode(b.Id, b.FundId, b.Amount.Amount, b.Informative)).ToList(),
         p.Contributions.Select(c => new ContributionNode(c.Id, c.MemberId, c.Paid.Amount, c.CategoryId, c.FundId, c.Date, c.FundSynced)).ToList(),
         p.Budgets.Select(b => new BudgetNode(b.Id, b.CategoryId, b.Allocated.Amount, b.AlertThreshold, b.NotifyOnEveryExpense)).ToList(),
-        p.Expenses.Select(e => new ExpenseNode(e.Id, e.CategoryId, e.Amount.Amount, e.Date, e.MemberId, e.FundId, e.Note, e.SourceSavingCategoryId, e.OnBehalfOfOtherAccount, e.SettlementId, e.SettledToAccountId, e.SettledFromAccountId, e.SettledAmount, e.FundSynced)).ToList(),
+        p.Expenses.Select(e => new ExpenseNode(e.Id, e.CategoryId, e.Amount.Amount, e.Date, e.MemberId, e.FundId, e.Note, e.SourceSavingCategoryId, e.OnBehalfOfOtherAccount, e.SettlementId, e.SettledToAccountId, e.SettledFromAccountId, e.SettledAmount, e.FundSynced, e.BankExternalId, e.AutoFiled)).ToList(),
         p.SavingAllocations.Select(a => new SavingAllocationNode(a.Id, a.SavingCategoryId, a.Amount.Amount, a.Date, a.Note, a.SourceExpenseId, a.BudgetCategoryId, a.TransferPairId)).ToList(),
         p.FundTransfers.Select(t => new FundTransferNode(t.Id, t.FromFundId, t.ToFundId, t.Amount.Amount, t.Date, t.Note, t.FromSynced, t.ToSynced)).ToList(),
         p.ExternalTransfers.Select(t => new ExternalTransferNode(t.Id, t.FundId, t.Amount.Amount, t.Date, t.ToAccountId, t.Note, t.FundSynced)).ToList());
@@ -137,6 +137,7 @@ public static class AccountSnapshotSerializer
         {
             var expense = Build(new Expense(e.CategoryId, M(e.Amount), e.Date, e.MemberId, e.FundId, e.Note, e.SourceSavingCategoryId, e.OnBehalfOfOtherAccount, e.SettlementId, e.SettledToAccountId, e.SettledFromAccountId, e.SettledAmount), e.Id);
             expense.SetFundSynced(e.FundSynced);
+            expense.SetBankLink(e.BankExternalId, e.AutoFiled);
             return expense;
         }).ToList());
         SetField(p, "_savingAllocations", n.SavingAllocations.Select(a => Build(new SavingAllocation(a.SavingCategoryId, M(a.Amount), a.Date, a.Note, a.SourceExpenseId, a.BudgetCategoryId, a.TransferPairId), a.Id)).ToList());
@@ -205,7 +206,7 @@ public static class AccountSnapshotSerializer
         Guid CategoryId = default, Guid FundId = default, DateOnly Date = default, bool FundSynced = false);
     private record BudgetNode(Guid Id, Guid CategoryId, decimal Allocated, decimal AlertThreshold, bool NotifyOnEveryExpense);
     private record ExpenseNode(Guid Id, Guid CategoryId, decimal Amount, DateOnly Date, Guid MemberId, Guid FundId, string? Note, Guid? SourceSavingCategoryId, bool OnBehalfOfOtherAccount = false,
-        Guid? SettlementId = null, Guid? SettledToAccountId = null, Guid? SettledFromAccountId = null, decimal SettledAmount = 0m, bool FundSynced = false);
+        Guid? SettlementId = null, Guid? SettledToAccountId = null, Guid? SettledFromAccountId = null, decimal SettledAmount = 0m, bool FundSynced = false, string? BankExternalId = null, bool AutoFiled = false);
     private record SavingAllocationNode(Guid Id, Guid SavingCategoryId, decimal Amount, DateOnly Date, string? Note, Guid? SourceExpenseId, Guid? BudgetCategoryId = null, Guid? TransferPairId = null);
     private record FundTransferNode(Guid Id, Guid FromFundId, Guid ToFundId, decimal Amount, DateOnly Date, string? Note, bool FromSynced = false, bool ToSynced = false);
     private record ExternalTransferNode(Guid Id, Guid FundId, decimal Amount, DateOnly Date, Guid? ToAccountId, string? Note, bool FundSynced = false);

@@ -127,12 +127,16 @@ public class SnapshotSerializerTests
         p.SetInitialBalance(bank, Eur(1000));
         var e = new Expense(food.Id, Eur(40), new DateOnly(2026, 1, 4), owner, bank);
         e.SetFundSynced(true);
+        e.SetBankLink("txn-abc-123", autoFiled: true);   // imported + auto-filed by a merchant rule
         p.AddExpense(e);
 
         var copy = AccountSnapshotSerializer.Deserialize(AccountSnapshotSerializer.Serialize(account));
 
         Assert.True(copy.Funds.Single(f => f.Id == bank).IsSynced);
-        Assert.True(copy.Periods.Single().Expenses.Single().FundSynced);
+        var copiedExpense = copy.Periods.Single().Expenses.Single();
+        Assert.True(copiedExpense.FundSynced);
+        Assert.Equal("txn-abc-123", copiedExpense.BankExternalId);   // bank provenance survives (dedupe key)
+        Assert.True(copiedExpense.AutoFiled);                        // auto-filed marker survives
         Assert.Equal(Eur(1000), copy.Periods.Single().FundBalance(bank));   // synced expense excluded, as before the round-trip
     }
 

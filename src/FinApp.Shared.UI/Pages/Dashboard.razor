@@ -702,9 +702,9 @@ else
                                 {
                                     <span class="settle-tag" title="@Loc["Settled from another account"]">↩ @Loc["from"] @State.AccountName(e.SettledFromAccountId!.Value)</span>
                                 }
-                                @if (BankRuleFor(e) is not null)
+                                @if (e.AutoFiled)
                                 {
-                                    <span class="row-note" title="@($"{Loc["Auto-filed from a saved bank rule"]}: {e.Note} → {MappedLabel(e.Note!)}")">🏦</span>
+                                    <span class="row-note" title="@AutoFiledTitle(e)">🏦</span>
                                 }
                             </span>
                             <span class="amt">@Fmt(e.Amount)</span>
@@ -1373,10 +1373,17 @@ else
                         </select>
                     </label>
                     <label>@Loc["Note (optional)"] <input type="text" @bind="_note" /></label>
-                    @if (State.FindExpense(_editExpenseId) is { } editExp && BankRuleFor(editExp) is not null)
+                    @if (State.FindExpense(_editExpenseId) is { AutoFiled: true } editExp)
                     {
-                        <p class="hint">🏦 @Loc["Auto-filed from a saved bank rule:"] <strong>@editExp.Note</strong> → <strong>@MappedLabel(editExp.Note!)</strong>
-                            <button type="button" class="link" @onclick="() => RemoveBankRuleFor(editExp)" disabled="@_bankBusy">@Loc["Remove rule"]</button></p>
+                        @if (!string.IsNullOrEmpty(editExp.Note) && MappedLabel(editExp.Note!) is { } target)
+                        {
+                            <p class="hint">🏦 @Loc["Auto-filed from a saved bank rule:"] <strong>@editExp.Note</strong> → <strong>@target</strong>
+                                <button type="button" class="link" @onclick="() => RemoveBankRuleFor(editExp)" disabled="@_bankBusy">@Loc["Remove rule"]</button></p>
+                        }
+                        else
+                        {
+                            <p class="hint">🏦 @Loc["Filed automatically from your bank."]</p>
+                        }
                     }
                     <div class="modal-actions">
                         <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
@@ -2366,7 +2373,7 @@ else
             if (!State.CategoryOptions.Any(c => c.Category.Id == m.TargetId)) continue;
             try
             {
-                await State.ConfirmBankTransaction(tx.ExternalId, m.TargetId, Math.Abs(tx.Amount), State.SyncedFundId, tx.Description, ClampToPeriod(tx.Date));
+                await State.ConfirmBankTransaction(tx.ExternalId, m.TargetId, Math.Abs(tx.Amount), State.SyncedFundId, tx.Description, ClampToPeriod(tx.Date), autoFiled: true);
                 _bankPending.RemoveAll(p => p.ExternalId == tx.ExternalId);
             }
             catch { /* leave it in the list for manual handling */ }
@@ -2485,11 +2492,11 @@ else
         };
     }
 
-    /// <summary>A saved bank category-rule matching this expense's merchant note — i.e. it was auto-filed from the
-    /// bank by that rule (so we badge it and show the rule on edit). Null when the note has no such mapping.</summary>
-    private (string Kind, Guid TargetId)? BankRuleFor(FinApp.Domain.Budgeting.Expense e) =>
-        string.IsNullOrEmpty(e.Note) ? null
-            : MappingFor(e.Note!) is { Kind: "category" } m ? m : null;
+    /// <summary>Tooltip for the 🏦 auto-filed badge: names the responsible rule if it still exists.</summary>
+    private string AutoFiledTitle(FinApp.Domain.Budgeting.Expense e) =>
+        !string.IsNullOrEmpty(e.Note) && MappedLabel(e.Note!) is { } target
+            ? $"{Loc["Auto-filed from a saved bank rule"]}: {e.Note} → {target}"
+            : Loc["Filed automatically from your bank"];
 
     /// <summary>Remove the merchant→category rule behind an auto-filed expense (leaves the expense; stops future auto-filing).</summary>
     private Task RemoveBankRuleFor(FinApp.Domain.Budgeting.Expense e) =>
