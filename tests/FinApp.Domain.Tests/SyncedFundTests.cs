@@ -155,4 +155,82 @@ public class SyncedFundTests
         FundOf(a, "Bank").SetSynced(true);   // flip on now
         Assert.Equal(M(960), p.FundBalance(bank));   // the historical expense still counts
     }
+
+    // --- Audit: cross-account & account-wide combos (no duplicate increase/decrease) ----------------------
+
+    // Cross-account send from an UNSYNCED fund: the fund drops and so does the account's closing balance.
+    [Fact]
+    public void Send_to_another_account_from_unsynced_fund_reduces_the_fund_and_the_closing_balance()
+    {
+        var a = Acc(out var p);
+        var cash = a.FundId("Cash");
+        p.SetInitialBalance(cash, M(500));
+
+        var outflow = p.TransferOut(cash, M(200), new DateOnly(2026, 1, 10), Guid.NewGuid());
+        outflow.SetFundSynced(false);   // unsynced source
+
+        Assert.Equal(M(300), p.FundBalance(cash));        // the fund really lost it
+        Assert.Equal(M(200), p.ExternalOutTotal);
+        Assert.Equal(M(300), p.ExpectedClosingBalance);   // 500 opening − 200 sent out
+    }
+
+    // Cross-account send from a SYNCED fund: the bank owns the fund position (unchanged here), but the money still
+    // left the account — so the closing balance still drops. Counted once on the account side, no duplicate.
+    [Fact]
+    public void Send_to_another_account_from_synced_fund_leaves_the_fund_but_still_reduces_the_closing_balance()
+    {
+        var a = Acc(out var p);
+        var bank = a.FundId("Bank");
+        p.SetInitialBalance(bank, M(1000));
+        FundOf(a, "Bank").SetSynced(true);
+
+        var outflow = p.TransferOut(bank, M(200), new DateOnly(2026, 1, 10), Guid.NewGuid());
+        outflow.SetFundSynced(true);   // synced source — the real bank balance handles the fund position
+
+        Assert.Equal(M(1000), p.FundBalance(bank));       // fund untouched (bank authoritative)
+        Assert.Equal(M(800), p.ExpectedClosingBalance);   // but 200 really left the account
+    }
+
+    // The account-wide total DOES include synced flows (unlike per-fund balance): anchored on the synced fund's
+    // opening balance and counting each flow once, the closing balance tracks the real bank while FundBalance stays
+    // put (the bank is authoritative for the fund itself). This intended asymmetry is what avoids double-counting.
+    [Fact]
+    public void Synced_fund_closing_balance_tracks_the_bank_while_fund_balance_stays_put()
+    {
+        var a = Acc(out var p);
+        var owner = Guid.NewGuid();
+        var bank = a.FundId("Bank");
+        p.SetInitialBalance(bank, M(1000));
+        FundOf(a, "Bank").SetSynced(true);
+
+        var income = p.Deposit(owner, M(600), fundId: bank, date: new DateOnly(2026, 1, 2));
+        income.SetFundSynced(true);
+        var spend = new Expense(Guid.NewGuid(), M(150), new DateOnly(2026, 1, 5), owner, bank);
+        spend.SetFundSynced(true);
+        p.AddExpense(spend);
+
+        Assert.Equal(M(1000), p.FundBalance(bank));        // the fund itself: bank authoritative, unchanged
+        Assert.Equal(M(1450), p.ExpectedClosingBalance);   // 1000 opening + 600 in − 150 out = the real bank trajectory
+    }
+
+    // Defensive: the domain handles a transfer with BOTH sides synced (e.g. a cross-account synced→synced move,
+    // where each account marks its own side), moving neither tracked balance and leaving the account total intact.
+    [Fact]
+    public void Transfer_with_both_sides_synced_moves_neither_fund()
+    {
+        var a = Acc(out var p);
+        var bank = a.FundId("Bank");
+        var cash = a.FundId("Cash");
+        p.SetInitialBalance(bank, M(1000));
+        p.SetInitialBalance(cash, M(500));
+        FundOf(a, "Bank").SetSynced(true);
+        FundOf(a, "Cash").SetSynced(true);
+
+        var t = p.TransferFunds(cash, bank, M(200), new DateOnly(2026, 1, 6));
+        t.SetSyncedSides(fromSynced: true, toSynced: true);
+
+        Assert.Equal(M(1000), p.FundBalance(bank));
+        Assert.Equal(M(500), p.FundBalance(cash));
+        Assert.Equal(M(1500), p.ExpectedClosingBalance);   // unchanged — an intra-account transfer is total-preserving
+    }
 }
