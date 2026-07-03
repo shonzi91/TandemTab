@@ -1,5 +1,26 @@
 # Budgiely (FinApp) — session handoff
 
+Last updated: 2026-07-03 (Session 15). Read this + [README.md](README.md) + [TRANSFER.md](TRANSFER.md) + recent `git log` to catch up.
+
+## Session 15 (2026-07-03) — Security hardening (Tier 1 + Tier 2 auth). 163 tests.
+Focus was making the app's auth production-grade for financial data. **163 tests** (98 domain + 58 server + 7 persistence).
+All committed; **deployed through the Tier 2 refresh + OAuth-exchange work (revision finapp-00080)**. The email-verification
++ 2FA commit is built/tested but **not yet deployed** at handoff time.
+- **Tier 1** (`bd90522`, deployed): security headers + CSP + HSTS, per-IP rate limiting on auth endpoints
+  (disabled in Development so tests aren't throttled), error hygiene (mask+log), GitHub Actions CI with a
+  vulnerable-NuGet scan, Dependabot.
+- **Tier 2 — refresh tokens** (`511f077`, deployed): access tokens 24h→2h + 30-day refresh tokens with rotation
+  and reuse-detection (replay revokes the whole family). Client renews on 401 (single-flight). `RefreshTokenService`.
+- **Tier 2 — OAuth code exchange** (`58ff02b`, deployed): external sign-in no longer puts a token in the URL
+  fragment; issues a one-time code → `/auth/exchange`. `AuthCodeService`. index.html: `finappTakeAuthCode`.
+- **Tier 2 — email verification + 2FA** (`1d96af3`, NOT yet deployed): `EmailVerificationService` + `IEmailSender`
+  (SMTP + no-op-logs fallback; **SMTP not configured yet** so links only log — add `Email__*` env vars to enable);
+  TOTP 2FA (`Totp.cs` RFC 6238, no dependency) via `TwoFactorService` — enroll/confirm/recovery-codes, login
+  becomes a challenge (`/auth/login` → ticket → `/auth/2fa`). 2FA UI in the profile Security section.
+  **Caveats:** 2FA guards password logins only (external sign-ins skip it); enrollment shows the manual key, no QR.
+- **Deferred:** Tier 3 (E2E-encrypt the account snapshot), enforce-email-verification flag, 2FA-for-external,
+  QR render, SMTP config.
+
 Last updated: 2026-07-01 (Session 14). Read this + [README.md](README.md) + recent `git log` to catch up.
 Product is now branded **TandemTab** ("Track together, save together.") — renamed from Budgiely in Session 11m.
 Logo = a mint **TT / two-figures-on-a-beam** monogram (`Components/TandemLogo.razor`, was `BudgieLogo`). **Code
