@@ -63,6 +63,17 @@ public sealed class EmailSender(IOptions<EmailOptions> options, ILogger<EmailSen
                 ? CredentialCache.DefaultNetworkCredentials
                 : new NetworkCredential(_options.Username, _options.Password),
         };
-        await client.SendMailAsync(message, ct);
+        try
+        {
+            await client.SendMailAsync(message, ct);
+            logger.LogInformation("Sent email to {To} — {Subject}", toEmail, subject);
+        }
+        catch (Exception ex)
+        {
+            // Always leave a trace: callers may swallow (e.g. best-effort sign-up) and SMTP problems
+            // (bad creds, provider blocking auth) are otherwise invisible. Rethrow so callers still decide.
+            logger.LogError(ex, "Failed to send email to {To} — {Subject}", toEmail, subject);
+            throw;
+        }
     }
 }

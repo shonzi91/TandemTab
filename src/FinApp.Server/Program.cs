@@ -256,8 +256,10 @@ auth.MapPost("/register", async (RegisterRequest req, HttpContext http, AuthServ
 {
     var result = await svc.RegisterAsync(req, ct);
     // Send the confirmation email (best-effort — never fail the sign-up if email is down/unconfigured).
+    // The sender logs any SMTP failure; we deliberately swallow it here so sign-up still succeeds and the
+    // user can resend from the app.
     try { await svc.SendVerificationEmailAsync(result.UserId, result.Email, AppBaseUrl(http, cfg), ct); }
-    catch { /* logged by the sender; the user can resend from the app */ }
+    catch { /* logged by EmailSender; sign-up must not fail on email problems */ }
     return Results.Ok(result);
 }).RequireRateLimiting("auth");
 auth.MapPost("/login", async (LoginRequest req, AuthService svc, CancellationToken ct) =>
