@@ -45,6 +45,10 @@ public sealed class FinAppApiClient(HttpClient http)
         SendAsync<TwoFactorRecoveryDto>(HttpMethod.Post, "/auth/2fa/confirm", new TwoFactorCodeRequest(code), ct);
     public Task DisableTwoFactorAsync(string code, CancellationToken ct = default) =>
         SendAsync(HttpMethod.Post, "/auth/2fa/disable", new TwoFactorCodeRequest(code), ct);
+    public Task DeleteMyAccountAsync(string? twoFactorCode, CancellationToken ct = default) =>
+        SendAsync(HttpMethod.Post, "/me/delete", new DeleteAccountRequest(twoFactorCode), ct);
+    public Task CancelMyDeletionAsync(CancellationToken ct = default) =>
+        SendAsync(HttpMethod.Post, "/me/delete/cancel", null, ct);
     public Task<AuthResponse> RefreshAsync(string refreshToken, CancellationToken ct = default) =>
         SendAsync<AuthResponse>(HttpMethod.Post, "/auth/refresh", new RefreshRequest(refreshToken), ct);
     public Task LogoutAsync(string refreshToken, CancellationToken ct = default) =>

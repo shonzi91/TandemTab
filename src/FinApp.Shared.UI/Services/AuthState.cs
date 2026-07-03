@@ -63,6 +63,14 @@ public sealed class AuthState
     /// <summary>Clear a pending external 2FA challenge (e.g. the user backed out of the code prompt).</summary>
     public void ClearPendingTwoFactor() => PendingTwoFactorTicket = null;
 
+    /// <summary>Re-fetch the signed-in user from <c>/me</c> (e.g. after scheduling/cancelling account deletion) and
+    /// notify the UI. Keeps the last-known user on a transient failure.</summary>
+    public async Task RefreshUserAsync()
+    {
+        try { CurrentUser = await _api.MeAsync(); Changed?.Invoke(); }
+        catch { /* transient — keep the last-known user */ }
+    }
+
     /// <summary>Complete an external (Google/Facebook) sign-in by exchanging the one-time code from the redirect
     /// URL. Normally this stores real session tokens like a login; if the account has 2FA on, no tokens are
     /// issued yet — the returned outcome carries a ticket (also stashed in <see cref="PendingTwoFactorTicket"/>)

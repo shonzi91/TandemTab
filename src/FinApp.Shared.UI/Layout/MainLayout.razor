@@ -54,6 +54,23 @@
                 </div>
             </div>
         }
+        else if (Auth.CurrentUser?.DeletionPending == true)
+        {
+            <div class="consent-gate">
+                <div class="consent-card">
+                    <h2>@Loc["Your account is scheduled for deletion"]</h2>
+                    <p>@string.Format(Loc["It will be permanently deleted on {0}. Until then you can keep it and carry on where you left off."], Auth.CurrentUser!.PendingDeletionAt!.Value.LocalDateTime.ToString("dd MMM yyyy"))</p>
+                    @if (_deleteError is not null)
+                    {
+                        <div class="pm-msg pm-error">@_deleteError</div>
+                    }
+                    <div class="pm-actions">
+                        <button class="primary" @onclick="KeepAccount" disabled="@_deleteBusy">@Loc["Keep my account"]</button>
+                        <button class="ghost" @onclick="SignOut">@Loc["Sign out"]</button>
+                    </div>
+                </div>
+            </div>
+        }
         else
         {
             @Body
@@ -207,6 +224,32 @@
                         }
                     </ul>
                 }
+                @if (_2faSetup is null && _2faRecoveryCodes is null)
+                {
+                    <h4 class="pm-danger-h">@Loc["Delete account"]</h4>
+                    @if (_deleteError is not null)
+                    {
+                        <div class="pm-msg pm-error">@_deleteError</div>
+                    }
+                    @if (!_deleteConfirm)
+                    {
+                        <p class="pm-hint">@Loc["Permanently deletes your account after a 30-day grace period. Your entries in accounts shared with you are kept."]</p>
+                        <button class="ghost danger" @onclick="() => { _deleteConfirm = true; _deleteError = null; }">@Loc["Delete my account"]</button>
+                    }
+                    else
+                    {
+                        <p class="pm-hint">@Loc["We'll archive your account for 30 days (sign back in to cancel), then delete it and your solo accounts for good. If you own a shared account, transfer it first."]</p>
+                        @if (Auth.CurrentUser!.TwoFactorEnabled)
+                        {
+                            <label>@Loc["Enter a two-factor code to confirm"] <input type="text" inputmode="numeric" placeholder="123456" @bind="_deleteCode" /></label>
+                        }
+                        <div class="pm-actions">
+                            <button class="ghost" @onclick="() => { _deleteConfirm = false; _deleteCode = string.Empty; _deleteError = null; }">@Loc["Cancel"]</button>
+                            <button class="ghost danger" @onclick="DeleteAccount" disabled="@(_deleteBusy || (Auth.CurrentUser!.TwoFactorEnabled && string.IsNullOrWhiteSpace(_deleteCode)))">@Loc["Delete my account"]</button>
+                        </div>
+                    }
+                }
+
                 @* While a 2FA sub-flow is active it has its own Cancel/Done — hide the profile's Close so there's one clear action. *@
                 @if (_2faSetup is null && _2faRecoveryCodes is null)
                 {
@@ -228,6 +271,10 @@
     private bool _avatarBusy;
     private bool _dark;
     private string? _avatarError;
+    // Account deletion (danger zone + the "keep my account" gate shown when signing in during the grace period).
+    private bool _deleteBusy, _deleteConfirm;
+    private string _deleteCode = "";
+    private string? _deleteError;
     private string Initial => (Auth.CurrentUser?.Username ?? "?").Trim() is { Length: > 0 } u ? u[..1].ToUpperInvariant() : "?";
 
     // Hide the redundant email when it's identical to the username (common for external sign-ups).
@@ -260,6 +307,31 @@
         StateHasChanged();
     }
     private void CloseProfile() => _profileOpen = false;
+
+    /// <summary>Schedule the signed-in user's account for deletion; on success /me flips to pending and the app shows the grace gate.</summary>
+    private async Task DeleteAccount()
+    {
+        _deleteBusy = true; _deleteError = null;
+        try
+        {
+            await Api.DeleteMyAccountAsync(Auth.CurrentUser!.TwoFactorEnabled ? _deleteCode : null);
+            _deleteConfirm = false; _deleteCode = ""; _profileOpen = false;
+            await Auth.RefreshUserAsync();   // now DeletionPending → the grace gate takes over
+        }
+        catch (ApiException ex) { _deleteError = ex.Message; }
+        catch { _deleteError = Loc["Couldn’t reach the server. Check your connection and try again."]; }
+        finally { _deleteBusy = false; }
+    }
+
+    /// <summary>Cancel a pending deletion (from the grace gate) and return to the app.</summary>
+    private async Task KeepAccount()
+    {
+        _deleteBusy = true; _deleteError = null;
+        try { await Api.CancelMyDeletionAsync(); await Auth.RefreshUserAsync(); }
+        catch (ApiException ex) { _deleteError = ex.Message; }
+        catch { _deleteError = Loc["Couldn’t reach the server. Check your connection and try again."]; }
+        finally { _deleteBusy = false; }
+    }
 
     private async Task Reactivate(Guid accountId)
     {

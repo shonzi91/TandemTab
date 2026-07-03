@@ -42,10 +42,16 @@ public record TwoFactorRecoveryDto(string[] RecoveryCodes);
 /// <see cref="Provider"/> names the external sign-in provider (e.g. "google") when the user signed up that way — null for
 /// password users; <see cref="IsExternal"/> is the convenience flag used to hide the password-change UI.</summary>
 public record UserDto(Guid Id, string Username, string Email, string? Avatar = null, string? Provider = null,
-    bool EmailVerified = false, bool TwoFactorEnabled = false)
+    bool EmailVerified = false, bool TwoFactorEnabled = false, DateTimeOffset? PendingDeletionAt = null)
 {
     public bool IsExternal => !string.IsNullOrEmpty(Provider);
+
+    /// <summary>The account is scheduled for deletion (soft-deleted); the user can still cancel until this passes.</summary>
+    public bool DeletionPending => PendingDeletionAt is not null;
 }
+
+/// <summary>Request to delete the signed-in user's whole account. When 2FA is on, <see cref="TwoFactorCode"/> is required.</summary>
+public record DeleteAccountRequest(string? TwoFactorCode = null);
 
 /// <summary>Set (or clear, with null) the signed-in user's profile picture. <see cref="DataUrl"/> is a small data-URL image.</summary>
 public record SetAvatarRequest(string? DataUrl);

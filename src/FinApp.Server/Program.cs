@@ -83,6 +83,7 @@ builder.Services.AddScoped<ExternalAuthService>();
 builder.Services.AddHttpClient();
 builder.Services.AddScoped<AccountService>();
 builder.Services.AddScoped<ArchivedAccountsService>();
+builder.Services.AddScoped<AccountDeletionService>();
 builder.Services.AddScoped<SnapshotService>();
 builder.Services.AddScoped<AccountExportService>();
 builder.Services.AddScoped<InvitationService>();
@@ -178,6 +179,10 @@ using (var scope = app.Services.CreateScope())
     var archives = scope.ServiceProvider.GetRequiredService<ArchivedAccountsService>();
     await archives.EnsureSchemaAsync();
     await archives.PurgeExpiredAsync();
+    // Pending user-deletion table + hard-delete any identity past its 30-day grace window on startup.
+    var deletions = scope.ServiceProvider.GetRequiredService<AccountDeletionService>();
+    await deletions.EnsureSchemaAsync();
+    await deletions.PurgeDueAsync();
 }
 
 // Security response headers on everything (incl. static files + errors). Set before next() so they're
@@ -379,12 +384,27 @@ app.MapPost("/consent", async (RecordConsentRequest req, ClaimsPrincipal user, C
 }).RequireAuthorization();
 
 app.MapGet("/me", async (ClaimsPrincipal user, AvatarService avatars, ExternalIdentityService identities,
-        EmailVerificationService emailVerification, TwoFactorService twoFactor, CancellationToken ct) =>
+        EmailVerificationService emailVerification, TwoFactorService twoFactor, AccountDeletionService deletions, CancellationToken ct) =>
         Results.Ok(new UserDto(user.UserId(), user.Username(), user.Email(),
             await avatars.GetAsync(user.UserId(), ct), await identities.GetProviderAsync(user.UserId(), ct),
             EmailVerified: await emailVerification.IsVerifiedAsync(user.UserId(), user.Email(), ct),
-            TwoFactorEnabled: await twoFactor.IsEnabledAsync(user.UserId(), ct))))
+            TwoFactorEnabled: await twoFactor.IsEnabledAsync(user.UserId(), ct),
+            PendingDeletionAt: await deletions.ScheduledAtAsync(user.UserId(), ct))))
     .RequireAuthorization();
+
+// Delete the signed-in user's whole account (soft delete: 30-day grace, then purged). 2FA-gated when enabled;
+// blocked while they still own a shared account (transfer ownership first). Logging back in + cancel aborts it.
+app.MapPost("/me/delete", async (DeleteAccountRequest req, ClaimsPrincipal user, AccountDeletionService deletions, CancellationToken ct) =>
+{
+    await deletions.RequestAsync(user.UserId(), req.TwoFactorCode, ct);
+    return Results.NoContent();
+}).RequireAuthorization().RequireRateLimiting("auth");
+
+app.MapPost("/me/delete/cancel", async (ClaimsPrincipal user, AccountDeletionService deletions, CancellationToken ct) =>
+{
+    await deletions.CancelAsync(user.UserId(), ct);
+    return Results.NoContent();
+}).RequireAuthorization();
 
 app.MapPut("/me/avatar", async (SetAvatarRequest req, ClaimsPrincipal user, AvatarService avatars, CancellationToken ct) =>
 {
