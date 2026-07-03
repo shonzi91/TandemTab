@@ -34,4 +34,19 @@ public sealed class FundTransfer : Entity
     }
 
     public void SetSyncedSides(bool fromSynced, bool toSynced) { FromSynced = fromSynced; ToSynced = toSynced; }
+
+    /// <summary>When set, the id of the bank transaction this transfer was imported from — provenance and a dedupe
+    /// key so a later re-sync doesn't re-add it. Null for manual transfers.</summary>
+    public string? BankExternalId { get; private set; }
+
+    /// <summary>True when this transfer was created automatically by a saved money-in rule on bank sync (not
+    /// individually reviewed), so the UI can badge it. Cleared once the user edits it.</summary>
+    public bool AutoFiled { get; private set; }
+
+    /// <summary>Record (or clear) this transfer's bank origin. See <see cref="BankExternalId"/> and <see cref="AutoFiled"/>.</summary>
+    public void SetBankLink(string? externalId, bool autoFiled)
+    {
+        BankExternalId = string.IsNullOrWhiteSpace(externalId) ? null : externalId.Trim();
+        AutoFiled = autoFiled;
+    }
 }

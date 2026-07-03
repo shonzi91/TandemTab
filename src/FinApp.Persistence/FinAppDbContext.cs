@@ -207,6 +207,8 @@ public sealed class FinAppDbContext(DbContextOptions<FinAppDbContext> options) :
             t.Property(x => x.Note);
             t.Ignore(x => x.FromSynced);  // body data — synced-fund markers ride in the snapshot
             t.Ignore(x => x.ToSynced);
+            t.Ignore(x => x.BankExternalId);   // body data — bank provenance rides in the snapshot
+            t.Ignore(x => x.AutoFiled);        // body data — auto-filed marker rides in the snapshot
         });
 
         b.Entity<Contribution>(c =>

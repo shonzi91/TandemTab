@@ -482,7 +482,7 @@ else
                             @foreach (var t in transfers)
                             {
                                 <li>
-                                    <span>@t.Date.ToString("dd MMM") · @t.Label@(string.IsNullOrEmpty(t.Note) ? "" : $" · {t.Note}")</span>
+                                    <span>@t.Date.ToString("dd MMM") · @t.Label@(string.IsNullOrEmpty(t.Note) ? "" : $" · {t.Note}")@if (t.AutoFiled) { <span class="row-note" title="@AutoFiledTransferTitle(t.Note)">🏦</span> }</span>
                                     <span class="row-actions">
                                         <span class="amt">@Fmt(t.Amount)</span>
                                         @if (State.IsPeriodOpen && !t.IsExternal)
@@ -1777,6 +1777,22 @@ else
                     {
                         <small class="hint">@Loc["Link a bank first (Money → Bank sync) to sync a fund with it."]</small>
                     }
+                    var fundRules = FundRulesFor(_modalFundId).ToList();
+                    @if (fundRules.Count > 0)
+                    {
+                        <h4 class="detail-sub">@Loc["Auto money-in rules"]</h4>
+                        <small class="hint">@Loc["Imported money-in from these merchants is auto-filed as a transfer from this fund. Unmapping only stops future auto-filing."]</small>
+                        <ul class="list">
+                            @foreach (var key in fundRules)
+                            {
+                                var mk = key;
+                                <li>
+                                    <span class="row-main">🏦 @mk</span>
+                                    <span class="row-actions"><button class="exp-edit" title="@Loc["Remove"]" @onclick="() => RemoveBankRuleKey(mk)" disabled="@_bankBusy">🗑️</button></span>
+                                </li>
+                            }
+                        </ul>
+                    }
                     <div class="modal-actions">
                         <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
                         <button @onclick="SaveFundGated" disabled="@(string.IsNullOrWhiteSpace(_fName))">@Loc["Save"]</button>
@@ -1836,6 +1852,18 @@ else
                     </label>
                     <label>@Loc["Amount"] <input type="number" step="0.01" min="0" @bind="_editTransferAmount" /></label>
                     <label>@Loc["Note (optional)"] <input type="text" @bind="_editTransferNote" /></label>
+                    @if (State.FindFundTransfer(_editTransferId) is { AutoFiled: true } autoTr)
+                    {
+                        @if (!string.IsNullOrEmpty(autoTr.Note) && MappingFor(autoTr.Note!) is { Kind: "fund" })
+                        {
+                            <p class="hint">🏦 @Loc["Auto-filed from a saved money-in rule:"] <strong>@autoTr.Note</strong> → <strong>@State.FundName(autoTr.FromFundId)</strong>
+                                <button type="button" class="link" @onclick="() => RemoveBankRuleKey(BudgetingState.BankMatchKey(autoTr.Note!))" disabled="@_bankBusy">@Loc["Remove rule"]</button></p>
+                        }
+                        else
+                        {
+                            <p class="hint">🏦 @Loc["Filed automatically from your bank."]</p>
+                        }
+                    }
                     <div class="modal-actions">
                         <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
                         <button @onclick="SaveEditTransfer" disabled="@(_editTransferAmount <= 0 || _editTransferFromId == _editTransferToId)">@Loc["Save"]</button>
@@ -2378,6 +2406,26 @@ else
             }
             catch { /* leave it in the list for manual handling */ }
         }
+        await AutoHandleMappedCreditsAsync();
+    }
+
+    /// <summary>Auto-apply money-in whose merchant is mapped to a source fund (Kind "fund"): create the transfer
+    /// from that fund into the synced fund, marked auto-filed, so the user doesn't confirm each one by hand.</summary>
+    private async Task AutoHandleMappedCreditsAsync()
+    {
+        if (!State.HasSyncedFund || !State.IsPeriodOpen) return;
+        foreach (var tx in _bankPending.Where(t => t.Amount > 0).ToList())
+        {
+            if (MappingFor(tx.Description) is not { Kind: "fund" } m) continue;
+            if (m.TargetId == State.SyncedFundId) continue;                        // source can't be the synced fund itself
+            if (!State.SelectableFunds.Any(f => f.Id == m.TargetId)) continue;     // rule points at a fund that's gone
+            try
+            {
+                await State.ConfirmBankMoneyIn(tx.ExternalId, $"fund:{m.TargetId}", tx.Amount, tx.Description, ClampToPeriod(tx.Date), autoFiled: true);
+                _bankPending.RemoveAll(p => p.ExternalId == tx.ExternalId);
+            }
+            catch { /* leave it in the list for manual handling */ }
+        }
     }
 
     private async Task DisconnectBankAsync()
@@ -2501,6 +2549,25 @@ else
     /// <summary>Remove the merchant→category rule behind an auto-filed expense (leaves the expense; stops future auto-filing).</summary>
     private Task RemoveBankRuleFor(FinApp.Domain.Budgeting.Expense e) =>
         string.IsNullOrEmpty(e.Note) ? Task.CompletedTask : UnmapVendorFromCat(BudgetingState.BankMatchKey(e.Note!));
+
+    /// <summary>Tooltip for an auto-filed fund transfer: names the responsible money-in rule if it still exists.</summary>
+    private string AutoFiledTransferTitle(string? note) =>
+        !string.IsNullOrEmpty(note) && MappingFor(note!) is { Kind: "fund" } m
+            ? $"{Loc["Auto-filed from a saved money-in rule"]}: {note} → {State.FundName(m.TargetId)}"
+            : Loc["Filed automatically from your bank"];
+
+    /// <summary>Saved money-in rules (merchant match-keys) that auto-file into a transfer from this fund.</summary>
+    private IEnumerable<string> FundRulesFor(Guid fundId) =>
+        _bankMappings.Where(kv => kv.Value.Kind == "fund" && kv.Value.TargetId == fundId).Select(kv => kv.Key);
+
+    /// <summary>Remove a saved bank rule by its merchant match-key (used by the fund-edit and transfer-edit views).</summary>
+    private async Task RemoveBankRuleKey(string matchKey)
+    {
+        _bankBusy = true;
+        try { await State.RemoveBankMapping(matchKey); _bankMappings.Remove(matchKey); _editCatVendors.Remove(matchKey); }
+        catch { /* ignore — best effort */ }
+        finally { _bankBusy = false; }
+    }
 
     /// <summary>Open the Spending tab focused on today's expenses (clamped into the current period).</summary>
     private void ShowExpensesTab()
@@ -3096,11 +3163,11 @@ else
         && _transferAmount <= InlineTransferMax;
 
     /// <summary>This period's fund-to-fund transfers and out-to-account transfers, merged newest-first.</summary>
-    private List<(DateOnly Date, string Label, Money Amount, Guid Id, bool IsExternal, string? Note)> MergedTransfers() =>
+    private List<(DateOnly Date, string Label, Money Amount, Guid Id, bool IsExternal, string? Note, bool AutoFiled)> MergedTransfers() =>
         State.FundTransfers
-            .Select(t => (t.Date, Label: $"{State.FundName(t.FromFundId)} 🏦 → {State.FundName(t.ToFundId)} 🏦", t.Amount, t.Id, IsExternal: false, t.Note))
+            .Select(t => (t.Date, Label: $"{State.FundName(t.FromFundId)} 🏦 → {State.FundName(t.ToFundId)} 🏦", t.Amount, t.Id, IsExternal: false, t.Note, t.AutoFiled))
             .Concat(State.ExternalTransfers
-                .Select(t => (t.Date, Label: $"{State.FundName(t.FundId)} 🏦 📤 {State.AccountName(t.ToAccountId ?? Guid.Empty)}", t.Amount, t.Id, IsExternal: true, t.Note)))
+                .Select(t => (t.Date, Label: $"{State.FundName(t.FundId)} 🏦 📤 {State.AccountName(t.ToAccountId ?? Guid.Empty)}", t.Amount, t.Id, IsExternal: true, t.Note, AutoFiled: false)))
             .OrderByDescending(t => t.Date)
             .ToList();
 

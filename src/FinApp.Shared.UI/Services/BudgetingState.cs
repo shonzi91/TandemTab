@@ -805,8 +805,11 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
 
     public Task EditFundTransfer(Guid id, Guid fromFundId, Guid toFundId, decimal amount, string? note)
     {
+        var before = FindFundTransfer(id);
         var transfer = Period.EditFundTransfer(id, fromFundId, toFundId, Money(amount), note);
         transfer.SetSyncedSides(FundIsSynced(fromFundId), FundIsSynced(toFundId));
+        // Keep the bank provenance (dedupe) but clear the auto-filed badge — editing means the user reviewed it.
+        transfer.SetBankLink(before?.BankExternalId, autoFiled: false);
         return SaveAsync();
     }
 
@@ -1038,7 +1041,7 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     /// <summary>Turn a bank money-in into a movement into the synced fund: the destination is the synced fund
     /// (not credited — the real balance handles it); the <paramref name="source"/> ("fund:{id}" or
     /// "contributor:{id}") is where it came from and is the side that actually moves. Then acks the row.</summary>
-    public async Task ConfirmBankMoneyIn(string externalId, string source, decimal amount, string? note, DateOnly date)
+    public async Task ConfirmBankMoneyIn(string externalId, string source, decimal amount, string? note, DateOnly date, bool autoFiled = false)
     {
         if (!HasSyncedFund) throw new InvalidOperationException("Mark a fund as synced to your bank first (Edit fund).");
         var parts = (source ?? "").Split(':');
@@ -1050,6 +1053,7 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
             if (targetId == SyncedFundId) throw new InvalidOperationException("The source can't be the synced fund itself.");
             var transfer = Period.TransferFunds(targetId, SyncedFundId, Money(amount), date, note);
             transfer.SetSyncedSides(FundIsSynced(targetId), toSynced: true);   // synced destination isn't credited
+            transfer.SetBankLink(externalId, autoFiled);                       // bank provenance + auto-filed badge
         }
         else if (parts[0] == "contributor")
         {

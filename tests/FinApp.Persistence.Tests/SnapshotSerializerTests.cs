@@ -123,12 +123,19 @@ public class SnapshotSerializerTests
         account.Funds.Single(f => f.Id == bank).SetSynced(true);
         var food = account.AddCategory("Food");
 
+        var cash = account.FundId("Cash");
         var p = account.StartPeriod(new DateOnly(2026, 1, 1), new DateOnly(2026, 1, 31));
         p.SetInitialBalance(bank, Eur(1000));
+        p.SetInitialBalance(cash, Eur(500));
         var e = new Expense(food.Id, Eur(40), new DateOnly(2026, 1, 4), owner, bank);
         e.SetFundSynced(true);
         e.SetBankLink("txn-abc-123", autoFiled: true);   // imported + auto-filed by a merchant rule
         p.AddExpense(e);
+
+        // An auto-filed money-in: transfer from Cash into the synced Bank fund.
+        var moneyIn = p.TransferFunds(cash, bank, Eur(200), new DateOnly(2026, 1, 8));
+        moneyIn.SetSyncedSides(fromSynced: false, toSynced: true);
+        moneyIn.SetBankLink("txn-in-999", autoFiled: true);
 
         var copy = AccountSnapshotSerializer.Deserialize(AccountSnapshotSerializer.Serialize(account));
 
@@ -137,7 +144,12 @@ public class SnapshotSerializerTests
         Assert.True(copiedExpense.FundSynced);
         Assert.Equal("txn-abc-123", copiedExpense.BankExternalId);   // bank provenance survives (dedupe key)
         Assert.True(copiedExpense.AutoFiled);                        // auto-filed marker survives
-        Assert.Equal(Eur(1000), copy.Periods.Single().FundBalance(bank));   // synced expense excluded, as before the round-trip
+
+        var copiedTransfer = copy.Periods.Single().FundTransfers.Single();
+        Assert.True(copiedTransfer.ToSynced);
+        Assert.Equal("txn-in-999", copiedTransfer.BankExternalId);   // transfer provenance survives too
+        Assert.True(copiedTransfer.AutoFiled);
+        Assert.Equal(Eur(1000), copy.Periods.Single().FundBalance(bank));   // synced expense + synced-dest transfer excluded
     }
 
     [Fact]
