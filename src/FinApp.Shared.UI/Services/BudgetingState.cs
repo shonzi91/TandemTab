@@ -600,6 +600,29 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
         return SaveAsync();
     }
 
+    /// <summary>Log per-fund reconciliation drift as recategorizable <b>Adjustment</b> entries in the current
+    /// period so its books reconcile to reality: an <i>expense</i> where a fund holds less than the ledger expected,
+    /// a money-in <i>deposit</i> where it holds more. Reuses (or creates once) an "Adjustment" category.</summary>
+    public async Task RecordReconciliationAdjustments(IReadOnlyList<(Guid FundId, decimal Gap)> gaps, DateOnly date)
+    {
+        Guid? expenseCat = null, contribCat = null;
+        foreach (var (fundId, gap) in gaps)
+        {
+            if (gap < 0)
+            {
+                expenseCat ??= AllCategories.FirstOrDefault(c => string.Equals(c.Name, "Adjustment", StringComparison.OrdinalIgnoreCase))?.Id
+                               ?? await AddCategory("Adjustment", null, "⚖️");
+                await AddExpense(expenseCat.Value, Math.Abs(gap), fundId, "Reconciliation", date);
+            }
+            else if (gap > 0)
+            {
+                contribCat ??= ContributionCategories.FirstOrDefault(c => string.Equals(c.Name, "Adjustment", StringComparison.OrdinalIgnoreCase))?.Id
+                               ?? await AddContributionCategory("Adjustment", "⚖️");
+                await RecordDeposit(contribCat.Value, fundId, gap, date);
+            }
+        }
+    }
+
     /// <summary>True when the deposit belongs to the signed-in user (only they may edit/remove it).</summary>
     public bool CanHandleContribution(Contribution c) => c.MemberId == CurrentMemberId;
 

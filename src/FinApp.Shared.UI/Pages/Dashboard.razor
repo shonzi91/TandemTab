@@ -1383,10 +1383,33 @@ else
                         <label class="check"><input type="checkbox" @bind="_adjustBudgets" /> @Loc["Adjust budgets to this period’s spending"]</label>
                         <small class="hint">@Loc["Each budget moves halfway toward what was actually spent, rounded up to the nearest 10."]</small>
                     }
-                    <div class="modal-actions">
-                        <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
-                        <button @onclick="ConfirmNextPeriod">@Loc["Start next month"] →</button>
-                    </div>
+                    @if (_reconcileGaps is { Count: > 0 } gaps)
+                    {
+                        <div class="alert warn-bg">
+                            <span>@Loc["Some funds don’t match what you logged — that usually means a transaction wasn’t recorded:"]</span>
+                            <ul class="list">
+                                @foreach (var g in gaps)
+                                {
+                                    <li>
+                                        <span class="row-main">@State.FundName(g.FundId)</span>
+                                        <span>@Fmt(State.Money(Math.Abs(g.Gap))) @(g.Gap < 0 ? Loc["less than expected (unlogged spending)"] : Loc["more than expected (unlogged money-in)"])</span>
+                                    </li>
+                                }
+                            </ul>
+                        </div>
+                        <div class="modal-actions">
+                            <button class="ghost" @onclick="() => { _reconcileGaps = null; CloseModal(); }">@Loc["I’ll add it myself"]</button>
+                            <button class="ghost" @onclick="RolloverIgnoringGaps">@Loc["Ignore"]</button>
+                            <button @onclick="RolloverWithAdjustments">@Loc["Log as adjustment"]</button>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="modal-actions">
+                            <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
+                            <button @onclick="StartNextMonth">@Loc["Start next month"] →</button>
+                        </div>
+                    }
                     break;
 
                 case Modal.EditExpense:
@@ -2981,13 +3004,48 @@ else
     {
         _copyBudgets = true;
         _adjustBudgets = true;
+        _reconcileGaps = null;
         _realOpenings.Clear();
         foreach (var f in State.RootFunds)
             _realOpenings[f.Id] = State.FundBalance(f.Id).Amount;
         _modal = Modal.NextPeriod;
     }
 
-    private Task ConfirmNextPeriod() => RunModal(async () =>
+    // Per-fund reconciliation gaps (entered opening − computed closing) surfaced at rollover; null = not shown.
+    private List<(Guid FundId, decimal Gap)>? _reconcileGaps;
+
+    /// <summary>Non-synced funds whose entered real opening differs from what the ledger computed — i.e. a
+    /// transaction wasn't logged. Synced funds are excluded (bank sync accounts for those).</summary>
+    private List<(Guid FundId, decimal Gap)> ComputeReconcileGaps()
+    {
+        var gaps = new List<(Guid, decimal)>();
+        foreach (var f in State.SelectableFunds)   // SelectableFunds already excludes the synced fund
+        {
+            var entered = _realOpenings.TryGetValue(f.Id, out var v) ? v : 0m;
+            var gap = Math.Round(entered - State.FundBalance(f.Id).Amount, 2);
+            if (Math.Abs(gap) >= 0.01m) gaps.Add((f.Id, gap));
+        }
+        return gaps;
+    }
+
+    private Task StartNextMonth() => RunModal(async () =>
+    {
+        var gaps = ComputeReconcileGaps();
+        if (gaps.Count > 0) { _reconcileGaps = gaps; return; }   // warn first — the user picks what to do
+        await DoRolloverAsync();
+    });
+
+    private Task RolloverIgnoringGaps() => RunModal(DoRolloverAsync);
+
+    private Task RolloverWithAdjustments() => RunModal(async () =>
+    {
+        // Log the drift as recategorizable "Adjustment" entries in the closing period, so its books reconcile.
+        if (_reconcileGaps is { } gaps)
+            await State.RecordReconciliationAdjustments(gaps, State.Period.To);
+        await DoRolloverAsync();
+    });
+
+    private async Task DoRolloverAsync()
     {
         // Prefer the balance recorded at the closing period's month-end (from sync history) so a late rollover
         // doesn't leak next-month activity in; fall back to the live balance if there's no snapshot that old.
@@ -2998,8 +3056,9 @@ else
             syncedClose ??= _bankStatus?.Balance;
         }
         await State.StartNextPeriod(_copyBudgets, _realOpenings, _adjustBudgets, syncedClose);
+        _reconcileGaps = null;
         CloseModal();
-    });
+    }
 
     private void OpenRemovePeriod() => _modal = Modal.RemovePeriod;
 
