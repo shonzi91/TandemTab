@@ -506,7 +506,9 @@ else
             @if (_bankStatus?.Enabled == true && _bankStatus.Connected && BankCredits().Count > 0)
             {
                 <section class="panel">
-                    <div class="panel-head"><h2>💰 @Loc["Incoming from bank"]</h2></div>
+                    <div class="panel-head"><h2>💰 @Loc["Incoming from bank"]</h2>
+                        <button class="link" title="@Loc["Fetch new transactions"]" @onclick="SyncBankAsync" disabled="@_bankBusy">🔄 @Loc["Refresh"]</button>
+                    </div>
                     @if (!State.HasSyncedFund)
                     {
                         <div class="alert warn-bg"><span>@Loc["Mark a fund as synced to this bank (Edit a fund) to receive these."]</span></div>
@@ -804,6 +806,7 @@ else
                                 <h2>💳 @Loc["From your bank"] <span class="bank-group-count">@bankExpenses.Count</span></h2>
                             }
                             <span class="view-toggle">
+                                <button class="view-btn" title="@Loc["Fetch new transactions"]" @onclick="SyncBankAsync" disabled="@_bankBusy">🔄</button>
                                 <button class="view-btn @(!_bankCal && _bankDay is null ? "active" : "")" title="@Loc["List"]" @onclick="() => { _bankCal = false; _bankDay = null; }">☰</button>
                                 <button class="view-btn @(_bankCal ? "active" : "")" title="@Loc["Calendar"]" @onclick="() => { _bankCal = true; _bankDay = null; }">📅</button>
                             </span>
@@ -1071,6 +1074,7 @@ else
                         <p class="hint">@Loc["All caught up — nothing left to review."]</p>
                     }
                     <div class="modal-actions">
+                        <button class="ghost" @onclick="SyncBankAsync" disabled="@_bankBusy">🔄 @Loc["Refresh"]</button>
                         <button class="ghost" @onclick="DismissBankReview">@Loc["Later"]</button>
                     </div>
                     break;
@@ -2451,9 +2455,9 @@ else
                 else
                 {
                     <select class="bank-sel" value="@RowCredit(id)" @onchange="e => _bankRowCredit[id] = e.Value?.ToString() ?? string.Empty">
-                        <option value="">@Loc["Map to… (optional)"]</option>
+                        <option value="">@Loc["From… (source)"]</option>
                         <optgroup label="@Loc["Funds"]">
-                            @foreach (var f in State.RootFunds)
+                            @foreach (var f in State.RootFunds.Where(f => f.Id != State.SyncedFundId))
                             {
                                 <option value="fund:@f.Id">@f.Name</option>
                             }
@@ -2465,12 +2469,20 @@ else
                             }
                         </optgroup>
                     </select>
+                    @if (State.HasSyncedFund)
+                    {
+                        <span class="bank-tx-fund" title="@Loc["Into your synced fund"]">↦ @State.SyncedFundName</span>
+                    }
                 }
                 <span class="bank-tx-icons">
                     <button class="icon-btn pin @(mappedLabel is not null ? "on" : "")" title="@pinTitle" @onclick="() => TogglePin(t)" disabled="@_bankBusy">📌</button>
                     @if (isDebit)
                     {
                         <button class="icon-btn ok" title="@Loc["Add expense"]" @onclick="() => ConfirmBankRow(t)" disabled="@_bankBusy">✓</button>
+                    }
+                    else
+                    {
+                        <button class="icon-btn ok" title="@Loc["Add movement"]" @onclick="() => ConfirmMoneyInRow(t)" disabled="@(_bankBusy || !State.HasSyncedFund)">✓</button>
                     }
                     <button class="icon-btn x" title="@Loc["Dismiss"]" @onclick="() => DismissBankRow(t)" disabled="@_bankBusy">✕</button>
                 </span>
@@ -2632,6 +2644,9 @@ else
             if (target == Guid.Empty) { _bankError = Loc["Pick something to map to first."]; return; }
             await State.SetBankMapping(tx.Description, kind, target);
             _bankMappings[BudgetingState.BankMatchKey(tx.Description)] = (kind, target);
+            // The new rule now covers every pending row from this merchant — auto-file them so the list clears itself.
+            await AutoHandleMappedDebitsAsync();
+            await AutoHandleMappedCreditsAsync();
         }
         catch (Exception ex) { _bankError = ex.Message; }
         finally { _bankBusy = false; }
