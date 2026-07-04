@@ -635,31 +635,25 @@ else
                         var cov = State.Coverage(cat.Id);
                         var cls = cov.IsOverBudget ? "over" : cov.ThresholdReached ? "warn" : "ok";
                         var catId = cat.Id;
-                        <div class="ring-card ring-card-lg">
-                            @if (State.IsPeriodOpen)
-                            {
-                                <button class="ring-expense" title="@Loc["Add expense"]" @onclick="() => OpenAddExpense(catId)">🧾</button>
-                            }
+                        <div class="ring-card ring-card-lg@(State.ChildrenOf(catId).Any() ? " has-subs" : "")">
                             <ProgressRing Percent="@((double)(cov.Percent ?? 0))" Class="@cls">
-                                <button class="ring-ico-big" title="@Loc["Manage category"]" @onclick="() => OpenCategoryDetail(catId)">@State.CategoryIcon(catId)</button>
-                                <button class="ring-name" title="@Loc["Manage category"]" @onclick="() => OpenCategoryDetail(catId)">@cat.Name</button>
+                                <button class="ring-ico-big" title="@Loc["Actions"]" @onclick="() => ToggleBudgetMenu(catId)">@State.CategoryIcon(catId)</button>
+                                <button class="ring-name" title="@Loc["Actions"]" @onclick="() => ToggleBudgetMenu(catId)">@cat.Name</button>
                             </ProgressRing>
                             <div class="ring-label"><span>@Fmt(cov.Spent) / @Fmt(cov.Allocated)</span></div>
+                            @if (_budgetMenuId == catId) { @BudgetCircleMenu(catId) }
                         </div>
                     }
                     @foreach (var (cat, _) in unbudgeted)
                     {
                         var catId = cat.Id;
-                        <div class="ring-card ring-card-lg">
-                            @if (State.IsPeriodOpen)
-                            {
-                                <button class="ring-expense" title="@Loc["Add expense"]" @onclick="() => OpenAddExpense(catId)">🧾</button>
-                            }
+                        <div class="ring-card ring-card-lg@(State.ChildrenOf(catId).Any() ? " has-subs" : "")">
                             <ProgressRing Percent="0" Class="mint" Dashed="true">
-                                <button class="ring-ico-big" title="@Loc["Manage category"]" @onclick="() => OpenCategoryDetail(catId)">@State.CategoryIcon(catId)</button>
-                                <button class="ring-name" title="@Loc["Manage category"]" @onclick="() => OpenCategoryDetail(catId)">@cat.Name</button>
+                                <button class="ring-ico-big" title="@Loc["Actions"]" @onclick="() => ToggleBudgetMenu(catId)">@State.CategoryIcon(catId)</button>
+                                <button class="ring-name" title="@Loc["Actions"]" @onclick="() => ToggleBudgetMenu(catId)">@cat.Name</button>
                             </ProgressRing>
                             <div class="ring-label"><span class="amt">@Fmt(State.SpentInCategory(catId))</span> <span class="ring-muted">@Loc["no budget"]</span></div>
+                            @if (_budgetMenuId == catId) { @BudgetCircleMenu(catId) }
                         </div>
                     }
                     <div class="ring-card ring-card-lg">
@@ -2037,6 +2031,42 @@ else
     private Guid _rowMenuId;
     private void ToggleRowMenu(Guid id) => _rowMenuId = _rowMenuId == id ? Guid.Empty : id;
     private void RowAct(Action a) { _rowMenuId = Guid.Empty; a(); }
+
+    // Budget-circle popover: one action menu per category (edit / expenses / add / sub-categories) so the circles
+    // stay clean instead of piling on buttons.
+    private Guid _budgetMenuId;
+    private void ToggleBudgetMenu(Guid id) => _budgetMenuId = _budgetMenuId == id ? Guid.Empty : id;
+    private void BudgetAct(Action a) { _budgetMenuId = Guid.Empty; a(); }
+
+    /// <summary>The click-anywhere-to-close action menu for a budget circle, listing its actions + sub-categories.</summary>
+    private RenderFragment<Guid> BudgetCircleMenu => catId =>
+        @<text>
+            <div class="row-menu-backdrop" @onclick="() => _budgetMenuId = Guid.Empty"></div>
+            <div class="row-menu">
+                @if (State.IsPeriodOpen)
+                {
+                    <button @onclick="() => BudgetAct(() => OpenAddExpense(catId))">🧾 @Loc["Add expense"]</button>
+                }
+                <button @onclick="() => BudgetAct(() => OpenCategoryDetail(catId))">📋 @Loc["Expenses"]</button>
+                <button @onclick="() => BudgetAct(() => OpenEdit(catId))">✏️ @Loc["Edit budget"]</button>
+                @{
+                    var subs = State.ChildrenOf(catId).ToList();
+                }
+                @if (subs.Count > 0)
+                {
+                    <div class="row-menu-head">@Loc["Sub-categories"]</div>
+                    @foreach (var sub in subs)
+                    {
+                        var subId = sub.Id;
+                        <button class="row-menu-sub" @onclick="() => BudgetAct(() => OpenCategoryDetail(subId))"><span class="cat-ico">@State.CategoryIcon(subId)</span> @sub.Name</button>
+                    }
+                }
+                @if (State.IsPeriodOpen)
+                {
+                    <button @onclick="() => BudgetAct(() => OpenAddSub(catId))">➕ @Loc["Add sub-category"]</button>
+                }
+            </div>
+        </text>;
     private readonly InsightsService _insights = new();
 
     private Guid _categoryId;

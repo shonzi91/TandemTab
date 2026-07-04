@@ -690,6 +690,13 @@ input[type=date]::-webkit-calendar-picker-indicator:hover { opacity: 1; backgrou
 }
 .row-menu button:hover { background: #f3f5f8; }
 .row-menu button.danger { color: #c0392b; }
+.row-menu-head { font-size: .68rem; color: #9ca3af; text-transform: uppercase; letter-spacing: .04em; padding: 8px 10px 2px; }
+.row-menu button.row-menu-sub { padding-left: 20px; font-size: .82rem; }
+/* A subtle mint dot on circles that have sub-categories (revealed in the popover). */
+.ring-card.has-subs::after {
+    content: ""; position: absolute; top: 6px; right: 16px; width: 7px; height: 7px;
+    border-radius: 50%; background: #13a06e; box-shadow: 0 0 0 2px #fff;
+}
 
 /* Setup tab — People row */
 .people-row { display: flex; flex-wrap: wrap; gap: 14px 18px; }
