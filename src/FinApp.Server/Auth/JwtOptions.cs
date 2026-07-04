@@ -11,7 +11,13 @@ public sealed class JwtOptions
     /// is only useful for this window, and the client refreshes transparently.</summary>
     public int ExpiryHours { get; set; } = 2;
 
-    /// <summary>Refresh-token lifetime. Long-lived so users stay signed in across sessions, but every use
-    /// rotates it (see <see cref="RefreshTokenService"/>) and any reuse revokes the whole family.</summary>
+    /// <summary>Refresh-token lifetime for users who handle <b>sensitive data</b> (2FA on, or a linked bank).
+    /// Long-lived but every use rotates it (see <see cref="RefreshTokenService"/>) and any reuse revokes the family.</summary>
     public int RefreshTokenDays { get; set; } = 30;
+
+    /// <summary>Refresh-token lifetime for <b>low-sensitivity</b> users (no 2FA, no linked bank): a much longer,
+    /// sliding "stay signed in" window so casual budgeting isn't gated behind frequent logins. Users step up to
+    /// <see cref="RefreshTokenDays"/> automatically on their next token rotation once they add 2FA or a bank
+    /// (see <see cref="SessionPolicy"/>).</summary>
+    public int RefreshTokenDaysRelaxed { get; set; } = 180;
 }

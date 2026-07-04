@@ -30,8 +30,10 @@ public sealed class RefreshTokenService(FinAppDbContext db, IOptions<JwtOptions>
             "\"CreatedAt\" text NOT NULL, \"ExpiresAt\" text NOT NULL, " +
             "\"RevokedAt\" text NULL, \"ReplacedById\" text NULL)", ct);
 
-    /// <summary>Mint a fresh refresh token for a user and return the raw <c>{id}.{secret}</c> string (shown once).</summary>
-    public async Task<string> IssueAsync(Guid userId, CancellationToken ct = default)
+    /// <summary>Mint a fresh refresh token for a user and return the raw <c>{id}.{secret}</c> string (shown once).
+    /// <paramref name="lifetimeDays"/> lets the caller vary the window by sensitivity (see <see cref="SessionPolicy"/>);
+    /// defaults to the strict <see cref="JwtOptions.RefreshTokenDays"/>.</summary>
+    public async Task<string> IssueAsync(Guid userId, int? lifetimeDays = null, CancellationToken ct = default)
     {
         var id = Guid.NewGuid();
         var secret = Base64Url(RandomNumberGenerator.GetBytes(32));
@@ -49,7 +51,7 @@ public sealed class RefreshTokenService(FinAppDbContext db, IOptions<JwtOptions>
             AddParam(cmd, "@uid", userId.ToString());
             AddParam(cmd, "@hash", HashSecret(secret));
             AddParam(cmd, "@created", Iso(now));
-            AddParam(cmd, "@expires", Iso(now.AddDays(_options.RefreshTokenDays)));
+            AddParam(cmd, "@expires", Iso(now.AddDays(lifetimeDays ?? _options.RefreshTokenDays)));
             await cmd.ExecuteNonQueryAsync(ct);
         }
         finally { if (opened) await conn.CloseAsync(); }
@@ -62,7 +64,8 @@ public sealed class RefreshTokenService(FinAppDbContext db, IOptions<JwtOptions>
     /// refresh token, and revokes the presented one. Returns null if the token is malformed, unknown, expired,
     /// or already revoked. Presenting an already-revoked token additionally revokes all of that user's tokens.
     /// </summary>
-    public async Task<(Guid UserId, string NewToken)?> ValidateAndRotateAsync(string rawToken, CancellationToken ct = default)
+    public async Task<(Guid UserId, string NewToken)?> ValidateAndRotateAsync(
+        string rawToken, Func<Guid, CancellationToken, Task<int>>? lifetimeResolver = null, CancellationToken ct = default)
     {
         if (!TryParse(rawToken, out var id, out var secret)) return null;
 
@@ -83,10 +86,12 @@ public sealed class RefreshTokenService(FinAppDbContext db, IOptions<JwtOptions>
             if (expiresAt <= DateTimeOffset.UtcNow) return null;
             if (!FixedTimeEquals(hash, HashSecret(secret))) return null;
 
-            // Rotate: issue a successor, then revoke the presented token and link the two.
+            // Rotate: issue a successor, then revoke the presented token and link the two. The successor's lifetime
+            // is recomputed from current sensitivity, so adding 2FA/a bank shortens the window on the next refresh.
             var newId = Guid.NewGuid();
             var newSecret = Base64Url(RandomNumberGenerator.GetBytes(32));
             var now = DateTimeOffset.UtcNow;
+            var lifetimeDays = lifetimeResolver is null ? _options.RefreshTokenDays : await lifetimeResolver(userId, ct);
 
             await using (var insert = conn.CreateCommand())
             {
@@ -97,7 +102,7 @@ public sealed class RefreshTokenService(FinAppDbContext db, IOptions<JwtOptions>
                 AddParam(insert, "@uid", userId.ToString());
                 AddParam(insert, "@hash", HashSecret(newSecret));
                 AddParam(insert, "@created", Iso(now));
-                AddParam(insert, "@expires", Iso(now.AddDays(_options.RefreshTokenDays)));
+                AddParam(insert, "@expires", Iso(now.AddDays(lifetimeDays)));
                 await insert.ExecuteNonQueryAsync(ct);
             }
             await using (var revoke = conn.CreateCommand())

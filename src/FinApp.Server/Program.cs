@@ -75,6 +75,7 @@ builder.Services.Configure<EmailOptions>(builder.Configuration.GetSection("Email
 builder.Services.AddScoped<IEmailSender, EmailSender>();
 builder.Services.AddScoped<EmailVerificationService>();
 builder.Services.AddScoped<TwoFactorService>();
+builder.Services.AddScoped<SessionPolicy>();
 builder.Services.AddScoped<AuthService>();
 builder.Services.AddScoped<AvatarService>();
 builder.Services.AddScoped<ExternalIdentityService>();

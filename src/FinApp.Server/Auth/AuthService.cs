@@ -11,7 +11,8 @@ namespace FinApp.Server.Auth;
 public sealed class AuthService(
     FinAppDbContext db, IPasswordHasher hasher, JwtTokenService tokens,
     RefreshTokenService refreshTokens, AuthCodeService authCodes,
-    EmailVerificationService emailVerification, IEmailSender email, TwoFactorService twoFactor)
+    EmailVerificationService emailVerification, IEmailSender email, TwoFactorService twoFactor,
+    SessionPolicy sessionPolicy)
 {
     private const int MinPasswordLength = 8;
 
@@ -55,14 +56,15 @@ public sealed class AuthService(
     private async Task<AuthResponse> IssueAsync(User user, CancellationToken ct)
     {
         var response = tokens.Issue(user);
-        var refresh = await refreshTokens.IssueAsync(user.Id, ct);
+        var days = await sessionPolicy.RefreshDaysForAsync(user.Id, ct);
+        var refresh = await refreshTokens.IssueAsync(user.Id, days, ct);
         return response with { RefreshToken = refresh };
     }
 
     /// <summary>Exchange a valid refresh token for a new access token (rotating the refresh token).</summary>
     public async Task<AuthResponse> RefreshAsync(string refreshToken, CancellationToken ct = default)
     {
-        var rotated = await refreshTokens.ValidateAndRotateAsync(refreshToken, ct)
+        var rotated = await refreshTokens.ValidateAndRotateAsync(refreshToken, sessionPolicy.RefreshDaysForAsync, ct)
             ?? throw new UnauthorizedException("Your session has expired. Please sign in again.");
         var user = await db.Users.FirstOrDefaultAsync(u => u.Id == rotated.UserId, ct)
             ?? throw new UnauthorizedException("Your session has expired. Please sign in again.");
