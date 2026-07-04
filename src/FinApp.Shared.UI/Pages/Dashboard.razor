@@ -1038,6 +1038,42 @@ else
             }
             @switch (_modal)
             {
+                case Modal.PickAccount:
+                    <h3>@Loc["Which account?"]</h3>
+                    <p class="hint">@Loc["Pick the account you want to work in. You can switch anytime from the top bar."]</p>
+                    <div class="pm-actions" style="flex-direction:column;align-items:stretch;gap:8px">
+                        @foreach (var a in State.Accounts)
+                        {
+                            var accId = a.Id;
+                            <button class="ghost" @onclick="() => PickAccountOnEntry(accId)">@a.Name <span class="pm-hint">· @a.Currency</span></button>
+                        }
+                    </div>
+                    break;
+
+                case Modal.BankReview:
+                    var reviewDebits = BankDebits();
+                    var reviewCredits = BankCredits();
+                    <h3>🏦 @Loc["Review bank transactions"]</h3>
+                    <p class="hint">@string.Format(Loc["{0} imported from {1} need a quick review."], reviewDebits.Count + reviewCredits.Count, _bankStatus?.InstitutionName ?? Loc["your bank"])</p>
+                    @if (reviewDebits.Count > 0)
+                    {
+                        <h4 class="detail-sub">@Loc["Expenses"] <span class="pm-hint">· @reviewDebits.Count</span></h4>
+                        <ul class="list bank-tx-list">@foreach (var t in reviewDebits) { @BankTxRow(t) }</ul>
+                    }
+                    @if (reviewCredits.Count > 0)
+                    {
+                        <h4 class="detail-sub">@Loc["Money in"] <span class="pm-hint">· @reviewCredits.Count</span></h4>
+                        <ul class="list bank-tx-list">@foreach (var t in reviewCredits) { @BankTxRow(t) }</ul>
+                    }
+                    @if (reviewDebits.Count == 0 && reviewCredits.Count == 0)
+                    {
+                        <p class="hint">@Loc["All caught up — nothing left to review."]</p>
+                    }
+                    <div class="modal-actions">
+                        <button class="ghost" @onclick="DismissBankReview">@Loc["Later"]</button>
+                    </div>
+                    break;
+
                 case Modal.BankConsent:
                     <h3>@_consentTitle</h3>
                     <p class="hint">@_consentBody</p>
@@ -1937,7 +1973,7 @@ else
 }
 
 @code {
-    private enum Modal { None, BankConsent, AddCat, AddBudget, EditCat, DeleteCat, CategoryDetail, AddAccount, EditAccount, DeleteAccount, RemoveMember, LeaveAccount, AddExpense, NextPeriod, RemovePeriod, EditExpense, DeleteExpense, SettleExpense, AddBucket, EditBucket, DeleteBucket, AddFund, EditFund, DeleteFund, Invite, Transfer, Deposit, EditDeposit, DeleteDeposit, ManageContribCats, ContribCat, DeleteContribCat, AddSaving, BudgetSaving, SpendSaving, EditSavingDeposit, DeleteSavingDeposit, EditTransfer, DeleteTransfer, EditPeriod, EditSavingMovement, DeleteSavingMovement, DeleteExternalTransfer }
+    private enum Modal { None, PickAccount, BankReview, BankConsent, AddCat, AddBudget, EditCat, DeleteCat, CategoryDetail, AddAccount, EditAccount, DeleteAccount, RemoveMember, LeaveAccount, AddExpense, NextPeriod, RemovePeriod, EditExpense, DeleteExpense, SettleExpense, AddBucket, EditBucket, DeleteBucket, AddFund, EditFund, DeleteFund, Invite, Transfer, Deposit, EditDeposit, DeleteDeposit, ManageContribCats, ContribCat, DeleteContribCat, AddSaving, BudgetSaving, SpendSaving, EditSavingDeposit, DeleteSavingDeposit, EditTransfer, DeleteTransfer, EditPeriod, EditSavingMovement, DeleteSavingMovement, DeleteExternalTransfer }
     private enum Tab { Overview, Account, Budgets, Savings, Bank }
 
     private Tab _tab = Tab.Overview;
@@ -1973,6 +2009,8 @@ else
     private Guid _bankAccountId;        // which account _bankStatus/_bankPending belong to (bank is per-account)
     private bool _bankBusy;
     private string? _bankError;
+    // On-entry flow: account picker (when >1 account) then the bank-review modal.
+    private bool _entryAccountPicked;
     // Bank security gating: email-verification resend + one-time 2FA nudge + the shared-account acknowledgment.
     private bool _resendBusy, _resendOk, _2faRecDismissed;
     private bool _bankSharedAck, _bankSharedAckKnown;   // has this member acknowledged seeing a shared account's real bank data
@@ -2167,7 +2205,61 @@ else
 
         await LoadBankAsync();
         await HandleBankReturnAsync();
+        await MaybePromptOnEntryAsync();
     }
+
+    /// <summary>On entry: if there's more than one account, ask which to work in; then (or for a single account)
+    /// auto-open the bank-review modal when there are unreviewed imports.</summary>
+    private async Task MaybePromptOnEntryAsync()
+    {
+        if (_modal != Modal.None) return;   // don't override a modal opened by e.g. the bank-consent return
+        if (State.Accounts.Count > 1 && !_entryAccountPicked)
+        {
+            _modal = Modal.PickAccount;
+            return;   // the review check runs once they've picked (PickAccountOnEntry)
+        }
+        await MaybeOpenBankReviewAsync();
+    }
+
+    private async Task PickAccountOnEntry(Guid accountId)
+    {
+        _entryAccountPicked = true;
+        if (accountId != State.CurrentAccountId)
+        {
+            await State.SwitchAccount(accountId);
+            await LoadBankAsync();
+        }
+        CloseModal();
+        await MaybeOpenBankReviewAsync();
+    }
+
+    /// <summary>Auto-open the bank-review modal when the current account has a synced bank with unreviewed
+    /// transactions the user hasn't already dismissed — re-prompting only once a newer transaction arrives.</summary>
+    private async Task MaybeOpenBankReviewAsync()
+    {
+        if (_modal != Modal.None || _bankStatus?.Connected != true) return;
+        var pending = BankRowsForPeriod();
+        if (pending.Count == 0) return;
+        var newest = NewestPendingId(pending);
+        string? dismissed = null;
+        try { dismissed = await JS.InvokeAsync<string?>("localStorage.getItem", BankReviewKey()); } catch { /* no storage */ }
+        if (dismissed == newest) return;   // already dismissed, and nothing newer has arrived since
+        _modal = Modal.BankReview;
+        StateHasChanged();
+    }
+
+    /// <summary>Close the review modal and remember the newest transaction, so we don't nag until a newer one lands.</summary>
+    private async Task DismissBankReview()
+    {
+        var pending = BankRowsForPeriod();
+        if (pending.Count > 0)
+            try { await JS.InvokeVoidAsync("localStorage.setItem", BankReviewKey(), NewestPendingId(pending)); } catch { /* no storage */ }
+        CloseModal();
+    }
+
+    private static string NewestPendingId(List<PendingBankTransactionDto> pending) =>
+        pending.OrderByDescending(t => t.Date).ThenBy(t => t.ExternalId).First().ExternalId;
+    private string BankReviewKey() => $"finapp_bankreview_{State.CurrentAccountId}";
 
     // --- Bank sync (Open Banking) ----------------------------------------
     /// <summary>Fetch the account's bank-sync status and any staged transactions (silent if the feature is off).</summary>
