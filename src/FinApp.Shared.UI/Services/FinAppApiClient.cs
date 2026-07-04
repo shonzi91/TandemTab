@@ -130,6 +130,8 @@ public sealed class FinAppApiClient(HttpClient http)
         SendAsync<List<PendingBankTransactionDto>>(HttpMethod.Get, $"/accounts/{accountId}/bank/pending", null, ct);
     public Task<List<BankAccountDto>> GetBankAccountsAsync(Guid accountId, CancellationToken ct = default) =>
         SendAsync<List<BankAccountDto>>(HttpMethod.Get, $"/accounts/{accountId}/bank/accounts", null, ct);
+    public Task<BankBalanceAtDto> GetBankBalanceAtAsync(Guid accountId, DateOnly date, CancellationToken ct = default) =>
+        SendAsync<BankBalanceAtDto>(HttpMethod.Get, $"/accounts/{accountId}/bank/balance-at?date={date:yyyy-MM-dd}", null, ct);
     public Task SelectBankAccountAsync(Guid accountId, string bankAccountRef, CancellationToken ct = default) =>
         SendAsync(HttpMethod.Put, $"/accounts/{accountId}/bank/account", new SelectBankAccountRequest(bankAccountRef), ct);
     public Task AckBankTransactionAsync(Guid accountId, string externalId, bool confirmed, CancellationToken ct = default) =>

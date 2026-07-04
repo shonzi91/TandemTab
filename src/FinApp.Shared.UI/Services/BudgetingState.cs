@@ -1158,7 +1158,7 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     /// what you can budget/save), so there's no separate carryover entry — what you actually have is what you have.
     /// </summary>
     public Task StartNextPeriod(bool copyBudgets, IReadOnlyDictionary<Guid, decimal> realFundOpenings,
-        bool adjustBudgets = false, decimal? syncedFundLiveBalance = null)
+        bool adjustBudgets = false, decimal? syncedFundClosingBalance = null)
     {
         var previous = Account.CurrentPeriod!;
         previous.Close();
@@ -1174,7 +1174,7 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
             // out of the real opening total (InitialTotal) so it doesn't shift the account's money-model figures.
             if (f.IsSynced)
             {
-                if (syncedFundLiveBalance is { } bal) next.SetInitialBalance(f.Id, Money(bal), informative: true);
+                if (syncedFundClosingBalance is { } bal) next.SetInitialBalance(f.Id, Money(bal), informative: true);
                 continue;
             }
             var amount = Money(realFundOpenings.TryGetValue(f.Id, out var v) ? v : 0m);

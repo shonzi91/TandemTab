@@ -516,6 +516,11 @@ accounts.MapGet("/{id:guid}/bank/accounts", async (Guid id, ClaimsPrincipal user
     await RequireVerifiedEmailAsync(user, emailVerification, ct)
         ?? Results.Ok(await svc.ListAccountsAsync(user.UserId(), id, ct)));
 
+// The recorded bank balance on or before a date (a closed period's end) — for showing month-end, not live.
+accounts.MapGet("/{id:guid}/bank/balance-at", async (Guid id, DateOnly date, ClaimsPrincipal user, BankSyncService svc, EmailVerificationService emailVerification, CancellationToken ct) =>
+    await RequireVerifiedEmailAsync(user, emailVerification, ct)
+        ?? Results.Ok(new BankBalanceAtDto(await svc.BalanceAsOfAsync(user.UserId(), id, date, ct))));
+
 accounts.MapPut("/{id:guid}/bank/account", async (Guid id, SelectBankAccountRequest req, ClaimsPrincipal user, BankSyncService svc, CancellationToken ct) =>
 {
     await svc.SelectAccountAsync(user.UserId(), id, req.Ref, ct);

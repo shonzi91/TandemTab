@@ -1,6 +1,9 @@
 using System.Net;
 using System.Net.Http.Json;
 using FinApp.Contracts;
+using FinApp.Persistence;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace FinApp.Server.Tests;
 
@@ -70,6 +73,34 @@ public class BankSyncApiTests : IClassFixture<FinAppServerFactory>
         var resp = await stranger.GetAsync($"/accounts/{accountId}/bank/status");
 
         Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
+    }
+
+    [Fact]
+    public async Task Balance_at_returns_the_newest_snapshot_on_or_before_the_date()
+    {
+        var (client, accountId) = await AccountAsync("balHist");
+
+        // Seed dated snapshots directly (the provider is inert in tests, so syncs record nothing).
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<FinAppDbContext>();
+            await db.Database.ExecuteSqlRawAsync(
+                "INSERT INTO \"BankBalanceHistory\" (\"AccountId\",\"Day\",\"Balance\",\"Currency\") VALUES ({0},{1},{2},{3})",
+                accountId.ToString(), "2026-03-31", "1300", "EUR");
+            await db.Database.ExecuteSqlRawAsync(
+                "INSERT INTO \"BankBalanceHistory\" (\"AccountId\",\"Day\",\"Balance\",\"Currency\") VALUES ({0},{1},{2},{3})",
+                accountId.ToString(), "2026-04-01", "1500", "EUR");
+        }
+
+        // On the month-end date → the March snapshot (not the April one that landed a day later).
+        Assert.Equal(1300m,
+            (await client.GetFromJsonAsync<BankBalanceAtDto>($"/accounts/{accountId}/bank/balance-at?date=2026-03-31"))!.Balance);
+        // Later date → the newest on or before it.
+        Assert.Equal(1500m,
+            (await client.GetFromJsonAsync<BankBalanceAtDto>($"/accounts/{accountId}/bank/balance-at?date=2026-04-15"))!.Balance);
+        // Before any snapshot → null.
+        Assert.Null(
+            (await client.GetFromJsonAsync<BankBalanceAtDto>($"/accounts/{accountId}/bank/balance-at?date=2026-03-01"))!.Balance);
     }
 
     [Fact]

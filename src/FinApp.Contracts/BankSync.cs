@@ -11,6 +11,9 @@ public record BankSyncStatusDto(bool Enabled, bool Connected, string? Institutio
 /// <summary>One authorized bank account on a connection: its provider id, a friendly label, and its live balance.</summary>
 public record BankAccountDto(string Ref, string Label, decimal? Balance, string? Currency, bool Selected);
 
+/// <summary>The recorded bank balance on or before a given date (a closed period's end), or null if none that old.</summary>
+public record BankBalanceAtDto(decimal? Balance);
+
 /// <summary>Choose which authorized bank account the connection syncs from.</summary>
 public record SelectBankAccountRequest(string Ref);
 

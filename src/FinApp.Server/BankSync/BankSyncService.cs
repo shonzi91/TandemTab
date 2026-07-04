@@ -50,6 +50,12 @@ public sealed class BankSyncService(FinAppDbContext db, EnableBankingClient eb, 
             "CREATE TABLE IF NOT EXISTS \"BankMappings\" (" +
             "\"AccountId\" text NOT NULL, \"MatchKey\" text NOT NULL, \"Kind\" text NOT NULL, \"TargetId\" text NOT NULL, " +
             "PRIMARY KEY (\"AccountId\", \"MatchKey\"))", ct);
+        // Dated balance snapshots (one row per calendar day, latest wins) so a closed period can show the real
+        // month-end balance rather than whatever it was whenever the user got around to rolling over.
+        await db.Database.ExecuteSqlRawAsync(
+            "CREATE TABLE IF NOT EXISTS \"BankBalanceHistory\" (" +
+            "\"AccountId\" text NOT NULL, \"Day\" text NOT NULL, \"Balance\" text NOT NULL, \"Currency\" text NULL, " +
+            "PRIMARY KEY (\"AccountId\", \"Day\"))", ct);
         // Columns added idempotently so existing tables gain them without a migration. SQLite lacks
         // ADD COLUMN IF NOT EXISTS, so each is wrapped to ignore the "duplicate column" error.
         foreach (var col in new[]
@@ -136,18 +142,63 @@ public sealed class BankSyncService(FinAppDbContext db, EnableBankingClient eb, 
         return true;
     }
 
-    /// <summary>Fetch the account's live balance and store it on the connection (best-effort).</summary>
+    /// <summary>Fetch the account's live balance, store it on the connection, and record a dated snapshot (best-effort).</summary>
     private async Task RefreshBalanceAsync(Guid accountId, string accountRef, CancellationToken ct)
     {
         try
         {
             if (await eb.GetBalanceAsync(accountRef, ct) is { } bal)
+            {
                 await WriteConnectionColumnsAsync(accountId,
                     ("Balance", bal.Amount.ToString(CultureInfo.InvariantCulture)),
                     ("BalanceCurrency", bal.Currency),
                     ("BalanceAt", DateTimeOffset.UtcNow.ToString("O", CultureInfo.InvariantCulture)));
+                await RecordBalanceSnapshotAsync(accountId, DateOnly.FromDateTime(DateTime.UtcNow), bal.Amount, bal.Currency, ct);
+            }
         }
         catch { /* balance is best-effort — don't fail the link/sync */ }
+    }
+
+    /// <summary>Upsert one dated balance snapshot (latest wins for the day) into the balance history.</summary>
+    private async Task RecordBalanceSnapshotAsync(Guid accountId, DateOnly day, decimal balance, string? currency, CancellationToken ct)
+    {
+        var conn = db.Database.GetDbConnection();
+        var opened = await OpenAsync(conn, ct);
+        try
+        {
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText =
+                "INSERT INTO \"BankBalanceHistory\" (\"AccountId\", \"Day\", \"Balance\", \"Currency\") VALUES (@acc, @day, @bal, @cur) " +
+                "ON CONFLICT (\"AccountId\", \"Day\") DO UPDATE SET \"Balance\" = @bal, \"Currency\" = @cur";
+            AddParam(cmd, "@acc", accountId.ToString());
+            AddParam(cmd, "@day", day.ToString("O"));
+            AddParam(cmd, "@bal", balance.ToString(CultureInfo.InvariantCulture));
+            AddParam(cmd, "@cur", (object?)currency ?? DBNull.Value);
+            await cmd.ExecuteNonQueryAsync(ct);
+        }
+        finally { if (opened) await conn.CloseAsync(); }
+    }
+
+    /// <summary>The most recent recorded balance on or before <paramref name="date"/> (e.g. a period's end date), or
+    /// null if no snapshot that old exists. Lets a closed period show the real month-end balance.</summary>
+    public async Task<decimal?> BalanceAsOfAsync(Guid userId, Guid accountId, DateOnly date, CancellationToken ct = default)
+    {
+        await EnsureContributorAsync(userId, accountId, ct);
+        var conn = db.Database.GetDbConnection();
+        var opened = await OpenAsync(conn, ct);
+        try
+        {
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText =
+                "SELECT \"Balance\" FROM \"BankBalanceHistory\" WHERE \"AccountId\" = @acc AND \"Day\" <= @day " +
+                "ORDER BY \"Day\" DESC LIMIT 1";
+            AddParam(cmd, "@acc", accountId.ToString());
+            AddParam(cmd, "@day", date.ToString("O"));
+            return await cmd.ExecuteScalarAsync(ct) is string s
+                ? decimal.Parse(s, CultureInfo.InvariantCulture)
+                : null;
+        }
+        finally { if (opened) await conn.CloseAsync(); }
     }
 
     /// <summary>The authorized bank accounts on this connection, each with a label + live balance, for picking one.</summary>

@@ -2989,9 +2989,15 @@ else
 
     private Task ConfirmNextPeriod() => RunModal(async () =>
     {
-        // Capture the live bank balance now so the period we're closing keeps its "balance at close" for history.
-        var syncedLive = State.HasSyncedFund ? _bankStatus?.Balance : null;
-        await State.StartNextPeriod(_copyBudgets, _realOpenings, _adjustBudgets, syncedLive);
+        // Prefer the balance recorded at the closing period's month-end (from sync history) so a late rollover
+        // doesn't leak next-month activity in; fall back to the live balance if there's no snapshot that old.
+        decimal? syncedClose = null;
+        if (State.HasSyncedFund)
+        {
+            try { syncedClose = (await Api.GetBankBalanceAtAsync(State.CurrentAccountId, State.Period.To)).Balance; } catch { /* fall back */ }
+            syncedClose ??= _bankStatus?.Balance;
+        }
+        await State.StartNextPeriod(_copyBudgets, _realOpenings, _adjustBudgets, syncedClose);
         CloseModal();
     });
 
