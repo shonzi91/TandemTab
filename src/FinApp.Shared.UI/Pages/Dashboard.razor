@@ -367,9 +367,10 @@ else
                                 }
                             </span>
                             <span class="row-ops">
-                                @if (State.FundIsSynced(fid) && _bankStatus?.Balance is { } sbal)
+                                @if (State.FundIsSynced(fid))
                                 {
-                                    <span class="amt" title="@Loc["Live bank balance"]">@Fmt(new Money(sbal, _bankStatus.BalanceCurrency ?? State.Currency))</span>
+                                    var sd = SyncedFundDisplay(fid);
+                                    <span class="amt" title="@sd.Title">@Fmt(sd.Amount)</span>
                                 }
                                 else
                                 {
@@ -2261,6 +2262,19 @@ else
         pending.OrderByDescending(t => t.Date).ThenBy(t => t.ExternalId).First().ExternalId;
     private string BankReviewKey() => $"finapp_bankreview_{State.CurrentAccountId}";
 
+    /// <summary>What to show for a synced fund's balance: the live bank figure on the current open period, the
+    /// balance captured when a closed period rolled over otherwise (falling back to live, then the computed balance).</summary>
+    private (Money Amount, string Title) SyncedFundDisplay(Guid fid)
+    {
+        if (State.IsPeriodOpen && _bankStatus?.Balance is { } live)
+            return (new Money(live, _bankStatus.BalanceCurrency ?? State.Currency), Loc["Live bank balance"]);
+        if (!State.IsPeriodOpen && State.SyncedFundClosingBalance(fid) is { } closed)
+            return (closed, Loc["Balance when this period closed"]);
+        if (_bankStatus?.Balance is { } live2)
+            return (new Money(live2, _bankStatus.BalanceCurrency ?? State.Currency), Loc["Live bank balance"]);
+        return (State.FundBalance(fid), string.Empty);
+    }
+
     // --- Bank sync (Open Banking) ----------------------------------------
     /// <summary>Fetch the account's bank-sync status and any staged transactions (silent if the feature is off).</summary>
     private async Task LoadBankAsync()
@@ -2975,7 +2989,9 @@ else
 
     private Task ConfirmNextPeriod() => RunModal(async () =>
     {
-        await State.StartNextPeriod(_copyBudgets, _realOpenings, _adjustBudgets);
+        // Capture the live bank balance now so the period we're closing keeps its "balance at close" for history.
+        var syncedLive = State.HasSyncedFund ? _bankStatus?.Balance : null;
+        await State.StartNextPeriod(_copyBudgets, _realOpenings, _adjustBudgets, syncedLive);
         CloseModal();
     });
 

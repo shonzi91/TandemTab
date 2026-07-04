@@ -213,6 +213,24 @@ public class SyncedFundTests
         Assert.Equal(M(1450), p.ExpectedClosingBalance);   // 1000 opening + 600 in − 150 out = the real bank trajectory
     }
 
+    // The bank balance captured at rollover is stored as an INFORMATIVE opening: retrievable for showing a closed
+    // period's "balance at close", but excluded from the real opening total so it never shifts the money model.
+    [Fact]
+    public void Synced_fund_informative_opening_is_stored_without_shifting_the_account_total()
+    {
+        var a = Acc(out var p);
+        var bank = a.FundId("Bank");
+        var cash = a.FundId("Cash");
+        p.SetInitialBalance(cash, M(500));
+        FundOf(a, "Bank").SetSynced(true);
+
+        p.SetInitialBalance(bank, M(1000), informative: true);   // what the rollover captures for the synced fund
+
+        Assert.Equal(M(1000), p.InitialBalances.First(b => b.FundId == bank).Amount);   // retrievable for display
+        Assert.Equal(M(500), p.InitialTotal);                                          // excluded from the real opening total
+        Assert.Equal(M(500), p.ExpectedClosingBalance);                                // account total unaffected — no double count
+    }
+
     // Defensive: the domain handles a transfer with BOTH sides synced (e.g. a cross-account synced→synced move,
     // where each account marks its own side), moving neither tracked balance and leaving the account total intact.
     [Fact]

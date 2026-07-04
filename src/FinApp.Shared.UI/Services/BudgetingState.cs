@@ -1157,7 +1157,8 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     /// new period's opening balance. That carried money is immediately allocatable (opening balances count toward
     /// what you can budget/save), so there's no separate carryover entry — what you actually have is what you have.
     /// </summary>
-    public Task StartNextPeriod(bool copyBudgets, IReadOnlyDictionary<Guid, decimal> realFundOpenings, bool adjustBudgets = false)
+    public Task StartNextPeriod(bool copyBudgets, IReadOnlyDictionary<Guid, decimal> realFundOpenings,
+        bool adjustBudgets = false, decimal? syncedFundLiveBalance = null)
     {
         var previous = Account.CurrentPeriod!;
         previous.Close();
@@ -1168,12 +1169,30 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
 
         foreach (var f in Account.RootFunds)
         {
+            // A synced fund isn't entered by hand — capture the live bank balance at rollover as an INFORMATIVE
+            // opening: shown later as this period's "balance at close" for the closed period we just left, but kept
+            // out of the real opening total (InitialTotal) so it doesn't shift the account's money-model figures.
+            if (f.IsSynced)
+            {
+                if (syncedFundLiveBalance is { } bal) next.SetInitialBalance(f.Id, Money(bal), informative: true);
+                continue;
+            }
             var amount = Money(realFundOpenings.TryGetValue(f.Id, out var v) ? v : 0m);
             next.SetInitialBalance(f.Id, amount);
         }
 
         _selectedIndex = Account.Periods.Count - 1;
         return SaveAsync();
+    }
+
+    /// <summary>For the currently-viewed CLOSED period, the synced fund's balance captured at that period's rollover
+    /// (= the following period's recorded informative opening). Null on the open period, or when no snapshot exists
+    /// (e.g. a period closed before this was captured) — the caller then falls back to the live balance.</summary>
+    public Money? SyncedFundClosingBalance(Guid fundId)
+    {
+        if (_selectedIndex >= Account.Periods.Count - 1) return null;   // open/latest period → use the live balance
+        var successorOpening = Account.Periods[_selectedIndex + 1].InitialBalances.FirstOrDefault(b => b.FundId == fundId);
+        return successorOpening is null || successorOpening.Amount.IsZero ? null : successorOpening.Amount;
     }
 
     // --- Invitations ------------------------------------------------------
