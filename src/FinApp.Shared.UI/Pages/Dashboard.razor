@@ -1692,13 +1692,15 @@ else
                     break;
 
                 case Modal.DisburseSaving:
+                    var disBucketBal = DisburseBucketBalance();
                     <h3>🎯 @Loc["Apply to a goal"] — @State.SavingBucketName(_disburseBucketId)</h3>
                     <label>@Loc["Amount"] <input type="number" step="0.01" min="0" @bind="_disburseAmount" /></label>
+                    <small class="hint">@Loc["Saved in this bucket:"] <strong>@Fmt(disBucketBal)</strong></small>
                     <label>@Loc["What for? (e.g. loan prepayment)"] <input type="text" @bind="_disburseNote" /></label>
                     <small class="hint">@Loc["Money leaves the account for this goal — it’s not counted as an expense and doesn’t dent your savings rate."]</small>
                     <div class="modal-actions">
                         <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
-                        <button @onclick="DisburseSavingFromModal" disabled="@(_disburseAmount <= 0)">🎯 @Loc["Apply"]</button>
+                        <button @onclick="DisburseSavingFromModal" disabled="@(_disburseAmount <= 0 || _disburseAmount > disBucketBal.Amount)">🎯 @Loc["Apply"]</button>
                     </div>
                     break;
 
@@ -3012,9 +3014,14 @@ else
         _modal = Modal.DisburseSaving;
     }
 
+    /// <summary>How much this bucket holds (accumulated across periods) — the cap for a disbursement.</summary>
+    private Money DisburseBucketBalance() =>
+        State.SavingBuckets.FirstOrDefault(b => b.Bucket.Id == _disburseBucketId).Total is { } t && t.Currency is not null
+            ? t : State.Money(0);
+
     private Task DisburseSavingFromModal() => RunModal(async () =>
     {
-        if (_disburseAmount <= 0) return;
+        if (_disburseAmount <= 0 || _disburseAmount > DisburseBucketBalance().Amount) return;
         await State.DisburseSaving(_disburseBucketId, _disburseAmount, _disburseNote);
         _disburseAmount = 0; _disburseNote = null;
         CloseModal();

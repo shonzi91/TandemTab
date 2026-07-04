@@ -480,7 +480,11 @@ public sealed class Period : Entity
         if (amount.IsNegative)
             throw new ArgumentException("Amount cannot be negative.", nameof(amount));
 
-        var transfer = TransferOut(fundId, amount, date, toAccountId: null, note: note);   // money out, not an expense
+        // Money out, but NOT via TransferOut's per-fund cap: a disbursement deploys an account-wide savings earmark,
+        // and a bank-synced source fund keeps its tracked balance at 0 (the real money is at the bank). The real
+        // limit — you can't deploy more than the bucket holds — is enforced by the caller against the bucket balance.
+        var transfer = new ExternalTransfer(fundId, amount, date, null, note);
+        _externalTransfers.Add(transfer);
         var drawdown = new SavingAllocation(savingCategoryId, -amount, date, note ?? "Applied to a goal");
         drawdown.MarkDisbursement(transfer.Id);
         _savingAllocations.Add(drawdown);
