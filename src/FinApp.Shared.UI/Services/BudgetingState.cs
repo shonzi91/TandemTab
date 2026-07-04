@@ -696,6 +696,16 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
         return SaveAsync();
     }
 
+    /// <summary>Deploy a bucket to its goal (e.g. a loan prepayment): money leaves the account but it's not an
+    /// expense and doesn't dent the savings rate. Uses the synced fund if there is one, else the default fund.</summary>
+    public Task DisburseSaving(Guid savingCategoryId, decimal amount, string? note)
+    {
+        var fundId = HasSyncedFund ? SyncedFundId : DefaultFundId;
+        var transfer = Period.DisburseSaving(savingCategoryId, fundId, Money(amount), Today(), note);
+        transfer.SetFundSynced(FundIsSynced(fundId));   // a synced fund's real balance already reflects the outflow
+        return SaveAsync();
+    }
+
     /// <summary>Move earmarked money from one savings bucket to another (net-neutral).</summary>
     public Task MoveSavingToBucket(Guid fromBucketId, Guid toBucketId, decimal amount, string? note)
     {

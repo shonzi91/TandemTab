@@ -207,6 +207,8 @@ public sealed class Period : Entity
         var transfer = _externalTransfers.FirstOrDefault(t => t.Id == transferId)
             ?? throw new InvalidOperationException("External transfer not found in this period.");
         _externalTransfers.Remove(transfer);
+        // If this was a savings disbursement, drop the matching drawdown too so the bucket is restored.
+        _savingAllocations.RemoveAll(a => a.SourceExternalTransferId == transferId);
     }
 
     /// <summary>Total money sent out to other accounts this period (reduces the closing balance).</summary>
@@ -464,6 +466,30 @@ public sealed class Period : Entity
         _savingAllocations.Add(new SavingAllocation(savingCategoryId, -amount, date, note ?? "Saving spent", expense.Id));
         return expense;
     }
+
+    /// <summary>
+    /// Deploy a savings bucket to its goal (e.g. a loan prepayment) — money genuinely leaves the account, but it's
+    /// <b>not consumption</b>: it's recorded as an external-transfer-out (so it reduces the balance without polluting
+    /// the expenses ledger) paired with a drawdown that drains the bucket. The drawdown is marked a disbursement so
+    /// it drops the earmark but is excluded from the savings rate — deploying a save to its purpose isn't un-saving.
+    /// </summary>
+    public ExternalTransfer DisburseSaving(Guid savingCategoryId, Guid fundId, Money amount, DateOnly date, string? note = null)
+    {
+        EnsureCurrency(amount);
+        EnsureOpen();
+        if (amount.IsNegative)
+            throw new ArgumentException("Amount cannot be negative.", nameof(amount));
+
+        var transfer = TransferOut(fundId, amount, date, toAccountId: null, note: note);   // money out, not an expense
+        var drawdown = new SavingAllocation(savingCategoryId, -amount, date, note ?? "Applied to a goal");
+        drawdown.MarkDisbursement(transfer.Id);
+        _savingAllocations.Add(drawdown);
+        return transfer;
+    }
+
+    /// <summary>Total drawn down this period as savings <b>disbursements</b> (deployed to goals) — a negative figure.
+    /// Included in the earmark (<see cref="SavingsNetTotal"/>) but added back for the savings rate.</summary>
+    public Money SavingsDisbursedTotal => Sum(_savingAllocations.Where(a => a.IsDisbursement).Select(a => a.Amount));
 
     /// <summary>
     /// Mature a saving into a spendable budget for this period: release the saving earmark and add the

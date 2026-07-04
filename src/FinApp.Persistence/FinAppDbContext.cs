@@ -270,6 +270,8 @@ public sealed class FinAppDbContext(DbContextOptions<FinAppDbContext> options) :
             s.Property(x => x.SourceExpenseId);
             s.Property(x => x.BudgetCategoryId);
             s.Property(x => x.TransferPairId);
+            s.Ignore(x => x.SourceExternalTransferId);   // body data — the disbursement link rides in the snapshot
+            s.Ignore(x => x.IsDisbursement);             // computed from SourceExternalTransferId
         });
     }
 

@@ -72,6 +72,50 @@ public class SavingsTests
     }
 
     [Fact]
+    public void Disbursing_a_saving_to_a_goal_is_not_an_expense_and_keeps_the_savings_rate()
+    {
+        var account = new Account("Personal", Eur);
+        account.AddDefaultFunds();
+        var member = account.AddMember(Guid.NewGuid(), "Stoyan");
+        var fund = account.FundId("Bank");
+        var loan = account.AddSavingCategory("Loan payoff");
+
+        var p = account.StartPeriod(new DateOnly(2026, 1, 1), new DateOnly(2026, 1, 31));
+        p.Deposit(member.UserId, M(1000), fundId: fund);
+        p.AllocateToSavings(loan.Id, M(200), new DateOnly(2026, 1, 5));
+        var rateBefore = new SavingsReportService().PeriodSavingsRate(p);   // 200 / 1000 = 0.2
+
+        // Deploy the whole bucket to the loan — money leaves the account, but it isn't consumption.
+        p.DisburseSaving(loan.Id, fund, M(200), new DateOnly(2026, 1, 20), "Loan prepayment");
+
+        Assert.Equal(M(0), p.ExpensesTotal);          // not an expense
+        Assert.Equal(M(200), p.ExternalOutTotal);     // money genuinely left the account
+        Assert.Equal(M(0), p.SavingsNetTotal);        // earmark drained (200 set aside − 200 deployed)
+        Assert.Equal(rateBefore, new SavingsReportService().PeriodSavingsRate(p));   // rate unchanged — deploying isn't un-saving
+    }
+
+    [Fact]
+    public void Removing_a_disbursement_transfer_restores_the_bucket()
+    {
+        var account = new Account("Personal", Eur);
+        account.AddDefaultFunds();
+        var member = account.AddMember(Guid.NewGuid(), "Stoyan");
+        var fund = account.FundId("Bank");
+        var loan = account.AddSavingCategory("Loan payoff");
+
+        var p = account.StartPeriod(new DateOnly(2026, 1, 1), new DateOnly(2026, 1, 31));
+        p.Deposit(member.UserId, M(1000), fundId: fund);
+        p.AllocateToSavings(loan.Id, M(200), new DateOnly(2026, 1, 5));
+        var xfer = p.DisburseSaving(loan.Id, fund, M(200), new DateOnly(2026, 1, 20), "Loan prepayment");
+        Assert.Equal(M(0), p.SavingsNetTotal);
+
+        p.RemoveExternalTransfer(xfer.Id);
+
+        Assert.Equal(M(200), p.SavingsNetTotal);   // the paired drawdown is gone → the bucket is whole again
+        Assert.Equal(M(0), p.ExternalOutTotal);
+    }
+
+    [Fact]
     public void A_savings_deposit_can_be_edited_and_removed()
     {
         var account = new Account("Home", Eur);

@@ -26,11 +26,15 @@ public sealed record SavingGoalProgress(Money Accumulated, Money? Goal, decimal 
 /// </summary>
 public sealed class SavingsReportService
 {
-    /// <summary>Net set aside this period across all buckets, as a fraction of paid contributions (null if no contributions).</summary>
+    /// <summary>Net set aside this period across all buckets, as a fraction of paid contributions (null if no
+    /// contributions). Savings <b>disbursed</b> to a goal (e.g. a loan prepayment) are added back — deploying a save
+    /// to its purpose is a success, not un-saving — so the rate reflects saving habit, not whether goals were reached.</summary>
     public decimal? PeriodSavingsRate(Period period)
     {
         ArgumentNullException.ThrowIfNull(period);
-        return period.SavingsNetTotal.RatioOf(period.ContributionsPaidTotal);
+        // SavingsNetTotal includes disbursement drawdowns (negative); subtracting them (also negative) adds them back.
+        var savedForRate = period.SavingsNetTotal - period.SavingsDisbursedTotal;
+        return savedForRate.RatioOf(period.ContributionsPaidTotal);
     }
 
     /// <summary>

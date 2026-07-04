@@ -897,6 +897,7 @@ else
                                     <button title="@Loc["Add to savings"]" @onclick="() => OpenAddSaving(bucketId)">💰</button>
                                     <button title="@Loc["Budget savings"]" @onclick="() => OpenBudgetSaving(bucketId)">➡️</button>
                                     <button title="@Loc["Spend savings"]" @onclick="() => OpenSpendSaving(bucketId)">💸</button>
+                                    <button title="@Loc["Apply to a goal (e.g. loan) — not an expense"]" @onclick="() => OpenDisburseSaving(bucketId)">🎯</button>
                                 </div>
                             }
                             <div class="ring-label">
@@ -1690,6 +1691,17 @@ else
                     </div>
                     break;
 
+                case Modal.DisburseSaving:
+                    <h3>🎯 @Loc["Apply to a goal"] — @State.SavingBucketName(_disburseBucketId)</h3>
+                    <label>@Loc["Amount"] <input type="number" step="0.01" min="0" @bind="_disburseAmount" /></label>
+                    <label>@Loc["What for? (e.g. loan prepayment)"] <input type="text" @bind="_disburseNote" /></label>
+                    <small class="hint">@Loc["Money leaves the account for this goal — it’s not counted as an expense and doesn’t dent your savings rate."]</small>
+                    <div class="modal-actions">
+                        <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
+                        <button @onclick="DisburseSavingFromModal" disabled="@(_disburseAmount <= 0)">🎯 @Loc["Apply"]</button>
+                    </div>
+                    break;
+
                 case Modal.EditDeposit:
                     <h3>@Loc["Edit deposit"]</h3>
                     <label>@Loc["Category"]
@@ -2001,7 +2013,7 @@ else
 }
 
 @code {
-    private enum Modal { None, PickAccount, BankReview, BankConsent, AddCat, AddBudget, EditCat, DeleteCat, CategoryDetail, AddAccount, EditAccount, DeleteAccount, RemoveMember, LeaveAccount, AddExpense, NextPeriod, RemovePeriod, EditExpense, DeleteExpense, SettleExpense, AddBucket, EditBucket, DeleteBucket, AddFund, EditFund, DeleteFund, Invite, Transfer, Deposit, EditDeposit, DeleteDeposit, ManageContribCats, ContribCat, DeleteContribCat, AddSaving, BudgetSaving, SpendSaving, EditSavingDeposit, DeleteSavingDeposit, EditTransfer, DeleteTransfer, EditPeriod, EditSavingMovement, DeleteSavingMovement, DeleteExternalTransfer }
+    private enum Modal { None, PickAccount, BankReview, BankConsent, AddCat, AddBudget, DisburseSaving, EditCat, DeleteCat, CategoryDetail, AddAccount, EditAccount, DeleteAccount, RemoveMember, LeaveAccount, AddExpense, NextPeriod, RemovePeriod, EditExpense, DeleteExpense, SettleExpense, AddBucket, EditBucket, DeleteBucket, AddFund, EditFund, DeleteFund, Invite, Transfer, Deposit, EditDeposit, DeleteDeposit, ManageContribCats, ContribCat, DeleteContribCat, AddSaving, BudgetSaving, SpendSaving, EditSavingDeposit, DeleteSavingDeposit, EditTransfer, DeleteTransfer, EditPeriod, EditSavingMovement, DeleteSavingMovement, DeleteExternalTransfer }
     private enum Tab { Overview, Account, Budgets, Savings, Bank }
 
     private Tab _tab = Tab.Overview;
@@ -2987,6 +2999,26 @@ else
         _spendExpAmount = 0;
         _modal = Modal.SpendSaving;
     }
+
+    private Guid _disburseBucketId;
+    private decimal _disburseAmount;
+    private string? _disburseNote;
+
+    private void OpenDisburseSaving(Guid bucketId)
+    {
+        _disburseBucketId = bucketId;
+        _disburseAmount = 0;
+        _disburseNote = null;
+        _modal = Modal.DisburseSaving;
+    }
+
+    private Task DisburseSavingFromModal() => RunModal(async () =>
+    {
+        if (_disburseAmount <= 0) return;
+        await State.DisburseSaving(_disburseBucketId, _disburseAmount, _disburseNote);
+        _disburseAmount = 0; _disburseNote = null;
+        CloseModal();
+    });
 
     private Task SpendBucketAsExpense() => RunModal(async () =>
     {
