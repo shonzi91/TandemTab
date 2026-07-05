@@ -1086,6 +1086,48 @@ else
                     </div>
                 }
             </section>
+            @if (State.Loans.Count >= 2)
+            {
+                <section class="panel">
+                    <div class="panel-head">
+                        <h2>🎯 @Loc["Payoff plan"]</h2>
+                    </div>
+                    <p class="hint">@Loc["Throw one spare amount at the whole stack each month. As each loan clears, its payment rolls onto the next."]</p>
+                    <div class="plan-controls">
+                        <label>@Loc["Extra /mo across all loans"] <input type="number" step="10" min="0" @bind="_planExtra" @bind:event="oninput" /></label>
+                        <div class="plan-toggle" role="group">
+                            <button class="chip @(_planStrategy == FinApp.Domain.Forecasting.LoanForecast.Strategy.Avalanche ? "on" : "")"
+                                    @onclick="() => _planStrategy = FinApp.Domain.Forecasting.LoanForecast.Strategy.Avalanche"
+                                    title="@Loc["Highest interest rate first — cheapest overall."]">🏔️ @Loc["Avalanche"]</button>
+                            <button class="chip @(_planStrategy == FinApp.Domain.Forecasting.LoanForecast.Strategy.Snowball ? "on" : "")"
+                                    @onclick="() => _planStrategy = FinApp.Domain.Forecasting.LoanForecast.Strategy.Snowball"
+                                    title="@Loc["Smallest balance first — quickest wins."]">⛄ @Loc["Snowball"]</button>
+                        </div>
+                    </div>
+                    @if (DebtPlan is { } plan)
+                    {
+                        <div class="plan-summary">
+                            <span class="plan-big">🏁 @Loc["Debt-free"] @PayoffDate(plan.Months)</span>
+                            <span class="spending-sub">@string.Format(Loc["{0} · total interest {1}"], MonthsText(plan.Months), Fmt(State.Money(plan.TotalInterest)))</span>
+                        </div>
+                        @if (_planExtra > 0 && DebtBaseline is { } baseNoExtra && (baseNoExtra.Months > plan.Months || baseNoExtra.TotalInterest > plan.TotalInterest))
+                        {
+                            <p class="hint good-text">➡️ @string.Format(Loc["That extra clears you {0} sooner and saves {1} in interest."],
+                                MonthsText(baseNoExtra.Months - plan.Months), Fmt(State.Money(Math.Max(0m, baseNoExtra.TotalInterest - plan.TotalInterest))))</p>
+                        }
+                        <ol class="plan-order">
+                            @foreach (var step in plan.Order)
+                            {
+                                <li><span class="plan-order-name">@step.Name</span> <span class="pm-hint">@Loc["clear"] @PayoffDate(step.ClearedInMonth) · @MonthsText(step.ClearedInMonth)</span></li>
+                            }
+                        </ol>
+                    }
+                    else
+                    {
+                        <p class="hint warn-text">@Loc["At these payments the stack never clears — the minimums don’t cover the interest. Add more per month."]</p>
+                    }
+                </section>
+            }
         </div>
     </div>
 </div>
@@ -3252,6 +3294,19 @@ else
     private string? _loanName;
     private decimal _loanBalance, _loanRate, _loanPayment, _loanExtraInput;
     private bool _loanBusy;
+
+    // Debt-stack planner: one shared "extra /mo" thrown at the whole stack under a chosen strategy.
+    private decimal _planExtra;
+    private FinApp.Domain.Forecasting.LoanForecast.Strategy _planStrategy = FinApp.Domain.Forecasting.LoanForecast.Strategy.Avalanche;
+
+    private IReadOnlyList<FinApp.Domain.Forecasting.LoanForecast.LoanInput> LoanInputs =>
+        State.Loans.Select(l => new FinApp.Domain.Forecasting.LoanForecast.LoanInput(l.Id, l.Name, l.Balance, l.AnnualRatePercent, l.MinPayment)).ToList();
+
+    // The chosen plan, and the "minimums only" baseline it's measured against (both may be null = never clears).
+    private FinApp.Domain.Forecasting.LoanForecast.StrategyPlan? DebtPlan =>
+        FinApp.Domain.Forecasting.LoanForecast.PlanPayoff(LoanInputs, _planExtra, _planStrategy);
+    private FinApp.Domain.Forecasting.LoanForecast.StrategyPlan? DebtBaseline =>
+        FinApp.Domain.Forecasting.LoanForecast.PlanPayoff(LoanInputs, 0m, _planStrategy);
 
     private async Task ShowForecastsTab()
     {

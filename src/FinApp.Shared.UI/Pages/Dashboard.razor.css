@@ -701,6 +701,19 @@ input[type=date]::-webkit-calendar-picker-indicator:hover { opacity: 1; backgrou
 .loan-sim label { display: flex; align-items: center; gap: 6px; font-size: .82rem; color: #5b6270; }
 .loan-sim input { width: 90px; }
 .loan-sim-out { font-size: .82rem; color: #13a06e; font-weight: 600; }
+/* Debt-stack payoff planner */
+.plan-controls { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin: 4px 0 8px; }
+.plan-controls label { display: flex; align-items: center; gap: 6px; font-size: .85rem; color: #5b6270; }
+.plan-controls input { width: 100px; }
+.plan-toggle { display: flex; gap: 6px; }
+.plan-toggle .chip { border: 1px solid #e6e2d8; background: #faf8f3; color: #5b6270; cursor: pointer; font-weight: 600; }
+.plan-toggle .chip.on { background: #13a06e; border-color: #13a06e; color: #fff; }
+.plan-summary { display: flex; flex-direction: column; gap: 2px; margin: 6px 0; }
+.plan-big { font-size: 1.15rem; font-weight: 800; color: #13a06e; }
+.good-text { color: #13a06e; font-weight: 600; }
+.plan-order { margin: 8px 0 0; padding-left: 20px; }
+.plan-order li { margin: 3px 0; }
+.plan-order-name { font-weight: 600; }
 .row-menu-head { font-size: .68rem; color: #9ca3af; text-transform: uppercase; letter-spacing: .04em; padding: 8px 10px 2px; }
 .row-menu button.row-menu-sub { padding-left: 20px; font-size: .82rem; }
 /* A subtle mint dot on circles that have sub-categories (revealed in the popover). */

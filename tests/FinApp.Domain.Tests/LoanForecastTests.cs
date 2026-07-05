@@ -47,4 +47,55 @@ public class LoanForecastTests
         Assert.True(sim.Value.MonthsSaved > 0);
         Assert.True(sim.Value.InterestSaved > 0m);
     }
+
+    private static readonly LoanForecast.LoanInput[] TwoLoans =
+    {
+        // Small balance but the cheaper rate.
+        new(Guid.NewGuid(), "Card A", 2_000m, 8m, 60m),
+        // Bigger balance but the pricier rate.
+        new(Guid.NewGuid(), "Card B", 6_000m, 22m, 150m),
+    };
+
+    [Fact]
+    public void Avalanche_targets_the_priciest_debt_first()
+    {
+        var plan = LoanForecast.PlanPayoff(TwoLoans, extraPerMonth: 300m, LoanForecast.Strategy.Avalanche);
+        Assert.NotNull(plan);
+        // Card B carries the higher rate, so avalanche should clear it before the cheaper Card A.
+        Assert.Equal("Card B", plan!.Value.Order[0].Name);
+        Assert.Equal(2, plan.Value.Order.Count);
+        Assert.True(plan.Value.Months > 0);
+    }
+
+    [Fact]
+    public void Snowball_targets_the_smallest_balance_first()
+    {
+        var plan = LoanForecast.PlanPayoff(TwoLoans, extraPerMonth: 300m, LoanForecast.Strategy.Snowball);
+        Assert.NotNull(plan);
+        // Card A has the smaller balance, so snowball should knock it out first.
+        Assert.Equal("Card A", plan!.Value.Order[0].Name);
+    }
+
+    [Fact]
+    public void Avalanche_never_costs_more_interest_than_snowball()
+    {
+        var avalanche = LoanForecast.PlanPayoff(TwoLoans, 300m, LoanForecast.Strategy.Avalanche);
+        var snowball = LoanForecast.PlanPayoff(TwoLoans, 300m, LoanForecast.Strategy.Snowball);
+        Assert.NotNull(avalanche);
+        Assert.NotNull(snowball);
+        Assert.True(avalanche!.Value.TotalInterest <= snowball!.Value.TotalInterest);
+    }
+
+    [Fact]
+    public void A_stack_that_cant_out_run_interest_never_clears()
+    {
+        var stuck = new LoanForecast.LoanInput[] { new(Guid.NewGuid(), "Trap", 10_000m, 24m, 100m) };
+        Assert.Null(LoanForecast.PlanPayoff(stuck, extraPerMonth: 0m, LoanForecast.Strategy.Avalanche));
+    }
+
+    [Fact]
+    public void Nothing_to_pay_returns_null()
+    {
+        Assert.Null(LoanForecast.PlanPayoff(Array.Empty<LoanForecast.LoanInput>(), 100m, LoanForecast.Strategy.Snowball));
+    }
 }

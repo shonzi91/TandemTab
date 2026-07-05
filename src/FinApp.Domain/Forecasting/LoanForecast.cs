@@ -52,4 +52,97 @@ public static class LoanForecast
             Math.Max(0, baseline.Months - faster.Months),
             decimal.Round(Math.Max(0m, baseline.TotalInterest - faster.TotalInterest), 2));
     }
+
+    // ---- Multi-loan payoff strategies (avalanche / snowball) ----
+
+    /// <summary>One loan as an input to a multi-loan plan. Pure numbers — decoupled from any money-model entity.</summary>
+    public readonly record struct LoanInput(Guid Id, string Name, decimal Balance, decimal AnnualRatePercent, decimal MinPayment);
+
+    /// <summary>Which loan the spare cash attacks first.</summary>
+    /// <remarks><see cref="Avalanche"/> targets the highest interest rate (cheapest overall); <see cref="Snowball"/>
+    /// targets the smallest balance (fastest first win).</remarks>
+    public enum Strategy { Avalanche, Snowball }
+
+    /// <summary>When a given loan is fully cleared under a plan.</summary>
+    public readonly record struct LoanCleared(Guid Id, string Name, int ClearedInMonth);
+
+    /// <summary>Result of running a multi-loan plan: when you're debt-free, what it cost, and the order loans fall.</summary>
+    public readonly record struct StrategyPlan(int Months, decimal TotalInterest, IReadOnlyList<LoanCleared> Order);
+
+    /// <summary>
+    /// Roll every loan's minimum payment plus a shared <paramref name="extraPerMonth"/> at the debt stack, always
+    /// funnelling spare cash (and any freed-up minimums from cleared loans) at the <paramref name="strategy"/>'s
+    /// current target. Interest compounds monthly. Returns null when the combined budget can't out-run the interest
+    /// (the stack never clears) or there are no positive-balance loans to pay.
+    /// </summary>
+    public static StrategyPlan? PlanPayoff(IReadOnlyList<LoanInput> loans, decimal extraPerMonth, Strategy strategy)
+    {
+        var active = loans.Where(l => l.Balance > 0m).ToList();
+        if (active.Count == 0) return null;
+
+        var bal = active.Select(l => l.Balance).ToArray();
+        var rate = active.Select(l => l.AnnualRatePercent / 100m / 12m).ToArray();
+        var min = active.Select(l => Math.Max(0m, l.MinPayment)).ToArray();
+        var cleared = new int[active.Count];      // 0 = still open
+        var budget = active.Sum(l => Math.Max(0m, l.MinPayment)) + Math.Max(0m, extraPerMonth);
+        if (budget <= 0m) return null;
+
+        var order = new List<LoanCleared>();
+        var totalInterest = 0m;
+
+        for (var month = 1; month <= MaxMonths; month++)
+        {
+            // 1) Accrue this month's interest on every open loan.
+            for (var i = 0; i < bal.Length; i++)
+            {
+                if (bal[i] <= 0m) continue;
+                var mi = bal[i] * rate[i];
+                totalInterest += mi;
+                bal[i] += mi;
+            }
+
+            // 2) Pay each open loan its minimum (capped at the balance).
+            var pool = budget;
+            for (var i = 0; i < bal.Length; i++)
+            {
+                if (bal[i] <= 0m) continue;
+                var pay = Math.Min(min[i], bal[i]);
+                bal[i] -= pay;
+                pool -= pay;
+            }
+
+            // 3) Funnel whatever's left at the target loans, in strategy order.
+            foreach (var i in PriorityOrder(active, bal, strategy))
+            {
+                if (pool <= 0m) break;
+                if (bal[i] <= 0m) continue;
+                var pay = Math.Min(pool, bal[i]);
+                bal[i] -= pay;
+                pool -= pay;
+            }
+
+            // 4) Record any loans that just cleared.
+            for (var i = 0; i < bal.Length; i++)
+            {
+                if (cleared[i] == 0 && bal[i] <= 0m)
+                {
+                    cleared[i] = month;
+                    order.Add(new LoanCleared(active[i].Id, active[i].Name, month));
+                }
+            }
+
+            if (cleared.All(c => c != 0))
+                return new StrategyPlan(month, decimal.Round(totalInterest, 2), order);
+        }
+        return null;   // budget never out-ran the interest within the cap
+    }
+
+    /// <summary>Indices of the still-open loans ordered by which the strategy attacks first.</summary>
+    private static IEnumerable<int> PriorityOrder(IReadOnlyList<LoanInput> loans, decimal[] bal, Strategy strategy)
+    {
+        var open = Enumerable.Range(0, loans.Count).Where(i => bal[i] > 0m);
+        return strategy == Strategy.Avalanche
+            ? open.OrderByDescending(i => loans[i].AnnualRatePercent).ThenBy(i => bal[i])   // priciest debt first
+            : open.OrderBy(i => bal[i]).ThenByDescending(i => loans[i].AnnualRatePercent);  // smallest balance first
+    }
 }
