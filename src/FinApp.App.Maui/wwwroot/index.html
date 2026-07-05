@@ -35,6 +35,7 @@
         };
         window.finappNavigate = (url) => { window.location.href = url; };
         window.finappScrollIntoView = (id) => { const el = document.getElementById(id); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); };
+        window.finappConfirm = (msg) => { try { return window.confirm(msg); } catch (e) { return true; } };
         window.finappTakeAuthCode = () => {
             try {
                 const params = new URLSearchParams(window.location.search);

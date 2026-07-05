@@ -503,13 +503,18 @@ else
                 </section>
             }
 
-            @if (_bankStatus?.Enabled == true && _bankStatus.Connected && BankCredits().Count > 0)
+            @if (_bankStatus is { Enabled: true, Connected: true })
             {
+                var bankCredits = BankCredits();
                 <section class="panel">
                     <div class="panel-head"><h2>💰 @Loc["Incoming from bank"]</h2>
                         <button class="link" title="@Loc["Fetch new transactions"]" @onclick="SyncBankAsync" disabled="@_bankBusy">🔄 @Loc["Refresh"]</button>
                     </div>
-                    @if (!State.HasSyncedFund)
+                    @if (bankCredits.Count == 0)
+                    {
+                        <p class="hint">@Loc["No incoming money to review right now. Tap 🔄 Refresh to fetch the latest from your bank."]</p>
+                    }
+                    else if (!State.HasSyncedFund)
                     {
                         <div class="alert warn-bg"><span>@Loc["Mark a fund as synced to this bank (Edit a fund) to receive these."]</span></div>
                     }
@@ -518,7 +523,7 @@ else
                         <p class="hint">@string.Format(Loc["Money that arrived in {0}. Choose where each came from — the destination is your synced fund."], State.SyncedFundName)</p>
                     }
                     <ul class="list bank-pending">
-                        @foreach (var t in BankCredits())
+                        @foreach (var t in bankCredits)
                         {
                             var tx = t;
                             var id = tx.ExternalId;
@@ -779,80 +784,84 @@ else
             @if (_bankStatus is { Enabled: true, Connected: true })
             {
                 var bankExpenses = BankDebits();
-                @if (bankExpenses.Count > 0)
-                {
-                    <section class="panel">
-                        <div class="panel-head">
-                            @if (_bankCal)
-                            {
-                                <h2>💳 @State.Period.From.ToString("MMMM yyyy")</h2>
-                            }
-                            else if (_bankDay is { } bd)
-                            {
-                                <span class="day-nav">
-                                    <button class="exp-edit" title="@Loc["Previous day"]" @onclick="() => { if (bd > State.Period.From) _bankDay = bd.AddDays(-1); }" disabled="@(bd <= State.Period.From)">◀</button>
-                                    <input type="date" @bind:get="bd" @bind:set="v => _bankDay = ClampToPeriod(v)" min="@State.Period.From.ToString("yyyy-MM-dd")" max="@State.Period.To.ToString("yyyy-MM-dd")" />
-                                    <button class="exp-edit" title="@Loc["Next day"]" @onclick="() => { if (bd < State.Period.To) _bankDay = bd.AddDays(1); }" disabled="@(bd >= State.Period.To)">▶</button>
-                                </span>
-                            }
-                            else
-                            {
-                                <h2>💳 @Loc["From your bank"] <span class="bank-group-count">@bankExpenses.Count</span></h2>
-                            }
-                            <span class="view-toggle">
-                                <button class="view-btn" title="@Loc["Fetch new transactions"]" @onclick="SyncBankAsync" disabled="@_bankBusy">🔄</button>
-                                <button class="view-btn @(!_bankCal && _bankDay is null ? "active" : "")" title="@Loc["List"]" @onclick="() => { _bankCal = false; _bankDay = null; }">☰</button>
-                                <button class="view-btn @(_bankCal ? "active" : "")" title="@Loc["Calendar"]" @onclick="() => { _bankCal = true; _bankDay = null; }">📅</button>
+                <section class="panel">
+                    <div class="panel-head">
+                        @if (bankExpenses.Count > 0 && _bankCal)
+                        {
+                            <h2>💳 @State.Period.From.ToString("MMMM yyyy")</h2>
+                        }
+                        else if (bankExpenses.Count > 0 && _bankDay is { } bd)
+                        {
+                            <span class="day-nav">
+                                <button class="exp-edit" title="@Loc["Previous day"]" @onclick="() => { if (bd > State.Period.From) _bankDay = bd.AddDays(-1); }" disabled="@(bd <= State.Period.From)">◀</button>
+                                <input type="date" @bind:get="bd" @bind:set="v => _bankDay = ClampToPeriod(v)" min="@State.Period.From.ToString("yyyy-MM-dd")" max="@State.Period.To.ToString("yyyy-MM-dd")" />
+                                <button class="exp-edit" title="@Loc["Next day"]" @onclick="() => { if (bd < State.Period.To) _bankDay = bd.AddDays(1); }" disabled="@(bd >= State.Period.To)">▶</button>
                             </span>
-                        </div>
-                        @if (!State.HasSyncedFund)
-                        {
-                            <div class="alert warn-bg"><span>@Loc["Mark a fund as synced to this bank (a fund → Edit) so imports file automatically."]</span></div>
-                        }
-                        @if (_bankCal)
-                        {
-                            <div class="cal-dow">
-                                @foreach (var dow in new[] { "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun" }) { <span>@dow</span> }
-                            </div>
-                            <div class="cal-grid">
-                                @foreach (var d in CalendarDays())
-                                {
-                                    var day = d;
-                                    var inRange = d >= State.Period.From && d <= State.Period.To;
-                                    var count = bankExpenses.Count(t => t.Date == day);
-                                    <div class="cal-cell @(inRange ? "" : "cal-out")" @onclick="() => { if (inRange) { _bankDay = day; _bankCal = false; } }">
-                                        <span class="cal-top"><span class="cal-num">@d.Day</span></span>
-                                        @if (inRange && count > 0) { <span class="cal-total">@count</span> }
-                                    </div>
-                                }
-                            </div>
-                        }
-                        else if (_bankDay is { } dd)
-                        {
-                            var list = bankExpenses.Where(t => t.Date == dd).ToList();
-                            @if (list.Count == 0)
-                            {
-                                <p class="hint">@Loc["No imported expenses on this day."]</p>
-                            }
-                            else
-                            {
-                                <ul class="list bank-pending">@foreach (var t in list) { @BankTxRow(t) }</ul>
-                            }
                         }
                         else
                         {
-                            @foreach (var grp in bankExpenses.GroupBy(t => t.Date).OrderByDescending(g => g.Key))
+                            <h2>💳 @Loc["From your bank"] @if (bankExpenses.Count > 0) { <span class="bank-group-count">@bankExpenses.Count</span> }</h2>
+                        }
+                        <span class="view-toggle">
+                            <button class="view-btn" title="@Loc["Fetch new transactions"]" @onclick="SyncBankAsync" disabled="@_bankBusy">🔄</button>
+                            @if (bankExpenses.Count > 0)
                             {
-                                <button class="date-sep" @onclick="() => _bankDay = grp.Key">@grp.Key.ToString("dddd, dd MMM yyyy")</button>
-                                <ul class="list bank-pending">@foreach (var t in grp) { @BankTxRow(t) }</ul>
+                                <button class="view-btn @(!_bankCal && _bankDay is null ? "active" : "")" title="@Loc["List"]" @onclick="() => { _bankCal = false; _bankDay = null; }">☰</button>
+                                <button class="view-btn @(_bankCal ? "active" : "")" title="@Loc["Calendar"]" @onclick="() => { _bankCal = true; _bankDay = null; }">📅</button>
                             }
-                        }
-                        @if (_bankError is not null)
+                        </span>
+                    </div>
+                    @if (!State.HasSyncedFund)
+                    {
+                        <div class="alert warn-bg"><span>@Loc["Mark a fund as synced to this bank (a fund → Edit) so imports file automatically."]</span></div>
+                    }
+                    @if (bankExpenses.Count == 0)
+                    {
+                        <p class="hint">@Loc["No bank transactions to review right now. Tap 🔄 to fetch the latest from your bank."]</p>
+                    }
+                    else if (_bankCal)
+                    {
+                        <div class="cal-dow">
+                            @foreach (var dow in new[] { "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun" }) { <span>@dow</span> }
+                        </div>
+                        <div class="cal-grid">
+                            @foreach (var d in CalendarDays())
+                            {
+                                var day = d;
+                                var inRange = d >= State.Period.From && d <= State.Period.To;
+                                var count = bankExpenses.Count(t => t.Date == day);
+                                <div class="cal-cell @(inRange ? "" : "cal-out")" @onclick="() => { if (inRange) { _bankDay = day; _bankCal = false; } }">
+                                    <span class="cal-top"><span class="cal-num">@d.Day</span></span>
+                                    @if (inRange && count > 0) { <span class="cal-total">@count</span> }
+                                </div>
+                            }
+                        </div>
+                    }
+                    else if (_bankDay is { } dd)
+                    {
+                        var list = bankExpenses.Where(t => t.Date == dd).ToList();
+                        @if (list.Count == 0)
                         {
-                            <div class="alert warn-bg"><span>@_bankError</span><button class="alert-x" title="@Loc["Dismiss"]" @onclick="() => _bankError = null">×</button></div>
+                            <p class="hint">@Loc["No imported expenses on this day."]</p>
                         }
-                    </section>
-                }
+                        else
+                        {
+                            <ul class="list bank-pending">@foreach (var t in list) { @BankTxRow(t) }</ul>
+                        }
+                    }
+                    else
+                    {
+                        @foreach (var grp in bankExpenses.GroupBy(t => t.Date).OrderByDescending(g => g.Key))
+                        {
+                            <button class="date-sep" @onclick="() => _bankDay = grp.Key">@grp.Key.ToString("dddd, dd MMM yyyy")</button>
+                            <ul class="list bank-pending">@foreach (var t in grp) { @BankTxRow(t) }</ul>
+                        }
+                    }
+                    @if (_bankError is not null)
+                    {
+                        <div class="alert warn-bg"><span>@_bankError</span><button class="alert-x" title="@Loc["Dismiss"]" @onclick="() => _bankError = null">×</button></div>
+                    }
+                </section>
             }
         </div>
         <div class="tabpanel" hidden="@(_tab != Tab.Savings)">
@@ -1171,13 +1180,7 @@ else
                         <ul class="list">
                             @foreach (var v in _editCatVendors)
                             {
-                                var vendor = v;
-                                <li>
-                                    <span class="row-main">🔖 @vendor</span>
-                                    <span class="row-actions">
-                                        <button class="exp-edit" title="@Loc["Unmap"]" @onclick="() => UnmapVendorFromCat(vendor)" disabled="@_bankBusy">✕</button>
-                                    </span>
-                                </li>
+                                @BankRuleRow((v, "category", "🔖"))
                             }
                         </ul>
                     }
@@ -1439,8 +1442,8 @@ else
                     {
                         @if (!string.IsNullOrEmpty(editExp.Note) && MappedLabel(editExp.Note!) is { } target)
                         {
-                            <p class="hint">🏦 @Loc["Auto-filed from a saved bank rule:"] <strong>@editExp.Note</strong> → <strong>@target</strong>
-                                <button type="button" class="link" @onclick="() => RemoveBankRuleFor(editExp)" disabled="@_bankBusy">@Loc["Remove rule"]</button></p>
+                            <p class="hint">🏦 @Loc["Auto-filed from a saved bank rule:"] <strong>@editExp.Note</strong> → <strong>@target</strong></p>
+                            <ul class="list">@BankRuleRow((BudgetingState.BankMatchKey(editExp.Note!), "category", "🔖"))</ul>
                         }
                         else
                         {
@@ -1868,11 +1871,7 @@ else
                         <ul class="list">
                             @foreach (var key in fundRules)
                             {
-                                var mk = key;
-                                <li>
-                                    <span class="row-main">🏦 @mk</span>
-                                    <span class="row-actions"><button class="exp-edit" title="@Loc["Remove"]" @onclick="() => RemoveBankRuleKey(mk)" disabled="@_bankBusy">🗑️</button></span>
-                                </li>
+                                @BankRuleRow((key, "fund", "🏦"))
                             }
                         </ul>
                     }
@@ -1939,8 +1938,8 @@ else
                     {
                         @if (!string.IsNullOrEmpty(autoTr.Note) && MappingFor(autoTr.Note!) is { Kind: "fund" })
                         {
-                            <p class="hint">🏦 @Loc["Auto-filed from a saved money-in rule:"] <strong>@autoTr.Note</strong> → <strong>@State.FundName(autoTr.FromFundId)</strong>
-                                <button type="button" class="link" @onclick="() => RemoveBankRuleKey(BudgetingState.BankMatchKey(autoTr.Note!))" disabled="@_bankBusy">@Loc["Remove rule"]</button></p>
+                            <p class="hint">🏦 @Loc["Auto-filed from a saved money-in rule:"] <strong>@autoTr.Note</strong> → <strong>@State.FundName(autoTr.FromFundId)</strong></p>
+                            <ul class="list">@BankRuleRow((BudgetingState.BankMatchKey(autoTr.Note!), "fund", "🏦"))</ul>
                         }
                         else
                         {
@@ -2287,8 +2286,38 @@ else
         catch { /* host without the helper (e.g. MAUI) — stay on Account */ }
 
         await LoadBankAsync();
+        await SyncOnOpenAsync();          // pull fresh bank transactions on entry (throttled; no-op mid bank-link return)
         await HandleBankReturnAsync();
         await MaybePromptOnEntryAsync();
+    }
+
+    /// <summary>How long a bank connection stays "fresh" after a sync before we'll call the provider again on
+    /// open/switch. Keeps the opened account current without a live call every time, and because the last-sync
+    /// time is stored server-side, a sync on one device counts for every device.</summary>
+    private static readonly TimeSpan BankSyncFreshFor = TimeSpan.FromMinutes(15);
+
+    /// <summary>True when the current connection is linked but hasn't been synced within the freshness window.</summary>
+    private bool BankSyncDue =>
+        _bankStatus?.Connected == true &&
+        (_bankStatus.LastSyncedAt is not { } last || DateTimeOffset.UtcNow - last > BankSyncFreshFor);
+
+    /// <summary>Pull fresh transactions from the linked bank when an account is opened or switched — but only if
+    /// the last sync (tracked server-side, so it counts across devices) is older than <see cref="BankSyncFreshFor"/>.
+    /// This keeps the account current on open without firing a provider call every time it's reopened. Silent when
+    /// off/unconnected, not yet due, mid bank-link return (that flow syncs itself), or the fetch fails.</summary>
+    private async Task SyncOnOpenAsync()
+    {
+        if (!BankSyncDue) return;
+        if (new Uri(Nav.Uri).Query.Contains("bank=", StringComparison.Ordinal)) return;
+        try
+        {
+            await State.SyncBank();
+            _bankStatus = await State.GetBankStatus();   // refresh LastSyncedAt (restarts the cooldown) + balance
+            _bankPending = await State.GetPendingBankTransactions();
+            DefaultBankPickers();
+            await AutoHandleMappedDebitsAsync();
+        }
+        catch { /* offline / rate-limited — leave staged rows as-is; the manual 🔄 Refresh still works */ }
     }
 
     /// <summary>On entry: if there's more than one account, ask which to work in; then (or for a single account)
@@ -2312,6 +2341,7 @@ else
             await State.SwitchAccount(accountId);
             await LoadBankAsync();
         }
+        await SyncOnOpenAsync();   // fetch fresh transactions for the picked account (throttled)
         CloseModal();
         await MaybeOpenBankReviewAsync();
     }
@@ -2544,6 +2574,46 @@ else
             </div>
         </li>;
 
+    /// <summary>A saved auto-file rule row (a merchant match-key mapped to a category or fund), with inline
+    /// "change target" editing and a confirmed remove. Reused wherever auto-file rules are listed. Context is
+    /// (match-key, kind "category"/"fund", leading icon).</summary>
+    private RenderFragment<(string Key, string Kind, string Icon)> BankRuleRow => ctx =>
+        @<li>
+            <span class="row-main">@ctx.Icon @ctx.Key</span>
+            @if (_ruleEditKey == ctx.Key)
+            {
+                <span class="row-actions rule-edit">
+                    @if (ctx.Kind == "category")
+                    {
+                        <select class="bank-sel" value="@_ruleEditTarget" @onchange="e => _ruleEditTarget = Guid.TryParse(e.Value?.ToString(), out var g) ? g : Guid.Empty">
+                            @foreach (var (cat, depth) in State.CategoryOptions)
+                            {
+                                <option value="@cat.Id">@CatOption(cat.Id, cat.Name, depth)</option>
+                            }
+                        </select>
+                    }
+                    else
+                    {
+                        <select class="bank-sel" value="@_ruleEditTarget" @onchange="e => _ruleEditTarget = Guid.TryParse(e.Value?.ToString(), out var g) ? g : Guid.Empty">
+                            @foreach (var f in State.RootFunds.Where(f => f.Id != State.SyncedFundId))
+                            {
+                                <option value="@f.Id">@f.Name</option>
+                            }
+                        </select>
+                    }
+                    <button class="exp-edit" title="@Loc["Save"]" @onclick="SaveRuleEdit" disabled="@_bankBusy">✓</button>
+                    <button class="exp-edit" title="@Loc["Cancel"]" @onclick="CancelRuleEdit" disabled="@_bankBusy">✕</button>
+                </span>
+            }
+            else
+            {
+                <span class="row-actions">
+                    <button class="exp-edit" title="@Loc["Change where this files"]" @onclick="() => BeginRuleEdit(ctx.Key)" disabled="@_bankBusy">✏️</button>
+                    <button class="exp-edit" title="@Loc["Remove"]" @onclick="() => RemoveBankRuleKey(ctx.Key)" disabled="@_bankBusy">🗑️</button>
+                </span>
+            }
+        </li>;
+
     private Guid RowCat(string id) => _bankRowCat.TryGetValue(id, out var v) ? v : Guid.Empty;
     private Guid RowFund(string id) => _bankRowFund.TryGetValue(id, out var v) ? v : Guid.Empty;
     private string RowCredit(string id) => _bankRowCredit.TryGetValue(id, out var v) ? v : "";
@@ -2745,10 +2815,6 @@ else
             ? $"{Loc["Auto-filed from a saved bank rule"]}: {e.Note} → {target}"
             : Loc["Filed automatically from your bank"];
 
-    /// <summary>Remove the merchant→category rule behind an auto-filed expense (leaves the expense; stops future auto-filing).</summary>
-    private Task RemoveBankRuleFor(FinApp.Domain.Budgeting.Expense e) =>
-        string.IsNullOrEmpty(e.Note) ? Task.CompletedTask : UnmapVendorFromCat(BudgetingState.BankMatchKey(e.Note!));
-
     /// <summary>Tooltip for an auto-filed fund transfer: names the responsible money-in rule if it still exists.</summary>
     private string AutoFiledTransferTitle(string? note) =>
         !string.IsNullOrEmpty(note) && MappingFor(note!) is { Kind: "fund" } m
@@ -2759,12 +2825,57 @@ else
     private IEnumerable<string> FundRulesFor(Guid fundId) =>
         _bankMappings.Where(kv => kv.Value.Kind == "fund" && kv.Value.TargetId == fundId).Select(kv => kv.Key);
 
-    /// <summary>Remove a saved bank rule by its merchant match-key (used by the fund-edit and transfer-edit views).</summary>
+    /// <summary>Remove a saved bank rule by its merchant match-key, after a confirmation prompt. Used wherever
+    /// auto-file rules are listed (category-, fund-, expense- and transfer-edit views).</summary>
     private async Task RemoveBankRuleKey(string matchKey)
     {
+        bool ok;
+        try { ok = await JS.InvokeAsync<bool>("finappConfirm", Loc["Remove this auto-file rule? Transactions from this merchant will no longer be filed automatically. Existing entries stay."]); }
+        catch { ok = true; }   // host without the helper — don't block the action
+        if (!ok) return;
+        if (_ruleEditKey == matchKey) _ruleEditKey = null;
         _bankBusy = true;
         try { await State.RemoveBankMapping(matchKey); _bankMappings.Remove(matchKey); _editCatVendors.Remove(matchKey); }
         catch { /* ignore — best effort */ }
+        finally { _bankBusy = false; }
+    }
+
+    // --- Inline rule editing (change where a merchant's imports file) --------
+    private string? _ruleEditKey;   // the match-key whose target is being re-picked (null = none)
+    private Guid _ruleEditTarget;
+
+    private void BeginRuleEdit(string matchKey)
+    {
+        _ruleEditKey = matchKey;
+        _ruleEditTarget = _bankMappings.TryGetValue(matchKey, out var m) ? m.TargetId : Guid.Empty;
+    }
+
+    private void CancelRuleEdit() => _ruleEditKey = null;
+
+    /// <summary>Re-point the edited rule at a new category/fund (same kind) and persist it.</summary>
+    private async Task SaveRuleEdit()
+    {
+        if (_ruleEditKey is not { } key || !_bankMappings.TryGetValue(key, out var existing))
+        {
+            _ruleEditKey = null;
+            return;
+        }
+        if (_ruleEditTarget == Guid.Empty || _ruleEditTarget == existing.TargetId)
+        {
+            _ruleEditKey = null;   // nothing to change
+            return;
+        }
+        _bankBusy = true; _bankError = null;
+        try
+        {
+            await State.SetBankMapping(key, existing.Kind, _ruleEditTarget);
+            _bankMappings[key] = (existing.Kind, _ruleEditTarget);
+            // A category rule re-pointed elsewhere no longer belongs to the category being edited.
+            if (existing.Kind == "category" && _modal == Modal.EditCat && _ruleEditTarget != _modalCatId)
+                _editCatVendors.Remove(key);
+            _ruleEditKey = null;
+        }
+        catch (Exception ex) { _bankError = ex.Message; }
         finally { _bankBusy = false; }
     }
 
@@ -2792,6 +2903,7 @@ else
     {
         await LoadBankAsync();
         if (_tab == Tab.Bank && _bankStatus?.Enabled != true) _tab = Tab.Overview;   // tab vanished for this account
+        await SyncOnOpenAsync();   // opening/switching to this account fetches fresh transactions (throttled)
         await InvokeAsync(StateHasChanged);
     }
     private void OnLocChanged() => InvokeAsync(StateHasChanged);
@@ -3599,19 +3711,6 @@ else
             await InvokeAsync(StateHasChanged);
         }
         catch { /* bank unreachable — just show none */ }
-    }
-
-    private async Task UnmapVendorFromCat(string vendor)
-    {
-        _bankBusy = true;
-        try
-        {
-            await State.RemoveBankMapping(vendor);
-            _editCatVendors.Remove(vendor);
-            _bankMappings.Remove(vendor);
-        }
-        catch { /* ignore */ }
-        finally { _bankBusy = false; }
     }
 
     private void OpenDelete(Guid categoryId) { _modalCatId = categoryId; _modal = Modal.DeleteCat; }
