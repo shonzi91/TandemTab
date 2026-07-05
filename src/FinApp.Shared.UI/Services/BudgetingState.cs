@@ -1106,6 +1106,35 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     public Task RecordConsent(string scope, Guid? accountId) => api.RecordConsentAsync(scope, accountId, granted: true);
     public Task WithdrawConsent(string scope, Guid? accountId) => api.RecordConsentAsync(scope, accountId, granted: false);
 
+    // --- Loans (Forecasts tab) — a standalone dataset; nothing here touches the money model ---------------
+    private List<LoanDto> _loans = [];
+    public IReadOnlyList<LoanDto> Loans => _loans;
+
+    public async Task LoadLoansAsync()
+    {
+        if (!HasAccounts) { _loans = []; return; }
+        try { _loans = (await api.GetLoansAsync(CurrentAccountId)).ToList(); }
+        catch { _loans = []; }
+    }
+
+    public async Task AddLoan(string name, decimal balance, decimal annualRate, decimal minPayment)
+    {
+        var loan = await api.AddLoanAsync(CurrentAccountId, new SaveLoanRequest(name, balance, annualRate, minPayment));
+        _loans.Add(loan);
+    }
+
+    public async Task UpdateLoan(Guid loanId, string name, decimal balance, decimal annualRate, decimal minPayment)
+    {
+        await api.UpdateLoanAsync(CurrentAccountId, loanId, new SaveLoanRequest(name, balance, annualRate, minPayment));
+        await LoadLoansAsync();
+    }
+
+    public async Task RemoveLoan(Guid loanId)
+    {
+        await api.RemoveLoanAsync(CurrentAccountId, loanId);
+        _loans.RemoveAll(l => l.Id == loanId);
+    }
+
     /// <summary>Drop the current account's bank connection so it can be linked again. Withdraws link + sync consent.</summary>
     public async Task DisconnectBank()
     {

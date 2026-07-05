@@ -690,6 +690,17 @@ input[type=date]::-webkit-calendar-picker-indicator:hover { opacity: 1; backgrou
 }
 .row-menu button:hover { background: #f3f5f8; }
 .row-menu button.danger { color: #c0392b; }
+/* Forecasts tab */
+.networth-value { font-size: 1.8rem; font-weight: 800; color: #13a06e; margin-top: 6px; }
+.networth-value.warn-text { color: #c0392b; }
+.loan-card { border: 1px solid #e6e2d8; border-radius: 12px; padding: 12px 14px; margin-top: 10px; }
+.loan-head { display: flex; align-items: center; justify-content: space-between; }
+.loan-name { font-weight: 700; }
+.loan-figs { color: #5b6270; font-size: .85rem; margin: 2px 0 4px; }
+.loan-sim { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 6px; }
+.loan-sim label { display: flex; align-items: center; gap: 6px; font-size: .82rem; color: #5b6270; }
+.loan-sim input { width: 90px; }
+.loan-sim-out { font-size: .82rem; color: #13a06e; font-weight: 600; }
 .row-menu-head { font-size: .68rem; color: #9ca3af; text-transform: uppercase; letter-spacing: .04em; padding: 8px 10px 2px; }
 .row-menu button.row-menu-sub { padding-left: 20px; font-size: .82rem; }
 /* A subtle mint dot on circles that have sub-categories (revealed in the popover). */

@@ -118,6 +118,7 @@ else
         <button class="tab @(_tab == Tab.Budgets ? "active" : "")" @onclick="ShowExpensesTab">@Loc["Spending"]</button>
         <button class="tab @(_tab == Tab.Savings ? "active" : "")" @onclick="() => _tab = Tab.Savings">@Loc["Savings"]</button>
         <button class="tab @(_tab == Tab.Account ? "active" : "")" @onclick="() => _tab = Tab.Account">@Loc["Money"]</button>
+        <button class="tab @(_tab == Tab.Forecasts ? "active" : "")" @onclick="ShowForecastsTab">@Loc["Forecasts"]</button>
     </nav>
 
     @{
@@ -1036,6 +1037,56 @@ else
                 </section>
             }
         </div>
+        <div class="tabpanel" hidden="@(_tab != Tab.Forecasts)">
+            <p class="hint">@Loc["Plan ahead — project loan payoffs, simulate paying faster, and see your net worth. Everything here is forecast only; it never changes your budgets, savings or balances."]</p>
+            <section class="panel">
+                <div class="spending-head">
+                    <span class="insight-h">📈 @Loc["Net worth"]</span>
+                    <span class="spending-sub">@Fmt(ForecastAssets) @Loc["assets"] − @Fmt(ForecastLiabilities) @Loc["debt"]</span>
+                </div>
+                <div class="networth-value @(NetWorth.Amount < 0 ? "warn-text" : "")">@Fmt(NetWorth)</div>
+            </section>
+            <section class="panel">
+                <div class="panel-head">
+                    <h2>💳 @Loc["Loans & debts"]</h2>
+                    <button class="link" @onclick="OpenAddLoan">➕ @Loc["Add loan"]</button>
+                </div>
+                @if (!State.Loans.Any())
+                {
+                    <p class="hint">@Loc["No loans yet. Add one to project when you'll clear it and simulate paying it off faster."]</p>
+                }
+                @foreach (var loan in State.Loans)
+                {
+                    var l = loan;
+                    var payoff = FinApp.Domain.Forecasting.LoanForecast.PayOff(l.Balance, l.AnnualRatePercent, l.MinPayment);
+                    <div class="loan-card">
+                        <div class="loan-head">
+                            <span class="loan-name">@l.Name</span>
+                            <span class="row-actions">
+                                <button class="exp-edit" title="@Loc["Edit"]" @onclick="() => OpenEditLoan(l)">✏️</button>
+                                <button class="exp-edit" title="@Loc["Remove"]" @onclick="() => RemoveLoanFromUi(l.Id)" disabled="@_loanBusy">🗑️</button>
+                            </span>
+                        </div>
+                        <div class="loan-figs">@Fmt(State.Money(l.Balance)) · @l.AnnualRatePercent% APR · @Fmt(State.Money(l.MinPayment))/@Loc["mo"]</div>
+                        @if (payoff is { } po)
+                        {
+                            <p class="hint">🏁 @string.Format(Loc["Cleared in {0} (~{1}) · interest {2}"], MonthsText(po.Months), PayoffDate(po.Months), Fmt(State.Money(po.TotalInterest)))</p>
+                        }
+                        else
+                        {
+                            <p class="hint warn-text">@Loc["At this payment it never clears — it doesn’t cover the interest."]</p>
+                        }
+                        <div class="loan-sim">
+                            <label>@Loc["Pay extra /mo"] <input type="number" step="10" min="0" @bind="_loanExtraInput" @bind:event="oninput" @onfocus="() => _loanSimId = l.Id" /></label>
+                            @if (_loanSimId == l.Id && _loanExtraInput > 0 && FinApp.Domain.Forecasting.LoanForecast.SimulateExtra(l.Balance, l.AnnualRatePercent, l.MinPayment, _loanExtraInput) is { } sim)
+                            {
+                                <span class="loan-sim-out">➡️ @string.Format(Loc["{0} sooner · {1} less interest"], MonthsText(sim.MonthsSaved), Fmt(State.Money(sim.InterestSaved)))</span>
+                            }
+                        </div>
+                    </div>
+                }
+            </section>
+        </div>
     </div>
 </div>
 
@@ -1691,6 +1742,19 @@ else
                     </div>
                     break;
 
+                case Modal.LoanEdit:
+                    <h3>💳 @(_loanId == Guid.Empty ? Loc["Add loan"] : Loc["Edit loan"])</h3>
+                    <label>@Loc["Name"] <input type="text" placeholder="@Loc["e.g. Mortgage, Car loan"]" @bind="_loanName" /></label>
+                    <label>@Loc["Current balance"] <input type="number" step="0.01" min="0" @bind="_loanBalance" /></label>
+                    <label>@Loc["Interest rate (% APR)"] <input type="number" step="0.1" min="0" @bind="_loanRate" /></label>
+                    <label>@Loc["Monthly payment"] <input type="number" step="0.01" min="0" @bind="_loanPayment" /></label>
+                    <small class="hint">@Loc["Forecast only — this never affects your budgets, savings or balances."]</small>
+                    <div class="modal-actions">
+                        <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
+                        <button @onclick="SaveLoan" disabled="@(string.IsNullOrWhiteSpace(_loanName) || _loanBusy)">@Loc["Save"]</button>
+                    </div>
+                    break;
+
                 case Modal.DisburseSaving:
                     var disBucketBal = DisburseBucketBalance();
                     <h3>🎯 @Loc["Apply to a goal"] — @State.SavingBucketName(_disburseBucketId)</h3>
@@ -2019,8 +2083,8 @@ else
 }
 
 @code {
-    private enum Modal { None, PickAccount, BankReview, BankConsent, AddCat, AddBudget, DisburseSaving, EditCat, DeleteCat, CategoryDetail, AddAccount, EditAccount, DeleteAccount, RemoveMember, LeaveAccount, AddExpense, NextPeriod, RemovePeriod, EditExpense, DeleteExpense, SettleExpense, AddBucket, EditBucket, DeleteBucket, AddFund, EditFund, DeleteFund, Invite, Transfer, Deposit, EditDeposit, DeleteDeposit, ManageContribCats, ContribCat, DeleteContribCat, AddSaving, BudgetSaving, SpendSaving, EditSavingDeposit, DeleteSavingDeposit, EditTransfer, DeleteTransfer, EditPeriod, EditSavingMovement, DeleteSavingMovement, DeleteExternalTransfer }
-    private enum Tab { Overview, Account, Budgets, Savings, Bank }
+    private enum Modal { None, PickAccount, BankReview, BankConsent, AddCat, AddBudget, DisburseSaving, LoanEdit, EditCat, DeleteCat, CategoryDetail, AddAccount, EditAccount, DeleteAccount, RemoveMember, LeaveAccount, AddExpense, NextPeriod, RemovePeriod, EditExpense, DeleteExpense, SettleExpense, AddBucket, EditBucket, DeleteBucket, AddFund, EditFund, DeleteFund, Invite, Transfer, Deposit, EditDeposit, DeleteDeposit, ManageContribCats, ContribCat, DeleteContribCat, AddSaving, BudgetSaving, SpendSaving, EditSavingDeposit, DeleteSavingDeposit, EditTransfer, DeleteTransfer, EditPeriod, EditSavingMovement, DeleteSavingMovement, DeleteExternalTransfer }
+    private enum Tab { Overview, Account, Budgets, Savings, Bank, Forecasts }
 
     private Tab _tab = Tab.Overview;
     private bool _homeInsightsOpen;
@@ -3182,6 +3246,46 @@ else
         _disburseAmount = 0; _disburseNote = null;
         CloseModal();
     });
+
+    // --- Forecasts tab (loans, payoff projection, simulator, net worth) — read-only over the money model ---
+    private Guid _loanId, _loanSimId;
+    private string? _loanName;
+    private decimal _loanBalance, _loanRate, _loanPayment, _loanExtraInput;
+    private bool _loanBusy;
+
+    private async Task ShowForecastsTab()
+    {
+        _tab = Tab.Forecasts;
+        await State.LoadLoansAsync();
+        await LoadBankAsync();   // so a synced fund's live balance feeds the net-worth assets figure
+    }
+
+    // Assets = money across your funds (synced funds use their live bank balance); liabilities = loan balances.
+    private Money ForecastLiabilities => State.Money(State.Loans.Sum(l => l.Balance));
+    private Money ForecastAssets => State.Money(State.RootFunds.Sum(f =>
+        State.FundIsSynced(f.Id) && _bankStatus?.Balance is { } b ? b : State.FundBalance(f.Id).Amount));
+    private Money NetWorth => State.Money(ForecastAssets.Amount - ForecastLiabilities.Amount);
+
+    private void OpenAddLoan() { _loanId = Guid.Empty; _loanName = null; _loanBalance = 0; _loanRate = 0; _loanPayment = 0; _modal = Modal.LoanEdit; }
+    private void OpenEditLoan(LoanDto l) { _loanId = l.Id; _loanName = l.Name; _loanBalance = l.Balance; _loanRate = l.AnnualRatePercent; _loanPayment = l.MinPayment; _modal = Modal.LoanEdit; }
+
+    private Task SaveLoan() => RunModal(async () =>
+    {
+        if (string.IsNullOrWhiteSpace(_loanName)) return;
+        if (_loanId == Guid.Empty) await State.AddLoan(_loanName!, _loanBalance, _loanRate, _loanPayment);
+        else await State.UpdateLoan(_loanId, _loanName!, _loanBalance, _loanRate, _loanPayment);
+        CloseModal();
+    });
+
+    private async Task RemoveLoanFromUi(Guid id)
+    {
+        _loanBusy = true;
+        try { await State.RemoveLoan(id); } catch { /* best effort */ } finally { _loanBusy = false; }
+    }
+
+    private static string MonthsText(int months) =>
+        months <= 0 ? "0mo" : months >= 12 ? $"{months / 12}y {months % 12}mo" : $"{months}mo";
+    private static string PayoffDate(int months) => DateTime.Today.AddMonths(months).ToString("MMM yyyy");
 
     private Task SpendBucketAsExpense() => RunModal(async () =>
     {
