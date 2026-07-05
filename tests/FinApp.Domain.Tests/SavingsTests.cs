@@ -90,8 +90,11 @@ public class SavingsTests
 
         Assert.Equal(M(0), p.ExpensesTotal);          // not an expense
         Assert.Equal(M(200), p.ExternalOutTotal);     // money genuinely left the account
-        Assert.Equal(M(0), p.SavingsNetTotal);        // earmark drained (200 set aside − 200 deployed)
-        Assert.Equal(rateBefore, new SavingsReportService().PeriodSavingsRate(p));   // rate unchanged — deploying isn't un-saving
+        Assert.Equal(M(0), p.SavingsNetTotal);        // earmark (money model) drained — money left
+        Assert.Equal(M(200), p.SavingsSetAsideTotal); // but "saved this period" stays — deploying isn't un-saving
+        Assert.Equal(rateBefore, new SavingsReportService().PeriodSavingsRate(p));   // rate unchanged
+        Assert.Equal(M(200), new SavingsReportService().LifetimeSaved(account));     // total saved stays too
+        Assert.Contains(p.SavingMovements(), m => m.IsDisbursement);                 // listed as a savings movement
     }
 
     [Fact]

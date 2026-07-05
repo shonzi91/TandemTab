@@ -495,6 +495,11 @@ public sealed class Period : Entity
     /// Included in the earmark (<see cref="SavingsNetTotal"/>) but added back for the savings rate.</summary>
     public Money SavingsDisbursedTotal => Sum(_savingAllocations.Where(a => a.IsDisbursement).Select(a => a.Amount));
 
+    /// <summary>Net <b>set aside</b> this period for the saved figures/rate: like <see cref="SavingsNetTotal"/> but with
+    /// disbursements added back — deploying a save to its goal is a success, not un-saving. (The earmark/money-model
+    /// still uses <see cref="SavingsNetTotal"/>, which drops when money leaves.)</summary>
+    public Money SavingsSetAsideTotal => SavingsNetTotal - SavingsDisbursedTotal;
+
     /// <summary>
     /// Mature a saving into a spendable budget for this period: release the saving earmark and add the
     /// amount to a category's budget allocation (creating the budget if needed). No money physically
@@ -542,7 +547,8 @@ public sealed class Period : Entity
     /// </summary>
     public IEnumerable<SavingAllocation> SavingMovements() =>
         _savingAllocations.Where(a => a.BudgetCategoryId is not null
-            || (a.TransferPairId is not null && a.Amount.IsNegative));
+            || (a.TransferPairId is not null && a.Amount.IsNegative)
+            || a.IsDisbursement);
 
     /// <summary>
     /// Undo a savings movement. A move-to-budget reduces the funded budget back down; a bucket transfer
@@ -566,6 +572,10 @@ public sealed class Period : Entity
         else if (movement.TransferPairId is { } pairId)
         {
             _savingAllocations.RemoveAll(a => a.TransferPairId == pairId);
+        }
+        else if (movement.SourceExternalTransferId is { } transferId)
+        {
+            RemoveExternalTransfer(transferId);   // also drops this paired drawdown → restores the bucket and the balance
         }
         else
         {

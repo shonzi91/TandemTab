@@ -932,7 +932,10 @@ else
                                 <span class="row-lead">
                                     @if (State.IsPeriodOpen)
                                     {
-                                        <button class="exp-edit" title="@Loc["Edit"]" @onclick="() => OpenEditSavingMovement(m.Id)">✏️</button>
+                                        @if (!m.IsDisbursement)
+                                        {
+                                            <button class="exp-edit" title="@Loc["Edit"]" @onclick="() => OpenEditSavingMovement(m.Id)">✏️</button>
+                                        }
                                         <button class="exp-edit" title="@Loc["Remove"]" @onclick="() => OpenDeleteSavingMovement(m.Id)">🗑️</button>
                                     }
                                     <span>@m.Date.ToString("dd MMM") · @MovementIcon(m) @State.SavingMovementTarget(m)</span>
@@ -1690,11 +1693,19 @@ else
                     <h3>🎯 @Loc["Apply to a goal"] — @State.SavingBucketName(_disburseBucketId)</h3>
                     <label>@Loc["Amount"] <input type="number" step="0.01" min="0" @bind="_disburseAmount" /></label>
                     <small class="hint">@Loc["Saved in this bucket:"] <strong>@Fmt(disBucketBal)</strong></small>
+                    <label>@Loc["Take the money from"]
+                        <select @bind="_disburseFundId">
+                            @foreach (var f in State.RootFunds)
+                            {
+                                <option value="@f.Id">@f.Name@(State.FundIsSynced(f.Id) ? Loc[" (synced)"] : "")</option>
+                            }
+                        </select>
+                    </label>
                     <label>@Loc["What for? (e.g. loan prepayment)"] <input type="text" @bind="_disburseNote" /></label>
-                    <small class="hint">@Loc["Money leaves the account for this goal — it’s not counted as an expense and doesn’t dent your savings rate."]</small>
+                    <small class="hint">@Loc["Money leaves that fund for this goal — it’s not counted as an expense and doesn’t dent your savings figures."]</small>
                     <div class="modal-actions">
                         <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
-                        <button @onclick="DisburseSavingFromModal" disabled="@(_disburseAmount <= 0 || _disburseAmount > disBucketBal.Amount)">🎯 @Loc["Apply"]</button>
+                        <button @onclick="DisburseSavingFromModal" disabled="@(_disburseAmount <= 0 || _disburseAmount > disBucketBal.Amount || _disburseFundId == Guid.Empty)">🎯 @Loc["Apply"]</button>
                     </div>
                     break;
 
@@ -3033,12 +3044,15 @@ else
     }
 
     private Guid _disburseBucketId;
+    private Guid _disburseFundId;
     private decimal _disburseAmount;
     private string? _disburseNote;
 
     private void OpenDisburseSaving(Guid bucketId)
     {
         _disburseBucketId = bucketId;
+        // Default to the synced (bank) fund if there is one — that's usually where earmarked money physically sits.
+        _disburseFundId = State.HasSyncedFund ? State.SyncedFundId : State.RootFunds.FirstOrDefault()?.Id ?? Guid.Empty;
         _disburseAmount = 0;
         _disburseNote = null;
         _modal = Modal.DisburseSaving;
@@ -3051,8 +3065,8 @@ else
 
     private Task DisburseSavingFromModal() => RunModal(async () =>
     {
-        if (_disburseAmount <= 0 || _disburseAmount > DisburseBucketBalance().Amount) return;
-        await State.DisburseSaving(_disburseBucketId, _disburseAmount, _disburseNote);
+        if (_disburseAmount <= 0 || _disburseAmount > DisburseBucketBalance().Amount || _disburseFundId == Guid.Empty) return;
+        await State.DisburseSaving(_disburseBucketId, _disburseFundId, _disburseAmount, _disburseNote);
         _disburseAmount = 0; _disburseNote = null;
         CloseModal();
     });
@@ -3466,7 +3480,7 @@ else
 
     /// <summary>Icon for a savings-activity movement row: ➡️ for a move into a budget, 🔁 for a bucket-to-bucket transfer.</summary>
     private static string MovementIcon(FinApp.Domain.Savings.SavingAllocation m) =>
-        m.BudgetCategoryId is not null ? "➡️" : "🔁";
+        m.BudgetCategoryId is not null ? "➡️" : m.IsDisbursement ? "🎯" : "🔁";
 
     // --- Per-fund operation popups ----------------------------------------
 

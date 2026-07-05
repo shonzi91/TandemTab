@@ -393,8 +393,10 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
 
     /// <summary>Most that can be sent to another account from a specific fund (≤ that fund's balance).</summary>
     public Money AvailableToTransferOutFromFund(Guid fundId) => Period.AvailableToTransferOutFromFundAfter(fundId, PriorSaved);
-    public Money SavingsThisPeriod => Period.SavingsNetTotal;
-    public Money SavingsAccumulated => _savings.AccumulatedTotal(Account);
+    // Display figures ("saved this period" / "total saved") exclude disbursements — deploying a save to its goal
+    // counts as saved. The money model above (PriorSaved) keeps using the earmark totals, which do drop.
+    public Money SavingsThisPeriod => Period.SavingsSetAsideTotal;
+    public Money SavingsAccumulated => _savings.LifetimeSaved(Account);
     public Money MaxAdditionalSavings => Period.MaxAdditionalSavingsAfter(PriorSaved);
     public Money AvailableToSave => Period.AvailableToSaveAfter(PriorSaved);
 
@@ -488,6 +490,8 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
                 .FirstOrDefault();
             return $"{SavingBucketName(movement.SavingCategoryId)} → {SavingBucketName(toId)} (bucket)";
         }
+        if (movement.IsDisbursement)
+            return $"{SavingBucketName(movement.SavingCategoryId)} → {(string.IsNullOrWhiteSpace(movement.Note) ? "goal" : movement.Note)}";
         return SavingBucketName(movement.SavingCategoryId);
     }
 
@@ -696,11 +700,10 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
         return SaveAsync();
     }
 
-    /// <summary>Deploy a bucket to its goal (e.g. a loan prepayment): money leaves the account but it's not an
-    /// expense and doesn't dent the savings rate. Uses the synced fund if there is one, else the default fund.</summary>
-    public Task DisburseSaving(Guid savingCategoryId, decimal amount, string? note)
+    /// <summary>Deploy a bucket to its goal (e.g. a loan prepayment) from a chosen fund: money leaves the account but
+    /// it's not an expense and doesn't dent the savings figures. The fund is the one physically holding the money.</summary>
+    public Task DisburseSaving(Guid savingCategoryId, Guid fundId, decimal amount, string? note)
     {
-        var fundId = HasSyncedFund ? SyncedFundId : DefaultFundId;
         var transfer = Period.DisburseSaving(savingCategoryId, fundId, Money(amount), Today(), note);
         transfer.SetFundSynced(FundIsSynced(fundId));   // a synced fund's real balance already reflects the outflow
         return SaveAsync();

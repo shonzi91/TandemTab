@@ -74,7 +74,8 @@ public sealed class SavingsReportService
                 .Aggregate(Money.Zero(account.Currency), (acc, m) => acc + m);
     }
 
-    /// <summary>Total set aside from contributions across every bucket and period (excludes initial balances). Drives the savings rate.</summary>
+    /// <summary>Total set aside from contributions across every bucket and period (excludes initial balances). Includes
+    /// disbursement drawdowns — this is the money-model figure (what's actually still reserved as savings).</summary>
     public Money AllocatedTotal(Account account)
     {
         ArgumentNullException.ThrowIfNull(account);
@@ -83,6 +84,21 @@ public sealed class SavingsReportService
             .Select(a => a.Amount)
             .Aggregate(Money.Zero(account.Currency), (acc, m) => acc + m);
     }
+
+    /// <summary>Lifetime disbursed to goals (deployed savings) across every period — a negative figure.</summary>
+    public Money DisbursedTotal(Account account)
+    {
+        ArgumentNullException.ThrowIfNull(account);
+        return account.Periods
+            .SelectMany(p => p.SavingAllocations)
+            .Where(a => a.IsDisbursement)
+            .Select(a => a.Amount)
+            .Aggregate(Money.Zero(account.Currency), (acc, m) => acc + m);
+    }
+
+    /// <summary>Lifetime <b>saved</b> for display: total accumulated with disbursements added back — deploying a save to
+    /// its goal counts as saved, not un-saved. (Use <see cref="AccumulatedTotal"/> for the money model.)</summary>
+    public Money LifetimeSaved(Account account) => AccumulatedTotal(account) - DisbursedTotal(account);
 
     /// <summary>
     /// Savings rate across the whole account history: total set aside ÷ total contributions paid (null if
@@ -95,7 +111,8 @@ public sealed class SavingsReportService
         var contributed = account.Periods
             .Select(p => p.ContributionsPaidTotal)
             .Aggregate(Money.Zero(account.Currency), (acc, m) => acc + m);
-        return AllocatedTotal(account).RatioOf(contributed);
+        // Disbursements (deployed to goals) are added back — deploying a save isn't un-saving.
+        return (AllocatedTotal(account) - DisbursedTotal(account)).RatioOf(contributed);
     }
 
     /// <summary>Progress of a bucket (and its sub-buckets) toward its goal, across the whole account history.</summary>
