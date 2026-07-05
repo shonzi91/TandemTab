@@ -16,20 +16,23 @@ jobs:
         with:
           dotnet-version: '9.0.x'
 
+      # The MAUI app (FinApp.App.Maui) needs mobile workloads the runner doesn't have, and it isn't
+      # deployed from CI. Build/test everything else via a solution filter so CI actually validates the
+      # server, web and shared UI. (The MAUI app is built locally with the workloads when needed.)
       - name: Restore
-        run: dotnet restore FinApp.sln
+        run: dotnet restore FinApp.NoMaui.slnf
 
       - name: Build
-        run: dotnet build FinApp.sln --configuration Release --no-restore
+        run: dotnet build FinApp.NoMaui.slnf --configuration Release --no-restore
 
       - name: Test
-        run: dotnet test FinApp.sln --configuration Release --no-build
+        run: dotnet test FinApp.NoMaui.slnf --configuration Release --no-build
 
       # Fail the build if any (including transitive) package has a known vulnerability.
       - name: Vulnerable package scan
         run: |
           set -euo pipefail
-          dotnet list FinApp.sln package --vulnerable --include-transitive 2>&1 | tee vuln.txt
+          dotnet list FinApp.NoMaui.slnf package --vulnerable --include-transitive 2>&1 | tee vuln.txt
           if grep -q -E "Critical|High|Moderate|Low" vuln.txt; then
             echo "::error::Vulnerable NuGet packages found (see log above)."
             exit 1

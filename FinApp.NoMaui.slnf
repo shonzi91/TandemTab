@@ -1,0 +1,16 @@
+{
+  "solution": {
+    "path": "FinApp.sln",
+    "projects": [
+      "src\\FinApp.Contracts\\FinApp.Contracts.csproj",
+      "src\\FinApp.Domain\\FinApp.Domain.csproj",
+      "src\\FinApp.Persistence\\FinApp.Persistence.csproj",
+      "src\\FinApp.Shared.UI\\FinApp.Shared.UI.csproj",
+      "src\\FinApp.Server\\FinApp.Server.csproj",
+      "src\\FinApp.App.Web\\FinApp.App.Web.csproj",
+      "tests\\FinApp.Domain.Tests\\FinApp.Domain.Tests.csproj",
+      "tests\\FinApp.Persistence.Tests\\FinApp.Persistence.Tests.csproj",
+      "tests\\FinApp.Server.Tests\\FinApp.Server.Tests.csproj"
+    ]
+  }
+}
