@@ -133,15 +133,6 @@ public sealed class FinAppApiClient(HttpClient http)
     public Task<BankBalanceAtDto> GetBankBalanceAtAsync(Guid accountId, DateOnly date, CancellationToken ct = default) =>
         SendAsync<BankBalanceAtDto>(HttpMethod.Get, $"/accounts/{accountId}/bank/balance-at?date={date:yyyy-MM-dd}", null, ct);
 
-    // --- Loans (Forecasts tab) --------------------------------------------
-    public Task<List<LoanDto>> GetLoansAsync(Guid accountId, CancellationToken ct = default) =>
-        SendAsync<List<LoanDto>>(HttpMethod.Get, $"/accounts/{accountId}/loans", null, ct);
-    public Task<LoanDto> AddLoanAsync(Guid accountId, SaveLoanRequest req, CancellationToken ct = default) =>
-        SendAsync<LoanDto>(HttpMethod.Post, $"/accounts/{accountId}/loans", req, ct);
-    public Task UpdateLoanAsync(Guid accountId, Guid loanId, SaveLoanRequest req, CancellationToken ct = default) =>
-        SendAsync(HttpMethod.Put, $"/accounts/{accountId}/loans/{loanId}", req, ct);
-    public Task RemoveLoanAsync(Guid accountId, Guid loanId, CancellationToken ct = default) =>
-        SendAsync(HttpMethod.Delete, $"/accounts/{accountId}/loans/{loanId}", null, ct);
     public Task SelectBankAccountAsync(Guid accountId, string bankAccountRef, CancellationToken ct = default) =>
         SendAsync(HttpMethod.Put, $"/accounts/{accountId}/bank/account", new SelectBankAccountRequest(bankAccountRef), ct);
     public Task AckBankTransactionAsync(Guid accountId, string externalId, bool confirmed, CancellationToken ct = default) =>

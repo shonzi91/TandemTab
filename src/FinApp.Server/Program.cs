@@ -85,7 +85,6 @@ builder.Services.AddHttpClient();
 builder.Services.AddScoped<AccountService>();
 builder.Services.AddScoped<ArchivedAccountsService>();
 builder.Services.AddScoped<AccountDeletionService>();
-builder.Services.AddScoped<FinApp.Server.Forecasting.LoanService>();
 builder.Services.AddScoped<SnapshotService>();
 builder.Services.AddScoped<AccountExportService>();
 builder.Services.AddScoped<InvitationService>();
@@ -185,8 +184,6 @@ using (var scope = app.Services.CreateScope())
     var deletions = scope.ServiceProvider.GetRequiredService<AccountDeletionService>();
     await deletions.EnsureSchemaAsync();
     await deletions.PurgeDueAsync();
-    // Loans table (Forecasts tab — forecast/simulation only, isolated from the money model).
-    await scope.ServiceProvider.GetRequiredService<FinApp.Server.Forecasting.LoanService>().EnsureSchemaAsync();
 }
 
 // Security response headers on everything (incl. static files + errors). Set before next() so they're
@@ -545,22 +542,6 @@ accounts.MapDelete("/{id:guid}/bank/connection", async (Guid id, ClaimsPrincipal
 accounts.MapPost("/{id:guid}/bank/reset", async (Guid id, DateOnly from, DateOnly to, ClaimsPrincipal user, BankSyncService svc, CancellationToken ct) =>
 {
     await svc.ResetRangeAsync(user.UserId(), id, from, to, ct);
-    return Results.NoContent();
-});
-
-// --- Loans (Forecasts tab — forecast/simulation only; never touches the money model) ---
-accounts.MapGet("/{id:guid}/loans", async (Guid id, ClaimsPrincipal user, FinApp.Server.Forecasting.LoanService svc, CancellationToken ct) =>
-    Results.Ok(await svc.ListAsync(user.UserId(), id, ct)));
-accounts.MapPost("/{id:guid}/loans", async (Guid id, SaveLoanRequest req, ClaimsPrincipal user, FinApp.Server.Forecasting.LoanService svc, CancellationToken ct) =>
-    Results.Ok(await svc.AddAsync(user.UserId(), id, req, ct)));
-accounts.MapPut("/{id:guid}/loans/{loanId:guid}", async (Guid id, Guid loanId, SaveLoanRequest req, ClaimsPrincipal user, FinApp.Server.Forecasting.LoanService svc, CancellationToken ct) =>
-{
-    await svc.UpdateAsync(user.UserId(), id, loanId, req, ct);
-    return Results.NoContent();
-});
-accounts.MapDelete("/{id:guid}/loans/{loanId:guid}", async (Guid id, Guid loanId, ClaimsPrincipal user, FinApp.Server.Forecasting.LoanService svc, CancellationToken ct) =>
-{
-    await svc.RemoveAsync(user.UserId(), id, loanId, ct);
     return Results.NoContent();
 });
 
