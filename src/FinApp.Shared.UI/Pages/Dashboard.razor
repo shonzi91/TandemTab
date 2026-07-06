@@ -1833,9 +1833,10 @@ else
                     var pjRate = State.SavingBucketDebtRate(_projBucketId);
                     var pjInst = State.SavingBucketDebtInstallment(_projBucketId);
                     var pjPace = State.SavingBucketPace(_projBucketId);
+                    var pjExtra = _payoffExtra > 0m ? _payoffExtra : 0m;
+                    var pjTotal = pjInst + pjExtra;                       // installment is always there; extra is on top
                     var pjAtInst = FinApp.Domain.Forecasting.LoanForecast.PayOff(pjBal, pjRate, pjInst);
-                    var pjAtPace = pjPace is { } pjp && pjp.Amount > 0m
-                        ? FinApp.Domain.Forecasting.LoanForecast.PayOff(pjBal, pjRate, pjp.Amount) : null;
+                    var pjAtTotal = FinApp.Domain.Forecasting.LoanForecast.PayOff(pjBal, pjRate, pjTotal);
                     <h3>📈 @Loc["Payoff projection"] — @State.SavingBucketName(_projBucketId)</h3>
                     <div class="proj-grid">
                         <span class="proj-k">@Loc["Balance owed"]</span><span class="proj-v">@Fmt(State.Money(pjBal))</span>
@@ -1843,7 +1844,7 @@ else
                         <span class="proj-k">@Loc["Rate"]</span><span class="proj-v">@pjRate% APR</span>
                         <span class="proj-k">@Loc["Installment"]</span><span class="proj-v">@Fmt(State.Money(pjInst))/@Loc["mo"]</span>
                     </div>
-                    <h4 class="detail-sub">@Loc["At your installment"] @infoTip(("pp-inst", Loc["Assumes you pay exactly the monthly installment, with monthly compound interest — the way a bank works."]))</h4>
+                    <h4 class="detail-sub">@Loc["At your installment"] @infoTip(("pp-inst", Loc["Paying just the monthly installment, nothing extra on top. Monthly compound interest, the way a bank works."]))</h4>
                     @if (pjAtInst is { } ai)
                     {
                         <p class="hint">🏁 @string.Format(Loc["Clear in {0} (~{1}) · interest {2}"], MonthsText(ai.Months), PayoffDate(ai.Months), Fmt(State.Money(ai.TotalInterest)))</p>
@@ -1852,24 +1853,25 @@ else
                     {
                         <p class="hint warn-text">@Loc["At this installment it never clears — it doesn’t cover the interest."]</p>
                     }
-                    <h4 class="detail-sub">@Loc["At your saving pace"] @infoTip(("pp-pace", Loc["Uses the average you actually set aside into this bucket each period — often more than the installment, so you clear it sooner."]))</h4>
-                    @if (pjPace is { } pace && pace.Amount > 0m)
+                    <h4 class="detail-sub">@Loc["Installment + extra on top"]
+                        @infoTip(("pp-pace", Loc["Money you set aside on top of the installment each month. Starts from your recent saving pace — change it to see how paying more (or less) moves the date and interest."]))
+                        <button type="button" class="info-ico reset-ico" title="@Loc["Reset to your saving pace"]" @onclick="() => _payoffExtra = State.SavingBucketPace(_projBucketId)?.Amount ?? 0m">↺</button>
+                    </h4>
+                    <label class="proj-extra">@Loc["Extra on top /mo"] <input type="number" step="10" min="0" @bind="_payoffExtra" @bind:event="oninput" /></label>
+                    <p class="hint pm-hint">@string.Format(Loc["{0} installment + {1} extra = {2}/mo"], Fmt(State.Money(pjInst)), Fmt(State.Money(pjExtra)), Fmt(State.Money(pjTotal)))@(pjPace is { } pc && pc.Amount > 0m ? string.Format(Loc[" · your pace ~{0}/period"], Fmt(pc)) : "")</p>
+                    @if (pjAtTotal is { } ap)
                     {
-                        <p class="hint">@string.Format(Loc["You set aside about {0}/period."], Fmt(pace))</p>
-                        @if (pjAtPace is { } ap)
+                        <p class="hint">🏁 @string.Format(Loc["Clear in {0} (~{1}) · interest {2}"], MonthsText(ap.Months), PayoffDate(ap.Months), Fmt(State.Money(ap.TotalInterest)))</p>
+                        @if (pjAtInst is { } bi && (bi.Months > ap.Months || bi.TotalInterest > ap.TotalInterest))
                         {
-                            <p class="hint">🏁 @string.Format(Loc["Clear in {0} (~{1}) · interest {2}"], MonthsText(ap.Months), PayoffDate(ap.Months), Fmt(State.Money(ap.TotalInterest)))</p>
-                        }
-                        else
-                        {
-                            <p class="hint warn-text">@Loc["At this pace it wouldn’t cover the interest."]</p>
+                            <p class="hint good-text">➡️ @string.Format(Loc["{0} sooner · {1} less interest than the installment alone"], MonthsText(bi.Months - ap.Months), Fmt(State.Money(Math.Max(0m, bi.TotalInterest - ap.TotalInterest))))</p>
                         }
                     }
                     else
                     {
-                        <p class="hint">@Loc["Not enough history yet — set money aside a few times and we’ll project your real pace."]</p>
+                        <p class="hint warn-text">@Loc["At this amount it wouldn’t cover the interest."]</p>
                     }
-                    <small class="hint">@Loc["Projection only — it never changes your budgets, savings or balances."]</small>
+                    <div class="proj-disclaimer">⚠️ @Loc["For planning only — these figures are estimates, not financial advice. Your lender's actual terms (fees, rate changes, payment timing) can differ. For exact numbers, please check with your loan provider."]</div>
                     <div class="modal-actions inline-actions">
                         <button class="ghost" @onclick="Back">@Loc["Close"]</button>
                     </div>
@@ -3389,6 +3391,7 @@ else
     // --- Debt/goal forecasting (all read-only projections; nothing here touches the money model) ---
     private Guid _projBucketId;                 // bucket the payoff/goal-date modal is showing
     private string? _openTip;                   // which info-tip caption is expanded (null = none)
+    private decimal _payoffExtra;               // payoff modal: extra /mo ON TOP of the installment (defaults to pace)
     private decimal _planExtra;                 // multi-debt planner: shared extra /period
     private FinApp.Domain.Forecasting.LoanForecast.Strategy _planStrategy = FinApp.Domain.Forecasting.LoanForecast.Strategy.Avalanche;
 
@@ -3398,7 +3401,13 @@ else
     private FinApp.Domain.Forecasting.LoanForecast.StrategyPlan? DebtBaseline =>
         FinApp.Domain.Forecasting.LoanForecast.PlanPayoff(State.DebtLoanInputs, 0m, _planStrategy);
 
-    private void OpenPayoffProjection(Guid bucketId) { _projBucketId = bucketId; _openTip = null; _modal = Modal.PayoffProjection; }
+    private void OpenPayoffProjection(Guid bucketId)
+    {
+        _projBucketId = bucketId;
+        _openTip = null;
+        _payoffExtra = State.SavingBucketPace(bucketId)?.Amount ?? 0m;   // load with your saving pace on top
+        _modal = Modal.PayoffProjection;
+    }
     private void OpenGoalProjection(Guid bucketId) { _projBucketId = bucketId; _openTip = null; _modal = Modal.GoalProjection; }
 
     private static string MonthsText(int months) =>

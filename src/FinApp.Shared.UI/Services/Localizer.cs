@@ -476,6 +476,16 @@ public sealed class Localizer(IJSRuntime js)
         ["{0} · total interest {1}"] = "{0} · обща лихва {1}",
         ["That extra clears you {0} sooner and saves {1} in interest."] =
             "Това допълнително ви погасява {0} по-рано и спестява {1} лихва.",
+        ["Installment + extra on top"] = "Вноска + допълнително отгоре",
+        ["Extra on top /mo"] = "Допълнително отгоре/мес.",
+        ["Reset to your saving pace"] = "Върни към темпото на спестяване",
+        ["{0} installment + {1} extra = {2}/mo"] = "{0} вноска + {1} допълнително = {2}/мес.",
+        [" · your pace ~{0}/period"] = " · вашето темпо ~{0}/период",
+        ["{0} sooner · {1} less interest than the installment alone"] =
+            "{0} по-рано · {1} по-малко лихва спрямо само вноската",
+        ["At this amount it wouldn’t cover the interest."] = "При тази сума не покрива лихвата.",
+        ["For planning only — these figures are estimates, not financial advice. Your lender's actual terms (fees, rate changes, payment timing) can differ. For exact numbers, please check with your loan provider."] =
+            "Само за планиране — това са приблизителни оценки, не финансов съвет. Реалните условия на кредитора (такси, промени в лихвата, дати на плащане) може да се различават. За точни числа, моля свържете се с вашия кредитор.",
         ["set aside"] = "заделени",
         ["owed"] = "остават",
         ["Make a payment"] = "Направи вноска",

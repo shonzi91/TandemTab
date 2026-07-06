@@ -696,9 +696,29 @@ input[type=date]::-webkit-calendar-picker-indicator:hover { opacity: 1; backgrou
 }
 .row-menu button:hover { background: #f3f5f8; }
 .row-menu button.danger { color: #c0392b; }
-/* Circle action menus (budget + savings/debt buckets) open to the RIGHT of the ring, not below it. */
-.ring-card .row-menu { top: 0; left: 100%; right: auto; margin-left: 6px; }
-@media (max-width: 560px) { .ring-card .row-menu { top: 100%; left: auto; right: 0; margin-left: 0; } }
+/* Circle action menus (budget + savings/debt buckets): a wider speech-bubble that points at the ring. */
+.ring-card .row-menu { top: -4px; left: 100%; right: auto; margin-left: 11px; min-width: 210px; }
+.ring-card .row-menu::before {
+    content: ""; position: absolute; top: 16px; left: -14px;
+    border: 7px solid transparent; border-right-color: #fff;
+    filter: drop-shadow(-1.5px 0 1px rgba(0,0,0,.05));
+}
+@media (max-width: 560px) {
+    .ring-card .row-menu { top: 100%; left: auto; right: 0; margin-left: 0; margin-top: 11px; }
+    .ring-card .row-menu::before {
+        top: -14px; left: auto; right: 16px;
+        border-right-color: transparent; border-bottom-color: #fff;
+        filter: drop-shadow(0 -1.5px 1px rgba(0,0,0,.05));
+    }
+}
+/* Payoff modal: adjustable "extra on top" input, reset icon, and the advisory notice. */
+.proj-extra { display: flex; align-items: center; gap: 8px; font-size: .82rem; color: #6b7280; }
+.proj-extra input { width: 110px; }
+.reset-ico { color: #6b7280; font-size: 1rem; }
+.proj-disclaimer {
+    margin-top: 10px; background: #fff8ed; border: 1px solid #f3d9a8; color: #8a5a12;
+    border-radius: 10px; padding: 9px 11px; font-size: .76rem; line-height: 1.4;
+}
 /* Forecasts tab */
 .networth-value { font-size: 1.8rem; font-weight: 800; color: #13a06e; margin-top: 6px; }
 .networth-value.warn-text { color: #c0392b; }

@@ -202,3 +202,8 @@ html.dark .acct-sync-note { color: #aab0c0; }
 html.dark .plan-toggle .chip { background: #1e2330; border-color: #2c3142; color: #aab0c0; }
 html.dark .plan-toggle .chip.on { background: #13a06e; border-color: #13a06e; color: #fff; }
 html.dark .loan-card { border-color: #262d3d; }
+/* Circle-menu bubble arrow + payoff disclaimer on dark. */
+html.dark .ring-card .row-menu::before { border-right-color: #181c25; }
+@media (max-width: 560px) { html.dark .ring-card .row-menu::before { border-right-color: transparent; border-bottom-color: #181c25; } }
+html.dark .proj-disclaimer { background: #2a2113; border-color: #5a4a1e; color: #f5cf8a; }
+html.dark .proj-k { color: #aab0c0; }
