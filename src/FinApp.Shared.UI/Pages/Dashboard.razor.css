@@ -298,7 +298,11 @@ button.link { background: none; border: none; color: #13a06e; font-weight: 600; 
 /* Header: account dropdown sits on its own row, separated from the period navigation (arrows/ops). */
 .head-main { display: flex; flex-direction: column; gap: 10px; }
 .acct-bar { display: flex; align-items: center; gap: 8px; }
-.acct-ops { display: flex; align-items: center; gap: 4px; }
+.acct-ops { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+/* External-accounts cluster: its own cell (divider + gap) holding the bank shortcut, a sync button and the
+   last-synced time. The timestamp is the first thing to yield when space is tight (hidden on very small screens). */
+.acct-bank { display: inline-flex; align-items: center; gap: 4px; margin-left: 8px; padding-left: 10px; border-left: 1px solid #e0e4ea; }
+.acct-sync-note { font-size: .72rem; color: #6b7280; white-space: nowrap; }
 .acct-picker { position: relative; display: inline-flex; }
 .acct-picker::after {
     content: "▾"; position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
@@ -521,7 +525,9 @@ input[type=date]::-webkit-calendar-picker-indicator:hover { opacity: 1; backgrou
 @media (max-width: 430px) {
     .cards, .cards.cards-2 { grid-template-columns: 1fr; }
     .bal-label { font-size: .62rem; }
-    .acct-select { max-width: 60vw; }
+    .acct-select { max-width: 46vw; }
+    /* Header is tight on phones: keep the 🏦/🔄 controls, drop the last-synced text (still in the tooltip). */
+    .acct-sync-note { display: none; }
 }
 
 /* ─────────────── INSIGHTS TAB ─────────────── */
@@ -748,11 +754,13 @@ input[type=date]::-webkit-calendar-picker-indicator:hover { opacity: 1; backgrou
 .bank-tx-desc { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .bank-tx .amt { white-space: nowrap; font-variant-numeric: tabular-nums; }
 .bank-tx .amt.credit { color: #0e9e6d; }
-/* Controls row: date · pickers (grow) · icon actions (fixed, right-aligned) */
-.bank-tx-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+/* Controls row: date · pickers (grow) · icon actions (fixed, right-aligned).
+   Wraps so it never clips — in the narrow review modal and on phones the pickers
+   drop to the next line instead of overflowing the row. */
+.bank-tx-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
 .bank-tx-date { flex: 0 0 auto; color: #9ca3af; font-size: .8rem; width: 48px; }
-.bank-tx-row .bank-sel { flex: 1 1 0; min-width: 0; }
-.bank-tx-fund { flex: 1 1 0; min-width: 0; color: #0e7a54; font-size: .85rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bank-tx-row .bank-sel { flex: 1 1 150px; min-width: 0; }
+.bank-tx-fund { flex: 1 1 120px; min-width: 0; color: #0e7a54; font-size: .85rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .fund-synced { font-size: .78rem; margin-left: 4px; opacity: .75; }
 .bank-logo-img { height: 16px; width: auto; max-width: 40px; vertical-align: middle; border-radius: 3px; object-fit: contain; margin-right: 2px; }
 .fund-logo { height: 22px; width: 22px; object-fit: contain; border-radius: 5px; background: #fff; padding: 1px; vertical-align: middle; }

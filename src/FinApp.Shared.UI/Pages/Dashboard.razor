@@ -71,6 +71,20 @@ else
                             </div>
                         }
                     </span>
+                    @if (_bankStatus?.Enabled == true)
+                    {
+                        <span class="acct-bank">
+                            <button class="link" title="@Loc["External accounts"]" @onclick="ShowBankTab">🏦</button>
+                            @if (_bankStatus.Connected)
+                            {
+                                <button class="link" title="@Loc["Fetch new transactions"]" @onclick="SyncBankAsync" disabled="@_bankBusy">🔄</button>
+                                @if (_bankStatus.LastSyncedAt is { } synced)
+                                {
+                                    <span class="acct-sync-note" title="@Loc["last synced"]">@synced.LocalDateTime.ToString("dd MMM HH:mm")</span>
+                                }
+                            }
+                        </span>
+                    }
                 </span>
             </div>
             <div class="period-nav">
@@ -117,7 +131,7 @@ else
         <button class="tab @(_tab == Tab.Overview ? "active" : "")" @onclick="() => _tab = Tab.Overview">@Loc["Home"]</button>
         <button class="tab @(_tab == Tab.Budgets ? "active" : "")" @onclick="ShowExpensesTab">@Loc["Spending"]</button>
         <button class="tab @(_tab == Tab.Savings ? "active" : "")" @onclick="() => _tab = Tab.Savings">@Loc["Savings"]</button>
-        <button class="tab @(_tab == Tab.Account ? "active" : "")" @onclick="() => _tab = Tab.Account">@Loc["Money"]</button>
+        <button class="tab @(_tab == Tab.Account ? "active" : "")" @onclick="() => _tab = Tab.Account">@Loc["Funds"]</button>
         <button class="tab @(_tab == Tab.Forecasts ? "active" : "")" @onclick="ShowForecastsTab">@Loc["Forecasts"]</button>
     </nav>
 
@@ -314,10 +328,6 @@ else
             }
         </div>
         <div class="tabpanel" hidden="@(_tab != Tab.Account)">
-            @if (_bankStatus?.Enabled == true)
-            {
-                <button class="big-add bank-open-btn" @onclick="ShowBankTab">🏦 @Loc["External accounts"]</button>
-            }
             <section class="panel people-panel">
                 <div class="panel-head">
                     <h2>@Loc["People"]</h2>
@@ -508,12 +518,10 @@ else
             {
                 var bankCredits = BankCredits();
                 <section class="panel">
-                    <div class="panel-head"><h2>💰 @Loc["Incoming from bank"]</h2>
-                        <button class="link" title="@Loc["Fetch new transactions"]" @onclick="SyncBankAsync" disabled="@_bankBusy">🔄 @Loc["Refresh"]</button>
-                    </div>
+                    <div class="panel-head"><h2>💰 @Loc["Incoming from bank"]</h2></div>
                     @if (bankCredits.Count == 0)
                     {
-                        <p class="hint">@Loc["No incoming money to review right now. Tap 🔄 Refresh to fetch the latest from your bank."]</p>
+                        <p class="hint">@Loc["No incoming money to review right now. It syncs automatically; use 🔄 at the top to fetch now."]</p>
                     }
                     else if (!State.HasSyncedFund)
                     {
@@ -803,14 +811,13 @@ else
                         {
                             <h2>💳 @Loc["From your bank"] @if (bankExpenses.Count > 0) { <span class="bank-group-count">@bankExpenses.Count</span> }</h2>
                         }
-                        <span class="view-toggle">
-                            <button class="view-btn" title="@Loc["Fetch new transactions"]" @onclick="SyncBankAsync" disabled="@_bankBusy">🔄</button>
-                            @if (bankExpenses.Count > 0)
-                            {
+                        @if (bankExpenses.Count > 0)
+                        {
+                            <span class="view-toggle">
                                 <button class="view-btn @(!_bankCal && _bankDay is null ? "active" : "")" title="@Loc["List"]" @onclick="() => { _bankCal = false; _bankDay = null; }">☰</button>
                                 <button class="view-btn @(_bankCal ? "active" : "")" title="@Loc["Calendar"]" @onclick="() => { _bankCal = true; _bankDay = null; }">📅</button>
-                            }
-                        </span>
+                            </span>
+                        }
                     </div>
                     @if (!State.HasSyncedFund)
                     {
@@ -818,7 +825,7 @@ else
                     }
                     @if (bankExpenses.Count == 0)
                     {
-                        <p class="hint">@Loc["No bank transactions to review right now. Tap 🔄 to fetch the latest from your bank."]</p>
+                        <p class="hint">@Loc["No bank transactions to review right now. It syncs automatically; use 🔄 at the top to fetch now."]</p>
                     }
                     else if (_bankCal)
                     {
@@ -960,7 +967,7 @@ else
         <div class="tabpanel" hidden="@(_tab != Tab.Bank)">
             @if (Auth.CurrentUser is { EmailVerified: false })
             {
-                <button class="link bank-back" @onclick="() => _tab = Tab.Account">← @Loc["Money"]</button>
+                <button class="link bank-back" @onclick="() => _tab = Tab.Account">← @Loc["Funds"]</button>
                 <section class="panel bank-panel">
                     <div class="alert warn-bg"><span>@Loc["Verify your email address before you can link a bank or view its data — bank connections show real financial information."]</span></div>
                     @if (_resendOk)
@@ -972,7 +979,7 @@ else
             }
             else if (_bankStatus?.Enabled == true)
             {
-                <button class="link bank-back" @onclick="() => _tab = Tab.Account">← @Loc["Money"]</button>
+                <button class="link bank-back" @onclick="() => _tab = Tab.Account">← @Loc["Funds"]</button>
                 @if (!State.IsOwnerOfCurrent && _bankSharedAckKnown && !_bankSharedAck)
                 {
                     <div class="alert warn-bg">
@@ -990,10 +997,6 @@ else
                 <section class="panel bank-panel">
                     <div class="panel-head">
                         <h2>@Loc["External accounts"] · @State.Account.Name</h2>
-                        @if (_bankStatus.Connected && State.IsPeriodOpen)
-                        {
-                            <button class="link" title="@Loc["Fetch new transactions"]" @onclick="SyncBankAsync" disabled="@_bankBusy">🔄 @Loc["Refresh"]</button>
-                        }
                     </div>
 
                     @if (!_bankStatus.Connected)
@@ -1028,7 +1031,7 @@ else
                         {
                             <div class="alert warn-bg"><span>@Loc["Mark a fund as synced to this bank (a fund → Edit) so imports file automatically."]</span></div>
                         }
-                        <p class="hint">@Loc["Imported expenses are reviewed in the Spending tab; money-in under Money → Move money."]</p>
+                        <p class="hint">@Loc["Imported expenses are reviewed in the Spending tab; money-in under Funds → Move money."]</p>
                     }
                     @if (_bankError is not null)
                     {
@@ -1145,7 +1148,7 @@ else
                 case Modal.PickAccount:
                     <h3>@Loc["Which account?"]</h3>
                     <p class="hint">@Loc["Pick the account you want to work in. You can switch anytime from the top bar."]</p>
-                    <div class="pm-actions" style="flex-direction:column;align-items:stretch;gap:8px">
+                    <div class="pm-actions" style="flex-direction:column;align-items:stretch;gap:12px">
                         @foreach (var a in State.Accounts)
                         {
                             var accId = a.Id;
@@ -1173,9 +1176,8 @@ else
                     {
                         <p class="hint">@Loc["All caught up — nothing left to review."]</p>
                     }
-                    <div class="modal-actions">
-                        <button class="ghost" @onclick="SyncBankAsync" disabled="@_bankBusy">🔄 @Loc["Refresh"]</button>
-                        <button class="ghost" @onclick="DismissBankReview">@Loc["Later"]</button>
+                    <div class="modal-actions inline-actions">
+                        <button class="ghost" @onclick="DismissBankReview">@Loc["Close"]</button>
                     </div>
                     break;
 

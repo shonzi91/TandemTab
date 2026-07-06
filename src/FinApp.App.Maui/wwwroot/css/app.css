@@ -190,3 +190,15 @@ html.dark .cal-cell.cal-today .cal-num { color: #2bbd86; }
 html.dark .cal-cell.cal-sel { background: #14352a; border-color: #2bbd86; }
 html.dark .cal-total { color: #6fe0b4; background: #14352a; }
 html.dark .cal-add:hover { background: #14352a; }
+
+/* Labels & mid-gray helper text that scoped rules leave too dark to read on dark surfaces
+   (worst was .icon-label at #374151 — near-black on near-black). */
+html.dark .icon-label,
+html.dark .modal label,
+html.dark .form label, html.dark .dates-form label, html.dark .firstrun-form label,
+html.dark .loan-figs, html.dark .loan-sim label, html.dark .plan-controls label,
+html.dark .acct-sync-note { color: #aab0c0; }
+/* Payoff-planner strategy chips + loan-card borders on dark. */
+html.dark .plan-toggle .chip { background: #1e2330; border-color: #2c3142; color: #aab0c0; }
+html.dark .plan-toggle .chip.on { background: #13a06e; border-color: #13a06e; color: #fff; }
+html.dark .loan-card { border-color: #262d3d; }
