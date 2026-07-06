@@ -146,6 +146,8 @@ public sealed class FinAppDbContext(DbContextOptions<FinAppDbContext> options) :
             // Debt-payoff metadata is body data too (snapshot only) — no migration, prod uses EnsureCreated.
             c.Ignore(x => x.Kind);
             c.Ignore(x => x.IsDebt);
+            c.Ignore(x => x.IsDebtCleared);
+            c.Ignore(x => x.IsArchived);
             c.Ignore(x => x.DebtBalance);
             c.Ignore(x => x.DebtAnnualRatePercent);
             c.Ignore(x => x.DebtInstallment);

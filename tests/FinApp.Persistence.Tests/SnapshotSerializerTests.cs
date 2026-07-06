@@ -174,6 +174,7 @@ public class SnapshotSerializerTests
         account.AssignOwner(Guid.NewGuid(), "Me");
         var car = account.AddSavingCategory("Car loan");
         account.ConfigureSavingDebt(car.Id, balance: 12_000m, annualRatePercent: 6.5m, installment: 300m);
+        account.SetSavingArchived(car.Id, true);
 
         var copy = AccountSnapshotSerializer.Deserialize(AccountSnapshotSerializer.Serialize(account));
 
@@ -182,6 +183,7 @@ public class SnapshotSerializerTests
         Assert.Equal(12_000m, copied.DebtBalance);
         Assert.Equal(6.5m, copied.DebtAnnualRatePercent);
         Assert.Equal(300m, copied.DebtInstallment);
+        Assert.True(copied.IsArchived);
     }
 
     [Fact]

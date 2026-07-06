@@ -28,6 +28,13 @@ public sealed class SavingCategory : Entity
 
     public bool IsDebt => Kind == SavingKind.Debt;
 
+    /// <summary>Archived buckets (a paid-off debt or a reached goal) are hidden from the main lists but keep their
+    /// history. Body data (snapshot, not EF).</summary>
+    public bool IsArchived { get; private set; }
+
+    /// <summary>A debt bucket is cleared once nothing is owed on it.</summary>
+    public bool IsDebtCleared => IsDebt && DebtBalance <= 0m;
+
     /// <summary>Optional display icon (emoji). Null → the UI derives one from the name. Body data (in the snapshot, not EF).</summary>
     public string? Icon { get; private set; }
 
@@ -101,6 +108,17 @@ public sealed class SavingCategory : Entity
         DebtAnnualRatePercent = 0m;
         DebtInstallment = 0m;
     }
+
+    /// <summary>Record a payment against a debt bucket: lower the outstanding balance (never below zero). No-op for a
+    /// common bucket. The full payment is applied to the balance — an approximation the user can correct by editing.</summary>
+    public void RecordDebtPayment(decimal amount)
+    {
+        if (!IsDebt || amount <= 0m) return;
+        DebtBalance = Math.Max(0m, DebtBalance - amount);
+    }
+
+    /// <summary>Hide/show this bucket in the main lists (its history is kept regardless).</summary>
+    public void SetArchived(bool archived) => IsArchived = archived;
 
     /// <summary>Set the pre-existing balance carried into the bucket at setup time. Cannot be negative.</summary>
     public void SetInitialAmount(decimal amount)

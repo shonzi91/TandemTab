@@ -914,8 +914,9 @@ else
                 </div>
             </section>
             @{
-                var debtBuckets = State.SavingBuckets.Where(x => x.Bucket.IsDebt).ToList();
-                var plainBuckets = State.SavingBuckets.Where(x => !x.Bucket.IsDebt).ToList();
+                var debtBuckets = State.SavingBuckets.Where(x => x.Bucket.IsDebt && !x.Bucket.IsArchived).ToList();
+                var plainBuckets = State.SavingBuckets.Where(x => !x.Bucket.IsDebt && !x.Bucket.IsArchived).ToList();
+                var archivedBuckets = State.SavingBuckets.Where(x => x.Bucket.IsArchived).ToList();
 
                 // One card, reused in the Debts and Savings sections. Debt cards show "set aside" + what's still owed;
                 // ordinary cards show saved / goal. All bucket actions live in the ⋯ menu (same pattern as elsewhere).
@@ -933,26 +934,31 @@ else
                         var ringPct = isDebt ? debtPct : (g is null ? 0 : pct);
                         var ringCls = isDebt ? "debt" : cls;
                         var ringDashed = !isDebt && g is null;
+                        // Lifecycle: a debt with nothing left owed, or a goal that's been reached, is "done".
+                        var done = isDebt ? ctx.Bucket.IsDebtCleared : (g is not null && g.GoalReached);
                     }
                     <ProgressRing Percent="@ringPct" Class="@ringCls" Dashed="@ringDashed">
                         <button class="ring-ico-big" title="@Loc["Actions"]" @onclick="() => ToggleRowMenu(bucketId)">@State.SavingBucketIcon(bucketId)</button>
                         <button class="ring-name" title="@Loc["Actions"]" @onclick="() => ToggleRowMenu(bucketId)">@ctx.Bucket.Name</button>
-                        @if (g is not null && g.GoalReached)
+                        @if (done)
                         {
-                            <span class="ring-done">✓</span>
+                            <span class="ring-done">🎉</span>
                         }
                     </ProgressRing>
                     @if (_rowMenuId == bucketId)
                     {
                         <div class="row-menu-backdrop" @onclick="() => _rowMenuId = Guid.Empty"></div>
                         <div class="row-menu">
-                            @if (isDebt)
+                            @if (!done)
                             {
-                                <button @onclick="() => RowAct(() => OpenPayoffProjection(bucketId))">📈 @Loc["Payoff projection"]</button>
-                            }
-                            else
-                            {
-                                <button @onclick="() => RowAct(() => OpenGoalProjection(bucketId))">📅 @Loc["Goal projection"]</button>
+                                @if (isDebt)
+                                {
+                                    <button @onclick="() => RowAct(() => OpenPayoffProjection(bucketId))">📈 @Loc["Payoff projection"]</button>
+                                }
+                                else
+                                {
+                                    <button @onclick="() => RowAct(() => OpenGoalProjection(bucketId))">📅 @Loc["Goal projection"]</button>
+                                }
                             }
                             @if (State.IsPeriodOpen)
                             {
@@ -962,11 +968,17 @@ else
                                 <button @onclick="() => RowAct(() => OpenSpendSaving(bucketId))">💸 @Loc["Spend savings"]</button>
                             }
                             <button @onclick="() => RowAct(() => OpenEditBucket(bucketId))">✏️ @Loc["Edit"]</button>
+                            <button @onclick="() => ArchiveBucket(bucketId)">📦 @Loc["Archive"]</button>
                             <button class="danger" @onclick="() => RowAct(() => OpenDeleteBucket(bucketId))">🗑️ @Loc["Remove"]</button>
                         </div>
                     }
                     <div class="ring-label">
-                        @if (isDebt)
+                        @if (done)
+                        {
+                            <span class="amt good-text">@(isDebt ? Loc["🎉 Paid off!"] : Loc["🎉 Goal reached!"])</span>
+                            <div class="ring-sub"><button class="link" @onclick="() => ArchiveBucket(bucketId)">📦 @Loc["Archive it"]</button></div>
+                        }
+                        else if (isDebt)
                         {
                             <span class="amt save">@Fmt(ctx.Total)</span> <span class="ring-muted">@Loc["set aside"]</span>
                             <div class="ring-sub">@Fmt(State.Money(State.SavingBucketDebtBalance(bucketId))) @Loc["owed"] · @State.SavingBucketDebtRate(bucketId)% · @Fmt(State.Money(State.SavingBucketDebtInstallment(bucketId)))/@Loc["mo"]</div>
@@ -1043,6 +1055,29 @@ else
                     </div>
                 </div>
             </section>
+
+            @if (archivedBuckets.Count > 0)
+            {
+                <section class="panel">
+                    <button class="link archived-toggle" @onclick="() => _showArchived = !_showArchived">📦 @Loc["Archived"] (@archivedBuckets.Count) @(_showArchived ? "▲" : "▼")</button>
+                    @if (_showArchived)
+                    {
+                        <ul class="list">
+                            @foreach (var a in archivedBuckets)
+                            {
+                                var aid = a.Bucket.Id;
+                                <li>
+                                    <span class="row-lead"><span class="cat-ico">@State.SavingBucketIcon(aid)</span> @a.Bucket.Name <span class="row-note">· @(a.Bucket.IsDebt ? Loc["debt"] : Loc["savings"])</span></span>
+                                    <span class="row-actions">
+                                        <button class="exp-edit" title="@Loc["Restore"]" @onclick="() => RestoreBucket(aid)">↩️</button>
+                                        <button class="exp-edit" title="@Loc["Remove"]" @onclick="() => OpenDeleteBucket(aid)">🗑️</button>
+                                    </span>
+                                </li>
+                            }
+                        </ul>
+                    }
+                </section>
+            }
 
             @if (State.SavingDepositsThisPeriod.Any() || State.SavingMovementsThisPeriod.Any())
             {
@@ -3723,6 +3758,16 @@ else
             await State.SaveSavingBucket(_modalBucketId, _fName!, goal, _fThreshold, _fNotify, _initialSavings, _fIcon, _bucketIsDebt, _debtBalance, _debtRate, _debtInstallment);
         CloseModal();
     });
+
+    private bool _showArchived;   // Debt/Savings tab: reveal the archived-buckets list
+
+    private async Task ArchiveBucket(Guid bucketId)
+    {
+        _rowMenuId = Guid.Empty;
+        await State.SetSavingBucketArchived(bucketId, true);
+    }
+
+    private Task RestoreBucket(Guid bucketId) => State.SetSavingBucketArchived(bucketId, false);
 
     private void OpenDeleteBucket(Guid bucketId) { _modalBucketId = bucketId; _modal = Modal.DeleteBucket; }
 

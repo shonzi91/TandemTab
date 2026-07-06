@@ -62,6 +62,23 @@ public class SavingsTests
     }
 
     [Fact]
+    public void Debt_payment_lowers_remaining_owed_and_floors_at_zero()
+    {
+        var account = new Account("Home", Eur);
+        account.AssignOwner(Guid.NewGuid(), "Me");
+        var car = account.AddSavingCategory("Car loan");
+        account.ConfigureSavingDebt(car.Id, balance: 1000m, annualRatePercent: 5m, installment: 100m);
+
+        account.RecordSavingDebtPayment(car.Id, 300m);
+        Assert.Equal(700m, account.FindSavingCategory(car.Id)!.DebtBalance);
+        Assert.False(account.FindSavingCategory(car.Id)!.IsDebtCleared);
+
+        account.RecordSavingDebtPayment(car.Id, 5000m);   // overpay → floors at zero, now cleared
+        Assert.Equal(0m, account.FindSavingCategory(car.Id)!.DebtBalance);
+        Assert.True(account.FindSavingCategory(car.Id)!.IsDebtCleared);
+    }
+
+    [Fact]
     public void Converting_saving_to_expense_draws_down_bucket_and_records_expense()
     {
         var account = new Account("Family", Eur);

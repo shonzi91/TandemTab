@@ -450,6 +450,13 @@ public sealed class Localizer(IJSRuntime js)
         ["Debts"] = "Дългове",
         ["Add a debt"] = "Добави дълг",
         ["Add debt"] = "Добави дълг",
+        ["Archive"] = "Архивирай",
+        ["Archive it"] = "Архивирай го",
+        ["Archived"] = "Архивирани",
+        ["🎉 Paid off!"] = "🎉 Погасен!",
+        ["🎉 Goal reached!"] = "🎉 Целта е постигната!",
+        ["debt"] = "дълг",
+        ["savings"] = "спестявания",
         ["Track a loan or debt: set money aside toward it, then pay the bank. Figures here are projections — they don't move real money."] =
             "Проследявайте заем или дълг: заделяйте пари за него, после плащайте на банката. Числата тук са прогнози — не местят реални пари.",
         // Phase-2 projections + multi-debt planner

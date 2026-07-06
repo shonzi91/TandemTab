@@ -706,6 +706,17 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     {
         var transfer = Period.DisburseSaving(savingCategoryId, fundId, Money(amount), Today(), note);
         transfer.SetFundSynced(FundIsSynced(fundId));   // a synced fund's real balance already reflects the outflow
+        // On a debt bucket, dispatching to the bank is a payment — lower what's still owed (projection metadata only).
+        Account.RecordSavingDebtPayment(savingCategoryId, amount);
+        return SaveAsync();
+    }
+
+    // --- Bucket lifecycle (archive a paid-off debt / reached goal) ---
+    public bool SavingBucketIsArchived(Guid id) => FindSavingBucket(id)?.IsArchived ?? false;
+    public bool SavingBucketIsDebtCleared(Guid id) => FindSavingBucket(id)?.IsDebtCleared ?? false;
+    public Task SetSavingBucketArchived(Guid id, bool archived)
+    {
+        Account.SetSavingArchived(id, archived);
         return SaveAsync();
     }
 
@@ -775,7 +786,7 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
 
     /// <summary>Debt buckets mapped to loan-forecast inputs (balance/rate/installment) for the multi-debt planner.</summary>
     public IReadOnlyList<FinApp.Domain.Forecasting.LoanForecast.LoanInput> DebtLoanInputs =>
-        SavingBuckets.Where(x => x.Bucket.IsDebt)
+        SavingBuckets.Where(x => x.Bucket.IsDebt && !x.Bucket.IsArchived && x.Bucket.DebtBalance > 0m)
             .Select(x => new FinApp.Domain.Forecasting.LoanForecast.LoanInput(
                 x.Bucket.Id, x.Bucket.Name, x.Bucket.DebtBalance, x.Bucket.DebtAnnualRatePercent, x.Bucket.DebtInstallment))
             .ToList();
