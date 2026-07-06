@@ -714,6 +714,9 @@ input[type=date]::-webkit-calendar-picker-indicator:hover { opacity: 1; backgrou
 .plan-toggle { display: flex; gap: 6px; }
 .plan-toggle .chip { border: 1px solid #e6e2d8; background: #faf8f3; color: #5b6270; cursor: pointer; font-weight: 600; }
 .plan-toggle .chip.on { background: #13a06e; border-color: #13a06e; color: #fff; }
+/* Bucket type toggle (Savings goal / Debt payoff) in the add-bucket modal — a bit bigger for touch. */
+.bucket-type { flex-wrap: wrap; }
+.bucket-type .chip { padding: 8px 14px; font-size: .88rem; }
 .plan-summary { display: flex; flex-direction: column; gap: 2px; margin: 6px 0; }
 .plan-big { font-size: 1.15rem; font-weight: 800; color: #13a06e; }
 .good-text { color: #13a06e; font-weight: 600; }

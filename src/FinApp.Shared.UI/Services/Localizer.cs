@@ -449,8 +449,8 @@ public sealed class Localizer(IJSRuntime js)
         ["Debts"] = "Дългове",
         ["Add a debt"] = "Добави дълг",
         ["Add debt"] = "Добави дълг",
-        ["Set money aside toward each debt, then pay the bank with 🎯. Balances here are projections — they don't move real money."] =
-            "Заделяйте пари за всеки дълг, после плащайте на банката с 🎯. Сумите тук са прогнози — не местят реални пари.",
+        ["Track a loan or debt: set money aside toward it, then pay the bank. Figures here are projections — they don't move real money."] =
+            "Проследявайте заем или дълг: заделяйте пари за него, после плащайте на банката. Числата тук са прогнози — не местят реални пари.",
         ["set aside"] = "заделени",
         ["owed"] = "остават",
         ["Make a payment"] = "Направи вноска",

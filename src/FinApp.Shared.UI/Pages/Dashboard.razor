@@ -900,16 +900,13 @@ else
                         var cls = g is null ? "mint" : g.ThresholdReached && !g.GoalReached ? "warn" : "ok";
                     }
                     <ProgressRing Percent="@(g is null ? 0 : pct)" Class="@cls" Dashed="@(g is null)">
-                        <button class="ring-ico-big" title="@Loc["Edit"]" @onclick="() => OpenEditBucket(bucketId)">@State.SavingBucketIcon(bucketId)</button>
-                        <button class="ring-name" title="@Loc["Edit"]" @onclick="() => OpenEditBucket(bucketId)">@ctx.Bucket.Name</button>
+                        <button class="ring-ico-big" title="@Loc["Actions"]" @onclick="() => ToggleRowMenu(bucketId)">@State.SavingBucketIcon(bucketId)</button>
+                        <button class="ring-name" title="@Loc["Actions"]" @onclick="() => ToggleRowMenu(bucketId)">@ctx.Bucket.Name</button>
                         @if (g is not null && g.GoalReached)
                         {
                             <span class="ring-done">✓</span>
                         }
                     </ProgressRing>
-                    <div class="ring-actions">
-                        <button title="@Loc["Actions"]" @onclick="() => ToggleRowMenu(bucketId)">⋯</button>
-                    </div>
                     @if (_rowMenuId == bucketId)
                     {
                         <div class="row-menu-backdrop" @onclick="() => _rowMenuId = Guid.Empty"></div>
@@ -942,24 +939,22 @@ else
                     </div>
                 </div>;
             }
-            @if (debtBuckets.Count > 0)
-            {
-                <section class="panel">
-                    <div class="panel-head">
-                        <h2>💳 @Loc["Debts"]</h2>
-                        <button class="link" title="@Loc["Add a debt"]" @onclick="() => OpenAddBucketOfKind(true)">➕ @Loc["Add debt"]</button>
-                    </div>
-                    <p class="hint">@Loc["Set money aside toward each debt, then pay the bank with 🎯. Balances here are projections — they don't move real money."]</p>
-                    <div class="ring-grid">
-                        @foreach (var b in debtBuckets) { @bucketCard(b) }
-                    </div>
-                </section>
-            }
             <section class="panel">
-                @if (debtBuckets.Count > 0)
+                <div class="panel-head"><h2>💳 @Loc["Debts"]</h2></div>
+                @if (debtBuckets.Count == 0)
                 {
-                    <div class="panel-head"><h2>🐷 @Loc["Savings"]</h2></div>
+                    <p class="hint">@Loc["Track a loan or debt: set money aside toward it, then pay the bank. Figures here are projections — they don't move real money."]</p>
                 }
+                <div class="ring-grid">
+                    @foreach (var b in debtBuckets) { @bucketCard(b) }
+                    <div class="ring-card ring-card-lg">
+                        <button class="ring-plus" title="@Loc["Add a debt"]" @onclick="() => OpenAddBucketOfKind(true)">+</button>
+                        <div class="ring-label"><span class="ring-muted">@Loc["Add debt"]</span></div>
+                    </div>
+                </div>
+            </section>
+            <section class="panel">
+                <div class="panel-head"><h2>🐷 @Loc["Savings"]</h2></div>
                 <div class="ring-grid">
                     @foreach (var b in plainBuckets) { @bucketCard(b) }
                     <div class="ring-card ring-card-lg">
@@ -1572,12 +1567,11 @@ else
                     <h3>@(_modal == Modal.AddBucket ? Loc["New savings bucket"] : $"{Loc["Edit"]} {State.FindSavingBucket(_modalBucketId)?.Name}")</h3>
                     <label>@Loc["Name"] <input type="text" @bind="_fName" /></label>
                     @iconPicker
-                    <label>@Loc["Type"]
-                        <select @bind="_bucketIsDebt">
-                            <option value="false">💰 @Loc["Savings goal"]</option>
-                            <option value="true">💳 @Loc["Debt payoff"]</option>
-                        </select>
-                    </label>
+                    <label>@Loc["Type"]</label>
+                    <div class="plan-toggle bucket-type" role="group">
+                        <button type="button" class="chip @(!_bucketIsDebt ? "on" : "")" @onclick="() => _bucketIsDebt = false">💰 @Loc["Savings goal"]</button>
+                        <button type="button" class="chip @(_bucketIsDebt ? "on" : "")" @onclick="() => _bucketIsDebt = true">💳 @Loc["Debt payoff"]</button>
+                    </div>
                     @if (_bucketIsDebt)
                     {
                         <label>@Loc["Balance owed"] <input type="number" step="0.01" min="0" @bind="_debtBalance" /></label>
