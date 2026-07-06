@@ -1212,19 +1212,20 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     /// <summary>Whether a category is flagged essential (rent/groceries/health...). Advisory only.</summary>
     public bool CategoryIsEssential(Guid categoryId) => Account.FindCategory(categoryId)?.IsEssential ?? false;
 
-    /// <summary>This period's spare budget across <b>discretionary</b> (non-essential) categories that carry their own
-    /// budget: allocated − spent where positive. Advisory input for the "put spare toward a debt" nudge; moves nothing.</summary>
-    public Money DiscretionaryLeftover()
+    /// <summary>Each <b>discretionary</b> (non-essential) category that carries its own budget and has spare this period
+    /// (allocated − spent, where positive), biggest first. Advisory input for the "put spare toward a debt" nudge;
+    /// moves nothing.</summary>
+    public IReadOnlyList<(string Name, decimal Amount)> DiscretionaryLeftovers()
     {
-        var total = 0m;
+        var list = new List<(string Name, decimal Amount)>();
         foreach (var c in AllCategories)
         {
             if (c.IsEssential || !HasBudget(c.Id)) continue;
             var cov = Coverage(c.Id);
             var left = cov.Allocated.Amount - cov.Spent.Amount;
-            if (left > 0m) total += left;
+            if (left > 0m) list.Add((c.Name, left));
         }
-        return Money(total);
+        return list.OrderByDescending(x => x.Amount).ToList();
     }
 
     /// <summary>Best-guess "is this essential?" from the name, to pre-tick the flag on new categories (user can change it).</summary>

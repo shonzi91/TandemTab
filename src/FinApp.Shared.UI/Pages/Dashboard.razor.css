@@ -728,7 +728,9 @@ input[type=date]::-webkit-calendar-picker-indicator:hover { opacity: 1; backgrou
 .tip-body { flex: 1; min-width: 0; }
 .tip-title { font-weight: 700; font-size: .9rem; color: #0f7a54; }
 .tip-desc { font-size: .82rem; color: #4b6a5c; line-height: 1.4; margin-top: 2px; }
+.tip-actions { display: inline-flex; gap: 2px; flex: 0 0 auto; }
 .tip-x { border: none; background: none; cursor: pointer; color: #9ca3af; font-size: 1.2rem; line-height: 1; padding: 0 2px; }
+.tip-x:hover { color: #0f7a54; }
 /* Forecasts tab */
 .networth-value { font-size: 1.8rem; font-weight: 800; color: #13a06e; margin-top: 6px; }
 .networth-value.warn-text { color: #c0392b; }

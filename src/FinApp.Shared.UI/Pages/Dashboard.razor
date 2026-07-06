@@ -197,7 +197,13 @@ else
                         <div class="tip-title">@tip.Title</div>
                         <div class="tip-desc">@tip.Desc</div>
                     </div>
-                    <button class="tip-x" title="@Loc["Dismiss"]" @onclick="() => _loanNudgeDismissed = true">×</button>
+                    <span class="tip-actions">
+                        @if (State.DiscretionaryLeftovers().Count > 1)
+                        {
+                            <button class="tip-x" title="@Loc["Another idea"]" @onclick="() => _nudgeIndex++">↻</button>
+                        }
+                        <button class="tip-x" title="@Loc["Dismiss"]" @onclick="() => _loanNudgeDismissed = true">×</button>
+                    </span>
                 </div>
             }
 
@@ -3435,26 +3441,34 @@ else
         months <= 0 ? "0mo" : months >= 12 ? $"{months / 12}y {months % 12}mo" : $"{months}mo";
     private static string PayoffDate(int months) => DateTime.Today.AddMonths(months).ToString("MMM yyyy");
 
-    /// <summary>A gentle, dismissible Home-tab suggestion: when there's spare <b>discretionary</b> budget and a debt it
-    /// would meaningfully help, propose steering it there (showing interest/time saved). Read-only — moves no money.
-    /// Returns null when there's nothing worth surfacing, so it stays quiet rather than nagging.</summary>
+    // A random-ish starting pick so the tip feels fresh each session; the "↻ another" button advances it. Stable
+    // across re-renders (no flicker) — it only moves when the user cycles it or the underlying budgets change.
+    private int _nudgeIndex = Random.Shared.Next(0, 997);
+
+    /// <summary>A gentle, dismissible Home-tab suggestion tied to <b>one specific</b> discretionary budget that has
+    /// spare this period, proposing it toward the debt it helps most (showing interest/time saved). Read-only — moves
+    /// no money. Rotates through the candidates via <see cref="_nudgeIndex"/>. Null when there's nothing worth showing.</summary>
     private (string Title, string Desc)? LoanNudge()
     {
-        var leftover = State.DiscretionaryLeftover().Amount;
-        if (leftover < 5m) return null;
-        foreach (var d in State.SavingBuckets.Where(x => x.Bucket.IsDebt && x.Bucket.DebtBalance > 0m)
-                     .OrderByDescending(x => x.Bucket.DebtAnnualRatePercent))
-        {
-            decimal bal = d.Bucket.DebtBalance, rate = d.Bucket.DebtAnnualRatePercent, inst = d.Bucket.DebtInstallment;
-            if (FinApp.Domain.Forecasting.LoanForecast.PayOff(bal, rate, inst) is not { } b) continue;
-            if (FinApp.Domain.Forecasting.LoanForecast.PayOff(bal, rate, inst + leftover) is not { } f) continue;
-            if (b.Months <= f.Months && b.TotalInterest <= f.TotalInterest) continue;   // no real benefit → stay quiet
-            return (
-                string.Format(Loc["You have about {0} spare this month"], Fmt(State.Money(leftover))),
-                string.Format(Loc["If you regularly steered it to {0} on top of the installment, you'd clear it {1} sooner and save about {2} in interest. Just an idea — only spare from non-essential budgets counts."],
-                    d.Bucket.Name, MonthsText(b.Months - f.Months), Fmt(State.Money(Math.Max(0m, b.TotalInterest - f.TotalInterest)))));
-        }
-        return null;
+        // The debt where extra helps most (highest rate), and its baseline payoff at the installment.
+        var debt = State.SavingBuckets.Where(x => x.Bucket.IsDebt && x.Bucket.DebtBalance > 0m)
+            .OrderByDescending(x => x.Bucket.DebtAnnualRatePercent).Select(x => x.Bucket).FirstOrDefault();
+        if (debt is null) return null;
+        if (FinApp.Domain.Forecasting.LoanForecast.PayOff(debt.DebtBalance, debt.DebtAnnualRatePercent, debt.DebtInstallment) is not { } b) return null;
+
+        // Specific discretionary budgets with spare (up to 10) that would actually move the payoff.
+        var usable = State.DiscretionaryLeftovers().Take(10)
+            .Select(c => (c.Name, c.Amount, Fast: FinApp.Domain.Forecasting.LoanForecast.PayOff(debt.DebtBalance, debt.DebtAnnualRatePercent, debt.DebtInstallment + c.Amount)))
+            .Where(c => c.Fast is { } f && (b.Months > f.Months || b.TotalInterest > f.TotalInterest))
+            .ToList();
+        if (usable.Count == 0) return null;
+
+        var pick = usable[_nudgeIndex % usable.Count];
+        var f2 = pick.Fast!.Value;
+        return (
+            string.Format(Loc["Your {0} budget has about {1} to spare"], pick.Name, Fmt(State.Money(pick.Amount))),
+            string.Format(Loc["Steering it to {0} on top of the installment would clear it {1} sooner and save about {2} in interest. Just an idea — essential budgets are never counted."],
+                debt.Name, MonthsText(b.Months - f2.Months), Fmt(State.Money(Math.Max(0m, b.TotalInterest - f2.TotalInterest)))));
     }
 
     private Task SpendBucketAsExpense() => RunModal(async () =>

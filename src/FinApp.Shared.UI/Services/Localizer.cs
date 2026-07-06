@@ -479,9 +479,10 @@ public sealed class Localizer(IJSRuntime js)
         ["Essential spend (rent, groceries, health…)"] = "Основен разход (наем, храна, здраве…)",
         ["Essential budgets are never suggested for redirecting toward a debt."] =
             "Основните бюджети никога не се предлагат за пренасочване към дълг.",
-        ["You have about {0} spare this month"] = "Имате около {0} свободни този месец",
-        ["If you regularly steered it to {0} on top of the installment, you'd clear it {1} sooner and save about {2} in interest. Just an idea — only spare from non-essential budgets counts."] =
-            "Ако редовно ги насочвате към {0} над вноската, ще го погасите {1} по-рано и ще спестите около {2} лихва. Просто идея — брои се само свободното от неосновни бюджети.",
+        ["Your {0} budget has about {1} to spare"] = "Бюджетът ви за {0} има около {1} свободни",
+        ["Steering it to {0} on top of the installment would clear it {1} sooner and save about {2} in interest. Just an idea — essential budgets are never counted."] =
+            "Ако ги насочите към {0} над вноската, ще го погасите {1} по-рано и ще спестите около {2} лихва. Просто идея — основните бюджети никога не се броят.",
+        ["Another idea"] = "Друга идея",
         ["clear"] = "погасен",
         ["{0} · total interest {1}"] = "{0} · обща лихва {1}",
         ["That extra clears you {0} sooner and saves {1} in interest."] =
