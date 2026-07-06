@@ -437,6 +437,24 @@ public sealed class Localizer(IJSRuntime js)
         ["Add to savings"] = "Добави към спестявания",
         ["Budget savings"] = "Бюджетирай спестявания",
         ["Spend savings"] = "Похарчи спестявания",
+        // Typed buckets (common vs debt-payoff) + the Debts section
+        ["Type"] = "Тип",
+        ["Savings goal"] = "Спестовна цел",
+        ["Debt payoff"] = "Погасяване на дълг",
+        ["Balance owed"] = "Оставаща сума",
+        ["Interest rate (% APR)"] = "Лихва (% ГПР)",
+        ["Monthly installment"] = "Месечна вноска",
+        ["Used only to project your payoff — never changes budgets, savings or balances. Set money aside with 💰, then pay the bank with 🎯."] =
+            "Служи само за прогноза на погасяването — не променя бюджети, спестявания или салда. Заделяте пари с 💰, после плащате на банката с 🎯.",
+        ["Debts"] = "Дългове",
+        ["Add a debt"] = "Добави дълг",
+        ["Add debt"] = "Добави дълг",
+        ["Set money aside toward each debt, then pay the bank with 🎯. Balances here are projections — they don't move real money."] =
+            "Заделяйте пари за всеки дълг, после плащайте на банката с 🎯. Сумите тук са прогнози — не местят реални пари.",
+        ["set aside"] = "заделени",
+        ["owed"] = "остават",
+        ["Make a payment"] = "Направи вноска",
+        ["Apply to a goal"] = "Приложи към цел",
         ["Records a real expense paid straight from this bucket (dated today)."] =
             "Записва реален разход, платен директно от тази каса (с днешна дата).",
         ["Previous day"] = "Предишен ден",

@@ -2,6 +2,11 @@ using FinApp.Domain.Common;
 
 namespace FinApp.Domain.Savings;
 
+/// <summary>What a savings bucket is for. <see cref="Common"/> is an ordinary goal/earmark; <see cref="Debt"/>
+/// is a payoff envelope carrying the loan's balance/rate/installment so payoff can be projected. Both accumulate
+/// real money the same way — the debt fields are projection metadata only and never affect the money model.</summary>
+public enum SavingKind { Common = 0, Debt = 1 }
+
 /// <summary>
 /// A savings bucket (Kids, Vacations, Loan principal...). Like budget categories these form a tree
 /// via <see cref="ParentId"/> and are stored flat on the <c>Account</c>. Savings accumulate across
@@ -11,6 +16,17 @@ public sealed class SavingCategory : Entity
 {
     public string Name { get; private set; }
     public Guid? ParentId { get; private set; }
+
+    /// <summary>Whether this is an ordinary savings goal or a debt-payoff envelope. Body data (snapshot, not EF).</summary>
+    public SavingKind Kind { get; private set; } = SavingKind.Common;
+
+    /// <summary>Debt buckets only: the outstanding balance owed, its annual rate (%) and the contractual monthly
+    /// installment. Pure projection inputs — they never touch balances, budgets or the savings rate. Body data.</summary>
+    public decimal DebtBalance { get; private set; }
+    public decimal DebtAnnualRatePercent { get; private set; }
+    public decimal DebtInstallment { get; private set; }
+
+    public bool IsDebt => Kind == SavingKind.Debt;
 
     /// <summary>Optional display icon (emoji). Null → the UI derives one from the name. Body data (in the snapshot, not EF).</summary>
     public string? Icon { get; private set; }
@@ -64,6 +80,27 @@ public sealed class SavingCategory : Entity
     }
 
     public void SetIcon(string? icon) => Icon = string.IsNullOrWhiteSpace(icon) ? null : icon.Trim();
+
+    /// <summary>Mark this bucket as a debt-payoff envelope and set its (projection-only) loan figures.</summary>
+    public void ConfigureDebt(decimal balance, decimal annualRatePercent, decimal installment)
+    {
+        if (balance < 0m) throw new ArgumentException("Debt balance cannot be negative.", nameof(balance));
+        if (annualRatePercent < 0m) throw new ArgumentException("Interest rate cannot be negative.", nameof(annualRatePercent));
+        if (installment < 0m) throw new ArgumentException("Installment cannot be negative.", nameof(installment));
+        Kind = SavingKind.Debt;
+        DebtBalance = balance;
+        DebtAnnualRatePercent = annualRatePercent;
+        DebtInstallment = installment;
+    }
+
+    /// <summary>Revert to an ordinary (common) savings bucket, clearing the debt figures.</summary>
+    public void ClearDebt()
+    {
+        Kind = SavingKind.Common;
+        DebtBalance = 0m;
+        DebtAnnualRatePercent = 0m;
+        DebtInstallment = 0m;
+    }
 
     /// <summary>Set the pre-existing balance carried into the bucket at setup time. Cannot be negative.</summary>
     public void SetInitialAmount(decimal amount)

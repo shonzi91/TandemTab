@@ -142,6 +142,12 @@ public sealed class FinAppDbContext(DbContextOptions<FinAppDbContext> options) :
             c.Ignore(x => x.IsRoot);
             c.Ignore(x => x.HasGoal);
             c.Ignore(x => x.Icon);  // body data — in the snapshot, not a relational column
+            // Debt-payoff metadata is body data too (snapshot only) — no migration, prod uses EnsureCreated.
+            c.Ignore(x => x.Kind);
+            c.Ignore(x => x.IsDebt);
+            c.Ignore(x => x.DebtBalance);
+            c.Ignore(x => x.DebtAnnualRatePercent);
+            c.Ignore(x => x.DebtInstallment);
         });
 
         b.Entity<Period>(p =>

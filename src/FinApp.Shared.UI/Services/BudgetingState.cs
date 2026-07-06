@@ -720,11 +720,14 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     public bool CanSetInitialSavings => PeriodCount == 1;
 
     // Saving bucket CRUD
-    public async Task<Guid> AddSavingBucket(string name, decimal? goalAmount, decimal thresholdPercent, bool notifyOnMilestone, decimal initialAmount, string? icon = null)
+    public async Task<Guid> AddSavingBucket(string name, decimal? goalAmount, decimal thresholdPercent, bool notifyOnMilestone, decimal initialAmount, string? icon = null,
+        bool isDebt = false, decimal debtBalance = 0m, decimal debtRate = 0m, decimal debtInstallment = 0m)
     {
         var bucket = Account.AddSavingCategory(name);
         Account.SetSavingCategoryIcon(bucket.Id, icon);
-        if (goalAmount is > 0m)
+        if (isDebt)
+            Account.ConfigureSavingDebt(bucket.Id, debtBalance, debtRate, debtInstallment);
+        else if (goalAmount is > 0m)
             Account.ConfigureSavingGoal(bucket.Id, goalAmount, thresholdPercent / 100m, notifyOnMilestone);
         if (CanSetInitialSavings && initialAmount > 0m)
             Account.SetSavingInitialAmount(bucket.Id, initialAmount);
@@ -732,15 +735,32 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
         return bucket.Id;
     }
 
-    public Task SaveSavingBucket(Guid savingCategoryId, string name, decimal? goalAmount, decimal thresholdPercent, bool notifyOnMilestone, decimal initialAmount, string? icon = null)
+    public Task SaveSavingBucket(Guid savingCategoryId, string name, decimal? goalAmount, decimal thresholdPercent, bool notifyOnMilestone, decimal initialAmount, string? icon = null,
+        bool isDebt = false, decimal debtBalance = 0m, decimal debtRate = 0m, decimal debtInstallment = 0m)
     {
         Account.RenameSavingCategory(savingCategoryId, name);
         Account.SetSavingCategoryIcon(savingCategoryId, icon);
-        Account.ConfigureSavingGoal(savingCategoryId, goalAmount is > 0m ? goalAmount : null, thresholdPercent / 100m, notifyOnMilestone);
+        if (isDebt)
+        {
+            Account.ConfigureSavingDebt(savingCategoryId, debtBalance, debtRate, debtInstallment);
+            Account.ConfigureSavingGoal(savingCategoryId, null);   // debt uses its own figures, not a savings goal
+        }
+        else
+        {
+            Account.ClearSavingDebt(savingCategoryId);
+            Account.ConfigureSavingGoal(savingCategoryId, goalAmount is > 0m ? goalAmount : null, thresholdPercent / 100m, notifyOnMilestone);
+        }
         if (CanSetInitialSavings)
             Account.SetSavingInitialAmount(savingCategoryId, initialAmount);
         return SaveAsync();
     }
+
+    /// <summary>Debt-payoff buckets vs ordinary savings buckets (each with its accumulated total), for the two
+    /// Savings-tab sections. Reads the same <see cref="SavingBuckets"/> data — purely a split by kind.</summary>
+    public bool SavingBucketIsDebt(Guid id) => FindSavingBucket(id)?.IsDebt ?? false;
+    public decimal SavingBucketDebtBalance(Guid id) => FindSavingBucket(id)?.DebtBalance ?? 0m;
+    public decimal SavingBucketDebtRate(Guid id) => FindSavingBucket(id)?.DebtAnnualRatePercent ?? 0m;
+    public decimal SavingBucketDebtInstallment(Guid id) => FindSavingBucket(id)?.DebtInstallment ?? 0m;
 
     public string SavingBucketIcon(Guid id) =>
         CategoryIcons.Effective(FindSavingBucket(id)?.Icon, FindSavingBucket(id)?.Name);

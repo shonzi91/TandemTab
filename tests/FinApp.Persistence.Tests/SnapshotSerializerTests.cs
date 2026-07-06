@@ -153,6 +153,23 @@ public class SnapshotSerializerTests
     }
 
     [Fact]
+    public void Debt_bucket_kind_and_figures_round_trip()
+    {
+        var account = new Account("Home", "EUR");
+        account.AssignOwner(Guid.NewGuid(), "Me");
+        var car = account.AddSavingCategory("Car loan");
+        account.ConfigureSavingDebt(car.Id, balance: 12_000m, annualRatePercent: 6.5m, installment: 300m);
+
+        var copy = AccountSnapshotSerializer.Deserialize(AccountSnapshotSerializer.Serialize(account));
+
+        var copied = copy.SavingCategories.Single(s => s.Name == "Car loan");
+        Assert.True(copied.IsDebt);
+        Assert.Equal(12_000m, copied.DebtBalance);
+        Assert.Equal(6.5m, copied.DebtAnnualRatePercent);
+        Assert.Equal(300m, copied.DebtInstallment);
+    }
+
+    [Fact]
     public void Legacy_snapshot_without_savings_target_defaults_to_20_percent()
     {
         // A snapshot produced before SavingsRateTarget existed has no such field.
