@@ -3467,7 +3467,7 @@ else
         var f2 = pick.Fast!.Value;
         return (
             string.Format(Loc["Your {0} budget has about {1} to spare"], pick.Name, Fmt(State.Money(pick.Amount))),
-            string.Format(Loc["Steering it to {0} on top of the installment would clear it {1} sooner and save about {2} in interest. Just an idea — essential budgets are never counted."],
+            string.Format(Loc["Put it toward {0} every period and you'd clear it {1} sooner and save around {2} in interest. Budgets vary, so treat it as a what-if — essential budgets are never counted."],
                 debt.Name, MonthsText(b.Months - f2.Months), Fmt(State.Money(Math.Max(0m, b.TotalInterest - f2.TotalInterest)))));
     }
 
