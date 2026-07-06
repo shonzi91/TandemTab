@@ -21,7 +21,7 @@ else if (!State.HasAccounts)
     <div class="firstrun">
         <div class="firstrun-mascot"><TandemLogo /></div>
         <h1>@Loc["Welcome to TandemTab"]</h1>
-        <p class="firstrun-lead">@Loc["Let’s feather your nest. Create your first account to get started (e.g. Personal, Shared, Family)."]</p>
+        <p class="firstrun-lead">@Loc["Let’s get you rolling. Create your first account to get started (e.g. Personal, Shared, Family)."]</p>
         <InvitationsPanel />
         @if (_error is not null)
         {
@@ -363,7 +363,7 @@ else
             @if (State.Deficit.Amount > 0)
             {
                 <div class="alert warn-bg">
-                    <strong>🪶 @Loc["Ruffled feathers — overspent by"] @Fmt(State.Deficit).</strong>
+                    <strong>⚖️ @Loc["Off balance — overspent by"] @Fmt(State.Deficit).</strong>
                     <span>@Loc["Expenses ate into your savings earmark. This will need to be covered next period (from a savings bucket or fresh contributions)."]</span>
                 </div>
             }
@@ -627,7 +627,7 @@ else
                     }
                     @if (!State.ContributionsThisPeriod.Any())
                     {
-                        <li><em>@Loc["Nothing in the nest yet — add a deposit."]</em></li>
+                        <li><em>@Loc["Nothing on the tab yet — add a deposit."]</em></li>
                     }
                 </ul>
             </section>
@@ -909,8 +909,10 @@ else
                         var g = (!isDebt && ctx.Bucket.HasGoal) ? State.SavingGoal(bucketId) : (SavingGoalProgress?)null;
                         var pct = (double)(g?.Percent ?? 0);
                         var cls = g is null ? "mint" : g.ThresholdReached && !g.GoalReached ? "warn" : "ok";
-                        // Debt: a full solid ring in its own colour (like a goal bucket, not a dashed "no goal" ring).
-                        var ringPct = isDebt ? 100.0 : (g is null ? 0 : pct);
+                        // Debt: a progress loader — how much you've set aside toward what you owe (its own colour).
+                        var debtOwed = isDebt ? State.SavingBucketDebtBalance(bucketId) : 0m;
+                        var debtPct = isDebt ? (debtOwed > 0m ? (double)(ctx.Total.Amount / debtOwed) * 100.0 : 100.0) : 0.0;
+                        var ringPct = isDebt ? debtPct : (g is null ? 0 : pct);
                         var ringCls = isDebt ? "debt" : cls;
                         var ringDashed = !isDebt && g is null;
                     }
@@ -988,6 +990,7 @@ else
                             @infoTip(("plan-strat", Loc["Avalanche pays the highest-rate debt first (least interest overall). Snowball pays the smallest balance first (a quicker first win)."]))
                         </div>
                     </div>
+                    <p class="hint plan-strat-note">@(_planStrategy == FinApp.Domain.Forecasting.LoanForecast.Strategy.Avalanche ? Loc["🏔️ Attacking the highest-rate debt first — least interest overall."] : Loc["⛄ Attacking the smallest balance first — a quicker first win."])</p>
                     @if (DebtPlan is { } plan)
                     {
                         <div class="plan-summary">
@@ -999,9 +1002,10 @@ else
                             <p class="hint good-text">➡️ @string.Format(Loc["That extra clears you {0} sooner and saves {1} in interest."], MonthsText(baseNoExtra.Months - plan.Months), Fmt(State.Money(Math.Max(0m, baseNoExtra.TotalInterest - plan.TotalInterest))))</p>
                         }
                         <ol class="plan-order">
-                            @foreach (var step in plan.Order)
+                            @for (var oi = 0; oi < plan.Order.Count; oi++)
                             {
-                                <li><span class="plan-order-name">@step.Name</span> <span class="pm-hint">@Loc["clear"] @PayoffDate(step.ClearedInMonth) · @MonthsText(step.ClearedInMonth)</span></li>
+                                var step = plan.Order[oi];
+                                <li class="@(oi == 0 ? "first" : "")"><span class="plan-order-name">@step.Name</span> <span class="pm-hint">@Loc["clear"] @PayoffDate(step.ClearedInMonth) · @MonthsText(step.ClearedInMonth)</span></li>
                             }
                         </ol>
                     }

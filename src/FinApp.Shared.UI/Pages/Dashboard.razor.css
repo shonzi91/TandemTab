@@ -757,7 +757,10 @@ input[type=date]::-webkit-calendar-picker-indicator:hover { opacity: 1; backgrou
 .good-text { color: #13a06e; font-weight: 600; }
 .plan-order { margin: 8px 0 0; padding-left: 20px; }
 .plan-order li { margin: 3px 0; }
+.plan-order li.first::marker { color: #6366f1; font-weight: 800; }
+.plan-order li.first .plan-order-name { color: #6366f1; }
 .plan-order-name { font-weight: 600; }
+.plan-strat-note { font-style: italic; margin: 4px 0 2px; }
 .row-menu-head { font-size: .68rem; color: #9ca3af; text-transform: uppercase; letter-spacing: .04em; padding: 8px 10px 2px; }
 .row-menu button.row-menu-sub { padding-left: 20px; font-size: .82rem; }
 /* A subtle mint dot on circles that have sub-categories (revealed in the popover). */
