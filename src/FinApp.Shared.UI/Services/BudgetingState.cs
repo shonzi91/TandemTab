@@ -1123,6 +1123,42 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     public Task DismissBankTransaction(string externalId) =>
         api.AckBankTransactionAsync(CurrentAccountId, externalId, confirmed: false);
 
+    // --- Bank de-duplication: pair incoming debits with existing un-linked entries (e.g. a manual log made while
+    //     sync was down) so the user can replace one instead of double-counting. ---
+    public record DuplicateSuggestion(Guid ExpenseId, Money Amount, Guid CategoryId, string Category, string CategoryIcon, string Fund, DateOnly Date);
+
+    /// <summary>For the given pending bank debits, suggest an existing un-linked expense that looks like the same
+    /// transaction (same amount, within a few days). Keyed by bank ExternalId. Read-only — suggests nothing binding.</summary>
+    public IReadOnlyDictionary<string, DuplicateSuggestion> BankDuplicateSuggestions(IEnumerable<PendingBankTransactionDto> pendingDebits)
+    {
+        var entries = Period.Expenses
+            .Where(e => e.BankExternalId is null && e.SourceSavingCategoryId is null)
+            .Select(e => new BankDuplicateMatcher.Entry(e.Id, e.Amount.Amount, e.Date));
+        var debits = pendingDebits.Where(t => t.Amount < 0m)
+            .Select(t => new BankDuplicateMatcher.Pending(t.ExternalId, t.Amount, t.Date));
+
+        var map = new Dictionary<string, DuplicateSuggestion>();
+        foreach (var s in BankDuplicateMatcher.Suggest(debits, entries, windowDays: 4))
+        {
+            var e = Period.Expenses.First(x => x.Id == s.ExpenseId);
+            map[s.ExternalId] = new DuplicateSuggestion(e.Id, e.Amount, e.CategoryId,
+                CategoryName(e.CategoryId), CategoryIcon(e.CategoryId), FundName(e.FundId), e.Date);
+        }
+        return map;
+    }
+
+    /// <summary>The incoming bank debit is the same as a manual entry: drop the manual (often mis-filed) expense and
+    /// confirm the bank row into that entry's category on the synced fund — one clean, bank-linked expense, no double.</summary>
+    public async Task ReplaceWithBankTransaction(string externalId, Guid manualExpenseId, decimal amount, DateOnly date, string? note)
+    {
+        var exp = Period.Expenses.FirstOrDefault(e => e.Id == manualExpenseId);
+        var categoryId = exp?.CategoryId ?? AllCategories.FirstOrDefault()?.Id ?? Guid.Empty;
+        var fund = HasSyncedFund ? SyncedFundId : (exp?.FundId ?? Guid.Empty);
+        if (exp is not null) Period.RemoveExpense(manualExpenseId);
+        // ConfirmBankTransaction's AddExpense does the single SaveAsync (covering the removal too) then acks the row.
+        await ConfirmBankTransaction(externalId, categoryId, amount, fund, note, date);
+    }
+
     /// <summary>Turn a bank money-in into a movement into the synced fund: the destination is the synced fund
     /// (not credited — the real balance handles it); the <paramref name="source"/> ("fund:{id}" or
     /// "contributor:{id}") is where it came from and is the side that actually moves. Then acks the row.</summary>

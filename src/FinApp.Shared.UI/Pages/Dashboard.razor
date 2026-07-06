@@ -2780,6 +2780,16 @@ else
                 <span class="bank-tx-desc" title="@t.Description"><span class="vendor-badge" style="background:@VendorColor(t.Description)">@VendorInitial(t.Description)</span>@t.Description</span>
                 <span class="amt @(isDebit ? "" : "credit")">@(isDebit ? "−" : "+")@Fmt(new Money(Math.Abs(t.Amount), State.Currency))</span>
             </div>
+            @if (isDebit && !_dupDismissed.Contains(id) && DupSuggestions.TryGetValue(id, out var dup))
+            {
+                <div class="dup-hint">
+                    <span class="dup-txt">🔁 @string.Format(Loc["Looks like you already logged this: {0} · {1} {2} · {3} · {4}"], Fmt(dup.Amount), dup.CategoryIcon, dup.Category, dup.Fund, dup.Date.ToString("dd MMM"))</span>
+                    <span class="dup-actions">
+                        <button class="chip on" @onclick="() => ReplaceDupRow(t, dup)" disabled="@_bankBusy">@Loc["Same — replace"]</button>
+                        <button class="chip" @onclick="() => { _dupDismissed.Add(id); }">@Loc["Keep both"]</button>
+                    </span>
+                </div>
+            }
             <div class="bank-tx-row">
                 <span class="bank-tx-date">@t.Date.ToString("dd MMM")</span>
                 @if (isDebit)
@@ -2969,6 +2979,25 @@ else
             await State.DisconnectBank();
             _bankPending = [];
             await LoadBankAsync();   // refresh status → panel returns to the "Link Revolut" state
+        }
+        catch (Exception ex) { _bankError = ex.Message; }
+        finally { _bankBusy = false; }
+    }
+
+    // Bank de-duplication: suggestions for the current debits, and the set the user chose to "keep both" on.
+    private readonly HashSet<string> _dupDismissed = new();
+    private IReadOnlyDictionary<string, BudgetingState.DuplicateSuggestion> DupSuggestions =>
+        State.BankDuplicateSuggestions(BankDebits());
+
+    /// <summary>Replace a manual entry with the incoming bank transaction (drops the duplicate, keeps the bank one).</summary>
+    private async Task ReplaceDupRow(PendingBankTransactionDto tx, BudgetingState.DuplicateSuggestion dup)
+    {
+        _bankBusy = true; _bankError = null;
+        try
+        {
+            await State.ReplaceWithBankTransaction(tx.ExternalId, dup.ExpenseId, Math.Abs(tx.Amount), ClampToPeriod(tx.Date), tx.Description);
+            _bankPending.RemoveAll(p => p.ExternalId == tx.ExternalId);
+            _dupDismissed.Remove(tx.ExternalId);
         }
         catch (Exception ex) { _bankError = ex.Message; }
         finally { _bankBusy = false; }

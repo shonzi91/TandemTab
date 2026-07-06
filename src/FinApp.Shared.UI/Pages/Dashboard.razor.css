@@ -807,6 +807,11 @@ input[type=date]::-webkit-calendar-picker-indicator:hover { opacity: 1; backgrou
 .bank-tx-desc { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .bank-tx .amt { white-space: nowrap; font-variant-numeric: tabular-nums; }
 .bank-tx .amt.credit { color: #0e9e6d; }
+/* De-duplication hint: this bank debit looks like a manual entry the user already logged. */
+.dup-hint { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 6px 0 2px; padding: 7px 10px; background: #fff8ed; border: 1px solid #f3d9a8; border-radius: 9px; }
+.dup-txt { font-size: .78rem; color: #8a5a12; flex: 1 1 200px; min-width: 0; }
+.dup-actions { display: inline-flex; gap: 6px; flex: 0 0 auto; }
+.dup-actions .chip { cursor: pointer; }
 /* Controls row: date · pickers (grow) · icon actions (fixed, right-aligned).
    Wraps so it never clips — in the narrow review modal and on phones the pickers
    drop to the next line instead of overflowing the row. */
