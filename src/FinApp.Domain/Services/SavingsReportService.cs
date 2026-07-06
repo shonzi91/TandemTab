@@ -129,6 +129,29 @@ public sealed class SavingsReportService
         return new SavingGoalProgress(accumulated, goal, bucket.AlertThreshold);
     }
 
+    /// <summary>
+    /// The demonstrated "saving pace" for a bucket: the average amount <b>added</b> to it per period that had any
+    /// deposit (positive allocations only — spends/disbursements/transfers-out are ignored). Used purely for
+    /// forecasting a payoff or goal date; it never touches the money model. Null when there's no deposit history yet.
+    /// </summary>
+    public Money? AverageDepositPace(Account account, Guid savingCategoryId)
+    {
+        ArgumentNullException.ThrowIfNull(account);
+        if (account.FindSavingCategory(savingCategoryId) is null)
+            throw new InvalidOperationException("Saving category not found in the account.");
+
+        var bucketIds = account.SavingCategoryWithDescendantIds(savingCategoryId).ToHashSet();
+        var perPeriodDeposits = account.Periods
+            .Select(p => p.SavingAllocations
+                .Where(a => bucketIds.Contains(a.SavingCategoryId) && a.Amount.Amount > 0m)
+                .Sum(a => a.Amount.Amount))
+            .Where(sum => sum > 0m)
+            .ToList();
+
+        if (perPeriodDeposits.Count == 0) return null;
+        return new Money(perPeriodDeposits.Sum() / perPeriodDeposits.Count, account.Currency);
+    }
+
     private static Money AllocationsFor(Account account, IReadOnlySet<Guid> bucketIds) =>
         account.Periods
             .SelectMany(p => p.SavingAllocations)

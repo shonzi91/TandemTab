@@ -34,6 +34,34 @@ public class SavingsTests
     }
 
     [Fact]
+    public void Average_deposit_pace_is_per_active_period_and_ignores_empty_periods()
+    {
+        var account = new Account("Family", Eur);
+        var member = account.AddMember(Guid.NewGuid(), "Stoyan");
+        var car = account.AddSavingCategory("Car loan");
+        var svc = new SavingsReportService();
+
+        // No deposits yet → no pace.
+        Assert.Null(svc.AverageDepositPace(account, car.Id));
+
+        var p1 = account.StartPeriod(new DateOnly(2026, 1, 1), new DateOnly(2026, 1, 31));
+        p1.Deposit(member.UserId, M(500));
+        p1.AllocateToSavings(car.Id, M(200), new DateOnly(2026, 1, 10));
+        p1.Close();
+
+        // A period with no deposit into this bucket — must not drag the average down.
+        var p2 = account.StartPeriod(new DateOnly(2026, 2, 1), new DateOnly(2026, 2, 28));
+        p2.Close();
+
+        var p3 = account.StartPeriod(new DateOnly(2026, 3, 1), new DateOnly(2026, 3, 31));
+        p3.Deposit(member.UserId, M(500));
+        p3.AllocateToSavings(car.Id, M(300), new DateOnly(2026, 3, 10));
+
+        // Average over the two active periods: (200 + 300) / 2 = 250.
+        Assert.Equal(M(250), svc.AverageDepositPace(account, car.Id));
+    }
+
+    [Fact]
     public void Converting_saving_to_expense_draws_down_bucket_and_records_expense()
     {
         var account = new Account("Family", Eur);

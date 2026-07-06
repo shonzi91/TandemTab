@@ -762,6 +762,24 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     public decimal SavingBucketDebtRate(Guid id) => FindSavingBucket(id)?.DebtAnnualRatePercent ?? 0m;
     public decimal SavingBucketDebtInstallment(Guid id) => FindSavingBucket(id)?.DebtInstallment ?? 0m;
 
+    // --- Forecasting projections (read-only; never touch the money model) ---
+    /// <summary>Average amount added to a bucket per active period — the demonstrated saving pace, for projections.</summary>
+    public Money? SavingBucketPace(Guid id) => _savings.AverageDepositPace(Account, id);
+
+    /// <summary>How much is currently set aside in a bucket (its accumulated balance).</summary>
+    public Money SavingBucketSaved(Guid id)
+    {
+        var found = SavingBuckets.FirstOrDefault(x => x.Bucket.Id == id);
+        return found.Bucket is null ? Money(0m) : found.Total;
+    }
+
+    /// <summary>Debt buckets mapped to loan-forecast inputs (balance/rate/installment) for the multi-debt planner.</summary>
+    public IReadOnlyList<FinApp.Domain.Forecasting.LoanForecast.LoanInput> DebtLoanInputs =>
+        SavingBuckets.Where(x => x.Bucket.IsDebt)
+            .Select(x => new FinApp.Domain.Forecasting.LoanForecast.LoanInput(
+                x.Bucket.Id, x.Bucket.Name, x.Bucket.DebtBalance, x.Bucket.DebtAnnualRatePercent, x.Bucket.DebtInstallment))
+            .ToList();
+
     public string SavingBucketIcon(Guid id) =>
         CategoryIcons.Effective(FindSavingBucket(id)?.Icon, FindSavingBucket(id)?.Name);
     public string? SavingBucketStoredIcon(Guid id) => FindSavingBucket(id)?.Icon;

@@ -145,6 +145,17 @@ else
             <div class="insight-delta @(s.Dir switch { DeltaDir.Up => "delta-up", DeltaDir.Down => "delta-down", _ => "delta-flat" })">@s.Delta</div>
         </div>;
 
+        // A small "ⓘ" that explains a figure in plain language — tap to toggle (mobile) or hover the title (desktop).
+        // Reused on every projection/simulator label so less confident users can see how the number is worked out.
+        RenderFragment<(string Id, string Text)> infoTip = ctx =>
+        @<span class="info-wrap">
+            <button type="button" class="info-ico" title="@ctx.Text" @onclick="() => _openTip = _openTip == ctx.Id ? null : ctx.Id" @onclick:stopPropagation="true">ⓘ</button>
+            @if (_openTip == ctx.Id)
+            {
+                <span class="info-pop">@ctx.Text</span>
+            }
+        </span>;
+
         // Shared emoji picker for every add/edit modal (categories, funds, buckets, contributions).
         // Reads/writes the shared _fName/_fIcon fields; the first "auto" chip clears to a name-based guess.
         RenderFragment iconPicker =
@@ -915,6 +926,14 @@ else
                     {
                         <div class="row-menu-backdrop" @onclick="() => _rowMenuId = Guid.Empty"></div>
                         <div class="row-menu">
+                            @if (isDebt)
+                            {
+                                <button @onclick="() => RowAct(() => OpenPayoffProjection(bucketId))">📈 @Loc["Payoff projection"]</button>
+                            }
+                            else
+                            {
+                                <button @onclick="() => RowAct(() => OpenGoalProjection(bucketId))">📅 @Loc["Goal projection"]</button>
+                            }
                             @if (State.IsPeriodOpen)
                             {
                                 <button @onclick="() => RowAct(() => OpenAddSaving(bucketId))">💰 @Loc["Add to savings"]</button>
@@ -957,6 +976,41 @@ else
                     </div>
                 </div>
             </section>
+            @if (debtBuckets.Count >= 2)
+            {
+                <section class="panel">
+                    <div class="panel-head"><h2>🎯 @Loc["Payoff plan"] @infoTip(("plan-how", Loc["One spare amount is thrown at your debts each month on top of every installment. As each debt clears, its installment rolls onto the next one."]))</h2></div>
+                    <div class="plan-controls">
+                        <label>@Loc["Extra /mo across all debts"] <input type="number" step="10" min="0" @bind="_planExtra" @bind:event="oninput" /></label>
+                        <div class="plan-toggle" role="group">
+                            <button type="button" class="chip @(_planStrategy == FinApp.Domain.Forecasting.LoanForecast.Strategy.Avalanche ? "on" : "")" @onclick="() => _planStrategy = FinApp.Domain.Forecasting.LoanForecast.Strategy.Avalanche" title="@Loc["Highest interest rate first — cheapest overall."]">🏔️ @Loc["Avalanche"]</button>
+                            <button type="button" class="chip @(_planStrategy == FinApp.Domain.Forecasting.LoanForecast.Strategy.Snowball ? "on" : "")" @onclick="() => _planStrategy = FinApp.Domain.Forecasting.LoanForecast.Strategy.Snowball" title="@Loc["Smallest balance first — quickest wins."]">⛄ @Loc["Snowball"]</button>
+                            @infoTip(("plan-strat", Loc["Avalanche pays the highest-rate debt first (least interest overall). Snowball pays the smallest balance first (a quicker first win)."]))
+                        </div>
+                    </div>
+                    @if (DebtPlan is { } plan)
+                    {
+                        <div class="plan-summary">
+                            <span class="plan-big">🏁 @Loc["Debt-free"] @PayoffDate(plan.Months)</span>
+                            <span class="spending-sub">@string.Format(Loc["{0} · total interest {1}"], MonthsText(plan.Months), Fmt(State.Money(plan.TotalInterest)))</span>
+                        </div>
+                        @if (_planExtra > 0 && DebtBaseline is { } baseNoExtra && (baseNoExtra.Months > plan.Months || baseNoExtra.TotalInterest > plan.TotalInterest))
+                        {
+                            <p class="hint good-text">➡️ @string.Format(Loc["That extra clears you {0} sooner and saves {1} in interest."], MonthsText(baseNoExtra.Months - plan.Months), Fmt(State.Money(Math.Max(0m, baseNoExtra.TotalInterest - plan.TotalInterest))))</p>
+                        }
+                        <ol class="plan-order">
+                            @foreach (var step in plan.Order)
+                            {
+                                <li><span class="plan-order-name">@step.Name</span> <span class="pm-hint">@Loc["clear"] @PayoffDate(step.ClearedInMonth) · @MonthsText(step.ClearedInMonth)</span></li>
+                            }
+                        </ol>
+                    }
+                    else
+                    {
+                        <p class="hint warn-text">@Loc["At these installments the stack never clears — the minimums don't cover the interest. Add an extra amount."]</p>
+                    }
+                </section>
+            }
             <section class="panel">
                 <div class="panel-head"><h2>🐷 @Loc["Savings"]</h2></div>
                 <div class="ring-grid">
@@ -1774,6 +1828,91 @@ else
                     </div>
                     break;
 
+                case Modal.PayoffProjection:
+                    var pjBal = State.SavingBucketDebtBalance(_projBucketId);
+                    var pjRate = State.SavingBucketDebtRate(_projBucketId);
+                    var pjInst = State.SavingBucketDebtInstallment(_projBucketId);
+                    var pjPace = State.SavingBucketPace(_projBucketId);
+                    var pjAtInst = FinApp.Domain.Forecasting.LoanForecast.PayOff(pjBal, pjRate, pjInst);
+                    var pjAtPace = pjPace is { } pjp && pjp.Amount > 0m
+                        ? FinApp.Domain.Forecasting.LoanForecast.PayOff(pjBal, pjRate, pjp.Amount) : null;
+                    <h3>📈 @Loc["Payoff projection"] — @State.SavingBucketName(_projBucketId)</h3>
+                    <div class="proj-grid">
+                        <span class="proj-k">@Loc["Balance owed"]</span><span class="proj-v">@Fmt(State.Money(pjBal))</span>
+                        <span class="proj-k">@Loc["Set aside"]</span><span class="proj-v">@Fmt(State.SavingBucketSaved(_projBucketId))</span>
+                        <span class="proj-k">@Loc["Rate"]</span><span class="proj-v">@pjRate% APR</span>
+                        <span class="proj-k">@Loc["Installment"]</span><span class="proj-v">@Fmt(State.Money(pjInst))/@Loc["mo"]</span>
+                    </div>
+                    <h4 class="detail-sub">@Loc["At your installment"] @infoTip(("pp-inst", Loc["Assumes you pay exactly the monthly installment, with monthly compound interest — the way a bank works."]))</h4>
+                    @if (pjAtInst is { } ai)
+                    {
+                        <p class="hint">🏁 @string.Format(Loc["Clear in {0} (~{1}) · interest {2}"], MonthsText(ai.Months), PayoffDate(ai.Months), Fmt(State.Money(ai.TotalInterest)))</p>
+                    }
+                    else
+                    {
+                        <p class="hint warn-text">@Loc["At this installment it never clears — it doesn’t cover the interest."]</p>
+                    }
+                    <h4 class="detail-sub">@Loc["At your saving pace"] @infoTip(("pp-pace", Loc["Uses the average you actually set aside into this bucket each period — often more than the installment, so you clear it sooner."]))</h4>
+                    @if (pjPace is { } pace && pace.Amount > 0m)
+                    {
+                        <p class="hint">@string.Format(Loc["You set aside about {0}/period."], Fmt(pace))</p>
+                        @if (pjAtPace is { } ap)
+                        {
+                            <p class="hint">🏁 @string.Format(Loc["Clear in {0} (~{1}) · interest {2}"], MonthsText(ap.Months), PayoffDate(ap.Months), Fmt(State.Money(ap.TotalInterest)))</p>
+                        }
+                        else
+                        {
+                            <p class="hint warn-text">@Loc["At this pace it wouldn’t cover the interest."]</p>
+                        }
+                    }
+                    else
+                    {
+                        <p class="hint">@Loc["Not enough history yet — set money aside a few times and we’ll project your real pace."]</p>
+                    }
+                    <small class="hint">@Loc["Projection only — it never changes your budgets, savings or balances."]</small>
+                    <div class="modal-actions inline-actions">
+                        <button class="ghost" @onclick="Back">@Loc["Close"]</button>
+                    </div>
+                    break;
+
+                case Modal.GoalProjection:
+                    var gpSaved = State.SavingBucketSaved(_projBucketId);
+                    var gpGoal = State.FindSavingBucket(_projBucketId)?.GoalAmount;
+                    var gpPace = State.SavingBucketPace(_projBucketId);
+                    int? gpPeriods = gpPace is { } gpp && gpp.Amount > 0m && gpGoal is { } gpg && gpg > gpSaved.Amount
+                        ? (int)Math.Ceiling((double)((gpg - gpSaved.Amount) / gpp.Amount)) : null;
+                    <h3>📅 @Loc["Goal projection"] — @State.SavingBucketName(_projBucketId)</h3>
+                    <div class="proj-grid">
+                        <span class="proj-k">@Loc["Saved so far"]</span><span class="proj-v">@Fmt(gpSaved)</span>
+                        <span class="proj-k">@Loc["Goal"]</span><span class="proj-v">@(gpGoal is { } gg ? Fmt(State.Money(gg)) : "—")</span>
+                    </div>
+                    <h4 class="detail-sub">@Loc["At your saving pace"] @infoTip(("gp-pace", Loc["Uses the average you actually set aside each period, then counts how many periods until you reach the goal."]))</h4>
+                    @if (gpPace is { } gpace && gpace.Amount > 0m)
+                    {
+                        <p class="hint">@string.Format(Loc["You set aside about {0}/period."], Fmt(gpace))</p>
+                        @if (gpPeriods is { } gper)
+                        {
+                            <p class="hint">🏁 @string.Format(Loc["Reach your goal in {0} (~{1})"], MonthsText(gper), PayoffDate(gper))</p>
+                        }
+                        else if (gpGoal is not null)
+                        {
+                            <p class="hint good-text">✓ @Loc["Goal already reached."]</p>
+                        }
+                        else
+                        {
+                            <p class="hint">@Loc["Set a goal amount on this bucket (Edit) to see a target date."]</p>
+                        }
+                    }
+                    else
+                    {
+                        <p class="hint">@Loc["Not enough history yet — set money aside a few times and we’ll project a date."]</p>
+                    }
+                    <small class="hint">@Loc["Projection only — it never changes your budgets, savings or balances."]</small>
+                    <div class="modal-actions inline-actions">
+                        <button class="ghost" @onclick="Back">@Loc["Close"]</button>
+                    </div>
+                    break;
+
                 case Modal.EditDeposit:
                     <h3>@Loc["Edit deposit"]</h3>
                     <label>@Loc["Category"]
@@ -2081,7 +2220,7 @@ else
 }
 
 @code {
-    private enum Modal { None, PickAccount, BankReview, BankConsent, AddCat, AddBudget, DisburseSaving, EditCat, DeleteCat, CategoryDetail, AddAccount, EditAccount, DeleteAccount, RemoveMember, LeaveAccount, AddExpense, NextPeriod, RemovePeriod, EditExpense, DeleteExpense, SettleExpense, AddBucket, EditBucket, DeleteBucket, AddFund, EditFund, DeleteFund, Invite, Transfer, Deposit, EditDeposit, DeleteDeposit, ManageContribCats, ContribCat, DeleteContribCat, AddSaving, BudgetSaving, SpendSaving, EditSavingDeposit, DeleteSavingDeposit, EditTransfer, DeleteTransfer, EditPeriod, EditSavingMovement, DeleteSavingMovement, DeleteExternalTransfer }
+    private enum Modal { None, PickAccount, BankReview, BankConsent, AddCat, AddBudget, DisburseSaving, PayoffProjection, GoalProjection, EditCat, DeleteCat, CategoryDetail, AddAccount, EditAccount, DeleteAccount, RemoveMember, LeaveAccount, AddExpense, NextPeriod, RemovePeriod, EditExpense, DeleteExpense, SettleExpense, AddBucket, EditBucket, DeleteBucket, AddFund, EditFund, DeleteFund, Invite, Transfer, Deposit, EditDeposit, DeleteDeposit, ManageContribCats, ContribCat, DeleteContribCat, AddSaving, BudgetSaving, SpendSaving, EditSavingDeposit, DeleteSavingDeposit, EditTransfer, DeleteTransfer, EditPeriod, EditSavingMovement, DeleteSavingMovement, DeleteExternalTransfer }
     private enum Tab { Overview, Account, Budgets, Savings, Bank }
 
     private Tab _tab = Tab.Overview;
@@ -3247,8 +3386,21 @@ else
         CloseModal();
     });
 
-    // --- Debt/goal forecasting helpers (used by savings-bucket projections; the standalone Forecasts tab was
-    //     folded into the Savings tab). Kept for the Phase-2 payoff/goal-date modals. ---
+    // --- Debt/goal forecasting (all read-only projections; nothing here touches the money model) ---
+    private Guid _projBucketId;                 // bucket the payoff/goal-date modal is showing
+    private string? _openTip;                   // which info-tip caption is expanded (null = none)
+    private decimal _planExtra;                 // multi-debt planner: shared extra /period
+    private FinApp.Domain.Forecasting.LoanForecast.Strategy _planStrategy = FinApp.Domain.Forecasting.LoanForecast.Strategy.Avalanche;
+
+    // The multi-debt plan (reads the debt buckets), and its "installments only" baseline for the savings figure.
+    private FinApp.Domain.Forecasting.LoanForecast.StrategyPlan? DebtPlan =>
+        FinApp.Domain.Forecasting.LoanForecast.PlanPayoff(State.DebtLoanInputs, _planExtra, _planStrategy);
+    private FinApp.Domain.Forecasting.LoanForecast.StrategyPlan? DebtBaseline =>
+        FinApp.Domain.Forecasting.LoanForecast.PlanPayoff(State.DebtLoanInputs, 0m, _planStrategy);
+
+    private void OpenPayoffProjection(Guid bucketId) { _projBucketId = bucketId; _openTip = null; _modal = Modal.PayoffProjection; }
+    private void OpenGoalProjection(Guid bucketId) { _projBucketId = bucketId; _openTip = null; _modal = Modal.GoalProjection; }
+
     private static string MonthsText(int months) =>
         months <= 0 ? "0mo" : months >= 12 ? $"{months / 12}y {months % 12}mo" : $"{months}mo";
     private static string PayoffDate(int months) => DateTime.Today.AddMonths(months).ToString("MMM yyyy");

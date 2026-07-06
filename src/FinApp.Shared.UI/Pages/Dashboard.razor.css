@@ -720,6 +720,18 @@ input[type=date]::-webkit-calendar-picker-indicator:hover { opacity: 1; backgrou
 /* Bucket type toggle (Savings goal / Debt payoff) in the add-bucket modal — a bit bigger for touch. */
 .bucket-type { flex-wrap: wrap; }
 .bucket-type .chip { padding: 8px 14px; font-size: .88rem; }
+/* Projection modals (payoff / goal date): a two-column key/value summary. */
+.proj-grid { display: grid; grid-template-columns: auto 1fr; gap: 3px 12px; margin: 2px 0 6px; }
+.proj-k { color: #6b7280; font-size: .82rem; }
+.proj-v { text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
+/* Tappable info "ⓘ" that explains a projection in plain language. */
+.info-wrap { position: relative; display: inline-flex; align-items: center; }
+.info-ico { border: none; background: none; cursor: pointer; color: #6366f1; font-size: .9rem; padding: 0 2px; line-height: 1; }
+.info-pop {
+    position: absolute; top: 130%; left: 0; z-index: 95; width: max-content; max-width: 240px;
+    background: #1f2430; color: #f3f4f6; font-size: .76rem; font-weight: 400; line-height: 1.35;
+    padding: 7px 10px; border-radius: 8px; box-shadow: 0 6px 20px rgba(0,0,0,.22);
+}
 .plan-summary { display: flex; flex-direction: column; gap: 2px; margin: 6px 0; }
 .plan-big { font-size: 1.15rem; font-weight: 800; color: #13a06e; }
 .good-text { color: #13a06e; font-weight: 600; }
