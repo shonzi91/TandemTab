@@ -130,7 +130,7 @@ else
     <nav class="tabs">
         <button class="tab @(_tab == Tab.Overview ? "active" : "")" @onclick="() => _tab = Tab.Overview">@Loc["Home"]</button>
         <button class="tab @(_tab == Tab.Budgets ? "active" : "")" @onclick="ShowExpensesTab">@Loc["Spending"]</button>
-        <button class="tab @(_tab == Tab.Savings ? "active" : "")" @onclick="() => _tab = Tab.Savings">@Loc["Savings"]</button>
+        <button class="tab @(_tab == Tab.Savings ? "active" : "")" @onclick="() => _tab = Tab.Savings">@Loc["Debt/Savings"]</button>
         <button class="tab @(_tab == Tab.Account ? "active" : "")" @onclick="() => _tab = Tab.Account">@Loc["Funds"]</button>
     </nav>
 
@@ -898,8 +898,12 @@ else
                         var g = (!isDebt && ctx.Bucket.HasGoal) ? State.SavingGoal(bucketId) : (SavingGoalProgress?)null;
                         var pct = (double)(g?.Percent ?? 0);
                         var cls = g is null ? "mint" : g.ThresholdReached && !g.GoalReached ? "warn" : "ok";
+                        // Debt: a full solid ring in its own colour (like a goal bucket, not a dashed "no goal" ring).
+                        var ringPct = isDebt ? 100.0 : (g is null ? 0 : pct);
+                        var ringCls = isDebt ? "debt" : cls;
+                        var ringDashed = !isDebt && g is null;
                     }
-                    <ProgressRing Percent="@(g is null ? 0 : pct)" Class="@cls" Dashed="@(g is null)">
+                    <ProgressRing Percent="@ringPct" Class="@ringCls" Dashed="@ringDashed">
                         <button class="ring-ico-big" title="@Loc["Actions"]" @onclick="() => ToggleRowMenu(bucketId)">@State.SavingBucketIcon(bucketId)</button>
                         <button class="ring-name" title="@Loc["Actions"]" @onclick="() => ToggleRowMenu(bucketId)">@ctx.Bucket.Name</button>
                         @if (g is not null && g.GoalReached)

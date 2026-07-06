@@ -122,6 +122,7 @@ public sealed class Localizer(IJSRuntime js)
         ["Budgets"] = "Бюджети",
         ["Expenses"] = "Разходи",
         ["Savings"] = "Спестявания",
+        ["Debt/Savings"] = "Дългове/Спестявания",
         ["Insights"] = "Анализи",
         ["Overview"] = "Преглед",
         ["Home"] = "Начало",
