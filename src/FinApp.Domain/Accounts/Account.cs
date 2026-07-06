@@ -153,6 +153,10 @@ public sealed class Account : Entity
     public void SetCategoryIcon(Guid categoryId, string? icon) =>
         (FindCategory(categoryId) ?? throw new InvalidOperationException("Category not found.")).SetIcon(icon);
 
+    /// <summary>Mark a category as an essential (or discretionary) spend — advisory only.</summary>
+    public void SetCategoryEssential(Guid categoryId, bool essential) =>
+        (FindCategory(categoryId) ?? throw new InvalidOperationException("Category not found.")).SetEssential(essential);
+
     /// <summary>Add a savings bucket. Pass <paramref name="parentId"/> to make it a sub-bucket.</summary>
     public SavingCategory AddSavingCategory(string name, Guid? parentId = null)
     {

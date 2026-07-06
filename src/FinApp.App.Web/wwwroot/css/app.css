@@ -215,3 +215,6 @@ html.dark .ring-card .row-menu::before { border-right-color: #181c25; }
 @media (max-width: 560px) { html.dark .ring-card .row-menu::before { border-right-color: transparent; border-bottom-color: #181c25; } }
 html.dark .proj-disclaimer { background: #2a2113; border-color: #5a4a1e; color: #f5cf8a; }
 html.dark .proj-k { color: #aab0c0; }
+html.dark .tip-card { background: #14271f; border-color: #1d3a2c; }
+html.dark .tip-title { color: #6fe0b4; }
+html.dark .tip-desc { color: #9fc2b3; }

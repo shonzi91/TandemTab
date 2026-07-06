@@ -1201,12 +1201,39 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     }
 
     // Category CRUD
-    public async Task<Guid> AddCategory(string name, Guid? parentId, string? icon = null)
+    public async Task<Guid> AddCategory(string name, Guid? parentId, string? icon = null, bool essential = false)
     {
         var category = Account.AddCategory(name, parentId, icon);
+        if (essential) Account.SetCategoryEssential(category.Id, true);
         await SaveAsync();
         return category.Id;
     }
+
+    /// <summary>Whether a category is flagged essential (rent/groceries/health...). Advisory only.</summary>
+    public bool CategoryIsEssential(Guid categoryId) => Account.FindCategory(categoryId)?.IsEssential ?? false;
+
+    /// <summary>This period's spare budget across <b>discretionary</b> (non-essential) categories that carry their own
+    /// budget: allocated − spent where positive. Advisory input for the "put spare toward a debt" nudge; moves nothing.</summary>
+    public Money DiscretionaryLeftover()
+    {
+        var total = 0m;
+        foreach (var c in AllCategories)
+        {
+            if (c.IsEssential || !HasBudget(c.Id)) continue;
+            var cov = Coverage(c.Id);
+            var left = cov.Allocated.Amount - cov.Spent.Amount;
+            if (left > 0m) total += left;
+        }
+        return Money(total);
+    }
+
+    /// <summary>Best-guess "is this essential?" from the name, to pre-tick the flag on new categories (user can change it).</summary>
+    private static readonly string[] EssentialWords =
+        { "rent", "mortgage", "housing", "grocer", "food", "health", "medic", "pharmac", "doctor", "dental",
+          "utilit", "electric", "water", "gas", "heating", "insurance", "transport", "fuel", "petrol", "commute",
+          "childcare", "school", "tuition", "nursery", "loan", "debt", "council tax", "bills" };
+    public static bool GuessEssential(string? name) =>
+        !string.IsNullOrWhiteSpace(name) && EssentialWords.Any(w => name.Contains(w, StringComparison.OrdinalIgnoreCase));
 
     public Task RenameCategory(Guid categoryId, string name)
     {
@@ -1219,6 +1246,13 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     {
         Account.RenameCategory(categoryId, name);
         Account.SetCategoryIcon(categoryId, icon);
+        return SaveAsync();
+    }
+
+    /// <summary>Set a category's essential/discretionary flag (advisory only).</summary>
+    public Task SetCategoryEssential(Guid categoryId, bool essential)
+    {
+        Account.SetCategoryEssential(categoryId, essential);
         return SaveAsync();
     }
 

@@ -476,6 +476,12 @@ public sealed class Localizer(IJSRuntime js)
             "🏔️ Първо най-скъпия дълг — най-малко лихва общо.",
         ["⛄ Attacking the smallest balance first — a quicker first win."] =
             "⛄ Първо най-малкия дълг — по-бърза първа победа.",
+        ["Essential spend (rent, groceries, health…)"] = "Основен разход (наем, храна, здраве…)",
+        ["Essential budgets are never suggested for redirecting toward a debt."] =
+            "Основните бюджети никога не се предлагат за пренасочване към дълг.",
+        ["You have about {0} spare this month"] = "Имате около {0} свободни този месец",
+        ["If you regularly steered it to {0} on top of the installment, you'd clear it {1} sooner and save about {2} in interest. Just an idea — only spare from non-essential budgets counts."] =
+            "Ако редовно ги насочвате към {0} над вноската, ще го погасите {1} по-рано и ще спестите около {2} лихва. Просто идея — брои се само свободното от неосновни бюджети.",
         ["clear"] = "погасен",
         ["{0} · total interest {1}"] = "{0} · обща лихва {1}",
         ["That extra clears you {0} sooner and saves {1} in interest."] =

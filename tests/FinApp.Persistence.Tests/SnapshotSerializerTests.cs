@@ -153,6 +153,21 @@ public class SnapshotSerializerTests
     }
 
     [Fact]
+    public void Category_essential_flag_round_trips()
+    {
+        var account = new Account("Home", "EUR");
+        account.AssignOwner(Guid.NewGuid(), "Me");
+        var rent = account.AddCategory("Rent");
+        account.SetCategoryEssential(rent.Id, true);
+        var fun = account.AddCategory("Fun");   // stays discretionary
+
+        var copy = AccountSnapshotSerializer.Deserialize(AccountSnapshotSerializer.Serialize(account));
+
+        Assert.True(copy.Categories.Single(c => c.Name == "Rent").IsEssential);
+        Assert.False(copy.Categories.Single(c => c.Name == "Fun").IsEssential);
+    }
+
+    [Fact]
     public void Debt_bucket_kind_and_figures_round_trip()
     {
         var account = new Account("Home", "EUR");

@@ -32,7 +32,7 @@ public static class AccountSnapshotSerializer
             account.Id, account.Name, account.Currency, account.OwnerUserId,
             account.Members.Select(m => new MemberNode(m.Id, m.UserId, m.DisplayName)).ToList(),
             account.Funds.Select(f => new FundNode(f.Id, f.Name, f.ParentId, f.Note, f.Icon, f.IsSynced)).ToList(),
-            account.Categories.Select(c => new CategoryNode(c.Id, c.Name, c.ParentId, c.Icon)).ToList(),
+            account.Categories.Select(c => new CategoryNode(c.Id, c.Name, c.ParentId, c.Icon, c.IsEssential)).ToList(),
             account.SavingCategories.Select(s => new SavingCategoryNode(s.Id, s.Name, s.ParentId, s.GoalAmount, s.AlertThreshold, s.NotifyOnMilestone, s.InitialAmount, s.Icon, s.Kind, s.DebtBalance, s.DebtAnnualRatePercent, s.DebtInstallment)).ToList(),
             account.Periods.Select(ToNode).ToList(),
             account.ContributionCategories.Select(c => new ContributionCategoryNode(c.Id, c.Name, c.Icon)).ToList(),
@@ -75,6 +75,7 @@ public static class AccountSnapshotSerializer
         {
             var category = Build(new Category(c.Name, c.ParentId), c.Id);
             category.SetIcon(c.Icon);
+            category.SetEssential(c.IsEssential);
             return category;
         }).ToList());
         SetField(account, "_savingCategories", node.SavingCategories.Select(ToEntity).ToList());
@@ -200,7 +201,7 @@ public static class AccountSnapshotSerializer
     private record MemberNode(Guid Id, Guid UserId, string DisplayName);
     private record ContributionCategoryNode(Guid Id, string Name, string? Icon = null);
     private record FundNode(Guid Id, string Name, Guid? ParentId, string? Note = null, string? Icon = null, bool IsSynced = false);
-    private record CategoryNode(Guid Id, string Name, Guid? ParentId, string? Icon = null);
+    private record CategoryNode(Guid Id, string Name, Guid? ParentId, string? Icon = null, bool IsEssential = false);
     private record SavingCategoryNode(Guid Id, string Name, Guid? ParentId, decimal? GoalAmount, decimal AlertThreshold, bool NotifyOnMilestone, decimal InitialAmount, string? Icon = null,
         SavingKind Kind = SavingKind.Common, decimal DebtBalance = 0m, decimal DebtAnnualRatePercent = 0m, decimal DebtInstallment = 0m);
 

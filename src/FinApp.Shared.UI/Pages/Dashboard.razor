@@ -189,6 +189,18 @@ else
                 </button>
             </section>
 
+            @if (!_loanNudgeDismissed && LoanNudge() is { } tip)
+            {
+                <div class="tip-card">
+                    <span class="tip-ico">💡</span>
+                    <div class="tip-body">
+                        <div class="tip-title">@tip.Title</div>
+                        <div class="tip-desc">@tip.Desc</div>
+                    </div>
+                    <button class="tip-x" title="@Loc["Dismiss"]" @onclick="() => _loanNudgeDismissed = true">×</button>
+                </div>
+            }
+
             @if (!ov.HasData)
             {
                 <section class="panel insight-empty">
@@ -1204,10 +1216,12 @@ else
 
                 case Modal.AddCat:
                     <h3>@Loc["Add category"] @(_addParentId is {} p ? $"under {State.CategoryName(p)}" : "(top level)")</h3>
-                    <label>@Loc["Name"] <input type="text" @bind="_fName" /></label>
+                    <label>@Loc["Name"] <input type="text" @bind="_fName" @bind:after="() => _fEssential = BudgetingState.GuessEssential(_fName)" /></label>
                     @iconPicker
                     <label>@Loc["Budget for this period (optional)"] <input type="number" step="0.01" min="0" @bind="_fBudget" /></label>
                     <small class="hint">@Loc["Available to budget:"] <strong>@Fmt(State.MaxBudgetFor(Guid.Empty))</strong></small>
+                    <label class="check"><input type="checkbox" @bind="_fEssential" /> @Loc["Essential spend (rent, groceries, health…)"]</label>
+                    <small class="hint">@Loc["Essential budgets are never suggested for redirecting toward a debt."]</small>
                     <div class="modal-actions">
                         <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
                         <button @onclick="SaveAddCat" disabled="@(string.IsNullOrWhiteSpace(_fName))">@Loc["Add"]</button>
@@ -1257,6 +1271,7 @@ else
                     <small class="hint">@Loc["Available to budget:"] <strong>@Fmt(State.MaxBudgetFor(_modalCatId))</strong></small>
                     <label>@Loc["Alert at %"] <input type="number" step="1" min="0" max="100" @bind="_fThreshold" /></label>
                     <label class="check"><input type="checkbox" @bind="_fNotify" /> @Loc["Notify on every expense"]</label>
+                    <label class="check"><input type="checkbox" @bind="_fEssential" /> @Loc["Essential spend (rent, groceries, health…)"]</label>
                     var subs = State.ChildrenOf(_modalCatId).ToList();
                     <div class="detail-sub-head">
                         <h4 class="detail-sub">@Loc["Sub-categories"]</h4>
@@ -2475,6 +2490,8 @@ else
     private Guid _budgetCatId;      // selected category in the Add-budget modal
     private decimal _fThreshold = 80;
     private bool _fNotify;
+    private bool _fEssential;              // category modal: essential (rent/health…) vs discretionary
+    private bool _loanNudgeDismissed;      // Home tab: user hid the "spare → debt" suggestion this session
     private string? _fCurrency = "EUR";
     private int _fSavingsTarget = 20;
     private string? _fIcon;
@@ -3418,6 +3435,28 @@ else
         months <= 0 ? "0mo" : months >= 12 ? $"{months / 12}y {months % 12}mo" : $"{months}mo";
     private static string PayoffDate(int months) => DateTime.Today.AddMonths(months).ToString("MMM yyyy");
 
+    /// <summary>A gentle, dismissible Home-tab suggestion: when there's spare <b>discretionary</b> budget and a debt it
+    /// would meaningfully help, propose steering it there (showing interest/time saved). Read-only — moves no money.
+    /// Returns null when there's nothing worth surfacing, so it stays quiet rather than nagging.</summary>
+    private (string Title, string Desc)? LoanNudge()
+    {
+        var leftover = State.DiscretionaryLeftover().Amount;
+        if (leftover < 5m) return null;
+        foreach (var d in State.SavingBuckets.Where(x => x.Bucket.IsDebt && x.Bucket.DebtBalance > 0m)
+                     .OrderByDescending(x => x.Bucket.DebtAnnualRatePercent))
+        {
+            decimal bal = d.Bucket.DebtBalance, rate = d.Bucket.DebtAnnualRatePercent, inst = d.Bucket.DebtInstallment;
+            if (FinApp.Domain.Forecasting.LoanForecast.PayOff(bal, rate, inst) is not { } b) continue;
+            if (FinApp.Domain.Forecasting.LoanForecast.PayOff(bal, rate, inst + leftover) is not { } f) continue;
+            if (b.Months <= f.Months && b.TotalInterest <= f.TotalInterest) continue;   // no real benefit → stay quiet
+            return (
+                string.Format(Loc["You have about {0} spare this month"], Fmt(State.Money(leftover))),
+                string.Format(Loc["If you regularly steered it to {0} on top of the installment, you'd clear it {1} sooner and save about {2} in interest. Just an idea — only spare from non-essential budgets counts."],
+                    d.Bucket.Name, MonthsText(b.Months - f.Months), Fmt(State.Money(Math.Max(0m, b.TotalInterest - f.TotalInterest)))));
+        }
+        return null;
+    }
+
     private Task SpendBucketAsExpense() => RunModal(async () =>
     {
         if (_spendExpAmount <= 0 || _spendExpCategoryId == Guid.Empty) return;
@@ -3915,7 +3954,7 @@ else
 
     private void OpenAdd(Guid? parentId)
     {
-        _addParentId = parentId; _fName = null; _fBudget = 0; _fIcon = null; _modal = Modal.AddCat;
+        _addParentId = parentId; _fName = null; _fBudget = 0; _fIcon = null; _fEssential = false; _modal = Modal.AddCat;
     }
 
     /// <summary>Open the "Add budget" modal, pre-selecting the first category that has no budget yet.</summary>
@@ -3937,6 +3976,7 @@ else
         _fBudget = b?.Allocated.Amount ?? 0;
         _fThreshold = (b?.AlertThreshold ?? 0.80m) * 100m;
         _fNotify = b?.NotifyOnEveryExpense ?? false;
+        _fEssential = State.CategoryIsEssential(categoryId);
         _editCatVendors = [];
         _modal = Modal.EditCat;
         _ = LoadCatVendorsAsync(categoryId);
@@ -4060,7 +4100,7 @@ else
     private Task SaveAddCat() => RunModal(async () =>
     {
         if (string.IsNullOrWhiteSpace(_fName)) return;
-        var newId = await State.AddCategory(_fName!, _addParentId, _fIcon);
+        var newId = await State.AddCategory(_fName!, _addParentId, _fIcon, _fEssential);
         if (_fBudget > 0)
             await State.SaveBudget(newId, _fBudget, 80, false);
         var after = _afterCreate; _afterCreate = null;
@@ -4079,6 +4119,7 @@ else
     {
         if (string.IsNullOrWhiteSpace(_fName)) return;
         await State.EditCategory(_modalCatId, _fName!, _fIcon);
+        await State.SetCategoryEssential(_modalCatId, _fEssential);
         if (_fBudget > 0)
             await State.SaveBudget(_modalCatId, _fBudget, _fThreshold, _fNotify);
         CloseModal();
