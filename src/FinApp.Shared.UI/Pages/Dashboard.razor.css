@@ -662,6 +662,19 @@ input[type=date]::-webkit-calendar-picker-indicator:hover { opacity: 1; backgrou
 .trend-labels span.cur { color: #13a06e; font-weight: 700; }
 .trend-note { font-size: .76rem; color: #6b7280; margin-top: 4px; line-height: 1.4; }
 
+/* Cross-period mini-trends (#9): savings rate / debt owed / top category as sparklines */
+.mini-trends { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 14px; }
+.mini-trend { display: flex; flex-direction: column; gap: 4px; }
+.mt-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.mt-label { font-size: .74rem; font-weight: 600; color: #374151; }
+.mt-cur { font-size: .9rem; font-weight: 700; color: #111827; }
+.mt-spark { width: 100%; height: 30px; display: block; color: #9ca3af; }
+.mini-trend.up .mt-spark { color: #dc2626; }
+.mini-trend.down .mt-spark { color: #0e9e6d; }
+.mini-trend.up .mt-cur { color: #dc2626; }
+.mini-trend.down .mt-cur { color: #0e9e6d; }
+.mt-note { font-size: .68rem; color: #6b7280; line-height: 1.35; }
+
 /* Category icons + picker */
 .cat-ico { font-size: 1.05em; line-height: 1; }
 .icon-label { font-size: .82rem; color: #374151; margin-top: 4px; }

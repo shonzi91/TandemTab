@@ -378,6 +378,24 @@ else
                             <div class="trend-note">@ov.TrendNote</div>
                         </section>
                     }
+
+                    @if (ov.MiniTrends.Count > 0)
+                    {
+                        <h2 class="insight-h">@Loc["Trends over time"]</h2>
+                        <section class="panel mini-trends">
+                            @foreach (var mt in ov.MiniTrends)
+                            {
+                                <div class="mini-trend @(mt.Dir == DeltaDir.Up ? "up" : mt.Dir == DeltaDir.Down ? "down" : "flat")">
+                                    <div class="mt-head">
+                                        <span class="mt-label">@mt.Icon @mt.Label</span>
+                                        <span class="mt-cur">@mt.CurrentText</span>
+                                    </div>
+                                    @TrendSparkline(mt.Points)
+                                    <div class="mt-note">@mt.DeltaNote</div>
+                                </div>
+                            }
+                        </section>
+                    }
                 }
             }
         </div>
@@ -3557,25 +3575,34 @@ else
     private static string MonthsText(int months) =>
         months <= 0 ? "0mo" : months >= 12 ? $"{months / 12}y {months % 12}mo" : $"{months}mo";
 
-    /// <summary>A tiny inline SVG polyline of a debt's shrinking balance over time (#7). Empty when there's fewer
-    /// than two points. Coordinates are formatted invariant so the SVG is valid in any locale.</summary>
-    private static MarkupString DebtSparkline(IReadOnlyList<decimal> pts)
+    /// <summary>A tiny inline SVG polyline of a debt's shrinking balance over time (#7).</summary>
+    private static MarkupString DebtSparkline(IReadOnlyList<decimal> pts) => Sparkline(pts, "debt-spark");
+
+    /// <summary>Sparkline for a cross-period mini-trend on the Insights tab (#9).</summary>
+    private static MarkupString TrendSparkline(IReadOnlyList<decimal> pts) => Sparkline(pts, "mt-spark");
+
+    /// <summary>A tiny inline SVG polyline over a value series (min-to-max normalised, so flat series still show a line).
+    /// Empty when there's fewer than two points. Coordinates are formatted invariant so the SVG is valid in any locale.</summary>
+    private static MarkupString Sparkline(IReadOnlyList<decimal> pts, string cssClass)
     {
         if (pts.Count < 2) return default;
         var max = (double)pts.Max();
-        if (max <= 0) return default;
+        var min = (double)pts.Min();
+        var span = max - min;
         const double w = 120, h = 26, pad = 2;
         var inv = System.Globalization.CultureInfo.InvariantCulture;
         var coords = new string[pts.Count];
         for (var i = 0; i < pts.Count; i++)
         {
             var x = pad + (w - 2 * pad) * i / (pts.Count - 1);
-            var y = pad + (h - 2 * pad) * (1 - (double)pts[i] / max);
+            // Normalise to the series' own range; a flat series sits on the mid-line.
+            var norm = span > 0 ? ((double)pts[i] - min) / span : 0.5;
+            var y = pad + (h - 2 * pad) * (1 - norm);
             coords[i] = $"{x.ToString("0.#", inv)},{y.ToString("0.#", inv)}";
         }
         var poly = string.Join(" ", coords);
         return new MarkupString(
-            $"<svg class=\"debt-spark\" viewBox=\"0 0 {w.ToString("0", inv)} {h.ToString("0", inv)}\" preserveAspectRatio=\"none\" role=\"img\" aria-hidden=\"true\">" +
+            $"<svg class=\"{cssClass}\" viewBox=\"0 0 {w.ToString("0", inv)} {h.ToString("0", inv)}\" preserveAspectRatio=\"none\" role=\"img\" aria-hidden=\"true\">" +
             $"<polyline points=\"{poly}\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linejoin=\"round\" stroke-linecap=\"round\" /></svg>");
     }
     private static string PayoffDate(int months) => DateTime.Today.AddMonths(months).ToString("MMM yyyy");

@@ -19,6 +19,10 @@ commit noted.
 - ~~**P0 #5 Avatar URL validation** — `AvatarService.IsAcceptableAvatar` now restricts avatars to
   `data:image/*` or trusted provider hosts (Google/Facebook), rejecting arbitrary external URLs that would
   beacon shared-account members' IPs. (Finished the half-wired guard that was breaking the server build.)~~ (Session 20)
+- ~~**#9 Cross-period trends** — new "Trends over time" strip on the Insights tab: savings rate, total debt
+  owed (reconstructed from payment history), and the top spending category, each as a sparkline with a
+  vs-average note and sentiment colour. `InsightsService.BuildMiniTrends` + `TrendSeries`; reuses the
+  general `Sparkline` helper shared with the #7 debt card.~~ (Session 20)
 
 ## P0 — Quick wins (hours each, low risk, high polish)
 1. ~~**Stop the raw .NET leak** — registration email error shows `"Email is not valid. (Parameter 'email')"`;
@@ -39,11 +43,10 @@ commit noted.
    the "did I typo the name?" UX in a collaboration app — consider rate-limiting over silencing.
    *(#5 done — see Shipped.)*
 
-## P1 — Motivation & self-awareness (days each, highest product ROI)
+## P1 — Motivation & self-awareness (days each, highest product ROI) — ✅ ALL SHIPPED (Session 20)
 7. ~~**Progress-over-time for debts & goals**~~ — **DONE (Session 20, see Shipped).**
 8. ~~**Settable planned monthly contribution**~~ — **DONE (Session 20, see Shipped).**
-9. **Cross-period trends** — savings rate, category spend, and debt balance as mini-trends, not just the
-   current month. Insights already computes some of this. **← NEXT**
+9. ~~**Cross-period trends**~~ — **DONE (Session 20, see Shipped).**
 
 ## P2 — Habit formation (larger, converts tool → daily habit)
 10. **Reminders / notifications** — local reminders first ("payday? move €X", "you're €40 from your Food

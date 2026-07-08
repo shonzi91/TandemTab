@@ -22,6 +22,11 @@ public sealed record CategorySpend(string Name, string Icon, Money Amount, decim
 
 public sealed record TrendPoint(string Label, Money Outgoings, decimal BarFraction, bool IsCurrent);
 
+/// <summary>A labelled mini-trend across recent periods for the Insights "trends over time" strip (#9). <see cref="Points"/>
+/// are chronological raw values (percentage points for rates, currency amounts otherwise). <see cref="Dir"/> is already
+/// framed as a sentiment colour — <c>Down</c> = good/green, <c>Up</c> = bad/red — matching the signal cards.</summary>
+public sealed record TrendSeries(string Label, string Icon, IReadOnlyList<decimal> Points, string CurrentText, string DeltaNote, DeltaDir Dir);
+
 public sealed record QuickWin(string Text);
 
 /// <summary>
@@ -47,6 +52,7 @@ public sealed record FinancialHealthReport(
     IReadOnlyList<Signal> Signals,
     IReadOnlyList<CategorySpend> Breakdown,
     IReadOnlyList<TrendPoint> Trend,
+    IReadOnlyList<TrendSeries> MiniTrends,
     IReadOnlyList<QuickWin> QuickWins);
 
 /// <summary>
@@ -108,6 +114,7 @@ public sealed class InsightsService
         var savingsCritique = SavingsCritique(savingsRate, shortfall, target, fmt);
 
         var signals = BuildSignals(account, periods, periodIndex, savingsRate, target, fmt);
+        var miniTrends = BuildMiniTrends(account, periods, periodIndex, currency, fmt);
         var wins = BuildQuickWins(account, p, savingsRate, income, target, fmt);
 
         return new FinancialHealthReport(
@@ -129,6 +136,7 @@ public sealed class InsightsService
             Signals: signals,
             Breakdown: breakdown,
             Trend: trend.Points,
+            MiniTrends: miniTrends,
             QuickWins: wins);
     }
 
@@ -137,7 +145,7 @@ public sealed class InsightsService
         Verdict: "", Summary: "", SavingsRate: null, SavingsTarget: DefaultSavingsTarget,
         SavingsShortfall: null, SavingsCritique: "", TrendUp: false, TrendNote: "",
         TrendAverage: Money.Zero(currency), TrendAvgFraction: 0m,
-        Signals: [], Breakdown: [], Trend: [], QuickWins: []);
+        Signals: [], Breakdown: [], Trend: [], MiniTrends: [], QuickWins: []);
 
     // --- Score (0..100, four equally-weighted 25-pt components) ----------------------------------
 
@@ -315,6 +323,100 @@ public sealed class InsightsService
             (up, note) = (false, string.Format(_t("This month is {0} below your {1}-month average of {2}."), fmt(new Money(decimal.Round(-diff, 2), currency)), priorCount, fmt(avgMoney)));
 
         return (points, avgMoney, avgFraction, up, note);
+    }
+
+    // --- Cross-period mini-trends (#9) ----------------------------------------------------------
+    // Savings rate, total debt owed, and the top category's spend, each as a short chronological series
+    // for a sparkline. Direction is pre-framed as sentiment colour (Down = good/green, Up = bad/red).
+
+    private IReadOnlyList<TrendSeries> BuildMiniTrends(
+        Account account, IReadOnlyList<Period> periods, int idx, string currency, Func<Money, string> fmt)
+    {
+        var start = Math.Max(0, idx - 5);
+        var priorK = idx - start;              // periods before the current one, in the window
+        if (priorK < 1) return [];             // need at least two points to be a trend
+        var result = new List<TrendSeries>();
+
+        // 1) Savings rate per period (percentage points) — higher is better.
+        var rates = new List<decimal>();
+        for (var i = start; i <= idx; i++)
+            rates.Add(decimal.Round(Math.Max(0m, _savings.PeriodSavingsRate(periods[i]) ?? 0m) * 100m, 1));
+        {
+            var cur = rates[^1];
+            var avg = rates.Take(priorK).DefaultIfEmpty(0m).Average();
+            var diff = cur - avg;
+            var dir = diff > 0.5m ? DeltaDir.Down : diff < -0.5m ? DeltaDir.Up : DeltaDir.Flat;
+            var note = Math.Abs(diff) <= 0.5m
+                ? string.Format(_t("Steady around your {0}-period average of {1}%."), priorK, decimal.Round(avg, 0))
+                : diff > 0m
+                    ? string.Format(_t("Up {0} pts vs your {1}-period average of {2}%."), decimal.Round(diff, 0), priorK, decimal.Round(avg, 0))
+                    : string.Format(_t("Down {0} pts vs your {1}-period average of {2}%."), decimal.Round(-diff, 0), priorK, decimal.Round(avg, 0));
+            result.Add(new TrendSeries(_t("Savings rate"), "💰", rates, $"{decimal.Round(cur, 0)}%", note, dir));
+        }
+
+        // 2) Total debt owed per period, reconstructed from payment (disbursement) history — lower is better.
+        var debts = account.SavingCategories.Where(s => s.IsDebt && s.DebtOriginalBalance > 0m).ToList();
+        if (debts.Count > 0)
+        {
+            var owed = new List<decimal>();
+            for (var i = start; i <= idx; i++)
+            {
+                var total = 0m;
+                foreach (var b in debts)
+                    total += Math.Max(0m, b.DebtOriginalBalance - DisbursedThroughPeriod(account, periods, b.Id, i));
+                owed.Add(decimal.Round(total, 2));
+            }
+            var cur = owed[^1];
+            var diff = cur - owed[0];
+            var dir = diff < -0.01m ? DeltaDir.Down : diff > 0.01m ? DeltaDir.Up : DeltaDir.Flat;
+            var firstLabel = periods[start].From.ToString("MMM", CultureInfo.InvariantCulture);
+            var note = Math.Abs(diff) <= 0.01m
+                ? _t("No change over this window.")
+                : diff < 0m
+                    ? string.Format(_t("Down {0} since {1}."), fmt(new Money(decimal.Round(-diff, 2), currency)), firstLabel)
+                    : string.Format(_t("Up {0} since {1}."), fmt(new Money(decimal.Round(diff, 2), currency)), firstLabel);
+            result.Add(new TrendSeries(_t("Debt owed"), "💳", owed, fmt(new Money(cur, currency)), note, dir));
+        }
+
+        // 3) The biggest spending category this period, tracked across the window — lower is better.
+        var top = account.RootCategories
+            .Select(c => (Cat: c, Amt: SpentInTree(account, periods[idx], c.Id).Amount))
+            .Where(x => x.Amt > 0m)
+            .OrderByDescending(x => x.Amt)
+            .FirstOrDefault();
+        if (top.Cat is not null)
+        {
+            var spend = new List<decimal>();
+            for (var i = start; i <= idx; i++)
+                spend.Add(decimal.Round(SpentInTree(account, periods[i], top.Cat.Id).Amount, 2));
+            var cur = spend[^1];
+            var avg = spend.Take(priorK).DefaultIfEmpty(0m).Average();
+            var diff = cur - avg;
+            var tol = 0.05m * avg;
+            var dir = avg <= 0m ? DeltaDir.Flat : diff > tol ? DeltaDir.Up : diff < -tol ? DeltaDir.Down : DeltaDir.Flat;
+            var note = avg <= 0m
+                ? _t("First period with spend here.")
+                : Math.Abs(diff) <= tol
+                    ? string.Format(_t("About your {0}-period average of {1}."), priorK, fmt(new Money(decimal.Round(avg, 2), currency)))
+                    : diff > 0m
+                        ? string.Format(_t("Up {0} vs your {1}-period average of {2}."), fmt(new Money(decimal.Round(diff, 2), currency)), priorK, fmt(new Money(decimal.Round(avg, 2), currency)))
+                        : string.Format(_t("Down {0} vs your {1}-period average of {2}."), fmt(new Money(decimal.Round(-diff, 2), currency)), priorK, fmt(new Money(decimal.Round(avg, 2), currency)));
+            result.Add(new TrendSeries(top.Cat.Name, CategoryIcons.Effective(top.Cat), spend, fmt(new Money(cur, currency)), note, dir));
+        }
+
+        return result;
+    }
+
+    /// <summary>Cumulative payments (disbursements out) made to a debt bucket through <paramref name="throughIdx"/>.</summary>
+    private static decimal DisbursedThroughPeriod(Account account, IReadOnlyList<Period> periods, Guid bucketId, int throughIdx)
+    {
+        var ids = account.SavingCategoryWithDescendantIds(bucketId).ToHashSet();
+        var paid = 0m;
+        for (var i = 0; i <= throughIdx; i++)
+            paid += periods[i].SavingAllocations
+                .Where(a => ids.Contains(a.SavingCategoryId) && a.IsDisbursement)
+                .Sum(a => -a.Amount.Amount);
+        return paid;
     }
 
     // --- Signals --------------------------------------------------------------------------------
