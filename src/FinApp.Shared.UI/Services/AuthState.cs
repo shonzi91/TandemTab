@@ -196,10 +196,14 @@ public sealed class AuthState
         await _tokens.SetAsync(auth.Token);
         if (!string.IsNullOrEmpty(auth.RefreshToken))
             await _tokens.SetRefreshAsync(auth.RefreshToken);
-        CurrentUser = new UserDto(auth.UserId, auth.Username, auth.Email);
+        // Load the full profile (EmailVerified, Provider/IsExternal, TwoFactorEnabled, avatar…) BEFORE announcing
+        // sign-in, so the app mounts with a complete user. Otherwise gates that read these fields — notably the bank
+        // panel's verified-email check — see the half-populated fallback (EmailVerified=false) and don't recover until
+        // a reload, which is why external (provider-verified) users couldn't open External accounts on first sign-in.
+        // Falls back to the token's basics only if /me is briefly unreachable (we're already authenticated).
+        try { CurrentUser = await _api.MeAsync(); }
+        catch { CurrentUser = new UserDto(auth.UserId, auth.Username, auth.Email); }
         Changed?.Invoke();
-        // Pull the full profile (incl. avatar) in the background; ignore failures (we're already signed in).
-        try { CurrentUser = await _api.MeAsync(); Changed?.Invoke(); } catch { /* best effort */ }
     }
 }
 
