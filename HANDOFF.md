@@ -2,6 +2,9 @@
 
 Last updated: 2026-07-08 (Session 21). Read this + [README.md](README.md) + [TRANSFER.md](TRANSFER.md) + recent `git log` to catch up.
 
+### Hotfix (2026-07-08, `4984d04`, deployed **finapp-00119-fhf**) — External-accounts/bank hidden after fresh login
+`AuthState.ApplyAuthResponseAsync` set a **partial `UserDto`** (`EmailVerified` defaults false, `Provider` null) and fired `Changed` **before** awaiting `/me`. On a fresh login the Dashboard mounted against that half-populated user, so `LoadBankAsync` hit the `EmailVerified == false` guard, never loaded bank status, and didn't retry → the 🏦 button + External-accounts panel stayed hidden. Returning users were fine (`TryRestoreAsync` already loads `/me` before announcing sign-in) — which is why it presented as "only external logins can't see it" (external sign-in always takes the fresh-login path; and those users are provider-verified server-side). Fix: load `/me` **before** `Changed`, falling back to the token basics only if `/me` is briefly unreachable. Verified locally (marked a user verified → fresh login → `/me` `emailVerified:true` and the client then issued `GET /bank/status` 200, which never fired on fresh login before).
+
 ## Session 21 (2026-07-08) — P2 "Habit formation" (#10/#11/#12) + Home redesign. Deployed **finapp-00118-q2f**. Commit `be82988`.
 Cleared the [BACKLOG.md](BACKLOG.md) **P2** block and reworked the Home tab around "most useful info + quick actions". All Shared.UI (no server/domain/migration changes). **Verified live in a browser** (register → account → expense → Food budget): reminder, repeat-last, merchant chip, milestones, and the P0 #2/#3/#4 fixes all render with zero console errors.
 
