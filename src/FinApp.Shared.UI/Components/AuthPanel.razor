@@ -26,7 +26,7 @@
     @if (_twoFactorTicket is not null)
     {
         <p class="hint">@Loc["Enter the 6-digit code from your authenticator app, or a recovery code."]</p>
-        <label>@Loc["Authentication code"] <input type="text" inputmode="numeric" autocomplete="one-time-code" placeholder="123456" @bind="_twoFactorCode" @bind:event="oninput" @onkeydown="OnKey" /></label>
+        <label>@Loc["Authentication code"] <input type="text" inputmode="numeric" autocomplete="one-time-code" placeholder="123456" @bind="_twoFactorCode" @bind:event="oninput" @bind:after="ClearError" @onkeydown="OnKey" /></label>
         <button class="primary" @onclick="CompleteTwoFactor" disabled="@(_busy || string.IsNullOrWhiteSpace(_twoFactorCode))">
             @(_busy ? Loc["Verifying…"] : Loc["Verify"])
         </button>
@@ -34,17 +34,17 @@
     }
     else if (_mode == Mode.Login)
     {
-        <label>@Loc["Username or email"] <input type="text" placeholder="@Loc["you@example.com or username"]" autocomplete="username" @bind="_identifier" @bind:event="oninput" /></label>
-        <label>@Loc["Password"] <input type="password" placeholder="@Loc["Your password"]" autocomplete="current-password" @bind="_password" @bind:event="oninput" @onkeydown="OnKey" /></label>
+        <label>@Loc["Username or email"] <input type="text" placeholder="@Loc["you@example.com or username"]" autocomplete="username" @bind="_identifier" @bind:event="oninput" @bind:after="ClearError" /></label>
+        <label>@Loc["Password"] <input type="password" placeholder="@Loc["Your password"]" autocomplete="current-password" @bind="_password" @bind:event="oninput" @bind:after="ClearError" @onkeydown="OnKey" /></label>
         <button class="primary" @onclick="SignIn" disabled="@(_busy || string.IsNullOrWhiteSpace(_identifier) || string.IsNullOrEmpty(_password))">
             @(_busy ? Loc["Signing in…"] : Loc["Sign in"])
         </button>
     }
     else
     {
-        <label>@Loc["Username"] <input type="text" placeholder="@Loc["Pick a username"]" autocomplete="username" @bind="_username" @bind:event="oninput" /></label>
-        <label>@Loc["Email"] <input type="email" placeholder="you@example.com" autocomplete="email" @bind="_email" @bind:event="oninput" /></label>
-        <label>@Loc["Password"] <input type="password" placeholder="@Loc["At least 8 characters"]" autocomplete="new-password" @bind="_password" @bind:event="oninput" @onkeydown="OnKey" /></label>
+        <label>@Loc["Username"] <input type="text" placeholder="@Loc["Pick a username"]" autocomplete="username" @bind="_username" @bind:event="oninput" @bind:after="ClearError" /></label>
+        <label>@Loc["Email"] <input type="email" placeholder="you@example.com" autocomplete="email" @bind="_email" @bind:event="oninput" @bind:after="ClearError" /></label>
+        <label>@Loc["Password"] <input type="password" placeholder="@Loc["At least 8 characters"]" autocomplete="new-password" @bind="_password" @bind:event="oninput" @bind:after="ClearError" @onkeydown="OnKey" /></label>
         <button class="primary" @onclick="Register" disabled="@(_busy || !CanRegister)">
             @(_busy ? Loc["Creating…"] : Loc["Create account"])
         </button>
@@ -111,6 +111,10 @@
 
     private void Switch(Mode mode) { _mode = mode; _error = null; }
 
+    /// <summary>Clear a stale error the moment the user edits a field, so a fixed problem doesn't keep nagging
+    /// until the next submit (BACKLOG P0 #2).</summary>
+    private void ClearError() => _error = null;
+
     private Task OnKey(KeyboardEventArgs e)
     {
         if (e.Key != "Enter") return Task.CompletedTask;
@@ -120,10 +124,23 @@
 
     private Task SignIn() => Run(async () =>
     {
+        // The button is disabled when empty, but Enter can still fire this — give a reason instead of a silent no-op.
+        if (string.IsNullOrWhiteSpace(_identifier) || string.IsNullOrEmpty(_password))
+        { _error = Loc["Enter your username or email and your password."]; return; }
         var outcome = await Auth.LogInAsync(_identifier, _password);
         if (!outcome.SignedIn) { _twoFactorTicket = outcome.TwoFactorTicket; _twoFactorCode = ""; }
     });
-    private Task Register() => Run(() => Auth.RegisterAsync(_username, _email, _password));
+    private Task Register() => Run(() =>
+    {
+        if (!CanRegister)
+        {
+            _error = _password.Length is > 0 and < 8
+                ? Loc["Password must be at least 8 characters."]
+                : Loc["Fill in a username, email and password to continue."];
+            return Task.CompletedTask;
+        }
+        return Auth.RegisterAsync(_username, _email, _password);
+    });
 
     private Task CompleteTwoFactor() => Run(() => Auth.CompleteTwoFactorLoginAsync(_twoFactorTicket!, _twoFactorCode));
     private void CancelTwoFactor() { _twoFactorTicket = null; _twoFactorCode = ""; _password = ""; _error = null; Auth.ClearPendingTwoFactor(); }

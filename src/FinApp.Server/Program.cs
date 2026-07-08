@@ -148,6 +148,13 @@ builder.Services.AddRateLimiter(options =>
             context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
             _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions { PermitLimit = 10, Window = TimeSpan.FromMinutes(1) })
         : System.Threading.RateLimiting.RateLimitPartition.GetNoLimiter("dev"));
+    // Invites are answered "No user named 'X'" (kept, so a typo is obvious in this collaboration app), so cap the
+    // rate per IP to blunt username enumeration by scanning (BACKLOG P0 #6). Own bucket, so it doesn't share with auth.
+    options.AddPolicy("invite", context => throttleAuth
+        ? System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
+            context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions { PermitLimit = 15, Window = TimeSpan.FromMinutes(1) })
+        : System.Threading.RateLimiting.RateLimitPartition.GetNoLimiter("dev"));
 });
 
 var app = builder.Build();
@@ -606,7 +613,7 @@ accounts.MapPost("/{id:guid}/invitations", async (Guid id, CreateInvitationReque
     var created = await svc.CreateAsync(user.UserId(), id, req.Username, ct);
     await notifier.InvitationReceivedAsync(created.InviteeUserId, created.InvitationId, created.AccountId, created.AccountName, created.InviterUsername);
     return Results.Ok();
-});
+}).RequireRateLimiting("invite");
 
 var invitations = app.MapGroup("/invitations").RequireAuthorization();
 

@@ -475,11 +475,19 @@ public sealed class InsightsService
             }
         }
 
-        // Deficit (overspent into the savings earmark).
+        // Deficit: spending beyond the fresh cash that came in. If there's a savings earmark it eats into that; with
+        // nothing saved it's simply spending more than came in — don't claim a savings earmark that doesn't exist.
         if (p.Deficit.Amount > 0m)
-            warn.Add(new Signal(SignalKind.Warn, _t("Spending dipped into savings"),
-                string.Format(_t("{0} of this period's spend isn't backed by fresh cash — it leans on your savings earmark."), fmt(p.Deficit)),
-                "deficit", DeltaDir.Up));
+        {
+            var hasSavings = _savings.AccumulatedTotal(account).Amount > 0m;
+            warn.Add(hasSavings
+                ? new Signal(SignalKind.Warn, _t("Spending dipped into savings"),
+                    string.Format(_t("{0} of this period's spend isn't backed by fresh cash — it leans on your savings earmark."), fmt(p.Deficit)),
+                    "deficit", DeltaDir.Up)
+                : new Signal(SignalKind.Warn, _t("Spending outran your income"),
+                    string.Format(_t("{0} of this period's spend isn't backed by fresh cash that came in this period."), fmt(p.Deficit)),
+                    "deficit", DeltaDir.Up));
+        }
 
         // Priority: warnings first, then a positive, then info — capped at 5.
         var ordered = new List<Signal>();

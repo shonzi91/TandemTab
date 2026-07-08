@@ -30,7 +30,7 @@ else if (!State.HasAccounts)
         <div class="firstrun-form">
             <label>@Loc["Account name"] <input type="text" placeholder="Personal" @bind="_fName" /></label>
             <label>@Loc["Currency"] <input type="text" maxlength="3" @bind="_fCurrency" /></label>
-            <label>@Loc["Savings target (%)"] <input type="number" min="0" max="100" @bind="_fSavingsTarget" /></label>
+            @SavingsTargetField
             <button @onclick="CreateFirstAccount" disabled="@(string.IsNullOrWhiteSpace(_fName))">@Loc["Create account"]</button>
         </div>
         <small class="hint">@Loc["It starts with a few starter categories and the current month’s period — you can change everything."]</small>
@@ -1474,7 +1474,7 @@ else
                     <h3>@Loc["New account"]</h3>
                     <label>@Loc["Name"] <input type="text" @bind="_fName" /></label>
                     <label>@Loc["Currency"] <input type="text" maxlength="3" @bind="_fCurrency" /></label>
-                    <label>@Loc["Savings target (%)"] <input type="number" min="0" max="100" @bind="_fSavingsTarget" /></label>
+                    @SavingsTargetField
                     <div class="modal-actions">
                         <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
                         <button @onclick="SaveAddAccount" disabled="@(string.IsNullOrWhiteSpace(_fName))">@Loc["Create"]</button>
@@ -1484,7 +1484,7 @@ else
                 case Modal.EditAccount:
                     <h3>@Loc["Edit account"]</h3>
                     <label>@Loc["Name"] <input type="text" @bind="_fName" /></label>
-                    <label>@Loc["Savings target (%)"] <input type="number" min="0" max="100" @bind="_fSavingsTarget" /></label>
+                    @SavingsTargetField
                     <p class="hint">@Loc["Your monthly savings goal — drives the Insights score."] @Loc["Currency"] (@State.Currency) @Loc["can't be changed once an account exists."]</p>
                     <div class="modal-actions">
                         <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
@@ -1566,7 +1566,11 @@ else
                             }
                         </select>
                     </label>
-                    <label>@Loc["Amount"] <input type="number" step="0.01" min="0" @bind="_amount" /></label>
+                    <label>@Loc["Amount"] <input type="number" step="0.01" min="0" @bind="_amount" @bind:event="oninput" /></label>
+                    @if (_amount < 0)
+                    {
+                        <small class="hint warn-text">@Loc["Amount can't be negative — enter what you spent."]</small>
+                    }
                     <label>@Loc["Date"] <input type="date" @bind="_expenseDate" min="@State.Period.From.ToString("yyyy-MM-dd")" max="@State.Period.To.ToString("yyyy-MM-dd")" /></label>
                     <label><span class="lbl-row">@Loc["Fund"] <button type="button" class="lbl-add" title="@Loc["New fund"]" @onclick="ExpenseAddFund">+</button></span>
                         <select @bind="_fundId">
@@ -2607,6 +2611,16 @@ else
     private string? _fCurrency = "EUR";
     private int _fSavingsTarget = 20;
     private string? _fIcon;
+
+    /// <summary>Savings-target percent input, shared by the first-run form and the add/edit-account modals. Shows an
+    /// inline note when the typed value is outside 0–100% (it's silently clamped to that range on save — BACKLOG P0 #3).</summary>
+    private RenderFragment SavingsTargetField => @<label>@Loc["Savings target (%)"]
+        <input type="number" min="0" max="100" @bind="_fSavingsTarget" @bind:event="oninput" />
+        @if (_fSavingsTarget is < 0 or > 100)
+        {
+            <small class="hint warn-text">@string.Format(Loc["Keep this between 0 and 100% — we'll use {0}%."], Math.Clamp(_fSavingsTarget, 0, 100))</small>
+        }
+    </label>;
 
     private string? _error;
     private string? _modalError;

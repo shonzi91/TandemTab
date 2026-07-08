@@ -530,6 +530,13 @@ public sealed class Localizer(IJSRuntime js)
         ["About your {0}-period average of {1}."] = "Около средното за {0} периода от {1}.",
         ["Up {0} vs your {1}-period average of {2}."] = "С {0} над средното за {1} периода от {2}.",
         ["Down {0} vs your {1}-period average of {2}."] = "С {0} под средното за {1} периода от {2}.",
+        // P0 polish (silent no-ops, clamp message, deficit copy)
+        ["Spending outran your income"] = "Разходите надвишиха приходите",
+        ["{0} of this period's spend isn't backed by fresh cash that came in this period."] = "{0} от разходите този период не са покрити от постъпили този период средства.",
+        ["Keep this between 0 and 100% — we'll use {0}%."] = "Стойността трябва да е между 0 и 100% — ще използваме {0}%.",
+        ["Amount can't be negative — enter what you spent."] = "Сумата не може да е отрицателна — въведи колко похарчи.",
+        ["Enter your username or email and your password."] = "Въведи потребителско име или имейл и парола.",
+        ["Fill in a username, email and password to continue."] = "Попълни потребителско име, имейл и парола, за да продължиш.",
         // Progress over time (#7) + planned contribution (#8)
         ["Paid off {0} of {1} ({2}%)"] = "Погасени {0} от {1} ({2}%)",
         ["~{0} ahead of the installment plan"] = "~{0} по-рано от плана с вноски",

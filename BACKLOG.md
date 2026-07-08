@@ -28,20 +28,17 @@ commit noted.
 1. ~~**Stop the raw .NET leak** — registration email error shows `"Email is not valid. (Parameter 'email')"`;
    return a clean user-facing message.~~ **DONE (Session 20)** — `Exception.CleanMessage()` strips the
    `(Parameter 'name')` suffix; wired into AuthService register + AccountService create/update.
-2. **Kill silent no-ops** — empty sign-in submit, negative expense amount, and resubmit-after-error all
-   fail with *no message* (and a stale "Password must be ≥ 8 characters" lingers after the field is fixed).
-   Add inline feedback; clear stale errors on change/resubmit.
-3. **Savings-target clamp message** — an out-of-range target (e.g. 5000%) silently snaps to 100%; surface
-   what happened instead of silently mutating.
-4. **Copy fix** — the deficit signal "…leans on your savings earmark" appears even when there are zero
-   savings; reword for the no-savings case.
-5. **Avatar URL validation** — the avatar is stored and rendered as `<img src>` from any string; an arbitrary
-   external URL becomes a tracking beacon visible to shared-account members. Restrict to `data:image/*`
-   (+ trusted host allowlist for adopted Google/Facebook profile pics).
-6. **Invite username enumeration** — inviting a non-existent user returns "No user named 'X'.", confirming
-   who exists. Low severity (usernames aren't secret, requires auth). *Tradeoff:* a neutral response hurts
-   the "did I typo the name?" UX in a collaboration app — consider rate-limiting over silencing.
-   *(#5 done — see Shipped.)*
+2. ~~**Kill silent no-ops**~~ **DONE (Session 20)** — AuthPanel clears stale errors on edit (`@bind:after`)
+   and gives a reason on empty Enter-submit; the expense modal shows an inline note on a negative amount.
+3. ~~**Savings-target clamp message**~~ **DONE (Session 20)** — shared `SavingsTargetField` shows an inline
+   "keep this 0–100%, we'll use N%" note when the typed value is out of range.
+4. ~~**Copy fix**~~ **DONE (Session 20)** — the deficit signal now reads "Spending outran your income" with
+   no savings-earmark claim when nothing is saved.
+5. ~~**Avatar URL validation**~~ **DONE (Session 20, see Shipped).**
+6. ~~**Invite username enumeration**~~ **DONE (Session 20)** — kept the helpful "No user named 'X'" message
+   (typo UX) but added a dedicated per-IP rate limiter ("invite" policy, 15/min) to blunt scanning.
+
+## ✅ P0 — all shipped (Session 20)
 
 ## P1 — Motivation & self-awareness (days each, highest product ROI) — ✅ ALL SHIPPED (Session 20)
 7. ~~**Progress-over-time for debts & goals**~~ — **DONE (Session 20, see Shipped).**
