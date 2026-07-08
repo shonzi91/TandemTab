@@ -1,6 +1,26 @@
 # TandemTab (FinApp) — session handoff
 
-Last updated: 2026-07-08 (Session 19). Read this + [README.md](README.md) + [TRANSFER.md](TRANSFER.md) + recent `git log` to catch up.
+Last updated: 2026-07-08 (Session 20). Read this + [README.md](README.md) + [TRANSFER.md](TRANSFER.md) + recent `git log` to catch up.
+
+## Session 20 (2026-07-08) — P1 "Motivation & self-awareness" block (#7/#8/#9) + P0 leftovers. Deployed **finapp-00115-qnh**. 210 tests (127 domain + 10 persistence + 73 server).
+Worked the [BACKLOG.md](BACKLOG.md) **P1** items (all now struck through as shipped). Two commits: `cd40ef0` (#7/#8) and `716a800` (#9).
+
+**Shared debt/goal data model (#7 + #8)** — two additive, snapshot-only fields on `SavingCategory` (EF-`Ignore`d, no migration, same pattern as the Session 18 debt fields):
+- **`DebtOriginalBalance`** — the "€Y" baseline for progress. Captured on first `ConfigureDebt`, **preserved across edits** (the edit modal pre-fills the *remaining* balance, so re-config must not reset it), grows if the balance is corrected upward, never drops below what's owed. **Legacy debts back-fill to their current balance on read** (`ToEntity` passes the node value into `ConfigureDebt`; a 0 → baselines at current, so progress starts at 0% and never divides by zero).
+- **`PlannedContribution`** (nullable) — user-set "€300/period" for **both** debt and common buckets. `SetPlannedContribution` (null/0 clears).
+- Helpers: `DebtPaidOff`, `DebtProgressRatio` (both EF-`Ignore`d). `SavingsReportService.DebtBalanceHistory` reconstructs the shrinking-balance series from **disbursement** history (payments = `DisburseSaving`, which are negative disbursement allocations + `RecordSavingDebtPayment`).
+
+**#7 UI (Debt/Savings tab):** debt cards show **"Paid off €X of €Y (Z%)"**, a **shrinking-balance SVG sparkline** (`Sparkline(pts, cssClass)` helper in Dashboard.razor — min..max normalised), and **"🚀 ~N ahead of the installment plan"** (`LoanForecast.SimulateExtra` at the effective pace vs installment-only). NB inside a Razor `@if/else if` code-block body use bare `var`/`if`, not `@{`/`@if`.
+
+**#8 UI:** a **"Planned contribution /period"** input in the add/edit bucket modal (both kinds). Projections now prefer it via **`BudgetingState.EffectiveSavingPace` = planned ?? demonstrated pace** — the payoff modal, goal modal, `OpenPayoffProjection` default, and the Home "on track for" card all switched from `SavingBucketPace` to `EffectiveSavingPace`; copy flips between "your plan" and "your pace".
+
+**#9 Cross-period trends (Insights tab):** new **"Trends over time"** strip — **savings rate** (period-aligned via `PeriodSavingsRate`), **total debt owed** (reconstructed per period from disbursements, `DisbursedThroughPeriod`), and the **top spending category** — each a sparkline + vs-average note, coloured by sentiment (green improving / red worsening, reusing the `DeltaDir` Down=good convention). `InsightsService.BuildMiniTrends` + `TrendSeries` record; `FinancialHealthReport.MiniTrends`. **No harness test covers Shared.UI** (pre-existing gap), so `InsightsService` stays unit-untested; the domain read it leans on (`DebtBalanceHistory`) is tested.
+
+**P0 leftovers also shipped this session** (P0 #1 was pre-existing uncommitted work in the tree; #5 I finished because it was breaking the build):
+- **P0 #1** — `Exception.CleanMessage()` (`ApiException.cs`) strips the raw `" (Parameter 'name')"` suffix off `ArgumentException.Message`; wired into `AuthService` register + `AccountService` create/update.
+- **P0 #5** — `AvatarService.IsAcceptableAvatar` restricts avatars to `data:image/*` or **trusted provider hosts** (`googleusercontent.com`, `fbcdn.net`, `fbsbx.com`, `graph.facebook.com`, suffix-matched) — rejects arbitrary external URLs that would beacon shared-account members' IPs. The method was called by `SetAsync` but never defined, breaking the server build; now implemented.
+
+**Still open:** BACKLOG **P0 #2/#3/#4/#6** (silent no-ops, savings-target clamp message, deficit-copy-when-no-savings, invite enumeration) and **P2/P3** (reminders, faster expense entry, streaks/achievements, recurring transactions, actionable nudge). Suggested next per the BACKLOG: commit to **#13 recurring transactions** as the strategic primitive.
 
 ## Session 19 (2026-07-08) — Bank de-dup matcher + snapshot at-rest encryption (Cloud KMS). Deployed **finapp-00112-ns7**.
 **Bank de-duplication:** `FinApp.Domain.Budgeting.BankDuplicateMatcher` (pure, greedy 1:1, same amount within ±4 days, per-occurrence) + `BudgetingState.BankDuplicateSuggestions`/`ReplaceWithBankTransaction`. A bank debit that matches an un-linked manual entry shows a "Looks like you already logged this…" hint with **Same — replace** (drops the manual, often mis-filed, entry and confirms the bank row onto the synced fund) / **Keep both**. Review-only by design (no silent auto-link — a false amount+date match would otherwise swallow a genuinely separate transaction).
