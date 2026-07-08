@@ -766,6 +766,67 @@ html.dark .target-name { color: #57d9a3; }
 html.dark .target-when { color: #b7c4bd; }
 html.dark .target-when strong { color: #57d9a3; }
 html.dark .target-mo, html.dark .targets-foot { color: #7c8a94; }
+
+/* Home quick actions (#11) */
+.quick-actions { display: flex; gap: 8px; margin: 14px 0 0; flex-wrap: wrap; }
+.qa {
+    flex: 1 1 0; min-width: 120px; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    padding: 11px 12px; border: 1px solid #cdeadd; border-radius: 12px; background: #fff; color: #0f7a54;
+    font-weight: 700; font-size: .9rem; cursor: pointer; transition: background .15s, border-color .15s;
+}
+.qa:hover { background: #f0faf5; border-color: #13a06e; }
+html.dark .qa { background: #1b2430; border-color: #2c3a45; color: #57d9a3; }
+html.dark .qa:hover { background: #22303c; border-color: #3a8f6c; }
+
+/* Home reminders (#10) */
+.reminders { display: flex; flex-direction: column; gap: 8px; margin: 12px 0 0; }
+.reminder {
+    display: flex; align-items: center; gap: 10px; padding: 11px 14px; border-radius: 12px;
+    background: #fff8ec; border: 1px solid #f6e3bf;
+}
+.reminder.urgent { background: #fdecea; border-color: #f5c6bf; }
+.reminder-ico { font-size: 1.1rem; flex: 0 0 auto; }
+.reminder-text { flex: 1 1 auto; font-size: .9rem; color: #5b4a2a; line-height: 1.35; }
+.reminder.urgent .reminder-text { color: #8a3320; }
+.reminder-act {
+    flex: 0 0 auto; padding: 6px 12px; border-radius: 999px; border: none; background: #13a06e; color: #fff;
+    font-weight: 700; font-size: .8rem; cursor: pointer;
+}
+.reminder-act:hover { background: #0e8a5d; }
+html.dark .reminder { background: #2a2519; border-color: #4a4128; }
+html.dark .reminder.urgent { background: #331f1b; border-color: #5a3129; }
+html.dark .reminder-text { color: #d9c9a4; }
+html.dark .reminder.urgent .reminder-text { color: #e6a999; }
+
+/* Home milestones / achievements (#12) */
+.achievements-card { margin: 14px 0 0; padding: 14px 16px; }
+.ach-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; }
+.ach { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border-radius: 12px; background: #f3fbf7; border: 1px solid #d8f0e5; }
+.ach.next { background: #f6f8fa; border-color: #e2e8ee; border-style: dashed; }
+.ach-ico { font-size: 1.3rem; line-height: 1.2; flex: 0 0 auto; }
+.ach-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ach-title { font-weight: 700; color: #0f7a54; font-size: .86rem; }
+.ach.next .ach-title { color: #5b6b7a; }
+.ach-desc { font-size: .74rem; color: #6b7a72; line-height: 1.3; }
+.ach-prog { margin-top: 5px; height: 5px; border-radius: 999px; background: #e2e8ee; overflow: hidden; }
+.ach-prog-fill { height: 100%; background: #13a06e; border-radius: 999px; }
+html.dark .ach { background: #16241d; border-color: #2b4438; }
+html.dark .ach.next { background: #1b232b; border-color: #303c46; }
+html.dark .ach-title { color: #57d9a3; }
+html.dark .ach.next .ach-title { color: #9aa7b4; }
+html.dark .ach-desc { color: #8fa39a; }
+
+/* Recent-merchant chips in the add-expense modal (#11) */
+.merchant-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 0 10px; }
+.chips-label { font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; color: #8a97a0; margin-right: 2px; }
+.merchant-chip {
+    padding: 5px 11px; border-radius: 999px; border: 1px solid #cdeadd; background: #f3fbf7; color: #0f7a54;
+    font-size: .82rem; font-weight: 600; cursor: pointer; max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.merchant-chip:hover { background: #e3f6ec; border-color: #13a06e; }
+html.dark .merchant-chip { background: #16241d; border-color: #2b4438; color: #57d9a3; }
+html.dark .chips-label { color: #7c8a94; }
+
 /* Forecasts tab */
 .networth-value { font-size: 1.8rem; font-weight: 800; color: #13a06e; margin-top: 6px; }
 .networth-value.warn-text { color: #c0392b; }

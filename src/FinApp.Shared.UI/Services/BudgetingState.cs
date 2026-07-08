@@ -417,6 +417,38 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
 
     public Expense? FindExpense(Guid id) => Period.Expenses.FirstOrDefault(e => e.Id == id);
 
+    // --- Faster expense entry (#11) --------------------------------------------------------------
+    // Manual entries only (AutoFiled bank rows reflect the bank, not a deliberate choice), newest first:
+    // periods newest→oldest, and within a period the last-added expense first (list order ≈ entry order).
+    private IEnumerable<Expense> ManualExpensesNewestFirst =>
+        Enumerable.Reverse(Account.Periods.ToList())
+            .SelectMany(p => Enumerable.Reverse(p.Expenses.ToList()))
+            .Where(e => !e.AutoFiled);
+
+    /// <summary>The most recent manual expense, for the "repeat last" quick action. Null when none logged yet.</summary>
+    public Expense? LastExpense => ManualExpensesNewestFirst.FirstOrDefault();
+
+    /// <summary>The fund last used for a category (across all periods), to default the fund picker to what the user
+    /// actually tends to pay it from. Only returns a fund that's still selectable; null when there's no usable history.</summary>
+    public Guid? LastFundForCategory(Guid categoryId)
+    {
+        var selectable = SelectableFunds.Select(f => f.Id).ToHashSet();
+        return ManualExpensesNewestFirst
+            .Where(e => e.CategoryId == categoryId && selectable.Contains(e.FundId))
+            .Select(e => (Guid?)e.FundId)
+            .FirstOrDefault();
+    }
+
+    /// <summary>Recent distinct merchants (expense notes), newest first, each carrying the category/fund/amount from
+    /// its most recent use — for one-tap "recent merchant" chips in the add-expense modal.</summary>
+    public IReadOnlyList<Expense> RecentMerchants(int max = 6) =>
+        ManualExpensesNewestFirst
+            .Where(e => !string.IsNullOrWhiteSpace(e.Note))
+            .GroupBy(e => e.Note!.Trim(), StringComparer.OrdinalIgnoreCase)
+            .Select(g => g.First())
+            .Take(max)
+            .ToList();
+
     public decimal? PeriodSavingsRate => _savings.PeriodSavingsRate(Period);
     public decimal? AccountSavingsRate => _savings.AccountSavingsRate(Account);
 

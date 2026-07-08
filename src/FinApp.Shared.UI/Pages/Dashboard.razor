@@ -189,6 +189,36 @@ else
                 </button>
             </section>
 
+            <section class="quick-actions">
+                <button class="qa" @onclick="OpenAddExpenseTab">🧾 <span>@Loc["Add expense"]</span></button>
+                @if (State.LastExpense is not null)
+                {
+                    <button class="qa" @onclick="RepeatLastExpense" title="@RepeatLastTitle()">🔁 <span>@Loc["Repeat last"]</span></button>
+                }
+                @if (HasSavingsBucket)
+                {
+                    <button class="qa" @onclick="OpenMoveToSavings">💰 <span>@Loc["Move to savings"]</span></button>
+                }
+            </section>
+
+            @{ var reminders = HomeReminders(ov); }
+            @if (reminders.Count > 0)
+            {
+                <section class="reminders">
+                    @foreach (var r in reminders)
+                    {
+                        <div class="reminder @(r.Urgent ? "urgent" : "")">
+                            <span class="reminder-ico">@r.Icon</span>
+                            <span class="reminder-text">@r.Text</span>
+                            @if (r is { ActionLabel: { } lbl, Act: { } act })
+                            {
+                                <button class="reminder-act" @onclick="@(() => act())">@lbl</button>
+                            }
+                        </div>
+                    }
+                </section>
+            }
+
             @if (LoanNudge() is { } tip)
             {
                 <div class="tip-card">
@@ -230,6 +260,30 @@ else
                         }
                     </div>
                     <div class="targets-foot">@Loc["Projections at your current pace — they don't move real money."]</div>
+                </section>
+            }
+
+            @{ var achievements = _achievements.Build(State.Account, Fmt, Loc.T); }
+            @if (achievements.Count > 0)
+            {
+                <section class="panel achievements-card">
+                    <h2 class="targets-h">🏆 @Loc["Milestones"]</h2>
+                    <div class="ach-list">
+                        @foreach (var a in achievements)
+                        {
+                            <div class="ach @(a.Earned ? "earned" : "next")">
+                                <span class="ach-ico">@a.Icon</span>
+                                <div class="ach-body">
+                                    <span class="ach-title">@a.Title</span>
+                                    <span class="ach-desc">@a.Desc</span>
+                                    @if (!a.Earned && a.Percent is { } pct)
+                                    {
+                                        <div class="ach-prog"><div class="ach-prog-fill" style="width:@pct%"></div></div>
+                                    }
+                                </div>
+                            </div>
+                        }
+                    </div>
                 </section>
             }
 
@@ -288,30 +342,6 @@ else
                             <div class="win"><div class="win-bullet">@qn</div><div class="win-text">@w.Text</div></div>
                         }
                     </div>
-                }
-
-                @if (ov.Breakdown.Count > 0)
-                {
-                    <h2 class="insight-h">@Loc["Top spending"]</h2>
-                    <section class="panel breakdown-card">
-                        @foreach (var c in ov.Breakdown.Take(5))
-                        {
-                            var arrow = c.Dir switch { DeltaDir.Up => "▲", DeltaDir.Down => "▼", _ => "" };
-                            var acls = c.Dir == DeltaDir.Up ? "up" : c.Dir == DeltaDir.Down ? "down" : "";
-                            <div class="breakdown-row">
-                                <div class="breakdown-cat">
-                                    <span class="cat-dot" style="background:@c.ColorHex"></span>
-                                    <span class="cat-ico">@c.Icon</span>
-                                    <span class="breakdown-name">@c.Name</span>
-                                </div>
-                                <div class="breakdown-bar-wrap">
-                                    <div class="breakdown-bar-bg"></div>
-                                    <div class="breakdown-bar-fill" style="background:@c.ColorHex; width:@((double)c.BarFraction * 100)%"></div>
-                                </div>
-                                <div class="breakdown-amount">@Fmt(c.Amount) <span class="bd-arrow @acls">@arrow</span></div>
-                            </div>
-                        }
-                    </section>
                 }
 
                 <button class="home-more-toggle" @onclick="ToggleHomeInsights">
@@ -1558,8 +1588,19 @@ else
 
                 case Modal.AddExpense:
                     <h3>@Loc["Add expense"]</h3>
+                    var recentMerchants = State.RecentMerchants();
+                    @if (recentMerchants.Count > 0)
+                    {
+                        <div class="merchant-chips">
+                            <span class="chips-label">@Loc["Recent"]</span>
+                            @foreach (var m in recentMerchants)
+                            {
+                                <button type="button" class="merchant-chip" @onclick="() => ApplyMerchant(m)" title="@($"{State.CategoryName(m.CategoryId)} · {Fmt(m.Amount)}")">@m.Note</button>
+                            }
+                        </div>
+                    }
                     <label><span class="lbl-row">@Loc["Category"] <button type="button" class="lbl-add" title="@Loc["Add category"]" @onclick="ExpenseAddCategory">+</button></span>
-                        <select @bind="_categoryId">
+                        <select @bind="_categoryId" @bind:after="OnExpenseCategoryChanged">
                             @foreach (var (cat, depth) in State.CategoryOptions)
                             {
                                 <option value="@cat.Id">@CatOption(cat.Id, cat.Name, depth)</option>
@@ -2411,6 +2452,7 @@ else
             </div>
         </text>;
     private readonly InsightsService _insights = new();
+    private readonly AchievementsService _achievements = new();
 
     private Guid _categoryId;
     private decimal _amount;
@@ -3669,6 +3711,68 @@ else
         return list;
     }
 
+    // --- Home reminders (#10) — contextual, in-app, actionable local prompts (no push) --------------
+    private sealed record HomeReminder(string Icon, string Text, string? ActionLabel, Action? Act, bool Urgent);
+
+    /// <summary>Up-to-three timely prompts for the active period: an over/near-cap budget, and a savings nudge when
+    /// you're short of your rate this period. Each carries a one-tap action. Empty for closed/past periods.</summary>
+    private IReadOnlyList<HomeReminder> HomeReminders(FinancialHealthReport ov)
+    {
+        var list = new List<HomeReminder>();
+        if (!State.IsReady || !State.HasAccounts || !State.IsPeriodOpen) return list;
+
+        // The budget most in need of attention: over-cap first (by amount over), else the closest to its cap (≥80%).
+        (Guid CatId, string Name, decimal Over, decimal Remaining)? over = null;
+        (Guid CatId, string Name, decimal Remaining, decimal Ratio)? near = null;
+        foreach (var b in State.Period.Budgets)
+        {
+            if (b.Allocated.Amount <= 0m) continue;
+            var cov = State.Coverage(b.CategoryId);
+            var name = State.CategoryName(b.CategoryId);
+            if (cov.Spent.Amount > cov.Allocated.Amount)
+            {
+                var amt = cov.Spent.Amount - cov.Allocated.Amount;
+                if (over is null || amt > over.Value.Over) over = (b.CategoryId, name, amt, 0m);
+            }
+            else
+            {
+                var ratio = cov.Spent.Amount / cov.Allocated.Amount;
+                if (ratio >= 0.8m && (near is null || ratio > near.Value.Ratio))
+                    near = (b.CategoryId, name, cov.Remaining.Amount, ratio);
+            }
+        }
+        if (over is { } o)
+            list.Add(new HomeReminder("⚠️", string.Format(Loc["You're {0} over your {1} budget."], Fmt(State.Money(o.Over)), o.Name),
+                Loc["Review"], () => OpenCategoryDetail(o.CatId), true));
+        else if (near is { } n)
+            list.Add(new HomeReminder("🟡", string.Format(Loc["You're {0} from your {1} budget."], Fmt(State.Money(n.Remaining)), n.Name),
+                Loc["Review"], () => OpenCategoryDetail(n.CatId), false));
+
+        // Savings nudge: below your rate target this period (reuses the Insights shortfall), or nothing saved yet.
+        if (HasSavingsBucket)
+        {
+            if (ov.SavingsShortfall is { } gap)
+                list.Add(new HomeReminder("💰", string.Format(Loc["Set aside {0} more to hit your {1} savings goal this period."], Fmt(gap), PctText(ov.SavingsTarget)),
+                    Loc["Move to savings"], OpenMoveToSavings, false));
+            else if (State.SavingsThisPeriod.Amount <= 0m && State.TotalContributed.Amount > 0m)
+                list.Add(new HomeReminder("💰", Loc["Money came in this period — move some into savings while it's here."],
+                    Loc["Move to savings"], OpenMoveToSavings, false));
+        }
+
+        return list.Take(3).ToList();
+    }
+
+    private bool HasSavingsBucket => State.SavingBuckets.Any(b => !b.Bucket.IsArchived);
+
+    /// <summary>Open "Add to savings" on the best-fit bucket (a live goal bucket first), or fall back to the Savings tab.</summary>
+    private void OpenMoveToSavings()
+    {
+        var bucket = State.SavingBuckets.FirstOrDefault(b => !b.Bucket.IsArchived && !b.Bucket.IsDebt).Bucket
+                  ?? State.SavingBuckets.FirstOrDefault(b => !b.Bucket.IsArchived).Bucket;
+        if (bucket is not null) OpenAddSaving(bucket.Id);
+        else _tab = Tab.Savings;
+    }
+
     // A random-ish starting pick so the tip feels fresh each session; the "↻ another" button advances it. Stable
     // across re-renders (no flicker) — it only moves when the user cycles it or the underlying budgets change.
     private int _nudgeIndex = Random.Shared.Next(0, 997);
@@ -3833,8 +3937,45 @@ else
     {
         _categoryId = categoryId; _amount = 0; _note = null; _onBehalfOther = false;
         _expenseDate = _dayView ?? DateOnly.FromDateTime(DateTime.Today);
-        _fundId = State.SelectableFunds.FirstOrDefault()?.Id ?? Guid.Empty; _modal = Modal.AddExpense;
+        _fundId = DefaultFundForCategory(categoryId); _modal = Modal.AddExpense;
     }
+
+    /// <summary>Fund to pre-select for a category: the one last used for it (#11), falling back to the first selectable.</summary>
+    private Guid DefaultFundForCategory(Guid categoryId) =>
+        State.LastFundForCategory(categoryId) ?? State.SelectableFunds.FirstOrDefault()?.Id ?? Guid.Empty;
+
+    /// <summary>When the category changes in the add-expense modal, follow it to the fund last used for that category
+    /// (#11) — unless the user has already typed an amount, in which case leave their in-progress entry alone.</summary>
+    private void OnExpenseCategoryChanged()
+    {
+        if (_amount <= 0) _fundId = DefaultFundForCategory(_categoryId);
+    }
+
+    /// <summary>Prefill the add-expense modal from the most recent manual expense — the "repeat last" quick action (#11).</summary>
+    private void RepeatLastExpense()
+    {
+        if (State.LastExpense is not { } e) return;
+        _categoryId = e.CategoryId;
+        _amount = e.Amount.Amount;
+        _note = e.Note;
+        _onBehalfOther = false;
+        _expenseDate = _dayView ?? ClampToPeriod(DateOnly.FromDateTime(DateTime.Today));
+        _fundId = State.SelectableFunds.Any(f => f.Id == e.FundId) ? e.FundId : DefaultFundForCategory(e.CategoryId);
+        _modal = Modal.AddExpense;
+    }
+
+    /// <summary>Apply a recent-merchant chip: copy its note, category, fund and amount into the open add-expense modal (#11).</summary>
+    private void ApplyMerchant(FinApp.Domain.Budgeting.Expense e)
+    {
+        _note = e.Note;
+        _categoryId = e.CategoryId;
+        _amount = e.Amount.Amount;
+        if (State.SelectableFunds.Any(f => f.Id == e.FundId)) _fundId = e.FundId;
+    }
+
+    /// <summary>Tooltip for the "repeat last" quick action, e.g. "Groceries · €42.10".</summary>
+    private string RepeatLastTitle() =>
+        State.LastExpense is { } e ? $"{State.CategoryName(e.CategoryId)} · {Fmt(e.Amount)}" : "";
 
     /// <summary>Open the add-expense popup from the Expenses tab (no category pre-selected — pick it in the modal).</summary>
     private void OpenAddExpenseTab() => OpenAddExpense(State.AllCategories.FirstOrDefault()?.Id ?? Guid.Empty);

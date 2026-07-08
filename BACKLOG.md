@@ -45,13 +45,19 @@ commit noted.
 8. ~~**Settable planned monthly contribution**~~ — **DONE (Session 20, see Shipped).**
 9. ~~**Cross-period trends**~~ — **DONE (Session 20, see Shipped).**
 
-## P2 — Habit formation (larger, converts tool → daily habit)
-10. **Reminders / notifications** — local reminders first ("payday? move €X", "you're €40 from your Food
-    budget"), push later. Nothing currently pulls the user back into the daily loop.
-11. **Faster expense entry** — "repeat last", recent-merchant chips, remember the last fund per category.
-    Daily logging is currently a full 5-field modal every time.
-12. **Streaks & milestones / achievements** — "3 months hitting your rate", "first extra payment", "25% of
-    the loan gone". The bucket's "Notify on milestone" toggle already exists with nowhere motivating to land.
+## ✅ P2 — Habit formation — all shipped (Session 21)
+10. ~~**Reminders / notifications**~~ **DONE** — in-app contextual reminders on Home (`HomeReminders`): an
+    over/near-cap budget ("You're €7.50 from your Food budget", with a Review action) and a savings nudge
+    when short of your rate this period. Local only (no push yet).
+11. ~~**Faster expense entry**~~ **DONE** — "Repeat last" Home quick action; recent-merchant chips in the
+    add-expense modal; the fund defaults to the one last used for the category (`LastFundForCategory`).
+12. ~~**Streaks & milestones / achievements**~~ **DONE** — Home "Milestones" strip (`AchievementsService`):
+    saving streak, first payment, 25/50/75/100% debt cleared, goal reached, plus a "next target" with progress.
+
+## Home redesign (Session 21)
+- Removed "Top spending" from Home; led the page with **quick actions** + **reminders**, kept the "on track
+  for" targets, added the **milestones** strip. Deep analytics (score, savings rate, trends, mini-trends)
+  stay behind the "Trends, savings rate & score" expander.
 
 ## P3 — Strategic primitives (unlock multiple items above)
 13. **Recurring transactions** — fixed bills, salary, standing savings/debt transfers. Biggest missing
