@@ -189,7 +189,7 @@ else
                 </button>
             </section>
 
-            @if (!_loanNudgeDismissed && LoanNudge() is { } tip)
+            @if (LoanNudge() is { } tip)
             {
                 <div class="tip-card">
                     <span class="tip-ico">💡</span>
@@ -198,13 +198,39 @@ else
                         <div class="tip-desc">@tip.Desc</div>
                     </div>
                     <span class="tip-actions">
-                        @if (State.DiscretionaryLeftovers().Count > 1)
+                        @if (State.DiscretionaryLeftovers().Count(c => !_dismissedNudges.Contains(c.Id)) > 1)
                         {
                             <button class="tip-x" title="@Loc["Another idea"]" @onclick="() => _nudgeIndex++">↻</button>
                         }
-                        <button class="tip-x" title="@Loc["Dismiss"]" @onclick="() => _loanNudgeDismissed = true">×</button>
+                        <button class="tip-x" title="@Loc["Dismiss for this period"]" @onclick="() => DismissNudge(tip.BudgetId)">×</button>
                     </span>
                 </div>
+            }
+
+            @{ var homeTargets = HomeTargets(); }
+            @if (homeTargets.Count > 0)
+            {
+                <section class="panel targets-card">
+                    <h2 class="targets-h">🎯 @Loc["You're on track for"]</h2>
+                    <div class="targets-list">
+                        @foreach (var t in homeTargets)
+                        {
+                            <div class="target-row">
+                                <span class="target-ico">@t.Icon</span>
+                                <span class="target-name">@t.Name</span>
+                                @if (t.Reached)
+                                {
+                                    <span class="target-when good-text">@Loc["reached 🎉"]</span>
+                                }
+                                else
+                                {
+                                    <span class="target-when">@Loc["by"] <strong>@PayoffDate(t.Months)</strong> <span class="target-mo">· @MonthsText(t.Months)</span></span>
+                                }
+                            </div>
+                        }
+                    </div>
+                    <div class="targets-foot">@Loc["Projections at your current pace — they don't move real money."]</div>
+                </section>
             }
 
             @if (!ov.HasData)
@@ -2532,7 +2558,11 @@ else
     private decimal _fThreshold = 80;
     private bool _fNotify;
     private bool _fEssential;              // category modal: essential (rent/health…) vs discretionary
-    private bool _loanNudgeDismissed;      // Home tab: user hid the "spare → debt" suggestion this session
+    // Home "spare → debt" nudge: budgets the user has dismissed, scoped to one period (cleared when the period
+    // changes). Dismissal is per-budget so acting-or-ignoring one suggestion doesn't silence the rest, and a
+    // dismissed one never re-nags this period. Essential budgets never appear in the first place.
+    private int _nudgeDismissPeriod = -1;
+    private readonly HashSet<Guid> _dismissedNudges = new();
     private string? _fCurrency = "EUR";
     private int _fSavingsTarget = 20;
     private string? _fIcon;
@@ -3505,35 +3535,76 @@ else
         months <= 0 ? "0mo" : months >= 12 ? $"{months / 12}y {months % 12}mo" : $"{months}mo";
     private static string PayoffDate(int months) => DateTime.Today.AddMonths(months).ToString("MMM yyyy");
 
+    /// <summary>One line on the Home "on track for" card: an emoji, a name, and either a projected month or "reached".</summary>
+    private readonly record struct HomeTarget(string Icon, string Name, int Months, bool Reached);
+
+    /// <summary>Read-only "when will it happen" summary for the Home card: the all-debts debt-free date (paying just
+    /// the installments — the honest baseline) plus each savings goal's date at its current pace. Reuses the same
+    /// projection math as the drill-in modals. Empty when there's nothing to project yet, so the card stays hidden.</summary>
+    private List<HomeTarget> HomeTargets()
+    {
+        var list = new List<HomeTarget>();
+        // Debt-free date across every debt bucket. The final month is the same whatever the strategy order, so the
+        // baseline (extra = 0) answers "when am I debt-free if I just keep paying?".
+        if (DebtBaseline is { } plan)
+            list.Add(new HomeTarget("🏁", Loc["Debt-free"], plan.Months, false));
+        // Each ordinary savings goal, dated at the pace the user actually sets aside (mirrors the goal-projection modal).
+        foreach (var x in State.SavingBuckets.Where(b => !b.Bucket.IsDebt && !b.Bucket.IsArchived && b.Bucket.HasGoal))
+        {
+            if (x.Bucket.GoalAmount is not { } goal) continue;
+            var saved = State.SavingBucketSaved(x.Bucket.Id).Amount;
+            if (saved >= goal) { list.Add(new HomeTarget(State.SavingBucketIcon(x.Bucket.Id), x.Bucket.Name, 0, true)); continue; }
+            if (State.SavingBucketPace(x.Bucket.Id) is { Amount: > 0m } pace)
+                list.Add(new HomeTarget(State.SavingBucketIcon(x.Bucket.Id), x.Bucket.Name,
+                    (int)Math.Ceiling((double)((goal - saved) / pace.Amount)), false));
+        }
+        return list;
+    }
+
     // A random-ish starting pick so the tip feels fresh each session; the "↻ another" button advances it. Stable
     // across re-renders (no flicker) — it only moves when the user cycles it or the underlying budgets change.
     private int _nudgeIndex = Random.Shared.Next(0, 997);
 
     /// <summary>A gentle, dismissible Home-tab suggestion tied to <b>one specific</b> discretionary budget that has
     /// spare this period, proposing it toward the debt it helps most (showing interest/time saved). Read-only — moves
-    /// no money. Rotates through the candidates via <see cref="_nudgeIndex"/>. Null when there's nothing worth showing.</summary>
-    private (string Title, string Desc)? LoanNudge()
+    /// no money. Rotates through the candidates via <see cref="_nudgeIndex"/>; a dismissed budget drops out for the
+    /// rest of the period (see <see cref="_dismissedNudges"/>). Null when there's nothing left worth showing.</summary>
+    private (Guid BudgetId, string Title, string Desc)? LoanNudge()
     {
+        // Dismissals are per-period: forget them the moment the active period changes.
+        if (_nudgeDismissPeriod != State.PeriodNumber) { _nudgeDismissPeriod = State.PeriodNumber; _dismissedNudges.Clear(); }
+
         // The debt where extra helps most (highest rate), and its baseline payoff at the installment.
         var debt = State.SavingBuckets.Where(x => x.Bucket.IsDebt && x.Bucket.DebtBalance > 0m)
             .OrderByDescending(x => x.Bucket.DebtAnnualRatePercent).Select(x => x.Bucket).FirstOrDefault();
         if (debt is null) return null;
         if (FinApp.Domain.Forecasting.LoanForecast.PayOff(debt.DebtBalance, debt.DebtAnnualRatePercent, debt.DebtInstallment) is not { } b) return null;
 
-        // Specific discretionary budgets with spare (up to 10) that would actually move the payoff.
-        var usable = State.DiscretionaryLeftovers().Take(10)
-            .Select(c => (c.Name, c.Amount, Fast: FinApp.Domain.Forecasting.LoanForecast.PayOff(debt.DebtBalance, debt.DebtAnnualRatePercent, debt.DebtInstallment + c.Amount)))
-            .Where(c => c.Fast is { } f && (b.Months > f.Months || b.TotalInterest > f.TotalInterest))
-            .ToList();
+        // Specific discretionary budgets with spare (up to 10) that would actually move the payoff — minus any the
+        // user has already dismissed this period, so a handled/ignored suggestion never re-nags.
+        var usable = NudgeCandidates(debt, b);
         if (usable.Count == 0) return null;
 
         var pick = usable[_nudgeIndex % usable.Count];
         var f2 = pick.Fast!.Value;
         return (
+            pick.Id,
             string.Format(Loc["Your {0} budget has about {1} to spare"], pick.Name, Fmt(State.Money(pick.Amount))),
             string.Format(Loc["Put it toward {0} every period and you'd clear it {1} sooner and save around {2} in interest. Budgets vary, so treat it as a what-if — essential budgets are never counted."],
                 debt.Name, MonthsText(b.Months - f2.Months), Fmt(State.Money(Math.Max(0m, b.TotalInterest - f2.TotalInterest)))));
     }
+
+    /// <summary>Discretionary budgets with spare that would speed up <paramref name="debt"/>, excluding ones dismissed
+    /// this period. Shared by the nudge and the "↻ another" affordance so both agree on what's left to show.</summary>
+    private List<(Guid Id, string Name, decimal Amount, FinApp.Domain.Forecasting.LoanForecast.Payoff? Fast)> NudgeCandidates(
+        SavingCategory debt, FinApp.Domain.Forecasting.LoanForecast.Payoff b) =>
+        State.DiscretionaryLeftovers().Where(c => !_dismissedNudges.Contains(c.Id)).Take(10)
+            .Select(c => (c.Id, c.Name, c.Amount, Fast: FinApp.Domain.Forecasting.LoanForecast.PayOff(debt.DebtBalance, debt.DebtAnnualRatePercent, debt.DebtInstallment + c.Amount)))
+            .Where(c => c.Fast is { } f && (b.Months > f.Months || b.TotalInterest > f.TotalInterest))
+            .ToList();
+
+    /// <summary>Hide this budget's suggestion for the rest of the period and jump the rotation to the next candidate.</summary>
+    private void DismissNudge(Guid budgetId) { _dismissedNudges.Add(budgetId); _nudgeIndex++; }
 
     private Task SpendBucketAsExpense() => RunModal(async () =>
     {

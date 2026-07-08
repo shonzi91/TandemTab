@@ -1233,15 +1233,15 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     /// <summary>Each <b>discretionary</b> (non-essential) category that carries its own budget and has spare this period
     /// (allocated − spent, where positive), biggest first. Advisory input for the "put spare toward a debt" nudge;
     /// moves nothing.</summary>
-    public IReadOnlyList<(string Name, decimal Amount)> DiscretionaryLeftovers()
+    public IReadOnlyList<(Guid Id, string Name, decimal Amount)> DiscretionaryLeftovers()
     {
-        var list = new List<(string Name, decimal Amount)>();
+        var list = new List<(Guid Id, string Name, decimal Amount)>();
         foreach (var c in AllCategories)
         {
             if (c.IsEssential || !HasBudget(c.Id)) continue;
             var cov = Coverage(c.Id);
             var left = cov.Allocated.Amount - cov.Spent.Amount;
-            if (left > 0m) list.Add((c.Name, left));
+            if (left > 0m) list.Add((c.Id, c.Name, left));
         }
         return list.OrderByDescending(x => x.Amount).ToList();
     }

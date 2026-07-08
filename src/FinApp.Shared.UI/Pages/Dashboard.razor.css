@@ -731,6 +731,22 @@ input[type=date]::-webkit-calendar-picker-indicator:hover { opacity: 1; backgrou
 .tip-actions { display: inline-flex; gap: 2px; flex: 0 0 auto; }
 .tip-x { border: none; background: none; cursor: pointer; color: #9ca3af; font-size: 1.2rem; line-height: 1; padding: 0 2px; }
 .tip-x:hover { color: #0f7a54; }
+/* Home "on track for" targets card — surfaces the debt-free / goal dates up front (read-only projections). */
+.targets-card { margin: 14px 0 0; padding: 14px 16px; }
+.targets-h { margin: 0 0 10px; font-size: .72rem; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: #6b7280; }
+.targets-list { display: flex; flex-direction: column; gap: 8px; }
+.target-row { display: flex; align-items: baseline; gap: 10px; }
+.target-ico { font-size: 1.05rem; flex: 0 0 auto; }
+.target-name { font-weight: 700; color: #0f7a54; flex: 0 0 auto; }
+.target-when { margin-left: auto; text-align: right; color: #4b6a5c; font-size: .9rem; }
+.target-when strong { color: #13a06e; }
+.target-mo { color: #8a97a0; font-size: .82rem; white-space: nowrap; }
+.targets-foot { margin-top: 10px; font-size: .74rem; color: #8a97a0; }
+html.dark .targets-h { color: #9aa4b2; }
+html.dark .target-name { color: #57d9a3; }
+html.dark .target-when { color: #b7c4bd; }
+html.dark .target-when strong { color: #57d9a3; }
+html.dark .target-mo, html.dark .targets-foot { color: #7c8a94; }
 /* Forecasts tab */
 .networth-value { font-size: 1.8rem; font-weight: 800; color: #13a06e; margin-top: 6px; }
 .networth-value.warn-text { color: #c0392b; }

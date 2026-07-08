@@ -465,6 +465,12 @@ public sealed class Localizer(IJSRuntime js)
         // Phase-2 projections + multi-debt planner
         ["Payoff projection"] = "Прогноза за погасяване",
         ["Goal projection"] = "Прогноза за целта",
+        ["You're on track for"] = "На път сте към",
+        ["Debt-free"] = "Без дългове",
+        ["by"] = "до",
+        ["reached 🎉"] = "постигната 🎉",
+        ["Projections at your current pace — they don't move real money."] =
+            "Прогнози при текущото ви темпо — не местят реални пари.",
         ["Set aside"] = "Заделени",
         ["Saved so far"] = "Заделени досега",
         ["Rate"] = "Лихва",
@@ -493,6 +499,7 @@ public sealed class Localizer(IJSRuntime js)
         ["Put it toward {0} every period and you'd clear it {1} sooner and save around {2} in interest. Budgets vary, so treat it as a what-if — essential budgets are never counted."] =
             "Ако ги насочвате към {0} всеки период, ще го погасите {1} по-рано и ще спестите около {2} лихва. Бюджетите варират, затова го приемете като хипотеза — основните бюджети никога не се броят.",
         ["Another idea"] = "Друга идея",
+        ["Dismiss for this period"] = "Скрий за този период",
         ["clear"] = "погасен",
         ["{0} · total interest {1}"] = "{0} · обща лихва {1}",
         ["That extra clears you {0} sooner and saves {1} in interest."] =
