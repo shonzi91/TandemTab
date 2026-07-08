@@ -10,13 +10,14 @@ namespace FinApp.Server.Accounts;
 /// write it; writes use optimistic concurrency on <see cref="AccountSnapshotRow.Version"/> so concurrent
 /// editors can't silently clobber each other. The payload is never interpreted here.
 /// </summary>
-public sealed class SnapshotService(FinAppDbContext db)
+public sealed class SnapshotService(FinAppDbContext db, ISnapshotCipher cipher)
 {
     public async Task<AccountSnapshot> GetAsync(Guid userId, Guid accountId, CancellationToken ct = default)
     {
         await EnsureContributorAsync(userId, accountId, ct);
         var row = await db.AccountSnapshots.FindAsync([accountId], ct);
-        return new AccountSnapshot(accountId, row?.Version ?? 0, row?.Payload ?? "");
+        var payload = row is null ? "" : await cipher.UnprotectAsync(row.Payload, ct);
+        return new AccountSnapshot(accountId, row?.Version ?? 0, payload);
     }
 
     public async Task<long> SaveAsync(Guid userId, Guid accountId, SaveAccountRequest request, CancellationToken ct = default)
@@ -25,12 +26,13 @@ public sealed class SnapshotService(FinAppDbContext db)
         if (string.IsNullOrEmpty(request.Payload))
             throw new BadRequestException("Snapshot payload is required.");
 
+        var stored = await cipher.ProtectAsync(request.Payload, ct);   // encrypt at rest (no-op in dev/no-KMS)
         var row = await db.AccountSnapshots.FindAsync([accountId], ct);
         if (row is null)
         {
             if (request.ExpectedVersion != 0)
                 throw new ConflictException("Snapshot is new (version 0).");
-            row = new AccountSnapshotRow { AccountId = accountId, Version = 1, Payload = request.Payload, UpdatedAt = DateTimeOffset.UtcNow };
+            row = new AccountSnapshotRow { AccountId = accountId, Version = 1, Payload = stored, UpdatedAt = DateTimeOffset.UtcNow };
             db.AccountSnapshots.Add(row);
         }
         else
@@ -38,12 +40,27 @@ public sealed class SnapshotService(FinAppDbContext db)
             if (row.Version != request.ExpectedVersion)
                 throw new ConflictException($"Snapshot is at version {row.Version}; you sent {request.ExpectedVersion}. Reload and retry.");
             row.Version++;
-            row.Payload = request.Payload;
+            row.Payload = stored;
             row.UpdatedAt = DateTimeOffset.UtcNow;
         }
 
         await db.SaveChangesAsync(ct);
         return row.Version;
+    }
+
+    /// <summary>One-off: encrypt any snapshot rows still stored as plaintext (only does work when a real cipher is
+    /// configured). Idempotent — already-encrypted rows are skipped, and the content/version are unchanged. Returns
+    /// how many rows were migrated.</summary>
+    public async Task<int> EncryptLegacyRowsAsync(CancellationToken ct = default)
+    {
+        if (!cipher.Encrypts) return 0;
+        var rows = await db.AccountSnapshots
+            .Where(r => !r.Payload.StartsWith(EnvelopeSnapshotCipher.Prefix))
+            .ToListAsync(ct);
+        foreach (var row in rows)
+            row.Payload = await cipher.ProtectAsync(row.Payload, ct);
+        if (rows.Count > 0) await db.SaveChangesAsync(ct);
+        return rows.Count;
     }
 
     private async Task EnsureContributorAsync(Guid userId, Guid accountId, CancellationToken ct)

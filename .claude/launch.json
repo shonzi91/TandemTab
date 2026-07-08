@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "finapp-server",
+      "runtimeExecutable": "C:\\Users\\Stoyan Stoyanov\\.dotnet\\dotnet.exe",
+      "runtimeArgs": ["run", "--project", "src/FinApp.Server", "--urls", "http://localhost:5179"],
+      "port": 5179
+    }
+  ]
+}

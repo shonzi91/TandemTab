@@ -87,6 +87,13 @@ builder.Services.AddScoped<ArchivedAccountsService>();
 builder.Services.AddScoped<AccountDeletionService>();
 builder.Services.AddScoped<SnapshotService>();
 builder.Services.AddScoped<AccountExportService>();
+// Snapshot at-rest encryption: envelope-encrypt via Cloud KMS when a key is configured, else store plaintext
+// (local dev / tests). Set Kms__KeyName=projects/…/locations/…/keyRings/…/cryptoKeys/… on Cloud Run to enable.
+var kmsKeyName = builder.Configuration["Kms:KeyName"];
+if (!string.IsNullOrWhiteSpace(kmsKeyName))
+    builder.Services.AddSingleton<FinApp.Server.Accounts.ISnapshotCipher>(_ => new FinApp.Server.Accounts.KmsSnapshotCipher(kmsKeyName));
+else
+    builder.Services.AddSingleton<FinApp.Server.Accounts.ISnapshotCipher, FinApp.Server.Accounts.PassthroughSnapshotCipher>();
 builder.Services.AddScoped<InvitationService>();
 builder.Services.AddScoped<EnableBankingClient>();  // mints its own RS256 JWT per call; no shared state to cache
 builder.Services.AddScoped<BankSyncService>();
@@ -184,6 +191,13 @@ using (var scope = app.Services.CreateScope())
     var deletions = scope.ServiceProvider.GetRequiredService<AccountDeletionService>();
     await deletions.EnsureSchemaAsync();
     await deletions.PurgeDueAsync();
+    // If snapshot encryption is configured, encrypt any rows still stored as plaintext (idempotent, no-op without KMS).
+    try
+    {
+        var migrated = await scope.ServiceProvider.GetRequiredService<SnapshotService>().EncryptLegacyRowsAsync();
+        if (migrated > 0) app.Logger.LogInformation("Snapshot encryption: encrypted {Count} legacy plaintext row(s).", migrated);
+    }
+    catch (Exception ex) { app.Logger.LogError(ex, "Snapshot encryption migration failed at startup."); }
 }
 
 // Security response headers on everything (incl. static files + errors). Set before next() so they're

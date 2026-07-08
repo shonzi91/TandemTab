@@ -13,7 +13,7 @@ namespace FinApp.Server.Accounts;
 /// (opening balances, contributions, budgets, expenses, savings, transfers). Read-only — it deserializes
 /// the stored snapshot (via <see cref="AccountSnapshotSerializer"/>) and renders it; nothing is mutated.
 /// </summary>
-public sealed class AccountExportService(FinAppDbContext db)
+public sealed class AccountExportService(FinAppDbContext db, ISnapshotCipher cipher)
 {
     public async Task<(byte[] Bytes, string FileName)> ExportAsync(Guid userId, Guid accountId, CancellationToken ct = default)
     {
@@ -25,7 +25,7 @@ public sealed class AccountExportService(FinAppDbContext db)
         if (row is null || string.IsNullOrEmpty(row.Payload))
             throw new NotFoundException("This account has no data to export yet.");
 
-        var account = AccountSnapshotSerializer.Deserialize(row.Payload);
+        var account = AccountSnapshotSerializer.Deserialize(await cipher.UnprotectAsync(row.Payload, ct));
 
         string Member(Guid id) => account.Members.FirstOrDefault(m => m.UserId == id)?.DisplayName ?? "—";
         string Category(Guid id) => account.FindCategory(id)?.Name ?? "—";
