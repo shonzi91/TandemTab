@@ -2,8 +2,12 @@
 
 Last updated: 2026-07-08 (Session 20). Read this + [README.md](README.md) + [TRANSFER.md](TRANSFER.md) + recent `git log` to catch up.
 
-## Session 20 (2026-07-08) — P1 "Motivation & self-awareness" block (#7/#8/#9) + P0 leftovers. Deployed **finapp-00115-qnh**. 210 tests (127 domain + 10 persistence + 73 server).
-Worked the [BACKLOG.md](BACKLOG.md) **P1** items (all now struck through as shipped). Two commits: `cd40ef0` (#7/#8) and `716a800` (#9).
+## Session 20 (2026-07-08) — P1 "Motivation & self-awareness" (#7/#8/#9) + the whole P0 quick-win list. Deployed **finapp-00117-gv4**. 210 tests (127 domain + 10 persistence + 73 server).
+Cleared the [BACKLOG.md](BACKLOG.md) **P1 and P0** blocks (all struck through). Commits: `cd40ef0` (#7/#8), `716a800` (#9), `8efe966` (Home debt-free fix), `81c27f5` (P0 #2/#3/#4/#6).
+
+**Home "Debt-free" date fix (`8efe966`)** — the Home "You're on track for" debt-free date used `DebtBaseline` (multi-debt planner at extra = 0, installment-only) while the payoff modal projects at installment + saving pace, so they disagreed. `HomeTargets` now uses `DebtFreeMonthsAtPace()` — each debt's `PayOff(balance, rate, installment + EffectiveSavingPace)`, latest month wins — the same inputs as the modal, so the dates match. `DebtBaseline` is kept for the planner card's "clears you N sooner" line.
+
+**P0 quick wins (`81c27f5`):** **#2** AuthPanel clears stale errors on edit (`@bind:after="ClearError"`) + explains empty Enter-submits; expense modal shows an inline note on a negative amount (not just a greyed button). **#3** shared `SavingsTargetField` render fragment (first-run + add/edit-account) shows an inline "keep 0–100%, we'll use N%" note instead of silently clamping on save. **#4** the deficit signal reads "Spending outran your income" (no savings-earmark claim) when nothing is saved. **#6** kept the helpful "No user named 'X'" invite message but added a dedicated per-IP rate limiter (`"invite"` policy, 15/min, off in Development) to blunt enumeration.
 
 **Shared debt/goal data model (#7 + #8)** — two additive, snapshot-only fields on `SavingCategory` (EF-`Ignore`d, no migration, same pattern as the Session 18 debt fields):
 - **`DebtOriginalBalance`** — the "€Y" baseline for progress. Captured on first `ConfigureDebt`, **preserved across edits** (the edit modal pre-fills the *remaining* balance, so re-config must not reset it), grows if the balance is corrected upward, never drops below what's owed. **Legacy debts back-fill to their current balance on read** (`ToEntity` passes the node value into `ConfigureDebt`; a 0 → baselines at current, so progress starts at 0% and never divides by zero).
@@ -20,7 +24,7 @@ Worked the [BACKLOG.md](BACKLOG.md) **P1** items (all now struck through as ship
 - **P0 #1** — `Exception.CleanMessage()` (`ApiException.cs`) strips the raw `" (Parameter 'name')"` suffix off `ArgumentException.Message`; wired into `AuthService` register + `AccountService` create/update.
 - **P0 #5** — `AvatarService.IsAcceptableAvatar` restricts avatars to `data:image/*` or **trusted provider hosts** (`googleusercontent.com`, `fbcdn.net`, `fbsbx.com`, `graph.facebook.com`, suffix-matched) — rejects arbitrary external URLs that would beacon shared-account members' IPs. The method was called by `SetAsync` but never defined, breaking the server build; now implemented.
 
-**Still open:** BACKLOG **P0 #2/#3/#4/#6** (silent no-ops, savings-target clamp message, deficit-copy-when-no-savings, invite enumeration) and **P2/P3** (reminders, faster expense entry, streaks/achievements, recurring transactions, actionable nudge). Suggested next per the BACKLOG: commit to **#13 recurring transactions** as the strategic primitive.
+**Still open:** all of **P2/P3** — #10 reminders/notifications, #11 faster expense entry, #12 streaks/achievements, #13 recurring transactions, #14 actionable nudge. Suggested next per the BACKLOG: commit to **#13 recurring transactions** as the strategic primitive that unblocks #10/#14 and predictive budgeting. (P0 and P1 are fully cleared.)
 
 ## Session 19 (2026-07-08) — Bank de-dup matcher + snapshot at-rest encryption (Cloud KMS). Deployed **finapp-00112-ns7**.
 **Bank de-duplication:** `FinApp.Domain.Budgeting.BankDuplicateMatcher` (pure, greedy 1:1, same amount within ±4 days, per-occurrence) + `BudgetingState.BankDuplicateSuggestions`/`ReplaceWithBankTransaction`. A bank debit that matches an un-linked manual entry shows a "Looks like you already logged this…" hint with **Same — replace** (drops the manual, often mis-filed, entry and confirms the bank row onto the synced fund) / **Keep both**. Review-only by design (no silent auto-link — a false amount+date match would otherwise swallow a genuinely separate transaction).
