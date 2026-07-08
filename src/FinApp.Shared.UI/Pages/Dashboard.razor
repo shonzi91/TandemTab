@@ -3563,6 +3563,27 @@ else
     private FinApp.Domain.Forecasting.LoanForecast.StrategyPlan? DebtBaseline =>
         FinApp.Domain.Forecasting.LoanForecast.PlanPayoff(State.DebtLoanInputs, 0m, _planStrategy);
 
+    /// <summary>Months until every debt bucket is cleared, projecting each at its installment + the pace/plan the user
+    /// actually sets aside (<see cref="BudgetingState.EffectiveSavingPace"/>) — mirroring the payoff modal's
+    /// "installment + extra on top" line so the Home "Debt-free" date agrees with the per-debt modal. Null when there
+    /// are no debts, or a debt never clears at that amount (no honest date to promise).</summary>
+    private int? DebtFreeMonthsAtPace()
+    {
+        var debts = State.SavingBuckets
+            .Where(x => x.Bucket.IsDebt && !x.Bucket.IsArchived && x.Bucket.DebtBalance > 0m)
+            .Select(x => x.Bucket).ToList();
+        if (debts.Count == 0) return null;
+        var months = 0;
+        foreach (var d in debts)
+        {
+            var pace = State.EffectiveSavingPace(d.Id)?.Amount ?? 0m;
+            if (FinApp.Domain.Forecasting.LoanForecast.PayOff(d.DebtBalance, d.DebtAnnualRatePercent, d.DebtInstallment + pace) is not { } p)
+                return null;   // one debt never clears at this amount → no debt-free date to show
+            months = Math.Max(months, p.Months);
+        }
+        return months;
+    }
+
     private void OpenPayoffProjection(Guid bucketId)
     {
         _projBucketId = bucketId;
@@ -3616,10 +3637,11 @@ else
     private List<HomeTarget> HomeTargets()
     {
         var list = new List<HomeTarget>();
-        // Debt-free date across every debt bucket. The final month is the same whatever the strategy order, so the
-        // baseline (extra = 0) answers "when am I debt-free if I just keep paying?".
-        if (DebtBaseline is { } plan)
-            list.Add(new HomeTarget("🏁", Loc["Debt-free"], plan.Months, false));
+        // Debt-free date across every debt bucket, projecting each at its installment + the pace/plan you actually set
+        // aside — the same "installment + extra on top" math as the payoff modal, so the two agree. You're debt-free
+        // when the last one clears, hence the latest month wins.
+        if (DebtFreeMonthsAtPace() is { } dfMonths)
+            list.Add(new HomeTarget("🏁", Loc["Debt-free"], dfMonths, false));
         // Each ordinary savings goal, dated at the pace the user actually sets aside (mirrors the goal-projection modal).
         foreach (var x in State.SavingBuckets.Where(b => !b.Bucket.IsDebt && !b.Bucket.IsArchived && b.Bucket.HasGoal))
         {
