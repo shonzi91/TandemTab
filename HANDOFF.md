@@ -1,6 +1,20 @@
 # TandemTab (FinApp) — session handoff
 
-Last updated: 2026-07-08 (Session 20). Read this + [README.md](README.md) + [TRANSFER.md](TRANSFER.md) + recent `git log` to catch up.
+Last updated: 2026-07-08 (Session 21). Read this + [README.md](README.md) + [TRANSFER.md](TRANSFER.md) + recent `git log` to catch up.
+
+## Session 21 (2026-07-08) — P2 "Habit formation" (#10/#11/#12) + Home redesign. Deployed **finapp-00118-q2f**. Commit `be82988`.
+Cleared the [BACKLOG.md](BACKLOG.md) **P2** block and reworked the Home tab around "most useful info + quick actions". All Shared.UI (no server/domain/migration changes). **Verified live in a browser** (register → account → expense → Food budget): reminder, repeat-last, merchant chip, milestones, and the P0 #2/#3/#4 fixes all render with zero console errors.
+
+**#11 Faster expense entry** — `BudgetingState`: `LastExpense`, `LastFundForCategory` (fund defaults to the one last used for the category; `OnExpenseCategoryChanged` follows category changes unless an amount's typed), `RecentMerchants` (distinct notes newest-first). Home **"🔁 Repeat last"** quick action (`RepeatLastExpense` prefills the modal); **recent-merchant chips** in the add-expense modal (`ApplyMerchant`). All reads use manual (non-AutoFiled) expenses, newest-first across periods.
+
+**#12 Milestones** — new **`AchievementsService`** (pure compute like `InsightsService`, news-up'd in Dashboard as `_achievements`): saver, saving streak vs target (`CurrentSavingStreak` skips no-income periods), first debt payment, 25/50/75/100% of a debt cleared, goal reached, plus the most-progressed **"next" target** with a progress bar. Home **"🏆 Milestones"** strip.
+
+**#10 Reminders** — `HomeReminders(ov)` returns ≤3 contextual, in-app, **actionable** prompts for the active period only: the most urgent over/near-cap budget ("You're €X from your {cat} budget", ≥80% or over, one-tap **Review** → `OpenCategoryDetail`) and a savings nudge (reuses `ov.SavingsShortfall`, else "money came in" when nothing saved) → **Move to savings** (`OpenMoveToSavings`). **Local/in-app only — no push notifications yet.**
+
+**Home redesign** — removed **"Top spending"** (the `ov.Breakdown` render; the compute still exists in `InsightsService`, just unused now). Home order: summary cards → **quick actions** (Add expense / Repeat last / Move to savings) → **reminders** → loan nudge → "on track for" targets → **milestones** → the collapsible deep-insights (warnings, quick wins, score, savings rate, spending trend, #9 mini-trends). New CSS: `.quick-actions/.qa`, `.reminders/.reminder`, `.achievements-card/.ach*`, `.merchant-chips/.merchant-chip` (+ dark variants).
+
+**Still open (P3):** #13 recurring transactions (the strategic primitive — fixed bills/salary/standing transfers; unblocks predictive budgeting + the recurring-nudge variant of #14) and #14 actionable reallocation nudge. Also deferred from #10: **push** notifications (needs PWA/service-worker or native). Suggested next: **#13**.
+
 
 ## Session 20 (2026-07-08) — P1 "Motivation & self-awareness" (#7/#8/#9) + the whole P0 quick-win list. Deployed **finapp-00117-gv4**. 210 tests (127 domain + 10 persistence + 73 server).
 Cleared the [BACKLOG.md](BACKLOG.md) **P1 and P0** blocks (all struck through). Commits: `cd40ef0` (#7/#8), `716a800` (#9), `8efe966` (Home debt-free fix), `81c27f5` (P0 #2/#3/#4/#6).
