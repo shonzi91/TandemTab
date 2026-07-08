@@ -191,10 +191,6 @@ else
 
             <section class="quick-actions">
                 <button class="qa" @onclick="OpenAddExpenseTab">🧾 <span>@Loc["Add expense"]</span></button>
-                @if (State.LastExpense is not null)
-                {
-                    <button class="qa" @onclick="RepeatLastExpense" title="@RepeatLastTitle()">🔁 <span>@Loc["Repeat last"]</span></button>
-                }
                 @if (HasSavingsBucket)
                 {
                     <button class="qa" @onclick="OpenMoveToSavings">💰 <span>@Loc["Move to savings"]</span></button>
@@ -1588,6 +1584,10 @@ else
 
                 case Modal.AddExpense:
                     <h3>@Loc["Add expense"]</h3>
+                    @if (State.LastExpense is { } lastExp)
+                    {
+                        <button type="button" class="repeat-last" @onclick="RepeatLastExpense">↻ @Loc["Repeat last"]: <strong>@State.CategoryName(lastExp.CategoryId)</strong> · @Fmt(lastExp.Amount)</button>
+                    }
                     var recentMerchants = State.RecentMerchants();
                     @if (recentMerchants.Count > 0)
                     {
@@ -3973,9 +3973,6 @@ else
         if (State.SelectableFunds.Any(f => f.Id == e.FundId)) _fundId = e.FundId;
     }
 
-    /// <summary>Tooltip for the "repeat last" quick action, e.g. "Groceries · €42.10".</summary>
-    private string RepeatLastTitle() =>
-        State.LastExpense is { } e ? $"{State.CategoryName(e.CategoryId)} · {Fmt(e.Amount)}" : "";
 
     /// <summary>Open the add-expense popup from the Expenses tab (no category pre-selected — pick it in the modal).</summary>
     private void OpenAddExpenseTab() => OpenAddExpense(State.AllCategories.FirstOrDefault()?.Id ?? Guid.Empty);

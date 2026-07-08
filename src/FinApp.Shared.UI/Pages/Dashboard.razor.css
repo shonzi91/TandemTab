@@ -816,6 +816,15 @@ html.dark .ach-title { color: #57d9a3; }
 html.dark .ach.next .ach-title { color: #9aa7b4; }
 html.dark .ach-desc { color: #8fa39a; }
 
+/* "Repeat last" prefill inside the add-expense modal (#11) */
+.repeat-last {
+    display: block; width: 100%; margin: 0 0 10px; padding: 9px 12px; border-radius: 10px; text-align: left;
+    border: 1px dashed #cdeadd; background: #f3fbf7; color: #0f7a54; font-size: .86rem; font-weight: 600; cursor: pointer;
+}
+.repeat-last:hover { background: #e3f6ec; border-color: #13a06e; }
+.repeat-last strong { font-weight: 800; }
+html.dark .repeat-last { background: #16241d; border-color: #2b4438; color: #57d9a3; }
+
 /* Recent-merchant chips in the add-expense modal (#11) */
 .merchant-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 0 10px; }
 .chips-label { font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; color: #8a97a0; margin-right: 2px; }
