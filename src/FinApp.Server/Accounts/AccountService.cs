@@ -102,7 +102,7 @@ public sealed class AccountService(FinAppDbContext db, ArchivedAccountsService a
         }
         catch (ArgumentException ex)
         {
-            throw new BadRequestException(ex.Message);
+            throw new BadRequestException(ex.CleanMessage());
         }
 
         db.Accounts.Add(account);
@@ -119,7 +119,7 @@ public sealed class AccountService(FinAppDbContext db, ArchivedAccountsService a
         }
         catch (ArgumentException ex)
         {
-            throw new BadRequestException(ex.Message);
+            throw new BadRequestException(ex.CleanMessage());
         }
         await db.SaveChangesAsync(ct);
     }

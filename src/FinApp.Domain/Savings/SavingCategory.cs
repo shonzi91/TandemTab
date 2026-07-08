@@ -26,7 +26,25 @@ public sealed class SavingCategory : Entity
     public decimal DebtAnnualRatePercent { get; private set; }
     public decimal DebtInstallment { get; private set; }
 
+    /// <summary>Debt buckets only: the balance owed when the debt was first set up, kept fixed as payments lower
+    /// <see cref="DebtBalance"/>. This is the "€Y" in "paid off €X of €Y (Z%)" and the baseline for progress-over-time.
+    /// Captured automatically on first <see cref="ConfigureDebt"/>; never drops below the current balance. Body data.</summary>
+    public decimal DebtOriginalBalance { get; private set; }
+
+    /// <summary>Optional user-set target amount to add to this bucket each period ("€300/mo"). When set it is used
+    /// instead of the app inferring a pace from deposit history, giving stable goal/payoff dates. Null → infer from
+    /// history. Applies to both common and debt buckets. Projection metadata only — never touches the money model. Body data.</summary>
+    public decimal? PlannedContribution { get; private set; }
+
     public bool IsDebt => Kind == SavingKind.Debt;
+
+    /// <summary>Debt buckets: how much of the original balance has been paid off (never negative). Zero for common buckets.</summary>
+    public decimal DebtPaidOff => IsDebt ? Math.Max(0m, DebtOriginalBalance - DebtBalance) : 0m;
+
+    /// <summary>Debt buckets: fraction (0..1) of the original balance paid off, or null when there's no original to measure against.</summary>
+    public decimal? DebtProgressRatio => IsDebt && DebtOriginalBalance > 0m
+        ? Math.Clamp(DebtPaidOff / DebtOriginalBalance, 0m, 1m)
+        : null;
 
     /// <summary>Archived buckets (a paid-off debt or a reached goal) are hidden from the main lists but keep their
     /// history. Body data (snapshot, not EF).</summary>
@@ -88,14 +106,21 @@ public sealed class SavingCategory : Entity
 
     public void SetIcon(string? icon) => Icon = string.IsNullOrWhiteSpace(icon) ? null : icon.Trim();
 
-    /// <summary>Mark this bucket as a debt-payoff envelope and set its (projection-only) loan figures.</summary>
-    public void ConfigureDebt(decimal balance, decimal annualRatePercent, decimal installment)
+    /// <summary>Mark this bucket as a debt-payoff envelope and set its (projection-only) loan figures. The original
+    /// balance (for progress %) is captured the first time and preserved across later edits so paying it down doesn't
+    /// reset progress; pass <paramref name="originalBalance"/> to set it explicitly (e.g. round-tripping the snapshot).</summary>
+    public void ConfigureDebt(decimal balance, decimal annualRatePercent, decimal installment, decimal? originalBalance = null)
     {
         if (balance < 0m) throw new ArgumentException("Debt balance cannot be negative.", nameof(balance));
         if (annualRatePercent < 0m) throw new ArgumentException("Interest rate cannot be negative.", nameof(annualRatePercent));
         if (installment < 0m) throw new ArgumentException("Installment cannot be negative.", nameof(installment));
+        if (originalBalance is < 0m) throw new ArgumentException("Original balance cannot be negative.", nameof(originalBalance));
         Kind = SavingKind.Debt;
         DebtBalance = balance;
+        // Capture the original owed once (first config, or when told explicitly); never let it fall below what's still
+        // owed, and grow it if the balance is corrected upward (e.g. more was borrowed).
+        if (originalBalance is { } orig && orig > 0m) DebtOriginalBalance = orig;
+        if (DebtOriginalBalance < balance) DebtOriginalBalance = balance;
         DebtAnnualRatePercent = annualRatePercent;
         DebtInstallment = installment;
     }
@@ -107,6 +132,15 @@ public sealed class SavingCategory : Entity
         DebtBalance = 0m;
         DebtAnnualRatePercent = 0m;
         DebtInstallment = 0m;
+        DebtOriginalBalance = 0m;
+    }
+
+    /// <summary>Set or clear the user's planned per-period contribution to this bucket. Null or zero clears it (revert
+    /// to inferring pace from history). Cannot be negative.</summary>
+    public void SetPlannedContribution(decimal? amount)
+    {
+        if (amount is < 0m) throw new ArgumentException("Planned contribution cannot be negative.", nameof(amount));
+        PlannedContribution = amount is > 0m ? amount : null;
     }
 
     /// <summary>Record a payment against a debt bucket: lower the outstanding balance (never below zero). No-op for a

@@ -79,6 +79,119 @@ public class SavingsTests
     }
 
     [Fact]
+    public void Original_debt_balance_is_captured_and_survives_payments_for_progress()
+    {
+        var account = new Account("Home", Eur);
+        account.AssignOwner(Guid.NewGuid(), "Me");
+        var loan = account.AddSavingCategory("Car loan");
+        account.ConfigureSavingDebt(loan.Id, balance: 10000m, annualRatePercent: 5m, installment: 200m);
+
+        var bucket = account.FindSavingCategory(loan.Id)!;
+        Assert.Equal(10000m, bucket.DebtOriginalBalance);   // captured on first config
+        Assert.Equal(0m, bucket.DebtPaidOff);
+        Assert.Equal(0m, bucket.DebtProgressRatio);
+
+        account.RecordSavingDebtPayment(loan.Id, 2500m);
+        Assert.Equal(7500m, bucket.DebtBalance);
+        Assert.Equal(10000m, bucket.DebtOriginalBalance);   // original stays put
+        Assert.Equal(2500m, bucket.DebtPaidOff);
+        Assert.Equal(0.25m, bucket.DebtProgressRatio);
+    }
+
+    [Fact]
+    public void Editing_debt_preserves_original_balance_but_grows_it_when_balance_is_corrected_upward()
+    {
+        var account = new Account("Home", Eur);
+        account.AssignOwner(Guid.NewGuid(), "Me");
+        var loan = account.AddSavingCategory("Loan");
+        account.ConfigureSavingDebt(loan.Id, balance: 10000m, annualRatePercent: 5m, installment: 200m);
+        account.RecordSavingDebtPayment(loan.Id, 4000m);   // remaining 6000, original 10000
+
+        // Re-configuring with the remaining balance (the edit modal pre-fills what's owed) keeps the original.
+        account.ConfigureSavingDebt(loan.Id, balance: 6000m, annualRatePercent: 4m, installment: 250m);
+        Assert.Equal(10000m, account.FindSavingCategory(loan.Id)!.DebtOriginalBalance);
+
+        // Correcting the balance above the original (borrowed more) grows the original to match.
+        account.ConfigureSavingDebt(loan.Id, balance: 12000m, annualRatePercent: 4m, installment: 250m);
+        Assert.Equal(12000m, account.FindSavingCategory(loan.Id)!.DebtOriginalBalance);
+    }
+
+    [Fact]
+    public void Common_bucket_has_no_debt_progress()
+    {
+        var account = new Account("Home", Eur);
+        account.AssignOwner(Guid.NewGuid(), "Me");
+        var vac = account.AddSavingCategory("Vacations");
+        var bucket = account.FindSavingCategory(vac.Id)!;
+        Assert.Equal(0m, bucket.DebtPaidOff);
+        Assert.Null(bucket.DebtProgressRatio);
+    }
+
+    [Fact]
+    public void Planned_contribution_is_set_and_cleared()
+    {
+        var account = new Account("Home", Eur);
+        account.AssignOwner(Guid.NewGuid(), "Me");
+        var vac = account.AddSavingCategory("Vacations");
+
+        account.SetSavingPlannedContribution(vac.Id, 300m);
+        Assert.Equal(300m, account.FindSavingCategory(vac.Id)!.PlannedContribution);
+
+        account.SetSavingPlannedContribution(vac.Id, 0m);   // zero clears it
+        Assert.Null(account.FindSavingCategory(vac.Id)!.PlannedContribution);
+
+        account.SetSavingPlannedContribution(vac.Id, 150m);
+        account.SetSavingPlannedContribution(vac.Id, null);  // null clears it
+        Assert.Null(account.FindSavingCategory(vac.Id)!.PlannedContribution);
+
+        Assert.Throws<ArgumentException>(() => account.SetSavingPlannedContribution(vac.Id, -5m));
+    }
+
+    [Fact]
+    public void Debt_balance_history_shrinks_with_each_paying_period()
+    {
+        var account = new Account("Personal", Eur);
+        account.AddDefaultFunds();
+        var member = account.AddMember(Guid.NewGuid(), "Stoyan");
+        var fund = account.FundId("Bank");
+        var loan = account.AddSavingCategory("Loan");
+        account.ConfigureSavingDebt(loan.Id, balance: 1000m, annualRatePercent: 5m, installment: 100m);
+        var svc = new SavingsReportService();
+
+        // No payments yet → just the original balance, so nothing to draw.
+        Assert.Equal(new[] { 1000m }, svc.DebtBalanceHistory(account, loan.Id));
+
+        var p1 = account.StartPeriod(new DateOnly(2026, 1, 1), new DateOnly(2026, 1, 31));
+        p1.Deposit(member.UserId, M(1000), fundId: fund);
+        p1.AllocateToSavings(loan.Id, M(300), new DateOnly(2026, 1, 5));
+        p1.DisburseSaving(loan.Id, fund, M(300), new DateOnly(2026, 1, 20), "payment");
+        account.RecordSavingDebtPayment(loan.Id, 300m);
+        p1.Close();
+
+        var p2 = account.StartPeriod(new DateOnly(2026, 2, 1), new DateOnly(2026, 2, 28));
+        p2.Deposit(member.UserId, M(1000), fundId: fund);
+        p2.AllocateToSavings(loan.Id, M(200), new DateOnly(2026, 2, 5));
+        p2.DisburseSaving(loan.Id, fund, M(200), new DateOnly(2026, 2, 20), "payment");
+        account.RecordSavingDebtPayment(loan.Id, 200m);
+
+        // Original 1000 → 700 after p1's 300 payment → 500 after p2's 200 payment.
+        Assert.Equal(new[] { 1000m, 700m, 500m }, svc.DebtBalanceHistory(account, loan.Id));
+        Assert.Equal(500m, account.FindSavingCategory(loan.Id)!.DebtBalance);
+        Assert.Equal(500m, account.FindSavingCategory(loan.Id)!.DebtPaidOff);
+    }
+
+    [Fact]
+    public void Clearing_debt_resets_original_balance()
+    {
+        var account = new Account("Home", Eur);
+        account.AssignOwner(Guid.NewGuid(), "Me");
+        var loan = account.AddSavingCategory("Loan");
+        account.ConfigureSavingDebt(loan.Id, balance: 5000m, annualRatePercent: 3m, installment: 100m);
+        account.ClearSavingDebt(loan.Id);
+        Assert.Equal(0m, account.FindSavingCategory(loan.Id)!.DebtOriginalBalance);
+    }
+
+    [Fact]
     public void Converting_saving_to_expense_draws_down_bucket_and_records_expense()
     {
         var account = new Account("Family", Eur);

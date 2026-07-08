@@ -174,16 +174,44 @@ public class SnapshotSerializerTests
         account.AssignOwner(Guid.NewGuid(), "Me");
         var car = account.AddSavingCategory("Car loan");
         account.ConfigureSavingDebt(car.Id, balance: 12_000m, annualRatePercent: 6.5m, installment: 300m);
+        account.RecordSavingDebtPayment(car.Id, 2_000m);   // remaining 10k, original stays 12k
+        account.SetSavingPlannedContribution(car.Id, 350m);
         account.SetSavingArchived(car.Id, true);
 
         var copy = AccountSnapshotSerializer.Deserialize(AccountSnapshotSerializer.Serialize(account));
 
         var copied = copy.SavingCategories.Single(s => s.Name == "Car loan");
         Assert.True(copied.IsDebt);
-        Assert.Equal(12_000m, copied.DebtBalance);
+        Assert.Equal(10_000m, copied.DebtBalance);
         Assert.Equal(6.5m, copied.DebtAnnualRatePercent);
         Assert.Equal(300m, copied.DebtInstallment);
+        Assert.Equal(12_000m, copied.DebtOriginalBalance);   // original owed survives the round-trip
+        Assert.Equal(2_000m, copied.DebtPaidOff);
+        Assert.Equal(350m, copied.PlannedContribution);
         Assert.True(copied.IsArchived);
+    }
+
+    [Fact]
+    public void Legacy_debt_snapshot_without_original_balance_baselines_progress_at_current()
+    {
+        // A debt node written before DebtOriginalBalance existed → the field is absent (0). On read it must
+        // back-fill to the current balance so progress starts at 0% rather than dividing by zero.
+        var legacy = """
+            {"Id":"11111111-1111-1111-1111-111111111111","Name":"Old","Currency":"EUR",
+             "OwnerUserId":"22222222-2222-2222-2222-222222222222","Members":[],"Funds":[],
+             "Categories":[],"SavingCategories":[
+               {"Id":"33333333-3333-3333-3333-333333333333","Name":"Loan","ParentId":null,
+                "GoalAmount":null,"AlertThreshold":0.8,"NotifyOnMilestone":false,"InitialAmount":0,
+                "Icon":null,"Kind":1,"DebtBalance":8000,"DebtAnnualRatePercent":5,"DebtInstallment":200,
+                "IsArchived":false}],
+             "Periods":[]}
+            """;
+        var account = AccountSnapshotSerializer.Deserialize(legacy);
+        var loan = account.SavingCategories.Single();
+        Assert.Equal(8000m, loan.DebtOriginalBalance);
+        Assert.Equal(0m, loan.DebtPaidOff);
+        Assert.Equal(0m, loan.DebtProgressRatio);
+        Assert.Null(loan.PlannedContribution);
     }
 
     [Fact]

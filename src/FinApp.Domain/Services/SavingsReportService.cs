@@ -152,6 +152,34 @@ public sealed class SavingsReportService
         return new Money(perPeriodDeposits.Sum() / perPeriodDeposits.Count, account.Currency);
     }
 
+    /// <summary>
+    /// Debt buckets: the shrinking remaining-balance series over time — the original owed, then the balance after
+    /// each period that made a payment (a disbursement out of the bucket). Feeds a shrinking-balance sparkline (#7).
+    /// Reconstructed from payment history; empty for a common bucket or a debt without an original balance.
+    /// </summary>
+    public IReadOnlyList<decimal> DebtBalanceHistory(Account account, Guid savingCategoryId)
+    {
+        ArgumentNullException.ThrowIfNull(account);
+        var bucket = account.FindSavingCategory(savingCategoryId)
+            ?? throw new InvalidOperationException("Saving category not found in the account.");
+        if (!bucket.IsDebt || bucket.DebtOriginalBalance <= 0m) return Array.Empty<decimal>();
+
+        var bucketIds = account.SavingCategoryWithDescendantIds(savingCategoryId).ToHashSet();
+        var series = new List<decimal> { bucket.DebtOriginalBalance };
+        var remaining = bucket.DebtOriginalBalance;
+        foreach (var period in account.Periods)   // chronological
+        {
+            // Disbursements out of the bucket are the payments; they're stored negative, so flip the sign.
+            var paid = period.SavingAllocations
+                .Where(a => bucketIds.Contains(a.SavingCategoryId) && a.IsDisbursement)
+                .Sum(a => -a.Amount.Amount);
+            if (paid <= 0m) continue;
+            remaining = Math.Max(0m, remaining - paid);
+            series.Add(remaining);
+        }
+        return series;
+    }
+
     private static Money AllocationsFor(Account account, IReadOnlySet<Guid> bucketIds) =>
         account.Periods
             .SelectMany(p => p.SavingAllocations)

@@ -516,6 +516,20 @@ public sealed class Localizer(IJSRuntime js)
             "Само за планиране — това са приблизителни оценки, не финансов съвет. Реалните условия на кредитора (такси, промени в лихвата, дати на плащане) може да се различават. За точни числа, моля свържете се с вашия кредитор.",
         ["set aside"] = "заделени",
         ["owed"] = "остават",
+        // Progress over time (#7) + planned contribution (#8)
+        ["Paid off {0} of {1} ({2}%)"] = "Погасени {0} от {1} ({2}%)",
+        ["~{0} ahead of the installment plan"] = "~{0} по-рано от плана с вноски",
+        ["Planned contribution /period (optional)"] = "Планиран принос/период (по избор)",
+        ["What you plan to put toward this each period, on top of the installment. Used to date your payoff instead of guessing from history. Leave 0 to infer it."] =
+            "Колко планирате да внасяте всеки период, над вноската. Използва се за датата на погасяване, вместо да се гадае от историята. Оставете 0, за да се изведе автоматично.",
+        ["What you plan to set aside each period. Used to date your goal instead of guessing from history. Leave 0 to infer it."] =
+            "Колко планирате да заделяте всеки период. Използва се за датата на целта, вместо да се гадае от историята. Оставете 0, за да се изведе автоматично.",
+        ["At your planned contribution"] = "При вашия планиран принос",
+        ["You plan to set aside {0}/period."] = "Планирате да заделяте {0}/период.",
+        ["Uses the contribution you planned for this bucket, then counts how many periods until you reach the goal."] =
+            "Използва планирания от вас принос за този плик и брои колко периода остават до целта.",
+        ["Reset to your planned contribution"] = "Върни към планирания принос",
+        [" · your plan {0}/period"] = " · вашият план {0}/период",
         ["Make a payment"] = "Направи вноска",
         ["Apply to a goal"] = "Приложи към цел",
         ["Records a real expense paid straight from this bucket (dated today)."] =

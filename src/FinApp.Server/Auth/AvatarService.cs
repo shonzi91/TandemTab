@@ -75,6 +75,10 @@ public sealed class AvatarService(FinAppDbContext db)
         var trimmed = string.IsNullOrWhiteSpace(dataUrl) ? null : dataUrl.Trim();
         if (trimmed is { Length: > MaxLength })
             throw new ApiException(StatusCodes.Status400BadRequest, "That image is too large. Pick a smaller picture.");
+        // Only an inline image or a trusted provider picture — never an arbitrary external URL, which would render
+        // as an <img src> and beacon to shared-account members (tracking/deanonymisation).
+        if (trimmed is not null && !IsAcceptableAvatar(trimmed))
+            throw new ApiException(StatusCodes.Status400BadRequest, "That isn't a supported picture.");
 
         var conn = db.Database.GetDbConnection();
         var opened = await OpenAsync(conn, ct);
@@ -97,6 +101,31 @@ public sealed class AvatarService(FinAppDbContext db)
             await cmd.ExecuteNonQueryAsync(ct);
         }
         finally { if (opened) await conn.CloseAsync(); }
+    }
+
+    // Hosts we adopt profile pictures from during external sign-in (Google / Facebook). Suffix-matched so regional
+    // shards (lh3..lh6.googleusercontent.com, *.fbcdn.net, platform-lookaside.fbsbx.com) are covered without listing each.
+    private static readonly string[] TrustedAvatarHosts =
+    [
+        "googleusercontent.com",
+        "fbcdn.net",
+        "fbsbx.com",
+        "graph.facebook.com",
+    ];
+
+    /// <summary>An avatar is acceptable only if it's an inline image (<c>data:image/*</c>) or an https picture from a
+    /// trusted sign-in provider host. Any other external URL is rejected — rendered as an <c>&lt;img src&gt;</c> it would
+    /// beacon the viewer's IP to an arbitrary server and could deanonymise shared-account members (BACKLOG P0 #5).</summary>
+    private static bool IsAcceptableAvatar(string value)
+    {
+        if (value.StartsWith("data:image/", StringComparison.OrdinalIgnoreCase))
+            return true;
+        if (!Uri.TryCreate(value, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps)
+            return false;
+        var host = uri.Host;
+        return TrustedAvatarHosts.Any(h =>
+            host.Equals(h, StringComparison.OrdinalIgnoreCase) ||
+            host.EndsWith("." + h, StringComparison.OrdinalIgnoreCase));
     }
 
     private static async Task<bool> OpenAsync(System.Data.Common.DbConnection conn, CancellationToken ct)

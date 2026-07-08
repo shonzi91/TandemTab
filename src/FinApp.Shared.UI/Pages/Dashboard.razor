@@ -1008,6 +1008,22 @@ else
                         {
                             <span class="amt save">@Fmt(ctx.Total)</span> <span class="ring-muted">@Loc["set aside"]</span>
                             <div class="ring-sub">@Fmt(State.Money(State.SavingBucketDebtBalance(bucketId))) @Loc["owed"] · @State.SavingBucketDebtRate(bucketId)% · @Fmt(State.Money(State.SavingBucketDebtInstallment(bucketId)))/@Loc["mo"]</div>
+                            var dPaid = State.SavingBucketDebtPaidOff(bucketId);
+                            var dOrig = State.SavingBucketDebtOriginal(bucketId);
+                            var dProg = State.SavingBucketDebtProgress(bucketId);
+                            var dAhead = State.SavingBucketMonthsAhead(bucketId);
+                            var dSpark = State.SavingBucketDebtHistory(bucketId);
+                            if (dProg is { } pr && dPaid > 0m)
+                            {
+                                <div class="debt-progress">
+                                    <span class="debt-prog-txt">@string.Format(Loc["Paid off {0} of {1} ({2}%)"], Fmt(State.Money(dPaid)), Fmt(State.Money(dOrig)), (int)Math.Round((double)pr * 100))</span>
+                                    @DebtSparkline(dSpark)
+                                </div>
+                                if (dAhead is { } ma)
+                                {
+                                    <div class="debt-ahead good-text">🚀 @string.Format(Loc["~{0} ahead of the installment plan"], MonthsText(ma))</div>
+                                }
+                            }
                         }
                         else if (g is null)
                         {
@@ -1729,6 +1745,10 @@ else
                         <label>@Loc["Alert at %"] <input type="number" step="1" min="0" max="100" @bind="_fThreshold" /></label>
                         <label class="check"><input type="checkbox" @bind="_fNotify" /> @Loc["Notify on milestone"]</label>
                     }
+                    <label>@Loc["Planned contribution /period (optional)"] <input type="number" step="10" min="0" @bind="_fPlanned" /></label>
+                    <small class="hint">@(_bucketIsDebt
+                        ? Loc["What you plan to put toward this each period, on top of the installment. Used to date your payoff instead of guessing from history. Leave 0 to infer it."]
+                        : Loc["What you plan to set aside each period. Used to date your goal instead of guessing from history. Leave 0 to infer it."])</small>
                     @if (State.CanSetInitialSavings)
                     {
                         <label>@Loc["Already saved (starting balance)"] <input type="number" step="0.01" min="0" @bind="_initialSavings" /></label>
@@ -1918,7 +1938,8 @@ else
                     var pjBal = State.SavingBucketDebtBalance(_projBucketId);
                     var pjRate = State.SavingBucketDebtRate(_projBucketId);
                     var pjInst = State.SavingBucketDebtInstallment(_projBucketId);
-                    var pjPace = State.SavingBucketPace(_projBucketId);
+                    var pjPace = State.EffectiveSavingPace(_projBucketId);
+                    var pjPlanned = State.SavingBucketPlannedContribution(_projBucketId) is > 0m;
                     var pjExtra = _payoffExtra > 0m ? _payoffExtra : 0m;
                     var pjTotal = pjInst + pjExtra;                       // installment is always there; extra is on top
                     var pjAtInst = FinApp.Domain.Forecasting.LoanForecast.PayOff(pjBal, pjRate, pjInst);
@@ -1941,10 +1962,10 @@ else
                     }
                     <h4 class="detail-sub">@Loc["Installment + extra on top"]
                         @infoTip(("pp-pace", Loc["Money you set aside on top of the installment each month. Starts from your recent saving pace — change it to see how paying more (or less) moves the date and interest."]))
-                        <button type="button" class="info-ico reset-ico" title="@Loc["Reset to your saving pace"]" @onclick="() => _payoffExtra = State.SavingBucketPace(_projBucketId)?.Amount ?? 0m">↺</button>
+                        <button type="button" class="info-ico reset-ico" title="@(pjPlanned ? Loc["Reset to your planned contribution"] : Loc["Reset to your saving pace"])" @onclick="() => _payoffExtra = State.EffectiveSavingPace(_projBucketId)?.Amount ?? 0m">↺</button>
                     </h4>
                     <label class="proj-extra">@Loc["Extra on top /mo"] <input type="number" step="10" min="0" @bind="_payoffExtra" @bind:event="oninput" /></label>
-                    <p class="hint pm-hint">@string.Format(Loc["{0} installment + {1} extra = {2}/mo"], Fmt(State.Money(pjInst)), Fmt(State.Money(pjExtra)), Fmt(State.Money(pjTotal)))@(pjPace is { } pc && pc.Amount > 0m ? string.Format(Loc[" · your pace ~{0}/period"], Fmt(pc)) : "")</p>
+                    <p class="hint pm-hint">@string.Format(Loc["{0} installment + {1} extra = {2}/mo"], Fmt(State.Money(pjInst)), Fmt(State.Money(pjExtra)), Fmt(State.Money(pjTotal)))@(pjPace is { } pc && pc.Amount > 0m ? string.Format(pjPlanned ? Loc[" · your plan {0}/period"] : Loc[" · your pace ~{0}/period"], Fmt(pc)) : "")</p>
                     @if (pjAtTotal is { } ap)
                     {
                         <p class="hint">🏁 @string.Format(Loc["Clear in {0} (~{1}) · interest {2}"], MonthsText(ap.Months), PayoffDate(ap.Months), Fmt(State.Money(ap.TotalInterest)))</p>
@@ -1966,7 +1987,8 @@ else
                 case Modal.GoalProjection:
                     var gpSaved = State.SavingBucketSaved(_projBucketId);
                     var gpGoal = State.FindSavingBucket(_projBucketId)?.GoalAmount;
-                    var gpPace = State.SavingBucketPace(_projBucketId);
+                    var gpPace = State.EffectiveSavingPace(_projBucketId);
+                    var gpPlanned = State.SavingBucketPlannedContribution(_projBucketId) is > 0m;
                     int? gpPeriods = gpPace is { } gpp && gpp.Amount > 0m && gpGoal is { } gpg && gpg > gpSaved.Amount
                         ? (int)Math.Ceiling((double)((gpg - gpSaved.Amount) / gpp.Amount)) : null;
                     <h3>📅 @Loc["Goal projection"] — @State.SavingBucketName(_projBucketId)</h3>
@@ -1974,10 +1996,10 @@ else
                         <span class="proj-k">@Loc["Saved so far"]</span><span class="proj-v">@Fmt(gpSaved)</span>
                         <span class="proj-k">@Loc["Goal"]</span><span class="proj-v">@(gpGoal is { } gg ? Fmt(State.Money(gg)) : "—")</span>
                     </div>
-                    <h4 class="detail-sub">@Loc["At your saving pace"] @infoTip(("gp-pace", Loc["Uses the average you actually set aside each period, then counts how many periods until you reach the goal."]))</h4>
+                    <h4 class="detail-sub">@(gpPlanned ? Loc["At your planned contribution"] : Loc["At your saving pace"]) @infoTip(("gp-pace", gpPlanned ? Loc["Uses the contribution you planned for this bucket, then counts how many periods until you reach the goal."] : Loc["Uses the average you actually set aside each period, then counts how many periods until you reach the goal."]))</h4>
                     @if (gpPace is { } gpace && gpace.Amount > 0m)
                     {
-                        <p class="hint">@string.Format(Loc["You set aside about {0}/period."], Fmt(gpace))</p>
+                        <p class="hint">@string.Format(gpPlanned ? Loc["You plan to set aside {0}/period."] : Loc["You set aside about {0}/period."], Fmt(gpace))</p>
                         @if (gpPeriods is { } gper)
                         {
                             <p class="hint">🏁 @string.Format(Loc["Reach your goal in {0} (~{1})"], MonthsText(gper), PayoffDate(gper))</p>
@@ -2510,6 +2532,7 @@ else
     private decimal _initialSavings;
     private bool _bucketIsDebt;
     private decimal _debtBalance, _debtRate, _debtInstallment;
+    private decimal _fPlanned;   // #8: planned per-period contribution (0 = infer pace from history)
 
     private string? _inviteUsername;
     private Guid _removeMemberId;
@@ -3526,13 +3549,35 @@ else
     {
         _projBucketId = bucketId;
         _openTip = null;
-        _payoffExtra = State.SavingBucketPace(bucketId)?.Amount ?? 0m;   // load with your saving pace on top
+        _payoffExtra = State.EffectiveSavingPace(bucketId)?.Amount ?? 0m;   // load with your planned/inferred pace on top
         _modal = Modal.PayoffProjection;
     }
     private void OpenGoalProjection(Guid bucketId) { _projBucketId = bucketId; _openTip = null; _modal = Modal.GoalProjection; }
 
     private static string MonthsText(int months) =>
         months <= 0 ? "0mo" : months >= 12 ? $"{months / 12}y {months % 12}mo" : $"{months}mo";
+
+    /// <summary>A tiny inline SVG polyline of a debt's shrinking balance over time (#7). Empty when there's fewer
+    /// than two points. Coordinates are formatted invariant so the SVG is valid in any locale.</summary>
+    private static MarkupString DebtSparkline(IReadOnlyList<decimal> pts)
+    {
+        if (pts.Count < 2) return default;
+        var max = (double)pts.Max();
+        if (max <= 0) return default;
+        const double w = 120, h = 26, pad = 2;
+        var inv = System.Globalization.CultureInfo.InvariantCulture;
+        var coords = new string[pts.Count];
+        for (var i = 0; i < pts.Count; i++)
+        {
+            var x = pad + (w - 2 * pad) * i / (pts.Count - 1);
+            var y = pad + (h - 2 * pad) * (1 - (double)pts[i] / max);
+            coords[i] = $"{x.ToString("0.#", inv)},{y.ToString("0.#", inv)}";
+        }
+        var poly = string.Join(" ", coords);
+        return new MarkupString(
+            $"<svg class=\"debt-spark\" viewBox=\"0 0 {w.ToString("0", inv)} {h.ToString("0", inv)}\" preserveAspectRatio=\"none\" role=\"img\" aria-hidden=\"true\">" +
+            $"<polyline points=\"{poly}\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linejoin=\"round\" stroke-linecap=\"round\" /></svg>");
+    }
     private static string PayoffDate(int months) => DateTime.Today.AddMonths(months).ToString("MMM yyyy");
 
     /// <summary>One line on the Home "on track for" card: an emoji, a name, and either a projected month or "reached".</summary>
@@ -3554,7 +3599,7 @@ else
             if (x.Bucket.GoalAmount is not { } goal) continue;
             var saved = State.SavingBucketSaved(x.Bucket.Id).Amount;
             if (saved >= goal) { list.Add(new HomeTarget(State.SavingBucketIcon(x.Bucket.Id), x.Bucket.Name, 0, true)); continue; }
-            if (State.SavingBucketPace(x.Bucket.Id) is { Amount: > 0m } pace)
+            if (State.EffectiveSavingPace(x.Bucket.Id) is { Amount: > 0m } pace)
                 list.Add(new HomeTarget(State.SavingBucketIcon(x.Bucket.Id), x.Bucket.Name,
                     (int)Math.Ceiling((double)((goal - saved) / pace.Amount)), false));
         }
@@ -3827,7 +3872,7 @@ else
     private void OpenAddBucketOfKind(bool asDebt)
     {
         _modalBucketId = Guid.Empty; _fName = null; _fIcon = null; _goalAmount = 0; _fThreshold = 80; _fNotify = false; _initialSavings = 0;
-        _bucketIsDebt = asDebt; _debtBalance = 0; _debtRate = 0; _debtInstallment = 0;
+        _bucketIsDebt = asDebt; _debtBalance = 0; _debtRate = 0; _debtInstallment = 0; _fPlanned = 0;
         _modal = Modal.AddBucket;
     }
 
@@ -3845,6 +3890,7 @@ else
         _debtBalance = b?.DebtBalance ?? 0;
         _debtRate = b?.DebtAnnualRatePercent ?? 0;
         _debtInstallment = b?.DebtInstallment ?? 0;
+        _fPlanned = b?.PlannedContribution ?? 0;
         _modal = Modal.EditBucket;
     }
 
@@ -3852,10 +3898,11 @@ else
     {
         if (string.IsNullOrWhiteSpace(_fName)) return;
         decimal? goal = _goalAmount > 0 ? _goalAmount : null;
+        decimal? planned = _fPlanned > 0 ? _fPlanned : null;
         if (_modal == Modal.AddBucket)
-            await State.AddSavingBucket(_fName!, goal, _fThreshold, _fNotify, _initialSavings, _fIcon, _bucketIsDebt, _debtBalance, _debtRate, _debtInstallment);
+            await State.AddSavingBucket(_fName!, goal, _fThreshold, _fNotify, _initialSavings, _fIcon, _bucketIsDebt, _debtBalance, _debtRate, _debtInstallment, planned);
         else
-            await State.SaveSavingBucket(_modalBucketId, _fName!, goal, _fThreshold, _fNotify, _initialSavings, _fIcon, _bucketIsDebt, _debtBalance, _debtRate, _debtInstallment);
+            await State.SaveSavingBucket(_modalBucketId, _fName!, goal, _fThreshold, _fNotify, _initialSavings, _fIcon, _bucketIsDebt, _debtBalance, _debtRate, _debtInstallment, planned);
         CloseModal();
     });
 

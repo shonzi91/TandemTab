@@ -118,7 +118,7 @@ public sealed class AuthService(
         }
         catch (ArgumentException ex)
         {
-            throw new BadRequestException(ex.Message);
+            throw new BadRequestException(ex.CleanMessage());
         }
 
         db.Users.Add(user);

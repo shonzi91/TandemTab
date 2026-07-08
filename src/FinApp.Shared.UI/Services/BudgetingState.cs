@@ -732,7 +732,7 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
 
     // Saving bucket CRUD
     public async Task<Guid> AddSavingBucket(string name, decimal? goalAmount, decimal thresholdPercent, bool notifyOnMilestone, decimal initialAmount, string? icon = null,
-        bool isDebt = false, decimal debtBalance = 0m, decimal debtRate = 0m, decimal debtInstallment = 0m)
+        bool isDebt = false, decimal debtBalance = 0m, decimal debtRate = 0m, decimal debtInstallment = 0m, decimal? plannedContribution = null)
     {
         var bucket = Account.AddSavingCategory(name);
         Account.SetSavingCategoryIcon(bucket.Id, icon);
@@ -740,6 +740,7 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
             Account.ConfigureSavingDebt(bucket.Id, debtBalance, debtRate, debtInstallment);
         else if (goalAmount is > 0m)
             Account.ConfigureSavingGoal(bucket.Id, goalAmount, thresholdPercent / 100m, notifyOnMilestone);
+        Account.SetSavingPlannedContribution(bucket.Id, plannedContribution);
         if (CanSetInitialSavings && initialAmount > 0m)
             Account.SetSavingInitialAmount(bucket.Id, initialAmount);
         await SaveAsync();
@@ -747,7 +748,7 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     }
 
     public Task SaveSavingBucket(Guid savingCategoryId, string name, decimal? goalAmount, decimal thresholdPercent, bool notifyOnMilestone, decimal initialAmount, string? icon = null,
-        bool isDebt = false, decimal debtBalance = 0m, decimal debtRate = 0m, decimal debtInstallment = 0m)
+        bool isDebt = false, decimal debtBalance = 0m, decimal debtRate = 0m, decimal debtInstallment = 0m, decimal? plannedContribution = null)
     {
         Account.RenameSavingCategory(savingCategoryId, name);
         Account.SetSavingCategoryIcon(savingCategoryId, icon);
@@ -761,6 +762,7 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
             Account.ClearSavingDebt(savingCategoryId);
             Account.ConfigureSavingGoal(savingCategoryId, goalAmount is > 0m ? goalAmount : null, thresholdPercent / 100m, notifyOnMilestone);
         }
+        Account.SetSavingPlannedContribution(savingCategoryId, plannedContribution);
         if (CanSetInitialSavings)
             Account.SetSavingInitialAmount(savingCategoryId, initialAmount);
         return SaveAsync();
@@ -773,9 +775,46 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     public decimal SavingBucketDebtRate(Guid id) => FindSavingBucket(id)?.DebtAnnualRatePercent ?? 0m;
     public decimal SavingBucketDebtInstallment(Guid id) => FindSavingBucket(id)?.DebtInstallment ?? 0m;
 
+    // --- Progress over time (#7): the original owed vs what's left, and how much has been cleared ---
+    /// <summary>Debt buckets: the balance owed when the debt was first set up (the "€Y" in "paid off €X of €Y").</summary>
+    public decimal SavingBucketDebtOriginal(Guid id) => FindSavingBucket(id)?.DebtOriginalBalance ?? 0m;
+    /// <summary>Debt buckets: how much of the original balance has been paid off so far.</summary>
+    public decimal SavingBucketDebtPaidOff(Guid id) => FindSavingBucket(id)?.DebtPaidOff ?? 0m;
+    /// <summary>Debt buckets: fraction (0..1) of the original balance paid off, or null when there's no baseline.</summary>
+    public decimal? SavingBucketDebtProgress(Guid id) => FindSavingBucket(id)?.DebtProgressRatio;
+
+    /// <summary>User-set planned per-period contribution to a bucket (#8), or null when pace is inferred from history.</summary>
+    public decimal? SavingBucketPlannedContribution(Guid id) => FindSavingBucket(id)?.PlannedContribution;
+
     // --- Forecasting projections (read-only; never touch the money model) ---
     /// <summary>Average amount added to a bucket per active period — the demonstrated saving pace, for projections.</summary>
     public Money? SavingBucketPace(Guid id) => _savings.AverageDepositPace(Account, id);
+
+    /// <summary>The pace projections should use: the user's planned contribution (#8) when set, else the demonstrated
+    /// pace from deposit history. Null only when neither exists (no plan and no deposits yet).</summary>
+    public Money? EffectiveSavingPace(Guid id)
+    {
+        var planned = FindSavingBucket(id)?.PlannedContribution;
+        return planned is > 0m ? Money(planned.Value) : SavingBucketPace(id);
+    }
+
+    /// <summary>Debt buckets: the shrinking remaining-balance series (original owed → balance after each paying period),
+    /// for a sparkline (#7). Fewer than 2 points means there's nothing to draw yet.</summary>
+    public IReadOnlyList<decimal> SavingBucketDebtHistory(Guid id) => _savings.DebtBalanceHistory(Account, id);
+
+    /// <summary>Debt buckets: projected whole months saved versus paying only the contractual installment, at the
+    /// bucket's effective pace (planned contribution, or demonstrated pace). Null when there's no meaningful speed-up.</summary>
+    public int? SavingBucketMonthsAhead(Guid id)
+    {
+        var bucket = FindSavingBucket(id);
+        if (bucket is null || !bucket.IsDebt || bucket.DebtOriginalBalance <= 0m) return null;
+        var pace = EffectiveSavingPace(id)?.Amount ?? 0m;
+        var extra = pace - bucket.DebtInstallment;
+        if (extra <= 0m) return null;
+        var sim = FinApp.Domain.Forecasting.LoanForecast.SimulateExtra(
+            bucket.DebtOriginalBalance, bucket.DebtAnnualRatePercent, bucket.DebtInstallment, extra);
+        return sim is { MonthsSaved: > 0 } s ? s.MonthsSaved : null;
+    }
 
     /// <summary>How much is currently set aside in a bucket (its accumulated balance).</summary>
     public Money SavingBucketSaved(Guid id)

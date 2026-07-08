@@ -223,10 +223,16 @@ public sealed class Account : Entity
         (FindSavingCategory(savingCategoryId) ?? throw new InvalidOperationException("Saving category not found."))
             .SetGoal(goalAmount, alertThreshold, notifyOnMilestone);
 
-    /// <summary>Mark a savings bucket as a debt-payoff envelope with its (projection-only) loan figures.</summary>
-    public void ConfigureSavingDebt(Guid savingCategoryId, decimal balance, decimal annualRatePercent, decimal installment) =>
+    /// <summary>Mark a savings bucket as a debt-payoff envelope with its (projection-only) loan figures. The original
+    /// balance (for progress %) is captured the first time; pass <paramref name="originalBalance"/> to set it explicitly.</summary>
+    public void ConfigureSavingDebt(Guid savingCategoryId, decimal balance, decimal annualRatePercent, decimal installment, decimal? originalBalance = null) =>
         (FindSavingCategory(savingCategoryId) ?? throw new InvalidOperationException("Saving category not found."))
-            .ConfigureDebt(balance, annualRatePercent, installment);
+            .ConfigureDebt(balance, annualRatePercent, installment, originalBalance);
+
+    /// <summary>Set or clear a savings bucket's planned per-period contribution (null/zero → infer pace from history).</summary>
+    public void SetSavingPlannedContribution(Guid savingCategoryId, decimal? amount) =>
+        (FindSavingCategory(savingCategoryId) ?? throw new InvalidOperationException("Saving category not found."))
+            .SetPlannedContribution(amount);
 
     /// <summary>Revert a savings bucket to an ordinary (common) goal, clearing any debt figures.</summary>
     public void ClearSavingDebt(Guid savingCategoryId) =>
