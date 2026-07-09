@@ -777,11 +777,7 @@ else
 
             <section class="panel">
                 <div class="panel-head">
-                    @if (_calendar)
-                    {
-                        <h2>@State.Period.From.ToString("MMMM yyyy")</h2>
-                    }
-                    else if (_dayView is { } dv)
+                    @if (_dayView is { } dv)
                     {
                         <span class="day-nav">
                             <button class="exp-edit" title="@Loc["Previous day"]" @onclick="PrevDay" disabled="@(dv <= State.Period.From)">◀</button>
@@ -794,8 +790,8 @@ else
                         <h2>@Loc["All expenses"]</h2>
                     }
                     <span class="view-toggle">
-                        <button class="view-btn @(_calendar ? "" : "active")" title="@Loc["List"]" @onclick="ShowDayList">☰</button>
-                        <button class="view-btn @(_calendar ? "active" : "")" title="@Loc["Calendar"]" @onclick="ShowCalendarView">📅</button>
+                        <button class="view-btn @(_dayView is null ? "active" : "")" title="@Loc["List"]" @onclick="ShowDayList">☰</button>
+                        <button class="view-btn @(_dayView is not null ? "active" : "")" title="@Loc["By day"]" @onclick="ShowDayView">📆</button>
                     </span>
                 </div>
                 @{
@@ -832,45 +828,8 @@ else
                     var shown = _dayView is { } dvf
                         ? State.AllExpenses.Where(e => e.Date == dvf).ToList()
                         : State.AllExpenses.ToList();
-                    var byDay = State.AllExpenses.GroupBy(e => e.Date)
-                        .ToDictionary(g => g.Key, g => (Count: g.Count(), Total: g.Aggregate(0m, (s, e) => s + e.Amount.Amount)));
-                    var calToday = DateOnly.FromDateTime(DateTime.Today);
                 }
-                @if (_calendar)
-                {
-                    <div class="cal-dow">
-                        @foreach (var dow in new[] { "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun" })
-                        {
-                            <span>@dow</span>
-                        }
-                    </div>
-                    <div class="cal-grid">
-                        @foreach (var d in CalendarDays())
-                        {
-                            var inRange = d >= State.Period.From && d <= State.Period.To;
-                            byDay.TryGetValue(d, out var info);
-                            var cls = "cal-cell"
-                                + (inRange ? "" : " cal-out")
-                                + (d == calToday ? " cal-today" : "")
-                                + (_dayView == d ? " cal-sel" : "");
-                            var day = d;
-                            <div class="@cls" @onclick="() => OpenDayFromCalendar(day)">
-                                <span class="cal-top">
-                                    <span class="cal-num">@d.Day</span>
-                                    @if (inRange && State.IsPeriodOpen)
-                                    {
-                                        <button class="cal-add" title="@Loc["Add expense"]" @onclick:stopPropagation="true" @onclick="() => OpenAddExpenseOn(day)">🧾</button>
-                                    }
-                                </span>
-                                @if (inRange && info.Count > 0)
-                                {
-                                    <span class="cal-total">@Fmt(State.Money(info.Total))</span>
-                                }
-                            </div>
-                        }
-                    </div>
-                }
-                else if (!shown.Any())
+                @if (!shown.Any())
                 {
                     <ul class="list"><li><em>@Loc["Nothing’s perched here yet — add your first expense."]</em></li></ul>
                 }
@@ -893,11 +852,7 @@ else
                 var bankExpenses = BankDebits();
                 <section class="panel">
                     <div class="panel-head">
-                        @if (bankExpenses.Count > 0 && _bankCal)
-                        {
-                            <h2>💳 @State.Period.From.ToString("MMMM yyyy")</h2>
-                        }
-                        else if (bankExpenses.Count > 0 && _bankDay is { } bd)
+                        @if (bankExpenses.Count > 0 && _bankDay is { } bd)
                         {
                             <span class="day-nav">
                                 <button class="exp-edit" title="@Loc["Previous day"]" @onclick="() => { if (bd > State.Period.From) _bankDay = bd.AddDays(-1); }" disabled="@(bd <= State.Period.From)">◀</button>
@@ -912,8 +867,8 @@ else
                         @if (bankExpenses.Count > 0)
                         {
                             <span class="view-toggle">
-                                <button class="view-btn @(!_bankCal && _bankDay is null ? "active" : "")" title="@Loc["List"]" @onclick="() => { _bankCal = false; _bankDay = null; }">☰</button>
-                                <button class="view-btn @(_bankCal ? "active" : "")" title="@Loc["Calendar"]" @onclick="() => { _bankCal = true; _bankDay = null; }">📅</button>
+                                <button class="view-btn @(_bankDay is null ? "active" : "")" title="@Loc["List"]" @onclick="() => _bankDay = null">☰</button>
+                                <button class="view-btn @(_bankDay is not null ? "active" : "")" title="@Loc["By day"]" @onclick="() => _bankDay = ClampToPeriod(DateOnly.FromDateTime(DateTime.Today))">📆</button>
                             </span>
                         }
                     </div>
@@ -924,24 +879,6 @@ else
                     @if (bankExpenses.Count == 0)
                     {
                         <p class="hint">@Loc["No bank transactions to review right now. It syncs automatically; use 🔄 at the top to fetch now."]</p>
-                    }
-                    else if (_bankCal)
-                    {
-                        <div class="cal-dow">
-                            @foreach (var dow in new[] { "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun" }) { <span>@dow</span> }
-                        </div>
-                        <div class="cal-grid">
-                            @foreach (var d in CalendarDays())
-                            {
-                                var day = d;
-                                var inRange = d >= State.Period.From && d <= State.Period.To;
-                                var count = bankExpenses.Count(t => t.Date == day);
-                                <div class="cal-cell @(inRange ? "" : "cal-out")" @onclick="() => { if (inRange) { _bankDay = day; _bankCal = false; } }">
-                                    <span class="cal-top"><span class="cal-num">@d.Day</span></span>
-                                    @if (inRange && count > 0) { <span class="cal-total">@count</span> }
-                                </div>
-                            }
-                        </div>
                     }
                     else if (_bankDay is { } dd)
                     {
@@ -2475,7 +2412,6 @@ else
     private Dictionary<string, (string Kind, Guid TargetId)> _bankMappings = new();
     private List<BankAccountDto> _bankAccounts = [];
     private bool _bankAccountsOpen;
-    private bool _bankCal;        // "From your bank" review (Spending): calendar view
     private DateOnly? _bankDay;   // "From your bank" review: focus a single day
     private readonly Dictionary<string, Guid> _bankRowCat = new();      // debit → category
     private readonly Dictionary<string, Guid> _bankRowFund = new();     // debit → fund
@@ -2483,7 +2419,6 @@ else
     private List<string> _editCatVendors = [];   // merchants mapped to the category open in the edit modal
     private DateOnly _expenseDate = DateOnly.FromDateTime(DateTime.Today);
     private DateOnly? _dayView;   // when set, the Expenses tab focuses a single day
-    private bool _calendar;       // Expenses tab: month-grid view instead of the list
 
     // Settle-expense modal (feature 1)
     private Guid _settleExpenseId;
@@ -3312,7 +3247,6 @@ else
     private void ShowExpensesTab()
     {
         _tab = Tab.Budgets;
-        _calendar = false;
         _dayView = ClampToPeriod(DateOnly.FromDateTime(DateTime.Today));   // default to today's day view
     }
 
@@ -3349,30 +3283,9 @@ else
     private void PrevDay() { if (_dayView is { } d && d > State.Period.From) GoToDay(d.AddDays(-1)); }
     private void NextDay() { if (_dayView is { } d && d < State.Period.To) GoToDay(d.AddDays(1)); }
 
-    // --- Expenses calendar (month grid) ----------------------------------
-    /// <summary>Every day shown in the calendar — the period's range padded out to whole Mon–Sun weeks.</summary>
-    private IEnumerable<DateOnly> CalendarDays()
-    {
-        var from = State.Period.From;
-        var to = State.Period.To;
-        var start = from.AddDays(-(((int)from.DayOfWeek + 6) % 7));      // back to Monday of the first week
-        var end = to.AddDays(6 - (((int)to.DayOfWeek + 6) % 7));         // forward to Sunday of the last week
-        for (var d = start; d <= end; d = d.AddDays(1)) yield return d;
-    }
-
-    private void ShowDayList() { _calendar = false; _dayView = null; } // grouped all-dates list
-    private void ShowCalendarView() => _calendar = true;
-    private void OpenDayFromCalendar(DateOnly d) { _calendar = false; GoToDay(d); }
-
-    /// <summary>Open the add-expense modal pre-dated to a specific calendar day.</summary>
-    private void OpenAddExpenseOn(DateOnly d)
-    {
-        _categoryId = State.AllCategories.FirstOrDefault()?.Id ?? Guid.Empty;
-        _amount = 0; _note = null; _onBehalfOther = false;
-        _expenseDate = ClampToPeriod(d);
-        _fundId = State.SelectableFunds.FirstOrDefault()?.Id ?? Guid.Empty;
-        _modal = Modal.AddExpense;
-    }
+    // --- Expenses list / day view toggle ---------------------------------
+    private void ShowDayList() => _dayView = null;                                              // grouped all-dates list
+    private void ShowDayView() => _dayView = ClampToPeriod(_dayView ?? DateOnly.FromDateTime(DateTime.Today));  // single-day view
 
     private void ResetPickers()
     {

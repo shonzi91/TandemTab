@@ -534,6 +534,7 @@ public sealed class Localizer(IJSRuntime js)
         ["Repeat last"] = "Повтори последния",
         ["Move to savings"] = "Към спестявания",
         ["Recent"] = "Скорошни",
+        ["By day"] = "По ден",
         ["Review"] = "Виж",
         ["You're {0} over your {1} budget."] = "Надхвърли с {0} бюджета за {1}.",
         ["You're {0} from your {1} budget."] = "Остават {0} до бюджета за {1}.",
