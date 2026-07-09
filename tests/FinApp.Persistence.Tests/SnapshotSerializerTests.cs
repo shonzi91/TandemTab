@@ -276,6 +276,31 @@ public class SnapshotSerializerTests
         Assert.Equal(FinApp.Domain.Recurring.RecurringAmountMode.Typical, elecCopy.AmountMode);
         Assert.False(elecCopy.Active);
         Assert.Equal(new DateOnly(2026, 1, 1), elecCopy.LastHandledPeriodFrom);
+        Assert.False(rentCopy.AutoPost);   // wasn't opted in
+    }
+
+    [Fact]
+    public void Recurring_auto_post_flag_round_trips_and_only_applies_to_fixed()
+    {
+        var account = new Account("Home", "EUR");
+        account.AssignOwner(Guid.NewGuid(), "Me");
+        var food = account.AddCategory("Food");
+        account.AddDefaultFunds();
+        var bank = account.FundId("Bank");
+
+        var rent = account.AddRecurring(new FinApp.Domain.Recurring.RecurringItem(
+            "Rent", FinApp.Domain.Recurring.RecurringKind.Expense, FinApp.Domain.Recurring.RecurringAmountMode.Fixed,
+            900m, 1, food.Id, bank, autoPost: true));
+        // Auto-post is meaningless for a Typical (varying) amount → forced off.
+        var elec = account.AddRecurring(new FinApp.Domain.Recurring.RecurringItem(
+            "Electricity", FinApp.Domain.Recurring.RecurringKind.Expense, FinApp.Domain.Recurring.RecurringAmountMode.Typical,
+            60m, 15, food.Id, bank, autoPost: true));
+        Assert.True(rent.AutoPost);
+        Assert.False(elec.AutoPost);
+
+        var copy = AccountSnapshotSerializer.Deserialize(AccountSnapshotSerializer.Serialize(account));
+        Assert.True(copy.FindRecurring(rent.Id)!.AutoPost);
+        Assert.False(copy.FindRecurring(elec.Id)!.AutoPost);
     }
 
     [Fact]

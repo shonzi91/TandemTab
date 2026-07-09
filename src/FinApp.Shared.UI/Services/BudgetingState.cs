@@ -701,48 +701,72 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
             .Where(r => r.Kind == RecurringKind.Expense && r.HasKnownAmount && r.IsPending(Period.From))
             .Sum(r => r.ExpectedAmount));
 
-    public Task AddRecurring(string name, RecurringKind kind, RecurringAmountMode mode, decimal expected, int dayOfMonth, Guid categoryId, Guid fundId, string? icon)
+    public Task AddRecurring(string name, RecurringKind kind, RecurringAmountMode mode, decimal expected, int dayOfMonth, Guid categoryId, Guid fundId, string? icon, bool autoPost = false)
     {
-        Account.AddRecurring(new RecurringItem(name, kind, mode, expected, dayOfMonth, categoryId, fundId, icon));
+        Account.AddRecurring(new RecurringItem(name, kind, mode, expected, dayOfMonth, categoryId, fundId, icon, autoPost));
         return SaveAsync();
     }
 
-    public Task UpdateRecurring(Guid id, string name, RecurringAmountMode mode, decimal expected, int dayOfMonth, Guid categoryId, Guid fundId, string? icon)
+    public Task UpdateRecurring(Guid id, string name, RecurringAmountMode mode, decimal expected, int dayOfMonth, Guid categoryId, Guid fundId, string? icon, bool autoPost = false)
     {
-        Account.FindRecurring(id)?.Update(name, mode, expected, dayOfMonth, categoryId, fundId, icon);
+        Account.FindRecurring(id)?.Update(name, mode, expected, dayOfMonth, categoryId, fundId, icon, autoPost);
         return SaveAsync();
     }
 
     public Task RemoveRecurring(Guid id) { Account.RemoveRecurring(id); return SaveAsync(); }
     public Task SetRecurringActive(Guid id, bool active) { Account.FindRecurring(id)?.SetActive(active); return SaveAsync(); }
 
-    /// <summary>Confirm a due recurring item with the <b>real</b> amount: posts a normal expense/contribution, nudges a
-    /// Typical estimate toward the actual, and marks it handled for this period — all in a single save.</summary>
-    public Task ConfirmRecurring(Guid id, decimal actualAmount)
+    // Post a recurring item's amount as a real expense/contribution (shared by confirm + auto-post). Marks it handled.
+    private void PostRecurring(RecurringItem item, decimal amount)
     {
-        if (Account.FindRecurring(id) is not { } item) return Task.CompletedTask;
-        if (actualAmount > 0m)
+        if (amount > 0m)
         {
             var date = item.DueDateWithin(Period.From, Period.To);
             if (item.Kind == RecurringKind.Expense)
             {
-                var expense = new Expense(item.CategoryId, Money(actualAmount), date, CurrentMemberId, item.FundId, item.Name);
+                var expense = new Expense(item.CategoryId, Money(amount), date, CurrentMemberId, item.FundId, item.Name);
                 expense.SetFundSynced(FundIsSynced(item.FundId));
                 Period.AddExpense(expense);
             }
             else
             {
-                var contribution = Period.Deposit(CurrentMemberId, Money(actualAmount), item.CategoryId, item.FundId, date);
+                var contribution = Period.Deposit(CurrentMemberId, Money(amount), item.CategoryId, item.FundId, date);
                 contribution.SetFundSynced(FundIsSynced(item.FundId));
             }
-            item.LearnFromActual(actualAmount);
         }
         item.MarkHandled(Period.From);
+    }
+
+    /// <summary>Confirm a due recurring item with the <b>real</b> amount: posts a normal expense/contribution, nudges a
+    /// Typical estimate toward the actual, and marks it handled for this period — all in a single save.</summary>
+    public Task ConfirmRecurring(Guid id, decimal actualAmount)
+    {
+        if (Account.FindRecurring(id) is not { } item) return Task.CompletedTask;
+        if (actualAmount > 0m) item.LearnFromActual(actualAmount);
+        PostRecurring(item, actualAmount);
         return SaveAsync();
     }
 
     /// <summary>Skip a due recurring item this period (marks it handled without posting anything).</summary>
     public Task SkipRecurring(Guid id) { Account.FindRecurring(id)?.MarkHandled(Period.From); return SaveAsync(); }
+
+    /// <summary>Auto-post every due Fixed item flagged for it (with its fixed amount), marking each handled. Converges:
+    /// it marks items handled synchronously before the save, so a re-invocation during the save is a no-op. Returns
+    /// what it posted so the UI can show a "posted automatically" notice.</summary>
+    public async Task<IReadOnlyList<(string Name, Money Amount, RecurringKind Kind)>> AutoPostDueRecurringAsync()
+    {
+        if (!IsPeriodOpen) return [];
+        var due = Account.RecurringItems.Where(r => r.AutoPost && r.IsDue(Period.From, Period.To, Today())).ToList();
+        if (due.Count == 0) return [];
+        var posted = new List<(string, Money, RecurringKind)>();
+        foreach (var item in due)
+        {
+            PostRecurring(item, item.ExpectedAmount);
+            posted.Add((item.Name, Money(item.ExpectedAmount), item.Kind));
+        }
+        await SaveAsync();
+        return posted;
+    }
 
     /// <summary>Log per-fund reconciliation drift as recategorizable <b>Adjustment</b> entries in the current
     /// period so its books reconcile to reality: an <i>expense</i> where a fund holds less than the ledger expected,

@@ -1973,7 +1973,7 @@ else
                                 <li>
                                     <span class="row-main">
                                         <span class="cat-ico">@(r.Icon ?? (r.Kind == RecurringKind.Income ? "💷" : "🔁"))</span> @r.Name
-                                        <span class="row-note">· @amountText · @Loc["day"] @r.DayOfMonth@(r.Active ? "" : " · " + @Loc["paused"])</span>
+                                        <span class="row-note">· @amountText · @Loc["day"] @r.DayOfMonth@(r.AutoPost ? " · ⚡" + @Loc["auto"] : "")@(r.Active ? "" : " · " + @Loc["paused"])</span>
                                     </span>
                                     <span class="row-actions">
                                         <button class="exp-edit" title="@Loc["Edit"]" @onclick="() => OpenEditRecurring(rid)">✏️</button>
@@ -2026,6 +2026,10 @@ else
                         <small class="hint">@Loc["No amount — you'll enter the real figure each time it's due (good for a variable salary)."]</small>
                     }
                     <label>@Loc["Day of month"] <input type="number" step="1" min="1" max="28" @bind="_recDay" /></label>
+                    @if (_recMode == RecurringAmountMode.Fixed)
+                    {
+                        <label class="check"><input type="checkbox" @bind="_recAutoPost" /> @Loc["Post automatically when due (don't ask me)"]</label>
+                    }
                     <div class="modal-actions">
                         <button class="ghost" @onclick="() => _modal = Modal.Recurring">@Loc["Cancel"]</button>
                         <button @onclick="SaveRecurring" disabled="@(string.IsNullOrWhiteSpace(_recName))">@Loc["Save"]</button>
@@ -2809,7 +2813,13 @@ else
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (State.IsReady && State.HasAccounts)
+        {
             await State.StampAchievementsAsync(_achievements, Fmt, Loc.T);
+            // Auto-post any due Fixed items opted into it. Converges (items are marked handled synchronously), so this
+            // runs at most once per due item; the returned notice surfaces the move in the bell (never silent).
+            var posted = await State.AutoPostDueRecurringAsync();
+            if (posted.Count > 0) { _autoPostedNotices.AddRange(posted); StateHasChanged(); }
+        }
     }
 
     /// <summary>The compact Home strip: your most-recent earned milestones (with their dates) plus the single closest
@@ -3868,6 +3878,16 @@ else
     private IReadOnlyList<Notification> HomeNotifications(FinancialHealthReport ov)
     {
         var list = new List<Notification>();
+
+        // Recurring items posted automatically this session — surfaced so the money move is never silent.
+        foreach (var ap in _autoPostedNotices)
+        {
+            var notice = ap;
+            list.Add(new Notification("✅", string.Format(Loc["{0} ({1}) was posted automatically."], ap.Name, Fmt(ap.Amount)), null,
+                Loc["Review"], () => { _autoPostedNotices.Remove(notice); if (ap.Kind == RecurringKind.Income) _tab = Tab.Account; else ShowExpensesTab(); },
+                null, () => _autoPostedNotices.Remove(notice), false));
+        }
+
         foreach (var r in HomeReminders(ov))
             list.Add(new Notification(r.Icon, r.Text, null, r.ActionLabel, r.Act, null, null, r.Urgent));
 
@@ -4050,15 +4070,18 @@ else
     private decimal _recAmount;
     private int _recDay = 1;
     private Guid _recCategoryId, _recFundId;
+    private bool _recAutoPost;
     private Guid _recConfirmId;
     private decimal _recConfirmAmount;
+    // Recurring items auto-posted this session — shown once in the bell so the money move isn't silent.
+    private readonly List<(string Name, Money Amount, RecurringKind Kind)> _autoPostedNotices = new();
 
     private void OpenRecurring() { _acctMenuOpen = false; _modal = Modal.Recurring; }
 
     private void OpenAddRecurring()
     {
         _recEditId = Guid.Empty; _recName = ""; _recIcon = null; _recKind = RecurringKind.Expense;
-        _recMode = RecurringAmountMode.Fixed; _recAmount = 0; _recDay = 1;
+        _recMode = RecurringAmountMode.Fixed; _recAmount = 0; _recDay = 1; _recAutoPost = false;
         _recFundId = State.SelectableFunds.FirstOrDefault()?.Id ?? State.RootFunds.FirstOrDefault()?.Id ?? Guid.Empty;
         ResetRecurringCategory();
         _modal = Modal.RecurringEdit;
@@ -4068,7 +4091,7 @@ else
     {
         if (State.RecurringItems.FirstOrDefault(r => r.Id == id) is not { } r) return;
         _recEditId = r.Id; _recName = r.Name; _recIcon = r.Icon; _recKind = r.Kind; _recMode = r.AmountMode;
-        _recAmount = r.ExpectedAmount; _recDay = r.DayOfMonth; _recCategoryId = r.CategoryId; _recFundId = r.FundId;
+        _recAmount = r.ExpectedAmount; _recDay = r.DayOfMonth; _recCategoryId = r.CategoryId; _recFundId = r.FundId; _recAutoPost = r.AutoPost;
         _modal = Modal.RecurringEdit;
     }
 
@@ -4083,9 +4106,9 @@ else
     {
         if (string.IsNullOrWhiteSpace(_recName) || _recCategoryId == Guid.Empty || _recFundId == Guid.Empty) return;
         if (_recEditId == Guid.Empty)
-            await State.AddRecurring(_recName, _recKind, _recMode, _recAmount, _recDay, _recCategoryId, _recFundId, _recIcon);
+            await State.AddRecurring(_recName, _recKind, _recMode, _recAmount, _recDay, _recCategoryId, _recFundId, _recIcon, _recAutoPost);
         else
-            await State.UpdateRecurring(_recEditId, _recName, _recMode, _recAmount, _recDay, _recCategoryId, _recFundId, _recIcon);
+            await State.UpdateRecurring(_recEditId, _recName, _recMode, _recAmount, _recDay, _recCategoryId, _recFundId, _recIcon, _recAutoPost);
         _modal = Modal.Recurring;
     });
 

@@ -41,7 +41,7 @@ public static class AccountSnapshotSerializer
             account.AchievementsAnchor,
             account.AchievementLog.Count == 0 ? null : new Dictionary<string, DateOnly>(account.AchievementLog),
             account.RecurringItems.Count == 0 ? null : account.RecurringItems.Select(r => new RecurringItemNode(
-                r.Id, r.Name, r.Kind, r.AmountMode, r.ExpectedAmount, r.DayOfMonth, r.CategoryId, r.FundId, r.Active, r.Icon, r.LastHandledPeriodFrom)).ToList());
+                r.Id, r.Name, r.Kind, r.AmountMode, r.ExpectedAmount, r.DayOfMonth, r.CategoryId, r.FundId, r.Active, r.Icon, r.LastHandledPeriodFrom, r.AutoPost)).ToList());
         return JsonSerializer.Serialize(node, Json);
     }
 
@@ -98,7 +98,7 @@ public static class AccountSnapshotSerializer
             foreach (var (key, on) in log) account.RecordAchievement(key, on);
         foreach (var r in node.Recurring ?? [])
         {
-            var item = Build(new RecurringItem(r.Name, r.Kind, r.AmountMode, r.ExpectedAmount, r.DayOfMonth, r.CategoryId, r.FundId, r.Icon), r.Id);
+            var item = Build(new RecurringItem(r.Name, r.Kind, r.AmountMode, r.ExpectedAmount, r.DayOfMonth, r.CategoryId, r.FundId, r.Icon, r.AutoPost), r.Id);
             if (!r.Active) item.SetActive(false);
             if (r.LastHandledPeriodFrom is { } h) item.MarkHandled(h);
             account.AddRecurring(item);
@@ -221,7 +221,8 @@ public static class AccountSnapshotSerializer
         List<RecurringItemNode>? Recurring = null);
 
     private record RecurringItemNode(Guid Id, string Name, RecurringKind Kind, RecurringAmountMode AmountMode,
-        decimal ExpectedAmount, int DayOfMonth, Guid CategoryId, Guid FundId, bool Active, string? Icon, DateOnly? LastHandledPeriodFrom);
+        decimal ExpectedAmount, int DayOfMonth, Guid CategoryId, Guid FundId, bool Active, string? Icon, DateOnly? LastHandledPeriodFrom,
+        bool AutoPost = false);
 
     private record MemberNode(Guid Id, Guid UserId, string DisplayName);
     private record ContributionCategoryNode(Guid Id, string Name, string? Icon = null);

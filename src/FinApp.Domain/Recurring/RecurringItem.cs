@@ -40,12 +40,17 @@ public sealed class RecurringItem : Entity
 
     public bool Active { get; private set; } = true;
 
+    /// <summary>Post automatically (with the fixed amount) when due, without asking. Only meaningful for
+    /// <see cref="RecurringAmountMode.Fixed"/> — a varying/unknown amount always needs confirming, so this is forced
+    /// off for the other modes.</summary>
+    public bool AutoPost { get; private set; }
+
     /// <summary>The <c>From</c> date of the period this item was last handled (posted or skipped) — so it only goes
     /// "due" once per period. Null until first handled.</summary>
     public DateOnly? LastHandledPeriodFrom { get; private set; }
 
     public RecurringItem(string name, RecurringKind kind, RecurringAmountMode amountMode, decimal expectedAmount,
-        int dayOfMonth, Guid categoryId, Guid fundId, string? icon = null)
+        int dayOfMonth, Guid categoryId, Guid fundId, string? icon = null, bool autoPost = false)
     {
         Name = Clean(name);
         Kind = kind;
@@ -55,10 +60,11 @@ public sealed class RecurringItem : Entity
         CategoryId = categoryId;
         FundId = fundId;
         Icon = icon;
+        AutoPost = autoPost && amountMode == RecurringAmountMode.Fixed;
     }
 
     public void Update(string name, RecurringAmountMode amountMode, decimal expectedAmount, int dayOfMonth,
-        Guid categoryId, Guid fundId, string? icon)
+        Guid categoryId, Guid fundId, string? icon, bool autoPost = false)
     {
         Name = Clean(name);
         AmountMode = amountMode;
@@ -67,6 +73,7 @@ public sealed class RecurringItem : Entity
         CategoryId = categoryId;
         FundId = fundId;
         Icon = icon;
+        AutoPost = autoPost && amountMode == RecurringAmountMode.Fixed;
     }
 
     public void SetActive(bool active) => Active = active;
