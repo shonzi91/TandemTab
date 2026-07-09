@@ -441,7 +441,7 @@ public sealed class BankSyncService(FinAppDbContext db, EnableBankingClient eb, 
                 reader.IsDBNull(6) ? null : DateTimeOffset.Parse(reader.GetString(6), CultureInfo.InvariantCulture),
                 reader.IsDBNull(7) || !Guid.TryParse(reader.GetString(7), out var fid) ? null : fid,
                 reader.IsDBNull(8) ? null : reader.GetString(8),
-                reader.IsDBNull(9) || !decimal.TryParse(reader.GetString(9), System.Globalization.NumberStyles.Any, CultureInfo.InvariantCulture, out var bal) ? null : bal,
+                reader.IsDBNull(9) || !decimal.TryParse(protector.Unprotect(reader.GetString(9)), System.Globalization.NumberStyles.Any, CultureInfo.InvariantCulture, out var bal) ? null : bal,
                 reader.IsDBNull(10) ? null : reader.GetString(10),
                 reader.IsDBNull(11) ? null : reader.GetString(11));
         }
@@ -467,7 +467,12 @@ public sealed class BankSyncService(FinAppDbContext db, EnableBankingClient eb, 
             await using var cmd = conn.CreateCommand();
             var sets = string.Join(", ", columns.Select((c, i) => $"\"{c.Column}\" = @v{i}"));
             cmd.CommandText = $"UPDATE \"BankConnections\" SET {sets} WHERE \"AccountId\" = @acc";
-            for (var i = 0; i < columns.Length; i++) AddParam(cmd, $"@v{i}", (object?)columns[i].Value ?? DBNull.Value);
+            for (var i = 0; i < columns.Length; i++)
+            {
+                // The stored balance is sensitive — encrypt it at rest like the balance history / pending rows.
+                var value = columns[i].Column == "Balance" ? protector.Protect(columns[i].Value) : columns[i].Value;
+                AddParam(cmd, $"@v{i}", (object?)value ?? DBNull.Value);
+            }
             AddParam(cmd, "@acc", accountId.ToString());
             await cmd.ExecuteNonQueryAsync();
         }
