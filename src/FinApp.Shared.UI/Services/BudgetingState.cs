@@ -90,8 +90,12 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     public IReadOnlyList<AccountSummaryDto> Accounts => _summaries;
     public Guid CurrentAccountId => _account?.Id ?? Guid.Empty;
 
-    /// <summary>True when the signed-in user owns the current account (gates rename/delete).</summary>
-    public bool IsOwnerOfCurrent => _account is not null && _account.IsOwner(auth.UserId);
+    /// <summary>True when the signed-in user owns the current account (gates rename/delete/member removal). Trusts the
+    /// server-authoritative summary owner (<see cref="CurrentOwnerId"/>) rather than the opaque snapshot's OwnerUserId:
+    /// an ownership transfer updates the relational header but not the client-owned snapshot blob, so a new owner would
+    /// otherwise stay locked out of owner actions. Falls back to the snapshot only when no summary is loaded yet.</summary>
+    public bool IsOwnerOfCurrent => auth.UserId != Guid.Empty &&
+        (CurrentOwnerId != Guid.Empty ? CurrentOwnerId == auth.UserId : _account?.IsOwner(auth.UserId) == true);
 
     public async Task SwitchAccount(Guid accountId)
     {
@@ -343,6 +347,20 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
 
     /// <summary>Physical money expected to carry into the next period.</summary>
     public Money ClosingBalance => Period.ExpectedClosingBalance;
+
+    /// <summary>The account total (and free-to-allocate) for display, with the synced fund's ledger position swapped
+    /// for its <b>live</b> bank balance so the header reflects real external money (incl. transactions not yet
+    /// imported). Display-only: allocation caps keep using the conservative ledger figures. No-op without a synced
+    /// fund / live balance, and skipped when the bank reports a different currency (we don't add across currencies).</summary>
+    public Money DisplayClosingBalance(decimal? liveBankBalance, string? bankCurrency) => BankAdjust(ClosingBalance, liveBankBalance, bankCurrency);
+    public Money DisplayFreeToAllocate(decimal? liveBankBalance, string? bankCurrency) => BankAdjust(FreeToAllocate, liveBankBalance, bankCurrency);
+    private Money BankAdjust(Money baseAmount, decimal? liveBankBalance, string? bankCurrency)
+    {
+        if (!HasSyncedFund || liveBankBalance is not { } live) return baseAmount;
+        if (!string.IsNullOrEmpty(bankCurrency) && !string.Equals(bankCurrency, Account.Currency, StringComparison.OrdinalIgnoreCase))
+            return baseAmount;
+        return baseAmount + Money(live - Period.LedgerFundBalance(SyncedFundId).Amount);
+    }
 
     /// <summary>This period's transfers sent out to other accounts (newest first).</summary>
     public IReadOnlyList<ExternalTransfer> ExternalTransfers =>
@@ -1421,6 +1439,11 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     public Task StartNextPeriod(bool copyBudgets, IReadOnlyDictionary<Guid, decimal> realFundOpenings,
         bool adjustBudgets = false, decimal? syncedFundClosingBalance = null)
     {
+        // Re-entrancy guard against a double-submit (e.g. double-click): the first call synchronously closes the
+        // current period and opens the next one below, so a second call sees a current period that hasn't ended yet
+        // (To is in the future) and bails here — no accidental extra period.
+        if (!CanStartNextPeriod) return Task.CompletedTask;
+
         var previous = Account.CurrentPeriod!;
         previous.Close();
 

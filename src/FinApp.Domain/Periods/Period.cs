@@ -153,6 +153,21 @@ public sealed class Period : Entity
         return opening + transfersIn + depositsIn - transfersOut - spent - sentOut;
     }
 
+    /// <summary>A fund's balance <b>including</b> synced-side flows — i.e. the ledger's full position for the fund,
+    /// as it feeds <see cref="ExpectedClosingBalance"/>. Unlike <see cref="FundBalance"/> (which excludes synced
+    /// entries because the live bank balance is authoritative), this is used only to swap the synced fund's ledger
+    /// position for its real bank balance when displaying the account total — so nothing is double-counted.</summary>
+    public Money LedgerFundBalance(Guid fundId)
+    {
+        var opening = Sum(_initialBalances.Where(b => b.FundId == fundId && !b.Informative).Select(b => b.Amount));
+        var transfersIn = Sum(_fundTransfers.Where(t => t.ToFundId == fundId).Select(t => t.Amount));
+        var transfersOut = Sum(_fundTransfers.Where(t => t.FromFundId == fundId).Select(t => t.Amount));
+        var spent = Sum(_expenses.Where(e => e.FundId == fundId).Select(e => e.Amount));
+        var sentOut = Sum(_externalTransfers.Where(t => t.FundId == fundId).Select(t => t.Amount));
+        var depositsIn = Sum(_contributions.Where(c => c.MemberId != CarryoverSource && c.FundId == fundId).Select(c => c.Paid));
+        return opening + transfersIn + depositsIn - transfersOut - spent - sentOut;
+    }
+
     // --- Transfers to other accounts --------------------------------------
 
     /// <summary>

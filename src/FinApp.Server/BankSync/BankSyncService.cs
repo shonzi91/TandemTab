@@ -29,7 +29,7 @@ namespace FinApp.Server.BankSync;
 /// (Confirmed/Dismissed), so a later sync doesn't resurrect them — the provider returns the whole
 /// transaction-history window on every fetch.</para>
 /// </summary>
-public sealed class BankSyncService(FinAppDbContext db, EnableBankingClient eb, IConfiguration config)
+public sealed class BankSyncService(FinAppDbContext db, EnableBankingClient eb, IConfiguration config, BankDataProtector protector)
 {
     public bool IsEnabled => eb.IsEnabled;
 
@@ -172,7 +172,8 @@ public sealed class BankSyncService(FinAppDbContext db, EnableBankingClient eb, 
                 "ON CONFLICT (\"AccountId\", \"Day\") DO UPDATE SET \"Balance\" = @bal, \"Currency\" = @cur";
             AddParam(cmd, "@acc", accountId.ToString());
             AddParam(cmd, "@day", day.ToString("O"));
-            AddParam(cmd, "@bal", balance.ToString(CultureInfo.InvariantCulture));
+            // NB: @bal is bound below (encrypted); @cur stays plaintext (a currency code isn't sensitive).
+            AddParam(cmd, "@bal", protector.Protect(balance.ToString(CultureInfo.InvariantCulture))!);
             AddParam(cmd, "@cur", (object?)currency ?? DBNull.Value);
             await cmd.ExecuteNonQueryAsync(ct);
         }
@@ -194,8 +195,8 @@ public sealed class BankSyncService(FinAppDbContext db, EnableBankingClient eb, 
                 "ORDER BY \"Day\" DESC LIMIT 1";
             AddParam(cmd, "@acc", accountId.ToString());
             AddParam(cmd, "@day", date.ToString("O"));
-            return await cmd.ExecuteScalarAsync(ct) is string s
-                ? decimal.Parse(s, CultureInfo.InvariantCulture)
+            return await cmd.ExecuteScalarAsync(ct) is string s && protector.Unprotect(s) is { } dec
+                ? decimal.Parse(dec, CultureInfo.InvariantCulture)
                 : null;
         }
         finally { if (opened) await conn.CloseAsync(); }
@@ -263,9 +264,9 @@ public sealed class BankSyncService(FinAppDbContext db, EnableBankingClient eb, 
             {
                 result.Add(new PendingBankTransactionDto(
                     reader.GetString(0),
-                    decimal.Parse(reader.GetString(2), CultureInfo.InvariantCulture),
+                    decimal.Parse(protector.Unprotect(reader.GetString(2))!, CultureInfo.InvariantCulture),
                     DateOnly.Parse(reader.GetString(1), CultureInfo.InvariantCulture),
-                    reader.GetString(3)));
+                    protector.Unprotect(reader.GetString(3)) ?? ""));
             }
         }
         finally { if (opened) await conn.CloseAsync(); }
@@ -409,8 +410,8 @@ public sealed class BankSyncService(FinAppDbContext db, EnableBankingClient eb, 
             AddParam(cmd, "@acc", accountId.ToString());
             AddParam(cmd, "@ext", t.ExternalId);
             AddParam(cmd, "@date", t.Date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
-            AddParam(cmd, "@amount", t.Amount.ToString(CultureInfo.InvariantCulture));
-            AddParam(cmd, "@desc", t.Description);
+            AddParam(cmd, "@amount", protector.Protect(t.Amount.ToString(CultureInfo.InvariantCulture))!);
+            AddParam(cmd, "@desc", protector.Protect(t.Description) ?? "");
             await cmd.ExecuteNonQueryAsync(ct);
         }
         finally { if (opened) await conn.CloseAsync(); }

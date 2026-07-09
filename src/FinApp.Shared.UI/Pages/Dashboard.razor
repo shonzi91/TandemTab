@@ -154,10 +154,10 @@ else
             <div class="balances">
                 <span class="bal bal-current">
                     <span class="bal-label">@Loc[State.IsPeriodOpen ? "Current" : "Closed on"]</span>
-                    <strong>@Fmt(State.ClosingBalance)</strong>
+                    <strong>@Fmt(State.DisplayClosingBalance(_bankStatus?.Balance, _bankStatus?.BalanceCurrency))</strong>
                     @if (State.IsPeriodOpen)
                     {
-                        <span class="bal-free @(State.IsOverAllocated ? "warn-text" : "")">@Fmt(State.FreeToAllocate) @Loc["free"]</span>
+                        <span class="bal-free @(State.IsOverAllocated ? "warn-text" : "")">@Fmt(State.DisplayFreeToAllocate(_bankStatus?.Balance, _bankStatus?.BalanceCurrency)) @Loc["free"]</span>
                     }
                 </span>
             </div>
@@ -1669,17 +1669,17 @@ else
                                 }
                             </ul>
                         </div>
-                        <div class="modal-actions">
+                        <div class="modal-actions inline-actions">
                             <button class="ghost" @onclick="() => { _reconcileGaps = null; CloseModal(); }">@Loc["I’ll add it myself"]</button>
-                            <button class="ghost" @onclick="RolloverIgnoringGaps">@Loc["Ignore"]</button>
-                            <button @onclick="RolloverWithAdjustments">@Loc["Log as adjustment"]</button>
+                            <button class="ghost" disabled="@_busy" @onclick="RolloverIgnoringGaps">@Loc["Ignore"]</button>
+                            <button disabled="@_busy" @onclick="RolloverWithAdjustments">@Loc["Log as adjustment"]</button>
                         </div>
                     }
                     else
                     {
-                        <div class="modal-actions">
+                        <div class="modal-actions inline-actions">
                             <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
-                            <button @onclick="StartNextMonth">@Loc["Start next month"] →</button>
+                            <button disabled="@_busy" @onclick="StartNextMonth">@Loc["Start next month"] →</button>
                         </div>
                     }
                     break;
