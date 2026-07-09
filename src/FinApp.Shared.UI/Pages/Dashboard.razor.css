@@ -999,6 +999,9 @@ html.dark .chips-label { color: #7c8a94; }
 .spending-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 12px; }
 .spending-head .insight-h { margin: 0; }
 .spending-sub { font-size: .82rem; color: #6b7280; }
+/* Gentle, non-blocking "budgeted more than you have" note — advisory, not an alarm. */
+.budget-over-note { margin: 8px 0 0; padding: 9px 12px; font-size: .82rem; line-height: 1.4; color: #8a6d1f; background: #fdf6e3; border: 1px solid #f2e6bd; border-radius: 10px; }
+html.dark .budget-over-note { color: #e5cf8a; background: #33301f; border-color: #4a4327; }
 
 /* Home tab — collapsible insights deep-dive */
 .home-more-toggle {

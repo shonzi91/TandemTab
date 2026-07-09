@@ -698,6 +698,11 @@ else
                     <span class="insight-h">@Loc["This month's budgets"]</span>
                     <span class="spending-sub">@Fmt(State.TotalSpent) @Loc["of"] @Fmt(State.TotalBudgeted) @Loc["spent"]</span>
                 </div>
+                @{ var overPlanned = State.TotalBudgeted - State.DisplayClosingBalance(_bankStatus?.Balance, _bankStatus?.BalanceCurrency); }
+                @if (overPlanned.Amount > 0m)
+                {
+                    <p class="budget-over-note">💡 @string.Format(Loc["You've budgeted {0} more than you have right now — budgets are plans, not commitments, so trim one or top up when you can."], Fmt(overPlanned))</p>
+                }
                 @{
                     // Top-level categories only — sub-categories roll up into their parent's ring.
                     var budgeted = State.CategoryOptions.Where(c => c.Depth == 0 && State.HasBudget(c.Category.Id)).ToList();
@@ -3794,6 +3799,11 @@ else
     {
         var list = new List<HomeReminder>();
         if (!State.IsReady || !State.HasAccounts || !State.IsPeriodOpen) return list;
+
+        // Fresh period with no income logged yet — prompt to add it so budgets/insights reflect real money.
+        if (State.TotalContributed.Amount <= 0m)
+            list.Add(new HomeReminder("📥", Loc["No income added this period yet — log it so your plan reflects real money."],
+                Loc["Add income"], OpenDeposit, false));
 
         // The budget closest to its cap but not yet over (≥80%). Over-budget cases are handled separately by the
         // rotating, non-essential OverBudgetTip, so we don't double up here.

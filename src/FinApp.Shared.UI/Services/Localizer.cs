@@ -563,6 +563,11 @@ public sealed class Localizer(IJSRuntime js)
         ["You can start next month once this period's end date has passed."] =
             "Можеш да започнеш следващия месец, след като изтече крайната дата на този период.",
         ["Set aside {0} more to hit your {1} savings goal this period."] = "Задели още {0}, за да достигнеш целта от {1} този период.",
+        ["No income added this period yet — log it so your plan reflects real money."] =
+            "Още няма добавен доход този период — впиши го, за да отразява планът реални пари.",
+        ["Add income"] = "Добави доход",
+        ["You've budgeted {0} more than you have right now — budgets are plans, not commitments, so trim one or top up when you can."] =
+            "Разпределили сте с {0} повече, отколкото имате в момента — бюджетите са планове, не задължения, така че намалете някой или добавете пари, когато можете.",
         ["Money came in this period — move some into savings while it's here."] = "Този период постъпиха средства — задели част, докато са налични.",
         ["Milestones"] = "Постижения",
         ["Saver"] = "Спестовник",
