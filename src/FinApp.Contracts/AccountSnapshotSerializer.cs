@@ -36,7 +36,9 @@ public static class AccountSnapshotSerializer
             account.SavingCategories.Select(s => new SavingCategoryNode(s.Id, s.Name, s.ParentId, s.GoalAmount, s.AlertThreshold, s.NotifyOnMilestone, s.InitialAmount, s.Icon, s.Kind, s.DebtBalance, s.DebtAnnualRatePercent, s.DebtInstallment, s.IsArchived, s.DebtOriginalBalance, s.PlannedContribution)).ToList(),
             account.Periods.Select(ToNode).ToList(),
             account.ContributionCategories.Select(c => new ContributionCategoryNode(c.Id, c.Name, c.Icon)).ToList(),
-            account.SavingsRateTarget);
+            account.SavingsRateTarget,
+            account.AchievementsAnchor,
+            account.AchievementLog.Count == 0 ? null : new Dictionary<string, DateOnly>(account.AchievementLog));
         return JsonSerializer.Serialize(node, Json);
     }
 
@@ -88,6 +90,9 @@ public static class AccountSnapshotSerializer
             }).ToList());
         SetField(account, "_periods", node.Periods.Select(p => ToEntity(p, node.Currency)).ToList());
         account.SetSavingsRateTarget(node.SavingsRateTarget);
+        if (node.AchievementsAnchor is { } anchor) account.SetAchievementsAnchor(anchor);
+        if (node.AchievementLog is { } log)
+            foreach (var (key, on) in log) account.RecordAchievement(key, on);
         return account;
     }
 
@@ -200,7 +205,9 @@ public static class AccountSnapshotSerializer
         List<MemberNode> Members, List<FundNode> Funds, List<CategoryNode> Categories,
         List<SavingCategoryNode> SavingCategories, List<PeriodNode> Periods,
         List<ContributionCategoryNode>? ContributionCategories = null,
-        decimal SavingsRateTarget = 0.20m);
+        decimal SavingsRateTarget = 0.20m,
+        DateOnly? AchievementsAnchor = null,
+        Dictionary<string, DateOnly>? AchievementLog = null);
 
     private record MemberNode(Guid Id, Guid UserId, string DisplayName);
     private record ContributionCategoryNode(Guid Id, string Name, string? Icon = null);

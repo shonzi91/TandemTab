@@ -257,7 +257,25 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
 
         _cache[summary.Id] = new CachedAccount(_account, _version);
         _selectedIndex = _account.Periods.Count - 1;
+        // Anchor achievements to "now" the first time this account is ever loaded, so they count from the current
+        // period onward (not retroactively) and can't be farmed by back-dating periods. Persisted on the next save.
+        if (_account.AchievementsAnchor is null && _account.CurrentPeriod is { } cp)
+            _account.SetAchievementsAnchor(cp.From);
         await sync.SubscribeAsync(summary.Id);
+    }
+
+    /// <summary>Stamp any newly-earned achievement with today's date and persist — but only when something actually
+    /// changed, so it's safe to call after every render (it converges). Returns true if the snapshot was saved.</summary>
+    public async Task<bool> StampAchievementsAsync(AchievementsService svc, Func<Money, string> fmt, Func<string, string> t)
+    {
+        if (!IsReady || !HasAccounts) return false;
+        var acct = Account;
+        var today = DateOnly.FromDateTime(DateTime.Today);
+        var changed = false;
+        foreach (var a in svc.Build(acct, fmt, t))
+            if (a.Earned && !acct.AchievementLog.ContainsKey(a.Key)) { acct.RecordAchievement(a.Key, today); changed = true; }
+        if (changed) await SaveAsync();
+        return changed;
     }
 
     /// <summary>Ensure the loaded aggregate reflects server-authoritative header data (name + members).</summary>
@@ -288,6 +306,11 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     public bool CanGoPrev => _selectedIndex > 0;
     public bool CanGoNext => _selectedIndex < Account.Periods.Count - 1;
     public bool IsLatestPeriod => _selectedIndex == Account.Periods.Count - 1;
+
+    /// <summary>You can only roll into the next period once the current one has actually ended — this blocks creating
+    /// future periods in advance (which would let milestones/streaks be farmed). Viewing past periods stays allowed.</summary>
+    public bool CanStartNextPeriod =>
+        Account.CurrentPeriod is { } p && p.To < DateOnly.FromDateTime(DateTime.Today);
 
     public void GoPrev() { if (CanGoPrev) { _selectedIndex--; Changed?.Invoke(); } }
     public void GoNext() { if (CanGoNext) { _selectedIndex++; Changed?.Invoke(); } }

@@ -402,6 +402,10 @@ button.link { background: none; border: none; color: #13a06e; font-weight: 600; 
 .detail-actions button:hover { background: #e4f6ee; }
 .detail-actions button.danger { color: #b91c1c; background: #fef2f2; border-color: #fecaca; }
 .detail-sub { margin: 8px 0 2px; font-size: .85rem; color: #374151; }
+.detail-subcat { display: flex; align-items: baseline; gap: 6px; margin: 12px 0 2px; font-size: .8rem; font-weight: 600; color: #5b6270; }
+.detail-subcat-sum { margin-left: auto; color: #8a97a0; font-weight: 500; }
+html.dark .detail-subcat { color: #b7c4bd; }
+html.dark .detail-subcat-sum { color: #7c8a94; }
 
 /* Expenses: list/calendar view toggle */
 .exp-views { display: flex; align-items: center; gap: 10px; }
@@ -750,6 +754,36 @@ input[type=date]::-webkit-calendar-picker-indicator:hover { opacity: 1; backgrou
 .tip-actions { display: inline-flex; gap: 2px; flex: 0 0 auto; }
 .tip-x { border: none; background: none; cursor: pointer; color: #9ca3af; font-size: 1.2rem; line-height: 1; padding: 0 2px; }
 .tip-x:hover { color: #0f7a54; }
+/* Notifications bell (header) + its dropdown — collects reminders/tips/warnings off Home. */
+.acct-notify { position: relative; display: inline-flex; }
+.bell { position: relative; }
+.bell-badge {
+    position: absolute; top: -4px; right: -6px; min-width: 16px; height: 16px; padding: 0 4px;
+    border-radius: 999px; background: #e0533a; color: #fff; font-size: .66rem; font-weight: 700;
+    line-height: 16px; text-align: center;
+}
+.bell-menu {
+    position: absolute; top: calc(100% + 6px); right: 0; z-index: 40; width: min(340px, 88vw);
+    background: #fff; border: 1px solid #e6e2d8; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,.14);
+    padding: 8px; max-height: 70vh; overflow-y: auto;
+}
+.bell-head { font-size: .72rem; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: #6b7280; padding: 4px 6px 8px; }
+.bell-empty { padding: 10px 6px; color: #8a97a0; font-size: .85rem; }
+.bell-item { display: flex; gap: 8px; align-items: flex-start; padding: 9px 6px; border-top: 1px solid #f0eee7; }
+.bell-item.urgent .bell-text { color: #c0392b; font-weight: 600; }
+.bell-ico { font-size: 1rem; line-height: 1.3; flex: 0 0 auto; }
+.bell-body { flex: 1; min-width: 0; }
+.bell-text { font-size: .85rem; color: #2f3a33; line-height: 1.35; }
+.bell-desc { font-size: .78rem; color: #6b7d72; margin-top: 2px; line-height: 1.35; }
+.bell-act { margin-top: 6px; border: none; background: #eef9f3; color: #0f7a54; font-weight: 600; font-size: .78rem; border-radius: 999px; padding: 4px 12px; cursor: pointer; }
+.bell-act:hover { background: #d9f0e5; }
+.bell-item-ops { display: inline-flex; gap: 2px; flex: 0 0 auto; }
+html.dark .bell-menu { background: #232a33; border-color: #384250; }
+html.dark .bell-head { color: #9aa4b2; }
+html.dark .bell-item { border-top-color: #313a45; }
+html.dark .bell-text { color: #dfe6ea; }
+html.dark .bell-desc { color: #a9b6ad; }
+html.dark .bell-act { background: #1c3a2f; color: #57d9a3; }
 /* Home "on track for" targets card — surfaces the debt-free / goal dates up front (read-only projections). */
 .targets-card { margin: 14px 0 0; padding: 14px 16px; }
 .targets-h { margin: 0 0 10px; font-size: .72rem; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: #6b7280; }
@@ -815,6 +849,27 @@ html.dark .ach.next { background: #1b232b; border-color: #303c46; }
 html.dark .ach-title { color: #57d9a3; }
 html.dark .ach.next .ach-title { color: #9aa7b4; }
 html.dark .ach-desc { color: #8fa39a; }
+.ach-head { display: flex; align-items: baseline; justify-content: space-between; }
+.ach-all { font-size: .78rem; }
+.ach-date { font-weight: 500; color: #8a97a0; font-size: .74rem; }
+/* Achievements modal — full catalogue grid */
+.ach-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; margin-top: 6px; }
+.ach-cell { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border-radius: 12px; border: 1px solid #d8f0e5; background: #f3fbf7; }
+.ach-cell.locked { background: #f6f8fa; border-color: #e2e8ee; opacity: .85; }
+.ach-cell-ico { font-size: 1.4rem; line-height: 1.2; flex: 0 0 auto; }
+.ach-cell.locked .ach-cell-ico { filter: grayscale(1); opacity: .6; }
+.ach-cell-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ach-cell-title { font-weight: 700; color: #0f7a54; font-size: .85rem; }
+.ach-cell.locked .ach-cell-title { color: #5b6b7a; }
+.ach-tick { color: #13a06e; }
+.ach-cell-desc { font-size: .74rem; color: #6b7a72; line-height: 1.3; }
+.ach-cell-date { font-size: .72rem; color: #8a97a0; margin-top: 3px; }
+html.dark .ach-cell { background: #16241d; border-color: #2b4438; }
+html.dark .ach-cell.locked { background: #1b232b; border-color: #303c46; }
+html.dark .ach-cell-title { color: #57d9a3; }
+html.dark .ach-cell.locked .ach-cell-title { color: #9aa7b4; }
+html.dark .ach-cell-desc { color: #8fa39a; }
+html.dark .ach-date, html.dark .ach-cell-date { color: #7c8a94; }
 
 /* "Repeat last" prefill inside the add-expense modal (#11) */
 .repeat-last {

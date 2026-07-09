@@ -580,12 +580,13 @@ public sealed class InsightsService
             wins.Add(new QuickWin(string.Format(_t("Rein in {0}: you're {1} over budget this month."), name, fmt(w.Over))));
         }
 
-        // Below savings target.
+        // Below savings target — but never suggest more than there's free cash to earmark this period.
         if (income.Amount > 0m && (savingsRate ?? 0m) < target)
         {
             var gap = (target - (savingsRate ?? 0m)) * income.Amount;
-            if (gap > 0m)
-                wins.Add(new QuickWin(string.Format(_t("Set aside {0} more to hit your {1} savings goal."), fmt(new Money(decimal.Round(gap, 2), account.Currency)), Pct(target))));
+            var suggest = Math.Min(gap, p.MaxAdditionalSavings.Amount);
+            if (suggest > 0m)
+                wins.Add(new QuickWin(string.Format(_t("Set aside {0} more to hit your {1} savings goal."), fmt(new Money(decimal.Round(suggest, 2), account.Currency)), Pct(target))));
         }
 
         // A meaningful category with spend but no budget.

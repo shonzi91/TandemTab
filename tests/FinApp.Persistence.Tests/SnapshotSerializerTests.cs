@@ -51,6 +51,35 @@ public class SnapshotSerializerTests
     }
 
     [Fact]
+    public void Round_trips_the_achievements_anchor_and_log()
+    {
+        var account = new Account("Ach", "EUR");
+        account.AssignOwner(Guid.NewGuid(), "Owner");
+        account.SetAchievementsAnchor(new DateOnly(2026, 7, 1));
+        account.RecordAchievement("first_expense", new DateOnly(2026, 7, 3));
+        account.RecordAchievement("saver", new DateOnly(2026, 7, 5));
+
+        var copy = AccountSnapshotSerializer.Deserialize(AccountSnapshotSerializer.Serialize(account));
+
+        Assert.Equal(new DateOnly(2026, 7, 1), copy.AchievementsAnchor);
+        Assert.Equal(2, copy.AchievementLog.Count);
+        Assert.Equal(new DateOnly(2026, 7, 3), copy.AchievementLog["first_expense"]);
+        Assert.Equal(new DateOnly(2026, 7, 5), copy.AchievementLog["saver"]);
+    }
+
+    [Fact]
+    public void Legacy_snapshot_without_achievements_defaults_to_empty()
+    {
+        var account = new Account("Legacy", "EUR");
+        account.AssignOwner(Guid.NewGuid(), "Owner");
+
+        var copy = AccountSnapshotSerializer.Deserialize(AccountSnapshotSerializer.Serialize(account));
+
+        Assert.Null(copy.AchievementsAnchor);
+        Assert.Empty(copy.AchievementLog);
+    }
+
+    [Fact]
     public void Round_trips_the_full_aggregate_preserving_ids_and_links()
     {
         var original = BuildRichAccount(out var savingsExpenseId);

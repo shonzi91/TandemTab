@@ -39,6 +39,12 @@ else if (!State.HasAccounts)
 else
 {
 <div class="dash @(_busy ? "is-busy" : "")">
+    @{
+        // Computed once for the whole dashboard: the health report + notification list feed both the bell (in the
+        // header, visible on every tab) and the Home overview below.
+        var ov = _insights.Build(State.Account, State.PeriodNumber - 1, Fmt, Loc.T);
+        var notifications = HomeNotifications(ov);
+    }
     <header class="dash-head">
         <div class="head-main">
             <div class="acct-bar">
@@ -85,6 +91,44 @@ else
                             }
                         </span>
                     }
+                    <button class="link" title="@Loc["Achievements"]" @onclick="() => _modal = Modal.Achievements">🏆</button>
+                    <span class="acct-notify">
+                        <button class="link bell" title="@Loc["Notifications"]" @onclick="() => _bellOpen = !_bellOpen">
+                            🔔@if (notifications.Count > 0) { <span class="bell-badge">@notifications.Count</span> }
+                        </button>
+                        @if (_bellOpen)
+                        {
+                            <div class="acct-menu-backdrop" @onclick="() => _bellOpen = false"></div>
+                            <div class="bell-menu">
+                                <div class="bell-head">🔔 @Loc["Notifications"]</div>
+                                @if (notifications.Count == 0)
+                                {
+                                    <div class="bell-empty">@Loc["You're all caught up."] ✅</div>
+                                }
+                                else
+                                {
+                                    @foreach (var n in notifications)
+                                    {
+                                        <div class="bell-item @(n.Urgent ? "urgent" : "")">
+                                            <span class="bell-ico">@n.Icon</span>
+                                            <div class="bell-body">
+                                                <div class="bell-text">@n.Text</div>
+                                                @if (n.Desc is { } d) { <div class="bell-desc">@d</div> }
+                                                @if (n is { ActionLabel: { } al, Act: { } act })
+                                                {
+                                                    <button class="bell-act" @onclick="@(() => { act(); _bellOpen = false; })">@al</button>
+                                                }
+                                            </div>
+                                            <span class="bell-item-ops">
+                                                @if (n.Rotate is { } rot) { <button class="tip-x" title="@Loc["Another idea"]" @onclick="rot">↻</button> }
+                                                @if (n.Dismiss is { } dis) { <button class="tip-x" title="@Loc["Dismiss for this period"]" @onclick="dis">×</button> }
+                                            </span>
+                                        </div>
+                                    }
+                                }
+                            </div>
+                        }
+                    </span>
                 </span>
             </div>
             <div class="period-nav">
@@ -98,7 +142,7 @@ else
                         }
                         @if (State.IsLatestPeriod)
                         {
-                            <button class="exp-edit" title="@Loc["Start next month"]" @onclick="OpenNextPeriod">⏭️</button>
+                            <button class="exp-edit" title="@(State.CanStartNextPeriod ? Loc["Start next month"] : Loc["You can start next month once this period's end date has passed."])" @onclick="OpenNextPeriod" disabled="@(!State.CanStartNextPeriod)">⏭️</button>
                         }
                     </span>
                 </div>
@@ -130,21 +174,11 @@ else
     <nav class="tabs">
         <button class="tab @(_tab == Tab.Overview ? "active" : "")" @onclick="() => _tab = Tab.Overview">@Loc["Home"]</button>
         <button class="tab @(_tab == Tab.Budgets ? "active" : "")" @onclick="ShowExpensesTab">@Loc["Spending"]</button>
-        <button class="tab @(_tab == Tab.Savings ? "active" : "")" @onclick="() => _tab = Tab.Savings">@Loc["Debt/Savings"]</button>
-        <button class="tab @(_tab == Tab.Account ? "active" : "")" @onclick="() => _tab = Tab.Account">@Loc["Funds"]</button>
+        <button class="tab @(_tab == Tab.Savings ? "active" : "")" @onclick="() => _tab = Tab.Savings">@Loc["Goals"]</button>
+        <button class="tab @(_tab == Tab.Account ? "active" : "")" @onclick="() => _tab = Tab.Account">@Loc["Wallets"]</button>
     </nav>
 
     @{
-        RenderFragment<Signal> signalCard = s =>
-        @<div class="insight">
-            <div class="insight-icon @(s.Kind switch { SignalKind.Good => "icon-good", SignalKind.Info => "icon-info", _ => "icon-warn" })">@(s.Kind switch { SignalKind.Good => "✓", SignalKind.Info => "ℹ", _ => "⚠️" })</div>
-            <div class="insight-body">
-                <div class="insight-title">@s.Title</div>
-                <div class="insight-desc">@s.Desc</div>
-            </div>
-            <div class="insight-delta @(s.Dir switch { DeltaDir.Up => "delta-up", DeltaDir.Down => "delta-down", _ => "delta-flat" })">@s.Delta</div>
-        </div>;
-
         // A small "ⓘ" that explains a figure in plain language — tap to toggle (mobile) or hover the title (desktop).
         // Reused on every projection/simulator label so less confident users can see how the number is worked out.
         RenderFragment<(string Id, string Text)> infoTip = ctx =>
@@ -173,7 +207,6 @@ else
 
     <div class="tab-content">
         <div class="tabpanel" hidden="@(_tab != Tab.Overview)">
-            @{ var ov = _insights.Build(State.Account, State.PeriodNumber - 1, Fmt, Loc.T); }
             <section class="cards cards-3">
                 <div class="card savings">
                     <span class="card-label">@Loc["Saved this period"]</span>
@@ -182,10 +215,10 @@ else
                 </div>
                 <div class="card"><span class="card-label">@Loc["Spent"]</span><span class="card-value">@Fmt(State.TotalSpent)</span></div>
                 @{ var ovBand = ov.Band switch { HealthBand.Healthy => "score-ok", HealthBand.Average => "score-warn", _ => "score-bad" }; }
-                <button class="card card-score" @onclick="ToggleHomeInsights">
-                    <span class="card-label">@Loc["Health score"]</span>
+                <button class="card card-score" @onclick="ToggleHomeInsights" title="@Loc["Health score & trends"]">
+                    <span class="card-label">@Loc["Health score & trends"]</span>
                     <span class="card-value @ovBand">@(ov.HasData ? ov.Score.ToString() : "—")</span>
-                    <span class="card-sub">@(ov.HasData ? ov.Verdict : "") ›</span>
+                    <span class="card-sub">@(ov.HasData ? ov.Verdict : "") @(_homeInsightsOpen ? "▲" : "▼")</span>
                 </button>
             </section>
 
@@ -196,42 +229,6 @@ else
                     <button class="qa" @onclick="OpenMoveToSavings">💰 <span>@Loc["Move to savings"]</span></button>
                 }
             </section>
-
-            @{ var reminders = HomeReminders(ov); }
-            @if (reminders.Count > 0)
-            {
-                <section class="reminders">
-                    @foreach (var r in reminders)
-                    {
-                        <div class="reminder @(r.Urgent ? "urgent" : "")">
-                            <span class="reminder-ico">@r.Icon</span>
-                            <span class="reminder-text">@r.Text</span>
-                            @if (r is { ActionLabel: { } lbl, Act: { } act })
-                            {
-                                <button class="reminder-act" @onclick="@(() => act())">@lbl</button>
-                            }
-                        </div>
-                    }
-                </section>
-            }
-
-            @if (LoanNudge() is { } tip)
-            {
-                <div class="tip-card">
-                    <span class="tip-ico">💡</span>
-                    <div class="tip-body">
-                        <div class="tip-title">@tip.Title</div>
-                        <div class="tip-desc">@tip.Desc</div>
-                    </div>
-                    <span class="tip-actions">
-                        @if (State.DiscretionaryLeftovers().Count(c => !_dismissedNudges.Contains(c.Id)) > 1)
-                        {
-                            <button class="tip-x" title="@Loc["Another idea"]" @onclick="() => _nudgeIndex++">↻</button>
-                        }
-                        <button class="tip-x" title="@Loc["Dismiss for this period"]" @onclick="() => DismissNudge(tip.BudgetId)">×</button>
-                    </span>
-                </div>
-            }
 
             @{ var homeTargets = HomeTargets(); }
             @if (homeTargets.Count > 0)
@@ -259,18 +256,21 @@ else
                 </section>
             }
 
-            @{ var achievements = _achievements.Build(State.Account, Fmt, Loc.T); }
-            @if (achievements.Count > 0)
+            @{ var milestones = HomeMilestones(); }
+            @if (milestones.Count > 0)
             {
                 <section class="panel achievements-card">
-                    <h2 class="targets-h">🏆 @Loc["Milestones"]</h2>
+                    <div class="ach-head">
+                        <h2 class="targets-h">🏆 @Loc["Milestones"]</h2>
+                        <button class="link ach-all" @onclick="() => _modal = Modal.Achievements">@Loc["View all"] ›</button>
+                    </div>
                     <div class="ach-list">
-                        @foreach (var a in achievements)
+                        @foreach (var (a, on) in milestones)
                         {
                             <div class="ach @(a.Earned ? "earned" : "next")">
                                 <span class="ach-ico">@a.Icon</span>
                                 <div class="ach-body">
-                                    <span class="ach-title">@a.Title</span>
+                                    <span class="ach-title">@a.Title @if (a.Earned && on is { } d) { <span class="ach-date">· @d.ToString("dd MMM yyyy")</span> }</span>
                                     <span class="ach-desc">@a.Desc</span>
                                     @if (!a.Earned && a.Percent is { } pct)
                                     {
@@ -291,62 +291,15 @@ else
             }
             else
             {
-                var warnings = ov.Signals.Where(s => s.Kind == SignalKind.Warn).ToList();
-                @if (warnings.Count > 0)
-                {
-                    <h2 class="insight-h">@Loc["Needs your attention"]</h2>
-                    <div class="insight-list">
-                        @foreach (var s in warnings)
-                        {
-                            @signalCard(s)
-                        }
-                    </div>
-                }
-                else
+                @if (notifications.Count == 0)
                 {
                     <section class="panel all-clear"><p>✅ @Loc["All clear — no warnings this period. Nice work."]</p></section>
                 }
 
-                var overspent = State.CategoryOptions.Where(c => State.HasBudget(c.Category.Id) && State.Coverage(c.Category.Id).IsOverBudget).ToList();
-                @if (overspent.Count > 0)
-                {
-                    <h2 class="insight-h">@Loc["Overspent budgets"]</h2>
-                    <div class="ring-grid">
-                        @foreach (var (cat, _) in overspent)
-                        {
-                            var cov = State.Coverage(cat.Id);
-                            var catId = cat.Id;
-                            <div class="ring-card ring-card-lg">
-                                <ProgressRing Percent="@((double)(cov.Percent ?? 0))" Class="over">
-                                    <button class="ring-ico-big" title="@Loc["Manage category"]" @onclick="() => OpenCategoryDetail(catId)">@State.CategoryIcon(catId)</button>
-                                    <button class="ring-name" title="@Loc["Manage category"]" @onclick="() => OpenCategoryDetail(catId)">@cat.Name</button>
-                                </ProgressRing>
-                                <div class="ring-label over-text"><span>@Fmt(cov.Spent) / @Fmt(cov.Allocated)</span></div>
-                            </div>
-                        }
-                    </div>
-                }
-
-                @if (ov.QuickWins.Count > 0)
-                {
-                    <h2 class="insight-h">@Loc["Quick wins"]</h2>
-                    <div class="win-list">
-                        @{ var qn = 0; }
-                        @foreach (var w in ov.QuickWins)
-                        {
-                            qn++;
-                            <div class="win"><div class="win-bullet">@qn</div><div class="win-text">@w.Text</div></div>
-                        }
-                    </div>
-                }
-
-                <button class="home-more-toggle" @onclick="ToggleHomeInsights">
-                    <span>📈 @Loc["Trends, savings rate & score"]</span>
-                    <span class="home-more-chevron">@(_homeInsightsOpen ? "▲" : "▼")</span>
-                </button>
                 @if (_homeInsightsOpen)
                 {
                     var band = ov.Band switch { HealthBand.Healthy => "ok", HealthBand.Average => "warn", _ => "bad" };
+                    <h2 class="insight-h">@Loc["Health score & trends"] @infoTip(("score-how", Loc["How your score works: four equal parts (25 pts each) — how much you saved vs your target, how well you kept to budget, living within your income, and your spending vs your recent average."]))</h2>
                     <section id="score-detail" class="panel score-detail">
                         <div class="score-verdict score-@band">@ov.Verdict</div>
                         <p class="score-line">@ov.Summary</p>
@@ -359,6 +312,19 @@ else
                             </div>
                         </div>
                     </section>
+
+                    @if (ov.QuickWins.Count > 0)
+                    {
+                        <h2 class="insight-h">@Loc["Quick wins"]</h2>
+                        <div class="win-list">
+                            @{ var qn = 0; }
+                            @foreach (var w in ov.QuickWins)
+                            {
+                                qn++;
+                                <div class="win"><div class="win-bullet">@qn</div><div class="win-text">@w.Text</div></div>
+                            }
+                        </div>
+                    }
 
                     <h2 class="insight-h">@Loc["Savings rate"]</h2>
                     <section class="panel savings-rate-card">
@@ -549,7 +515,7 @@ else
                             </select>
                             <span class="arrow">→</span>
                             <select @bind="_transferDestId" @bind:after="OnInlineDestChanged">
-                                <optgroup label="@Loc["Funds"]">
+                                <optgroup label="@Loc["Wallets"]">
                                     @foreach (var f in State.SelectableFunds.Where(f => f.Id != _transferFromId))
                                     {
                                         <option value="@f.Id">@f.Name</option>
@@ -645,7 +611,7 @@ else
                                     <span class="bank-tx-date">@tx.Date.ToString("dd MMM")</span>
                                     <select class="bank-sel" value="@RowCredit(id)" @onchange="e => _bankRowCredit[id] = e.Value?.ToString() ?? string.Empty">
                                         <option value="">@Loc["From… (source)"]</option>
-                                        <optgroup label="@Loc["Funds"]">
+                                        <optgroup label="@Loc["Wallets"]">
                                             @foreach (var f in State.RootFunds.Where(f => f.Id != State.SyncedFundId))
                                             {
                                                 <option value="fund:@f.Id">@f.Name</option>
@@ -1186,7 +1152,7 @@ else
         <div class="tabpanel" hidden="@(_tab != Tab.Bank)">
             @if (Auth.CurrentUser is { EmailVerified: false })
             {
-                <button class="link bank-back" @onclick="() => _tab = Tab.Account">← @Loc["Funds"]</button>
+                <button class="link bank-back" @onclick="() => _tab = Tab.Account">← @Loc["Wallets"]</button>
                 <section class="panel bank-panel">
                     <div class="alert warn-bg"><span>@Loc["Verify your email address before you can link a bank or view its data — bank connections show real financial information."]</span></div>
                     @if (_resendOk)
@@ -1198,7 +1164,7 @@ else
             }
             else if (_bankStatus?.Enabled == true)
             {
-                <button class="link bank-back" @onclick="() => _tab = Tab.Account">← @Loc["Funds"]</button>
+                <button class="link bank-back" @onclick="() => _tab = Tab.Account">← @Loc["Wallets"]</button>
                 @if (!State.IsOwnerOfCurrent && _bankSharedAckKnown && !_bankSharedAck)
                 {
                     <div class="alert warn-bg">
@@ -1448,27 +1414,83 @@ else
                     {
                         <p class="hint">@Loc["No budget set for this category."]</p>
                     }
+                    RenderFragment<FinApp.Domain.Budgeting.Expense> detailRow = e =>
+                        @<li>
+                            <span class="row-lead">
+                                @if (State.IsPeriodOpen)
+                                {
+                                    <button class="exp-edit" title="@Loc["Edit"]" @onclick="() => DetailEditExpense(e.Id)">✏️</button>
+                                    <button class="exp-edit" title="@Loc["Remove"]" @onclick="() => DetailDeleteExpense(e.Id)">🗑️</button>
+                                }
+                                <span>@e.Date.ToString("dd MMM") · <span class="cat-ico">@State.FundIcon(e.FundId)</span> @State.FundName(e.FundId)@(string.IsNullOrEmpty(e.Note) ? "" : $" · {e.Note}")</span>
+                            </span>
+                            <span class="amt">@Fmt(e.Amount)</span>
+                        </li>;
+                    // Parent's own expenses, then one labelled block per sub-category that has any — so the whole
+                    // tree reads at a glance without drilling into each sub-category.
+                    var ownExpenses = State.ExpensesFor(_modalCatId);
+                    var childSections = State.ChildrenOf(_modalCatId)
+                        .Select(c => (Cat: c, Items: State.ExpensesFor(c.Id)))
+                        .Where(x => x.Items.Count > 0).ToList();
                     <h4 class="detail-sub">@Loc["Expenses"]</h4>
                     <ul class="list">
-                        @foreach (var e in State.ExpensesFor(_modalCatId))
-                        {
-                            <li>
-                                <span class="row-lead">
-                                    @if (State.IsPeriodOpen)
-                                    {
-                                        <button class="exp-edit" title="@Loc["Edit"]" @onclick="() => DetailEditExpense(e.Id)">✏️</button>
-                                        <button class="exp-edit" title="@Loc["Remove"]" @onclick="() => DetailDeleteExpense(e.Id)">🗑️</button>
-                                    }
-                                    <span>@e.Date.ToString("dd MMM") · <span class="cat-ico">@State.FundIcon(e.FundId)</span> @State.FundName(e.FundId)@(string.IsNullOrEmpty(e.Note) ? "" : $" · {e.Note}")</span>
-                                </span>
-                                <span class="amt">@Fmt(e.Amount)</span>
-                            </li>
-                        }
-                        @if (!State.ExpensesFor(_modalCatId).Any())
+                        @foreach (var e in ownExpenses) { @detailRow(e) }
+                        @if (ownExpenses.Count == 0 && childSections.Count == 0)
                         {
                             <li><em>@Loc["No expenses in this category yet."]</em></li>
                         }
                     </ul>
+                    @foreach (var (sub, items) in childSections)
+                    {
+                        <h5 class="detail-subcat"><span class="cat-ico">@State.CategoryIcon(sub.Id)</span> @sub.Name <span class="detail-subcat-sum">@Fmt(items.Aggregate(State.Money(0m), (s, e) => s + e.Amount))</span></h5>
+                        <ul class="list">
+                            @foreach (var e in items) { @detailRow(e) }
+                        </ul>
+                    }
+                    <div class="modal-actions inline-actions">
+                        <button class="ghost" @onclick="Back">@Loc["Close"]</button>
+                    </div>
+                    break;
+
+                case Modal.Achievements:
+                    <div class="modal-head">
+                        <h3>🏆 @Loc["Achievements"]</h3>
+                    </div>
+                    var achLog = State.Account.AchievementLog;
+                    var achAll = _achievements.Build(State.Account, Fmt, Loc.T);
+                    var achEarned = achAll.Where(a => a.Earned).ToList();
+                    var achLocked = achAll.Where(a => !a.Earned).OrderByDescending(a => a.Percent ?? 0).ToList();
+                    <p class="hint">@string.Format(Loc["{0} of {1} earned"], achEarned.Count, achAll.Count)</p>
+                    <div class="ach-grid">
+                        @foreach (var a in achEarned)
+                        {
+                            <div class="ach-cell earned">
+                                <span class="ach-cell-ico">@a.Icon</span>
+                                <div class="ach-cell-body">
+                                    <span class="ach-cell-title">@a.Title <span class="ach-tick">✓</span></span>
+                                    <span class="ach-cell-desc">@a.Desc</span>
+                                    @if (achLog.TryGetValue(a.Key, out var earnedOn))
+                                    {
+                                        <span class="ach-cell-date">@earnedOn.ToString("dd MMM yyyy")</span>
+                                    }
+                                </div>
+                            </div>
+                        }
+                        @foreach (var a in achLocked)
+                        {
+                            <div class="ach-cell locked">
+                                <span class="ach-cell-ico">@a.Icon</span>
+                                <div class="ach-cell-body">
+                                    <span class="ach-cell-title">@a.Title</span>
+                                    <span class="ach-cell-desc">@a.Desc</span>
+                                    @if (a.Percent is { } pct)
+                                    {
+                                        <div class="ach-prog"><div class="ach-prog-fill" style="width:@pct%"></div></div>
+                                    }
+                                </div>
+                            </div>
+                        }
+                    </div>
                     <div class="modal-actions inline-actions">
                         <button class="ghost" @onclick="Back">@Loc["Close"]</button>
                     </div>
@@ -1805,7 +1827,7 @@ else
                     <h3>@Loc["Transfer from"] @State.FundName(_mTransferFromId)</h3>
                     <label>@Loc["To"]
                         <select @bind="_mTransferDestId" @bind:after="OnModalDestChanged">
-                            <optgroup label="@Loc["Funds"]">
+                            <optgroup label="@Loc["Wallets"]">
                                 @foreach (var f in State.RootFunds.Where(f => f.Id != _mTransferFromId))
                                 {
                                     <option value="@f.Id">@f.Name</option>
@@ -2371,7 +2393,7 @@ else
 }
 
 @code {
-    private enum Modal { None, PickAccount, BankReview, BankConsent, AddCat, AddBudget, DisburseSaving, PayoffProjection, GoalProjection, EditCat, DeleteCat, CategoryDetail, AddAccount, EditAccount, DeleteAccount, RemoveMember, LeaveAccount, AddExpense, NextPeriod, RemovePeriod, EditExpense, DeleteExpense, SettleExpense, AddBucket, EditBucket, DeleteBucket, AddFund, EditFund, DeleteFund, Invite, Transfer, Deposit, EditDeposit, DeleteDeposit, ManageContribCats, ContribCat, DeleteContribCat, AddSaving, BudgetSaving, SpendSaving, EditSavingDeposit, DeleteSavingDeposit, EditTransfer, DeleteTransfer, EditPeriod, EditSavingMovement, DeleteSavingMovement, DeleteExternalTransfer }
+    private enum Modal { None, PickAccount, BankReview, BankConsent, AddCat, AddBudget, DisburseSaving, PayoffProjection, GoalProjection, EditCat, DeleteCat, CategoryDetail, AddAccount, EditAccount, DeleteAccount, RemoveMember, LeaveAccount, AddExpense, NextPeriod, RemovePeriod, EditExpense, DeleteExpense, SettleExpense, AddBucket, EditBucket, DeleteBucket, AddFund, EditFund, DeleteFund, Invite, Transfer, Deposit, EditDeposit, DeleteDeposit, ManageContribCats, ContribCat, DeleteContribCat, AddSaving, BudgetSaving, SpendSaving, EditSavingDeposit, DeleteSavingDeposit, EditTransfer, DeleteTransfer, EditPeriod, EditSavingMovement, DeleteSavingMovement, DeleteExternalTransfer, Achievements }
     private enum Tab { Overview, Account, Budgets, Savings, Bank }
 
     private Tab _tab = Tab.Overview;
@@ -2662,6 +2684,28 @@ else
         await MaybePromptOnEntryAsync();
     }
 
+    // Stamp any newly-earned achievement with today's date after each render. Only persists when something changed
+    // (see StampAchievementsAsync), so it converges and doesn't loop.
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (State.IsReady && State.HasAccounts)
+            await State.StampAchievementsAsync(_achievements, Fmt, Loc.T);
+    }
+
+    /// <summary>The compact Home strip: your most-recent earned milestones (with their dates) plus the single closest
+    /// locked one to chase. The full catalogue lives in the Achievements modal.</summary>
+    private IReadOnlyList<(Achievement A, DateOnly? On)> HomeMilestones()
+    {
+        var log = State.Account.AchievementLog;
+        var catalog = _achievements.Build(State.Account, Fmt, Loc.T);
+        var result = catalog.Where(a => a.Earned)
+            .Select(a => (A: a, On: log.TryGetValue(a.Key, out var d) ? (DateOnly?)d : null))
+            .OrderByDescending(x => x.On ?? DateOnly.MinValue).Take(3).ToList();
+        var next = catalog.Where(a => !a.Earned).OrderByDescending(a => a.Percent ?? 0).FirstOrDefault();
+        if (next is not null) result.Add((next, null));
+        return result;
+    }
+
     /// <summary>How long a bank connection stays "fresh" after a sync before we'll call the provider again on
     /// open/switch. Keeps the opened account current without a live call every time, and because the last-sync
     /// time is stored server-side, a sync on one device counts for every device.</summary>
@@ -2922,7 +2966,7 @@ else
                 {
                     <select class="bank-sel" value="@RowCredit(id)" @onchange="e => _bankRowCredit[id] = e.Value?.ToString() ?? string.Empty">
                         <option value="">@Loc["From… (source)"]</option>
-                        <optgroup label="@Loc["Funds"]">
+                        <optgroup label="@Loc["Wallets"]">
                             @foreach (var f in State.RootFunds.Where(f => f.Id != State.SyncedFundId))
                             {
                                 <option value="fund:@f.Id">@f.Name</option>
@@ -3694,6 +3738,35 @@ else
         return list;
     }
 
+    // --- Notifications bell — aggregates the transient Home prompts into one dropdown by the account controls -----
+    private bool _bellOpen;
+    private sealed record Notification(string Icon, string Text, string? Desc, string? ActionLabel, Action? Act,
+        Action? Rotate, Action? Dismiss, bool Urgent);
+
+    /// <summary>Everything that used to stack on Home: the budget/savings reminders, the spare→debt and over-budget
+    /// tips (rotating + dismissible), and the "needs attention" warning signals — collected for the bell dropdown.</summary>
+    private IReadOnlyList<Notification> HomeNotifications(FinancialHealthReport ov)
+    {
+        var list = new List<Notification>();
+        foreach (var r in HomeReminders(ov))
+            list.Add(new Notification(r.Icon, r.Text, null, r.ActionLabel, r.Act, null, null, r.Urgent));
+
+        if (LoanNudge() is { } tip)
+        {
+            Action? rotate = State.DiscretionaryLeftovers().Count(c => !_dismissedNudges.Contains(c.Id)) > 1 ? () => _nudgeIndex++ : null;
+            list.Add(new Notification("💡", tip.Title, tip.Desc, null, null, rotate, () => DismissNudge(tip.BudgetId), false));
+        }
+        if (OverBudgetTip() is { } ob)
+        {
+            Action? rotate = OverBudgetCandidates().Count > 1 ? () => _overIndex++ : null;
+            list.Add(new Notification("⚠️", ob.Title, ob.Desc, Loc["Review"], () => OpenCategoryDetail(ob.CatId), rotate, () => DismissOverBudget(ob.CatId), false));
+        }
+        if (ov.HasData)
+            foreach (var s in ov.Signals.Where(s => s.Kind == SignalKind.Warn))
+                list.Add(new Notification("⚠️", s.Title, s.Desc, null, null, null, null, false));
+        return list;
+    }
+
     // --- Home reminders (#10) — contextual, in-app, actionable local prompts (no push) --------------
     private sealed record HomeReminder(string Icon, string Text, string? ActionLabel, Action? Act, bool Urgent);
 
@@ -3704,38 +3777,30 @@ else
         var list = new List<HomeReminder>();
         if (!State.IsReady || !State.HasAccounts || !State.IsPeriodOpen) return list;
 
-        // The budget most in need of attention: over-cap first (by amount over), else the closest to its cap (≥80%).
-        (Guid CatId, string Name, decimal Over, decimal Remaining)? over = null;
+        // The budget closest to its cap but not yet over (≥80%). Over-budget cases are handled separately by the
+        // rotating, non-essential OverBudgetTip, so we don't double up here.
         (Guid CatId, string Name, decimal Remaining, decimal Ratio)? near = null;
         foreach (var b in State.Period.Budgets)
         {
             if (b.Allocated.Amount <= 0m) continue;
             var cov = State.Coverage(b.CategoryId);
-            var name = State.CategoryName(b.CategoryId);
-            if (cov.Spent.Amount > cov.Allocated.Amount)
-            {
-                var amt = cov.Spent.Amount - cov.Allocated.Amount;
-                if (over is null || amt > over.Value.Over) over = (b.CategoryId, name, amt, 0m);
-            }
-            else
-            {
-                var ratio = cov.Spent.Amount / cov.Allocated.Amount;
-                if (ratio >= 0.8m && (near is null || ratio > near.Value.Ratio))
-                    near = (b.CategoryId, name, cov.Remaining.Amount, ratio);
-            }
+            if (cov.Spent.Amount > cov.Allocated.Amount) continue;   // over-budget → OverBudgetTip
+            var ratio = cov.Spent.Amount / cov.Allocated.Amount;
+            if (ratio >= 0.8m && (near is null || ratio > near.Value.Ratio))
+                near = (b.CategoryId, State.CategoryName(b.CategoryId), cov.Remaining.Amount, ratio);
         }
-        if (over is { } o)
-            list.Add(new HomeReminder("⚠️", string.Format(Loc["You're {0} over your {1} budget."], Fmt(State.Money(o.Over)), o.Name),
-                Loc["Review"], () => OpenCategoryDetail(o.CatId), true));
-        else if (near is { } n)
+        if (near is { } n)
             list.Add(new HomeReminder("🟡", string.Format(Loc["You're {0} from your {1} budget."], Fmt(State.Money(n.Remaining)), n.Name),
                 Loc["Review"], () => OpenCategoryDetail(n.CatId), false));
 
         // Savings nudge: below your rate target this period (reuses the Insights shortfall), or nothing saved yet.
         if (HasSavingsBucket)
         {
-            if (ov.SavingsShortfall is { } gap)
-                list.Add(new HomeReminder("💰", string.Format(Loc["Set aside {0} more to hit your {1} savings goal this period."], Fmt(gap), PctText(ov.SavingsTarget)),
+            // Only ever suggest what the user can actually earmark right now — cash not already set aside.
+            var suggest = ov.SavingsShortfall is { } gap
+                ? State.Money(Math.Min(gap.Amount, State.MaxAdditionalSavings.Amount)) : (Money?)null;
+            if (suggest is { Amount: > 0m } s)
+                list.Add(new HomeReminder("💰", string.Format(Loc["Set aside {0} more to hit your {1} savings goal this period."], Fmt(s), PctText(ov.SavingsTarget)),
                     Loc["Move to savings"], OpenMoveToSavings, false));
             else if (State.SavingsThisPeriod.Amount <= 0m && State.TotalContributed.Amount > 0m)
                 list.Add(new HomeReminder("💰", Loc["Money came in this period — move some into savings while it's here."],
@@ -3801,6 +3866,33 @@ else
     /// <summary>Hide this budget's suggestion for the rest of the period and jump the rotation to the next candidate.</summary>
     private void DismissNudge(Guid budgetId) { _dismissedNudges.Add(budgetId); _nudgeIndex++; }
 
+    // Rotating over-budget alert: like the spare→debt nudge, but for NON-essential categories that are over budget.
+    private int _overIndex = Random.Shared.Next(0, 997);
+
+    /// <summary>One rotating, dismissible over-budget alert for a <b>non-essential</b> category (essentials like rent
+    /// aren't actionable, so they're never nagged). Rotate with ↻, dismiss for the period. Null when none apply.</summary>
+    private (Guid CatId, string Title, string Desc)? OverBudgetTip()
+    {
+        if (!State.IsPeriodOpen) return null;
+        if (_nudgeDismissPeriod != State.PeriodNumber) { _nudgeDismissPeriod = State.PeriodNumber; _dismissedNudges.Clear(); }
+        var over = OverBudgetCandidates();
+        if (over.Count == 0) return null;
+        var pick = over[_overIndex % over.Count];
+        return (pick.CatId,
+            string.Format(Loc["You're {0} over your {1} budget"], Fmt(State.Money(pick.Over)), pick.Name),
+            Loc["A non-essential category — easing off here frees up cash for savings or debt."]);
+    }
+
+    /// <summary>Non-essential categories currently over their budget (biggest overspend first), minus period dismissals.</summary>
+    private List<(Guid CatId, string Name, decimal Over)> OverBudgetCandidates() =>
+        State.CategoryOptions
+            .Where(c => !c.Category.IsEssential && State.HasBudget(c.Category.Id) && !_dismissedNudges.Contains(c.Category.Id))
+            .Select(c => { var cov = State.Coverage(c.Category.Id); return (c.Category.Id, c.Category.Name, Over: cov.Spent.Amount - cov.Allocated.Amount); })
+            .Where(c => c.Over > 0m)
+            .OrderByDescending(c => c.Over).ToList();
+
+    private void DismissOverBudget(Guid catId) { _dismissedNudges.Add(catId); _overIndex++; }
+
     private Task SpendBucketAsExpense() => RunModal(async () =>
     {
         if (_spendExpAmount <= 0 || _spendExpCategoryId == Guid.Empty) return;
@@ -3830,6 +3922,7 @@ else
 
     private void OpenNextPeriod()
     {
+        if (!State.CanStartNextPeriod) return;   // can't roll forward until this period has actually ended
         _copyBudgets = true;
         _adjustBudgets = true;
         _reconcileGaps = null;

@@ -30,7 +30,17 @@ public sealed class Account : Entity
     public decimal SavingsRateTarget { get; private set; } = 0.20m;
 
     /// <summary>
-    /// The user who created this account. Owner-only actions (rename, delete) check this; everything
+    /// Achievements start counting from this date — set once to the current period's start the first time the
+    /// feature runs — so an existing account doesn't retroactively unlock its whole history, and back-/forward-dating
+    /// periods can't farm milestones. Null until first anchored. Body data — travels in the snapshot.
+    /// </summary>
+    public DateOnly? AchievementsAnchor { get; private set; }
+
+    private readonly Dictionary<string, DateOnly> _achievements = new();
+    /// <summary>When each achievement was first earned (stable key → date). Body data — travels in the snapshot.</summary>
+    public IReadOnlyDictionary<string, DateOnly> AchievementLog => _achievements;
+
+    /// <summary>The user who created this account. Owner-only actions (rename, delete) check this; everything
     /// inside the account may be changed by any contributor. <see cref="Guid.Empty"/> for accounts
     /// created without a signed-in user (e.g. unit tests).
     /// </summary>
@@ -80,6 +90,16 @@ public sealed class Account : Entity
         if (target < 0m || target > 1m)
             throw new ArgumentOutOfRangeException(nameof(target), "Savings target must be between 0% and 100%.");
         SavingsRateTarget = target;
+    }
+
+    /// <summary>Anchor achievement tracking to <paramref name="onDate"/> the first time only (idempotent).</summary>
+    public void SetAchievementsAnchor(DateOnly onDate) => AchievementsAnchor ??= onDate;
+
+    /// <summary>Record that an achievement was first earned on <paramref name="onDate"/> — first write wins.
+    /// Idempotent, so re-detecting an already-earned achievement never moves its date.</summary>
+    public void RecordAchievement(string key, DateOnly onDate)
+    {
+        if (!string.IsNullOrWhiteSpace(key)) _achievements.TryAdd(key, onDate);
     }
 
     // --- Membership & sharing --------------------------------------------

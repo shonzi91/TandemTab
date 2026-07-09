@@ -1,17 +1,21 @@
 using FinApp.Domain.Accounts;
 using FinApp.Domain.Common;
+using FinApp.Domain.Forecasting;
+using FinApp.Domain.Periods;
 using FinApp.Domain.Services;
 
 namespace FinApp.Shared.UI.Services;
 
-/// <summary>A motivational milestone or streak derived entirely from account history (BACKLOG #12) — no stored state.
-/// <see cref="Earned"/> ones are celebrated on Home; an un-earned one is the next target to chase, with
-/// <see cref="Percent"/> progress toward it.</summary>
-public sealed record Achievement(string Icon, string Title, string Desc, bool Earned, int? Percent = null);
+/// <summary>A motivational milestone or streak (BACKLOG #12). Derived from account history but keyed by a <b>stable</b>
+/// <see cref="Key"/> so the Dashboard can stamp a "date earned" into the account's achievement log the first time it's
+/// seen. <see cref="Earned"/> ones are ticked (with their date); locked ones show <see cref="Percent"/> progress.</summary>
+public sealed record Achievement(string Key, string Icon, string Title, string Desc, bool Earned, int? Percent = null);
 
 /// <summary>
-/// Computes achievements/streaks for the Home motivation strip. Pure presentation-layer logic over the domain
-/// aggregate's public reads (mirrors <see cref="InsightsService"/>); not in DI — the Dashboard news it up.
+/// Computes the full achievement catalogue (earned + locked) for the Achievements modal and Home strip. Pure
+/// presentation-layer logic over the domain aggregate's public reads. Everything counts from the account's
+/// <see cref="Account.AchievementsAnchor"/> onward, so an existing account doesn't retroactively unlock its history
+/// and back-/forward-dated periods can't farm milestones.
 /// </summary>
 public sealed class AchievementsService
 {
@@ -22,71 +26,111 @@ public sealed class AchievementsService
     {
         ArgumentNullException.ThrowIfNull(account);
         _t = translate ?? (s => s);
-        var earned = new List<Achievement>();
-        var next = new List<Achievement>();
+        var list = new List<Achievement>();
+        void Add(string key, string icon, string title, string desc, bool earned, int? percent = null)
+            => list.Add(new Achievement(key, icon, title, desc, earned, earned ? null : percent));
 
-        // First money set aside — the starter win.
-        var lifetime = _savings.LifetimeSaved(account);
-        if (lifetime.Amount > 0m)
-            earned.Add(new Achievement("🌱", _t("Saver"),
-                string.Format(_t("You've set aside {0} in total. Every bit counts."), fmt(lifetime)), true));
-
-        // Saving streak vs the account's target (consecutive most-recent periods that had income and hit the target).
+        // --- Anchored view: only periods from the anchor onward count. ---
+        var anchor = account.AchievementsAnchor;
+        var periods = (anchor is { } an ? account.Periods.Where(p => p.From >= an) : account.Periods).ToList();
         var target = account.SavingsRateTarget;
-        var streak = CurrentSavingStreak(account, target);
-        if (streak >= 3)
-            earned.Add(new Achievement("🔥", string.Format(_t("{0}-period saving streak"), streak),
-                string.Format(_t("You've hit your {0} savings target {1} periods running. Keep the chain alive."), Pct(target), streak), true));
-        else
-            next.Add(new Achievement("🔥", _t("Start a saving streak"),
-                string.Format(_t("Hit your {0} target 3 periods running to earn this — you're at {1}."), Pct(target), streak),
-                false, (int)Math.Round(streak / 3.0 * 100)));
 
-        // First extra payment toward any debt.
+        var expenseCount = periods.Sum(p => p.Expenses.Count);
+        var maxDistinctDays = periods.Count == 0 ? 0 : periods.Max(p => p.Expenses.Select(e => e.Date).Distinct().Count());
+        var totalSetAside = periods.Aggregate(0m, (s, p) => s + p.SavingsSetAsideTotal.Amount);
+        var avgOutgoings = periods.Count == 0 ? 0m : periods.Average(p => p.ExpensesTotal.Amount);
+        var maxBudgetedCats = periods.Count == 0 ? 0 : periods.Max(p => p.Budgets.Select(b => b.CategoryId).Distinct().Count());
+        var anyBudget = periods.Any(p => p.Budgets.Count > 0);
+        var streak = SavingStreak(periods, target);
+
         var debts = account.SavingCategories.Where(s => s.IsDebt).ToList();
-        if (debts.Any(d => d.DebtPaidOff > 0m))
-            earned.Add(new Achievement("💪", _t("First payment down"),
-                _t("You've made your first payment toward a debt. That's momentum."), true));
+        var origSum = debts.Sum(d => d.DebtOriginalBalance);
+        var paidSum = debts.Sum(d => d.DebtPaidOff);
+        var goalsReached = account.SavingCategories.Where(s => !s.IsDebt && s.HasGoal)
+            .Count(s => _savings.GoalProgress(account, s.Id).GoalReached);
 
-        // Debt payoff milestones — the highest threshold crossed on each debt (25/50/75/100%).
+        // --- Engagement / logging ---
+        Add("first_expense", "🧾", _t("First expense"), _t("You logged your first expense. The habit starts here."), expenseCount > 0);
+        Add("days_15", "📆", _t("Regular"), _t("Logged expenses on 15+ days in a single period."), maxDistinctDays >= 15,
+            Pct(maxDistinctDays, 15));
+        Add("expenses_100", "💯", _t("Century"), _t("100 expenses logged. You're really tracking now."), expenseCount >= 100,
+            Pct(expenseCount, 100));
+
+        // --- Budgeting ---
+        Add("first_budget", "🧰", _t("Budgeter"), _t("You set your first budget."), anyBudget);
+        Add("budgets_5", "🗂️", _t("Organised"), _t("Budgets on 5+ categories in a period."), maxBudgetedCats >= 5,
+            Pct(maxBudgetedCats, 5));
+        Add("clean_sweep", "🧹", _t("Clean sweep"), _t("A whole period with no overspent budgets."), CleanSweep(account, periods));
+        Add("under_budget", "🪙", _t("Under budget"), _t("Finished a period spending less than you budgeted overall."),
+            periods.Any(p => p.BudgetedTotal.Amount > 0m && p.ExpensesTotal.Amount <= p.BudgetedTotal.Amount));
+
+        // --- Saving ---
+        Add("saver", "🌱", _t("Saver"), _t("You set money aside for the first time. Every bit counts."), totalSetAside > 0m);
+        Add("first_bucket", "🐷", _t("Piggy"), _t("You created your first savings bucket."),
+            account.SavingCategories.Any(s => !s.IsArchived && !s.IsDebt));
+        Add("saved_1000", "💶", _t("Grand"), _t("You've set aside over 1,000 in total."), totalSetAside >= 1000m,
+            Pct(totalSetAside, 1000m));
+        Add("buffer_1mo", "💰", _t("Nest egg"), _t("You've saved at least a month of your average outgoings."),
+            avgOutgoings > 0m && totalSetAside >= avgOutgoings, avgOutgoings > 0m ? Pct(totalSetAside, avgOutgoings) : null);
+        Add("beat_target_10", "📈", _t("Overperformer"), _t("You beat your savings target by 10+ points in a period."),
+            periods.Any(p => p.ContributionsPaidTotal.Amount > 0m && (_savings.PeriodSavingsRate(p) ?? 0m) >= target + 0.10m));
+        Add("planned_contrib", "🧭", _t("Planner"), _t("You set a planned monthly contribution."),
+            account.SavingCategories.Any(s => s.PlannedContribution > 0m));
+        Add("streak_3", "🔥", _t("On a streak"), string.Format(_t("Hit your {0} target 3 periods running."), Pct(target)),
+            streak >= 3, Pct(streak, 3));
+        Add("streak_6", "🔥", _t("On a roll"), string.Format(_t("Hit your {0} target 6 periods running."), Pct(target)),
+            streak >= 6, Pct(streak, 6));
+        Add("streak_12", "🗓️", _t("Year of saving"), string.Format(_t("Hit your {0} target 12 periods running."), Pct(target)),
+            streak >= 12, Pct(streak, 12));
+        Add("goals_1", "🎯", _t("Goal getter"), _t("You reached your first savings goal."), goalsReached >= 1);
+        Add("goals_3", "🏝️", _t("Hat-trick"), _t("You've reached three savings goals."), goalsReached >= 3, Pct(goalsReached, 3));
+
+        // --- Debt ---
+        Add("first_debt", "💳", _t("Facing it"), _t("You started tracking a debt — the first step to clearing it."), debts.Count > 0);
+        Add("first_payment", "💪", _t("First payment down"), _t("You made your first payment toward a debt. Momentum."),
+            debts.Any(d => d.DebtPaidOff > 0m));
+        Add("overpay", "🚀", _t("Overpayer"), _t("You set aside more than the installment toward a debt in a period."),
+            periods.Any(p => debts.Where(d => d.DebtInstallment > 0m).Any(d =>
+                p.SavingAllocations.Where(a => a.SavingCategoryId == d.Id && !a.IsDisbursement).Sum(a => a.Amount.Amount) > d.DebtInstallment)));
+        Add("debt_half_all", "⛰️", _t("Halfway home"), _t("You've cleared half of all your debt combined."),
+            origSum > 0m && paidSum / origSum >= 0.5m, origSum > 0m ? Pct(paidSum, origSum * 0.5m) : null);
+        Add("debtfree_12mo", "🏁", _t("In sight"), _t("You're on track to be debt-free within 12 months."), DebtFreeWithin(account, 12));
+        Add("comeback", "🌤️", _t("Comeback"), _t("You returned to saving right after a period in the red."), Comeback(periods));
+
+        // Per-debt payoff milestones (25/50/75/100%) — dynamic, only for debts that exist.
         foreach (var d in debts.Where(d => d.DebtProgressRatio is > 0m))
         {
             var pct = (int)Math.Floor((double)d.DebtProgressRatio!.Value * 100);
-            if (pct >= 100)
-                earned.Add(new Achievement("🏁", string.Format(_t("{0} paid off!"), d.Name),
-                    _t("Cleared in full — outstanding work."), true));
-            else if (pct >= 25)
-            {
-                var tier = pct >= 75 ? 75 : pct >= 50 ? 50 : 25;
-                earned.Add(new Achievement("📉", string.Format(_t("{0}% of {1} cleared"), tier, d.Name),
-                    string.Format(_t("{0} of {1} paid off so far."),
-                        fmt(new Money(d.DebtPaidOff, account.Currency)), fmt(new Money(d.DebtOriginalBalance, account.Currency))), true));
-            }
+            var tier = pct >= 100 ? 100 : pct >= 75 ? 75 : pct >= 50 ? 50 : pct >= 25 ? 25 : 0;
+            if (tier == 0) continue;
+            Add($"debt_{tier}_{d.Id}", tier >= 100 ? "🏁" : "📉",
+                tier >= 100 ? string.Format(_t("{0} paid off!"), d.Name) : string.Format(_t("{0}% of {1} cleared"), tier, d.Name),
+                tier >= 100 ? _t("Cleared in full — outstanding work.")
+                    : string.Format(_t("{0} of {1} paid off so far."),
+                        fmt(new Money(d.DebtPaidOff, account.Currency)), fmt(new Money(d.DebtOriginalBalance, account.Currency))),
+                true);
         }
 
-        // Savings goals reached.
+        // Per-goal "reached" — dynamic.
         foreach (var s in account.SavingCategories.Where(x => !x.IsDebt && x.HasGoal))
-        {
             if (_savings.GoalProgress(account, s.Id).GoalReached)
-                earned.Add(new Achievement("🎯", string.Format(_t("{0} goal reached"), s.Name),
-                    _t("You hit your savings goal. Time to celebrate — or set the next one."), true));
-        }
+                Add($"goal_{s.Id}", "🎯", string.Format(_t("{0} goal reached"), s.Name),
+                    _t("You hit your savings goal. Time to set the next one."), true);
 
-        // Earned first (celebratory), then the single most-progressed "next" target to aim at.
-        var result = new List<Achievement>(earned);
-        var bestNext = next.OrderByDescending(a => a.Percent ?? 0).FirstOrDefault();
-        if (bestNext is not null && result.Count < 6) result.Add(bestNext);
-        return result;
+        // --- Social ---
+        Add("shared", "🤝", _t("Better together"), _t("You're sharing this account with someone."), account.Members.Count > 1);
+
+        return list;
     }
 
-    /// <summary>Consecutive most-recent periods (that had income) whose savings rate met the target. Periods with no
-    /// contributions are skipped, not treated as misses, so an idle month doesn't wrongly break the chain.</summary>
-    private int CurrentSavingStreak(Account account, decimal target)
+    /// <summary>Consecutive most-recent (anchored) periods with income whose savings rate met the target. Periods with
+    /// no contributions are skipped, not counted as misses, so an idle month doesn't wrongly break the chain.</summary>
+    private int SavingStreak(IReadOnlyList<Period> periods, decimal target)
     {
         var n = 0;
-        for (var i = account.Periods.Count - 1; i >= 0; i--)
+        for (var i = periods.Count - 1; i >= 0; i--)
         {
-            var p = account.Periods[i];
+            var p = periods[i];
             if (p.ContributionsPaidTotal.Amount <= 0m) continue;
             if ((_savings.PeriodSavingsRate(p) ?? 0m) >= target) n++;
             else break;
@@ -94,5 +138,47 @@ public sealed class AchievementsService
         return n;
     }
 
-    private static string Pct(decimal ratio) => $"{decimal.Round(ratio * 100m, 0, MidpointRounding.AwayFromZero)}%";
+    /// <summary>True when some anchored period had at least one budget and none of them ended overspent (subtree-aware).</summary>
+    private static bool CleanSweep(Account account, IReadOnlyList<Period> periods) =>
+        periods.Any(p => p.Budgets.Count > 0 &&
+            p.Budgets.All(b => SpentInTree(account, p, b.CategoryId) <= b.Allocated.Amount));
+
+    /// <summary>Spend on a category and all its descendants within a period (rolls sub-categories up to their parent).</summary>
+    private static decimal SpentInTree(Account account, Period period, Guid categoryId)
+    {
+        var ids = new HashSet<Guid> { categoryId };
+        var frontier = new Queue<Guid>(new[] { categoryId });
+        while (frontier.Count > 0)
+        {
+            var id = frontier.Dequeue();
+            foreach (var child in account.ChildrenOfCategory(id))
+                if (ids.Add(child.Id)) frontier.Enqueue(child.Id);
+        }
+        return period.Expenses.Where(e => ids.Contains(e.CategoryId)).Sum(e => e.Amount.Amount);
+    }
+
+    private static bool DebtFreeWithin(Account account, int months)
+    {
+        var inputs = account.SavingCategories.Where(s => s.IsDebt && s.DebtBalance > 0m)
+            .Select(s => new LoanForecast.LoanInput(s.Id, s.Name, s.DebtBalance, s.DebtAnnualRatePercent, s.DebtInstallment))
+            .ToList();
+        if (inputs.Count == 0) return false;
+        return LoanForecast.PlanPayoff(inputs, 0m, LoanForecast.Strategy.Avalanche) is { } plan && plan.Months <= months;
+    }
+
+    private static bool Comeback(IReadOnlyList<Period> periods)
+    {
+        for (var i = 1; i < periods.Count; i++)
+        {
+            var prev = periods[i - 1];
+            var prevDeficit = prev.SavingsSetAsideTotal.Amount < 0m || prev.ExpensesTotal.Amount > prev.ContributionsPaidTotal.Amount;
+            if (prevDeficit && periods[i].SavingsSetAsideTotal.Amount > 0m) return true;
+        }
+        return false;
+    }
+
+    private static int Pct(decimal have, decimal need) =>
+        need <= 0m ? 0 : (int)Math.Clamp(Math.Round(have / need * 100m), 0, 99);
+
+    private string Pct(decimal ratio) => $"{decimal.Round(ratio * 100m, 0, MidpointRounding.AwayFromZero)}%";
 }

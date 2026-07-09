@@ -127,6 +127,8 @@ public sealed class Localizer(IJSRuntime js)
         ["Overview"] = "Преглед",
         ["Home"] = "Начало",
         ["Spending"] = "Разходи",
+        ["Goals"] = "Цели",
+        ["Wallets"] = "Портфейли",
         ["Setup"] = "Настройки",
         ["This month's budgets"] = "Бюджети за месеца",
         ["People"] = "Хора",
@@ -233,6 +235,9 @@ public sealed class Localizer(IJSRuntime js)
 
         // Overview tab
         ["Health score"] = "Оценка на здравето",
+        ["Health score & trends"] = "Оценка на здравето и тенденции",
+        ["How your score works: four equal parts (25 pts each) — how much you saved vs your target, how well you kept to budget, living within your income, and your spending vs your recent average."] =
+            "Как се формира оценката: четири равни части (по 25 т.) — колко спестихте спрямо целта, колко се придържахте към бюджета, дали живеете според доходите си и разходите спрямо скорошната ви средна стойност.",
         ["Needs your attention"] = "Изисква внимание",
         ["All clear — no warnings this period. Nice work."] = "Всичко е наред — няма предупреждения този период. Браво!",
         ["Top spending"] = "Най-големи разходи",
@@ -537,7 +542,17 @@ public sealed class Localizer(IJSRuntime js)
         ["By day"] = "По ден",
         ["Review"] = "Виж",
         ["You're {0} over your {1} budget."] = "Надхвърли с {0} бюджета за {1}.",
+        ["You're {0} over your {1} budget"] = "Надхвърли с {0} бюджета за {1}",
         ["You're {0} from your {1} budget."] = "Остават {0} до бюджета за {1}.",
+        ["A non-essential category — easing off here frees up cash for savings or debt."] =
+            "Незадължителна категория — спестяването тук освобождава пари за влог или дълг.",
+        ["Notifications"] = "Известия",
+        ["You're all caught up."] = "Всичко е прегледано.",
+        ["Achievements"] = "Постижения",
+        ["View all"] = "Виж всички",
+        ["{0} of {1} earned"] = "{0} от {1} получени",
+        ["You can start next month once this period's end date has passed."] =
+            "Можеш да започнеш следващия месец, след като изтече крайната дата на този период.",
         ["Set aside {0} more to hit your {1} savings goal this period."] = "Задели още {0}, за да достигнеш целта от {1} този период.",
         ["Money came in this period — move some into savings while it's here."] = "Този период постъпиха средства — задели част, докато са налични.",
         ["Milestones"] = "Постижения",

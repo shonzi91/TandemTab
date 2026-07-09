@@ -46,6 +46,8 @@ public sealed class FinAppDbContext(DbContextOptions<FinAppDbContext> options) :
             // Savings target is body data — it rides in the account snapshot, not the relational header.
             // Ignoring it keeps the Accounts table unchanged (prod Postgres uses EnsureCreated; no migration).
             a.Ignore(x => x.SavingsRateTarget);
+            a.Ignore(x => x.AchievementsAnchor);   // body data — rides in the snapshot, not the relational header
+            a.Ignore(x => x.AchievementLog);       // body data — rides in the snapshot
 
             OwnedList(a, x => x.Members);
             OwnedList(a, x => x.Categories);
