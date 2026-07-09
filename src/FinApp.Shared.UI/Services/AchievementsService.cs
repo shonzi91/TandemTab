@@ -33,6 +33,10 @@ public sealed class AchievementsService
         // --- Anchored view: only periods from the anchor onward count. ---
         var anchor = account.AchievementsAnchor;
         var periods = (anchor is { } an ? account.Periods.Where(p => p.From >= an) : account.Periods).ToList();
+        // "Finished a period" achievements must only judge periods whose end date has actually passed — otherwise the
+        // current, still-open period unlocks them prematurely (e.g. "no overspends" or "spent under budget" mid-month).
+        var today = DateOnly.FromDateTime(DateTime.Today);
+        var ended = periods.Where(p => p.To < today).ToList();
         var target = account.SavingsRateTarget;
 
         var expenseCount = periods.Sum(p => p.Expenses.Count);
@@ -60,9 +64,9 @@ public sealed class AchievementsService
         Add("first_budget", "🧰", _t("Budgeter"), _t("You set your first budget."), anyBudget);
         Add("budgets_5", "🗂️", _t("Organised"), _t("Budgets on 5+ categories in a period."), maxBudgetedCats >= 5,
             Pct(maxBudgetedCats, 5));
-        Add("clean_sweep", "🧹", _t("Clean sweep"), _t("A whole period with no overspent budgets."), CleanSweep(account, periods));
+        Add("clean_sweep", "🧹", _t("Clean sweep"), _t("A whole period with no overspent budgets."), CleanSweep(account, ended));
         Add("under_budget", "🪙", _t("Under budget"), _t("Finished a period spending less than you budgeted overall."),
-            periods.Any(p => p.BudgetedTotal.Amount > 0m && p.ExpensesTotal.Amount <= p.BudgetedTotal.Amount));
+            ended.Any(p => p.BudgetedTotal.Amount > 0m && p.ExpensesTotal.Amount <= p.BudgetedTotal.Amount));
 
         // --- Saving ---
         Add("saver", "🌱", _t("Saver"), _t("You set money aside for the first time. Every bit counts."), totalSetAside > 0m);
@@ -73,7 +77,7 @@ public sealed class AchievementsService
         Add("buffer_1mo", "💰", _t("Nest egg"), _t("You've saved at least a month of your average outgoings."),
             avgOutgoings > 0m && totalSetAside >= avgOutgoings, avgOutgoings > 0m ? Pct(totalSetAside, avgOutgoings) : null);
         Add("beat_target_10", "📈", _t("Overperformer"), _t("You beat your savings target by 10+ points in a period."),
-            periods.Any(p => p.ContributionsPaidTotal.Amount > 0m && (_savings.PeriodSavingsRate(p) ?? 0m) >= target + 0.10m));
+            ended.Any(p => p.ContributionsPaidTotal.Amount > 0m && (_savings.PeriodSavingsRate(p) ?? 0m) >= target + 0.10m));
         Add("planned_contrib", "🧭", _t("Planner"), _t("You set a planned monthly contribution."),
             account.SavingCategories.Any(s => s.PlannedContribution > 0m));
         Add("streak_3", "🔥", _t("On a streak"), string.Format(_t("Hit your {0} target 3 periods running."), Pct(target)),

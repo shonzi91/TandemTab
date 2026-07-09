@@ -1388,6 +1388,17 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
         return SaveAsync();
     }
 
+    /// <summary>Reallocate spare budget toward a debt in one step: trim <paramref name="categoryId"/>'s budget to
+    /// <paramref name="newBudget"/> and set <paramref name="amount"/> aside toward <paramref name="savingCategoryId"/>.
+    /// Backs the "Move it to the loan" nudge action — one save, so the spare disappears and the earmark grows together.</summary>
+    public Task ReallocateBudgetToSaving(Guid categoryId, decimal newBudget, decimal thresholdPercent, bool notifyEvery,
+        Guid savingCategoryId, decimal amount)
+    {
+        Period.SetBudget(categoryId, Money(newBudget), thresholdPercent / 100m, notifyEvery);
+        Period.AllocateToSavings(savingCategoryId, Money(amount), Today(), null, PriorSaved);
+        return SaveAsync();
+    }
+
     public Task RemoveBudget(Guid categoryId)
     {
         Period.RemoveBudget(categoryId);

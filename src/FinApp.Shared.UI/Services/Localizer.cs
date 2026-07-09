@@ -444,6 +444,15 @@ public sealed class Localizer(IJSRuntime js)
         ["All expenses"] = "Всички разходи",
         ["Savings buckets"] = "Спестовни каси",
         ["Add to savings"] = "Добави към спестявания",
+        ["Move it to the loan"] = "Насочи към заема",
+        ["Move budget to your debt"] = "Насочи бюджет към дълга",
+        ["Move {0} from your {1} budget toward {2}?"] = "Да насоча ли {0} от бюджета „{1}“ към {2}?",
+        ["{0} budget trimmed to {1}"] = "Бюджетът „{0}“ намален до {1}",
+        ["{0} set aside toward {1}"] = "{0} заделени към {1}",
+        ["This moves real money into your debt earmark and lowers this budget. You can change both later."] =
+            "Това заделя реални пари към дълга и намалява този бюджет. Можете да промените и двете по-късно.",
+        ["Move it"] = "Насочи",
+        ["Collapse"] = "Свий",
         ["Budget savings"] = "Бюджетирай спестявания",
         ["Spend savings"] = "Похарчи спестявания",
         // Typed buckets (common vs debt-payoff) + the Debts section

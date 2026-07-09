@@ -215,7 +215,7 @@ else
                 </div>
                 <div class="card"><span class="card-label">@Loc["Spent"]</span><span class="card-value">@Fmt(State.TotalSpent)</span></div>
                 @{ var ovBand = ov.Band switch { HealthBand.Healthy => "score-ok", HealthBand.Average => "score-warn", _ => "score-bad" }; }
-                <button class="card card-score" @onclick="ToggleHomeInsights" title="@Loc["Health score & trends"]">
+                <button id="home-score" class="card card-score" @onclick="ToggleHomeInsights" title="@Loc["Health score & trends"]">
                     <span class="card-label">@Loc["Health score & trends"]</span>
                     <span class="card-value @ovBand">@(ov.HasData ? ov.Score.ToString() : "—")</span>
                     <span class="card-sub">@(ov.HasData ? ov.Verdict : "") @(_homeInsightsOpen ? "▲" : "▼")</span>
@@ -388,6 +388,7 @@ else
                             }
                         </section>
                     }
+                    <button class="home-collapse" @onclick="ToggleHomeInsights">▲ @Loc["Collapse"]</button>
                 }
             }
         </div>
@@ -1926,6 +1927,20 @@ else
                     </div>
                     break;
 
+                case Modal.Reallocate:
+                    <h3>@Loc["Move budget to your debt"]</h3>
+                    <p>@string.Format(Loc["Move {0} from your {1} budget toward {2}?"], Fmt(State.Money(_reallocAmount)), _reallocBudgetName, _reallocDebtName)</p>
+                    <ul class="realloc-effects">
+                        <li>✂️ @string.Format(Loc["{0} budget trimmed to {1}"], _reallocBudgetName, Fmt(State.Money(_reallocNewBudget)))</li>
+                        <li>💰 @string.Format(Loc["{0} set aside toward {1}"], Fmt(State.Money(_reallocAmount)), _reallocDebtName)</li>
+                    </ul>
+                    <small class="hint">@Loc["This moves real money into your debt earmark and lowers this budget. You can change both later."]</small>
+                    <div class="modal-actions">
+                        <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
+                        <button @onclick="DoReallocate">💪 @Loc["Move it"]</button>
+                    </div>
+                    break;
+
                 case Modal.BudgetSaving:
                     <h3>@Loc["Budget savings"] — @State.SavingBucketName(_spendBucketId)</h3>
                     <label>@Loc["Destination"]
@@ -2393,7 +2408,7 @@ else
 }
 
 @code {
-    private enum Modal { None, PickAccount, BankReview, BankConsent, AddCat, AddBudget, DisburseSaving, PayoffProjection, GoalProjection, EditCat, DeleteCat, CategoryDetail, AddAccount, EditAccount, DeleteAccount, RemoveMember, LeaveAccount, AddExpense, NextPeriod, RemovePeriod, EditExpense, DeleteExpense, SettleExpense, AddBucket, EditBucket, DeleteBucket, AddFund, EditFund, DeleteFund, Invite, Transfer, Deposit, EditDeposit, DeleteDeposit, ManageContribCats, ContribCat, DeleteContribCat, AddSaving, BudgetSaving, SpendSaving, EditSavingDeposit, DeleteSavingDeposit, EditTransfer, DeleteTransfer, EditPeriod, EditSavingMovement, DeleteSavingMovement, DeleteExternalTransfer, Achievements }
+    private enum Modal { None, PickAccount, BankReview, BankConsent, AddCat, AddBudget, DisburseSaving, PayoffProjection, GoalProjection, EditCat, DeleteCat, CategoryDetail, AddAccount, EditAccount, DeleteAccount, RemoveMember, LeaveAccount, AddExpense, NextPeriod, RemovePeriod, EditExpense, DeleteExpense, SettleExpense, AddBucket, EditBucket, DeleteBucket, AddFund, EditFund, DeleteFund, Invite, Transfer, Deposit, EditDeposit, DeleteDeposit, ManageContribCats, ContribCat, DeleteContribCat, AddSaving, BudgetSaving, SpendSaving, EditSavingDeposit, DeleteSavingDeposit, EditTransfer, DeleteTransfer, EditPeriod, EditSavingMovement, DeleteSavingMovement, DeleteExternalTransfer, Achievements, Reallocate }
     private enum Tab { Overview, Account, Budgets, Savings, Bank }
 
     private Tab _tab = Tab.Overview;
@@ -2404,11 +2419,9 @@ else
     private async Task ToggleHomeInsights()
     {
         _homeInsightsOpen = !_homeInsightsOpen;
-        if (_homeInsightsOpen)
-        {
-            await Task.Yield();   // let the section render before scrolling
-            try { await JS.InvokeVoidAsync("finappScrollIntoView", "score-detail"); } catch { /* host without the helper */ }
-        }
+        await Task.Yield();   // let the section render/collapse before scrolling
+        // Open → scroll the detail into view; close → bring the score card back up so you're not left down the page.
+        try { await JS.InvokeVoidAsync("finappScrollIntoView", _homeInsightsOpen ? "score-detail" : "home-score"); } catch { /* host without the helper */ }
     }
 
     // Per-row "⋯" action menu: the id of the row whose menu is open (Guid.Empty = none).
@@ -3754,7 +3767,12 @@ else
         if (LoanNudge() is { } tip)
         {
             Action? rotate = State.DiscretionaryLeftovers().Count(c => !_dismissedNudges.Contains(c.Id)) > 1 ? () => _nudgeIndex++ : null;
-            list.Add(new Notification("💡", tip.Title, tip.Desc, null, null, rotate, () => DismissNudge(tip.BudgetId), false));
+            // "Move it" reallocates for real (trims the budget + sets aside toward the debt) — only offer what free cash covers.
+            var moveable = Math.Min(tip.Amount, State.MaxAdditionalSavings.Amount);
+            var (label, act) = State.IsPeriodOpen && moveable > 0m
+                ? (Loc["Move it to the loan"], (Action)(() => OpenReallocate(tip.BudgetId, tip.DebtId, moveable, tip.BudgetName, tip.DebtName)))
+                : (null, (Action?)null);
+            list.Add(new Notification("💡", tip.Title, tip.Desc, label, act, rotate, () => DismissNudge(tip.BudgetId), false));
         }
         if (OverBudgetTip() is { } ob)
         {
@@ -3829,7 +3847,7 @@ else
     /// spare this period, proposing it toward the debt it helps most (showing interest/time saved). Read-only — moves
     /// no money. Rotates through the candidates via <see cref="_nudgeIndex"/>; a dismissed budget drops out for the
     /// rest of the period (see <see cref="_dismissedNudges"/>). Null when there's nothing left worth showing.</summary>
-    private (Guid BudgetId, string Title, string Desc)? LoanNudge()
+    private (Guid BudgetId, Guid DebtId, decimal Amount, string BudgetName, string DebtName, string Title, string Desc)? LoanNudge()
     {
         // Dismissals are per-period: forget them the moment the active period changes.
         if (_nudgeDismissPeriod != State.PeriodNumber) { _nudgeDismissPeriod = State.PeriodNumber; _dismissedNudges.Clear(); }
@@ -3848,7 +3866,7 @@ else
         var pick = usable[_nudgeIndex % usable.Count];
         var f2 = pick.Fast!.Value;
         return (
-            pick.Id,
+            pick.Id, debt.Id, pick.Amount, pick.Name, debt.Name,
             string.Format(Loc["Your {0} budget has about {1} to spare"], pick.Name, Fmt(State.Money(pick.Amount))),
             string.Format(Loc["Put it toward {0} every period and you'd clear it {1} sooner and save around {2} in interest. Budgets vary, so treat it as a what-if — essential budgets are never counted."],
                 debt.Name, MonthsText(b.Months - f2.Months), Fmt(State.Money(Math.Max(0m, b.TotalInterest - f2.TotalInterest)))));
@@ -3865,6 +3883,28 @@ else
 
     /// <summary>Hide this budget's suggestion for the rest of the period and jump the rotation to the next candidate.</summary>
     private void DismissNudge(Guid budgetId) { _dismissedNudges.Add(budgetId); _nudgeIndex++; }
+
+    // "Move it to the loan" reallocation (#14): trims the spare off a discretionary budget and sets it aside toward the
+    // debt, in one confirmed step — the coherent version of the reverted one-tap. Closes the loop so the nudge stops.
+    private Guid _reallocBudgetId, _reallocDebtId;
+    private decimal _reallocAmount, _reallocNewBudget;
+    private string _reallocBudgetName = "", _reallocDebtName = "";
+    private void OpenReallocate(Guid budgetId, Guid debtId, decimal amount, string budgetName, string debtName)
+    {
+        _reallocBudgetId = budgetId; _reallocDebtId = debtId; _reallocAmount = amount;
+        _reallocBudgetName = budgetName; _reallocDebtName = debtName;
+        _reallocNewBudget = Math.Max(0m, (State.BudgetFor(budgetId)?.Allocated.Amount ?? amount) - amount);
+        _bellOpen = false;
+        _modal = Modal.Reallocate;
+    }
+    private Task DoReallocate() => RunModal(async () =>
+    {
+        if (_reallocAmount <= 0m) return;
+        var b = State.BudgetFor(_reallocBudgetId);
+        await State.ReallocateBudgetToSaving(_reallocBudgetId, _reallocNewBudget,
+            (b?.AlertThreshold ?? 0.8m) * 100m, b?.NotifyOnEveryExpense ?? false, _reallocDebtId, _reallocAmount);
+        CloseModal();
+    });
 
     // Rotating over-budget alert: like the spare→debt nudge, but for NON-essential categories that are over budget.
     private int _overIndex = Random.Shared.Next(0, 997);
