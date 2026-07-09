@@ -685,6 +685,22 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     public IReadOnlyList<RecurringItem> DueRecurring() =>
         IsPeriodOpen ? Account.RecurringItems.Where(r => r.IsDue(Period.From, Period.To, Today())).ToList() : [];
 
+    /// <summary>Recurring items coming up within <paramref name="windowDays"/> days (pending, not yet due) — a heads-up.</summary>
+    public IReadOnlyList<RecurringItem> UpcomingRecurring(int windowDays = 5) =>
+        IsPeriodOpen ? Account.RecurringItems.Where(r => r.IsUpcoming(Period.From, Period.To, Today(), windowDays)).ToList() : [];
+
+    /// <summary>How many days until a recurring item is due, within the current period.</summary>
+    public int RecurringDaysUntilDue(RecurringItem r) => r.DaysUntilDue(Period.From, Period.To, Today());
+
+    /// <summary>Total of the known-amount recurring <b>bills</b> still expected (unhandled) this period — money that's
+    /// effectively already spoken for, even though it hasn't been logged yet. Reminder-only items are excluded (no
+    /// predictable amount). Keeps "free to allocate" honest.</summary>
+    public Money BillsDueThisPeriod =>
+        !IsPeriodOpen ? Money(0m)
+        : Money(Account.RecurringItems
+            .Where(r => r.Kind == RecurringKind.Expense && r.HasKnownAmount && r.IsPending(Period.From))
+            .Sum(r => r.ExpectedAmount));
+
     public Task AddRecurring(string name, RecurringKind kind, RecurringAmountMode mode, decimal expected, int dayOfMonth, Guid categoryId, Guid fundId, string? icon)
     {
         Account.AddRecurring(new RecurringItem(name, kind, mode, expected, dayOfMonth, categoryId, fundId, icon));

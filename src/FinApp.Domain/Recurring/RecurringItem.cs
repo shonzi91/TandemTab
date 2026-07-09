@@ -99,6 +99,24 @@ public sealed class RecurringItem : Entity
     public bool IsDue(DateOnly from, DateOnly to, DateOnly today) =>
         Active && LastHandledPeriodFrom != from && today >= DueDateWithin(from, to);
 
+    /// <summary>Active and not yet handled this period (whether or not its day has arrived) — i.e. still expected.</summary>
+    public bool IsPending(DateOnly from) => Active && LastHandledPeriodFrom != from;
+
+    /// <summary>Coming up soon: pending, not yet due, and its due date is within <paramref name="windowDays"/> of today.</summary>
+    public bool IsUpcoming(DateOnly from, DateOnly to, DateOnly today, int windowDays)
+    {
+        if (!IsPending(from)) return false;
+        var due = DueDateWithin(from, to);
+        return due > today && due <= today.AddDays(windowDays);
+    }
+
+    /// <summary>Whole days until this item's due date (negative if the day has already passed).</summary>
+    public int DaysUntilDue(DateOnly from, DateOnly to, DateOnly today) =>
+        DueDateWithin(from, to).DayNumber - today.DayNumber;
+
+    /// <summary>Has a predictable amount (Fixed/Typical) that can be counted toward "bills still due".</summary>
+    public bool HasKnownAmount => AmountMode != RecurringAmountMode.ReminderOnly;
+
     private static string Clean(string name) =>
         string.IsNullOrWhiteSpace(name) ? throw new ArgumentException("A name is required.", nameof(name)) : name.Trim();
 }

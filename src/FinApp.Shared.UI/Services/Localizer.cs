@@ -482,6 +482,13 @@ public sealed class Localizer(IJSRuntime js)
         ["Actual amount"] = "Реална сума",
         ["{0} is due — enter the amount."] = "{0} е с падеж — въведи сумата.",
         ["{0} is due (about {1}) — confirm it."] = "{0} е с падеж (около {1}) — потвърди.",
+        ["bills due"] = "предстоящи сметки",
+        ["Recurring bills expected this period that you haven't logged yet"] =
+            "Повтарящи се сметки, очаквани този период, които още не си вписал",
+        ["tomorrow"] = "утре",
+        ["in {0} days"] = "след {0} дни",
+        ["{0} (about {1}) is due {2}."] = "{0} (около {1}) е с падеж {2}.",
+        ["{0} is due {1}."] = "{0} е с падеж {1}.",
         ["Collapse"] = "Свий",
         ["Budget savings"] = "Бюджетирай спестявания",
         ["Spend savings"] = "Похарчи спестявания",

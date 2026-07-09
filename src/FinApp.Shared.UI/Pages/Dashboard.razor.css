@@ -63,6 +63,8 @@
 .bal-current strong { font-size: 1.15rem; }
 .bal-free { color: #6b7280; font-size: .72rem; }
 .bal-free.warn-text { color: #b45309; }
+.bal-bills { color: #9ca3af; font-size: .72rem; margin-left: 4px; }
+html.dark .bal-bills { color: #7c8a94; }
 
 .tabs { display: flex; gap: 4px; margin-bottom: 16px; border-bottom: 1px solid #eceef2; }
 .tab {

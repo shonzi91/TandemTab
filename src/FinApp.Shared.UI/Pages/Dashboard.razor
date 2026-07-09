@@ -159,6 +159,10 @@ else
                     @if (State.IsPeriodOpen)
                     {
                         <span class="bal-free @(State.IsOverAllocated ? "warn-text" : "")">@Fmt(State.DisplayFreeToAllocate(_bankStatus?.Balance, _bankStatus?.BalanceCurrency)) @Loc["free"]</span>
+                        @if (State.BillsDueThisPeriod is { Amount: > 0m } billsDue)
+                        {
+                            <span class="bal-bills" title="@Loc["Recurring bills expected this period that you haven't logged yet"]">· @Fmt(billsDue) @Loc["bills due"]</span>
+                        }
                     }
                 </span>
             </div>
@@ -3876,6 +3880,18 @@ else
                 : string.Format(Loc["{0} is due (about {1}) — confirm it."], due.Name, Fmt(State.Money(due.ExpectedAmount)));
             list.Add(new Notification(due.Icon ?? (due.Kind == RecurringKind.Income ? "💷" : "🔁"), text, null,
                 Loc["Confirm"], () => OpenConfirmRecurring(id), null, () => SkipRecurringFromBell(id), false));
+        }
+
+        // Recurring items coming up soon (not due yet) — a gentle heads-up so nothing sneaks up on you.
+        foreach (var soon in State.UpcomingRecurring())
+        {
+            var id = soon.Id;
+            var days = State.RecurringDaysUntilDue(soon);
+            var whenText = days <= 1 ? Loc["tomorrow"] : string.Format(Loc["in {0} days"], days);
+            var text = soon.HasKnownAmount
+                ? string.Format(Loc["{0} (about {1}) is due {2}."], soon.Name, Fmt(State.Money(soon.ExpectedAmount)), whenText)
+                : string.Format(Loc["{0} is due {1}."], soon.Name, whenText);
+            list.Add(new Notification("🗓️", text, null, Loc["Confirm"], () => OpenConfirmRecurring(id), null, () => SkipRecurringFromBell(id), false));
         }
 
         if (LoanNudge() is { } tip)
