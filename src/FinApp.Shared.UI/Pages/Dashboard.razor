@@ -3065,7 +3065,10 @@ else
     private async Task AutoHandleMappedDebitsAsync()
     {
         if (!State.HasSyncedFund || !State.IsPeriodOpen) return;
-        foreach (var tx in _bankPending.Where(t => t.Amount < 0).ToList())
+        // Only auto-file transactions that fall inside the current period. The sync window is ~90 days, so
+        // _bankPending also holds prior-period rows; filing those here would clamp their date onto this period's
+        // first day and dump a whole prior month into the current category. They stay pending for their own period.
+        foreach (var tx in BankDebits())
         {
             if (MappingFor(tx.Description) is not { Kind: "category" } m) continue;
             if (!State.CategoryOptions.Any(c => c.Category.Id == m.TargetId)) continue;
@@ -3084,7 +3087,9 @@ else
     private async Task AutoHandleMappedCreditsAsync()
     {
         if (!State.HasSyncedFund || !State.IsPeriodOpen) return;
-        foreach (var tx in _bankPending.Where(t => t.Amount > 0).ToList())
+        // Current-period rows only — see the note in AutoHandleMappedDebitsAsync (prior-period rows would be
+        // clamped onto this period's first day). They stay pending until their own period is viewed.
+        foreach (var tx in BankCredits())
         {
             if (MappingFor(tx.Description) is not { Kind: "fund" } m) continue;
             if (m.TargetId == State.SyncedFundId) continue;                        // source can't be the synced fund itself
@@ -3192,7 +3197,8 @@ else
             if (target == Guid.Empty) { _bankError = Loc["Pick something to map to first."]; return; }
             await State.SetBankMapping(tx.Description, kind, target);
             _bankMappings[BudgetingState.BankMatchKey(tx.Description)] = (kind, target);
-            // The new rule now covers every pending row from this merchant — auto-file them so the list clears itself.
+            // The new rule now covers this merchant's pending rows in the current period — auto-file those so the
+            // review list clears itself. Prior-period rows stay pending until their own period is viewed.
             await AutoHandleMappedDebitsAsync();
             await AutoHandleMappedCreditsAsync();
         }
