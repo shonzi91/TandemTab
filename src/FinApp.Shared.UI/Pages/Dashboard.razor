@@ -68,6 +68,7 @@ else
                                 {
                                     <button @onclick="() => RunAcct(OpenEditAccount)">✏️ @Loc["Rename account"]</button>
                                 }
+                                <button @onclick="() => RunAcct(OpenRecurring)">🔁 @Loc["Recurring"]</button>
                                 <button @onclick="MenuExport">📊 @Loc["Export to Excel"]</button>
                                 <button class="danger" @onclick="() => RunAcct(OpenLeaveAccount)">🚪 @Loc["Leave account"]</button>
                                 @if (State.IsOwnerOfCurrent)
@@ -1946,6 +1947,103 @@ else
                     </div>
                     break;
 
+                case Modal.Recurring:
+                    <div class="modal-head">
+                        <h3>🔁 @Loc["Recurring"]</h3>
+                        <span class="modal-head-actions"><button class="lbl-add" title="@Loc["Add recurring"]" @onclick="OpenAddRecurring">+</button></span>
+                    </div>
+                    <p class="hint">@Loc["Bills, salary and standing transfers that repeat monthly. They remind you when due — you confirm the real amount, so bills that vary stay accurate."]</p>
+                    @if (State.RecurringItems.Count == 0)
+                    {
+                        <p class="hint">@Loc["Nothing recurring yet. Add your rent, salary or a monthly bill."]</p>
+                    }
+                    else
+                    {
+                        <ul class="list">
+                            @foreach (var r in State.RecurringItems)
+                            {
+                                var rid = r.Id;
+                                var amountText = r.AmountMode == RecurringAmountMode.ReminderOnly
+                                    ? Loc["reminder only"]
+                                    : (r.AmountMode == RecurringAmountMode.Typical ? "~" : "") + Fmt(State.Money(r.ExpectedAmount));
+                                <li>
+                                    <span class="row-main">
+                                        <span class="cat-ico">@(r.Icon ?? (r.Kind == RecurringKind.Income ? "💷" : "🔁"))</span> @r.Name
+                                        <span class="row-note">· @amountText · @Loc["day"] @r.DayOfMonth@(r.Active ? "" : " · " + @Loc["paused"])</span>
+                                    </span>
+                                    <span class="row-actions">
+                                        <button class="exp-edit" title="@Loc["Edit"]" @onclick="() => OpenEditRecurring(rid)">✏️</button>
+                                        <button class="exp-edit" title="@Loc["Remove"]" @onclick="() => RemoveRecurringItem(rid)">🗑️</button>
+                                    </span>
+                                </li>
+                            }
+                        </ul>
+                    }
+                    <div class="modal-actions"><button class="ghost" @onclick="Back">@Loc["Close"]</button></div>
+                    break;
+
+                case Modal.RecurringEdit:
+                    <h3>@(_recEditId == Guid.Empty ? Loc["Add recurring"] : Loc["Edit recurring"])</h3>
+                    <div class="plan-toggle" role="group">
+                        <button type="button" class="chip @(_recKind == RecurringKind.Expense ? "on" : "")" @onclick="() => SetRecurringKind(RecurringKind.Expense)">💸 @Loc["Bill"]</button>
+                        <button type="button" class="chip @(_recKind == RecurringKind.Income ? "on" : "")" @onclick="() => SetRecurringKind(RecurringKind.Income)">💷 @Loc["Income"]</button>
+                    </div>
+                    <label>@Loc["Name"] <input type="text" @bind="_recName" placeholder="@(_recKind == RecurringKind.Income ? "Salary" : "Rent")" /></label>
+                    <label>@Loc["Category"]
+                        <select @bind="_recCategoryId">
+                            @if (_recKind == RecurringKind.Income)
+                            {
+                                @foreach (var c in State.ContributionCategories) { <option value="@c.Id">@c.Name</option> }
+                            }
+                            else
+                            {
+                                @foreach (var (cat, depth) in State.CategoryOptions) { <option value="@cat.Id">@CatOption(cat.Id, cat.Name, depth)</option> }
+                            }
+                        </select>
+                    </label>
+                    <label>@Loc["Fund"]
+                        <select @bind="_recFundId">
+                            @foreach (var f in State.SelectableFunds) { <option value="@f.Id">@f.Name</option> }
+                        </select>
+                    </label>
+                    <label>@Loc["Amount"]</label>
+                    <div class="plan-toggle" role="group">
+                        <button type="button" class="chip @(_recMode == RecurringAmountMode.Fixed ? "on" : "")" @onclick="() => _recMode = RecurringAmountMode.Fixed">@Loc["Fixed"]</button>
+                        <button type="button" class="chip @(_recMode == RecurringAmountMode.Typical ? "on" : "")" @onclick="() => _recMode = RecurringAmountMode.Typical">@Loc["Typical"]</button>
+                        <button type="button" class="chip @(_recMode == RecurringAmountMode.ReminderOnly ? "on" : "")" @onclick="() => _recMode = RecurringAmountMode.ReminderOnly">@Loc["Reminder only"]</button>
+                    </div>
+                    @if (_recMode != RecurringAmountMode.ReminderOnly)
+                    {
+                        <label>@(_recMode == RecurringAmountMode.Typical ? Loc["Typical amount"] : Loc["Amount"]) <input type="number" step="0.01" min="0" @bind="_recAmount" /></label>
+                        <small class="hint">@(_recMode == RecurringAmountMode.Typical ? Loc["An estimate that self-tunes toward what you actually pay."] : Loc["The same amount every month."])</small>
+                    }
+                    else
+                    {
+                        <small class="hint">@Loc["No amount — you'll enter the real figure each time it's due (good for a variable salary)."]</small>
+                    }
+                    <label>@Loc["Day of month"] <input type="number" step="1" min="1" max="28" @bind="_recDay" /></label>
+                    <div class="modal-actions">
+                        <button class="ghost" @onclick="() => _modal = Modal.Recurring">@Loc["Cancel"]</button>
+                        <button @onclick="SaveRecurring" disabled="@(string.IsNullOrWhiteSpace(_recName))">@Loc["Save"]</button>
+                    </div>
+                    break;
+
+                case Modal.RecurringConfirm:
+                    var rc = State.RecurringItems.FirstOrDefault(x => x.Id == _recConfirmId);
+                    <h3>@(rc?.Kind == RecurringKind.Income ? Loc["Confirm income"] : Loc["Confirm bill"])@(rc is null ? "" : " — " + rc.Name)</h3>
+                    @if (rc is not null)
+                    {
+                        <p class="hint">@(rc.AmountMode == RecurringAmountMode.ReminderOnly
+                            ? Loc["Enter what actually came in or went out."]
+                            : string.Format(Loc["Expected about {0}. Adjust to the real amount if it differs."], Fmt(State.Money(rc.ExpectedAmount))))</p>
+                    }
+                    <label>@Loc["Actual amount"] <input type="number" step="0.01" min="0" @bind="_recConfirmAmount" @bind:event="oninput" /></label>
+                    <div class="modal-actions inline-actions">
+                        <button class="ghost" @onclick="DoSkipRecurring">@Loc["Skip this month"]</button>
+                        <button @onclick="DoConfirmRecurring" disabled="@(_recConfirmAmount <= 0)">@Loc["Confirm"]</button>
+                    </div>
+                    break;
+
                 case Modal.BudgetSaving:
                     <h3>@Loc["Budget savings"] — @State.SavingBucketName(_spendBucketId)</h3>
                     <label>@Loc["Destination"]
@@ -2413,7 +2511,7 @@ else
 }
 
 @code {
-    private enum Modal { None, PickAccount, BankReview, BankConsent, AddCat, AddBudget, DisburseSaving, PayoffProjection, GoalProjection, EditCat, DeleteCat, CategoryDetail, AddAccount, EditAccount, DeleteAccount, RemoveMember, LeaveAccount, AddExpense, NextPeriod, RemovePeriod, EditExpense, DeleteExpense, SettleExpense, AddBucket, EditBucket, DeleteBucket, AddFund, EditFund, DeleteFund, Invite, Transfer, Deposit, EditDeposit, DeleteDeposit, ManageContribCats, ContribCat, DeleteContribCat, AddSaving, BudgetSaving, SpendSaving, EditSavingDeposit, DeleteSavingDeposit, EditTransfer, DeleteTransfer, EditPeriod, EditSavingMovement, DeleteSavingMovement, DeleteExternalTransfer, Achievements, Reallocate }
+    private enum Modal { None, PickAccount, BankReview, BankConsent, AddCat, AddBudget, DisburseSaving, PayoffProjection, GoalProjection, EditCat, DeleteCat, CategoryDetail, AddAccount, EditAccount, DeleteAccount, RemoveMember, LeaveAccount, AddExpense, NextPeriod, RemovePeriod, EditExpense, DeleteExpense, SettleExpense, AddBucket, EditBucket, DeleteBucket, AddFund, EditFund, DeleteFund, Invite, Transfer, Deposit, EditDeposit, DeleteDeposit, ManageContribCats, ContribCat, DeleteContribCat, AddSaving, BudgetSaving, SpendSaving, EditSavingDeposit, DeleteSavingDeposit, EditTransfer, DeleteTransfer, EditPeriod, EditSavingMovement, DeleteSavingMovement, DeleteExternalTransfer, Achievements, Reallocate, Recurring, RecurringEdit, RecurringConfirm }
     private enum Tab { Overview, Account, Budgets, Savings, Bank }
 
     private Tab _tab = Tab.Overview;
@@ -3769,6 +3867,17 @@ else
         foreach (var r in HomeReminders(ov))
             list.Add(new Notification(r.Icon, r.Text, null, r.ActionLabel, r.Act, null, null, r.Urgent));
 
+        // Recurring items that have come due this period — confirm the real amount (posts a normal expense/deposit).
+        foreach (var due in State.DueRecurring())
+        {
+            var id = due.Id;
+            var text = due.AmountMode == RecurringAmountMode.ReminderOnly
+                ? string.Format(Loc["{0} is due — enter the amount."], due.Name)
+                : string.Format(Loc["{0} is due (about {1}) — confirm it."], due.Name, Fmt(State.Money(due.ExpectedAmount)));
+            list.Add(new Notification(due.Icon ?? (due.Kind == RecurringKind.Income ? "💷" : "🔁"), text, null,
+                Loc["Confirm"], () => OpenConfirmRecurring(id), null, () => SkipRecurringFromBell(id), false));
+        }
+
         if (LoanNudge() is { } tip)
         {
             Action? rotate = State.DiscretionaryLeftovers().Count(c => !_dismissedNudges.Contains(c.Id)) > 1 ? () => _nudgeIndex++ : null;
@@ -3915,6 +4024,80 @@ else
             (b?.AlertThreshold ?? 0.8m) * 100m, b?.NotifyOnEveryExpense ?? false, _reallocDebtId, _reallocAmount);
         CloseModal();
     });
+
+    // --- Recurring items (BACKLOG #13, phase 1) ------------------------------------------------------
+    private Guid _recEditId;                 // Guid.Empty = adding a new one
+    private string _recName = "";
+    private string? _recIcon;
+    private RecurringKind _recKind = RecurringKind.Expense;
+    private RecurringAmountMode _recMode = RecurringAmountMode.Fixed;
+    private decimal _recAmount;
+    private int _recDay = 1;
+    private Guid _recCategoryId, _recFundId;
+    private Guid _recConfirmId;
+    private decimal _recConfirmAmount;
+
+    private void OpenRecurring() { _acctMenuOpen = false; _modal = Modal.Recurring; }
+
+    private void OpenAddRecurring()
+    {
+        _recEditId = Guid.Empty; _recName = ""; _recIcon = null; _recKind = RecurringKind.Expense;
+        _recMode = RecurringAmountMode.Fixed; _recAmount = 0; _recDay = 1;
+        _recFundId = State.SelectableFunds.FirstOrDefault()?.Id ?? State.RootFunds.FirstOrDefault()?.Id ?? Guid.Empty;
+        ResetRecurringCategory();
+        _modal = Modal.RecurringEdit;
+    }
+
+    private void OpenEditRecurring(Guid id)
+    {
+        if (State.RecurringItems.FirstOrDefault(r => r.Id == id) is not { } r) return;
+        _recEditId = r.Id; _recName = r.Name; _recIcon = r.Icon; _recKind = r.Kind; _recMode = r.AmountMode;
+        _recAmount = r.ExpectedAmount; _recDay = r.DayOfMonth; _recCategoryId = r.CategoryId; _recFundId = r.FundId;
+        _modal = Modal.RecurringEdit;
+    }
+
+    // When switching income/expense, point the category at a valid one for that kind.
+    private void SetRecurringKind(RecurringKind kind) { _recKind = kind; ResetRecurringCategory(); }
+    private void ResetRecurringCategory() =>
+        _recCategoryId = _recKind == RecurringKind.Income
+            ? State.ContributionCategories.FirstOrDefault()?.Id ?? Guid.Empty
+            : State.AllCategories.FirstOrDefault()?.Id ?? Guid.Empty;
+
+    private Task SaveRecurring() => RunModal(async () =>
+    {
+        if (string.IsNullOrWhiteSpace(_recName) || _recCategoryId == Guid.Empty || _recFundId == Guid.Empty) return;
+        if (_recEditId == Guid.Empty)
+            await State.AddRecurring(_recName, _recKind, _recMode, _recAmount, _recDay, _recCategoryId, _recFundId, _recIcon);
+        else
+            await State.UpdateRecurring(_recEditId, _recName, _recMode, _recAmount, _recDay, _recCategoryId, _recFundId, _recIcon);
+        _modal = Modal.Recurring;
+    });
+
+    private Task RemoveRecurringItem(Guid id) => RunModal(() => State.RemoveRecurring(id));
+
+    private void OpenConfirmRecurring(Guid id)
+    {
+        if (State.RecurringItems.FirstOrDefault(r => r.Id == id) is not { } r) return;
+        _recConfirmId = r.Id;
+        _recConfirmAmount = r.AmountMode == RecurringAmountMode.ReminderOnly ? 0m : r.ExpectedAmount;
+        _bellOpen = false;
+        _modal = Modal.RecurringConfirm;
+    }
+
+    private Task DoConfirmRecurring() => RunModal(async () =>
+    {
+        if (_recConfirmAmount <= 0m) return;
+        await State.ConfirmRecurring(_recConfirmId, _recConfirmAmount);
+        CloseModal();
+    });
+
+    private Task DoSkipRecurring() => RunModal(async () => { await State.SkipRecurring(_recConfirmId); CloseModal(); });
+
+    // Dismissing a due-recurring notification from the bell skips it for this period (so it won't re-nag).
+    private void SkipRecurringFromBell(Guid id) => _ = InvokeAsync(async () => { await State.SkipRecurring(id); StateHasChanged(); });
+
+    private string RecurringName(Guid categoryId, RecurringKind kind) =>
+        kind == RecurringKind.Income ? State.ContributionCategoryName(categoryId) : State.CategoryName(categoryId);
 
     // Rotating over-budget alert: like the spare→debt nudge, but for NON-essential categories that are over budget.
     private int _overIndex = Random.Shared.Next(0, 997);

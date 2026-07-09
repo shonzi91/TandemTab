@@ -5,6 +5,7 @@ using FinApp.Domain.Budgeting;
 using FinApp.Domain.Common;
 using FinApp.Domain.Funds;
 using FinApp.Domain.Periods;
+using FinApp.Domain.Recurring;
 using FinApp.Domain.Savings;
 
 namespace FinApp.Contracts;
@@ -38,7 +39,9 @@ public static class AccountSnapshotSerializer
             account.ContributionCategories.Select(c => new ContributionCategoryNode(c.Id, c.Name, c.Icon)).ToList(),
             account.SavingsRateTarget,
             account.AchievementsAnchor,
-            account.AchievementLog.Count == 0 ? null : new Dictionary<string, DateOnly>(account.AchievementLog));
+            account.AchievementLog.Count == 0 ? null : new Dictionary<string, DateOnly>(account.AchievementLog),
+            account.RecurringItems.Count == 0 ? null : account.RecurringItems.Select(r => new RecurringItemNode(
+                r.Id, r.Name, r.Kind, r.AmountMode, r.ExpectedAmount, r.DayOfMonth, r.CategoryId, r.FundId, r.Active, r.Icon, r.LastHandledPeriodFrom)).ToList());
         return JsonSerializer.Serialize(node, Json);
     }
 
@@ -93,6 +96,13 @@ public static class AccountSnapshotSerializer
         if (node.AchievementsAnchor is { } anchor) account.SetAchievementsAnchor(anchor);
         if (node.AchievementLog is { } log)
             foreach (var (key, on) in log) account.RecordAchievement(key, on);
+        foreach (var r in node.Recurring ?? [])
+        {
+            var item = Build(new RecurringItem(r.Name, r.Kind, r.AmountMode, r.ExpectedAmount, r.DayOfMonth, r.CategoryId, r.FundId, r.Icon), r.Id);
+            if (!r.Active) item.SetActive(false);
+            if (r.LastHandledPeriodFrom is { } h) item.MarkHandled(h);
+            account.AddRecurring(item);
+        }
         return account;
     }
 
@@ -207,7 +217,11 @@ public static class AccountSnapshotSerializer
         List<ContributionCategoryNode>? ContributionCategories = null,
         decimal SavingsRateTarget = 0.20m,
         DateOnly? AchievementsAnchor = null,
-        Dictionary<string, DateOnly>? AchievementLog = null);
+        Dictionary<string, DateOnly>? AchievementLog = null,
+        List<RecurringItemNode>? Recurring = null);
+
+    private record RecurringItemNode(Guid Id, string Name, RecurringKind Kind, RecurringAmountMode AmountMode,
+        decimal ExpectedAmount, int DayOfMonth, Guid CategoryId, Guid FundId, bool Active, string? Icon, DateOnly? LastHandledPeriodFrom);
 
     private record MemberNode(Guid Id, Guid UserId, string DisplayName);
     private record ContributionCategoryNode(Guid Id, string Name, string? Icon = null);

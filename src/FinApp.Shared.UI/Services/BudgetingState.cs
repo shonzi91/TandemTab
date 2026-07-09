@@ -4,6 +4,7 @@ using FinApp.Domain.Budgeting;
 using FinApp.Domain.Common;
 using FinApp.Domain.Funds;
 using FinApp.Domain.Periods;
+using FinApp.Domain.Recurring;
 using FinApp.Domain.Savings;
 using FinApp.Domain.Services;
 
@@ -676,6 +677,56 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
         Period.RemoveContribution(contributionId);
         return SaveAsync();
     }
+
+    // --- Recurring items (BACKLOG #13, phase 1) — expectations that post a real expense/deposit on confirm ------
+    public IReadOnlyList<RecurringItem> RecurringItems => Account.RecurringItems;
+
+    /// <summary>Recurring items due (and not yet handled) in the open period as of today — what the bell prompts for.</summary>
+    public IReadOnlyList<RecurringItem> DueRecurring() =>
+        IsPeriodOpen ? Account.RecurringItems.Where(r => r.IsDue(Period.From, Period.To, Today())).ToList() : [];
+
+    public Task AddRecurring(string name, RecurringKind kind, RecurringAmountMode mode, decimal expected, int dayOfMonth, Guid categoryId, Guid fundId, string? icon)
+    {
+        Account.AddRecurring(new RecurringItem(name, kind, mode, expected, dayOfMonth, categoryId, fundId, icon));
+        return SaveAsync();
+    }
+
+    public Task UpdateRecurring(Guid id, string name, RecurringAmountMode mode, decimal expected, int dayOfMonth, Guid categoryId, Guid fundId, string? icon)
+    {
+        Account.FindRecurring(id)?.Update(name, mode, expected, dayOfMonth, categoryId, fundId, icon);
+        return SaveAsync();
+    }
+
+    public Task RemoveRecurring(Guid id) { Account.RemoveRecurring(id); return SaveAsync(); }
+    public Task SetRecurringActive(Guid id, bool active) { Account.FindRecurring(id)?.SetActive(active); return SaveAsync(); }
+
+    /// <summary>Confirm a due recurring item with the <b>real</b> amount: posts a normal expense/contribution, nudges a
+    /// Typical estimate toward the actual, and marks it handled for this period — all in a single save.</summary>
+    public Task ConfirmRecurring(Guid id, decimal actualAmount)
+    {
+        if (Account.FindRecurring(id) is not { } item) return Task.CompletedTask;
+        if (actualAmount > 0m)
+        {
+            var date = item.DueDateWithin(Period.From, Period.To);
+            if (item.Kind == RecurringKind.Expense)
+            {
+                var expense = new Expense(item.CategoryId, Money(actualAmount), date, CurrentMemberId, item.FundId, item.Name);
+                expense.SetFundSynced(FundIsSynced(item.FundId));
+                Period.AddExpense(expense);
+            }
+            else
+            {
+                var contribution = Period.Deposit(CurrentMemberId, Money(actualAmount), item.CategoryId, item.FundId, date);
+                contribution.SetFundSynced(FundIsSynced(item.FundId));
+            }
+            item.LearnFromActual(actualAmount);
+        }
+        item.MarkHandled(Period.From);
+        return SaveAsync();
+    }
+
+    /// <summary>Skip a due recurring item this period (marks it handled without posting anything).</summary>
+    public Task SkipRecurring(Guid id) { Account.FindRecurring(id)?.MarkHandled(Period.From); return SaveAsync(); }
 
     /// <summary>Log per-fund reconciliation drift as recategorizable <b>Adjustment</b> entries in the current
     /// period so its books reconcile to reality: an <i>expense</i> where a fund holds less than the ledger expected,

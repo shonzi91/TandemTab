@@ -48,6 +48,7 @@ public sealed class FinAppDbContext(DbContextOptions<FinAppDbContext> options) :
             a.Ignore(x => x.SavingsRateTarget);
             a.Ignore(x => x.AchievementsAnchor);   // body data — rides in the snapshot, not the relational header
             a.Ignore(x => x.AchievementLog);       // body data — rides in the snapshot
+            a.Ignore(x => x.RecurringItems);       // body data — recurring templates ride in the snapshot
 
             OwnedList(a, x => x.Members);
             OwnedList(a, x => x.Categories);

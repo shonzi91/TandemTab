@@ -2,6 +2,7 @@ using FinApp.Domain.Budgeting;
 using FinApp.Domain.Common;
 using FinApp.Domain.Funds;
 using FinApp.Domain.Periods;
+using FinApp.Domain.Recurring;
 using FinApp.Domain.Savings;
 
 namespace FinApp.Domain.Accounts;
@@ -18,6 +19,7 @@ public sealed class Account : Entity
     private readonly List<ContributionCategory> _contributionCategories = [];
     private readonly List<Fund> _funds = [];
     private readonly List<Period> _periods = [];
+    private readonly List<RecurringItem> _recurring = [];
 
     public string Name { get; private set; }
     public string Currency { get; }
@@ -66,6 +68,23 @@ public sealed class Account : Entity
 
     /// <summary>Periods ordered oldest → newest.</summary>
     public IReadOnlyList<Period> Periods => _periods;
+
+    /// <summary>Recurring expectations (bills, salary, standing transfers). Body data — travels in the snapshot.</summary>
+    public IReadOnlyList<RecurringItem> RecurringItems => _recurring;
+
+    public RecurringItem AddRecurring(RecurringItem item)
+    {
+        ArgumentNullException.ThrowIfNull(item);
+        _recurring.Add(item);
+        return item;
+    }
+
+    public RecurringItem? FindRecurring(Guid id) => _recurring.FirstOrDefault(r => r.Id == id);
+
+    public void RemoveRecurring(Guid id)
+    {
+        if (_recurring.FirstOrDefault(r => r.Id == id) is { } item) _recurring.Remove(item);
+    }
 
     public Account(string name, string currency)
     {
