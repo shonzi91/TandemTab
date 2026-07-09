@@ -452,6 +452,36 @@ public sealed class Localizer(IJSRuntime js)
         ["This moves real money into your debt earmark and lowers this budget. You can change both later."] =
             "Това заделя реални пари към дълга и намалява този бюджет. Можете да промените и двете по-късно.",
         ["Move it"] = "Насочи",
+        ["Recurring"] = "Повтарящи се",
+        ["Add recurring"] = "Добави повтарящо се",
+        ["Edit recurring"] = "Редактирай повтарящо се",
+        ["Bills, salary and standing transfers that repeat monthly. They remind you when due — you confirm the real amount, so bills that vary stay accurate."] =
+            "Сметки, заплата и постоянни преводи, които се повтарят месечно. Напомнят ти при падеж — ти потвърждаваш реалната сума, така че променливите сметки остават точни.",
+        ["Nothing recurring yet. Add your rent, salary or a monthly bill."] =
+            "Още няма повтарящи се. Добави наем, заплата или месечна сметка.",
+        ["reminder only"] = "само напомняне",
+        ["day"] = "ден",
+        ["paused"] = "на пауза",
+        ["Bill"] = "Сметка",
+        ["Income"] = "Доход",
+        ["Fixed"] = "Фиксирана",
+        ["Typical"] = "Обичайна",
+        ["Reminder only"] = "Само напомняне",
+        ["Typical amount"] = "Обичайна сума",
+        ["An estimate that self-tunes toward what you actually pay."] =
+            "Приблизителна сума, която сама се настройва към това, което реално плащаш.",
+        ["The same amount every month."] = "Една и съща сума всеки месец.",
+        ["No amount — you'll enter the real figure each time it's due (good for a variable salary)."] =
+            "Без сума — въвеждаш реалната всеки път при падеж (удобно за променлива заплата).",
+        ["Day of month"] = "Ден от месеца",
+        ["Confirm income"] = "Потвърди дохода",
+        ["Confirm bill"] = "Потвърди сметката",
+        ["Enter what actually came in or went out."] = "Въведи какво реално влезе или излезе.",
+        ["Expected about {0}. Adjust to the real amount if it differs."] =
+            "Очаквано около {0}. Коригирай към реалната сума, ако се различава.",
+        ["Actual amount"] = "Реална сума",
+        ["{0} is due — enter the amount."] = "{0} е с падеж — въведи сумата.",
+        ["{0} is due (about {1}) — confirm it."] = "{0} е с падеж (около {1}) — потвърди.",
         ["Collapse"] = "Свий",
         ["Budget savings"] = "Бюджетирай спестявания",
         ["Spend savings"] = "Похарчи спестявания",

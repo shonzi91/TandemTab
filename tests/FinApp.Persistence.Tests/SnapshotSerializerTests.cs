@@ -244,6 +244,53 @@ public class SnapshotSerializerTests
     }
 
     [Fact]
+    public void Recurring_items_round_trip()
+    {
+        var account = new Account("Home", "EUR");
+        account.AssignOwner(Guid.NewGuid(), "Me");
+        var food = account.AddCategory("Food");
+        account.AddDefaultFunds();
+        var bank = account.FundId("Bank");
+
+        var rent = account.AddRecurring(new FinApp.Domain.Recurring.RecurringItem(
+            "Rent", FinApp.Domain.Recurring.RecurringKind.Expense, FinApp.Domain.Recurring.RecurringAmountMode.Fixed,
+            900m, 1, food.Id, bank, "🏠"));
+        var elec = account.AddRecurring(new FinApp.Domain.Recurring.RecurringItem(
+            "Electricity", FinApp.Domain.Recurring.RecurringKind.Expense, FinApp.Domain.Recurring.RecurringAmountMode.Typical,
+            64m, 15, food.Id, bank));
+        elec.MarkHandled(new DateOnly(2026, 1, 1));
+        elec.SetActive(false);
+
+        var copy = AccountSnapshotSerializer.Deserialize(AccountSnapshotSerializer.Serialize(account));
+
+        Assert.Equal(2, copy.RecurringItems.Count);
+        var rentCopy = copy.FindRecurring(rent.Id)!;
+        Assert.Equal("Rent", rentCopy.Name);
+        Assert.Equal("🏠", rentCopy.Icon);
+        Assert.Equal(FinApp.Domain.Recurring.RecurringAmountMode.Fixed, rentCopy.AmountMode);
+        Assert.Equal(900m, rentCopy.ExpectedAmount);
+        Assert.Equal(1, rentCopy.DayOfMonth);
+        Assert.True(rentCopy.Active);
+
+        var elecCopy = copy.FindRecurring(elec.Id)!;
+        Assert.Equal(FinApp.Domain.Recurring.RecurringAmountMode.Typical, elecCopy.AmountMode);
+        Assert.False(elecCopy.Active);
+        Assert.Equal(new DateOnly(2026, 1, 1), elecCopy.LastHandledPeriodFrom);
+    }
+
+    [Fact]
+    public void Legacy_snapshot_without_recurring_defaults_to_empty()
+    {
+        var legacy = """
+            {"Id":"11111111-1111-1111-1111-111111111111","Name":"Old","Currency":"EUR",
+             "OwnerUserId":"22222222-2222-2222-2222-222222222222","Members":[],"Funds":[],
+             "Categories":[],"SavingCategories":[],"Periods":[]}
+            """;
+        var account = AccountSnapshotSerializer.Deserialize(legacy);
+        Assert.Empty(account.RecurringItems);
+    }
+
+    [Fact]
     public void Legacy_snapshot_without_savings_target_defaults_to_20_percent()
     {
         // A snapshot produced before SavingsRateTarget existed has no such field.
