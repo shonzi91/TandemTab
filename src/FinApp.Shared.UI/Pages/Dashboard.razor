@@ -4286,19 +4286,25 @@ else
         catch { _importError = Loc["Couldn't read that file."]; }
     }
 
-    // Best-guess which CSV columns hold the date/description/amount from their header names.
+    // Best-guess which CSV columns hold the date/description/amount from their header names. Keys are tried in order,
+    // so a more specific header (e.g. "Completed Date") wins over a generic one ("Started Date"). Covers common
+    // English and Bulgarian statement headers; the user can still adjust any of them in the mapper.
     private void GuessCsvColumns()
     {
-        int Find(params string[] keys) => _csvHeaders
-            .Select((h, i) => (h: h.ToLowerInvariant(), i))
-            .Where(x => keys.Any(k => x.h.Contains(k)))
-            .Select(x => (int?)x.i).FirstOrDefault() ?? -1;
-        _csvDate = Math.Max(0, Find("date", "posted"));
-        _csvDesc = Math.Max(0, Find("desc", "payee", "detail", "narrat", "memo", "reference", "name"));
-        _csvDebit = Find("debit", "paid out", "withdraw", "money out");
-        _csvCredit = Find("credit", "paid in", "deposit", "money in");
-        _csvAmount = Math.Max(0, Find("amount", "value"));
-        _csvUseDebitCredit = _csvDebit >= 0 && _csvCredit >= 0 && Find("amount", "value") < 0;
+        int Find(params string[] keys)
+        {
+            foreach (var k in keys)
+                for (var i = 0; i < _csvHeaders.Count; i++)
+                    if (_csvHeaders[i].ToLowerInvariant().Contains(k)) return i;
+            return -1;
+        }
+        _csvDate = Math.Max(0, Find("completed date", "value date", "book", "posted", "дата на осчетоводяване", "дата", "date"));
+        _csvDesc = Math.Max(0, Find("description", "narrat", "reference", "payee", "detail", "memo", "основание", "получател", "контрагент", "описание", "name"));
+        _csvDebit = Find("debit", "paid out", "withdraw", "money out", "дебит");
+        _csvCredit = Find("credit", "paid in", "money in", "кредит");
+        _csvAmount = Find("amount", "сума", "value");
+        _csvUseDebitCredit = _csvDebit >= 0 && _csvCredit >= 0 && _csvAmount < 0;
+        if (_csvAmount < 0) _csvAmount = 0;
     }
 
     private void ApplyCsvMapping()

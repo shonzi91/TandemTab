@@ -70,6 +70,34 @@ public class BankFileParserTests
     }
 
     [Fact]
+    public void Revolut_csv_with_datetime_and_completed_date_column()
+    {
+        var csv =
+            "Type,Product,Started Date,Completed Date,Description,Amount,Fee,Currency,State,Balance\n" +
+            "Card Payment,Current,2026-06-29 17:12:50,2026-07-01 12:09:37,фантастико,-2.55,0.00,EUR,COMPLETED,131.66\n" +
+            "Topup,Current,2026-07-03 21:42:49,2026-07-03 21:43:13,Top-up by *3337,200.00,0.00,EUR,COMPLETED,251.67\n";
+        var (headers, rows) = BankFileParser.ReadCsv(csv);
+        Assert.Equal("Completed Date", headers[3]);
+        // Use the Completed Date column (index 3) — the datetime's time part must be tolerated.
+        var txns = BankFileParser.ParseCsv(rows, datecol: 3, desccol: 4, amountcol: 5, debitcol: null, creditcol: null);
+        Assert.Equal(2, txns.Count);
+        Assert.Equal(new DateOnly(2026, 7, 1), txns[0].Date);
+        Assert.Equal(-2.55m, txns[0].Amount);
+        Assert.Equal("фантастико", txns[0].Description);
+        Assert.Equal(200.00m, txns[1].Amount);   // top-up = money in
+    }
+
+    [Theory]
+    [InlineData("2026-07-01 12:09:37", 2026, 7, 1)]
+    [InlineData("2026-07-01T12:09:37", 2026, 7, 1)]
+    [InlineData("15/01/2026 09:30", 2026, 1, 15)]
+    public void Date_parsing_tolerates_a_time_component(string raw, int y, int m, int d)
+    {
+        Assert.True(BankFileParser.TryLooseDate(raw, out var date));
+        Assert.Equal(new DateOnly(y, m, d), date);
+    }
+
+    [Fact]
     public void Detect_by_extension_and_content()
     {
         Assert.Equal(BankFileParser.Format.Ofx, BankFileParser.Detect("statement.ofx", ""));

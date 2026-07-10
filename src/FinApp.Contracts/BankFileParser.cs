@@ -218,16 +218,23 @@ public static class BankFileParser
         "MM/dd/yyyy", "d/M/yyyy", "M/d/yyyy", "yyyyMMdd", "dd/MM/yy", "MM/dd/yy",
     };
 
-    /// <summary>Parse a date across the common bank formats. ISO and dd/MM are tried before MM/dd, so European
+    /// <summary>Parse a date across the common bank formats. Handles a trailing time component (e.g. Revolut's
+    /// "2026-07-01 12:09:37") by keeping only the date part. ISO and dd/MM are tried before MM/dd, so European
     /// statements read correctly; genuinely ambiguous values are shown to the user in the review step.</summary>
     public static bool TryLooseDate(string raw, out DateOnly date)
     {
         date = default;
         if (string.IsNullOrWhiteSpace(raw)) return false;
         var s = raw.Trim().Replace("'", "/");
+        // Drop a trailing time part ("2026-07-01 12:09:37" or "2026-07-01T12:09:37") — statements often include it.
+        var sep = s.IndexOfAny([' ', 'T', 't']);
+        var datePart = sep > 0 ? s[..sep] : s;
         foreach (var f in DateFormats)
-            if (DateOnly.TryParseExact(s, f, CultureInfo.InvariantCulture, DateTimeStyles.None, out date)) return true;
-        return DateOnly.TryParse(s, CultureInfo.InvariantCulture, DateTimeStyles.None, out date);
+            if (DateOnly.TryParseExact(datePart, f, CultureInfo.InvariantCulture, DateTimeStyles.None, out date)) return true;
+        if (DateOnly.TryParse(datePart, CultureInfo.InvariantCulture, DateTimeStyles.None, out date)) return true;
+        // Last resort: parse the whole thing as a datetime and take the date.
+        if (DateTime.TryParse(s, CultureInfo.InvariantCulture, DateTimeStyles.None, out var dt)) { date = DateOnly.FromDateTime(dt); return true; }
+        return false;
     }
 
     private static string Clean(string s) => string.Join(' ', s.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)).Trim();
