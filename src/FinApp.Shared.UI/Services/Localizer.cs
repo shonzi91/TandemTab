@@ -455,6 +455,7 @@ public sealed class Localizer(IJSRuntime js)
         ["Recurring"] = "Повтарящи се",
         ["Add recurring"] = "Добави повтарящо се",
         ["Bucket"] = "Кофичка",
+        ["External"] = "Външна",
         ["Edit recurring"] = "Редактирай повтарящо се",
         ["Bills, salary and standing transfers that repeat monthly. They remind you when due — you confirm the real amount, so bills that vary stay accurate."] =
             "Сметки, заплата и постоянни преводи, които се повтарят месечно. Напомнят ти при падеж — ти потвърждаваш реалната сума, така че променливите сметки остават точни.",
@@ -607,8 +608,8 @@ public sealed class Localizer(IJSRuntime js)
         ["No income added this period yet — log it so your plan reflects real money."] =
             "Още няма добавен доход този период — впиши го, за да отразява планът реални пари.",
         ["Add income"] = "Добави доход",
-        ["You've budgeted {0} more than you have right now — budgets are plans, not commitments, so trim one or top up when you can."] =
-            "Разпределили сте с {0} повече, отколкото имате в момента — бюджетите са планове, не задължения, така че намалете някой или добавете пари, когато можете.",
+        ["Your remaining budgets are {0} more than you have left — budgets are plans, not commitments, so trim one or top up when you can."] =
+            "Оставащите ви бюджети са с {0} повече от парите, които ви остават — бюджетите са планове, не задължения, така че намалете някой или добавете пари, когато можете.",
         ["Money came in this period — move some into savings while it's here."] = "Този период постъпиха средства — задели част, докато са налични.",
         ["Milestones"] = "Постижения",
         ["Saver"] = "Спестовник",

@@ -68,7 +68,6 @@ else
                                 {
                                     <button @onclick="() => RunAcct(OpenEditAccount)">✏️ @Loc["Rename account"]</button>
                                 }
-                                <button @onclick="() => RunAcct(OpenRecurring)">🔁 @Loc["Recurring"]</button>
                                 <button @onclick="MenuExport">📊 @Loc["Export to Excel"]</button>
                                 <button class="danger" @onclick="() => RunAcct(OpenLeaveAccount)">🚪 @Loc["Leave account"]</button>
                                 @if (State.IsOwnerOfCurrent)
@@ -80,18 +79,9 @@ else
                     </span>
                     @if (_bankStatus?.Enabled == true)
                     {
-                        <span class="acct-bank">
-                            <button class="link" title="@Loc["External accounts"]" @onclick="ShowBankTab">🏦</button>
-                            @if (_bankStatus.Connected)
-                            {
-                                <button class="link" title="@Loc["Fetch new transactions"]" @onclick="SyncBankAsync" disabled="@_bankBusy">🔄</button>
-                                @if (_bankStatus.LastSyncedAt is { } synced)
-                                {
-                                    <span class="acct-sync-note" title="@Loc["last synced"]">@synced.LocalDateTime.ToString("dd MMM HH:mm")</span>
-                                }
-                            }
-                        </span>
+                        <button class="acct-chip" title="@Loc["External accounts"]" @onclick="ShowBankTab">🏦 <span class="acct-chip-label">@(_bankStatus.Connected ? (_bankStatus.InstitutionName ?? Loc["External"]) : Loc["External"])</span></button>
                     }
+                    <button class="acct-chip" title="@Loc["Recurring"]" @onclick="OpenRecurring">🔁 <span class="acct-chip-label">@Loc["Recurring"]</span></button>
                     <button class="link" title="@Loc["Achievements"]" @onclick="() => _modal = Modal.Achievements">🏆</button>
                     <span class="acct-notify">
                         <button class="link bell" title="@Loc["Notifications"]" @onclick="() => _bellOpen = !_bellOpen">
@@ -703,10 +693,10 @@ else
                     <span class="insight-h">@Loc["This month's budgets"]</span>
                     <span class="spending-sub">@Fmt(State.TotalSpent) @Loc["of"] @Fmt(State.TotalBudgeted) @Loc["spent"]</span>
                 </div>
-                @{ var overPlanned = State.TotalBudgeted - State.DisplayClosingBalance(_bankStatus?.Balance, _bankStatus?.BalanceCurrency); }
+                @{ var overPlanned = (State.TotalBudgeted - State.TotalSpent) - State.DisplayClosingBalance(_bankStatus?.Balance, _bankStatus?.BalanceCurrency); }
                 @if (overPlanned.Amount > 0m)
                 {
-                    <p class="budget-over-note">💡 @string.Format(Loc["You've budgeted {0} more than you have right now — budgets are plans, not commitments, so trim one or top up when you can."], Fmt(overPlanned))</p>
+                    <p class="budget-over-note">💡 @string.Format(Loc["Your remaining budgets are {0} more than you have left — budgets are plans, not commitments, so trim one or top up when you can."], Fmt(overPlanned))</p>
                 }
                 @{
                     // Top-level categories only — sub-categories roll up into their parent's ring.
