@@ -36,11 +36,13 @@ public sealed class BankSyncService(FinAppDbContext db, EnableBankingClient eb, 
     private async Task<bool> BankAllowedAsync(Guid userId, CancellationToken ct) =>
         eb.IsEnabled && policy.IsAllowed((await db.Users.FindAsync([userId], ct))?.Email);
 
-    /// <summary>Throw 403 unless this user may use bank sync. Guards the provider-calling / linking endpoints so a
-    /// non-allowlisted caller can't reach Open Banking directly, even though the UI is already hidden for them.</summary>
+    /// <summary>Throw 403 unless this user is on the bank allowlist. Guards every bank endpoint so a non-allowlisted
+    /// caller can't reach the feature directly, even though the UI is already hidden for them. Deliberately checks only
+    /// the allowlist (not whether the provider is configured) so the DB-backed endpoints still work in environments
+    /// without Open Banking credentials — an unconfigured provider surfaces its own error on the calls that need it.</summary>
     private async Task EnsureBankAllowedAsync(Guid userId, CancellationToken ct)
     {
-        if (!await BankAllowedAsync(userId, ct))
+        if (!policy.IsAllowed((await db.Users.FindAsync([userId], ct))?.Email))
             throw new ApiException(StatusCodes.Status403Forbidden, "External bank sync isn't available on this account yet.");
     }
 
