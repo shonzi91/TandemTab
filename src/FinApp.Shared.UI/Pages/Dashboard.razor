@@ -574,16 +574,11 @@ else
                 </section>
             }
 
-            @if (_bankStatus is { Enabled: true, Connected: true })
+            @if (_bankStatus is { Enabled: true, Connected: true } && BankCredits() is { Count: > 0 } bankCredits)
             {
-                var bankCredits = BankCredits();
                 <section class="panel">
                     <div class="panel-head"><h2>💰 @Loc["Incoming from bank"]</h2></div>
-                    @if (bankCredits.Count == 0)
-                    {
-                        <p class="hint">@Loc["No incoming money to review right now. It syncs automatically; use 🔄 at the top to fetch now."]</p>
-                    }
-                    else if (!State.HasSyncedFund)
+                    @if (!State.HasSyncedFund)
                     {
                         <div class="alert warn-bg"><span>@Loc["Mark a fund as synced to this bank (Edit a fund) to receive these."]</span></div>
                     }
@@ -696,7 +691,7 @@ else
                     <span class="insight-h">@Loc["This month's budgets"]</span>
                     <span class="spending-sub">@Fmt(State.TotalSpent) @Loc["of"] @Fmt(State.TotalBudgeted) @Loc["spent"]</span>
                 </div>
-                @{ var overPlanned = (State.TotalBudgeted - State.TotalSpent) - State.DisplayClosingBalance(_bankStatus?.Balance, _bankStatus?.BalanceCurrency); }
+                @{ var overPlanned = (State.TotalBudgeted - State.TotalSpent) - State.DisplayFreeToAllocate(_bankStatus?.Balance, _bankStatus?.BalanceCurrency); }
                 @if (overPlanned.Amount > 0m)
                 {
                     <p class="budget-over-note">💡 @string.Format(Loc["Your remaining budgets are {0} more than you have left — budgets are plans, not commitments, so trim one or top up when you can."], Fmt(overPlanned))</p>
@@ -858,12 +853,11 @@ else
                 }
             </section>
 
-            @if (_bankStatus is { Enabled: true, Connected: true })
+            @if (_bankStatus is { Enabled: true, Connected: true } && BankDebits() is { Count: > 0 } bankExpenses)
             {
-                var bankExpenses = BankDebits();
                 <section class="panel">
                     <div class="panel-head">
-                        @if (bankExpenses.Count > 0 && _bankDay is { } bd)
+                        @if (_bankDay is { } bd)
                         {
                             <span class="day-nav">
                                 <button class="exp-edit" title="@Loc["Previous day"]" @onclick="() => { if (bd > State.Period.From) _bankDay = bd.AddDays(-1); }" disabled="@(bd <= State.Period.From)">◀</button>
@@ -873,25 +867,18 @@ else
                         }
                         else
                         {
-                            <h2>💳 @Loc["From your bank"] @if (bankExpenses.Count > 0) { <span class="bank-group-count">@bankExpenses.Count</span> }</h2>
+                            <h2>💳 @Loc["From your bank"] <span class="bank-group-count">@bankExpenses.Count</span></h2>
                         }
-                        @if (bankExpenses.Count > 0)
-                        {
-                            <span class="view-toggle">
-                                <button class="view-btn @(_bankDay is null ? "active" : "")" title="@Loc["List"]" @onclick="() => _bankDay = null">☰</button>
-                                <button class="view-btn @(_bankDay is not null ? "active" : "")" title="@Loc["By day"]" @onclick="() => _bankDay = ClampToPeriod(DateOnly.FromDateTime(DateTime.Today))">📆</button>
-                            </span>
-                        }
+                        <span class="view-toggle">
+                            <button class="view-btn @(_bankDay is null ? "active" : "")" title="@Loc["List"]" @onclick="() => _bankDay = null">☰</button>
+                            <button class="view-btn @(_bankDay is not null ? "active" : "")" title="@Loc["By day"]" @onclick="() => _bankDay = ClampToPeriod(DateOnly.FromDateTime(DateTime.Today))">📆</button>
+                        </span>
                     </div>
                     @if (!State.HasSyncedFund)
                     {
                         <div class="alert warn-bg"><span>@Loc["Mark a fund as synced to this bank (a fund → Edit) so imports file automatically."]</span></div>
                     }
-                    @if (bankExpenses.Count == 0)
-                    {
-                        <p class="hint">@Loc["No bank transactions to review right now. It syncs automatically; use 🔄 at the top to fetch now."]</p>
-                    }
-                    else if (_bankDay is { } dd)
+                    @if (_bankDay is { } dd)
                     {
                         var list = bankExpenses.Where(t => t.Date == dd).ToList();
                         @if (list.Count == 0)

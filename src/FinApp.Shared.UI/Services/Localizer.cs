@@ -200,8 +200,6 @@ public sealed class Localizer(IJSRuntime js)
         ["Looks like you already logged this: {0} · {1} {2} · {3} · {4}"] = "Изглежда вече сте записали това: {0} · {1} {2} · {3} · {4}",
         ["Same — replace"] = "Същото — замени",
         ["Keep both"] = "Запази двете",
-        ["No incoming money to review right now. It syncs automatically; use 🔄 at the top to fetch now."] = "В момента няма входящи пари за преглед. Синхронизира се автоматично; ползвайте 🔄 горе, за да изтеглите сега.",
-        ["No bank transactions to review right now. It syncs automatically; use 🔄 at the top to fetch now."] = "В момента няма банкови транзакции за преглед. Синхронизира се автоматично; ползвайте 🔄 горе, за да изтеглите сега.",
         ["Mark a fund as synced to this bank (a fund → Edit) so imports file automatically."] = "Отбележете фонд като синхронизиран с тази банка (фонд → Редакция), за да се завеждат импортите автоматично.",
         ["Auto-categorized merchants"] = "Автоматично категоризирани търговци",
         ["Imported transactions from these are filed here automatically. Unmapping only stops future auto-filing."] = "Импортираните транзакции от тях се завеждат тук автоматично. Премахването спира само бъдещото авт. завеждане.",
