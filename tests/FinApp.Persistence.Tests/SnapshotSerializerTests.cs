@@ -221,6 +221,28 @@ public class SnapshotSerializerTests
     }
 
     [Fact]
+    public void Investment_bucket_kind_and_figures_round_trip()
+    {
+        var account = new Account("Home", "EUR");
+        account.AssignOwner(Guid.NewGuid(), "Me");
+        var fund = account.AddSavingCategory("Index fund");
+        account.ConfigureSavingInvestment(fund.Id, annualRatePercent: 7m, termYears: 20m, compoundsPerYear: 12);
+        account.SetSavingInitialAmount(fund.Id, 5_000m);
+        account.SetSavingPlannedContribution(fund.Id, 300m);
+
+        var copy = AccountSnapshotSerializer.Deserialize(AccountSnapshotSerializer.Serialize(account));
+
+        var copied = copy.SavingCategories.Single(s => s.Name == "Index fund");
+        Assert.True(copied.IsInvestment);
+        Assert.False(copied.IsDebt);
+        Assert.Equal(7m, copied.InvestmentAnnualRatePercent);
+        Assert.Equal(20m, copied.InvestmentTermYears);
+        Assert.Equal(12, copied.InvestmentCompoundsPerYear);
+        Assert.Equal(5_000m, copied.InitialAmount);
+        Assert.Equal(300m, copied.PlannedContribution);
+    }
+
+    [Fact]
     public void Legacy_debt_snapshot_without_original_balance_baselines_progress_at_current()
     {
         // A debt node written before DebtOriginalBalance existed → the field is absent (0). On read it must

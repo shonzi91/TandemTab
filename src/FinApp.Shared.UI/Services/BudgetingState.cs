@@ -956,12 +956,15 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
 
     // Saving bucket CRUD
     public async Task<Guid> AddSavingBucket(string name, decimal? goalAmount, decimal thresholdPercent, bool notifyOnMilestone, decimal initialAmount, string? icon = null,
-        bool isDebt = false, decimal debtBalance = 0m, decimal debtRate = 0m, decimal debtInstallment = 0m, decimal? plannedContribution = null)
+        bool isDebt = false, decimal debtBalance = 0m, decimal debtRate = 0m, decimal debtInstallment = 0m, decimal? plannedContribution = null,
+        bool isInvestment = false, decimal invRate = 0m, decimal invTermYears = 0m, int invCompounds = 12)
     {
         var bucket = Account.AddSavingCategory(name);
         Account.SetSavingCategoryIcon(bucket.Id, icon);
         if (isDebt)
             Account.ConfigureSavingDebt(bucket.Id, debtBalance, debtRate, debtInstallment);
+        else if (isInvestment)
+            Account.ConfigureSavingInvestment(bucket.Id, invRate, invTermYears, invCompounds);
         else if (goalAmount is > 0m)
             Account.ConfigureSavingGoal(bucket.Id, goalAmount, thresholdPercent / 100m, notifyOnMilestone);
         Account.SetSavingPlannedContribution(bucket.Id, plannedContribution);
@@ -972,7 +975,8 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     }
 
     public Task SaveSavingBucket(Guid savingCategoryId, string name, decimal? goalAmount, decimal thresholdPercent, bool notifyOnMilestone, decimal initialAmount, string? icon = null,
-        bool isDebt = false, decimal debtBalance = 0m, decimal debtRate = 0m, decimal debtInstallment = 0m, decimal? plannedContribution = null)
+        bool isDebt = false, decimal debtBalance = 0m, decimal debtRate = 0m, decimal debtInstallment = 0m, decimal? plannedContribution = null,
+        bool isInvestment = false, decimal invRate = 0m, decimal invTermYears = 0m, int invCompounds = 12)
     {
         Account.RenameSavingCategory(savingCategoryId, name);
         Account.SetSavingCategoryIcon(savingCategoryId, icon);
@@ -981,9 +985,15 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
             Account.ConfigureSavingDebt(savingCategoryId, debtBalance, debtRate, debtInstallment);
             Account.ConfigureSavingGoal(savingCategoryId, null);   // debt uses its own figures, not a savings goal
         }
+        else if (isInvestment)
+        {
+            Account.ConfigureSavingInvestment(savingCategoryId, invRate, invTermYears, invCompounds);
+            Account.ConfigureSavingGoal(savingCategoryId, null);   // investment uses its own figures, not a savings goal
+        }
         else
         {
             Account.ClearSavingDebt(savingCategoryId);
+            Account.ClearSavingInvestment(savingCategoryId);
             Account.ConfigureSavingGoal(savingCategoryId, goalAmount is > 0m ? goalAmount : null, thresholdPercent / 100m, notifyOnMilestone);
         }
         Account.SetSavingPlannedContribution(savingCategoryId, plannedContribution);
@@ -1009,6 +1019,22 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
 
     /// <summary>User-set planned per-period contribution to a bucket (#8), or null when pace is inferred from history.</summary>
     public decimal? SavingBucketPlannedContribution(Guid id) => FindSavingBucket(id)?.PlannedContribution;
+
+    // --- Investment buckets (compound-growth projection) ---
+    public bool SavingBucketIsInvestment(Guid id) => FindSavingBucket(id)?.IsInvestment ?? false;
+    public decimal SavingBucketInvestmentRate(Guid id) => FindSavingBucket(id)?.InvestmentAnnualRatePercent ?? 0m;
+    public decimal SavingBucketInvestmentTermYears(Guid id) => FindSavingBucket(id)?.InvestmentTermYears ?? 0m;
+    public int SavingBucketInvestmentCompounds(Guid id) => FindSavingBucket(id)?.InvestmentCompoundsPerYear ?? 12;
+
+    /// <summary>Project an investment bucket's future value — present value is its accumulated balance, adding
+    /// <paramref name="extraPerMonth"/> each month over its term at its rate/compounding. Null when it isn't an investment.</summary>
+    public FinApp.Domain.Forecasting.InvestmentForecast.Projection? ProjectInvestment(Guid id, decimal extraPerMonth)
+    {
+        var bucket = FindSavingBucket(id);
+        if (bucket is null || !bucket.IsInvestment) return null;
+        return FinApp.Domain.Forecasting.InvestmentForecast.Project(
+            SavingBucketSaved(id).Amount, bucket.InvestmentAnnualRatePercent, bucket.InvestmentTermYears, bucket.InvestmentCompoundsPerYear, extraPerMonth);
+    }
 
     // --- Forecasting projections (read-only; never touch the money model) ---
     /// <summary>Average amount added to a bucket per active period — the demonstrated saving pace, for projections.</summary>

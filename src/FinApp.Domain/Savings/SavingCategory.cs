@@ -3,9 +3,10 @@ using FinApp.Domain.Common;
 namespace FinApp.Domain.Savings;
 
 /// <summary>What a savings bucket is for. <see cref="Common"/> is an ordinary goal/earmark; <see cref="Debt"/>
-/// is a payoff envelope carrying the loan's balance/rate/installment so payoff can be projected. Both accumulate
-/// real money the same way — the debt fields are projection metadata only and never affect the money model.</summary>
-public enum SavingKind { Common = 0, Debt = 1 }
+/// is a payoff envelope carrying the loan's balance/rate/installment so payoff can be projected; <see cref="Investment"/>
+/// carries a rate/term/compounding so future value can be projected. All accumulate real money the same way — the
+/// debt/investment fields are projection metadata only and never affect the money model.</summary>
+public enum SavingKind { Common = 0, Debt = 1, Investment = 2 }
 
 /// <summary>
 /// A savings bucket (Kids, Vacations, Loan principal...). Like budget categories these form a tree
@@ -36,7 +37,16 @@ public sealed class SavingCategory : Entity
     /// history. Applies to both common and debt buckets. Projection metadata only — never touches the money model. Body data.</summary>
     public decimal? PlannedContribution { get; private set; }
 
+    /// <summary>Investment buckets only: the expected annual growth rate (%), the horizon in years, and how many times
+    /// a year interest compounds (12 = monthly, 4 = quarterly, 1 = annual...). Pure projection inputs — they never touch
+    /// balances, budgets or the savings rate. The present value used in the projection is the bucket's accumulated
+    /// balance (initial + allocations), not a separate field. Body data (snapshot, not EF).</summary>
+    public decimal InvestmentAnnualRatePercent { get; private set; }
+    public decimal InvestmentTermYears { get; private set; }
+    public int InvestmentCompoundsPerYear { get; private set; } = 12;
+
     public bool IsDebt => Kind == SavingKind.Debt;
+    public bool IsInvestment => Kind == SavingKind.Investment;
 
     /// <summary>Debt buckets: how much of the original balance has been paid off (never negative). Zero for common buckets.</summary>
     public decimal DebtPaidOff => IsDebt ? Math.Max(0m, DebtOriginalBalance - DebtBalance) : 0m;
@@ -123,16 +133,49 @@ public sealed class SavingCategory : Entity
         if (DebtOriginalBalance < balance) DebtOriginalBalance = balance;
         DebtAnnualRatePercent = annualRatePercent;
         DebtInstallment = installment;
+        ClearInvestmentFields();
+    }
+
+    /// <summary>Mark this bucket as an investment envelope with its (projection-only) growth figures.</summary>
+    public void ConfigureInvestment(decimal annualRatePercent, decimal termYears, int compoundsPerYear)
+    {
+        if (annualRatePercent < 0m) throw new ArgumentException("Interest rate cannot be negative.", nameof(annualRatePercent));
+        if (termYears < 0m) throw new ArgumentException("Term cannot be negative.", nameof(termYears));
+        if (compoundsPerYear <= 0) throw new ArgumentException("Compounding frequency must be positive.", nameof(compoundsPerYear));
+        Kind = SavingKind.Investment;
+        InvestmentAnnualRatePercent = annualRatePercent;
+        InvestmentTermYears = termYears;
+        InvestmentCompoundsPerYear = compoundsPerYear;
+        ClearDebtFields();
     }
 
     /// <summary>Revert to an ordinary (common) savings bucket, clearing the debt figures.</summary>
     public void ClearDebt()
     {
         Kind = SavingKind.Common;
+        ClearDebtFields();
+    }
+
+    /// <summary>Revert to an ordinary (common) savings bucket, clearing the investment figures.</summary>
+    public void ClearInvestment()
+    {
+        Kind = SavingKind.Common;
+        ClearInvestmentFields();
+    }
+
+    private void ClearDebtFields()
+    {
         DebtBalance = 0m;
         DebtAnnualRatePercent = 0m;
         DebtInstallment = 0m;
         DebtOriginalBalance = 0m;
+    }
+
+    private void ClearInvestmentFields()
+    {
+        InvestmentAnnualRatePercent = 0m;
+        InvestmentTermYears = 0m;
+        InvestmentCompoundsPerYear = 12;
     }
 
     /// <summary>Set or clear the user's planned per-period contribution to this bucket. Null or zero clears it (revert

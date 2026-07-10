@@ -273,9 +273,18 @@ public sealed class Account : Entity
         (FindSavingCategory(savingCategoryId) ?? throw new InvalidOperationException("Saving category not found."))
             .SetPlannedContribution(amount);
 
+    /// <summary>Mark a savings bucket as an investment envelope with its (projection-only) growth figures.</summary>
+    public void ConfigureSavingInvestment(Guid savingCategoryId, decimal annualRatePercent, decimal termYears, int compoundsPerYear) =>
+        (FindSavingCategory(savingCategoryId) ?? throw new InvalidOperationException("Saving category not found."))
+            .ConfigureInvestment(annualRatePercent, termYears, compoundsPerYear);
+
     /// <summary>Revert a savings bucket to an ordinary (common) goal, clearing any debt figures.</summary>
     public void ClearSavingDebt(Guid savingCategoryId) =>
         (FindSavingCategory(savingCategoryId) ?? throw new InvalidOperationException("Saving category not found.")).ClearDebt();
+
+    /// <summary>Revert a savings bucket to an ordinary (common) goal, clearing any investment figures.</summary>
+    public void ClearSavingInvestment(Guid savingCategoryId) =>
+        (FindSavingCategory(savingCategoryId) ?? throw new InvalidOperationException("Saving category not found.")).ClearInvestment();
 
     /// <summary>Record a payment against a debt bucket — lowers its remaining balance (no-op for common buckets).</summary>
     public void RecordSavingDebtPayment(Guid savingCategoryId, decimal amount) =>
