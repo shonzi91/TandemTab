@@ -1928,9 +1928,25 @@ else
                     break;
 
                 case Modal.AddSaving:
-                    <h3>@Loc["Add to savings"] — @State.SavingBucketName(_savingBucketId)</h3>
+                    <h3>@Loc["Add to savings"]</h3>
+                    var saveBuckets = State.SavingBuckets.Where(b => !b.Bucket.IsArchived).ToList();
+                    @if (saveBuckets.Count > 1)
+                    {
+                        <label>@Loc["Bucket"]
+                            <select @bind="_savingBucketId">
+                                @foreach (var (bucket, _) in saveBuckets)
+                                {
+                                    <option value="@bucket.Id">@(bucket.Icon ?? (bucket.IsDebt ? "💳" : "🐷")) @bucket.Name</option>
+                                }
+                            </select>
+                        </label>
+                    }
+                    else
+                    {
+                        <p class="hint">@State.SavingBucketName(_savingBucketId)</p>
+                    }
                     <label>@Loc["Amount"] <input type="number" step="0.01" min="0" @bind="_savingAmount" /></label>
-                    <small class="hint">@Loc["Available to save:"] <strong>@Fmt(State.MaxAdditionalSavings)</strong> (@Loc["your cash that isn't already set aside for savings"]).</small>
+                    <div class="avail-note">@Loc["Available to save:"] <strong>@Fmt(State.AvailableToSaveDisplay(_bankStatus?.Balance, _bankStatus?.BalanceCurrency))</strong> — @Loc["your cash that isn't already set aside for savings"].</div>
                     <div class="modal-actions">
                         <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
                         <button @onclick="AllocateSaving" disabled="@(_savingAmount <= 0)">💰 @Loc["Add"]</button>
@@ -1983,7 +1999,10 @@ else
                             }
                         </ul>
                     }
-                    <div class="modal-actions"><button class="ghost" @onclick="Back">@Loc["Close"]</button></div>
+                    <div class="modal-actions">
+                        <button class="ghost" @onclick="Back">@Loc["Close"]</button>
+                        <button @onclick="OpenAddRecurring">➕ @Loc["Add recurring"]</button>
+                    </div>
                     break;
 
                 case Modal.RecurringEdit:

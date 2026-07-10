@@ -454,6 +454,7 @@ public sealed class Localizer(IJSRuntime js)
         ["Move it"] = "Насочи",
         ["Recurring"] = "Повтарящи се",
         ["Add recurring"] = "Добави повтарящо се",
+        ["Bucket"] = "Кофичка",
         ["Edit recurring"] = "Редактирай повтарящо се",
         ["Bills, salary and standing transfers that repeat monthly. They remind you when due — you confirm the real amount, so bills that vary stay accurate."] =
             "Сметки, заплата и постоянни преводи, които се повтарят месечно. Напомнят ти при падеж — ти потвърждаваш реалната сума, така че променливите сметки остават точни.",

@@ -355,6 +355,16 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     /// fund / live balance, and skipped when the bank reports a different currency (we don't add across currencies).</summary>
     public Money DisplayClosingBalance(decimal? liveBankBalance, string? bankCurrency) => BankAdjust(ClosingBalance, liveBankBalance, bankCurrency);
     public Money DisplayFreeToAllocate(decimal? liveBankBalance, string? bankCurrency) => BankAdjust(FreeToAllocate, liveBankBalance, bankCurrency);
+
+    /// <summary>The cash you can still move into savings, shown in the Add-to-savings modal. Same basis as the header
+    /// "free" (bank-adjusted) but floored at 0 — you can't set aside a negative amount. That floor is the only reason
+    /// it can read lower than "free": when you've already earmarked more than you hold, free goes negative but this
+    /// stays 0.</summary>
+    public Money AvailableToSaveDisplay(decimal? liveBankBalance, string? bankCurrency)
+    {
+        var free = DisplayFreeToAllocate(liveBankBalance, bankCurrency);
+        return free.IsNegative ? Money(0m) : free;
+    }
     private Money BankAdjust(Money baseAmount, decimal? liveBankBalance, string? bankCurrency)
     {
         if (!HasSyncedFund || liveBankBalance is not { } live) return baseAmount;
