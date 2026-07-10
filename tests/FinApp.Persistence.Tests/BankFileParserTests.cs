@@ -98,6 +98,27 @@ public class BankFileParserTests
     }
 
     [Fact]
+    public void Camt053_xml_signs_from_credit_debit_indicator()
+    {
+        var xml = """
+            <Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.053.001.02"><BkToCstmrStmt><Stmt>
+              <Ntry><Amt Ccy="EUR">42.50</Amt><CdtDbtInd>DBIT</CdtDbtInd><BookgDt><Dt>2026-07-01</Dt></BookgDt>
+                <NtryDtls><TxDtls><RmtInf><Ustrd>Tesco Stores</Ustrd></RmtInf></TxDtls></NtryDtls></Ntry>
+              <Ntry><Amt Ccy="EUR">2000.00</Amt><CdtDbtInd>CRDT</CdtDbtInd><BookgDt><Dt>2026-07-25</Dt></BookgDt>
+                <NtryDtls><TxDtls><RmtInf><Ustrd>Salary</Ustrd></RmtInf></TxDtls></NtryDtls></Ntry>
+            </Stmt></BkToCstmrStmt></Document>
+            """;
+        Assert.Equal(BankFileParser.Format.Xml, BankFileParser.Detect("statement.xml", xml));
+        var txns = BankFileParser.ParseXml(xml);
+        Assert.Equal(2, txns.Count);
+        Assert.Equal(new DateOnly(2026, 7, 1), txns[0].Date);
+        Assert.Equal(-42.50m, txns[0].Amount);       // DBIT → out
+        Assert.Equal("Tesco Stores", txns[0].Description);
+        Assert.Equal(2000.00m, txns[1].Amount);       // CRDT → in
+        Assert.Equal("Salary", txns[1].Description);
+    }
+
+    [Fact]
     public void Detect_by_extension_and_content()
     {
         Assert.Equal(BankFileParser.Format.Ofx, BankFileParser.Detect("statement.ofx", ""));

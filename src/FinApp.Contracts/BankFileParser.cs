@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using System.Xml.Linq;
 
 namespace FinApp.Contracts;
 
@@ -15,7 +16,7 @@ public readonly record struct ImportedTransaction(DateOnly Date, decimal Amount,
 /// </summary>
 public static class BankFileParser
 {
-    public enum Format { Unknown, Ofx, Qif, Csv }
+    public enum Format { Unknown, Ofx, Qif, Csv, Xml }
 
     /// <summary>Guess the format from the file name, then the content.</summary>
     public static Format Detect(string? fileName, string text)
@@ -23,11 +24,41 @@ public static class BankFileParser
         var ext = (fileName ?? "").ToLowerInvariant();
         if (ext.EndsWith(".ofx") || ext.EndsWith(".qfx")) return Format.Ofx;
         if (ext.EndsWith(".qif")) return Format.Qif;
+        if (ext.EndsWith(".xml") || ext.EndsWith(".camt")) return Format.Xml;
         if (ext.EndsWith(".csv") || ext.EndsWith(".tsv") || ext.EndsWith(".txt")) return Format.Csv;
         var head = text.TrimStart();
         if (head.Contains("<OFX", StringComparison.OrdinalIgnoreCase) || head.Contains("<STMTTRN", StringComparison.OrdinalIgnoreCase)) return Format.Ofx;
+        if (head.Contains("BkToCstmrStmt", StringComparison.OrdinalIgnoreCase) || head.Contains(":camt.", StringComparison.OrdinalIgnoreCase)
+            || (head.StartsWith('<') && head.Contains("<Ntry", StringComparison.OrdinalIgnoreCase))) return Format.Xml;
         if (head.StartsWith("!Type:", StringComparison.OrdinalIgnoreCase)) return Format.Qif;
         return text.Contains(',') || text.Contains(';') || text.Contains('\t') ? Format.Csv : Format.Unknown;
+    }
+
+    // ---- ISO 20022 CAMT.053 (bank-to-customer statement) XML ----
+
+    /// <summary>Parse an ISO 20022 CAMT.053 statement (the standard bank statement XML most European banks export).
+    /// Reads each <c>&lt;Ntry&gt;</c>: amount + <c>CdtDbtInd</c> (DBIT = out, CRDT = in) → signed amount, the booking
+    /// date, and the remittance text. Namespace-agnostic (matched by local element name) so it works across CAMT
+    /// versions (.02/.04/.08…).</summary>
+    public static IReadOnlyList<ImportedTransaction> ParseXml(string text)
+    {
+        var list = new List<ImportedTransaction>();
+        XDocument doc;
+        try { doc = XDocument.Parse(text); } catch { return list; }
+        foreach (var ntry in doc.Descendants().Where(e => e.Name.LocalName == "Ntry"))
+        {
+            var amtRaw = ntry.Elements().FirstOrDefault(x => x.Name.LocalName == "Amt")?.Value;
+            var cdtDbt = ntry.Elements().FirstOrDefault(x => x.Name.LocalName == "CdtDbtInd")?.Value;
+            var bookg = ntry.Descendants().FirstOrDefault(x => x.Name.LocalName is "BookgDt");
+            var dateRaw = (bookg ?? ntry).Descendants().FirstOrDefault(x => x.Name.LocalName is "Dt" or "DtTm")?.Value;
+            var desc = ntry.Descendants().FirstOrDefault(x => x.Name.LocalName == "Ustrd")?.Value
+                       ?? ntry.Descendants().FirstOrDefault(x => x.Name.LocalName is "AddtlTxInf" or "AddtlNtryInf")?.Value
+                       ?? "";
+            if (amtRaw is null || dateRaw is null || !TryAmount(amtRaw, out var amount) || !TryLooseDate(dateRaw, out var date)) continue;
+            amount = string.Equals(cdtDbt, "DBIT", StringComparison.OrdinalIgnoreCase) ? -Math.Abs(amount) : Math.Abs(amount);
+            list.Add(new ImportedTransaction(date, amount, Clean(desc)));
+        }
+        return list;
     }
 
     // ---- OFX / QFX ----

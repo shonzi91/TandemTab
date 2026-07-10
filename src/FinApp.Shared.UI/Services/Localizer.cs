@@ -456,9 +456,10 @@ public sealed class Localizer(IJSRuntime js)
         ["Add recurring"] = "Добави повтарящо се",
         ["Bucket"] = "Кофичка",
         ["Import statement"] = "Импортирай извлечение",
-        ["Import a bank statement (Excel, CSV, OFX, QIF)"] = "Импортирай банково извлечение (Excel, CSV, OFX, QIF)",
-        ["Export a statement from your bank (Excel, CSV, OFX or QIF) and upload it here. It's parsed on your device — nothing is sent until you confirm the rows."] =
-            "Свали извлечение от банката си (Excel, CSV, OFX или QIF) и го качи тук. Обработва се на устройството ти — нищо не се изпраща, докато не потвърдиш редовете.",
+        ["Import a bank statement (Excel, CSV, XML, OFX, QIF)"] = "Импортирай банково извлечение (Excel, CSV, XML, OFX, QIF)",
+        ["Export a statement from your bank (Excel, CSV, XML, OFX or QIF) and upload it here. It's parsed on your device — nothing is sent until you confirm the rows."] =
+            "Свали извлечение от банката си (Excel, CSV, XML, OFX или QIF) и го качи тук. Обработва се на устройството ти — нищо не се изпраща, докато не потвърдиш редовете.",
+        ["Money out is negative, money in positive."] = "Разходите са отрицателни, приходите — положителни.",
         ["Tip: if your bank only offers a PDF, look for a \"download/export transactions\" option — it usually also offers Excel or CSV, which import cleanly."] =
             "Съвет: ако банката ти дава само PDF, потърси опция „свали/експортирай транзакции“ — обикновено предлага и Excel или CSV, които се импортират чисто.",
         ["Tell us which columns to use."] = "Посочи кои колони да използваме.",

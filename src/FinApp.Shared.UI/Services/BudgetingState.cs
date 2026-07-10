@@ -501,6 +501,19 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
             .Take(max)
             .ToList();
 
+    /// <summary>The category to pre-fill for an imported expense with this description: reuse the one from the most
+    /// recent past expense whose note matches (same normalization the bank sync uses), so a merchant you've filed
+    /// before auto-files again. Null when nothing matches — the review then leaves it on the default.</summary>
+    public Guid? SuggestExpenseCategory(string description)
+    {
+        if (string.IsNullOrWhiteSpace(description)) return null;
+        var key = BankMatchKey(description);
+        return key.Length == 0 ? null : ManualExpensesNewestFirst
+            .Where(e => !string.IsNullOrWhiteSpace(e.Note) && BankMatchKey(e.Note!) == key)
+            .Select(e => (Guid?)e.CategoryId)
+            .FirstOrDefault();
+    }
+
     public decimal? PeriodSavingsRate => _savings.PeriodSavingsRate(Period);
     public decimal? AccountSavingsRate => _savings.AccountSavingsRate(Account);
 
