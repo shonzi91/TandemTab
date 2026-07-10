@@ -688,7 +688,7 @@ else
             {
                 <div class="spending-actions">
                     <button class="big-add" @onclick="OpenAddExpenseTab">🧾 @Loc["Add expense"]</button>
-                    <button class="link import-link" title="@Loc["Import a bank statement (CSV, OFX, QIF)"]" @onclick="OpenImport">📥 @Loc["Import statement"]</button>
+                    <button class="link import-link" title="@Loc["Import a bank statement (Excel, CSV, OFX, QIF)"]" @onclick="OpenImport">📥 @Loc["Import statement"]</button>
                 </div>
             }
             <section class="panel">
@@ -2072,8 +2072,9 @@ else
                     }
                     @if (_importStep == ImportStep.Upload)
                     {
-                        <p class="hint">@Loc["Export a statement from your bank (CSV, OFX or QIF) and upload it here. It's parsed on your device — nothing is sent until you confirm the rows."]</p>
-                        <InputFile OnChange="OnImportFileSelected" accept=".csv,.tsv,.txt,.ofx,.qfx,.qif" />
+                        <p class="hint">@Loc["Export a statement from your bank (Excel, CSV, OFX or QIF) and upload it here. It's parsed on your device — nothing is sent until you confirm the rows."]</p>
+                        <p class="hint">@Loc["Tip: if your bank only offers a PDF, look for a \"download/export transactions\" option — it usually also offers Excel or CSV, which import cleanly."]</p>
+                        <InputFile OnChange="OnImportFileSelected" accept=".xlsx,.xlsm,.csv,.tsv,.txt,.ofx,.qfx,.qif" />
                         <div class="modal-actions"><button class="ghost" @onclick="Back">@Loc["Cancel"]</button></div>
                     }
                     else if (_importStep == ImportStep.MapCsv)
@@ -4254,6 +4255,19 @@ else
         _importError = null;
         try
         {
+            var name = e.File.Name.ToLowerInvariant();
+            if (name.EndsWith(".xlsx") || name.EndsWith(".xlsm"))
+            {
+                // Excel is binary — copy to a seekable stream so the zip can be read, then use the same CSV mapper.
+                using var ms = new MemoryStream();
+                await e.File.OpenReadStream(8 * 1024 * 1024).CopyToAsync(ms);
+                ms.Position = 0;
+                (_csvHeaders, _csvRows) = XlsxReader.Read(ms);
+                if (_csvHeaders.Count == 0) { _importError = Loc["That file looks empty."]; return; }
+                GuessCsvColumns();
+                _importStep = ImportStep.MapCsv;
+                return;
+            }
             using var reader = new StreamReader(e.File.OpenReadStream(8 * 1024 * 1024));
             var text = await reader.ReadToEndAsync();
             switch (BankFileParser.Detect(e.File.Name, text))
