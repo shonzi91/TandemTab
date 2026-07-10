@@ -97,6 +97,7 @@ else
 builder.Services.AddScoped<InvitationService>();
 builder.Services.AddScoped<EnableBankingClient>();  // mints its own RS256 JWT per call; no shared state to cache
 builder.Services.AddSingleton<BankDataProtector>(); // encrypts bank balances/transactions at rest (key from Jwt:Key)
+builder.Services.AddSingleton<BankAccessPolicy>();  // MVP allowlist — bank sync limited to configured emails
 builder.Services.AddScoped<BankSyncService>();
 builder.Services.AddSignalR();
 builder.Services.AddSingleton<SyncNotifier>();

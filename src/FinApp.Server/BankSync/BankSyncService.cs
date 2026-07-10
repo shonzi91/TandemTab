@@ -29,8 +29,21 @@ namespace FinApp.Server.BankSync;
 /// (Confirmed/Dismissed), so a later sync doesn't resurrect them — the provider returns the whole
 /// transaction-history window on every fetch.</para>
 /// </summary>
-public sealed class BankSyncService(FinAppDbContext db, EnableBankingClient eb, IConfiguration config, BankDataProtector protector)
+public sealed class BankSyncService(FinAppDbContext db, EnableBankingClient eb, IConfiguration config, BankDataProtector protector, BankAccessPolicy policy)
 {
+    /// <summary>MVP allowlist gate: is bank sync available to this user? Combines the provider being configured with
+    /// the email allowlist. Used to hide the feature (status) and to refuse provider calls for everyone else.</summary>
+    private async Task<bool> BankAllowedAsync(Guid userId, CancellationToken ct) =>
+        eb.IsEnabled && policy.IsAllowed((await db.Users.FindAsync([userId], ct))?.Email);
+
+    /// <summary>Throw 403 unless this user may use bank sync. Guards the provider-calling / linking endpoints so a
+    /// non-allowlisted caller can't reach Open Banking directly, even though the UI is already hidden for them.</summary>
+    private async Task EnsureBankAllowedAsync(Guid userId, CancellationToken ct)
+    {
+        if (!await BankAllowedAsync(userId, ct))
+            throw new ApiException(StatusCodes.Status403Forbidden, "External bank sync isn't available on this account yet.");
+    }
+
     public bool IsEnabled => eb.IsEnabled;
 
     public async Task EnsureSchemaAsync(CancellationToken ct = default)
@@ -80,6 +93,7 @@ public sealed class BankSyncService(FinAppDbContext db, EnableBankingClient eb, 
     public async Task<List<BankInstitutionDto>> SearchInstitutionsAsync(Guid userId, Guid accountId, string countryCode, CancellationToken ct = default)
     {
         await EnsureContributorAsync(userId, accountId, ct);
+        await EnsureBankAllowedAsync(userId, ct);
         // Dev/testing escape hatch: point BankSync:EnableBanking:SandboxAspsp at Enable Banking's mock bank
         // (e.g. "Mock ASPSP") to exercise the whole consent→transactions flow with fake data. When set it
         // replaces the Revolut-name filter (and optionally the country) so the UI's auto-pick lands on it.
@@ -100,6 +114,10 @@ public sealed class BankSyncService(FinAppDbContext db, EnableBankingClient eb, 
     public async Task<BankSyncStatusDto> GetStatusAsync(Guid userId, Guid accountId, CancellationToken ct = default)
     {
         await EnsureContributorAsync(userId, accountId, ct);
+        // Report the feature as disabled to everyone outside the MVP allowlist so the client hides all bank UI.
+        if (!await BankAllowedAsync(userId, ct))
+            return new BankSyncStatusDto(Enabled: false, Connected: false, InstitutionName: null, ConsentExpiresAt: null,
+                LastSyncedAt: null, FundId: null, Balance: null, BalanceCurrency: null, AccountRef: null, InstitutionLogo: null);
         var row = await ReadConnectionAsync(accountId, ct);
         return new BankSyncStatusDto(
             eb.IsEnabled,
@@ -117,6 +135,7 @@ public sealed class BankSyncService(FinAppDbContext db, EnableBankingClient eb, 
     public async Task<StartBankLinkResponse> StartLinkAsync(Guid userId, Guid accountId, StartBankLinkRequest req, string callbackUrl, CancellationToken ct = default)
     {
         await EnsureContributorAsync(userId, accountId, ct);
+        await EnsureBankAllowedAsync(userId, ct);
         var state = accountId.ToString("N");   // echoed back to the callback so we can find this account again
         var link = await eb.StartAuthAsync(req.InstitutionName, req.Country, callbackUrl, state, ct);
         await UpsertConnectionAsync(accountId, providerRef: "", institution: req.InstitutionName, institutionName: req.InstitutionName,
@@ -185,6 +204,7 @@ public sealed class BankSyncService(FinAppDbContext db, EnableBankingClient eb, 
     public async Task<decimal?> BalanceAsOfAsync(Guid userId, Guid accountId, DateOnly date, CancellationToken ct = default)
     {
         await EnsureContributorAsync(userId, accountId, ct);
+        await EnsureBankAllowedAsync(userId, ct);
         var conn = db.Database.GetDbConnection();
         var opened = await OpenAsync(conn, ct);
         try
@@ -206,6 +226,7 @@ public sealed class BankSyncService(FinAppDbContext db, EnableBankingClient eb, 
     public async Task<List<BankAccountDto>> ListAccountsAsync(Guid userId, Guid accountId, CancellationToken ct = default)
     {
         await EnsureContributorAsync(userId, accountId, ct);
+        await EnsureBankAllowedAsync(userId, ct);
         var row = await ReadConnectionAsync(accountId, ct);
         if (row is not { Status: "Linked" }) return [];
         var refs = (row.AccountRefs ?? row.AccountRef ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries);
@@ -223,6 +244,7 @@ public sealed class BankSyncService(FinAppDbContext db, EnableBankingClient eb, 
     public async Task SelectAccountAsync(Guid userId, Guid accountId, string accountRef, CancellationToken ct = default)
     {
         await EnsureContributorAsync(userId, accountId, ct);
+        await EnsureBankAllowedAsync(userId, ct);
         var row = await ReadConnectionAsync(accountId, ct);
         var refs = (row?.AccountRefs ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries);
         if (!refs.Contains(accountRef)) throw new BadRequestException("That account isn't part of this connection.");
@@ -233,6 +255,7 @@ public sealed class BankSyncService(FinAppDbContext db, EnableBankingClient eb, 
     public async Task SyncAsync(Guid userId, Guid accountId, CancellationToken ct = default)
     {
         await EnsureContributorAsync(userId, accountId, ct);
+        await EnsureBankAllowedAsync(userId, ct);
         var row = await ReadConnectionAsync(accountId, ct);
         if (row is not { Status: "Linked", AccountRef: { } accountRef })
             throw new BadRequestException("This account isn't linked to a bank yet.");
@@ -250,6 +273,7 @@ public sealed class BankSyncService(FinAppDbContext db, EnableBankingClient eb, 
     public async Task<List<PendingBankTransactionDto>> GetPendingAsync(Guid userId, Guid accountId, CancellationToken ct = default)
     {
         await EnsureContributorAsync(userId, accountId, ct);
+        await EnsureBankAllowedAsync(userId, ct);
         var result = new List<PendingBankTransactionDto>();
         var conn = db.Database.GetDbConnection();
         var opened = await OpenAsync(conn, ct);
@@ -279,6 +303,7 @@ public sealed class BankSyncService(FinAppDbContext db, EnableBankingClient eb, 
     public async Task DisconnectAsync(Guid userId, Guid accountId, CancellationToken ct = default)
     {
         await EnsureContributorAsync(userId, accountId, ct);
+        await EnsureBankAllowedAsync(userId, ct);
         var conn = db.Database.GetDbConnection();
         var opened = await OpenAsync(conn, ct);
         try
@@ -300,6 +325,7 @@ public sealed class BankSyncService(FinAppDbContext db, EnableBankingClient eb, 
     public async Task AckAsync(Guid userId, Guid accountId, string externalId, bool confirmed, CancellationToken ct = default)
     {
         await EnsureContributorAsync(userId, accountId, ct);
+        await EnsureBankAllowedAsync(userId, ct);
         var conn = db.Database.GetDbConnection();
         var opened = await OpenAsync(conn, ct);
         try
@@ -319,6 +345,7 @@ public sealed class BankSyncService(FinAppDbContext db, EnableBankingClient eb, 
     public async Task ResetRangeAsync(Guid userId, Guid accountId, DateOnly from, DateOnly to, CancellationToken ct = default)
     {
         await EnsureContributorAsync(userId, accountId, ct);
+        await EnsureBankAllowedAsync(userId, ct);
         var conn = db.Database.GetDbConnection();
         var opened = await OpenAsync(conn, ct);
         try
@@ -339,6 +366,7 @@ public sealed class BankSyncService(FinAppDbContext db, EnableBankingClient eb, 
     public async Task<List<BankMappingDto>> GetMappingsAsync(Guid userId, Guid accountId, CancellationToken ct = default)
     {
         await EnsureContributorAsync(userId, accountId, ct);
+        await EnsureBankAllowedAsync(userId, ct);
         var result = new List<BankMappingDto>();
         var conn = db.Database.GetDbConnection();
         var opened = await OpenAsync(conn, ct);
@@ -360,6 +388,7 @@ public sealed class BankSyncService(FinAppDbContext db, EnableBankingClient eb, 
     public async Task SetMappingAsync(Guid userId, Guid accountId, string description, string kind, Guid targetId, CancellationToken ct = default)
     {
         await EnsureContributorAsync(userId, accountId, ct);
+        await EnsureBankAllowedAsync(userId, ct);
         var key = MatchKeyOf(description);
         if (key.Length == 0) throw new BadRequestException("Can't map an empty merchant.");
         var conn = db.Database.GetDbConnection();
@@ -383,6 +412,7 @@ public sealed class BankSyncService(FinAppDbContext db, EnableBankingClient eb, 
     public async Task RemoveMappingAsync(Guid userId, Guid accountId, string description, CancellationToken ct = default)
     {
         await EnsureContributorAsync(userId, accountId, ct);
+        await EnsureBankAllowedAsync(userId, ct);
         var conn = db.Database.GetDbConnection();
         var opened = await OpenAsync(conn, ct);
         try
@@ -453,6 +483,7 @@ public sealed class BankSyncService(FinAppDbContext db, EnableBankingClient eb, 
     public async Task SetConnectionFundAsync(Guid userId, Guid accountId, Guid? fundId, CancellationToken ct = default)
     {
         await EnsureContributorAsync(userId, accountId, ct);
+        await EnsureBankAllowedAsync(userId, ct);
         await WriteConnectionColumnsAsync(accountId, ("FundId", fundId?.ToString()));
     }
 
