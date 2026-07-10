@@ -1012,6 +1012,16 @@ html.dark .chips-label { color: #7c8a94; }
 .spending-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 12px; }
 .spending-head .insight-h { margin: 0; }
 .spending-sub { font-size: .82rem; color: #6b7280; }
+.spending-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.import-link { font-size: .85rem; }
+.import-list { max-height: 46vh; overflow-y: auto; }
+.import-list li { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.import-list .row-lead { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.import-when { font-size: .78rem; color: #6b7280; white-space: nowrap; }
+.import-desc { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 40vw; }
+.import-list .row-ops { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+.import-list select { max-width: 130px; }
+.import-skip { opacity: .55; }
 /* Gentle, non-blocking "budgeted more than you have" note — advisory, not an alarm. */
 .budget-over-note { margin: 8px 0 0; padding: 9px 12px; font-size: .82rem; line-height: 1.4; color: #8a6d1f; background: #fdf6e3; border: 1px solid #f2e6bd; border-radius: 10px; }
 html.dark .budget-over-note { color: #e5cf8a; background: #33301f; border-color: #4a4327; }

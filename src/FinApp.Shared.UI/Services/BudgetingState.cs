@@ -757,6 +757,43 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
         return SaveAsync();
     }
 
+    // --- Statement file import (CSV/OFX/QIF → real expenses & income) ------
+
+    /// <summary>Import chosen statement rows in one save: a negative amount becomes an expense, a positive one a
+    /// contribution (income). Each row carries the category/fund the user picked in the review step.</summary>
+    public Task ImportTransactions(IReadOnlyList<(decimal Amount, DateOnly Date, Guid CategoryId, Guid FundId, string Note)> rows)
+    {
+        foreach (var (amount, date, categoryId, fundId, note) in rows)
+        {
+            if (amount == 0m || categoryId == Guid.Empty || fundId == Guid.Empty) continue;
+            if (amount < 0m)
+            {
+                var expense = new Expense(categoryId, Money(Math.Abs(amount)), date, CurrentMemberId, fundId, string.IsNullOrWhiteSpace(note) ? null : note);
+                expense.SetFundSynced(FundIsSynced(fundId));
+                Period.AddExpense(expense);
+            }
+            else
+            {
+                var contribution = Period.Deposit(CurrentMemberId, Money(amount), categoryId, fundId, date);
+                contribution.SetFundSynced(FundIsSynced(fundId));
+            }
+        }
+        return SaveAsync();
+    }
+
+    /// <summary>Does an expense/contribution with this date and (absolute) amount already exist this period? Used to
+    /// pre-flag likely duplicates when re-importing an overlapping statement, so nothing double-counts.</summary>
+    public bool ImportLooksDuplicate(DateOnly date, decimal amount)
+    {
+        var abs = Math.Abs(amount);
+        return amount < 0m
+            ? Period.Expenses.Any(e => e.Date == date && e.Amount.Amount == abs)
+            : Period.Contributions.Any(c => c.MemberId != FinApp.Domain.Periods.Period.CarryoverSource && c.Date == date && c.Paid.Amount == abs);
+    }
+
+    /// <summary>Whether a date falls inside the current open period (imports can only post to the active period).</summary>
+    public bool ImportInPeriod(DateOnly date) => date >= Period.From && date <= Period.To;
+
     /// <summary>Skip a due recurring item this period (marks it handled without posting anything).</summary>
     public Task SkipRecurring(Guid id) { Account.FindRecurring(id)?.MarkHandled(Period.From); return SaveAsync(); }
 
