@@ -25,15 +25,17 @@
         <header><span class="logo">TT</span> <strong>TandemTab</strong>
             <span class="lang"><strong>EN</strong> · <a href="/privacy.bg.html">BG</a></span></header>
         <h1>Privacy Policy</h1>
-        <p class="updated">Last updated: 3 July 2026</p>
+        <p class="updated">Last updated: 11 July 2026</p>
 
-        <p>TandemTab ("we", "us") is a personal budgeting app that helps you track spending, budgets and savings —
-        optionally alongside your own bank accounts through Open Banking. This policy explains what personal data we
-        process and why. It is written to comply with the EU/UK General Data Protection Regulation (GDPR).</p>
+        <p>TandemTab ("we", "us") is a personal budgeting app that helps you track spending, budgets and savings.
+        All the data in the app is what you choose to enter or <strong>import yourself</strong> — for example from a
+        bank statement file (CSV, Excel, OFX, QIF or XML). What you import, and whether you import anything at all, is
+        entirely up to you. This policy explains what personal data we process and why. It is written to comply with the
+        EU/UK General Data Protection Regulation (GDPR).</p>
 
         <h2>Who we are</h2>
-        <p>TandemTab is operated by <strong>Stoyan Stoyanov</strong>, Sofia, Bulgaria. For any privacy question or to
-        exercise your rights, contact us at <a href="mailto:stoyanov.stoyan.st@gmail.com">stoyanov.stoyan.st@gmail.com</a>.</p>
+        <p>TandemTab is operated by <strong>TandemTab Company</strong>, Sofia, Bulgaria. For any privacy question or to
+        exercise your rights, contact us at <a href="mailto:admin@tandemtab.com">admin@tandemtab.com</a>.</p>
 
         <h2>What we collect</h2>
         <ul>
@@ -41,11 +43,12 @@
             email and profile picture your sign-in provider (Google/Facebook) shares if you sign in that way.</li>
             <li><strong>Budgeting data you enter</strong> — accounts, categories, budgets, expenses, savings and
             contributions you create in the app.</li>
-            <li><strong>Bank account information</strong> — only if you choose to connect a bank. With your explicit
-            consent we access, on a <strong>read-only</strong> basis, your account details and transaction history
-            through our Open Banking provider (see below). We never initiate payments or move money.</li>
+            <li><strong>Files you import</strong> — if you import a bank statement file, we process the transactions it
+            contains (dates, amounts, descriptions) to create budgeting entries you review. Importing is optional and
+            entirely under your control; the file is processed to build those entries and isn't stored separately.</li>
         </ul>
 
+        <!-- Open Banking / bank-connection integration — commented out (not currently offered), kept for possible future use:
         <h2>Open Banking</h2>
         <p>Bank connections are provided by <strong>Enable Banking Oy</strong>, a regulated Account Information
         Service Provider (AISP), which acts as the technical and regulated intermediary between TandemTab and your
@@ -62,44 +65,43 @@
             <strong>strongly recommend enabling two-factor authentication</strong> on your account. You can turn on
             two-factor authentication in your profile.</li>
         </ul>
+        -->
+        <h2>Importing statements</h2>
+        <p>Instead of connecting a bank, you can import a statement file you export from your bank yourself. The app
+        reads the transactions locally to prepare draft entries; nothing becomes a budgeting entry until you review and
+        confirm it. You decide what to import and what to leave out.</p>
 
         <h2>Shared accounts</h2>
         <p>A TandemTab account can be shared: the owner may invite other people, who then become members and can see
-        and edit that account's contents. If the account has a linked bank, its <strong>real balances and
-        transactions are visible to every member</strong>. To protect this data:</p>
-        <ul>
-            <li>Every member must have a <strong>verified email address</strong> to view a shared account's bank data —
-            this is enforced for each member individually, not just the person who linked the bank.</li>
-            <li>We recommend all members enable two-factor authentication, and remind members that a shared account may
-            contain another person's real financial information, which should be kept confidential.</li>
-            <li>The owner can remove a member, transfer ownership, or disconnect the bank at any time; a removed member
-            immediately loses access.</li>
-        </ul>
+        and edit that account's contents. The owner can remove a member, transfer ownership, or leave the account at
+        any time; a removed member immediately loses access. A shared account may contain another person's financial
+        information, so we recommend members keep its contents confidential and enable two-factor authentication.</p>
 
         <h2>Why we process it (legal bases)</h2>
         <ul>
             <li><strong>Performance of a contract</strong> — to provide the budgeting service you sign up for.</li>
-            <li><strong>Your consent</strong> — for accessing bank account information, which you can withdraw at any time.</li>
+            <li><strong>Your consent</strong> — for optional features such as signing in with Google or Facebook, which you can withdraw at any time.</li>
         </ul>
 
         <h2>Who we share it with</h2>
         <p>We do not sell your data. We share it only with service providers who help us run TandemTab:</p>
         <ul>
-            <li><strong>Enable Banking Oy</strong> — Open Banking connectivity (only when you link a bank).</li>
+            <!-- <li><strong>Enable Banking Oy</strong> — Open Banking connectivity (only when you link a bank).</li> -->
             <li><strong>Google Cloud</strong> — hosting and database, in the EU (europe-west1 region).</li>
             <li><strong>Google / Facebook</strong> — only if you choose to sign in with them.</li>
         </ul>
 
         <h2>Storage, security and retention</h2>
-        <p>Your data is hosted in the European Union and transmitted over encrypted (HTTPS) connections; access
-        credentials and bank connection references are held server-side and protected. We keep your data for as long
-        as your account exists. If you leave or delete an account it is archived and permanently deleted after 30 days.
-        You can delete your data at any time by removing your accounts.</p>
+        <p>Your data is hosted in the European Union, transmitted over encrypted (HTTPS) connections, and
+        <strong>encrypted at rest</strong> using managed encryption keys (Google Cloud KMS). Access credentials are
+        held server-side and protected. We keep your data for as long as your account exists. If you leave or delete an
+        account it is archived and permanently deleted after 30 days. You can delete your data at any time by removing
+        your accounts.</p>
 
         <h2>Your rights</h2>
         <p>Under the GDPR you may request access to, correction or deletion of your data, restrict or object to
-        processing, request portability, and withdraw consent (including revoking a bank connection) at any time. To
-        exercise any right, email <a href="mailto:stoyanov.stoyan.st@gmail.com">stoyanov.stoyan.st@gmail.com</a>. You may
+        processing, request portability, and withdraw consent at any time. To
+        exercise any right, email <a href="mailto:admin@tandemtab.com">admin@tandemtab.com</a>. You may
         also lodge a complaint with the Bulgarian Commission for Personal Data Protection (CPDP) or your local authority.</p>
 
         <h2>Cookies</h2>
