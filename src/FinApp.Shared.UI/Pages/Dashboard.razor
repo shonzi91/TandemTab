@@ -57,6 +57,7 @@ else
                     </select>
                 </div>
                 <span class="acct-ops">
+                  <span class="ops-group">
                     <button class="link" title="@Loc["Add a new account"]" @onclick="OpenAddAccount">➕</button>
                     <span class="acct-menu">
                         <button class="link" title="@Loc["Account actions"]" @onclick="() => _acctMenuOpen = !_acctMenuOpen">⚙️</button>
@@ -77,11 +78,15 @@ else
                             </div>
                         }
                     </span>
+                  </span>
+                  <span class="ops-group ops-feat">
                     @if (_bankStatus?.Enabled == true)
                     {
                         <button class="acct-chip" title="@Loc["External accounts"]" @onclick="ShowBankTab">🏦 <span class="acct-chip-label">@(_bankStatus.Connected ? (_bankStatus.InstitutionName ?? Loc["External"]) : Loc["External"])</span></button>
                     }
                     <button class="acct-chip" title="@Loc["Recurring"]" @onclick="OpenRecurring">🔁 <span class="acct-chip-label">@Loc["Recurring"]</span></button>
+                  </span>
+                  <span class="ops-group">
                     <button class="link" title="@Loc["Achievements"]" @onclick="() => _modal = Modal.Achievements">🏆</button>
                     <span class="acct-notify">
                         <button class="link bell" title="@Loc["Notifications"]" @onclick="() => _bellOpen = !_bellOpen">
@@ -120,6 +125,7 @@ else
                             </div>
                         }
                     </span>
+                  </span>
                 </span>
             </div>
             <div class="period-nav">
@@ -238,11 +244,14 @@ else
                                 <span class="target-name">@t.Name</span>
                                 @if (t.Reached)
                                 {
-                                    <span class="target-when good-text">@Loc["reached 🎉"]</span>
+                                    <span class="target-when"><strong class="target-date good-text">@Loc["reached 🎉"]</strong></span>
                                 }
                                 else
                                 {
-                                    <span class="target-when">@Loc["by"] <strong>@PayoffDate(t.Months)</strong> <span class="target-mo">· @MonthsText(t.Months)</span></span>
+                                    <span class="target-when">
+                                        <strong class="target-date">@PayoffDate(t.Months)</strong>
+                                        <span class="target-mo">@MonthsText(t.Months)</span>
+                                    </span>
                                 }
                             </div>
                         }

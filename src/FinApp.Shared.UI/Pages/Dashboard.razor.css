@@ -310,7 +310,14 @@ button.link { background: none; border: none; color: #13a06e; font-weight: 600; 
 /* Header: account dropdown sits on its own row, separated from the period navigation (arrows/ops). */
 .head-main { display: flex; flex-direction: column; gap: 10px; }
 .acct-bar { display: flex; align-items: center; gap: 8px; }
-.acct-ops { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.acct-ops { display: flex; align-items: center; gap: 0; flex-wrap: wrap; }
+/* Header controls read as three tidy clusters — account · features · you — divided by hairlines. */
+.ops-group { display: inline-flex; align-items: center; gap: 6px; padding: 0 10px; }
+.ops-group:first-child { padding-left: 0; }
+.ops-group:last-child { padding-right: 0; }
+.ops-group + .ops-group { border-left: 1px solid #e6e0d3; }
+.ops-group:empty { display: none; padding: 0; border-left: 0; }
+html.dark .ops-group + .ops-group { border-left-color: #333b47; }
 /* External-accounts cluster: its own cell (divider + gap) holding the bank shortcut, a sync button and the
    last-synced time. The timestamp is the first thing to yield when space is tight (hidden on very small screens). */
 .acct-bank { display: inline-flex; align-items: center; gap: 4px; margin-left: 8px; padding-left: 10px; border-left: 1px solid #e0e4ea; }
@@ -813,21 +820,26 @@ html.dark .bell-text { color: #dfe6ea; }
 html.dark .bell-desc { color: #a9b6ad; }
 html.dark .bell-act { background: #1c3a2f; color: #57d9a3; }
 /* Home "on track for" targets card — surfaces the debt-free / goal dates up front (read-only projections). */
-.targets-card { margin: 14px 0 0; padding: 14px 16px; }
+.targets-card { margin: 14px 0 0; padding: 0; }
 .targets-h { margin: 0 0 10px; font-size: .72rem; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: #6b7280; }
-.targets-list { display: flex; flex-direction: column; gap: 8px; }
-.target-row { display: flex; align-items: baseline; gap: 10px; }
-.target-ico { font-size: 1.05rem; flex: 0 0 auto; }
-.target-name { font-weight: 700; color: #0f7a54; flex: 0 0 auto; }
-.target-when { margin-left: auto; text-align: right; color: #4b6a5c; font-size: .9rem; }
-.target-when strong { color: #13a06e; }
-.target-mo { color: #8a97a0; font-size: .82rem; white-space: nowrap; }
-.targets-foot { margin-top: 10px; font-size: .74rem; color: #8a97a0; }
+/* Targets card: header separated from the list by a divider; list rows on a grid so dates line up in a column. */
+.targets-card > .targets-h { margin: 0; padding: 12px 16px 11px; border-bottom: 1px solid #efece4; }
+.targets-list { display: flex; flex-direction: column; padding: 2px 16px; }
+.target-row { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 10px; padding: 9px 0; }
+.target-row + .target-row { border-top: 1px solid #f2efe8; }
+.target-ico { font-size: 1.05rem; }
+.target-name { font-weight: 700; color: #0f7a54; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.target-when { display: flex; flex-direction: column; align-items: flex-end; line-height: 1.2; text-align: right; }
+.target-date { color: #13a06e; font-size: .92rem; }
+.target-mo { color: #8a97a0; font-size: .76rem; white-space: nowrap; margin-top: 1px; }
+.targets-foot { margin: 0; padding: 10px 16px 12px; border-top: 1px solid #f2efe8; font-size: .74rem; color: #8a97a0; }
 html.dark .targets-h { color: #9aa4b2; }
+html.dark .targets-card > .targets-h { border-bottom-color: #313a45; }
 html.dark .target-name { color: #57d9a3; }
-html.dark .target-when { color: #b7c4bd; }
-html.dark .target-when strong { color: #57d9a3; }
+html.dark .target-date { color: #57d9a3; }
+html.dark .target-row + .target-row { border-top-color: #2a323c; }
 html.dark .target-mo, html.dark .targets-foot { color: #7c8a94; }
+html.dark .targets-foot { border-top-color: #2a323c; }
 
 /* Home quick actions (#11) */
 .quick-actions { display: flex; gap: 8px; margin: 14px 0 0; flex-wrap: wrap; }
