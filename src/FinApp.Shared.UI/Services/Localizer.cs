@@ -802,5 +802,55 @@ public sealed class Localizer(IJSRuntime js)
         ["Available to budget:"] = "Налично за бюджет:",
         ["the money in the account, minus what's budgeted elsewhere and already saved"] =
             "парите в профила, минус бюджетираното другаде и вече спестеното",
+
+        // Landing page (logged-out)
+        ["Budget together. Reach your goals faster."] = "Бюджет заедно. Постигни целите си по-бързо.",
+        ["A shared budgeting app for couples and families — plan your spending, clear debt, and hit savings goals side by side."] =
+            "Приложение за споделен бюджет за двойки и семейства — планирайте разходите, изчистете дълговете и постигайте целите за спестяване заедно.",
+        ["Free to start"] = "Безплатно за начало",
+        ["Built for two"] = "Създадено за двама",
+        ["Private by design"] = "Поверително по замисъл",
+        ["Create your free account"] = "Създай безплатен профил",
+        ["Already have an account? Sign in below."] = "Вече имаш профил? Влез по-долу.",
+        ["Everything you need to stay on top of money"] = "Всичко, за да държиш парите под контрол",
+        ["Budget together"] = "Бюджет заедно",
+        ["Invite your partner and share one budget. Every expense and change syncs for both of you in real time."] =
+            "Покани партньора си и споделете един бюджет. Всеки разход и промяна се синхронизират за двама ви в реално време.",
+        ["Goals & debt payoff"] = "Цели и изплащане на дългове",
+        ["Set savings goals and debts, then see the exact month you'll reach them at your current pace."] =
+            "Задай цели за спестяване и дългове и виж точния месец, в който ще ги достигнеш при сегашното си темпо.",
+        ["Recurring bills"] = "Повтарящи се сметки",
+        ["Add salary, rent and subscriptions once. TandemTab expects them each period and reminds you before they're due."] =
+            "Добави заплата, наем и абонаменти веднъж. TandemTab ги очаква всеки период и ти напомня преди падеж.",
+        ["Import your statement"] = "Импортирай извлечение",
+        ["Bring in a bank statement (CSV, Excel, XML, OFX or QIF) and file transactions in a couple of taps."] =
+            "Внеси банково извлечение (CSV, Excel, XML, OFX или QIF) и заведи транзакциите с няколко докосвания.",
+        ["Health score & insights"] = "Здравен резултат и анализи",
+        ["A simple score and clear trends show whether you're on track — and the quickest ways to improve."] =
+            "Прост резултат и ясни тенденции показват дали си в правилна посока — и най-бързите начини да се подобриш.",
+        ["Stay motivated with streaks and milestones as your habits improve and your savings grow."] =
+            "Остани мотивиран с поредици и постижения, докато навиците ти се подобряват, а спестяванията растат.",
+        ["How it works"] = "Как работи",
+        ["Create your account"] = "Създай своя профил",
+        ["Set up a wallet and your first monthly budget in minutes."] = "Настрой портфейл и първия си месечен бюджет за минути.",
+        ["Add income & spending"] = "Добави приходи и разходи",
+        ["Log expenses as you go, or import them from your bank statement."] =
+            "Записвай разходите в движение или ги импортирай от банковото си извлечение.",
+        ["Watch your goals get closer"] = "Гледай как целите ти се приближават",
+        ["Follow insights, reminders and milestones as debt shrinks and savings grow."] =
+            "Следвай анализи, напомняния и постижения, докато дългът намалява, а спестяванията растат.",
+        ["Ready to take control, together?"] = "Готови ли сте да поемете контрола заедно?",
+
+        // Onboarding checklist (first run)
+        ["Welcome! Let's get you set up"] = "Добре дошъл! Да те настроим",
+        ["{0} of {1} done — takes a couple of minutes."] = "{0} от {1} готови — отнема няколко минути.",
+        ["Add your income"] = "Добави приходите си",
+        ["Tell TandemTab what's coming in this month."] = "Кажи на TandemTab какво влиза този месец.",
+        ["Set a budget"] = "Задай бюджет",
+        ["Log an expense"] = "Запиши разход",
+        ["Cap a category so you know what's safe to spend."] = "Задай таван на категория, за да знаеш колко е безопасно да похарчиш.",
+        ["Record your first spend — or import a statement."] = "Запиши първия си разход — или импортирай извлечение.",
+        ["Create a goal"] = "Създай цел",
+        ["Add a savings goal or a debt to pay off."] = "Добави цел за спестяване или дълг за изплащане.",
     };
 }

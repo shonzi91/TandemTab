@@ -1,0 +1,96 @@
+@inject Localizer Loc
+@implements IDisposable
+
+@* Logged-out marketing landing. Wraps the existing sign-in card (<AuthPanel/>) so the auth flow is
+   unchanged — everything around it is presentation only. Copy leads with what every user gets (shared
+   budgeting, goals, recurring, import, insights, achievements); bank sync is intentionally not featured
+   because it's allowlist-gated for the MVP. *@
+<div class="lp">
+
+    <section class="lp-hero">
+        <div class="lp-hero-copy">
+            <h1 class="lp-brand"><span class="lp-logo"><TandemLogo /></span><span class="brand-word">Tandem<span class="brand-tab">Tab</span></span></h1>
+            <h2 class="lp-headline">@Loc["Budget together. Reach your goals faster."]</h2>
+            <p class="lp-sub">@Loc["A shared budgeting app for couples and families — plan your spending, clear debt, and hit savings goals side by side."]</p>
+            <ul class="lp-ticks">
+                <li>@Loc["Free to start"]</li>
+                <li>@Loc["Built for two"]</li>
+                <li>@Loc["Private by design"]</li>
+            </ul>
+            <a class="lp-cta" href="#lp-start">@Loc["Create your free account"]</a>
+            <p class="lp-cta-note">@Loc["Already have an account? Sign in below."]</p>
+        </div>
+        <div class="lp-auth" id="lp-start">
+            <AuthPanel />
+        </div>
+    </section>
+
+    <section class="lp-features">
+        <h3 class="lp-sec-h">@Loc["Everything you need to stay on top of money"]</h3>
+        <div class="lp-grid">
+            <div class="lp-feat">
+                <span class="lp-feat-ico">👛</span>
+                <h4>@Loc["Budget together"]</h4>
+                <p>@Loc["Invite your partner and share one budget. Every expense and change syncs for both of you in real time."]</p>
+            </div>
+            <div class="lp-feat">
+                <span class="lp-feat-ico">🎯</span>
+                <h4>@Loc["Goals & debt payoff"]</h4>
+                <p>@Loc["Set savings goals and debts, then see the exact month you'll reach them at your current pace."]</p>
+            </div>
+            <div class="lp-feat">
+                <span class="lp-feat-ico">🔁</span>
+                <h4>@Loc["Recurring bills"]</h4>
+                <p>@Loc["Add salary, rent and subscriptions once. TandemTab expects them each period and reminds you before they're due."]</p>
+            </div>
+            <div class="lp-feat">
+                <span class="lp-feat-ico">📥</span>
+                <h4>@Loc["Import your statement"]</h4>
+                <p>@Loc["Bring in a bank statement (CSV, Excel, XML, OFX or QIF) and file transactions in a couple of taps."]</p>
+            </div>
+            <div class="lp-feat">
+                <span class="lp-feat-ico">💗</span>
+                <h4>@Loc["Health score & insights"]</h4>
+                <p>@Loc["A simple score and clear trends show whether you're on track — and the quickest ways to improve."]</p>
+            </div>
+            <div class="lp-feat">
+                <span class="lp-feat-ico">🏆</span>
+                <h4>@Loc["Achievements"]</h4>
+                <p>@Loc["Stay motivated with streaks and milestones as your habits improve and your savings grow."]</p>
+            </div>
+        </div>
+    </section>
+
+    <section class="lp-steps">
+        <h3 class="lp-sec-h">@Loc["How it works"]</h3>
+        <div class="lp-step-row">
+            <div class="lp-step">
+                <span class="lp-step-n">1</span>
+                <h4>@Loc["Create your account"]</h4>
+                <p>@Loc["Set up a wallet and your first monthly budget in minutes."]</p>
+            </div>
+            <div class="lp-step">
+                <span class="lp-step-n">2</span>
+                <h4>@Loc["Add income & spending"]</h4>
+                <p>@Loc["Log expenses as you go, or import them from your bank statement."]</p>
+            </div>
+            <div class="lp-step">
+                <span class="lp-step-n">3</span>
+                <h4>@Loc["Watch your goals get closer"]</h4>
+                <p>@Loc["Follow insights, reminders and milestones as debt shrinks and savings grow."]</p>
+            </div>
+        </div>
+    </section>
+
+    <section class="lp-closing">
+        <h3>@Loc["Ready to take control, together?"]</h3>
+        <a class="lp-cta" href="#lp-start">@Loc["Create your free account"]</a>
+    </section>
+
+</div>
+
+@code {
+    protected override void OnInitialized() => Loc.Changed += OnLocChanged;
+    private void OnLocChanged() => InvokeAsync(StateHasChanged);
+    public void Dispose() => Loc.Changed -= OnLocChanged;
+}

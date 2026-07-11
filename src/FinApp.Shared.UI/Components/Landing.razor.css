@@ -1,0 +1,104 @@
+/* Logged-out marketing landing. Presentation only — the <AuthPanel/> card keeps its own styles;
+   we just lay the page out around it and override the card's centering margin inside the hero. */
+.lp {
+    font-family: 'Quicksand', system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    color: #1f2430;
+    max-width: 1080px;
+    margin: 0 auto;
+    padding: 0 20px 40px;
+}
+
+/* ---- Hero: pitch on the left, the sign-in card on the right (stacks on mobile) ---- */
+.lp-hero {
+    display: grid;
+    grid-template-columns: 1.05fr 384px;
+    gap: 40px;
+    align-items: center;
+    padding: 3vh 0 12px;
+}
+.lp-hero-copy { min-width: 0; }
+
+.lp-brand { display: flex; align-items: center; gap: 12px; margin: 0 0 18px; font-size: 1.7rem; font-weight: 800; color: #13a06e; }
+.lp-logo {
+    width: 52px; height: 52px; flex: 0 0 auto;
+    background: linear-gradient(135deg, #eef9f3, #e4f6ee);
+    border: 1px solid #d6f0e3; border-radius: 15px; padding: 6px;
+    display: grid; place-items: center;
+}
+.lp-logo ::deep svg { width: 100%; height: 100%; display: block; }
+.brand-tab { background: #fffdf8; color: #13a06e; border: 1px solid #d6f0e3; border-radius: 9px; padding: 0 8px; }
+
+.lp-headline { margin: 0 0 12px; font-size: 2.4rem; line-height: 1.12; font-weight: 800; letter-spacing: -.5px; color: #16202b; }
+.lp-sub { margin: 0 0 18px; font-size: 1.06rem; line-height: 1.5; color: #4b5563; max-width: 34ch; }
+
+.lp-ticks { list-style: none; margin: 0 0 22px; padding: 0; display: flex; flex-wrap: wrap; gap: 8px 18px; }
+.lp-ticks li { font-size: .92rem; font-weight: 600; color: #0e7c55; }
+.lp-ticks li::before { content: "✓"; margin-right: 6px; color: #13a06e; font-weight: 800; }
+
+.lp-cta {
+    display: inline-block; text-decoration: none;
+    background: #13a06e; color: #fffdf8; font-weight: 700; font-size: 1rem;
+    padding: 13px 26px; border-radius: 12px; box-shadow: 0 8px 22px rgba(19, 160, 110, .28);
+    transition: background .12s, transform .12s;
+}
+.lp-cta:hover { background: #0e7c55; transform: translateY(-1px); }
+.lp-cta-note { margin: 12px 0 0; font-size: .85rem; color: #8a97a0; }
+
+/* Pull the auth card up to align with the hero copy (it centres itself with a big top margin otherwise). */
+.lp-auth { min-width: 0; }
+.lp-auth ::deep .auth { margin: 0 auto; max-width: 384px; }
+
+/* ---- Shared section heading ---- */
+.lp-sec-h { text-align: center; font-size: 1.5rem; font-weight: 800; color: #16202b; margin: 12px 0 26px; letter-spacing: -.3px; }
+
+/* ---- Feature grid ---- */
+.lp-features { padding: 40px 0 12px; }
+.lp-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+.lp-feat {
+    background: #fffdf8; border: 1px solid #ece3d3; border-radius: 16px; padding: 20px 18px;
+    box-shadow: 0 4px 16px rgba(17, 20, 28, .05);
+}
+.lp-feat-ico { font-size: 1.7rem; line-height: 1; display: block; margin-bottom: 10px; }
+.lp-feat h4 { margin: 0 0 6px; font-size: 1.02rem; font-weight: 700; color: #16202b; }
+.lp-feat p { margin: 0; font-size: .9rem; line-height: 1.5; color: #5b6470; }
+
+/* ---- How it works ---- */
+.lp-steps { padding: 44px 0 12px; }
+.lp-step-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+.lp-step { text-align: center; padding: 0 6px; }
+.lp-step-n {
+    display: inline-grid; place-items: center; width: 40px; height: 40px; margin-bottom: 12px;
+    border-radius: 50%; background: #e4f6ee; color: #0e7c55; font-weight: 800; font-size: 1.1rem;
+    border: 1px solid #d6f0e3;
+}
+.lp-step h4 { margin: 0 0 6px; font-size: 1rem; font-weight: 700; color: #16202b; }
+.lp-step p { margin: 0; font-size: .9rem; line-height: 1.5; color: #5b6470; }
+
+/* ---- Closing CTA band ---- */
+.lp-closing {
+    margin-top: 44px; padding: 36px 20px; text-align: center;
+    background: linear-gradient(135deg, #eef9f3, #e4f6ee);
+    border: 1px solid #d6f0e3; border-radius: 20px;
+}
+.lp-closing h3 { margin: 0 0 18px; font-size: 1.4rem; font-weight: 800; color: #0e5f42; }
+
+/* ---- Responsive ---- */
+@media (max-width: 860px) {
+    .lp-hero { grid-template-columns: 1fr; gap: 24px; padding-top: 2vh; }
+    .lp-auth { order: -1; }                 /* card first on narrow screens so sign-in stays reachable */
+    .lp-headline { font-size: 2rem; }
+    .lp-sub { max-width: none; }
+    .lp-grid, .lp-step-row { grid-template-columns: 1fr; }
+    .lp-cta-note { display: none; }
+}
+
+/* ---- Dark theme ---- */
+html.dark .lp { color: #e8eaf0; }
+html.dark .lp-headline, html.dark .lp-sec-h, html.dark .lp-feat h4, html.dark .lp-step h4 { color: #eef1f6; }
+html.dark .lp-sub, html.dark .lp-feat p, html.dark .lp-step p { color: #a9b2c0; }
+html.dark .lp-cta-note { color: #7c8a94; }
+html.dark .lp-feat { background: #181c25; border-color: #262d3d; box-shadow: none; }
+html.dark .lp-step-n { background: #14251d; color: #57d9a3; border-color: #24493a; }
+html.dark .lp-closing { background: linear-gradient(135deg, #14251d, #16302408); border-color: #24493a; }
+html.dark .lp-closing h3 { color: #7ee3b4; }
+html.dark .brand-tab { background: #181c25; border-color: #24493a; color: #57d9a3; }

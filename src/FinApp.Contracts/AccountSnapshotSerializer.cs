@@ -41,7 +41,8 @@ public static class AccountSnapshotSerializer
             account.AchievementsAnchor,
             account.AchievementLog.Count == 0 ? null : new Dictionary<string, DateOnly>(account.AchievementLog),
             account.RecurringItems.Count == 0 ? null : account.RecurringItems.Select(r => new RecurringItemNode(
-                r.Id, r.Name, r.Kind, r.AmountMode, r.ExpectedAmount, r.DayOfMonth, r.CategoryId, r.FundId, r.Active, r.Icon, r.LastHandledPeriodFrom, r.AutoPost)).ToList());
+                r.Id, r.Name, r.Kind, r.AmountMode, r.ExpectedAmount, r.DayOfMonth, r.CategoryId, r.FundId, r.Active, r.Icon, r.LastHandledPeriodFrom, r.AutoPost)).ToList(),
+            account.OnboardingDismissed);
         return JsonSerializer.Serialize(node, Json);
     }
 
@@ -96,6 +97,7 @@ public static class AccountSnapshotSerializer
         if (node.AchievementsAnchor is { } anchor) account.SetAchievementsAnchor(anchor);
         if (node.AchievementLog is { } log)
             foreach (var (key, on) in log) account.RecordAchievement(key, on);
+        if (node.OnboardingDismissed) account.DismissOnboarding();
         foreach (var r in node.Recurring ?? [])
         {
             var item = Build(new RecurringItem(r.Name, r.Kind, r.AmountMode, r.ExpectedAmount, r.DayOfMonth, r.CategoryId, r.FundId, r.Icon, r.AutoPost), r.Id);
@@ -219,7 +221,8 @@ public static class AccountSnapshotSerializer
         decimal SavingsRateTarget = 0.20m,
         DateOnly? AchievementsAnchor = null,
         Dictionary<string, DateOnly>? AchievementLog = null,
-        List<RecurringItemNode>? Recurring = null);
+        List<RecurringItemNode>? Recurring = null,
+        bool OnboardingDismissed = false);
 
     private record RecurringItemNode(Guid Id, string Name, RecurringKind Kind, RecurringAmountMode AmountMode,
         decimal ExpectedAmount, int DayOfMonth, Guid CategoryId, Guid FundId, bool Active, string? Icon, DateOnly? LastHandledPeriodFrom,

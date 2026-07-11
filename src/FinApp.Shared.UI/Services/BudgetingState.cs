@@ -142,6 +142,13 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
         return SaveAsync();
     }
 
+    /// <summary>User closed the Home "Getting started" checklist — persist so it stays gone.</summary>
+    public Task DismissOnboarding()
+    {
+        Account.DismissOnboarding();
+        return SaveAsync();
+    }
+
     public async Task RenameAccount(string name)
     {
         var id = CurrentAccountId;

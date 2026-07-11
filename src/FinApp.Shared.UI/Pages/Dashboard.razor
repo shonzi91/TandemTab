@@ -208,6 +208,44 @@ else
 
     <div class="tab-content">
         <div class="tabpanel" hidden="@(_tab != Tab.Overview)">
+            @{
+                // First-run "Getting started" checklist. Steps auto-tick from real data, so it disappears on its
+                // own as the user completes them; the × persists a dismiss so it never nags. Body-data flag.
+                var obSteps = new (bool Done, string Icon, string Title, string Desc, Action Act)[]
+                {
+                    (State.TotalContributed.Amount > 0m, "💵", Loc["Add your income"], Loc["Tell TandemTab what's coming in this month."], OpenDeposit),
+                    (State.TotalBudgeted.Amount > 0m, "🎯", Loc["Set a budget"], Loc["Cap a category so you know what's safe to spend."], OpenAddBudget),
+                    (State.AllExpenses.Count > 0, "🧾", Loc["Log an expense"], Loc["Record your first spend — or import a statement."], OpenAddExpenseTab),
+                    (HasSavingsBucket, "🏆", Loc["Create a goal"], Loc["Add a savings goal or a debt to pay off."], OpenAddBucket),
+                };
+                var obDone = obSteps.Count(s => s.Done);
+            }
+            @if (!State.Account.OnboardingDismissed && obDone < obSteps.Length)
+            {
+                <section class="panel onboard-card">
+                    <div class="onboard-head">
+                        <div>
+                            <h2 class="onboard-h">👋 @Loc["Welcome! Let's get you set up"]</h2>
+                            <p class="onboard-sub">@string.Format(Loc["{0} of {1} done — takes a couple of minutes."], obDone, obSteps.Length)</p>
+                        </div>
+                        <button class="onboard-x" title="@Loc["Dismiss"]" @onclick="() => State.DismissOnboarding()">×</button>
+                    </div>
+                    <div class="onboard-prog"><div class="onboard-prog-fill" style="width:@(obDone * 100 / obSteps.Length)%"></div></div>
+                    <div class="onboard-steps">
+                        @foreach (var s in obSteps)
+                        {
+                            <button class="onboard-step @(s.Done ? "done" : "")" @onclick="@(() => s.Act())" disabled="@s.Done">
+                                <span class="onboard-check">@(s.Done ? "✓" : s.Icon)</span>
+                                <span class="onboard-body">
+                                    <span class="onboard-title">@s.Title</span>
+                                    <span class="onboard-desc">@s.Desc</span>
+                                </span>
+                                @if (!s.Done) { <span class="onboard-go">›</span> }
+                            </button>
+                        }
+                    </div>
+                </section>
+            }
             <section class="cards cards-3">
                 <div class="card savings">
                     <span class="card-label">@Loc["Saved this period"]</span>

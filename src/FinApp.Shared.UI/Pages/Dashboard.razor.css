@@ -7,6 +7,46 @@
     font-variant-numeric: tabular-nums;   /* keep money columns aligned in Quicksand's rounded digits */
 }
 
+/* First-run onboarding checklist (Home) */
+.onboard-card { margin: 0 0 14px; padding: 16px 16px 14px; background: linear-gradient(135deg, #eef9f3, #e9f7f0); border: 1px solid #d6f0e3; }
+.onboard-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.onboard-h { margin: 0; font-size: 1.02rem; font-weight: 800; color: #0e5f42; }
+.onboard-sub { margin: 3px 0 0; font-size: .82rem; color: #4b6a5c; }
+.onboard-x { border: none; background: none; cursor: pointer; font-size: 1.2rem; line-height: 1; color: #7a9488; padding: 2px 4px; border-radius: 6px; }
+.onboard-x:hover { background: rgba(0,0,0,.06); color: #0e5f42; }
+.onboard-prog { height: 6px; border-radius: 999px; background: #d3ece0; margin: 12px 0; overflow: hidden; }
+.onboard-prog-fill { height: 100%; border-radius: 999px; background: #13a06e; transition: width .3s ease; }
+.onboard-steps { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.onboard-step {
+    display: flex; align-items: center; gap: 10px; text-align: left; width: 100%;
+    background: #fffdf8; border: 1px solid #d9ece2; border-radius: 12px; padding: 10px 12px; cursor: pointer; font: inherit;
+    transition: border-color .12s, box-shadow .12s, transform .12s;
+}
+.onboard-step:hover:not(.done) { border-color: #13a06e; box-shadow: 0 3px 10px rgba(19,160,110,.14); transform: translateY(-1px); }
+.onboard-step.done { cursor: default; opacity: .68; background: #f4faf7; }
+.onboard-check {
+    flex: 0 0 auto; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center;
+    background: #eef9f3; font-size: 1rem;
+}
+.onboard-step.done .onboard-check { background: #13a06e; color: #fff; font-weight: 800; }
+.onboard-body { display: flex; flex-direction: column; min-width: 0; }
+.onboard-title { font-weight: 700; font-size: .9rem; color: #16202b; }
+.onboard-step.done .onboard-title { text-decoration: line-through; text-decoration-color: #9bb3a8; }
+.onboard-desc { font-size: .76rem; color: #6b7d72; line-height: 1.3; }
+.onboard-go { margin-left: auto; color: #13a06e; font-weight: 800; font-size: 1.1rem; }
+@media (max-width: 560px) { .onboard-steps { grid-template-columns: 1fr; } }
+html.dark .onboard-card { background: linear-gradient(135deg, #14251d, #10201a); border-color: #24493a; }
+html.dark .onboard-h { color: #7ee3b4; }
+html.dark .onboard-sub { color: #9fb8ad; }
+html.dark .onboard-x { color: #8fa89d; }
+html.dark .onboard-x:hover { background: rgba(255,255,255,.08); color: #7ee3b4; }
+html.dark .onboard-prog { background: #1d3a2e; }
+html.dark .onboard-step { background: #181c25; border-color: #262d3d; }
+html.dark .onboard-step.done { background: #141821; }
+html.dark .onboard-check { background: #14251d; }
+html.dark .onboard-title { color: #e8eaf0; }
+html.dark .onboard-desc { color: #a9b6ad; }
+
 .dash-head {
     display: flex;
     align-items: center;

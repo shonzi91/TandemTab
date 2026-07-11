@@ -80,6 +80,19 @@ public class SnapshotSerializerTests
     }
 
     [Fact]
+    public void Onboarding_dismissed_flag_round_trips_and_defaults_false()
+    {
+        var fresh = new Account("Fresh", "EUR");
+        fresh.AssignOwner(Guid.NewGuid(), "Owner");
+        var freshCopy = AccountSnapshotSerializer.Deserialize(AccountSnapshotSerializer.Serialize(fresh));
+        Assert.False(freshCopy.OnboardingDismissed);   // new account: checklist still shows
+
+        fresh.DismissOnboarding();
+        var dismissedCopy = AccountSnapshotSerializer.Deserialize(AccountSnapshotSerializer.Serialize(fresh));
+        Assert.True(dismissedCopy.OnboardingDismissed);   // stays gone across reloads
+    }
+
+    [Fact]
     public void Round_trips_the_full_aggregate_preserving_ids_and_links()
     {
         var original = BuildRichAccount(out var savingsExpenseId);

@@ -42,6 +42,11 @@ public sealed class Account : Entity
     /// <summary>When each achievement was first earned (stable key → date). Body data — travels in the snapshot.</summary>
     public IReadOnlyDictionary<string, DateOnly> AchievementLog => _achievements;
 
+    /// <summary>True once the user closes the "Getting started" checklist on Home, so it doesn't reappear even
+    /// before they've logged anything. Body data — travels in the snapshot.</summary>
+    public bool OnboardingDismissed { get; private set; }
+    public void DismissOnboarding() => OnboardingDismissed = true;
+
     /// <summary>The user who created this account. Owner-only actions (rename, delete) check this; everything
     /// inside the account may be changed by any contributor. <see cref="Guid.Empty"/> for accounts
     /// created without a signed-in user (e.g. unit tests).
