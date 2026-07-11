@@ -16,49 +16,102 @@ public readonly record struct ImportedTransaction(DateOnly Date, decimal Amount,
 /// </summary>
 public static class BankFileParser
 {
-    public enum Format { Unknown, Ofx, Qif, Csv, Xml }
+    public enum Format { Unknown, Ofx, Qif, Csv, Xml, Html }
 
-    /// <summary>Guess the format from the file name, then the content.</summary>
+    /// <summary>Guess the format from the file name, then the content. Note some banks name an HTML-table export
+    /// ".xls" and an XML export ".xml"/".camt" — content sniffing catches those.</summary>
     public static Format Detect(string? fileName, string text)
     {
+        var head = TrimBom(text).TrimStart();
+        // Content first for the ambiguous ones: an .xls that's really an HTML table, an .xml statement, etc.
+        if (head.Contains("<OFX", StringComparison.OrdinalIgnoreCase) || head.Contains("<STMTTRN", StringComparison.OrdinalIgnoreCase)) return Format.Ofx;
+        if (head.StartsWith("<html", StringComparison.OrdinalIgnoreCase) || head.Contains("<table", StringComparison.OrdinalIgnoreCase)) return Format.Html;
+        if (head.Contains("BkToCstmrStmt", StringComparison.OrdinalIgnoreCase) || head.Contains(":camt.", StringComparison.OrdinalIgnoreCase)
+            || head.Contains("<AccountMovement", StringComparison.OrdinalIgnoreCase)
+            || (head.StartsWith('<') && head.Contains("<Ntry", StringComparison.OrdinalIgnoreCase))) return Format.Xml;
+
         var ext = (fileName ?? "").ToLowerInvariant();
         if (ext.EndsWith(".ofx") || ext.EndsWith(".qfx")) return Format.Ofx;
         if (ext.EndsWith(".qif")) return Format.Qif;
+        if (ext.EndsWith(".htm") || ext.EndsWith(".html")) return Format.Html;
         if (ext.EndsWith(".xml") || ext.EndsWith(".camt")) return Format.Xml;
         if (ext.EndsWith(".csv") || ext.EndsWith(".tsv") || ext.EndsWith(".txt")) return Format.Csv;
-        var head = text.TrimStart();
-        if (head.Contains("<OFX", StringComparison.OrdinalIgnoreCase) || head.Contains("<STMTTRN", StringComparison.OrdinalIgnoreCase)) return Format.Ofx;
-        if (head.Contains("BkToCstmrStmt", StringComparison.OrdinalIgnoreCase) || head.Contains(":camt.", StringComparison.OrdinalIgnoreCase)
-            || (head.StartsWith('<') && head.Contains("<Ntry", StringComparison.OrdinalIgnoreCase))) return Format.Xml;
         if (head.StartsWith("!Type:", StringComparison.OrdinalIgnoreCase)) return Format.Qif;
         return text.Contains(',') || text.Contains(';') || text.Contains('\t') ? Format.Csv : Format.Unknown;
     }
 
+    private static string TrimBom(string s) => s.Length > 0 && s[0] == '﻿' ? s[1..] : s;
+
     // ---- ISO 20022 CAMT.053 (bank-to-customer statement) XML ----
 
-    /// <summary>Parse an ISO 20022 CAMT.053 statement (the standard bank statement XML most European banks export).
-    /// Reads each <c>&lt;Ntry&gt;</c>: amount + <c>CdtDbtInd</c> (DBIT = out, CRDT = in) → signed amount, the booking
-    /// date, and the remittance text. Namespace-agnostic (matched by local element name) so it works across CAMT
-    /// versions (.02/.04/.08…).</summary>
+    // Row-element names across the bank statement schemas we've seen (ISO 20022 CAMT, DAIS eBank, generic).
+    private static readonly string[] XmlRowNames = { "Ntry", "AccountMovement", "Transaction", "StatementLine", "StmtLine", "Movement", "Operation" };
+    private static readonly string[] XmlAmountNames = { "Amt", "Amount", "Sum", "Value" };
+    private static readonly string[] XmlDirNames = { "CdtDbtInd", "MovementType", "Type", "Direction" };
+    private static readonly string[] XmlDateNames = { "ValueDate", "BookgDt", "ValDt", "Date", "Dt", "DtTm" };
+    private static readonly string[] XmlDescNames = { "Ustrd", "Reason", "Description", "Narrative", "AddtlTxInf", "AddtlNtryInf", "Details" };
+
+    /// <summary>Parse a statement XML into transactions, schema-flexible so it handles ISO 20022 CAMT.053
+    /// (<c>&lt;Ntry&gt;</c> + <c>CdtDbtInd</c>), the DAIS eBank format (<c>&lt;AccountMovement&gt;</c> +
+    /// <c>MovementType</c>), and similar. Direction (debit/credit) sets the sign; if a schema has none, the amount's
+    /// own sign is kept. Namespace-agnostic (matched by local element name).</summary>
     public static IReadOnlyList<ImportedTransaction> ParseXml(string text)
     {
         var list = new List<ImportedTransaction>();
         XDocument doc;
         try { doc = XDocument.Parse(text); } catch { return list; }
-        foreach (var ntry in doc.Descendants().Where(e => e.Name.LocalName == "Ntry"))
+
+        foreach (var row in doc.Descendants().Where(e => XmlRowNames.Contains(e.Name.LocalName, StringComparer.OrdinalIgnoreCase)))
         {
-            var amtRaw = ntry.Elements().FirstOrDefault(x => x.Name.LocalName == "Amt")?.Value;
-            var cdtDbt = ntry.Elements().FirstOrDefault(x => x.Name.LocalName == "CdtDbtInd")?.Value;
-            var bookg = ntry.Descendants().FirstOrDefault(x => x.Name.LocalName is "BookgDt");
-            var dateRaw = (bookg ?? ntry).Descendants().FirstOrDefault(x => x.Name.LocalName is "Dt" or "DtTm")?.Value;
-            var desc = ntry.Descendants().FirstOrDefault(x => x.Name.LocalName == "Ustrd")?.Value
-                       ?? ntry.Descendants().FirstOrDefault(x => x.Name.LocalName is "AddtlTxInf" or "AddtlNtryInf")?.Value
-                       ?? "";
+            string? First(string[] names) => row.Descendants()
+                .FirstOrDefault(x => names.Contains(x.Name.LocalName, StringComparer.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(x.Value))?.Value?.Trim();
+
+            var amtRaw = First(XmlAmountNames);
+            var dateRaw = First(XmlDateNames);
+            var dir = First(XmlDirNames);
+            var desc = First(XmlDescNames) ?? "";
             if (amtRaw is null || dateRaw is null || !TryAmount(amtRaw, out var amount) || !TryLooseDate(dateRaw, out var date)) continue;
-            amount = string.Equals(cdtDbt, "DBIT", StringComparison.OrdinalIgnoreCase) ? -Math.Abs(amount) : Math.Abs(amount);
+
+            // DBIT / Debit → money out; CRDT / Credit → money in. No direction element → keep the amount's own sign.
+            if (dir is not null)
+                amount = dir.StartsWith("C", StringComparison.OrdinalIgnoreCase) ? Math.Abs(amount) : -Math.Abs(amount);
             list.Add(new ImportedTransaction(date, amount, Clean(desc)));
         }
         return list;
+    }
+
+    // ---- HTML table (banks that export a .xls/.htm that is really an HTML <table>, e.g. DAIS eBank) ----
+
+    /// <summary>Read an HTML <c>&lt;table&gt;</c> into a header row + data rows of plain strings — the same shape as
+    /// <see cref="ReadCsv"/>, so a bank's HTML "Excel" export flows through the column mapper. Cells are de-tagged and
+    /// HTML-entity-decoded; the header is the first row that has several cells (so a colspan title banner is skipped).</summary>
+    public static (IReadOnlyList<string> Headers, IReadOnlyList<IReadOnlyList<string>> Rows) ReadHtmlTable(string html)
+    {
+        var rows = new List<IReadOnlyList<string>>();
+        foreach (System.Text.RegularExpressions.Match tr in System.Text.RegularExpressions.Regex.Matches(
+            html, "<tr\\b[^>]*>(.*?)</tr>", RxOptions))
+        {
+            var cells = new List<string>();
+            foreach (System.Text.RegularExpressions.Match td in System.Text.RegularExpressions.Regex.Matches(
+                tr.Groups[1].Value, "<t[dh]\\b[^>]*?/>|<t[dh]\\b[^>]*>(.*?)</t[dh]>", RxOptions))
+                cells.Add(td.Groups[1].Success ? CleanHtml(td.Groups[1].Value) : "");
+            if (cells.Count > 0) rows.Add(cells);
+        }
+        // The header is the first row with several columns (skips single-cell title/colspan banners).
+        var headerIdx = rows.FindIndex(r => r.Count >= 3);
+        if (headerIdx < 0) return ([], []);
+        return (rows[headerIdx], rows.Skip(headerIdx + 1).Where(r => r.Count >= 3).ToList());
+    }
+
+    private const System.Text.RegularExpressions.RegexOptions RxOptions =
+        System.Text.RegularExpressions.RegexOptions.Singleline | System.Text.RegularExpressions.RegexOptions.IgnoreCase;
+
+    private static string CleanHtml(string cell)
+    {
+        var noTags = System.Text.RegularExpressions.Regex.Replace(cell, "<[^>]+>", " ");
+        var decoded = noTags.Replace("&lt;", "<").Replace("&gt;", ">").Replace("&amp;", "&")
+            .Replace("&nbsp;", " ").Replace("&quot;", "\"").Replace("&#39;", "'").Replace("&apos;", "'");
+        return Clean(decoded);
     }
 
     // ---- OFX / QFX ----

@@ -2145,7 +2145,7 @@ else
                     {
                         <p class="hint">@Loc["Export a statement from your bank (Excel, CSV, XML, OFX or QIF) and upload it here. It's parsed on your device — nothing is sent until you confirm the rows."]</p>
                         <p class="hint">@Loc["Tip: if your bank only offers a PDF, look for a \"download/export transactions\" option — it usually also offers Excel or CSV, which import cleanly."]</p>
-                        <InputFile OnChange="OnImportFileSelected" accept=".xlsx,.xlsm,.csv,.tsv,.txt,.xml,.camt,.ofx,.qfx,.qif" />
+                        <InputFile OnChange="OnImportFileSelected" accept=".xlsx,.xlsm,.xls,.htm,.html,.csv,.tsv,.txt,.xml,.camt,.ofx,.qfx,.qif" />
                         <div class="modal-actions"><button class="ghost" @onclick="Back">@Loc["Cancel"]</button></div>
                     }
                     else if (_importStep == ImportStep.MapCsv)
@@ -2153,8 +2153,16 @@ else
                         <p class="hint">@Loc["Tell us which columns to use."]</p>
                         <label>@Loc["Date"] <select @bind="_csvDate">@foreach (var (h, i) in _csvHeaders.Select((h, i) => (h, i))) { <option value="@i">@h</option> }</select></label>
                         <label>@Loc["Description"] <select @bind="_csvDesc">@foreach (var (h, i) in _csvHeaders.Select((h, i) => (h, i))) { <option value="@i">@h</option> }</select></label>
-                        <label>@Loc["Amount"] <select @bind="_csvAmount">@foreach (var (h, i) in _csvHeaders.Select((h, i) => (h, i))) { <option value="@i">@h</option> }</select></label>
-                        <small class="hint">@Loc["Money out is negative, money in positive."]</small>
+                        @if (CsvHasSplit)
+                        {
+                            <label>@Loc["Money out (debit)"] <select @bind="_csvDebit">@foreach (var (h, i) in _csvHeaders.Select((h, i) => (h, i))) { <option value="@i">@h</option> }</select></label>
+                            <label>@Loc["Money in (credit)"] <select @bind="_csvCredit">@foreach (var (h, i) in _csvHeaders.Select((h, i) => (h, i))) { <option value="@i">@h</option> }</select></label>
+                        }
+                        else
+                        {
+                            <label>@Loc["Amount"] <select @bind="_csvAmount">@foreach (var (h, i) in _csvHeaders.Select((h, i) => (h, i))) { <option value="@i">@h</option> }</select></label>
+                            <small class="hint">@Loc["Money out is negative, money in positive."]</small>
+                        }
                         <div class="modal-actions">
                             <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
                             <button @onclick="ApplyCsvMapping">@Loc["Preview"] →</button>
@@ -2171,14 +2179,14 @@ else
                                 var r = imp;
                                 <li class="@(r.OutOfPeriod ? "import-skip" : "")">
                                     <span class="row-lead">
-                                        <input type="checkbox" checked="@r.Include" @onchange="e => r.Include = (bool)e.Value!" disabled="@r.OutOfPeriod" />
+                                        <input type="checkbox" checked="@r.Include" @onchange="e => r.Include = (bool)e.Value!" />
                                         <span class="import-when">@r.Tx.Date.ToString("dd MMM")</span>
                                         <span class="import-desc">@(string.IsNullOrWhiteSpace(r.Tx.Description) ? Loc["(no description)"] : r.Tx.Description)</span>
                                     </span>
                                     <span class="row-ops">
-                                        @if (r.OutOfPeriod) { <span class="row-note">@Loc["outside period"]</span> }
-                                        else if (r.Duplicate) { <span class="row-note" title="@Loc["Looks already logged"]">⚠️</span> }
-                                        <select @bind="r.CategoryId" disabled="@r.OutOfPeriod">
+                                        @if (r.OutOfPeriod) { <span class="row-note" title="@Loc["Dated outside the current period — it'll still import with its own date"]">📅</span> }
+                                        @if (r.Duplicate) { <span class="row-note" title="@Loc["Looks already logged"]">⚠️</span> }
+                                        <select @bind="r.CategoryId">
                                             @if (r.Tx.Amount < 0m)
                                             {
                                                 @foreach (var (cat, depth) in State.CategoryOptions) { <option value="@cat.Id">@CatOption(cat.Id, cat.Name, depth)</option> }
@@ -4379,7 +4387,9 @@ else
     private string? _importError;
     private IReadOnlyList<string> _csvHeaders = [];
     private IReadOnlyList<IReadOnlyList<string>> _csvRows = [];
-    private int _csvDate, _csvDesc, _csvAmount;
+    private int _csvDate, _csvDesc, _csvAmount, _csvDebit = -1, _csvCredit = -1;
+    // Some banks (e.g. DAIS/DSK) put money-out and money-in in separate columns. Auto-detected — no manual toggle.
+    private bool CsvHasSplit => _csvDebit >= 0 && _csvCredit >= 0;
     private Guid _importFund;
     private readonly List<ImportRow> _importRows = new();
 
@@ -4433,7 +4443,14 @@ else
                     GuessCsvColumns();
                     _importStep = ImportStep.MapCsv;
                     break;
-                default: _importError = Loc["Couldn't recognise that file. Use a CSV, OFX or QIF export."]; break;
+                case BankFileParser.Format.Html:
+                    // Some banks export a .xls / .htm that's really an HTML <table>.
+                    (_csvHeaders, _csvRows) = BankFileParser.ReadHtmlTable(text);
+                    if (_csvHeaders.Count == 0) { _importError = Loc["Couldn't find a table in that file."]; break; }
+                    GuessCsvColumns();
+                    _importStep = ImportStep.MapCsv;
+                    break;
+                default: _importError = Loc["Couldn't recognise that file. Use a CSV, Excel, XML, OFX or QIF export."]; break;
             }
         }
         catch { _importError = Loc["Couldn't read that file."]; }
@@ -4451,12 +4468,18 @@ else
                     if (_csvHeaders[i].ToLowerInvariant().Contains(k)) return i;
             return -1;
         }
-        _csvDate = Math.Max(0, Find("completed date", "value date", "book", "posted", "дата на осчетоводяване", "дата", "date"));
-        _csvDesc = Math.Max(0, Find("description", "narrat", "reference", "payee", "detail", "memo", "основание", "получател", "контрагент", "описание", "name"));
-        _csvAmount = Math.Max(0, Find("amount", "сума", "value"));
+        _csvDate = Math.Max(0, Find("completed date", "value date", "book", "posted", "дата на осчетоводяване", "дата", "value", "date"));
+        _csvDesc = Math.Max(0, Find("основание", "description", "narrat", "reference", "payee", "detail", "memo", "получател", "контрагент", "описание", "reason", "name"));
+        // Separate money-out / money-in columns (used by DAIS/DSK etc.). When present, they win over a single Amount.
+        _csvDebit = Find("дебит", "debit", "paid out", "withdraw", "money out");
+        _csvCredit = Find("кредит", "credit", "paid in", "money in");
+        // Single signed-amount column — avoid an empty "amount in transfer currency" column when a debit/credit split exists.
+        _csvAmount = CsvHasSplit ? -1 : Math.Max(0, Find("amount eur", "amount", "value", "сума"));
     }
 
-    private void ApplyCsvMapping() => BuildReview(BankFileParser.ParseCsv(_csvRows, _csvDate, _csvDesc, _csvAmount, null, null));
+    private void ApplyCsvMapping() => BuildReview(CsvHasSplit
+        ? BankFileParser.ParseCsv(_csvRows, _csvDate, _csvDesc, -1, _csvDebit, _csvCredit)
+        : BankFileParser.ParseCsv(_csvRows, _csvDate, _csvDesc, Math.Max(0, _csvAmount), null, null));
 
     private void BuildReview(IReadOnlyList<ImportedTransaction> txns)
     {
@@ -4466,7 +4489,7 @@ else
         foreach (var tx in txns.OrderBy(t => t.Date))
         {
             var outOfPeriod = !State.ImportInPeriod(tx.Date);
-            var dup = !outOfPeriod && State.ImportLooksDuplicate(tx.Date, tx.Amount);
+            var dup = State.ImportLooksDuplicate(tx.Date, tx.Amount);
             // Auto-map an expense to the category a matching merchant used before (like the bank sync learns).
             var category = tx.Amount < 0m ? (State.SuggestExpenseCategory(tx.Description) ?? defaultExpense) : defaultIncome;
             _importRows.Add(new ImportRow
@@ -4475,7 +4498,7 @@ else
                 CategoryId = category,
                 Duplicate = dup,
                 OutOfPeriod = outOfPeriod,
-                Include = !outOfPeriod && !dup,
+                Include = !dup,   // include by default even if outside this period — it posts with its own date
             });
         }
         if (_importRows.Count == 0) _importError = Loc["No transactions found in that file."];
@@ -4485,7 +4508,7 @@ else
     private Task ConfirmImport() => RunModal(async () =>
     {
         var rows = _importRows
-            .Where(r => r.Include && !r.OutOfPeriod && r.CategoryId != Guid.Empty)
+            .Where(r => r.Include && r.CategoryId != Guid.Empty)
             .Select(r => (r.Tx.Amount, r.Tx.Date, r.CategoryId, _importFund, r.Tx.Description))
             .ToList();
         if (rows.Count == 0) return;

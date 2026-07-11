@@ -119,6 +119,52 @@ public class BankFileParserTests
     }
 
     [Fact]
+    public void Dais_ebank_xml_account_movements()
+    {
+        var xml =
+            "<AccountMovements>" +
+            "<AccountMovement><ValueDate>30.06.2026</ValueDate><Reason>ЕЛ ЕНЕРГИЯ</Reason><MovementType>Debit</MovementType><Amount>5,34</Amount></AccountMovement>" +
+            "<AccountMovement><ValueDate>16.06.2026</ValueDate><Reason>НАЕМ</Reason><MovementType>Credit</MovementType><Amount>275,00</Amount></AccountMovement>" +
+            "</AccountMovements>";
+        Assert.Equal(BankFileParser.Format.Xml, BankFileParser.Detect("report.xml", xml));
+        var t = BankFileParser.ParseXml(xml);
+        Assert.Equal(2, t.Count);
+        Assert.Equal(new DateOnly(2026, 6, 30), t[0].Date);
+        Assert.Equal(-5.34m, t[0].Amount);           // Debit → out
+        Assert.Equal("ЕЛ ЕНЕРГИЯ", t[0].Description);
+        Assert.Equal(275.00m, t[1].Amount);          // Credit → in
+    }
+
+    [Fact]
+    public void Html_table_export_named_xls_with_separate_debit_credit()
+    {
+        var html =
+            "<html><body><table>" +
+            "<tr><td colspan=\"10\">Движения по сметка</td></tr>" +
+            "<tr><td><b>Дата</b></td><td><b>Основание</b></td><td><b>Дебит EUR</b></td><td><b>Кредит EUR</b></td></tr>" +
+            "<tr><td>30.06.2026</td><td>ЕЛ ЕНЕРГИЯ</td><td>5,34</td><td/></tr>" +
+            "<tr><td>16.06.2026</td><td>НАЕМ</td><td/><td>275,00</td></tr>" +
+            "</table></body></html>";
+        Assert.Equal(BankFileParser.Format.Html, BankFileParser.Detect("report.xls", html));
+        var (headers, rows) = BankFileParser.ReadHtmlTable(html);
+        Assert.Equal(new[] { "Дата", "Основание", "Дебит EUR", "Кредит EUR" }, headers);   // title banner skipped
+        var t = BankFileParser.ParseCsv(rows, datecol: 0, desccol: 1, amountcol: -1, debitcol: 2, creditcol: 3);
+        Assert.Equal(2, t.Count);
+        Assert.Equal(-5.34m, t[0].Amount);
+        Assert.Equal(275.00m, t[1].Amount);
+    }
+
+    [Fact]
+    public void Csv_with_separate_debit_credit_columns_bulgarian()
+    {
+        var csv = "\"Дата\",\"Основание\",\"Дебит EUR\",\"Кредит EUR\"\n\"30.06.2026\",\"ЕЛ ЕНЕРГИЯ\",\"5,34\",\"\"\n\"16.06.2026\",\"НАЕМ\",\"\",\"1500,00\"\n";
+        var (_, rows) = BankFileParser.ReadCsv(csv);
+        var t = BankFileParser.ParseCsv(rows, datecol: 0, desccol: 1, amountcol: -1, debitcol: 2, creditcol: 3);
+        Assert.Equal(-5.34m, t[0].Amount);
+        Assert.Equal(1500.00m, t[1].Amount);
+    }
+
+    [Fact]
     public void Detect_by_extension_and_content()
     {
         Assert.Equal(BankFileParser.Format.Ofx, BankFileParser.Detect("statement.ofx", ""));
