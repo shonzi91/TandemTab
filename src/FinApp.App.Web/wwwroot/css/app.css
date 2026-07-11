@@ -2,8 +2,8 @@
 html, body {
     font-family: 'Quicksand', system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
-/* Warm, family-friendly page background (cards stay white for contrast). */
-body { background: #fbf7ef; }
+/* Warm, family-friendly page canvas — a soft cream so the warm-white cards lift gently (less clinical than stark white). */
+body { background: #f7f1e5; }
 
 /* Always reserve the scrollbar gutter so switching to a taller tab (e.g. Budgets) doesn't add a scrollbar
    and shift the centered layout sideways. */
