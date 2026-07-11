@@ -1903,6 +1903,48 @@ else
                     </div>
                     break;
 
+                case Modal.BankTransfer:
+                    <h3>⇄ @Loc["Transfer this money-out"]</h3>
+                    @if (_bankXferTx is { } bx)
+                    {
+                        <p class="hint">@string.Format(Loc["{0} left {1} on {2}. Send it to another fund or account instead of logging an expense."], Fmt(new Money(Math.Abs(bx.Amount), State.Currency)), State.SyncedFundName, bx.Date.ToString("dd MMM"))</p>
+                    }
+                    <label>@Loc["To"]
+                        <select @bind="_mTransferDestId" @bind:after="OnModalDestChanged">
+                            <optgroup label="@Loc["Wallets"]">
+                                @foreach (var f in State.RootFunds.Where(f => f.Id != State.SyncedFundId))
+                                {
+                                    <option value="@f.Id">@f.Name</option>
+                                }
+                            </optgroup>
+                            @if (State.TransferableAccounts.Any())
+                            {
+                                <optgroup label="@Loc["Other accounts"]">
+                                    @foreach (var a in State.TransferableAccounts)
+                                    {
+                                        <option value="@a.Id">📤 @a.Name</option>
+                                    }
+                                </optgroup>
+                            }
+                        </select>
+                    </label>
+                    @if (MTransferDestIsAccount && DestFundsFor(_mTransferDestId).Count > 0)
+                    {
+                        <label>@Loc["Destination fund"]
+                            <select @bind="_mTransferDestFundId">
+                                @foreach (var f in DestFundsFor(_mTransferDestId))
+                                {
+                                    <option value="@f.Id">@f.Name</option>
+                                }
+                            </select>
+                        </label>
+                    }
+                    <div class="modal-actions">
+                        <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
+                        <button @onclick="ConfirmBankTransferRow" disabled="@(_bankBusy || _mTransferDestId == Guid.Empty || _mTransferDestId == State.SyncedFundId)">⇄ @Loc["Record transfer"]</button>
+                    </div>
+                    break;
+
                 case Modal.Deposit:
                     <h3>@Loc["Add a deposit"]</h3>
                     <label><span class="lbl-row">@Loc["Category"] <button type="button" class="lbl-add" title="@Loc["New contribution category"]" @onclick="DepositAddCategory">+</button></span>
@@ -2672,7 +2714,7 @@ else
 }
 
 @code {
-    private enum Modal { None, PickAccount, BankReview, BankConsent, AddCat, AddBudget, DisburseSaving, PayoffProjection, GoalProjection, InvestmentProjection, EditCat, DeleteCat, CategoryDetail, AddAccount, EditAccount, DeleteAccount, RemoveMember, LeaveAccount, AddExpense, NextPeriod, RemovePeriod, EditExpense, DeleteExpense, SettleExpense, AddBucket, EditBucket, DeleteBucket, AddFund, EditFund, DeleteFund, Invite, Transfer, Deposit, EditDeposit, DeleteDeposit, ManageContribCats, ContribCat, DeleteContribCat, AddSaving, BudgetSaving, SpendSaving, EditSavingDeposit, DeleteSavingDeposit, EditTransfer, DeleteTransfer, EditPeriod, EditSavingMovement, DeleteSavingMovement, DeleteExternalTransfer, Achievements, Reallocate, Recurring, RecurringEdit, RecurringConfirm, Import }
+    private enum Modal { None, PickAccount, BankReview, BankConsent, AddCat, AddBudget, DisburseSaving, PayoffProjection, GoalProjection, InvestmentProjection, BankTransfer, EditCat, DeleteCat, CategoryDetail, AddAccount, EditAccount, DeleteAccount, RemoveMember, LeaveAccount, AddExpense, NextPeriod, RemovePeriod, EditExpense, DeleteExpense, SettleExpense, AddBucket, EditBucket, DeleteBucket, AddFund, EditFund, DeleteFund, Invite, Transfer, Deposit, EditDeposit, DeleteDeposit, ManageContribCats, ContribCat, DeleteContribCat, AddSaving, BudgetSaving, SpendSaving, EditSavingDeposit, DeleteSavingDeposit, EditTransfer, DeleteTransfer, EditPeriod, EditSavingMovement, DeleteSavingMovement, DeleteExternalTransfer, Achievements, Reallocate, Recurring, RecurringEdit, RecurringConfirm, Import }
     private enum Tab { Overview, Account, Budgets, Savings, Bank }
 
     private Tab _tab = Tab.Overview;
@@ -3273,6 +3315,10 @@ else
                     <button class="icon-btn pin @(mappedLabel is not null ? "on" : "")" title="@pinTitle" @onclick="() => TogglePin(t)" disabled="@_bankBusy">📌</button>
                     @if (isDebit)
                     {
+                        @if (State.HasSyncedFund)
+                        {
+                            <button class="icon-btn" title="@Loc["Record as a transfer to another fund/account"]" @onclick="() => OpenBankTransfer(t)" disabled="@_bankBusy">⇄</button>
+                        }
                         <button class="icon-btn ok" title="@Loc["Add expense"]" @onclick="() => ConfirmBankRow(t)" disabled="@_bankBusy">✓</button>
                     }
                     else
@@ -3457,6 +3503,35 @@ else
         catch (Exception ex) { _bankError = ex.Message; }
         finally { _bankBusy = false; }
     }
+
+    private PendingBankTransactionDto? _bankXferTx;   // the money-out row being routed as a transfer (Modal.BankTransfer)
+
+    /// <summary>Open the "record this money-out as a transfer" modal for a debit row, defaulting the destination to
+    /// the first non-synced fund (reuses the shared destination picker: this account's funds + other accounts).</summary>
+    private async Task OpenBankTransfer(PendingBankTransactionDto tx)
+    {
+        _bankXferTx = tx;
+        _mTransferFromId = State.SyncedFundId;
+        _mTransferDestId = State.RootFunds.FirstOrDefault(f => f.Id != State.SyncedFundId)?.Id
+            ?? State.TransferableAccounts.FirstOrDefault()?.Id ?? Guid.Empty;
+        _mTransferDestFundId = Guid.Empty;
+        _modal = Modal.BankTransfer;
+        if (MTransferDestIsAccount) await OnModalDestChanged();
+    }
+
+    private Task ConfirmBankTransferRow() => RunModal(async () =>
+    {
+        if (_bankXferTx is not { } tx) return;
+        if (_mTransferDestId == Guid.Empty || _mTransferDestId == State.SyncedFundId) return;
+        var destination = MTransferDestIsAccount
+            ? $"acct:{_mTransferDestId}:{_mTransferDestFundId}"
+            : $"fund:{_mTransferDestId}";
+        await State.ConfirmBankMoneyOutAsTransfer(tx.ExternalId, destination, Math.Abs(tx.Amount), tx.Description, ClampToPeriod(tx.Date));
+        _bankPending.RemoveAll(p => p.ExternalId == tx.ExternalId);
+        _bankXferTx = null;
+        CloseModal();
+        await LoadBankAsync();
+    });
 
     /// <summary>Turn a bank money-in into a movement into the synced fund (source picked/mapped).</summary>
     private async Task ConfirmMoneyInRow(PendingBankTransactionDto tx)

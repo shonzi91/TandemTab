@@ -1476,6 +1476,34 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
         await api.AckBankTransactionAsync(CurrentAccountId, externalId, confirmed: true);
     }
 
+    /// <summary>Route a bank money-out (debit) as a <b>transfer</b> instead of an expense: from the synced fund to
+    /// another fund in this account (<c>"fund:{id}"</c>) or to another account (<c>"acct:{accountId}:{fundId}"</c>).
+    /// The synced source isn't debited (the real bank balance handles it); the destination side actually moves. Then
+    /// acks the row so it drops from review.</summary>
+    public async Task ConfirmBankMoneyOutAsTransfer(string externalId, string destination, decimal amount, string? note, DateOnly date)
+    {
+        if (!HasSyncedFund) throw new InvalidOperationException("Mark a fund as synced to your bank first (Edit fund).");
+        if (amount <= 0m) throw new InvalidOperationException("Amount must be positive.");
+        var parts = (destination ?? "").Split(':');
+
+        if (parts.Length == 2 && parts[0] == "fund" && Guid.TryParse(parts[1], out var destFund))
+        {
+            if (destFund == SyncedFundId) throw new InvalidOperationException("The destination can't be the synced fund itself.");
+            var transfer = Period.TransferFunds(SyncedFundId, destFund, Money(amount), date, note);
+            transfer.SetSyncedSides(true, FundIsSynced(destFund));   // synced source isn't debited — the bank balance handles it
+            transfer.SetBankLink(externalId, autoFiled: false);
+            await SaveAsync();
+            await api.AckBankTransactionAsync(CurrentAccountId, externalId, confirmed: true);
+        }
+        else if (parts.Length == 3 && parts[0] == "acct"
+                 && Guid.TryParse(parts[1], out var destAcct) && Guid.TryParse(parts[2], out var destAcctFund))
+        {
+            await TransferToAccount(destAcct, SyncedFundId, amount, note, destAcctFund);   // outflow here, deposit there
+            await api.AckBankTransactionAsync(CurrentAccountId, externalId, confirmed: true);
+        }
+        else throw new InvalidOperationException("Pick where this money went.");
+    }
+
     // --- Consent (audit-logged) -------------------------------------------
     public Task RecordConsent(string scope, Guid? accountId) => api.RecordConsentAsync(scope, accountId, granted: true);
     public Task WithdrawConsent(string scope, Guid? accountId) => api.RecordConsentAsync(scope, accountId, granted: false);
