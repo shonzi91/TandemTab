@@ -42,7 +42,7 @@ else
     @{
         // Computed once for the whole dashboard: the health report + notification list feed both the bell (in the
         // header, visible on every tab) and the Home overview below.
-        var ov = _insights.Build(State.Account, State.PeriodNumber - 1, Fmt, Loc.T);
+        var ov = CurrentReport();
         var notifications = HomeNotifications(ov);
     }
     <header class="dash-head">
@@ -1305,7 +1305,7 @@ else
                         <h3>🏆 @Loc["Achievements"]</h3>
                     </div>
                     var achLog = State.Account.AchievementLog;
-                    var achAll = _achievements.Build(State.Account, Fmt, Loc.T);
+                    var achAll = CurrentAchievements();
                     var achEarned = achAll.Where(a => a.Earned).ToList();
                     var achLocked = achAll.Where(a => !a.Earned).OrderByDescending(a => a.Percent ?? 0).ToList();
                     <p class="hint">@string.Format(Loc["{0} of {1} earned"], achEarned.Count, achAll.Count)</p>
@@ -2196,7 +2196,7 @@ else
                     break;
 
                 case Modal.HealthScore:
-                    var hs = _insights.Build(State.Account, State.PeriodNumber - 1, Fmt, Loc.T);
+                    var hs = CurrentReport();
                     <h3>💗 @Loc["Health score & trends"] @infoTip(("score-how", Loc["How your score works: four equal parts (25 pts each) — how much you saved vs your target, how well you kept to budget, living within your income, and your spending vs your recent average."]))</h3>
                     @if (!hs.HasData)
                     {
@@ -2791,6 +2791,41 @@ else
     private readonly InsightsService _insights = new();
     private readonly AchievementsService _achievements = new();
 
+    // Memoized health/insights report. Build(...) is O(periods × categories × expenses) and used to run on every
+    // render — including UI-only re-renders (opening a modal, the bell, switching tabs) that change no data. Cache
+    // it keyed by the data that actually feeds it: the account, its change revision, the selected period, and the
+    // UI culture (translated copy). Recomputes only when one of those changes.
+    private FinancialHealthReport? _reportCache;
+    private (Guid acct, long rev, int period, string culture)? _reportKey;
+
+    private FinancialHealthReport CurrentReport()
+    {
+        var key = (State.CurrentAccountId, State.Revision, State.PeriodNumber,
+                   System.Globalization.CultureInfo.CurrentUICulture.Name);
+        if (_reportKey != key)
+        {
+            _reportCache = _insights.Build(State.Account, State.PeriodNumber - 1, Fmt, Loc.T);
+            _reportKey = key;
+        }
+        return _reportCache!;
+    }
+
+    // Same memoization for the achievements catalog (Build loops periods × achievements). Keyed by account, change
+    // revision, and culture; period is irrelevant (the catalog spans all periods).
+    private IReadOnlyList<Achievement>? _achCache;
+    private (Guid acct, long rev, string culture)? _achKey;
+
+    private IReadOnlyList<Achievement> CurrentAchievements()
+    {
+        var key = (State.CurrentAccountId, State.Revision, System.Globalization.CultureInfo.CurrentUICulture.Name);
+        if (_achKey != key)
+        {
+            _achCache = _achievements.Build(State.Account, Fmt, Loc.T);
+            _achKey = key;
+        }
+        return _achCache!;
+    }
+
     private Guid _categoryId;
     private decimal _amount;
     private Guid _fundId;
@@ -3042,7 +3077,7 @@ else
     private IReadOnlyList<(Achievement A, DateOnly? On)> HomeMilestones()
     {
         var log = State.Account.AchievementLog;
-        var catalog = _achievements.Build(State.Account, Fmt, Loc.T);
+        var catalog = CurrentAchievements();
         var result = catalog.Where(a => a.Earned)
             .Select(a => (A: a, On: log.TryGetValue(a.Key, out var d) ? (DateOnly?)d : null))
             .OrderByDescending(x => x.On ?? DateOnly.MinValue).Take(3).ToList();

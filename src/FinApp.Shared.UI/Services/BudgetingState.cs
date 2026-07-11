@@ -42,6 +42,15 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     public bool IsReady { get; private set; }
     public event Action? Changed;
 
+    // Monotonic counter bumped on every state change (every Changed). Lets consumers cheaply memoize expensive
+    // derived views (e.g. the Insights report) and recompute only when the underlying data actually changed —
+    // not on every render caused by a UI-only toggle (opening a modal, the bell, switching tabs).
+    private long _revision;
+    public long Revision => _revision;
+
+    /// <summary>Bump the change counter and raise <see cref="Changed"/>. All internal mutations go through this.</summary>
+    private void RaiseChanged() { _revision++; Changed?.Invoke(); }
+
     public async Task InitializeAsync()
     {
         if (IsReady || !auth.IsAuthenticated) return;
@@ -62,7 +71,7 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
         await RefreshInvitationsAsync();
 
         IsReady = true;
-        Changed?.Invoke();
+        RaiseChanged();
     }
 
     /// <summary>Clear all session state on sign-out.</summary>
@@ -81,7 +90,7 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
         sync.InvitationReceived -= OnInvitationReceived;
         sync.Reconnected -= OnReconnected;
         await sync.StopAsync();
-        Changed?.Invoke();
+        RaiseChanged();
     }
 
     // --- Accounts ---------------------------------------------------------
@@ -104,7 +113,7 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
         if (index < 0 || index == _accountIndex) return;
         _accountIndex = index;
         await LoadSelectedAccountAsync();
-        Changed?.Invoke();
+        RaiseChanged();
     }
 
     public async Task AddAccount(string name, string currency, decimal savingsRateTarget = 0.20m)
@@ -120,7 +129,7 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
             _account.SetSavingsRateTarget(savingsRateTarget);
             await PushSnapshotAsync();
         }
-        Changed?.Invoke();
+        RaiseChanged();
     }
 
     /// <summary>The account's target savings rate (fraction 0..1) — drives the Insights gauge/score.</summary>
@@ -141,7 +150,7 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
         await api.RenameAccountAsync(id, name);
         _account!.Rename(name);
         _summaries[_accountIndex] = _summaries[_accountIndex] with { Name = name };
-        Changed?.Invoke();
+        RaiseChanged();
     }
 
     public async Task RemoveAccount(Guid accountId)
@@ -153,7 +162,7 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
         if (_accountIndex >= _summaries.Count)
             _accountIndex = Math.Max(0, _summaries.Count - 1);
         await LoadSelectedAccountAsync();
-        Changed?.Invoke();
+        RaiseChanged();
     }
 
     // --- Membership / archiving -------------------------------------------
@@ -177,7 +186,7 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
         if (_accountIndex >= _summaries.Count)
             _accountIndex = Math.Max(0, _summaries.Count - 1);
         await LoadSelectedAccountAsync();
-        Changed?.Invoke();
+        RaiseChanged();
         return result;
     }
 
@@ -188,7 +197,7 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
         await api.RemoveMemberAsync(id, memberUserId);
         await ReloadSummariesKeepingAsync(id);
         await LoadSelectedAccountAsync(forceRefresh: true);
-        Changed?.Invoke();
+        RaiseChanged();
     }
 
     /// <summary>Owner hands ownership of the current account to another member.</summary>
@@ -198,7 +207,7 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
         await api.TransferOwnershipAsync(id, newOwnerUserId);
         await ReloadSummariesKeepingAsync(id);
         await LoadSelectedAccountAsync(forceRefresh: true);
-        Changed?.Invoke();
+        RaiseChanged();
     }
 
     public Task<List<ArchivedAccountDto>> GetArchivedAccounts() => api.GetArchivedAccountsAsync();
@@ -208,7 +217,7 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
         await api.ReactivateAccountAsync(accountId);
         await ReloadSummariesKeepingAsync(accountId);
         await LoadSelectedAccountAsync(forceRefresh: true);
-        Changed?.Invoke();
+        RaiseChanged();
     }
 
     private async Task ReloadSummariesKeepingAsync(Guid accountId)
@@ -271,10 +280,17 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
 
     /// <summary>Stamp any newly-earned achievement with today's date and persist — but only when something actually
     /// changed, so it's safe to call after every render (it converges). Returns true if the snapshot was saved.</summary>
+    private (Guid acct, long rev)? _stampedAt;
+
     public async Task<bool> StampAchievementsAsync(AchievementsService svc, Func<Money, string> fmt, Func<string, string> t)
     {
         if (!IsReady || !HasAccounts) return false;
         var acct = Account;
+        // Achievements are entirely data-derived, so they can only newly-earn when the aggregate changes. Skip the
+        // (periods × achievements) rebuild when nothing has changed since the last stamp — this runs after every render.
+        var mark = (acct.Id, _revision);
+        if (_stampedAt == mark) return false;
+        _stampedAt = mark;
         var today = DateOnly.FromDateTime(DateTime.Today);
         var changed = false;
         foreach (var a in svc.Build(acct, fmt, t))
@@ -317,8 +333,8 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     public bool CanStartNextPeriod =>
         Account.CurrentPeriod is { } p && p.To < DateOnly.FromDateTime(DateTime.Today);
 
-    public void GoPrev() { if (CanGoPrev) { _selectedIndex--; Changed?.Invoke(); } }
-    public void GoNext() { if (CanGoNext) { _selectedIndex++; Changed?.Invoke(); } }
+    public void GoPrev() { if (CanGoPrev) { _selectedIndex--; RaiseChanged(); } }
+    public void GoNext() { if (CanGoNext) { _selectedIndex++; RaiseChanged(); } }
 
     public string Currency => Account.Currency;
     public Money Money(decimal amount) => new(amount, Currency);
@@ -545,7 +561,7 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
         try
         {
             var avatars = await api.GetAccountAvatarsAsync(accountId);
-            if (_avatarsAccountId == accountId) { _memberAvatars = avatars; Changed?.Invoke(); }
+            if (_avatarsAccountId == accountId) { _memberAvatars = avatars; RaiseChanged(); }
         }
         catch { /* best effort — fall back to initials */ }
     }
@@ -1692,7 +1708,7 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     public async Task RefreshInvitationsAsync()
     {
         _pendingInvitations = await api.GetPendingInvitationsAsync();
-        Changed?.Invoke();
+        RaiseChanged();
     }
 
     public Task InviteToCurrentAccount(string username) => api.InviteAsync(CurrentAccountId, username);
@@ -1705,7 +1721,7 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
         _accountIndex = Math.Max(0, _summaries.FindIndex(a => a.Id == accountId));
         await LoadSelectedAccountAsync();
         await RefreshInvitationsAsync();
-        Changed?.Invoke();
+        RaiseChanged();
     }
 
     public async Task DeclineInvitation(Guid invitationId)
@@ -1733,7 +1749,7 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
                 ReconcileHeader(_account, _summaries[_accountIndex]);
                 _cache[e.AccountId] = new CachedAccount(_account, _version);
                 _selectedIndex = Math.Min(_selectedIndex, _account.Periods.Count - 1);
-                Changed?.Invoke();
+                RaiseChanged();
             }
         }
         catch { /* a transient reload failure shouldn't crash the UI */ }
@@ -1747,7 +1763,7 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
         {
             _cache.Clear();
             await SubscribeAllAsync();
-            if (_account is not null) { await LoadSelectedAccountAsync(forceRefresh: true); Changed?.Invoke(); }
+            if (_account is not null) { await LoadSelectedAccountAsync(forceRefresh: true); RaiseChanged(); }
         }
         catch { /* best effort */ }
     }
@@ -1776,7 +1792,7 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
 
     private Task SaveAsync()
     {
-        Changed?.Invoke();
+        RaiseChanged();
         return PushSnapshotAsync();
     }
 
