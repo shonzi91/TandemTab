@@ -679,16 +679,13 @@ else
 
         </div>
         <div class="tabpanel" hidden="@(_tab != Tab.Budgets)">
-            @if (State.IsPeriodOpen)
-            {
-                <div class="spending-actions">
-                    <button class="big-add" @onclick="OpenAddExpenseTab">🧾 @Loc["Add expense"]</button>
-                    <button class="link import-link" title="@Loc["Import a bank statement (Excel, CSV, XML, OFX, QIF)"]" @onclick="OpenImport">📥 @Loc["Import statement"]</button>
-                </div>
-            }
             <section class="panel">
                 <div class="spending-head">
                     <span class="insight-h">@Loc["This month's budgets"]</span>
+                    @if (State.IsPeriodOpen)
+                    {
+                        <button class="import-btn" title="@Loc["Import a bank statement (Excel, CSV, XML, OFX, QIF)"]" @onclick="OpenImport">📥 @Loc["Import statement"]</button>
+                    }
                     <span class="spending-sub">@Fmt(State.TotalSpent) @Loc["of"] @Fmt(State.TotalBudgeted) @Loc["spent"]</span>
                 </div>
                 @{ var overPlanned = (State.TotalBudgeted - State.TotalSpent) - State.DisplayFreeToAllocate(_bankStatus?.Balance, _bankStatus?.BalanceCurrency); }
@@ -1129,7 +1126,7 @@ else
             @if (State.SavingDepositsThisPeriod.Any() || State.SavingMovementsThisPeriod.Any())
             {
                 <section class="panel">
-                    <h2>@Loc["Savings activity"]</h2>
+                    <h2>@Loc["Goals activity"]</h2>
                     <ul class="list">
                         @foreach (var d in State.SavingDepositsThisPeriod)
                         {

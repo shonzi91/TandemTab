@@ -434,7 +434,7 @@ public sealed class Localizer(IJSRuntime js)
         ["Destination"] = "Получател",
         ["Move"] = "Премести",
         ["Spend"] = "Похарчи",
-        ["Savings activity"] = "Спестовна дейност",
+        ["Goals activity"] = "Дейност по цели",
         ["Available to save:"] = "Налично за спестяване:",
         ["the money in the account, minus what's budgeted and already saved"] =
             "парите в профила минус бюджетираното и вече спестеното",

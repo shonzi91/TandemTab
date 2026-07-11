@@ -176,7 +176,11 @@ html.dark .bal-bills { color: #7c8a94; }
 .list-even .row-actions { min-width: 58px; justify-content: flex-end; flex-shrink: 0; }
 
 /* Modal header with action icons on the right */
-.modal-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.modal-head {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    position: sticky; top: 0; z-index: 6; order: -2;
+    margin: 0 -20px 4px; padding: 14px 20px 11px; background: #fffdf8; border-bottom: 1px solid #ece3d3; border-radius: 16px 16px 0 0;
+}
 .modal-head h3 { margin: 0; }
 .modal-head-actions { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
 .detail-sub-head { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
@@ -468,7 +472,7 @@ html.dark .detail-subcat-sum { color: #7c8a94; }
     /* Non-default values (the scoped-CSS minifier strips default-valued declarations) that override the
        leaked Bootstrap .modal box positioning, so our box stays centered by the backdrop flex. */
     position: relative; height: fit-content;
-    background: #fffdf8; border-radius: 16px; padding: 18px 20px; width: min(420px, 92vw);
+    background: #fffdf8; border-radius: 16px; padding: 0 20px 18px; width: min(420px, 92vw);
     max-height: 90vh; overflow-y: auto;
     box-shadow: 0 20px 60px rgba(0,0,0,.25); display: flex; flex-direction: column; gap: 9px;
 }
@@ -492,13 +496,22 @@ input[type=date]::-webkit-calendar-picker-indicator:hover { opacity: 1; backgrou
 /* Modal header: title sits top-left, the Cancel/confirm buttons float in the top-right corner as ✕/✓
    (a natural dialog header). The two rich modals that already have their own header row use `.inline-actions`
    to keep their buttons in normal flow at the bottom instead. */
-.modal > h3 { order: -2; margin: 0 0 6px; padding-right: 96px; }
+/* Sticky header: the title bar and the ✕/✓ corner buttons stay pinned while the body scrolls, so you can
+   close/confirm anytime. The actions are ordered first at zero height so both anchor to the very top. */
+.modal > h3 {
+    order: -2; position: sticky; top: 0; z-index: 6;
+    margin: -9px -20px 4px; padding: 15px 96px 11px 20px;
+    background: #fffdf8; border-bottom: 1px solid #ece3d3; border-radius: 16px 16px 0 0;
+}
 .modal-actions {
-    position: absolute; top: 15px; right: 18px; z-index: 5;
-    display: flex; align-items: center; gap: 8px; margin: 0; padding: 0; background: none; border: none;
+    order: -3; position: sticky; top: 0; z-index: 7; height: 0; align-self: stretch;
+    display: flex; justify-content: flex-end; align-items: flex-start; gap: 8px;
+    margin: 0 -20px; padding: 0 18px 0 0; background: none; border: none;
+    transform: translateY(12px);
 }
 .modal-actions.inline-actions {
-    position: static; justify-content: flex-end; margin-top: 8px; padding-top: 10px; border-top: 1px solid #ece3d3;
+    order: 0; position: static; height: auto; align-self: auto; transform: none;
+    justify-content: flex-end; margin: 8px 0 0; padding-top: 10px; border-top: 1px solid #ece3d3;
 }
 .modal-actions button {
     padding: 8px 13px; min-width: 44px; border: none; border-radius: 10px; background: #13a06e; color: #fffdf8;
@@ -1009,11 +1022,20 @@ html.dark .chips-label { color: #7c8a94; }
 .bank-panel button.primary:disabled { background: #c7c9d6; cursor: not-allowed; }
 
 /* Spending tab — budget section header */
-.spending-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 12px; }
+.spending-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
 .spending-head .insight-h { margin: 0; }
-.spending-sub { font-size: .82rem; color: #6b7280; }
-.spending-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-.import-link { font-size: .85rem; }
+.spending-sub { font-size: .82rem; color: #6b7280; margin-left: auto; }
+/* Fancy "Import statement" pill next to the budgets title */
+.import-btn {
+    display: inline-flex; align-items: center; gap: 6px; padding: 7px 13px; border-radius: 999px;
+    border: 1px solid #cdeadd; background: linear-gradient(135deg, #f2fbf6 0%, #e6f5ec 100%);
+    color: #0f7a54; font-weight: 700; font-size: .82rem; cursor: pointer; line-height: 1;
+    box-shadow: 0 1px 2px rgba(19,160,110,.10); transition: background .15s, border-color .15s, transform .1s;
+}
+.import-btn:hover { background: linear-gradient(135deg, #e7f7ee 0%, #d9f0e3 100%); border-color: #13a06e; }
+.import-btn:active { transform: translateY(1px); }
+html.dark .import-btn { background: linear-gradient(135deg, #16281f 0%, #14241d 100%); border-color: #2b4438; color: #57d9a3; box-shadow: none; }
+html.dark .import-btn:hover { border-color: #3a8f6c; }
 .import-list { max-height: 46vh; overflow-y: auto; }
 .import-list li { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .import-list .row-lead { display: flex; align-items: center; gap: 8px; min-width: 0; }

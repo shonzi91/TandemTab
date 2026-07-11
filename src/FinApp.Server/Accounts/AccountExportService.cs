@@ -133,7 +133,7 @@ public sealed class AccountExportService(FinAppDbContext db, ISnapshotCipher cip
         }
         r++;
 
-        Section(ws, ref r, "Savings activity");
+        Section(ws, ref r, "Goals activity");
         Headers(ws, ref r, "Date", "Bucket", "Amount", "Note");
         foreach (var a in p.SavingAllocations.OrderBy(a => a.Date))
         {
