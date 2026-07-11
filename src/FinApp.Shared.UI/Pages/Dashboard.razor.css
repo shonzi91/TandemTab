@@ -1051,6 +1051,9 @@ html.dark .acct-pick-cur { color: #9aa4b2; }
 .import-btn:active { transform: translateY(1px); }
 html.dark .import-btn { background: linear-gradient(135deg, #16281f 0%, #14241d 100%); border-color: #2b4438; color: #57d9a3; box-shadow: none; }
 html.dark .import-btn:hover { border-color: #3a8f6c; }
+.import-head { display: flex; align-items: center; gap: 8px; margin: 8px 0 4px; font-size: .82rem; }
+.import-head .link { font-weight: 700; }
+.import-head-hint { margin-left: auto; color: #8a97a0; font-size: .7rem; }
 .import-list { max-height: 46vh; overflow-y: auto; }
 .import-list li { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .import-list .row-lead { display: flex; align-items: center; gap: 8px; min-width: 0; }

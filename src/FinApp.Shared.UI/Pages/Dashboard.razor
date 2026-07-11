@@ -2171,20 +2171,26 @@ else
                     else
                     {
                         var incl = _importRows.Count(r => r.Include);
-                        <p class="hint">@string.Format(Loc["{0} of {1} rows will import into this period. Uncheck anything you don't want."], incl, _importRows.Count)</p>
+                        <p class="hint">@string.Format(Loc["{0} of {1} rows will import into this period. Uncheck anything you don't want."], incl, _importRows.Count)@(_importSkipped > 0 ? " " + string.Format(Loc["({0} dated outside this period were skipped.)"], _importSkipped) : "")</p>
                         <label>@Loc["Fund"] <select @bind="_importFund">@foreach (var f in State.SelectableFunds) { <option value="@f.Id">@f.Name</option> }</select></label>
+                        <div class="import-head">
+                            <button type="button" class="link" @onclick="() => SetAllImport(true)">@Loc["Select all"]</button>
+                            <span>·</span>
+                            <button type="button" class="link" @onclick="() => SetAllImport(false)">@Loc["Deselect all"]</button>
+                            <span class="import-head-hint">📌 @Loc["pin a merchant to auto-file it here next time"]</span>
+                        </div>
                         <ul class="list import-list">
                             @foreach (var imp in _importRows)
                             {
                                 var r = imp;
-                                <li class="@(r.OutOfPeriod ? "import-skip" : "")">
+                                var pinned = r.Tx.Amount < 0m && MappingFor(r.Tx.Description) is { Kind: "category" };
+                                <li>
                                     <span class="row-lead">
                                         <input type="checkbox" checked="@r.Include" @onchange="e => r.Include = (bool)e.Value!" />
                                         <span class="import-when">@r.Tx.Date.ToString("dd MMM")</span>
                                         <span class="import-desc">@(string.IsNullOrWhiteSpace(r.Tx.Description) ? Loc["(no description)"] : r.Tx.Description)</span>
                                     </span>
                                     <span class="row-ops">
-                                        @if (r.OutOfPeriod) { <span class="row-note" title="@Loc["Dated outside the current period — it'll still import with its own date"]">📅</span> }
                                         @if (r.Duplicate) { <span class="row-note" title="@Loc["Looks already logged"]">⚠️</span> }
                                         <select @bind="r.CategoryId">
                                             @if (r.Tx.Amount < 0m)
@@ -2196,6 +2202,10 @@ else
                                                 @foreach (var cc in State.ContributionCategories) { <option value="@cc.Id">@cc.Name</option> }
                                             }
                                         </select>
+                                        @if (r.Tx.Amount < 0m && !string.IsNullOrWhiteSpace(r.Tx.Description))
+                                        {
+                                            <button type="button" class="icon-btn pin @(pinned ? "on" : "")" title="@(pinned ? Loc["Auto-files this merchant here — click to forget"] : Loc["Always file this merchant here in future"])" @onclick="() => ToggleImportPin(r)">📌</button>
+                                        }
                                         <span class="amt @(r.Tx.Amount < 0m ? "" : "good-text")">@Fmt(State.Money(r.Tx.Amount))</span>
                                     </span>
                                 </li>
@@ -4391,6 +4401,7 @@ else
     // Some banks (e.g. DAIS/DSK) put money-out and money-in in separate columns. Auto-detected — no manual toggle.
     private bool CsvHasSplit => _csvDebit >= 0 && _csvCredit >= 0;
     private Guid _importFund;
+    private int _importSkipped;   // transactions dated outside the current period, left out of the review
     private readonly List<ImportRow> _importRows = new();
 
     private sealed class ImportRow
@@ -4402,14 +4413,18 @@ else
         public bool OutOfPeriod { get; init; }
     }
 
-    private void OpenImport()
+    private async Task OpenImport()
     {
         _importStep = ImportStep.Upload;
         _importError = null;
+        _importSkipped = 0;
         _importRows.Clear();
         _csvHeaders = []; _csvRows = [];
         _importFund = State.SelectableFunds.FirstOrDefault()?.Id ?? State.RootFunds.FirstOrDefault()?.Id ?? Guid.Empty;
         _modal = Modal.Import;
+        // Load saved merchant→category rules so imports can auto-map (and the 📌 pin reflects existing rules).
+        try { _bankMappings = (await State.GetBankMappings()).ToDictionary(m => m.MatchKey, m => (m.Kind, m.TargetId)); }
+        catch { /* mappings are a nicety for import auto-map; ignore if unavailable */ }
     }
 
     private async Task OnImportFileSelected(InputFileChangeEventArgs e)
@@ -4486,23 +4501,38 @@ else
         _importRows.Clear();
         var defaultExpense = State.AllCategories.FirstOrDefault()?.Id ?? Guid.Empty;
         var defaultIncome = State.ContributionCategories.FirstOrDefault()?.Id ?? Guid.Empty;
-        foreach (var tx in txns.OrderBy(t => t.Date))
+        // Load only the current period's transactions (#9). Anything dated outside it is skipped, with a count shown.
+        var inPeriod = txns.Where(t => State.ImportInPeriod(t.Date)).OrderBy(t => t.Date).ToList();
+        _importSkipped = txns.Count - inPeriod.Count;
+        foreach (var tx in inPeriod)
         {
-            var outOfPeriod = !State.ImportInPeriod(tx.Date);
             var dup = State.ImportLooksDuplicate(tx.Date, tx.Amount);
-            // Auto-map an expense to the category a matching merchant used before (like the bank sync learns).
-            var category = tx.Amount < 0m ? (State.SuggestExpenseCategory(tx.Description) ?? defaultExpense) : defaultIncome;
-            _importRows.Add(new ImportRow
-            {
-                Tx = tx,
-                CategoryId = category,
-                Duplicate = dup,
-                OutOfPeriod = outOfPeriod,
-                Include = !dup,   // include by default even if outside this period — it posts with its own date
-            });
+            // Auto-map an expense to a saved merchant→category rule, else the category a matching merchant used before.
+            var category = tx.Amount < 0m
+                ? (MappingFor(tx.Description) is { Kind: "category" } m ? m.TargetId : (State.SuggestExpenseCategory(tx.Description) ?? defaultExpense))
+                : defaultIncome;
+            _importRows.Add(new ImportRow { Tx = tx, CategoryId = category, Duplicate = dup, Include = !dup });
         }
-        if (_importRows.Count == 0) _importError = Loc["No transactions found in that file."];
+        if (_importRows.Count == 0)
+            _importError = _importSkipped > 0
+                ? string.Format(Loc["All {0} transactions are dated outside this period — nothing to import here."], _importSkipped)
+                : Loc["No transactions found in that file."];
         _importStep = ImportStep.Review;
+    }
+
+    private void SetAllImport(bool include) { foreach (var r in _importRows) r.Include = include; }
+
+    /// <summary>Pin/unpin this merchant to the row's category so future imports (and bank syncs) auto-file it there (#9).</summary>
+    private async Task ToggleImportPin(ImportRow r)
+    {
+        if (string.IsNullOrWhiteSpace(r.Tx.Description) || r.Tx.Amount >= 0m) return;   // expense merchants only
+        var key = BudgetingState.BankMatchKey(r.Tx.Description);
+        try
+        {
+            if (_bankMappings.ContainsKey(key)) { _bankMappings.Remove(key); await State.RemoveBankMapping(r.Tx.Description); }
+            else { _bankMappings[key] = ("category", r.CategoryId); await State.SetBankMapping(r.Tx.Description, "category", r.CategoryId); }
+        }
+        catch (Exception ex) { _importError = Describe(ex); }
     }
 
     private Task ConfirmImport() => RunModal(async () =>
