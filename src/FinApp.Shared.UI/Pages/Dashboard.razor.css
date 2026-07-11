@@ -500,15 +500,17 @@ input[type=date]::-webkit-calendar-picker-indicator:hover { opacity: 1; backgrou
    close/confirm anytime. The actions are ordered first at zero height so both anchor to the very top. */
 .modal > h3 {
     order: -2; position: sticky; top: 0; z-index: 6;
-    margin: -9px -20px 4px; padding: 15px 96px 11px 20px;
+    margin: 0 -20px 8px; padding: 14px 104px 13px 20px; min-height: 52px; box-sizing: border-box;
+    display: flex; align-items: center;
     background: #fffdf8; border-bottom: 1px solid #ece3d3; border-radius: 16px 16px 0 0;
 }
 .modal-actions {
-    order: -3; position: sticky; top: 0; z-index: 7; height: 0; align-self: stretch;
-    display: flex; justify-content: flex-end; align-items: flex-start; gap: 8px;
-    margin: 0 -20px; padding: 0 18px 0 0; background: none; border: none;
-    transform: translateY(12px);
+    order: -3; position: sticky; top: 0; z-index: 7; height: 52px; align-self: stretch;
+    display: flex; justify-content: flex-end; align-items: center; gap: 8px;
+    margin: 0 -20px -52px; padding: 0 16px 0 0; background: none; border: none;
+    pointer-events: none;
 }
+.modal-actions button { pointer-events: auto; }
 .modal-actions.inline-actions {
     order: 0; position: static; height: auto; align-self: auto; transform: none;
     justify-content: flex-end; margin: 8px 0 0; padding-top: 10px; border-top: 1px solid #ece3d3;
