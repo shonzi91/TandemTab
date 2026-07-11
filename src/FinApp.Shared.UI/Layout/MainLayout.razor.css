@@ -69,9 +69,30 @@
     width: min(380px, 92vw); max-height: 90vh; overflow-y: auto;
     box-shadow: 0 20px 60px rgba(0,0,0,.25); display: flex; flex-direction: column; gap: 9px;
 }
-.pm h3 { margin: 0; font-size: 1.05rem; }
-.pm h4 { margin: 6px 0 0; font-size: .9rem; color: #6b7280; }
+/* Sticky header so it stays pinned while the settings scroll (item #4). */
+.pm h3 {
+    position: sticky; top: 0; z-index: 6; margin: -18px -20px 4px; padding: 15px 20px 11px;
+    background: #fffdf8; border-bottom: 1px solid #ece3d3; border-radius: 16px 16px 0 0; font-size: 1.05rem;
+}
+/* Section labels double as dividers for a cleaner, scannable layout. */
+.pm h4 {
+    margin: 14px 0 2px; padding-top: 12px; border-top: 1px solid #f0e9db;
+    font-size: .7rem; font-weight: 700; letter-spacing: .6px; text-transform: uppercase; color: #8a97a0;
+}
+.pm h4:first-of-type { border-top: none; padding-top: 2px; margin-top: 4px; }
+.pm-danger-h { color: #c0392b; }
 .pm-who { margin: 0; font-size: .8rem; color: #9ca3af; }
+/* Standalone action buttons (Enable/Turn-off 2FA, Resend, Delete…) are full-width and consistent. */
+.pm > button {
+    width: 100%; padding: 10px 14px; border-radius: 10px; border: 1px solid #cdeadd; background: #f2fbf6;
+    color: #0f7a54; font-weight: 700; font-size: .88rem; cursor: pointer; transition: background .15s, border-color .15s;
+}
+.pm > button:hover:not(:disabled) { background: #e7f7ee; border-color: #13a06e; }
+.pm > button.danger { background: #fdf2f2; border-color: #f4cccc; color: #b91c1c; }
+.pm > button.danger:hover:not(:disabled) { background: #fbe4e4; border-color: #ef4444; }
+.pm > button:disabled { opacity: .5; cursor: not-allowed; }
+html.dark .pm > button { background: #16281f; border-color: #2b4438; color: #57d9a3; }
+html.dark .pm > button.danger { background: #2a1717; border-color: #532a2a; color: #f0a3a3; }
 .pm-theme-row { display: flex; align-items: center; justify-content: space-between; font-size: .9rem; cursor: pointer; }
 
 /* Toggle switch (hides the native checkbox, shows a sliding track/thumb) */

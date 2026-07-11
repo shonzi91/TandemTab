@@ -1255,11 +1255,14 @@ else
                 case Modal.PickAccount:
                     <h3>@Loc["Which account?"]</h3>
                     <p class="hint">@Loc["Pick the account you want to work in. You can switch anytime from the top bar."]</p>
-                    <div class="pm-actions" style="flex-direction:column;align-items:stretch;gap:12px">
+                    <div class="acct-pick-list">
                         @foreach (var a in State.Accounts)
                         {
                             var accId = a.Id;
-                            <button class="ghost" @onclick="() => PickAccountOnEntry(accId)">@a.Name <span class="pm-hint">· @a.Currency</span></button>
+                            <button class="acct-pick-btn" @onclick="() => PickAccountOnEntry(accId)">
+                                <span class="acct-pick-name">🏦 @a.Name</span>
+                                <span class="acct-pick-cur">@a.Currency ›</span>
+                            </button>
                         }
                     </div>
                     break;

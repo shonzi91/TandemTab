@@ -1025,6 +1025,19 @@ html.dark .chips-label { color: #7c8a94; }
 .spending-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
 .spending-head .insight-h { margin: 0; }
 .spending-sub { font-size: .82rem; color: #6b7280; margin-left: auto; }
+/* Account picker on entry — a clean vertical list, not side-by-side buttons */
+.acct-pick-list { display: flex; flex-direction: column; gap: 10px; margin-top: 4px; }
+.acct-pick-btn {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; text-align: left;
+    padding: 14px 16px; border-radius: 12px; border: 1px solid #ece3d3; background: #fffdf8;
+    color: #1f2430; font-weight: 700; font-size: .95rem; cursor: pointer; transition: background .15s, border-color .15s;
+}
+.acct-pick-btn:hover { background: #f2fbf6; border-color: #13a06e; }
+.acct-pick-cur { color: #6b7280; font-weight: 600; font-size: .85rem; }
+html.dark .acct-pick-btn { background: #1e2330; border-color: #2c3142; color: #e8eaf0; }
+html.dark .acct-pick-btn:hover { border-color: #3a8f6c; }
+html.dark .acct-pick-cur { color: #9aa4b2; }
+
 /* Fancy "Import statement" pill next to the budgets title */
 .import-btn {
     display: inline-flex; align-items: center; gap: 6px; padding: 7px 13px; border-radius: 999px;

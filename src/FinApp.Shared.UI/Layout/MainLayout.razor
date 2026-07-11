@@ -92,6 +92,8 @@
             <div class="pm">
                 <h3>@Loc["Profile settings"]</h3>
                 <p class="pm-who">@Auth.CurrentUser!.Username@(SameUsernameAndEmail ? "" : $" · {Auth.CurrentUser!.Email}")</p>
+                @if (!InProfileSubflow)
+                {
                 <h4>@Loc["Appearance"]</h4>
                 <label class="pm-theme-row">
                     <span>@Loc["Dark theme"]</span>
@@ -161,17 +163,29 @@
                     }
                 }
 
+                }
+
                 @* Two-factor is available to every user, including external (Google/Facebook) sign-ins. *@
+                @if (!_deleteConfirm)
+                {
                 <h4>@Loc["Two-factor authentication"]</h4>
                 @if (_2faError is not null)
                 {
                     <div class="pm-msg pm-error">@_2faError</div>
                 }
-                @if (Auth.CurrentUser!.TwoFactorEnabled && _2faSetup is null)
+                @if (Auth.CurrentUser!.TwoFactorEnabled && _2faSetup is null && !_2faDisabling)
                 {
                     <p class="pm-hint">✓ @Loc["Two-factor authentication is on."]</p>
-                    <label>@Loc["Enter a code to turn it off"] <input type="text" inputmode="numeric" placeholder="123456" @bind="_2faCode" /></label>
-                    <button class="ghost danger" @onclick="DisableTwoFactor" disabled="@(_2faBusy || string.IsNullOrWhiteSpace(_2faCode))">@Loc["Turn off two-factor"]</button>
+                    <button class="ghost danger" @onclick="() => { _2faDisabling = true; _2faCode = string.Empty; _2faError = null; }">@Loc["Turn off two-factor"]</button>
+                }
+                else if (_2faDisabling)
+                {
+                    <p class="pm-hint">@Loc["Enter a code from your authenticator to turn off two-factor authentication."]</p>
+                    <label>@Loc["Authentication code"] <input type="text" inputmode="numeric" placeholder="123456" @bind="_2faCode" /></label>
+                    <div class="pm-actions">
+                        <button class="ghost" @onclick="() => { _2faDisabling = false; _2faCode = string.Empty; _2faError = null; }">@Loc["Back"]</button>
+                        <button class="ghost danger" @onclick="DisableTwoFactor" disabled="@(_2faBusy || string.IsNullOrWhiteSpace(_2faCode))">@Loc["Turn off two-factor"]</button>
+                    </div>
                 }
                 else if (_2faRecoveryCodes is not null)
                 {
@@ -209,7 +223,9 @@
                     <button class="ghost" @onclick="BeginTwoFactor" disabled="@_2faBusy">@Loc["Enable two-factor"]</button>
                 }
 
-                @if (_archived.Count > 0)
+                }
+
+                @if (!InProfileSubflow && _archived.Count > 0)
                 {
                     <h4>@Loc["Archived accounts"]</h4>
                     <p class="pm-hint">@Loc["Archived accounts are deleted after 30 days. Restore one to bring it back."]</p>
@@ -224,7 +240,7 @@
                         }
                     </ul>
                 }
-                @if (_2faSetup is null && _2faRecoveryCodes is null)
+                @if (!_2faDisabling && _2faSetup is null && _2faRecoveryCodes is null)
                 {
                     <h4 class="pm-danger-h">@Loc["Delete account"]</h4>
                     @if (_deleteError is not null)
@@ -250,8 +266,8 @@
                     }
                 }
 
-                @* While a 2FA sub-flow is active it has its own Cancel/Done — hide the profile's Close so there's one clear action. *@
-                @if (_2faSetup is null && _2faRecoveryCodes is null)
+                @* While a focused sub-flow is active it has its own Back — hide the profile's Close so there's one clear action. *@
+                @if (!InProfileSubflow)
                 {
                     <div class="pm-actions">
                         <button class="ghost" @onclick="CloseProfile">@Loc["Close"]</button>
@@ -275,6 +291,10 @@
     private bool _deleteBusy, _deleteConfirm;
     private string _deleteCode = "";
     private string? _deleteError;
+    private bool _2faDisabling;   // focused "turn off two-factor" sub-flow
+    // While a focused sub-flow (2FA enroll/recovery/turn-off, or delete) is active, the rest of the settings are
+    // hidden so there's one clear task with its own Back — item #7.
+    private bool InProfileSubflow => _2faSetup is not null || _2faRecoveryCodes is not null || _2faDisabling || _deleteConfirm;
     private string Initial => (Auth.CurrentUser?.Username ?? "?").Trim() is { Length: > 0 } u ? u[..1].ToUpperInvariant() : "?";
 
     // Hide the redundant email when it's identical to the username (common for external sign-ups).
@@ -406,7 +426,7 @@
         try
         {
             await Api.DisableTwoFactorAsync(_2faCode);
-            _2faCode = "";
+            _2faCode = ""; _2faDisabling = false;
             await Auth.RefreshProfileAsync();
         }
         catch (ApiException ex) { _2faError = ex.Message; }

@@ -13,10 +13,13 @@
     <p class="auth-slogan">@Loc["Track together, save together."]</p>
     <p class="hint">@Loc["Simple family goals, zero stress. Sign in or create an account to begin."]</p>
 
-    <div class="auth-tabs">
-        <button class="tab @(_mode == Mode.Login ? "active" : "")" @onclick="() => Switch(Mode.Login)">@Loc["Sign in"]</button>
-        <button class="tab @(_mode == Mode.Register ? "active" : "")" @onclick="() => Switch(Mode.Register)">@Loc["Create account"]</button>
-    </div>
+    @if (_twoFactorTicket is null)
+    {
+        <div class="auth-tabs">
+            <button class="tab @(_mode == Mode.Login ? "active" : "")" @onclick="() => Switch(Mode.Login)">@Loc["Sign in"]</button>
+            <button class="tab @(_mode == Mode.Register ? "active" : "")" @onclick="() => Switch(Mode.Register)">@Loc["Create account"]</button>
+        </div>
+    }
 
     @if (_error is not null)
     {
@@ -51,7 +54,7 @@
         <small class="hint">@Loc["Password must be at least 8 characters."]</small>
     }
 
-    @if (_providers is { Google: true } or { Facebook: true })
+    @if (_twoFactorTicket is null && _providers is { Google: true } or { Facebook: true })
     {
         <div class="auth-or"><span>@Loc["or"]</span></div>
         @if (_providers.Google)
