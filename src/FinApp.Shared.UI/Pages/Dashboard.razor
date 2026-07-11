@@ -210,10 +210,10 @@ else
                 </div>
                 <div class="card"><span class="card-label">@Loc["Spent"]</span><span class="card-value">@Fmt(State.TotalSpent)</span></div>
                 @{ var ovBand = ov.Band switch { HealthBand.Healthy => "score-ok", HealthBand.Average => "score-warn", _ => "score-bad" }; }
-                <button id="home-score" class="card card-score" @onclick="ToggleHomeInsights" title="@Loc["Health score & trends"]">
+                <button id="home-score" class="card card-score" @onclick="() => _modal = Modal.HealthScore" title="@Loc["Health score & trends"]">
                     <span class="card-label">@Loc["Health score & trends"]</span>
                     <span class="card-value @ovBand">@(ov.HasData ? ov.Score.ToString() : "—")</span>
-                    <span class="card-sub">@(ov.HasData ? ov.Verdict : "") @(_homeInsightsOpen ? "▲" : "▼")</span>
+                    <span class="card-sub">@(ov.HasData ? ov.Verdict : "") ›</span>
                 </button>
             </section>
 
@@ -291,100 +291,7 @@ else
                     <section class="panel all-clear"><p>✅ @Loc["All clear — no warnings this period. Nice work."]</p></section>
                 }
 
-                @if (_homeInsightsOpen)
-                {
-                    var band = ov.Band switch { HealthBand.Healthy => "ok", HealthBand.Average => "warn", _ => "bad" };
-                    <h2 class="insight-h">@Loc["Health score & trends"] @infoTip(("score-how", Loc["How your score works: four equal parts (25 pts each) — how much you saved vs your target, how well you kept to budget, living within your income, and your spending vs your recent average."]))</h2>
-                    <section id="score-detail" class="panel score-detail">
-                        <div class="score-verdict score-@band">@ov.Verdict</div>
-                        <p class="score-line">@ov.Summary</p>
-                        <div class="score-bar-wrap">
-                            <div class="score-bar-track">
-                                <div class="score-bar-needle" style="left:@(Math.Clamp(ov.Score, 2, 98))%"></div>
-                            </div>
-                            <div class="score-bar-labels">
-                                <span>@Loc["At risk"]</span><span>@Loc["Average"]</span><span>@Loc["Healthy"]</span>
-                            </div>
-                        </div>
-                    </section>
 
-                    @if (ov.QuickWins.Count > 0)
-                    {
-                        <h2 class="insight-h">@Loc["Quick wins"]</h2>
-                        <div class="win-list">
-                            @{ var qn = 0; }
-                            @foreach (var w in ov.QuickWins)
-                            {
-                                qn++;
-                                <div class="win"><div class="win-bullet">@qn</div><div class="win-text">@w.Text</div></div>
-                            }
-                        </div>
-                    }
-
-                    <h2 class="insight-h">@Loc["Savings rate"]</h2>
-                    <section class="panel savings-rate-card">
-                        <div class="savings-rate-head">
-                            <span class="savings-pct">@PctOrDash(ov.SavingsRate)</span>
-                            <span class="savings-target">@Loc["Target:"] <span>@PctText(ov.SavingsTarget)</span></span>
-                        </div>
-                        @{
-                            var rateW = Math.Clamp((double)(ov.SavingsRate ?? 0m) * 100, 0, 100);
-                            var goalW = Math.Clamp((double)ov.SavingsTarget * 100, 0, 100);
-                        }
-                        <div class="savings-track">
-                            <div class="savings-fill" style="width:@rateW%"></div>
-                            <div class="savings-goal-line" style="left:@goalW%"></div>
-                        </div>
-                        <div class="savings-footer">
-                            <span>0%</span><span class="goal-label">@Loc["Goal"] @PctText(ov.SavingsTarget)</span><span>100%</span>
-                        </div>
-                        <div class="savings-critique">💡 @ov.SavingsCritique</div>
-                    </section>
-
-                    @if (ov.Trend.Count > 1)
-                    {
-                        <h2 class="insight-h">@Loc["Spending trend"]</h2>
-                        <section class="panel trend-card">
-                            <div class="trend-head">
-                                <span>@Loc["Outgoings"] · @Loc["avg"] @Fmt(ov.TrendAverage)</span>
-                                <span class="trend-dir @(ov.TrendUp ? "up" : "down")">@(ov.TrendUp ? "↑" : "↓") @(ov.TrendUp ? Loc["above average"] : Loc["below average"])</span>
-                            </div>
-                            <div class="trend-plot">
-                                <div class="trend-avg" style="bottom:@((Math.Clamp((double)ov.TrendAvgFraction, 0, 1) * 72).ToString(System.Globalization.CultureInfo.InvariantCulture))px"></div>
-                                @foreach (var t in ov.Trend)
-                                {
-                                    <div class="trend-bar @(t.IsCurrent ? "current" : "")" style="height:@(Math.Max(3.0, (double)t.BarFraction * 72).ToString(System.Globalization.CultureInfo.InvariantCulture))px" title="@t.Label: @Fmt(t.Outgoings)"></div>
-                                }
-                            </div>
-                            <div class="trend-labels">
-                                @foreach (var t in ov.Trend)
-                                {
-                                    <span class="@(t.IsCurrent ? "cur" : "")">@t.Label</span>
-                                }
-                            </div>
-                            <div class="trend-note">@ov.TrendNote</div>
-                        </section>
-                    }
-
-                    @if (ov.MiniTrends.Count > 0)
-                    {
-                        <h2 class="insight-h">@Loc["Trends over time"]</h2>
-                        <section class="panel mini-trends">
-                            @foreach (var mt in ov.MiniTrends)
-                            {
-                                <div class="mini-trend @(mt.Dir == DeltaDir.Up ? "up" : mt.Dir == DeltaDir.Down ? "down" : "flat")">
-                                    <div class="mt-head">
-                                        <span class="mt-label">@mt.Icon @mt.Label</span>
-                                        <span class="mt-cur">@mt.CurrentText</span>
-                                    </div>
-                                    @TrendSparkline(mt.Points)
-                                    <div class="mt-note">@mt.DeltaNote</div>
-                                </div>
-                            }
-                        </section>
-                    }
-                    <button class="home-collapse" @onclick="ToggleHomeInsights">▲ @Loc["Collapse"]</button>
-                }
             }
         </div>
         <div class="tabpanel" hidden="@(_tab != Tab.Account)">
@@ -1160,82 +1067,6 @@ else
                             </li>
                         }
                     </ul>
-                </section>
-            }
-        </div>
-        <div class="tabpanel" hidden="@(_tab != Tab.Bank)">
-            @if (Auth.CurrentUser is { EmailVerified: false })
-            {
-                <button class="link bank-back" @onclick="() => _tab = Tab.Account">← @Loc["Wallets"]</button>
-                <section class="panel bank-panel">
-                    <div class="alert warn-bg"><span>@Loc["Verify your email address before you can link a bank or view its data — bank connections show real financial information."]</span></div>
-                    @if (_resendOk)
-                    {
-                        <p class="hint">✓ @Loc["Verification email sent. Check your inbox."]</p>
-                    }
-                    <button class="primary" @onclick="ResendVerificationFromBank" disabled="@_resendBusy">@Loc["Resend verification email"]</button>
-                </section>
-            }
-            else if (_bankStatus?.Enabled == true)
-            {
-                <button class="link bank-back" @onclick="() => _tab = Tab.Account">← @Loc["Wallets"]</button>
-                @if (!State.IsOwnerOfCurrent && _bankSharedAckKnown && !_bankSharedAck)
-                {
-                    <div class="alert warn-bg">
-                        <span>@Loc["This shared account shows a linked bank's real balances and transactions. Please keep it confidential; we recommend turning on two-factor authentication."]</span>
-                        <button class="link" @onclick="AckBankShared" disabled="@_bankBusy">@Loc["Got it"]</button>
-                    </div>
-                }
-                @if (!Auth.CurrentUser!.TwoFactorEnabled && !_2faRecDismissed)
-                {
-                    <div class="alert warn-bg">
-                        <span>@Loc["We strongly recommend turning on two-factor authentication (Profile → Two-factor) — this account is connected to real financial data."]</span>
-                        <button class="alert-x" title="@Loc["Dismiss"]" @onclick="() => _2faRecDismissed = true">×</button>
-                    </div>
-                }
-                <section class="panel bank-panel">
-                    <div class="panel-head">
-                        <h2>@Loc["External accounts"] · @State.Account.Name</h2>
-                    </div>
-
-                    @if (!_bankStatus.Connected)
-                    {
-                        <p class="hint">@Loc["Link your Revolut account to pull transactions in automatically."] @Loc["Each account links its own bank."]</p>
-                        <button class="primary" @onclick="LinkBankAsync" disabled="@_bankBusy">🔗 @Loc["Link Revolut"]</button>
-                    }
-                    else
-                    {
-                        <p class="bank-conn">
-                            <span>@if (_bankStatus.InstitutionLogo is { } logo) { <img class="bank-logo-img" src="@logo" alt="" /> } else { <text>✅</text> } @_bankStatus.InstitutionName</span>
-                            @if (_bankStatus.Balance is { } bal)
-                            {
-                                <span class="bank-balance" title="@Loc["Live account balance"]">@Fmt(new Money(bal, _bankStatus.BalanceCurrency ?? State.Currency))</span>
-                            }
-                            @if (_bankStatus.LastSyncedAt is { } synced)
-                            {
-                                <span class="row-note">· @Loc["last synced"] @synced.LocalDateTime.ToString("dd MMM HH:mm")</span>
-                            }
-                            <button class="link danger bank-disconnect" @onclick="DisconnectBankAsync" disabled="@_bankBusy">@Loc["Disconnect"]</button>
-                        </p>
-                        <p class="hint">@Loc["Map a fund to one of this bank's accounts by editing the fund and turning on sync."]</p>
-                        @if (_bankStatus.ConsentExpiresAt is { } exp && exp <= DateTimeOffset.UtcNow)
-                        {
-                            <div class="alert warn-bg">
-                                <span>@Loc["Your bank consent has expired (banks require re-approval every 90 days)."]</span>
-                                <button class="link" @onclick="LinkBankAsync" disabled="@_bankBusy">@Loc["Reconnect"]</button>
-                            </div>
-                        }
-
-                        @if (!State.HasSyncedFund)
-                        {
-                            <div class="alert warn-bg"><span>@Loc["Mark a fund as synced to this bank (a fund → Edit) so imports file automatically."]</span></div>
-                        }
-                        <p class="hint">@Loc["Imported expenses are reviewed in the Spending tab; money-in under Funds → Move money."]</p>
-                    }
-                    @if (_bankError is not null)
-                    {
-                        <div class="alert warn-bg"><span>@_bankError</span><button class="alert-x" title="@Loc["Dismiss"]" @onclick="() => _bankError = null">×</button></div>
-                    }
                 </section>
             }
         </div>
@@ -2218,6 +2049,81 @@ else
                     }
                     break;
 
+                case Modal.ExternalAccounts:
+                    <h3>🏦 @Loc["External accounts"]</h3>
+                    @if (Auth.CurrentUser is { EmailVerified: false })
+                    {
+                        <div class="alert warn-bg"><span>@Loc["Verify your email address before you can link a bank or view its data — bank connections show real financial information."]</span></div>
+                        @if (_resendOk)
+                        {
+                            <p class="hint">✓ @Loc["Verification email sent. Check your inbox."]</p>
+                        }
+                        <button class="primary" @onclick="ResendVerificationFromBank" disabled="@_resendBusy">@Loc["Resend verification email"]</button>
+                    }
+                    else if (_bankStatus?.Enabled == true)
+                    {
+                        @if (!State.IsOwnerOfCurrent && _bankSharedAckKnown && !_bankSharedAck)
+                        {
+                            <div class="alert warn-bg">
+                                <span>@Loc["This shared account shows a linked bank's real balances and transactions. Please keep it confidential; we recommend turning on two-factor authentication."]</span>
+                                <button class="link" @onclick="AckBankShared" disabled="@_bankBusy">@Loc["Got it"]</button>
+                            </div>
+                        }
+                        @if (!Auth.CurrentUser!.TwoFactorEnabled && !_2faRecDismissed)
+                        {
+                            <div class="alert warn-bg">
+                                <span>@Loc["We strongly recommend turning on two-factor authentication (Profile → Two-factor) — this account is connected to real financial data."]</span>
+                                <button class="alert-x" title="@Loc["Dismiss"]" @onclick="() => _2faRecDismissed = true">×</button>
+                            </div>
+                        }
+                        <p class="pm-who">@State.Account.Name</p>
+                        @if (!_bankStatus.Connected)
+                        {
+                            <p class="hint">@Loc["Link your Revolut account to pull transactions in automatically."] @Loc["Each account links its own bank."]</p>
+                            <button class="primary" @onclick="LinkBankAsync" disabled="@_bankBusy">🔗 @Loc["Link Revolut"]</button>
+                        }
+                        else
+                        {
+                            <p class="bank-conn">
+                                <span>@if (_bankStatus.InstitutionLogo is { } logo) { <img class="bank-logo-img" src="@logo" alt="" /> } else { <text>✅</text> } @_bankStatus.InstitutionName</span>
+                                @if (_bankStatus.Balance is { } bal)
+                                {
+                                    <span class="bank-balance" title="@Loc["Live account balance"]">@Fmt(new Money(bal, _bankStatus.BalanceCurrency ?? State.Currency))</span>
+                                }
+                                @if (_bankStatus.LastSyncedAt is { } synced)
+                                {
+                                    <span class="row-note">· @Loc["last synced"] @synced.LocalDateTime.ToString("dd MMM HH:mm")</span>
+                                }
+                                <button class="link danger bank-disconnect" @onclick="DisconnectBankAsync" disabled="@_bankBusy">@Loc["Disconnect"]</button>
+                            </p>
+                            <p class="hint">@Loc["Map a fund to one of this bank's accounts by editing the fund and turning on sync."]</p>
+                            @if (_bankStatus.ConsentExpiresAt is { } exp && exp <= DateTimeOffset.UtcNow)
+                            {
+                                <div class="alert warn-bg">
+                                    <span>@Loc["Your bank consent has expired (banks require re-approval every 90 days)."]</span>
+                                    <button class="link" @onclick="LinkBankAsync" disabled="@_bankBusy">@Loc["Reconnect"]</button>
+                                </div>
+                            }
+                            @if (!State.HasSyncedFund)
+                            {
+                                <div class="alert warn-bg"><span>@Loc["Mark a fund as synced to this bank (a fund → Edit) so imports file automatically."]</span></div>
+                            }
+                            <p class="hint">@Loc["Imported expenses are reviewed in the Spending tab; money-in under Funds → Move money."]</p>
+                        }
+                        @if (_bankError is not null)
+                        {
+                            <div class="alert warn-bg"><span>@_bankError</span><button class="alert-x" title="@Loc["Dismiss"]" @onclick="() => _bankError = null">×</button></div>
+                        }
+                    }
+                    else
+                    {
+                        <p class="hint">@Loc["Connecting a bank isn't available on this account."]</p>
+                    }
+                    <div class="modal-actions">
+                        <button class="ghost" @onclick="Back">@Loc["Close"]</button>
+                    </div>
+                    break;
+
                 case Modal.BudgetSaving:
                     <h3>@Loc["Budget savings"] — @State.SavingBucketName(_spendBucketId)</h3>
                     <label>@Loc["Destination"]
@@ -2286,6 +2192,110 @@ else
                     <div class="modal-actions">
                         <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
                         <button @onclick="DisburseSavingFromModal" disabled="@(_disburseAmount <= 0 || _disburseAmount > disBucketBal.Amount || _disburseFundId == Guid.Empty)">🎯 @Loc["Apply"]</button>
+                    </div>
+                    break;
+
+                case Modal.HealthScore:
+                    var hs = _insights.Build(State.Account, State.PeriodNumber - 1, Fmt, Loc.T);
+                    <h3>💗 @Loc["Health score & trends"] @infoTip(("score-how", Loc["How your score works: four equal parts (25 pts each) — how much you saved vs your target, how well you kept to budget, living within your income, and your spending vs your recent average."]))</h3>
+                    @if (!hs.HasData)
+                    {
+                        <p class="hint">📊 @Loc["Log some income or expenses to see your account overview here."]</p>
+                    }
+                    else
+                    {
+                        var hsBand = hs.Band switch { HealthBand.Healthy => "ok", HealthBand.Average => "warn", _ => "bad" };
+                        <section class="score-detail">
+                            <div class="score-verdict score-@hsBand">@hs.Verdict</div>
+                            <p class="score-line">@hs.Summary</p>
+                            <div class="score-bar-wrap">
+                                <div class="score-bar-track">
+                                    <div class="score-bar-needle" style="left:@(Math.Clamp(hs.Score, 2, 98))%"></div>
+                                </div>
+                                <div class="score-bar-labels">
+                                    <span>@Loc["At risk"]</span><span>@Loc["Average"]</span><span>@Loc["Healthy"]</span>
+                                </div>
+                            </div>
+                        </section>
+
+                        @if (hs.QuickWins.Count > 0)
+                        {
+                            <h4 class="insight-h">@Loc["Quick wins"]</h4>
+                            <div class="win-list">
+                                @{ var qn = 0; }
+                                @foreach (var w in hs.QuickWins)
+                                {
+                                    qn++;
+                                    <div class="win"><div class="win-bullet">@qn</div><div class="win-text">@w.Text</div></div>
+                                }
+                            </div>
+                        }
+
+                        <h4 class="insight-h">@Loc["Savings rate"]</h4>
+                        <section class="savings-rate-card">
+                            <div class="savings-rate-head">
+                                <span class="savings-pct">@PctOrDash(hs.SavingsRate)</span>
+                                <span class="savings-target">@Loc["Target:"] <span>@PctText(hs.SavingsTarget)</span></span>
+                            </div>
+                            @{
+                                var rateW = Math.Clamp((double)(hs.SavingsRate ?? 0m) * 100, 0, 100);
+                                var goalW = Math.Clamp((double)hs.SavingsTarget * 100, 0, 100);
+                            }
+                            <div class="savings-track">
+                                <div class="savings-fill" style="width:@rateW%"></div>
+                                <div class="savings-goal-line" style="left:@goalW%"></div>
+                            </div>
+                            <div class="savings-footer">
+                                <span>0%</span><span class="goal-label">@Loc["Goal"] @PctText(hs.SavingsTarget)</span><span>100%</span>
+                            </div>
+                            <div class="savings-critique">💡 @hs.SavingsCritique</div>
+                        </section>
+
+                        @if (hs.Trend.Count > 1)
+                        {
+                            <h4 class="insight-h">@Loc["Spending trend"]</h4>
+                            <section class="trend-card">
+                                <div class="trend-head">
+                                    <span>@Loc["Outgoings"] · @Loc["avg"] @Fmt(hs.TrendAverage)</span>
+                                    <span class="trend-dir @(hs.TrendUp ? "up" : "down")">@(hs.TrendUp ? "↑" : "↓") @(hs.TrendUp ? Loc["above average"] : Loc["below average"])</span>
+                                </div>
+                                <div class="trend-plot">
+                                    <div class="trend-avg" style="bottom:@((Math.Clamp((double)hs.TrendAvgFraction, 0, 1) * 72).ToString(System.Globalization.CultureInfo.InvariantCulture))px"></div>
+                                    @foreach (var t in hs.Trend)
+                                    {
+                                        <div class="trend-bar @(t.IsCurrent ? "current" : "")" style="height:@(Math.Max(3.0, (double)t.BarFraction * 72).ToString(System.Globalization.CultureInfo.InvariantCulture))px" title="@t.Label: @Fmt(t.Outgoings)"></div>
+                                    }
+                                </div>
+                                <div class="trend-labels">
+                                    @foreach (var t in hs.Trend)
+                                    {
+                                        <span class="@(t.IsCurrent ? "cur" : "")">@t.Label</span>
+                                    }
+                                </div>
+                                <div class="trend-note">@hs.TrendNote</div>
+                            </section>
+                        }
+
+                        @if (hs.MiniTrends.Count > 0)
+                        {
+                            <h4 class="insight-h">@Loc["Trends over time"]</h4>
+                            <section class="mini-trends">
+                                @foreach (var mt in hs.MiniTrends)
+                                {
+                                    <div class="mini-trend @(mt.Dir == DeltaDir.Up ? "up" : mt.Dir == DeltaDir.Down ? "down" : "flat")">
+                                        <div class="mt-head">
+                                            <span class="mt-label">@mt.Icon @mt.Label</span>
+                                            <span class="mt-cur">@mt.CurrentText</span>
+                                        </div>
+                                        @TrendSparkline(mt.Points)
+                                        <div class="mt-note">@mt.DeltaNote</div>
+                                    </div>
+                                }
+                            </section>
+                        }
+                    }
+                    <div class="modal-actions">
+                        <button class="ghost" @onclick="Back">@Loc["Close"]</button>
                     </div>
                     break;
 
@@ -2732,21 +2742,11 @@ else
 }
 
 @code {
-    private enum Modal { None, PickAccount, BankReview, BankConsent, AddCat, AddBudget, DisburseSaving, PayoffProjection, GoalProjection, InvestmentProjection, BankTransfer, EditCat, DeleteCat, CategoryDetail, AddAccount, EditAccount, DeleteAccount, RemoveMember, LeaveAccount, AddExpense, NextPeriod, RemovePeriod, EditExpense, DeleteExpense, SettleExpense, AddBucket, EditBucket, DeleteBucket, AddFund, EditFund, DeleteFund, Invite, Transfer, Deposit, EditDeposit, DeleteDeposit, ManageContribCats, ContribCat, DeleteContribCat, AddSaving, BudgetSaving, SpendSaving, EditSavingDeposit, DeleteSavingDeposit, EditTransfer, DeleteTransfer, EditPeriod, EditSavingMovement, DeleteSavingMovement, DeleteExternalTransfer, Achievements, Reallocate, Recurring, RecurringEdit, RecurringConfirm, Import }
-    private enum Tab { Overview, Account, Budgets, Savings, Bank }
+    private enum Modal { None, PickAccount, BankReview, BankConsent, AddCat, AddBudget, DisburseSaving, PayoffProjection, GoalProjection, InvestmentProjection, BankTransfer, ExternalAccounts, HealthScore, EditCat, DeleteCat, CategoryDetail, AddAccount, EditAccount, DeleteAccount, RemoveMember, LeaveAccount, AddExpense, NextPeriod, RemovePeriod, EditExpense, DeleteExpense, SettleExpense, AddBucket, EditBucket, DeleteBucket, AddFund, EditFund, DeleteFund, Invite, Transfer, Deposit, EditDeposit, DeleteDeposit, ManageContribCats, ContribCat, DeleteContribCat, AddSaving, BudgetSaving, SpendSaving, EditSavingDeposit, DeleteSavingDeposit, EditTransfer, DeleteTransfer, EditPeriod, EditSavingMovement, DeleteSavingMovement, DeleteExternalTransfer, Achievements, Reallocate, Recurring, RecurringEdit, RecurringConfirm, Import }
+    private enum Tab { Overview, Account, Budgets, Savings }
 
     private Tab _tab = Tab.Overview;
-    private bool _homeInsightsOpen;
     private bool _moveOpen;
-
-    /// <summary>Toggle the Home insights detail and, when opening, scroll it into view (it sits below the fold).</summary>
-    private async Task ToggleHomeInsights()
-    {
-        _homeInsightsOpen = !_homeInsightsOpen;
-        await Task.Yield();   // let the section render/collapse before scrolling
-        // Open → scroll the detail into view; close → bring the score card back up so you're not left down the page.
-        try { await JS.InvokeVoidAsync("finappScrollIntoView", _homeInsightsOpen ? "score-detail" : "home-score"); } catch { /* host without the helper */ }
-    }
 
     // Per-row "⋯" action menu: the id of the row whose menu is open (Guid.Empty = none).
     private Guid _rowMenuId;
@@ -3195,10 +3195,10 @@ else
         finally { _bankBusy = false; }
     }
 
-    /// <summary>Open the Bank tab, refreshing the connection for the current account (it's per-account).</summary>
+    /// <summary>Open the External accounts modal, refreshing the connection for the current account (it's per-account).</summary>
     private async Task ShowBankTab()
     {
-        _tab = Tab.Bank;
+        _modal = Modal.ExternalAccounts;
         await LoadBankAsync();
     }
 
@@ -3216,7 +3216,7 @@ else
     {
         var query = new Uri(Nav.Uri).Query;
         if (!query.Contains("bank=", StringComparison.Ordinal)) return;
-        _tab = Tab.Bank;
+        _modal = Modal.ExternalAccounts;
         if (query.Contains("bank=linked", StringComparison.Ordinal))
         {
             await LoadBankAsync();
@@ -3730,7 +3730,7 @@ else
     private async Task ReloadBankOnAccountChangeAsync()
     {
         await LoadBankAsync();
-        if (_tab == Tab.Bank && _bankStatus?.Enabled != true) _tab = Tab.Overview;   // tab vanished for this account
+        if (_modal == Modal.ExternalAccounts && _bankStatus?.Enabled != true) _modal = Modal.None;   // vanished for this account
         await SyncOnOpenAsync();   // opening/switching to this account fetches fresh transactions (throttled)
         await InvokeAsync(StateHasChanged);
     }
