@@ -59,14 +59,16 @@ commit noted.
   for" targets, added the **milestones** strip. Deep analytics (score, savings rate, trends, mini-trends)
   stay behind the "Trends, savings rate & score" expander.
 
-## P3 — Strategic primitives (unlock multiple items above)
-13. **Recurring transactions** — fixed bills, salary, standing savings/debt transfers. Biggest missing
-    primitive: makes budgeting predictive, makes "free to allocate" honest, and is the real fulfillment of
-    the nudge's "every period" framing.
-14. **Actionable nudge, done right** — "Move €290 from Food's plan to the loan" (reallocation) **or** a
-    standing transfer, behind an explicit confirm. The coherent version of the one-tap button that was
-    reverted (setting cash aside didn't consume the budget slack, so the nudge nagged/double-applied).
-    Depends on #13 for the recurring variant.
+## ✅ P3 — Strategic primitives — all shipped
+13. ~~**Recurring transactions**~~ **DONE (Session 24-pre, commits `dc1c03d` → `b7e2956` → `8eea5e3`)** —
+    fixed bills, salary and standing transfers as `Domain/Recurring/RecurringItem` (body data, no migration):
+    three amount modes (**Fixed** / **Typical** self-tuning / **ReminderOnly**), per-period due tracking,
+    opt-in **AutoPost** for fixed bills, and a **"· N bills due"** honesty marker on the balance. Full 🔁
+    Recurring UI (Home quick action + list/add/edit/confirm modals). Unit-tested by `RecurringItemTests` (18).
+14. ~~**Actionable nudge, done right**~~ **DONE (`BudgetReallocationService`)** — moves a budget's unspent
+    leftover into savings or another budget, **capped at leftover** so a budget is never cut below what's
+    already spent (`ToSavings` opens savings headroom first; `ToBudget` moves between budgets). Wired into
+    the Dashboard + `BudgetingState`; covered by `ReallocationAndCapTests` (5).
 
-**Suggested sequencing:** P0 (1–4) in one pass → #7 + #8 together (shared debt/goal data model) →
-commit to #13 as the strategic bet that unblocks #10, #14, and predictive budgeting.
+**Backlog status:** P0–P3 all cleared. Next work is un-backlogged (see HANDOFF.md for candidates —
+push notifications / PWA, debt-lifecycle Phase 3, multi-synced-fund).
