@@ -79,13 +79,6 @@ else
                         }
                     </span>
                   </span>
-                  <span class="ops-group ops-feat">
-                    @if (_bankStatus?.Enabled == true)
-                    {
-                        <button class="acct-chip" title="@Loc["External accounts"]" @onclick="ShowBankTab">🏦 <span class="acct-chip-label">@(_bankStatus.Connected ? (_bankStatus.InstitutionName ?? Loc["External"]) : Loc["External"])</span></button>
-                    }
-                    <button class="acct-chip" title="@Loc["Recurring"]" @onclick="OpenRecurring">🔁 <span class="acct-chip-label">@Loc["Recurring"]</span></button>
-                  </span>
                   <span class="ops-group">
                     <button class="link" title="@Loc["Achievements"]" @onclick="() => _modal = Modal.Achievements">🏆</button>
                     <span class="acct-notify">
@@ -278,6 +271,11 @@ else
                 @if (HasSavingsBucket)
                 {
                     <button class="qa" @onclick="OpenMoveToSavings">💰 <span>@Loc["Move to savings"]</span></button>
+                }
+                <button class="qa" @onclick="OpenRecurring">🔁 <span>@Loc["Recurring"]</span></button>
+                @if (_bankStatus?.Enabled == true)
+                {
+                    <button class="qa" @onclick="ShowBankTab">🏦 <span>@Loc["External accounts"]</span></button>
                 }
             </section>
 
@@ -3832,9 +3830,14 @@ else
     private void OnChanged()
     {
         ResetPickers();
-        // Account switched (e.g. via the account switcher) → refresh the per-account bank connection.
+        // Account switched (e.g. via the account switcher) → refresh the per-account bank connection. Drop the previous
+        // account's live bank balance synchronously first, so it can't bleed onto the new account's Current/free figures
+        // during the render before the new status loads — that cross-account value was the flicker (#4).
         if (_bankStatus is not null && _bankAccountId != State.CurrentAccountId)
+        {
+            _bankStatus = null;
             _ = ReloadBankOnAccountChangeAsync();
+        }
         InvokeAsync(StateHasChanged);
     }
 

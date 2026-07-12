@@ -8,13 +8,16 @@
     padding: 0 20px 40px;
 }
 
-/* ---- Top bar: language + sign-in ---- */
-.lp-topbar { display: flex; align-items: center; justify-content: flex-end; gap: 10px; padding: 10px 0 0; }
-.lp-signin {
-    background: none; border: 1px solid #d6f0e3; border-radius: 999px; padding: 7px 16px; cursor: pointer;
-    font: inherit; font-size: .88rem; font-weight: 700; color: #0e7c55;
+/* ---- Top bar: brand lockup with the language picker beside it ---- */
+.lp-topbar { display: flex; align-items: center; gap: 12px; padding: 12px 0 0; }
+.lp-brand-sm { display: flex; align-items: center; gap: 9px; font-size: 1.2rem; font-weight: 800; color: #13a06e; }
+.lp-logo-sm {
+    width: 36px; height: 36px; flex: 0 0 auto;
+    background: linear-gradient(135deg, #eef9f3, #e4f6ee);
+    border: 1px solid #d6f0e3; border-radius: 11px; padding: 5px;
+    display: grid; place-items: center;
 }
-.lp-signin:hover { background: #eef9f3; border-color: #13a06e; }
+.lp-logo-sm ::deep svg { width: 100%; height: 100%; display: block; }
 
 /* ---- Hero: centred pitch; the sign-in card opens as an overlay from the CTA ---- */
 .lp-hero {

@@ -850,7 +850,7 @@ input[type=date]::-webkit-calendar-picker-indicator:hover { opacity: 1; backgrou
 .bell { position: relative; }
 .bell-badge {
     position: absolute; top: -4px; right: -6px; min-width: 16px; height: 16px; padding: 0 4px;
-    border-radius: 999px; background: #e0533a; color: #fffdf8; font-size: .66rem; font-weight: 700;
+    border-radius: 999px; background: #13a06e; color: #fffdf8; font-size: .66rem; font-weight: 700;
     line-height: 16px; text-align: center;
 }
 .bell-menu {
@@ -898,9 +898,9 @@ html.dark .target-mo, html.dark .targets-foot { color: #7c8a94; }
 html.dark .targets-foot { border-top-color: #2a323c; }
 
 /* Home quick actions (#11) */
-.quick-actions { display: flex; gap: 8px; margin: 14px 0 0; flex-wrap: wrap; }
+.quick-actions { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; margin: 14px 0 0; }
 .qa {
-    flex: 1 1 0; min-width: 120px; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
     padding: 11px 12px; border: 1px solid #cdeadd; border-radius: 12px; background: #fffdf8; color: #0f7a54;
     font-weight: 700; font-size: .9rem; cursor: pointer; transition: background .15s, border-color .15s;
 }

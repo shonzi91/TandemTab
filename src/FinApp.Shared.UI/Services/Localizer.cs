@@ -805,6 +805,14 @@ public sealed class Localizer(IJSRuntime js)
             "парите в профила, минус бюджетираното другаде и вече спестеното",
 
         // Landing page (logged-out)
+        ["Reach your money goals, faster."] = "Постигни финансовите си цели по-бързо.",
+        ["Budgeting for real life — use it on your own, with your partner, or across the whole household. Plan spending, clear debt, and hit savings goals."] =
+            "Бюджетиране за реалния живот — сам, с партньора си или за цялото домакинство. Планирай разходи, изчисти дългове и постигай цели за спестяване.",
+        ["Solo or shared"] = "Сам или споделено",
+        ["Budget on your own, or invite your partner or housemates to share one — every expense and change syncs for everyone in real time."] =
+            "Бюджетирай сам или покани партньора си или съквартиранти да го споделите — всеки разход и промяна се синхронизират за всички в реално време.",
+        ["Try it free"] = "Опитай безплатно",
+        ["Ready to take control of your money?"] = "Готов ли си да поемеш контрол над парите си?",
         ["Budget together. Reach your goals faster."] = "Бюджет заедно. Постигни целите си по-бързо.",
         ["A shared budgeting app for couples and families — plan your spending, clear debt, and hit savings goals side by side."] =
             "Приложение за споделен бюджет за двойки и семейства — планирайте разходите, изчистете дълговете и постигайте целите за спестяване заедно.",

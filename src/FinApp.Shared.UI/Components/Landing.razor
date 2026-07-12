@@ -1,29 +1,27 @@
 @inject Localizer Loc
+@inject AuthState Auth
 @implements IDisposable
 
-@* Logged-out marketing landing. Wraps the existing sign-in card (<AuthPanel/>) so the auth flow is
-   unchanged — everything around it is presentation only. Copy leads with what every user gets (shared
-   budgeting, goals, recurring, import, insights, achievements); bank sync is intentionally not featured
-   because it's allowlist-gated for the MVP. *@
+@* Logged-out marketing landing. The sign-in card (<AuthPanel/>) opens as an overlay from the CTA — the auth
+   flow itself is unchanged. Copy leads with what every user gets (budgeting solo or shared, goals, recurring,
+   import, insights, achievements); bank sync is intentionally not featured (allowlist-gated for the MVP). *@
 <div class="lp">
 
     <div class="lp-topbar">
+        <span class="lp-brand-sm"><span class="lp-logo-sm"><TandemLogo /></span><span class="brand-word">Tandem<span class="brand-tab">Tab</span></span></span>
         <LanguagePicker />
-        <button class="lp-signin" @onclick="OpenLogin">@Loc["Sign in"]</button>
     </div>
 
     <section class="lp-hero">
         <div class="lp-hero-copy">
-            <h1 class="lp-brand"><span class="lp-logo"><TandemLogo /></span><span class="brand-word">Tandem<span class="brand-tab">Tab</span></span></h1>
-            <h2 class="lp-headline">@Loc["Budget together. Reach your goals faster."]</h2>
-            <p class="lp-sub">@Loc["A shared budgeting app for couples and families — plan your spending, clear debt, and hit savings goals side by side."]</p>
+            <h2 class="lp-headline">@Loc["Reach your money goals, faster."]</h2>
+            <p class="lp-sub">@Loc["Budgeting for real life — use it on your own, with your partner, or across the whole household. Plan spending, clear debt, and hit savings goals."]</p>
             <ul class="lp-ticks">
                 <li>@Loc["Free to start"]</li>
-                <li>@Loc["Built for two"]</li>
+                <li>@Loc["Solo or shared"]</li>
                 <li>@Loc["Private by design"]</li>
             </ul>
-            <button class="lp-cta lp-cta-glow" @onclick="OpenRegister">@Loc["Create your free account"]</button>
-            <p class="lp-cta-note">@Loc["Already have an account?"] <button class="lp-link" @onclick="OpenLogin">@Loc["Sign in"]</button></p>
+            <button class="lp-cta lp-cta-glow" @onclick="OpenRegister">@Loc["Try it free"]</button>
         </div>
     </section>
 
@@ -32,8 +30,8 @@
         <div class="lp-grid">
             <div class="lp-feat">
                 <span class="lp-feat-ico">👛</span>
-                <h4>@Loc["Budget together"]</h4>
-                <p>@Loc["Invite your partner and share one budget. Every expense and change syncs for both of you in real time."]</p>
+                <h4>@Loc["Solo or shared"]</h4>
+                <p>@Loc["Budget on your own, or invite your partner or housemates to share one — every expense and change syncs for everyone in real time."]</p>
             </div>
             <div class="lp-feat">
                 <span class="lp-feat-ico">🎯</span>
@@ -85,8 +83,8 @@
     </section>
 
     <section class="lp-closing">
-        <h3>@Loc["Ready to take control, together?"]</h3>
-        <button class="lp-cta lp-cta-glow" @onclick="OpenRegister">@Loc["Create your free account"]</button>
+        <h3>@Loc["Ready to take control of your money?"]</h3>
+        <button class="lp-cta lp-cta-glow" @onclick="OpenRegister">@Loc["Try it free"]</button>
     </section>
 
 </div>
@@ -109,7 +107,21 @@
     private void OpenLogin() { _startRegister = false; _showAuth = true; }
     private void CloseAuth() => _showAuth = false;
 
-    protected override void OnInitialized() => Loc.Changed += OnLocChanged;
+    protected override void OnInitialized()
+    {
+        Loc.Changed += OnLocChanged;
+        Auth.Changed += OnAuthChanged;
+        // An external (Google/Facebook) sign-in that returns a 2FA challenge must show the code prompt straight
+        // away — otherwise it's stuck behind the CTA and looks like sign-in did nothing. Auto-open the overlay.
+        if (Auth.PendingTwoFactorTicket is not null) _showAuth = true;
+    }
+
+    private void OnAuthChanged()
+    {
+        if (Auth.PendingTwoFactorTicket is not null) _showAuth = true;
+        InvokeAsync(StateHasChanged);
+    }
+
     private void OnLocChanged() => InvokeAsync(StateHasChanged);
-    public void Dispose() => Loc.Changed -= OnLocChanged;
+    public void Dispose() { Loc.Changed -= OnLocChanged; Auth.Changed -= OnAuthChanged; }
 }
