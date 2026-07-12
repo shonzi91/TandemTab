@@ -53,7 +53,7 @@
 .tree-expenses li {
     display: flex; justify-content: space-between; align-items: center;
     padding: 4px 6px 4px 14px; font-size: .8rem; color: #6b7280;
-    border-left: 2px solid #ece3d3; margin-left: 4px;
+    border-left: 2px solid #e6ece9; margin-left: 4px;
 }
 .exp-left { display: flex; align-items: center; gap: 4px; min-width: 0; }
 .exp-arrow { color: #b9bdd0; font-weight: 600; }

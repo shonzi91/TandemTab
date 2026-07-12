@@ -12,7 +12,7 @@
     align-items: center;
     padding: 0 18px;
     background: #13a06e;
-    color: #fffdf8;
+    color: #ffffff;
 }
 
 .brand {
@@ -24,12 +24,12 @@
     letter-spacing: .2px;
 }
 .brand-tab {
-    background: #fffdf8; color: #13a06e; border-radius: 6px;
+    background: #ffffff; color: #13a06e; border-radius: 6px;
     padding: 0 5px; margin-left: 0; line-height: 1.25;
 }
 .brand-logo {
     width: 38px; height: 38px; flex: 0 0 auto;
-    background: #fffdf8; border-radius: 10px; padding: 4px;
+    background: #ffffff; border-radius: 10px; padding: 4px;
     display: grid; place-items: center;
 }
 .brand-logo ::deep svg { width: 100%; height: 100%; display: block; }
@@ -47,14 +47,14 @@
 /* Profile avatar in the app bar */
 .avatar {
     width: 32px; height: 32px; border-radius: 50%; padding: 0; border: 2px solid rgba(255,255,255,.55);
-    background: rgba(255,255,255,.18); color: #fffdf8; cursor: pointer; overflow: hidden;
+    background: rgba(255,255,255,.18); color: #ffffff; cursor: pointer; overflow: hidden;
     display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: .9rem; flex-shrink: 0;
 }
-.avatar:hover { border-color: #fffdf8; }
+.avatar:hover { border-color: #ffffff; }
 .avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
 
 .appbar-user .user {
-    font-size: .9rem; opacity: .95; color: #fffdf8; background: none; border: none;
+    font-size: .9rem; opacity: .95; color: #ffffff; background: none; border: none;
     cursor: pointer; padding: 6px 4px; font-weight: 500;
 }
 .appbar-user .user:hover { opacity: 1; text-decoration: underline; }
@@ -65,18 +65,18 @@
     display: flex; align-items: center; justify-content: center; z-index: 60;
 }
 .pm {
-    background: #fffdf8; color: #1f2430; border-radius: 16px; padding: 18px 20px;
+    background: #ffffff; color: #1f2430; border-radius: 16px; padding: 18px 20px;
     width: min(380px, 92vw); max-height: 90vh; overflow-y: auto;
     box-shadow: 0 20px 60px rgba(0,0,0,.25); display: flex; flex-direction: column; gap: 9px;
 }
 /* Sticky header so it stays pinned while the settings scroll (item #4). */
 .pm h3 {
     position: sticky; top: 0; z-index: 6; margin: -18px -20px 4px; padding: 15px 20px 11px;
-    background: #fffdf8; border-bottom: 1px solid #ece3d3; border-radius: 16px 16px 0 0; font-size: 1.05rem;
+    background: #ffffff; border-bottom: 1px solid #e6ece9; border-radius: 16px 16px 0 0; font-size: 1.05rem;
 }
 /* Section labels double as dividers for a cleaner, scannable layout. */
 .pm h4 {
-    margin: 14px 0 2px; padding-top: 12px; border-top: 1px solid #f0e9db;
+    margin: 14px 0 2px; padding-top: 12px; border-top: 1px solid #eef2f0;
     font-size: .7rem; font-weight: 700; letter-spacing: .6px; text-transform: uppercase; color: #8a97a0;
 }
 .pm h4:first-of-type { border-top: none; padding-top: 2px; margin-top: 4px; }
@@ -104,13 +104,13 @@ html.dark .pm > button.danger { background: #2a1717; border-color: #532a2a; colo
 }
 .switch-thumb {
     position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%;
-    background: #fffdf8; box-shadow: 0 1px 2px rgba(0,0,0,.25); transition: transform .18s ease;
+    background: #ffffff; box-shadow: 0 1px 2px rgba(0,0,0,.25); transition: transform .18s ease;
 }
 .switch.on .switch-track { background: #13a06e; }
 .switch.on .switch-thumb { transform: translateX(18px); }
 .pm-hint { margin: 0; font-size: .72rem; color: #9ca3af; }
 /* White quiet-zone around the QR so it scans reliably on any theme. */
-.pm-2fa-qr { display: block; margin: 8px 0; padding: 8px; background: #fffdf8; border-radius: 8px; }
+.pm-2fa-qr { display: block; margin: 8px 0; padding: 8px; background: #ffffff; border-radius: 8px; }
 .pm-avatar-row { display: flex; align-items: center; gap: 12px; }
 .pm-avatar {
     width: 56px; height: 56px; border-radius: 50%; overflow: hidden; flex-shrink: 0;
@@ -129,21 +129,21 @@ html.dark .pm > button.danger { background: #2a1717; border-color: #532a2a; colo
 .pm-archived .ghost { background: #e4f6ee; color: #13a06e; border: none; border-radius: 8px; padding: 5px 10px; font-weight: 600; cursor: pointer; font-size: .8rem; }
 .pm label { display: flex; flex-direction: column; gap: 3px; font-size: .78rem; color: #6b7280; }
 .pm label input {
-    padding: 9px 10px; border: 1px solid #e2d8c6; border-radius: 10px; font-size: .95rem; background: #fffdf8; color: #1f2430;
+    padding: 9px 10px; border: 1px solid #dde6e1; border-radius: 10px; font-size: .95rem; background: #ffffff; color: #1f2430;
 }
 .pm-msg { border-radius: 10px; padding: 8px 12px; font-size: .82rem; }
 .pm-error { background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; }
 .pm-ok { background: #ecfdf5; border: 1px solid #a7f3d0; color: #065f46; }
 .pm-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
 .pm-actions button {
-    padding: 9px 16px; border: none; border-radius: 10px; background: #13a06e; color: #fffdf8; font-weight: 600; cursor: pointer;
+    padding: 9px 16px; border: none; border-radius: 10px; background: #13a06e; color: #ffffff; font-weight: 600; cursor: pointer;
 }
 .pm-actions button:disabled { background: #c7c9d6; cursor: not-allowed; }
 .pm-actions button.ghost { background: #e4f6ee; color: #13a06e; }
 
 .appbar-user .link {
     background: rgba(255, 255, 255, .15);
-    color: #fffdf8;
+    color: #ffffff;
     border: 1px solid rgba(255, 255, 255, .35);
     padding: 6px 14px;
     border-radius: 8px;
@@ -173,16 +173,16 @@ html.dark .pm > button.danger { background: #2a1717; border-color: #532a2a; colo
     font-size: .78rem;
     color: #9ca3af;
     background: #f6f7f9;
-    border-top: 1px solid #ece3d3;
+    border-top: 1px solid #e6ece9;
 }
 .app-legal a { color: #6b7280; text-decoration: none; }
 .app-legal a:hover { color: #13a06e; text-decoration: underline; }
 
 /* Consent gate (accept terms at login) */
 .consent-gate { display: grid; place-items: center; min-height: 60vh; padding: 24px; }
-.consent-card { max-width: 460px; background: #fffdf8; border: 1px solid #ece3d3; border-radius: 16px; padding: 28px; box-shadow: 0 14px 44px rgba(17,20,28,.09); display: flex; flex-direction: column; gap: 12px; }
+.consent-card { max-width: 460px; background: #ffffff; border: 1px solid #e6ece9; border-radius: 16px; padding: 28px; box-shadow: 0 14px 44px rgba(17,20,28,.09); display: flex; flex-direction: column; gap: 12px; }
 .consent-card h2 { margin: 0; }
 .consent-card .check { margin: 4px 0; font-size: .9rem; }
 .consent-links a { color: #13a06e; }
-.consent-card .primary { padding: 10px 16px; border: none; border-radius: 10px; background: #13a06e; color: #fffdf8; font-weight: 600; cursor: pointer; }
+.consent-card .primary { padding: 10px 16px; border: none; border-radius: 10px; background: #13a06e; color: #ffffff; font-weight: 600; cursor: pointer; }
 .consent-card .primary:disabled { background: #c7c9d6; cursor: not-allowed; }

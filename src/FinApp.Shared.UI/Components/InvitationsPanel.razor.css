@@ -20,7 +20,7 @@
 .invite-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
 .invite {
     display: flex; align-items: center; gap: 12px;
-    background: #fffdf8; border: 1px solid #ece8fb; border-radius: 12px; padding: 10px 12px;
+    background: #ffffff; border: 1px solid #ece8fb; border-radius: 12px; padding: 10px 12px;
     transition: box-shadow .12s, transform .12s;
 }
 .invite:hover { box-shadow: 0 6px 16px rgba(19, 160, 110, .12); transform: translateY(-1px); }
@@ -28,7 +28,7 @@
 .invite-avatar {
     width: 36px; height: 36px; flex: 0 0 auto; border-radius: 50%;
     display: grid; place-items: center; font-weight: 700; font-size: .8rem;
-    color: #fffdf8; background: linear-gradient(135deg, #a78bfa, #6366f1);
+    color: #ffffff; background: linear-gradient(135deg, #a78bfa, #6366f1);
 }
 .invite-text { flex: 1; min-width: 0; font-size: .88rem; color: #2b2f3a; line-height: 1.4; }
 .invite-text strong { color: #13a06e; font-weight: 700; }
@@ -36,13 +36,13 @@
 .invite-actions { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
 .invite-accept {
     border: none; border-radius: 10px; padding: 8px 16px; font-size: .85rem; font-weight: 700;
-    cursor: pointer; color: #fffdf8; background: linear-gradient(135deg, #0e7c55, #13a06e);
+    cursor: pointer; color: #ffffff; background: linear-gradient(135deg, #0e7c55, #13a06e);
     box-shadow: 0 3px 8px rgba(19, 160, 110, .28); transition: filter .12s, transform .06s;
 }
 .invite-accept:hover { filter: brightness(1.08); }
 .invite-accept:active { transform: scale(.97); }
 .invite-decline {
-    border: 1px solid #e2d8c6; background: #fffdf8; color: #6b7280;
+    border: 1px solid #dde6e1; background: #ffffff; color: #6b7280;
     border-radius: 10px; padding: 8px 14px; font-size: .85rem; font-weight: 600; cursor: pointer;
     transition: background .12s, color .12s;
 }
