@@ -23,10 +23,10 @@
         <Nullable>enable</Nullable>
 
         <!-- Display name -->
-        <ApplicationTitle>FinApp.App.Maui</ApplicationTitle>
+        <ApplicationTitle>TandemTab</ApplicationTitle>
 
-        <!-- App Identifier -->
-        <ApplicationId>com.companyname.finapp.app.maui</ApplicationId>
+        <!-- App Identifier (store bundle id — do not change once published). -->
+        <ApplicationId>com.tandemtab.app</ApplicationId>
 
         <!-- Versions -->
         <ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>

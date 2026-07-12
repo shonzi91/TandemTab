@@ -17,8 +17,13 @@ public static class MauiProgram
 
 		builder.Services.AddMauiBlazorWebView();
 
-		// FinApp client, talking to the sync server.
+		// FinApp client, talking to the sync server. Debug builds hit a local dev server;
+		// Release builds (what ships to phones) hit production.
+#if DEBUG
 		const string serverUrl = "http://localhost:5179";
+#else
+		const string serverUrl = "https://tandemtab.com";
+#endif
 		builder.Services.AddSingleton(new ClientOptions { BaseUrl = serverUrl });
 		builder.Services.AddSingleton(_ => new HttpClient { BaseAddress = new Uri(serverUrl) });
 		builder.Services.AddSingleton<FinAppApiClient>();
