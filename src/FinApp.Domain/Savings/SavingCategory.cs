@@ -66,8 +66,9 @@ public sealed class SavingCategory : Entity
     /// <summary><see cref="SetAsideRule.SplitEvenly"/>: fund the goal by this date (drives the per-period split).</summary>
     public DateOnly? SetAsideDueDate { get; private set; }
 
-    /// <summary>The fund the one-tap "set aside" draws from. Optional — the UI falls back to a default fund.</summary>
-    public Guid? SetAsideFundId { get; private set; }
+    /// <summary>The fund this bucket's money is earmarked in ("held in"). A tag only — no money physically moves; it
+    /// defaults the disburse/payment fund and shows where the bucket's money lives. Optional. Body data.</summary>
+    public Guid? FundId { get; private set; }
 
     public bool HasSchedule => Rule != SetAsideRule.None;
 
@@ -208,16 +209,18 @@ public sealed class SavingCategory : Entity
     /// <summary>Set (or with <see cref="SetAsideRule.None"/> clear) this bucket's set-aside schedule. Only the fields
     /// relevant to the rule are kept — a fixed amount for <see cref="SetAsideRule.Installment"/>, a due date for
     /// <see cref="SetAsideRule.SplitEvenly"/>.</summary>
-    public void SetSchedule(SetAsideRule rule, decimal amount, DateOnly? dueDate, Guid? fundId)
+    public void SetSchedule(SetAsideRule rule, decimal amount, DateOnly? dueDate)
     {
         if (amount < 0m) throw new ArgumentException("Set-aside amount cannot be negative.", nameof(amount));
         Rule = rule;
         SetAsideAmount = rule == SetAsideRule.Installment ? amount : 0m;
         SetAsideDueDate = rule == SetAsideRule.SplitEvenly ? dueDate : null;
-        SetAsideFundId = rule == SetAsideRule.None ? null : fundId;
     }
 
-    public void ClearSchedule() => SetSchedule(SetAsideRule.None, 0m, null, null);
+    public void ClearSchedule() => SetSchedule(SetAsideRule.None, 0m, null);
+
+    /// <summary>Attach this bucket to a fund (an earmark tag — no money moves), or clear with null/empty.</summary>
+    public void SetFund(Guid? fundId) => FundId = fundId is { } f && f != Guid.Empty ? f : null;
 
     /// <summary>Set or clear the free-text group tag. Blank clears it.</summary>
     public void SetGroup(string? group) => Group = string.IsNullOrWhiteSpace(group) ? null : group.Trim();

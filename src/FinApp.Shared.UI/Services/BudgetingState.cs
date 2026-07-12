@@ -985,7 +985,7 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     public async Task<Guid> AddSavingBucket(string name, decimal? goalAmount, decimal thresholdPercent, bool notifyOnMilestone, decimal initialAmount, string? icon = null,
         bool isDebt = false, decimal debtBalance = 0m, decimal debtRate = 0m, decimal debtInstallment = 0m, decimal? plannedContribution = null,
         bool isInvestment = false, decimal invRate = 0m, decimal invTermYears = 0m, int invCompounds = 12,
-        SetAsideRule setAsideRule = SetAsideRule.None, decimal setAsideAmount = 0m, DateOnly? setAsideDueDate = null, Guid? setAsideFundId = null, string? group = null)
+        SetAsideRule setAsideRule = SetAsideRule.None, decimal setAsideAmount = 0m, DateOnly? setAsideDueDate = null, Guid? fundId = null, string? group = null)
     {
         var bucket = Account.AddSavingCategory(name);
         Account.SetSavingCategoryIcon(bucket.Id, icon);
@@ -996,7 +996,8 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
         else if (goalAmount is > 0m)
             Account.ConfigureSavingGoal(bucket.Id, goalAmount, thresholdPercent / 100m, notifyOnMilestone);
         Account.SetSavingPlannedContribution(bucket.Id, plannedContribution);
-        Account.SetSavingSchedule(bucket.Id, setAsideRule, setAsideAmount, setAsideDueDate, setAsideFundId);
+        Account.SetSavingSchedule(bucket.Id, setAsideRule, setAsideAmount, setAsideDueDate);
+        Account.SetSavingFund(bucket.Id, fundId);
         Account.SetSavingGroup(bucket.Id, group);
         if (CanSetInitialSavings && initialAmount > 0m)
             Account.SetSavingInitialAmount(bucket.Id, initialAmount);
@@ -1007,7 +1008,7 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     public Task SaveSavingBucket(Guid savingCategoryId, string name, decimal? goalAmount, decimal thresholdPercent, bool notifyOnMilestone, decimal initialAmount, string? icon = null,
         bool isDebt = false, decimal debtBalance = 0m, decimal debtRate = 0m, decimal debtInstallment = 0m, decimal? plannedContribution = null,
         bool isInvestment = false, decimal invRate = 0m, decimal invTermYears = 0m, int invCompounds = 12,
-        SetAsideRule setAsideRule = SetAsideRule.None, decimal setAsideAmount = 0m, DateOnly? setAsideDueDate = null, Guid? setAsideFundId = null, string? group = null)
+        SetAsideRule setAsideRule = SetAsideRule.None, decimal setAsideAmount = 0m, DateOnly? setAsideDueDate = null, Guid? fundId = null, string? group = null)
     {
         Account.RenameSavingCategory(savingCategoryId, name);
         Account.SetSavingCategoryIcon(savingCategoryId, icon);
@@ -1028,7 +1029,8 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
             Account.ConfigureSavingGoal(savingCategoryId, goalAmount is > 0m ? goalAmount : null, thresholdPercent / 100m, notifyOnMilestone);
         }
         Account.SetSavingPlannedContribution(savingCategoryId, plannedContribution);
-        Account.SetSavingSchedule(savingCategoryId, setAsideRule, setAsideAmount, setAsideDueDate, setAsideFundId);
+        Account.SetSavingSchedule(savingCategoryId, setAsideRule, setAsideAmount, setAsideDueDate);
+        Account.SetSavingFund(savingCategoryId, fundId);
         Account.SetSavingGroup(savingCategoryId, group);
         if (CanSetInitialSavings)
             Account.SetSavingInitialAmount(savingCategoryId, initialAmount);
@@ -1049,7 +1051,7 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     public SetAsideRule SavingBucketRule(Guid id) => FindSavingBucket(id)?.Rule ?? SetAsideRule.None;
     public decimal SavingBucketSetAsideAmount(Guid id) => FindSavingBucket(id)?.SetAsideAmount ?? 0m;
     public DateOnly? SavingBucketDueDate(Guid id) => FindSavingBucket(id)?.SetAsideDueDate;
-    public Guid? SavingBucketSetAsideFundId(Guid id) => FindSavingBucket(id)?.SetAsideFundId;
+    public Guid? SavingBucketFundId(Guid id) => FindSavingBucket(id)?.FundId;
     public string? SavingBucketGroup(Guid id) => FindSavingBucket(id)?.Group;
 
     /// <summary>A commitment group's rolled-up total-cost view: what it costs per period (debt installments +

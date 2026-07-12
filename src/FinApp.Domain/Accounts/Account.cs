@@ -300,8 +300,12 @@ public sealed class Account : Entity
         (FindSavingCategory(savingCategoryId) ?? throw new InvalidOperationException("Saving category not found.")).SetArchived(archived);
 
     /// <summary>Set (or clear, with <see cref="SetAsideRule.None"/>) a savings bucket's set-aside schedule.</summary>
-    public void SetSavingSchedule(Guid savingCategoryId, SetAsideRule rule, decimal amount, DateOnly? dueDate, Guid? fundId) =>
-        (FindSavingCategory(savingCategoryId) ?? throw new InvalidOperationException("Saving category not found.")).SetSchedule(rule, amount, dueDate, fundId);
+    public void SetSavingSchedule(Guid savingCategoryId, SetAsideRule rule, decimal amount, DateOnly? dueDate) =>
+        (FindSavingCategory(savingCategoryId) ?? throw new InvalidOperationException("Saving category not found.")).SetSchedule(rule, amount, dueDate);
+
+    /// <summary>Attach a savings bucket to a fund (earmark tag), or clear with null.</summary>
+    public void SetSavingFund(Guid savingCategoryId, Guid? fundId) =>
+        (FindSavingCategory(savingCategoryId) ?? throw new InvalidOperationException("Saving category not found.")).SetFund(fundId);
 
     /// <summary>Set or clear a savings bucket's group tag.</summary>
     public void SetSavingGroup(Guid savingCategoryId, string? group) =>

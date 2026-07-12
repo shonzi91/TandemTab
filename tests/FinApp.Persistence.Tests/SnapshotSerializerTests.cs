@@ -264,7 +264,8 @@ public class SnapshotSerializerTests
         var fund = account.AddFund("Main");
         var car = account.AddSavingCategory("New car");
         account.ConfigureSavingGoal(car.Id, 8_000m);
-        account.SetSavingSchedule(car.Id, SetAsideRule.SplitEvenly, 0m, new DateOnly(2027, 1, 1), fund.Id);
+        account.SetSavingSchedule(car.Id, SetAsideRule.SplitEvenly, 0m, new DateOnly(2027, 1, 1));
+        account.SetSavingFund(car.Id, fund.Id);
         account.SetSavingGroup(car.Id, "Car");
 
         var copy = AccountSnapshotSerializer.Deserialize(AccountSnapshotSerializer.Serialize(account));
@@ -272,7 +273,7 @@ public class SnapshotSerializerTests
         var copied = copy.SavingCategories.Single(s => s.Name == "New car");
         Assert.Equal(SetAsideRule.SplitEvenly, copied.Rule);
         Assert.Equal(new DateOnly(2027, 1, 1), copied.SetAsideDueDate);
-        Assert.Equal(fund.Id, copied.SetAsideFundId);
+        Assert.Equal(fund.Id, copied.FundId);
         Assert.Equal("Car", copied.Group);
     }
 

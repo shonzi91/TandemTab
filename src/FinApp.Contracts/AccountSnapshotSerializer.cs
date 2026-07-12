@@ -34,7 +34,7 @@ public static class AccountSnapshotSerializer
             account.Members.Select(m => new MemberNode(m.Id, m.UserId, m.DisplayName)).ToList(),
             account.Funds.Select(f => new FundNode(f.Id, f.Name, f.ParentId, f.Note, f.Icon, f.IsSynced)).ToList(),
             account.Categories.Select(c => new CategoryNode(c.Id, c.Name, c.ParentId, c.Icon, c.IsEssential)).ToList(),
-            account.SavingCategories.Select(s => new SavingCategoryNode(s.Id, s.Name, s.ParentId, s.GoalAmount, s.AlertThreshold, s.NotifyOnMilestone, s.InitialAmount, s.Icon, s.Kind, s.DebtBalance, s.DebtAnnualRatePercent, s.DebtInstallment, s.IsArchived, s.DebtOriginalBalance, s.PlannedContribution, s.InvestmentAnnualRatePercent, s.InvestmentTermYears, s.InvestmentCompoundsPerYear, s.Rule, s.SetAsideAmount, s.SetAsideDueDate, s.SetAsideFundId, s.Group)).ToList(),
+            account.SavingCategories.Select(s => new SavingCategoryNode(s.Id, s.Name, s.ParentId, s.GoalAmount, s.AlertThreshold, s.NotifyOnMilestone, s.InitialAmount, s.Icon, s.Kind, s.DebtBalance, s.DebtAnnualRatePercent, s.DebtInstallment, s.IsArchived, s.DebtOriginalBalance, s.PlannedContribution, s.InvestmentAnnualRatePercent, s.InvestmentTermYears, s.InvestmentCompoundsPerYear, s.Rule, s.SetAsideAmount, s.SetAsideDueDate, s.FundId, s.Group)).ToList(),
             account.Periods.Select(ToNode).ToList(),
             account.ContributionCategories.Select(c => new ContributionCategoryNode(c.Id, c.Name, c.Icon)).ToList(),
             account.SavingsRateTarget,
@@ -134,7 +134,8 @@ public static class AccountSnapshotSerializer
         if (n.Kind == SavingKind.Debt) s.ConfigureDebt(n.DebtBalance, n.DebtAnnualRatePercent, n.DebtInstallment, n.DebtOriginalBalance);
         if (n.Kind == SavingKind.Investment) s.ConfigureInvestment(n.InvestmentAnnualRatePercent, n.InvestmentTermYears, n.InvestmentCompoundsPerYear);
         if (n.PlannedContribution is { } pc) s.SetPlannedContribution(pc);
-        if (n.Rule != SetAsideRule.None) s.SetSchedule(n.Rule, n.SetAsideAmount, n.SetAsideDueDate, n.SetAsideFundId);
+        if (n.Rule != SetAsideRule.None) s.SetSchedule(n.Rule, n.SetAsideAmount, n.SetAsideDueDate);
+        s.SetFund(n.FundId);
         s.SetGroup(n.Group);
         if (n.IsArchived) s.SetArchived(true);
         return s;
@@ -239,7 +240,7 @@ public static class AccountSnapshotSerializer
         SavingKind Kind = SavingKind.Common, decimal DebtBalance = 0m, decimal DebtAnnualRatePercent = 0m, decimal DebtInstallment = 0m, bool IsArchived = false,
         decimal DebtOriginalBalance = 0m, decimal? PlannedContribution = null,
         decimal InvestmentAnnualRatePercent = 0m, decimal InvestmentTermYears = 0m, int InvestmentCompoundsPerYear = 12,
-        SetAsideRule Rule = SetAsideRule.None, decimal SetAsideAmount = 0m, DateOnly? SetAsideDueDate = null, Guid? SetAsideFundId = null, string? Group = null);
+        SetAsideRule Rule = SetAsideRule.None, decimal SetAsideAmount = 0m, DateOnly? SetAsideDueDate = null, Guid? FundId = null, string? Group = null);
 
     private record PeriodNode(Guid Id, string Currency, DateOnly From, DateOnly To, PeriodStatus Status, decimal CarriedIn,
         List<InitialBalanceNode> InitialBalances, List<ContributionNode> Contributions, List<BudgetNode> Budgets,

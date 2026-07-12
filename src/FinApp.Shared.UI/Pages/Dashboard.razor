@@ -989,6 +989,10 @@ else
                         {
                             <div class="ring-sub setaside-nudge">📅 @string.Format(Loc["Set aside {0} this period"], Fmt(State.Money(sug))) <button class="link" @onclick="() => OpenAddSaving(bucketId, sug)">@Loc["Set aside"]</button></div>
                         }
+                        @if (State.SavingBucketFundId(bucketId) is { } heldFund)
+                        {
+                            <div class="ring-sub ring-muted">🏦 @Loc["in"] @State.FundName(heldFund)</div>
+                        }
                     </div>
                 </div>;
             }
@@ -1769,24 +1773,22 @@ else
                             <label>@Loc["Fund it by"] <input type="date" @bind="_setAsideDueDate" /></label>
                             <small class="hint">@Loc["We'll suggest the goal's remaining amount split evenly across the periods until this date."]</small>
                         }
-                        @if (_setAsideRule != SetAsideRule.None)
-                        {
-                            <label>@Loc["From fund"]
-                                <select @bind:get="_setAsideFundId?.ToString()" @bind:set="v => _setAsideFundId = Guid.TryParse(v, out var g) ? g : (Guid?)null">
-                                    <option value="">@Loc["— choose —"]</option>
-                                    @foreach (var f in State.SelectableFunds)
-                                    {
-                                        <option value="@f.Id">@f.Name</option>
-                                    }
-                                </select>
-                            </label>
-                        }
                     }
                     <label>@Loc["Planned contribution /period (optional)"] <input type="number" step="10" min="0" @bind="_fPlanned" /></label>
                     <small class="hint">@(_bucketKind switch {
                         SavingKind.Debt => Loc["What you plan to put toward this each period, on top of the installment. Used to date your payoff instead of guessing from history. Leave 0 to infer it."],
                         SavingKind.Investment => Loc["What you plan to invest each period. Used as the default 'extra on top' in the growth projection. Leave 0 to infer it."],
                         _ => Loc["What you plan to set aside each period. Used to date your goal instead of guessing from history. Leave 0 to infer it."] })</small>
+                    <label>@Loc["Held in fund (optional)"]
+                        <select @bind:get="_bucketFundId?.ToString()" @bind:set="v => _bucketFundId = Guid.TryParse(v, out var g) ? g : (Guid?)null">
+                            <option value="">@Loc["— none —"]</option>
+                            @foreach (var f in State.SelectableFunds)
+                            {
+                                <option value="@f.Id">@f.Name</option>
+                            }
+                        </select>
+                    </label>
+                    <small class="hint">@Loc["Which fund this bucket's money sits in. It moves no money — it just labels the bucket and picks the fund by default when you pay from it."]</small>
                     <label>@Loc["Group (optional)"] <input type="text" list="bucket-groups" placeholder="@Loc["e.g. Car"]" @bind="_bucketGroup" /></label>
                     <datalist id="bucket-groups">
                         @foreach (var cg in State.CommitmentGroups()) { <option value="@cg.Name" /> }
@@ -3116,7 +3118,7 @@ else
     private SetAsideRule _setAsideRule;              // Plans: how to suggest a per-period set-aside for a common bucket
     private decimal _setAsideAmount;                 // Installment rule: the fixed amount
     private DateOnly? _setAsideDueDate;              // SplitEvenly rule: fund it by this date
-    private Guid? _setAsideFundId;                    // fund the one-tap "set aside" draws from
+    private Guid? _bucketFundId;                       // Plans: the fund this bucket is earmarked in (defaults the disburse fund)
     private string? _bucketGroup;                     // group tag (e.g. "Car") for the commitment rollup
 
     private string? _inviteUsername;
@@ -4170,12 +4172,7 @@ else
         _savingBucketId = bucketId; _savingAmount = prefill > 0m ? prefill : 0m; _modal = Modal.AddSaving;
     }
 
-    // Plans: switch a bucket's set-aside rule, defaulting the source fund the first time it's turned on.
-    private void SetScheduleRule(SetAsideRule rule)
-    {
-        _setAsideRule = rule;
-        _setAsideFundId ??= State.SelectableFunds.FirstOrDefault()?.Id;
-    }
+    private void SetScheduleRule(SetAsideRule rule) => _setAsideRule = rule;
 
     private Task AllocateSaving() => RunModal(async () =>
     {
@@ -4201,8 +4198,9 @@ else
     private void OpenDisburseSaving(Guid bucketId)
     {
         _disburseBucketId = bucketId;
-        // Default to the synced (bank) fund if there is one — that's usually where earmarked money physically sits.
-        _disburseFundId = State.HasSyncedFund ? State.SyncedFundId : State.RootFunds.FirstOrDefault()?.Id ?? Guid.Empty;
+        // Default to the fund the bucket is earmarked in; else the synced (bank) fund; else the first fund.
+        _disburseFundId = State.SavingBucketFundId(bucketId)
+            ?? (State.HasSyncedFund ? State.SyncedFundId : State.RootFunds.FirstOrDefault()?.Id ?? Guid.Empty);
         _disburseAmount = 0;
         _disburseNote = null;
         _modal = Modal.DisburseSaving;
@@ -5112,7 +5110,7 @@ else
         _modalBucketId = Guid.Empty; _fName = null; _fIcon = null; _goalAmount = 0; _fThreshold = 80; _fNotify = false; _initialSavings = 0;
         _bucketKind = kind; _debtBalance = 0; _debtRate = 0; _debtInstallment = 0; _fPlanned = 0;
         _invRate = 0; _invTermYears = 0; _invCompounds = 12;
-        _setAsideRule = SetAsideRule.None; _setAsideAmount = 0; _setAsideDueDate = null; _setAsideFundId = null; _bucketGroup = null;
+        _setAsideRule = SetAsideRule.None; _setAsideAmount = 0; _setAsideDueDate = null; _bucketFundId = null; _bucketGroup = null;
         _modal = Modal.AddBucket;
     }
 
@@ -5137,7 +5135,7 @@ else
         _setAsideRule = State.SavingBucketRule(bucketId);
         _setAsideAmount = State.SavingBucketSetAsideAmount(bucketId);
         _setAsideDueDate = State.SavingBucketDueDate(bucketId);
-        _setAsideFundId = State.SavingBucketSetAsideFundId(bucketId);
+        _bucketFundId = State.SavingBucketFundId(bucketId);
         _bucketGroup = State.SavingBucketGroup(bucketId);
         _modal = Modal.EditBucket;
     }
@@ -5153,9 +5151,9 @@ else
         var rule = (isDebt || isInv) ? SetAsideRule.None : _setAsideRule;
         var group = string.IsNullOrWhiteSpace(_bucketGroup) ? null : _bucketGroup!.Trim();
         if (_modal == Modal.AddBucket)
-            await State.AddSavingBucket(_fName!, goal, _fThreshold, _fNotify, _initialSavings, _fIcon, isDebt, _debtBalance, _debtRate, _debtInstallment, planned, isInv, _invRate, _invTermYears, _invCompounds, rule, _setAsideAmount, _setAsideDueDate, _setAsideFundId, group);
+            await State.AddSavingBucket(_fName!, goal, _fThreshold, _fNotify, _initialSavings, _fIcon, isDebt, _debtBalance, _debtRate, _debtInstallment, planned, isInv, _invRate, _invTermYears, _invCompounds, rule, _setAsideAmount, _setAsideDueDate, _bucketFundId, group);
         else
-            await State.SaveSavingBucket(_modalBucketId, _fName!, goal, _fThreshold, _fNotify, _initialSavings, _fIcon, isDebt, _debtBalance, _debtRate, _debtInstallment, planned, isInv, _invRate, _invTermYears, _invCompounds, rule, _setAsideAmount, _setAsideDueDate, _setAsideFundId, group);
+            await State.SaveSavingBucket(_modalBucketId, _fName!, goal, _fThreshold, _fNotify, _initialSavings, _fIcon, isDebt, _debtBalance, _debtRate, _debtInstallment, planned, isInv, _invRate, _invTermYears, _invCompounds, rule, _setAsideAmount, _setAsideDueDate, _bucketFundId, group);
         CloseModal();
     });
 
