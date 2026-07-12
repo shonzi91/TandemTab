@@ -349,34 +349,4 @@ public class SavingsTests
 
         Assert.Single(period.ManualSavingDeposits()); // only the AllocateToSavings deposit qualifies
     }
-
-    [Fact]
-    public void MarkPlannedExpense_sets_the_kind_and_keeps_the_goal()
-    {
-        var account = new Account("Family", Eur);
-        var car = account.AddSavingCategory("New car");
-        account.ConfigureSavingGoal(car.Id, 8_000m);
-        account.MarkSavingPlannedExpense(car.Id);
-
-        Assert.True(car.IsPlannedExpense);
-        Assert.False(car.IsDebt);
-        Assert.False(car.IsInvestment);
-        Assert.Equal(8_000m, car.GoalAmount); // goal (the target cost) is preserved
-    }
-
-    [Fact]
-    public void MarkPlannedExpense_clears_prior_debt_figures_kinds_are_mutually_exclusive()
-    {
-        var account = new Account("Family", Eur);
-        var loan = account.AddSavingCategory("Loan");
-        account.ConfigureSavingDebt(loan.Id, balance: 5_000m, annualRatePercent: 6m, installment: 200m);
-
-        account.MarkSavingPlannedExpense(loan.Id);
-
-        Assert.True(loan.IsPlannedExpense);
-        Assert.False(loan.IsDebt);
-        Assert.Equal(0m, loan.DebtBalance);
-        Assert.Equal(0m, loan.DebtInstallment);
-        Assert.Equal(0m, loan.DebtOriginalBalance);
-    }
 }

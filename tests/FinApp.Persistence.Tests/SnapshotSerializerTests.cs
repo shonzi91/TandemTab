@@ -2,6 +2,7 @@ using FinApp.Domain.Accounts;
 using FinApp.Domain.Budgeting;
 using FinApp.Domain.Common;
 using FinApp.Domain.Periods;
+using FinApp.Domain.Savings;
 using FinApp.Contracts;
 using FinApp.Persistence;
 using Xunit;
@@ -256,21 +257,43 @@ public class SnapshotSerializerTests
     }
 
     [Fact]
-    public void PlannedExpense_bucket_kind_and_goal_round_trip()
+    public void Set_aside_schedule_and_group_round_trip()
     {
         var account = new Account("Home", "EUR");
         account.AssignOwner(Guid.NewGuid(), "Me");
+        var fund = account.AddFund("Main");
         var car = account.AddSavingCategory("New car");
-        account.MarkSavingPlannedExpense(car.Id);
-        account.ConfigureSavingGoal(car.Id, 8_000m, alertThreshold: 0.8m, notifyOnMilestone: false);
+        account.ConfigureSavingGoal(car.Id, 8_000m);
+        account.SetSavingSchedule(car.Id, SetAsideRule.SplitEvenly, 0m, new DateOnly(2027, 1, 1), fund.Id);
+        account.SetSavingGroup(car.Id, "Car");
 
         var copy = AccountSnapshotSerializer.Deserialize(AccountSnapshotSerializer.Serialize(account));
 
         var copied = copy.SavingCategories.Single(s => s.Name == "New car");
-        Assert.True(copied.IsPlannedExpense);
+        Assert.Equal(SetAsideRule.SplitEvenly, copied.Rule);
+        Assert.Equal(new DateOnly(2027, 1, 1), copied.SetAsideDueDate);
+        Assert.Equal(fund.Id, copied.SetAsideFundId);
+        Assert.Equal("Car", copied.Group);
+    }
+
+    [Fact]
+    public void Legacy_planned_expense_kind_restores_as_a_common_bucket_keeping_its_goal()
+    {
+        // Kind value 3 was a short-lived "PlannedExpense" kind. Snapshots from that build encode it as the
+        // integer 3; after its removal it must restore cleanly as a normal (Common) savings bucket, goal intact.
+        var account = new Account("Home", "EUR");
+        account.AssignOwner(Guid.NewGuid(), "Me");
+        var car = account.AddSavingCategory("New car");
+        account.ConfigureSavingGoal(car.Id, 8_000m);
+
+        var json = AccountSnapshotSerializer.Serialize(account).Replace("\"Kind\":0", "\"Kind\":3");
+        var copy = AccountSnapshotSerializer.Deserialize(json);
+
+        var copied = copy.SavingCategories.Single(s => s.Name == "New car");
+        Assert.Equal(SavingKind.Common, copied.Kind);
         Assert.False(copied.IsDebt);
         Assert.False(copied.IsInvestment);
-        Assert.Equal(8_000m, copied.GoalAmount);
+        Assert.Equal(8_000m, copied.GoalAmount); // goal survives the fallback
     }
 
     [Fact]

@@ -71,9 +71,10 @@ commit noted.
     the Dashboard + `BudgetingState`; covered by `ReallocationAndCapTests` (5).
 
 **Backlog status:** P0–P3 all cleared. Post-backlog items shipped since: **debt-lifecycle Phase 3**
-(payments lower remaining-owed, paid-off/goal-reached prompts, archive section — found already shipped)
-and **PlannedExpense bucket kind** (`SavingKind.PlannedExpense` — a goal-based "known upcoming cost"
-bucket; new 🧾 Planned expenses section). Remaining un-backlogged: **multiple synced funds**,
-**predictive budgeting**, **bind-bucket-to-fund** (needs a design call), push notifications (now a mobile
-native win). **Mobile is going full native — see [docs/MOBILE.md](docs/MOBILE.md)** (deferred behind a
-verify + pre-mobile-changes pass).
+(found already shipped) and **Plans** — an optional set-aside schedule on a savings bucket (fixed
+installment or split-evenly-to-a-date, suggest-only) plus a **Group** tag that rolls a bucket + its
+recurring costs + a debt into a compact 🧷 Commitments total-cost strip. This replaced a short-lived
+"PlannedExpense" kind, which was reverted for adding an overwhelming extra section (kind = wrong axis).
+Remaining un-backlogged: **multiple synced funds**, **predictive budgeting**, **bind-bucket-to-fund**,
+push notifications (now a mobile native win). **Mobile is going full native — see
+[docs/MOBILE.md](docs/MOBILE.md)** (deferred behind a verify + pre-mobile-changes pass).

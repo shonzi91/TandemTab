@@ -747,15 +747,19 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
             .Where(r => r.Kind == RecurringKind.Expense && r.HasKnownAmount && r.IsPending(Period.From))
             .Sum(r => r.ExpectedAmount));
 
-    public Task AddRecurring(string name, RecurringKind kind, RecurringAmountMode mode, decimal expected, int dayOfMonth, Guid categoryId, Guid fundId, string? icon, bool autoPost = false)
+    public Task AddRecurring(string name, RecurringKind kind, RecurringAmountMode mode, decimal expected, int dayOfMonth, Guid categoryId, Guid fundId, string? icon, bool autoPost = false, string? group = null)
     {
-        Account.AddRecurring(new RecurringItem(name, kind, mode, expected, dayOfMonth, categoryId, fundId, icon, autoPost));
+        var item = new RecurringItem(name, kind, mode, expected, dayOfMonth, categoryId, fundId, icon, autoPost);
+        item.SetGroup(group);
+        Account.AddRecurring(item);
         return SaveAsync();
     }
 
-    public Task UpdateRecurring(Guid id, string name, RecurringAmountMode mode, decimal expected, int dayOfMonth, Guid categoryId, Guid fundId, string? icon, bool autoPost = false)
+    public Task UpdateRecurring(Guid id, string name, RecurringAmountMode mode, decimal expected, int dayOfMonth, Guid categoryId, Guid fundId, string? icon, bool autoPost = false, string? group = null)
     {
-        Account.FindRecurring(id)?.Update(name, mode, expected, dayOfMonth, categoryId, fundId, icon, autoPost);
+        var item = Account.FindRecurring(id);
+        item?.Update(name, mode, expected, dayOfMonth, categoryId, fundId, icon, autoPost);
+        item?.SetGroup(group);
         return SaveAsync();
     }
 
@@ -980,7 +984,8 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     // Saving bucket CRUD
     public async Task<Guid> AddSavingBucket(string name, decimal? goalAmount, decimal thresholdPercent, bool notifyOnMilestone, decimal initialAmount, string? icon = null,
         bool isDebt = false, decimal debtBalance = 0m, decimal debtRate = 0m, decimal debtInstallment = 0m, decimal? plannedContribution = null,
-        bool isInvestment = false, decimal invRate = 0m, decimal invTermYears = 0m, int invCompounds = 12, bool isPlannedExpense = false)
+        bool isInvestment = false, decimal invRate = 0m, decimal invTermYears = 0m, int invCompounds = 12,
+        SetAsideRule setAsideRule = SetAsideRule.None, decimal setAsideAmount = 0m, DateOnly? setAsideDueDate = null, Guid? setAsideFundId = null, string? group = null)
     {
         var bucket = Account.AddSavingCategory(name);
         Account.SetSavingCategoryIcon(bucket.Id, icon);
@@ -988,14 +993,11 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
             Account.ConfigureSavingDebt(bucket.Id, debtBalance, debtRate, debtInstallment);
         else if (isInvestment)
             Account.ConfigureSavingInvestment(bucket.Id, invRate, invTermYears, invCompounds);
-        else if (isPlannedExpense)
-        {
-            Account.MarkSavingPlannedExpense(bucket.Id);
-            if (goalAmount is > 0m) Account.ConfigureSavingGoal(bucket.Id, goalAmount, thresholdPercent / 100m, notifyOnMilestone);
-        }
         else if (goalAmount is > 0m)
             Account.ConfigureSavingGoal(bucket.Id, goalAmount, thresholdPercent / 100m, notifyOnMilestone);
         Account.SetSavingPlannedContribution(bucket.Id, plannedContribution);
+        Account.SetSavingSchedule(bucket.Id, setAsideRule, setAsideAmount, setAsideDueDate, setAsideFundId);
+        Account.SetSavingGroup(bucket.Id, group);
         if (CanSetInitialSavings && initialAmount > 0m)
             Account.SetSavingInitialAmount(bucket.Id, initialAmount);
         await SaveAsync();
@@ -1004,7 +1006,8 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
 
     public Task SaveSavingBucket(Guid savingCategoryId, string name, decimal? goalAmount, decimal thresholdPercent, bool notifyOnMilestone, decimal initialAmount, string? icon = null,
         bool isDebt = false, decimal debtBalance = 0m, decimal debtRate = 0m, decimal debtInstallment = 0m, decimal? plannedContribution = null,
-        bool isInvestment = false, decimal invRate = 0m, decimal invTermYears = 0m, int invCompounds = 12, bool isPlannedExpense = false)
+        bool isInvestment = false, decimal invRate = 0m, decimal invTermYears = 0m, int invCompounds = 12,
+        SetAsideRule setAsideRule = SetAsideRule.None, decimal setAsideAmount = 0m, DateOnly? setAsideDueDate = null, Guid? setAsideFundId = null, string? group = null)
     {
         Account.RenameSavingCategory(savingCategoryId, name);
         Account.SetSavingCategoryIcon(savingCategoryId, icon);
@@ -1018,11 +1021,6 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
             Account.ConfigureSavingInvestment(savingCategoryId, invRate, invTermYears, invCompounds);
             Account.ConfigureSavingGoal(savingCategoryId, null);   // investment uses its own figures, not a savings goal
         }
-        else if (isPlannedExpense)
-        {
-            Account.MarkSavingPlannedExpense(savingCategoryId);   // clears any debt/investment figures; goal = target cost
-            Account.ConfigureSavingGoal(savingCategoryId, goalAmount is > 0m ? goalAmount : null, thresholdPercent / 100m, notifyOnMilestone);
-        }
         else
         {
             Account.ClearSavingDebt(savingCategoryId);
@@ -1030,9 +1028,70 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
             Account.ConfigureSavingGoal(savingCategoryId, goalAmount is > 0m ? goalAmount : null, thresholdPercent / 100m, notifyOnMilestone);
         }
         Account.SetSavingPlannedContribution(savingCategoryId, plannedContribution);
+        Account.SetSavingSchedule(savingCategoryId, setAsideRule, setAsideAmount, setAsideDueDate, setAsideFundId);
+        Account.SetSavingGroup(savingCategoryId, group);
         if (CanSetInitialSavings)
             Account.SetSavingInitialAmount(savingCategoryId, initialAmount);
         return SaveAsync();
+    }
+
+    // --- Set-aside schedule ("plan") + group rollup ---------------------------------------------------
+
+    /// <summary>The amount the schedule suggests setting aside into this bucket for the current period, or null when
+    /// there's no schedule (or the goal's already met). Suggestion only — nothing is reserved automatically.</summary>
+    public decimal? SuggestedSetAside(Guid bucketId)
+    {
+        var b = FindSavingBucket(bucketId);
+        if (b is null || !b.HasSchedule) return null;
+        return SetAsidePlanner.Suggest(b.Rule, b.SetAsideAmount, b.GoalAmount, SavingBucketSaved(bucketId).Amount, b.SetAsideDueDate, Period.From);
+    }
+
+    public SetAsideRule SavingBucketRule(Guid id) => FindSavingBucket(id)?.Rule ?? SetAsideRule.None;
+    public decimal SavingBucketSetAsideAmount(Guid id) => FindSavingBucket(id)?.SetAsideAmount ?? 0m;
+    public DateOnly? SavingBucketDueDate(Guid id) => FindSavingBucket(id)?.SetAsideDueDate;
+    public Guid? SavingBucketSetAsideFundId(Guid id) => FindSavingBucket(id)?.SetAsideFundId;
+    public string? SavingBucketGroup(Guid id) => FindSavingBucket(id)?.Group;
+
+    /// <summary>A commitment group's rolled-up total-cost view: what it costs per period (debt installments +
+    /// recurring bills + suggested set-asides), what's left to clear (debt balances + unfunded bucket goals), and how
+    /// much is already set aside. Pure read over the tagged buckets, debts and recurring items.</summary>
+    public readonly record struct CommitmentGroup(string Name, decimal Monthly, decimal Remaining, decimal SetAside, int ItemCount);
+
+    public IReadOnlyList<CommitmentGroup> CommitmentGroups()
+    {
+        var groups = new Dictionary<string, (decimal monthly, decimal remaining, decimal setAside, int count)>(StringComparer.OrdinalIgnoreCase);
+        void Add(string g, decimal monthly, decimal remaining, decimal setAside)
+        {
+            groups.TryGetValue(g, out var v);
+            groups[g] = (v.monthly + monthly, v.remaining + remaining, v.setAside + setAside, v.count + 1);
+        }
+
+        foreach (var (bucket, total) in SavingBuckets)
+        {
+            if (bucket.IsArchived || string.IsNullOrWhiteSpace(bucket.Group)) continue;
+            decimal monthly, remaining;
+            if (bucket.IsDebt)
+            {
+                monthly = bucket.DebtInstallment;
+                remaining = bucket.DebtBalance;
+            }
+            else
+            {
+                monthly = SuggestedSetAside(bucket.Id) ?? 0m;
+                remaining = bucket.GoalAmount is { } goal && goal > total.Amount ? goal - total.Amount : 0m;
+            }
+            Add(bucket.Group!, monthly, remaining, total.Amount);
+        }
+
+        foreach (var r in Account.RecurringItems)
+        {
+            if (!r.Active || string.IsNullOrWhiteSpace(r.Group) || r.Kind != RecurringKind.Expense || !r.HasKnownAmount) continue;
+            Add(r.Group!, r.ExpectedAmount, 0m, 0m);
+        }
+
+        return groups.Select(kv => new CommitmentGroup(kv.Key,
+                decimal.Round(kv.Value.monthly, 2), decimal.Round(kv.Value.remaining, 2), decimal.Round(kv.Value.setAside, 2), kv.Value.count))
+            .OrderByDescending(g => g.Monthly).ToList();
     }
 
     /// <summary>Debt-payoff buckets vs ordinary savings buckets (each with its accumulated total), for the two

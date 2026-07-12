@@ -4,11 +4,17 @@ namespace FinApp.Domain.Savings;
 
 /// <summary>What a savings bucket is for. <see cref="Common"/> is an ordinary goal/earmark; <see cref="Debt"/>
 /// is a payoff envelope carrying the loan's balance/rate/installment so payoff can be projected; <see cref="Investment"/>
-/// carries a rate/term/compounding so future value can be projected; <see cref="PlannedExpense"/> is a known upcoming
-/// cost (its goal is the target amount) — the honest label for money set aside for a specific future purchase, useful
-/// when it lives inside a bank-synced account and shouldn't read as open-ended "saving". All accumulate real money the
-/// same way — the debt/investment fields are projection metadata only and never affect the money model.</summary>
-public enum SavingKind { Common = 0, Debt = 1, Investment = 2, PlannedExpense = 3 }
+/// carries a rate/term/compounding so future value can be projected. All accumulate real money the same way — the
+/// debt/investment fields are projection metadata only and never affect the money model.</summary>
+/// <remarks>Value 3 was a short-lived "PlannedExpense" kind (removed in favour of a set-aside schedule on a common
+/// bucket). Legacy snapshots carrying kind 3 deserialize to an unknown enum value, match neither Debt nor Investment,
+/// and so restore as a <see cref="Common"/> bucket (keeping their goal) — then re-save as Common. Don't reuse value 3.</remarks>
+public enum SavingKind { Common = 0, Debt = 1, Investment = 2 }
+
+/// <summary>How a bucket's per-period set-aside is suggested. <see cref="None"/> = no schedule; <see cref="Installment"/>
+/// = a fixed amount each period; <see cref="SplitEvenly"/> = what's left to the goal divided across the periods left
+/// until the due date, so it lands funded on time. Suggestion only — it never moves money by itself.</summary>
+public enum SetAsideRule { None = 0, Installment = 1, SplitEvenly = 2 }
 
 /// <summary>
 /// A savings bucket (Kids, Vacations, Loan principal...). Like budget categories these form a tree
@@ -50,9 +56,24 @@ public sealed class SavingCategory : Entity
     public bool IsDebt => Kind == SavingKind.Debt;
     public bool IsInvestment => Kind == SavingKind.Investment;
 
-    /// <summary>A "planned expense" bucket — a known upcoming cost, earmarked toward its goal amount. Saves like a
-    /// common bucket; the kind only changes how it reads and where it's grouped.</summary>
-    public bool IsPlannedExpense => Kind == SavingKind.PlannedExpense;
+    /// <summary>Optional set-aside schedule — a "plan" to fund this bucket toward its goal. Body data. Suggestion only:
+    /// the app proposes an amount each period (see <c>SetAsidePlanner</c>); nothing is reserved automatically.</summary>
+    public SetAsideRule Rule { get; private set; } = SetAsideRule.None;
+
+    /// <summary><see cref="SetAsideRule.Installment"/>: the fixed amount to set aside each period. 0 otherwise.</summary>
+    public decimal SetAsideAmount { get; private set; }
+
+    /// <summary><see cref="SetAsideRule.SplitEvenly"/>: fund the goal by this date (drives the per-period split).</summary>
+    public DateOnly? SetAsideDueDate { get; private set; }
+
+    /// <summary>The fund the one-tap "set aside" draws from. Optional — the UI falls back to a default fund.</summary>
+    public Guid? SetAsideFundId { get; private set; }
+
+    public bool HasSchedule => Rule != SetAsideRule.None;
+
+    /// <summary>Optional free-text group tag (e.g. "Car") that rolls this bucket up with related recurring items and
+    /// debts into a single total-cost view. Body data.</summary>
+    public string? Group { get; private set; }
 
     /// <summary>Debt buckets: how much of the original balance has been paid off (never negative). Zero for common buckets.</summary>
     public decimal DebtPaidOff => IsDebt ? Math.Max(0m, DebtOriginalBalance - DebtBalance) : 0m;
@@ -169,15 +190,6 @@ public sealed class SavingCategory : Entity
         ClearInvestmentFields();
     }
 
-    /// <summary>Mark this bucket as a planned expense (a known upcoming cost). Same saving mechanics as a common
-    /// bucket — its goal amount is the target cost. Clears any debt/investment projection fields; the goal is kept.</summary>
-    public void MarkPlannedExpense()
-    {
-        Kind = SavingKind.PlannedExpense;
-        ClearDebtFields();
-        ClearInvestmentFields();
-    }
-
     private void ClearDebtFields()
     {
         DebtBalance = 0m;
@@ -192,6 +204,23 @@ public sealed class SavingCategory : Entity
         InvestmentTermYears = 0m;
         InvestmentCompoundsPerYear = 12;
     }
+
+    /// <summary>Set (or with <see cref="SetAsideRule.None"/> clear) this bucket's set-aside schedule. Only the fields
+    /// relevant to the rule are kept — a fixed amount for <see cref="SetAsideRule.Installment"/>, a due date for
+    /// <see cref="SetAsideRule.SplitEvenly"/>.</summary>
+    public void SetSchedule(SetAsideRule rule, decimal amount, DateOnly? dueDate, Guid? fundId)
+    {
+        if (amount < 0m) throw new ArgumentException("Set-aside amount cannot be negative.", nameof(amount));
+        Rule = rule;
+        SetAsideAmount = rule == SetAsideRule.Installment ? amount : 0m;
+        SetAsideDueDate = rule == SetAsideRule.SplitEvenly ? dueDate : null;
+        SetAsideFundId = rule == SetAsideRule.None ? null : fundId;
+    }
+
+    public void ClearSchedule() => SetSchedule(SetAsideRule.None, 0m, null, null);
+
+    /// <summary>Set or clear the free-text group tag. Blank clears it.</summary>
+    public void SetGroup(string? group) => Group = string.IsNullOrWhiteSpace(group) ? null : group.Trim();
 
     /// <summary>Set or clear the user's planned per-period contribution to this bucket. Null or zero clears it (revert
     /// to inferring pace from history). Cannot be negative.</summary>

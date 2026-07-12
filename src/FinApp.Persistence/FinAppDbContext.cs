@@ -160,10 +160,15 @@ public sealed class FinAppDbContext(DbContextOptions<FinAppDbContext> options) :
             c.Ignore(x => x.DebtProgressRatio);
             c.Ignore(x => x.PlannedContribution);
             c.Ignore(x => x.IsInvestment);
-            c.Ignore(x => x.IsPlannedExpense);
             c.Ignore(x => x.InvestmentAnnualRatePercent);
             c.Ignore(x => x.InvestmentTermYears);
             c.Ignore(x => x.InvestmentCompoundsPerYear);
+            c.Ignore(x => x.Rule);
+            c.Ignore(x => x.SetAsideAmount);
+            c.Ignore(x => x.SetAsideDueDate);
+            c.Ignore(x => x.SetAsideFundId);
+            c.Ignore(x => x.HasSchedule);
+            c.Ignore(x => x.Group);
         });
 
         b.Entity<Period>(p =>

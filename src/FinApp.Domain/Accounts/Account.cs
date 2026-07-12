@@ -291,10 +291,6 @@ public sealed class Account : Entity
     public void ClearSavingInvestment(Guid savingCategoryId) =>
         (FindSavingCategory(savingCategoryId) ?? throw new InvalidOperationException("Saving category not found.")).ClearInvestment();
 
-    /// <summary>Mark a savings bucket as a planned expense (a known upcoming cost). Clears any debt/investment figures.</summary>
-    public void MarkSavingPlannedExpense(Guid savingCategoryId) =>
-        (FindSavingCategory(savingCategoryId) ?? throw new InvalidOperationException("Saving category not found.")).MarkPlannedExpense();
-
     /// <summary>Record a payment against a debt bucket — lowers its remaining balance (no-op for common buckets).</summary>
     public void RecordSavingDebtPayment(Guid savingCategoryId, decimal amount) =>
         (FindSavingCategory(savingCategoryId) ?? throw new InvalidOperationException("Saving category not found.")).RecordDebtPayment(amount);
@@ -302,6 +298,14 @@ public sealed class Account : Entity
     /// <summary>Archive (or restore) a savings bucket — hides it from the main lists while keeping its history.</summary>
     public void SetSavingArchived(Guid savingCategoryId, bool archived) =>
         (FindSavingCategory(savingCategoryId) ?? throw new InvalidOperationException("Saving category not found.")).SetArchived(archived);
+
+    /// <summary>Set (or clear, with <see cref="SetAsideRule.None"/>) a savings bucket's set-aside schedule.</summary>
+    public void SetSavingSchedule(Guid savingCategoryId, SetAsideRule rule, decimal amount, DateOnly? dueDate, Guid? fundId) =>
+        (FindSavingCategory(savingCategoryId) ?? throw new InvalidOperationException("Saving category not found.")).SetSchedule(rule, amount, dueDate, fundId);
+
+    /// <summary>Set or clear a savings bucket's group tag.</summary>
+    public void SetSavingGroup(Guid savingCategoryId, string? group) =>
+        (FindSavingCategory(savingCategoryId) ?? throw new InvalidOperationException("Saving category not found.")).SetGroup(group);
 
     /// <summary>Set a savings bucket's pre-existing initial balance (setup-time only; see <see cref="SavingCategory.InitialAmount"/>).</summary>
     public void SetSavingInitialAmount(Guid savingCategoryId, decimal amount) =>
