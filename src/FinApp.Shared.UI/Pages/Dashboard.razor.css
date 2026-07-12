@@ -115,12 +115,16 @@ html.dark .onboard-desc { color: #a9b6ad; }
 .bal { display: flex; flex-direction: column; align-items: flex-end; font-size: .95rem; }
 .bal-label { color: #6b7280; font-size: .7rem; text-transform: uppercase; letter-spacing: .03em; }
 .bal-current strong { font-size: 1.15rem; }
-.bal-free { color: #6b7280; font-size: .72rem; }
+/* Free is the money you can actually spend — bold, strong green so it stands out. Allocated is the money
+   already spoken for — a softer green so the two read as related but clearly different. */
+.bal-free { color: #0f7a54; font-size: .72rem; font-weight: 700; }
 .bal-free.warn-text { color: #b45309; }
+html.dark .bal-free { color: #57d9a3; }
+html.dark .bal-free.warn-text { color: #f0b26b; }
 .bal-bills { color: #9ca3af; font-size: .72rem; margin-left: 4px; }
 html.dark .bal-bills { color: #7c8a94; }
-.bal-alloc { color: #9ca3af; font-size: .72rem; margin-left: 4px; }
-html.dark .bal-alloc { color: #7c8a94; }
+.bal-alloc { color: #8bbfa9; font-size: .72rem; margin-left: 4px; }
+html.dark .bal-alloc { color: #5f8c79; }
 
 .tabs { display: flex; gap: 4px; margin-bottom: 16px; border-bottom: 1px solid #ece3d3; }
 .tab {

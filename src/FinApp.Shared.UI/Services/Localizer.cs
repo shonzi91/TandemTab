@@ -660,8 +660,8 @@ public sealed class Localizer(IJSRuntime js)
         ["No income added this period yet — log it so your plan reflects real money."] =
             "Още няма добавен доход този период — впиши го, за да отразява планът реални пари.",
         ["Add income"] = "Добави доход",
-        ["Your remaining budgets are {0} more than you have left — budgets are plans, not commitments, so trim one or top up when you can."] =
-            "Оставащите ви бюджети са с {0} повече от парите, които ви остават — бюджетите са планове, не задължения, така че намалете някой или добавете пари, когато можете.",
+        ["Your remaining budgets ({0}) are {1} more than you have left ({2}) — budgets are plans, not commitments, so trim one or top up when you can."] =
+            "Оставащите ви бюджети ({0}) са с {1} повече от парите, които ви остават ({2}) — бюджетите са планове, не задължения, така че намалете някой или добавете пари, когато можете.",
         ["Money came in this period — move some into savings while it's here."] = "Този период постъпиха средства — задели част, докато са налични.",
         ["Milestones"] = "Постижения",
         ["Saver"] = "Спестовник",

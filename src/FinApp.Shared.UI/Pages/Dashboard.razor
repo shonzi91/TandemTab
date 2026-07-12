@@ -648,10 +648,14 @@ else
                     <span class="insight-h">@Loc["This month's budgets"]</span>
                     <span class="spending-sub">@Fmt(State.TotalSpent) @Loc["of"] @Fmt(State.TotalBudgeted) @Loc["spent"]</span>
                 </div>
-                @{ var overPlanned = (State.TotalBudgeted - State.TotalSpent) - State.DisplayFreeToAllocate(_bankStatus?.Balance, _bankStatus?.BalanceCurrency); }
+                @{
+                    var _bnFree = State.DisplayFreeToAllocate(_bankStatus?.Balance, _bankStatus?.BalanceCurrency);
+                    var _bnRemaining = State.TotalBudgeted - State.TotalSpent;
+                    var overPlanned = _bnRemaining - _bnFree;
+                }
                 @if (overPlanned.Amount > 0m)
                 {
-                    <p class="budget-over-note">💡 @string.Format(Loc["Your remaining budgets are {0} more than you have left — budgets are plans, not commitments, so trim one or top up when you can."], Fmt(overPlanned))</p>
+                    <p class="budget-over-note">💡 @string.Format(Loc["Your remaining budgets ({0}) are {1} more than you have left ({2}) — budgets are plans, not commitments, so trim one or top up when you can."], Fmt(_bnRemaining), Fmt(overPlanned), Fmt(_bnFree))</p>
                 }
                 @{
                     // Top-level categories only — sub-categories roll up into their parent's ring.
