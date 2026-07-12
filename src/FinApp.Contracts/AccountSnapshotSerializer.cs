@@ -132,6 +132,7 @@ public static class AccountSnapshotSerializer
         // (progress baselines at "today"), so old snapshots don't divide by zero or show bogus progress.
         if (n.Kind == SavingKind.Debt) s.ConfigureDebt(n.DebtBalance, n.DebtAnnualRatePercent, n.DebtInstallment, n.DebtOriginalBalance);
         if (n.Kind == SavingKind.Investment) s.ConfigureInvestment(n.InvestmentAnnualRatePercent, n.InvestmentTermYears, n.InvestmentCompoundsPerYear);
+        if (n.Kind == SavingKind.PlannedExpense) s.MarkPlannedExpense();
         if (n.PlannedContribution is { } pc) s.SetPlannedContribution(pc);
         if (n.IsArchived) s.SetArchived(true);
         return s;

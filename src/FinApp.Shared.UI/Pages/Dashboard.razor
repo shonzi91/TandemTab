@@ -217,7 +217,7 @@ else
                     (State.TotalContributed.Amount > 0m, "💵", Loc["Add your income"], Loc["Tell TandemTab what's coming in this month."], OpenDeposit),
                     (State.TotalBudgeted.Amount > 0m, "🎯", Loc["Set a budget"], Loc["Cap a category so you know what's safe to spend."], OpenAddBudget),
                     (State.AllExpenses.Count > 0, "🧾", Loc["Log an expense"], Loc["Record your first spend — or import a statement."], OpenAddOrImport),
-                    (State.SavingBuckets.Any(b => !b.Bucket.IsArchived && (b.Bucket.GoalAmount is > 0m || b.Bucket.IsDebt || b.Bucket.IsInvestment || b.Total.Amount > 0m)), "🏆", Loc["Create a goal"], Loc["Add a savings goal or a debt to pay off."], OpenAddBucket),
+                    (State.SavingBuckets.Any(b => !b.Bucket.IsArchived && (b.Bucket.GoalAmount is > 0m || b.Bucket.IsDebt || b.Bucket.IsInvestment || b.Bucket.IsPlannedExpense || b.Total.Amount > 0m)), "🏆", Loc["Create a goal"], Loc["Add a savings goal or a debt to pay off."], OpenAddBucket),
                 };
                 var obDone = obSteps.Count(s => s.Done);
             }
@@ -882,7 +882,8 @@ else
             @{
                 var debtBuckets = State.SavingBuckets.Where(x => x.Bucket.IsDebt && !x.Bucket.IsArchived).ToList();
                 var investmentBuckets = State.SavingBuckets.Where(x => x.Bucket.IsInvestment && !x.Bucket.IsArchived).ToList();
-                var plainBuckets = State.SavingBuckets.Where(x => !x.Bucket.IsDebt && !x.Bucket.IsInvestment && !x.Bucket.IsArchived).ToList();
+                var plannedBuckets = State.SavingBuckets.Where(x => x.Bucket.IsPlannedExpense && !x.Bucket.IsArchived).ToList();
+                var plainBuckets = State.SavingBuckets.Where(x => !x.Bucket.IsDebt && !x.Bucket.IsInvestment && !x.Bucket.IsPlannedExpense && !x.Bucket.IsArchived).ToList();
                 var archivedBuckets = State.SavingBuckets.Where(x => x.Bucket.IsArchived).ToList();
 
                 // One card, reused in the Debts and Savings sections. Debt cards show "set aside" + what's still owed;
@@ -893,6 +894,7 @@ else
                         var bucketId = ctx.Bucket.Id;
                         var isDebt = ctx.Bucket.IsDebt;
                         var isInvestment = ctx.Bucket.IsInvestment;
+                        var isPlanned = ctx.Bucket.IsPlannedExpense;
                         var g = (!isDebt && !isInvestment && ctx.Bucket.HasGoal) ? State.SavingGoal(bucketId) : (SavingGoalProgress?)null;
                         var pct = (double)(g?.Percent ?? 0);
                         var cls = g is null ? "mint" : g.ThresholdReached && !g.GoalReached ? "warn" : "ok";
@@ -935,7 +937,7 @@ else
                             @if (State.IsPeriodOpen)
                             {
                                 <button @onclick="() => RowAct(() => OpenAddSaving(bucketId))">💰 @Loc["Add to savings"]</button>
-                                <button @onclick="() => RowAct(() => OpenDisburseSaving(bucketId))">🎯 @(isDebt ? Loc["Make a payment"] : isInvestment ? Loc["Withdraw"] : Loc["Apply to a goal"])</button>
+                                <button @onclick="() => RowAct(() => OpenDisburseSaving(bucketId))">🎯 @(isDebt ? Loc["Make a payment"] : isInvestment ? Loc["Withdraw"] : isPlanned ? Loc["Pay for it"] : Loc["Apply to a goal"])</button>
                                 <button @onclick="() => RowAct(() => OpenBudgetSaving(bucketId))">➡️ @Loc["Budget savings"]</button>
                                 <button @onclick="() => RowAct(() => OpenSpendSaving(bucketId))">💸 @Loc["Spend savings"]</button>
                             }
@@ -947,7 +949,7 @@ else
                     <div class="ring-label">
                         @if (done)
                         {
-                            <span class="amt good-text">@(isDebt ? Loc["🎉 Paid off!"] : Loc["🎉 Goal reached!"])</span>
+                            <span class="amt good-text">@(isDebt ? Loc["🎉 Paid off!"] : isPlanned ? Loc["🎉 Fully funded!"] : Loc["🎉 Goal reached!"])</span>
                             <div class="ring-sub"><button class="link" @onclick="() => ArchiveBucket(bucketId)">📦 @Loc["Archive it"]</button></div>
                         }
                         else if (isDebt)
@@ -1060,6 +1062,20 @@ else
                     <div class="ring-card ring-card-lg">
                         <button class="ring-plus" title="@Loc["Add an investment"]" @onclick="() => OpenAddBucketOfKind(SavingKind.Investment)">+</button>
                         <div class="ring-label"><span class="ring-muted">@Loc["Add investment"]</span></div>
+                    </div>
+                </div>
+            </section>
+            <section class="panel">
+                <div class="panel-head"><h2>🧾 @Loc["Planned expenses"]</h2></div>
+                @if (plannedBuckets.Count == 0)
+                {
+                    <p class="hint">@Loc["Set money aside for a known upcoming cost (a car, a trip, insurance). Saves like any bucket, but reads as a planned expense — handy inside a bank-synced account."]</p>
+                }
+                <div class="ring-grid">
+                    @foreach (var b in plannedBuckets) { @bucketCard(b) }
+                    <div class="ring-card ring-card-lg">
+                        <button class="ring-plus" title="@Loc["Add a planned expense"]" @onclick="() => OpenAddBucketOfKind(SavingKind.PlannedExpense)">+</button>
+                        <div class="ring-label"><span class="ring-muted">@Loc["Add planned expense"]</span></div>
                     </div>
                 </div>
             </section>
@@ -1700,6 +1716,7 @@ else
                         <button type="button" class="chip @(_bucketKind == SavingKind.Common ? "on" : "")" @onclick="() => _bucketKind = SavingKind.Common">💰 @Loc["Savings goal"]</button>
                         <button type="button" class="chip @(_bucketKind == SavingKind.Debt ? "on" : "")" @onclick="() => _bucketKind = SavingKind.Debt">💳 @Loc["Debt payoff"]</button>
                         <button type="button" class="chip @(_bucketKind == SavingKind.Investment ? "on" : "")" @onclick="() => _bucketKind = SavingKind.Investment">📈 @Loc["Investment"]</button>
+                        <button type="button" class="chip @(_bucketKind == SavingKind.PlannedExpense ? "on" : "")" @onclick="() => _bucketKind = SavingKind.PlannedExpense">🧾 @Loc["Planned expense"]</button>
                     </div>
                     @if (_bucketKind == SavingKind.Debt)
                     {
@@ -1724,9 +1741,13 @@ else
                     }
                     else
                     {
-                        <label>@Loc["Goal amount (optional)"] <input type="number" step="0.01" min="0" @bind="_goalAmount" /></label>
+                        <label>@(_bucketKind == SavingKind.PlannedExpense ? Loc["Target cost (optional)"] : Loc["Goal amount (optional)"]) <input type="number" step="0.01" min="0" @bind="_goalAmount" /></label>
                         <label>@Loc["Alert at %"] <input type="number" step="1" min="0" max="100" @bind="_fThreshold" /></label>
                         <label class="check"><input type="checkbox" @bind="_fNotify" /> @Loc["Notify on milestone"]</label>
+                        @if (_bucketKind == SavingKind.PlannedExpense)
+                        {
+                            <small class="hint">@Loc["A known upcoming cost. Saves like any bucket — fill it with 💰; when it's fully funded, spend it with 🎯. Handy for money set aside inside a bank-synced account."]</small>
+                        }
                     }
                     <label>@Loc["Planned contribution /period (optional)"] <input type="number" step="10" min="0" @bind="_fPlanned" /></label>
                     <small class="hint">@(_bucketKind switch {
@@ -2376,6 +2397,12 @@ else
                     var pjTotal = pjInst + pjExtra;                       // installment is always there; extra is on top
                     var pjAtInst = FinApp.Domain.Forecasting.LoanForecast.PayOff(pjBal, pjRate, pjInst);
                     var pjAtTotal = FinApp.Domain.Forecasting.LoanForecast.PayOff(pjBal, pjRate, pjTotal);
+                    // What changes the moment you actually pay what's set aside: the balance drops, so you're charged
+                    // less interest every period from then on.
+                    var pjSetAside = State.SavingBucketSaved(_projBucketId).Amount;
+                    var pjPayNow = Math.Min(pjSetAside, pjBal);
+                    var pjIntNow = FinApp.Domain.Forecasting.LoanForecast.MonthlyInterest(pjBal, pjRate);
+                    var pjIntAfter = FinApp.Domain.Forecasting.LoanForecast.MonthlyInterest(pjBal - pjPayNow, pjRate);
                     <h3>📈 @Loc["Payoff projection"] — @State.SavingBucketName(_projBucketId)</h3>
                     <div class="proj-grid">
                         <span class="proj-k">@Loc["Balance owed"]</span><span class="proj-v">@Fmt(State.Money(pjBal))</span>
@@ -2383,6 +2410,12 @@ else
                         <span class="proj-k">@Loc["Rate"]</span><span class="proj-v">@pjRate% APR</span>
                         <span class="proj-k">@Loc["Installment"]</span><span class="proj-v">@Fmt(State.Money(pjInst))/@Loc["mo"]</span>
                     </div>
+                    @if (pjPayNow > 0m && pjIntNow > 0m)
+                    {
+                        <h4 class="detail-sub">@Loc["If you pay what's set aside now"] @infoTip(("pp-partial", Loc["A payment lowers the balance right away, so the interest you're charged each period drops from then on. This is what actually changes the moment you make the payment — separate from the recurring 'extra on top' below."]))</h4>
+                        <p class="hint">💸 @string.Format(Loc["Pay {0} now → balance {1}"], Fmt(State.Money(pjPayNow)), Fmt(State.Money(pjBal - pjPayNow)))</p>
+                        <p class="hint good-text">➡️ @string.Format(Loc["Interest each period: {0} → {1} · {2} less every month"], Fmt(State.Money(pjIntNow)), Fmt(State.Money(pjIntAfter)), Fmt(State.Money(pjIntNow - pjIntAfter)))</p>
+                    }
                     <h4 class="detail-sub">@Loc["At your installment"] @infoTip(("pp-inst", Loc["Paying just the monthly installment, nothing extra on top. Monthly compound interest, the way a bank works."]))</h4>
                     @if (pjAtInst is { } ai)
                     {
@@ -5056,10 +5089,11 @@ else
         decimal? planned = _fPlanned > 0 ? _fPlanned : null;
         var isDebt = _bucketKind == SavingKind.Debt;
         var isInv = _bucketKind == SavingKind.Investment;
+        var isPlanned = _bucketKind == SavingKind.PlannedExpense;
         if (_modal == Modal.AddBucket)
-            await State.AddSavingBucket(_fName!, goal, _fThreshold, _fNotify, _initialSavings, _fIcon, isDebt, _debtBalance, _debtRate, _debtInstallment, planned, isInv, _invRate, _invTermYears, _invCompounds);
+            await State.AddSavingBucket(_fName!, goal, _fThreshold, _fNotify, _initialSavings, _fIcon, isDebt, _debtBalance, _debtRate, _debtInstallment, planned, isInv, _invRate, _invTermYears, _invCompounds, isPlanned);
         else
-            await State.SaveSavingBucket(_modalBucketId, _fName!, goal, _fThreshold, _fNotify, _initialSavings, _fIcon, isDebt, _debtBalance, _debtRate, _debtInstallment, planned, isInv, _invRate, _invTermYears, _invCompounds);
+            await State.SaveSavingBucket(_modalBucketId, _fName!, goal, _fThreshold, _fNotify, _initialSavings, _fIcon, isDebt, _debtBalance, _debtRate, _debtInstallment, planned, isInv, _invRate, _invTermYears, _invCompounds, isPlanned);
         CloseModal();
     });
 

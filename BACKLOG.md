@@ -70,5 +70,10 @@ commit noted.
     already spent (`ToSavings` opens savings headroom first; `ToBudget` moves between budgets). Wired into
     the Dashboard + `BudgetingState`; covered by `ReallocationAndCapTests` (5).
 
-**Backlog status:** P0–P3 all cleared. Next work is un-backlogged (see HANDOFF.md for candidates —
-push notifications / PWA, debt-lifecycle Phase 3, multi-synced-fund).
+**Backlog status:** P0–P3 all cleared. Post-backlog items shipped since: **debt-lifecycle Phase 3**
+(payments lower remaining-owed, paid-off/goal-reached prompts, archive section — found already shipped)
+and **PlannedExpense bucket kind** (`SavingKind.PlannedExpense` — a goal-based "known upcoming cost"
+bucket; new 🧾 Planned expenses section). Remaining un-backlogged: **multiple synced funds**,
+**predictive budgeting**, **bind-bucket-to-fund** (needs a design call), push notifications (now a mobile
+native win). **Mobile is going full native — see [docs/MOBILE.md](docs/MOBILE.md)** (deferred behind a
+verify + pre-mobile-changes pass).

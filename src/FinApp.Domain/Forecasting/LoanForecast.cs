@@ -10,6 +10,16 @@ public static class LoanForecast
     /// <summary>Cap the month-by-month simulation so a too-small payment can't loop forever (100 years).</summary>
     public const int MaxMonths = 1200;
 
+    /// <summary>The interest charged in one month on <paramref name="balance"/> at <paramref name="annualRatePercent"/>
+    /// APR with monthly compounding (balance × APR ÷ 12). Zero for a non-positive balance or rate. This is what a
+    /// partial payment reduces straight away: pay <c>P</c> off the principal and next month's interest falls by
+    /// <c>P × APR ÷ 12</c> — the concrete "what changes the moment you pay" figure.</summary>
+    public static decimal MonthlyInterest(decimal balance, decimal annualRatePercent)
+    {
+        if (balance <= 0m || annualRatePercent <= 0m) return 0m;
+        return decimal.Round(balance * (annualRatePercent / 100m / 12m), 2);
+    }
+
     /// <summary>Result of paying a loan off at a fixed monthly payment.</summary>
     /// <param name="Months">Whole months until the balance reaches zero.</param>
     /// <param name="TotalInterest">Total interest paid over the life of the loan.</param>

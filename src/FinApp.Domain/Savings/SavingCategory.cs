@@ -4,9 +4,11 @@ namespace FinApp.Domain.Savings;
 
 /// <summary>What a savings bucket is for. <see cref="Common"/> is an ordinary goal/earmark; <see cref="Debt"/>
 /// is a payoff envelope carrying the loan's balance/rate/installment so payoff can be projected; <see cref="Investment"/>
-/// carries a rate/term/compounding so future value can be projected. All accumulate real money the same way — the
-/// debt/investment fields are projection metadata only and never affect the money model.</summary>
-public enum SavingKind { Common = 0, Debt = 1, Investment = 2 }
+/// carries a rate/term/compounding so future value can be projected; <see cref="PlannedExpense"/> is a known upcoming
+/// cost (its goal is the target amount) — the honest label for money set aside for a specific future purchase, useful
+/// when it lives inside a bank-synced account and shouldn't read as open-ended "saving". All accumulate real money the
+/// same way — the debt/investment fields are projection metadata only and never affect the money model.</summary>
+public enum SavingKind { Common = 0, Debt = 1, Investment = 2, PlannedExpense = 3 }
 
 /// <summary>
 /// A savings bucket (Kids, Vacations, Loan principal...). Like budget categories these form a tree
@@ -47,6 +49,10 @@ public sealed class SavingCategory : Entity
 
     public bool IsDebt => Kind == SavingKind.Debt;
     public bool IsInvestment => Kind == SavingKind.Investment;
+
+    /// <summary>A "planned expense" bucket — a known upcoming cost, earmarked toward its goal amount. Saves like a
+    /// common bucket; the kind only changes how it reads and where it's grouped.</summary>
+    public bool IsPlannedExpense => Kind == SavingKind.PlannedExpense;
 
     /// <summary>Debt buckets: how much of the original balance has been paid off (never negative). Zero for common buckets.</summary>
     public decimal DebtPaidOff => IsDebt ? Math.Max(0m, DebtOriginalBalance - DebtBalance) : 0m;
@@ -160,6 +166,15 @@ public sealed class SavingCategory : Entity
     public void ClearInvestment()
     {
         Kind = SavingKind.Common;
+        ClearInvestmentFields();
+    }
+
+    /// <summary>Mark this bucket as a planned expense (a known upcoming cost). Same saving mechanics as a common
+    /// bucket — its goal amount is the target cost. Clears any debt/investment projection fields; the goal is kept.</summary>
+    public void MarkPlannedExpense()
+    {
+        Kind = SavingKind.PlannedExpense;
+        ClearDebtFields();
         ClearInvestmentFields();
     }
 

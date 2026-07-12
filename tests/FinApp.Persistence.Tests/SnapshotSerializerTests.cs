@@ -256,6 +256,24 @@ public class SnapshotSerializerTests
     }
 
     [Fact]
+    public void PlannedExpense_bucket_kind_and_goal_round_trip()
+    {
+        var account = new Account("Home", "EUR");
+        account.AssignOwner(Guid.NewGuid(), "Me");
+        var car = account.AddSavingCategory("New car");
+        account.MarkSavingPlannedExpense(car.Id);
+        account.ConfigureSavingGoal(car.Id, 8_000m, alertThreshold: 0.8m, notifyOnMilestone: false);
+
+        var copy = AccountSnapshotSerializer.Deserialize(AccountSnapshotSerializer.Serialize(account));
+
+        var copied = copy.SavingCategories.Single(s => s.Name == "New car");
+        Assert.True(copied.IsPlannedExpense);
+        Assert.False(copied.IsDebt);
+        Assert.False(copied.IsInvestment);
+        Assert.Equal(8_000m, copied.GoalAmount);
+    }
+
+    [Fact]
     public void Legacy_debt_snapshot_without_original_balance_baselines_progress_at_current()
     {
         // A debt node written before DebtOriginalBalance existed → the field is absent (0). On read it must

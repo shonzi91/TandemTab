@@ -15,6 +15,23 @@ public class LoanForecastTests
     }
 
     [Fact]
+    public void MonthlyInterest_is_balance_times_apr_over_twelve()
+    {
+        // €10,000 at 12% APR = 1%/month = €100 this month.
+        Assert.Equal(100m, LoanForecast.MonthlyInterest(10_000m, 12m));
+        // A €2,000 partial payment drops the balance to €8,000 → €80/month, i.e. €20 less every month.
+        Assert.Equal(80m, LoanForecast.MonthlyInterest(8_000m, 12m));
+    }
+
+    [Fact]
+    public void MonthlyInterest_is_zero_without_a_balance_or_rate()
+    {
+        Assert.Equal(0m, LoanForecast.MonthlyInterest(0m, 12m));
+        Assert.Equal(0m, LoanForecast.MonthlyInterest(-500m, 12m));
+        Assert.Equal(0m, LoanForecast.MonthlyInterest(10_000m, 0m));
+    }
+
+    [Fact]
     public void Interest_bearing_loan_takes_longer_and_costs_interest()
     {
         // €10,000 at 12% APR (1%/month), €300/month.

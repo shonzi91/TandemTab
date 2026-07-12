@@ -980,7 +980,7 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     // Saving bucket CRUD
     public async Task<Guid> AddSavingBucket(string name, decimal? goalAmount, decimal thresholdPercent, bool notifyOnMilestone, decimal initialAmount, string? icon = null,
         bool isDebt = false, decimal debtBalance = 0m, decimal debtRate = 0m, decimal debtInstallment = 0m, decimal? plannedContribution = null,
-        bool isInvestment = false, decimal invRate = 0m, decimal invTermYears = 0m, int invCompounds = 12)
+        bool isInvestment = false, decimal invRate = 0m, decimal invTermYears = 0m, int invCompounds = 12, bool isPlannedExpense = false)
     {
         var bucket = Account.AddSavingCategory(name);
         Account.SetSavingCategoryIcon(bucket.Id, icon);
@@ -988,6 +988,11 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
             Account.ConfigureSavingDebt(bucket.Id, debtBalance, debtRate, debtInstallment);
         else if (isInvestment)
             Account.ConfigureSavingInvestment(bucket.Id, invRate, invTermYears, invCompounds);
+        else if (isPlannedExpense)
+        {
+            Account.MarkSavingPlannedExpense(bucket.Id);
+            if (goalAmount is > 0m) Account.ConfigureSavingGoal(bucket.Id, goalAmount, thresholdPercent / 100m, notifyOnMilestone);
+        }
         else if (goalAmount is > 0m)
             Account.ConfigureSavingGoal(bucket.Id, goalAmount, thresholdPercent / 100m, notifyOnMilestone);
         Account.SetSavingPlannedContribution(bucket.Id, plannedContribution);
@@ -999,7 +1004,7 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
 
     public Task SaveSavingBucket(Guid savingCategoryId, string name, decimal? goalAmount, decimal thresholdPercent, bool notifyOnMilestone, decimal initialAmount, string? icon = null,
         bool isDebt = false, decimal debtBalance = 0m, decimal debtRate = 0m, decimal debtInstallment = 0m, decimal? plannedContribution = null,
-        bool isInvestment = false, decimal invRate = 0m, decimal invTermYears = 0m, int invCompounds = 12)
+        bool isInvestment = false, decimal invRate = 0m, decimal invTermYears = 0m, int invCompounds = 12, bool isPlannedExpense = false)
     {
         Account.RenameSavingCategory(savingCategoryId, name);
         Account.SetSavingCategoryIcon(savingCategoryId, icon);
@@ -1012,6 +1017,11 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
         {
             Account.ConfigureSavingInvestment(savingCategoryId, invRate, invTermYears, invCompounds);
             Account.ConfigureSavingGoal(savingCategoryId, null);   // investment uses its own figures, not a savings goal
+        }
+        else if (isPlannedExpense)
+        {
+            Account.MarkSavingPlannedExpense(savingCategoryId);   // clears any debt/investment figures; goal = target cost
+            Account.ConfigureSavingGoal(savingCategoryId, goalAmount is > 0m ? goalAmount : null, thresholdPercent / 100m, notifyOnMilestone);
         }
         else
         {
