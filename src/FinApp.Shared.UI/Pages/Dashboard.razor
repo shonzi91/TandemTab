@@ -2073,7 +2073,7 @@ else
                             <button type="button" class="link" @onclick="() => SetAllImport(true)">@Loc["Select all"]</button>
                             <span>·</span>
                             <button type="button" class="link" @onclick="() => SetAllImport(false)">@Loc["Deselect all"]</button>
-                            <span class="import-head-hint">📌 @Loc["pin a merchant to auto-file it here next time"]</span>
+                            <span class="import-head-hint">📌 @Loc["pin a merchant to auto-file it (and similar names) here next time"]</span>
                         </div>
                         <ul class="list import-list">
                             @foreach (var imp in _importRows)
@@ -3088,6 +3088,7 @@ else
     // dismissed one never re-nags this period. Essential budgets never appear in the first place.
     private int _nudgeDismissPeriod = -1;
     private readonly HashSet<Guid> _dismissedNudges = new();
+    private readonly HashSet<Guid> _dismissedPace = new();   // pace reminders dismissed this period (bucket ids)
     private string? _fCurrency = "EUR";
     private int _fSavingsTarget = 20;
     private string? _fIcon;
@@ -3343,8 +3344,18 @@ else
         }
     }
 
-    private (string Kind, Guid TargetId)? MappingFor(string description) =>
-        _bankMappings.TryGetValue(BudgetingState.BankMatchKey(description), out var m) ? m : null;
+    private (string Kind, Guid TargetId)? MappingFor(string description)
+    {
+        // Exact rule wins (precise, user-set). Then a fuzzy fallback: a saved rule whose merchant stem matches this
+        // description's stem, so "Fantastico 30" inherits the rule saved for "Fantastico Group Ltd" (#5). This only
+        // pre-fills the review screen — the user still confirms — so a loose match is caught before anything posts.
+        if (_bankMappings.TryGetValue(BudgetingState.BankMatchKey(description), out var m)) return m;
+        var stem = BudgetingState.BankMatchStem(description);
+        if (stem.Length == 0) return null;
+        foreach (var (key, val) in _bankMappings)
+            if (BudgetingState.BankMatchStem(key) == stem) return val;
+        return null;
+    }
 
     // Deterministic merchant badge (colored circle + initial) — no external logo lookups (feature 5).
     private static readonly string[] VendorHues =
@@ -4285,6 +4296,9 @@ else
             Action? rotate = OverBudgetCandidates().Count > 1 ? () => _overIndex++ : null;
             list.Add(new Notification("⚠️", ob.Title, ob.Desc, Loc["Review"], () => OpenCategoryDetail(ob.CatId), rotate, () => DismissOverBudget(ob.CatId), false));
         }
+        // Pace reminders: at most one per off-track debt/goal, with the payoff-date slip and a "set aside" action.
+        list.AddRange(PaceReminders());
+
         if (ov.HasData)
             foreach (var s in ov.Signals.Where(s => s.Kind == SignalKind.Warn))
                 list.Add(new Notification("⚠️", s.Title, s.Desc, null, null, null, null, false));
@@ -4394,6 +4408,66 @@ else
 
     /// <summary>Hide this budget's suggestion for the rest of the period and jump the rotation to the next candidate.</summary>
     private void DismissNudge(Guid budgetId) { _dismissedNudges.Add(budgetId); _nudgeIndex++; }
+
+    // --- Pace reminders (#1): a calm heads-up when a debt/goal's demonstrated pace is slipping behind the plan the
+    // user set, with the payoff/goal date it drifts to if that pace continues. Dismissible for the period.
+    private int _paceDismissPeriod = -1;
+    private void DismissPace(Guid bucketId) => _dismissedPace.Add(bucketId);
+
+    /// <summary>For each active bucket with a planned monthly contribution, compare the demonstrated pace (average set
+    /// aside per period) to the plan. When it's meaningfully behind, surface how much later the payoff/goal date drifts
+    /// and how much to add to stay on track. Nothing fires when there's no plan, no history yet, or you're keeping up —
+    /// so it never nags a user who is on pace.</summary>
+    private IEnumerable<Notification> PaceReminders()
+    {
+        if (!State.IsPeriodOpen) yield break;
+        if (_paceDismissPeriod != State.PeriodNumber) { _paceDismissPeriod = State.PeriodNumber; _dismissedPace.Clear(); }
+
+        foreach (var x in State.SavingBuckets)
+        {
+            var b = x.Bucket;
+            if (b.IsArchived || b.IsInvestment) continue;
+            if (_dismissedPace.Contains(b.Id)) continue;
+            if (State.SavingBucketPlannedContribution(b.Id) is not { } planned || planned <= 0m) continue;
+            // Demonstrated pace (needs prior periods); skip if unknown or you're keeping up with the plan.
+            if (State.SavingBucketPace(b.Id) is not { Amount: > 0m } paceMoney) continue;
+            var pace = paceMoney.Amount;
+            if (pace >= planned) continue;
+            var shortfall = planned - pace;
+
+            int? monthsPlanned, monthsPace;
+            if (b.IsDebt)
+            {
+                if (b.DebtBalance <= 0m) continue;
+                monthsPlanned = FinApp.Domain.Forecasting.LoanForecast.PayOff(b.DebtBalance, b.DebtAnnualRatePercent, planned)?.Months;
+                monthsPace = FinApp.Domain.Forecasting.LoanForecast.PayOff(b.DebtBalance, b.DebtAnnualRatePercent, pace)?.Months;
+            }
+            else
+            {
+                if (b.GoalAmount is not { } goal) continue;
+                var remaining = goal - State.SavingBucketSaved(b.Id).Amount;
+                if (remaining <= 0m) continue;
+                monthsPlanned = (int)Math.Ceiling((double)(remaining / planned));
+                monthsPace = (int)Math.Ceiling((double)(remaining / pace));
+            }
+            if (monthsPlanned is not { } mp) continue;   // even the plan never clears → not a pace problem
+
+            var bid = b.Id;
+            string desc;
+            if (monthsPace is { } ms && ms > mp)
+                desc = string.Format(Loc["Planned {0}/mo reaches {1}. At your recent {2}/mo it slips to {3} — about {4} later. Set aside {5} more this month to stay on track."],
+                    Fmt(State.Money(planned)), PayoffDate(mp), Fmt(State.Money(pace)), PayoffDate(ms), MonthsText(ms - mp), Fmt(State.Money(shortfall)));
+            else if (monthsPace is null)
+                desc = string.Format(Loc["Planned {0}/mo reaches {1}, but your recent {2}/mo won't get there. Set aside {3} more this month to stay on track."],
+                    Fmt(State.Money(planned)), PayoffDate(mp), Fmt(State.Money(pace)), Fmt(State.Money(shortfall)));
+            else
+                continue;   // slower pace isn't actually later → nothing worth saying
+
+            yield return new Notification(State.SavingBucketIcon(bid),
+                string.Format(Loc[b.IsDebt ? "Keep up your {0} payments" : "Keep up your {0} pace"], b.Name), desc,
+                Loc["Set aside"], () => OpenAddSaving(bid), null, () => DismissPace(bid), false);
+        }
+    }
 
     // "Move it to the loan" reallocation (#14): trims the spare off a discretionary budget and sets it aside toward the
     // debt, in one confirmed step — the coherent version of the reverted one-tap. Closes the loop so the nudge stops.

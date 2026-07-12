@@ -476,6 +476,7 @@ public sealed class Localizer(IJSRuntime js)
         ["Select all"] = "Избери всички",
         ["Deselect all"] = "Изчисти всички",
         ["pin a merchant to auto-file it here next time"] = "закачи търговец, за да се въвежда тук автоматично следващия път",
+        ["pin a merchant to auto-file it (and similar names) here next time"] = "закачи търговец, за да се въвеждат той (и подобни имена) тук автоматично следващия път",
         ["Always file this merchant here in future"] = "Винаги въвеждай този търговец тук занапред",
         ["Auto-files this merchant here — click to forget"] = "Въвежда този търговец тук автоматично — щракни, за да забравиш",
         ["({0} dated outside this period were skipped.)"] = "({0} с дати извън този период бяха пропуснати.)",
@@ -841,6 +842,14 @@ public sealed class Localizer(IJSRuntime js)
         ["Follow insights, reminders and milestones as debt shrinks and savings grow."] =
             "Следвай анализи, напомняния и постижения, докато дългът намалява, а спестяванията растат.",
         ["Ready to take control, together?"] = "Готови ли сте да поемете контрола заедно?",
+
+        // Pace reminders (debt/goal falling behind plan)
+        ["Keep up your {0} pace"] = "Поддържай темпото за {0}",
+        ["Keep up your {0} payments"] = "Поддържай вноските за {0}",
+        ["Planned {0}/mo reaches {1}. At your recent {2}/mo it slips to {3} — about {4} later. Set aside {5} more this month to stay on track."] =
+            "Планираните {0}/мес. достигат {1}. При скорошните {2}/мес. се измества до {3} — около {4} по-късно. Задели още {5} този месец, за да си в график.",
+        ["Planned {0}/mo reaches {1}, but your recent {2}/mo won't get there. Set aside {3} more this month to stay on track."] =
+            "Планираните {0}/мес. достигат {1}, но скорошните {2}/мес. няма да стигнат дотам. Задели още {3} този месец, за да си в график.",
 
         // Add-or-import chooser + header allocated
         ["allocated"] = "разпределени",

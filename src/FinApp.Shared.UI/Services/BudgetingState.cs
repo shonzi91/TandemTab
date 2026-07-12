@@ -1552,6 +1552,28 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     public static string BankMatchKey(string description) =>
         string.Join(' ', (description ?? "").ToLowerInvariant().Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
 
+    // Words that carry no merchant identity — legal suffixes, payment noise, common stopwords — dropped when
+    // reducing a description to its stem so store numbers and legal forms don't split one merchant into many rules.
+    private static readonly HashSet<string> BankStemStop = new(StringComparer.Ordinal)
+    {
+        "the", "and", "for", "ltd", "ltda", "llc", "inc", "gmbh", "plc", "corp", "llp", "group",
+        "ad", "ead", "ood", "eood", "jsc", "sa", "bv", "oy", "ab", "co", "com",
+        "card", "payment", "pos", "purchase", "pmt", "trans", "www",
+    };
+
+    /// <summary>An aggressive merchant "stem": the first significant word of a description (letters only, 3+ chars, not
+    /// a legal suffix / payment stopword), lowercased. Lets variants like "Fantastico 30" and "Fantastico Group Ltd"
+    /// share one auto-map rule. Empty when there's no significant word (then only exact matching applies).</summary>
+    public static string BankMatchStem(string description)
+    {
+        foreach (var raw in (description ?? "").ToLowerInvariant().Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries))
+        {
+            var tok = new string(raw.Where(char.IsLetter).ToArray());
+            if (tok.Length >= 3 && !BankStemStop.Contains(tok)) return tok;
+        }
+        return "";
+    }
+
     public Task ReschedulePeriod(DateOnly from, DateOnly to)
     {
         Account.ReschedulePeriod(Period, from, to);
