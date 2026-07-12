@@ -805,6 +805,14 @@ public sealed class Localizer(IJSRuntime js)
             "парите в профила, минус бюджетираното другаде и вече спестеното",
 
         // Landing page (logged-out)
+        ["Money, better together."] = "Парите — по-добре заедно.",
+        ["TandemTab is built for sharing — budget with your partner or household in real time, and always know where you both stand. On your own? It works beautifully for one, too."] =
+            "TandemTab е създаден за споделяне — бюджетирай с партньора си или домакинството в реално време и винаги знай докъде сте и двамата. Сам? Работи чудесно и за един.",
+        ["Great solo, better together"] = "Чудесно сам, по-добре заедно",
+        ["Budget together"] = "Бюджет заедно",
+        ["Share one budget with your partner or household — every expense and change syncs for everyone in real time. Flying solo works just as well."] =
+            "Споделете един бюджет с партньора си или домакинството — всеки разход и промяна се синхронизират за всички в реално време. Работи чудесно и самостоятелно.",
+        ["Ready to take control of your money — together?"] = "Готов ли си да поемеш контрол над парите си — заедно?",
         ["Reach your money goals, faster."] = "Постигни финансовите си цели по-бързо.",
         ["Budgeting for real life — use it on your own, with your partner, or across the whole household. Plan spending, clear debt, and hit savings goals."] =
             "Бюджетиране за реалния живот — сам, с партньора си или за цялото домакинство. Планирай разходи, изчисти дългове и постигай цели за спестяване.",

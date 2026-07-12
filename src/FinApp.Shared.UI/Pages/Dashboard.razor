@@ -2901,6 +2901,9 @@ else
 
     // Bank sync (Open Banking) — its own tab. Null status = feature off / unreachable (tab hidden).
     private BankSyncStatusDto? _bankStatus;
+    // Last-known bank status per account, so switching back shows its figures instantly (then refreshes) instead of
+    // blanking while the network call runs — kills the "external sync section reloading" flash on account switch.
+    private readonly Dictionary<Guid, BankSyncStatusDto> _bankStatusByAccount = new();
     private List<PendingBankTransactionDto> _bankPending = [];
     private Guid _bankAccountId;        // which account _bankStatus/_bankPending belong to (bank is per-account)
     private bool _bankBusy;
@@ -3176,6 +3179,7 @@ else
         {
             await State.SyncBank();
             _bankStatus = await State.GetBankStatus();   // refresh LastSyncedAt (restarts the cooldown) + balance
+            if (_bankStatus is not null) _bankStatusByAccount[_bankAccountId] = _bankStatus;
             _bankPending = await State.GetPendingBankTransactions();
             DefaultBankPickers();
             await AutoHandleMappedDebitsAsync();
@@ -3280,6 +3284,7 @@ else
             else { _bankPending = []; _bankMappings = new(); DefaultBankPickers(); }
         }
         catch { _bankStatus = null; } // unreachable/unconfigured — hide the panel/tab entirely
+        if (_bankStatus is not null) _bankStatusByAccount[_bankAccountId] = _bankStatus;   // cache for instant re-show
     }
 
     private async Task ResendVerificationFromBank()
@@ -3834,12 +3839,14 @@ else
     private void OnChanged()
     {
         ResetPickers();
-        // Account switched (e.g. via the account switcher) → refresh the per-account bank connection. Drop the previous
-        // account's live bank balance synchronously first, so it can't bleed onto the new account's Current/free figures
-        // during the render before the new status loads — that cross-account value was the flicker (#4).
+        // Account switched (e.g. via the account switcher) → refresh the per-account bank connection. Swap straight to
+        // the NEW account's last-known bank figures (cached, or null if never loaded) so the previous account's values
+        // can't bleed onto it AND there's no blank flash while the network call runs — then refresh in the background.
+        // Claim the account id up front so a repeat OnChanged before the reload finishes can't re-fire it.
         if (_bankStatus is not null && _bankAccountId != State.CurrentAccountId)
         {
-            _bankStatus = null;
+            _bankAccountId = State.CurrentAccountId;
+            _bankStatus = _bankStatusByAccount.GetValueOrDefault(_bankAccountId);
             _ = ReloadBankOnAccountChangeAsync();
         }
         InvokeAsync(StateHasChanged);
