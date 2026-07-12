@@ -7,6 +7,11 @@
    because it's allowlist-gated for the MVP. *@
 <div class="lp">
 
+    <div class="lp-topbar">
+        <LanguagePicker />
+        <button class="lp-signin" @onclick="OpenLogin">@Loc["Sign in"]</button>
+    </div>
+
     <section class="lp-hero">
         <div class="lp-hero-copy">
             <h1 class="lp-brand"><span class="lp-logo"><TandemLogo /></span><span class="brand-word">Tandem<span class="brand-tab">Tab</span></span></h1>
@@ -17,11 +22,8 @@
                 <li>@Loc["Built for two"]</li>
                 <li>@Loc["Private by design"]</li>
             </ul>
-            <a class="lp-cta" href="#lp-start">@Loc["Create your free account"]</a>
-            <p class="lp-cta-note">@Loc["Already have an account? Sign in below."]</p>
-        </div>
-        <div class="lp-auth" id="lp-start">
-            <AuthPanel />
+            <button class="lp-cta lp-cta-glow" @onclick="OpenRegister">@Loc["Create your free account"]</button>
+            <p class="lp-cta-note">@Loc["Already have an account?"] <button class="lp-link" @onclick="OpenLogin">@Loc["Sign in"]</button></p>
         </div>
     </section>
 
@@ -84,12 +86,29 @@
 
     <section class="lp-closing">
         <h3>@Loc["Ready to take control, together?"]</h3>
-        <a class="lp-cta" href="#lp-start">@Loc["Create your free account"]</a>
+        <button class="lp-cta lp-cta-glow" @onclick="OpenRegister">@Loc["Create your free account"]</button>
     </section>
 
 </div>
 
+@if (_showAuth)
+{
+    <div class="lp-auth-backdrop" @onclick="CloseAuth">
+        <div class="lp-auth-modal" @onclick:stopPropagation="true">
+            <button class="lp-auth-x" title="@Loc["Close"]" @onclick="CloseAuth">×</button>
+            <AuthPanel StartInRegister="_startRegister" />
+        </div>
+    </div>
+}
+
 @code {
+    private bool _showAuth;
+    private bool _startRegister;
+
+    private void OpenRegister() { _startRegister = true; _showAuth = true; }
+    private void OpenLogin() { _startRegister = false; _showAuth = true; }
+    private void CloseAuth() => _showAuth = false;
+
     protected override void OnInitialized() => Loc.Changed += OnLocChanged;
     private void OnLocChanged() => InvokeAsync(StateHasChanged);
     public void Dispose() => Loc.Changed -= OnLocChanged;

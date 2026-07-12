@@ -75,6 +75,9 @@
 </div>
 
 @code {
+    /// <summary>When shown from the landing's "Create your free account" CTA, open straight on the Register tab.</summary>
+    [Parameter] public bool StartInRegister { get; set; }
+
     private enum Mode { Login, Register }
     private Mode _mode = Mode.Login;
     private string _identifier = "", _username = "", _email = "", _password = "";
@@ -96,6 +99,7 @@
     protected override async Task OnInitializedAsync()
     {
         Loc.Changed += OnLocChanged;
+        if (StartInRegister) _mode = Mode.Register;
         // An external (Google/Facebook) sign-in whose account has 2FA on lands here with a pending challenge —
         // drop straight into the code prompt instead of the username/password form.
         _twoFactorTicket = Auth.PendingTwoFactorTicket;

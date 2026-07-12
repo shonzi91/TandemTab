@@ -152,9 +152,17 @@ else
                 <span class="bal bal-current">
                     <span class="bal-label">@Loc[State.IsPeriodOpen ? "Current" : "Closed on"]</span>
                     <strong>@Fmt(State.DisplayClosingBalance(_bankStatus?.Balance, _bankStatus?.BalanceCurrency))</strong>
+                    @{
+                        var _balFree = State.DisplayFreeToAllocate(_bankStatus?.Balance, _bankStatus?.BalanceCurrency);
+                        var _balAlloc = State.DisplayClosingBalance(_bankStatus?.Balance, _bankStatus?.BalanceCurrency) - _balFree;
+                    }
                     @if (State.IsPeriodOpen)
                     {
-                        <span class="bal-free @(State.IsOverAllocated ? "warn-text" : "")">@Fmt(State.DisplayFreeToAllocate(_bankStatus?.Balance, _bankStatus?.BalanceCurrency)) @Loc["free"]</span>
+                        <span class="bal-free @(State.IsOverAllocated ? "warn-text" : "")">@Fmt(_balFree) @Loc["free"]</span>
+                        @if (_balAlloc.Amount > 0m)
+                        {
+                            <span class="bal-alloc" title="@Loc["Already budgeted or set aside this period — spoken for, not spent."]">· @Fmt(_balAlloc) @Loc["allocated"]</span>
+                        }
                         @if (State.BillsDueThisPeriod is { Amount: > 0m } billsDue)
                         {
                             <span class="bal-bills" title="@Loc["Recurring bills expected this period that you haven't logged yet"]">· @Fmt(billsDue) @Loc["bills due"]</span>
@@ -215,8 +223,8 @@ else
                 {
                     (State.TotalContributed.Amount > 0m, "💵", Loc["Add your income"], Loc["Tell TandemTab what's coming in this month."], OpenDeposit),
                     (State.TotalBudgeted.Amount > 0m, "🎯", Loc["Set a budget"], Loc["Cap a category so you know what's safe to spend."], OpenAddBudget),
-                    (State.AllExpenses.Count > 0, "🧾", Loc["Log an expense"], Loc["Record your first spend — or import a statement."], OpenAddExpenseTab),
-                    (HasSavingsBucket, "🏆", Loc["Create a goal"], Loc["Add a savings goal or a debt to pay off."], OpenAddBucket),
+                    (State.AllExpenses.Count > 0, "🧾", Loc["Log an expense"], Loc["Record your first spend — or import a statement."], OpenAddOrImport),
+                    (State.SavingBuckets.Any(b => !b.Bucket.IsArchived && (b.Bucket.GoalAmount is > 0m || b.Bucket.IsDebt || b.Bucket.IsInvestment || b.Total.Amount > 0m)), "🏆", Loc["Create a goal"], Loc["Add a savings goal or a debt to pay off."], OpenAddBucket),
                 };
                 var obDone = obSteps.Count(s => s.Done);
             }
@@ -263,6 +271,10 @@ else
 
             <section class="quick-actions">
                 <button class="qa" @onclick="OpenAddExpenseTab">🧾 <span>@Loc["Add expense"]</span></button>
+                @if (State.IsPeriodOpen)
+                {
+                    <button class="qa" @onclick="OpenImport">📥 <span>@Loc["Import statement"]</span></button>
+                }
                 @if (HasSavingsBucket)
                 {
                     <button class="qa" @onclick="OpenMoveToSavings">💰 <span>@Loc["Move to savings"]</span></button>
@@ -636,10 +648,6 @@ else
             <section class="panel">
                 <div class="spending-head">
                     <span class="insight-h">@Loc["This month's budgets"]</span>
-                    @if (State.IsPeriodOpen)
-                    {
-                        <button class="import-btn" title="@Loc["Import a bank statement (Excel, CSV, XML, OFX, QIF)"]" @onclick="OpenImport">📥 @Loc["Import statement"]</button>
-                    }
                     <span class="spending-sub">@Fmt(State.TotalSpent) @Loc["of"] @Fmt(State.TotalBudgeted) @Loc["spent"]</span>
                 </div>
                 @{ var overPlanned = (State.TotalBudgeted - State.TotalSpent) - State.DisplayFreeToAllocate(_bankStatus?.Balance, _bankStatus?.BalanceCurrency); }
@@ -2013,6 +2021,16 @@ else
                     </div>
                     break;
 
+                case Modal.AddOrImport:
+                    <h3>➕ @Loc["Add a transaction"]</h3>
+                    <p class="hint">@Loc["Record a single entry, or import many at once from a bank statement (expenses and income)."]</p>
+                    <button class="qa-choice" @onclick="OpenAddExpenseTab">🧾 <span><strong>@Loc["Log an expense"]</strong><small>@Loc["Enter one spend by hand."]</small></span></button>
+                    <button class="qa-choice" @onclick="OpenImport">📥 <span><strong>@Loc["Import statement"]</strong><small>@Loc["Bring in many from a bank file."]</small></span></button>
+                    <div class="modal-actions">
+                        <button class="ghost" @onclick="Back">@Loc["Close"]</button>
+                    </div>
+                    break;
+
                 case Modal.Import:
                     <h3>📥 @Loc["Import statement"]</h3>
                     @if (_importError is not null)
@@ -2789,7 +2807,7 @@ else
 }
 
 @code {
-    private enum Modal { None, PickAccount, BankReview, BankConsent, AddCat, AddBudget, DisburseSaving, PayoffProjection, GoalProjection, InvestmentProjection, BankTransfer, ExternalAccounts, HealthScore, EditCat, DeleteCat, CategoryDetail, AddAccount, EditAccount, DeleteAccount, RemoveMember, LeaveAccount, AddExpense, NextPeriod, RemovePeriod, EditExpense, DeleteExpense, SettleExpense, AddBucket, EditBucket, DeleteBucket, AddFund, EditFund, DeleteFund, Invite, Transfer, Deposit, EditDeposit, DeleteDeposit, ManageContribCats, ContribCat, DeleteContribCat, AddSaving, BudgetSaving, SpendSaving, EditSavingDeposit, DeleteSavingDeposit, EditTransfer, DeleteTransfer, EditPeriod, EditSavingMovement, DeleteSavingMovement, DeleteExternalTransfer, Achievements, Reallocate, Recurring, RecurringEdit, RecurringConfirm, Import }
+    private enum Modal { None, PickAccount, BankReview, BankConsent, AddCat, AddBudget, DisburseSaving, PayoffProjection, GoalProjection, InvestmentProjection, BankTransfer, ExternalAccounts, HealthScore, EditCat, DeleteCat, CategoryDetail, AddAccount, EditAccount, DeleteAccount, RemoveMember, LeaveAccount, AddExpense, NextPeriod, RemovePeriod, EditExpense, DeleteExpense, SettleExpense, AddBucket, EditBucket, DeleteBucket, AddFund, EditFund, DeleteFund, Invite, Transfer, Deposit, EditDeposit, DeleteDeposit, ManageContribCats, ContribCat, DeleteContribCat, AddSaving, BudgetSaving, SpendSaving, EditSavingDeposit, DeleteSavingDeposit, EditTransfer, DeleteTransfer, EditPeriod, EditSavingMovement, DeleteSavingMovement, DeleteExternalTransfer, Achievements, Reallocate, Recurring, RecurringEdit, RecurringConfirm, Import, AddOrImport }
     private enum Tab { Overview, Account, Budgets, Savings }
 
     private Tab _tab = Tab.Overview;
@@ -4494,6 +4512,9 @@ else
         public bool Duplicate { get; init; }
         public bool OutOfPeriod { get; init; }
     }
+
+    /// <summary>Small chooser: log a single expense by hand, or import many from a statement (income + spend).</summary>
+    private void OpenAddOrImport() => _modal = Modal.AddOrImport;
 
     private async Task OpenImport()
     {

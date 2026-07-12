@@ -7,6 +7,20 @@
     font-variant-numeric: tabular-nums;   /* keep money columns aligned in Quicksand's rounded digits */
 }
 
+/* Add-or-import chooser modal */
+.qa-choice {
+    display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; cursor: pointer; font: inherit;
+    background: #fffdf8; border: 1px solid #e2d8c6; border-radius: 12px; padding: 12px 14px; margin-top: 8px; font-size: 1.4rem;
+    transition: border-color .12s, box-shadow .12s, transform .12s;
+}
+.qa-choice:hover { border-color: #13a06e; box-shadow: 0 3px 10px rgba(19,160,110,.14); transform: translateY(-1px); }
+.qa-choice span { display: flex; flex-direction: column; }
+.qa-choice strong { font-size: .95rem; color: #16202b; }
+.qa-choice small { font-size: .78rem; color: #6b7d72; }
+html.dark .qa-choice { background: #181c25; border-color: #262d3d; }
+html.dark .qa-choice strong { color: #e8eaf0; }
+html.dark .qa-choice small { color: #a9b6ad; }
+
 /* First-run onboarding checklist (Home) */
 .onboard-card { margin: 0 0 14px; padding: 16px 16px 14px; background: linear-gradient(135deg, #eef9f3, #e9f7f0); border: 1px solid #d6f0e3; }
 .onboard-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
@@ -105,6 +119,8 @@ html.dark .onboard-desc { color: #a9b6ad; }
 .bal-free.warn-text { color: #b45309; }
 .bal-bills { color: #9ca3af; font-size: .72rem; margin-left: 4px; }
 html.dark .bal-bills { color: #7c8a94; }
+.bal-alloc { color: #9ca3af; font-size: .72rem; margin-left: 4px; }
+html.dark .bal-alloc { color: #7c8a94; }
 
 .tabs { display: flex; gap: 4px; margin-bottom: 16px; border-bottom: 1px solid #ece3d3; }
 .tab {

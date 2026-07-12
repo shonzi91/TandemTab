@@ -812,6 +812,7 @@ public sealed class Localizer(IJSRuntime js)
         ["Private by design"] = "Поверително по замисъл",
         ["Create your free account"] = "Създай безплатен профил",
         ["Already have an account? Sign in below."] = "Вече имаш профил? Влез по-долу.",
+        ["Already have an account?"] = "Вече имаш профил?",
         ["Everything you need to stay on top of money"] = "Всичко, за да държиш парите под контрол",
         ["Budget together"] = "Бюджет заедно",
         ["Invite your partner and share one budget. Every expense and change syncs for both of you in real time."] =
@@ -840,6 +841,16 @@ public sealed class Localizer(IJSRuntime js)
         ["Follow insights, reminders and milestones as debt shrinks and savings grow."] =
             "Следвай анализи, напомняния и постижения, докато дългът намалява, а спестяванията растат.",
         ["Ready to take control, together?"] = "Готови ли сте да поемете контрола заедно?",
+
+        // Add-or-import chooser + header allocated
+        ["allocated"] = "разпределени",
+        ["Already budgeted or set aside this period — spoken for, not spent."] =
+            "Вече бюджетирани или заделени този период — ангажирани, но не похарчени.",
+        ["Add a transaction"] = "Добави транзакция",
+        ["Record a single entry, or import many at once from a bank statement (expenses and income)."] =
+            "Запиши единичен запис или импортирай много наведнъж от банково извлечение (разходи и приходи).",
+        ["Enter one spend by hand."] = "Въведи един разход ръчно.",
+        ["Bring in many from a bank file."] = "Внеси много от банков файл.",
 
         // Onboarding checklist (first run)
         ["Welcome! Let's get you set up"] = "Добре дошъл! Да те настроим",

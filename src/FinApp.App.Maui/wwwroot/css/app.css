@@ -136,7 +136,7 @@ html.dark option { background: #1e2330; color: #e8eaf0; }
 html.dark input[type=date] { color-scheme: dark; }
 
 /* Sticky modal header (title bar + corner ✕/✓) must match the dark modal surface, not stay cream. */
-html.dark .modal > h3, html.dark .modal-head {
+html.dark .modal > h3, html.dark .modal-head, html.dark .pm h3 {
     background: #181c25; border-bottom-color: #262d3d; color: #e8eaf0;
 }
 /* Modal action buttons (corner ✕/✓) — the inline variant keeps a top divider */
