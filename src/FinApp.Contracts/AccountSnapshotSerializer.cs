@@ -32,16 +32,16 @@ public static class AccountSnapshotSerializer
         var node = new AccountNode(
             account.Id, account.Name, account.Currency, account.OwnerUserId,
             account.Members.Select(m => new MemberNode(m.Id, m.UserId, m.DisplayName)).ToList(),
-            account.Funds.Select(f => new FundNode(f.Id, f.Name, f.ParentId, f.Note, f.Icon, f.IsSynced)).ToList(),
-            account.Categories.Select(c => new CategoryNode(c.Id, c.Name, c.ParentId, c.Icon, c.IsEssential)).ToList(),
-            account.SavingCategories.Select(s => new SavingCategoryNode(s.Id, s.Name, s.ParentId, s.GoalAmount, s.AlertThreshold, s.NotifyOnMilestone, s.InitialAmount, s.Icon, s.Kind, s.DebtBalance, s.DebtAnnualRatePercent, s.DebtInstallment, s.IsArchived, s.DebtOriginalBalance, s.PlannedContribution, s.InvestmentAnnualRatePercent, s.InvestmentTermYears, s.InvestmentCompoundsPerYear, s.Rule, s.SetAsideAmount, s.SetAsideDueDate, s.FundId, s.Group)).ToList(),
+            account.Funds.Select(f => new FundNode(f.Id, f.Name, f.ParentId, f.Note, f.Icon, f.IsSynced, f.IsArchived)).ToList(),
+            account.Categories.Select(c => new CategoryNode(c.Id, c.Name, c.ParentId, c.Icon, c.IsEssential, c.IsArchived)).ToList(),
+            account.SavingCategories.Select(s => new SavingCategoryNode(s.Id, s.Name, s.ParentId, s.GoalAmount, s.AlertThreshold, s.NotifyOnMilestone, s.InitialAmount, s.Icon, s.Kind, s.DebtBalance, s.DebtAnnualRatePercent, s.DebtInstallment, s.IsArchived, s.DebtOriginalBalance, s.PlannedContribution, s.InvestmentAnnualRatePercent, s.InvestmentTermYears, s.InvestmentCompoundsPerYear, s.FundId, s.Costs.Count == 0 ? null : s.Costs.ToList())).ToList(),
             account.Periods.Select(ToNode).ToList(),
             account.ContributionCategories.Select(c => new ContributionCategoryNode(c.Id, c.Name, c.Icon)).ToList(),
             account.SavingsRateTarget,
             account.AchievementsAnchor,
             account.AchievementLog.Count == 0 ? null : new Dictionary<string, DateOnly>(account.AchievementLog),
             account.RecurringItems.Count == 0 ? null : account.RecurringItems.Select(r => new RecurringItemNode(
-                r.Id, r.Name, r.Kind, r.AmountMode, r.ExpectedAmount, r.DayOfMonth, r.CategoryId, r.FundId, r.Active, r.Icon, r.LastHandledPeriodFrom, r.AutoPost, r.Group)).ToList(),
+                r.Id, r.Name, r.Kind, r.AmountMode, r.ExpectedAmount, r.DayOfMonth, r.CategoryId, r.FundId, r.Active, r.Icon, r.LastHandledPeriodFrom, r.AutoPost)).ToList(),
             account.OnboardingDismissed);
         return JsonSerializer.Serialize(node, Json);
     }
@@ -75,6 +75,7 @@ public static class AccountSnapshotSerializer
             fund.SetNote(f.Note);
             fund.SetIcon(f.Icon);
             fund.SetSynced(f.IsSynced);
+            if (f.IsArchived) fund.SetArchived(true);
             return fund;
         }).ToList());
         SetField(account, "_categories", node.Categories.Select(c =>
@@ -82,6 +83,7 @@ public static class AccountSnapshotSerializer
             var category = Build(new Category(c.Name, c.ParentId), c.Id);
             category.SetIcon(c.Icon);
             category.SetEssential(c.IsEssential);
+            if (c.IsArchived) category.SetArchived(true);
             return category;
         }).ToList());
         SetField(account, "_savingCategories", node.SavingCategories.Select(ToEntity).ToList());
@@ -103,7 +105,6 @@ public static class AccountSnapshotSerializer
             var item = Build(new RecurringItem(r.Name, r.Kind, r.AmountMode, r.ExpectedAmount, r.DayOfMonth, r.CategoryId, r.FundId, r.Icon, r.AutoPost), r.Id);
             if (!r.Active) item.SetActive(false);
             if (r.LastHandledPeriodFrom is { } h) item.MarkHandled(h);
-            item.SetGroup(r.Group);
             account.AddRecurring(item);
         }
         return account;
@@ -134,9 +135,8 @@ public static class AccountSnapshotSerializer
         if (n.Kind == SavingKind.Debt) s.ConfigureDebt(n.DebtBalance, n.DebtAnnualRatePercent, n.DebtInstallment, n.DebtOriginalBalance);
         if (n.Kind == SavingKind.Investment) s.ConfigureInvestment(n.InvestmentAnnualRatePercent, n.InvestmentTermYears, n.InvestmentCompoundsPerYear);
         if (n.PlannedContribution is { } pc) s.SetPlannedContribution(pc);
-        if (n.Rule != SetAsideRule.None) s.SetSchedule(n.Rule, n.SetAsideAmount, n.SetAsideDueDate);
         s.SetFund(n.FundId);
-        s.SetGroup(n.Group);
+        if (n.Costs is { Count: > 0 }) s.ReplaceCosts(n.Costs);
         if (n.IsArchived) s.SetArchived(true);
         return s;
     }
@@ -230,17 +230,17 @@ public static class AccountSnapshotSerializer
 
     private record RecurringItemNode(Guid Id, string Name, RecurringKind Kind, RecurringAmountMode AmountMode,
         decimal ExpectedAmount, int DayOfMonth, Guid CategoryId, Guid FundId, bool Active, string? Icon, DateOnly? LastHandledPeriodFrom,
-        bool AutoPost = false, string? Group = null);
+        bool AutoPost = false);
 
     private record MemberNode(Guid Id, Guid UserId, string DisplayName);
     private record ContributionCategoryNode(Guid Id, string Name, string? Icon = null);
-    private record FundNode(Guid Id, string Name, Guid? ParentId, string? Note = null, string? Icon = null, bool IsSynced = false);
-    private record CategoryNode(Guid Id, string Name, Guid? ParentId, string? Icon = null, bool IsEssential = false);
+    private record FundNode(Guid Id, string Name, Guid? ParentId, string? Note = null, string? Icon = null, bool IsSynced = false, bool IsArchived = false);
+    private record CategoryNode(Guid Id, string Name, Guid? ParentId, string? Icon = null, bool IsEssential = false, bool IsArchived = false);
     private record SavingCategoryNode(Guid Id, string Name, Guid? ParentId, decimal? GoalAmount, decimal AlertThreshold, bool NotifyOnMilestone, decimal InitialAmount, string? Icon = null,
         SavingKind Kind = SavingKind.Common, decimal DebtBalance = 0m, decimal DebtAnnualRatePercent = 0m, decimal DebtInstallment = 0m, bool IsArchived = false,
         decimal DebtOriginalBalance = 0m, decimal? PlannedContribution = null,
         decimal InvestmentAnnualRatePercent = 0m, decimal InvestmentTermYears = 0m, int InvestmentCompoundsPerYear = 12,
-        SetAsideRule Rule = SetAsideRule.None, decimal SetAsideAmount = 0m, DateOnly? SetAsideDueDate = null, Guid? FundId = null, string? Group = null);
+        Guid? FundId = null, IReadOnlyList<PlannedCost>? Costs = null);
 
     private record PeriodNode(Guid Id, string Currency, DateOnly From, DateOnly To, PeriodStatus Status, decimal CarriedIn,
         List<InitialBalanceNode> InitialBalances, List<ContributionNode> Contributions, List<BudgetNode> Budgets,

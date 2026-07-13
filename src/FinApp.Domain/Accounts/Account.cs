@@ -201,6 +201,11 @@ public sealed class Account : Entity
     public void SetCategoryEssential(Guid categoryId, bool essential) =>
         (FindCategory(categoryId) ?? throw new InvalidOperationException("Category not found.")).SetEssential(essential);
 
+    /// <summary>Archive (or restore) a category — hides it from pickers/lists while keeping every referencing expense
+    /// and budget intact (nothing reassigned or deleted). Unlike <see cref="RemoveCategory"/> there is no blocker.</summary>
+    public void SetCategoryArchived(Guid categoryId, bool archived) =>
+        (FindCategory(categoryId) ?? throw new InvalidOperationException("Category not found.")).SetArchived(archived);
+
     /// <summary>Add a savings bucket. Pass <paramref name="parentId"/> to make it a sub-bucket.</summary>
     public SavingCategory AddSavingCategory(string name, Guid? parentId = null)
     {
@@ -299,17 +304,13 @@ public sealed class Account : Entity
     public void SetSavingArchived(Guid savingCategoryId, bool archived) =>
         (FindSavingCategory(savingCategoryId) ?? throw new InvalidOperationException("Saving category not found.")).SetArchived(archived);
 
-    /// <summary>Set (or clear, with <see cref="SetAsideRule.None"/>) a savings bucket's set-aside schedule.</summary>
-    public void SetSavingSchedule(Guid savingCategoryId, SetAsideRule rule, decimal amount, DateOnly? dueDate) =>
-        (FindSavingCategory(savingCategoryId) ?? throw new InvalidOperationException("Saving category not found.")).SetSchedule(rule, amount, dueDate);
-
     /// <summary>Attach a savings bucket to a fund (earmark tag), or clear with null.</summary>
     public void SetSavingFund(Guid savingCategoryId, Guid? fundId) =>
         (FindSavingCategory(savingCategoryId) ?? throw new InvalidOperationException("Saving category not found.")).SetFund(fundId);
 
-    /// <summary>Set or clear a savings bucket's group tag.</summary>
-    public void SetSavingGroup(Guid savingCategoryId, string? group) =>
-        (FindSavingCategory(savingCategoryId) ?? throw new InvalidOperationException("Saving category not found.")).SetGroup(group);
+    /// <summary>Replace a savings bucket's list of future costs (the sinking-fund lines).</summary>
+    public void SetSavingCosts(Guid savingCategoryId, IEnumerable<PlannedCost> costs) =>
+        (FindSavingCategory(savingCategoryId) ?? throw new InvalidOperationException("Saving category not found.")).ReplaceCosts(costs);
 
     /// <summary>Set a savings bucket's pre-existing initial balance (setup-time only; see <see cref="SavingCategory.InitialAmount"/>).</summary>
     public void SetSavingInitialAmount(Guid savingCategoryId, decimal amount) =>
@@ -437,6 +438,12 @@ public sealed class Account : Entity
     public void SetFundSynced(Guid fundId, bool synced) =>
         (FindFund(fundId) ?? throw new InvalidOperationException("Fund not found.")).SetSynced(synced);
 
+    /// <summary>Archive (or restore) a fund — hides it from the pickers and main list while keeping every referencing
+    /// transaction intact (nothing is reassigned or deleted). Unlike <see cref="RemoveFund"/> there is no reference
+    /// blocker; move any remaining balance out first with a transfer if you don't want it stranded on a hidden fund.</summary>
+    public void SetFundArchived(Guid fundId, bool archived) =>
+        (FindFund(fundId) ?? throw new InvalidOperationException("Fund not found.")).SetArchived(archived);
+
     /// <summary>
     /// Why a fund can't be removed, or null when it can. Opening balances are <b>not</b> a hard blocker —
     /// they can be moved to another fund on removal (see <see cref="RemoveFund"/> / <see cref="FundHasOpeningBalance"/>).
@@ -500,17 +507,19 @@ public sealed class Account : Entity
     private static IReadOnlyCollection<Guid> WithDescendants(Guid rootId, IEnumerable<(Guid Id, Guid? ParentId)> nodes)
     {
         var byParent = nodes.ToLookup(n => n.ParentId);
-        var result = new List<Guid>();
+        // Track visited ids: a corrupt snapshot with a cyclic parent chain (A→B→A) would otherwise spin forever.
+        // This walk runs on every render (savings/category rollups), so it must be robust to bad data, not just fast.
+        var visited = new HashSet<Guid>();
         var queue = new Queue<Guid>();
         queue.Enqueue(rootId);
         while (queue.Count > 0)
         {
             var id = queue.Dequeue();
-            result.Add(id);
+            if (!visited.Add(id)) continue;
             foreach (var child in byParent[id])
                 queue.Enqueue(child.Id);
         }
-        return result;
+        return visited;
     }
 
     // --- Periods ----------------------------------------------------------

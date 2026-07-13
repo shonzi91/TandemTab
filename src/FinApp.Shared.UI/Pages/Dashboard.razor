@@ -266,6 +266,7 @@ else
                 <button class="qa" @onclick="OpenAddExpenseTab">🧾 <span>@Loc["Add expense"]</span></button>
                 @if (State.IsPeriodOpen)
                 {
+                    <button class="qa" @onclick="OpenDeposit">💵 <span>@Loc["Contribute"]</span></button>
                     <button class="qa" @onclick="OpenImport">📥 <span>@Loc["Import statement"]</span></button>
                 }
                 @if (HasSavingsBucket)
@@ -441,7 +442,7 @@ else
                                             {
                                                 <button @onclick="() => RowAct(() => OpenTransferFromFund(fid))">🔁 @Loc["Transfer"]</button>
                                             }
-                                            <button @onclick="() => RowAct(() => OpenDepositToFund(fid))">➕ @Loc["Deposit"]</button>
+                                            <button @onclick="() => RowAct(() => OpenDepositToFund(fid))">➕ @Loc["Contribute"]</button>
                                         }
                                         <button class="danger" @onclick="() => RowAct(() => OpenDeleteFund(fid))">🗑️ @Loc["Remove"]</button>
                                     }
@@ -606,7 +607,7 @@ else
                     {
                         <span class="head-actions">
                             <button class="link" title="@Loc["Manage categories"]" @onclick="OpenManageContribCats">🏷️</button>
-                            <button class="link" title="@Loc["Add a deposit"]" @onclick="OpenDeposit">➕ @Loc["Deposit"]</button>
+                            <button class="link" title="@Loc["Add a contribution"]" @onclick="OpenDeposit">➕ @Loc["Contribute"]</button>
                         </span>
                     }
                 </div>
@@ -636,7 +637,7 @@ else
                     }
                     @if (!State.ContributionsThisPeriod.Any())
                     {
-                        <li><em>@Loc["Nothing on the tab yet — add a deposit."]</em></li>
+                        <li><em>@Loc["Nothing on the tab yet — add a contribution."]</em></li>
                     }
                 </ul>
             </section>
@@ -699,6 +700,22 @@ else
                         <div class="ring-label"><span class="ring-muted">@Loc["Add budget"]</span></div>
                     </div>
                 </div>
+                @if (State.ArchivedCategories.Any())
+                {
+                    <button class="link archived-toggle" @onclick="() => _showArchivedCats = !_showArchivedCats">📦 @Loc["Archived"] (@State.ArchivedCategories.Count) @(_showArchivedCats ? "▲" : "▼")</button>
+                    @if (_showArchivedCats)
+                    {
+                        <ul class="list">
+                            @foreach (var c in State.ArchivedCategories)
+                            {
+                                <li class="row-menu-host">
+                                    <span class="row-main"><span class="cat-ico">@State.CategoryIcon(c.Id)</span> @c.Name</span>
+                                    <span class="row-actions"><button class="exp-edit" title="@Loc["Restore"]" @onclick="() => State.RestoreCategory(c.Id)">♻️</button></span>
+                                </li>
+                            }
+                        </ul>
+                    }
+                }
             </section>
 
             <section class="panel">
@@ -746,10 +763,6 @@ else
                             <span class="row-actions">
                                 @if (State.IsPeriodOpen)
                                 {
-                                    @if (e.OnBehalfOfOtherAccount)
-                                    {
-                                        <button class="exp-edit" title="@Loc["Settle onto another account"]" @onclick="() => OpenSettleExpense(e.Id)">🤝</button>
-                                    }
                                     <button class="exp-edit" title="@Loc["Edit expense"]" @onclick="() => OpenEditExpense(e.Id)">✏️</button>
                                     <button class="exp-edit" title="@Loc["Remove expense"]" @onclick="() => OpenDeleteExpense(e.Id)">🗑️</button>
                                 }
@@ -818,46 +831,16 @@ else
             {
                 <section class="panel">
                     <div class="panel-head">
-                        @if (_bankDay is { } bd)
-                        {
-                            <span class="day-nav">
-                                <button class="exp-edit" title="@Loc["Previous day"]" @onclick="() => { if (bd > State.Period.From) _bankDay = bd.AddDays(-1); }" disabled="@(bd <= State.Period.From)">◀</button>
-                                <input type="date" @bind:get="bd" @bind:set="v => _bankDay = ClampToPeriod(v)" min="@State.Period.From.ToString("yyyy-MM-dd")" max="@State.Period.To.ToString("yyyy-MM-dd")" />
-                                <button class="exp-edit" title="@Loc["Next day"]" @onclick="() => { if (bd < State.Period.To) _bankDay = bd.AddDays(1); }" disabled="@(bd >= State.Period.To)">▶</button>
-                            </span>
-                        }
-                        else
-                        {
-                            <h2>💳 @Loc["From your bank"] <span class="bank-group-count">@bankExpenses.Count</span></h2>
-                        }
-                        <span class="view-toggle">
-                            <button class="view-btn @(_bankDay is null ? "active" : "")" title="@Loc["List"]" @onclick="() => _bankDay = null">☰</button>
-                            <button class="view-btn @(_bankDay is not null ? "active" : "")" title="@Loc["By day"]" @onclick="() => _bankDay = ClampToPeriod(DateOnly.FromDateTime(DateTime.Today))">📆</button>
-                        </span>
+                        <h2>💳 @Loc["From your bank"] <span class="bank-group-count">@bankExpenses.Count</span></h2>
                     </div>
                     @if (!State.HasSyncedFund)
                     {
                         <div class="alert warn-bg"><span>@Loc["Mark a fund as synced to this bank (a fund → Edit) so imports file automatically."]</span></div>
                     }
-                    @if (_bankDay is { } dd)
+                    @foreach (var grp in bankExpenses.GroupBy(t => t.Date).OrderByDescending(g => g.Key))
                     {
-                        var list = bankExpenses.Where(t => t.Date == dd).ToList();
-                        @if (list.Count == 0)
-                        {
-                            <p class="hint">@Loc["No imported expenses on this day."]</p>
-                        }
-                        else
-                        {
-                            <ul class="list bank-pending">@foreach (var t in list) { @BankTxRow(t) }</ul>
-                        }
-                    }
-                    else
-                    {
-                        @foreach (var grp in bankExpenses.GroupBy(t => t.Date).OrderByDescending(g => g.Key))
-                        {
-                            <button class="date-sep" @onclick="() => _bankDay = grp.Key">@grp.Key.ToString("dddd, dd MMM yyyy")</button>
-                            <ul class="list bank-pending">@foreach (var t in grp) { @BankTxRow(t) }</ul>
-                        }
+                        <div class="date-sep">@grp.Key.ToString("dddd, dd MMM yyyy")</div>
+                        <ul class="list bank-pending">@foreach (var t in grp) { @BankTxRow(t) }</ul>
                     }
                     @if (_bankError is not null)
                     {
@@ -900,7 +883,7 @@ else
                         var debtOwed = isDebt ? State.SavingBucketDebtBalance(bucketId) : 0m;
                         var debtPct = isDebt ? (debtOwed > 0m ? (double)(ctx.Total.Amount / debtOwed) * 100.0 : 100.0) : 0.0;
                         var ringPct = isDebt ? debtPct : (g is null ? 0 : pct);
-                        var ringCls = isDebt ? "debt" : cls;
+                        var ringCls = isInvestment ? "invest" : isDebt ? "debt" : cls;
                         var ringDashed = !isDebt && g is null;
                         // Lifecycle: a debt with nothing left owed, or a goal that's been reached, is "done".
                         var done = isDebt ? ctx.Bucket.IsDebtCleared : (g is not null && g.GoalReached);
@@ -985,39 +968,12 @@ else
                         {
                             <span class="amt save">@Fmt(ctx.Total)</span> <span class="ring-muted">/ @Fmt(g.Goal!.Value)</span>
                         }
-                        @if (!isDebt && !isInvestment && State.IsPeriodOpen && State.SuggestedSetAside(bucketId) is { } sug && sug > 0m)
-                        {
-                            <div class="ring-sub setaside-nudge">📅 @string.Format(Loc["Set aside {0} this period"], Fmt(State.Money(sug))) <button class="link" @onclick="() => OpenAddSaving(bucketId, sug)">@Loc["Set aside"]</button></div>
-                        }
                         @if (State.SavingBucketFundId(bucketId) is { } heldFund)
                         {
                             <div class="ring-sub ring-muted">🏦 @Loc["in"] @State.FundName(heldFund)</div>
                         }
                     </div>
                 </div>;
-            }
-            @{
-                var commitments = State.CommitmentGroups();
-            }
-            @if (commitments.Count > 0)
-            {
-                <section class="panel">
-                    <div class="panel-head"><h2>🧷 @Loc["Commitments"]</h2></div>
-                    <p class="hint">@Loc["Buckets, debts and bills you've tagged with the same word, totalled — what each costs per period and what's left to clear."]</p>
-                    <div class="commit-grid">
-                        @foreach (var cg in commitments)
-                        {
-                            <div class="commit-card">
-                                <div class="commit-name">@cg.Name <span class="commit-count">@cg.ItemCount</span></div>
-                                <div class="commit-metrics">
-                                    <div><span class="commit-v">@Fmt(State.Money(cg.Monthly))</span> <span class="commit-k">@Loc["/period"]</span></div>
-                                    <div><span class="commit-v">@Fmt(State.Money(cg.Remaining))</span> <span class="commit-k">@Loc["to clear"]</span></div>
-                                    <div><span class="commit-v">@Fmt(State.Money(cg.SetAside))</span> <span class="commit-k">@Loc["set aside"]</span></div>
-                                </div>
-                            </div>
-                        }
-                    </div>
-                </section>
             }
             <section class="panel">
                 <div class="panel-head"><h2>💳 @Loc["Debts"]</h2></div>
@@ -1558,10 +1514,6 @@ else
                         </select>
                     </label>
                     <label>@Loc["Note (optional)"] <input type="text" @bind="_note" /></label>
-                    @if (State.TransferableAccounts.Any())
-                    {
-                        <label class="check"><input type="checkbox" @bind="_onBehalfOther" /> @Loc["On behalf of another account (settle later)"]</label>
-                    }
                     <div class="modal-actions">
                         <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
                         <button @onclick="AddExpenseFromModal" disabled="@(_amount <= 0)">@Loc["Add"]</button>
@@ -1631,14 +1583,23 @@ else
                     </label>
                     <label>@Loc["Amount"] <input type="number" step="0.01" min="0" @bind="_amount" /></label>
                     <label>@Loc["Date"] <input type="date" @bind="_expenseDate" /></label>
-                    <label>@Loc["Fund"]
-                        <select @bind="_fundId">
-                            @foreach (var f in State.SelectableFunds)
-                            {
-                                <option value="@f.Id">@f.Name</option>
-                            }
-                        </select>
-                    </label>
+                    @if (State.FindExpense(_editExpenseId) is { FundSynced: true })
+                    {
+                        // A bank-synced expense lives in the synced fund (its balance mirrors the real account) — its
+                        // fund can't be reassigned without breaking that mirror, so show it read-only.
+                        <label>@Loc["Fund"] <input type="text" value="@State.FundName(_fundId) 🏦" disabled /></label>
+                    }
+                    else
+                    {
+                        <label>@Loc["Fund"]
+                            <select @bind="_fundId">
+                                @foreach (var f in State.SelectableFunds)
+                                {
+                                    <option value="@f.Id">@f.Name</option>
+                                }
+                            </select>
+                        </label>
+                    }
                     <label>@Loc["Note (optional)"] <input type="text" @bind="_note" /></label>
                     @if (State.FindExpense(_editExpenseId) is { AutoFiled: true } editExp)
                     {
@@ -1651,6 +1612,10 @@ else
                         {
                             <p class="hint">🏦 @Loc["Filed automatically from your bank."]</p>
                         }
+                    }
+                    @if (State.FindExpense(_editExpenseId) is { IsSettlementDestination: false } && State.TransferableAccounts.Any())
+                    {
+                        <button type="button" class="link settle-link" @onclick="() => OpenSettleExpense(_editExpenseId)">🤝 @(State.FindExpense(_editExpenseId)!.IsSettlementSource ? Loc["Edit settlement onto another account"] : Loc["Settle part onto another account"])</button>
                     }
                     <div class="modal-actions">
                         <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
@@ -1758,21 +1723,6 @@ else
                         <label>@Loc["Goal amount (optional)"] <input type="number" step="0.01" min="0" @bind="_goalAmount" /></label>
                         <label>@Loc["Alert at %"] <input type="number" step="1" min="0" max="100" @bind="_fThreshold" /></label>
                         <label class="check"><input type="checkbox" @bind="_fNotify" /> @Loc["Notify on milestone"]</label>
-                        <label>@Loc["Auto set-aside"] @infoTip(("plan-setaside", Loc["Have the app suggest how much to put aside from a fund each period toward this bucket. It only suggests — you tap to actually set it aside."]))</label>
-                        <div class="plan-toggle" role="group">
-                            <button type="button" class="chip @(_setAsideRule == SetAsideRule.None ? "on" : "")" @onclick="() => _setAsideRule = SetAsideRule.None">@Loc["Off"]</button>
-                            <button type="button" class="chip @(_setAsideRule == SetAsideRule.Installment ? "on" : "")" @onclick="() => SetScheduleRule(SetAsideRule.Installment)">@Loc["Fixed /period"]</button>
-                            <button type="button" class="chip @(_setAsideRule == SetAsideRule.SplitEvenly ? "on" : "")" @onclick="() => SetScheduleRule(SetAsideRule.SplitEvenly)">@Loc["Split to a date"]</button>
-                        </div>
-                        @if (_setAsideRule == SetAsideRule.Installment)
-                        {
-                            <label>@Loc["Set aside /period"] <input type="number" step="10" min="0" @bind="_setAsideAmount" /></label>
-                        }
-                        else if (_setAsideRule == SetAsideRule.SplitEvenly)
-                        {
-                            <label>@Loc["Fund it by"] <input type="date" @bind="_setAsideDueDate" /></label>
-                            <small class="hint">@Loc["We'll suggest the goal's remaining amount split evenly across the periods until this date."]</small>
-                        }
                     }
                     <label>@Loc["Planned contribution /period (optional)"] <input type="number" step="10" min="0" @bind="_fPlanned" /></label>
                     <small class="hint">@(_bucketKind switch {
@@ -1789,11 +1739,6 @@ else
                         </select>
                     </label>
                     <small class="hint">@Loc["Which fund this bucket's money sits in. It moves no money — it just labels the bucket and picks the fund by default when you pay from it."]</small>
-                    <label>@Loc["Group (optional)"] <input type="text" list="bucket-groups" placeholder="@Loc["e.g. Car"]" @bind="_bucketGroup" /></label>
-                    <datalist id="bucket-groups">
-                        @foreach (var cg in State.CommitmentGroups()) { <option value="@cg.Name" /> }
-                    </datalist>
-                    <small class="hint">@Loc["Tag related buckets, debts and bills with the same word (e.g. \"Car\") to see their combined monthly cost and remaining total."]</small>
                     @if (State.CanSetInitialSavings)
                     {
                         <label>@Loc["Already saved (starting balance)"] <input type="number" step="0.01" min="0" @bind="_initialSavings" /></label>
@@ -1895,7 +1840,7 @@ else
                     break;
 
                 case Modal.Deposit:
-                    <h3>@Loc["Add a deposit"]</h3>
+                    <h3>@Loc["Contribute"]</h3>
                     <label><span class="lbl-row">@Loc["Category"] <button type="button" class="lbl-add" title="@Loc["New contribution category"]" @onclick="DepositAddCategory">+</button></span>
                         <select @bind="_depCategoryId">
                             @foreach (var cc in State.ContributionCategories)
@@ -1916,7 +1861,7 @@ else
                     <label>@Loc["Date"] <input type="date" @bind="_depDate" min="@State.Period.From.ToString("yyyy-MM-dd")" max="@State.Period.To.ToString("yyyy-MM-dd")" /></label>
                     <div class="modal-actions">
                         <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
-                        <button @onclick="RecordDeposit" disabled="@(_depAmount <= 0)">@Loc["Deposit"]</button>
+                        <button @onclick="RecordDeposit" disabled="@(_depAmount <= 0)">@Loc["Contribute"]</button>
                     </div>
                     break;
 
@@ -2062,8 +2007,6 @@ else
                     {
                         <label class="check"><input type="checkbox" @bind="_recAutoPost" /> @Loc["Post automatically when due (don't ask me)"]</label>
                     }
-                    <label>@Loc["Group (optional)"] <input type="text" list="bucket-groups" placeholder="@Loc["e.g. Car"]" @bind="_recGroup" /></label>
-                    <small class="hint">@Loc["Tag this with the same word as a bucket or debt (e.g. \"Car\") to fold it into that commitment's total."]</small>
                     <div class="modal-actions">
                         <button class="ghost" @onclick="() => _modal = Modal.Recurring">@Loc["Cancel"]</button>
                         <button @onclick="SaveRecurring" disabled="@(string.IsNullOrWhiteSpace(_recName))">@Loc["Save"]</button>
@@ -2578,7 +2521,7 @@ else
                     break;
 
                 case Modal.EditDeposit:
-                    <h3>@Loc["Edit deposit"]</h3>
+                    <h3>@Loc["Edit contribution"]</h3>
                     <label>@Loc["Category"]
                         <select @bind="_editContribCategoryId">
                             @foreach (var cc in State.ContributionCategories)
@@ -2604,7 +2547,7 @@ else
                     break;
 
                 case Modal.DeleteDeposit:
-                    <h3>@Loc["Delete deposit?"]</h3>
+                    <h3>@Loc["Delete contribution?"]</h3>
                     <div class="modal-actions">
                         <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
                         <button class="danger-btn" @onclick="ConfirmDeleteDeposit">@Loc["Delete"]</button>
@@ -2781,22 +2724,37 @@ else
 
                 case Modal.EditTransfer:
                     <h3>@Loc["Edit transfer"]</h3>
-                    <label>@Loc["From"]
-                        <select @bind="_editTransferFromId">
-                            @foreach (var f in State.SelectableFunds)
-                            {
-                                <option value="@f.Id">@f.Name</option>
-                            }
-                        </select>
-                    </label>
-                    <label>@Loc["To"]
-                        <select @bind="_editTransferToId">
-                            @foreach (var f in State.SelectableFunds)
-                            {
-                                <option value="@f.Id">@f.Name</option>
-                            }
-                        </select>
-                    </label>
+                    @* A synced (bank) side mirrors the real account — it can't be reassigned, so show it read-only. *@
+                    @if (State.FindFundTransfer(_editTransferId) is { FromSynced: true })
+                    {
+                        <label>@Loc["From"] <input type="text" value="@State.FundName(_editTransferFromId) 🏦" disabled /></label>
+                    }
+                    else
+                    {
+                        <label>@Loc["From"]
+                            <select @bind="_editTransferFromId">
+                                @foreach (var f in State.SelectableFunds)
+                                {
+                                    <option value="@f.Id">@f.Name</option>
+                                }
+                            </select>
+                        </label>
+                    }
+                    @if (State.FindFundTransfer(_editTransferId) is { ToSynced: true })
+                    {
+                        <label>@Loc["To"] <input type="text" value="@State.FundName(_editTransferToId) 🏦" disabled /></label>
+                    }
+                    else
+                    {
+                        <label>@Loc["To"]
+                            <select @bind="_editTransferToId">
+                                @foreach (var f in State.SelectableFunds)
+                                {
+                                    <option value="@f.Id">@f.Name</option>
+                                }
+                            </select>
+                        </label>
+                    }
                     <label>@Loc["Amount"] <input type="number" step="0.01" min="0" @bind="_editTransferAmount" /></label>
                     <label>@Loc["Note (optional)"] <input type="text" @bind="_editTransferNote" /></label>
                     @if (State.FindFundTransfer(_editTransferId) is { AutoFiled: true } autoTr)
@@ -2928,8 +2886,13 @@ else
                 {
                     <button @onclick="() => BudgetAct(() => OpenAddSub(catId))">➕ @Loc["Add sub-category"]</button>
                 }
+                <button class="danger" @onclick="() => ArchiveCat(catId)">📦 @Loc["Archive"]</button>
             </div>
         </text>;
+
+    // Archive a category (and its sub-tree) — hides it but keeps every expense/budget in history. No reference blocker,
+    // so it works even when the category is referenced (unlike delete). Mirrors ArchiveBucket.
+    private async Task ArchiveCat(Guid catId) { _budgetMenuId = Guid.Empty; await State.ArchiveCategory(catId); }
     private readonly InsightsService _insights = new();
     private readonly AchievementsService _achievements = new();
 
@@ -2972,7 +2935,6 @@ else
     private decimal _amount;
     private Guid _fundId;
     private string? _note;
-    private bool _onBehalfOther;   // mark a new expense as settle-able onto another account (feature 1)
 
     // Bank sync (Open Banking) — its own tab. Null status = feature off / unreachable (tab hidden).
     private BankSyncStatusDto? _bankStatus;
@@ -2992,7 +2954,6 @@ else
     private Dictionary<string, (string Kind, Guid TargetId)> _bankMappings = new();
     private List<BankAccountDto> _bankAccounts = [];
     private bool _bankAccountsOpen;
-    private DateOnly? _bankDay;   // "From your bank" review: focus a single day
     private readonly Dictionary<string, Guid> _bankRowCat = new();      // debit → category
     private readonly Dictionary<string, Guid> _bankRowFund = new();     // debit → fund
     private readonly Dictionary<string, string> _bankRowCredit = new(); // credit → "fund:guid" | "contributor:guid"
@@ -3115,11 +3076,7 @@ else
     private decimal _invRate, _invTermYears;
     private int _invCompounds = 12;
     private decimal _fPlanned;   // #8: planned per-period contribution (0 = infer pace from history)
-    private SetAsideRule _setAsideRule;              // Plans: how to suggest a per-period set-aside for a common bucket
-    private decimal _setAsideAmount;                 // Installment rule: the fixed amount
-    private DateOnly? _setAsideDueDate;              // SplitEvenly rule: fund it by this date
     private Guid? _bucketFundId;                       // Plans: the fund this bucket is earmarked in (defaults the disburse fund)
-    private string? _bucketGroup;                     // group tag (e.g. "Car") for the commitment rollup
 
     private string? _inviteUsername;
     private Guid _removeMemberId;
@@ -3972,7 +3929,7 @@ else
     private void OpenAddExpenseOn(DateOnly d)
     {
         _categoryId = State.AllCategories.FirstOrDefault()?.Id ?? Guid.Empty;
-        _amount = 0; _note = null; _onBehalfOther = false;
+        _amount = 0; _note = null;
         _expenseDate = ClampToPeriod(d);
         _fundId = State.SelectableFunds.FirstOrDefault()?.Id ?? Guid.Empty;
         _modal = Modal.AddExpense;
@@ -4048,8 +4005,8 @@ else
     private Task AddExpense() => Run(async () =>
     {
         if (_amount <= 0) return;
-        await State.AddExpense(_categoryId, _amount, _fundId, _note, _expenseDate, _onBehalfOther);
-        _amount = 0; _note = null; _onBehalfOther = false;
+        await State.AddExpense(_categoryId, _amount, _fundId, _note, _expenseDate);
+        _amount = 0; _note = null;
         _expenseDate = _dayView ?? DateOnly.FromDateTime(DateTime.Today);
     });
 
@@ -4171,8 +4128,6 @@ else
     {
         _savingBucketId = bucketId; _savingAmount = prefill > 0m ? prefill : 0m; _modal = Modal.AddSaving;
     }
-
-    private void SetScheduleRule(SetAsideRule rule) => _setAsideRule = rule;
 
     private Task AllocateSaving() => RunModal(async () =>
     {
@@ -4598,7 +4553,6 @@ else
     private int _recDay = 1;
     private Guid _recCategoryId, _recFundId;
     private bool _recAutoPost;
-    private string? _recGroup;   // Plans: group tag for the commitment rollup
     private Guid _recConfirmId;
     private decimal _recConfirmAmount;
     // Recurring items auto-posted this session — shown once in the bell so the money move isn't silent.
@@ -4609,7 +4563,7 @@ else
     private void OpenAddRecurring()
     {
         _recEditId = Guid.Empty; _recName = ""; _recIcon = null; _recKind = RecurringKind.Expense;
-        _recMode = RecurringAmountMode.Fixed; _recAmount = 0; _recDay = 1; _recAutoPost = false; _recGroup = null;
+        _recMode = RecurringAmountMode.Fixed; _recAmount = 0; _recDay = 1; _recAutoPost = false;
         _recFundId = State.SelectableFunds.FirstOrDefault()?.Id ?? State.RootFunds.FirstOrDefault()?.Id ?? Guid.Empty;
         ResetRecurringCategory();
         _modal = Modal.RecurringEdit;
@@ -4619,7 +4573,7 @@ else
     {
         if (State.RecurringItems.FirstOrDefault(r => r.Id == id) is not { } r) return;
         _recEditId = r.Id; _recName = r.Name; _recIcon = r.Icon; _recKind = r.Kind; _recMode = r.AmountMode;
-        _recAmount = r.ExpectedAmount; _recDay = r.DayOfMonth; _recCategoryId = r.CategoryId; _recFundId = r.FundId; _recAutoPost = r.AutoPost; _recGroup = r.Group;
+        _recAmount = r.ExpectedAmount; _recDay = r.DayOfMonth; _recCategoryId = r.CategoryId; _recFundId = r.FundId; _recAutoPost = r.AutoPost;
         _modal = Modal.RecurringEdit;
     }
 
@@ -4633,11 +4587,10 @@ else
     private Task SaveRecurring() => RunModal(async () =>
     {
         if (string.IsNullOrWhiteSpace(_recName) || _recCategoryId == Guid.Empty || _recFundId == Guid.Empty) return;
-        var recGroup = string.IsNullOrWhiteSpace(_recGroup) ? null : _recGroup!.Trim();
         if (_recEditId == Guid.Empty)
-            await State.AddRecurring(_recName, _recKind, _recMode, _recAmount, _recDay, _recCategoryId, _recFundId, _recIcon, _recAutoPost, recGroup);
+            await State.AddRecurring(_recName, _recKind, _recMode, _recAmount, _recDay, _recCategoryId, _recFundId, _recIcon, _recAutoPost);
         else
-            await State.UpdateRecurring(_recEditId, _recName, _recMode, _recAmount, _recDay, _recCategoryId, _recFundId, _recIcon, _recAutoPost, recGroup);
+            await State.UpdateRecurring(_recEditId, _recName, _recMode, _recAmount, _recDay, _recCategoryId, _recFundId, _recIcon, _recAutoPost);
         _modal = Modal.Recurring;
     });
 
@@ -4970,7 +4923,7 @@ else
 
     private void OpenAddExpense(Guid categoryId)
     {
-        _categoryId = categoryId; _amount = 0; _note = null; _onBehalfOther = false;
+        _categoryId = categoryId; _amount = 0; _note = null;
         _expenseDate = _dayView ?? DateOnly.FromDateTime(DateTime.Today);
         _fundId = DefaultFundForCategory(categoryId); _modal = Modal.AddExpense;
     }
@@ -4993,7 +4946,6 @@ else
         _categoryId = e.CategoryId;
         _amount = e.Amount.Amount;
         _note = e.Note;
-        _onBehalfOther = false;
         _expenseDate = _dayView ?? ClampToPeriod(DateOnly.FromDateTime(DateTime.Today));
         _fundId = State.SelectableFunds.Any(f => f.Id == e.FundId) ? e.FundId : DefaultFundForCategory(e.CategoryId);
         _modal = Modal.AddExpense;
@@ -5015,7 +4967,7 @@ else
     private Task AddExpenseFromModal() => RunModal(async () =>
     {
         if (_amount <= 0) return;
-        await State.AddExpense(_categoryId, _amount, _fundId, _note, _expenseDate, _onBehalfOther);
+        await State.AddExpense(_categoryId, _amount, _fundId, _note, _expenseDate);
         _dayView = ClampToPeriod(_expenseDate); // keep the Expenses tab on the day just used (feature 6)
         CloseModal();
     });
@@ -5110,7 +5062,7 @@ else
         _modalBucketId = Guid.Empty; _fName = null; _fIcon = null; _goalAmount = 0; _fThreshold = 80; _fNotify = false; _initialSavings = 0;
         _bucketKind = kind; _debtBalance = 0; _debtRate = 0; _debtInstallment = 0; _fPlanned = 0;
         _invRate = 0; _invTermYears = 0; _invCompounds = 12;
-        _setAsideRule = SetAsideRule.None; _setAsideAmount = 0; _setAsideDueDate = null; _bucketFundId = null; _bucketGroup = null;
+        _bucketFundId = null;
         _modal = Modal.AddBucket;
     }
 
@@ -5132,11 +5084,7 @@ else
         _invTermYears = b?.InvestmentTermYears ?? 0;
         _invCompounds = b?.InvestmentCompoundsPerYear ?? 12;
         _fPlanned = b?.PlannedContribution ?? 0;
-        _setAsideRule = State.SavingBucketRule(bucketId);
-        _setAsideAmount = State.SavingBucketSetAsideAmount(bucketId);
-        _setAsideDueDate = State.SavingBucketDueDate(bucketId);
         _bucketFundId = State.SavingBucketFundId(bucketId);
-        _bucketGroup = State.SavingBucketGroup(bucketId);
         _modal = Modal.EditBucket;
     }
 
@@ -5147,17 +5095,15 @@ else
         decimal? planned = _fPlanned > 0 ? _fPlanned : null;
         var isDebt = _bucketKind == SavingKind.Debt;
         var isInv = _bucketKind == SavingKind.Investment;
-        // Schedule only applies to a plain savings bucket (debt/investment carry their own projection figures).
-        var rule = (isDebt || isInv) ? SetAsideRule.None : _setAsideRule;
-        var group = string.IsNullOrWhiteSpace(_bucketGroup) ? null : _bucketGroup!.Trim();
         if (_modal == Modal.AddBucket)
-            await State.AddSavingBucket(_fName!, goal, _fThreshold, _fNotify, _initialSavings, _fIcon, isDebt, _debtBalance, _debtRate, _debtInstallment, planned, isInv, _invRate, _invTermYears, _invCompounds, rule, _setAsideAmount, _setAsideDueDate, _bucketFundId, group);
+            await State.AddSavingBucket(_fName!, goal, _fThreshold, _fNotify, _initialSavings, _fIcon, isDebt, _debtBalance, _debtRate, _debtInstallment, planned, isInv, _invRate, _invTermYears, _invCompounds, _bucketFundId);
         else
-            await State.SaveSavingBucket(_modalBucketId, _fName!, goal, _fThreshold, _fNotify, _initialSavings, _fIcon, isDebt, _debtBalance, _debtRate, _debtInstallment, planned, isInv, _invRate, _invTermYears, _invCompounds, rule, _setAsideAmount, _setAsideDueDate, _bucketFundId, group);
+            await State.SaveSavingBucket(_modalBucketId, _fName!, goal, _fThreshold, _fNotify, _initialSavings, _fIcon, isDebt, _debtBalance, _debtRate, _debtInstallment, planned, isInv, _invRate, _invTermYears, _invCompounds, _bucketFundId);
         CloseModal();
     });
 
     private bool _showArchived;   // Debt/Savings tab: reveal the archived-buckets list
+    private bool _showArchivedCats;   // Spending tab: reveal the archived-categories list
 
     private async Task ArchiveBucket(Guid bucketId)
     {

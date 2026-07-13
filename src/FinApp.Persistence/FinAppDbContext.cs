@@ -77,6 +77,7 @@ public sealed class FinAppDbContext(DbContextOptions<FinAppDbContext> options) :
             f.Ignore(x => x.IsRoot);
             f.Ignore(x => x.Icon);  // body data — in the snapshot, not a relational column
             f.Ignore(x => x.IsSynced);  // body data — synced-fund flag rides in the snapshot
+            f.Ignore(x => x.IsArchived);  // body data — archived flag rides in the snapshot
         });
 
         b.Entity<User>(u =>
@@ -129,9 +130,10 @@ public sealed class FinAppDbContext(DbContextOptions<FinAppDbContext> options) :
             c.Property(x => x.Name).IsRequired();
             c.Property(x => x.ParentId);
             c.Ignore(x => x.IsRoot);
-            // Icon + IsEssential are body data — ride in the snapshot, not the relational header (no migration).
+            // Icon + IsEssential + IsArchived are body data — ride in the snapshot, not the relational header (no migration).
             c.Ignore(x => x.Icon);
             c.Ignore(x => x.IsEssential);
+            c.Ignore(x => x.IsArchived);
         });
 
         b.Entity<SavingCategory>(c =>
@@ -163,12 +165,9 @@ public sealed class FinAppDbContext(DbContextOptions<FinAppDbContext> options) :
             c.Ignore(x => x.InvestmentAnnualRatePercent);
             c.Ignore(x => x.InvestmentTermYears);
             c.Ignore(x => x.InvestmentCompoundsPerYear);
-            c.Ignore(x => x.Rule);
-            c.Ignore(x => x.SetAsideAmount);
-            c.Ignore(x => x.SetAsideDueDate);
             c.Ignore(x => x.FundId);
-            c.Ignore(x => x.HasSchedule);
-            c.Ignore(x => x.Group);
+            c.Ignore(x => x.Costs);
+            c.Ignore(x => x.HasCosts);
         });
 
         b.Entity<Period>(p =>

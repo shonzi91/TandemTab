@@ -257,24 +257,43 @@ public class SnapshotSerializerTests
     }
 
     [Fact]
-    public void Set_aside_schedule_and_group_round_trip()
+    public void Expenses_fund_cost_list_round_trips()
     {
         var account = new Account("Home", "EUR");
         account.AssignOwner(Guid.NewGuid(), "Me");
         var fund = account.AddFund("Main");
-        var car = account.AddSavingCategory("New car");
-        account.ConfigureSavingGoal(car.Id, 8_000m);
-        account.SetSavingSchedule(car.Id, SetAsideRule.SplitEvenly, 0m, new DateOnly(2027, 1, 1));
+        var car = account.AddSavingCategory("Car");
         account.SetSavingFund(car.Id, fund.Id);
-        account.SetSavingGroup(car.Id, "Car");
+        account.SetSavingCosts(car.Id, new[]
+        {
+            new PlannedCost("Insurance", 400m, CostCadence.Yearly),
+            new PlannedCost("Road tax", 180m, CostCadence.Yearly),
+            new PlannedCost("Residual", 3_000m, CostCadence.OneOff, new DateOnly(2027, 6, 1)),
+        });
 
         var copy = AccountSnapshotSerializer.Deserialize(AccountSnapshotSerializer.Serialize(account));
 
-        var copied = copy.SavingCategories.Single(s => s.Name == "New car");
-        Assert.Equal(SetAsideRule.SplitEvenly, copied.Rule);
-        Assert.Equal(new DateOnly(2027, 1, 1), copied.SetAsideDueDate);
+        var copied = copy.SavingCategories.Single(s => s.Name == "Car");
         Assert.Equal(fund.Id, copied.FundId);
-        Assert.Equal("Car", copied.Group);
+        Assert.Equal(3, copied.Costs.Count);
+        Assert.Equal(new PlannedCost("Residual", 3_000m, CostCadence.OneOff, new DateOnly(2027, 6, 1)),
+            copied.Costs.Single(c => c.Label == "Residual"));
+    }
+
+    [Fact]
+    public void Archived_fund_round_trips_and_keeps_its_history()
+    {
+        var account = new Account("Home", "EUR");
+        account.AssignOwner(Guid.NewGuid(), "Me");
+        var bank = account.AddFund("Bank");
+        var oldCard = account.AddFund("Old card");
+        account.SetFundArchived(oldCard.Id, true);
+
+        var copy = AccountSnapshotSerializer.Deserialize(AccountSnapshotSerializer.Serialize(account));
+
+        Assert.True(copy.FindFund(oldCard.Id)!.IsArchived);
+        Assert.False(copy.FindFund(bank.Id)!.IsArchived);
+        Assert.Equal("Old card", copy.FundName(oldCard.Id));   // archived funds still resolve by name for history
     }
 
     [Fact]

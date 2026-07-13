@@ -25,6 +25,11 @@ public sealed class Category : Entity
     /// </summary>
     public bool IsEssential { get; private set; }
 
+    /// <summary>Archived categories are hidden from the pickers and budget/expense lists but keep all their history —
+    /// past expenses and budgets still resolve their name. A category is archived (not hard-deleted) so referencing
+    /// expenses are never orphaned. Body data: travels in the snapshot, not the relational header.</summary>
+    public bool IsArchived { get; private set; }
+
     public Category(string name, Guid? parentId = null)
     {
         if (string.IsNullOrWhiteSpace(name))
@@ -47,4 +52,7 @@ public sealed class Category : Entity
 
     /// <summary>Mark this category as an essential (or discretionary) spend.</summary>
     public void SetEssential(bool essential) => IsEssential = essential;
+
+    /// <summary>Hide/show this category in the pickers and lists (its history is kept regardless).</summary>
+    public void SetArchived(bool archived) => IsArchived = archived;
 }

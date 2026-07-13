@@ -71,10 +71,12 @@ commit noted.
     the Dashboard + `BudgetingState`; covered by `ReallocationAndCapTests` (5).
 
 **Backlog status:** P0–P3 all cleared. Post-backlog items shipped since: **debt-lifecycle Phase 3**
-(found already shipped) and **Plans** — an optional set-aside schedule on a savings bucket (fixed
-installment or split-evenly-to-a-date, suggest-only) plus a **Group** tag that rolls a bucket + its
-recurring costs + a debt into a compact 🧷 Commitments total-cost strip. This replaced a short-lived
-"PlannedExpense" kind, which was reverted for adding an overwhelming extra section (kind = wrong axis).
+(found already shipped) and **Plans → "expenses fund"** — a savings bucket carries a short list of
+expected future costs (`PlannedCost`: label + amount + cadence `OneOff/Monthly/Quarterly/Yearly` + an
+optional due-date for one-offs) and shows the flat **monthly set-aside** to cover them (a sinking fund:
+recurring costs annualise, a dated one-off spreads across the months until due). This **replaced** the
+short-lived **set-aside schedule + `Group`/🧷 Commitments** design (too complex, didn't fit the car-lease
+example — Session 25), which had itself replaced a reverted "PlannedExpense" kind (kind = wrong axis).
 Remaining un-backlogged: **multiple synced funds**, **predictive budgeting**, **bind-bucket-to-fund**,
 push notifications (now a mobile native win). **Mobile is going full native — see
 [docs/MOBILE.md](docs/MOBILE.md)** (deferred behind a verify + pre-mobile-changes pass).

@@ -49,13 +49,6 @@ public sealed class RecurringItem : Entity
     /// "due" once per period. Null until first handled.</summary>
     public DateOnly? LastHandledPeriodFrom { get; private set; }
 
-    /// <summary>Optional free-text group tag (e.g. "Car") that rolls this item up with related savings buckets and
-    /// debts into a single total-cost view. Body data.</summary>
-    public string? Group { get; private set; }
-
-    /// <summary>Set or clear the free-text group tag. Blank clears it.</summary>
-    public void SetGroup(string? group) => Group = string.IsNullOrWhiteSpace(group) ? null : group.Trim();
-
     public RecurringItem(string name, RecurringKind kind, RecurringAmountMode amountMode, decimal expectedAmount,
         int dayOfMonth, Guid categoryId, Guid fundId, string? icon = null, bool autoPost = false)
     {

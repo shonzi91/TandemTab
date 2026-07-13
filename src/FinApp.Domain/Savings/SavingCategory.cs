@@ -11,11 +11,6 @@ namespace FinApp.Domain.Savings;
 /// and so restore as a <see cref="Common"/> bucket (keeping their goal) — then re-save as Common. Don't reuse value 3.</remarks>
 public enum SavingKind { Common = 0, Debt = 1, Investment = 2 }
 
-/// <summary>How a bucket's per-period set-aside is suggested. <see cref="None"/> = no schedule; <see cref="Installment"/>
-/// = a fixed amount each period; <see cref="SplitEvenly"/> = what's left to the goal divided across the periods left
-/// until the due date, so it lands funded on time. Suggestion only — it never moves money by itself.</summary>
-public enum SetAsideRule { None = 0, Installment = 1, SplitEvenly = 2 }
-
 /// <summary>
 /// A savings bucket (Kids, Vacations, Loan principal...). Like budget categories these form a tree
 /// via <see cref="ParentId"/> and are stored flat on the <c>Account</c>. Savings accumulate across
@@ -56,25 +51,18 @@ public sealed class SavingCategory : Entity
     public bool IsDebt => Kind == SavingKind.Debt;
     public bool IsInvestment => Kind == SavingKind.Investment;
 
-    /// <summary>Optional set-aside schedule — a "plan" to fund this bucket toward its goal. Body data. Suggestion only:
-    /// the app proposes an amount each period (see <c>SetAsidePlanner</c>); nothing is reserved automatically.</summary>
-    public SetAsideRule Rule { get; private set; } = SetAsideRule.None;
-
-    /// <summary><see cref="SetAsideRule.Installment"/>: the fixed amount to set aside each period. 0 otherwise.</summary>
-    public decimal SetAsideAmount { get; private set; }
-
-    /// <summary><see cref="SetAsideRule.SplitEvenly"/>: fund the goal by this date (drives the per-period split).</summary>
-    public DateOnly? SetAsideDueDate { get; private set; }
-
     /// <summary>The fund this bucket's money is earmarked in ("held in"). A tag only — no money physically moves; it
     /// defaults the disburse/payment fund and shows where the bucket's money lives. Optional. Body data.</summary>
     public Guid? FundId { get; private set; }
 
-    public bool HasSchedule => Rule != SetAsideRule.None;
+    private readonly List<PlannedCost> _costs = new();
 
-    /// <summary>Optional free-text group tag (e.g. "Car") that rolls this bucket up with related recurring items and
-    /// debts into a single total-cost view. Body data.</summary>
-    public string? Group { get; private set; }
+    /// <summary>The future costs this bucket is a sinking fund for (insurance, tax, a one-off residual...). Each has an
+    /// amount and a cadence; together they give the average per-period set-aside (<see cref="MonthlySetAside"/>). Body
+    /// data — planning overlay only, never moves money.</summary>
+    public IReadOnlyList<PlannedCost> Costs => _costs;
+
+    public bool HasCosts => _costs.Count > 0;
 
     /// <summary>Debt buckets: how much of the original balance has been paid off (never negative). Zero for common buckets.</summary>
     public decimal DebtPaidOff => IsDebt ? Math.Max(0m, DebtOriginalBalance - DebtBalance) : 0m;
@@ -206,24 +194,19 @@ public sealed class SavingCategory : Entity
         InvestmentCompoundsPerYear = 12;
     }
 
-    /// <summary>Set (or with <see cref="SetAsideRule.None"/> clear) this bucket's set-aside schedule. Only the fields
-    /// relevant to the rule are kept — a fixed amount for <see cref="SetAsideRule.Installment"/>, a due date for
-    /// <see cref="SetAsideRule.SplitEvenly"/>.</summary>
-    public void SetSchedule(SetAsideRule rule, decimal amount, DateOnly? dueDate)
-    {
-        if (amount < 0m) throw new ArgumentException("Set-aside amount cannot be negative.", nameof(amount));
-        Rule = rule;
-        SetAsideAmount = rule == SetAsideRule.Installment ? amount : 0m;
-        SetAsideDueDate = rule == SetAsideRule.SplitEvenly ? dueDate : null;
-    }
-
-    public void ClearSchedule() => SetSchedule(SetAsideRule.None, 0m, null);
-
     /// <summary>Attach this bucket to a fund (an earmark tag — no money moves), or clear with null/empty.</summary>
     public void SetFund(Guid? fundId) => FundId = fundId is { } f && f != Guid.Empty ? f : null;
 
-    /// <summary>Set or clear the free-text group tag. Blank clears it.</summary>
-    public void SetGroup(string? group) => Group = string.IsNullOrWhiteSpace(group) ? null : group.Trim();
+    /// <summary>Replace this bucket's list of future costs (the sinking-fund lines). Blank-labelled lines are dropped.</summary>
+    public void ReplaceCosts(IEnumerable<PlannedCost> costs)
+    {
+        _costs.Clear();
+        _costs.AddRange(costs.Where(c => !string.IsNullOrWhiteSpace(c.Label) && c.Amount > 0m));
+    }
+
+    /// <summary>The average amount to set aside per period (month) to cover all this bucket's future costs, as of
+    /// <paramref name="asOf"/>. Recurring costs annualise; a dated one-off spreads across the months until it's due.</summary>
+    public decimal MonthlySetAside(DateOnly asOf) => decimal.Round(_costs.Sum(c => c.MonthlyAmount(asOf)), 2);
 
     /// <summary>Set or clear the user's planned per-period contribution to this bucket. Null or zero clears it (revert
     /// to inferring pace from history). Cannot be negative.</summary>

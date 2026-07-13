@@ -1172,17 +1172,6 @@ html.dark .realloc-effects li { color: #b7d8c9; }
 .ring-label.over-text span { color: #dc2626; }
 
 /* Plans: commitment rollup + set-aside nudge */
-.commit-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
-.commit-card { border: 1px solid #d6f0e3; background: #f4fbf7; border-radius: 12px; padding: 12px 14px; }
-.commit-name { font-weight: 600; color: #0e7c55; display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
-.commit-count { font-size: .7rem; font-weight: 600; color: #0e7c55; background: #d6f0e3; border-radius: 999px; padding: 1px 8px; }
-.commit-metrics { display: flex; justify-content: space-between; gap: 8px; }
-.commit-metrics > div { display: flex; flex-direction: column; }
-.commit-v { font-weight: 700; font-size: .95rem; }
-.commit-k { font-size: .66rem; color: #6b7280; text-transform: uppercase; letter-spacing: .03em; }
 .setaside-nudge { color: #0e7c55; display: flex; align-items: center; justify-content: center; gap: 6px; flex-wrap: wrap; }
 .setaside-nudge .link { font-size: .67rem; }
-html.dark .commit-card { background: #16241d; border-color: #2b4438; }
-html.dark .commit-name, html.dark .commit-count { color: #57d9a3; }
-html.dark .commit-count { background: #22382d; }
 html.dark .setaside-nudge { color: #57d9a3; }

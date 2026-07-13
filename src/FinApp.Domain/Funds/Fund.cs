@@ -31,6 +31,11 @@ public sealed class Fund : Entity
     /// </summary>
     public bool IsSynced { get; private set; }
 
+    /// <summary>Archived funds are hidden from the pickers and the main "where your money is" list but keep all their
+    /// history — past expenses/transfers/contributions still resolve their name. A fund is archived (not hard-deleted)
+    /// so referencing transactions are never orphaned. Body data (in the snapshot, not EF).</summary>
+    public bool IsArchived { get; private set; }
+
     public Fund(string name, Guid? parentId = null)
     {
         if (string.IsNullOrWhiteSpace(name))
@@ -53,4 +58,7 @@ public sealed class Fund : Entity
     public void SetIcon(string? icon) => Icon = string.IsNullOrWhiteSpace(icon) ? null : icon.Trim();
 
     public void SetSynced(bool synced) => IsSynced = synced;
+
+    /// <summary>Hide/show this fund in the pickers and main list (its history is kept regardless).</summary>
+    public void SetArchived(bool archived) => IsArchived = archived;
 }
