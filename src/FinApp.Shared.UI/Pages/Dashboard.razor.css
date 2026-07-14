@@ -63,9 +63,9 @@ html.dark .onboard-desc { color: #a9b6ad; }
 
 .dash-head {
     display: flex;
-    flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
+    gap: 12px;
     margin-bottom: 16px;
 }
 
@@ -78,14 +78,15 @@ html.dark .onboard-desc { color: #a9b6ad; }
 .period-btn:hover { color: #13a06e; background: #e4f6ee; }
 .status {
     background: #e8f5e9; color: #2e7d32; font-size: .75rem;
-    padding: 4px 10px; border-radius: 999px; font-weight: 600;
+    padding: 4px 10px; border-radius: 999px; font-weight: 600; white-space: nowrap;
 }
+/* A closed period is amber, not green — it's paused, not active. */
+.status.status-closed { background: #fff4d6; color: #a16207; }
 
-/* Gradient balance hero (Fresh): only the balance itself is the green→teal glowing card. The "Active" status
-   pill stays outside it, on the page background, so it reads as its own distinct chip. */
-/* The "Current" balance section drops to its own row, aligned to the left edge of the page content
-   (matching the cards below) rather than pinning to the top-right. */
-.head-right { display: flex; flex-direction: column; align-items: flex-start; gap: 9px; flex-basis: 100%; margin-top: 12px; }
+/* Gradient balance hero (Fresh): only the balance itself is the green→teal glowing card. The status pill sits
+   just left of it as its own distinct chip. head-right is a single row, vertically centred against the
+   account/period block on the left so both sections share one line. */
+.head-right { display: flex; flex-direction: row; align-items: center; gap: 10px; }
 .head-right .bal-current {
     background: var(--tt-grad); color: #fff; border-radius: 16px; padding: 13px 18px 15px;
     box-shadow: 0 10px 26px rgba(14,165,165,.32); min-width: 200px; align-items: flex-start;
@@ -177,8 +178,15 @@ html.dark .bal-alloc { color: #5f8c79; }
 .card.savings .card-value { color: var(--tt-tile-mint-fg); }
 .card.tile-spend { background: var(--tt-tile-blue-bg); border-color: transparent; }
 .card.tile-spend .card-label, .card.tile-spend .card-value { color: var(--tt-tile-blue-fg); }
-.card.tile-score { background: var(--tt-tile-amber-bg); border-color: transparent; }
-.card.tile-score .card-label { color: var(--tt-tile-amber-fg); }
+/* Score tile takes its colour from the band, so a good score reads positive (teal), not a warning amber. */
+.card.tile-score-ok { background: #e2f6f1; border-color: transparent; }
+.card.tile-score-ok .card-label { color: #0b8a68; }
+.card.tile-score-warn { background: var(--tt-tile-amber-bg); border-color: transparent; }
+.card.tile-score-warn .card-label { color: var(--tt-tile-amber-fg); }
+.card.tile-score-bad { background: #fdeaea; border-color: transparent; }
+.card.tile-score-bad .card-label { color: #b3261e; }
+.card.tile-score-neutral { background: #eef2f4; border-color: transparent; }
+.card.tile-score-neutral .card-label { color: #64748b; }
 
 .alert {
     background: #fff7ed; border: 1px solid #fed7aa; color: #9a3412;

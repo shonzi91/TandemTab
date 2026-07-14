@@ -144,7 +144,7 @@ else
             </div>
         </div>
         <div class="head-right">
-            <span class="status">@Loc[State.IsPeriodOpen ? "Active" : "Closed"]</span>
+            <span class="status @(State.IsPeriodOpen ? "" : "status-closed")">@Loc[State.IsPeriodOpen ? "Active" : "Closed"]</span>
             <div class="balances">
                 <span class="bal bal-current">
                     <span class="bal-label">@Loc[State.IsPeriodOpen ? "Current" : "Closed on"]</span>
@@ -264,8 +264,9 @@ else
                     <span class="card-sub">@PctOrDash(State.PeriodSavingsRate) @Loc["of contributions"]</span>
                 </div>
                 <div class="card tile-spend"><span class="card-label">@Loc["Spent"]</span><span class="card-value">@Fmt(State.TotalSpent)</span></div>
-                @{ var ovBand = ov.Band switch { HealthBand.Healthy => "score-ok", HealthBand.Average => "score-warn", _ => "score-bad" }; }
-                <button id="home-score" class="card card-score tile-score" @onclick="() => _modal = Modal.HealthScore" title="@Loc["Health score & trends"]">
+                @{ var ovBand = ov.Band switch { HealthBand.Healthy => "score-ok", HealthBand.Average => "score-warn", _ => "score-bad" };
+                   var scoreTile = !ov.HasData ? "tile-score-neutral" : ov.Band switch { HealthBand.Healthy => "tile-score-ok", HealthBand.Average => "tile-score-warn", _ => "tile-score-bad" }; }
+                <button id="home-score" class="card card-score @scoreTile" @onclick="() => _modal = Modal.HealthScore" title="@Loc["Health score & trends"]">
                     <span class="card-label">@Loc["Health score & trends"]</span>
                     <span class="card-value @ovBand">@(ov.HasData ? ov.Score.ToString() : "—")</span>
                     <span class="card-sub">@(ov.HasData ? ov.Verdict : "") ›</span>
