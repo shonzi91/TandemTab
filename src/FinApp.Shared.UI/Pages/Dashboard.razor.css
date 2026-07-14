@@ -484,6 +484,57 @@ html.dark .acct-chip-label { color: #9aa4b2; }
 .ring-sub { font-size: .67rem; color: #9aa0ad; margin-top: 2px; text-align: center; }
 .ring-empty { color: #6b7280; }
 
+/* Funds: a donut (each fund's share of your money) + a legend list with per-fund actions */
+.fund-panel { display: flex; gap: 26px; align-items: center; flex-wrap: wrap; padding-top: 6px; }
+.fund-donut { width: 168px; height: 168px; flex: none; }
+.fund-donut-track { stroke: #edf1ee; }
+.fund-donut-total { font-size: 21px; font-weight: 700; fill: #1f2430; }
+.fund-donut-sub { font-size: 11px; fill: #9aa0ad; }
+.fund-legend { flex: 1; min-width: 240px; display: flex; flex-direction: column; gap: 2px; }
+.fund-row { display: flex; align-items: center; gap: 10px; padding: 7px 6px; border-radius: 9px; position: relative; }
+.fund-row:hover { background: #f5f8f6; }
+.fund-sw { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+.fund-sw.empty { background: transparent; border: 1.5px dashed #ef9f27; }
+.fund-row-name {
+    background: none; border: none; cursor: pointer; font: inherit; font-weight: 600; font-size: .92rem;
+    color: #1f2430; text-align: left; padding: 0; display: flex; align-items: center; gap: 7px; min-width: 0;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.fund-row-name:hover { color: #13a06e; }
+.fund-row-ico { font-size: 1.15rem; line-height: 1; }
+.fund-row-amt { margin-left: auto; font-weight: 700; font-size: .92rem; font-variant-numeric: tabular-nums; color: #1f2430; }
+.fund-row.over .fund-row-amt { color: #dc2626; }
+.fund-row-more { background: none; border: none; cursor: pointer; color: #9aa0ad; font-size: 1.2rem; line-height: 1; padding: 0 2px; flex: none; }
+.fund-row-more:hover { color: #13a06e; }
+.fund-row .row-menu { top: 100%; left: auto; right: 0; margin-left: 0; margin-top: 8px; min-width: 210px; }
+.fund-row .row-menu::before { display: none; }
+.fund-add {
+    align-self: flex-start; margin-top: 6px; background: none; border: 1px solid #d2ded7; border-radius: 9px;
+    color: #13a06e; cursor: pointer; font-size: .84rem; font-weight: 600; padding: 6px 13px;
+}
+.fund-add:hover { border-color: #13a06e; background: #f0fbf6; }
+html.dark .fund-donut-track { stroke: #232a37; }
+html.dark .fund-donut-total { fill: #e8eaf0; }
+html.dark .fund-donut-sub { fill: #8a94a6; }
+html.dark .fund-row:hover { background: #181c25; }
+html.dark .fund-row-name, html.dark .fund-row-amt { color: #e8eaf0; }
+html.dark .fund-add { border-color: #2b3648; }
+
+/* Milestones in progress: ranked thin progress bars (Home) */
+.ms-bars { display: flex; flex-direction: column; gap: 14px; padding-top: 4px; }
+.ms-bar-row { display: flex; gap: 11px; align-items: flex-start; }
+.ms-bar-ico { font-size: 1.35rem; line-height: 1.1; flex: none; }
+.ms-bar-main { flex: 1; min-width: 0; }
+.ms-bar-top { display: flex; align-items: baseline; gap: 8px; }
+.ms-bar-title { font-weight: 700; font-size: .88rem; color: #1f2430; }
+.ms-bar-pct { margin-left: auto; font-weight: 700; font-size: .82rem; color: #d99a00; font-variant-numeric: tabular-nums; }
+.ms-bar-track { height: 7px; border-radius: 999px; background: #edf1ee; margin: 5px 0 3px; overflow: hidden; }
+.ms-bar-fill { height: 100%; border-radius: 999px; background: #f5b301; transition: width .3s; }
+.ms-bar-desc { font-size: .75rem; color: #8a94a6; }
+html.dark .ms-bar-title { color: #e8eaf0; }
+html.dark .ms-bar-track { background: #232a37; }
+html.dark .ms-bar-desc { color: #8a94a6; }
+
 /* Progress-over-time (#7): "paid off X of Y" + shrinking-balance sparkline + months-ahead */
 .debt-progress { margin-top: 4px; display: flex; flex-direction: column; align-items: center; gap: 2px; color: #6366f1; }
 .debt-prog-txt { font-size: .66rem; font-weight: 700; color: #4f46e5; }

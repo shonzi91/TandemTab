@@ -326,18 +326,19 @@ else
                     <div class="ach-head">
                         <h2 class="targets-h">🏆 @Loc["Milestones in progress"]</h2>
                     </div>
-                    <div class="ring-grid ach-ring-grid">
+                    <div class="ms-bars">
                         @foreach (var a in milestones)
                         {
-                            <div class="ring-card">
-                                @AchievementBadge(a)
-                                <div class="ring-label ach-ring-label">
-                                    <span class="ach-ring-title ach-locked-title">@a.Title</span>
-                                    <span class="ach-ring-desc">@a.Desc</span>
-                                    @if (a.Percent is { } pct)
-                                    {
-                                        <span class="ach-ring-sub">@pct%</span>
-                                    }
+                            var pct = a.Percent ?? 0;
+                            <div class="ms-bar-row">
+                                <span class="ms-bar-ico">@a.Icon</span>
+                                <div class="ms-bar-main">
+                                    <div class="ms-bar-top">
+                                        <span class="ms-bar-title">@a.Title</span>
+                                        <span class="ms-bar-pct">@pct%</span>
+                                    </div>
+                                    <div class="ms-bar-track"><div class="ms-bar-fill" style="width:@pct.ToString(System.Globalization.CultureInfo.InvariantCulture)%"></div></div>
+                                    <span class="ms-bar-desc">@a.Desc</span>
                                 </div>
                             </div>
                         }
@@ -395,35 +396,85 @@ else
             <section class="panel">
                 <div class="spending-head">
                     <span class="insight-h">@Loc["Where your money is"]</span>
-                    <span class="spending-sub">@Fmt(State.DisplayClosingBalance(_bankStatus?.Balance, _bankStatus?.BalanceCurrency)) @Loc["across your funds"]</span>
                 </div>
                 @{
-                    var _fundBals = State.RootFunds.ToDictionary(
+                    var funds = State.RootFunds.ToList();
+                    var _fundBals = funds.ToDictionary(
                         f => f.Id,
                         f => State.FundIsSynced(f.Id) ? SyncedFundDisplay(f.Id).Amount : State.FundBalance(f.Id));
-                }
-                <div class="ring-grid">
-                    @foreach (var f in State.RootFunds)
+
+                    // Per-fund colour: the synced fund is gold, an overdrawn one is red, a near-empty one gets a dashed
+                    // (no-slice) swatch, and each remaining fund draws the next colour from a small palette so adjacent
+                    // donut slices stay distinguishable (part-to-whole → categorical colour is the right call here).
+                    var fundColor = new Dictionary<Guid, string>();
+                    int _pi = 0;
+                    foreach (var f in funds)
                     {
-                        var fid = f.Id;
-                        var synced = State.FundIsSynced(fid);
-                        var bal = _fundBals[fid];
-                        var note = State.FundNote(fid);
-                        // A full solid ring, coloured by how much the fund holds: red if overdrawn, amber if empty/near-empty
-                        // (under ~1 unit), otherwise the fund's normal colour (gold for the synced fund, green for the rest).
-                        var fundCls = bal.Amount < 0m ? "over" : bal.Amount < 1m ? "warn" : synced ? "invest" : "mint";
-                        <div class="ring-card ring-card-lg">
-                            <ProgressRing Percent="100" Class="@fundCls">
-                                <button class="ring-ico-big" title="@Loc["Actions"]" @onclick="() => ToggleFundMenu(fid)">@(synced ? "🔗" : State.FundIcon(fid))</button>
-                                <button class="ring-name" title="@(string.IsNullOrEmpty(note) ? Loc["Actions"] : note)" @onclick="() => ToggleFundMenu(fid)">@f.Name</button>
-                            </ProgressRing>
-                            <div class="ring-label"><span class="amt" title="@(synced ? SyncedFundDisplay(fid).Title : "")">@Fmt(bal)</span></div>
-                            @if (_fundMenuId == fid) { @FundCircleMenu(fid) }
-                        </div>
+                        var amt = _fundBals[f.Id].Amount;
+                        if (State.FundIsSynced(f.Id)) fundColor[f.Id] = "#eab308";
+                        else if (amt < 0m) fundColor[f.Id] = "#dc2626";
+                        else if (amt < 1m) fundColor[f.Id] = "";                 // near-empty: dashed swatch, no slice
+                        else fundColor[f.Id] = FundPalette[_pi++ % FundPalette.Length];
                     }
-                    <div class="ring-card ring-card-lg">
-                        <button class="ring-plus" title="@Loc["Add a fund"]" @onclick="OpenAddFund">+</button>
-                        <div class="ring-label"><span class="ring-muted">@Loc["Add a fund"]</span></div>
+
+                    // Donut geometry: each positive fund's arc = its share of the total money. r=70 → circumference ≈ 439.82.
+                    var inv = System.Globalization.CultureInfo.InvariantCulture;
+                    const double C = 439.82;
+                    var totalPos = funds.Sum(f => Math.Max(0m, _fundBals[f.Id].Amount));
+                    var slices = new List<(string Color, string Dash, string Off)>();
+                    double _acc = 0;
+                    foreach (var f in funds)
+                    {
+                        var amt = _fundBals[f.Id].Amount;
+                        if (totalPos <= 0m || amt < 1m) continue;               // only positive funds get a slice
+                        double len = (double)(amt / totalPos) * C;
+                        double vis = Math.Max(0, len - 2);                      // 2px gap between slices
+                        slices.Add((fundColor[f.Id],
+                            $"{vis.ToString("0.##", inv)} {(C - vis).ToString("0.##", inv)}",
+                            (-_acc).ToString("0.##", inv)));
+                        _acc += len;
+                    }
+                    var singleSlice = slices.Count == 1;                        // one fund holds everything → full ring
+                }
+                <div class="fund-panel">
+                    <svg class="fund-donut" viewBox="0 0 180 180" role="img" aria-label="@Loc["Where your money is"]">
+                        <circle cx="90" cy="90" r="70" fill="none" stroke-width="26" class="fund-donut-track" />
+                        <g transform="rotate(-90 90 90)" fill="none" stroke-width="26">
+                            @if (singleSlice)
+                            {
+                                <circle cx="90" cy="90" r="70" stroke="@slices[0].Color" />
+                            }
+                            else
+                            {
+                                @foreach (var s in slices)
+                                {
+                                    <circle cx="90" cy="90" r="70" stroke="@s.Color" stroke-dasharray="@s.Dash" stroke-dashoffset="@s.Off" />
+                                }
+                            }
+                        </g>
+                        <text x="90" y="86" text-anchor="middle" class="fund-donut-total">@Fmt(State.DisplayClosingBalance(_bankStatus?.Balance, _bankStatus?.BalanceCurrency))</text>
+                        <text x="90" y="104" text-anchor="middle" class="fund-donut-sub">@string.Format(Loc["across {0} funds"], funds.Count)</text>
+                    </svg>
+                    <div class="fund-legend">
+                        @foreach (var f in funds)
+                        {
+                            var fid = f.Id;
+                            var synced = State.FundIsSynced(fid);
+                            var bal = _fundBals[fid];
+                            var note = State.FundNote(fid);
+                            var over = bal.Amount < 0m;
+                            var empty = string.IsNullOrEmpty(fundColor[fid]);
+                            <div class="fund-row@(over ? " over" : "")">
+                                <span class="fund-sw@(empty ? " empty" : "")" style="@(empty ? "" : $"background:{fundColor[fid]}")"></span>
+                                <button class="fund-row-name" title="@(string.IsNullOrEmpty(note) ? Loc["Actions"] : note)" @onclick="() => ToggleFundMenu(fid)">
+                                    <span class="fund-row-ico">@(synced ? "🔗" : State.FundIcon(fid))</span> @f.Name
+                                </button>
+                                <span class="fund-row-amt" title="@(synced ? SyncedFundDisplay(fid).Title : "")">@Fmt(bal)</span>
+                                <button class="fund-row-more" title="@Loc["Actions"]" @onclick="() => ToggleFundMenu(fid)">⋯</button>
+                                @if (_fundMenuId == fid) { @FundCircleMenu(fid) }
+                            </div>
+                        }
+                        <button class="fund-add" @onclick="OpenAddFund">＋ @Loc["Add a fund"]</button>
                     </div>
                 </div>
             </section>
@@ -2937,6 +2988,9 @@ else
     private async Task ArchiveCat(Guid catId) { _budgetMenuId = Guid.Empty; await State.ArchiveCategory(catId); }
 
     // --- Funds-as-circles: per-fund bubble menu (mirrors BudgetCircleMenu) --------------------------
+    // Distinguishable colours for fund donut slices / legend swatches (synced=gold, over=red handled separately).
+    private static readonly string[] FundPalette = { "#1d9e75", "#5dcaa5", "#0f6e56", "#37b6a0", "#8fd9c4", "#2a8f6b" };
+
     private Guid _fundMenuId;
     private void ToggleFundMenu(Guid id) => _fundMenuId = _fundMenuId == id ? Guid.Empty : id;
     private void FundAct(Action a) { _fundMenuId = Guid.Empty; a(); }
@@ -4362,8 +4416,8 @@ else
         _modal = Modal.InvestmentProjection;
     }
 
-    private static string MonthsText(int months) =>
-        months <= 0 ? "0mo" : months >= 12 ? $"{months / 12}y {months % 12}mo" : $"{months}mo";
+    private string MonthsText(int months) =>
+        months <= 0 ? $"0{Loc["mo"]}" : months >= 12 ? $"{months / 12}{Loc["y"]} {months % 12}{Loc["mo"]}" : $"{months}{Loc["mo"]}";
 
     /// <summary>A tiny inline SVG polyline of a debt's shrinking balance over time (#7).</summary>
     private static MarkupString DebtSparkline(IReadOnlyList<decimal> pts) => Sparkline(pts, "debt-spark");
