@@ -1,6 +1,11 @@
 # TandemTab (FinApp) — session handoff
 
-Last updated: 2026-07-14 (Session 29). Read this + [README.md](README.md) + [TRANSFER.md](TRANSFER.md) + recent `git log` to catch up.
+Last updated: 2026-07-14 (Session 30). Read this + [README.md](README.md) + [TRANSFER.md](TRANSFER.md) + recent `git log` to catch up.
+
+## Session 30 (2026-07-14) — deeper Fresh theme + move the "Current" balance to a left-aligned row. COMMITTED & DEPLOYED (`finapp-00163-mfz`).
+Two small UI asks (commit `f41eb88`; also carried the previously-undeployed `106820c` gradient-page tuning to prod). Image `finapp:f41eb88` (digest `sha256:35658bab…`), Cloud Build 3m6s, live at https://finapp-85638328674.europe-west1.run.app + tandemtab.com (both 200). Both changes are pure CSS in `app.css` + `Dashboard.razor.css`.
+- **Deeper light theme:** page canvas gradient deepened from `#cfe7e4→#e8ece2` to `#a6d4cd→#b6d3da→#cdd8c4` (`body`, 158deg) so white cards lift clearly; `--tt-card-shadow`/`-hover` opacities bumped for more lift.
+- **"Current" balance to the left:** `.head-right` (the balance hero) now drops to **its own full-width row, left-aligned** with the page content (`flex-basis:100%; align-items:flex-start; margin-top:12px`; `.dash-head` got `flex-wrap:wrap`) instead of pinning top-right. Account/period controls stay on the top row. **NOT browser-verified** — a concurrent chat's dev server tied up the preview infra this session, so verified by clean Release build only; **sanity-check on prod** (the header-alignment reading of "align the current section with the left side" may need a tweak).
 
 ## Session 29 (2026-07-14) — retire planned-contribution, token-based auto-file rules, auto-file dedup hardening, "Fresh" light theme. COMMITTED & DEPLOYED (`finapp-00161-vz4`).
 Four user asks, all in `src/FinApp.Shared.UI` (+ `FinApp.App.Web/wwwroot/css/app.css`) — no server/domain/migration change. Commit `8a611a5`, image `finapp:8a611a5` (Cloud Build 4m23s), live revision **`finapp-00161-vz4`** at https://finapp-85638328674.europe-west1.run.app + tandemtab.com (both 200; Fresh palette confirmed in the deployed app.css).
