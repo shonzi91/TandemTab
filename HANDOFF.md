@@ -1,9 +1,9 @@
 # TandemTab (FinApp) — session handoff
 
-Last updated: 2026-07-13 (Session 27). Read this + [README.md](README.md) + [TRANSFER.md](TRANSFER.md) + recent `git log` to catch up.
+Last updated: 2026-07-14 (Session 27). Read this + [README.md](README.md) + [TRANSFER.md](TRANSFER.md) + recent `git log` to catch up.
 
-## Session 27 (2026-07-13) — Wave 3A: funds-as-circles + fund-archive UI + fund-movements modal + Funds-5/6. Browser-verified. UNCOMMITTED.
-Delivered the **funds half of Wave 3A** (see Session 26's Wave-3 plan). All in `src/FinApp.Shared.UI/Pages/Dashboard.razor` (+ `.razor.css`) — no domain/state/server/migration changes (the fund-archive domain `ArchiveFund`/`RestoreFund`/`ArchivedFunds` shipped in Session 26 was already ready). **Builds green (Shared.UI, 0 warnings). Live-verified end-to-end in a browser with zero console errors** (see verification note). **Not committed, not deployed.**
+## Session 27 (2026-07-13→14) — Wave 3A (funds-as-circles + archive UI + movements + Funds-5/6) + Milestones-1 + a second UX pass + Wave 3B. COMMITTED & DEPLOYED (`finapp-00159-vf6`).
+Delivered the **funds half of Wave 3A** (see Session 26's Wave-3 plan) plus much more (below). Almost all in `src/FinApp.Shared.UI/Pages/Dashboard.razor` (+ `.razor.css`, `ProgressRing.razor.css`) with `AchievementsService.cs` for badge tiers — no state/server/migration changes (the fund-archive domain `ArchiveFund`/`RestoreFund`/`ArchivedFunds` shipped in Session 26 was already ready). **Builds green (0 warnings). Live-verified end-to-end in a browser with zero console errors** (see verification note). **Committed as `8fcb2f2` (+ deploy-record `891dc0c`) and deployed — see the DEPLOYED line below.**
 
 **What shipped:**
 - **Funds as circles** — replaced the "Where your money is" **list** with a `ring-grid` of fund circles + an "Add a fund" `ring-plus` card, mirroring the Spending/Goals pattern. Each ring's **arc = that fund's share of your total money** (a "where it sits" proportion; empty funds render `Dashed`; the synced fund gets the gold `invest` arc + 🔗). Subhead shows `DisplayClosingBalance` "across your funds". New `FundCircleMenu` bubble menu (mirrors `BudgetCircleMenu`) opened by clicking the circle: **📋 Movements · ✏️ Edit · 🔁 Transfer · ➕ Contribute · 📦 Archive** (transfer/contribute/archive hidden on a synced fund; transfer gated by `CanTransfer`/`IsPeriodOpen`). Helpers: `_fundMenuId`, `ToggleFundMenu`, `FundAct`.
