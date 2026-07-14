@@ -65,7 +65,6 @@ html.dark .onboard-desc { color: #a9b6ad; }
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 12px;
     margin-bottom: 16px;
 }
 
@@ -78,28 +77,12 @@ html.dark .onboard-desc { color: #a9b6ad; }
 .period-btn:hover { color: #13a06e; background: #e4f6ee; }
 .status {
     background: #e8f5e9; color: #2e7d32; font-size: .75rem;
-    padding: 4px 10px; border-radius: 999px; font-weight: 600; white-space: nowrap;
+    padding: 4px 10px; border-radius: 999px; font-weight: 600;
 }
 /* A closed period is amber, not green — it's paused, not active. */
 .status.status-closed { background: #fff4d6; color: #a16207; }
 
-/* Gradient balance hero (Fresh): only the balance itself is the green→teal glowing card. The status pill sits
-   just left of it as its own distinct chip. head-right is a single row, vertically centred against the
-   account/period block on the left so both sections share one line. */
-.head-right { display: flex; flex-direction: row; align-items: center; gap: 10px; }
-.head-right .bal-current {
-    background: var(--tt-grad); color: #fff; border-radius: 16px; padding: 13px 18px 15px;
-    box-shadow: 0 10px 26px rgba(14,165,165,.32); min-width: 200px; align-items: flex-start;
-}
-.head-right .bal-current .bal-label { color: rgba(255,255,255,.85); }
-.head-right .bal-current strong { font-size: 1.7rem; color: #fff; letter-spacing: -.01em; line-height: 1.1; }
-.head-right .bal-current .bal-free { color: #fff; }
-.head-right .bal-current .bal-free.warn-text { color: #ffe08a; }
-.head-right .bal-current .bal-alloc, .head-right .bal-current .bal-bills { color: rgba(255,255,255,.8); }
-html.dark .head-right .bal-current .bal-label { color: rgba(255,255,255,.85); }
-html.dark .head-right .bal-current .bal-free { color: #fff; }
-html.dark .head-right .bal-current .bal-free.warn-text { color: #ffe08a; }
-html.dark .head-right .bal-current .bal-alloc, html.dark .head-right .bal-current .bal-bills { color: rgba(255,255,255,.8); }
+.head-right { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
 .closing-inline { display: flex; align-items: center; gap: 10px; }
 .closing-inline .ghost { padding: 7px 14px; }
 
@@ -166,27 +149,15 @@ html.dark .bal-alloc { color: #5f8c79; }
 .cards.cards-2 { grid-template-columns: repeat(2, 1fr); }
 .cards.cards-3 { grid-template-columns: repeat(3, 1fr); }
 .card {
-    background: #ffffff; border: 1px solid var(--tt-border); border-radius: 16px;
+    background: #ffffff; border: 1px solid #e6ece9; border-radius: 14px;
     padding: 14px; display: flex; flex-direction: column; gap: 6px;
-    box-shadow: var(--tt-card-shadow);
+    box-shadow: 0 1px 2px rgba(0,0,0,.03);
 }
 .card-label { color: #6b7280; font-size: .78rem; }
 .card-value { font-size: 1.25rem; font-weight: 700; }
 .card-sub { color: #6b7280; font-size: .76rem; }
-/* Colored summary tiles (Fresh): each headline stat gets its own tint instead of grey-on-white. */
-.card.savings { background: var(--tt-tile-mint-bg); border-color: transparent; }
-.card.savings .card-value { color: var(--tt-tile-mint-fg); }
-.card.tile-spend { background: var(--tt-tile-blue-bg); border-color: transparent; }
-.card.tile-spend .card-label, .card.tile-spend .card-value { color: var(--tt-tile-blue-fg); }
-/* Score tile takes its colour from the band, so a good score reads positive (teal), not a warning amber. */
-.card.tile-score-ok { background: #e2f6f1; border-color: transparent; }
-.card.tile-score-ok .card-label { color: #0b8a68; }
-.card.tile-score-warn { background: var(--tt-tile-amber-bg); border-color: transparent; }
-.card.tile-score-warn .card-label { color: var(--tt-tile-amber-fg); }
-.card.tile-score-bad { background: #fdeaea; border-color: transparent; }
-.card.tile-score-bad .card-label { color: #b3261e; }
-.card.tile-score-neutral { background: #eef2f4; border-color: transparent; }
-.card.tile-score-neutral .card-label { color: #64748b; }
+.card.savings { background: #eef9f3; border-color: #d6f0e3; }
+.card.savings .card-value { color: #0e9e6d; }
 
 .alert {
     background: #fff7ed; border: 1px solid #fed7aa; color: #9a3412;
@@ -220,8 +191,8 @@ html.dark .save-overlay { background: rgba(10, 14, 19, .6); }
 html.dark .save-overlay-card { background: #161d26; border-color: #2a3540; }
 
 .panel {
-    background: #ffffff; border: 1px solid var(--tt-border); border-radius: 16px;
-    padding: 16px; margin-bottom: 16px; box-shadow: var(--tt-card-shadow);
+    background: #ffffff; border: 1px solid #e6ece9; border-radius: 14px;
+    padding: 16px; margin-bottom: 16px;
 }
 /* One uniform section header everywhere (à la "🏆 Milestones"): a compact upper-case label. */
 .panel h2 { margin: 0 0 12px; font-size: .72rem; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: #6b7280; }
@@ -738,12 +709,12 @@ input[type=date]::-webkit-calendar-picker-indicator:hover { opacity: 1; backgrou
 /* Score card with gradient top accent */
 .score-card {
     position: relative; overflow: hidden;
-    background: #ffffff; border: 1px solid var(--tt-border); border-radius: 16px;
-    padding: 22px 20px 20px; box-shadow: var(--tt-card-shadow);
+    background: #ffffff; border: 1px solid #e6ece9; border-radius: 16px;
+    padding: 22px 20px 20px; box-shadow: 0 1px 2px rgba(0,0,0,.03);
 }
 .score-card::before {
     content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
-    background: var(--tt-grad);
+    background: linear-gradient(90deg, #13a06e, #0e7c55);
 }
 .gauge-wrap { display: flex; justify-content: center; margin: 8px 0 6px; }
 .gauge-svg { width: 210px; height: 120px; }
@@ -1017,11 +988,10 @@ html.dark .targets-foot { border-top-color: #2a323c; }
 .qa {
     flex: 0 1 172px;
     display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-    padding: 11px 12px; border: 1px solid var(--tt-border); border-radius: 13px; background: #ffffff; color: #0f7a54;
-    font-weight: 700; font-size: .9rem; cursor: pointer;
-    box-shadow: var(--tt-card-shadow); transition: box-shadow .15s, border-color .15s, transform .12s;
+    padding: 11px 12px; border: 1px solid #cdeadd; border-radius: 12px; background: #ffffff; color: #0f7a54;
+    font-weight: 700; font-size: .9rem; cursor: pointer; transition: background .15s, border-color .15s;
 }
-.qa:hover { border-color: var(--tt-accent); box-shadow: var(--tt-card-shadow-hover); transform: translateY(-1px); }
+.qa:hover { background: #f0faf5; border-color: #13a06e; }
 html.dark .qa { background: #1b2430; border-color: #2c3a45; color: #57d9a3; }
 html.dark .qa:hover { background: #22303c; border-color: #3a8f6c; }
 
@@ -1244,7 +1214,7 @@ html.dark .chips-label { color: #7c8a94; }
     padding: 2px 10px; font-size: .82rem; font-weight: 600; cursor: pointer; line-height: 1.35;
     transition: background .12s, color .12s, border-color .12s;
 }
-.rule-chip.on { border-style: solid; border-color: var(--tt-accent); background: var(--tt-tile-mint-bg); color: var(--tt-tile-mint-fg); }
+.rule-chip.on { border-style: solid; border-color: #13a06e; background: #eef9f3; color: #0e9e6d; }
 html.dark .rule-chip { background: #1e2330; border-color: #2c3142; color: #7c8a94; }
 html.dark .rule-chip.on { background: #14352a; border-color: #2bbd86; color: #6fe0b4; }
 

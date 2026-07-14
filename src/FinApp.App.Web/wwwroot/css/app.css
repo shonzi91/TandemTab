@@ -2,31 +2,9 @@
 html, body {
     font-family: 'Quicksand', system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
-/* ── "Fresh" light theme palette ──────────────────────────────────────────────
-   One place to tune the light theme. CSS vars inherit through the DOM so scoped
-   component CSS can read them regardless of Blazor's [b-hash] scoping. The signature
-   is a green→teal gradient accent, colored stat tiles, and soft elevation instead of
-   hairline borders (kills the old "clinical white" feel). Dark theme overrides below. */
-:root {
-    --tt-accent: #12b886;
-    --tt-accent-2: #0ea5a5;
-    --tt-grad: linear-gradient(135deg, #12b886, #0ea5a5);
-    --tt-grad-hover: linear-gradient(135deg, #14c691, #10b3b3);
-    --tt-border: #e7edf0;
-    --tt-card-shadow: 0 1px 2px rgba(22,42,60,.06), 0 8px 22px rgba(22,42,60,.09);
-    --tt-card-shadow-hover: 0 3px 10px rgba(22,42,60,.11), 0 16px 34px rgba(22,42,60,.12);
-    --tt-tile-mint-bg: #e6f7f0;  --tt-tile-mint-fg: #0b7a58;
-    --tt-tile-blue-bg: #e8f2fd;  --tt-tile-blue-fg: #1566af;
-    --tt-tile-amber-bg: #fdf1dd; --tt-tile-amber-fg: #a2680f;
-}
-
-/* Fresh page canvas — a soft brand-tinted gradient (teal-green → cool → warm), deep enough that the white
-   cards lift clearly against it. Fixed so it stays put while content scrolls. */
-body {
-    background: linear-gradient(158deg, #a6d4cd 0%, #b6d3da 46%, #cdd8c4 100%);
-    background-attachment: fixed;
-    min-height: 100vh;
-}
+/* Friendly, modern page canvas — a soft, airy mint-grey so the clean white cards lift gently (fresher and
+   less formal than the old beige, without going stark clinical white). */
+body { background: #eef3f0; }
 
 /* Always reserve the scrollbar gutter so switching to a taller tab (e.g. Budgets) doesn't add a scrollbar
    and shift the centered layout sideways. */
@@ -125,7 +103,7 @@ h1:focus {
    global sheet: an `html.dark X` selector outranks the scoped `X[b-hash]` rule by
    one element of specificity, so these win. Mint accent (#13a06e) is kept as-is. */
 html.dark { color-scheme: dark; }
-html.dark body { background: linear-gradient(158deg, #0f1117 0%, #141b26 100%); background-attachment: fixed; min-height: 100vh; }
+html.dark body { background: #0f1117; }
 html.dark .app-shell { background: #0f1117; }
 html.dark .app-body { background: #0f1117; }
 
@@ -153,11 +131,6 @@ html.dark .trend-card {
     background: #181c25; border-color: #262d3d; color: #e8eaf0;
 }
 html.dark .card.savings, html.dark .all-clear { background: #14271f; border-color: #1d3a2c; }
-/* Fresh colored stat tiles fall back to neutral dark surfaces in dark mode. */
-html.dark .card.savings .card-value { color: #57d9a3; }
-html.dark .card.tile-spend, html.dark .card.tile-score { background: #181c25; border-color: #262d3d; }
-html.dark .card.tile-spend .card-label, html.dark .card.tile-spend .card-value { color: #e8eaf0; }
-html.dark .card.tile-score .card-label { color: #aab0c0; }
 html.dark .modal-backdrop, html.dark .pm-backdrop { background: rgba(0,0,0,.6); }
 
 /* Form controls (the more-specific scoped rules below need matching dark overrides to win) */
