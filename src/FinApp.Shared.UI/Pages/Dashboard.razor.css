@@ -63,6 +63,7 @@ html.dark .onboard-desc { color: #a9b6ad; }
 
 .dash-head {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
     margin-bottom: 16px;
@@ -82,7 +83,9 @@ html.dark .onboard-desc { color: #a9b6ad; }
 
 /* Gradient balance hero (Fresh): only the balance itself is the green→teal glowing card. The "Active" status
    pill stays outside it, on the page background, so it reads as its own distinct chip. */
-.head-right { display: flex; flex-direction: column; align-items: flex-end; gap: 9px; }
+/* The "Current" balance section drops to its own row, aligned to the left edge of the page content
+   (matching the cards below) rather than pinning to the top-right. */
+.head-right { display: flex; flex-direction: column; align-items: flex-start; gap: 9px; flex-basis: 100%; margin-top: 12px; }
 .head-right .bal-current {
     background: var(--tt-grad); color: #fff; border-radius: 16px; padding: 13px 18px 15px;
     box-shadow: 0 10px 26px rgba(14,165,165,.32); min-width: 200px; align-items: flex-start;

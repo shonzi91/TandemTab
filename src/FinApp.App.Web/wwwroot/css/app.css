@@ -13,17 +13,17 @@ html, body {
     --tt-grad: linear-gradient(135deg, #12b886, #0ea5a5);
     --tt-grad-hover: linear-gradient(135deg, #14c691, #10b3b3);
     --tt-border: #e7edf0;
-    --tt-card-shadow: 0 1px 2px rgba(22,42,60,.05), 0 6px 18px rgba(22,42,60,.05);
-    --tt-card-shadow-hover: 0 3px 8px rgba(22,42,60,.09), 0 14px 30px rgba(22,42,60,.08);
+    --tt-card-shadow: 0 1px 2px rgba(22,42,60,.06), 0 8px 22px rgba(22,42,60,.09);
+    --tt-card-shadow-hover: 0 3px 10px rgba(22,42,60,.11), 0 16px 34px rgba(22,42,60,.12);
     --tt-tile-mint-bg: #e6f7f0;  --tt-tile-mint-fg: #0b7a58;
     --tt-tile-blue-bg: #e8f2fd;  --tt-tile-blue-fg: #1566af;
     --tt-tile-amber-bg: #fdf1dd; --tt-tile-amber-fg: #a2680f;
 }
 
-/* Fresh page canvas — a soft brand-tinted gradient (teal-green → cool → warm), noticeably deeper than the
-   white cards so they lift clearly. Fixed so it stays put while content scrolls. */
+/* Fresh page canvas — a soft brand-tinted gradient (teal-green → cool → warm), deep enough that the white
+   cards lift clearly against it. Fixed so it stays put while content scrolls. */
 body {
-    background: linear-gradient(158deg, #cfe7e4 0%, #d9e6ea 46%, #e8ece2 100%);
+    background: linear-gradient(158deg, #a6d4cd 0%, #b6d3da 46%, #cdd8c4 100%);
     background-attachment: fixed;
     min-height: 100vh;
 }
