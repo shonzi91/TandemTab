@@ -248,3 +248,23 @@ html.dark .dup-txt { color: #f5cf8a; }
 html.dark .tip-card { background: #14271f; border-color: #1c3d38; }
 html.dark .tip-title { color: #7bf0d8; }
 html.dark .tip-desc { color: #9fc2b3; }
+
+/* ── Duo deepening (dark): shift the brand green through interactive surfaces to mint, keeping semantic
+   warn/over amber+red, and give the score accent the coral→mint duo. ── */
+html.dark .pring-arc.mint, html.dark .pring-arc.ok { stroke: #3fe0c5; }
+html.dark .gauge-ok { stroke: #3fe0c5; }
+html.dark .bar-fill.ok { background: #3fe0c5; }
+html.dark .tab.active { color: #3fe0c5; border-bottom-color: #3fe0c5; }
+html.dark .onboard-prog-fill, html.dark .onboard-step.done .onboard-check { background: #14b8a2; }
+html.dark .switch.on { background: #14b8a2; }
+html.dark .score-card::before { background: linear-gradient(90deg, #ff7a66, #3fe0c5); }
+/* Primary action buttons → mint (readable white on a mint-teal). */
+html.dark .big-add,
+html.dark .form button,
+html.dark .firstrun-form button,
+html.dark .period-panel button,
+html.dark .dates-form button, html.dark .realloc-form button, html.dark .cat-form button,
+html.dark .modal-actions button:not(.ghost):not(.danger-btn) { background: #12b29a; color: #ffffff; }
+html.dark .big-add:hover, html.dark .form button:hover,
+html.dark .modal-actions button:not(.ghost):not(.danger-btn):hover { background: #16c6ac; }
+html.dark .modal-actions button.ghost, html.dark button.ghost { color: #7bf0d8; }
