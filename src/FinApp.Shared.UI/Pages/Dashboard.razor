@@ -9,7 +9,7 @@
 
 @if (_busy)
 {
-    <div class="saving-pill"><Spinner Text="@Loc["Saving…"]" /></div>
+    <div class="save-overlay"><div class="save-overlay-card"><Spinner Block="true" Text="@Loc["Saving…"]" /></div></div>
 }
 
 @if (!State.IsReady)
@@ -68,6 +68,10 @@ else
                                 @if (State.IsOwnerOfCurrent)
                                 {
                                     <button @onclick="() => RunAcct(OpenEditAccount)">✏️ @Loc["Rename account"]</button>
+                                }
+                                @if (HasArchivedItems)
+                                {
+                                    <button @onclick="() => RunAcct(() => _modal = Modal.Archived)">📦 @Loc["Archived items"]</button>
                                 }
                                 <button @onclick="MenuExport">📊 @Loc["Export to Excel"]</button>
                                 <button class="danger" @onclick="() => RunAcct(OpenLeaveAccount)">🚪 @Loc["Leave account"]</button>
@@ -194,17 +198,23 @@ else
 
         // Shared emoji picker for every add/edit modal (categories, funds, buckets, contributions).
         // Reads/writes the shared _fName/_fIcon fields; the first "auto" chip clears to a name-based guess.
-        RenderFragment iconPicker =
-        @<div>
-            <label class="icon-label">@Loc["Icon"]</label>
-            <div class="icon-grid">
-                <button type="button" class="icon-opt @(_fIcon is null ? "sel" : "")" title="@Loc["Auto (from name)"]" @onclick="() => _fIcon = null">@(string.IsNullOrEmpty(_fName) ? "🏷️" : CategoryIcons.Guess(_fName))</button>
-                @foreach (var ic in CategoryIcons.Palette)
-                {
-                    <button type="button" class="icon-opt @(_fIcon == ic ? "sel" : "")" @onclick="() => _fIcon = ic">@ic</button>
-                }
-            </div>
-        </div>;
+        // Compact icon control: a button showing the current (or name-guessed) icon that sits next to the Name field
+        // and toggles a collapsible palette below it. Clicking a swatch sets the icon and closes the palette.
+        RenderFragment iconButton =
+        @<button type="button" class="name-icon-btn @(_iconOpen ? "open" : "")" title="@Loc["Choose an icon"]" @onclick="() => _iconOpen = !_iconOpen">@(_fIcon ?? (string.IsNullOrEmpty(_fName) ? "🏷️" : CategoryIcons.Guess(_fName)))</button>;
+        RenderFragment iconGrid =
+        @<text>
+            @if (_iconOpen)
+            {
+                <div class="icon-grid">
+                    <button type="button" class="icon-opt @(_fIcon is null ? "sel" : "")" title="@Loc["Auto (from name)"]" @onclick="@(() => { _fIcon = null; _iconOpen = false; })">@(string.IsNullOrEmpty(_fName) ? "🏷️" : CategoryIcons.Guess(_fName))</button>
+                    @foreach (var ic in CategoryIcons.Palette)
+                    {
+                        <button type="button" class="icon-opt @(_fIcon == ic ? "sel" : "")" @onclick="@(() => { _fIcon = ic; _iconOpen = false; })">@ic</button>
+                    }
+                </div>
+            }
+        </text>;
     }
 
     <div class="tab-content">
@@ -314,20 +324,19 @@ else
             {
                 <section class="panel achievements-card">
                     <div class="ach-head">
-                        <h2 class="targets-h">🏆 @Loc["Milestones"]</h2>
-                        <button class="link ach-all" @onclick="() => _modal = Modal.Achievements">@Loc["View all"] ›</button>
+                        <h2 class="targets-h">🏆 @Loc["Milestones in progress"]</h2>
                     </div>
-                    <div class="ach-list">
-                        @foreach (var (a, on) in milestones)
+                    <div class="ring-grid ach-ring-grid">
+                        @foreach (var a in milestones)
                         {
-                            <div class="ach @(a.Earned ? "earned" : "next")">
-                                <span class="ach-ico">@a.Icon</span>
-                                <div class="ach-body">
-                                    <span class="ach-title">@a.Title @if (a.Earned && on is { } d) { <span class="ach-date">· @d.ToString("dd MMM yyyy")</span> }</span>
-                                    <span class="ach-desc">@a.Desc</span>
-                                    @if (!a.Earned && a.Percent is { } pct)
+                            <div class="ring-card">
+                                @AchievementBadge(a)
+                                <div class="ring-label ach-ring-label">
+                                    <span class="ach-ring-title ach-locked-title">@a.Title</span>
+                                    <span class="ach-ring-desc">@a.Desc</span>
+                                    @if (a.Percent is { } pct)
                                     {
-                                        <div class="ach-prog"><div class="ach-prog-fill" style="width:@pct%"></div></div>
+                                        <span class="ach-ring-sub">@pct%</span>
                                     }
                                 </div>
                             </div>
@@ -384,135 +393,49 @@ else
             }
 
             <section class="panel">
-                <div class="panel-head">
-                    <h2>@Loc["Where your money is"]</h2>
-                    <span class="head-actions">
-                        <button class="link" title="@Loc["Add a fund"]" @onclick="OpenAddFund">➕</button>
-                    </span>
+                <div class="spending-head">
+                    <span class="insight-h">@Loc["Where your money is"]</span>
+                    <span class="spending-sub">@Fmt(State.DisplayClosingBalance(_bankStatus?.Balance, _bankStatus?.BalanceCurrency)) @Loc["across your funds"]</span>
                 </div>
-                <ul class="list">
+                @{
+                    var _fundBals = State.RootFunds.ToDictionary(
+                        f => f.Id,
+                        f => State.FundIsSynced(f.Id) ? SyncedFundDisplay(f.Id).Amount : State.FundBalance(f.Id));
+                }
+                <div class="ring-grid">
                     @foreach (var f in State.RootFunds)
                     {
                         var fid = f.Id;
-                        <li class="row-menu-host">
-                            <span class="row-lead">
-                                <span class="fund-name">@f.Name</span>
-                                @if (State.FundNote(fid) is { Length: > 0 } note)
-                                {
-                                    <span class="row-note">· @note</span>
-                                }
-                            </span>
-                            <span class="row-ops">
-                                @if (State.FundIsSynced(fid))
-                                {
-                                    var sd = SyncedFundDisplay(fid);
-                                    <span class="amt" title="@sd.Title">@Fmt(sd.Amount)</span>
-                                }
-                                else
-                                {
-                                    <span class="amt">@Fmt(State.FundBalance(fid))</span>
-                                }
-                                @if (State.FundIsSynced(fid))
-                                {
-                                    @if (_bankStatus?.InstitutionLogo is { } logo)
-                                    {
-                                        <img class="fund-logo" src="@logo" alt="@_bankStatus.InstitutionName" title="@string.Format(Loc["Synced with {0}"], _bankStatus.InstitutionName)" />
-                                    }
-                                    else
-                                    {
-                                        <span class="cat-ico" title="@Loc["Synced with your bank — managed automatically"]">🔗</span>
-                                    }
-                                }
-                                else
-                                {
-                                    <span class="cat-ico">@State.FundIcon(fid)</span>
-                                }
-                                <button class="exp-edit" title="@Loc["Actions"]" @onclick="() => ToggleRowMenu(fid)">⋯</button>
-                            </span>
-                            @if (_rowMenuId == fid)
-                            {
-                                <div class="row-menu-backdrop" @onclick="() => _rowMenuId = Guid.Empty"></div>
-                                <div class="row-menu">
-                                    <button @onclick="() => RowAct(() => OpenEditFund(fid))">✏️ @Loc["Edit"]</button>
-                                    @if (!State.FundIsSynced(fid))
-                                    {
-                                        @if (State.IsPeriodOpen)
-                                        {
-                                            @if (CanTransfer)
-                                            {
-                                                <button @onclick="() => RowAct(() => OpenTransferFromFund(fid))">🔁 @Loc["Transfer"]</button>
-                                            }
-                                            <button @onclick="() => RowAct(() => OpenDepositToFund(fid))">➕ @Loc["Contribute"]</button>
-                                        }
-                                        <button class="danger" @onclick="() => RowAct(() => OpenDeleteFund(fid))">🗑️ @Loc["Remove"]</button>
-                                    }
-                                </div>
-                            }
-                        </li>
+                        var synced = State.FundIsSynced(fid);
+                        var bal = _fundBals[fid];
+                        var note = State.FundNote(fid);
+                        // A full solid ring, coloured by how much the fund holds: red if overdrawn, amber if empty/near-empty
+                        // (under ~1 unit), otherwise the fund's normal colour (gold for the synced fund, green for the rest).
+                        var fundCls = bal.Amount < 0m ? "over" : bal.Amount < 1m ? "warn" : synced ? "invest" : "mint";
+                        <div class="ring-card ring-card-lg">
+                            <ProgressRing Percent="100" Class="@fundCls">
+                                <button class="ring-ico-big" title="@Loc["Actions"]" @onclick="() => ToggleFundMenu(fid)">@(synced ? "🔗" : State.FundIcon(fid))</button>
+                                <button class="ring-name" title="@(string.IsNullOrEmpty(note) ? Loc["Actions"] : note)" @onclick="() => ToggleFundMenu(fid)">@f.Name</button>
+                            </ProgressRing>
+                            <div class="ring-label"><span class="amt" title="@(synced ? SyncedFundDisplay(fid).Title : "")">@Fmt(bal)</span></div>
+                            @if (_fundMenuId == fid) { @FundCircleMenu(fid) }
+                        </div>
                     }
-                    @if (!State.RootFunds.Any())
-                    {
-                        <li><em>@Loc["No funds yet — add where your money lives."]</em></li>
-                    }
-                </ul>
+                    <div class="ring-card ring-card-lg">
+                        <button class="ring-plus" title="@Loc["Add a fund"]" @onclick="OpenAddFund">+</button>
+                        <div class="ring-label"><span class="ring-muted">@Loc["Add a fund"]</span></div>
+                    </div>
+                </div>
             </section>
 
-            @if (CanTransfer || MergedTransfers().Count > 0)
+            @if (MergedTransfers().Count > 0)
             {
                 var transfers = MergedTransfers();
-                <button class="home-more-toggle" @onclick="() => _moveOpen = !_moveOpen">
-                    <span>🔁 @Loc["Move money"]</span>
-                    <span class="home-more-chevron">@(_moveOpen ? "▲" : "▼")</span>
-                </button>
-                <section class="panel" hidden="@(!_moveOpen)">
-                    @if (CanTransfer)
-                    {
-                        <div class="form transfer-form">
-                            <select @bind="_transferFromId">
-                                @foreach (var f in State.SelectableFunds)
-                                {
-                                    <option value="@f.Id">@f.Name</option>
-                                }
-                            </select>
-                            <span class="arrow">→</span>
-                            <select @bind="_transferDestId" @bind:after="OnInlineDestChanged">
-                                <optgroup label="@Loc["Wallets"]">
-                                    @foreach (var f in State.SelectableFunds.Where(f => f.Id != _transferFromId))
-                                    {
-                                        <option value="@f.Id">@f.Name</option>
-                                    }
-                                </optgroup>
-                                @if (State.TransferableAccounts.Any())
-                                {
-                                    <optgroup label="@Loc["Other accounts"]">
-                                        @foreach (var a in State.TransferableAccounts)
-                                        {
-                                            <option value="@a.Id">📤 @a.Name</option>
-                                        }
-                                    </optgroup>
-                                }
-                            </select>
-                            @if (TransferDestIsAccount && DestFundsFor(_transferDestId).Count > 0)
-                            {
-                                <select @bind="_transferDestFundId" title="@Loc["Destination fund"]">
-                                    @foreach (var f in DestFundsFor(_transferDestId))
-                                    {
-                                        <option value="@f.Id">@f.Name</option>
-                                    }
-                                </select>
-                            }
-                            <input type="number" step="0.01" min="0" placeholder="@Loc["Amount"]" @bind="_transferAmount" />
-                            <button title="@Loc["Transfer money"]" @onclick="DoTransfer" disabled="@(_transferAmount <= 0 || _transferDestId == Guid.Empty || _transferDestId == _transferFromId || _transferAmount > InlineTransferMax)">🔁</button>
-                        </div>
-                        @if (TransferDestIsAccount)
-                        {
-                            <small class="hint @(InlineTransferDipsSavings ? "warn-text" : "")">@Loc["Sending to another account leaves this one as an outflow."] @Loc["In this fund:"] <strong>@Fmt(State.FundBalance(_transferFromId))</strong>. @(InlineTransferDipsSavings ? Loc["⚠ This dips into money earmarked for savings."] : "")</small>
-                        }
-                        else
-                        {
-                            <small class="hint">@Loc["Move money between your funds — the total is unchanged, only where it sits."] @Loc["Available in this fund:"] <strong>@Fmt(State.FundBalance(_transferFromId))</strong></small>
-                        }
-                    }
+                <section class="panel">
+                    <div class="panel-head">
+                        <h2>🔁 @Loc["Money moved"]</h2>
+                        <small class="hint">@Loc["Use a fund's ⋯ menu to move money."]</small>
+                    </div>
                     @if (transfers.Any())
                     {
                         <ul class="list transfer-log">
@@ -700,22 +623,6 @@ else
                         <div class="ring-label"><span class="ring-muted">@Loc["Add budget"]</span></div>
                     </div>
                 </div>
-                @if (State.ArchivedCategories.Any())
-                {
-                    <button class="link archived-toggle" @onclick="() => _showArchivedCats = !_showArchivedCats">📦 @Loc["Archived"] (@State.ArchivedCategories.Count) @(_showArchivedCats ? "▲" : "▼")</button>
-                    @if (_showArchivedCats)
-                    {
-                        <ul class="list">
-                            @foreach (var c in State.ArchivedCategories)
-                            {
-                                <li class="row-menu-host">
-                                    <span class="row-main"><span class="cat-ico">@State.CategoryIcon(c.Id)</span> @c.Name</span>
-                                    <span class="row-actions"><button class="exp-edit" title="@Loc["Restore"]" @onclick="() => State.RestoreCategory(c.Id)">♻️</button></span>
-                                </li>
-                            }
-                        </ul>
-                    }
-                }
             </section>
 
             <section class="panel">
@@ -866,7 +773,6 @@ else
                 var debtBuckets = State.SavingBuckets.Where(x => x.Bucket.IsDebt && !x.Bucket.IsArchived).ToList();
                 var investmentBuckets = State.SavingBuckets.Where(x => x.Bucket.IsInvestment && !x.Bucket.IsArchived).ToList();
                 var plainBuckets = State.SavingBuckets.Where(x => !x.Bucket.IsDebt && !x.Bucket.IsInvestment && !x.Bucket.IsArchived).ToList();
-                var archivedBuckets = State.SavingBuckets.Where(x => x.Bucket.IsArchived).ToList();
 
                 // One card, reused in the Debts and Savings sections. Debt cards show "set aside" + what's still owed;
                 // ordinary cards show saved / goal. All bucket actions live in the ⋯ menu (same pattern as elsewhere).
@@ -1051,29 +957,6 @@ else
                 </div>
             </section>
 
-            @if (archivedBuckets.Count > 0)
-            {
-                <section class="panel">
-                    <button class="link archived-toggle" @onclick="() => _showArchived = !_showArchived">📦 @Loc["Archived"] (@archivedBuckets.Count) @(_showArchived ? "▲" : "▼")</button>
-                    @if (_showArchived)
-                    {
-                        <ul class="list">
-                            @foreach (var a in archivedBuckets)
-                            {
-                                var aid = a.Bucket.Id;
-                                <li>
-                                    <span class="row-lead"><span class="cat-ico">@State.SavingBucketIcon(aid)</span> @a.Bucket.Name <span class="row-note">· @(a.Bucket.IsDebt ? Loc["debt"] : Loc["savings"])</span></span>
-                                    <span class="row-actions">
-                                        <button class="exp-edit" title="@Loc["Restore"]" @onclick="() => RestoreBucket(aid)">↩️</button>
-                                        <button class="exp-edit" title="@Loc["Remove"]" @onclick="() => OpenDeleteBucket(aid)">🗑️</button>
-                                    </span>
-                                </li>
-                            }
-                        </ul>
-                    }
-                </section>
-            }
-
             @if (State.SavingDepositsThisPeriod.Any() || State.SavingMovementsThisPeriod.Any())
             {
                 <section class="panel">
@@ -1179,8 +1062,11 @@ else
 
                 case Modal.AddCat:
                     <h3>@Loc["Add category"] @(_addParentId is {} p ? $"under {State.CategoryName(p)}" : "(top level)")</h3>
-                    <label>@Loc["Name"] <input type="text" @bind="_fName" @bind:after="() => _fEssential = BudgetingState.GuessEssential(_fName)" /></label>
-                    @iconPicker
+                    <div class="name-icon-row">
+                        @iconButton
+                        <label class="grow">@Loc["Name"] <input type="text" @bind="_fName" @bind:after="() => _fEssential = BudgetingState.GuessEssential(_fName)" /></label>
+                    </div>
+                    @iconGrid
                     <label>@Loc["Budget for this period (optional)"] <input type="number" step="0.01" min="0" @bind="_fBudget" /></label>
                     <small class="hint">@Loc["Available to budget:"] <strong>@Fmt(State.MaxBudgetFor(Guid.Empty))</strong></small>
                     <label class="check"><input type="checkbox" @bind="_fEssential" /> @Loc["Essential spend (rent, groceries, health…)"]</label>
@@ -1228,8 +1114,11 @@ else
                             <button class="exp-edit" title="@Loc["Delete"]" @onclick="EditDeleteSelf">🗑️</button>
                         </span>
                     </div>
-                    <label>@Loc["Name"] <input type="text" @bind="_fName" /></label>
-                    @iconPicker
+                    <div class="name-icon-row">
+                        @iconButton
+                        <label class="grow">@Loc["Name"] <input type="text" @bind="_fName" /></label>
+                    </div>
+                    @iconGrid
                     <label>@Loc["Budget amount"] <input type="number" step="0.01" min="0" @bind="_fBudget" /></label>
                     <small class="hint">@Loc["Available to budget:"] <strong>@Fmt(State.MaxBudgetFor(_modalCatId))</strong></small>
                     <label>@Loc["Alert at %"] <input type="number" step="1" min="0" max="100" @bind="_fThreshold" /></label>
@@ -1347,44 +1236,44 @@ else
                 case Modal.Achievements:
                     <div class="modal-head">
                         <h3>🏆 @Loc["Achievements"]</h3>
+                        <span class="modal-head-actions">
+                            <button class="exp-edit" title="@Loc["Close"]" @onclick="Back">✕</button>
+                        </span>
                     </div>
                     var achLog = State.Account.AchievementLog;
                     var achAll = CurrentAchievements();
                     var achEarned = achAll.Where(a => a.Earned).ToList();
                     var achLocked = achAll.Where(a => !a.Earned).OrderByDescending(a => a.Percent ?? 0).ToList();
                     <p class="hint">@string.Format(Loc["{0} of {1} earned"], achEarned.Count, achAll.Count)</p>
-                    <div class="ach-grid">
+                    <div class="ring-grid ach-ring-grid">
                         @foreach (var a in achEarned)
                         {
-                            <div class="ach-cell earned">
-                                <span class="ach-cell-ico">@a.Icon</span>
-                                <div class="ach-cell-body">
-                                    <span class="ach-cell-title">@a.Title <span class="ach-tick">✓</span></span>
-                                    <span class="ach-cell-desc">@a.Desc</span>
+                            <div class="ring-card">
+                                @AchievementBadge(a)
+                                <div class="ring-label ach-ring-label">
+                                    <span class="ach-ring-title">@a.Title</span>
+                                    <span class="ach-ring-desc">@a.Desc</span>
                                     @if (achLog.TryGetValue(a.Key, out var earnedOn))
                                     {
-                                        <span class="ach-cell-date">@earnedOn.ToString("dd MMM yyyy")</span>
+                                        <span class="ach-ring-sub">@earnedOn.ToString("dd MMM yyyy")</span>
                                     }
                                 </div>
                             </div>
                         }
                         @foreach (var a in achLocked)
                         {
-                            <div class="ach-cell locked">
-                                <span class="ach-cell-ico">@a.Icon</span>
-                                <div class="ach-cell-body">
-                                    <span class="ach-cell-title">@a.Title</span>
-                                    <span class="ach-cell-desc">@a.Desc</span>
+                            <div class="ring-card">
+                                @AchievementBadge(a)
+                                <div class="ring-label ach-ring-label">
+                                    <span class="ach-ring-title ach-locked-title">@a.Title</span>
+                                    <span class="ach-ring-desc">@a.Desc</span>
                                     @if (a.Percent is { } pct)
                                     {
-                                        <div class="ach-prog"><div class="ach-prog-fill" style="width:@pct%"></div></div>
+                                        <span class="ach-ring-sub">@pct%</span>
                                     }
                                 </div>
                             </div>
                         }
-                    </div>
-                    <div class="modal-actions inline-actions">
-                        <button class="ghost" @onclick="Back">@Loc["Close"]</button>
                     </div>
                     break;
 
@@ -1408,6 +1297,70 @@ else
                         <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
                         <button @onclick="SaveEditAccount" disabled="@(string.IsNullOrWhiteSpace(_fName))">@Loc["Save"]</button>
                     </div>
+                    break;
+
+                case Modal.Archived:
+                    <div class="modal-head">
+                        <h3>📦 @Loc["Archived items"]</h3>
+                        <span class="modal-head-actions">
+                            <button class="exp-edit" title="@Loc["Close"]" @onclick="Back">✕</button>
+                        </span>
+                    </div>
+                    var arFunds = State.ArchivedFunds;
+                    var arCats = State.ArchivedCategories;
+                    var arBuckets = State.SavingBuckets.Where(x => x.Bucket.IsArchived).ToList();
+                    @if (arFunds.Any() || arCats.Any() || arBuckets.Count > 0)
+                    {
+                        <p class="hint">@Loc["Archived items keep their history and stay out of the way. Restore one to use it again."]</p>
+                    }
+                    @if (arFunds.Any())
+                    {
+                        <h4 class="archived-h">💰 @Loc["Funds"]</h4>
+                        <ul class="list">
+                            @foreach (var f in arFunds)
+                            {
+                                var fid = f.Id;
+                                <li class="row-menu-host">
+                                    <span class="row-main"><span class="cat-ico">@State.FundIcon(fid)</span> @f.Name</span>
+                                    <span class="row-actions"><button class="exp-edit" title="@Loc["Restore"]" @onclick="() => State.RestoreFund(fid)">♻️</button></span>
+                                </li>
+                            }
+                        </ul>
+                    }
+                    @if (arCats.Any())
+                    {
+                        <h4 class="archived-h">🍽️ @Loc["Spending categories"]</h4>
+                        <ul class="list">
+                            @foreach (var c in arCats)
+                            {
+                                <li class="row-menu-host">
+                                    <span class="row-main"><span class="cat-ico">@State.CategoryIcon(c.Id)</span> @c.Name</span>
+                                    <span class="row-actions"><button class="exp-edit" title="@Loc["Restore"]" @onclick="() => State.RestoreCategory(c.Id)">♻️</button></span>
+                                </li>
+                            }
+                        </ul>
+                    }
+                    @if (arBuckets.Count > 0)
+                    {
+                        <h4 class="archived-h">🎯 @Loc["Debts & savings"]</h4>
+                        <ul class="list">
+                            @foreach (var a in arBuckets)
+                            {
+                                var aid = a.Bucket.Id;
+                                <li>
+                                    <span class="row-lead"><span class="cat-ico">@State.SavingBucketIcon(aid)</span> @a.Bucket.Name <span class="row-note">· @(a.Bucket.IsDebt ? Loc["debt"] : Loc["savings"])</span></span>
+                                    <span class="row-actions">
+                                        <button class="exp-edit" title="@Loc["Restore"]" @onclick="() => RestoreBucket(aid)">↩️</button>
+                                        <button class="exp-edit" title="@Loc["Remove"]" @onclick="() => OpenDeleteBucket(aid)">🗑️</button>
+                                    </span>
+                                </li>
+                            }
+                        </ul>
+                    }
+                    @if (!arFunds.Any() && !arCats.Any() && arBuckets.Count == 0)
+                    {
+                        <p class="hint">@Loc["Nothing archived."]</p>
+                    }
                     break;
 
                 case Modal.DeleteAccount:
@@ -1689,8 +1642,11 @@ else
                 case Modal.AddBucket:
                 case Modal.EditBucket:
                     <h3>@(_modal == Modal.AddBucket ? Loc["New savings bucket"] : $"{Loc["Edit"]} {State.FindSavingBucket(_modalBucketId)?.Name}")</h3>
-                    <label>@Loc["Name"] <input type="text" @bind="_fName" /></label>
-                    @iconPicker
+                    <div class="name-icon-row">
+                        @iconButton
+                        <label class="grow">@Loc["Name"] <input type="text" @bind="_fName" /></label>
+                    </div>
+                    @iconGrid
                     <label>@Loc["Type"]</label>
                     <div class="plan-toggle bucket-type" role="group">
                         <button type="button" class="chip @(_bucketKind == SavingKind.Common ? "on" : "")" @onclick="() => _bucketKind = SavingKind.Common">💰 @Loc["Savings goal"]</button>
@@ -2556,15 +2512,20 @@ else
 
                 case Modal.ContribCat:
                     <h3>@(_contribCatId == Guid.Empty ? Loc["New contribution category"] : Loc["Rename category"])</h3>
-                    <label>@Loc["Name"] <input type="text" @bind="_contribCatName" /></label>
-                    <label class="icon-label">@Loc["Icon"]</label>
-                    <div class="icon-grid">
-                        <button type="button" class="icon-opt @(_fIcon is null ? "sel" : "")" title="@Loc["Auto (from name)"]" @onclick="() => _fIcon = null">@(string.IsNullOrEmpty(_contribCatName) ? "🏷️" : CategoryIcons.Guess(_contribCatName))</button>
-                        @foreach (var ic in CategoryIcons.Palette)
-                        {
-                            <button type="button" class="icon-opt @(_fIcon == ic ? "sel" : "")" @onclick="() => _fIcon = ic">@ic</button>
-                        }
+                    <div class="name-icon-row">
+                        <button type="button" class="name-icon-btn @(_iconOpen ? "open" : "")" title="@Loc["Choose an icon"]" @onclick="() => _iconOpen = !_iconOpen">@(_fIcon ?? (string.IsNullOrEmpty(_contribCatName) ? "🏷️" : CategoryIcons.Guess(_contribCatName)))</button>
+                        <label class="grow">@Loc["Name"] <input type="text" @bind="_contribCatName" /></label>
                     </div>
+                    @if (_iconOpen)
+                    {
+                        <div class="icon-grid">
+                            <button type="button" class="icon-opt @(_fIcon is null ? "sel" : "")" title="@Loc["Auto (from name)"]" @onclick="@(() => { _fIcon = null; _iconOpen = false; })">@(string.IsNullOrEmpty(_contribCatName) ? "🏷️" : CategoryIcons.Guess(_contribCatName))</button>
+                            @foreach (var ic in CategoryIcons.Palette)
+                            {
+                                <button type="button" class="icon-opt @(_fIcon == ic ? "sel" : "")" @onclick="@(() => { _fIcon = ic; _iconOpen = false; })">@ic</button>
+                            }
+                        </div>
+                    }
                     <div class="modal-actions">
                         <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
                         <button @onclick="SaveContribCat" disabled="@(string.IsNullOrWhiteSpace(_contribCatName))">@(_contribCatId == Guid.Empty ? Loc["Add"] : Loc["Save"])</button>
@@ -2628,8 +2589,11 @@ else
 
                 case Modal.AddFund:
                     <h3>@Loc["New fund"]</h3>
-                    <label>@Loc["Name"] <input type="text" @bind="_fName" /></label>
-                    @iconPicker
+                    <div class="name-icon-row">
+                        @iconButton
+                        <label class="grow">@Loc["Name"] <input type="text" @bind="_fName" /></label>
+                    </div>
+                    @iconGrid
                     <label>@Loc["Note (optional)"] <input type="text" @bind="_fundNote" /></label>
                     <label>@Loc["Opening balance this period (optional)"] <input type="text" inputmode="text" @bind:get="_openingAmount.ToString(System.Globalization.CultureInfo.InvariantCulture)" @bind:set="v => _openingAmount = EvalSum(v)" /></label>
                     <div class="modal-actions">
@@ -2640,14 +2604,20 @@ else
 
                 case Modal.EditFund:
                     <h3>@State.FundIcon(_modalFundId) @Loc["Edit"] @State.FundName(_modalFundId)</h3>
-                    <label>@Loc["Name"] <input type="text" @bind="_fName" /></label>
-                    @iconPicker
+                    <div class="name-icon-row">
+                        @iconButton
+                        <label class="grow">@Loc["Name"] <input type="text" @bind="_fName" /></label>
+                    </div>
+                    @iconGrid
                     <label>@Loc["Note (optional)"] <input type="text" @bind="_fundNote" /></label>
                     @if (!_fSynced)
                     {
                         <label>@Loc["Opening balance this period"] <input type="text" inputmode="text" @bind:get="_openingAmount.ToString(System.Globalization.CultureInfo.InvariantCulture)" @bind:set="v => _openingAmount = EvalSum(v)" /></label>
                     }
-                    @if (_bankStatus?.Connected == true)
+                    @* Funds-6: only offer syncing when there's an unsynced bank account to attach — i.e. this fund is
+                       already the synced one (so you can unsync), or nothing is synced yet. Hidden when another fund
+                       already owns the bank link. *@
+                    @if (_bankStatus?.Connected == true && (State.FundIsSynced(_modalFundId) || !State.HasSyncedFund))
                     {
                         <label class="check"><input type="checkbox" @bind="_fSynced" /> @string.Format(Loc["Sync this fund with {0}"], _bankStatus.InstitutionName)</label>
                         @if (_fSynced)
@@ -2720,6 +2690,78 @@ else
                             <button class="danger-btn" @onclick="ConfirmDeleteFund">@Loc["Remove"]</button>
                         </div>
                     }
+                    break;
+
+                case Modal.ArchiveFund:
+                    <h3>📦 @Loc["Archive"] @State.FundName(_modalFundId)</h3>
+                    var _arcBal = State.FundBalance(_modalFundId);
+                    @if (_arcBal.Amount > 0m)
+                    {
+                        <p class="hint">@string.Format(Loc["This fund still holds {0}. Move it to another fund before archiving — its history stays intact and you can restore it anytime."], Fmt(_arcBal))</p>
+                        <label>@Loc["Move balance to"]
+                            <select @bind="_moveBalanceToId">
+                                <option value="@Guid.Empty">@Loc["— choose a fund —"]</option>
+                                @foreach (var f in State.RootFunds.Where(f => f.Id != _modalFundId && !State.FundIsSynced(f.Id)))
+                                {
+                                    <option value="@f.Id">@f.Name</option>
+                                }
+                            </select>
+                        </label>
+                    }
+                    else
+                    {
+                        <p class="hint">@Loc["Archiving hides this fund but keeps all of its history. You can restore it anytime."]</p>
+                    }
+                    <div class="modal-actions">
+                        <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
+                        <button class="danger-btn" @onclick="ConfirmArchiveFund" disabled="@(_arcBal.Amount > 0m && _moveBalanceToId == Guid.Empty)">📦 @Loc["Archive"]</button>
+                    </div>
+                    break;
+
+                case Modal.FundMovements:
+                    <h3>@(State.FundIsSynced(_modalFundId) ? "🔗" : State.FundIcon(_modalFundId)) @State.FundName(_modalFundId)</h3>
+                    var _fmBal = State.FundIsSynced(_modalFundId) ? SyncedFundDisplay(_modalFundId).Amount : State.FundBalance(_modalFundId);
+                    var _fmEarmarks = FundEarmarks(_modalFundId);
+                    var _fmEarmarked = _fmEarmarks.Aggregate(State.Money(0), (s, e) => s + e.Total);
+                    var _fmMoves = FundMovements(_modalFundId);
+                    <div class="fund-move-summary">
+                        <span>@Loc["In this fund"]</span><strong class="amt">@Fmt(_fmBal)</strong>
+                    </div>
+                    @if (State.FundNote(_modalFundId) is { Length: > 0 } _fmNote)
+                    {
+                        <p class="hint">@_fmNote</p>
+                    }
+                    @if (_fmEarmarks.Count > 0)
+                    {
+                        <h4 class="detail-sub">@Loc["Earmarked here"]</h4>
+                        <small class="hint">@string.Format(Loc["{0} of this fund is set aside for savings buckets — {1} is free."], Fmt(_fmEarmarked), Fmt(_fmBal - _fmEarmarked))</small>
+                        <ul class="list">
+                            @foreach (var (bucket, total) in _fmEarmarks)
+                            {
+                                <li><span class="row-main"><span class="cat-ico">@State.SavingBucketIcon(bucket.Id)</span> @bucket.Name</span><span class="amt">@Fmt(total)</span></li>
+                            }
+                        </ul>
+                    }
+                    <h4 class="detail-sub">@Loc["This period"]</h4>
+                    @if (_fmMoves.Count == 0)
+                    {
+                        <p class="hint">@Loc["No movements in or out this period."]</p>
+                    }
+                    else
+                    {
+                        <ul class="list">
+                            @foreach (var m in _fmMoves)
+                            {
+                                <li>
+                                    <span class="row-main">@m.Date.ToString("dd MMM") · @m.Label</span>
+                                    <span class="amt @(m.In ? "credit" : "")">@(m.In ? "+" : "−")@Fmt(m.Amount)</span>
+                                </li>
+                            }
+                        </ul>
+                    }
+                    <div class="modal-actions">
+                        <button class="ghost" @onclick="Back">@Loc["Close"]</button>
+                    </div>
                     break;
 
                 case Modal.EditTransfer:
@@ -2842,7 +2884,7 @@ else
 }
 
 @code {
-    private enum Modal { None, PickAccount, BankReview, BankConsent, AddCat, AddBudget, DisburseSaving, PayoffProjection, GoalProjection, InvestmentProjection, BankTransfer, ExternalAccounts, HealthScore, EditCat, DeleteCat, CategoryDetail, AddAccount, EditAccount, DeleteAccount, RemoveMember, LeaveAccount, AddExpense, NextPeriod, RemovePeriod, EditExpense, DeleteExpense, SettleExpense, AddBucket, EditBucket, DeleteBucket, AddFund, EditFund, DeleteFund, Invite, Transfer, Deposit, EditDeposit, DeleteDeposit, ManageContribCats, ContribCat, DeleteContribCat, AddSaving, BudgetSaving, SpendSaving, EditSavingDeposit, DeleteSavingDeposit, EditTransfer, DeleteTransfer, EditPeriod, EditSavingMovement, DeleteSavingMovement, DeleteExternalTransfer, Achievements, Reallocate, Recurring, RecurringEdit, RecurringConfirm, Import, AddOrImport }
+    private enum Modal { None, PickAccount, BankReview, BankConsent, AddCat, AddBudget, DisburseSaving, PayoffProjection, GoalProjection, InvestmentProjection, BankTransfer, ExternalAccounts, HealthScore, EditCat, DeleteCat, CategoryDetail, AddAccount, EditAccount, DeleteAccount, RemoveMember, LeaveAccount, AddExpense, NextPeriod, RemovePeriod, EditExpense, DeleteExpense, SettleExpense, AddBucket, EditBucket, DeleteBucket, AddFund, EditFund, DeleteFund, Invite, Transfer, Deposit, EditDeposit, DeleteDeposit, ManageContribCats, ContribCat, DeleteContribCat, AddSaving, BudgetSaving, SpendSaving, EditSavingDeposit, DeleteSavingDeposit, EditTransfer, DeleteTransfer, EditPeriod, EditSavingMovement, DeleteSavingMovement, DeleteExternalTransfer, Achievements, Reallocate, Recurring, RecurringEdit, RecurringConfirm, Import, AddOrImport, ArchiveFund, FundMovements, Archived }
     private enum Tab { Overview, Account, Budgets, Savings }
 
     private Tab _tab = Tab.Overview;
@@ -2893,6 +2935,108 @@ else
     // Archive a category (and its sub-tree) — hides it but keeps every expense/budget in history. No reference blocker,
     // so it works even when the category is referenced (unlike delete). Mirrors ArchiveBucket.
     private async Task ArchiveCat(Guid catId) { _budgetMenuId = Guid.Empty; await State.ArchiveCategory(catId); }
+
+    // --- Funds-as-circles: per-fund bubble menu (mirrors BudgetCircleMenu) --------------------------
+    private Guid _fundMenuId;
+    private void ToggleFundMenu(Guid id) => _fundMenuId = _fundMenuId == id ? Guid.Empty : id;
+    private void FundAct(Action a) { _fundMenuId = Guid.Empty; a(); }
+
+    private RenderFragment<Guid> FundCircleMenu => fid =>
+        @<text>
+            <div class="row-menu-backdrop" @onclick="() => _fundMenuId = Guid.Empty"></div>
+            <div class="row-menu">
+                <button @onclick="() => FundAct(() => OpenFundMovements(fid))">📋 @Loc["Movements"]</button>
+                <button @onclick="() => FundAct(() => OpenEditFund(fid))">✏️ @Loc["Edit"]</button>
+                @if (!State.FundIsSynced(fid))
+                {
+                    @if (State.IsPeriodOpen)
+                    {
+                        @if (CanTransfer)
+                        {
+                            <button @onclick="() => FundAct(() => OpenTransferFromFund(fid))">🔁 @Loc["Transfer"]</button>
+                        }
+                        <button @onclick="() => FundAct(() => OpenDepositToFund(fid))">➕ @Loc["Contribute"]</button>
+                    }
+                    <button class="danger" @onclick="() => FundAct(() => OpenArchiveFund(fid))">📦 @Loc["Archive"]</button>
+                }
+            </div>
+        </text>;
+
+    private void OpenFundMovements(Guid fundId) { _modalFundId = fundId; _modal = Modal.FundMovements; }
+
+    private void OpenArchiveFund(Guid fundId)
+    {
+        _modalFundId = fundId;
+        _moveBalanceToId = State.RootFunds.FirstOrDefault(f => f.Id != fundId && !State.FundIsSynced(f.Id))?.Id ?? Guid.Empty;
+        _modal = Modal.ArchiveFund;
+    }
+
+    private Task ConfirmArchiveFund() => RunModal(async () =>
+    {
+        var bal = State.FundBalance(_modalFundId);
+        if (bal.Amount > 0m)
+        {
+            if (_moveBalanceToId == Guid.Empty) return;   // must land the balance somewhere (archiving keeps history)
+            await State.ArchiveFund(_modalFundId, _moveBalanceToId, bal.Amount);
+        }
+        else
+        {
+            await State.ArchiveFund(_modalFundId, null, 0m);
+        }
+        CloseModal();
+    });
+
+    // Money in/out of a fund this period — the human-readable ledger behind its balance (used by Modal.FundMovements).
+    private record FundMove(DateOnly Date, string Label, Money Amount, bool In);
+    private IReadOnlyList<FundMove> FundMovements(Guid fundId)
+    {
+        var p = State.Period;
+        var list = new List<FundMove>();
+        foreach (var b in p.InitialBalances.Where(b => b.FundId == fundId && b.Amount.Amount != 0m))
+            list.Add(new(p.From, Loc["Opening balance"], b.Amount, b.Amount.Amount >= 0m));
+        foreach (var c in p.Contributions.Where(c => c.MemberId != FinApp.Domain.Periods.Period.CarryoverSource && c.FundId == fundId))
+            list.Add(new(c.Date, State.CategoryName(c.CategoryId) is { Length: > 0 } cn ? $"{Loc["Money in"]} · {cn}" : Loc["Money in"], c.Paid, true));
+        foreach (var t in p.FundTransfers.Where(t => t.ToFundId == fundId))
+            list.Add(new(t.Date, string.Format(Loc["Transfer from {0}"], State.FundName(t.FromFundId)), t.Amount, true));
+        foreach (var t in p.FundTransfers.Where(t => t.FromFundId == fundId))
+            list.Add(new(t.Date, string.Format(Loc["Transfer to {0}"], State.FundName(t.ToFundId)), t.Amount, false));
+        foreach (var e in p.Expenses.Where(e => e.FundId == fundId))
+            list.Add(new(e.Date, string.IsNullOrEmpty(e.Note) ? State.CategoryName(e.CategoryId) : $"{State.CategoryName(e.CategoryId)} · {e.Note}", e.Amount, false));
+        foreach (var x in p.ExternalTransfers.Where(x => x.FundId == fundId))
+            list.Add(new(x.Date, Loc["Sent to another account"], x.Amount, false));
+        return list.OrderByDescending(m => m.Date).ToList();
+    }
+
+    // Savings buckets earmarked "held in" this fund (informational: shows how much of the fund is already spoken for).
+    private IReadOnlyList<(SavingCategory Bucket, Money Total)> FundEarmarks(Guid fundId) =>
+        State.SavingBuckets.Where(b => State.SavingBucketFundId(b.Bucket.Id) == fundId).ToList();
+
+    // The circular emblem for a milestone: an earned one is a filled gold "medal" (with a ✓); an in-progress one keeps
+    // the gold progress arc (so you can see how close); a not-started one is a flat muted disc. Shared by the Home strip
+    // and the Achievements modal.
+    private RenderFragment<Achievement> AchievementBadge => a =>
+        @<text>
+            @if (a.Earned)
+            {
+                <div class="ach-badge earned tier-@(a.Tier.ToString().ToLowerInvariant())">
+                    <span class="ach-badge-sheen"></span>
+                    <span class="ach-badge-ico">@a.Icon</span>
+                    <span class="ach-badge-tick">✓</span>
+                </div>
+            }
+            else if (a.Percent is > 0)
+            {
+                <ProgressRing Percent="@((double)a.Percent.Value)" Class="gold">
+                    <span class="ring-ico-big ach-locked">@a.Icon</span>
+                </ProgressRing>
+            }
+            else
+            {
+                <div class="ach-badge locked">
+                    <span class="ach-badge-ico">@a.Icon</span>
+                </div>
+            }
+        </text>;
     private readonly InsightsService _insights = new();
     private readonly AchievementsService _achievements = new();
 
@@ -3134,6 +3278,7 @@ else
     private string? _fCurrency = "EUR";
     private int _fSavingsTarget = 20;
     private string? _fIcon;
+    private bool _iconOpen;   // add/edit modals: whether the icon palette (next to the Name field) is expanded
 
     /// <summary>Savings-target percent input, shared by the first-run form and the add/edit-account modals. Shows an
     /// inline note when the typed value is outside 0–100% (it's silently clamped to that range on save — BACKLOG P0 #3).</summary>
@@ -3180,19 +3325,11 @@ else
         }
     }
 
-    /// <summary>The compact Home strip: your most-recent earned milestones (with their dates) plus the single closest
-    /// locked one to chase. The full catalogue lives in the Achievements modal.</summary>
-    private IReadOnlyList<(Achievement A, DateOnly? On)> HomeMilestones()
-    {
-        var log = State.Account.AchievementLog;
-        var catalog = CurrentAchievements();
-        var result = catalog.Where(a => a.Earned)
-            .Select(a => (A: a, On: log.TryGetValue(a.Key, out var d) ? (DateOnly?)d : null))
-            .OrderByDescending(x => x.On ?? DateOnly.MinValue).Take(3).ToList();
-        var next = catalog.Where(a => !a.Earned).OrderByDescending(a => a.Percent ?? 0).FirstOrDefault();
-        if (next is not null) result.Add((next, null));
-        return result;
-    }
+    /// <summary>The compact Home strip: only the milestones you're actively making progress on (not yet earned, but
+    /// above 0%), closest first. Earned medals and not-started ones live in the Achievements modal (🏆 in the header).</summary>
+    private IReadOnlyList<Achievement> HomeMilestones() =>
+        CurrentAchievements().Where(a => !a.Earned && a.Percent is > 0)
+            .OrderByDescending(a => a.Percent).Take(6).ToList();
 
     /// <summary>How long a bank connection stays "fresh" after a sync before we'll call the provider again on
     /// open/switch. Keeps the opened account current without a live call every time, and because the last-sync
@@ -4406,6 +4543,8 @@ else
     }
 
     private bool HasSavingsBucket => State.SavingBuckets.Any(b => !b.Bucket.IsArchived);
+    // Any archived fund / category / bucket — gates the "Archived items" entry in the account-actions menu.
+    private bool HasArchivedItems => State.ArchivedFunds.Any() || State.ArchivedCategories.Any() || State.SavingBuckets.Any(b => b.Bucket.IsArchived);
 
     /// <summary>Open "Add to savings" on the best-fit bucket (a live goal bucket first), or fall back to the Savings tab.</summary>
     private void OpenMoveToSavings()
@@ -5102,8 +5241,6 @@ else
         CloseModal();
     });
 
-    private bool _showArchived;   // Debt/Savings tab: reveal the archived-buckets list
-    private bool _showArchivedCats;   // Spending tab: reveal the archived-categories list
 
     private async Task ArchiveBucket(Guid bucketId)
     {
@@ -5411,7 +5548,7 @@ else
         await JS.InvokeVoidAsync("finappDownloadFile", fileName, Convert.ToBase64String(bytes),
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
     });
-    private void CloseModal() { _modal = Modal.None; _modalError = null; _modalBack.Clear(); _afterCreate = null; }
+    private void CloseModal() { _modal = Modal.None; _modalError = null; _modalBack.Clear(); _afterCreate = null; _iconOpen = false; }
 
     // Account-actions cog menu.
     private bool _acctMenuOpen;
@@ -5440,6 +5577,7 @@ else
     private void Back()
     {
         _modalError = null;
+        _iconOpen = false;
         if (_modalBack.Count > 0) _modalBack.Pop()();
         else CloseModal();
     }

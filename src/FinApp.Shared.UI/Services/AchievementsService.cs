@@ -9,7 +9,10 @@ namespace FinApp.Shared.UI.Services;
 /// <summary>A motivational milestone or streak (BACKLOG #12). Derived from account history but keyed by a <b>stable</b>
 /// <see cref="Key"/> so the Dashboard can stamp a "date earned" into the account's achievement log the first time it's
 /// seen. <see cref="Earned"/> ones are ticked (with their date); locked ones show <see cref="Percent"/> progress.</summary>
-public sealed record Achievement(string Key, string Icon, string Title, string Desc, bool Earned, int? Percent = null);
+/// <summary>Difficulty tier — sets the earned medal's metal colour (bronze = starter, silver = steady, gold = major).</summary>
+public enum AchievementTier { Bronze, Silver, Gold }
+
+public sealed record Achievement(string Key, string Icon, string Title, string Desc, bool Earned, int? Percent = null, AchievementTier Tier = AchievementTier.Bronze);
 
 /// <summary>
 /// Computes the full achievement catalogue (earned + locked) for the Achievements modal and Home strip. Pure
@@ -27,8 +30,8 @@ public sealed class AchievementsService
         ArgumentNullException.ThrowIfNull(account);
         _t = translate ?? (s => s);
         var list = new List<Achievement>();
-        void Add(string key, string icon, string title, string desc, bool earned, int? percent = null)
-            => list.Add(new Achievement(key, icon, title, desc, earned, earned ? null : percent));
+        void Add(string key, string icon, string title, string desc, bool earned, int? percent = null, AchievementTier tier = AchievementTier.Bronze)
+            => list.Add(new Achievement(key, icon, title, desc, earned, earned ? null : percent, tier));
 
         // --- Anchored view: only periods from the anchor onward count. ---
         var anchor = account.AchievementsAnchor;
@@ -124,7 +127,25 @@ public sealed class AchievementsService
         // --- Social ---
         Add("shared", "🤝", _t("Better together"), _t("You're sharing this account with someone."), account.Members.Count > 1);
 
+        // Assign each medal a difficulty tier (bronze default → silver steady → gold major) so earned badges vary in metal.
+        for (var i = 0; i < list.Count; i++)
+            if (TierFor(list[i].Key) is var t && t != AchievementTier.Bronze)
+                list[i] = list[i] with { Tier = t };
+
         return list;
+    }
+
+    private static AchievementTier TierFor(string key)
+    {
+        if (key is "streak_12" or "goals_3" or "debt_half_all" or "debtfree_12mo") return AchievementTier.Gold;
+        if (key.StartsWith("debt_", StringComparison.Ordinal))                       // per-debt payoff milestone
+            return key.Contains("_100_", StringComparison.Ordinal) || key.Contains("_75_", StringComparison.Ordinal)
+                ? AchievementTier.Gold : AchievementTier.Silver;
+        if (key.StartsWith("goal_", StringComparison.Ordinal)) return AchievementTier.Silver;   // per-goal reached
+        if (key is "expenses_100" or "budgets_5" or "clean_sweep" or "under_budget" or "saved_1000"
+                or "buffer_1mo" or "beat_target_10" or "streak_6" or "first_payment" or "overpay" or "comeback" or "goals_1")
+            return AchievementTier.Silver;
+        return AchievementTier.Bronze;
     }
 
     /// <summary>Consecutive most-recent (anchored) periods with income whose savings rate met the target. Periods with
