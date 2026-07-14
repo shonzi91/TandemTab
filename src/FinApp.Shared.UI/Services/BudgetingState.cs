@@ -1095,13 +1095,10 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     /// <summary>Average amount added to a bucket per active period — the demonstrated saving pace, for projections.</summary>
     public Money? SavingBucketPace(Guid id) => _savings.AverageDepositPace(Account, id);
 
-    /// <summary>The pace projections should use: the user's planned contribution (#8) when set, else the demonstrated
-    /// pace from deposit history. Null only when neither exists (no plan and no deposits yet).</summary>
-    public Money? EffectiveSavingPace(Guid id)
-    {
-        var planned = FindSavingBucket(id)?.PlannedContribution;
-        return planned is > 0m ? Money(planned.Value) : SavingBucketPace(id);
-    }
+    /// <summary>The pace projections should use: the demonstrated pace from deposit history. Null only when there are
+    /// no deposits yet. (The old per-bucket "planned contribution" override was removed — for debt the installment is
+    /// the planned amount, and every projection modal lets you drag the pace to explore "what if I keep this up".)</summary>
+    public Money? EffectiveSavingPace(Guid id) => SavingBucketPace(id);
 
     /// <summary>Debt buckets: the shrinking remaining-balance series (original owed → balance after each paying period),
     /// for a sparkline (#7). Fewer than 2 points means there's nothing to draw yet.</summary>
@@ -1491,8 +1488,11 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     /// transaction (same amount, within a few days). Keyed by bank ExternalId. Read-only — suggests nothing binding.</summary>
     public IReadOnlyDictionary<string, DuplicateSuggestion> BankDuplicateSuggestions(IEnumerable<PendingBankTransactionDto> pendingDebits)
     {
+        // Consider every real expense this period, not just un-linked manual ones: the same transaction can arrive
+        // from two bank sources (statement import + live sync) with different ExternalIds, so an already-bank-linked
+        // expense must still be offered as a "you already logged this" match. Disbursements (savings payouts) excluded.
         var entries = Period.Expenses
-            .Where(e => e.BankExternalId is null && e.SourceSavingCategoryId is null)
+            .Where(e => e.SourceSavingCategoryId is null)
             .Select(e => new BankDuplicateMatcher.Entry(e.Id, e.Amount.Amount, e.Date));
         var debits = pendingDebits.Where(t => t.Amount < 0m)
             .Select(t => new BankDuplicateMatcher.Pending(t.ExternalId, t.Amount, t.Date));
@@ -1505,6 +1505,17 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
                 CategoryName(e.CategoryId), CategoryIcon(e.CategoryId), FundName(e.FundId), e.Date);
         }
         return map;
+    }
+
+    /// <summary>True when this period already holds an expense that looks like the same transaction as an incoming
+    /// bank debit (same absolute amount, within a few days). Used to hold a mapped <b>auto-file</b> back into manual
+    /// review instead of silently double-posting over a recurring-posted or already-imported entry — auto-file is the
+    /// one path that otherwise never sees the duplicate matcher. Disbursements (savings payouts) are excluded.</summary>
+    public bool HasLikelyDuplicateExpense(decimal amount, DateOnly date, int windowDays = 4)
+    {
+        var abs = Math.Abs(amount);
+        return Period.Expenses.Any(e => e.SourceSavingCategoryId is null && e.Amount.Amount == abs
+            && Math.Abs(e.Date.DayNumber - date.DayNumber) <= windowDays);
     }
 
     /// <summary>The incoming bank debit is the same as a manual entry: drop the manual (often mis-filed) expense and
@@ -1599,6 +1610,15 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     /// <summary>Normalize a bank description to the same key the server matches rules against (MatchKeyOf).</summary>
     public static string BankMatchKey(string description) =>
         string.Join(' ', (description ?? "").ToLowerInvariant().Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+
+    /// <summary>Split a description (or a rule's match-key) into lowercased word tokens, on any non-letter/non-digit
+    /// boundary — so "TESCO,LONDON 4471" → [tesco, london, 4471] and Cyrillic merchant names survive. A saved rule
+    /// matches a transaction when <b>all</b> of the rule's tokens are present in the transaction's tokens (the user
+    /// picks which tokens carry the merchant's identity), and the most-specific matching rule wins.</summary>
+    public static IReadOnlyList<string> BankTokens(string s) =>
+        System.Text.RegularExpressions.Regex
+            .Split((s ?? "").ToLowerInvariant(), @"[^\p{L}\p{N}]+")
+            .Where(t => t.Length > 0).ToList();
 
     // Words that carry no merchant identity — legal suffixes, payment noise, common stopwords — dropped when
     // reducing a description to its stem so store numbers and legal forms don't split one merchant into many rules.

@@ -2,9 +2,26 @@
 html, body {
     font-family: 'Quicksand', system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
-/* Friendly, modern page canvas — a soft, airy mint-grey so the clean white cards lift gently (fresher and
-   less formal than the old beige, without going stark clinical white). */
-body { background: #eef3f0; }
+/* ── "Fresh" light theme palette ──────────────────────────────────────────────
+   One place to tune the light theme. CSS vars inherit through the DOM so scoped
+   component CSS can read them regardless of Blazor's [b-hash] scoping. The signature
+   is a green→teal gradient accent, colored stat tiles, and soft elevation instead of
+   hairline borders (kills the old "clinical white" feel). Dark theme overrides below. */
+:root {
+    --tt-accent: #12b886;
+    --tt-accent-2: #0ea5a5;
+    --tt-grad: linear-gradient(135deg, #12b886, #0ea5a5);
+    --tt-grad-hover: linear-gradient(135deg, #14c691, #10b3b3);
+    --tt-border: #e7edf0;
+    --tt-card-shadow: 0 1px 2px rgba(22,42,60,.05), 0 6px 18px rgba(22,42,60,.05);
+    --tt-card-shadow-hover: 0 3px 8px rgba(22,42,60,.09), 0 14px 30px rgba(22,42,60,.08);
+    --tt-tile-mint-bg: #e6f7f0;  --tt-tile-mint-fg: #0b7a58;
+    --tt-tile-blue-bg: #e8f2fd;  --tt-tile-blue-fg: #1566af;
+    --tt-tile-amber-bg: #fdf1dd; --tt-tile-amber-fg: #a2680f;
+}
+
+/* Fresh page canvas — a bright, airy cool-mint so white cards lift with their soft shadows. */
+body { background: #eff5f6; }
 
 /* Always reserve the scrollbar gutter so switching to a taller tab (e.g. Budgets) doesn't add a scrollbar
    and shift the centered layout sideways. */
@@ -131,6 +148,11 @@ html.dark .trend-card {
     background: #181c25; border-color: #262d3d; color: #e8eaf0;
 }
 html.dark .card.savings, html.dark .all-clear { background: #14271f; border-color: #1d3a2c; }
+/* Fresh colored stat tiles fall back to neutral dark surfaces in dark mode. */
+html.dark .card.savings .card-value { color: #57d9a3; }
+html.dark .card.tile-spend, html.dark .card.tile-score { background: #181c25; border-color: #262d3d; }
+html.dark .card.tile-spend .card-label, html.dark .card.tile-spend .card-value { color: #e8eaf0; }
+html.dark .card.tile-score .card-label { color: #aab0c0; }
 html.dark .modal-backdrop, html.dark .pm-backdrop { background: rgba(0,0,0,.6); }
 
 /* Form controls (the more-specific scoped rules below need matching dark overrides to win) */

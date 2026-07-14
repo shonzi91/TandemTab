@@ -263,9 +263,9 @@ else
                     <span class="card-value">@Fmt(State.SavingsThisPeriod)</span>
                     <span class="card-sub">@PctOrDash(State.PeriodSavingsRate) @Loc["of contributions"]</span>
                 </div>
-                <div class="card"><span class="card-label">@Loc["Spent"]</span><span class="card-value">@Fmt(State.TotalSpent)</span></div>
+                <div class="card tile-spend"><span class="card-label">@Loc["Spent"]</span><span class="card-value">@Fmt(State.TotalSpent)</span></div>
                 @{ var ovBand = ov.Band switch { HealthBand.Healthy => "score-ok", HealthBand.Average => "score-warn", _ => "score-bad" }; }
-                <button id="home-score" class="card card-score" @onclick="() => _modal = Modal.HealthScore" title="@Loc["Health score & trends"]">
+                <button id="home-score" class="card card-score tile-score" @onclick="() => _modal = Modal.HealthScore" title="@Loc["Health score & trends"]">
                     <span class="card-label">@Loc["Health score & trends"]</span>
                     <span class="card-value @ovBand">@(ov.HasData ? ov.Score.ToString() : "—")</span>
                     <span class="card-sub">@(ov.HasData ? ov.Verdict : "") ›</span>
@@ -1731,11 +1731,6 @@ else
                         <label>@Loc["Alert at %"] <input type="number" step="1" min="0" max="100" @bind="_fThreshold" /></label>
                         <label class="check"><input type="checkbox" @bind="_fNotify" /> @Loc["Notify on milestone"]</label>
                     }
-                    <label>@Loc["Planned contribution /period (optional)"] <input type="number" step="10" min="0" @bind="_fPlanned" /></label>
-                    <small class="hint">@(_bucketKind switch {
-                        SavingKind.Debt => Loc["What you plan to put toward this each period, on top of the installment. Used to date your payoff instead of guessing from history. Leave 0 to infer it."],
-                        SavingKind.Investment => Loc["What you plan to invest each period. Used as the default 'extra on top' in the growth projection. Leave 0 to infer it."],
-                        _ => Loc["What you plan to set aside each period. Used to date your goal instead of guessing from history. Leave 0 to infer it."] })</small>
                     <label>@Loc["Held in fund (optional)"]
                         <select @bind:get="_bucketFundId?.ToString()" @bind:set="v => _bucketFundId = Guid.TryParse(v, out var g) ? g : (Guid?)null">
                             <option value="">@Loc["— none —"]</option>
@@ -2384,7 +2379,7 @@ else
                     var pjRate = State.SavingBucketDebtRate(_projBucketId);
                     var pjInst = State.SavingBucketDebtInstallment(_projBucketId);
                     var pjPace = State.EffectiveSavingPace(_projBucketId);
-                    var pjPlanned = State.SavingBucketPlannedContribution(_projBucketId) is > 0m;
+                    var pjPlanned = false;   // planned-contribution field retired — projections always use the demonstrated pace
                     var pjExtra = _payoffExtra > 0m ? _payoffExtra : 0m;
                     var pjTotal = pjInst + pjExtra;                       // installment is always there; extra is on top
                     var pjAtInst = FinApp.Domain.Forecasting.LoanForecast.PayOff(pjBal, pjRate, pjInst);
@@ -2445,7 +2440,7 @@ else
                     var gpSaved = State.SavingBucketSaved(_projBucketId);
                     var gpGoal = State.FindSavingBucket(_projBucketId)?.GoalAmount;
                     var gpPace = State.EffectiveSavingPace(_projBucketId);
-                    var gpPlanned = State.SavingBucketPlannedContribution(_projBucketId) is > 0m;
+                    var gpPlanned = false;   // planned-contribution field retired — see pjPlanned
                     int? gpPeriods = gpPace is { } gpp && gpp.Amount > 0m && gpGoal is { } gpg && gpg > gpSaved.Amount
                         ? (int)Math.Ceiling((double)((gpg - gpSaved.Amount) / gpp.Amount)) : null;
                     <h3>📅 @Loc["Goal projection"] — @State.SavingBucketName(_projBucketId)</h3>
@@ -2485,7 +2480,7 @@ else
                     var ivRate = State.SavingBucketInvestmentRate(_projBucketId);
                     var ivTerm = State.SavingBucketInvestmentTermYears(_projBucketId);
                     var ivPace = State.EffectiveSavingPace(_projBucketId);
-                    var ivPlanned = State.SavingBucketPlannedContribution(_projBucketId) is > 0m;
+                    var ivPlanned = false;   // planned-contribution field retired — see pjPlanned
                     var ivExtra = _invExtra > 0m ? _invExtra : 0m;
                     var ivBase = State.ProjectInvestment(_projBucketId, 0m);
                     var ivWith = State.ProjectInvestment(_projBucketId, ivExtra);
@@ -3273,7 +3268,6 @@ else
     private decimal _debtBalance, _debtRate, _debtInstallment;
     private decimal _invRate, _invTermYears;
     private int _invCompounds = 12;
-    private decimal _fPlanned;   // #8: planned per-period contribution (0 = infer pace from history)
     private Guid? _bucketFundId;                       // Plans: the fund this bucket is earmarked in (defaults the disburse fund)
 
     private string? _inviteUsername;
@@ -3581,15 +3575,21 @@ else
 
     private (string Kind, Guid TargetId)? MappingFor(string description)
     {
-        // Exact rule wins (precise, user-set). Then a fuzzy fallback: a saved rule whose merchant stem matches this
-        // description's stem, so "Fantastico 30" inherits the rule saved for "Fantastico Group Ltd" (#5). This only
-        // pre-fills the review screen — the user still confirms — so a loose match is caught before anything posts.
-        if (_bankMappings.TryGetValue(BudgetingState.BankMatchKey(description), out var m)) return m;
-        var stem = BudgetingState.BankMatchStem(description);
-        if (stem.Length == 0) return null;
+        // Token-subset matching: a rule applies when every one of its tokens is present in this description's tokens
+        // (the user curates which tokens identify the merchant — see BankTokens). The most-specific rule wins (most
+        // tokens matched), so a precise "transfer to ivan petrov" rule beats a broad "netflix" one, and distinct
+        // payees no longer collapse onto a shared first word the way the old merchant-stem fallback did.
+        var descTokens = BudgetingState.BankTokens(description).ToHashSet(StringComparer.Ordinal);
+        if (descTokens.Count == 0) return null;
+        (string Kind, Guid TargetId)? best = null;
+        var bestCount = 0;
         foreach (var (key, val) in _bankMappings)
-            if (BudgetingState.BankMatchStem(key) == stem) return val;
-        return null;
+        {
+            var ruleTokens = BudgetingState.BankTokens(key);
+            if (ruleTokens.Count == 0 || ruleTokens.Count <= bestCount) continue;
+            if (ruleTokens.All(descTokens.Contains)) { best = val; bestCount = ruleTokens.Count; }
+        }
+        return best;
     }
 
     // Deterministic merchant badge (colored circle + initial) — no external logo lookups (feature 5).
@@ -3698,8 +3698,21 @@ else
     /// "change target" editing and a confirmed remove. Reused wherever auto-file rules are listed. Context is
     /// (match-key, kind "category"/"fund", leading icon).</summary>
     private RenderFragment<(string Key, string Kind, string Icon)> BankRuleRow => ctx =>
-        @<li>
-            <span class="row-main">@ctx.Icon @ctx.Key</span>
+        @<li class="@(_ruleEditKey == ctx.Key ? "rule-editing" : "")">
+            @if (_ruleEditKey == ctx.Key)
+            {
+                <span class="row-main rule-tokens" title="@Loc["Tap a word to include or exclude it from matching. A transaction matches when all the highlighted words appear in it."]">
+                    @ctx.Icon
+                    @foreach (var tok in _ruleEditTokens)
+                    {
+                        <button type="button" class="rule-chip @(_ruleEditOn.Contains(tok) ? "on" : "")" @onclick="() => ToggleRuleToken(tok)">@tok</button>
+                    }
+                </span>
+            }
+            else
+            {
+                <span class="row-main">@ctx.Icon @ctx.Key</span>
+            }
             @if (_ruleEditKey == ctx.Key)
             {
                 <span class="row-actions rule-edit">
@@ -3728,7 +3741,7 @@ else
             else
             {
                 <span class="row-actions">
-                    <button class="exp-edit" title="@Loc["Change where this files"]" @onclick="() => BeginRuleEdit(ctx.Key)" disabled="@_bankBusy">✏️</button>
+                    <button class="exp-edit" title="@Loc["Edit rule: where it files and which words match"]" @onclick="() => BeginRuleEdit(ctx.Key)" disabled="@_bankBusy">✏️</button>
                     <button class="exp-edit" title="@Loc["Remove"]" @onclick="() => RemoveBankRuleKey(ctx.Key)" disabled="@_bankBusy">🗑️</button>
                 </span>
             }
@@ -3788,6 +3801,9 @@ else
         {
             if (MappingFor(tx.Description) is not { Kind: "category" } m) continue;
             if (!State.CategoryOptions.Any(c => c.Category.Id == m.TargetId)) continue;
+            // Don't auto-post over a likely duplicate (a recurring-posted or already-imported expense of the same
+            // amount): leave it pending so the review screen surfaces the "you already logged this" suggestion.
+            if (State.HasLikelyDuplicateExpense(tx.Amount, tx.Date)) continue;
             try
             {
                 await State.ConfirmBankTransaction(tx.ExternalId, m.TargetId, Math.Abs(tx.Amount), State.SyncedFundId, tx.Description, ClampToPeriod(tx.Date), autoFiled: true);
@@ -4014,19 +4030,31 @@ else
         finally { _bankBusy = false; }
     }
 
-    // --- Inline rule editing (change where a merchant's imports file) --------
-    private string? _ruleEditKey;   // the match-key whose target is being re-picked (null = none)
+    // --- Inline rule editing (change where a merchant's imports file + which tokens match) --------
+    private string? _ruleEditKey;   // the match-key being edited (null = none)
     private Guid _ruleEditTarget;
+    private List<string> _ruleEditTokens = [];   // the rule's tokens, in order; a subset is "on" (selected) for matching
+    private HashSet<string> _ruleEditOn = new(StringComparer.Ordinal);
 
     private void BeginRuleEdit(string matchKey)
     {
         _ruleEditKey = matchKey;
         _ruleEditTarget = _bankMappings.TryGetValue(matchKey, out var m) ? m.TargetId : Guid.Empty;
+        _ruleEditTokens = BudgetingState.BankTokens(matchKey).ToList();
+        _ruleEditOn = _ruleEditTokens.ToHashSet(StringComparer.Ordinal);   // start with every token on
+    }
+
+    private void ToggleRuleToken(string token)
+    {
+        if (!_ruleEditOn.Remove(token)) _ruleEditOn.Add(token);   // keep at least one token selected
+        if (_ruleEditOn.Count == 0) _ruleEditOn.Add(token);
     }
 
     private void CancelRuleEdit() => _ruleEditKey = null;
 
-    /// <summary>Re-point the edited rule at a new category/fund (same kind) and persist it.</summary>
+    /// <summary>Persist edits to the rule being edited: a new target (category/fund) and/or a narrowed set of match
+    /// tokens. Narrowing tokens re-keys the rule (remove old key, add the new token-key) so it matches on just the
+    /// merchant words the user kept.</summary>
     private async Task SaveRuleEdit()
     {
         if (_ruleEditKey is not { } key || !_bankMappings.TryGetValue(key, out var existing))
@@ -4034,19 +4062,26 @@ else
             _ruleEditKey = null;
             return;
         }
-        if (_ruleEditTarget == Guid.Empty || _ruleEditTarget == existing.TargetId)
-        {
-            _ruleEditKey = null;   // nothing to change
-            return;
-        }
+        var target = _ruleEditTarget == Guid.Empty ? existing.TargetId : _ruleEditTarget;
+        var newKey = string.Join(' ', _ruleEditTokens.Where(_ruleEditOn.Contains));
+        if (newKey.Length == 0) newKey = key;
+        if (newKey == key && target == existing.TargetId) { _ruleEditKey = null; return; }   // nothing changed
+
         _bankBusy = true; _bankError = null;
         try
         {
-            await State.SetBankMapping(key, existing.Kind, _ruleEditTarget);
-            _bankMappings[key] = (existing.Kind, _ruleEditTarget);
+            if (newKey != key)
+            {
+                await State.RemoveBankMapping(key);
+                _bankMappings.Remove(key);
+                var idx = _editCatVendors.IndexOf(key);
+                if (idx >= 0) _editCatVendors[idx] = newKey;
+            }
+            await State.SetBankMapping(newKey, existing.Kind, target);
+            _bankMappings[newKey] = (existing.Kind, target);
             // A category rule re-pointed elsewhere no longer belongs to the category being edited.
-            if (existing.Kind == "category" && _modal == Modal.EditCat && _ruleEditTarget != _modalCatId)
-                _editCatVendors.Remove(key);
+            if (existing.Kind == "category" && _modal == Modal.EditCat && target != _modalCatId)
+                _editCatVendors.Remove(newKey);
             _ruleEditKey = null;
         }
         catch (Exception ex) { _bankError = ex.Message; }
@@ -5253,7 +5288,7 @@ else
     private void OpenAddBucketOfKind(SavingKind kind)
     {
         _modalBucketId = Guid.Empty; _fName = null; _fIcon = null; _goalAmount = 0; _fThreshold = 80; _fNotify = false; _initialSavings = 0;
-        _bucketKind = kind; _debtBalance = 0; _debtRate = 0; _debtInstallment = 0; _fPlanned = 0;
+        _bucketKind = kind; _debtBalance = 0; _debtRate = 0; _debtInstallment = 0;
         _invRate = 0; _invTermYears = 0; _invCompounds = 12;
         _bucketFundId = null;
         _modal = Modal.AddBucket;
@@ -5276,7 +5311,6 @@ else
         _invRate = b?.InvestmentAnnualRatePercent ?? 0;
         _invTermYears = b?.InvestmentTermYears ?? 0;
         _invCompounds = b?.InvestmentCompoundsPerYear ?? 12;
-        _fPlanned = b?.PlannedContribution ?? 0;
         _bucketFundId = State.SavingBucketFundId(bucketId);
         _modal = Modal.EditBucket;
     }
@@ -5285,7 +5319,7 @@ else
     {
         if (string.IsNullOrWhiteSpace(_fName)) return;
         decimal? goal = _goalAmount > 0 ? _goalAmount : null;
-        decimal? planned = _fPlanned > 0 ? _fPlanned : null;
+        decimal? planned = null;   // planned-contribution field retired; add/edit clears any legacy value
         var isDebt = _bucketKind == SavingKind.Debt;
         var isInv = _bucketKind == SavingKind.Investment;
         if (_modal == Modal.AddBucket)

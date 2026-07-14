@@ -224,6 +224,8 @@ public sealed class Localizer(IJSRuntime js)
         ["Pick something to map to first."] = "Първо изберете към какво да свържете.",
         ["Where your money is"] = "Къде са парите ви",
         ["across {0} funds"] = "в {0} фонда",
+        ["Edit rule: where it files and which words match"] = "Редактирай правилото: къде се завежда и кои думи съвпадат",
+        ["Tap a word to include or exclude it from matching. A transaction matches when all the highlighted words appear in it."] = "Докосни дума, за да я включиш или изключиш от съвпадението. Транзакция съвпада, когато всички откроени думи се срещат в нея.",
         ["Move money"] = "Премести пари",
         ["Income"] = "Приходи",
         ["free"] = "свободни",
