@@ -992,8 +992,8 @@ html.dark .targets-foot { border-top-color: #2a323c; }
     font-weight: 700; font-size: .9rem; cursor: pointer; transition: background .15s, border-color .15s;
 }
 .qa:hover { background: #f0faf5; border-color: #13a06e; }
-html.dark .qa { background: #1b2430; border-color: #2c3a45; color: #57d9a3; }
-html.dark .qa:hover { background: #22303c; border-color: #3a8f6c; }
+html.dark .qa { background: #161b2c; border-color: #293049; color: #7bf0d8; }
+html.dark .qa:hover { background: #1b2236; border-color: #3fe0c5; }
 
 /* Home reminders (#10) */
 .reminders { display: flex; flex-direction: column; gap: 8px; margin: 12px 0 0; }
