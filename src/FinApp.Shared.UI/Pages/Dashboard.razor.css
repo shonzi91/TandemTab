@@ -80,23 +80,22 @@ html.dark .onboard-desc { color: #a9b6ad; }
     padding: 4px 10px; border-radius: 999px; font-weight: 600;
 }
 
-/* Gradient balance hero (Fresh): the current-balance block is a green→teal card with the balance big and white. */
-.head-right {
-    display: flex; flex-direction: column; align-items: flex-start; gap: 8px;
+/* Gradient balance hero (Fresh): only the balance itself is the green→teal glowing card. The "Active" status
+   pill stays outside it, on the page background, so it reads as its own distinct chip. */
+.head-right { display: flex; flex-direction: column; align-items: flex-end; gap: 9px; }
+.head-right .bal-current {
     background: var(--tt-grad); color: #fff; border-radius: 16px; padding: 13px 18px 15px;
-    box-shadow: 0 8px 22px rgba(14,165,165,.26); min-width: 208px;
+    box-shadow: 0 10px 26px rgba(14,165,165,.32); min-width: 200px; align-items: flex-start;
 }
-.head-right .status { background: rgba(255,255,255,.24); color: #fff; }
-.head-right .bal { align-items: flex-start; }
-.head-right .bal-label { color: rgba(255,255,255,.85); }
+.head-right .bal-current .bal-label { color: rgba(255,255,255,.85); }
 .head-right .bal-current strong { font-size: 1.7rem; color: #fff; letter-spacing: -.01em; line-height: 1.1; }
-.head-right .bal-free { color: #fff; }
-.head-right .bal-free.warn-text { color: #ffe08a; }
-.head-right .bal-alloc, .head-right .bal-bills { color: rgba(255,255,255,.8); }
-html.dark .head-right .bal-label { color: rgba(255,255,255,.85); }
-html.dark .head-right .bal-free { color: #fff; }
-html.dark .head-right .bal-free.warn-text { color: #ffe08a; }
-html.dark .head-right .bal-alloc, html.dark .head-right .bal-bills { color: rgba(255,255,255,.8); }
+.head-right .bal-current .bal-free { color: #fff; }
+.head-right .bal-current .bal-free.warn-text { color: #ffe08a; }
+.head-right .bal-current .bal-alloc, .head-right .bal-current .bal-bills { color: rgba(255,255,255,.8); }
+html.dark .head-right .bal-current .bal-label { color: rgba(255,255,255,.85); }
+html.dark .head-right .bal-current .bal-free { color: #fff; }
+html.dark .head-right .bal-current .bal-free.warn-text { color: #ffe08a; }
+html.dark .head-right .bal-current .bal-alloc, html.dark .head-right .bal-current .bal-bills { color: rgba(255,255,255,.8); }
 .closing-inline { display: flex; align-items: center; gap: 10px; }
 .closing-inline .ghost { padding: 7px 14px; }
 

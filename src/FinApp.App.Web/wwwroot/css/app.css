@@ -20,8 +20,13 @@ html, body {
     --tt-tile-amber-bg: #fdf1dd; --tt-tile-amber-fg: #a2680f;
 }
 
-/* Fresh page canvas — a bright, airy cool-mint so white cards lift with their soft shadows. */
-body { background: #eff5f6; }
+/* Fresh page canvas — a soft brand-tinted gradient (teal-green → cool → warm), noticeably deeper than the
+   white cards so they lift clearly. Fixed so it stays put while content scrolls. */
+body {
+    background: linear-gradient(158deg, #cfe7e4 0%, #d9e6ea 46%, #e8ece2 100%);
+    background-attachment: fixed;
+    min-height: 100vh;
+}
 
 /* Always reserve the scrollbar gutter so switching to a taller tab (e.g. Budgets) doesn't add a scrollbar
    and shift the centered layout sideways. */
@@ -120,7 +125,7 @@ h1:focus {
    global sheet: an `html.dark X` selector outranks the scoped `X[b-hash]` rule by
    one element of specificity, so these win. Mint accent (#13a06e) is kept as-is. */
 html.dark { color-scheme: dark; }
-html.dark body { background: #0f1117; }
+html.dark body { background: linear-gradient(158deg, #0f1117 0%, #141b26 100%); background-attachment: fixed; min-height: 100vh; }
 html.dark .app-shell { background: #0f1117; }
 html.dark .app-body { background: #0f1117; }
 
