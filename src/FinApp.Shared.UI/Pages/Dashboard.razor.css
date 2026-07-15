@@ -61,12 +61,63 @@ html.dark .onboard-check { background: #14251d; }
 html.dark .onboard-title { color: #e8eaf0; }
 html.dark .onboard-desc { color: #a9b6ad; }
 
-.dash-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 16px;
+.dash-head { display: flex; flex-direction: column; gap: 11px; margin-bottom: 16px; }
+
+/* Row 1 — strip: account chip · balance mini-card · icons */
+.hdr-strip { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.hdr-icons { display: flex; align-items: center; gap: 2px; margin-left: auto; }
+/* Row 2 — slim: period nav + status · achievements */
+.hdr-slim { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.hdr-trophy { font-size: 1.1rem; }
+
+/* Account switcher chip — partner avatars + name + who's on it */
+.acct-wrap { position: relative; }
+.acct-chip {
+    display: flex; align-items: center; gap: 9px; background: #ffffff; border: 1px solid #e6ece9;
+    border-radius: 999px; padding: 5px 13px 5px 6px; cursor: pointer; font: inherit; max-width: 340px;
+    transition: border-color .12s, box-shadow .12s;
 }
+.acct-chip:hover { border-color: #cbd5e1; box-shadow: 0 2px 8px rgba(20,30,40,.07); }
+.ava-stack { display: inline-flex; flex: 0 0 auto; }
+.ava-stack .av { border: 2px solid #ffffff; box-sizing: content-box; }
+.ava-stack .av:not(:first-child) { margin-left: -10px; }
+.acct-nm { display: flex; flex-direction: column; line-height: 1.15; min-width: 0; text-align: left; }
+.acct-nm { font-weight: 700; font-size: .9rem; color: #1f2430; }
+.acct-nm small { font-weight: 500; font-size: .67rem; color: #8a929c; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.acct-car { color: #9aa2ad; font-size: .68rem; margin-left: 1px; flex: 0 0 auto; }
+
+.acct-drop {
+    position: absolute; top: calc(100% + 6px); left: 0; z-index: 91; min-width: 258px;
+    background: #ffffff; border: 1px solid #e6ece9; border-radius: 14px; box-shadow: 0 10px 30px rgba(0,0,0,.16); padding: 6px;
+}
+.acct-drop-item {
+    display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; background: none; border: none;
+    cursor: pointer; font: inherit; padding: 8px 10px; border-radius: 10px;
+}
+.acct-drop-item:hover { background: #f3f6f9; }
+.acct-drop-item.sel { background: #eef7f3; }
+.acct-drop-item .acct-nm { flex: 1; }
+.acct-check { color: #13a06e; font-weight: 800; }
+.acct-drop-add {
+    display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; background: none; border: none;
+    border-top: 1px solid #eef1f4; margin-top: 4px; cursor: pointer; font: inherit; font-size: .85rem; color: #0f7a54;
+    padding: 10px; border-radius: 10px;
+}
+.acct-drop-add:hover { background: #f0fbf6; }
+
+/* Balance mini-card — a slim, single-line gradient chip (Option A's mint gradient) sized to sit level with the
+   account-switcher chip. Self-contained colours, so it reads the same in light and dark. */
+.bal-mini {
+    display: flex; flex-direction: row; align-items: baseline; gap: 7px; line-height: 1.1;
+    background: linear-gradient(140deg, #12b29a, #3fe0c5); border: none; border-radius: 12px;
+    padding: 9px 15px; box-shadow: 0 6px 16px rgba(18,178,154,.28);
+}
+.bal-mini .bal-label, html.dark .bal-mini .bal-label {
+    font-size: .58rem; color: rgba(6,35,30,.72); font-weight: 700; text-transform: uppercase; letter-spacing: .1em;
+}
+.bal-mini strong, html.dark .bal-mini strong { font-size: 1.12rem; color: #06231e; letter-spacing: -.01em; }
+.bal-mini .bal-free, html.dark .bal-mini .bal-free { font-size: .72rem; color: #06231e; font-weight: 700; }
+.bal-mini .bal-free.warn-text, html.dark .bal-mini .bal-free.warn-text { color: #7a2e00; }
 
 .dash-head h1 { margin: 0; font-size: 1.6rem; }
 .period { color: #6b7280; font-size: .9rem; }
@@ -667,11 +718,10 @@ input[type=date]::-webkit-calendar-picker-indicator:hover { opacity: 1; backgrou
     .two-col { grid-template-columns: 1fr; }
     .panel { padding: 14px; }
 
-    /* Header stacks: account + period nav on top, status + opening balance below it. */
-    .dash-head { flex-direction: column; align-items: stretch; gap: 10px; }
-    .head-right { flex-direction: row; align-items: center; justify-content: space-between; }
-    .bal { align-items: flex-start; }
-    .acct-select { font-size: 1.2rem; max-width: 52vw; }
+    /* Header on phones: the strip wraps, the account chip takes the row and the balance sits under it. */
+    .acct-wrap { flex: 1 1 100%; }
+    .acct-chip { max-width: none; width: 100%; }
+    .bal-mini { flex: 1 1 auto; }
 
     /* Tabs scroll horizontally rather than cramming. */
     .tabs { overflow-x: auto; flex-wrap: nowrap; -webkit-overflow-scrolling: touch; }
@@ -696,7 +746,6 @@ input[type=date]::-webkit-calendar-picker-indicator:hover { opacity: 1; backgrou
 @media (max-width: 430px) {
     .cards, .cards.cards-2 { grid-template-columns: 1fr; }
     .bal-label { font-size: .62rem; }
-    .acct-select { max-width: 46vw; }
     /* Header is tight on phones: keep the 🏦/🔄 controls, drop the last-synced text (still in the tooltip). */
     .acct-sync-note { display: none; }
 }

@@ -46,85 +46,113 @@ else
         var notifications = HomeNotifications(ov);
     }
     <header class="dash-head">
-        <div class="head-main">
-            <div class="acct-bar">
-                <div class="acct-picker">
-                    <select class="acct-select" value="@State.CurrentAccountId" @onchange="OnAccountChange">
+        <div class="hdr-strip">
+            <div class="acct-wrap">
+                <button class="acct-chip" title="@Loc["Switch account"]" @onclick="() => _acctDropOpen = !_acctDropOpen">
+                    <span class="ava-stack">
+                        @foreach (var m in State.RealUsers.Take(3))
+                        {
+                            <Avatar Name="@m.DisplayName" Picture="@State.MemberAvatar(m.UserId)" Size="26" />
+                        }
+                    </span>
+                    <span class="acct-nm">@State.Account.Name<small>@MembersLine(State.RealUsers)</small></span>
+                    <span class="acct-car">▾</span>
+                </button>
+                @if (_acctDropOpen)
+                {
+                    <div class="acct-menu-backdrop" @onclick="() => _acctDropOpen = false"></div>
+                    <div class="acct-drop">
                         @foreach (var a in State.Accounts)
                         {
-                            <option value="@a.Id">@a.Name</option>
+                            var aid = a.Id;
+                            <button class="acct-drop-item @(aid == State.CurrentAccountId ? "sel" : "")" @onclick="() => SwitchAccountTo(aid)">
+                                <span class="ava-stack">
+                                    @foreach (var m in a.Members.Take(3)) { <Avatar Name="@m.DisplayName" Size="22" /> }
+                                </span>
+                                <span class="acct-nm">@a.Name<small>@MembersLine(a.Members)</small></span>
+                                @if (aid == State.CurrentAccountId) { <span class="acct-check">✓</span> }
+                            </button>
                         }
-                    </select>
-                </div>
-                <span class="acct-ops">
-                  <span class="ops-group">
-                    <button class="link" title="@Loc["Add a new account"]" @onclick="OpenAddAccount">➕</button>
-                    <span class="acct-menu">
-                        <button class="link" title="@Loc["Account actions"]" @onclick="() => _acctMenuOpen = !_acctMenuOpen">⚙️</button>
-                        @if (_acctMenuOpen)
-                        {
-                            <div class="acct-menu-backdrop" @onclick="() => _acctMenuOpen = false"></div>
-                            <div class="acct-menu-pop">
-                                @if (State.IsOwnerOfCurrent)
-                                {
-                                    <button @onclick="() => RunAcct(OpenEditAccount)">✏️ @Loc["Rename account"]</button>
-                                }
-                                @if (HasArchivedItems)
-                                {
-                                    <button @onclick="() => RunAcct(() => _modal = Modal.Archived)">📦 @Loc["Archived items"]</button>
-                                }
-                                <button @onclick="MenuExport">📊 @Loc["Export to Excel"]</button>
-                                <button class="danger" @onclick="() => RunAcct(OpenLeaveAccount)">🚪 @Loc["Leave account"]</button>
-                                @if (State.IsOwnerOfCurrent)
-                                {
-                                    <button class="danger" @onclick="() => RunAcct(OpenDeleteAccount)">🗑️ @Loc["Delete account"]</button>
-                                }
-                            </div>
-                        }
-                    </span>
-                  </span>
-                  <span class="ops-group">
-                    <button class="link" title="@Loc["Achievements"]" @onclick="() => _modal = Modal.Achievements">🏆</button>
-                    <span class="acct-notify">
-                        <button class="link bell" title="@Loc["Notifications"]" @onclick="() => _bellOpen = !_bellOpen">
-                            🔔@if (notifications.Count > 0) { <span class="bell-badge">@notifications.Count</span> }
-                        </button>
-                        @if (_bellOpen)
-                        {
-                            <div class="acct-menu-backdrop" @onclick="() => _bellOpen = false"></div>
-                            <div class="bell-menu">
-                                <div class="bell-head">🔔 @Loc["Notifications"]</div>
-                                @if (notifications.Count == 0)
-                                {
-                                    <div class="bell-empty">@Loc["You're all caught up."] ✅</div>
-                                }
-                                else
-                                {
-                                    @foreach (var n in notifications)
-                                    {
-                                        <div class="bell-item @(n.Urgent ? "urgent" : "")">
-                                            <span class="bell-ico">@n.Icon</span>
-                                            <div class="bell-body">
-                                                <div class="bell-text">@n.Text</div>
-                                                @if (n.Desc is { } d) { <div class="bell-desc">@d</div> }
-                                                @if (n is { ActionLabel: { } al, Act: { } act })
-                                                {
-                                                    <button class="bell-act" @onclick="@(() => { act(); _bellOpen = false; })">@al</button>
-                                                }
-                                            </div>
-                                            <span class="bell-item-ops">
-                                                @if (n.Rotate is { } rot) { <button class="tip-x" title="@Loc["Another idea"]" @onclick="rot">↻</button> }
-                                                @if (n.Dismiss is { } dis) { <button class="tip-x" title="@Loc["Dismiss for this period"]" @onclick="dis">×</button> }
-                                            </span>
-                                        </div>
-                                    }
-                                }
-                            </div>
-                        }
-                    </span>
-                  </span>
-                </span>
+                        <button class="acct-drop-add" @onclick="@(() => { _acctDropOpen = false; OpenAddAccount(); })">➕ @Loc["Add a new account"]</button>
+                    </div>
+                }
             </div>
+
+            <div class="bal-mini bal-current">
+                <span class="bal-label">@Loc[State.IsPeriodOpen ? "Current" : "Closed on"]</span>
+                <strong>@Fmt(State.DisplayClosingBalance(_bankStatus?.Balance, _bankStatus?.BalanceCurrency))</strong>
+                @if (State.IsPeriodOpen)
+                {
+                    var _balFree = State.DisplayFreeToAllocate(_bankStatus?.Balance, _bankStatus?.BalanceCurrency);
+                    <span class="bal-free @(State.IsOverAllocated ? "warn-text" : "")">@Fmt(_balFree) @Loc["free"]</span>
+                }
+            </div>
+
+            <span class="hdr-icons">
+                <span class="acct-menu">
+                    <button class="link" title="@Loc["Account actions"]" @onclick="() => _acctMenuOpen = !_acctMenuOpen">⚙️</button>
+                    @if (_acctMenuOpen)
+                    {
+                        <div class="acct-menu-backdrop" @onclick="() => _acctMenuOpen = false"></div>
+                        <div class="acct-menu-pop">
+                            @if (State.IsOwnerOfCurrent)
+                            {
+                                <button @onclick="() => RunAcct(OpenEditAccount)">✏️ @Loc["Rename account"]</button>
+                            }
+                            @if (HasArchivedItems)
+                            {
+                                <button @onclick="() => RunAcct(() => _modal = Modal.Archived)">📦 @Loc["Archived items"]</button>
+                            }
+                            <button @onclick="MenuExport">📊 @Loc["Export to Excel"]</button>
+                            <button class="danger" @onclick="() => RunAcct(OpenLeaveAccount)">🚪 @Loc["Leave account"]</button>
+                            @if (State.IsOwnerOfCurrent)
+                            {
+                                <button class="danger" @onclick="() => RunAcct(OpenDeleteAccount)">🗑️ @Loc["Delete account"]</button>
+                            }
+                        </div>
+                    }
+                </span>
+                <span class="acct-notify">
+                    <button class="link bell" title="@Loc["Notifications"]" @onclick="() => _bellOpen = !_bellOpen">
+                        🔔@if (notifications.Count > 0) { <span class="bell-badge">@notifications.Count</span> }
+                    </button>
+                    @if (_bellOpen)
+                    {
+                        <div class="acct-menu-backdrop" @onclick="() => _bellOpen = false"></div>
+                        <div class="bell-menu">
+                            <div class="bell-head">🔔 @Loc["Notifications"]</div>
+                            @if (notifications.Count == 0)
+                            {
+                                <div class="bell-empty">@Loc["You're all caught up."] ✅</div>
+                            }
+                            else
+                            {
+                                @foreach (var n in notifications)
+                                {
+                                    <div class="bell-item @(n.Urgent ? "urgent" : "")">
+                                        <span class="bell-ico">@n.Icon</span>
+                                        <div class="bell-body">
+                                            <div class="bell-text">@n.Text</div>
+                                            @if (n.Desc is { } d) { <div class="bell-desc">@d</div> }
+                                            @if (n is { ActionLabel: { } al, Act: { } act })
+                                            {
+                                                <button class="bell-act" @onclick="@(() => { act(); _bellOpen = false; })">@al</button>
+                                            }
+                                        </div>
+                                        <span class="bell-item-ops">
+                                            @if (n.Rotate is { } rot) { <button class="tip-x" title="@Loc["Another idea"]" @onclick="rot">↻</button> }
+                                            @if (n.Dismiss is { } dis) { <button class="tip-x" title="@Loc["Dismiss for this period"]" @onclick="dis">×</button> }
+                                        </span>
+                                    </div>
+                                }
+                            }
+                        </div>
+                    }
+                </span>
+            </span>
+        </div>
+
+        <div class="hdr-slim">
             <div class="period-nav">
                 <button class="nav @(State.CanGoPrev ? "" : "nav-hidden")" title="@Loc["Previous period"]" @onclick="State.GoPrev" disabled="@(!State.CanGoPrev)">‹</button>
                 <div class="period-row">
@@ -141,32 +169,9 @@ else
                     </span>
                 </div>
                 <button class="nav @(State.CanGoNext ? "" : "nav-hidden")" title="@Loc["Next period"]" @onclick="State.GoNext" disabled="@(!State.CanGoNext)">›</button>
+                <span class="status @(State.IsPeriodOpen ? "" : "status-closed")">@Loc[State.IsPeriodOpen ? "Active" : "Closed"]</span>
             </div>
-        </div>
-        <div class="head-right">
-            <span class="status @(State.IsPeriodOpen ? "" : "status-closed")">@Loc[State.IsPeriodOpen ? "Active" : "Closed"]</span>
-            <div class="balances">
-                <span class="bal bal-current">
-                    <span class="bal-label">@Loc[State.IsPeriodOpen ? "Current" : "Closed on"]</span>
-                    <strong>@Fmt(State.DisplayClosingBalance(_bankStatus?.Balance, _bankStatus?.BalanceCurrency))</strong>
-                    @{
-                        var _balFree = State.DisplayFreeToAllocate(_bankStatus?.Balance, _bankStatus?.BalanceCurrency);
-                        var _balAlloc = State.DisplayClosingBalance(_bankStatus?.Balance, _bankStatus?.BalanceCurrency) - _balFree;
-                    }
-                    @if (State.IsPeriodOpen)
-                    {
-                        <span class="bal-free @(State.IsOverAllocated ? "warn-text" : "")">@Fmt(_balFree) @Loc["free"]</span>
-                        @if (_balAlloc.Amount > 0m)
-                        {
-                            <span class="bal-alloc" title="@Loc["Already budgeted or set aside this period — spoken for, not spent."]">· @Fmt(_balAlloc) @Loc["allocated"]</span>
-                        }
-                        @if (State.BillsDueThisPeriod is { Amount: > 0m } billsDue)
-                        {
-                            <span class="bal-bills" title="@Loc["Recurring bills expected this period that you haven't logged yet"]">· @Fmt(billsDue) @Loc["bills due"]</span>
-                        }
-                    }
-                </span>
-            </div>
+            <button class="link hdr-trophy" title="@Loc["Achievements"]" @onclick="() => _modal = Modal.Achievements">🏆</button>
         </div>
     </header>
 
@@ -5643,6 +5648,16 @@ else
     // Account-actions cog menu.
     private bool _acctMenuOpen;
     private void RunAcct(Action a) { _acctMenuOpen = false; a(); }
+    private bool _acctDropOpen;   // header account switcher (avatars) dropdown
+    private Task SwitchAccountTo(Guid id) => Run(async () => { _acctDropOpen = false; await State.SwitchAccount(id); });
+    // "just you" / "you & Alex" / "you + 2" sub-line for the account chip and switcher rows.
+    private string MembersLine(IReadOnlyList<FinApp.Contracts.MemberDto> members)
+    {
+        var others = members.Where(m => m.UserId != State.MyUserId).ToList();
+        if (others.Count == 0) return Loc["just you"];
+        if (others.Count == 1) return string.Format(Loc["you & {0}"], others[0].DisplayName);
+        return string.Format(Loc["you + {0}"], others.Count);
+    }
     private Task MenuExport() { _acctMenuOpen = false; return ExportAccount(); }
 
     // When a create modal is opened from a parent (e.g. "+ new fund" inside the deposit modal), this selects

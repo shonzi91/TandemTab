@@ -6,6 +6,12 @@
       "runtimeExecutable": "C:\\Users\\Stoyan Stoyanov\\.dotnet\\dotnet.exe",
       "runtimeArgs": ["run", "--project", "src/FinApp.Server", "--urls", "http://localhost:5179"],
       "port": 5179
+    },
+    {
+      "name": "finapp-verify",
+      "runtimeExecutable": "C:\\Users\\Stoyan Stoyanov\\.dotnet\\dotnet.exe",
+      "runtimeArgs": ["run", "--project", "src/FinApp.Server", "--urls", "http://localhost:5182"],
+      "port": 5182
     }
   ]
 }
