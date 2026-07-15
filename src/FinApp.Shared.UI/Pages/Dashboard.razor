@@ -649,7 +649,7 @@ else
                         var cls = cov.IsOverBudget ? "over" : cov.ThresholdReached ? "warn" : "ok";
                         var catId = cat.Id;
                         <div class="ring-card ring-card-lg@(State.ChildrenOf(catId).Any() ? " has-subs" : "")">
-                            <ProgressRing Percent="@((double)(cov.Percent ?? 0))" Class="@cls">
+                            <ProgressRing Percent="@((double)(cov.Percent ?? 0))" Class="@cls" Ramp="spend">
                                 <button class="ring-ico-big" title="@Loc["Actions"]" @onclick="() => ToggleBudgetMenu(catId)">@State.CategoryIcon(catId)</button>
                                 <button class="ring-name" title="@Loc["Actions"]" @onclick="() => ToggleBudgetMenu(catId)">@cat.Name</button>
                             </ProgressRing>
@@ -842,10 +842,12 @@ else
                         var ringPct = isDebt ? debtPct : (g is null ? 0 : pct);
                         var ringCls = isInvestment ? "invest" : isDebt ? "debt" : cls;
                         var ringDashed = !isDebt && g is null;
+                        // Goal/debt progress shades pink→green (green = reached/cleared); investments keep their gold ring.
+                        var ringRamp = (!isInvestment && !ringDashed) ? "goal" : null;
                         // Lifecycle: a debt with nothing left owed, or a goal that's been reached, is "done".
                         var done = isDebt ? ctx.Bucket.IsDebtCleared : (g is not null && g.GoalReached);
                     }
-                    <ProgressRing Percent="@ringPct" Class="@ringCls" Dashed="@ringDashed">
+                    <ProgressRing Percent="@ringPct" Class="@ringCls" Dashed="@ringDashed" Ramp="@ringRamp">
                         <button class="ring-ico-big" title="@Loc["Actions"]" @onclick="() => ToggleRowMenu(bucketId)">@State.SavingBucketIcon(bucketId)</button>
                         <button class="ring-name" title="@Loc["Actions"]" @onclick="() => ToggleRowMenu(bucketId)">@ctx.Bucket.Name</button>
                         @if (done)
@@ -3075,7 +3077,7 @@ else
             }
             else if (a.Percent is > 0)
             {
-                <ProgressRing Percent="@((double)a.Percent.Value)" Class="gold">
+                <ProgressRing Percent="@((double)a.Percent.Value)" Class="gold" Ramp="goal">
                     <span class="ring-ico-big ach-locked">@a.Icon</span>
                 </ProgressRing>
             }

@@ -143,11 +143,11 @@ html.dark .card.savings .card-value { color: var(--tm-mint); }
 html.dark .card.tile-spend { background: rgba(255,122,102,.09); border-color: rgba(255,122,102,.28); }
 html.dark .card.tile-spend .card-value { color: var(--tm-coral); }
 
-/* Balance as a glowing duo-gradient hero chip (the signature of the direction). */
+/* Balance as a glowing mint hero chip (the "current" is mint-only; coral stays for spend/over signals). */
 html.dark .head-right .bal-current {
-    background: linear-gradient(135deg, rgba(255,122,102,.9), rgba(63,224,197,.72));
+    background: linear-gradient(140deg, #12b29a, #3fe0c5);
     padding: 11px 17px 12px; border-radius: 16px; align-items: flex-start;
-    box-shadow: 0 12px 30px -10px rgba(255,122,102,.45);
+    box-shadow: 0 12px 30px -10px rgba(63,224,197,.45);
 }
 html.dark .head-right .bal-current .bal-label { color: rgba(255,255,255,.88); }
 html.dark .head-right .bal-current strong { color: #ffffff; font-size: 1.5rem; letter-spacing: -.01em; }
