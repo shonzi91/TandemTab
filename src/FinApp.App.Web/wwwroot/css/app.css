@@ -102,10 +102,17 @@ h1:focus {
    re-theme every file, this layer overrides the structural surfaces/text from a
    global sheet: an `html.dark X` selector outranks the scoped `X[b-hash]` rule by
    one element of specificity, so these win. Mint accent (#13a06e) is kept as-is. */
-html.dark { color-scheme: dark; }
-html.dark body { background: #0f1117; }
-html.dark .app-shell { background: #0f1117; }
-html.dark .app-body { background: #0f1117; }
+/* "Tandem × Midnight" dark theme: deep warm-navy ground washed with a coral + mint duo glow, glass surfaces,
+   and the two accents (coral = one partner, mint = the other) running through the app. */
+html.dark { color-scheme: dark; --tm-coral: #ff7a66; --tm-mint: #3fe0c5; }
+html.dark body {
+    background:
+        radial-gradient(90% 55% at 100% -5%, rgba(255,122,102,.13) 0%, rgba(255,122,102,0) 55%),
+        radial-gradient(80% 50% at 0% 0%, rgba(63,224,197,.11) 0%, rgba(63,224,197,0) 50%),
+        #0f1322;
+    background-attachment: fixed; min-height: 100vh;
+}
+html.dark .app-shell, html.dark .app-body { background: transparent; }
 
 /* Base + heading text */
 html.dark .dash { color: #e8eaf0; }
@@ -127,10 +134,24 @@ html.dark .savings-footer span { color: #aab0c0; }
 html.dark .card, html.dark .panel, html.dark .modal, html.dark .score-card, html.dark .insight,
 html.dark .win, html.dark .row-menu, html.dark .acct-menu-pop, html.dark .langpick-menu,
 html.dark .home-more-toggle, html.dark .pm, html.dark .breakdown-card, html.dark .savings-rate-card,
-html.dark .trend-card {
-    background: #181c25; border-color: #262d3d; color: #e8eaf0;
+html.dark .trend-card, html.dark .onboard-card, html.dark .fund-panel {
+    background: #161b2c; border-color: #293049; color: #eceff7;
 }
-html.dark .card.savings, html.dark .all-clear { background: #14271f; border-color: #1d3a2c; }
+/* Saved = mint tile, Spent = coral tile (the duo, on the summary row). */
+html.dark .card.savings, html.dark .all-clear { background: rgba(63,224,197,.09); border-color: rgba(63,224,197,.28); }
+html.dark .card.savings .card-value { color: var(--tm-mint); }
+html.dark .card.tile-spend { background: rgba(255,122,102,.09); border-color: rgba(255,122,102,.28); }
+html.dark .card.tile-spend .card-value { color: var(--tm-coral); }
+
+/* Balance mini-card: a small mint chip (little presence) — mint only; coral stays for spend/over signals. */
+html.dark .bal-mini {
+    background: linear-gradient(140deg, #12b29a, #3fe0c5);
+    border-color: transparent; box-shadow: 0 8px 22px -10px rgba(63,224,197,.5);
+}
+html.dark .bal-mini .bal-label { color: rgba(6,32,27,.72); }
+html.dark .bal-mini strong { color: #06231e; }
+html.dark .bal-mini .bal-free { color: #06231e; }
+html.dark .bal-mini .bal-free.warn-text { color: #7a2b16; }
 html.dark .modal-backdrop, html.dark .pm-backdrop { background: rgba(0,0,0,.6); }
 
 /* Form controls (the more-specific scoped rules below need matching dark overrides to win) */
@@ -169,9 +190,9 @@ html.dark .pm-actions button.ghost, html.dark .modal-actions button.ghost {
     background: #1e2330; color: #e8eaf0; border-color: #262d3d;
 }
 html.dark .exp-edit { color: #e8eaf0; }
-html.dark .ring-expense { background: #14352a; border-color: #1d3a2c; }
-html.dark button.link, html.dark .period-btn { background: none; color: #2bbd86; }
-html.dark .view-btn.active { background: #14352a; color: #2bbd86; }
+html.dark .ring-expense { background: #12332c; border-color: #1c3d38; }
+html.dark button.link, html.dark .period-btn { background: none; color: #3fe0c5; }
+html.dark .view-btn.active { background: #12332c; color: #3fe0c5; }
 html.dark .acct-select { background: #1e2330; color: #e8eaf0; border-color: #262d3d; }
 
 /* Alerts keep their warm tint but darker */
@@ -185,7 +206,7 @@ html.dark .switch-track { background: #3a4256; }   /* off-state track; .switch.o
 html.dark .app-legal { background: #0f1117; border-top-color: #262d3d; }
 html.dark .app-legal a { color: #aab0c0; }
 html.dark .icon-btn { background: #1e2330; border-color: #2c3142; color: #e8eaf0; }
-html.dark .icon-btn.ok, html.dark .icon-btn.pin.on { background: #14352a; border-color: #1d3a2c; color: #2bbd86; }
+html.dark .icon-btn.ok, html.dark .icon-btn.pin.on { background: #12332c; border-color: #1c3d38; color: #3fe0c5; }
 html.dark .bank-tx { border-top-color: #262d3d; }
 
 /* Checkbox labels (e.g. "On behalf of another account") — scoped rule set dark-on-dark text */
@@ -198,11 +219,11 @@ html.dark .cal-cell:hover:not(.cal-out) { background: #1e2937; border-color: #2f
 html.dark .cal-num { color: #e8eaf0; }
 html.dark .cal-cell.cal-out { background: #12151d; border-color: #1c2130; }
 html.dark .cal-cell.cal-out .cal-num { color: #4b5364; }
-html.dark .cal-cell.cal-today { border-color: #2bbd86; }
-html.dark .cal-cell.cal-today .cal-num { color: #2bbd86; }
-html.dark .cal-cell.cal-sel { background: #14352a; border-color: #2bbd86; }
-html.dark .cal-total { color: #6fe0b4; background: #14352a; }
-html.dark .cal-add:hover { background: #14352a; }
+html.dark .cal-cell.cal-today { border-color: #3fe0c5; }
+html.dark .cal-cell.cal-today .cal-num { color: #3fe0c5; }
+html.dark .cal-cell.cal-sel { background: #12332c; border-color: #3fe0c5; }
+html.dark .cal-total { color: #7bf0d8; background: #12332c; }
+html.dark .cal-add:hover { background: #12332c; }
 
 /* Labels & mid-gray helper text that scoped rules leave too dark to read on dark surfaces
    (worst was .icon-label at #374151 — near-black on near-black). */
@@ -222,6 +243,26 @@ html.dark .proj-disclaimer { background: #2a2113; border-color: #5a4a1e; color: 
 html.dark .proj-k { color: #aab0c0; }
 html.dark .dup-hint { background: #2a2113; border-color: #5a4a1e; }
 html.dark .dup-txt { color: #f5cf8a; }
-html.dark .tip-card { background: #14271f; border-color: #1d3a2c; }
-html.dark .tip-title { color: #6fe0b4; }
+html.dark .tip-card { background: #14271f; border-color: #1c3d38; }
+html.dark .tip-title { color: #7bf0d8; }
 html.dark .tip-desc { color: #9fc2b3; }
+
+/* ── Duo deepening (dark): shift the brand green through interactive surfaces to mint, keeping semantic
+   warn/over amber+red, and give the score accent the coral→mint duo. ── */
+html.dark .pring-arc.mint, html.dark .pring-arc.ok { stroke: #3fe0c5; }
+html.dark .gauge-ok { stroke: #3fe0c5; }
+html.dark .bar-fill.ok { background: #3fe0c5; }
+html.dark .tab.active { color: #3fe0c5; border-bottom-color: #3fe0c5; }
+html.dark .onboard-prog-fill, html.dark .onboard-step.done .onboard-check { background: #14b8a2; }
+html.dark .switch.on { background: #14b8a2; }
+html.dark .score-card::before { background: linear-gradient(90deg, #ff7a66, #3fe0c5); }
+/* Primary action buttons → mint (readable white on a mint-teal). */
+html.dark .big-add,
+html.dark .form button,
+html.dark .firstrun-form button,
+html.dark .period-panel button,
+html.dark .dates-form button, html.dark .realloc-form button, html.dark .cat-form button,
+html.dark .modal-actions button:not(.ghost):not(.danger-btn) { background: #12b29a; color: #ffffff; }
+html.dark .big-add:hover, html.dark .form button:hover,
+html.dark .modal-actions button:not(.ghost):not(.danger-btn):hover { background: #16c6ac; }
+html.dark .modal-actions button.ghost, html.dark button.ghost { color: #7bf0d8; }
