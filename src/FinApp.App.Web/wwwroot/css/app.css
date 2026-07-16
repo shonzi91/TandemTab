@@ -143,15 +143,30 @@ html.dark .card.savings .card-value { color: var(--tm-mint); }
 html.dark .card.tile-spend { background: rgba(255,122,102,.09); border-color: rgba(255,122,102,.28); }
 html.dark .card.tile-spend .card-value { color: var(--tm-coral); }
 
-/* Balance mini-card: a small mint chip (little presence) — mint only; coral stays for spend/over signals. */
-html.dark .bal-mini {
-    background: linear-gradient(140deg, #12b29a, #3fe0c5);
-    border-color: transparent; box-shadow: 0 8px 22px -10px rgba(63,224,197,.5);
+/* Account chip + dropdown: navy glass with distinctive, high-contrast text (legible in both themes). */
+html.dark .acct-chip { background: #161b2c; border-color: #2b3350; }
+html.dark .acct-chip:hover { border-color: #3fe0c5; box-shadow: 0 2px 12px rgba(63,224,197,.14); }
+html.dark .acct-nm { color: #f0f3f9; }
+html.dark .acct-nm small { color: #93b8b0; }
+html.dark .acct-car { color: #7c8496; }
+html.dark .ava-stack .av { border-color: #0f1322; }
+html.dark .acct-drop { background: #161b2c; border-color: #2b3350; box-shadow: 0 18px 44px rgba(0,0,0,.55); }
+html.dark .acct-drop-item:hover { background: #1c2338; }
+html.dark .acct-drop-item.sel { background: rgba(63,224,197,.12); }
+html.dark .acct-check { color: #3fe0c5; }
+html.dark .acct-drop-add { border-top-color: #2b3350; color: #3fe0c5; }
+html.dark .acct-drop-add:hover { background: #1c2338; }
+
+/* Balance hero: a mint-tinted glass card (mockup style) — mint only; coral stays for spend/over signals. */
+html.dark .hdr-hero {
+    background: linear-gradient(140deg, rgba(63,224,197,.16), rgba(63,224,197,.035));
+    border-color: rgba(63,224,197,.24); box-shadow: 0 12px 34px -16px rgba(63,224,197,.4);
 }
-html.dark .bal-mini .bal-label { color: rgba(6,32,27,.72); }
-html.dark .bal-mini strong { color: #06231e; }
-html.dark .bal-mini .bal-free { color: #06231e; }
-html.dark .bal-mini .bal-free.warn-text { color: #7a2b16; }
+html.dark .hdr-hero .bal-label { color: #8fdccb; }
+html.dark .hdr-hero strong { color: #ffffff; }
+html.dark .hdr-hero .bal-free { color: #3fe0c5; }
+html.dark .hdr-hero .bal-free.warn-text { color: #f5b24e; }
+html.dark .hdr-hero .bal-alloc, html.dark .hdr-hero .bal-bills { color: #8b93ac; }
 html.dark .modal-backdrop, html.dark .pm-backdrop { background: rgba(0,0,0,.6); }
 
 /* Form controls (the more-specific scoped rules below need matching dark overrides to win) */

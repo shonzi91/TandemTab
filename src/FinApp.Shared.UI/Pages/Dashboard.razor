@@ -46,7 +46,7 @@ else
         var notifications = HomeNotifications(ov);
     }
     <header class="dash-head">
-        <div class="hdr-strip">
+        <div class="hdr-top">
             <div class="acct-wrap">
                 <button class="acct-chip" title="@Loc["Switch account"]" @onclick="() => _acctDropOpen = !_acctDropOpen">
                     <span class="ava-stack">
@@ -78,17 +78,27 @@ else
                 }
             </div>
 
-            <div class="bal-mini bal-current">
-                <span class="bal-label">@Loc[State.IsPeriodOpen ? "Current" : "Closed on"]</span>
-                <strong>@Fmt(State.DisplayClosingBalance(_bankStatus?.Balance, _bankStatus?.BalanceCurrency))</strong>
-                @if (State.IsPeriodOpen)
-                {
-                    var _balFree = State.DisplayFreeToAllocate(_bankStatus?.Balance, _bankStatus?.BalanceCurrency);
-                    <span class="bal-free @(State.IsOverAllocated ? "warn-text" : "")">@Fmt(_balFree) @Loc["free"]</span>
-                }
+            <div class="period-nav">
+                <button class="nav @(State.CanGoPrev ? "" : "nav-hidden")" title="@Loc["Previous period"]" @onclick="State.GoPrev" disabled="@(!State.CanGoPrev)">‹</button>
+                <div class="period-row">
+                    <button class="period period-btn" title="@Loc["Edit period dates"]" @onclick="OpenEditPeriod">@State.Period.From.ToString("dd MMM") – @State.Period.To.ToString("dd MMM yyyy")</button>
+                    <span class="period-ops">
+                        @if (State.IsLatestPeriod && State.PeriodCount > 1)
+                        {
+                            <button class="exp-edit" title="@Loc["Remove this period and reopen the previous one"]" @onclick="OpenRemovePeriod">🗑️</button>
+                        }
+                        @if (State.IsLatestPeriod)
+                        {
+                            <button class="exp-edit" title="@(State.CanStartNextPeriod ? Loc["Start next month"] : Loc["You can start next month once this period's end date has passed."])" @onclick="OpenNextPeriod" disabled="@(!State.CanStartNextPeriod)">⏭️</button>
+                        }
+                    </span>
+                </div>
+                <button class="nav @(State.CanGoNext ? "" : "nav-hidden")" title="@Loc["Next period"]" @onclick="State.GoNext" disabled="@(!State.CanGoNext)">›</button>
+                <span class="status @(State.IsPeriodOpen ? "" : "status-closed")">@Loc[State.IsPeriodOpen ? "Active" : "Closed"]</span>
             </div>
 
             <span class="hdr-icons">
+                <button class="link hdr-trophy" title="@Loc["Achievements"]" @onclick="() => _modal = Modal.Achievements">🏆</button>
                 <span class="acct-menu">
                     <button class="link" title="@Loc["Account actions"]" @onclick="() => _acctMenuOpen = !_acctMenuOpen">⚙️</button>
                     @if (_acctMenuOpen)
@@ -152,26 +162,25 @@ else
             </span>
         </div>
 
-        <div class="hdr-slim">
-            <div class="period-nav">
-                <button class="nav @(State.CanGoPrev ? "" : "nav-hidden")" title="@Loc["Previous period"]" @onclick="State.GoPrev" disabled="@(!State.CanGoPrev)">‹</button>
-                <div class="period-row">
-                    <button class="period period-btn" title="@Loc["Edit period dates"]" @onclick="OpenEditPeriod">@State.Period.From.ToString("dd MMM") – @State.Period.To.ToString("dd MMM yyyy")</button>
-                    <span class="period-ops">
-                        @if (State.IsLatestPeriod && State.PeriodCount > 1)
-                        {
-                            <button class="exp-edit" title="@Loc["Remove this period and reopen the previous one"]" @onclick="OpenRemovePeriod">🗑️</button>
-                        }
-                        @if (State.IsLatestPeriod)
-                        {
-                            <button class="exp-edit" title="@(State.CanStartNextPeriod ? Loc["Start next month"] : Loc["You can start next month once this period's end date has passed."])" @onclick="OpenNextPeriod" disabled="@(!State.CanStartNextPeriod)">⏭️</button>
-                        }
-                    </span>
-                </div>
-                <button class="nav @(State.CanGoNext ? "" : "nav-hidden")" title="@Loc["Next period"]" @onclick="State.GoNext" disabled="@(!State.CanGoNext)">›</button>
-                <span class="status @(State.IsPeriodOpen ? "" : "status-closed")">@Loc[State.IsPeriodOpen ? "Active" : "Closed"]</span>
-            </div>
-            <button class="link hdr-trophy" title="@Loc["Achievements"]" @onclick="() => _modal = Modal.Achievements">🏆</button>
+        <div class="hdr-hero bal-current">
+            <span class="bal-label">@Loc[State.IsPeriodOpen ? "Current balance" : "Closed on"]</span>
+            <strong>@Fmt(State.DisplayClosingBalance(_bankStatus?.Balance, _bankStatus?.BalanceCurrency))</strong>
+            @{
+                var _balFree = State.DisplayFreeToAllocate(_bankStatus?.Balance, _bankStatus?.BalanceCurrency);
+                var _balAlloc = State.DisplayClosingBalance(_bankStatus?.Balance, _bankStatus?.BalanceCurrency) - _balFree;
+            }
+            @if (State.IsPeriodOpen)
+            {
+                <span class="bal-free @(State.IsOverAllocated ? "warn-text" : "")">@Fmt(_balFree) @Loc["free"]</span>
+                @if (_balAlloc.Amount > 0m)
+                {
+                    <span class="bal-alloc" title="@Loc["Already budgeted or set aside this period — spoken for, not spent."]">· @Fmt(_balAlloc) @Loc["allocated"]</span>
+                }
+                @if (State.BillsDueThisPeriod is { Amount: > 0m } billsDue)
+                {
+                    <span class="bal-bills" title="@Loc["Recurring bills expected this period that you haven't logged yet"]">· @Fmt(billsDue) @Loc["bills due"]</span>
+                }
+            }
         </div>
     </header>
 
