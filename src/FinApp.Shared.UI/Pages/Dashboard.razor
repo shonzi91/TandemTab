@@ -650,8 +650,8 @@ else
             <section class="panel">
                 <div class="spending-head">
                     <span class="insight-h">@Loc["This month's budgets"]</span>
-                    <span class="spending-sub">@Fmt(State.TotalSpent) @Loc["of"] @Fmt(State.TotalBudgeted) @Loc["spent"]</span>
                     <button class="fund-add" @onclick="OpenAddBudget">＋ @Loc["Add budget"]</button>
+                    <span class="spending-sub">@Fmt(State.TotalSpent) @Loc["of"] @Fmt(State.TotalBudgeted) @Loc["spent"]</span>
                 </div>
                 @{
                     var _bnFree = State.DisplayFreeToAllocate(_bankStatus?.Balance, _bankStatus?.BalanceCurrency);
@@ -964,8 +964,8 @@ else
             <section class="panel">
                 <div class="spending-head">
                     <span class="insight-h">🎯 @Loc["Your goals"]</span>
-                    <span class="spending-sub">@Fmt(State.SavingsAccumulated) @Loc["saved"] · @Fmt(State.SavingsThisPeriod) @Loc["this period"]</span>
                     <button class="fund-add" @onclick="AddGoalForFilter">＋ @Loc["Add goal"]</button>
+                    <span class="spending-sub">@Fmt(State.SavingsAccumulated) @Loc["saved"] · @Fmt(State.SavingsThisPeriod) @Loc["this period"]</span>
                 </div>
                 <div class="goal-filters" role="group">
                     <button type="button" class="chip @(_goalFilter == GoalFilter.All ? "on" : "")" @onclick="() => _goalFilter = GoalFilter.All">@Loc["All"] <span class="chip-n">@goalTotal</span></button>
