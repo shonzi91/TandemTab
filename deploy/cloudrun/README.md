@@ -71,4 +71,11 @@ gcloud run deploy finapp --source . --region europe-west1   # re-uses the env va
 - **Schema:** the server runs `EnsureCreated()` on Postgres (builds tables from the model on first
   start). If the schema changes later, you'd reset the Neon DB or introduce Postgres EF migrations.
 - **Backups:** Neon has its own branching/backup features in the dashboard.
-- The account snapshot is stored **plaintext** in Postgres (E2E encryption is a later hardening item).
+- **Snapshot encryption at rest is ON in production** (since 2026-07-08). Set `Kms__KeyName=projects/…/cryptoKeys/…`
+  and the server envelope-encrypts every snapshot: a fresh 256-bit data key per write (AES-256-GCM), wrapped by a
+  KMS-held key that never touches the database — so a database compromise alone yields ciphertext. Legacy plaintext
+  rows are migrated on startup, idempotently. **Without `Kms__KeyName` the server silently falls back to storing
+  plaintext** (intended for local dev/tests), so verify it is set in any real deployment.
+- **E2E encryption is not planned** — it is incompatible with what the app already does (the server deserializes
+  snapshots to build exports, and bank sync stores real transactions under a server-held key). The trust model is
+  that the server may read account data; confidentiality rests on encryption at rest and access control.

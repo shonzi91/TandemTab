@@ -6,11 +6,12 @@ using Microsoft.EntityFrameworkCore;
 namespace FinApp.Server.Accounts;
 
 /// <summary>
-/// Stores and serves the opaque full-account snapshot for shared accounts. Any contributor may read or
-/// write it; writes use optimistic concurrency on <see cref="AccountSnapshotRow.Version"/> so concurrent
-/// editors can't silently clobber each other. The payload is never interpreted here.
+/// Stores and serves the full-account snapshot for shared accounts. Any contributor may read or write it; writes
+/// use optimistic concurrency on <see cref="AccountSnapshotRow.Version"/> so concurrent editors can't silently
+/// clobber each other. This service doesn't interpret the payload (though the server does elsewhere — see
+/// <see cref="AccountExportService"/>); it encrypts it at rest via <see cref="ISnapshotCipher"/>.
 /// </summary>
-public sealed class SnapshotService(FinAppDbContext db, ISnapshotCipher cipher)
+public sealed class SnapshotService(FinAppDbContext db, ISnapshotCipher cipher, ILogger<SnapshotService> log)
 {
     public async Task<AccountSnapshot> GetAsync(Guid userId, Guid accountId, CancellationToken ct = default)
     {
@@ -26,7 +27,14 @@ public sealed class SnapshotService(FinAppDbContext db, ISnapshotCipher cipher)
         if (string.IsNullOrEmpty(request.Payload))
             throw new BadRequestException("Snapshot payload is required.");
 
+        // Timed to split the server's share of a save: ProtectAsync wraps a fresh data key via KMS on EVERY write,
+        // which is a network round-trip to another service — so it's a fixed per-save cost that chunking storage
+        // would not reduce. Logged next to the write and payload size so the two are comparable.
+        var sw = System.Diagnostics.Stopwatch.StartNew();
         var stored = await cipher.ProtectAsync(request.Payload, ct);   // encrypt at rest (no-op in dev/no-KMS)
+        var protectMs = sw.Elapsed.TotalMilliseconds;
+
+        sw.Restart();
         var row = await db.AccountSnapshots.FindAsync([accountId], ct);
         if (row is null)
         {
@@ -45,6 +53,9 @@ public sealed class SnapshotService(FinAppDbContext db, ISnapshotCipher cipher)
         }
 
         await db.SaveChangesAsync(ct);
+        log.LogInformation(
+            "[save] account={AccountId} payload={PayloadBytes}B stored={StoredBytes}B protect={ProtectMs}ms db={DbMs}ms v={Version}",
+            accountId, request.Payload.Length, stored.Length, protectMs.ToString("0.#"), sw.Elapsed.TotalMilliseconds.ToString("0.#"), row.Version);
         return row.Version;
     }
 
