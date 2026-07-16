@@ -82,6 +82,7 @@ else
                 <button class="nav @(State.CanGoPrev ? "" : "nav-hidden")" title="@Loc["Previous period"]" @onclick="State.GoPrev" disabled="@(!State.CanGoPrev)">‹</button>
                 <div class="period-row">
                     <button class="period period-btn" title="@Loc["Edit period dates"]" @onclick="OpenEditPeriod">@State.Period.From.ToString("dd MMM") – @State.Period.To.ToString("dd MMM yyyy")</button>
+                    <span class="status @(State.IsPeriodOpen ? "" : "status-closed")"><i class="status-dot"></i>@Loc[State.IsPeriodOpen ? "Active" : "Closed"]</span>
                     <span class="period-ops">
                         @if (State.IsLatestPeriod && State.PeriodCount > 1)
                         {
@@ -94,7 +95,6 @@ else
                     </span>
                 </div>
                 <button class="nav @(State.CanGoNext ? "" : "nav-hidden")" title="@Loc["Next period"]" @onclick="State.GoNext" disabled="@(!State.CanGoNext)">›</button>
-                <span class="status @(State.IsPeriodOpen ? "" : "status-closed")">@Loc[State.IsPeriodOpen ? "Active" : "Closed"]</span>
             </div>
 
             <span class="hdr-icons">
@@ -162,24 +162,26 @@ else
             </span>
         </div>
 
-        <div class="hdr-hero bal-current">
-            <span class="bal-label">@Loc[State.IsPeriodOpen ? "Current balance" : "Closed on"]</span>
-            <strong>@Fmt(State.DisplayClosingBalance(_bankStatus?.Balance, _bankStatus?.BalanceCurrency))</strong>
-            @{
-                var _balFree = State.DisplayFreeToAllocate(_bankStatus?.Balance, _bankStatus?.BalanceCurrency);
-                var _balAlloc = State.DisplayClosingBalance(_bankStatus?.Balance, _bankStatus?.BalanceCurrency) - _balFree;
-            }
+        @{
+            var _balCur = State.DisplayClosingBalance(_bankStatus?.Balance, _bankStatus?.BalanceCurrency);
+            var _balFree = State.DisplayFreeToAllocate(_bankStatus?.Balance, _bankStatus?.BalanceCurrency);
+            var _balAlloc = _balCur - _balFree;
+        }
+        <div class="hdr-hero @(State.IsPeriodOpen ? "" : "hero-solo")">
+            <div class="bal-part bal-part-main">
+                <span class="bal-label">@Loc[State.IsPeriodOpen ? "Current" : "Closed on"]</span>
+                <strong>@Fmt(_balCur)</strong>
+            </div>
             @if (State.IsPeriodOpen)
             {
-                <span class="bal-free @(State.IsOverAllocated ? "warn-text" : "")">@Fmt(_balFree) @Loc["free"]</span>
-                @if (_balAlloc.Amount > 0m)
-                {
-                    <span class="bal-alloc" title="@Loc["Already budgeted or set aside this period — spoken for, not spent."]">· @Fmt(_balAlloc) @Loc["allocated"]</span>
-                }
-                @if (State.BillsDueThisPeriod is { Amount: > 0m } billsDue)
-                {
-                    <span class="bal-bills" title="@Loc["Recurring bills expected this period that you haven't logged yet"]">· @Fmt(billsDue) @Loc["bills due"]</span>
-                }
+                <div class="bal-part">
+                    <span class="bal-label">@Loc["Free"]</span>
+                    <strong class="@(State.IsOverAllocated ? "warn-text" : "bal-free-v")">@Fmt(_balFree)</strong>
+                </div>
+                <div class="bal-part">
+                    <span class="bal-label">@Loc["Allocated"]</span>
+                    <strong class="bal-alloc-v" title="@Loc["Already budgeted or set aside this period — spoken for, not spent."]">@Fmt(_balAlloc)</strong>
+                </div>
             }
         </div>
     </header>
@@ -277,7 +279,18 @@ else
                     <span class="card-value">@Fmt(State.SavingsThisPeriod)</span>
                     <span class="card-sub">@PctOrDash(State.PeriodSavingsRate) @Loc["of contributions"]</span>
                 </div>
-                <div class="card tile-spend"><span class="card-label">@Loc["Spent"]</span><span class="card-value">@Fmt(State.TotalSpent)</span></div>
+                @{
+                    // Spent tile shades along the same green→red heat ramp as the progress rings, by how close
+                    // total spending is to the total budget (far = green, at/over the cap = red).
+                    var _budgTot = State.TotalBudgeted.Amount;
+                    var _spentT = _budgTot > 0m ? Math.Clamp((double)(State.TotalSpent.Amount / _budgTot), 0, 1) : 0d;
+                    var _spentHue = 152 - _spentT * 172; if (_spentHue < 0) _spentHue += 360;
+                    var _sh = _spentHue.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture);
+                }
+                <div class="card tile-spend" style="background:hsl(@_sh 62% 50% / .12);border-color:hsl(@_sh 62% 50% / .34)">
+                    <span class="card-label">@Loc["Spent"]</span>
+                    <span class="card-value" style="color:hsl(@_sh 72% 56%)">@Fmt(State.TotalSpent)</span>
+                </div>
                 @{ var ovBand = ov.Band switch { HealthBand.Healthy => "score-ok", HealthBand.Average => "score-warn", _ => "score-bad" }; }
                 <button id="home-score" class="card card-score" @onclick="() => _modal = Modal.HealthScore" title="@Loc["Health score & trends"]">
                     <span class="card-label">@Loc["Health score & trends"]</span>

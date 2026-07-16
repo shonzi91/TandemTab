@@ -157,16 +157,27 @@ html.dark .acct-check { color: #3fe0c5; }
 html.dark .acct-drop-add { border-top-color: #2b3350; color: #3fe0c5; }
 html.dark .acct-drop-add:hover { background: #1c2338; }
 
-/* Balance hero: a mint-tinted glass card (mockup style) — mint only; coral stays for spend/over signals. */
+/* Period + icons clusters: same navy-glass bordered pill as the account chip/dropdown. */
+html.dark .period-nav, html.dark .hdr-icons { background: #161b2c; border-color: #2b3350; }
+html.dark .period-btn { color: #cbd3e2; }
+html.dark .period-btn:hover { color: #3fe0c5; background: #1c2338; }
+/* Active/Closed pill */
+html.dark .status { background: rgba(63,224,197,.12); color: #6fe6cd; border-color: rgba(63,224,197,.3); }
+html.dark .status-dot { background: #3fe0c5; }
+html.dark .status.status-closed { background: rgba(245,178,78,.14); color: #f3c37a; border-color: rgba(245,178,78,.32); }
+html.dark .status.status-closed .status-dot { background: #f5b24e; }
+
+/* Balance hero: a mint-tinted glass card (mockup style), three columns — mint only. */
 html.dark .hdr-hero {
     background: linear-gradient(140deg, rgba(63,224,197,.16), rgba(63,224,197,.035));
     border-color: rgba(63,224,197,.24); box-shadow: 0 12px 34px -16px rgba(63,224,197,.4);
 }
-html.dark .hdr-hero .bal-label { color: #8fdccb; }
-html.dark .hdr-hero strong { color: #ffffff; }
-html.dark .hdr-hero .bal-free { color: #3fe0c5; }
-html.dark .hdr-hero .bal-free.warn-text { color: #f5b24e; }
-html.dark .hdr-hero .bal-alloc, html.dark .hdr-hero .bal-bills { color: #8b93ac; }
+html.dark .bal-part + .bal-part { border-left-color: rgba(255,255,255,.1); }
+html.dark .bal-part .bal-label { color: #8fdccb; }
+html.dark .bal-part strong { color: #ffffff; }
+html.dark .bal-part .bal-free-v { color: #3fe0c5; }
+html.dark .bal-part .bal-alloc-v { color: #9fb0c4; }
+html.dark .bal-part .warn-text { color: #f5b24e; }
 html.dark .modal-backdrop, html.dark .pm-backdrop { background: rgba(0,0,0,.6); }
 
 /* Form controls (the more-specific scoped rules below need matching dark overrides to win) */

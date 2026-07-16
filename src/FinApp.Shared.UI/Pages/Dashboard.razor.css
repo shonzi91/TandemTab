@@ -65,7 +65,8 @@ html.dark .onboard-desc { color: #a9b6ad; }
 
 /* Row 1 — identity strip: account chip · period · icons. Row 2 — the balance hero card. */
 .hdr-top { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-.hdr-icons { display: flex; align-items: center; gap: 4px; margin-left: auto; }
+/* Icons cluster shares the same bordered-pill treatment as the account chip, period, and dropdown. */
+.hdr-icons { display: flex; align-items: center; gap: 2px; margin-left: auto; background: #ffffff; border: 1px solid #e3e9ee; border-radius: 14px; padding: 3px 7px; }
 .hdr-trophy { font-size: 1.1rem; }
 
 /* Account switcher chip — partner avatars + name + who's on it */
@@ -104,35 +105,43 @@ html.dark .onboard-desc { color: #a9b6ad; }
 }
 .acct-drop-add:hover { background: #eefaf6; }
 
-/* Balance hero — its own bordered card below the identity row (the mockup's balance hero). */
+/* Balance hero — one bordered card split into three columns: Current · Free · Allocated. */
 .hdr-hero {
-    display: block; line-height: 1.12;
-    background: #f4f7f6; border: 1px solid #e3e9ee; border-radius: 18px; padding: 14px 18px;
+    display: flex; align-items: stretch; line-height: 1.1;
+    background: #f4f7f6; border: 1px solid #e3e9ee; border-radius: 18px; padding: 12px 6px;
 }
-.hdr-hero .bal-label { display: block; font-size: .64rem; text-transform: uppercase; letter-spacing: .16em; color: #6b7280; font-weight: 700; }
-.hdr-hero strong { display: block; font-size: 2rem; font-weight: 800; letter-spacing: -.025em; color: #16202b; margin: 2px 0 3px; }
-.hdr-hero .bal-free { display: inline; color: #0f7a54; font-size: .82rem; font-weight: 700; }
-.hdr-hero .bal-alloc, .hdr-hero .bal-bills { display: inline; font-size: .78rem; }
+.hdr-hero.hero-solo { display: inline-flex; }
+.bal-part { display: flex; flex-direction: column; justify-content: center; gap: 3px; padding: 2px 22px; flex: 1; min-width: 0; }
+.bal-part + .bal-part { border-left: 1px solid #e3e9ee; }
+.bal-part .bal-label { font-size: .61rem; text-transform: uppercase; letter-spacing: .13em; color: #6b7280; font-weight: 700; }
+.bal-part strong { font-size: 1.4rem; font-weight: 800; letter-spacing: -.02em; color: #16202b; }
+.bal-part-main strong { font-size: 2rem; }
+.bal-part .bal-free-v { color: #0f7a54; }
+.bal-part .bal-alloc-v { color: #6b7280; }
+.bal-part .warn-text { color: #b45309; }
 
 .dash-head h1 { margin: 0; font-size: 1.6rem; }
 .period { color: #6b7280; font-size: .9rem; }
 .period-btn {
     background: none; border: none; padding: 2px 4px; margin: 0; cursor: pointer; font: inherit;
-    color: #6b7280; font-size: .9rem; border-radius: 6px;
+    color: #374151; font-size: .88rem; font-weight: 600; border-radius: 8px;
 }
-.period-btn:hover { color: #13a06e; background: #e4f6ee; }
+.period-btn:hover { color: #12b29a; background: #eafaf6; }
+/* Active/Closed pill — a subtle dot + label, sat right next to the dates (mockup style). */
 .status {
-    background: #e8f5e9; color: #2e7d32; font-size: .75rem;
-    padding: 4px 10px; border-radius: 999px; font-weight: 600;
+    display: inline-flex; align-items: center; gap: 5px; white-space: nowrap;
+    background: #eaf7ef; color: #1f8a4c; font-size: .7rem; font-weight: 700;
+    padding: 3px 9px; border-radius: 999px; border: 1px solid #cfeadd;
 }
-/* A closed period is amber, not green — it's paused, not active. */
-.status.status-closed { background: #fff4d6; color: #a16207; }
+.status-dot { width: 6px; height: 6px; border-radius: 50%; background: #2fbf6b; flex: 0 0 auto; }
+.status.status-closed { background: #fff4d6; color: #a16207; border-color: #f0dca6; }
+.status.status-closed .status-dot { background: #e0a92e; }
 
 .head-right { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
 .closing-inline { display: flex; align-items: center; gap: 10px; }
 .closing-inline .ghost { padding: 7px 14px; }
 
-.period-row { display: flex; align-items: center; gap: 8px; margin-top: 2px; }
+.period-row { display: flex; align-items: center; gap: 8px; }
 .period-ops { display: flex; align-items: center; gap: 2px; }
 .head-actions { display: flex; align-items: center; gap: 4px; }
 
@@ -404,7 +413,7 @@ html.dark .avail-note strong { color: #57d9a3; }
 .check { display: block; margin: 8px 0; font-size: .9rem; }
 .check input { margin-right: 6px; }
 
-.period-nav { display: flex; align-items: center; gap: 12px; }
+.period-nav { display: flex; align-items: center; gap: 6px; background: #ffffff; border: 1px solid #e3e9ee; border-radius: 14px; padding: 4px 8px; }
 .nav {
     background: #ffffff; color: #13a06e; border: 1px solid #e6ece9; border-radius: 999px;
     width: 36px; height: 36px; font-size: 1.35rem; line-height: 1; cursor: pointer;
