@@ -1229,8 +1229,10 @@ html.dark .chips-label { color: #7c8a94; }
 .plan-controls label { display: flex; align-items: center; gap: 6px; font-size: .85rem; color: #5b6270; }
 .plan-controls input { width: 100px; }
 .plan-toggle { display: flex; gap: 6px; }
-.plan-toggle .chip { border: 1px solid #e6ece9; background: #faf8f3; color: #5b6270; cursor: pointer; font-weight: 600; }
-.plan-toggle .chip.on { background: #13a06e; border-color: #13a06e; color: #ffffff; }
+/* The toggle look for .chip — the bare .chip is a static peach tag, so anything clickable needs this.
+   .goal-filters shares it so the Goals kind filter and the payoff strategy toggle stay one control. */
+.plan-toggle .chip, .goal-filters .chip { border: 1px solid #e6ece9; background: #faf8f3; color: #5b6270; cursor: pointer; font-weight: 600; }
+.plan-toggle .chip.on, .goal-filters .chip.on { background: #13a06e; border-color: #13a06e; color: #ffffff; }
 /* Bucket type toggle (Savings goal / Debt payoff) in the add-bucket modal — a bit bigger for touch. */
 .bucket-type { flex-wrap: wrap; }
 .bucket-type .chip { padding: 8px 14px; font-size: .88rem; }
@@ -1335,6 +1337,10 @@ html.dark .rule-chip.on { background: #14352a; border-color: #2bbd86; color: #6f
 .spending-sub { font-size: .82rem; color: #6b7280; margin-left: auto; }
 /* "Add budget" lives in the header (same control as "Add a fund"); centre it against the label row. */
 .spending-head .fund-add { align-self: center; margin-top: 0; }
+
+/* Goals: kind is a filter over one grid, not a section each. */
+.goal-filters { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 0 0 14px; }
+.goal-filters .chip-n { opacity: .6; font-variant-numeric: tabular-nums; margin-left: 3px; }
 /* Account picker on entry — a clean vertical list, not side-by-side buttons */
 .acct-pick-list { display: flex; flex-direction: column; gap: 10px; margin-top: 4px; }
 .acct-pick-btn {

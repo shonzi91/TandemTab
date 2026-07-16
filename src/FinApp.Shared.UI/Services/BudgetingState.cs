@@ -315,15 +315,30 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
                 account.AddMember(m.UserId, m.DisplayName);
     }
 
+    /// <summary>Guards <see cref="PushSnapshotAsync"/> so only one push is in flight at a time. Two overlapping
+    /// pushes would both send the <em>same</em> <c>_version</c> (the first hasn't returned to advance it yet), and
+    /// the server rejects the loser as a conflict — reported to the user as "someone else updated this account",
+    /// which was reachable with a single user in a single tab: SaveAsync raises Changed before awaiting its push, so
+    /// the re-render runs mid-flight and the achievement stamp / recurring auto-post in OnAfterRenderAsync can start
+    /// a second push off the stale version.</summary>
+    private readonly SemaphoreSlim _pushLock = new(1, 1);
+
     /// <summary>Serialize the current aggregate and push it to the server, advancing the version.</summary>
     private async Task PushSnapshotAsync()
     {
-        var payload = AccountSnapshotSerializer.Serialize(_account!);
-        var saved = await api.SaveSnapshotAsync(_account!.Id, new SaveAccountRequest(payload, _version));
-        _version = saved.Version;
-        // Keep the cache entry's version in step with our own push (the Account is the same live instance).
-        if (_cache.TryGetValue(_account.Id, out var c)) c.Version = _version;
-        else _cache[_account.Id] = new CachedAccount(_account, _version);
+        await _pushLock.WaitAsync();
+        try
+        {
+            // Serialized inside the lock, so a queued push sends the latest aggregate against the version the
+            // push ahead of it just established (both callers mutate the same live Account instance).
+            var payload = AccountSnapshotSerializer.Serialize(_account!);
+            var saved = await api.SaveSnapshotAsync(_account!.Id, new SaveAccountRequest(payload, _version));
+            _version = saved.Version;
+            // Keep the cache entry's version in step with our own push (the Account is the same live instance).
+            if (_cache.TryGetValue(_account.Id, out var c)) c.Version = _version;
+            else _cache[_account.Id] = new CachedAccount(_account, _version);
+        }
+        finally { _pushLock.Release(); }
     }
 
     // --- Period navigation ------------------------------------------------

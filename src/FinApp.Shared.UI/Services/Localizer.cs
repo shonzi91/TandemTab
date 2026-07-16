@@ -1088,5 +1088,11 @@ public sealed class Localizer(IJSRuntime js)
         ["— choose a fund —"] = "— избери фонд —",
         ["— none —"] = "— няма —",
 
+        // Goals tab: one filtered grid instead of a section per bucket kind.
+        ["Your goals"] = "Твоите цели",
+        ["Add goal"] = "Добави цел",
+        ["All"] = "Всички",
+        ["this period"] = "този период",
+        ["Nothing here yet — add a goal to start putting money aside."] = "Още няма нищо — добави цел, за да започнеш да заделяш пари.",
     };
 }
