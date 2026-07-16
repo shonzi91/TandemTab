@@ -11,6 +11,29 @@
 .pring-arc.invest { stroke: #eab308; }  /* investment buckets: a distinct gold/yellow ring */
 .pring-arc.gold { stroke: #f5b301; }    /* milestones/achievements: a warm medal gold */
 .pring-arc.dashed { stroke-dasharray: 2.5 7; }
+
+/* Heat ramp that follows the arc clockwise (see ProgressRing.razor). The colour wheel is fixed to the
+   budget scale — a full turn is 100% — and the first mask reveals only the swept part, so "how far round"
+   and "what colour" always agree. Radii track the r=42 / stroke-width=7 arc: 38.5/45.5 of the 50-unit
+   half-box = 77%/91% of the farthest-side radius. */
+.pring-ramp { position: absolute; inset: 0; border-radius: 50%; pointer-events: none; }
+.pring-ramp.ramp-spend { background: conic-gradient(from -90deg, #22c55e 0deg, #eab308 180deg, #ef4444 360deg); }
+.pring-ramp.ramp-goal { background: conic-gradient(from -90deg, #ef4444 0deg, #eab308 180deg, #22c55e 360deg); }
+
+@supports ((mask-composite: intersect) or (-webkit-mask-composite: source-in)) {
+    .pring-ramp {
+        -webkit-mask:
+            conic-gradient(from -90deg, #000 0 var(--sweep), transparent var(--sweep) 360deg),
+            radial-gradient(circle farthest-side, transparent 0 77%, #000 77% 91%, transparent 91%);
+        -webkit-mask-composite: source-in;
+        mask:
+            conic-gradient(from -90deg, #000 0 var(--sweep), transparent var(--sweep) 360deg),
+            radial-gradient(circle farthest-side, transparent 0 77%, #000 77% 91%, transparent 91%);
+        mask-composite: intersect;
+    }
+    /* The overlay covers the same band — drop the SVG arc so they can't fight over antialiasing. */
+    .pring-arc.ramped { display: none; }
+}
 .pring-center {
     position: absolute; inset: 0; display: flex; flex-direction: column;
     align-items: center; justify-content: center; gap: 3px; padding: 16%;

@@ -105,6 +105,8 @@ h1:focus {
 /* "Tandem × Midnight" dark theme: deep warm-navy ground washed with a coral + mint duo glow, glass surfaces,
    and the two accents (coral = one partner, mint = the other) running through the app. */
 html.dark { color-scheme: dark; --tm-coral: #ff7a66; --tm-mint: #3fe0c5; }
+/* Brand mark follows the theme: mint in the dark app (TandemLogo reads these), original green in light. */
+html.dark { --tt-logo-1: #3fe0c5; --tt-logo-2: #13a06e; }
 html.dark body {
     background:
         radial-gradient(90% 55% at 100% -5%, rgba(255,122,102,.13) 0%, rgba(255,122,102,0) 55%),

@@ -147,6 +147,15 @@ html.dark .onboard-desc { color: #a9b6ad; }
 
 .period-row { display: flex; align-items: center; gap: 8px; }
 .period-ops { display: flex; align-items: center; gap: 2px; }
+/* "Start next month" sits among the bordered header pills, so it wears the same pill rather than the bare
+   row-icon look — mint to read as the forward action. Disabled (period not over yet) stays visible but dim. */
+.period-next {
+    display: inline-flex; align-items: center; cursor: pointer; line-height: 1;
+    background: #eafaf6; color: #13a06e; border: 1px solid #cfeadd; border-radius: 999px;
+    font-size: .7rem; padding: 4px 9px;
+}
+.period-next:hover:not(:disabled) { background: #d9f5ec; border-color: #13a06e; }
+.period-next:disabled { opacity: .4; cursor: not-allowed; }
 .head-actions { display: flex; align-items: center; gap: 4px; }
 
 /* Account-actions cog menu */
@@ -580,6 +589,8 @@ html.dark .fund-donut-sub { fill: #8a94a6; }
 html.dark .fund-row:hover { background: #181c25; }
 html.dark .fund-row-name, html.dark .fund-row-amt { color: #e8eaf0; }
 html.dark .fund-add { border-color: #2b3648; }
+html.dark .period-next { background: rgba(63,224,197,.10); color: var(--tm-mint); border-color: rgba(63,224,197,.35); }
+html.dark .period-next:hover:not(:disabled) { background: rgba(63,224,197,.18); border-color: var(--tm-mint); }
 
 /* Milestones in progress: ranked thin progress bars (Home) */
 .ms-bars { display: flex; flex-direction: column; gap: 14px; padding-top: 4px; }
@@ -1322,6 +1333,8 @@ html.dark .rule-chip.on { background: #14352a; border-color: #2bbd86; color: #6f
 .spending-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
 .spending-head .insight-h { margin: 0; }
 .spending-sub { font-size: .82rem; color: #6b7280; margin-left: auto; }
+/* "Add budget" lives in the header (same control as "Add a fund"); centre it against the label row. */
+.spending-head .fund-add { align-self: center; margin-top: 0; }
 /* Account picker on entry — a clean vertical list, not side-by-side buttons */
 .acct-pick-list { display: flex; flex-direction: column; gap: 10px; margin-top: 4px; }
 .acct-pick-btn {

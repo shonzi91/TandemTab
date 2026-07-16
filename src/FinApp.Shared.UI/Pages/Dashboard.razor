@@ -67,7 +67,9 @@ else
                             var aid = a.Id;
                             <button class="acct-drop-item @(aid == State.CurrentAccountId ? "sel" : "")" @onclick="() => SwitchAccountTo(aid)">
                                 <span class="ava-stack">
-                                    @foreach (var m in a.Members.Take(3)) { <Avatar Name="@m.DisplayName" Size="22" /> }
+                                    @* Pictures are cached for the open account only, so members of the other accounts
+                                       listed here fall back to their initials until that account is opened. *@
+                                    @foreach (var m in a.Members.Take(3)) { <Avatar Name="@m.DisplayName" Picture="@State.MemberAvatar(m.UserId)" Size="22" /> }
                                 </span>
                                 <span class="acct-nm">@a.Name<small>@MembersLine(a.Members)</small></span>
                                 @if (aid == State.CurrentAccountId) { <span class="acct-check">✓</span> }
@@ -90,7 +92,7 @@ else
                         }
                         @if (State.IsLatestPeriod)
                         {
-                            <button class="exp-edit" title="@(State.CanStartNextPeriod ? Loc["Start next month"] : Loc["You can start next month once this period's end date has passed."])" @onclick="OpenNextPeriod" disabled="@(!State.CanStartNextPeriod)">⏭️</button>
+                            <button class="period-next" title="@(State.CanStartNextPeriod ? Loc["Start next month"] : Loc["You can start next month once this period's end date has passed."])" @onclick="OpenNextPeriod" disabled="@(!State.CanStartNextPeriod)">⏭️</button>
                         }
                     </span>
                 </div>
@@ -649,6 +651,7 @@ else
                 <div class="spending-head">
                     <span class="insight-h">@Loc["This month's budgets"]</span>
                     <span class="spending-sub">@Fmt(State.TotalSpent) @Loc["of"] @Fmt(State.TotalBudgeted) @Loc["spent"]</span>
+                    <button class="fund-add" @onclick="OpenAddBudget">＋ @Loc["Add budget"]</button>
                 </div>
                 @{
                     var _bnFree = State.DisplayFreeToAllocate(_bankStatus?.Balance, _bankStatus?.BalanceCurrency);
@@ -696,10 +699,6 @@ else
                             @if (_budgetMenuId == catId) { @BudgetCircleMenu(catId) }
                         </div>
                     }
-                    <div class="ring-card ring-card-lg">
-                        <button class="ring-plus" title="@Loc["Add budget"]" @onclick="OpenAddBudget">+</button>
-                        <div class="ring-label"><span class="ring-muted">@Loc["Add budget"]</span></div>
-                    </div>
                 </div>
             </section>
 

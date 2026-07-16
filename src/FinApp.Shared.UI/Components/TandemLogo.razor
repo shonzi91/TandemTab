@@ -1,8 +1,11 @@
+@* Brand mark: two stems under a shared beam (the tandem pair / two T's). Colours come from CSS custom
+   properties so the mark tracks the theme — the dark app is mint, light keeps the original green. The
+   inline defaults mean a host that sets neither still renders the original green. *@
 <svg class="tandem-logo" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="TandemTab">
     <defs>
         <linearGradient id="tandem-grad" x1="6" y1="6" x2="58" y2="58" gradientUnits="userSpaceOnUse">
-            <stop stop-color="#34d399" />
-            <stop offset="1" stop-color="#13a06e" />
+            <stop stop-color="var(--tt-logo-1, #34d399)" />
+            <stop offset="1" stop-color="var(--tt-logo-2, #13a06e)" />
         </linearGradient>
     </defs>
     <!-- shared beam -->
@@ -11,6 +14,6 @@
     <rect x="20" y="27" width="8" height="25" rx="4" fill="url(#tandem-grad)" />
     <rect x="36" y="27" width="8" height="25" rx="4" fill="url(#tandem-grad)" />
     <!-- two heads -->
-    <circle cx="24" cy="14" r="6" fill="#34d399" />
-    <circle cx="40" cy="14" r="6" fill="#34d399" />
+    <circle cx="24" cy="14" r="6" fill="var(--tt-logo-1, #34d399)" />
+    <circle cx="40" cy="14" r="6" fill="var(--tt-logo-1, #34d399)" />
 </svg>
