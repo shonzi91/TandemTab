@@ -61,83 +61,91 @@ html.dark .onboard-check { background: #14251d; }
 html.dark .onboard-title { color: #e8eaf0; }
 html.dark .onboard-desc { color: #a9b6ad; }
 
-.dash-head { display: flex; flex-direction: column; gap: 11px; margin-bottom: 16px; }
+.dash-head { display: flex; flex-direction: column; gap: 12px; margin-bottom: 16px; }
 
-/* Row 1 — strip: account chip · balance mini-card · icons */
-.hdr-strip { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-.hdr-icons { display: flex; align-items: center; gap: 2px; margin-left: auto; }
-/* Row 2 — slim: period nav + status · achievements */
-.hdr-slim { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+/* Row 1 — identity strip: account chip · period · icons. Row 2 — the balance hero card. */
+/* The whole identity row lives inside one bordered card; the chip / period / icons are borderless segments. */
+.hdr-top {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    background: #ffffff; border: 1px solid #e3e9ee; border-radius: 16px; padding: 7px 10px;
+}
+/* Icons + period are borderless segments inside the single hdr-top border; a divider sets the icons apart. */
+.hdr-icons { display: flex; align-items: center; gap: 2px; margin-left: auto; padding-left: 8px; border-left: 1px solid #e9edf1; }
 .hdr-trophy { font-size: 1.1rem; }
 
 /* Account switcher chip — partner avatars + name + who's on it */
 .acct-wrap { position: relative; }
 .acct-chip {
-    display: flex; align-items: center; gap: 9px; background: #ffffff; border: 1px solid #e6ece9;
-    border-radius: 999px; padding: 5px 13px 5px 6px; cursor: pointer; font: inherit; max-width: 340px;
-    transition: border-color .12s, box-shadow .12s;
+    display: flex; align-items: center; gap: 10px; background: none; border: none;
+    border-radius: 12px; padding: 4px 10px 4px 5px; cursor: pointer; font: inherit; max-width: 340px;
+    transition: background .12s;
 }
-.acct-chip:hover { border-color: #cbd5e1; box-shadow: 0 2px 8px rgba(20,30,40,.07); }
+.acct-chip:hover { background: #f2f5f8; }
 .ava-stack { display: inline-flex; flex: 0 0 auto; }
 .ava-stack .av { border: 2px solid #ffffff; box-sizing: content-box; }
-.ava-stack .av:not(:first-child) { margin-left: -10px; }
-.acct-nm { display: flex; flex-direction: column; line-height: 1.15; min-width: 0; text-align: left; }
-.acct-nm { font-weight: 700; font-size: .9rem; color: #1f2430; }
-.acct-nm small { font-weight: 500; font-size: .67rem; color: #8a929c; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ava-stack .av:not(:first-child) { margin-left: -11px; }
+.acct-nm { display: flex; flex-direction: column; line-height: 1.14; min-width: 0; text-align: left; }
+.acct-nm { font-weight: 800; font-size: .92rem; color: #16202b; letter-spacing: -.01em; }
+.acct-nm small { font-weight: 600; font-size: .68rem; color: #7c8794; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .acct-car { color: #9aa2ad; font-size: .68rem; margin-left: 1px; flex: 0 0 auto; }
 
+/* Account dropdown — the same rounded, bordered card treatment as the mockup */
 .acct-drop {
-    position: absolute; top: calc(100% + 6px); left: 0; z-index: 91; min-width: 258px;
-    background: #ffffff; border: 1px solid #e6ece9; border-radius: 14px; box-shadow: 0 10px 30px rgba(0,0,0,.16); padding: 6px;
+    position: absolute; top: calc(100% + 7px); left: 0; z-index: 91; min-width: 262px;
+    background: #ffffff; border: 1px solid #e3e9ee; border-radius: 16px; box-shadow: 0 14px 36px rgba(15,25,35,.18); padding: 7px;
 }
 .acct-drop-item {
-    display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; background: none; border: none;
-    cursor: pointer; font: inherit; padding: 8px 10px; border-radius: 10px;
+    display: flex; align-items: center; gap: 11px; width: 100%; text-align: left; background: none; border: none;
+    cursor: pointer; font: inherit; padding: 9px 11px; border-radius: 11px;
 }
 .acct-drop-item:hover { background: #f3f6f9; }
-.acct-drop-item.sel { background: #eef7f3; }
+.acct-drop-item.sel { background: #e9f7f2; }
 .acct-drop-item .acct-nm { flex: 1; }
-.acct-check { color: #13a06e; font-weight: 800; }
+.acct-check { color: #12b29a; font-weight: 800; }
 .acct-drop-add {
     display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; background: none; border: none;
-    border-top: 1px solid #eef1f4; margin-top: 4px; cursor: pointer; font: inherit; font-size: .85rem; color: #0f7a54;
-    padding: 10px; border-radius: 10px;
+    border-top: 1px solid #eef1f4; margin-top: 5px; cursor: pointer; font: inherit; font-size: .85rem; font-weight: 600; color: #0f9d88;
+    padding: 11px; border-radius: 11px;
 }
-.acct-drop-add:hover { background: #f0fbf6; }
+.acct-drop-add:hover { background: #eefaf6; }
 
-/* Balance mini-card — a slim, single-line gradient chip (Option A's mint gradient) sized to sit level with the
-   account-switcher chip. Self-contained colours, so it reads the same in light and dark. */
-.bal-mini {
-    display: flex; flex-direction: row; align-items: baseline; gap: 7px; line-height: 1.1;
-    background: linear-gradient(140deg, #12b29a, #3fe0c5); border: none; border-radius: 12px;
-    padding: 9px 15px; box-shadow: 0 6px 16px rgba(18,178,154,.28);
+/* Balance hero — one bordered card split into three columns: Current · Free · Allocated. */
+.hdr-hero {
+    display: flex; align-items: stretch; line-height: 1.1;
+    background: #f4f7f6; border: 1px solid #e3e9ee; border-radius: 18px; padding: 12px 6px;
 }
-.bal-mini .bal-label, html.dark .bal-mini .bal-label {
-    font-size: .58rem; color: rgba(6,35,30,.72); font-weight: 700; text-transform: uppercase; letter-spacing: .1em;
-}
-.bal-mini strong, html.dark .bal-mini strong { font-size: 1.12rem; color: #06231e; letter-spacing: -.01em; }
-.bal-mini .bal-free, html.dark .bal-mini .bal-free { font-size: .72rem; color: #06231e; font-weight: 700; }
-.bal-mini .bal-free.warn-text, html.dark .bal-mini .bal-free.warn-text { color: #7a2e00; }
+.hdr-hero.hero-solo { display: inline-flex; }
+.bal-part { display: flex; flex-direction: column; justify-content: center; gap: 3px; padding: 2px 22px; flex: 1; min-width: 0; }
+.bal-part + .bal-part { border-left: 1px solid #e3e9ee; }
+.bal-part .bal-label { font-size: .61rem; text-transform: uppercase; letter-spacing: .13em; color: #6b7280; font-weight: 700; }
+.bal-part strong { font-size: 1.4rem; font-weight: 800; letter-spacing: -.02em; color: #16202b; }
+.bal-part-main strong { font-size: 2rem; }
+.bal-part .bal-free-v { color: #0f7a54; }
+.bal-part .bal-alloc-v { color: #6b7280; }
+.bal-part .warn-text { color: #b45309; }
 
 .dash-head h1 { margin: 0; font-size: 1.6rem; }
 .period { color: #6b7280; font-size: .9rem; }
 .period-btn {
     background: none; border: none; padding: 2px 4px; margin: 0; cursor: pointer; font: inherit;
-    color: #6b7280; font-size: .9rem; border-radius: 6px;
+    color: #374151; font-size: .88rem; font-weight: 600; border-radius: 8px;
 }
-.period-btn:hover { color: #13a06e; background: #e4f6ee; }
+.period-btn:hover { color: #12b29a; background: #eafaf6; }
+/* Active/Closed pill — a subtle dot + label, sat right next to the dates (mockup style). */
 .status {
-    background: #e8f5e9; color: #2e7d32; font-size: .75rem;
-    padding: 4px 10px; border-radius: 999px; font-weight: 600;
+    display: inline-flex; align-items: center; gap: 5px; white-space: nowrap;
+    background: #eaf7ef; color: #1f8a4c; font-size: .7rem; font-weight: 700;
+    padding: 3px 9px; border-radius: 999px; border: 1px solid #cfeadd;
 }
-/* A closed period is amber, not green — it's paused, not active. */
-.status.status-closed { background: #fff4d6; color: #a16207; }
+.status-dot { width: 6px; height: 6px; border-radius: 50%; background: #2fbf6b; flex: 0 0 auto; }
+.status.status-closed { background: #fff4d6; color: #a16207; border-color: #f0dca6; }
+.status.status-closed .status-dot { background: #e0a92e; }
 
 .head-right { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
 .closing-inline { display: flex; align-items: center; gap: 10px; }
 .closing-inline .ghost { padding: 7px 14px; }
 
-.period-row { display: flex; align-items: center; gap: 8px; margin-top: 2px; }
+.period-row { display: flex; align-items: center; gap: 8px; }
 .period-ops { display: flex; align-items: center; gap: 2px; }
 .head-actions { display: flex; align-items: center; gap: 4px; }
 
@@ -409,15 +417,15 @@ html.dark .avail-note strong { color: #57d9a3; }
 .check { display: block; margin: 8px 0; font-size: .9rem; }
 .check input { margin-right: 6px; }
 
-.period-nav { display: flex; align-items: center; gap: 12px; }
+.period-nav { display: flex; align-items: center; gap: 4px; padding-left: 8px; border-left: 1px solid #e9edf1; }
 .nav {
-    background: #ffffff; color: #13a06e; border: 1px solid #e6ece9; border-radius: 999px;
-    width: 36px; height: 36px; font-size: 1.35rem; line-height: 1; cursor: pointer;
+    background: none; color: #9aa3af; border: none; border-radius: 8px;
+    width: 26px; height: 26px; font-size: 1.15rem; line-height: 1; cursor: pointer;
     display: inline-flex; align-items: center; justify-content: center; padding: 0 0 2px;
-    transition: background .15s, border-color .15s, color .15s;
+    transition: background .15s, color .15s;
 }
-.nav:hover:not(:disabled) { background: #e4f6ee; border-color: #13a06e; }
-.nav:disabled { background: #ffffff; color: #d3d6df; border-color: #efe7d9; cursor: not-allowed; }
+.nav:hover:not(:disabled) { background: #eafaf6; color: #12b29a; }
+.nav:disabled { background: none; color: #d3d6df; cursor: not-allowed; }
 /* No prev/next: hide the arrow but keep its space so the period bar stays put. */
 .nav.nav-hidden { visibility: hidden; }
 
@@ -669,6 +677,15 @@ html.dark .detail-subcat-sum { color: #7c8a94; }
 .modal label input[type=text], .modal label input[type=number], .modal label input[type=date], .modal label select {
     padding: 9px 10px; border: 1px solid #dde6e1; border-radius: 10px; font-size: .95rem; background: #ffffff;
 }
+/* Prettier dropdowns everywhere: drop the native arrow for a tidy chevron + room to breathe. */
+.modal label select, .form select, .contrib-actions select, .import-list select, select.acct-select {
+    appearance: none; -webkit-appearance: none; -moz-appearance: none;
+    padding-right: 34px; cursor: pointer; font-weight: 600;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.5 6 8l3.5-3.5' fill='none' stroke='%2312b29a' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 12px center;
+}
+.modal label select:hover, .form select:hover { border-color: #12b29a; }
+.modal label select:focus, .form select:focus { outline: none; border-color: #12b29a; box-shadow: 0 0 0 3px rgba(18,178,154,.16); }
 
 /* Date pickers: consistent field height + a tidy, brand-tinted calendar button. */
 input[type=date] { color-scheme: light; accent-color: #13a06e; font-family: inherit; min-height: 38px; }

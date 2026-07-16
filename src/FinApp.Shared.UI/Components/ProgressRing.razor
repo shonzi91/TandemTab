@@ -2,6 +2,15 @@
    Dashed=true draws a full dashed ring meaning "no target set" (open). *@
 <div class="pring">
     <svg viewBox="0 0 100 100" class="pring-svg" aria-hidden="true">
+        @if (!string.IsNullOrEmpty(Ramp) && !Dashed)
+        {
+            <defs>
+                <linearGradient id="@_gid" x1="0" y1="0" x2="1" y2="1">
+                    <stop offset="0" stop-color="@RampStop0" />
+                    <stop offset="1" stop-color="@RampStop1" />
+                </linearGradient>
+            </defs>
+        }
         <circle class="pring-track" cx="50" cy="50" r="42" />
         @if (Dashed)
         {
@@ -19,24 +28,21 @@
     [Parameter] public double Percent { get; set; }            // 0..100 (clamped)
     [Parameter] public string? Class { get; set; }             // ok / warn / over / mint / muted
     [Parameter] public bool Dashed { get; set; }               // true = full dashed ring (no target)
-    [Parameter] public string? Ramp { get; set; }              // "spend" = green→pink as it fills; "goal" = reverse (green when full)
+    [Parameter] public string? Ramp { get; set; }              // "spend" = green→red as it fills; "goal" = reverse (green when full)
     [Parameter] public RenderFragment? ChildContent { get; set; }
 
-    // Progress-driven colour: the arc shades along a green↔pink heat ramp by how full it is. "spend" reads
-    // green when there's room and pink/red as it approaches the cap; "goal" is reversed so a completed goal or
-    // milestone finishes green. Emitted as an inline style so it wins over the class stroke in either theme.
-    private string? RampStyle
-    {
-        get
-        {
-            if (string.IsNullOrEmpty(Ramp)) return null;
-            var t = Math.Clamp(Percent, 0, 100) / 100.0;
-            if (Ramp == "goal") t = 1 - t;                      // full progress → green
-            var hue = 152 - t * 172;                            // 152 green → -20 (=340) pink, via yellow/orange/red
-            if (hue < 0) hue += 360;
-            return $"stroke:hsl({hue.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture)} 70% 55%)";
-        }
-    }
+    // Progress-driven heat GRADIENT: the arc is stroked with a green↔red gradient rather than a single colour,
+    // so you read both the direction and how far along it is. "spend" sweeps green → the current heat (red near
+    // the cap); "goal"/milestone is reversed so the leading edge is green as it completes. A per-instance
+    // gradient id avoids collisions; the inline style wins over the class stroke in either theme.
+    private readonly string _gid = "pr" + Guid.NewGuid().ToString("N");
+    private static readonly System.Globalization.CultureInfo Inv = System.Globalization.CultureInfo.InvariantCulture;
+    private double T => Math.Clamp(Percent, 0, 100) / 100.0;
+    private const string Green = "hsl(152 70% 55%)";
+    private static string Heat(double x) { var h = 152 - x * 172; if (h < 0) h += 360; return $"hsl({h.ToString("0.#", Inv)} 70% 55%)"; }
+    private string RampStop0 => Ramp == "goal" ? Heat(1 - T) : Green;
+    private string RampStop1 => Ramp == "goal" ? Green : Heat(T);
+    private string? RampStyle => string.IsNullOrEmpty(Ramp) ? null : $"stroke:url(#{_gid})";
 
     private const double R = 42;
     private static readonly double Circ = 2 * Math.PI * R;
@@ -47,8 +53,7 @@
         {
             var p = Math.Clamp(Percent, 0, 100);
             var len = Circ * p / 100.0;
-            var ci = System.Globalization.CultureInfo.InvariantCulture;
-            return $"{len.ToString("0.##", ci)} {(Circ - len).ToString("0.##", ci)}";
+            return $"{len.ToString("0.##", Inv)} {(Circ - len).ToString("0.##", Inv)}";
         }
     }
 }

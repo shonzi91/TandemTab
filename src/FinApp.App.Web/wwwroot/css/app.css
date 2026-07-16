@@ -143,15 +143,43 @@ html.dark .card.savings .card-value { color: var(--tm-mint); }
 html.dark .card.tile-spend { background: rgba(255,122,102,.09); border-color: rgba(255,122,102,.28); }
 html.dark .card.tile-spend .card-value { color: var(--tm-coral); }
 
-/* Balance mini-card: a small mint chip (little presence) — mint only; coral stays for spend/over signals. */
-html.dark .bal-mini {
-    background: linear-gradient(140deg, #12b29a, #3fe0c5);
-    border-color: transparent; box-shadow: 0 8px 22px -10px rgba(63,224,197,.5);
+/* One bordered identity row (navy glass); the chip/period/icons inside are borderless segments. */
+html.dark .hdr-top { background: #161b2c; border-color: #2b3350; }
+html.dark .acct-chip:hover { background: #1c2338; }
+html.dark .period-nav, html.dark .hdr-icons { border-left-color: #2b3350; }
+html.dark .nav { color: #7c8496; }
+html.dark .nav:hover:not(:disabled) { background: #1c2338; color: #3fe0c5; }
+html.dark .acct-nm { color: #f0f3f9; }
+html.dark .acct-nm small { color: #93b8b0; }
+html.dark .acct-car { color: #7c8496; }
+html.dark .ava-stack .av { border-color: #0f1322; }
+html.dark .acct-drop { background: #161b2c; border-color: #2b3350; box-shadow: 0 18px 44px rgba(0,0,0,.55); }
+html.dark .acct-drop-item:hover { background: #1c2338; }
+html.dark .acct-drop-item.sel { background: rgba(63,224,197,.12); }
+html.dark .acct-check { color: #3fe0c5; }
+html.dark .acct-drop-add { border-top-color: #2b3350; color: #3fe0c5; }
+html.dark .acct-drop-add:hover { background: #1c2338; }
+
+/* Period + icons clusters: same navy-glass bordered pill as the account chip/dropdown. */
+html.dark .period-btn { color: #cbd3e2; }
+html.dark .period-btn:hover { color: #3fe0c5; background: #1c2338; }
+/* Active/Closed pill */
+html.dark .status { background: rgba(63,224,197,.12); color: #6fe6cd; border-color: rgba(63,224,197,.3); }
+html.dark .status-dot { background: #3fe0c5; }
+html.dark .status.status-closed { background: rgba(245,178,78,.14); color: #f3c37a; border-color: rgba(245,178,78,.32); }
+html.dark .status.status-closed .status-dot { background: #f5b24e; }
+
+/* Balance hero: a mint-tinted glass card (mockup style), three columns — mint only. */
+html.dark .hdr-hero {
+    background: linear-gradient(140deg, rgba(63,224,197,.16), rgba(63,224,197,.035));
+    border-color: rgba(63,224,197,.24); box-shadow: 0 12px 34px -16px rgba(63,224,197,.4);
 }
-html.dark .bal-mini .bal-label { color: rgba(6,32,27,.72); }
-html.dark .bal-mini strong { color: #06231e; }
-html.dark .bal-mini .bal-free { color: #06231e; }
-html.dark .bal-mini .bal-free.warn-text { color: #7a2b16; }
+html.dark .bal-part + .bal-part { border-left-color: rgba(255,255,255,.1); }
+html.dark .bal-part .bal-label { color: #8fdccb; }
+html.dark .bal-part strong { color: #ffffff; }
+html.dark .bal-part .bal-free-v { color: #3fe0c5; }
+html.dark .bal-part .bal-alloc-v { color: #9fb0c4; }
+html.dark .bal-part .warn-text { color: #f5b24e; }
 html.dark .modal-backdrop, html.dark .pm-backdrop { background: rgba(0,0,0,.6); }
 
 /* Form controls (the more-specific scoped rules below need matching dark overrides to win) */
@@ -164,6 +192,11 @@ html.dark .firstrun-form input, html.dark .dates-form input, html.dark .contrib-
 }
 html.dark option { background: #1e2330; color: #e8eaf0; }
 html.dark input[type=date] { color-scheme: dark; }
+/* Re-apply the custom dropdown chevron in dark (the shorthand background above resets it). */
+html.dark .modal label select, html.dark .form select, html.dark .contrib-actions select, html.dark .import-list select, html.dark select.acct-select {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.5 6 8l3.5-3.5' fill='none' stroke='%233fe0c5' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 12px center;
+}
 
 /* Sticky modal header (title bar + corner ✕/✓) must match the dark modal surface, not stay cream. */
 html.dark .modal > h3, html.dark .modal-head, html.dark .pm h3 {
