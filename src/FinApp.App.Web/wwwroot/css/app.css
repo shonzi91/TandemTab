@@ -143,9 +143,12 @@ html.dark .card.savings .card-value { color: var(--tm-mint); }
 html.dark .card.tile-spend { background: rgba(255,122,102,.09); border-color: rgba(255,122,102,.28); }
 html.dark .card.tile-spend .card-value { color: var(--tm-coral); }
 
-/* Account chip + dropdown: navy glass with distinctive, high-contrast text (legible in both themes). */
-html.dark .acct-chip { background: #161b2c; border-color: #2b3350; }
-html.dark .acct-chip:hover { border-color: #3fe0c5; box-shadow: 0 2px 12px rgba(63,224,197,.14); }
+/* One bordered identity row (navy glass); the chip/period/icons inside are borderless segments. */
+html.dark .hdr-top { background: #161b2c; border-color: #2b3350; }
+html.dark .acct-chip:hover { background: #1c2338; }
+html.dark .period-nav, html.dark .hdr-icons { border-left-color: #2b3350; }
+html.dark .nav { color: #7c8496; }
+html.dark .nav:hover:not(:disabled) { background: #1c2338; color: #3fe0c5; }
 html.dark .acct-nm { color: #f0f3f9; }
 html.dark .acct-nm small { color: #93b8b0; }
 html.dark .acct-car { color: #7c8496; }
@@ -158,7 +161,6 @@ html.dark .acct-drop-add { border-top-color: #2b3350; color: #3fe0c5; }
 html.dark .acct-drop-add:hover { background: #1c2338; }
 
 /* Period + icons clusters: same navy-glass bordered pill as the account chip/dropdown. */
-html.dark .period-nav, html.dark .hdr-icons { background: #161b2c; border-color: #2b3350; }
 html.dark .period-btn { color: #cbd3e2; }
 html.dark .period-btn:hover { color: #3fe0c5; background: #1c2338; }
 /* Active/Closed pill */
@@ -190,6 +192,11 @@ html.dark .firstrun-form input, html.dark .dates-form input, html.dark .contrib-
 }
 html.dark option { background: #1e2330; color: #e8eaf0; }
 html.dark input[type=date] { color-scheme: dark; }
+/* Re-apply the custom dropdown chevron in dark (the shorthand background above resets it). */
+html.dark .modal label select, html.dark .form select, html.dark .contrib-actions select, html.dark .import-list select, html.dark select.acct-select {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.5 6 8l3.5-3.5' fill='none' stroke='%233fe0c5' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 12px center;
+}
 
 /* Sticky modal header (title bar + corner ✕/✓) must match the dark modal surface, not stay cream. */
 html.dark .modal > h3, html.dark .modal-head, html.dark .pm h3 {

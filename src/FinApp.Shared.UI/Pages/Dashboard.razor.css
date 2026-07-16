@@ -64,19 +64,23 @@ html.dark .onboard-desc { color: #a9b6ad; }
 .dash-head { display: flex; flex-direction: column; gap: 12px; margin-bottom: 16px; }
 
 /* Row 1 — identity strip: account chip · period · icons. Row 2 — the balance hero card. */
-.hdr-top { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-/* Icons cluster shares the same bordered-pill treatment as the account chip, period, and dropdown. */
-.hdr-icons { display: flex; align-items: center; gap: 2px; margin-left: auto; background: #ffffff; border: 1px solid #e3e9ee; border-radius: 14px; padding: 3px 7px; }
+/* The whole identity row lives inside one bordered card; the chip / period / icons are borderless segments. */
+.hdr-top {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    background: #ffffff; border: 1px solid #e3e9ee; border-radius: 16px; padding: 7px 10px;
+}
+/* Icons + period are borderless segments inside the single hdr-top border; a divider sets the icons apart. */
+.hdr-icons { display: flex; align-items: center; gap: 2px; margin-left: auto; padding-left: 8px; border-left: 1px solid #e9edf1; }
 .hdr-trophy { font-size: 1.1rem; }
 
 /* Account switcher chip — partner avatars + name + who's on it */
 .acct-wrap { position: relative; }
 .acct-chip {
-    display: flex; align-items: center; gap: 10px; background: #ffffff; border: 1px solid #e3e9ee;
-    border-radius: 14px; padding: 6px 13px 6px 7px; cursor: pointer; font: inherit; max-width: 340px;
-    transition: border-color .12s, box-shadow .12s;
+    display: flex; align-items: center; gap: 10px; background: none; border: none;
+    border-radius: 12px; padding: 4px 10px 4px 5px; cursor: pointer; font: inherit; max-width: 340px;
+    transition: background .12s;
 }
-.acct-chip:hover { border-color: #c7d2dc; box-shadow: 0 2px 10px rgba(20,30,40,.08); }
+.acct-chip:hover { background: #f2f5f8; }
 .ava-stack { display: inline-flex; flex: 0 0 auto; }
 .ava-stack .av { border: 2px solid #ffffff; box-sizing: content-box; }
 .ava-stack .av:not(:first-child) { margin-left: -11px; }
@@ -413,15 +417,15 @@ html.dark .avail-note strong { color: #57d9a3; }
 .check { display: block; margin: 8px 0; font-size: .9rem; }
 .check input { margin-right: 6px; }
 
-.period-nav { display: flex; align-items: center; gap: 6px; background: #ffffff; border: 1px solid #e3e9ee; border-radius: 14px; padding: 4px 8px; }
+.period-nav { display: flex; align-items: center; gap: 4px; padding-left: 8px; border-left: 1px solid #e9edf1; }
 .nav {
-    background: #ffffff; color: #13a06e; border: 1px solid #e6ece9; border-radius: 999px;
-    width: 36px; height: 36px; font-size: 1.35rem; line-height: 1; cursor: pointer;
+    background: none; color: #9aa3af; border: none; border-radius: 8px;
+    width: 26px; height: 26px; font-size: 1.15rem; line-height: 1; cursor: pointer;
     display: inline-flex; align-items: center; justify-content: center; padding: 0 0 2px;
-    transition: background .15s, border-color .15s, color .15s;
+    transition: background .15s, color .15s;
 }
-.nav:hover:not(:disabled) { background: #e4f6ee; border-color: #13a06e; }
-.nav:disabled { background: #ffffff; color: #d3d6df; border-color: #efe7d9; cursor: not-allowed; }
+.nav:hover:not(:disabled) { background: #eafaf6; color: #12b29a; }
+.nav:disabled { background: none; color: #d3d6df; cursor: not-allowed; }
 /* No prev/next: hide the arrow but keep its space so the period bar stays put. */
 .nav.nav-hidden { visibility: hidden; }
 
@@ -673,6 +677,15 @@ html.dark .detail-subcat-sum { color: #7c8a94; }
 .modal label input[type=text], .modal label input[type=number], .modal label input[type=date], .modal label select {
     padding: 9px 10px; border: 1px solid #dde6e1; border-radius: 10px; font-size: .95rem; background: #ffffff;
 }
+/* Prettier dropdowns everywhere: drop the native arrow for a tidy chevron + room to breathe. */
+.modal label select, .form select, .contrib-actions select, .import-list select, select.acct-select {
+    appearance: none; -webkit-appearance: none; -moz-appearance: none;
+    padding-right: 34px; cursor: pointer; font-weight: 600;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.5 6 8l3.5-3.5' fill='none' stroke='%2312b29a' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 12px center;
+}
+.modal label select:hover, .form select:hover { border-color: #12b29a; }
+.modal label select:focus, .form select:focus { outline: none; border-color: #12b29a; box-shadow: 0 0 0 3px rgba(18,178,154,.16); }
 
 /* Date pickers: consistent field height + a tidy, brand-tinted calendar button. */
 input[type=date] { color-scheme: light; accent-color: #13a06e; font-family: inherit; min-height: 38px; }
