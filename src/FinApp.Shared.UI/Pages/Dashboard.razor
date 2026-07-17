@@ -191,7 +191,7 @@ else
                     }
                 </div>
                 <div class="bal-part">
-                    <span class="bal-label">@Loc["Allocated"]</span>
+                    <span class="bal-label">@Loc["Saved"]</span>
                     <strong class="bal-alloc-v" title="@Loc["Set aside for savings — reserved, not spent. Budgets aren't counted here."]">@Fmt(_balAlloc)</strong>
                 </div>
             }
@@ -248,33 +248,6 @@ else
     <div class="tab-content">
         <div class="tabpanel" hidden="@(_tab != Tab.Overview)">
             @{
-                // The things that actually need attention (overspend, over-budget, health warnings) surfaced inline
-                // on the tab you land on — the bell still holds the full list, including the gentler reminders.
-                var homeAlerts = notifications.Where(n => n.Urgent).ToList();
-            }
-            @if (homeAlerts.Count > 0)
-            {
-                <section class="home-alerts">
-                    @foreach (var n in homeAlerts.Take(3))
-                    {
-                        <div class="home-alert">
-                            <span class="home-alert-ico">@n.Icon</span>
-                            <div class="home-alert-body">
-                                <span class="home-alert-text">@n.Text</span>
-                                @if (n is { ActionLabel: { } al, Act: { } act })
-                                {
-                                    <button class="home-alert-act" @onclick="@(() => act())">@al</button>
-                                }
-                            </div>
-                        </div>
-                    }
-                    @if (notifications.Count > Math.Min(3, homeAlerts.Count))
-                    {
-                        <button class="home-alert-more" @onclick="() => _bellOpen = true">@string.Format(Loc["See all {0} in notifications"], notifications.Count) ›</button>
-                    }
-                </section>
-            }
-            @{
                 // First-run "Getting started" checklist. Steps auto-tick from real data, so it disappears on its
                 // own as the user completes them; the × persists a dismiss so it never nags. Body-data flag.
                 var obSteps = new (bool Done, string Icon, string Title, string Desc, Action Act)[]
@@ -312,12 +285,10 @@ else
                     </div>
                 </section>
             }
-            <section class="cards cards-3">
-                <div class="card savings">
-                    <span class="card-label">@Loc["Saved this period"]</span>
-                    <span class="card-value">@Fmt(State.SavingsThisPeriod)</span>
-                    <span class="card-sub">@PctOrDash(State.PeriodSavingsRate) @Loc["of contributions"]</span>
-                </div>
+            @* "Saved this period" was dropped from this row: its label collided with the header's "Saved", and the
+               savings-rate story it told is already carried by "You're on track for" and the savings insight. Spent
+               stays (Home's only spending glance) alongside the Health score. *@
+            <section class="cards cards-2">
                 @{
                     // Spent tile shades along the same green→red heat ramp as the progress rings, by how close
                     // total spending is to the total budget (far = green, at/over the cap = red).
@@ -331,7 +302,7 @@ else
                 <button id="home-score" class="card card-score" @onclick="() => _modal = Modal.HealthScore" title="@Loc["Health score & trends"]">
                     <span class="card-label">@Loc["Health score & trends"]</span>
                     <span class="card-value @ovBand">@(ov.HasData ? ov.Score.ToString() : "—")</span>
-                    <span class="card-sub">@(ov.HasData ? ov.Verdict : "") ›</span>
+                    <span class="card-sub">@(ov.HasData ? ov.Verdict : "")</span>
                 </button>
             </section>
 
@@ -340,18 +311,60 @@ else
                 @if (State.IsPeriodOpen)
                 {
                     <button class="qa" @onclick="OpenDeposit">💵 <span>@Loc["Contribute"]</span></button>
-                    <button class="qa" @onclick="OpenImport">📥 <span>@Loc["Import statement"]</span></button>
                 }
                 @if (HasSavingsBucket)
                 {
                     <button class="qa" @onclick="OpenMoveToSavings">💰 <span>@Loc["Move to savings"]</span></button>
                 }
-                <button class="qa" @onclick="OpenRecurring">🔁 <span>@Loc["Recurring"]</span></button>
-                @if (_bankStatus?.Enabled == true)
-                {
-                    <button class="qa" @onclick="ShowBankTab">🏦 <span>@Loc["External accounts"]</span></button>
-                }
+                @* The daily actions stay on the row; Import / Recurring / External accounts (occasional) fold into
+                   "More" so the row doesn't grow to six equal-weight buttons. *@
+                <span class="acct-menu qa-more">
+                    <button class="qa" @onclick="() => _qaMoreOpen = !_qaMoreOpen">⋯ <span>@Loc["More"]</span></button>
+                    @if (_qaMoreOpen)
+                    {
+                        <div class="acct-menu-backdrop" @onclick="() => _qaMoreOpen = false"></div>
+                        <div class="acct-menu-pop">
+                            @if (State.IsPeriodOpen)
+                            {
+                                <button @onclick="@(async () => { _qaMoreOpen = false; await OpenImport(); })">📥 @Loc["Import statement"]</button>
+                            }
+                            <button @onclick="@(() => { _qaMoreOpen = false; OpenRecurring(); })">🔁 @Loc["Recurring"]</button>
+                            @if (_bankStatus?.Enabled == true)
+                            {
+                                <button @onclick="@(async () => { _qaMoreOpen = false; await ShowBankTab(); })">🏦 @Loc["External accounts"]</button>
+                            }
+                        </div>
+                    }
+                </span>
             </section>
+
+            @{
+                // What actually needs attention (overspend, over-budget, health warnings), sitting under the
+                // quick actions — the bell still holds the full list, including the gentler reminders.
+                var homeAlerts = notifications.Where(n => n.Urgent).ToList();
+            }
+            @if (homeAlerts.Count > 0)
+            {
+                <section class="home-alerts">
+                    @foreach (var n in homeAlerts.Take(3))
+                    {
+                        <div class="home-alert">
+                            <span class="home-alert-ico">@n.Icon</span>
+                            <div class="home-alert-body">
+                                <span class="home-alert-text">@n.Text</span>
+                                @if (n is { ActionLabel: { } al, Act: { } act })
+                                {
+                                    <button class="home-alert-act" @onclick="@(() => act())">@al</button>
+                                }
+                            </div>
+                        </div>
+                    }
+                    @if (notifications.Count > Math.Min(3, homeAlerts.Count))
+                    {
+                        <button class="home-alert-more" @onclick="() => _bellOpen = true">@string.Format(Loc["See all {0} in notifications"], notifications.Count) ›</button>
+                    }
+                </section>
+            }
 
             @{ var homeTargets = HomeTargets(); }
             @if (homeTargets.Count > 0)
@@ -2456,7 +2469,6 @@ else
                            figure defaulted into both — the second then quoted an implausible per-month total. *@
                         <h4 class="detail-sub">💸 @string.Format(Loc["One-off — pay your {0} set aside now"], Fmt(State.Money(pjPayNow)))
                             @infoTip(("pp-partial", Loc["A payment lowers the balance right away, so the interest you're charged each period drops from then on. This is a single payment out of what you've already set aside — not a new monthly commitment."]))</h4>
-                        <p class="hint">@string.Format(Loc["Interest {0} → {1}/mo"], Fmt(State.Money(pjIntNow)), Fmt(State.Money(pjIntAfter)))</p>
                         @if (pjShorter is not null || pjLowerInst is not null)
                         {
                             <p class="hint pm-hint">@Loc["Your bank may offer a choice like:"]</p>
@@ -2466,7 +2478,7 @@ else
                                         <th>@Loc["Their offer"]</th>
                                         <th>@Loc["Per month"]</th>
                                         <th>@Loc["Ends"]</th>
-                                        <th>@Loc["Left to pay"]</th>
+                                        <th>@Loc["Total interest"]</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -2481,7 +2493,7 @@ else
                                                     <span class="good-text">@string.Format(Loc[" ({0} sooner)"], MonthsText(baseline.Months - shorter.Months))</span>
                                                 }
                                             </td>
-                                            <td>@Fmt(State.Money(decimal.Round(pjInst * shorter.Months, 2)))</td>
+                                            <td>@Fmt(State.Money(decimal.Round(pjInst * shorter.Months - pjAfterBal, 2)))</td>
                                         </tr>
                                     }
                                     @if (pjLowerInst is { } lower && pjKeepMonths > 0)
@@ -2490,20 +2502,11 @@ else
                                             <td>💶 @Loc["Lower installment"]</td>
                                             <td>@Fmt(State.Money(lower)) <span class="good-text">(−@Fmt(State.Money(Math.Max(0m, pjInst - lower))))</span></td>
                                             <td>@PayoffDate(pjKeepMonths) <span class="ring-muted">@Loc["(unchanged)"]</span></td>
-                                            <td>@Fmt(State.Money(decimal.Round(lower * pjKeepMonths, 2)))</td>
+                                            <td>@Fmt(State.Money(decimal.Round(lower * pjKeepMonths - pjAfterBal, 2)))</td>
                                         </tr>
                                     }
                                 </tbody>
                             </table>
-                            @if (pjShorter is { } s2 && pjLowerInst is { } l2 && pjKeepMonths > 0)
-                            {
-                                var shorterOutlay = decimal.Round(pjInst * s2.Months, 2);
-                                var lowerOutlay = decimal.Round(l2 * pjKeepMonths, 2);
-                                @if (lowerOutlay > shorterOutlay)
-                                {
-                                    <p class="hint good-text">➡️ @string.Format(Loc["Shorter term costs {0} less overall — lower installment buys monthly room instead."], Fmt(State.Money(lowerOutlay - shorterOutlay)))</p>
-                                }
-                            }
                         }
                     }
                     <h4 class="detail-sub">🔁 @Loc["Ongoing — add more every month"]
@@ -4628,6 +4631,7 @@ else
 
     // --- Notifications bell — aggregates the transient Home prompts into one dropdown by the account controls -----
     private bool _bellOpen;
+    private bool _qaMoreOpen;   // Home "More" quick-actions overflow menu
     private sealed record Notification(string Icon, string Text, string? Desc, string? ActionLabel, Action? Act,
         Action? Rotate, Action? Dismiss, bool Urgent);
 

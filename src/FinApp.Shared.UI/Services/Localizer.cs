@@ -351,8 +351,10 @@ public sealed class Localizer(IJSRuntime js)
         ["You saved {0} this period — at or above your {1} goal. Keep that rhythm."] =
             "Спестихте {0} този период — на или над целта ви от {1}. Запазете темпото.",
         ["That's about {0} short of your goal this period."] = "Това е около {0} под целта ви за този период.",
-        ["You saved {0} this period — better than nothing, but short of your {1} goal."] =
-            "Спестихте {0} този период — по-добре от нищо, но под целта ви от {1}.",
+        ["You haven't set anything aside this period yet — your goal is {0}."] =
+            "Още не сте заделили нищо този период — целта ви е {0}.",
+        ["You saved {0} this period — a start, but short of your {1} goal."] =
+            "Спестихте {0} този период — начало е, но под целта ви от {1}.",
 
         // Insights / financial-health tab
         ["Your score this period"] = "Вашата оценка за периода",
@@ -391,6 +393,9 @@ public sealed class Localizer(IJSRuntime js)
 
         // Account-tab cards + balances
         ["Current"] = "Текущо",
+        ["Free"] = "Свободно",
+        ["Saved"] = "Спестено",
+        ["More"] = "Още",
         ["Closed on"] = "Затворено с",
         ["Spent"] = "Похарчено",
         ["Budgeted"] = "Бюджетирано",

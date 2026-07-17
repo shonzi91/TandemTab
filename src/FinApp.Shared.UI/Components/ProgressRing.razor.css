@@ -9,7 +9,7 @@
 .pring-arc.muted { stroke: #c7c9d6; }
 .pring-arc.debt { stroke: #6366f1; }   /* debt buckets: a full solid ring in a distinct indigo */
 .pring-arc.staged { stroke: #6366f1; } /* debt: money set aside but not yet paid — a second segment past "paid off" */
-.pring-arc.seg2 { stroke-linecap: butt; }
+.pring-arc.seg1, .pring-arc.seg2 { stroke-linecap: butt; }   /* two-segment mode: flush boundary, no rounded caps */
 .pring-arc.invest { stroke: #eab308; }  /* investment buckets: a distinct gold/yellow ring */
 .pring-arc.gold { stroke: #f5b301; }    /* milestones/achievements: a warm medal gold */
 .pring-arc.dashed { stroke-dasharray: 2.5 7; }

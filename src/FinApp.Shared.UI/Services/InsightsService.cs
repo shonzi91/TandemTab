@@ -611,7 +611,9 @@ public sealed class InsightsService
         if (rate.Value >= target)
             return string.Format(_t("You saved {0} this period — at or above your {1} goal. Keep that rhythm."), Pct(rate.Value), Pct(target));
         var tail = shortfall is { } s ? " " + string.Format(_t("That's about {0} short of your goal this period."), fmt(s)) : "";
-        return string.Format(_t("You saved {0} this period — better than nothing, but short of your {1} goal."), Pct(rate.Value), Pct(target)) + tail;
+        if (rate.Value <= 0m)
+            return string.Format(_t("You haven't set anything aside this period yet — your goal is {0}."), Pct(target)) + tail;
+        return string.Format(_t("You saved {0} this period — a start, but short of your {1} goal."), Pct(rate.Value), Pct(target)) + tail;
     }
 
     private static string Pct(decimal ratio) =>

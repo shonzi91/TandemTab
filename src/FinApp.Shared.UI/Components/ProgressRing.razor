@@ -20,7 +20,7 @@
         {
             @if (Percent > 0)
             {
-                <circle class="pring-arc @Class @(HasRamp ? "ramped" : "")" cx="50" cy="50" r="42" transform="rotate(-90 50 50)" stroke-dasharray="@DashArray" style="@RampStyle" />
+                <circle class="pring-arc @Class @(HasRamp ? "ramped" : "") @(Percent2 > 0 ? "seg1" : "")" cx="50" cy="50" r="42" transform="rotate(-90 50 50)" stroke-dasharray="@DashArray" style="@RampStyle" />
             }
             @* Optional second segment, drawn straight after the first in its own colour — e.g. a debt's "set aside
                but not yet paid" sitting past the "already paid off" arc. Butt-capped with a small gap so the two read
@@ -79,10 +79,10 @@
         }
     }
 
-    // Second segment: starts a small gap past the end of the first, capped so it can't spill past the ring.
+    // Second segment: starts flush at the end of the first (no gap — paid → set → remaining read as one bar),
+    // capped so it can't spill past the ring. Both segments are butt-capped in this mode so the boundary is crisp.
     private double Len1 => Circ * Math.Clamp(Percent, 0, 100) / 100.0;
-    private double Gap => Circ * 0.03;
-    private double Len2 => Math.Max(0, Math.Min(Circ * Math.Clamp(Percent2, 0, 100) / 100.0, Circ - Len1 - Gap));
+    private double Len2 => Math.Max(0, Math.Min(Circ * Math.Clamp(Percent2, 0, 100) / 100.0, Circ - Len1));
     private string Dash2Array => $"{Len2.ToString("0.##", Inv)} {(Circ - Len2).ToString("0.##", Inv)}";
-    private string Dash2Offset => (-(Len1 + Gap)).ToString("0.##", Inv);
+    private string Dash2Offset => (-Len1).ToString("0.##", Inv);
 }

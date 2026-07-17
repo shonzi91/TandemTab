@@ -1115,6 +1115,8 @@ html.dark .targets-foot { border-top-color: #2a323c; }
 .qa:hover { background: #f0faf5; border-color: #13a06e; }
 html.dark .qa { background: #161b2c; border-color: #293049; color: #7bf0d8; }
 html.dark .qa:hover { background: #1b2236; border-color: #3fe0c5; }
+.qa-more { flex: 0 1 172px; }
+.qa-more > .qa { width: 100%; }
 
 /* Home reminders (#10) */
 .reminders { display: flex; flex-direction: column; gap: 8px; margin: 12px 0 0; }
@@ -1464,10 +1466,18 @@ html.dark .realloc-effects li { color: #b7d8c9; }
 
 /* Overview tab */
 .card-score {
-    text-align: left; cursor: pointer; font: inherit; align-items: flex-start;
-    border: 1px solid #e6ece9; transition: border-color .15s, box-shadow .15s;
+    position: relative; text-align: left; cursor: pointer; font: inherit; align-items: flex-start;
+    border: 1px solid #cdeadd; background: #f6fbf8;
+    transition: border-color .15s, box-shadow .15s, transform .12s;
 }
-.card-score:hover { border-color: #13a06e; box-shadow: 0 2px 8px rgba(19,160,110,.12); }
+/* A persistent chevron so it's obvious the tile opens something, not just a stat. */
+.card-score::after {
+    content: "›"; position: absolute; top: 10px; right: 13px;
+    color: #13a06e; font-size: 1.35rem; font-weight: 800; line-height: 1;
+}
+.card-score:hover { border-color: #13a06e; box-shadow: 0 4px 12px rgba(19,160,110,.16); transform: translateY(-1px); }
+html.dark .card-score { background: #14211d; border-color: #24493a; }
+html.dark .card-score::after { color: #3fe0c5; }
 .card-score .card-value.score-ok { color: #0e9e6d; }
 .card-score .card-value.score-warn { color: #b45309; }
 .card-score .card-value.score-bad { color: #dc2626; }
