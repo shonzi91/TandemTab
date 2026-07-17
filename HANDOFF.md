@@ -1,9 +1,64 @@
 # TandemTab (FinApp) — session handoff
 
-Last updated: 2026-07-17 (Session 31). Read this + [README.md](README.md) + [TRANSFER.md](TRANSFER.md) + recent `git log` to catch up.
+Last updated: 2026-07-17 (Session 32). Read this + [README.md](README.md) + [TRANSFER.md](TRANSFER.md) + recent `git log` to catch up.
+
+## Session 32 (2026-07-17) — a debt's balance derives from its schedule; payoff-modal honesty. COMMITTED & DEPLOYED (`finapp-00183-t7f`).
+Two commits landed before this handoff was written (`b756185`, `4b02368`) and are recorded here after the fact; the
+session then merged `redesign-batch-2` into `main` (`762a8be`), fixed two release blockers (`b482270`) and deployed.
+**301 tests green** (178 domain + 41 persistence + 82 server), build clean (5 pre-existing warnings).
+
+**Deploy:** image `finapp:b482270` (digest `sha256:1a339832…`), Cloud Build 4m12s → revision **`finapp-00183-t7f`**,
+100% of traffic. Both URLs 200 and serving `app.css?v=30`; no WARNING+ in the revision's logs. Post-deploy env checks
+(worth repeating every time, per Session 31's incident): **5 `secretKeyRef` entries** intact, and `Kms__KeyName` is set
+— snapshot encryption is really on, not silently falling back to plaintext.
+
+**Verification honesty:** build + 301 tests + a prod smoke test (200s, correct CSS version, clean logs). The debt-schedule
+maths is unit-tested but **the payoff modal was not browser-driven this session** — worth a look on prod against a real
+debt bucket, especially the one-off-vs-ongoing split.
+
+### The debt balance was never moving (`4b02368`) — the substantive change
+**The bug:** a debt bucket's principal sat still forever. The monthly installment is typically paid **from a different
+account**, so this snapshot never sees it. And "just subtract the installment when you do see it" is *also* wrong: an
+installment is interest + principal, so taking the whole thing off **over-credits**, and the error **compounds** — a
+too-low balance is charged too little interest next month, which over-credits again.
+
+**The fix — don't observe the payment, derive the position.** A loan is deterministic: given the terms and elapsed
+time, the balance is determined. `SavingCategory` gains `DebtBalanceAsOf` (an anchor: *"the balance was this, on this
+day"*) and **`DebtBalanceOn(asOf)`**, which walks the anchor forward over the **whole** installments due since, taking
+only `installment − interest` off each month (via `LoanForecast.BalanceAfter`). Which account pays becomes irrelevant,
+and a missed or duplicated record can't drift it.
+- **`DebtBalanceOn(asOf)` — not the raw `DebtBalance` field — is the balance to show and project from.** The field is
+  only the anchored value. Same for the derived reads beside it: `DebtPaidOffOn` / `DebtProgressRatioOn`.
+- **Corrections are the same mechanism, not a special case.** Restating the balance (setup, an edit, a payment)
+  **re-anchors** — "the bank says I owe X today" just becomes the new truth to walk from. Extra payments stay events
+  on top; those really are all principal.
+- **Legacy buckets are untouched by design.** No anchor, no schedule, or `DebtInstallment <= 0` → falls back to the
+  stored balance and behaves exactly as before (the balance sits still until something changes it).
+- **⚠️ Serializer gotcha, deliberate:** the anchor is restored **verbatim**, *not* through `ConfigureDebt` — routing it
+  through config would **re-date the loan to load-time**, walking the schedule from today and freezing it forever.
+- **This is the on-ramp to importing a repayment schedule** (Wave 4): the lender's rows replace the derived ones behind
+  the same read model.
+- **Tests:** 14 domain (`DebtScheduleTests`) + 1 serializer round-trip, including the one that pins the bug — naive
+  subtraction says 19,600 after one 400 payment; the schedule says **19,700**.
+
+### Payoff modal (`b756185` + the UI half of `4b02368`)
+- **A 400/mo loan claimed "3,400/mo".** The same set-aside was quoted as a **one-off lump** *and* defaulted into the
+  **recurring extra**. Split into "one-off" vs "ongoing".
+- **The two lender offers are now a table** (`.payoff-opts`) — as prose you had to hold both in your head to compare
+  three figures. Dark-mode hairlines/headers for it are the `app.css` change that forced the cache bump below.
+- **"At your installment" was a heading over two facts about the loan as it stands**, so end date + total interest moved
+  up into the summary grid under Installment, where the rest of the loan's facts live; the never-clears case takes over
+  the Ends row.
+
+### Two release blockers caught before deploying (`b482270`)
+- **`app.css` changed but the cache-bust didn't.** `4b02368` added the payoff-table dark rules, but `index.html` still
+  said `?v=29` — **exactly what prod already serves**, so a returning browser would keep its cached stylesheet and never
+  see them. Now `?v=30`. **Bump this whenever `app.css` changes**; a deploy alone doesn't reach cached clients.
+- **Dev port flip reverted** — `appsettings.Development.json` was committed pointing at `:5182` (a Session-31
+  verification needed a free port for a same-origin dev server). Back to `:5179`. Prod ignores it either way.
 
 ## Session 31 (2026-07-16→17) — "Tandem × Midnight" batch 2 + save performance, measured. COMMITTED & DEPLOYED (`finapp-00182-gqz`).
-**All work is on branch `redesign-batch-2`, which is what production runs — `main` is 12 commits behind.** A deploy from `main` would silently roll back the whole redesign, the gzip win and the save-conflict fix. **Merge it**, and revert the committed `appsettings.Development.json` port flip (`:5182` → `:5179`) while you're there — harmless in prod (Production ignores it), but it breaks local dev on the default port.
+~~**All work is on branch `redesign-batch-2`** — merge it, and revert the `appsettings.Development.json` port flip.~~ **Both DONE in Session 32** (merge `762a8be`, port revert `b482270`). `main` is the superset and is what production runs; nothing is owed here.
 
 **Deploy chain this session:** `18b1cbe`→`finapp-00175-5sm`, `d822d2b`→`00176-zz6`, `8bfdfa0`→`00177-lc9`, (`00178-gwv` **failed**, see the secrets incident), `00179-vrh` (secrets restored), `9b923fb`→`00180-4w4`, `782f3eb`→`00181-fjd`, `c0a5a40`→**`00182-gqz`** (live; both URLs 200). `app.css?v=29`.
 
