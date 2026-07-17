@@ -18,7 +18,17 @@
         }
         else
         {
-            <circle class="pring-arc @Class @(HasRamp ? "ramped" : "")" cx="50" cy="50" r="42" transform="rotate(-90 50 50)" stroke-dasharray="@DashArray" style="@RampStyle" />
+            @if (Percent > 0)
+            {
+                <circle class="pring-arc @Class @(HasRamp ? "ramped" : "")" cx="50" cy="50" r="42" transform="rotate(-90 50 50)" stroke-dasharray="@DashArray" style="@RampStyle" />
+            }
+            @* Optional second segment, drawn straight after the first in its own colour — e.g. a debt's "set aside
+               but not yet paid" sitting past the "already paid off" arc. Butt-capped with a small gap so the two read
+               as distinct. Not combined with a ramp. *@
+            @if (Percent2 > 0 && !HasRamp)
+            {
+                <circle class="pring-arc seg2 @Class2" cx="50" cy="50" r="42" transform="rotate(-90 50 50)" stroke-dasharray="@Dash2Array" stroke-dashoffset="@Dash2Offset" />
+            }
         }
     </svg>
     @if (HasRamp)
@@ -31,6 +41,8 @@
 @code {
     [Parameter] public double Percent { get; set; }            // 0..100 (clamped)
     [Parameter] public string? Class { get; set; }             // ok / warn / over / mint / muted
+    [Parameter] public double Percent2 { get; set; }           // optional second segment, drawn after the first
+    [Parameter] public string? Class2 { get; set; }            // colour for the second segment
     [Parameter] public bool Dashed { get; set; }               // true = full dashed ring (no target)
     [Parameter] public string? Ramp { get; set; }              // "spend" = green→red as it fills; "goal" = reverse (green when full)
     [Parameter] public RenderFragment? ChildContent { get; set; }
@@ -66,4 +78,11 @@
             return $"{len.ToString("0.##", Inv)} {(Circ - len).ToString("0.##", Inv)}";
         }
     }
+
+    // Second segment: starts a small gap past the end of the first, capped so it can't spill past the ring.
+    private double Len1 => Circ * Math.Clamp(Percent, 0, 100) / 100.0;
+    private double Gap => Circ * 0.03;
+    private double Len2 => Math.Max(0, Math.Min(Circ * Math.Clamp(Percent2, 0, 100) / 100.0, Circ - Len1 - Gap));
+    private string Dash2Array => $"{Len2.ToString("0.##", Inv)} {(Circ - Len2).ToString("0.##", Inv)}";
+    private string Dash2Offset => (-(Len1 + Gap)).ToString("0.##", Inv);
 }

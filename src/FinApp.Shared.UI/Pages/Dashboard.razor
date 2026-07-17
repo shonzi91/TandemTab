@@ -863,18 +863,25 @@ else
                         var g = (!isDebt && !isInvestment && ctx.Bucket.HasGoal) ? State.SavingGoal(bucketId) : (SavingGoalProgress?)null;
                         var pct = (double)(g?.Percent ?? 0);
                         var cls = g is null ? "mint" : g.ThresholdReached && !g.GoalReached ? "warn" : "ok";
-                        // Debt: a progress loader — how much you've set aside toward what you owe (its own colour).
+                        // Debt: the ring is the original loan. A green arc is how much you've already paid off; a second
+                        // indigo segment past it is money set aside but not yet applied — staged, not gone. The rest of
+                        // the track is what's still owed and unfunded.
                         var debtOwed = isDebt ? State.SavingBucketDebtBalance(bucketId) : 0m;
-                        var debtPct = isDebt ? (debtOwed > 0m ? (double)(ctx.Total.Amount / debtOwed) * 100.0 : 100.0) : 0.0;
-                        var ringPct = isDebt ? debtPct : (g is null ? 0 : pct);
-                        var ringCls = isInvestment ? "invest" : isDebt ? "debt" : cls;
+                        var debtOrig = isDebt ? State.SavingBucketDebtOriginal(bucketId) : 0m;
+                        var debtPaid = isDebt ? State.SavingBucketDebtPaidOff(bucketId) : 0m;
+                        var debtScale = debtOrig > 0m ? debtOrig : debtOwed;   // fall back to owed for a debt with no baseline
+                        var paidPct = (isDebt && debtScale > 0m) ? (double)(debtPaid / debtScale) * 100.0 : 0.0;
+                        var stagedPct = (isDebt && debtScale > 0m) ? (double)(ctx.Total.Amount / debtScale) * 100.0 : 0.0;
+                        var ringPct = isDebt ? paidPct : (g is null ? 0 : pct);
+                        var ringCls = isInvestment ? "invest" : isDebt ? "ok" : cls;
                         var ringDashed = !isDebt && g is null;
-                        // Goal/debt progress shades pink→green (green = reached/cleared); investments keep their gold ring.
-                        var ringRamp = (!isInvestment && !ringDashed) ? "goal" : null;
+                        // Goal progress shades pink→green (green = reached); investments keep their gold ring; debt now
+                        // uses the two solid segments above, so it opts out of the ramp.
+                        var ringRamp = (!isInvestment && !isDebt && !ringDashed) ? "goal" : null;
                         // Lifecycle: a debt with nothing left owed, or a goal that's been reached, is "done".
                         var done = isDebt ? ctx.Bucket.IsDebtCleared : (g is not null && g.GoalReached);
                     }
-                    <ProgressRing Percent="@ringPct" Class="@ringCls" Dashed="@ringDashed" Ramp="@ringRamp">
+                    <ProgressRing Percent="@ringPct" Percent2="@(isDebt ? stagedPct : 0)" Class="@ringCls" Class2="staged" Dashed="@ringDashed" Ramp="@ringRamp">
                         <button class="ring-ico-big" title="@Loc["Actions"]" @onclick="() => ToggleRowMenu(bucketId)">@State.SavingBucketIcon(bucketId)</button>
                         <button class="ring-name" title="@Loc["Actions"]" @onclick="() => ToggleRowMenu(bucketId)">@ctx.Bucket.Name</button>
                         @if (done)
@@ -926,18 +933,16 @@ else
                             var dPaid = State.SavingBucketDebtPaidOff(bucketId);
                             var dOrig = State.SavingBucketDebtOriginal(bucketId);
                             var dProg = State.SavingBucketDebtProgress(bucketId);
-                            var dAhead = State.SavingBucketMonthsAhead(bucketId);
                             var dSpark = State.SavingBucketDebtHistory(bucketId);
+                            @* "Ahead of the installment plan" used to sit here; it's a pace projection that reads as a
+                               result of your last payment and confused people. The Payoff projection modal owns that
+                               answer now. *@
                             if (dProg is { } pr && dPaid > 0m)
                             {
                                 <div class="debt-progress">
                                     <span class="debt-prog-txt">@string.Format(Loc["Paid off {0} of {1} ({2}%)"], Fmt(State.Money(dPaid)), Fmt(State.Money(dOrig)), (int)Math.Round((double)pr * 100))</span>
                                     @DebtSparkline(dSpark)
                                 </div>
-                                if (dAhead is { } ma)
-                                {
-                                    <div class="debt-ahead good-text">🚀 @string.Format(Loc["~{0} ahead of the installment plan"], MonthsText(ma))</div>
-                                }
                             }
                         }
                         else if (isInvestment)
@@ -2454,10 +2459,10 @@ else
                            figure defaulted into both — the second then quoted an implausible per-month total. *@
                         <h4 class="detail-sub">💸 @string.Format(Loc["One-off — pay your {0} set aside now"], Fmt(State.Money(pjPayNow)))
                             @infoTip(("pp-partial", Loc["A payment lowers the balance right away, so the interest you're charged each period drops from then on. This is a single payment out of what you've already set aside — not a new monthly commitment."]))</h4>
-                        <p class="hint">@string.Format(Loc["Balance {0} → {1} · interest {2} → {3}/mo"], Fmt(State.Money(pjBal)), Fmt(State.Money(pjAfterBal)), Fmt(State.Money(pjIntNow)), Fmt(State.Money(pjIntAfter)))</p>
+                        <p class="hint">@string.Format(Loc["Interest {0} → {1}/mo"], Fmt(State.Money(pjIntNow)), Fmt(State.Money(pjIntAfter)))</p>
                         @if (pjShorter is not null || pjLowerInst is not null)
                         {
-                            <p class="hint pm-hint">@Loc["Your bank will ask which you want:"]</p>
+                            <p class="hint pm-hint">@Loc["Your bank may offer a choice like:"]</p>
                             <table class="payoff-opts">
                                 <thead>
                                     <tr>

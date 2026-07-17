@@ -291,6 +291,7 @@ html.dark .tip-desc { color: #9fc2b3; }
 /* ── Duo deepening (dark): shift the brand green through interactive surfaces to mint, keeping semantic
    warn/over amber+red, and give the score accent the coral→mint duo. ── */
 html.dark .pring-arc.mint, html.dark .pring-arc.ok { stroke: #3fe0c5; }
+html.dark .pring-arc.staged, html.dark .pring-arc.debt { stroke: #818cf8; }
 html.dark .gauge-ok { stroke: #3fe0c5; }
 html.dark .bar-fill.ok { background: #3fe0c5; }
 html.dark .tab.active { color: #3fe0c5; border-bottom-color: #3fe0c5; }

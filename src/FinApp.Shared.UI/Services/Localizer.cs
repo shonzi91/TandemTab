@@ -1083,7 +1083,7 @@ public sealed class Localizer(IJSRuntime js)
         // Payoff projection: the loan's own facts moved into the summary; overpayment offers both bank options.
         ["Ends"] = "Приключва",
         ["Total interest"] = "Обща лихва",
-        ["Your bank will ask which you want:"] = "Банката ще те попита кое предпочиташ:",
+        ["Your bank may offer a choice like:"] = "Банката може да ти предложи избор като:",
         ["Shorter term"] = "По-кратък срок",
         ["Lower installment"] = "По-ниска вноска",
         ["Their offer"] = "Тяхната оферта",
@@ -1093,7 +1093,7 @@ public sealed class Localizer(IJSRuntime js)
         ["(unchanged)"] = "(без промяна)",
         ["One-off — pay your {0} set aside now"] = "Еднократно — плати заделените {0} сега",
         ["Ongoing — add more every month"] = "Постоянно — добавяй още всеки месец",
-        ["Balance {0} → {1} · interest {2} → {3}/mo"] = "Остатък {0} → {1} · лихва {2} → {3}/мес.",
+        ["Interest {0} → {1}/mo"] = "Лихва {0} → {1}/мес.",
         ["Shorter term costs {0} less overall — lower installment buys monthly room instead."] =
             "По-краткият срок излиза {0} по-евтино общо — по-ниската вноска вместо това дава месечен въздух.",
 
