@@ -103,6 +103,9 @@ builder.Services.AddSignalR();
 builder.Services.AddSingleton<SyncNotifier>();
 
 // CORS for the Blazor WASM web host (different origin from the API in dev).
+// Accept gzipped request bodies (see UseRequestDecompression below).
+builder.Services.AddRequestDecompression();
+
 // SignalR needs an explicit origin list + AllowCredentials (can't use AllowAnyOrigin with credentials).
 const string WasmCorsPolicy = "wasm";
 var corsOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()
@@ -274,6 +277,12 @@ app.UseStaticFiles(new StaticFileOptions
 // In a one-origin deployment the client and API share an origin, so it's a no-op there.
 if (app.Environment.IsDevelopment())
     app.UseCors(WasmCorsPolicy);
+
+// Transparently gunzip request bodies sent with Content-Encoding: gzip (the client compresses anything large —
+// chiefly the ~260KB account snapshot). Must run before anything reads the body, so it sits ahead of the
+// endpoints; requests without the header pass straight through. Kestrel's max-request-body limit still applies
+// to the *decompressed* stream, so a zip bomb can't buy extra headroom here.
+app.UseRequestDecompression();
 
 app.UseRateLimiter();
 app.UseAuthentication();

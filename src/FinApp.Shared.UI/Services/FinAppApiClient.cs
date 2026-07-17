@@ -1,3 +1,4 @@
+using System.IO.Compression;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
@@ -197,14 +198,39 @@ public sealed class FinAppApiClient(HttpClient http)
         return response;
     }
 
-    private Task<HttpResponseMessage> SendOnceAsync(HttpMethod method, string path, object? body, CancellationToken ct)
+    /// <summary>Bodies at or above this compress before going on the wire; smaller ones aren't worth the gzip
+    /// header and the CPU. The account snapshot is the reason this exists — it's ~260KB of JSON re-sent on every
+    /// mutation, and measured against a real account the upload was ~70% of the time a save took.</summary>
+    private const int CompressBodiesOver = 8 * 1024;
+
+    private async Task<HttpResponseMessage> SendOnceAsync(HttpMethod method, string path, object? body, CancellationToken ct)
     {
         var request = new HttpRequestMessage(method, path);
         if (body is not null)
-            request.Content = JsonContent.Create(body, options: Json);
+            request.Content = BuildContent(body);
         if (!string.IsNullOrEmpty(Token))
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", Token);
-        return http.SendAsync(request, ct);
+        return await http.SendAsync(request, ct);
+    }
+
+    /// <summary>JSON body, gzipped when it's big enough to pay for itself. The server decompresses transparently
+    /// (UseRequestDecompression), so this is invisible to every endpoint. Built fresh per attempt because content
+    /// streams can't be re-sent — the 401-refresh path sends twice.</summary>
+    private static HttpContent BuildContent(object body)
+    {
+        var json = JsonSerializer.SerializeToUtf8Bytes(body, Json);
+        if (json.Length < CompressBodiesOver)
+            return new ByteArrayContent(json) { Headers = { ContentType = new MediaTypeHeaderValue("application/json") } };
+
+        using var ms = new MemoryStream();
+        // Fastest, not Optimal: this runs on the UI thread in WASM, and JSON still compresses ~8x at this level.
+        using (var gz = new GZipStream(ms, CompressionLevel.Fastest, leaveOpen: true))
+            gz.Write(json, 0, json.Length);
+
+        var content = new ByteArrayContent(ms.ToArray());
+        content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
+        content.Headers.ContentEncoding.Add("gzip");
+        return content;
     }
 
     private static async Task EnsureSuccessAsync(HttpResponseMessage response, CancellationToken ct)
