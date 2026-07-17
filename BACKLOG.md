@@ -70,6 +70,47 @@ commit noted.
     already spent (`ToSavings` opens savings headroom first; `ToBudget` moves between budgets). Wired into
     the Dashboard + `BudgetingState`; covered by `ReallocationAndCapTests` (5).
 
+## P4 — Next up (added Session 31, from a competitor-gap review)
+15. **Predictive cash-flow runway (3–6 months out)** — the one genuine gap a competitive review turned up,
+    and the highest-value un-built idea on the list. The app reads the past well and projects a *single*
+    debt/goal/investment, but nothing answers **"what do the next few months look like?"**. Every input
+    already exists; nothing renders them:
+    - `Domain/Recurring/RecurringItem` already models bills + income as **forward-looking expectations**
+      (`DayOfMonth`, per-period due tracking, `DueDateWithin`/`IsUpcoming`). `RecurringAmountMode.Typical`
+      even self-tunes toward the actual via `LearnFromActual` — recurring amounts are already predictions.
+    - `LoanForecast` / `InvestmentForecast` are pure, month-stepped projectors — copy their shape.
+    - `Period` materialises opening balances as `CarryoverSource` contributions, so "cash at the start of
+      a month" is already a solved problem, not a replay.
+
+    **Shape:** a pure `Domain/Forecasting/CashFlowForecast.Project(...)` that walks N months from the
+    current closing balance applying due recurring income/bills, returning a per-month balance plus the
+    first month it goes negative. Keep it **projection-only** (moves no money), like every other forecast
+    here. Pairs with the existing Home "on track for" card, which already owns forward-looking answers.
+
+    **Fold in, don't duplicate:** "predictive budgeting" (noted below) and the Wave-4 calendar +
+    "set aside €X/month to meet due dates" idea (Session 26) are the same territory. One engine.
+
+**Considered and declined in the same review** (don't re-litigate without new information):
+- **Multiple budgeting methodologies** (zero-based / 50-30-20 / envelope side by side) — **declined.** A
+  method isn't a feature, it's the meaning of every number on screen; supporting several gives every
+  projection, insight, achievement and test multiple readings. Same lesson as the reverted PlannedExpense
+  kind ("kind is the wrong axis"), an order of magnitude larger. The app's current stance is deliberate and
+  documented at `Period.FreeToAllocateAfter`: **budgets are advisory plans; only savings reserve cash.** If
+  zero-based is ever genuinely wanted, **migrate** to it — don't run both.
+- **LLM auto-categorisation** — **declined.** The Session-29 token-subset rules are deterministic, editable
+  and inspectable (the user narrows a rule by toggling chips); that design exists specifically to fix the
+  Revolut "Transfer to person X/Y" collapse. Swapping it for probabilistic parsing trades a system users can
+  correct for one they can only complain about.
+- **Fee analysers / tax-loss harvesting** — **declined.** Needs brokerage integration + jurisdiction-specific
+  (BG/EU) rules, and edges into regulated personalised financial advice.
+- **Performance pricing (a % of money "saved")** — **declined.** Perverse incentives, and taking a cut of
+  savings edges toward being a financial product.
+
+Also surfaced as real (not yet backlogged): **push notifications** — in-app reminders already exist
+(`HomeReminders`, per-budget `AlertThreshold` at 80%); only *push* is missing, and it still needs a
+PWA/service worker or native. And **family permissions** (read-only / allowance views for kids) — the only
+missing piece in collaboration, which is the product's actual moat.
+
 **Backlog status:** P0–P3 all cleared. Post-backlog items shipped since: **debt-lifecycle Phase 3**
 (found already shipped) and **Plans → "expenses fund"** — a savings bucket carries a short list of
 expected future costs (`PlannedCost`: label + amount + cadence `OneOff/Monthly/Quarterly/Yearly` + an
