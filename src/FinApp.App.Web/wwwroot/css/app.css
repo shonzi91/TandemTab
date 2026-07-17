@@ -105,6 +105,8 @@ h1:focus {
 /* "Tandem × Midnight" dark theme: deep warm-navy ground washed with a coral + mint duo glow, glass surfaces,
    and the two accents (coral = one partner, mint = the other) running through the app. */
 html.dark { color-scheme: dark; --tm-coral: #ff7a66; --tm-mint: #3fe0c5; }
+/* Brand mark follows the theme: mint in the dark app (TandemLogo reads these), original green in light. */
+html.dark { --tt-logo-1: #3fe0c5; --tt-logo-2: #13a06e; }
 html.dark body {
     background:
         radial-gradient(90% 55% at 100% -5%, rgba(255,122,102,.13) 0%, rgba(255,122,102,0) 55%),
@@ -179,6 +181,8 @@ html.dark .bal-part .bal-label { color: #8fdccb; }
 html.dark .bal-part strong { color: #ffffff; }
 html.dark .bal-part .bal-free-v { color: #3fe0c5; }
 html.dark .bal-part .bal-alloc-v { color: #9fb0c4; }
+/* Before .warn-text — equal specificity, so the amber has to come after it to win. */
+html.dark .bal-part .bal-sub { color: #9fb0c4; }
 html.dark .bal-part .warn-text { color: #f5b24e; }
 html.dark .modal-backdrop, html.dark .pm-backdrop { background: rgba(0,0,0,.6); }
 
@@ -265,9 +269,10 @@ html.dark .modal label,
 html.dark .form label, html.dark .dates-form label, html.dark .firstrun-form label,
 html.dark .loan-figs, html.dark .loan-sim label, html.dark .plan-controls label,
 html.dark .acct-sync-note { color: #aab0c0; }
-/* Payoff-planner strategy chips + loan-card borders on dark. */
-html.dark .plan-toggle .chip { background: #1e2330; border-color: #2c3142; color: #aab0c0; }
-html.dark .plan-toggle .chip.on { background: #13a06e; border-color: #13a06e; color: #fff; }
+/* Toggle chips (payoff strategy, Goals kind filter) + loan-card borders on dark. Without this the bare .chip
+   tag styling shows through: a light peach pill with inherited white text. */
+html.dark .plan-toggle .chip, html.dark .goal-filters .chip { background: #1e2330; border-color: #2c3142; color: #aab0c0; }
+html.dark .plan-toggle .chip.on, html.dark .goal-filters .chip.on { background: var(--tm-mint); border-color: var(--tm-mint); color: #0f1322; }
 html.dark .loan-card { border-color: #262d3d; }
 /* Circle-menu bubble arrow + payoff disclaimer on dark. */
 html.dark .ring-card .row-menu::before { border-right-color: #181c25; }

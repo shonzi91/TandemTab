@@ -18,9 +18,13 @@
         }
         else
         {
-            <circle class="pring-arc @Class" cx="50" cy="50" r="42" transform="rotate(-90 50 50)" stroke-dasharray="@DashArray" style="@RampStyle" />
+            <circle class="pring-arc @Class @(HasRamp ? "ramped" : "")" cx="50" cy="50" r="42" transform="rotate(-90 50 50)" stroke-dasharray="@DashArray" style="@RampStyle" />
         }
     </svg>
+    @if (HasRamp)
+    {
+        <div class="pring-ramp ramp-@Ramp" style="--sweep:@SweepDeg" aria-hidden="true"></div>
+    }
     <div class="pring-center">@ChildContent</div>
 </div>
 
@@ -31,13 +35,19 @@
     [Parameter] public string? Ramp { get; set; }              // "spend" = green→red as it fills; "goal" = reverse (green when full)
     [Parameter] public RenderFragment? ChildContent { get; set; }
 
-    // Progress-driven heat GRADIENT: the arc is stroked with a green↔red gradient rather than a single colour,
-    // so you read both the direction and how far along it is. "spend" sweeps green → the current heat (red near
-    // the cap); "goal"/milestone is reversed so the leading edge is green as it completes. A per-instance
-    // gradient id avoids collisions; the inline style wins over the class stroke in either theme.
+    // Progress-driven heat GRADIENT. The ring is a scale: a full turn == 100% of the budget/goal, so a point's
+    // ANGLE encodes how much it represents and its COLOUR encodes the verdict at that much — "spend" runs
+    // green→yellow→red clockwise (red = at/over the cap), "goal" is reversed (green = reached). The visible
+    // arc is just that scale revealed up to Percent, which is why the tip turns red exactly as the budget runs out.
+    //
+    // A conic gradient is the only thing that can follow the arc, and an SVG stroke can't take one — so the ramp
+    // is drawn as a masked HTML overlay (see .pring-ramp) and the SVG arc below it is hidden where that's
+    // supported. Browsers without mask-composite fall back to the SVG arc's linear approximation below.
     private readonly string _gid = "pr" + Guid.NewGuid().ToString("N");
     private static readonly System.Globalization.CultureInfo Inv = System.Globalization.CultureInfo.InvariantCulture;
     private double T => Math.Clamp(Percent, 0, 100) / 100.0;
+    private bool HasRamp => !string.IsNullOrEmpty(Ramp) && !Dashed;
+    private string SweepDeg => (T * 360).ToString("0.##", Inv) + "deg";
     private const string Green = "hsl(152 70% 55%)";
     private static string Heat(double x) { var h = 152 - x * 172; if (h < 0) h += 360; return $"hsl({h.ToString("0.#", Inv)} 70% 55%)"; }
     private string RampStop0 => Ramp == "goal" ? Heat(1 - T) : Green;

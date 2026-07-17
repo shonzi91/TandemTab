@@ -67,7 +67,9 @@ else
                             var aid = a.Id;
                             <button class="acct-drop-item @(aid == State.CurrentAccountId ? "sel" : "")" @onclick="() => SwitchAccountTo(aid)">
                                 <span class="ava-stack">
-                                    @foreach (var m in a.Members.Take(3)) { <Avatar Name="@m.DisplayName" Size="22" /> }
+                                    @* Pictures are cached for the open account only, so members of the other accounts
+                                       listed here fall back to their initials until that account is opened. *@
+                                    @foreach (var m in a.Members.Take(3)) { <Avatar Name="@m.DisplayName" Picture="@State.MemberAvatar(m.UserId)" Size="22" /> }
                                 </span>
                                 <span class="acct-nm">@a.Name<small>@MembersLine(a.Members)</small></span>
                                 @if (aid == State.CurrentAccountId) { <span class="acct-check">✓</span> }
@@ -90,7 +92,7 @@ else
                         }
                         @if (State.IsLatestPeriod)
                         {
-                            <button class="exp-edit" title="@(State.CanStartNextPeriod ? Loc["Start next month"] : Loc["You can start next month once this period's end date has passed."])" @onclick="OpenNextPeriod" disabled="@(!State.CanStartNextPeriod)">⏭️</button>
+                            <button class="period-next" title="@(State.CanStartNextPeriod ? Loc["Start next month"] : Loc["You can start next month once this period's end date has passed."])" @onclick="OpenNextPeriod" disabled="@(!State.CanStartNextPeriod)">⏭️</button>
                         }
                     </span>
                 </div>
@@ -165,7 +167,13 @@ else
         @{
             var _balCur = State.DisplayClosingBalance(_bankStatus?.Balance, _bankStatus?.BalanceCurrency);
             var _balFree = State.DisplayFreeToAllocate(_bankStatus?.Balance, _bankStatus?.BalanceCurrency);
+            // Current − free reduces to the savings earmark (free = current − savings − priorSaved). Budgets are
+            // deliberately NOT in it: only savings reserve cash (Period.FreeToAllocateAfter).
             var _balAlloc = _balCur - _balFree;
+            // What budgets still claim. Advisory — it doesn't reduce "free" — but leaving it off the header let you
+            // plan €180 against €0 free without the header flinching, which is what made "free" read as "safe to spend".
+            var _balPlanned = State.TotalBudgeted - State.TotalSpent;
+            var _plannedOverFree = _balPlanned.Amount > 0m && _balPlanned.Amount > _balFree.Amount;
         }
         <div class="hdr-hero @(State.IsPeriodOpen ? "" : "hero-solo")">
             <div class="bal-part bal-part-main">
@@ -176,11 +184,15 @@ else
             {
                 <div class="bal-part">
                     <span class="bal-label">@Loc["Free"]</span>
-                    <strong class="@(State.IsOverAllocated ? "warn-text" : "bal-free-v")">@Fmt(_balFree)</strong>
+                    <strong class="@(State.IsOverAllocated ? "warn-text" : "bal-free-v")" title="@Loc["Not set aside for savings. Budgets are plans, so they don't reserve this — see what's still planned below."]">@Fmt(_balFree)</strong>
+                    @if (_balPlanned.Amount > 0m)
+                    {
+                        <small class="bal-sub @(_plannedOverFree ? "warn-text" : "")" title="@Loc["Your budgets still plan to spend this much. It's a plan, not a reservation — but if it's more than what's free, something has to give."]">@Fmt(_balPlanned) @Loc["planned"]</small>
+                    }
                 </div>
                 <div class="bal-part">
                     <span class="bal-label">@Loc["Allocated"]</span>
-                    <strong class="bal-alloc-v" title="@Loc["Already budgeted or set aside this period — spoken for, not spent."]">@Fmt(_balAlloc)</strong>
+                    <strong class="bal-alloc-v" title="@Loc["Set aside for savings — reserved, not spent. Budgets aren't counted here."]">@Fmt(_balAlloc)</strong>
                 </div>
             }
         </div>
@@ -282,10 +294,7 @@ else
                 @{
                     // Spent tile shades along the same green→red heat ramp as the progress rings, by how close
                     // total spending is to the total budget (far = green, at/over the cap = red).
-                    var _budgTot = State.TotalBudgeted.Amount;
-                    var _spentT = _budgTot > 0m ? Math.Clamp((double)(State.TotalSpent.Amount / _budgTot), 0, 1) : 0d;
-                    var _spentHue = 152 - _spentT * 172; if (_spentHue < 0) _spentHue += 360;
-                    var _sh = _spentHue.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture);
+                    var _sh = SpendHeatHue();
                 }
                 <div class="card tile-spend" style="background:hsl(@_sh 62% 50% / .12);border-color:hsl(@_sh 62% 50% / .34)">
                     <span class="card-label">@Loc["Spent"]</span>
@@ -391,9 +400,9 @@ else
         </div>
         <div class="tabpanel" hidden="@(_tab != Tab.Account)">
             <section class="panel people-panel">
-                <div class="panel-head">
+                <div class="spending-head">
                     <h2>@Loc["People"]</h2>
-                    <button class="link" title="@Loc["Invite a contributor"]" @onclick="OpenInvite">➕ @Loc["Invite"]</button>
+                    <button class="fund-add" @onclick="OpenInvite">＋ @Loc["Invite"]</button>
                 </div>
                 <div class="people-row">
                     @foreach (var m in State.RealUsers)
@@ -423,6 +432,7 @@ else
             <section class="panel">
                 <div class="spending-head">
                     <span class="insight-h">@Loc["Where your money is"]</span>
+                    <button class="fund-add" @onclick="OpenAddFund">＋ @Loc["Add a fund"]</button>
                 </div>
                 @{
                     var funds = State.RootFunds.ToList();
@@ -501,7 +511,6 @@ else
                                 @if (_fundMenuId == fid) { @FundCircleMenu(fid) }
                             </div>
                         }
-                        <button class="fund-add" @onclick="OpenAddFund">＋ @Loc["Add a fund"]</button>
                     </div>
                 </div>
             </section>
@@ -602,13 +611,17 @@ else
             }
 
             <section class="panel">
-                <div class="panel-head">
+                <div class="spending-head">
                     <h2>@Loc["Income"]</h2>
+                    @if (State.IsPeriodOpen)
+                    {
+                        <button class="fund-add" @onclick="OpenDeposit">＋ @Loc["Contribute"]</button>
+                    }
+                    <span class="spending-sub">@Fmt(State.TotalContributed) @Loc["this period"]</span>
                     @if (State.IsPeriodOpen)
                     {
                         <span class="head-actions">
                             <button class="link" title="@Loc["Manage categories"]" @onclick="OpenManageContribCats">🏷️</button>
-                            <button class="link" title="@Loc["Add a contribution"]" @onclick="OpenDeposit">➕ @Loc["Contribute"]</button>
                         </span>
                     }
                 </div>
@@ -648,7 +661,10 @@ else
             <section class="panel">
                 <div class="spending-head">
                     <span class="insight-h">@Loc["This month's budgets"]</span>
-                    <span class="spending-sub">@Fmt(State.TotalSpent) @Loc["of"] @Fmt(State.TotalBudgeted) @Loc["spent"]</span>
+                    <button class="fund-add" @onclick="OpenAddBudget">＋ @Loc["Add budget"]</button>
+                    @* Only the spent figure takes the heat — it carries the verdict; the cap it's measured against
+                       stays quiet. Same ramp as the Home "Spent" tile and the rings below, so one fact reads one way. *@
+                    <span class="spending-sub"><strong class="spend-heat" style="color:hsl(@SpendHeatHue() 72% 56%)">@Fmt(State.TotalSpent)</strong> @Loc["of"] @Fmt(State.TotalBudgeted) @Loc["spent"]</span>
                 </div>
                 @{
                     var _bnFree = State.DisplayFreeToAllocate(_bankStatus?.Balance, _bankStatus?.BalanceCurrency);
@@ -696,10 +712,6 @@ else
                             @if (_budgetMenuId == catId) { @BudgetCircleMenu(catId) }
                         </div>
                     }
-                    <div class="ring-card ring-card-lg">
-                        <button class="ring-plus" title="@Loc["Add budget"]" @onclick="OpenAddBudget">+</button>
-                        <div class="ring-label"><span class="ring-muted">@Loc["Add budget"]</span></div>
-                    </div>
                 </div>
             </section>
 
@@ -835,18 +847,6 @@ else
             }
         </div>
         <div class="tabpanel" hidden="@(_tab != Tab.Savings)">
-            <section class="cards cards-2">
-                <div class="card savings">
-                    <span class="card-label">@Loc["Total saved"]</span>
-                    <span class="card-value">@Fmt(State.SavingsAccumulated)</span>
-                    <span class="card-sub">@PctOrDash(State.AccountSavingsRate) @Loc["all periods"]</span>
-                </div>
-                <div class="card savings">
-                    <span class="card-label">@Loc["Saved this period"]</span>
-                    <span class="card-value">@Fmt(State.SavingsThisPeriod)</span>
-                    <span class="card-sub">@PctOrDash(State.PeriodSavingsRate) @Loc["of contributions"]</span>
-                </div>
-            </section>
             @{
                 var debtBuckets = State.SavingBuckets.Where(x => x.Bucket.IsDebt && !x.Bucket.IsArchived).ToList();
                 var investmentBuckets = State.SavingBuckets.Where(x => x.Bucket.IsInvestment && !x.Bucket.IsArchived).ToList();
@@ -961,18 +961,44 @@ else
                     </div>
                 </div>;
             }
-            <section class="panel">
-                <div class="panel-head"><h2>💳 @Loc["Debts"]</h2></div>
-                @if (debtBuckets.Count == 0)
+            @{
+                // One grid for every goal, filtered by kind — rather than a section per SavingKind, which is the axis
+                // that made this tab a wall of near-identical blocks (the same bucketCard rendered three times). Kind
+                // stays readable without the split: the ring colour and each card's sub-line already say which it is.
+                var goalBuckets = _goalFilter switch
                 {
-                    <p class="hint">@Loc["Track a loan or debt: set money aside toward it, then pay the bank. Figures here are projections — they don't move real money."]</p>
+                    GoalFilter.Debts => debtBuckets,
+                    GoalFilter.Savings => plainBuckets,
+                    GoalFilter.Investments => investmentBuckets,
+                    _ => debtBuckets.Concat(plainBuckets).Concat(investmentBuckets).ToList(),
+                };
+                var goalTotal = debtBuckets.Count + plainBuckets.Count + investmentBuckets.Count;
+            }
+            <section class="panel">
+                <div class="spending-head">
+                    <span class="insight-h">🎯 @Loc["Your goals"]</span>
+                    <button class="fund-add" @onclick="AddGoalForFilter">＋ @Loc["Add goal"]</button>
+                    <span class="spending-sub">@Fmt(State.SavingsAccumulated) @Loc["saved"] · @Fmt(State.SavingsThisPeriod) @Loc["this period"]</span>
+                </div>
+                <div class="goal-filters" role="group">
+                    <button type="button" class="chip @(_goalFilter == GoalFilter.All ? "on" : "")" @onclick="() => _goalFilter = GoalFilter.All">@Loc["All"] <span class="chip-n">@goalTotal</span></button>
+                    <button type="button" class="chip @(_goalFilter == GoalFilter.Debts ? "on" : "")" @onclick="() => _goalFilter = GoalFilter.Debts">💳 @Loc["Debts"] <span class="chip-n">@debtBuckets.Count</span></button>
+                    <button type="button" class="chip @(_goalFilter == GoalFilter.Savings ? "on" : "")" @onclick="() => _goalFilter = GoalFilter.Savings">🐷 @Loc["Savings"] <span class="chip-n">@plainBuckets.Count</span></button>
+                    <button type="button" class="chip @(_goalFilter == GoalFilter.Investments ? "on" : "")" @onclick="() => _goalFilter = GoalFilter.Investments">📈 @Loc["Investments"] <span class="chip-n">@investmentBuckets.Count</span></button>
+                </div>
+                @if (goalBuckets.Count == 0)
+                {
+                    <p class="hint">
+                        @(_goalFilter switch
+                        {
+                            GoalFilter.Debts => Loc["Track a loan or debt: set money aside toward it, then pay the bank. Figures here are projections — they don't move real money."],
+                            GoalFilter.Investments => Loc["Track an investment: fund it with 💰, set an expected return, and project its growth. Figures here are projections — they don't move real money."],
+                            _ => Loc["Nothing here yet — add a goal to start putting money aside."],
+                        })
+                    </p>
                 }
                 <div class="ring-grid">
-                    @foreach (var b in debtBuckets) { @bucketCard(b) }
-                    <div class="ring-card ring-card-lg">
-                        <button class="ring-plus" title="@Loc["Add a debt"]" @onclick="() => OpenAddBucketOfKind(SavingKind.Debt)">+</button>
-                        <div class="ring-label"><span class="ring-muted">@Loc["Add debt"]</span></div>
-                    </div>
+                    @foreach (var b in goalBuckets) { @bucketCard(b) }
                 </div>
             </section>
             @if (debtBuckets.Count >= 2)
@@ -1012,31 +1038,6 @@ else
                     }
                 </section>
             }
-            <section class="panel">
-                <div class="panel-head"><h2>🐷 @Loc["Savings"]</h2></div>
-                <div class="ring-grid">
-                    @foreach (var b in plainBuckets) { @bucketCard(b) }
-                    <div class="ring-card ring-card-lg">
-                        <button class="ring-plus" title="@Loc["Add a savings bucket"]" @onclick="OpenAddBucket">+</button>
-                        <div class="ring-label"><span class="ring-muted">@Loc["Add bucket"]</span></div>
-                    </div>
-                </div>
-            </section>
-            <section class="panel">
-                <div class="panel-head"><h2>📈 @Loc["Investments"]</h2></div>
-                @if (investmentBuckets.Count == 0)
-                {
-                    <p class="hint">@Loc["Track an investment: fund it with 💰, set an expected return, and project its growth. Figures here are projections — they don't move real money."]</p>
-                }
-                <div class="ring-grid">
-                    @foreach (var b in investmentBuckets) { @bucketCard(b) }
-                    <div class="ring-card ring-card-lg">
-                        <button class="ring-plus" title="@Loc["Add an investment"]" @onclick="() => OpenAddBucketOfKind(SavingKind.Investment)">+</button>
-                        <div class="ring-label"><span class="ring-muted">@Loc["Add investment"]</span></div>
-                    </div>
-                </div>
-            </section>
-
             @if (State.SavingDepositsThisPeriod.Any() || State.SavingMovementsThisPeriod.Any())
             {
                 <section class="panel">
@@ -2962,6 +2963,11 @@ else
     private enum Modal { None, PickAccount, BankReview, BankConsent, AddCat, AddBudget, DisburseSaving, PayoffProjection, GoalProjection, InvestmentProjection, BankTransfer, ExternalAccounts, HealthScore, EditCat, DeleteCat, CategoryDetail, AddAccount, EditAccount, DeleteAccount, RemoveMember, LeaveAccount, AddExpense, NextPeriod, RemovePeriod, EditExpense, DeleteExpense, SettleExpense, AddBucket, EditBucket, DeleteBucket, AddFund, EditFund, DeleteFund, Invite, Transfer, Deposit, EditDeposit, DeleteDeposit, ManageContribCats, ContribCat, DeleteContribCat, AddSaving, BudgetSaving, SpendSaving, EditSavingDeposit, DeleteSavingDeposit, EditTransfer, DeleteTransfer, EditPeriod, EditSavingMovement, DeleteSavingMovement, DeleteExternalTransfer, Achievements, Reallocate, Recurring, RecurringEdit, RecurringConfirm, Import, AddOrImport, ArchiveFund, FundMovements, Archived }
     private enum Tab { Overview, Account, Budgets, Savings }
 
+    /// <summary>Which kind of goal the Goals grid is showing. Defaults to All so the filter narrows on request
+    /// rather than hiding anything by default.</summary>
+    private enum GoalFilter { All, Debts, Savings, Investments }
+    private GoalFilter _goalFilter = GoalFilter.All;
+
     private Tab _tab = Tab.Overview;
     private bool _moveOpen;
 
@@ -3382,16 +3388,30 @@ else
         try { if (await JS.InvokeAsync<int>("finappViewportWidth") is > 0 and <= 720) ShowExpensesTab(); }
         catch { /* host without the helper (e.g. MAUI) — stay on Account */ }
 
-        await LoadBankAsync();
-        await SyncOnOpenAsync();          // pull fresh bank transactions on entry (throttled; no-op mid bank-link return)
+        await LoadBankAsync();            // our own server (a DB read) — cheap enough to gate the first paint on
         await HandleBankReturnAsync();
         await MaybePromptOnEntryAsync();
+    }
+
+    /// <summary>The on-entry bank pull, run off the critical path (see <see cref="OnAfterRenderAsync"/>). Awaiting
+    /// this during initialization put a live provider round-trip — plus the snapshot write auto-filing can trigger —
+    /// in front of the first paint, which is what made opening a bank-linked account feel slow. Nothing here is
+    /// needed to render, so the dashboard paints first and the staged rows appear when they land.</summary>
+    private async Task SyncOnOpenInBackgroundAsync()
+    {
+        await SyncOnOpenAsync();                       // already swallows its own failures
+        if (!_disposed) await InvokeAsync(StateHasChanged);
     }
 
     // Stamp any newly-earned achievement with today's date after each render. Only persists when something changed
     // (see StampAchievementsAsync), so it converges and doesn't loop.
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        // Fire-and-forget: only bank-connected accounts reach the provider (and only once every BankSyncFreshFor),
+        // so this is a no-op for everyone else. Mutually exclusive with HandleBankReturnAsync — SyncOnOpenAsync
+        // bails out when the URL carries a bank= return, which is the only case that flow runs.
+        if (firstRender) _ = SyncOnOpenInBackgroundAsync();
+
         if (State.IsReady && State.HasAccounts)
         {
             await State.StampAchievementsAsync(_achievements, Fmt, Loc.T);
@@ -5314,6 +5334,16 @@ else
 
     private void OpenAddBucket() => OpenAddBucketOfKind(SavingKind.Common);
 
+    /// <summary>The Goals header's one "Add goal" replaces the old per-kind "+" cards, so it pre-selects the kind
+    /// you're filtered to (a good read on intent) and falls back to a plain savings goal on All. The modal's
+    /// three-way toggle can still change it either way, so no kind is any harder to reach than before.</summary>
+    private void AddGoalForFilter() => OpenAddBucketOfKind(_goalFilter switch
+    {
+        GoalFilter.Debts => SavingKind.Debt,
+        GoalFilter.Investments => SavingKind.Investment,
+        _ => SavingKind.Common,
+    });
+
     private void OpenAddBucketOfKind(SavingKind kind)
     {
         _modalBucketId = Guid.Empty; _fName = null; _fIcon = null; _goalAmount = 0; _fThreshold = 80; _fNotify = false; _initialSavings = 0;
@@ -5834,8 +5864,24 @@ else
     private static string PctOrDash(decimal? ratio) =>
         ratio is { } r ? $"{decimal.Round(r * 100m, 0, MidpointRounding.AwayFromZero)}%" : "—";
 
+    /// <summary>Hue on the green→red heat ramp for total spending against total budget — the same scale the budget
+    /// rings use (see ProgressRing), so the Home "Spent" tile and the Spending header colour one fact one way.
+    /// Extracted rather than copied: two hand-rolled ramps would drift the moment either is tuned.</summary>
+    private string SpendHeatHue()
+    {
+        var budgeted = State.TotalBudgeted.Amount;
+        var t = budgeted > 0m ? Math.Clamp((double)(State.TotalSpent.Amount / budgeted), 0, 1) : 0d;
+        var hue = 152 - t * 172;
+        if (hue < 0) hue += 360;
+        return hue.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture);
+    }
+
     private static string PctText(decimal ratio) =>
         $"{decimal.Round(ratio * 100m, 0, MidpointRounding.AwayFromZero)}%";
 
-    public void Dispose() { State.Changed -= OnChanged; Loc.Changed -= OnLocChanged; }
+    // Set on dispose so the fire-and-forget on-entry bank sync can't re-render a component that's gone
+    // (it outlives the page when you navigate away mid-call).
+    private bool _disposed;
+
+    public void Dispose() { _disposed = true; State.Changed -= OnChanged; Loc.Changed -= OnLocChanged; }
 }

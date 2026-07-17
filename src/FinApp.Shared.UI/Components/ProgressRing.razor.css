@@ -11,6 +11,32 @@
 .pring-arc.invest { stroke: #eab308; }  /* investment buckets: a distinct gold/yellow ring */
 .pring-arc.gold { stroke: #f5b301; }    /* milestones/achievements: a warm medal gold */
 .pring-arc.dashed { stroke-dasharray: 2.5 7; }
+
+/* Heat ramp that follows the arc clockwise (see ProgressRing.razor). The colour wheel is fixed to the
+   budget scale — a full turn is 100% — and the first mask reveals only the swept part, so "how far round"
+   and "what colour" always agree. Radii track the r=42 / stroke-width=7 arc: 38.5/45.5 of the 50-unit
+   half-box = 77%/91% of the farthest-side radius.
+   `from 0deg` is 12 o'clock: a conic gradient already starts at the top, so it needs no rotating (the SVG
+   arc below does — its dasharray starts at 3 o'clock, hence that one's rotate(-90)). Both the colour wheel
+   and the sweep mask must share this origin or the tip's colour stops matching how far round it is. */
+.pring-ramp { position: absolute; inset: 0; border-radius: 50%; pointer-events: none; }
+.pring-ramp.ramp-spend { background: conic-gradient(from 0deg, #22c55e 0deg, #eab308 180deg, #ef4444 360deg); }
+.pring-ramp.ramp-goal { background: conic-gradient(from 0deg, #ef4444 0deg, #eab308 180deg, #22c55e 360deg); }
+
+@supports ((mask-composite: intersect) or (-webkit-mask-composite: source-in)) {
+    .pring-ramp {
+        -webkit-mask:
+            conic-gradient(from 0deg, #000 0 var(--sweep), transparent var(--sweep) 360deg),
+            radial-gradient(circle farthest-side, transparent 0 77%, #000 77% 91%, transparent 91%);
+        -webkit-mask-composite: source-in;
+        mask:
+            conic-gradient(from 0deg, #000 0 var(--sweep), transparent var(--sweep) 360deg),
+            radial-gradient(circle farthest-side, transparent 0 77%, #000 77% 91%, transparent 91%);
+        mask-composite: intersect;
+    }
+    /* The overlay covers the same band — drop the SVG arc so they can't fight over antialiasing. */
+    .pring-arc.ramped { display: none; }
+}
 .pring-center {
     position: absolute; inset: 0; display: flex; flex-direction: column;
     align-items: center; justify-content: center; gap: 3px; padding: 16%;

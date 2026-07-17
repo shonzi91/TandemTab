@@ -34,6 +34,17 @@
 }
 .brand-logo ::deep svg { width: 100%; height: 100%; display: block; }
 
+/* Dark ("Tandem × Midnight"): the bar joins the navy glass rather than staying a solid green band, and the
+   brand goes mint with it — the light theme keeps the original green. TandemLogo itself follows --tt-logo-*. */
+html.dark .app-bar {
+    background: rgba(18, 23, 38, .82);
+    border-bottom: 1px solid rgba(63, 224, 197, .14);
+    backdrop-filter: blur(8px);
+    color: #e8eaf0;
+}
+html.dark .brand-logo { background: rgba(63, 224, 197, .10); }
+html.dark .brand-tab { background: var(--tm-mint); color: #0f1322; }
+
 .appbar-user {
     margin-left: auto;
     display: flex;

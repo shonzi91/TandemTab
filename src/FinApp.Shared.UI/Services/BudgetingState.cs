@@ -315,15 +315,52 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
                 account.AddMember(m.UserId, m.DisplayName);
     }
 
+    /// <summary>Guards <see cref="PushSnapshotAsync"/> so only one push is in flight at a time. Two overlapping
+    /// pushes would both send the <em>same</em> <c>_version</c> (the first hasn't returned to advance it yet), and
+    /// the server rejects the loser as a conflict — reported to the user as "someone else updated this account",
+    /// which was reachable with a single user in a single tab: SaveAsync raises Changed before awaiting its push, so
+    /// the re-render runs mid-flight and the achievement stamp / recurring auto-post in OnAfterRenderAsync can start
+    /// a second push off the stale version.</summary>
+    private readonly SemaphoreSlim _pushLock = new(1, 1);
+
+    /// <summary>Timing of the last snapshot push. Every mutation rewrites the whole account, so this is what we
+    /// need before reshaping storage: it splits the cost into serialize (CPU, scales with history), upload+server
+    /// (bytes and round-trip) and reports the payload size driving both. Guessing between those picks the wrong
+    /// fix — chunking storage does nothing if the cost is a fixed per-request overhead, and vice versa.</summary>
+    public sealed record SaveTiming(int PayloadBytes, double SerializeMs, double UploadMs, long WaitedMs);
+
+    /// <summary>Timing of the most recent push (null until one completes). See <see cref="SaveTiming"/>.</summary>
+    public SaveTiming? LastSave { get; private set; }
+
     /// <summary>Serialize the current aggregate and push it to the server, advancing the version.</summary>
     private async Task PushSnapshotAsync()
     {
-        var payload = AccountSnapshotSerializer.Serialize(_account!);
-        var saved = await api.SaveSnapshotAsync(_account!.Id, new SaveAccountRequest(payload, _version));
-        _version = saved.Version;
-        // Keep the cache entry's version in step with our own push (the Account is the same live instance).
-        if (_cache.TryGetValue(_account.Id, out var c)) c.Version = _version;
-        else _cache[_account.Id] = new CachedAccount(_account, _version);
+        var queued = System.Diagnostics.Stopwatch.StartNew();
+        await _pushLock.WaitAsync();
+        var waited = queued.ElapsedMilliseconds;   // time spent behind another push — a queue, not the save itself
+        try
+        {
+            // Serialized inside the lock, so a queued push sends the latest aggregate against the version the
+            // push ahead of it just established (both callers mutate the same live Account instance).
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            var payload = AccountSnapshotSerializer.Serialize(_account!);
+            var serializeMs = sw.Elapsed.TotalMilliseconds;
+
+            sw.Restart();
+            var saved = await api.SaveSnapshotAsync(_account!.Id, new SaveAccountRequest(payload, _version));
+            var uploadMs = sw.Elapsed.TotalMilliseconds;
+
+            _version = saved.Version;
+            // Keep the cache entry's version in step with our own push (the Account is the same live instance).
+            if (_cache.TryGetValue(_account.Id, out var c)) c.Version = _version;
+            else _cache[_account.Id] = new CachedAccount(_account, _version);
+
+            LastSave = new SaveTiming(payload.Length, serializeMs, uploadMs, waited);
+            // Goes to the browser console — readable in devtools on a real account, which is the only place the
+            // history is big enough for the answer to mean anything.
+            Console.WriteLine($"[save] payload={payload.Length}B serialize={serializeMs:0.#}ms upload={uploadMs:0.#}ms queued={waited}ms v={_version}");
+        }
+        finally { _pushLock.Release(); }
     }
 
     // --- Period navigation ------------------------------------------------
