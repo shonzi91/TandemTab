@@ -1335,6 +1335,8 @@ html.dark .rule-chip.on { background: #14352a; border-color: #2bbd86; color: #6f
 .spending-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
 .spending-head .insight-h { margin: 0; }
 .spending-sub { font-size: .82rem; color: #6b7280; margin-left: auto; }
+/* The heat-shaded figure inside a sub-line: inherits the row's size, takes its colour inline. */
+.spending-sub .spend-heat { font-weight: 700; }
 /* "Add budget" lives in the header (same control as "Add a fund"); centre it against the label row. */
 .spending-head .fund-add { align-self: center; margin-top: 0; }
 /* Section headers use either an .insight-h span or a plain h2 (.panel h2 already styles it as the same

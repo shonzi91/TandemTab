@@ -284,10 +284,7 @@ else
                 @{
                     // Spent tile shades along the same green→red heat ramp as the progress rings, by how close
                     // total spending is to the total budget (far = green, at/over the cap = red).
-                    var _budgTot = State.TotalBudgeted.Amount;
-                    var _spentT = _budgTot > 0m ? Math.Clamp((double)(State.TotalSpent.Amount / _budgTot), 0, 1) : 0d;
-                    var _spentHue = 152 - _spentT * 172; if (_spentHue < 0) _spentHue += 360;
-                    var _sh = _spentHue.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture);
+                    var _sh = SpendHeatHue();
                 }
                 <div class="card tile-spend" style="background:hsl(@_sh 62% 50% / .12);border-color:hsl(@_sh 62% 50% / .34)">
                     <span class="card-label">@Loc["Spent"]</span>
@@ -655,7 +652,9 @@ else
                 <div class="spending-head">
                     <span class="insight-h">@Loc["This month's budgets"]</span>
                     <button class="fund-add" @onclick="OpenAddBudget">＋ @Loc["Add budget"]</button>
-                    <span class="spending-sub">@Fmt(State.TotalSpent) @Loc["of"] @Fmt(State.TotalBudgeted) @Loc["spent"]</span>
+                    @* Only the spent figure takes the heat — it carries the verdict; the cap it's measured against
+                       stays quiet. Same ramp as the Home "Spent" tile and the rings below, so one fact reads one way. *@
+                    <span class="spending-sub"><strong class="spend-heat" style="color:hsl(@SpendHeatHue() 72% 56%)">@Fmt(State.TotalSpent)</strong> @Loc["of"] @Fmt(State.TotalBudgeted) @Loc["spent"]</span>
                 </div>
                 @{
                     var _bnFree = State.DisplayFreeToAllocate(_bankStatus?.Balance, _bankStatus?.BalanceCurrency);
@@ -5854,6 +5853,18 @@ else
 
     private static string PctOrDash(decimal? ratio) =>
         ratio is { } r ? $"{decimal.Round(r * 100m, 0, MidpointRounding.AwayFromZero)}%" : "—";
+
+    /// <summary>Hue on the green→red heat ramp for total spending against total budget — the same scale the budget
+    /// rings use (see ProgressRing), so the Home "Spent" tile and the Spending header colour one fact one way.
+    /// Extracted rather than copied: two hand-rolled ramps would drift the moment either is tuned.</summary>
+    private string SpendHeatHue()
+    {
+        var budgeted = State.TotalBudgeted.Amount;
+        var t = budgeted > 0m ? Math.Clamp((double)(State.TotalSpent.Amount / budgeted), 0, 1) : 0d;
+        var hue = 152 - t * 172;
+        if (hue < 0) hue += 360;
+        return hue.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture);
+    }
 
     private static string PctText(decimal ratio) =>
         $"{decimal.Round(ratio * 100m, 0, MidpointRounding.AwayFromZero)}%";
