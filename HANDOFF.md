@@ -1,6 +1,30 @@
 # TandemTab (FinApp) — session handoff
 
-Last updated: 2026-07-17 (Session 32). Read this + [README.md](README.md) + [TRANSFER.md](TRANSFER.md) + recent `git log` to catch up.
+Last updated: 2026-07-18 (Session 33). Read this + [README.md](README.md) + [TRANSFER.md](TRANSFER.md) + recent `git log` to catch up.
+
+## Session 33 (2026-07-17→18) — debt-ring & payoff polish, a rebuilt Home, and the email secret rotated. COMMITTED & DEPLOYED (`finapp-00187-st2`).
+A long iterative UX session driven by live user feedback. **All on `main`; browser-verified end-to-end each round (zero console errors); 301 tests green.** Deploy chain: `b482270`→`finapp-00183-t7f`, redeploy for email→`00184-m46`, `6c1b060`→`00185-hw7`, `574175b`→`00186-8ll`, `d5487ea`→**`00187-st2`** (ships the two rounds `abadb1c`+`d5487ea` that weren't live yet — prod is now fully current with `main`; both URLs 200 on `app.css?v=32`, 5 `secretKeyRef` intact). `app.css?v=32` (scoped `*.razor.css` changes ride the no-cache `.styles.css`, so not every change bumps `v`).
+
+### The debt ring is now a two-part loader (`6c1b060`, then flush in `abadb1c`)
+The old debt ring showed set-aside-over-owed and carried a "🚀 ~N ahead of the installment plan" line — a *pace projection* that read as a result of your last payment and confused the user (see the "how can €550 be 4 years" thread). **Removed that line** (the Payoff modal owns that answer). The ring now scales to the **original loan** and shows two segments: a green arc = **already paid off**, then an indigo segment = **set aside but not yet applied** (staged), the rest of the grey track = still owed. `ProgressRing` gained `Percent2`/`Class2`; debt opts out of the goal ramp. **First shipped with a gap between the two segments; the user found that weird, so they're now flush** (`seg1`/`seg2` butt caps, offset `-Len1`, no gap) — reads paid → set → remaining as one bar.
+
+### Payoff projection modal (`b756185`, `4b02368`, then `abadb1c`)
+Loan facts (end date, total interest) moved into the summary grid; the two lender options on an overpayment became a **table** (shorter-term vs lower-installment). Then per feedback: the overpayment table's last column changed from total outlay ("Left to pay") to **"Total interest"** (interest = outlay − remaining principal — the number that actually compares the two offers); dropped the "Interest X→Y/mo" line under the One-off header and the "Shorter term costs X less" line below the table (the table carries it); softened "Your bank **will** ask" → "Your bank **may offer** a choice like".
+
+### Home was rebuilt around two money moves (`574175b`, `abadb1c`, `d5487ea`)
+Several rounds converged on this shape, top→bottom: **onboarding → two action cards → health score → alerts → on-track → milestones line**.
+- **Two action cards carry the everyday moves:** the **Spent** card holds "🧾 Add expense" (money out, slate button), the **Contributed** card holds "💵 Contribute" (money in, green button). These *replace the old quick-actions row* (which had grown to six equal buttons). This is deliberately the two-button core a future **mobile home screen** will want.
+- **Urgent alerts inline, not hidden in the bell.** The `Notification.Urgent` flag was dead (always false); now the **deficit/overspend** (moved here off the Wallets tab), **over-budget**, and **health warn-signals** are urgent and render as an inline strip (with a "See all N" link to the bell). The old "✅ All clear" panel is gone — a quiet Home is the all-clear. Strip sits **below** the action cards + score (moved down per feedback).
+- **Health score** is now a full-width row beneath the two cards, visibly clickable (tinted surface, persistent "›", hover lift) — the user noted it was easy to miss.
+- **"Saved this period" tile dropped** (its label collided with the header's `Saved`; its rate story is told by on-track + the savings insight). **Balance header `Allocated` → `Saved`.**
+- **Milestones** collapsed from a bars panel to a single "🏆 Milestones in progress (N) ›" line opening the Achievements modal.
+- **Fixed nonsense copy:** "You saved 0% this period — better than nothing" now has a real zero branch ("You haven't set anything aside…"); positive-but-short reads "a start, but short of…" (`InsightsService.SavingsCritique`).
+
+### Header utilities & tab moves (`d5487ea`)
+Header icon row reordered to **notifications · achievements · import · external-accounts (bank-gated) · settings** (settings last). **Import statement** and **External accounts** are now header icons (were quick-actions / a menu); External is out of the settings menu (one home). **Recurring moved to the Spending tab** header (next to Add budget). **Move-to-savings dropped** from Home entirely (the bell nudges it, the Goals tab owns it). ⚠️ **The External-accounts header icon is gated on `_bankStatus?.Enabled`, so it does NOT render on a no-bank dev account** — couldn't browser-verify it locally; it uses the same gating that already worked, and shows for the 2 bank-allowlisted users. Verify on prod.
+
+### Email secret ROTATED — done (`finapp-00184-m46`)
+The exposed `admin@tandemtab.com` O365 password is **rotated and live**: user changed it in M365, added Secret Manager **version 2** of `finapp-email-password`, service rolled onto it (5 `secretKeyRef` intact, `Email__Password`→`latest`, no SMTP errors). **Not yet positively send-tested** — the next verification/invite email is the real confirmation. Device gotcha captured: the user's PowerShell blocks gcloud two ways — unsigned `gcloud.ps1` (call **`gcloud.cmd`** or `Set-ExecutionPolicy -Scope Process Bypass`) and the broken python shim (`$env:CLOUDSDK_PYTHON`=bundled python). A plain `run services update` is a **no-op** (won't roll a revision) — redeploy the same image instead. The **auto-mode classifier blocks Claude from mutating `run deploy`/`services update`** in some turns — hand those to the user when blocked. See [[project-email-secret-rotation]].
 
 ## Session 32 (2026-07-17) — a debt's balance derives from its schedule; payoff-modal honesty. COMMITTED & DEPLOYED (`finapp-00183-t7f`).
 Two commits landed before this handoff was written (`b756185`, `4b02368`) and are recorded here after the fact; the
