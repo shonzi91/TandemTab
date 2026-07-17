@@ -393,9 +393,9 @@ else
         </div>
         <div class="tabpanel" hidden="@(_tab != Tab.Account)">
             <section class="panel people-panel">
-                <div class="panel-head">
+                <div class="spending-head">
                     <h2>@Loc["People"]</h2>
-                    <button class="link" title="@Loc["Invite a contributor"]" @onclick="OpenInvite">➕ @Loc["Invite"]</button>
+                    <button class="fund-add" @onclick="OpenInvite">＋ @Loc["Invite"]</button>
                 </div>
                 <div class="people-row">
                     @foreach (var m in State.RealUsers)
@@ -425,6 +425,7 @@ else
             <section class="panel">
                 <div class="spending-head">
                     <span class="insight-h">@Loc["Where your money is"]</span>
+                    <button class="fund-add" @onclick="OpenAddFund">＋ @Loc["Add a fund"]</button>
                 </div>
                 @{
                     var funds = State.RootFunds.ToList();
@@ -503,7 +504,6 @@ else
                                 @if (_fundMenuId == fid) { @FundCircleMenu(fid) }
                             </div>
                         }
-                        <button class="fund-add" @onclick="OpenAddFund">＋ @Loc["Add a fund"]</button>
                     </div>
                 </div>
             </section>
@@ -604,13 +604,17 @@ else
             }
 
             <section class="panel">
-                <div class="panel-head">
+                <div class="spending-head">
                     <h2>@Loc["Income"]</h2>
+                    @if (State.IsPeriodOpen)
+                    {
+                        <button class="fund-add" @onclick="OpenDeposit">＋ @Loc["Contribute"]</button>
+                    }
+                    <span class="spending-sub">@Fmt(State.TotalContributed) @Loc["this period"]</span>
                     @if (State.IsPeriodOpen)
                     {
                         <span class="head-actions">
                             <button class="link" title="@Loc["Manage categories"]" @onclick="OpenManageContribCats">🏷️</button>
-                            <button class="link" title="@Loc["Add a contribution"]" @onclick="OpenDeposit">➕ @Loc["Contribute"]</button>
                         </span>
                     }
                 </div>
