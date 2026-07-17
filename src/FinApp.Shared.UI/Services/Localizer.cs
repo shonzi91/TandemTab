@@ -872,8 +872,6 @@ public sealed class Localizer(IJSRuntime js)
 
         // Add-or-import chooser + header allocated
         ["allocated"] = "разпределени",
-        ["Already budgeted or set aside this period — spoken for, not spent."] =
-            "Вече бюджетирани или заделени този период — ангажирани, но не похарчени.",
         ["Add a transaction"] = "Добави транзакция",
         ["Record a single entry, or import many at once from a bank statement (expenses and income)."] =
             "Запиши единичен запис или импортирай много наведнъж от банково извлечение (разходи и приходи).",
@@ -1087,6 +1085,15 @@ public sealed class Localizer(IJSRuntime js)
         ["~{0} in {1} — {2} your contributions, {3} growth"] = "~{0} след {1} — {2} твои вноски, {3} растеж",
         ["— choose a fund —"] = "— избери фонд —",
         ["— none —"] = "— няма —",
+
+        // Balance header: "free" is savings-based, so the budget claim rides alongside it as context.
+        ["planned"] = "планирани",
+        ["Set aside for savings — reserved, not spent. Budgets aren't counted here."] =
+            "Заделени за спестявания — резервирани, не похарчени. Бюджетите не се броят тук.",
+        ["Not set aside for savings. Budgets are plans, so they don't reserve this — see what's still planned below."] =
+            "Не са заделени за спестявания. Бюджетите са планове и не резервират тези пари — виж какво още е планирано отдолу.",
+        ["Your budgets still plan to spend this much. It's a plan, not a reservation — but if it's more than what's free, something has to give."] =
+            "Бюджетите ти още планират да похарчат толкова. Това е план, не резервация — но ако е повече от свободните пари, нещо трябва да отстъпи.",
 
         // Goals tab: one filtered grid instead of a section per bucket kind.
         ["Your goals"] = "Твоите цели",

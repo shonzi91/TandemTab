@@ -167,7 +167,13 @@ else
         @{
             var _balCur = State.DisplayClosingBalance(_bankStatus?.Balance, _bankStatus?.BalanceCurrency);
             var _balFree = State.DisplayFreeToAllocate(_bankStatus?.Balance, _bankStatus?.BalanceCurrency);
+            // Current − free reduces to the savings earmark (free = current − savings − priorSaved). Budgets are
+            // deliberately NOT in it: only savings reserve cash (Period.FreeToAllocateAfter).
             var _balAlloc = _balCur - _balFree;
+            // What budgets still claim. Advisory — it doesn't reduce "free" — but leaving it off the header let you
+            // plan €180 against €0 free without the header flinching, which is what made "free" read as "safe to spend".
+            var _balPlanned = State.TotalBudgeted - State.TotalSpent;
+            var _plannedOverFree = _balPlanned.Amount > 0m && _balPlanned.Amount > _balFree.Amount;
         }
         <div class="hdr-hero @(State.IsPeriodOpen ? "" : "hero-solo")">
             <div class="bal-part bal-part-main">
@@ -178,11 +184,15 @@ else
             {
                 <div class="bal-part">
                     <span class="bal-label">@Loc["Free"]</span>
-                    <strong class="@(State.IsOverAllocated ? "warn-text" : "bal-free-v")">@Fmt(_balFree)</strong>
+                    <strong class="@(State.IsOverAllocated ? "warn-text" : "bal-free-v")" title="@Loc["Not set aside for savings. Budgets are plans, so they don't reserve this — see what's still planned below."]">@Fmt(_balFree)</strong>
+                    @if (_balPlanned.Amount > 0m)
+                    {
+                        <small class="bal-sub @(_plannedOverFree ? "warn-text" : "")" title="@Loc["Your budgets still plan to spend this much. It's a plan, not a reservation — but if it's more than what's free, something has to give."]">@Fmt(_balPlanned) @Loc["planned"]</small>
+                    }
                 </div>
                 <div class="bal-part">
                     <span class="bal-label">@Loc["Allocated"]</span>
-                    <strong class="bal-alloc-v" title="@Loc["Already budgeted or set aside this period — spoken for, not spent."]">@Fmt(_balAlloc)</strong>
+                    <strong class="bal-alloc-v" title="@Loc["Set aside for savings — reserved, not spent. Budgets aren't counted here."]">@Fmt(_balAlloc)</strong>
                 </div>
             }
         </div>

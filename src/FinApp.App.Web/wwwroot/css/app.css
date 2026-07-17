@@ -181,6 +181,8 @@ html.dark .bal-part .bal-label { color: #8fdccb; }
 html.dark .bal-part strong { color: #ffffff; }
 html.dark .bal-part .bal-free-v { color: #3fe0c5; }
 html.dark .bal-part .bal-alloc-v { color: #9fb0c4; }
+/* Before .warn-text — equal specificity, so the amber has to come after it to win. */
+html.dark .bal-part .bal-sub { color: #9fb0c4; }
 html.dark .bal-part .warn-text { color: #f5b24e; }
 html.dark .modal-backdrop, html.dark .pm-backdrop { background: rgba(0,0,0,.6); }
 

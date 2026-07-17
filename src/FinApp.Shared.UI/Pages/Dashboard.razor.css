@@ -122,6 +122,10 @@ html.dark .onboard-desc { color: #a9b6ad; }
 .bal-part-main strong { font-size: 2rem; }
 .bal-part .bal-free-v { color: #0f7a54; }
 .bal-part .bal-alloc-v { color: #6b7280; }
+/* What budgets still claim, under "free" — context, so it stays quiet next to the figure it qualifies.
+   Declared BEFORE .warn-text: same specificity, so the amber must come later to win when the plan
+   outruns what's actually unclaimed. */
+.bal-part .bal-sub { font-size: .66rem; font-weight: 600; color: #6b7280; letter-spacing: .01em; }
 .bal-part .warn-text { color: #b45309; }
 
 .dash-head h1 { margin: 0; font-size: 1.6rem; }
