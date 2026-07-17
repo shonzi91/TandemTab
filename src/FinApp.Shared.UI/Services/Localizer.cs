@@ -1086,6 +1086,21 @@ public sealed class Localizer(IJSRuntime js)
         ["— choose a fund —"] = "— избери фонд —",
         ["— none —"] = "— няма —",
 
+        // Payoff projection: the loan's own facts moved into the summary; overpayment offers both bank options.
+        ["Ends"] = "Приключва",
+        ["Total interest"] = "Обща лихва",
+        ["Banks usually let you pick one — same payment, different prize:"] =
+            "Банките обикновено те карат да избереш — същата вноска, различна печалба:",
+        ["Shorter term"] = "По-кратък срок",
+        ["Lower installment"] = "По-ниска вноска",
+        ["keep paying {0}/mo → clears {1} (~{2}) · {3} in installments · interest {4}"] =
+            "продължаваш с {0}/мес. → приключва за {1} (~{2}) · {3} във вноски · лихва {4}",
+        ["keep the same end date → {0}/mo ({1} less) · {2} in installments"] =
+            "запазваш същата крайна дата → {0}/мес. ({1} по-малко) · {2} във вноски",
+        ["{0} sooner"] = "{0} по-рано",
+        ["Shorter term costs {0} less overall — lower installment buys monthly room instead."] =
+            "По-краткият срок излиза {0} по-евтино общо — по-ниската вноска вместо това дава месечен въздух.",
+
         // Balance header: "free" is savings-based, so the budget claim rides alongside it as context.
         ["planned"] = "планирани",
         ["Set aside for savings — reserved, not spent. Budgets aren't counted here."] =

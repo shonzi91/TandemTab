@@ -50,6 +50,30 @@ public static class LoanForecast
         return null;   // still not cleared after the cap → treat as "never" at this pace
     }
 
+    /// <summary>
+    /// The level monthly payment that clears <paramref name="balance"/> in exactly <paramref name="months"/> at
+    /// <paramref name="annualRatePercent"/> APR — the standard annuity payment. This is the other half of
+    /// <see cref="PayOff"/>: that one fixes the payment and solves for the term, this one fixes the term and solves
+    /// for the payment. Both are needed because a lender given a lump-sum overpayment offers exactly this choice —
+    /// keep the installment and shorten the term, or keep the term and lower the installment.
+    /// Zero-rate loans divide evenly. Null when the inputs can't describe a loan.
+    /// </summary>
+    public static decimal? PaymentFor(decimal balance, decimal annualRatePercent, int months)
+    {
+        if (balance <= 0m) return 0m;
+        if (months <= 0) return null;
+
+        var monthlyRate = annualRatePercent / 100m / 12m;
+        if (monthlyRate <= 0m) return decimal.Round(balance / months, 2, MidpointRounding.AwayFromZero);
+
+        // pmt = P·r / (1 − (1+r)^−n). Computed in double for the power, then rounded — a projection, not a ledger.
+        var discount = 1 - Math.Pow(1 + (double)monthlyRate, -months);
+        if (discount <= 0) return null;
+        var payment = (double)balance * (double)monthlyRate / discount;
+        if (double.IsNaN(payment) || double.IsInfinity(payment)) return null;
+        return decimal.Round((decimal)payment, 2, MidpointRounding.AwayFromZero);
+    }
+
     /// <summary>What paying <paramref name="extraPerMonth"/> more each month buys you: months and interest saved
     /// versus the base payment. Null when either scenario never clears (so there's nothing meaningful to compare).</summary>
     public readonly record struct Simulation(Payoff Base, Payoff WithExtra, int MonthsSaved, decimal InterestSaved);

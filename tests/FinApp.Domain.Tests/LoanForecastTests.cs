@@ -115,4 +115,65 @@ public class LoanForecastTests
     {
         Assert.Null(LoanForecast.PlanPayoff(Array.Empty<LoanForecast.LoanInput>(), 100m, LoanForecast.Strategy.Snowball));
     }
+
+    // --- PaymentFor: the inverse of PayOff (fix the term, solve for the payment) ---
+
+    [Fact]
+    public void Payment_for_a_term_clears_the_loan_in_that_term()
+    {
+        // The property that matters: what PaymentFor hands back must actually clear the loan in the term asked
+        // for — solving for the payment and then simulating it has to agree, or the "keep your end date" quote lies.
+        var payment = LoanForecast.PaymentFor(20_000m, 6m, 60);
+        Assert.NotNull(payment);
+
+        var payoff = LoanForecast.PayOff(20_000m, 6m, payment!.Value);
+        Assert.NotNull(payoff);
+        Assert.InRange(payoff!.Value.Months, 59, 60);   // ±1: the payment is rounded to whole cents
+    }
+
+    [Fact]
+    public void A_zero_rate_loan_divides_evenly()
+    {
+        Assert.Equal(100m, LoanForecast.PaymentFor(1_200m, 0m, 12));
+    }
+
+    [Fact]
+    public void Paying_a_lump_sum_then_keeping_the_term_lowers_the_installment()
+    {
+        // The "lower installment" option a bank offers: same end date, smaller payment because the balance dropped.
+        var before = LoanForecast.PaymentFor(20_000m, 6m, 60);
+        var after = LoanForecast.PaymentFor(15_000m, 6m, 60);
+        Assert.NotNull(before);
+        Assert.NotNull(after);
+        Assert.True(after!.Value < before!.Value);
+    }
+
+    [Fact]
+    public void Shorter_term_never_costs_more_interest_than_keeping_the_term()
+    {
+        // Why the modal can state this as fact: paying the same installment against a reduced balance clears
+        // sooner and therefore accrues less interest than stretching the smaller payment over the original term.
+        const decimal balance = 15_000m, rate = 6m, installment = 386.66m;
+        var shorter = LoanForecast.PayOff(balance, rate, installment);
+        var keepTerm = LoanForecast.PaymentFor(balance, rate, 60);
+        Assert.NotNull(shorter);
+        Assert.NotNull(keepTerm);
+
+        var keepTermPayoff = LoanForecast.PayOff(balance, rate, keepTerm!.Value);
+        Assert.NotNull(keepTermPayoff);
+        Assert.True(shorter!.Value.TotalInterest <= keepTermPayoff!.Value.TotalInterest);
+    }
+
+    [Fact]
+    public void A_term_of_zero_or_less_has_no_payment()
+    {
+        Assert.Null(LoanForecast.PaymentFor(1_000m, 6m, 0));
+        Assert.Null(LoanForecast.PaymentFor(1_000m, 6m, -3));
+    }
+
+    [Fact]
+    public void Nothing_owed_needs_no_payment()
+    {
+        Assert.Equal(0m, LoanForecast.PaymentFor(0m, 6m, 12));
+    }
 }

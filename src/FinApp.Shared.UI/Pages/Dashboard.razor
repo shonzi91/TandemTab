@@ -2420,27 +2420,69 @@ else
                     var pjPayNow = Math.Min(pjSetAside, pjBal);
                     var pjIntNow = FinApp.Domain.Forecasting.LoanForecast.MonthlyInterest(pjBal, pjRate);
                     var pjIntAfter = FinApp.Domain.Forecasting.LoanForecast.MonthlyInterest(pjBal - pjPayNow, pjRate);
+                    // The two ways a lender can apply a lump-sum overpayment. Same money, same rate — the choice is
+                    // only whether the saving lands as time or as monthly headroom, so show both and let the numbers
+                    // argue. Shorter term always costs less interest; lower installment buys breathing room instead.
+                    var pjAfterBal = pjBal - pjPayNow;
+                    var pjShorter = FinApp.Domain.Forecasting.LoanForecast.PayOff(pjAfterBal, pjRate, pjInst);
+                    var pjKeepMonths = pjAtInst?.Months ?? 0;
+                    var pjLowerInst = pjKeepMonths > 0
+                        ? FinApp.Domain.Forecasting.LoanForecast.PaymentFor(pjAfterBal, pjRate, pjKeepMonths)
+                        : null;
                     <h3>📈 @Loc["Payoff projection"] — @State.SavingBucketName(_projBucketId)</h3>
                     <div class="proj-grid">
                         <span class="proj-k">@Loc["Balance owed"]</span><span class="proj-v">@Fmt(State.Money(pjBal))</span>
                         <span class="proj-k">@Loc["Set aside"]</span><span class="proj-v">@Fmt(State.SavingBucketSaved(_projBucketId))</span>
                         <span class="proj-k">@Loc["Rate"]</span><span class="proj-v">@pjRate% APR</span>
                         <span class="proj-k">@Loc["Installment"]</span><span class="proj-v">@Fmt(State.Money(pjInst))/@Loc["mo"]</span>
+                        @* Was its own "At your installment" section; it's really just two more facts about the loan
+                           as it stands, so it belongs in the summary rather than in a heading of its own. *@
+                        @if (pjAtInst is { } ai)
+                        {
+                            <span class="proj-k">@Loc["Ends"]</span><span class="proj-v">@PayoffDate(ai.Months) <span class="ring-muted">(@MonthsText(ai.Months))</span></span>
+                            <span class="proj-k">@Loc["Total interest"]</span><span class="proj-v">@Fmt(State.Money(ai.TotalInterest))</span>
+                        }
+                        else
+                        {
+                            <span class="proj-k">@Loc["Ends"]</span><span class="proj-v warn-text">@Loc["At this installment it never clears — it doesn’t cover the interest."]</span>
+                        }
                     </div>
                     @if (pjPayNow > 0m && pjIntNow > 0m)
                     {
                         <h4 class="detail-sub">@Loc["If you pay what's set aside now"] @infoTip(("pp-partial", Loc["A payment lowers the balance right away, so the interest you're charged each period drops from then on. This is what actually changes the moment you make the payment — separate from the recurring 'extra on top' below."]))</h4>
-                        <p class="hint">💸 @string.Format(Loc["Pay {0} now → balance {1}"], Fmt(State.Money(pjPayNow)), Fmt(State.Money(pjBal - pjPayNow)))</p>
+                        <p class="hint">💸 @string.Format(Loc["Pay {0} now → balance {1}"], Fmt(State.Money(pjPayNow)), Fmt(State.Money(pjAfterBal)))</p>
                         <p class="hint good-text">➡️ @string.Format(Loc["Interest each period: {0} → {1} · {2} less every month"], Fmt(State.Money(pjIntNow)), Fmt(State.Money(pjIntAfter)), Fmt(State.Money(pjIntNow - pjIntAfter)))</p>
-                    }
-                    <h4 class="detail-sub">@Loc["At your installment"] @infoTip(("pp-inst", Loc["Paying just the monthly installment, nothing extra on top. Monthly compound interest, the way a bank works."]))</h4>
-                    @if (pjAtInst is { } ai)
-                    {
-                        <p class="hint">🏁 @string.Format(Loc["Clear in {0} (~{1}) · interest {2}"], MonthsText(ai.Months), PayoffDate(ai.Months), Fmt(State.Money(ai.TotalInterest)))</p>
-                    }
-                    else
-                    {
-                        <p class="hint warn-text">@Loc["At this installment it never clears — it doesn’t cover the interest."]</p>
+                        @if (pjShorter is { } sh || pjLowerInst is not null)
+                        {
+                            <p class="hint pm-hint">@Loc["Banks usually let you pick one — same payment, different prize:"]</p>
+                            @if (pjShorter is { } shorter)
+                            {
+                                <p class="hint">⏱️ <strong>@Loc["Shorter term"]</strong> — @string.Format(Loc["keep paying {0}/mo → clears {1} (~{2}) · {3} in installments · interest {4}"],
+                                    Fmt(State.Money(pjInst)), MonthsText(shorter.Months), PayoffDate(shorter.Months),
+                                    Fmt(State.Money(decimal.Round(pjInst * shorter.Months, 2))), Fmt(State.Money(shorter.TotalInterest)))
+                                    @if (pjAtInst is { } baseline && baseline.Months > shorter.Months)
+                                    {
+                                        <span class="good-text"> · @string.Format(Loc["{0} sooner"], MonthsText(baseline.Months - shorter.Months))</span>
+                                    }
+                                </p>
+                            }
+                            @if (pjLowerInst is { } lower && pjKeepMonths > 0)
+                            {
+                                <p class="hint">💶 <strong>@Loc["Lower installment"]</strong> — @string.Format(Loc["keep the same end date → {0}/mo ({1} less) · {2} in installments"],
+                                    Fmt(State.Money(lower)), Fmt(State.Money(Math.Max(0m, pjInst - lower))),
+                                    Fmt(State.Money(decimal.Round(lower * pjKeepMonths, 2))))
+                                </p>
+                            }
+                            @if (pjShorter is { } s2 && pjLowerInst is { } l2 && pjKeepMonths > 0)
+                            {
+                                var shorterOutlay = decimal.Round(pjInst * s2.Months, 2);
+                                var lowerOutlay = decimal.Round(l2 * pjKeepMonths, 2);
+                                @if (lowerOutlay > shorterOutlay)
+                                {
+                                    <p class="hint good-text">➡️ @string.Format(Loc["Shorter term costs {0} less overall — lower installment buys monthly room instead."], Fmt(State.Money(lowerOutlay - shorterOutlay)))</p>
+                                }
+                            }
+                        }
                     }
                     <h4 class="detail-sub">@Loc["Installment + extra on top"]
                         @infoTip(("pp-pace", Loc["Money you set aside on top of the installment each month. Starts from your recent saving pace — change it to see how paying more (or less) moves the date and interest."]))
