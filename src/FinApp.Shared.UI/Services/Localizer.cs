@@ -931,6 +931,7 @@ public sealed class Localizer(IJSRuntime js)
         ["Confirm"] = "Потвърди",
         ["Connecting a bank isn't available on this account."] = "Свързването на банка не е налично за тази сметка.",
         ["Contribute"] = "Внеси",
+        ["Contributed"] = "Внесено",
         ["Couldn't find a table in that file."] = "Не е намерена таблица в този файл.",
         ["Couldn't recognise that file. Use a CSV, Excel, XML, OFX or QIF export."] = "Файлът не е разпознат. Използвай CSV, Excel, XML, OFX или QIF експорт.",
         ["Couldn’t link your bank. Please try again."] = "Банката не можа да се свърже. Опитай отново.",

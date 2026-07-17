@@ -1481,6 +1481,30 @@ html.dark .card-score::after { color: #3fe0c5; }
 .card-score .card-value.score-ok { color: #0e9e6d; }
 .card-score .card-value.score-warn { color: #b45309; }
 .card-score .card-value.score-bad { color: #dc2626; }
+
+/* Action cards: the stat number and the button that changes it live together — money out (Spent → Add expense)
+   and money in (Contributed → Contribute). The button is the prominent, easy-to-hit primary action. */
+.action-card { min-height: 128px; }
+.action-card .card-act {
+    margin-top: auto; width: 100%;
+    display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+    padding: 12px; border: none; border-radius: 12px; font: inherit; font-weight: 800; font-size: .95rem;
+    color: #fff; cursor: pointer; transition: background .15s, transform .12s, box-shadow .15s;
+}
+.action-card .card-act:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,.14); }
+.card-act-income { background: #13a06e; }
+.card-act-income:hover { background: #0e8a5d; }
+.card-act-spend { background: #475569; }
+.card-act-spend:hover { background: #3a4453; }
+html.dark .card-act-income { background: #17a877; }
+html.dark .card-act-spend { background: #566173; }
+
+/* Health score as a full-width bar beneath the two action cards, with breathing room before what follows. */
+.card-score-wide { width: 100%; flex-direction: row; align-items: center; gap: 12px; padding-right: 36px; margin-bottom: 18px; }
+.card-score-wide .card-label { order: -1; }
+.card-score-wide .card-value { font-size: 1.5rem; }
+.card-score-wide .card-sub { margin-left: auto; }
+.card-score-wide::after { top: 50%; transform: translateY(-50%); }
 .all-clear { text-align: center; color: #0e7c55; background: #eef9f3; border-color: #d6f0e3; }
 .all-clear p { margin: 6px 0; font-weight: 600; }
 .ring-label.over-text span { color: #dc2626; }

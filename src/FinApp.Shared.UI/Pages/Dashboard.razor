@@ -99,31 +99,9 @@ else
                 <button class="nav @(State.CanGoNext ? "" : "nav-hidden")" title="@Loc["Next period"]" @onclick="State.GoNext" disabled="@(!State.CanGoNext)">›</button>
             </div>
 
+            @* Header utility icons, left→right: notifications · achievements · import · settings (settings last).
+               Import lives here because it's an occasional utility, not a daily money move. *@
             <span class="hdr-icons">
-                <button class="link hdr-trophy" title="@Loc["Achievements"]" @onclick="() => _modal = Modal.Achievements">🏆</button>
-                <span class="acct-menu">
-                    <button class="link" title="@Loc["Account actions"]" @onclick="() => _acctMenuOpen = !_acctMenuOpen">⚙️</button>
-                    @if (_acctMenuOpen)
-                    {
-                        <div class="acct-menu-backdrop" @onclick="() => _acctMenuOpen = false"></div>
-                        <div class="acct-menu-pop">
-                            @if (State.IsOwnerOfCurrent)
-                            {
-                                <button @onclick="() => RunAcct(OpenEditAccount)">✏️ @Loc["Rename account"]</button>
-                            }
-                            @if (HasArchivedItems)
-                            {
-                                <button @onclick="() => RunAcct(() => _modal = Modal.Archived)">📦 @Loc["Archived items"]</button>
-                            }
-                            <button @onclick="MenuExport">📊 @Loc["Export to Excel"]</button>
-                            <button class="danger" @onclick="() => RunAcct(OpenLeaveAccount)">🚪 @Loc["Leave account"]</button>
-                            @if (State.IsOwnerOfCurrent)
-                            {
-                                <button class="danger" @onclick="() => RunAcct(OpenDeleteAccount)">🗑️ @Loc["Delete account"]</button>
-                            }
-                        </div>
-                    }
-                </span>
                 <span class="acct-notify">
                     <button class="link bell" title="@Loc["Notifications"]" @onclick="() => _bellOpen = !_bellOpen">
                         🔔@if (notifications.Count > 0) { <span class="bell-badge">@notifications.Count</span> }
@@ -157,6 +135,35 @@ else
                                         </span>
                                     </div>
                                 }
+                            }
+                        </div>
+                    }
+                </span>
+                <button class="link hdr-trophy" title="@Loc["Achievements"]" @onclick="() => _modal = Modal.Achievements">🏆</button>
+                <button class="link" title="@Loc["Import statement"]" @onclick="OpenImport">📥</button>
+                @if (_bankStatus?.Enabled == true)
+                {
+                    <button class="link" title="@Loc["External accounts"]" @onclick="ShowBankTab">🏦</button>
+                }
+                <span class="acct-menu">
+                    <button class="link" title="@Loc["Account actions"]" @onclick="() => _acctMenuOpen = !_acctMenuOpen">⚙️</button>
+                    @if (_acctMenuOpen)
+                    {
+                        <div class="acct-menu-backdrop" @onclick="() => _acctMenuOpen = false"></div>
+                        <div class="acct-menu-pop">
+                            @if (State.IsOwnerOfCurrent)
+                            {
+                                <button @onclick="() => RunAcct(OpenEditAccount)">✏️ @Loc["Rename account"]</button>
+                            }
+                            @if (HasArchivedItems)
+                            {
+                                <button @onclick="() => RunAcct(() => _modal = Modal.Archived)">📦 @Loc["Archived items"]</button>
+                            }
+                            <button @onclick="MenuExport">📊 @Loc["Export to Excel"]</button>
+                            <button class="danger" @onclick="() => RunAcct(OpenLeaveAccount)">🚪 @Loc["Leave account"]</button>
+                            @if (State.IsOwnerOfCurrent)
+                            {
+                                <button class="danger" @onclick="() => RunAcct(OpenDeleteAccount)">🗑️ @Loc["Delete account"]</button>
                             }
                         </div>
                     }
@@ -285,62 +292,41 @@ else
                     </div>
                 </section>
             }
-            @* "Saved this period" was dropped from this row: its label collided with the header's "Saved", and the
-               savings-rate story it told is already carried by "You're on track for" and the savings insight. Spent
-               stays (Home's only spending glance) alongside the Health score. *@
-            <section class="cards cards-2">
+            @* Home's two everyday moves sit on the numbers they change: Spent carries "Add expense", Contributed
+               carries "Contribute" — money out and money in. Health score beneath, then what needs attention, then
+               what you're on track for. (Move-to-savings dropped — the bell nudges it and the Goals tab owns it;
+               Recurring moved to Spending; Import and the bank became header/settings icons.) *@
+            <section class="cards cards-2 action-cards">
                 @{
                     // Spent tile shades along the same green→red heat ramp as the progress rings, by how close
                     // total spending is to the total budget (far = green, at/over the cap = red).
                     var _sh = SpendHeatHue();
                 }
-                <div class="card tile-spend" style="background:hsl(@_sh 62% 50% / .12);border-color:hsl(@_sh 62% 50% / .34)">
+                <div class="card tile-spend action-card" style="background:hsl(@_sh 62% 50% / .12);border-color:hsl(@_sh 62% 50% / .34)">
                     <span class="card-label">@Loc["Spent"]</span>
                     <span class="card-value" style="color:hsl(@_sh 72% 56%)">@Fmt(State.TotalSpent)</span>
+                    <button class="card-act card-act-spend" @onclick="OpenAddExpenseTab">🧾 @Loc["Add expense"]</button>
                 </div>
-                @{ var ovBand = ov.Band switch { HealthBand.Healthy => "score-ok", HealthBand.Average => "score-warn", _ => "score-bad" }; }
-                <button id="home-score" class="card card-score" @onclick="() => _modal = Modal.HealthScore" title="@Loc["Health score & trends"]">
-                    <span class="card-label">@Loc["Health score & trends"]</span>
-                    <span class="card-value @ovBand">@(ov.HasData ? ov.Score.ToString() : "—")</span>
-                    <span class="card-sub">@(ov.HasData ? ov.Verdict : "")</span>
-                </button>
+                <div class="card savings action-card">
+                    <span class="card-label">@Loc["Contributed"]</span>
+                    <span class="card-value">@Fmt(State.TotalContributed)</span>
+                    @if (State.IsPeriodOpen)
+                    {
+                        <button class="card-act card-act-income" @onclick="OpenDeposit">💵 @Loc["Contribute"]</button>
+                    }
+                </div>
             </section>
 
-            <section class="quick-actions">
-                <button class="qa" @onclick="OpenAddExpenseTab">🧾 <span>@Loc["Add expense"]</span></button>
-                @if (State.IsPeriodOpen)
-                {
-                    <button class="qa" @onclick="OpenDeposit">💵 <span>@Loc["Contribute"]</span></button>
-                }
-                @if (HasSavingsBucket)
-                {
-                    <button class="qa" @onclick="OpenMoveToSavings">💰 <span>@Loc["Move to savings"]</span></button>
-                }
-                @* The daily actions stay on the row; Import / Recurring / External accounts (occasional) fold into
-                   "More" so the row doesn't grow to six equal-weight buttons. *@
-                <span class="acct-menu qa-more">
-                    <button class="qa" @onclick="() => _qaMoreOpen = !_qaMoreOpen">⋯ <span>@Loc["More"]</span></button>
-                    @if (_qaMoreOpen)
-                    {
-                        <div class="acct-menu-backdrop" @onclick="() => _qaMoreOpen = false"></div>
-                        <div class="acct-menu-pop">
-                            @if (State.IsPeriodOpen)
-                            {
-                                <button @onclick="@(async () => { _qaMoreOpen = false; await OpenImport(); })">📥 @Loc["Import statement"]</button>
-                            }
-                            <button @onclick="@(() => { _qaMoreOpen = false; OpenRecurring(); })">🔁 @Loc["Recurring"]</button>
-                            @if (_bankStatus?.Enabled == true)
-                            {
-                                <button @onclick="@(async () => { _qaMoreOpen = false; await ShowBankTab(); })">🏦 @Loc["External accounts"]</button>
-                            }
-                        </div>
-                    }
-                </span>
-            </section>
+            @{ var ovBand = ov.Band switch { HealthBand.Healthy => "score-ok", HealthBand.Average => "score-warn", _ => "score-bad" }; }
+            <button id="home-score" class="card card-score card-score-wide" @onclick="() => _modal = Modal.HealthScore" title="@Loc["Health score & trends"]">
+                <span class="card-label">@Loc["Health score & trends"]</span>
+                <span class="card-value @ovBand">@(ov.HasData ? ov.Score.ToString() : "—")</span>
+                <span class="card-sub">@(ov.HasData ? ov.Verdict : "")</span>
+            </button>
 
             @{
-                // What actually needs attention (overspend, over-budget, health warnings), sitting under the
-                // quick actions — the bell still holds the full list, including the gentler reminders.
+                // What actually needs attention (overspend, over-budget, health warnings), just under the score —
+                // the bell still holds the full list, including the gentler reminders.
                 var homeAlerts = notifications.Where(n => n.Urgent).ToList();
             }
             @if (homeAlerts.Count > 0)
@@ -672,6 +658,7 @@ else
                 <div class="spending-head">
                     <span class="insight-h">@Loc["This month's budgets"]</span>
                     <button class="fund-add" @onclick="OpenAddBudget">＋ @Loc["Add budget"]</button>
+                    <button class="fund-add" @onclick="OpenRecurring">🔁 @Loc["Recurring"]</button>
                     @* Only the spent figure takes the heat — it carries the verdict; the cap it's measured against
                        stays quiet. Same ramp as the Home "Spent" tile and the rings below, so one fact reads one way. *@
                     <span class="spending-sub"><strong class="spend-heat" style="color:hsl(@SpendHeatHue() 72% 56%)">@Fmt(State.TotalSpent)</strong> @Loc["of"] @Fmt(State.TotalBudgeted) @Loc["spent"]</span>
@@ -4631,7 +4618,6 @@ else
 
     // --- Notifications bell — aggregates the transient Home prompts into one dropdown by the account controls -----
     private bool _bellOpen;
-    private bool _qaMoreOpen;   // Home "More" quick-actions overflow menu
     private sealed record Notification(string Icon, string Text, string? Desc, string? ActionLabel, Action? Act,
         Action? Rotate, Action? Dismiss, bool Urgent);
 
