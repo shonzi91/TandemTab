@@ -2449,30 +2449,50 @@ else
                     </div>
                     @if (pjPayNow > 0m && pjIntNow > 0m)
                     {
-                        <h4 class="detail-sub">@Loc["If you pay what's set aside now"] @infoTip(("pp-partial", Loc["A payment lowers the balance right away, so the interest you're charged each period drops from then on. This is what actually changes the moment you make the payment — separate from the recurring 'extra on top' below."]))</h4>
-                        <p class="hint">💸 @string.Format(Loc["Pay {0} now → balance {1}"], Fmt(State.Money(pjPayNow)), Fmt(State.Money(pjAfterBal)))</p>
-                        <p class="hint good-text">➡️ @string.Format(Loc["Interest each period: {0} → {1} · {2} less every month"], Fmt(State.Money(pjIntNow)), Fmt(State.Money(pjIntAfter)), Fmt(State.Money(pjIntNow - pjIntAfter)))</p>
-                        @if (pjShorter is { } sh || pjLowerInst is not null)
+                        @* Two questions, deliberately kept apart: this one is "the money I have, once"; the next is
+                           "money I'd add every month, forever". They used to read as one because the same set-aside
+                           figure defaulted into both — the second then quoted an implausible per-month total. *@
+                        <h4 class="detail-sub">💸 @string.Format(Loc["One-off — pay your {0} set aside now"], Fmt(State.Money(pjPayNow)))
+                            @infoTip(("pp-partial", Loc["A payment lowers the balance right away, so the interest you're charged each period drops from then on. This is a single payment out of what you've already set aside — not a new monthly commitment."]))</h4>
+                        <p class="hint">@string.Format(Loc["Balance {0} → {1} · interest {2} → {3}/mo"], Fmt(State.Money(pjBal)), Fmt(State.Money(pjAfterBal)), Fmt(State.Money(pjIntNow)), Fmt(State.Money(pjIntAfter)))</p>
+                        @if (pjShorter is not null || pjLowerInst is not null)
                         {
-                            <p class="hint pm-hint">@Loc["Banks usually let you pick one — same payment, different prize:"]</p>
-                            @if (pjShorter is { } shorter)
-                            {
-                                <p class="hint">⏱️ <strong>@Loc["Shorter term"]</strong> — @string.Format(Loc["keep paying {0}/mo → clears {1} (~{2}) · {3} in installments · interest {4}"],
-                                    Fmt(State.Money(pjInst)), MonthsText(shorter.Months), PayoffDate(shorter.Months),
-                                    Fmt(State.Money(decimal.Round(pjInst * shorter.Months, 2))), Fmt(State.Money(shorter.TotalInterest)))
-                                    @if (pjAtInst is { } baseline && baseline.Months > shorter.Months)
+                            <p class="hint pm-hint">@Loc["Your bank will ask which you want:"]</p>
+                            <table class="payoff-opts">
+                                <thead>
+                                    <tr>
+                                        <th>@Loc["Their offer"]</th>
+                                        <th>@Loc["Per month"]</th>
+                                        <th>@Loc["Ends"]</th>
+                                        <th>@Loc["Left to pay"]</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @if (pjShorter is { } shorter)
                                     {
-                                        <span class="good-text"> · @string.Format(Loc["{0} sooner"], MonthsText(baseline.Months - shorter.Months))</span>
+                                        <tr>
+                                            <td>⏱️ @Loc["Shorter term"]</td>
+                                            <td>@Fmt(State.Money(pjInst))</td>
+                                            <td>@PayoffDate(shorter.Months)
+                                                @if (pjAtInst is { } baseline && baseline.Months > shorter.Months)
+                                                {
+                                                    <span class="good-text">@string.Format(Loc[" ({0} sooner)"], MonthsText(baseline.Months - shorter.Months))</span>
+                                                }
+                                            </td>
+                                            <td>@Fmt(State.Money(decimal.Round(pjInst * shorter.Months, 2)))</td>
+                                        </tr>
                                     }
-                                </p>
-                            }
-                            @if (pjLowerInst is { } lower && pjKeepMonths > 0)
-                            {
-                                <p class="hint">💶 <strong>@Loc["Lower installment"]</strong> — @string.Format(Loc["keep the same end date → {0}/mo ({1} less) · {2} in installments"],
-                                    Fmt(State.Money(lower)), Fmt(State.Money(Math.Max(0m, pjInst - lower))),
-                                    Fmt(State.Money(decimal.Round(lower * pjKeepMonths, 2))))
-                                </p>
-                            }
+                                    @if (pjLowerInst is { } lower && pjKeepMonths > 0)
+                                    {
+                                        <tr>
+                                            <td>💶 @Loc["Lower installment"]</td>
+                                            <td>@Fmt(State.Money(lower)) <span class="good-text">(−@Fmt(State.Money(Math.Max(0m, pjInst - lower))))</span></td>
+                                            <td>@PayoffDate(pjKeepMonths) <span class="ring-muted">@Loc["(unchanged)"]</span></td>
+                                            <td>@Fmt(State.Money(decimal.Round(lower * pjKeepMonths, 2)))</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
                             @if (pjShorter is { } s2 && pjLowerInst is { } l2 && pjKeepMonths > 0)
                             {
                                 var shorterOutlay = decimal.Round(pjInst * s2.Months, 2);
@@ -2484,8 +2504,8 @@ else
                             }
                         }
                     }
-                    <h4 class="detail-sub">@Loc["Installment + extra on top"]
-                        @infoTip(("pp-pace", Loc["Money you set aside on top of the installment each month. Starts from your recent saving pace — change it to see how paying more (or less) moves the date and interest."]))
+                    <h4 class="detail-sub">🔁 @Loc["Ongoing — add more every month"]
+                        @infoTip(("pp-pace", Loc["A recurring amount you'd pay on top of the installment every month, month after month — separate from the one-off above. Starts from your recent saving pace; change it to see how paying more (or less) moves the date and interest."]))
                         <button type="button" class="info-ico reset-ico" title="@(pjPlanned ? Loc["Reset to your planned contribution"] : Loc["Reset to your saving pace"])" @onclick="() => _payoffExtra = State.EffectiveSavingPace(_projBucketId)?.Amount ?? 0m">↺</button>
                     </h4>
                     <label class="proj-extra">@Loc["Extra on top /mo"] <input type="number" step="10" min="0" @bind="_payoffExtra" @bind:event="oninput" /></label>

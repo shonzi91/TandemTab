@@ -274,9 +274,10 @@ public sealed class Account : Entity
 
     /// <summary>Mark a savings bucket as a debt-payoff envelope with its (projection-only) loan figures. The original
     /// balance (for progress %) is captured the first time; pass <paramref name="originalBalance"/> to set it explicitly.</summary>
-    public void ConfigureSavingDebt(Guid savingCategoryId, decimal balance, decimal annualRatePercent, decimal installment, decimal? originalBalance = null) =>
+    public void ConfigureSavingDebt(Guid savingCategoryId, decimal balance, decimal annualRatePercent, decimal installment,
+                                    decimal? originalBalance = null, DateOnly? balanceAsOf = null) =>
         (FindSavingCategory(savingCategoryId) ?? throw new InvalidOperationException("Saving category not found."))
-            .ConfigureDebt(balance, annualRatePercent, installment, originalBalance);
+            .ConfigureDebt(balance, annualRatePercent, installment, originalBalance, balanceAsOf);
 
     /// <summary>Set or clear a savings bucket's planned per-period contribution (null/zero → infer pace from history).</summary>
     public void SetSavingPlannedContribution(Guid savingCategoryId, decimal? amount) =>
@@ -296,9 +297,11 @@ public sealed class Account : Entity
     public void ClearSavingInvestment(Guid savingCategoryId) =>
         (FindSavingCategory(savingCategoryId) ?? throw new InvalidOperationException("Saving category not found.")).ClearInvestment();
 
-    /// <summary>Record a payment against a debt bucket — lowers its remaining balance (no-op for common buckets).</summary>
-    public void RecordSavingDebtPayment(Guid savingCategoryId, decimal amount) =>
-        (FindSavingCategory(savingCategoryId) ?? throw new InvalidOperationException("Saving category not found.")).RecordDebtPayment(amount);
+    /// <summary>Record an extra payment against a debt bucket — lowers its remaining balance (no-op for common
+    /// buckets). Pass <paramref name="asOf"/> to date it, which re-anchors the schedule (see
+    /// <see cref="Savings.SavingCategory.DebtBalanceOn"/>).</summary>
+    public void RecordSavingDebtPayment(Guid savingCategoryId, decimal amount, DateOnly? asOf = null) =>
+        (FindSavingCategory(savingCategoryId) ?? throw new InvalidOperationException("Saving category not found.")).RecordDebtPayment(amount, asOf);
 
     /// <summary>Archive (or restore) a savings bucket — hides it from the main lists while keeping its history.</summary>
     public void SetSavingArchived(Guid savingCategoryId, bool archived) =>

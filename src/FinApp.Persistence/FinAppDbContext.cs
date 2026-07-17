@@ -158,6 +158,7 @@ public sealed class FinAppDbContext(DbContextOptions<FinAppDbContext> options) :
             c.Ignore(x => x.DebtAnnualRatePercent);
             c.Ignore(x => x.DebtInstallment);
             c.Ignore(x => x.DebtOriginalBalance);
+            c.Ignore(x => x.DebtBalanceAsOf);
             c.Ignore(x => x.DebtPaidOff);
             c.Ignore(x => x.DebtProgressRatio);
             c.Ignore(x => x.PlannedContribution);

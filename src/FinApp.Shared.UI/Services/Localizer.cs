@@ -586,7 +586,6 @@ public sealed class Localizer(IJSRuntime js)
         ["Saved so far"] = "Заделени досега",
         ["Rate"] = "Лихва",
         ["Installment"] = "Вноска",
-        ["At your installment"] = "При вашата вноска",
         ["At your saving pace"] = "При вашето темпо на спестяване",
         ["Clear in {0} (~{1}) · interest {2}"] = "Погасяване за {0} (~{1}) · лихва {2}",
         ["You set aside about {0}/period."] = "Заделяте около {0}/период.",
@@ -615,7 +614,6 @@ public sealed class Localizer(IJSRuntime js)
         ["{0} · total interest {1}"] = "{0} · обща лихва {1}",
         ["That extra clears you {0} sooner and saves {1} in interest."] =
             "Това допълнително ви погасява {0} по-рано и спестява {1} лихва.",
-        ["Installment + extra on top"] = "Вноска + допълнително отгоре",
         ["Extra on top /mo"] = "Допълнително отгоре/мес.",
         ["Reset to your saving pace"] = "Върни към темпото на спестяване",
         ["{0} installment + {1} extra = {2}/mo"] = "{0} вноска + {1} допълнително = {2}/мес.",
@@ -961,13 +959,11 @@ public sealed class Localizer(IJSRuntime js)
         ["Hit your {0} target 12 periods running."] = "Постигна целта си {0} 12 периода поред.",
         ["Hit your {0} target 3 periods running."] = "Постигна целта си {0} 3 периода поред.",
         ["Hit your {0} target 6 periods running."] = "Постигна целта си {0} 6 периода поред.",
-        ["If you pay what's set aside now"] = "Ако платиш заделеното сега",
         ["If your authenticator already lists a TandemTab entry, delete it there first — otherwise it may keep showing the old code and this won't work."] = "Ако приложението ти за удостоверяване вече има запис за TandemTab, първо го изтрий там — иначе може да продължи да показва стария код и това няма да работи.",
         ["Ignore"] = "Игнорирай",
         ["Imported money-in from these merchants is auto-filed as a transfer from this fund. Unmapping only stops future auto-filing."] = "Импортираните приходи от тези търговци се завеждат автоматично като прехвърляне от този фонд. Премахването на връзката спира само бъдещото автоматично завеждане.",
         ["In sight"] = "На хоризонта",
         ["In this fund"] = "В този фонд",
-        ["Interest each period: {0} → {1} · {2} less every month"] = "Лихва на период: {0} → {1} · {2} по-малко всеки месец",
         ["It will be permanently deleted on {0}. Until then you can keep it and carry on where you left off."] = "Ще бъде изтрит окончателно на {0}. Дотогава можеш да го запазиш и да продължиш откъдето си спрял.",
         ["I’ll add it myself"] = "Ще го добавя сам",
         ["Just what's invested now"] = "Само това, което е инвестирано сега",
@@ -994,8 +990,6 @@ public sealed class Localizer(IJSRuntime js)
         ["Organised"] = "Организиран",
         ["Overpayer"] = "Надплащащ",
         ["Overperformer"] = "Свръхпостижение",
-        ["Pay {0} now → balance {1}"] = "Плати {0} сега → баланс {1}",
-        ["Paying just the monthly installment, nothing extra on top. Monthly compound interest, the way a bank works."] = "Плащане само на месечната вноска, нищо отгоре. Месечна сложна лихва, както работи банката.",
         ["Permanently deletes your account after a 30-day grace period. Your entries in accounts shared with you are kept."] = "Изтрива окончателно профила ти след 30-дневен гратисен период. Записите ти в споделени с теб сметки се запазват.",
         ["Pick the account you want to work in. You can switch anytime from the top bar."] = "Избери сметката, в която искаш да работиш. Можеш да превключваш по всяко време от горната лента.",
         ["Piggy"] = "Прасенце",
@@ -1089,15 +1083,17 @@ public sealed class Localizer(IJSRuntime js)
         // Payoff projection: the loan's own facts moved into the summary; overpayment offers both bank options.
         ["Ends"] = "Приключва",
         ["Total interest"] = "Обща лихва",
-        ["Banks usually let you pick one — same payment, different prize:"] =
-            "Банките обикновено те карат да избереш — същата вноска, различна печалба:",
+        ["Your bank will ask which you want:"] = "Банката ще те попита кое предпочиташ:",
         ["Shorter term"] = "По-кратък срок",
         ["Lower installment"] = "По-ниска вноска",
-        ["keep paying {0}/mo → clears {1} (~{2}) · {3} in installments · interest {4}"] =
-            "продължаваш с {0}/мес. → приключва за {1} (~{2}) · {3} във вноски · лихва {4}",
-        ["keep the same end date → {0}/mo ({1} less) · {2} in installments"] =
-            "запазваш същата крайна дата → {0}/мес. ({1} по-малко) · {2} във вноски",
-        ["{0} sooner"] = "{0} по-рано",
+        ["Their offer"] = "Тяхната оферта",
+        ["Per month"] = "На месец",
+        ["Left to pay"] = "Остава да платиш",
+        [" ({0} sooner)"] = " ({0} по-рано)",
+        ["(unchanged)"] = "(без промяна)",
+        ["One-off — pay your {0} set aside now"] = "Еднократно — плати заделените {0} сега",
+        ["Ongoing — add more every month"] = "Постоянно — добавяй още всеки месец",
+        ["Balance {0} → {1} · interest {2} → {3}/mo"] = "Остатък {0} → {1} · лихва {2} → {3}/мес.",
         ["Shorter term costs {0} less overall — lower installment buys monthly room instead."] =
             "По-краткият срок излиза {0} по-евтино общо — по-ниската вноска вместо това дава месечен въздух.",
 

@@ -51,6 +51,33 @@ public static class LoanForecast
     }
 
     /// <summary>
+    /// Walk <paramref name="balance"/> forward <paramref name="months"/> scheduled installments — the balance a
+    /// lender's amortization table would show after that many payments. Each month charges interest on what's left,
+    /// then applies the payment, so only <c>installment − interest</c> comes off the principal.
+    /// <para>
+    /// This is what makes a debt bucket's balance <b>derivable</b> rather than something the app must witness: given
+    /// the terms and how long it's been, the position is determined. It matters because the installment is often paid
+    /// from an account this one can't see — nothing has to observe the payment for the balance to be right.
+    /// </para>
+    /// Never returns below zero. A payment that can't cover the interest is a growing debt: the balance rises, which
+    /// is the truth, so it's reported rather than clamped.
+    /// </summary>
+    public static decimal BalanceAfter(decimal balance, decimal annualRatePercent, decimal installment, int months)
+    {
+        if (balance <= 0m || months <= 0) return Math.Max(0m, balance);
+        if (installment <= 0m) return balance;
+
+        var monthlyRate = annualRatePercent / 100m / 12m;
+        var remaining = balance;
+        for (var m = 0; m < Math.Min(months, MaxMonths); m++)
+        {
+            remaining = remaining + (remaining * monthlyRate) - installment;
+            if (remaining <= 0m) return 0m;
+        }
+        return decimal.Round(remaining, 2, MidpointRounding.AwayFromZero);
+    }
+
+    /// <summary>
     /// The level monthly payment that clears <paramref name="balance"/> in exactly <paramref name="months"/> at
     /// <paramref name="annualRatePercent"/> APR — the standard annuity payment. This is the other half of
     /// <see cref="PayOff"/>: that one fixes the payment and solves for the term, this one fixes the term and solves

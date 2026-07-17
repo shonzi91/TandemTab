@@ -211,6 +211,26 @@ public class SnapshotSerializerTests
     }
 
     [Fact]
+    public void A_debt_schedule_anchor_round_trips_and_is_not_re_dated_on_load()
+    {
+        // The anchor is the date the balance was last true. Loading must restore it verbatim: re-dating it to
+        // "now" on every open would make the schedule walk from today, freezing the balance forever.
+        var account = new Account("Home", "EUR");
+        account.AssignOwner(Guid.NewGuid(), "Me");
+        var loan = account.AddSavingCategory("Mortgage");
+        var anchored = new DateOnly(2026, 1, 15);
+        account.ConfigureSavingDebt(loan.Id, balance: 20_000m, annualRatePercent: 6m, installment: 400m, balanceAsOf: anchored);
+
+        var copy = AccountSnapshotSerializer.Deserialize(AccountSnapshotSerializer.Serialize(account));
+        var copied = copy.SavingCategories.Single(s => s.Name == "Mortgage");
+
+        Assert.Equal(anchored, copied.DebtBalanceAsOf);
+        // And the derived balance survives with it — a year on, principal has moved but not by 12 × €400.
+        Assert.Equal(loan.DebtBalanceOn(anchored.AddMonths(12)), copied.DebtBalanceOn(anchored.AddMonths(12)));
+        Assert.True(copied.DebtBalanceOn(anchored.AddMonths(12)) < 20_000m);
+    }
+
+    [Fact]
     public void Debt_bucket_kind_and_figures_round_trip()
     {
         var account = new Account("Home", "EUR");
@@ -231,6 +251,7 @@ public class SnapshotSerializerTests
         Assert.Equal(12_000m, copied.DebtOriginalBalance);   // original owed survives the round-trip
         Assert.Equal(2_000m, copied.DebtPaidOff);
         Assert.Equal(350m, copied.PlannedContribution);
+        Assert.Null(copied.DebtBalanceAsOf);                 // never anchored → stays unanchored, as before
         Assert.True(copied.IsArchived);
     }
 

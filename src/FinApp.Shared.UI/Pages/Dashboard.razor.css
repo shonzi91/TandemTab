@@ -1242,6 +1242,17 @@ html.dark .chips-label { color: #7c8a94; }
 .bucket-type .chip { padding: 8px 14px; font-size: .88rem; }
 /* Projection modals (payoff / goal date): a two-column key/value summary. */
 .proj-grid { display: grid; grid-template-columns: auto 1fr; gap: 3px 12px; margin: 2px 0 6px; }
+
+/* The two offers a lender makes on an overpayment. A table because it's one comparison across the same three
+   columns — as prose the figures were a run-on and you had to hold both in your head to compare them. */
+.payoff-opts { width: 100%; border-collapse: collapse; margin: 6px 0 8px; font-size: .82rem; }
+.payoff-opts th {
+    text-align: left; font-size: .66rem; text-transform: uppercase; letter-spacing: .06em;
+    color: #6b7280; font-weight: 700; padding: 0 8px 4px 0; white-space: nowrap;
+}
+.payoff-opts td { padding: 5px 8px 5px 0; border-top: 1px solid #eef1f4; vertical-align: top; }
+.payoff-opts td:first-child { font-weight: 600; white-space: nowrap; }
+.payoff-opts tr:last-child td { padding-bottom: 0; }
 .proj-k { color: #6b7280; font-size: .82rem; }
 .proj-v { text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
 /* Tappable info "ⓘ" that explains a projection in plain language. */

@@ -25,10 +25,29 @@ public sealed class SavingCategory : Entity
     public SavingKind Kind { get; private set; } = SavingKind.Common;
 
     /// <summary>Debt buckets only: the outstanding balance owed, its annual rate (%) and the contractual monthly
-    /// installment. Pure projection inputs — they never touch balances, budgets or the savings rate. Body data.</summary>
+    /// installment. Pure projection inputs — they never touch balances, budgets or the savings rate. Body data.
+    /// <para>
+    /// <b>This is the balance as of <see cref="DebtBalanceAsOf"/>, not necessarily today</b> — read it through
+    /// <see cref="DebtBalanceOn"/>, which carries it forward over the installments due since. See that method for why.
+    /// </para></summary>
     public decimal DebtBalance { get; private set; }
     public decimal DebtAnnualRatePercent { get; private set; }
     public decimal DebtInstallment { get; private set; }
+
+    /// <summary>
+    /// Debt buckets only: the date <see cref="DebtBalance"/> was last known to be true — set whenever the balance is
+    /// stated or corrected (setup, an edit, a payment). Null on legacy buckets and on debts with no schedule to walk,
+    /// which then behave as before: the balance stays put until something changes it.
+    /// <para>
+    /// The anchor exists because a loan's position is <b>determined by its terms</b>, not by what the app happens to
+    /// observe. The monthly installment is often paid from a different account — one this snapshot cannot see — so
+    /// deriving the balance from "what was true then, plus the installments due since" is both more accurate than
+    /// waiting to be told, and immune to a payment being missed, duplicated, or logged somewhere else entirely.
+    /// A later imported repayment schedule slots in here, replacing the derived rows with the lender's actual ones.
+    /// </para>
+    /// Body data (snapshot, not EF).
+    /// </summary>
+    public DateOnly? DebtBalanceAsOf { get; private set; }
 
     /// <summary>Debt buckets only: the balance owed when the debt was first set up, kept fixed as payments lower
     /// <see cref="DebtBalance"/>. This is the "€Y" in "paid off €X of €Y (Z%)" and the baseline for progress-over-time.
@@ -64,8 +83,48 @@ public sealed class SavingCategory : Entity
 
     public bool HasCosts => _costs.Count > 0;
 
+    /// <summary>
+    /// What's owed on <paramref name="asOf"/>: the anchored balance carried forward over the whole installments due
+    /// since <see cref="DebtBalanceAsOf"/>. This — not the raw <see cref="DebtBalance"/> field — is the balance to
+    /// show and to project from.
+    /// <para>
+    /// Only <c>installment − interest</c> comes off the principal each month, which is the whole point: subtracting a
+    /// whole installment would over-credit by the interest, and the error compounds (a too-low balance charges too
+    /// little interest next month, so it over-credits again).
+    /// </para>
+    /// Falls back to the stored balance when there's no anchor, no schedule, or the date is on/before the anchor —
+    /// so legacy buckets and rate-less debts keep their existing behaviour exactly.
+    /// </summary>
+    public decimal DebtBalanceOn(DateOnly asOf)
+    {
+        if (!IsDebt || DebtBalanceAsOf is not { } anchor || DebtInstallment <= 0m) return DebtBalance;
+        var months = MonthsBetween(anchor, asOf);
+        if (months <= 0) return DebtBalance;
+        return Forecasting.LoanForecast.BalanceAfter(DebtBalance, DebtAnnualRatePercent, DebtInstallment, months);
+    }
+
+    /// <summary>Whole installments due between two dates — a payment lands once a month on the anchor's day-of-month,
+    /// so a part-month counts for nothing until its day comes round.</summary>
+    private static int MonthsBetween(DateOnly from, DateOnly to)
+    {
+        if (to <= from) return 0;
+        var months = ((to.Year - from.Year) * 12) + to.Month - from.Month;
+        if (to.Day < from.Day) months--;      // the day hasn't come round yet this month
+        return Math.Max(0, months);
+    }
+
+    /// <summary>Debt buckets: how much of the original balance has been paid off on <paramref name="asOf"/> (never
+    /// negative). Zero for common buckets.</summary>
+    public decimal DebtPaidOffOn(DateOnly asOf) => IsDebt ? Math.Max(0m, DebtOriginalBalance - DebtBalanceOn(asOf)) : 0m;
+
     /// <summary>Debt buckets: how much of the original balance has been paid off (never negative). Zero for common buckets.</summary>
     public decimal DebtPaidOff => IsDebt ? Math.Max(0m, DebtOriginalBalance - DebtBalance) : 0m;
+
+    /// <summary>Debt buckets: fraction (0..1) of the original balance paid off on <paramref name="asOf"/>, or null
+    /// when there's no original to measure against.</summary>
+    public decimal? DebtProgressRatioOn(DateOnly asOf) => IsDebt && DebtOriginalBalance > 0m
+        ? Math.Clamp(DebtPaidOffOn(asOf) / DebtOriginalBalance, 0m, 1m)
+        : null;
 
     /// <summary>Debt buckets: fraction (0..1) of the original balance paid off, or null when there's no original to measure against.</summary>
     public decimal? DebtProgressRatio => IsDebt && DebtOriginalBalance > 0m
@@ -135,7 +194,11 @@ public sealed class SavingCategory : Entity
     /// <summary>Mark this bucket as a debt-payoff envelope and set its (projection-only) loan figures. The original
     /// balance (for progress %) is captured the first time and preserved across later edits so paying it down doesn't
     /// reset progress; pass <paramref name="originalBalance"/> to set it explicitly (e.g. round-tripping the snapshot).</summary>
-    public void ConfigureDebt(decimal balance, decimal annualRatePercent, decimal installment, decimal? originalBalance = null)
+    /// <param name="balanceAsOf">The date <paramref name="balance"/> is true on — it anchors the schedule (see
+    /// <see cref="DebtBalanceAsOf"/>). Null keeps any existing anchor, which is what snapshot round-tripping wants;
+    /// callers stating a fresh balance should pass the day they're stating it for.</param>
+    public void ConfigureDebt(decimal balance, decimal annualRatePercent, decimal installment, decimal? originalBalance = null,
+                              DateOnly? balanceAsOf = null)
     {
         if (balance < 0m) throw new ArgumentException("Debt balance cannot be negative.", nameof(balance));
         if (annualRatePercent < 0m) throw new ArgumentException("Interest rate cannot be negative.", nameof(annualRatePercent));
@@ -143,6 +206,9 @@ public sealed class SavingCategory : Entity
         if (originalBalance is < 0m) throw new ArgumentException("Original balance cannot be negative.", nameof(originalBalance));
         Kind = SavingKind.Debt;
         DebtBalance = balance;
+        // A stated balance is only true on the day it's stated, so it re-anchors the schedule. Null leaves the anchor
+        // alone — the serializer restores the stored one separately, and must not silently re-date a loan on load.
+        if (balanceAsOf is { } asOf) DebtBalanceAsOf = asOf;
         // Capture the original owed once (first config, or when told explicitly); never let it fall below what's still
         // owed, and grow it if the balance is corrected upward (e.g. more was borrowed).
         if (originalBalance is { } orig && orig > 0m) DebtOriginalBalance = orig;
@@ -151,6 +217,9 @@ public sealed class SavingCategory : Entity
         DebtInstallment = installment;
         ClearInvestmentFields();
     }
+
+    /// <summary>Restore the schedule anchor verbatim (snapshot round-trip only — see <see cref="DebtBalanceAsOf"/>).</summary>
+    public void SetDebtBalanceAsOf(DateOnly? asOf) => DebtBalanceAsOf = asOf;
 
     /// <summary>Mark this bucket as an investment envelope with its (projection-only) growth figures.</summary>
     public void ConfigureInvestment(decimal annualRatePercent, decimal termYears, int compoundsPerYear)
@@ -185,6 +254,7 @@ public sealed class SavingCategory : Entity
         DebtAnnualRatePercent = 0m;
         DebtInstallment = 0m;
         DebtOriginalBalance = 0m;
+        DebtBalanceAsOf = null;   // no schedule left to anchor
     }
 
     private void ClearInvestmentFields()
@@ -216,12 +286,22 @@ public sealed class SavingCategory : Entity
         PlannedContribution = amount is > 0m ? amount : null;
     }
 
-    /// <summary>Record a payment against a debt bucket: lower the outstanding balance (never below zero). No-op for a
-    /// common bucket. The full payment is applied to the balance — an approximation the user can correct by editing.</summary>
-    public void RecordDebtPayment(decimal amount)
+    /// <summary>
+    /// Record an <b>extra</b> payment against a debt bucket — money paid on top of the schedule, so the whole amount
+    /// comes off the principal (unlike a contractual installment, most of which is interest; the schedule handles
+    /// those, see <see cref="DebtBalanceOn"/>). No-op for a common bucket.
+    /// <para>
+    /// Catches the balance up to <paramref name="asOf"/> before subtracting, then re-anchors there: the payment is a
+    /// fresh statement of what's owed, and dating it keeps the schedule walking from a point that was actually true.
+    /// </para>
+    /// </summary>
+    public void RecordDebtPayment(decimal amount, DateOnly? asOf = null)
     {
         if (!IsDebt || amount <= 0m) return;
-        DebtBalance = Math.Max(0m, DebtBalance - amount);
+        var on = asOf ?? DebtBalanceAsOf;
+        var current = on is { } d ? DebtBalanceOn(d) : DebtBalance;
+        DebtBalance = Math.Max(0m, current - amount);
+        if (on is { } anchor) DebtBalanceAsOf = anchor;
     }
 
     /// <summary>Hide/show this bucket in the main lists (its history is kept regardless).</summary>

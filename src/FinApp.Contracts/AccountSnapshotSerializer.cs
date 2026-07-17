@@ -34,7 +34,7 @@ public static class AccountSnapshotSerializer
             account.Members.Select(m => new MemberNode(m.Id, m.UserId, m.DisplayName)).ToList(),
             account.Funds.Select(f => new FundNode(f.Id, f.Name, f.ParentId, f.Note, f.Icon, f.IsSynced, f.IsArchived)).ToList(),
             account.Categories.Select(c => new CategoryNode(c.Id, c.Name, c.ParentId, c.Icon, c.IsEssential, c.IsArchived)).ToList(),
-            account.SavingCategories.Select(s => new SavingCategoryNode(s.Id, s.Name, s.ParentId, s.GoalAmount, s.AlertThreshold, s.NotifyOnMilestone, s.InitialAmount, s.Icon, s.Kind, s.DebtBalance, s.DebtAnnualRatePercent, s.DebtInstallment, s.IsArchived, s.DebtOriginalBalance, s.PlannedContribution, s.InvestmentAnnualRatePercent, s.InvestmentTermYears, s.InvestmentCompoundsPerYear, s.FundId, s.Costs.Count == 0 ? null : s.Costs.ToList())).ToList(),
+            account.SavingCategories.Select(s => new SavingCategoryNode(s.Id, s.Name, s.ParentId, s.GoalAmount, s.AlertThreshold, s.NotifyOnMilestone, s.InitialAmount, s.Icon, s.Kind, s.DebtBalance, s.DebtAnnualRatePercent, s.DebtInstallment, s.IsArchived, s.DebtOriginalBalance, s.PlannedContribution, s.InvestmentAnnualRatePercent, s.InvestmentTermYears, s.InvestmentCompoundsPerYear, s.FundId, s.Costs.Count == 0 ? null : s.Costs.ToList(), s.DebtBalanceAsOf)).ToList(),
             account.Periods.Select(ToNode).ToList(),
             account.ContributionCategories.Select(c => new ContributionCategoryNode(c.Id, c.Name, c.Icon)).ToList(),
             account.SavingsRateTarget,
@@ -132,7 +132,13 @@ public static class AccountSnapshotSerializer
         s.SetIcon(n.Icon);
         // Legacy debt nodes have DebtOriginalBalance = 0 → ConfigureDebt back-fills it to the current balance
         // (progress baselines at "today"), so old snapshots don't divide by zero or show bogus progress.
-        if (n.Kind == SavingKind.Debt) s.ConfigureDebt(n.DebtBalance, n.DebtAnnualRatePercent, n.DebtInstallment, n.DebtOriginalBalance);
+        // The anchor is restored verbatim rather than passed here: loading a snapshot must never re-date a loan,
+        // or every open would walk the schedule from today and the balance would stop moving.
+        if (n.Kind == SavingKind.Debt)
+        {
+            s.ConfigureDebt(n.DebtBalance, n.DebtAnnualRatePercent, n.DebtInstallment, n.DebtOriginalBalance);
+            s.SetDebtBalanceAsOf(n.DebtBalanceAsOf);
+        }
         if (n.Kind == SavingKind.Investment) s.ConfigureInvestment(n.InvestmentAnnualRatePercent, n.InvestmentTermYears, n.InvestmentCompoundsPerYear);
         if (n.PlannedContribution is { } pc) s.SetPlannedContribution(pc);
         s.SetFund(n.FundId);
@@ -240,7 +246,9 @@ public static class AccountSnapshotSerializer
         SavingKind Kind = SavingKind.Common, decimal DebtBalance = 0m, decimal DebtAnnualRatePercent = 0m, decimal DebtInstallment = 0m, bool IsArchived = false,
         decimal DebtOriginalBalance = 0m, decimal? PlannedContribution = null,
         decimal InvestmentAnnualRatePercent = 0m, decimal InvestmentTermYears = 0m, int InvestmentCompoundsPerYear = 12,
-        Guid? FundId = null, IReadOnlyList<PlannedCost>? Costs = null);
+        Guid? FundId = null, IReadOnlyList<PlannedCost>? Costs = null,
+        // Null on legacy nodes → the bucket keeps its stored balance as-is, exactly as before the schedule existed.
+        DateOnly? DebtBalanceAsOf = null);
 
     private record PeriodNode(Guid Id, string Currency, DateOnly From, DateOnly To, PeriodStatus Status, decimal CarriedIn,
         List<InitialBalanceNode> InitialBalances, List<ContributionNode> Contributions, List<BudgetNode> Budgets,

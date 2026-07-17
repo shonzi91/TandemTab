@@ -999,8 +999,9 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     {
         var transfer = Period.DisburseSaving(savingCategoryId, fundId, Money(amount), Today(), note);
         transfer.SetFundSynced(FundIsSynced(fundId));   // a synced fund's real balance already reflects the outflow
-        // On a debt bucket, dispatching to the bank is a payment — lower what's still owed (projection metadata only).
-        Account.RecordSavingDebtPayment(savingCategoryId, amount);
+        // On a debt bucket, dispatching to the bank is an extra payment on top of the schedule — the whole amount
+        // comes off the principal, and dating it re-anchors the schedule (projection metadata only).
+        Account.RecordSavingDebtPayment(savingCategoryId, amount, Today());
         return SaveAsync();
     }
 
@@ -1032,7 +1033,8 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
         var bucket = Account.AddSavingCategory(name);
         Account.SetSavingCategoryIcon(bucket.Id, icon);
         if (isDebt)
-            Account.ConfigureSavingDebt(bucket.Id, debtBalance, debtRate, debtInstallment);
+            // Anchored today: the balance you type is what you owe now, and the schedule walks on from here.
+            Account.ConfigureSavingDebt(bucket.Id, debtBalance, debtRate, debtInstallment, balanceAsOf: Today());
         else if (isInvestment)
             Account.ConfigureSavingInvestment(bucket.Id, invRate, invTermYears, invCompounds);
         else if (goalAmount is > 0m)
@@ -1055,7 +1057,9 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
         Account.SetSavingCategoryIcon(savingCategoryId, icon);
         if (isDebt)
         {
-            Account.ConfigureSavingDebt(savingCategoryId, debtBalance, debtRate, debtInstallment);
+            // Re-anchors to today. The edit modal pre-fills the *derived* balance, so saving unchanged simply
+            // restates what the schedule already says — and a correction becomes the new truth to walk from.
+            Account.ConfigureSavingDebt(savingCategoryId, debtBalance, debtRate, debtInstallment, balanceAsOf: Today());
             Account.ConfigureSavingGoal(savingCategoryId, null);   // debt uses its own figures, not a savings goal
         }
         else if (isInvestment)
@@ -1097,17 +1101,23 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     /// <summary>Debt-payoff buckets vs ordinary savings buckets (each with its accumulated total), for the two
     /// Savings-tab sections. Reads the same <see cref="SavingBuckets"/> data — purely a split by kind.</summary>
     public bool SavingBucketIsDebt(Guid id) => FindSavingBucket(id)?.IsDebt ?? false;
-    public decimal SavingBucketDebtBalance(Guid id) => FindSavingBucket(id)?.DebtBalance ?? 0m;
+
+    /// <summary>What's owed <b>today</b> — the anchored balance walked forward over the installments due since (see
+    /// <see cref="SavingCategory.DebtBalanceOn"/>). Unanchored/legacy buckets return their stored balance unchanged.</summary>
+    public decimal SavingBucketDebtBalance(Guid id) => FindSavingBucket(id)?.DebtBalanceOn(Today()) ?? 0m;
     public decimal SavingBucketDebtRate(Guid id) => FindSavingBucket(id)?.DebtAnnualRatePercent ?? 0m;
     public decimal SavingBucketDebtInstallment(Guid id) => FindSavingBucket(id)?.DebtInstallment ?? 0m;
+    /// <summary>The date the debt's balance was last known true, or null when it isn't on a schedule.</summary>
+    public DateOnly? SavingBucketDebtAsOf(Guid id) => FindSavingBucket(id)?.DebtBalanceAsOf;
 
     // --- Progress over time (#7): the original owed vs what's left, and how much has been cleared ---
     /// <summary>Debt buckets: the balance owed when the debt was first set up (the "€Y" in "paid off €X of €Y").</summary>
     public decimal SavingBucketDebtOriginal(Guid id) => FindSavingBucket(id)?.DebtOriginalBalance ?? 0m;
-    /// <summary>Debt buckets: how much of the original balance has been paid off so far.</summary>
-    public decimal SavingBucketDebtPaidOff(Guid id) => FindSavingBucket(id)?.DebtPaidOff ?? 0m;
+    /// <summary>Debt buckets: how much of the original balance has been paid off as of today — measured against the
+    /// scheduled balance, so progress moves with the loan rather than only when a payment is recorded here.</summary>
+    public decimal SavingBucketDebtPaidOff(Guid id) => FindSavingBucket(id)?.DebtPaidOffOn(Today()) ?? 0m;
     /// <summary>Debt buckets: fraction (0..1) of the original balance paid off, or null when there's no baseline.</summary>
-    public decimal? SavingBucketDebtProgress(Guid id) => FindSavingBucket(id)?.DebtProgressRatio;
+    public decimal? SavingBucketDebtProgress(Guid id) => FindSavingBucket(id)?.DebtProgressRatioOn(Today());
 
     /// <summary>User-set planned per-period contribution to a bucket (#8), or null when pace is inferred from history.</summary>
     public decimal? SavingBucketPlannedContribution(Guid id) => FindSavingBucket(id)?.PlannedContribution;
