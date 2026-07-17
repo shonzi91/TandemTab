@@ -652,6 +652,7 @@ public sealed class Localizer(IJSRuntime js)
             "Незадължителна категория — спестяването тук освобождава пари за влог или дълг.",
         ["Notifications"] = "Известия",
         ["You're all caught up."] = "Всичко е прегледано.",
+        ["See all {0} in notifications"] = "Виж всички {0} в известията",
         ["Achievements"] = "Постижения",
         ["View all"] = "Виж всички",
         ["{0} of {1} earned"] = "{0} от {1} получени",

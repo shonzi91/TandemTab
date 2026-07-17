@@ -61,6 +61,46 @@ html.dark .onboard-check { background: #14251d; }
 html.dark .onboard-title { color: #e8eaf0; }
 html.dark .onboard-desc { color: #a9b6ad; }
 
+/* Home "needs attention" strip: the urgent notifications, inline, above everything else on Home. Amber, so it
+   reads as attention without the alarm of a red error banner. */
+.home-alerts { display: flex; flex-direction: column; gap: 8px; margin: 0 0 14px; }
+.home-alert {
+    display: flex; align-items: flex-start; gap: 10px;
+    background: #fff7e6; border: 1px solid #f3d998; border-radius: 12px; padding: 10px 12px;
+}
+.home-alert-ico { flex: 0 0 auto; font-size: 1.05rem; line-height: 1.4; }
+.home-alert-body { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; min-width: 0; }
+.home-alert-text { font-size: .88rem; font-weight: 600; color: #7a5b12; }
+.home-alert-act {
+    border: none; background: #a16207; color: #fff; font: inherit; font-size: .78rem; font-weight: 700;
+    padding: 3px 10px; border-radius: 999px; cursor: pointer; white-space: nowrap;
+}
+.home-alert-act:hover { background: #855107; }
+.home-alert-more {
+    align-self: flex-start; border: none; background: none; cursor: pointer; font: inherit;
+    font-size: .8rem; font-weight: 700; color: #a16207; padding: 2px 2px;
+}
+html.dark .home-alert { background: #2a2113; border-color: #5a4a1e; }
+html.dark .home-alert-text { color: #f5cf8a; }
+html.dark .home-alert-act { background: #b4841f; }
+html.dark .home-alert-act:hover { background: #caa03e; }
+html.dark .home-alert-more { color: #f5cf8a; }
+
+/* Milestones collapsed to a single tappable line (full detail lives in the 🏆 modal). */
+.home-ms-line {
+    display: flex; align-items: center; gap: 8px; width: 100%; margin: 14px 0 0;
+    background: none; border: none; cursor: pointer; font: inherit; padding: 8px 2px; text-align: left;
+    font-size: .72rem; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: #6b7280;
+}
+.home-ms-line:hover { color: #13a06e; }
+.home-ms-n {
+    display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 5px;
+    border-radius: 999px; background: #f5b301; color: #4a3200; font-size: .72rem; letter-spacing: 0;
+}
+.home-ms-arrow { margin-left: auto; font-size: 1rem; }
+html.dark .home-ms-line { color: #9aa4b2; }
+html.dark .home-ms-line:hover { color: #3fe0c5; }
+
 .dash-head { display: flex; flex-direction: column; gap: 12px; margin-bottom: 16px; }
 
 /* Row 1 — identity strip: account chip · period · icons. Row 2 — the balance hero card. */

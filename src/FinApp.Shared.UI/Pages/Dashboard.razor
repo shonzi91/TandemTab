@@ -248,6 +248,33 @@ else
     <div class="tab-content">
         <div class="tabpanel" hidden="@(_tab != Tab.Overview)">
             @{
+                // The things that actually need attention (overspend, over-budget, health warnings) surfaced inline
+                // on the tab you land on — the bell still holds the full list, including the gentler reminders.
+                var homeAlerts = notifications.Where(n => n.Urgent).ToList();
+            }
+            @if (homeAlerts.Count > 0)
+            {
+                <section class="home-alerts">
+                    @foreach (var n in homeAlerts.Take(3))
+                    {
+                        <div class="home-alert">
+                            <span class="home-alert-ico">@n.Icon</span>
+                            <div class="home-alert-body">
+                                <span class="home-alert-text">@n.Text</span>
+                                @if (n is { ActionLabel: { } al, Act: { } act })
+                                {
+                                    <button class="home-alert-act" @onclick="@(() => act())">@al</button>
+                                }
+                            </div>
+                        </div>
+                    }
+                    @if (notifications.Count > Math.Min(3, homeAlerts.Count))
+                    {
+                        <button class="home-alert-more" @onclick="() => _bellOpen = true">@string.Format(Loc["See all {0} in notifications"], notifications.Count) ›</button>
+                    }
+                </section>
+            }
+            @{
                 // First-run "Getting started" checklist. Steps auto-tick from real data, so it disappears on its
                 // own as the user completes them; the × persists a dismiss so it never nags. Body-data flag.
                 var obSteps = new (bool Done, string Icon, string Title, string Desc, Action Act)[]
@@ -358,28 +385,13 @@ else
             @{ var milestones = HomeMilestones(); }
             @if (milestones.Count > 0)
             {
-                <section class="panel achievements-card">
-                    <div class="ach-head">
-                        <h2 class="targets-h">🏆 @Loc["Milestones in progress"]</h2>
-                    </div>
-                    <div class="ms-bars">
-                        @foreach (var a in milestones)
-                        {
-                            var pct = a.Percent ?? 0;
-                            <div class="ms-bar-row">
-                                <span class="ms-bar-ico">@a.Icon</span>
-                                <div class="ms-bar-main">
-                                    <div class="ms-bar-top">
-                                        <span class="ms-bar-title">@a.Title</span>
-                                        <span class="ms-bar-pct">@pct%</span>
-                                    </div>
-                                    <div class="ms-bar-track"><div class="ms-bar-fill" style="width:@pct.ToString(System.Globalization.CultureInfo.InvariantCulture)%"></div></div>
-                                    <span class="ms-bar-desc">@a.Desc</span>
-                                </div>
-                            </div>
-                        }
-                    </div>
-                </section>
+                @* One line, not a panel of bars: the full progress lives in the 🏆 Achievements modal, so Home just
+                   points to it rather than stacking a second motivational section under "You're on track for". *@
+                <button class="home-ms-line" @onclick="() => _modal = Modal.Achievements">
+                    <span class="home-ms-lead">🏆 @Loc["Milestones in progress"]</span>
+                    <span class="home-ms-n">@milestones.Count</span>
+                    <span class="home-ms-arrow">›</span>
+                </button>
             }
 
             @if (!ov.HasData)
@@ -388,47 +400,10 @@ else
                     <p>📊 @Loc["Log some income or expenses to see your account overview here."]</p>
                 </section>
             }
-            else
-            {
-                @if (notifications.Count == 0)
-                {
-                    <section class="panel all-clear"><p>✅ @Loc["All clear — no warnings this period. Nice work."]</p></section>
-                }
-
-
-            }
         </div>
         <div class="tabpanel" hidden="@(_tab != Tab.Account)">
-            <section class="panel people-panel">
-                <div class="spending-head">
-                    <h2>@Loc["People"]</h2>
-                    <button class="fund-add" @onclick="OpenInvite">＋ @Loc["Invite"]</button>
-                </div>
-                <div class="people-row">
-                    @foreach (var m in State.RealUsers)
-                    {
-                        var mid = m.UserId;
-                        <span class="person">
-                            <Avatar Name="@m.DisplayName" Picture="@State.MemberAvatar(mid)" Size="26" /> @m.DisplayName
-                            @if (mid == State.MyUserId) { <span class="person-tag">@Loc["you"]</span> }
-                            else if (mid == State.CurrentOwnerId) { <span class="person-tag">@Loc["owner"]</span> }
-                            @if (State.IsOwnerOfCurrent && mid != State.MyUserId)
-                            {
-                                <button class="person-x" title="@Loc["Remove from account"]" @onclick="() => OpenRemoveMember(mid, m.DisplayName)">×</button>
-                            }
-                        </span>
-                    }
-                </div>
-            </section>
-
-            @if (State.Deficit.Amount > 0)
-            {
-                <div class="alert warn-bg">
-                    <strong>⚖️ @Loc["Off balance — overspent by"] @Fmt(State.Deficit).</strong>
-                    <span>@Loc["Expenses ate into your savings earmark. This will need to be covered next period (from a savings bucket or fresh contributions)."]</span>
-                </div>
-            }
-
+            @* Wallets leads with the money — funds, then bank, then income — and closes with People. The deficit
+               warning that used to sit here now shows on Home, where the eye lands first. *@
             <section class="panel">
                 <div class="spending-head">
                     <span class="insight-h">@Loc["Where your money is"]</span>
@@ -654,6 +629,28 @@ else
                         <li><em>@Loc["Nothing on the tab yet — add a contribution."]</em></li>
                     }
                 </ul>
+            </section>
+
+            <section class="panel people-panel">
+                <div class="spending-head">
+                    <h2>@Loc["People"]</h2>
+                    <button class="fund-add" @onclick="OpenInvite">＋ @Loc["Invite"]</button>
+                </div>
+                <div class="people-row">
+                    @foreach (var m in State.RealUsers)
+                    {
+                        var mid = m.UserId;
+                        <span class="person">
+                            <Avatar Name="@m.DisplayName" Picture="@State.MemberAvatar(mid)" Size="26" /> @m.DisplayName
+                            @if (mid == State.MyUserId) { <span class="person-tag">@Loc["you"]</span> }
+                            else if (mid == State.CurrentOwnerId) { <span class="person-tag">@Loc["owner"]</span> }
+                            @if (State.IsOwnerOfCurrent && mid != State.MyUserId)
+                            {
+                                <button class="person-x" title="@Loc["Remove from account"]" @onclick="() => OpenRemoveMember(mid, m.DisplayName)">×</button>
+                            }
+                        </span>
+                    }
+                </div>
             </section>
 
         </div>
@@ -4640,6 +4637,13 @@ else
     {
         var list = new List<Notification>();
 
+        // Overspent into the savings earmark — the single most urgent state, so it leads and shows inline on Home
+        // (it used to sit only on the Wallets tab, out of sight of the tab you land on).
+        if (State.Deficit.Amount > 0m)
+            list.Add(new Notification("⚖️", Loc["Off balance — overspent by"] + " " + Fmt(State.Deficit) + ".",
+                Loc["Expenses ate into your savings earmark. This will need to be covered next period (from a savings bucket or fresh contributions)."],
+                null, null, null, null, true));
+
         // Recurring items posted automatically this session — surfaced so the money move is never silent.
         foreach (var ap in _autoPostedNotices)
         {
@@ -4688,14 +4692,14 @@ else
         if (OverBudgetTip() is { } ob)
         {
             Action? rotate = OverBudgetCandidates().Count > 1 ? () => _overIndex++ : null;
-            list.Add(new Notification("⚠️", ob.Title, ob.Desc, Loc["Review"], () => OpenCategoryDetail(ob.CatId), rotate, () => DismissOverBudget(ob.CatId), false));
+            list.Add(new Notification("⚠️", ob.Title, ob.Desc, Loc["Review"], () => OpenCategoryDetail(ob.CatId), rotate, () => DismissOverBudget(ob.CatId), true));
         }
         // Pace reminders: at most one per off-track debt/goal, with the payoff-date slip and a "set aside" action.
         list.AddRange(PaceReminders());
 
         if (ov.HasData)
             foreach (var s in ov.Signals.Where(s => s.Kind == SignalKind.Warn))
-                list.Add(new Notification("⚠️", s.Title, s.Desc, null, null, null, null, false));
+                list.Add(new Notification("⚠️", s.Title, s.Desc, null, null, null, null, true));
         return list;
     }
 
