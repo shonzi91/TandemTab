@@ -1,6 +1,29 @@
 # TandemTab (FinApp) — session handoff
 
-Last updated: 2026-07-18 (Session 33). Read this + [README.md](README.md) + [TRANSFER.md](TRANSFER.md) + recent `git log` to catch up.
+Last updated: 2026-07-18 (Session 34). Read this + [README.md](README.md) + [TRANSFER.md](TRANSFER.md) + recent `git log` to catch up.
+
+## Session 34 (2026-07-18) — snapshot compression: gzip inside the envelope, rolled out in two phases. COMMITTED; PHASE 1 BUILT, DEPLOY PENDING.
+Picked up open item (a) from Session 31's save-performance list. **307 tests green** (178 domain + 41 persistence + 88 server), Release build clean (5 pre-existing warnings). Commits `6beea70` (compression) + `8e4f7be` (rollout flag). **Image `finapp:8e4f7be` is built and pushed** (digest `sha256:c0609b82…`, Cloud Build 4m33s) — **the `run deploy` was blocked by the auto-mode classifier and handed to the user**; prod was still `finapp-00187-st2` at the time of writing.
+
+### The stored row was the problem, and the fix is an ordering one
+The snapshot column was **348KB for a 261KB payload** and crossed clouds on every save. Encrypting first left nothing to compress (ciphertext is incompressible), and base64 then added ~33% on top — so the row was always *larger* than the data. **Gzip now runs inside the envelope, before AES-GCM.** Measured on snapshot-shaped JSON (~435KB, unique expense ids over a small repeated set of category/fund ids): `Fastest` 4.5ms → 5.5x smaller, **`Optimal` 7.2ms → 7.1x** — Optimal chosen, because ~3ms of CPU is noise beside the ~70ms KMS wrap already on the same request, and the row is both stored indefinitely and shipped GCP→AWS. (The naive benchmark using random GUIDs per row said only 2.8x — high-entropy ids don't compress. Model the repetition realistically or this measurement lies.)
+- **Envelope v2 = `ENC2:`** (gzipped UTF-8 inside), v1 = `ENC1:` (raw). **Reads always accept both**; rows upgrade on their next save; nothing to migrate.
+- **⚠️ The legacy-encryption startup pass had to learn the second prefix.** `EncryptLegacyRowsAsync` filtered on `!StartsWith(Prefix)` — an `ENC2:` row would have been re-`Protect`ed, **double-wrapping a ciphertext beyond recovery**. Now excludes both prefixes.
+
+### The rollout is two-phase, because this is the one change a rollback can't survive
+A build predating `ENC2:` doesn't know the prefix, so it takes such a row for **legacy plaintext and serves the client base64 garbage rather than failing** — silent corruption, not an error. So writing the new format is gated on **`Snapshots__CompressWrites` (default off)**:
+1. **Phase 1 (image `8e4f7be`, pending):** deploy with the flag **off** — reads `ENC2:`, still writes `ENC1:`. No new-format rows exist, so rollback to `00187-st2` stays clean.
+2. **Phase 2:** once phase 1 *is* the revision you'd roll back to, set `Snapshots__CompressWrites=true` on the same image.
+- **The flag is also the undo:** turning it off returns writes to `ENC1:` and leaves existing `ENC2:` rows readable.
+- **Confirm which format is live from the `[save]` log:** `stored` ≈ 1.33 × `payload` = phase 1 (uncompressed); a fraction of `payload` = compression on.
+
+### Verification — and one honest gap
+The encrypted path had **no end-to-end coverage at all**: every other server test runs on `PassthroughSnapshotCipher`, so the envelope was only ever unit-tested. Added `SnapshotEncryptionEndToEndTests` — an `EncryptingServerFactory` swaps in a real envelope cipher (`LocalEnvelopeCipher`, extracted from the unit tests for sharing) and drives the **real endpoints**: a save stores a compressed `ENC2:` row that doesn't contain the plaintext and reads back byte-identical; a **seeded `ENC1:` row** (shaped exactly as prod holds them) reads correctly and upgrades on its next save; and `EncryptLegacyRowsAsync` leaves both versions untouched. `FinAppServerFactory` was unsealed to allow the subclass.
+- **⚠️ Not covered: the `Snapshots:CompressWrites` config binding in `Program.cs`.** The e2e factory replaces the cipher outright, so it bypasses that wiring, and the flag's write behaviour is only *unit*-tested. **Verify the flag really took effect at phase 2 by reading `payload=`/`stored=` in the prod `[save]` line** — that is the actual confirmation, not the test suite.
+
+### Still open on save performance (items b and c from Session 31)
+- **(b) DEK caching — recommend leaving it.** It removes the ~70ms KMS wrap per save, but deliberately weakens "fresh DEK per write". Now that the payload is ~7x smaller the network/db share shrinks, so KMS becomes a *larger fraction* of a much smaller total — the absolute win is still only ~70ms, for a real weakening of the at-rest story.
+- **(c) The region gap is real and confirmed: Cloud Run is `europe-west1` (GCP, Belgium), Neon is `eu-central-1` (AWS, Frankfurt)** — different cloud *and* different city, on every save. **Compression was the right first move** (it cut what crosses that link ~7x rather than shortening the link), but if `db=` stays high after phase 2, moving Neon to a GCP/Belgium-adjacent region is the remaining lever. Re-read `db=` from the `[save]` logs before spending anything on this.
 
 ## Session 33 (2026-07-17→18) — debt-ring & payoff polish, a rebuilt Home, and the email secret rotated. COMMITTED & DEPLOYED (`finapp-00187-st2`).
 A long iterative UX session driven by live user feedback. **All on `main`; browser-verified end-to-end each round (zero console errors); 301 tests green.** Deploy chain: `b482270`→`finapp-00183-t7f`, redeploy for email→`00184-m46`, `6c1b060`→`00185-hw7`, `574175b`→`00186-8ll`, `d5487ea`→**`00187-st2`** (ships the two rounds `abadb1c`+`d5487ea` that weren't live yet — prod is now fully current with `main`; both URLs 200 on `app.css?v=32`, 5 `secretKeyRef` intact). `app.css?v=32` (scoped `*.razor.css` changes ride the no-cache `.styles.css`, so not every change bumps `v`).
