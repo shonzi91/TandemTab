@@ -3438,10 +3438,8 @@ else
         await State.InitializeAsync();
         ResetPickers();
 
-        // On phones, open the Expenses tab first so adding an expense is one tap away.
-        try { if (await JS.InvokeAsync<int>("finappViewportWidth") is > 0 and <= 720) ShowExpensesTab(); }
-        catch { /* host without the helper (e.g. MAUI) — stay on Account */ }
-
+        // Phones used to be redirected to the Spending tab so adding an expense was one tap away. Home now opens
+        // with that button on its Spent card, so the redirect only buried the summary it was meant to skip past.
         await LoadBankAsync();            // our own server (a DB read) — cheap enough to gate the first paint on
         await HandleBankReturnAsync();
         await MaybePromptOnEntryAsync();

@@ -815,6 +815,29 @@ input[type=date]::-webkit-calendar-picker-indicator:hover { opacity: 1; backgrou
     .row-note { max-width: 40vw; }
 }
 
+/* Balance hero on phones: three equal columns don't fit.
+   At 375px each .bal-part got ~112px, of which 44px is padding — leaving 68px for figures that need 100–165px.
+   The numbers overflowed their column (Current by ~96px) and, with nothing clipping them, spilled straight across
+   the divider into the next column: the "current/free/saved overlap".
+   So Current — the biggest figure and the one you actually read — takes a full row of its own, and Free/Saved
+   share the row beneath it. Padding shrinks to match the narrower box. */
+@media (max-width: 560px) {
+    .hdr-hero { flex-wrap: wrap; padding: 10px 4px; }
+    .bal-part { padding: 6px 12px; min-width: 0; }
+    .bal-part-main { flex: 1 1 100%; }
+    /* The divider follows the layout: a rule across the top of the second row, and a side border only between
+       Free and Saved, which are the two actually sitting side by side. Both get the same top treatment or they
+       start at different heights and their labels stop lining up. */
+    .bal-part + .bal-part { border-left: none; }
+    .bal-part-main ~ .bal-part { border-top: 1px solid #e3e9ee; padding-top: 10px; margin-top: 8px; }
+    .bal-part-main ~ .bal-part + .bal-part { border-left: 1px solid #e3e9ee; }
+    .bal-part-main strong { font-size: 1.75rem; }
+    .bal-part strong { font-size: 1.15rem; }
+    /* Long figures shrink rather than escape the box — the overlap can't come back. */
+    .bal-part strong, .bal-part .bal-sub { min-width: 0; overflow-wrap: anywhere; }
+}
+html.dark .bal-part-main ~ .bal-part { border-color: #2b3446; }
+
 @media (max-width: 430px) {
     .cards, .cards.cards-2 { grid-template-columns: 1fr; }
     .bal-label { font-size: .62rem; }
@@ -1022,13 +1045,32 @@ html.dark .archived-h { color: #9aa7b4; }
     border: 7px solid transparent; border-right-color: #ffffff;
     filter: drop-shadow(-1.5px 0 1px rgba(0,0,0,.05));
 }
+/* ─────────────── ACTION MENUS ON PHONES ───────────────
+   These menus are absolutely positioned against whatever row or ring opened them — some to the right, some to the
+   left, some below. On a phone that produced two complaints at once: which side a menu flew out to looked
+   arbitrary, and a menu opened near an edge was pushed past it, so it read as "hidden" when it was merely
+   off-screen (the parent can't scroll to reveal an absolutely positioned child).
+   A menu is a menu regardless of what opened it, so on phones they all become the same bottom sheet: pinned to
+   the bottom edge, full width, thumb-reachable, and impossible to position off-screen. The arrow that pointed at
+   the anchor goes with it — a sheet doesn't point at anything. Desktop keeps the anchored bubbles. */
 @media (max-width: 560px) {
-    .ring-card .row-menu { top: 100%; left: auto; right: 0; margin-left: 0; margin-top: 11px; }
-    .ring-card .row-menu::before {
-        top: -14px; left: auto; right: 16px;
-        border-right-color: transparent; border-bottom-color: #ffffff;
-        filter: drop-shadow(0 -1.5px 1px rgba(0,0,0,.05));
+    .row-menu,
+    .ring-card .row-menu,
+    .fund-row .row-menu {
+        /* left+right pin both edges, so no width is needed on top of them. */
+        position: fixed; top: auto; bottom: 0; left: 0; right: 0;
+        margin: 0; min-width: 0; box-sizing: border-box;
+        border-radius: 16px 16px 0 0; border-bottom: none;
+        padding: 8px 8px calc(8px + env(safe-area-inset-bottom, 0px));
+        max-height: 70vh; overflow-y: auto;
+        box-shadow: 0 -10px 34px rgba(0,0,0,.22);
     }
+    .row-menu::before,
+    .ring-card .row-menu::before,
+    .fund-row .row-menu::before { display: none; }
+    /* Bigger touch targets now that there's room for them. */
+    .row-menu button { padding: 13px 14px; font-size: .92rem; }
+    .row-menu-backdrop { background: rgba(17,20,28,.35); }
 }
 /* Payoff modal: adjustable "extra on top" input, reset icon, and the advisory notice. */
 .proj-extra { display: flex; align-items: center; gap: 8px; font-size: .82rem; color: #6b7280; }

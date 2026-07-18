@@ -169,6 +169,25 @@ html.dark .pm > button.danger { background: #2a1717; border-color: #532a2a; colo
     border-color: rgba(255, 255, 255, .6);
 }
 
+/* ─────────────── PHONES ───────────────
+   The bar is one non-wrapping flex row whose content (brand + flag + avatar + greeting + Sign out) needs ~440px,
+   so on a 375px screen it pushed the whole page into a horizontal scroll — the header dragging the body sideways
+   with it. Nothing here is dropped: the greeting is the one item that is both the widest AND grows with the
+   username, and the avatar beside it opens the same profile modal, so only its label goes. */
+@media (max-width: 560px) {
+    .app-bar { padding: 0 12px; gap: 8px; }
+    .brand { font-size: 1.1rem; min-width: 0; }
+    .brand-logo { width: 32px; height: 32px; }
+    .appbar-user { gap: 8px; min-width: 0; }
+    .appbar-user .user { display: none; }
+    .appbar-user .link { padding: 6px 10px; }
+}
+
+/* Very narrow (older/smaller phones): the brand wordmark goes too, the logo alone still identifies the app. */
+@media (max-width: 380px) {
+    .brand-word { display: none; }
+}
+
 .app-body {
     flex: 1 1 auto;
     overflow-y: auto;
