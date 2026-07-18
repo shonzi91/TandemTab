@@ -2,6 +2,7 @@ using FinApp.Contracts;
 using FinApp.Domain.Accounts;
 using FinApp.Domain.Budgeting;
 using FinApp.Domain.Common;
+using FinApp.Domain.Forecasting;
 using FinApp.Domain.Funds;
 using FinApp.Domain.Periods;
 using FinApp.Domain.Recurring;
@@ -1093,6 +1094,24 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
         if (b is null || !b.HasCosts) return null;
         return b.MonthlySetAside(Period.From, SavingBucketSaved(bucketId).Amount);
     }
+
+    /// <summary>Every live bucket's monthly set-aside added up — what the sinking funds jointly claim each month.
+    /// Archived buckets are excluded; they aren't being funded.</summary>
+    public decimal TotalMonthlySetAside =>
+        SavingBuckets.Where(b => !b.Bucket.IsArchived)
+                     .Sum(b => BucketMonthlySetAside(b.Bucket.Id) ?? 0m);
+
+    /// <summary>
+    /// The cash runway: where the balance lands over the next <paramref name="months"/> months given recurring income,
+    /// recurring bills and the sinking-fund set-aside.
+    /// <para>
+    /// <paramref name="openingBalance"/> is passed in rather than read from <see cref="ClosingBalance"/> so the caller
+    /// can hand over the <b>same figure it is displaying</b> (which may carry a live bank adjustment). A runway whose
+    /// first month disagrees with the balance shown right above it is worse than no runway.
+    /// </para>
+    /// </summary>
+    public CashFlowProjection ProjectCashFlow(Money openingBalance, int months = 6) =>
+        CashFlowForecast.Project(openingBalance.Amount, RecurringItems, TotalMonthlySetAside, Period.From, months);
 
     /// <summary>What this bucket's dated one-offs still need beyond what it holds — the "you're €X short" read, or null
     /// when there's nothing outstanding. Recurring costs are excluded: they're a rate that never completes.</summary>

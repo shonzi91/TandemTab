@@ -352,11 +352,38 @@ else
                 </section>
             }
 
-            @{ var homeTargets = HomeTargets(); }
-            @if (homeTargets.Count > 0)
+            @{
+                var homeTargets = HomeTargets();
+                // The runway is the one forward-looking answer that isn't about a single goal, so it leads this card
+                // — and it shows even when there are no targets yet, because "when do I run out" stands alone.
+                var runway = State.ProjectCashFlow(_balCur);
+                var runwayWorth = State.RecurringItems.Any(r => r.Active) || State.TotalMonthlySetAside > 0m;
+            }
+            @if (homeTargets.Count > 0 || runwayWorth)
             {
                 <section class="panel targets-card">
                     <h2 class="targets-h">🎯 @Loc["You're on track for"]</h2>
+                    @if (runwayWorth)
+                    {
+                        <div class="runway-row @(runway.FirstShortfallMonth is null ? "" : "runway-warn")">
+                            <span class="runway-ico">@(runway.FirstShortfallMonth is null ? "🛟" : "⚠️")</span>
+                            <span class="runway-text">
+                                @if (runway.FirstShortfallMonth is { } sm)
+                                {
+                                    <strong>@string.Format(Loc["Money runs short in {0}"], sm.ToString("MMM yyyy"))</strong>
+                                }
+                                else
+                                {
+                                    <strong>@string.Format(Loc["You stay in the black for {0} months"], runway.Months.Count)</strong>
+                                }
+                                <span class="runway-sub">
+                                    @string.Format(Loc["{0} in, {1} out per month"],
+                                        Fmt(State.Money(runway.Months[0].Income)),
+                                        Fmt(State.Money(runway.Months[0].Bills + runway.Months[0].SetAside)))@(runway.HasUnknownAmounts ? " · " + Loc["some amounts unknown"] : "")
+                                </span>
+                            </span>
+                        </div>
+                    }
                     <div class="targets-list">
                         @foreach (var t in homeTargets)
                         {
