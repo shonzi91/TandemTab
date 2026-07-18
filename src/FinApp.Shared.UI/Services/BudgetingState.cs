@@ -1102,16 +1102,42 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
                      .Sum(b => BucketMonthlySetAside(b.Bucket.Id) ?? 0m);
 
     /// <summary>
-    /// The cash runway: where the balance lands over the next <paramref name="months"/> months given recurring income,
-    /// recurring bills and the sinking-fund set-aside.
+    /// The cash runway: where the balance lands over the next <paramref name="months"/> months. Returns <b>null</b>
+    /// when there's no trustworthy basis to project from — no completed period to average and nothing recurring
+    /// declared — because a projection with no income signal reports certain ruin for anyone who simply hasn't
+    /// filled that in yet.
+    /// <para>
+    /// <b>Demonstrated history wins over declarations.</b> Averaging completed periods reflects what actually happens,
+    /// including the income and spending a user never declared as recurring. Recurring items are the fallback for a
+    /// young account with no history to average — the same "demonstrated beats planned" choice the savings pace makes.
+    /// </para>
     /// <para>
     /// <paramref name="openingBalance"/> is passed in rather than read from <see cref="ClosingBalance"/> so the caller
     /// can hand over the <b>same figure it is displaying</b> (which may carry a live bank adjustment). A runway whose
     /// first month disagrees with the balance shown right above it is worse than no runway.
     /// </para>
     /// </summary>
-    public CashFlowProjection ProjectCashFlow(Money openingBalance, int months = 6) =>
-        CashFlowForecast.Project(openingBalance.Amount, RecurringItems, TotalMonthlySetAside, Period.From, months);
+    public CashFlowProjection? ProjectCashFlow(Money openingBalance, int months = 6)
+    {
+        var committed = TotalMonthlySetAside;
+
+        if (CashFlowForecast.Demonstrated(Account.Periods) is { } seen)
+            return CashFlowForecast.Project(
+                openingBalance.Amount, seen.Income, seen.Spending, Period.From, months,
+                CashFlowBasis.Demonstrated, committed);
+
+        var active = RecurringItems.Where(r => r.Active).ToList();
+        var counted = active.Where(r => r.HasKnownAmount).ToList();
+        if (counted.Count == 0) return null;   // nothing declared and nothing to average — say nothing
+
+        return CashFlowForecast.Project(
+            openingBalance.Amount,
+            counted.Where(r => r.Kind == RecurringKind.Income).Sum(r => r.ExpectedAmount),
+            counted.Where(r => r.Kind == RecurringKind.Expense).Sum(r => r.ExpectedAmount),
+            Period.From, months,
+            CashFlowBasis.Recurring, committed,
+            hasUnknownAmounts: active.Any(r => !r.HasKnownAmount));
+    }
 
     /// <summary>What this bucket's dated one-offs still need beyond what it holds — the "you're €X short" read, or null
     /// when there's nothing outstanding. Recurring costs are excluded: they're a rate that never completes.</summary>
