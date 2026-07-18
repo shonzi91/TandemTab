@@ -65,8 +65,11 @@ public sealed class SnapshotService(FinAppDbContext db, ISnapshotCipher cipher, 
     public async Task<int> EncryptLegacyRowsAsync(CancellationToken ct = default)
     {
         if (!cipher.Encrypts) return 0;
+        // Both envelope versions count as already-encrypted. Missing one here would re-Protect a ciphertext string
+        // — double-wrapping it into something no reader can open.
         var rows = await db.AccountSnapshots
-            .Where(r => !r.Payload.StartsWith(EnvelopeSnapshotCipher.Prefix))
+            .Where(r => !r.Payload.StartsWith(EnvelopeSnapshotCipher.Prefix)
+                     && !r.Payload.StartsWith(EnvelopeSnapshotCipher.PrefixGzip))
             .ToListAsync(ct);
         foreach (var row in rows)
             row.Payload = await cipher.ProtectAsync(row.Payload, ct);

@@ -1,4 +1,3 @@
-using System.Security.Cryptography;
 using FinApp.Server.Accounts;
 using Xunit;
 
@@ -6,33 +5,6 @@ namespace FinApp.Server.Tests;
 
 public class SnapshotCipherTests
 {
-    /// <summary>Envelope cipher that "wraps" the data key with a fixed local AES key instead of KMS — lets us test
-    /// the format + round-trip deterministically without cloud credentials.</summary>
-    private sealed class LocalEnvelopeCipher : EnvelopeSnapshotCipher
-    {
-        private static readonly byte[] Kek = SHA256.HashData("test-kek"u8.ToArray());
-
-        protected override Task<byte[]> WrapAsync(byte[] dek, CancellationToken ct)
-        {
-            var nonce = new byte[12];
-            var ctBytes = new byte[dek.Length];
-            var tag = new byte[16];
-            using var aes = new AesGcm(Kek, 16);
-            aes.Encrypt(nonce, dek, ctBytes, tag);
-            return Task.FromResult(tag.Concat(ctBytes).ToArray());
-        }
-
-        protected override Task<byte[]> UnwrapAsync(byte[] wrapped, CancellationToken ct)
-        {
-            var tag = wrapped[..16];
-            var ctBytes = wrapped[16..];
-            var dek = new byte[ctBytes.Length];
-            using var aes = new AesGcm(Kek, 16);
-            aes.Decrypt(new byte[12], ctBytes, tag, dek);
-            return Task.FromResult(dek);
-        }
-    }
-
     [Fact]
     public async Task Round_trips_a_payload_and_hides_the_plaintext()
     {
@@ -42,8 +14,39 @@ public class SnapshotCipherTests
         var stored = await cipher.ProtectAsync(payload);
 
         Assert.True(cipher.IsEncrypted(stored));
-        Assert.StartsWith("ENC1:", stored);
+        Assert.StartsWith("ENC2:", stored);
         Assert.DoesNotContain("groceries", stored);            // plaintext must not leak into the stored form
+        Assert.Equal(payload, await cipher.UnprotectAsync(stored));
+    }
+
+    [Fact]
+    public async Task Reads_a_v1_envelope_written_before_compression()
+    {
+        var cipher = new LocalEnvelopeCipher();
+        const string payload = """{"Id":"abc","secret":"€1,234.56 groceries"}""";
+
+        // Rows written before ENC2 hold raw UTF-8 inside the ciphertext. They are never rewritten by a migration —
+        // they upgrade on their next save — so reading them has to keep working indefinitely.
+        var v1 = LocalEnvelopeCipher.ProtectUncompressed(payload);
+
+        Assert.StartsWith("ENC1:", v1);
+        Assert.True(cipher.IsEncrypted(v1));
+        Assert.Equal(payload, await cipher.UnprotectAsync(v1));
+    }
+
+    [Fact]
+    public async Task Compresses_the_payload_so_the_stored_row_is_far_smaller()
+    {
+        var cipher = new LocalEnvelopeCipher();
+        // Shaped like a real snapshot: many similar records, which is why gzip pays here at all.
+        var payload = "[" + string.Join(",", Enumerable.Range(0, 500).Select(i =>
+            $$"""{"Id":"{{Guid.Empty}}","Kind":"Expense","Amount":{{i}}.50,"Note":"weekly groceries"}""")) + "]";
+
+        var stored = await cipher.ProtectAsync(payload);
+
+        // Base64 alone inflates by ~33%, so an uncompressed envelope would be LARGER than the payload.
+        Assert.True(stored.Length < payload.Length / 5,
+            $"expected heavy compression, got {stored.Length}B stored for {payload.Length}B payload");
         Assert.Equal(payload, await cipher.UnprotectAsync(stored));
     }
 

@@ -13,7 +13,7 @@ namespace FinApp.Server.Tests;
 /// Hosts the real server against an isolated, temporary SQLite file (migrated on startup), so each test
 /// class gets a clean database. Provides helpers to register users and obtain authenticated clients.
 /// </summary>
-public sealed class FinAppServerFactory : WebApplicationFactory<Program>
+public class FinAppServerFactory : WebApplicationFactory<Program>
 {
     private readonly string _dbPath = Path.Combine(Path.GetTempPath(), $"finapp-test-{Guid.NewGuid():N}.db");
 
