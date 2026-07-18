@@ -1,97 +1,125 @@
 # TandemTab — mobile / native roadmap
 
-**Status:** planning. **Decision (2026-07-12):** go **full native** (native UI, not the Blazor
-Hybrid WebView). Mobile work is **deferred** until a round of verification + pre-mobile changes on
-the current app lands first (see Phase 0).
+**Status:** planning.
+**Decision (2026-07-12):** go **full native** — native UI, not the Blazor Hybrid WebView.
+**Decision (2026-07-19): no MAUI.** The platforms get their own native stacks: **Android first
+(Kotlin / Jetpack Compose), then iOS (Swift / SwiftUI).** MAUI — including the MAUI-native-XAML path
+this doc previously recommended — is off the table, and the existing `FinApp.App.Maui` Hybrid
+scaffold is to be **retired**, not repurposed.
+
+Mobile work stays **deferred** until Phase 0 lands (see below).
 
 This doc is the single source of truth for the mobile plan. Update it as decisions firm up.
 
 ---
 
 ## What exists today
-- **`FinApp.App.Maui`** — a MAUI **Blazor Hybrid** scaffold (native shell, but UI renders `Shared.UI`
-  Razor in a WebView). Currently pinned to `net9.0-windows` only; Android/iOS/MacCatalyst commented
-  out. Already branded to `com.tandemtab.app` / "TandemTab" and pointed at prod in Release (2026-07-12).
-- **`FinApp.Shared.UI`** — the whole Blazor UI (`Dashboard.razor` ~2k lines) + client services
+- **`FinApp.App.Maui`** — a MAUI **Blazor Hybrid** scaffold (native shell, UI renders `Shared.UI` Razor
+  in a WebView). Pinned to `net9.0-windows`; Android/iOS/MacCatalyst commented out. **Slated for
+  removal** under the no-MAUI decision.
+- **`FinApp.Shared.UI`** — the whole Blazor UI (`Dashboard.razor` ~6k lines) + client services
   (`BudgetingState`, `AuthState`, `SyncClient`, `FinAppApiClient`, `Localizer`, `InsightsService`,
-  `AchievementsService`).
-- **`FinApp.Server`** — sync/auth API on Cloud Run. Stores an **opaque, client-owned snapshot blob**;
-  it never deserializes account contents (privacy design).
+  `AchievementsService`). This stays — it is the **web** app.
+- **`FinApp.Server`** — sync/auth API on Cloud Run, plus snapshot storage (gzipped, KMS-encrypted at
+  rest). It **does** deserialize account contents today (exports), and holds real bank transactions.
 
 ## The decisive architecture fact
-**The client runs the C# domain model directly.** `Shared.UI` references `FinApp.Domain` +
-`FinApp.Contracts`; `BudgetingState` deserializes the snapshot **on-device** via
-`AccountSnapshotSerializer` and computes the money model, forecasting, insights, achievements,
-reallocation and recurring logic **client-side**. The server only ever sees the encrypted blob.
+**Today the client runs the C# domain model directly.** `Shared.UI` references `FinApp.Domain` +
+`FinApp.Contracts`; `BudgetingState` deserializes the snapshot **on-device** and computes the money
+model, forecasting, insights, achievements, reallocation and recurring logic **client-side**. The
+server stores and syncs, and reads the blob only for exports.
 
-This means "full native" is really a question of **how much of that C# logic survives the port**:
+**Dropping MAUI means that C# cannot come with us.** Kotlin and Swift can't run `FinApp.Domain`. So
+native-per-platform forces one of two answers, and this is now *the* load-bearing decision on this page:
 
-| Path | UI | Client domain/logic (`FinApp.Domain`, `BudgetingState`, serializer, insights…) | Verdict |
+| Option | What it means | Cost | Verdict |
 |---|---|---|---|
-| **MAUI native XAML** | rewrite Razor → XAML | **kept as-is (still C#)** | **Recommended** |
-| **.NET native (iOS/Android bindings, no MAUI)** | rewrite native | kept as-is (C#) | Viable, more plumbing |
-| **Flutter** | rewrite in Dart | **reimplement all of it in Dart, or move it server-side** | Large; breaks the privacy design |
-| **React Native** | rewrite in TS | **reimplement all of it in TS, or move it server-side** | Large; breaks the privacy design |
+| **A — Server-side domain (thin clients)** | Move the money model behind a richer REST API. Android and iOS become UI over endpoints that return computed figures. | One server refactor, then each platform is *only* UI. | **Recommended** |
+| **B — Reimplement per platform** | Port the money model, serializer, forecasting, insights, recurring and reallocation into Kotlin *and* Swift. | Two full domain ports, and **three** implementations (C#, Kotlin, Swift) that must agree on money maths forever. | **Rejected** |
 
-Flutter/RN don't just rewrite the screens — they force you to either **reimplement the entire
-client-side domain** in Dart/TS (the money model, snapshot (de)serialization, forecasting, recurring,
-reallocation, insights) **or relocate it to the server**, which would undo the deliberate
-client-owned-opaque-snapshot privacy architecture. That's months of work and a security-model change,
-independent of any UI benefit.
+**B is not viable for a finance app.** Three independent implementations of the same money maths is
+three places for rounding, carryover and projection to disagree — and the disagreement shows up as
+wrong numbers in someone's budget, silently. The 178 domain tests would have to be written three times
+to catch it, and any future rule change lands three times.
 
-**Recommendation: full native via MAUI native XAML.** It rewrites only the presentation layer while
-keeping `FinApp.Domain`, the serializer, and the client services intact — the app's actual brain. If a
-non-.NET stack is chosen later, the prerequisite is a server-side-domain refactor, tracked separately.
+**Why A is now open — this is the change from the previous version of this doc.**
+This page used to reject a server-side domain as "breaking the privacy design", on the premise that
+the server stored an **opaque blob it never deserialized**. **That premise was retired in Session 31**
+(`9b923fb`): `AccountExportService` already fully deserializes the snapshot to render exports, and bank
+sync already stores real transactions (date/amount/description) under a server-held key. The ratified
+trust model is **"the server may read your data"**; confidentiality comes from encryption at rest plus
+access control, not from server blindness. So moving the domain server-side **forfeits nothing that is
+still true** — it just relocates code the server is already entitled to run.
 
-## iOS needs a Mac — in every framework
-Building and code-signing an iOS app uses Apple's Xcode toolchain, which only runs on macOS. This is
-true for MAUI, Flutter, React Native, and native Swift alike — it is Apple's requirement, not the
-framework's. You don't have to *own* one:
-- **React Native + Expo (EAS Build)** runs the macOS build in Expo's cloud — the smoothest "no Mac" path.
-- **MAUI / Flutter** → rent cloud macOS (Codemagic, Bitrise, GitHub `macos` runners).
-- **Android needs no Mac** in any framework.
+### What Option A buys beyond mobile
+- **The web client thins out too** — one domain, one place to fix a money bug, one set of tests.
+- **It dissolves the whole-snapshot write.** `AccountSnapshotRow`'s own note says every mutation
+  rewrites the entire account, so save cost scales with total history rather than edit size, and that
+  "is the last thing holding the shape of a design we no longer follow". A server-side domain can
+  persist real rows and update what changed. That is the *structural* fix behind Session 31/34's save
+  work, which so far has only made the blob smaller (~6.7×), not smaller-per-edit.
+- **Push gets easier** — the server already knows what's due, so it can send without a client awake.
 
-So the Mac requirement is *not* a reason to prefer Flutter/RN over MAUI — only Expo's managed cloud
-softens it, and that benefit is dwarfed by the client-domain rewrite cost above.
+### What Option A costs — read before committing
+- **It is the largest single change in the project's history.** The money model, forecasting, insights,
+  achievements, recurring and reallocation all move behind an API that does not exist yet.
+- **The API surface grows a lot.** `FinApp.Contracts` today syncs a blob; it would need endpoints for
+  every computed read the UI draws.
+- **Offline stops being free.** The client currently holds the whole account and computes locally. A
+  thin client needs a caching/offline story or it degrades on a train.
+- **It should be done incrementally**, behind the existing web app, *before* any native code is
+  written — the web UI is the proof the API is complete.
+
+---
+
+## iOS needs a Mac
+Building and code-signing iOS uses Apple's Xcode toolchain, which only runs on macOS — Apple's
+requirement, true of Swift, Flutter, RN and MAUI alike. You don't have to own one: rent cloud macOS
+(Codemagic, Bitrise, GitHub `macos` runners). **Android needs no Mac**, which is why it goes first.
 
 ---
 
 ## Phase 0 — verify + pre-mobile changes on the current app  ← we are here
-Harden and confirm the existing web/Hybrid app **before** committing to the native port, so the port
-starts from a known-good baseline. Concrete items **TBD — to be filled in from the user's list.**
-Candidates worth folding in here:
+Harden and confirm the existing web app **before** committing to the port, so it starts from a
+known-good baseline. Concrete items **TBD — to be filled in from the user's list.**
+Candidates worth folding in:
 - Full end-to-end verification pass (register → account → budgets → expense → savings → recurring).
-- Any UX/domain changes the user wants settled before they're frozen into a native UI rewrite.
-- Confirm the client/server contract surface (`FinApp.Contracts`) is stable — it's the one seam the
-  native UI will bind to.
+- Any UX/domain changes to settle before they're frozen into a native rewrite.
+- **Decide Option A vs B above.** Everything downstream depends on it.
 
-## Phase 1 — native shell proof (Android first)
-- Choose the concrete stack (default: **MAUI native XAML** per above).
-- Install `maui` workload + Android SDK/JDK on the dev box (not present today).
-- Stand up one real native screen (e.g. the auth panel) bound to the existing `AuthState`/`BudgetingState`.
-- Run on an Android emulator, log in against prod. Go/no-go on the port.
+## Phase 1 — server-side domain (only if Option A) 
+- Design the computed-read API surface; grow `FinApp.Contracts` endpoint by endpoint.
+- Move domain computation server-side incrementally, **keeping the Blazor web app working throughout** —
+  it is the acceptance test for API completeness.
+- Settle the offline/caching story.
+- Exit criteria: the web app runs against the new API with no client-side domain computation left.
 
-## Phase 2 — port the UI
-- Rebuild the `Dashboard` surfaces as native views over the **unchanged** client services: Home,
-  Budgets, Funds, Debt/Savings, Insights, Recurring, bank review, modals.
-- Reuse `Localizer` (EN/BG) and the existing state/change-notification model.
+## Phase 2 — native Android (Kotlin / Jetpack Compose)
+- Install Android SDK/JDK on the dev box (not present today).
+- Stand up auth against prod, then port the surfaces: Home, Spending, Goals, Wallets, Insights,
+  Recurring, bank review, modals.
+- Re-implement the EN/BG strings against Android resources (`Localizer` does not come along).
+- Go/no-go on the port after the first real screen.
 
-## Phase 3 — native-only wins
-- **Push notifications** (FCM/APNs) — the item deferred from backlog #10; recurring bills-due + savings nudges.
+## Phase 3 — native iOS (Swift / SwiftUI)
+- Same surfaces against the same API. Needs Mac/cloud-Mac access.
+
+## Phase 4 — native-only wins
+- **Push notifications** (FCM/APNs) — deferred backlog item #10; recurring bills-due + savings nudges.
 - **Biometric unlock** (Face ID / fingerprint) gating a finance app.
-- Deep links for the OAuth code exchange (`finappTakeAuthCode`) and Enable Banking `/bank/callback`.
+- Deep links for OAuth code exchange and the Enable Banking `/bank/callback`.
 
-## Phase 4 — distribution
+## Phase 5 — distribution
 - Android: signed AAB → Play Console (internal testing first).
 - iOS: Apple Developer account ($99/yr), TestFlight → App Store. **Needs macOS** (cloud is fine).
-- Mobile CI on workload-equipped runners (GitHub `macos-latest` for iOS; Codemagic/Bitrise alt).
+- Mobile CI: Gradle for Android; `macos-latest` / Codemagic / Bitrise for iOS.
 
 ---
 
 ## Open decisions
-- **Concrete native stack** — MAUI native XAML (recommended) vs .NET native vs Flutter/RN (each
-  Flutter/RN requires the server-side-domain refactor first).
-- **Fate of the Hybrid scaffold** — repurpose the same `FinApp.App.Maui` project (MAUI supports native
-  XAML + Blazor in one project) or retire it.
+- **⚠️ Option A vs B (server-side domain vs per-platform reimplementation)** — the load-bearing one.
+  Recommendation: **A**. Nothing native should start before this is settled.
+- **Retiring `FinApp.App.Maui`** — agreed in principle (no MAUI); needs doing, along with the `maui`
+  workload note in TRANSFER.md and any solution-filter references.
 - **Mac access** — user expects access "soon"; iOS is blocked until then, Android is not.
 - **Phase 0 scope** — the specific verify/change list the user wants done first.

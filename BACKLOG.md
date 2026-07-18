@@ -119,5 +119,7 @@ recurring costs annualise, a dated one-off spreads across the months until due).
 short-lived **set-aside schedule + `Group`/🧷 Commitments** design (too complex, didn't fit the car-lease
 example — Session 25), which had itself replaced a reverted "PlannedExpense" kind (kind = wrong axis).
 Remaining un-backlogged: **multiple synced funds**, **predictive budgeting**, **bind-bucket-to-fund**,
-push notifications (now a mobile native win). **Mobile is going full native — see
-[docs/MOBILE.md](docs/MOBILE.md)** (deferred behind a verify + pre-mobile-changes pass).
+push notifications (now a mobile native win). **Mobile is going full native, per platform — native
+Android (Kotlin) first, then native iOS (Swift). No MAUI (decided 2026-07-19).** See
+[docs/MOBILE.md](docs/MOBILE.md); deferred behind a verify + pre-mobile-changes pass, and gated on
+the server-side-domain decision (dropping MAUI means the C# client domain can't come along).

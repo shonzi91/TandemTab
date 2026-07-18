@@ -92,7 +92,8 @@ edits persist immediately and survive restarts.
 4. SignalR sync server + E2E encryption + offline catch-up
 5. Notifications (local reminders + push)
 6. Blazor WebAssembly / PWA client
-7. Phone targets (Android/iOS) on the MAUI host
+7. Phone targets — **native Android (Kotlin) first, then native iOS (Swift); no MAUI**. See
+   [docs/MOBILE.md](docs/MOBILE.md); gated on the server-side-domain decision recorded there.
 8. **Require accepting the Terms + Privacy Policy at registration** (record consent + version/timestamp
    server-side; block sign-up until the box is ticked). Pages live at `/terms.html` + `/privacy.html`
    (EN + `*.bg.html`); a link already sits in the sign-in and app footers.
