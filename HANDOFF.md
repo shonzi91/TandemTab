@@ -19,7 +19,14 @@ A build predating `ENC2:` doesn't know the prefix, so it takes such a row for **
    `gcloud run services update finapp --region europe-west1 --update-env-vars Snapshots__CompressWrites=true --quiet`
    ⚠️ **`--update-env-vars` merges; `--set-env-vars` would REPLACE the whole env set** — same trap that broke `00178-gwv` with secrets (Session 31). Unlike a bare `services update`, an env change *does* roll a new revision.
    Post-deploy: both URLs 200, 5 `secretKeyRef`, `Kms__KeyName` set, `Snapshots__CompressWrites = true`, zero WARNING+.
-   **⚠️ STILL UNCONFIRMED AT HANDOFF TIME: no `[save]` line had been logged on `00189-j4v` yet**, so the compression has not actually been observed working in production. **First thing to do: trigger a save and compare `payload=` vs `stored=`** (≈1.33× = flag didn't take; a fraction = working). Also read `db=` against the 133–282ms baseline.
+   **CONFIRMED IN PRODUCTION** on real saves (`v=462`–`465`):
+   ```
+   payload=57854B stored=11449B protect=60.2ms db=38.8ms v=465
+   payload=58306B stored=11493B protect=77.8ms db=43.7ms v=464
+   payload=58758B stored=11537B protect=75.2ms db=47.6ms v=463
+   ```
+   `stored` is **0.20× `payload`** — that same payload stored uncompressed would be ~77.2KB, so the row is **6.7× smaller**, against the 7.1× the bench predicted. `protect=` is unchanged (60–86ms): that's the KMS wrap, and the added gzip disappears into its variance.
+   **⚠️ Don't read the `db=` drop as a pure compression win.** It is 39–48ms against Session 31's 133–282ms, but that baseline was a **261KB** payload and this account now sits at **58KB** — the row shrank ~30× from *two* causes (compression 6.7×, a smaller account ~4.5×). The compression ratio is clean and unconfounded; the latency comparison is not. One 203.7ms `db=` outlier on `v=462` (likely a cold connection) — worth a glance if it recurs.
 - **The flag is also the undo:** turning it off returns writes to `ENC1:` and leaves existing `ENC2:` rows readable.
 - **Confirm which format is live from the `[save]` log:** `stored` ≈ 1.33 × `payload` = phase 1 (uncompressed); a fraction of `payload` = compression on.
 
@@ -29,7 +36,7 @@ The encrypted path had **no end-to-end coverage at all**: every other server tes
 
 ### Still open on save performance (items b and c from Session 31)
 - **(b) DEK caching — recommend leaving it.** It removes the ~70ms KMS wrap per save, but deliberately weakens "fresh DEK per write". Now that the payload is ~7x smaller the network/db share shrinks, so KMS becomes a *larger fraction* of a much smaller total — the absolute win is still only ~70ms, for a real weakening of the at-rest story.
-- **(c) The region gap is real and confirmed: Cloud Run is `europe-west1` (GCP, Belgium), Neon is `eu-central-1` (AWS, Frankfurt)** — different cloud *and* different city, on every save. **Compression was the right first move** (it cut what crosses that link ~7x rather than shortening the link), but if `db=` stays high after phase 2, moving Neon to a GCP/Belgium-adjacent region is the remaining lever. Re-read `db=` from the `[save]` logs before spending anything on this.
+- **(c) The region gap is real and confirmed: Cloud Run is `europe-west1` (GCP, Belgium), Neon is `eu-central-1` (AWS, Frankfurt)** — different cloud *and* different city, on every save. **Compression was the right first move** (it cut what crosses that link ~7x rather than shortening the link). **Post-phase-2 `db=` sits at 39–48ms, so this is no longer the obvious lever** — but see the caveat above: the account also shrank, so that number isn't a like-for-like improvement. **Re-read `db=` once an account is back near 250KB before spending anything on a region move.**
 
 ## Session 33 (2026-07-17→18) — debt-ring & payoff polish, a rebuilt Home, and the email secret rotated. COMMITTED & DEPLOYED (`finapp-00187-st2`).
 A long iterative UX session driven by live user feedback. **All on `main`; browser-verified end-to-end each round (zero console errors); 301 tests green.** Deploy chain: `b482270`→`finapp-00183-t7f`, redeploy for email→`00184-m46`, `6c1b060`→`00185-hw7`, `574175b`→`00186-8ll`, `d5487ea`→**`00187-st2`** (ships the two rounds `abadb1c`+`d5487ea` that weren't live yet — prod is now fully current with `main`; both URLs 200 on `app.css?v=32`, 5 `secretKeyRef` intact). `app.css?v=32` (scoped `*.razor.css` changes ride the no-cache `.styles.css`, so not every change bumps `v`).
