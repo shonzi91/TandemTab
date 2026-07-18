@@ -45,21 +45,35 @@ public sealed class PassthroughSnapshotCipher : ISnapshotCipher
 /// of magnitude, which is what the database write actually costs.
 /// </para>
 /// <para>
-/// Two envelope versions exist and both are readable: <c>ENC1:</c> (raw UTF-8 inside the ciphertext) is what rows
-/// written before compression hold, <c>ENC2:</c> (gzip inside the ciphertext) is what every write produces now. A
-/// row upgrades itself the next time it is saved; nothing needs migrating.
+/// Two envelope versions exist and <b>both are always readable</b>: <c>ENC1:</c> (raw UTF-8 inside the ciphertext),
+/// <c>ENC2:</c> (gzip inside the ciphertext). A row upgrades itself the next time it is saved; nothing needs
+/// migrating.
+/// </para>
+/// <para>
+/// <b>Which version is written is a deployment choice</b> (<see cref="CompressWrites"/>, config
+/// <c>Snapshots:CompressWrites</c>), because it is the one direction that isn't backwards-compatible: a server
+/// build that predates <c>ENC2:</c> doesn't recognise the prefix, so it treats such a row as legacy plaintext and
+/// hands the client base64 garbage instead of failing. Rolling compression out therefore goes in two phases —
+/// deploy a build that can *read* <c>ENC2:</c> while still writing <c>ENC1:</c>, then flip the flag once that build
+/// is the one you'd roll back to. The flag is also the undo: turning it off returns writes to <c>ENC1:</c>, and
+/// rows already written as <c>ENC2:</c> stay readable.
 /// </para>
 /// </summary>
 public abstract class EnvelopeSnapshotCipher : ISnapshotCipher
 {
-    /// <summary>Envelope v1 — ciphertext holds raw UTF-8. Read-only now; kept because existing rows use it.</summary>
+    /// <summary>Envelope v1 — ciphertext holds raw UTF-8.</summary>
     public const string Prefix = "ENC1:";
 
-    /// <summary>Envelope v2 — ciphertext holds gzipped UTF-8. What writes produce.</summary>
+    /// <summary>Envelope v2 — ciphertext holds gzipped UTF-8.</summary>
     public const string PrefixGzip = "ENC2:";
 
     private const int NonceLen = 12;   // AES-GCM standard nonce
     private const int TagLen = 16;     // AES-GCM tag
+
+    /// <summary>Whether writes produce <c>ENC2:</c> (gzipped). Reads handle both regardless.</summary>
+    public bool CompressWrites { get; }
+
+    protected EnvelopeSnapshotCipher(bool compressWrites) => CompressWrites = compressWrites;
 
     /// <summary>True when a stored value carries any envelope prefix (either version).</summary>
     public static bool HasEnvelopePrefix(string stored) =>
@@ -80,7 +94,8 @@ public abstract class EnvelopeSnapshotCipher : ISnapshotCipher
         try
         {
             var nonce = RandomNumberGenerator.GetBytes(NonceLen);
-            var pt = Gzip(Encoding.UTF8.GetBytes(plaintext));
+            var raw = Encoding.UTF8.GetBytes(plaintext);
+            var pt = CompressWrites ? Gzip(raw) : raw;
             var ctBytes = new byte[pt.Length];
             var tag = new byte[TagLen];
             using (var aes = new AesGcm(dek, TagLen))
@@ -98,7 +113,7 @@ public abstract class EnvelopeSnapshotCipher : ISnapshotCipher
                 w.Write(ctBytes.Length);
                 w.Write(ctBytes);
             }
-            return PrefixGzip + Convert.ToBase64String(ms.ToArray());
+            return (CompressWrites ? PrefixGzip : Prefix) + Convert.ToBase64String(ms.ToArray());
         }
         finally { CryptographicOperations.ZeroMemory(dek); }
     }
@@ -158,7 +173,8 @@ public sealed class KmsSnapshotCipher : EnvelopeSnapshotCipher
     private readonly KeyManagementServiceClient _kms;
     private readonly string _keyName;
 
-    public KmsSnapshotCipher(string keyName, KeyManagementServiceClient? kms = null)
+    public KmsSnapshotCipher(string keyName, bool compressWrites = false, KeyManagementServiceClient? kms = null)
+        : base(compressWrites)
     {
         _keyName = keyName;
         _kms = kms ?? KeyManagementServiceClient.Create();

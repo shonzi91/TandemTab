@@ -13,6 +13,9 @@ public sealed class LocalEnvelopeCipher : EnvelopeSnapshotCipher
 {
     private static readonly byte[] Kek = SHA256.HashData("test-kek"u8.ToArray());
 
+    /// <summary>Defaults to compressing, i.e. the end state of the rollout — tests that care about phase 1 pass false.</summary>
+    public LocalEnvelopeCipher(bool compressWrites = true) : base(compressWrites) { }
+
     protected override Task<byte[]> WrapAsync(byte[] dek, CancellationToken ct) => Task.FromResult(WrapWithKek(dek));
 
     protected override Task<byte[]> UnwrapAsync(byte[] wrapped, CancellationToken ct)

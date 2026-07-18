@@ -23,7 +23,9 @@ public sealed class EncryptingServerFactory : FinAppServerFactory
         builder.ConfigureServices(services =>
         {
             services.RemoveAll<ISnapshotCipher>();
-            services.AddSingleton<ISnapshotCipher, LocalEnvelopeCipher>();
+            // Explicit instance, not a type registration: the compress flag is a ctor arg, and these tests cover
+            // the end state of the rollout (writing ENC2). Phase 1's write behaviour is unit-tested.
+            services.AddSingleton<ISnapshotCipher>(new LocalEnvelopeCipher(compressWrites: true));
         });
     }
 }

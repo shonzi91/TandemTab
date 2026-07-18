@@ -71,6 +71,25 @@ public class SnapshotCipherTests
     }
 
     [Fact]
+    public async Task With_compression_off_it_writes_v1_but_still_reads_v2()
+    {
+        // Phase 1 of the rollout: this build can read the new format, but doesn't produce it yet, so rolling back
+        // to the previous build stays safe. The flag is also the undo if phase 2 goes wrong.
+        var writer = new LocalEnvelopeCipher(compressWrites: false);
+        const string payload = """{"Id":"abc","secret":"€1,234.56 groceries"}""";
+
+        var stored = await writer.ProtectAsync(payload);
+        Assert.StartsWith("ENC1:", stored);
+        Assert.DoesNotContain("groceries", stored);
+        Assert.Equal(payload, await writer.UnprotectAsync(stored));
+
+        // Reading is unconditional — a row written while the flag was on must survive turning it back off.
+        var v2 = await new LocalEnvelopeCipher(compressWrites: true).ProtectAsync(payload);
+        Assert.StartsWith("ENC2:", v2);
+        Assert.Equal(payload, await writer.UnprotectAsync(v2));
+    }
+
+    [Fact]
     public async Task Passthrough_cipher_stores_plaintext_and_does_not_claim_to_encrypt()
     {
         var cipher = new PassthroughSnapshotCipher();

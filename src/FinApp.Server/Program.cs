@@ -90,8 +90,12 @@ builder.Services.AddScoped<AccountExportService>();
 // Snapshot at-rest encryption: envelope-encrypt via Cloud KMS when a key is configured, else store plaintext
 // (local dev / tests). Set Kms__KeyName=projects/…/locations/…/keyRings/…/cryptoKeys/… on Cloud Run to enable.
 var kmsKeyName = builder.Configuration["Kms:KeyName"];
+// Snapshots:CompressWrites gzips the payload inside the envelope (~7x smaller rows). Off by default: a server build
+// that predates the ENC2 prefix mis-reads such rows as plaintext, so this must only be turned on once the build
+// you'd roll back to can already read them. See EnvelopeSnapshotCipher for the two-phase rollout.
+var compressSnapshots = builder.Configuration.GetValue("Snapshots:CompressWrites", false);
 if (!string.IsNullOrWhiteSpace(kmsKeyName))
-    builder.Services.AddSingleton<FinApp.Server.Accounts.ISnapshotCipher>(_ => new FinApp.Server.Accounts.KmsSnapshotCipher(kmsKeyName));
+    builder.Services.AddSingleton<FinApp.Server.Accounts.ISnapshotCipher>(_ => new FinApp.Server.Accounts.KmsSnapshotCipher(kmsKeyName, compressSnapshots));
 else
     builder.Services.AddSingleton<FinApp.Server.Accounts.ISnapshotCipher, FinApp.Server.Accounts.PassthroughSnapshotCipher>();
 builder.Services.AddScoped<InvitationService>();

@@ -76,11 +76,18 @@ gcloud run deploy finapp --source . --region europe-west1   # re-uses the env va
   KMS-held key that never touches the database — so a database compromise alone yields ciphertext. Legacy plaintext
   rows are migrated on startup, idempotently. **Without `Kms__KeyName` the server silently falls back to storing
   plaintext** (intended for local dev/tests), so verify it is set in any real deployment.
-- **Snapshots are gzipped before they are encrypted** (envelope `ENC2:`, since 2026-07-18) — the only order that
-  works, since ciphertext doesn't compress. Snapshot JSON is repetitive and the stored column shrinks ~5–7x, which
-  matters because that row crosses clouds on every save (Cloud Run `europe-west1`/GCP → Neon `eu-central-1`/AWS).
-  Older `ENC1:` rows are still readable and upgrade themselves on their next save; there is nothing to migrate.
-  **Compare `payload=` against `stored=` in the `[save]` log line** to see the ratio a real account is getting.
+- **Snapshot compression (`Snapshots__CompressWrites`, default off).** Gzipping the payload *inside* the envelope
+  (`ENC2:`) is the only order that helps, since ciphertext doesn't compress. Snapshot JSON is repetitive and the
+  stored column shrinks ~5–7x, which matters because that row crosses clouds on every save (Cloud Run
+  `europe-west1`/GCP → Neon `eu-central-1`/AWS). Reads always accept both `ENC1:` and `ENC2:`; rows upgrade on their
+  next save and there is nothing to migrate.
+  **Roll it out in two phases, because this is the one change a rollback can't survive:** a build predating `ENC2:`
+  doesn't know the prefix, so it treats such a row as legacy plaintext and serves the client base64 garbage rather
+  than failing. So (1) deploy the reading build with the flag **off** and let it become the revision you'd roll back
+  to, then (2) set `Snapshots__CompressWrites=true`. Turning the flag back off is a safe undo — writes return to
+  `ENC1:` and any `ENC2:` rows stay readable.
+  **Confirm which format is live by comparing `payload=` against `stored=` in the `[save]` log line**: `stored`
+  ≈ 1.33 × `payload` means uncompressed (phase 1), a fraction of it means compression is on.
 - **E2E encryption is not planned** — it is incompatible with what the app already does (the server deserializes
   snapshots to build exports, and bank sync stores real transactions under a server-held key). The trust model is
   that the server may read account data; confidentiality rests on encryption at rest and access control.
