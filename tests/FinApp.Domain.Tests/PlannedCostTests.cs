@@ -65,6 +65,77 @@ public class PlannedCostTests
     }
 
     [Fact]
+    public void A_part_funded_target_only_asks_for_what_is_still_missing()
+    {
+        // The bug this fixes: €3,000 residual due in 44 months with €1,000 already put away was asking
+        // 3000/44 = €68.18/mo — charging for money that's already in the bucket. It needs 2000/44 = €45.45.
+        var residual = new PlannedCost("Residual", 3_000m, CostCadence.OneOff, new DateOnly(2029, 9, 1));
+
+        Assert.Equal(3_000m / 44m, residual.MonthlyAmount(AsOf));               // unfunded, unchanged
+        Assert.Equal(2_000m / 44m, residual.MonthlyAmount(AsOf, 1_000m));       // funded, discounted
+    }
+
+    [Fact]
+    public void A_fully_funded_target_asks_for_nothing_and_never_goes_negative()
+    {
+        var residual = new PlannedCost("Residual", 3_000m, CostCadence.OneOff, new DateOnly(2027, 1, 1));
+        Assert.Equal(0m, residual.MonthlyAmount(AsOf, 3_000m));
+        Assert.Equal(0m, residual.MonthlyAmount(AsOf, 4_500m));   // over-funded, still zero — not a refund
+        Assert.Equal(0m, residual.Remaining(4_500m));
+    }
+
+    [Theory]
+    [InlineData(CostCadence.Monthly, 100, 100)]
+    [InlineData(CostCadence.Quarterly, 500, 500 / 3d)]
+    [InlineData(CostCadence.Yearly, 1200, 100)]
+    public void A_recurring_cost_is_a_rate_so_savings_do_not_discount_it(CostCadence cadence, decimal amount, double expected)
+    {
+        // The user's insurance: €500 every 3 months → €166.67/mo, forever. Holding €500 today doesn't mean
+        // this month is free — next year's insurance is behind this one. Discounting would make the ask
+        // collapse to zero whenever the bucket is full and spike the month after the bill lands.
+        var cost = new PlannedCost("Insurance", amount, cadence);
+        Assert.Equal((decimal)expected, cost.MonthlyAmount(AsOf, 10_000m), 6);
+    }
+
+    [Fact]
+    public void Savings_cover_the_soonest_target_first()
+    {
+        var account = new Account("Home", "EUR");
+        var car = account.AddSavingCategory("Car");
+        account.SetSavingCosts(car.Id, new[]
+        {
+            new PlannedCost("Deposit", 1_000m, CostCadence.OneOff, new DateOnly(2026, 3, 1)),   // 2 months out
+            new PlannedCost("Residual", 3_000m, CostCadence.OneOff, new DateOnly(2027, 1, 1)), // 12 months out
+        });
+        var bucket = account.FindSavingCategory(car.Id)!;
+
+        // €1,000 saved clears the near deposit entirely; nothing spills onto the residual beyond that.
+        // Deposit: (1000-1000)/2 = 0.  Residual: 3000/12 = 250.
+        Assert.Equal(250m, bucket.MonthlySetAside(AsOf, 1_000m));
+
+        // Unfunded, both are asked for: 1000/2 + 3000/12 = 500 + 250 = 750.
+        Assert.Equal(750m, bucket.MonthlySetAside(AsOf, 0m));
+    }
+
+    [Fact]
+    public void The_shortfall_read_is_what_targets_still_need_today()
+    {
+        var account = new Account("Home", "EUR");
+        var car = account.AddSavingCategory("Car");
+        account.SetSavingCosts(car.Id, new[]
+        {
+            new PlannedCost("Insurance", 500m, CostCadence.Quarterly),                          // a rate, not a target
+            new PlannedCost("Residual", 3_000m, CostCadence.OneOff, new DateOnly(2027, 1, 1)),
+        });
+        var bucket = account.FindSavingCategory(car.Id)!;
+
+        Assert.Equal(3_000m, bucket.TargetShortfall(0m));
+        Assert.Equal(1_800m, bucket.TargetShortfall(1_200m));
+        Assert.Equal(0m, bucket.TargetShortfall(3_000m));
+        Assert.Equal(0m, bucket.TargetShortfall(9_999m));   // never negative
+    }
+
+    [Fact]
     public void Blank_or_zero_cost_lines_are_dropped_on_replace()
     {
         var account = new Account("Home", "EUR");

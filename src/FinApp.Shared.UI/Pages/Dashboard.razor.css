@@ -1079,6 +1079,31 @@ html.dark .archived-h { color: #9aa7b4; }
     .row-menu button { padding: 13px 14px; font-size: .92rem; }
     .row-menu-backdrop { background: rgba(17,20,28,.35); }
 }
+/* ─────────────── SINKING-FUND COST ROWS (bucket modal) ───────────────
+   One row per irregular cost the bucket covers. Grid rather than flex so the amount and cadence columns line up
+   down the list; the label takes the slack and the whole row wraps on a phone instead of overflowing. */
+.cost-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 4px; }
+.cost-head label { margin: 0; }
+.cost-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.cost-row input, .cost-row select { padding: 7px 9px; border: 1px solid #dde6e1; border-radius: 9px; font-size: .88rem; background: #ffffff; }
+.cost-label { flex: 2 1 120px; min-width: 0; }
+.cost-amt { flex: 1 1 78px; min-width: 0; }
+.cost-cad { flex: 1 1 104px; min-width: 0; }
+.cost-due { flex: 1 1 128px; min-width: 0; }
+.cost-del { flex: 0 0 auto; }
+.cost-total {
+    display: flex; align-items: baseline; justify-content: space-between; gap: 8px; flex-wrap: wrap;
+    margin-top: 6px; padding-top: 8px; border-top: 1px solid #e6ece9; font-size: .88rem; color: #374151;
+}
+.cost-total strong { font-size: 1.05rem; color: #0f7a54; }
+.ring-setaside { color: #0f7a54; font-weight: 600; }
+html.dark .ring-setaside { color: #57d9a3; }
+.cost-short { color: #b45309; font-weight: 600; font-size: .78rem; }
+html.dark .cost-row input, html.dark .cost-row select { background: #161a23; border-color: #313a4a; color: #e8eaf0; }
+html.dark .cost-total { border-top-color: #262d3d; color: #aab0c0; }
+html.dark .cost-total strong { color: #57d9a3; }
+html.dark .cost-short { color: #f0b26b; }
+
 /* Payoff modal: adjustable "extra on top" input, reset icon, and the advisory notice. */
 .proj-extra { display: flex; align-items: center; gap: 8px; font-size: .82rem; color: #6b7280; }
 .proj-extra input { width: 110px; }

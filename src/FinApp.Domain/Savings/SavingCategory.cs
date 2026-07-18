@@ -275,8 +275,35 @@ public sealed class SavingCategory : Entity
     }
 
     /// <summary>The average amount to set aside per period (month) to cover all this bucket's future costs, as of
-    /// <paramref name="asOf"/>. Recurring costs annualise; a dated one-off spreads across the months until it's due.</summary>
+    /// <paramref name="asOf"/>, ignoring anything already saved. Recurring costs annualise; a dated one-off spreads
+    /// across the months until it's due.</summary>
     public decimal MonthlySetAside(DateOnly asOf) => decimal.Round(_costs.Sum(c => c.MonthlyAmount(asOf)), 2);
+
+    /// <summary>
+    /// The amount to set aside per month once <paramref name="saved"/> — what the bucket actually holds — is taken
+    /// into account. Recurring costs keep their steady rate; dated one-offs are reduced by the savings attributed
+    /// to them, so a part-funded residual stops asking for money you already have.
+    /// <para>
+    /// <b>Attribution rule:</b> savings go to targets in due-date order, soonest first, which is how a sinking fund
+    /// really drains — the nearest obligation is the one the money is for. Anything left over after every target is
+    /// covered is surplus and reduces nothing further (recurring costs are rates, not balances).
+    /// </para>
+    /// <para>
+    /// <b>Known simplification:</b> a bucket holding both a revolving cost and a target shares one balance, and this
+    /// treats all of it as available to the targets — so the float sitting there for next quarter's insurance also
+    /// counts against the residual. Keep a revolving cost and a long-dated target in separate buckets if that
+    /// matters; the bucket is the unit of earmarking precisely so it can be split.
+    /// </para>
+    /// </summary>
+    public decimal MonthlySetAside(DateOnly asOf, decimal saved) =>
+        PlannedCost.MonthlySetAsideFor(_costs, asOf, saved);
+
+    /// <summary>
+    /// How far behind this bucket's targets are <i>right now</i>: what every dated one-off still needs, less what's
+    /// saved. Zero when the targets are fully covered. This is the "you're €X short" read — it answers a different
+    /// question from <see cref="MonthlySetAside(DateOnly, decimal)"/>, which spreads that gap over the months left.
+    /// </summary>
+    public decimal TargetShortfall(decimal saved) => PlannedCost.TargetShortfallFor(_costs, saved);
 
     /// <summary>Set or clear the user's planned per-period contribution to this bucket. Null or zero clears it (revert
     /// to inferring pace from history). Cannot be negative.</summary>

@@ -1085,12 +1085,23 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
 
     /// <summary>The flat amount to set aside into this bucket per period to cover all its listed future costs, or null
     /// when it has no cost list. This is the sinking-fund average (recurring costs annualised, a dated one-off spread
-    /// across the months until due). A suggestion only — nothing is reserved automatically.</summary>
+    /// across the months until due) <b>net of what the bucket already holds</b>, so a part-funded one-off stops asking
+    /// for money you've got. A suggestion only — nothing is reserved automatically.</summary>
     public decimal? BucketMonthlySetAside(Guid bucketId)
     {
         var b = FindSavingBucket(bucketId);
         if (b is null || !b.HasCosts) return null;
-        return b.MonthlySetAside(Period.From);
+        return b.MonthlySetAside(Period.From, SavingBucketSaved(bucketId).Amount);
+    }
+
+    /// <summary>What this bucket's dated one-offs still need beyond what it holds — the "you're €X short" read, or null
+    /// when there's nothing outstanding. Recurring costs are excluded: they're a rate that never completes.</summary>
+    public decimal? BucketTargetShortfall(Guid bucketId)
+    {
+        var b = FindSavingBucket(bucketId);
+        if (b is null || !b.HasCosts) return null;
+        var short_ = b.TargetShortfall(SavingBucketSaved(bucketId).Amount);
+        return short_ > 0m ? short_ : null;
     }
 
     public Guid? SavingBucketFundId(Guid id) => FindSavingBucket(id)?.FundId;

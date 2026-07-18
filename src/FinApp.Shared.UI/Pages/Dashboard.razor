@@ -956,6 +956,12 @@ else
                         {
                             <span class="amt save">@Fmt(ctx.Total)</span> <span class="ring-muted">/ @Fmt(g.Goal!.Value)</span>
                         }
+                        @* A sinking fund's headline number is the monthly set-aside, not the balance — the balance
+                           only tells you where you are, this tells you what to do. One line, no extra section. *@
+                        @if (State.BucketMonthlySetAside(bucketId) is { } setAside and > 0m)
+                        {
+                            <div class="ring-sub ring-setaside">🗓️ @Fmt(State.Money(setAside))/@Loc["mo"] @Loc["to stay covered"]</div>
+                        }
                         @if (State.SavingBucketFundId(bucketId) is { } heldFund)
                         {
                             <div class="ring-sub ring-muted">🏦 @Loc["in"] @State.FundName(heldFund)</div>
@@ -1760,6 +1766,44 @@ else
                         <label>@Loc["Goal amount (optional)"] <input type="number" step="0.01" min="0" @bind="_goalAmount" /></label>
                         <label>@Loc["Alert at %"] <input type="number" step="1" min="0" max="100" @bind="_fThreshold" /></label>
                         <label class="check"><input type="checkbox" @bind="_fNotify" /> @Loc["Notify on milestone"]</label>
+
+                        @* Sinking fund: the irregular costs this bucket exists to cover. Deliberately a list inside
+                           the bucket, not a section of its own — it's a property of the bucket, like its goal. *@
+                        <div class="cost-head">
+                            <label>@Loc["Costs this covers (optional)"]</label>
+                            <button type="button" class="fund-add" @onclick="AddCostRow">＋ @Loc["Add a cost"]</button>
+                        </div>
+                        @foreach (var costRow in _costRows)
+                        {
+                            <div class="cost-row">
+                                <input type="text" class="cost-label" placeholder="@Loc["e.g. Insurance"]" @bind="costRow.Label" />
+                                <input type="number" class="cost-amt" step="0.01" min="0" placeholder="0.00" @bind="costRow.Amount" />
+                                <select class="cost-cad" @bind="costRow.Cadence">
+                                    <option value="@CostCadence.Monthly">@Loc["Monthly"]</option>
+                                    <option value="@CostCadence.Quarterly">@Loc["Quarterly"]</option>
+                                    <option value="@CostCadence.Yearly">@Loc["Yearly"]</option>
+                                    <option value="@CostCadence.OneOff">@Loc["One-off"]</option>
+                                </select>
+                                @if (costRow.Cadence == CostCadence.OneOff)
+                                {
+                                    <input type="date" class="cost-due" @bind="costRow.DueDate" />
+                                }
+                                <button type="button" class="exp-edit cost-del" title="@Loc["Remove"]" @onclick="() => RemoveCostRow(costRow)">🗑️</button>
+                            </div>
+                        }
+                        @if (_costRows.Count > 0)
+                        {
+                            var setAside = EditingSetAside();
+                            var shortfall = PlannedCost.TargetShortfallFor(ValidCostRows(), EditingSaved());
+                            <div class="cost-total">
+                                <span>@Loc["Set aside"] <strong>@Fmt(State.Money(setAside))</strong> @Loc["/ month"]</span>
+                                @if (shortfall > 0m)
+                                {
+                                    <small class="cost-short">@string.Format(Loc["{0} still to find"], Fmt(State.Money(shortfall)))</small>
+                                }
+                            </div>
+                            <small class="hint">@Loc["An amount to aim for, not a reservation — nothing moves on its own. Repeating costs are averaged over the year; a dated one-off is spread over the months until it's due, less what this bucket already holds."]</small>
+                        }
                     }
                     <label>@Loc["Held in fund (optional)"]
                         <select @bind:get="_bucketFundId?.ToString()" @bind:set="v => _bucketFundId = Guid.TryParse(v, out var g) ? g : (Guid?)null">
@@ -5408,6 +5452,7 @@ else
         _bucketKind = kind; _debtBalance = 0; _debtRate = 0; _debtInstallment = 0;
         _invRate = 0; _invTermYears = 0; _invCompounds = 12;
         _bucketFundId = null;
+        _costRows = new();
         _modal = Modal.AddBucket;
     }
 
@@ -5429,8 +5474,43 @@ else
         _invTermYears = b?.InvestmentTermYears ?? 0;
         _invCompounds = b?.InvestmentCompoundsPerYear ?? 12;
         _bucketFundId = State.SavingBucketFundId(bucketId);
+        _costRows = State.SavingBucketCosts(bucketId).Select(CostRow.From).ToList();
         _modal = Modal.EditBucket;
     }
+
+    /// <summary>A mutable edit row for one <see cref="PlannedCost"/> — the domain record is immutable, and a half-typed
+    /// row (a label with no amount yet) has to be allowed to exist while you're filling it in.</summary>
+    private sealed class CostRow
+    {
+        public string? Label { get; set; }
+        public decimal Amount { get; set; }
+        public CostCadence Cadence { get; set; } = CostCadence.Yearly;
+        public DateOnly? DueDate { get; set; }
+
+        public static CostRow From(PlannedCost c) =>
+            new() { Label = c.Label, Amount = c.Amount, Cadence = c.Cadence, DueDate = c.DueDate };
+
+        public PlannedCost ToCost() =>
+            new(Label?.Trim() ?? "", Amount, Cadence, Cadence == CostCadence.OneOff ? DueDate : null);
+    }
+
+    private List<CostRow> _costRows = new();
+
+    private void AddCostRow() => _costRows.Add(new CostRow());
+    private void RemoveCostRow(CostRow row) => _costRows.Remove(row);
+
+    /// <summary>Live preview of the monthly set-aside while editing, net of what the bucket already holds — the same
+    /// maths the saved bucket will report, so the number doesn't jump when you press ✓.</summary>
+    private decimal EditingSetAside() =>
+        PlannedCost.MonthlySetAsideFor(ValidCostRows(), State.Period.From, EditingSaved());
+
+    private decimal EditingSaved() =>
+        _modalBucketId == Guid.Empty ? _initialSavings : State.SavingBucketSaved(_modalBucketId).Amount;
+
+    /// <summary>Only complete rows count — same filter <c>ReplaceCosts</c> applies on save, so the preview matches
+    /// what actually gets stored while you're still typing a row.</summary>
+    private List<PlannedCost> ValidCostRows() =>
+        _costRows.Select(r => r.ToCost()).Where(c => !string.IsNullOrWhiteSpace(c.Label) && c.Amount > 0m).ToList();
 
     private Task SaveBucket() => RunModal(async () =>
     {
@@ -5439,10 +5519,13 @@ else
         decimal? planned = null;   // planned-contribution field retired; add/edit clears any legacy value
         var isDebt = _bucketKind == SavingKind.Debt;
         var isInv = _bucketKind == SavingKind.Investment;
+        // Only a Common bucket carries a cost list; a debt/investment bucket clears it rather than keeping
+        // an orphaned list alive behind a form that no longer shows it.
+        var costs = _bucketKind == SavingKind.Common ? ValidCostRows() : [];
         if (_modal == Modal.AddBucket)
-            await State.AddSavingBucket(_fName!, goal, _fThreshold, _fNotify, _initialSavings, _fIcon, isDebt, _debtBalance, _debtRate, _debtInstallment, planned, isInv, _invRate, _invTermYears, _invCompounds, _bucketFundId);
+            await State.AddSavingBucket(_fName!, goal, _fThreshold, _fNotify, _initialSavings, _fIcon, isDebt, _debtBalance, _debtRate, _debtInstallment, planned, isInv, _invRate, _invTermYears, _invCompounds, _bucketFundId, costs);
         else
-            await State.SaveSavingBucket(_modalBucketId, _fName!, goal, _fThreshold, _fNotify, _initialSavings, _fIcon, isDebt, _debtBalance, _debtRate, _debtInstallment, planned, isInv, _invRate, _invTermYears, _invCompounds, _bucketFundId);
+            await State.SaveSavingBucket(_modalBucketId, _fName!, goal, _fThreshold, _fNotify, _initialSavings, _fIcon, isDebt, _debtBalance, _debtRate, _debtInstallment, planned, isInv, _invRate, _invTermYears, _invCompounds, _bucketFundId, costs);
         CloseModal();
     });
 
