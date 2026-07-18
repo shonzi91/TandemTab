@@ -15,9 +15,11 @@ The snapshot column was **348KB for a 261KB payload** and crossed clouds on ever
 ### The rollout is two-phase, because this is the one change a rollback can't survive
 A build predating `ENC2:` doesn't know the prefix, so it takes such a row for **legacy plaintext and serves the client base64 garbage rather than failing** — silent corruption, not an error. So writing the new format is gated on **`Snapshots__CompressWrites` (default off)**:
 1. **Phase 1 — DONE (`finapp-00188-76l`):** deployed with the flag **off** — reads `ENC2:`, still writes `ENC1:`. No new-format rows exist, so rollback to `00187-st2` stays clean.
-2. **Phase 2 — PENDING:** once phase 1 *is* the revision you'd roll back to, set `Snapshots__CompressWrites=true` on the same image:
+2. **Phase 2 — DONE (`finapp-00189-j4v`):** `Snapshots__CompressWrites=true` set on the same image, in the same session rather than after a soak — defensible because `00188-76l` was already deployed and verified, so the safe rollback target existed; the soak would only have added confidence in a revision whose checks were already clean.
    `gcloud run services update finapp --region europe-west1 --update-env-vars Snapshots__CompressWrites=true --quiet`
    ⚠️ **`--update-env-vars` merges; `--set-env-vars` would REPLACE the whole env set** — same trap that broke `00178-gwv` with secrets (Session 31). Unlike a bare `services update`, an env change *does* roll a new revision.
+   Post-deploy: both URLs 200, 5 `secretKeyRef`, `Kms__KeyName` set, `Snapshots__CompressWrites = true`, zero WARNING+.
+   **⚠️ STILL UNCONFIRMED AT HANDOFF TIME: no `[save]` line had been logged on `00189-j4v` yet**, so the compression has not actually been observed working in production. **First thing to do: trigger a save and compare `payload=` vs `stored=`** (≈1.33× = flag didn't take; a fraction = working). Also read `db=` against the 133–282ms baseline.
 - **The flag is also the undo:** turning it off returns writes to `ENC1:` and leaves existing `ENC2:` rows readable.
 - **Confirm which format is live from the `[save]` log:** `stored` ≈ 1.33 × `payload` = phase 1 (uncompressed); a fraction of `payload` = compression on.
 
