@@ -1,6 +1,24 @@
 # TandemTab (FinApp) — session handoff
 
-Last updated: 2026-07-18 (Session 34). Read this + [README.md](README.md) + [TRANSFER.md](TRANSFER.md) + recent `git log` to catch up.
+Last updated: 2026-07-19 (Session 34c). Read this + [README.md](README.md) + [TRANSFER.md](TRANSFER.md) + recent `git log` to catch up.
+
+## Session 34c (2026-07-19) — one modal chrome, and header menus stop flying off-screen. COMMITTED, PUSHED & DEPLOYED (`finapp-00191-7hx`).
+Commit `34019e5`, image `finapp:34019e5` (digest `sha256:a09cc742…`, Cloud Build 3m31s) → **`finapp-00191-7hx`**. Post-deploy: both URLs 200 **serving `app.css?v=33`**, 5 `secretKeyRef`, `Kms__KeyName` set, `Snapshots__CompressWrites=true` intact, zero WARNING+. Build clean, **307 tests green**, zero console errors.
+
+### The notifications panel opened off the left edge
+Measured at **x = -87 on a 375px screen**. The bell is the **first of five header icons**, so it sits mid-row rather than at the right edge, and `right: 0` hangs its 340px panel into negative space. It now joins the row/ring menus as a **bottom sheet** on phones, along with `.acct-drop` (account switcher) and `.acct-menu-pop` (settings) — every menu in the app behaves identically on a phone.
+- **⚠️ CSS ORDERING TRAP, hit and fixed — read before touching this.** The first attempt put the media query next to the existing row-menu sheet block (~L1056), which is **above** `.bell-menu`'s own definition (~L1103). **A media query adds no specificity**, so the base `position: absolute` won on source order and nothing changed. The block now sits **below** the definitions with a comment pinning it there. Same trap as `.bal-sub` / `.warn-text` (Session 31) — this file has now caught it twice.
+
+### Every modal closes and confirms from its header
+Nine modals kept their buttons in a footer row via `.modal-actions.inline-actions`. **Seven had no structural reason to** — they carry a plain `<h3>`, so dropping the class moves them into the existing sticky header as the same floating ✕/✓ (`Modal.BankReview`, `NextPeriod` ×2, `RecurringConfirm`, `PayoffProjection`, `GoalProjection`, `InvestmentProjection`).
+- **The two that genuinely have their own `.modal-head`** (`EditCat`, `CategoryDetail`) put ✕/✓ **inside that head** instead — a second sticky bar (`.modal-actions`, `order:-3`, `margin-bottom:-52px`) floats straight on top of the first. New `.modal-head-actions .head-ok` gives the in-head confirm the same filled-green weight as its floating twin, plus a disabled state.
+- **`Modal.Recurring` already had that exact collision** — its own `.modal-head` *and* a floating `.modal-actions` landing on it — and its footer was **duplicating the head's own `+` button**. Footer dropped, ✕ added to the head. Likely part of the reported "windows appear hidden".
+- **`.inline-actions` is gone** (CSS + the dark-mode divider in `app.css`). **`app.css` changed → cache-bust bumped to `?v=33`** (verified live on both URLs).
+- **Invariant now holds and is worth re-checking after any modal work:** no modal has both a `.modal-head` and a `.modal-actions`.
+
+### Verification
+Browser-driven at 375px on the `mobiletest` account: bell menu `fixed`, 0→375, pinned bottom, fully on screen; the ✕ is **hit-testable** (`elementFromPoint` at its centre returns the button, not the title behind it) at 44×38; `CategoryDetail` shows ✏️🗑️✕ in a sticky head with no footer; `EditCat` shows 🗑️✕✓ with ✓ filled green, greying to `not-allowed` on an empty name. **Functional regression checked, not just visual — renamed Food → Groceries via the relocated ✓ and confirmed it saved and closed.** Desktop re-measured at 726px: bell menu still an anchored 340px `absolute` bubble, on screen.
+- **⚠️ Same standing caveat as 34b: a near-empty test account.** A budget was created to reach the category modals, but **these screens still have not been seen at real data density**.
 
 ## Session 34b (2026-07-18) — the phone layout actually fits the phone. COMMITTED, PUSHED & DEPLOYED (`finapp-00190-bxd`).
 Four user-reported mobile faults, all reproduced and measured in a browser at 375px, all fixed under media queries so **desktop is provably untouched** (re-measured at 726px: hero still `nowrap` on one row at original font sizes, greeting visible, menus still anchored `position:absolute` bubbles). Commit `56f5bac`, image `finapp:56f5bac` (digest `sha256:ebcd27e8…`, Cloud Build 4m4s) → **`finapp-00190-bxd`**. Post-deploy: both URLs 200, 5 `secretKeyRef`, `Kms__KeyName` set, **`Snapshots__CompressWrites=true` survived the image swap** (a `run deploy --image` keeps env), zero WARNING+. **`app.css` untouched → no `?v=` bump needed** (scoped `*.razor.css` rides the no-cache `.styles.css`).
