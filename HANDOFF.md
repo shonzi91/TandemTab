@@ -1,6 +1,33 @@
 # TandemTab (FinApp) — session handoff
 
-Last updated: 2026-07-19 (Session 34c). Read this + [README.md](README.md) + [TRANSFER.md](TRANSFER.md) + recent `git log` to catch up.
+Last updated: 2026-07-19 (Session 35). Read this + [README.md](README.md) + [TRANSFER.md](TRANSFER.md) + recent `git log` to catch up.
+
+## Session 35 (2026-07-19) — sinking funds get their missing UI, the cash-flow runway lands, MAUI is dropped. COMMITTED, PUSHED & DEPLOYED (`finapp-00192-7rk`).
+Commits `fbeb8e7` (roadmap), `22f7fc5` (sinking funds), `7c5b50c` (runway). Image `finapp:7c5b50c` (digest `sha256:c652d552…`, Cloud Build 4m26s) → **`finapp-00192-7rk`**. Post-deploy: both URLs 200 on `app.css?v=33`, 5 `secretKeyRef`, `Kms__KeyName` set, `Snapshots__CompressWrites=true` intact, zero WARNING+. **326 tests green** (197 domain + 41 persistence + 88 server), Release build clean, zero console errors.
+
+### Mobile: MAUI is out (`fbeb8e7`)
+**Decision: native Android (Kotlin/Compose) first, then native iOS (Swift/SwiftUI). No MAUI**; the `FinApp.App.Maui` Hybrid scaffold is slated for removal. [docs/MOBILE.md](docs/MOBILE.md) rewritten; README + BACKLOG updated.
+- **⚠️ The load-bearing consequence, now the top open decision:** MAUI was the only path that kept the C# client domain. Kotlin/Swift can't run `FinApp.Domain`, so it's **(A) move the money model server-side** or **(B) port it into Kotlin *and* Swift**. B means three implementations of the same money maths that must agree forever — rejected for a finance app. **Recommendation: A. Nothing native should start before this is settled.**
+- **Why A is now open at all:** MOBILE.md had ruled it out as "breaking the privacy design", on the premise the server stored an opaque blob it never read. **Session 31 (`9b923fb`) retired that premise** — `AccountExportService` already deserializes snapshots and bank sync stores real transactions. Moving the domain forfeits nothing still true. A would also dissolve the whole-snapshot write (`AccountSnapshotRow`'s own "last thing holding the shape of a design we no longer follow").
+
+### The "expenses fund" was domain-only — the UI half never shipped (`22f7fc5`)
+`PlannedCost` + `MonthlySetAside` + 6 tests existed; **`BucketMonthlySetAside` had zero UI call sites, `AddSavingBucket` was never called with `costs`, and there was no editor.** The feature was unreachable. The user asked for exactly this (car insurance €500/quarter, yearly maintenance, a 4-year lease residual) — all three were already modelled.
+- **The maths ignored what a bucket held**, so a target over-asked forever: €6,000 residual due in 48 months with €2,400 saved still billed `6000/48` instead of `3600/48`.
+- **Fixed by separating rates from targets** — the distinction that decides whether savings discount an ask. **A recurring cost is a RATE** (next year's insurance follows this year's; it never completes, so savings there are float, not progress — discounting would collapse the ask to zero whenever the bucket is full and spike right after the bill lands). **A dated one-off is a TARGET** (it completes, so savings genuinely reduce it).
+- **Attribution: savings cover targets soonest-due first.** ⚠️ **Known simplification:** a bucket mixing a revolving cost and a target shares one balance and all of it counts against the targets. Split the bucket; that's what buckets are for. Documented in `SavingCategory.MonthlySetAside`.
+- Attribution lives in one static (`PlannedCost.MonthlySetAsideFor`) so the editor can preview unsaved rows without a second copy drifting.
+- **UI:** cost rows (label/amount/cadence/due date) *inside* the bucket modal — a property of the bucket, not a new section — with a live set-aside, a "€X still to find" read, and one line on the bucket card.
+- **Browser-verified on the user's own case:** €500 quarterly → €166.67/mo; + €6,000 residual due Jul 2030 → €291.67; contribute €2,400 → **€241.67** (residual discounted to €75, insurance unmoved at €166.67).
+
+### Cash-flow runway — the last P4 gap (`7c5b50c`)
+`Domain/Forecasting/CashFlowForecast.Project` walks 6 months from the current balance applying recurring income, recurring bills and the sinking-fund set-aside, naming the first month that ends below zero. Pure, like `LoanForecast` beside it.
+- **Budgets are deliberately excluded.** Counting a budget as a committed outflow would contradict the Free figure one screen away and quietly make this a second budgeting methodology — the PlannedExpense lesson again. It answers something narrower and true: *given only what repeats, when does the money run out?*
+- **Set-aside IS counted** (money in a bucket really is reserved), entering smoothed rather than as the lumpy bill. ⚠️ **A cost listed as both a `PlannedCost` and a `RecurringItem` is counted twice** — separate lists, nothing reconciles them.
+- **`ReminderOnly` items are skipped and the projection says so** (`HasUnknownAmounts` → "some amounts unknown"), rather than presenting an optimistic figure as complete.
+- **Opening balance is passed in by the caller**, not read from `ClosingBalance`, so the runway starts from the exact figure rendered above it (bank adjustment included). A runway disagreeing with the header would be worse than none.
+- **UI:** one line leading the existing "on track for" card. Calm 🛟 by default, amber ⚠️ only when it runs dry.
+- **Browser-verified both states:** €2,000 salary + €900 rent + €241.67 set-aside → *"in the black for 6 months · €2,000.00 in, €1,141.67 out"*; without income → *"Money runs short in Jul 2026"* in amber; a reminder-only bill appends *"some amounts unknown"*.
+- **⚠️ Standing caveat, now three sessions old: all browser verification is on the near-empty `mobiletest` account.** None of this has been seen at real data density.
 
 ## Session 34c (2026-07-19) — one modal chrome, and header menus stop flying off-screen. COMMITTED, PUSHED & DEPLOYED (`finapp-00191-7hx`).
 Commit `34019e5`, image `finapp:34019e5` (digest `sha256:a09cc742…`, Cloud Build 3m31s) → **`finapp-00191-7hx`**. Post-deploy: both URLs 200 **serving `app.css?v=33`**, 5 `secretKeyRef`, `Kms__KeyName` set, `Snapshots__CompressWrites=true` intact, zero WARNING+. Build clean, **307 tests green**, zero console errors.
