@@ -366,6 +366,14 @@ html.dark .panel h2 { color: #9aa4b2; }
 }
 .modal-head h3 { margin: 0; }
 .modal-head-actions { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
+/* The confirm inside a .modal-head. Its floating twin (.modal-actions button:not(.ghost)) is a filled green pill,
+   so this one carries the same weight — otherwise "save" reads as just another grey glyph beside 🗑️ and ✕. */
+.modal-head-actions .head-ok {
+    background: #13a06e; color: #ffffff; font-size: 1rem; font-weight: 700;
+    min-width: 34px; padding: 5px 9px; border-radius: 9px; margin-left: 4px;
+}
+.modal-head-actions .head-ok:hover { background: #0f8a5f; }
+.modal-head-actions .head-ok:disabled { background: #c7c9d6; cursor: not-allowed; }
 .detail-sub-head { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
 .detail-sub-head .detail-sub { margin: 0; }
 
@@ -750,10 +758,13 @@ input[type=date]::-webkit-calendar-picker-indicator {
 input[type=date]::-webkit-calendar-picker-indicator:hover { opacity: 1; background: #e4f6ee; }
 .modal .check { flex-direction: row; align-items: center; color: #1f2430; }
 /* Modal header: title sits top-left, the Cancel/confirm buttons float in the top-right corner as ✕/✓
-   (a natural dialog header). The two rich modals that already have their own header row use `.inline-actions`
-   to keep their buttons in normal flow at the bottom instead. */
-/* Sticky header: the title bar and the ✕/✓ corner buttons stay pinned while the body scrolls, so you can
-   close/confirm anytime. The actions are ordered first at zero height so both anchor to the very top. */
+   (a natural dialog header).
+   Sticky header: the title bar and the ✕/✓ corner buttons stay pinned while the body scrolls, so you can
+   close/confirm anytime. The actions are ordered first at zero height so both anchor to the very top.
+   EVERY modal now closes and confirms from this header — there are no footer action rows left. Modals that
+   carry their own `.modal-head` put the same ✕/✓ inside it (see `.modal-head-actions`) rather than floating a
+   second sticky bar on top of the first, which is what the retired `.inline-actions` escape hatch was avoiding
+   by dropping its buttons to the foot instead. */
 .modal > h3 {
     order: -2; position: sticky; top: 0; z-index: 6;
     margin: 0 -20px 8px; padding: 14px 104px 13px 20px; min-height: 52px; box-sizing: border-box;
@@ -767,10 +778,6 @@ input[type=date]::-webkit-calendar-picker-indicator:hover { opacity: 1; backgrou
     pointer-events: none;
 }
 .modal-actions button { pointer-events: auto; }
-.modal-actions.inline-actions {
-    order: 0; position: static; height: auto; align-self: auto; transform: none;
-    justify-content: flex-end; margin: 8px 0 0; padding-top: 10px; border-top: 1px solid #e6ece9;
-}
 .modal-actions button {
     padding: 8px 13px; min-width: 44px; border: none; border-radius: 10px; background: #13a06e; color: #ffffff;
     font-weight: 600; cursor: pointer; line-height: 1.2;
@@ -1059,7 +1066,7 @@ html.dark .archived-h { color: #9aa7b4; }
     .fund-row .row-menu {
         /* left+right pin both edges, so no width is needed on top of them. */
         position: fixed; top: auto; bottom: 0; left: 0; right: 0;
-        margin: 0; min-width: 0; box-sizing: border-box;
+        margin: 0; min-width: 0; width: auto; box-sizing: border-box;
         border-radius: 16px 16px 0 0; border-bottom: none;
         padding: 8px 8px calc(8px + env(safe-area-inset-bottom, 0px));
         max-height: 70vh; overflow-y: auto;
@@ -1122,6 +1129,30 @@ html.dark .bell-item { border-top-color: #313a45; }
 html.dark .bell-text { color: #dfe6ea; }
 html.dark .bell-desc { color: #a9b6ad; }
 html.dark .bell-act { background: #1c3a2f; color: #57d9a3; }
+
+/* ─────────────── HEADER POPOVERS ON PHONES ───────────────
+   Same bottom sheet as the row/ring menus above — these break the same way, and worse. The bell is the FIRST of
+   five header icons, so it sits mid-row rather than at the right edge, and `right: 0` hangs its 340px panel off
+   the LEFT of the screen: measured at x = -87 on a 375px viewport. The account switcher and settings pop ride
+   along so every menu in the app behaves identically on a phone.
+   ⚠️ This block MUST stay BELOW the .bell-menu / .acct-drop / .acct-menu-pop definitions. A media query adds no
+   specificity, so declaring it above them (where the row-menu sheet lives) lets the base `position: absolute`
+   win on source order — which is exactly what happened first time round. Same trap as .bal-sub / .warn-text. */
+@media (max-width: 560px) {
+    .bell-menu,
+    .acct-menu-pop,
+    .acct-drop {
+        position: fixed; top: auto; bottom: 0; left: 0; right: 0;
+        margin: 0; min-width: 0; width: auto; box-sizing: border-box;
+        border-radius: 16px 16px 0 0; border-bottom: none;
+        padding: 8px 8px calc(8px + env(safe-area-inset-bottom, 0px));
+        max-height: 70vh; overflow-y: auto;
+        box-shadow: 0 -10px 34px rgba(0,0,0,.22);
+    }
+    .bell-head { padding: 6px 8px 10px; font-size: .78rem; }
+    .acct-drop-item, .acct-menu-pop button { padding: 13px 12px; }
+}
+
 /* Home "on track for" targets card — surfaces the debt-free / goal dates up front (read-only projections). */
 .targets-card { margin: 14px 0 0; padding: 0; }
 .targets-h { margin: 0 0 10px; font-size: .72rem; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: #6b7280; }

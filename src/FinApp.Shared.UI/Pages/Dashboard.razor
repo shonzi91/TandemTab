@@ -1127,7 +1127,7 @@ else
                     {
                         <p class="hint">@Loc["All caught up — nothing left to review."]</p>
                     }
-                    <div class="modal-actions inline-actions">
+                    <div class="modal-actions">
                         <button class="ghost" @onclick="DismissBankReview">@Loc["Close"]</button>
                     </div>
                     break;
@@ -1191,10 +1191,14 @@ else
                     break;
 
                 case Modal.EditCat:
+                    @* Cancel/Save live in the head, not at the foot: this modal has its own sticky header, so the
+                       floating ✕/✓ would land on top of it. Same ✕/✓ language as every other modal. *@
                     <div class="modal-head">
                         <h3>@State.CategoryIcon(_modalCatId) @Loc["Edit"] @State.CategoryName(_modalCatId)</h3>
                         <span class="modal-head-actions">
                             <button class="exp-edit" title="@Loc["Delete"]" @onclick="EditDeleteSelf">🗑️</button>
+                            <button class="exp-edit" title="@Loc["Cancel"]" @onclick="Back">✕</button>
+                            <button class="exp-edit head-ok" title="@Loc["Save"]" @onclick="SaveEditCat" disabled="@(string.IsNullOrWhiteSpace(_fName))">✓</button>
                         </span>
                     </div>
                     <div class="name-icon-row">
@@ -1239,10 +1243,6 @@ else
                             }
                         </ul>
                     }
-                    <div class="modal-actions inline-actions">
-                        <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
-                        <button @onclick="SaveEditCat" disabled="@(string.IsNullOrWhiteSpace(_fName))">@Loc["Save"]</button>
-                    </div>
                     break;
 
                 case Modal.DeleteCat:
@@ -1268,6 +1268,7 @@ else
                         <span class="modal-head-actions">
                             <button class="exp-edit" title="@Loc["Edit / budget"]" @onclick="DetailEdit">✏️</button>
                             <button class="exp-edit" title="@Loc["Delete"]" @onclick="DetailDelete">🗑️</button>
+                            <button class="exp-edit" title="@Loc["Close"]" @onclick="Back">✕</button>
                         </span>
                     </div>
                     @if (State.BudgetFor(_modalCatId) is { } cb)
@@ -1311,9 +1312,6 @@ else
                             @foreach (var e in items) { @detailRow(e) }
                         </ul>
                     }
-                    <div class="modal-actions inline-actions">
-                        <button class="ghost" @onclick="Back">@Loc["Close"]</button>
-                    </div>
                     break;
 
                 case Modal.Achievements:
@@ -1592,7 +1590,7 @@ else
                                 }
                             </ul>
                         </div>
-                        <div class="modal-actions inline-actions">
+                        <div class="modal-actions">
                             <button class="ghost" @onclick="() => { _reconcileGaps = null; CloseModal(); }">@Loc["I’ll add it myself"]</button>
                             <button class="ghost" disabled="@_busy" @onclick="RolloverIgnoringGaps">@Loc["Ignore"]</button>
                             <button disabled="@_busy" @onclick="RolloverWithAdjustments">@Loc["Log as adjustment"]</button>
@@ -1600,7 +1598,7 @@ else
                     }
                     else
                     {
-                        <div class="modal-actions inline-actions">
+                        <div class="modal-actions">
                             <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
                             <button disabled="@_busy" @onclick="StartNextMonth">@Loc["Start next month"] →</button>
                         </div>
@@ -1962,7 +1960,10 @@ else
                 case Modal.Recurring:
                     <div class="modal-head">
                         <h3>🔁 @Loc["Recurring"]</h3>
-                        <span class="modal-head-actions"><button class="lbl-add" title="@Loc["Add recurring"]" @onclick="OpenAddRecurring">+</button></span>
+                        <span class="modal-head-actions">
+                            <button class="lbl-add" title="@Loc["Add recurring"]" @onclick="OpenAddRecurring">+</button>
+                            <button class="exp-edit" title="@Loc["Close"]" @onclick="Back">✕</button>
+                        </span>
                     </div>
                     <p class="hint">@Loc["Bills, salary and standing transfers that repeat monthly. They remind you when due — you confirm the real amount, so bills that vary stay accurate."]</p>
                     @if (State.RecurringItems.Count == 0)
@@ -1991,10 +1992,8 @@ else
                             }
                         </ul>
                     }
-                    <div class="modal-actions">
-                        <button class="ghost" @onclick="Back">@Loc["Close"]</button>
-                        <button @onclick="OpenAddRecurring">➕ @Loc["Add recurring"]</button>
-                    </div>
+                    @* Both of these already live in the sticky head (✕ and +), and a second sticky bar would have
+                       floated straight on top of it. *@
                     break;
 
                 case Modal.RecurringEdit:
@@ -2057,7 +2056,7 @@ else
                             : string.Format(Loc["Expected about {0}. Adjust to the real amount if it differs."], Fmt(State.Money(rc.ExpectedAmount))))</p>
                     }
                     <label>@Loc["Actual amount"] <input type="number" step="0.01" min="0" @bind="_recConfirmAmount" @bind:event="oninput" /></label>
-                    <div class="modal-actions inline-actions">
+                    <div class="modal-actions">
                         <button class="ghost" @onclick="DoSkipRecurring">@Loc["Skip this month"]</button>
                         <button @onclick="DoConfirmRecurring" disabled="@(_recConfirmAmount <= 0)">@Loc["Confirm"]</button>
                     </div>
@@ -2515,7 +2514,7 @@ else
                         <p class="hint warn-text">@Loc["At this amount it wouldn’t cover the interest."]</p>
                     }
                     <div class="proj-disclaimer">⚠️ @Loc["For planning only — these figures are estimates, not financial advice. Your lender's actual terms (fees, rate changes, payment timing) can differ. For exact numbers, please check with your loan provider."]</div>
-                    <div class="modal-actions inline-actions">
+                    <div class="modal-actions">
                         <button class="ghost" @onclick="Back">@Loc["Close"]</button>
                     </div>
                     break;
@@ -2554,7 +2553,7 @@ else
                         <p class="hint">@Loc["Not enough history yet — set money aside a few times and we’ll project a date."]</p>
                     }
                     <small class="hint">@Loc["Projection only — it never changes your budgets, savings or balances."]</small>
-                    <div class="modal-actions inline-actions">
+                    <div class="modal-actions">
                         <button class="ghost" @onclick="Back">@Loc["Close"]</button>
                     </div>
                     break;
@@ -2601,7 +2600,7 @@ else
                         }
                     }
                     <div class="proj-disclaimer">⚠️ @Loc["For planning only — returns aren't guaranteed and real investments fluctuate. This isn't financial advice."]</div>
-                    <div class="modal-actions inline-actions">
+                    <div class="modal-actions">
                         <button class="ghost" @onclick="Back">@Loc["Close"]</button>
                     </div>
                     break;

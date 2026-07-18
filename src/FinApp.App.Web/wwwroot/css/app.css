@@ -206,8 +206,8 @@ html.dark .modal label select, html.dark .form select, html.dark .contrib-action
 html.dark .modal > h3, html.dark .modal-head, html.dark .pm h3 {
     background: #181c25; border-bottom-color: #262d3d; color: #e8eaf0;
 }
-/* Modal action buttons (corner ✕/✓) — the inline variant keeps a top divider */
-html.dark .modal-actions.inline-actions { border-top-color: #262d3d; }
+/* Every modal now confirms/closes from its sticky header; the bottom-anchored `.inline-actions` variant that
+   needed its own top divider is gone. */
 
 /* Tabs + list separators + tracks */
 html.dark .tabs { border-bottom-color: #262d3d; }
