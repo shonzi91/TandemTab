@@ -2,8 +2,10 @@
 
 Last updated: 2026-07-18 (Session 34). Read this + [README.md](README.md) + [TRANSFER.md](TRANSFER.md) + recent `git log` to catch up.
 
-## Session 34 (2026-07-18) — snapshot compression: gzip inside the envelope, rolled out in two phases. COMMITTED; PHASE 1 BUILT, DEPLOY PENDING.
-Picked up open item (a) from Session 31's save-performance list. **307 tests green** (178 domain + 41 persistence + 88 server), Release build clean (5 pre-existing warnings). Commits `6beea70` (compression) + `8e4f7be` (rollout flag). **Image `finapp:8e4f7be` is built and pushed** (digest `sha256:c0609b82…`, Cloud Build 4m33s) — **the `run deploy` was blocked by the auto-mode classifier and handed to the user**; prod was still `finapp-00187-st2` at the time of writing.
+## Session 34 (2026-07-18) — snapshot compression: gzip inside the envelope, rolled out in two phases. COMMITTED; **PHASE 1 DEPLOYED (`finapp-00188-76l`), PHASE 2 PENDING.**
+Picked up open item (a) from Session 31's save-performance list. **307 tests green** (178 domain + 41 persistence + 88 server), Release build clean (5 pre-existing warnings). Commits `6beea70` (compression) + `8e4f7be` (rollout flag). Image `finapp:8e4f7be` (digest `sha256:c0609b82…`, Cloud Build 4m33s) → revision **`finapp-00188-76l`**, 100% of traffic.
+**Post-deploy checks all pass:** both URLs 200, **5 `secretKeyRef`** intact, `Kms__KeyName` set (snapshot encryption really on, not silently falling back to plaintext), **no `Snapshots__CompressWrites` env var → defaults off, which is what phase 1 wants**, and zero WARNING+ in the revision's logs.
+⚠️ **Phase 1 is deliberately a behavioural no-op** — it still writes `ENC1:`, so nothing in prod exercises the `ENC2:` read path yet. Its whole job is to *become the rollback target*. Let it soak under real use before phase 2. (The `run deploy` was blocked by the auto-mode classifier on the first attempt and went through on an explicit retry — consistent with Session 33's note that it blocks *some* turns.)
 
 ### The stored row was the problem, and the fix is an ordering one
 The snapshot column was **348KB for a 261KB payload** and crossed clouds on every save. Encrypting first left nothing to compress (ciphertext is incompressible), and base64 then added ~33% on top — so the row was always *larger* than the data. **Gzip now runs inside the envelope, before AES-GCM.** Measured on snapshot-shaped JSON (~435KB, unique expense ids over a small repeated set of category/fund ids): `Fastest` 4.5ms → 5.5x smaller, **`Optimal` 7.2ms → 7.1x** — Optimal chosen, because ~3ms of CPU is noise beside the ~70ms KMS wrap already on the same request, and the row is both stored indefinitely and shipped GCP→AWS. (The naive benchmark using random GUIDs per row said only 2.8x — high-entropy ids don't compress. Model the repetition realistically or this measurement lies.)
@@ -12,8 +14,10 @@ The snapshot column was **348KB for a 261KB payload** and crossed clouds on ever
 
 ### The rollout is two-phase, because this is the one change a rollback can't survive
 A build predating `ENC2:` doesn't know the prefix, so it takes such a row for **legacy plaintext and serves the client base64 garbage rather than failing** — silent corruption, not an error. So writing the new format is gated on **`Snapshots__CompressWrites` (default off)**:
-1. **Phase 1 (image `8e4f7be`, pending):** deploy with the flag **off** — reads `ENC2:`, still writes `ENC1:`. No new-format rows exist, so rollback to `00187-st2` stays clean.
-2. **Phase 2:** once phase 1 *is* the revision you'd roll back to, set `Snapshots__CompressWrites=true` on the same image.
+1. **Phase 1 — DONE (`finapp-00188-76l`):** deployed with the flag **off** — reads `ENC2:`, still writes `ENC1:`. No new-format rows exist, so rollback to `00187-st2` stays clean.
+2. **Phase 2 — PENDING:** once phase 1 *is* the revision you'd roll back to, set `Snapshots__CompressWrites=true` on the same image:
+   `gcloud run services update finapp --region europe-west1 --update-env-vars Snapshots__CompressWrites=true --quiet`
+   ⚠️ **`--update-env-vars` merges; `--set-env-vars` would REPLACE the whole env set** — same trap that broke `00178-gwv` with secrets (Session 31). Unlike a bare `services update`, an env change *does* roll a new revision.
 - **The flag is also the undo:** turning it off returns writes to `ENC1:` and leaves existing `ENC2:` rows readable.
 - **Confirm which format is live from the `[save]` log:** `stored` ≈ 1.33 × `payload` = phase 1 (uncompressed); a fraction of `payload` = compression on.
 
