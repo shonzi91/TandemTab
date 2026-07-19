@@ -1133,6 +1133,7 @@ public sealed class Localizer(IJSRuntime js)
         ["{0} needs {1} set aside this period to stay ahead of its costs."] =
             "{0} се нуждае от {1} този период, за да изпревари разходите си.",
         ["Reserve for upcoming costs"] = "Заредѝ за предстоящи разходи",
+        ["Reserved for upcoming costs"] = "Заделено за предстоящи разходи",
 
         // Cash-flow runway on Home. Plain words on purpose — "in the black" and "committed" are finance jargon
         // that also translate badly.

@@ -4806,10 +4806,17 @@ else
         foreach (var (bucket, owed) in State.SinkingFundsShortThisPeriod().Take(1))
         {
             var bucketId = bucket.Id;
+            // One tap does it — the message already names the bucket and the amount, so an "Add to savings" modal
+            // would only ask again for what it just told you. Capped at free cash (same guard as the loan nudge):
+            // reserving past what you hold would push the account into the over-earmarked state on a single click.
+            var reservable = Math.Min(owed, State.MaxAdditionalSavings.Amount);
+            var (label, act) = State.IsPeriodOpen && reservable > 0m
+                ? (Loc["Reserve for upcoming costs"], (Action)(() => ReserveForCosts(bucketId, reservable)))
+                : (null, (Action?)null);
             list.Add(new HomeReminder("🗓️",
                 string.Format(Loc["{0} needs {1} set aside this period to stay ahead of its costs."],
                     bucket.Name, Fmt(State.Money(owed))),
-                Loc["Reserve for upcoming costs"], () => OpenAddSaving(bucketId), false));
+                label, act, false));
         }
 
         // Savings nudge: below your rate target this period (reuses the Insights shortfall), or nothing saved yet.
@@ -5042,6 +5049,16 @@ else
 
     // Dismissing a due-recurring notification from the bell skips it for this period (so it won't re-nag).
     private void SkipRecurringFromBell(Guid id) => _ = InvokeAsync(async () => { await State.SkipRecurring(id); StateHasChanged(); });
+
+    /// <summary>Set aside this period's sinking-fund shortfall in one tap. Nothing is remembered about having done
+    /// it: the nudge is derived from what the bucket actually holds, so deleting the deposit — or spending against
+    /// the bucket — brings it straight back.</summary>
+    private void ReserveForCosts(Guid bucketId, decimal amount) =>
+        _ = InvokeAsync(async () =>
+        {
+            await State.AllocateSaving(bucketId, amount, Loc["Reserved for upcoming costs"]);
+            StateHasChanged();
+        });
 
     // --- Statement file import (CSV/OFX/QIF) — parsed client-side, reviewed, then posted as real expenses/income. ---
     private enum ImportStep { Upload, MapCsv, Review }
