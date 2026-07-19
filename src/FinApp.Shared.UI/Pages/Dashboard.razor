@@ -4767,10 +4767,12 @@ else
             list.Add(new Notification("🗓️", text, null, Loc["Confirm"], () => OpenConfirmRecurring(id), null, () => SkipRecurringFromBell(id), false));
         }
 
-        if (LoanNudge() is { } tip)
+        // "Move it" reallocates for real (trims the budget + sets aside toward the debt), so the whole tip is gated
+        // on free cash existing. Showing "you have spare in Groceries — put it on the loan" while the free balance
+        // is already negative describes spare money that isn't there: the budget has room, the account doesn't.
+        if (State.MaxAdditionalSavings.Amount > 0m && LoanNudge() is { } tip)
         {
             Action? rotate = State.DiscretionaryLeftovers().Count(c => !_dismissedNudges.Contains(c.Id)) > 1 ? () => _nudgeIndex++ : null;
-            // "Move it" reallocates for real (trims the budget + sets aside toward the debt) — only offer what free cash covers.
             var moveable = Math.Min(tip.Amount, State.MaxAdditionalSavings.Amount);
             var (label, act) = State.IsPeriodOpen && moveable > 0m
                 ? (Loc["Move it to the loan"], (Action)(() => OpenReallocate(tip.BudgetId, tip.DebtId, moveable, tip.BudgetName, tip.DebtName)))
@@ -4805,6 +4807,19 @@ else
         if (State.TotalContributed.Amount <= 0m)
             list.Add(new HomeReminder("📥", Loc["No income added this period yet — log it so your plan reflects real money."],
                 Loc["Add income"], OpenDeposit, false));
+
+        // Budgets plan to spend more than there is free cash to cover. Budgets are advisory, so nothing is broken
+        // yet — but the plan can't all be funded, and until now this only whispered as an amber sub-line in the
+        // header. Reserving money into a bucket is a common way to land here, and from the Spending tab the cause
+        // isn't visible. Urgent, so it surfaces on Home rather than waiting in the bell: a plan that outruns the
+        // money is the same family as a deficit, not a tip.
+        var planFree = State.DisplayFreeToAllocate(_bankStatus?.Balance, _bankStatus?.BalanceCurrency);
+        var planLeft = State.TotalBudgeted - State.TotalSpent;
+        if (planLeft.Amount > 0m && planLeft.Amount > planFree.Amount)
+            list.Add(new HomeReminder("🧮",
+                string.Format(Loc["Your budgets still plan {0} but only {1} is free — trim a budget or add income."],
+                    Fmt(planLeft), Fmt(planFree)),
+                Loc["Adjust budgets"], ShowExpensesTab, true));
 
         // The budget closest to its cap but not yet over (≥80%). Over-budget cases are handled separately by the
         // rotating, non-essential OverBudgetTip, so we don't double up here.
@@ -4843,7 +4858,10 @@ else
         }
 
         // Savings nudge: below your rate target this period (reuses the Insights shortfall), or nothing saved yet.
-        if (HasSavingsBucket)
+        // Both branches are gated on there actually being spare cash. Urging someone to set more aside while their
+        // free balance is already negative — i.e. what's earmarked exceeds what they hold — is asking them to dig
+        // the hole deeper, and it's the moment the app has least business nagging.
+        if (HasSavingsBucket && State.MaxAdditionalSavings.Amount > 0m)
         {
             // Only ever suggest what the user can actually earmark right now — cash not already set aside.
             var suggest = ov.SavingsShortfall is { } gap

@@ -1134,6 +1134,9 @@ public sealed class Localizer(IJSRuntime js)
         ["Reserve for upcoming costs"] = "Заредѝ за предстоящи разходи",
         ["Reserved for upcoming costs"] = "Заделено за предстоящи разходи",
         // Expenses fund — the fourth bucket kind (a sinking fund for irregular costs).
+        ["Your budgets still plan {0} but only {1} is free — trim a budget or add income."] =
+            "Бюджетите ти още планират {0}, а свободни са само {1} — намали бюджет или добави приход.",
+        ["Adjust budgets"] = "Коригирай бюджетите",
         ["Expenses fund"] = "Фонд за разходи",
         ["Expenses"] = "Разходи",
         ["Costs this covers"] = "Разходи, които покрива",
