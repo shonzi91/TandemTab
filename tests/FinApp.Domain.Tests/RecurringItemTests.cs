@@ -153,4 +153,65 @@ public class RecurringItemTests
         Assert.Equal("💡", item.Icon);
         Assert.False(item.AutoPost);              // forced off — no longer Fixed
     }
+
+    // ── An item never falls due for a date that precedes it ──────────────────────────────────
+    private static readonly DateOnly PFrom = new(2026, 7, 1);
+    private static readonly DateOnly PTo = new(2026, 7, 31);
+
+    [Fact]
+    public void An_item_added_after_its_day_has_passed_does_not_fire_this_period()
+    {
+        // Set up "rent, day 10" on the 19th. That describes an arrangement going forward — not a payment you
+        // forgot to log on the 10th. With AutoPost on, treating it as due would silently post a dated expense.
+        var item = Make(day: 10, autoPost: true);
+        item.SetCreatedOn(new DateOnly(2026, 7, 19));
+
+        Assert.False(item.IsDue(PFrom, PTo, new DateOnly(2026, 7, 19)));
+        Assert.False(item.IsPending(PFrom, PTo));
+        Assert.False(item.IsUpcoming(PFrom, PTo, new DateOnly(2026, 7, 19), 30));
+    }
+
+    [Fact]
+    public void It_starts_firing_from_the_next_period()
+    {
+        var item = Make(day: 10, autoPost: true);
+        item.SetCreatedOn(new DateOnly(2026, 7, 19));
+
+        var augFrom = new DateOnly(2026, 8, 1);
+        var augTo = new DateOnly(2026, 8, 31);
+        Assert.True(item.IsDue(augFrom, augTo, new DateOnly(2026, 8, 10)));
+        Assert.True(item.IsPending(augFrom, augTo));
+    }
+
+    [Fact]
+    public void An_item_added_before_its_day_still_fires_this_period()
+    {
+        // Added on the 5th for day 25 — the day is genuinely still ahead, so this period counts.
+        var item = Make(day: 25);
+        item.SetCreatedOn(new DateOnly(2026, 7, 5));
+
+        Assert.True(item.IsPending(PFrom, PTo));
+        Assert.True(item.IsUpcoming(PFrom, PTo, new DateOnly(2026, 7, 20), 10));
+        Assert.False(item.IsDue(PFrom, PTo, new DateOnly(2026, 7, 20)));   // not yet — day hasn't arrived
+        Assert.True(item.IsDue(PFrom, PTo, new DateOnly(2026, 7, 25)));
+    }
+
+    [Fact]
+    public void An_item_added_on_its_own_due_day_counts_that_day()
+    {
+        var item = Make(day: 10);
+        item.SetCreatedOn(new DateOnly(2026, 7, 10));
+        Assert.True(item.IsDue(PFrom, PTo, new DateOnly(2026, 7, 10)));
+    }
+
+    [Fact]
+    public void Items_from_before_this_was_tracked_keep_their_old_behaviour()
+    {
+        // No creation date to compare against, so nothing is suppressed — inventing one would be a guess that
+        // could silence a bill that should genuinely fire.
+        var item = Make(day: 10);
+        Assert.Null(item.CreatedOn);
+        Assert.True(item.IsDue(PFrom, PTo, new DateOnly(2026, 7, 19)));
+        Assert.True(item.IsPending(PFrom, PTo));
+    }
 }

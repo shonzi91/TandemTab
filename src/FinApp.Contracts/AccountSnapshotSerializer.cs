@@ -41,7 +41,7 @@ public static class AccountSnapshotSerializer
             account.AchievementsAnchor,
             account.AchievementLog.Count == 0 ? null : new Dictionary<string, DateOnly>(account.AchievementLog),
             account.RecurringItems.Count == 0 ? null : account.RecurringItems.Select(r => new RecurringItemNode(
-                r.Id, r.Name, r.Kind, r.AmountMode, r.ExpectedAmount, r.DayOfMonth, r.CategoryId, r.FundId, r.Active, r.Icon, r.LastHandledPeriodFrom, r.AutoPost)).ToList(),
+                r.Id, r.Name, r.Kind, r.AmountMode, r.ExpectedAmount, r.DayOfMonth, r.CategoryId, r.FundId, r.Active, r.Icon, r.LastHandledPeriodFrom, r.AutoPost, r.CreatedOn)).ToList(),
             account.OnboardingDismissed);
         return JsonSerializer.Serialize(node, Json);
     }
@@ -105,6 +105,9 @@ public static class AccountSnapshotSerializer
             var item = Build(new RecurringItem(r.Name, r.Kind, r.AmountMode, r.ExpectedAmount, r.DayOfMonth, r.CategoryId, r.FundId, r.Icon, r.AutoPost), r.Id);
             if (!r.Active) item.SetActive(false);
             if (r.LastHandledPeriodFrom is { } h) item.MarkHandled(h);
+            // Restored verbatim, including null: a legacy item has no creation date, and stamping today's would
+            // suppress it for a period it should genuinely fire in.
+            item.SetCreatedOn(r.CreatedOn);
             account.AddRecurring(item);
         }
         return account;
@@ -236,7 +239,7 @@ public static class AccountSnapshotSerializer
 
     private record RecurringItemNode(Guid Id, string Name, RecurringKind Kind, RecurringAmountMode AmountMode,
         decimal ExpectedAmount, int DayOfMonth, Guid CategoryId, Guid FundId, bool Active, string? Icon, DateOnly? LastHandledPeriodFrom,
-        bool AutoPost = false);
+        bool AutoPost = false, DateOnly? CreatedOn = null);
 
     private record MemberNode(Guid Id, Guid UserId, string DisplayName);
     private record ContributionCategoryNode(Guid Id, string Name, string? Icon = null);

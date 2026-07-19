@@ -349,4 +349,32 @@ public class SavingsTests
 
         Assert.Single(period.ManualSavingDeposits()); // only the AllocateToSavings deposit qualifies
     }
+
+    [Fact]
+    public void Looking_back_at_a_closed_period_shows_what_the_bucket_held_then()
+    {
+        // The bug: the accumulated total summed EVERY period regardless of which one you were viewing, so
+        // navigating back to January showed today's balance — a number January's own movements can't add up to.
+        var account = new Account("Family", Eur);
+        var member = account.AddMember(Guid.NewGuid(), "Stoyan");
+        var car = account.AddSavingCategory("Car");
+
+        var jan = account.StartPeriod(new DateOnly(2026, 1, 1), new DateOnly(2026, 1, 31));
+        jan.Deposit(member.UserId, M(100));
+        jan.AllocateToSavings(car.Id, M(100), new DateOnly(2026, 1, 15));
+        jan.Close();
+
+        var feb = account.StartPeriod(new DateOnly(2026, 2, 1), new DateOnly(2026, 2, 28));
+        feb.Deposit(member.UserId, M(250));
+        feb.AllocateToSavings(car.Id, M(250), new DateOnly(2026, 2, 15));
+
+        var svc = new SavingsReportService();
+
+        // Viewing January: February's 250 hadn't happened yet.
+        Assert.Equal(M(100), svc.ForBucket(account, jan, car.Id).AccumulatedTotal);
+        // Viewing February: both count.
+        Assert.Equal(M(350), svc.ForBucket(account, feb, car.Id).AccumulatedTotal);
+        // The all-time total is unchanged — it deliberately has no "as of".
+        Assert.Equal(M(350), svc.AccumulatedTotal(account));
+    }
 }

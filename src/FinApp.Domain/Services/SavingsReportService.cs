@@ -52,7 +52,10 @@ public sealed class SavingsReportService
 
         var bucketIds = account.SavingCategoryWithDescendantIds(savingCategoryId).ToHashSet();
 
-        var accumulated = AllocationsFor(account, bucketIds) + InitialFor(account, bucketIds);
+        // As of the END of the period being viewed, not today. Looking back at March must show what the bucket held
+        // in March — allocations made in April onward hadn't happened yet. Funds and spending already read this way;
+        // savings didn't, so a closed period showed a total that its own numbers couldn't add up to.
+        var accumulated = AllocationsFor(account, bucketIds, upToPeriodFrom: period.From) + InitialFor(account, bucketIds);
 
         var periodNet = period.SavingAllocations
             .Where(a => bucketIds.Contains(a.SavingCategoryId))
@@ -180,8 +183,11 @@ public sealed class SavingsReportService
         return series;
     }
 
-    private static Money AllocationsFor(Account account, IReadOnlySet<Guid> bucketIds) =>
+    /// <param name="upToPeriodFrom">When given, only periods starting on or before this date count — the balance
+    /// "as of" that period rather than today. Omit for the all-time total.</param>
+    private static Money AllocationsFor(Account account, IReadOnlySet<Guid> bucketIds, DateOnly? upToPeriodFrom = null) =>
         account.Periods
+            .Where(p => upToPeriodFrom is not { } cut || p.From <= cut)
             .SelectMany(p => p.SavingAllocations)
             .Where(a => bucketIds.Contains(a.SavingCategoryId))
             .Select(a => a.Amount)

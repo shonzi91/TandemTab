@@ -377,6 +377,7 @@ public class SnapshotSerializerTests
             64m, 15, food.Id, bank));
         elec.MarkHandled(new DateOnly(2026, 1, 1));
         elec.SetActive(false);
+        rent.SetCreatedOn(new DateOnly(2026, 3, 19));   // rent knows when it was set up; electricity is a legacy item
 
         var copy = AccountSnapshotSerializer.Deserialize(AccountSnapshotSerializer.Serialize(account));
 
@@ -394,6 +395,11 @@ public class SnapshotSerializerTests
         Assert.False(elecCopy.Active);
         Assert.Equal(new DateOnly(2026, 1, 1), elecCopy.LastHandledPeriodFrom);
         Assert.False(rentCopy.AutoPost);   // wasn't opted in
+
+        // Losing this on a round-trip would silently undo the "don't back-post" guard, and a legacy item must stay
+        // null rather than being stamped with load-time — that would suppress a bill that should genuinely fire.
+        Assert.Equal(new DateOnly(2026, 3, 19), rentCopy.CreatedOn);
+        Assert.Null(elecCopy.CreatedOn);
     }
 
     [Fact]

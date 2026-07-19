@@ -101,18 +101,42 @@ public sealed class RecurringItem : Entity
         return candidate;
     }
 
-    /// <summary>Due (and not yet handled) within period [from, to] as of <paramref name="today"/> — i.e. its day has
-    /// arrived and it hasn't been posted or skipped this period.</summary>
-    public bool IsDue(DateOnly from, DateOnly to, DateOnly today) =>
-        Active && LastHandledPeriodFrom != from && today >= DueDateWithin(from, to);
+    /// <summary>
+    /// When this item was set up. An item never falls due for a date that precedes it: adding "rent, day 10" on the
+    /// 19th describes an arrangement going forward, not a payment you forgot to log on the 10th — and with
+    /// <see cref="AutoPost"/> on, treating it as due would silently post an expense for a date already gone.
+    /// <para>Null on items created before this was tracked; those keep the old behaviour rather than being
+    /// retro-dated, since there's no honest value to invent for them.</para>
+    /// </summary>
+    public DateOnly? CreatedOn { get; private set; }
 
-    /// <summary>Active and not yet handled this period (whether or not its day has arrived) — i.e. still expected.</summary>
+    /// <summary>Set the creation date (restore path — the serializer replays the stored value verbatim).</summary>
+    public void SetCreatedOn(DateOnly? createdOn) => CreatedOn = createdOn;
+
+    /// <summary>Due (and not yet handled) within period [from, to] as of <paramref name="today"/> — i.e. its day has
+    /// arrived, it hasn't been posted or skipped this period, and the due date isn't earlier than
+    /// <see cref="CreatedOn"/>.</summary>
+    public bool IsDue(DateOnly from, DateOnly to, DateOnly today) =>
+        Active && LastHandledPeriodFrom != from && today >= DueDateWithin(from, to) && HasStartedBy(from, to);
+
+    /// <summary>False when this period's due date falls before the item existed — the first period is skipped and it
+    /// begins with the next one.</summary>
+    private bool HasStartedBy(DateOnly from, DateOnly to) =>
+        CreatedOn is not { } created || DueDateWithin(from, to) >= created;
+
+    /// <summary>Active and not yet handled this period (whether or not its day has arrived) — i.e. still expected.
+    /// An item whose day already passed before it was created isn't expected this period, so it doesn't nag either.
+    /// <para>The [from, to] overload is the accurate one; the single-argument form can't tell whether the item had
+    /// started, so it's kept only for callers that have no period range to hand.</para></summary>
     public bool IsPending(DateOnly from) => Active && LastHandledPeriodFrom != from;
+
+    /// <inheritdoc cref="IsPending(DateOnly)"/>
+    public bool IsPending(DateOnly from, DateOnly to) => IsPending(from) && HasStartedBy(from, to);
 
     /// <summary>Coming up soon: pending, not yet due, and its due date is within <paramref name="windowDays"/> of today.</summary>
     public bool IsUpcoming(DateOnly from, DateOnly to, DateOnly today, int windowDays)
     {
-        if (!IsPending(from)) return false;
+        if (!IsPending(from, to)) return false;
         var due = DueDateWithin(from, to);
         return due > today && due <= today.AddDays(windowDays);
     }

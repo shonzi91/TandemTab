@@ -796,7 +796,10 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
 
     public Task AddRecurring(string name, RecurringKind kind, RecurringAmountMode mode, decimal expected, int dayOfMonth, Guid categoryId, Guid fundId, string? icon, bool autoPost = false)
     {
-        Account.AddRecurring(new RecurringItem(name, kind, mode, expected, dayOfMonth, categoryId, fundId, icon, autoPost));
+        var item = new RecurringItem(name, kind, mode, expected, dayOfMonth, categoryId, fundId, icon, autoPost);
+        // Stamped so the item can't fall due for a date that precedes it — see RecurringItem.CreatedOn.
+        item.SetCreatedOn(Today());
+        Account.AddRecurring(item);
         return SaveAsync();
     }
 
