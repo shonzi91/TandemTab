@@ -1134,13 +1134,12 @@ public sealed class Localizer(IJSRuntime js)
             "{0} се нуждае от {1} този период, за да изпревари разходите си.",
         ["Reserve for upcoming costs"] = "Заредѝ за предстоящи разходи",
 
-        // Cash-flow runway on Home.
-        ["Money runs short in {0}"] = "Парите свършват през {0}",
-        ["You stay in the black for {0} months"] = "Оставаш на плюс {0} месеца",
-        ["{0} in, {1} out per month"] = "{0} влизат, {1} излизат месечно",
-        ["from your past months"] = "по последните ти месеци",
-        ["from your recurring items"] = "по повтарящите се пера",
-        ["some amounts unknown"] = "някои суми са неизвестни",
-        ["{0} of it committed"] = "{0} от тях са ангажирани",
+        // Cash-flow runway on Home. Plain words on purpose — "in the black" and "committed" are finance jargon
+        // that also translate badly.
+        ["Money runs out in {0}"] = "Парите свършват през {0}",
+        ["You're good for the next {0} months"] = "Спокоен си за следващите {0} месеца",
+        ["{0} in, {1} out a month"] = "{0} влизат, {1} излизат месечно",
+        ["based on your recurring items"] = "по повтарящите се пера",
+        ["some bills have no amount yet"] = "някои сметки още нямат сума",
     };
 }

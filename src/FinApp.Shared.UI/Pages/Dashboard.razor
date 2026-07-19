@@ -367,23 +367,25 @@ else
                     {
                         <div class="runway-row @(rw.FirstShortfallMonth is null ? "" : "runway-warn")">
                             <span class="runway-ico">@(rw.FirstShortfallMonth is null ? "🛟" : "⚠️")</span>
+                            @* Two lines, and a caveat only when it actually changes how much to trust the answer.
+                               This line used to carry five ideas at once — headline, in/out, which basis, unknown
+                               amounts, and the committed total — three of them in jargon ("in the black",
+                               "committed", "amounts unknown"). The committed figure is gone from here entirely; it
+                               already reads better per bucket on Goals ("€X/mo to stay covered"), so nothing is
+                               lost. The basis is only named when it's the weaker one — history is the normal case
+                               and doesn't need announcing, whereas "this rests on what you declared" does. *@
                             <span class="runway-text">
                                 @if (rw.FirstShortfallMonth is { } sm)
                                 {
-                                    <strong>@string.Format(Loc["Money runs short in {0}"], sm.ToString("MMM yyyy"))</strong>
+                                    <strong>@string.Format(Loc["Money runs out in {0}"], sm.ToString("MMM yyyy"))</strong>
                                 }
                                 else
                                 {
-                                    <strong>@string.Format(Loc["You stay in the black for {0} months"], rw.Months.Count)</strong>
+                                    <strong>@string.Format(Loc["You're good for the next {0} months"], rw.Months.Count)</strong>
                                 }
                                 <span class="runway-sub">
-                                    @string.Format(Loc["{0} in, {1} out per month"],
-                                        Fmt(State.Money(rw.Months[0].Income)), Fmt(State.Money(rw.Months[0].Spending)))
-                                    @(rw.Basis == CashFlowBasis.Demonstrated ? "· " + Loc["from your past months"] : "· " + Loc["from your recurring items"])@(rw.HasUnknownAmounts ? " · " + Loc["some amounts unknown"] : "")
-                                    @if (rw.MonthlyCommitted > 0m)
-                                    {
-                                        @: · @string.Format(Loc["{0} of it committed"], Fmt(State.Money(rw.MonthlyCommitted)))
-                                    }
+                                    @string.Format(Loc["{0} in, {1} out a month"],
+                                        Fmt(State.Money(rw.Months[0].Income)), Fmt(State.Money(rw.Months[0].Spending)))@(rw.Basis == CashFlowBasis.Recurring ? " · " + Loc["based on your recurring items"] : "")@(rw.HasUnknownAmounts ? " · " + Loc["some bills have no amount yet"] : "")
                                 </span>
                             </span>
                         </div>
