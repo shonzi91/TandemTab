@@ -354,42 +354,45 @@ else
 
             @{
                 var homeTargets = HomeTargets();
-                // The runway is the one forward-looking answer that isn't about a single goal, so it leads this card
-                // — and it shows even when there are no targets yet, because "when do I run out" stands alone.
                 // Null when there's no trustworthy basis; showing nothing beats showing a confident wrong number.
                 var runway = State.ProjectCashFlow(_balCur);
             }
-            @if (homeTargets.Count > 0 || runway is not null)
+            @* The runway stands alone rather than sitting under "You're on track for". They answer different
+               questions — this one is about your whole balance, the targets below are each about one goal — and
+               putting them under a heading that only fits the targets is what made the card hard to read. *@
+            @if (runway is { } rw)
+            {
+                <section class="panel runway-card @(rw.FirstShortfallMonth is null ? "" : "runway-warn")">
+                    <div class="runway-row">
+                        <span class="runway-ico">@(rw.FirstShortfallMonth is null ? "🛟" : "⚠️")</span>
+                        @* Two lines, and a caveat only when it actually changes how much to trust the answer.
+                           This line used to carry five ideas at once — headline, in/out, which basis, unknown
+                           amounts, and the committed total — three of them in jargon ("in the black",
+                           "committed", "amounts unknown"). The committed figure is gone from here entirely; it
+                           already reads better per bucket on Goals ("€X/mo to stay covered"), so nothing is
+                           lost. The basis is only named when it's the weaker one — history is the normal case
+                           and doesn't need announcing, whereas "this rests on what you declared" does. *@
+                        <span class="runway-text">
+                            @if (rw.FirstShortfallMonth is { } sm)
+                            {
+                                <strong>@string.Format(Loc["Money runs out in {0}"], sm.ToString("MMM yyyy"))</strong>
+                            }
+                            else
+                            {
+                                <strong>@string.Format(Loc["You're good for the next {0} months"], rw.Months.Count)</strong>
+                            }
+                            <span class="runway-sub">
+                                @string.Format(Loc["{0} in, {1} out a month"],
+                                    Fmt(State.Money(rw.Months[0].Income)), Fmt(State.Money(rw.Months[0].Spending)))@(rw.Basis == CashFlowBasis.Recurring ? " · " + Loc["based on your recurring items"] : "")@(rw.HasUnknownAmounts ? " · " + Loc["some bills have no amount yet"] : "")
+                            </span>
+                        </span>
+                    </div>
+                </section>
+            }
+            @if (homeTargets.Count > 0)
             {
                 <section class="panel targets-card">
                     <h2 class="targets-h">🎯 @Loc["You're on track for"]</h2>
-                    @if (runway is { } rw)
-                    {
-                        <div class="runway-row @(rw.FirstShortfallMonth is null ? "" : "runway-warn")">
-                            <span class="runway-ico">@(rw.FirstShortfallMonth is null ? "🛟" : "⚠️")</span>
-                            @* Two lines, and a caveat only when it actually changes how much to trust the answer.
-                               This line used to carry five ideas at once — headline, in/out, which basis, unknown
-                               amounts, and the committed total — three of them in jargon ("in the black",
-                               "committed", "amounts unknown"). The committed figure is gone from here entirely; it
-                               already reads better per bucket on Goals ("€X/mo to stay covered"), so nothing is
-                               lost. The basis is only named when it's the weaker one — history is the normal case
-                               and doesn't need announcing, whereas "this rests on what you declared" does. *@
-                            <span class="runway-text">
-                                @if (rw.FirstShortfallMonth is { } sm)
-                                {
-                                    <strong>@string.Format(Loc["Money runs out in {0}"], sm.ToString("MMM yyyy"))</strong>
-                                }
-                                else
-                                {
-                                    <strong>@string.Format(Loc["You're good for the next {0} months"], rw.Months.Count)</strong>
-                                }
-                                <span class="runway-sub">
-                                    @string.Format(Loc["{0} in, {1} out a month"],
-                                        Fmt(State.Money(rw.Months[0].Income)), Fmt(State.Money(rw.Months[0].Spending)))@(rw.Basis == CashFlowBasis.Recurring ? " · " + Loc["based on your recurring items"] : "")@(rw.HasUnknownAmounts ? " · " + Loc["some bills have no amount yet"] : "")
-                                </span>
-                            </span>
-                        </div>
-                    }
                     <div class="targets-list">
                         @foreach (var t in homeTargets)
                         {
@@ -1797,12 +1800,42 @@ else
                     }
                     else
                     {
-                        <label>@Loc["Goal amount (optional)"] <input type="number" step="0.01" min="0" @bind="_goalAmount" /></label>
-                        <label>@Loc["Alert at %"] <input type="number" step="1" min="0" max="100" @bind="_fThreshold" /></label>
-                        <label class="check"><input type="checkbox" @bind="_fNotify" /> @Loc["Notify on milestone"]</label>
+                        @* A goal and a set of costs answer opposite questions, so a bucket should carry one or the
+                           other. A goal is a target you finish (0→100%); costs are an obligation that never
+                           completes, because next year's insurance follows this year's. Together they make the
+                           ring meaningless — is 60% "60% toward my holiday" or "60% of what insurance needs?" —
+                           and they'd fight over the same sub-line. So each hides once the other is in use.
+                           Deliberately NOT a new SavingKind: "kind is the wrong axis" (the reverted PlannedExpense).
+                           A bucket that already has both keeps showing both, with a nudge to split — hiding real
+                           data would be worse than the ambiguity it came from. *@
+                        var hasCosts = ValidCostRows().Count > 0;
+                        var hasGoal = _goalAmount > 0m;
+                        if (hasCosts && hasGoal)
+                        {
+                            <div class="bucket-conflict">
+                                ⚠️ @Loc["This bucket has both a goal and costs to cover. They track different things — consider splitting them into two buckets."]
+                            </div>
+                        }
+
+                        @if (!hasCosts || hasGoal)
+                        {
+                            <label>@Loc["Goal amount (optional)"] <input type="number" step="0.01" min="0" @bind="_goalAmount" /></label>
+                            <label>@Loc["Alert at %"] <input type="number" step="1" min="0" max="100" @bind="_fThreshold" /></label>
+                            <label class="check"><input type="checkbox" @bind="_fNotify" /> @Loc["Notify on milestone"]</label>
+                        }
+                        else
+                        {
+                            <small class="hint">@Loc["Covering costs, so there's no goal to reach — a sinking fund tops up for good."]</small>
+                        }
 
                         @* Sinking fund: the irregular costs this bucket exists to cover. Deliberately a list inside
                            the bucket, not a section of its own — it's a property of the bucket, like its goal. *@
+                        @if (hasGoal && !hasCosts)
+                        {
+                            <small class="hint">@Loc["Saving toward a goal. To cover repeating costs instead, clear the goal amount."]</small>
+                        }
+                        else
+                        {
                         <div class="cost-head">
                             <label>@Loc["Costs this covers (optional)"]</label>
                             <button type="button" class="fund-add" @onclick="AddCostRow">＋ @Loc["Add a cost"]</button>
@@ -1837,6 +1870,7 @@ else
                                 }
                             </div>
                             <small class="hint">@Loc["An amount to aim for, not a reservation — nothing moves on its own. Repeating costs are averaged over the year; a dated one-off is spread over the months until it's due, less what this bucket already holds."]</small>
+                        }
                         }
                     }
                     <label>@Loc["Held in fund (optional)"]

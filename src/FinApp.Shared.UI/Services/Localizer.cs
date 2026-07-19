@@ -1134,6 +1134,12 @@ public sealed class Localizer(IJSRuntime js)
             "{0} се нуждае от {1} този период, за да изпревари разходите си.",
         ["Reserve for upcoming costs"] = "Заредѝ за предстоящи разходи",
         ["Reserved for upcoming costs"] = "Заделено за предстоящи разходи",
+        ["This bucket has both a goal and costs to cover. They track different things — consider splitting them into two buckets."] =
+            "Тази кофа има и цел, и разходи за покриване. Те следят различни неща — обмисли да ги разделиш на две кофи.",
+        ["Covering costs, so there's no goal to reach — a sinking fund tops up for good."] =
+            "Покрива разходи, така че няма цел за достигане — такава кофа се зарежда постоянно.",
+        ["Saving toward a goal. To cover repeating costs instead, clear the goal amount."] =
+            "Спестява за цел. За да покрива повтарящи се разходи, изчисти сумата на целта.",
 
         // Cash-flow runway on Home. Plain words on purpose — "in the black" and "committed" are finance jargon
         // that also translate badly.
