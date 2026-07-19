@@ -1119,5 +1119,28 @@ public sealed class Localizer(IJSRuntime js)
         ["All"] = "Всички",
         ["this period"] = "този период",
         ["Nothing here yet — add a goal to start putting money aside."] = "Още няма нищо — добави цел, за да започнеш да заделяш пари.",
+
+        // Sinking funds ("expenses fund"): the irregular costs a bucket covers, and the flat monthly set-aside.
+        ["Costs this covers (optional)"] = "Разходи, които покрива (по избор)",
+        ["Add a cost"] = "Добави разход",
+        ["e.g. Insurance"] = "напр. Застраховка",
+        ["One-off"] = "Еднократно",
+        ["/ month"] = "/ месец",
+        ["{0} still to find"] = "остават {0}",
+        ["to stay covered"] = "за да си покрит",
+        ["An amount to aim for, not a reservation — nothing moves on its own. Repeating costs are averaged over the year; a dated one-off is spread over the months until it's due, less what this bucket already holds."] =
+            "Ориентир, не резервация — нищо не се движи само. Повтарящите се разходи се усредняват за годината; еднократен разход с дата се разпределя по месеците до падежа, минус това, което вече е в кофата.",
+        ["{0} needs {1} set aside this period to stay ahead of its costs."] =
+            "{0} се нуждае от {1} този период, за да изпревари разходите си.",
+        ["Reserve for upcoming costs"] = "Заредѝ за предстоящи разходи",
+
+        // Cash-flow runway on Home.
+        ["Money runs short in {0}"] = "Парите свършват през {0}",
+        ["You stay in the black for {0} months"] = "Оставаш на плюс {0} месеца",
+        ["{0} in, {1} out per month"] = "{0} влизат, {1} излизат месечно",
+        ["from your past months"] = "по последните ти месеци",
+        ["from your recurring items"] = "по повтарящите се пера",
+        ["some amounts unknown"] = "някои суми са неизвестни",
+        ["{0} of it committed"] = "{0} от тях са ангажирани",
     };
 }

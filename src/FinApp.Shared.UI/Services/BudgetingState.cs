@@ -1095,6 +1095,33 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
         return b.MonthlySetAside(Period.From, SavingBucketSaved(bucketId).Amount);
     }
 
+    /// <summary>
+    /// Sinking-fund buckets that haven't had their monthly set-aside put in yet <b>this period</b>, with the amount
+    /// still owed. Ordered biggest gap first. Empty once each bucket has had its set-aside topped up.
+    /// <para>
+    /// Only allocations made in the current period count, which is the point: a sinking fund is a standing monthly
+    /// commitment, so last month's contribution doesn't cover this month. Money moved <i>out</i> of the bucket this
+    /// period nets off, so a top-up followed by a withdrawal correctly still reads as owed.
+    /// </para>
+    /// </summary>
+    public IReadOnlyList<(SavingCategory Bucket, decimal Owed)> SinkingFundsShortThisPeriod()
+    {
+        var result = new List<(SavingCategory, decimal)>();
+        foreach (var (bucket, _) in SavingBuckets)
+        {
+            if (bucket.IsArchived || !bucket.HasCosts) continue;
+            if (BucketMonthlySetAside(bucket.Id) is not { } need || need <= 0m) continue;
+
+            var putInThisPeriod = Period.SavingAllocations
+                .Where(a => a.SavingCategoryId == bucket.Id)
+                .Sum(a => a.Amount.Amount);
+
+            var owed = decimal.Round(need - putInThisPeriod, 2);
+            if (owed > 0m) result.Add((bucket, owed));
+        }
+        return result.OrderByDescending(x => x.Item2).ToList();
+    }
+
     /// <summary>Every live bucket's monthly set-aside added up — what the sinking funds jointly claim each month.
     /// Archived buckets are excluded; they aren't being funded.</summary>
     public decimal TotalMonthlySetAside =>

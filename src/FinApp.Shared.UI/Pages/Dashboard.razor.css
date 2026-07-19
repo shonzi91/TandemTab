@@ -444,11 +444,23 @@ button.ghost:disabled { background: #f1f3f6; color: #aab; cursor: not-allowed; }
 html.dark .fund-move-summary { border-bottom-color: #2a3550; }
 
 .row-actions { display: flex; align-items: center; gap: 6px; }
+/* Row-action buttons (✏️ 🗑️ ✕ …) across every list and modal head. These were a ~22×18px tap target — fine for a
+   mouse, a miss-fest on a phone, and the recurring list is where it bit hardest since edit and delete sit adjacent.
+   Sized to a real target here and to the 44px touch guideline on coarse pointers. */
 .exp-edit {
-    background: none; border: none; cursor: pointer; font-size: .85rem;
-    padding: 2px 5px; border-radius: 6px; line-height: 1;
+    background: none; border: none; cursor: pointer; font-size: .95rem;
+    min-width: 32px; min-height: 32px; padding: 4px 7px; border-radius: 8px; line-height: 1;
+    display: inline-grid; place-items: center;
 }
 .exp-edit:hover { background: #e4f6ee; }
+/* Both conditions on purpose: `pointer: coarse` is the honest test for a touchscreen, but it never matches an
+   emulated mobile viewport in a desktop browser — so on its own this rule would ship unverified. The width clause
+   makes it reachable in testing and is right anyway, since a 560px-wide window is almost always a phone. */
+@media (pointer: coarse), (max-width: 560px) {
+    .exp-edit { min-width: 44px; min-height: 44px; font-size: 1.05rem; }
+    /* Adjacent destructive actions need room between them, not just size. */
+    .row-actions, .modal-head-actions { gap: 6px; }
+}
 
 .bucket-list { list-style: none; margin: 0; padding: 0; }
 .bucket { padding: 10px 0; border-bottom: 1px solid #f1f3f6; }
@@ -731,6 +743,10 @@ html.dark .detail-subcat-sum { color: #7c8a94; }
     max-height: 90vh; overflow-y: auto;
     box-shadow: 0 20px 60px rgba(0,0,0,.25); display: flex; flex-direction: column; gap: 9px;
 }
+/* Review-style modals hold rows of data (description · date · two pickers · actions), not a column of form fields.
+   420px squeezes those onto three wrapped lines each on a desktop with room to spare, which is what made the bank
+   review read as "hidden". Wider only where it earns it — phones are unchanged, since 92vw already governs there. */
+.modal.modal-wide { width: min(760px, 94vw); }
 .modal h3 { margin: 0 0 2px; font-size: 1.05rem; }
 .modal-error {
     background: #fef2f2; border: 1px solid #fecaca; color: #991b1b;
@@ -1473,7 +1489,10 @@ html.dark .rule-chip.on { background: #14352a; border-color: #2bbd86; color: #6f
 .bank-tx { display: block; padding: 10px 0; border-top: 1px solid #eef0f3; }
 .vendor-badge { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; color: #ffffff; font-size: .72rem; font-weight: 700; flex: 0 0 auto; margin-right: 6px; vertical-align: middle; }
 .bank-tx-top { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
-.bank-tx-desc { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+/* The description is the one thing you need in order to categorise a transaction, and bank descriptions are long
+   ("TRANSFER TO PERSON X REF 12345"). It used to be clipped to one ellipsised line with the full text only in a
+   `title` tooltip — which a phone cannot show at all. It wraps now; nothing here is worth hiding. */
+.bank-tx-desc { font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
 .bank-tx .amt { white-space: nowrap; font-variant-numeric: tabular-nums; }
 .bank-tx .amt.credit { color: #0e9e6d; }
 /* De-duplication hint: this bank debit looks like a manual entry the user already logged. */
@@ -1487,7 +1506,7 @@ html.dark .rule-chip.on { background: #14352a; border-color: #2bbd86; color: #6f
 .bank-tx-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
 .bank-tx-date { flex: 0 0 auto; color: #9ca3af; font-size: .8rem; width: 48px; }
 .bank-tx-row .bank-sel { flex: 1 1 150px; min-width: 0; }
-.bank-tx-fund { flex: 1 1 120px; min-width: 0; color: #0e7a54; font-size: .85rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bank-tx-fund { flex: 1 1 120px; min-width: 0; color: #0e7a54; font-size: .85rem; font-weight: 600; overflow-wrap: anywhere; }
 .fund-synced { font-size: .78rem; margin-left: 4px; opacity: .75; }
 .bank-logo-img { height: 16px; width: auto; max-width: 40px; vertical-align: middle; border-radius: 3px; object-fit: contain; margin-right: 2px; }
 .fund-logo { height: 22px; width: 22px; object-fit: contain; border-radius: 5px; background: #ffffff; padding: 1px; vertical-align: middle; }

@@ -1123,7 +1123,8 @@ else
 @if (_modal != Modal.None)
 {
     <div class="modal-backdrop">
-        <div class="modal">
+        @* Review modals hold rows of data rather than a column of fields, so they get the wider box. *@
+        <div class="modal @(_modal is Modal.BankReview or Modal.Import ? "modal-wide" : "")">
             @if (_modalError is not null)
             {
                 <div class="modal-error">@_modalError</div>
@@ -4795,6 +4796,19 @@ else
         if (near is { } n)
             list.Add(new HomeReminder("🟡", string.Format(Loc["You're {0} from your {1} budget."], Fmt(State.Money(n.Remaining)), n.Name),
                 Loc["Review"], () => OpenCategoryDetail(n.CatId), false));
+
+        // Sinking-fund nudge: a bucket with listed future costs hasn't had this month's set-aside put in yet.
+        // Deliberately separate from the savings-rate nudge below and worded differently — that one is about hitting
+        // a rate you chose, this one is about covering a bill that is already coming. Same reason the action says
+        // "Reserve for upcoming costs" rather than reusing "Move to savings": they are not the same instruction.
+        foreach (var (bucket, owed) in State.SinkingFundsShortThisPeriod().Take(1))
+        {
+            var bucketId = bucket.Id;
+            list.Add(new HomeReminder("🗓️",
+                string.Format(Loc["{0} needs {1} set aside this period to stay ahead of its costs."],
+                    bucket.Name, Fmt(State.Money(owed))),
+                Loc["Reserve for upcoming costs"], () => OpenAddSaving(bucketId), false));
+        }
 
         // Savings nudge: below your rate target this period (reuses the Insights shortfall), or nothing saved yet.
         if (HasSavingsBucket)
