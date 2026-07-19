@@ -297,6 +297,10 @@ public sealed class Account : Entity
     public void ClearSavingInvestment(Guid savingCategoryId) =>
         (FindSavingCategory(savingCategoryId) ?? throw new InvalidOperationException("Saving category not found.")).ClearInvestment();
 
+    /// <summary>Mark a savings bucket as a sinking fund for its listed costs (clears any goal).</summary>
+    public void ConfigureSavingExpensesFund(Guid savingCategoryId) =>
+        (FindSavingCategory(savingCategoryId) ?? throw new InvalidOperationException("Saving category not found.")).ConfigureExpensesFund();
+
     /// <summary>Record an extra payment against a debt bucket — lowers its remaining balance (no-op for common
     /// buckets). Pass <paramref name="asOf"/> to date it, which re-anchors the schedule (see
     /// <see cref="Savings.SavingCategory.DebtBalanceOn"/>).</summary>

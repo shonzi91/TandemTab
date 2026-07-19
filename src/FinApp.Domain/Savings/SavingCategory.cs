@@ -9,7 +9,23 @@ namespace FinApp.Domain.Savings;
 /// <remarks>Value 3 was a short-lived "PlannedExpense" kind (removed in favour of a set-aside schedule on a common
 /// bucket). Legacy snapshots carrying kind 3 deserialize to an unknown enum value, match neither Debt nor Investment,
 /// and so restore as a <see cref="Common"/> bucket (keeping their goal) — then re-save as Common. Don't reuse value 3.</remarks>
-public enum SavingKind { Common = 0, Debt = 1, Investment = 2 }
+/// <summary>
+/// What a bucket is for. <see cref="Expenses"/> is a sinking fund — money topped up to meet irregular costs
+/// (insurance, tax, a lease residual) rather than to reach a goal.
+/// <para>
+/// <b>Value 3 is permanently reserved</b> and must never be reused: a short-lived "PlannedExpense" kind shipped
+/// with that number and was reverted the same day, so snapshots in the wild still encode it. It deserializes to an
+/// unrecognised value and restores as <see cref="Common"/> — see the serializer's legacy test. <see cref="Expenses"/>
+/// therefore takes 4.
+/// </para>
+/// <para>
+/// That earlier revert was about presentation, not the concept: back then every kind bought its own section on the
+/// savings tab, which made it overwhelming. The tab is now one filtered grid, so a kind costs a filter chip instead
+/// — which is why this distinction can finally be a real kind rather than something inferred from which field
+/// happened to be filled in.
+/// </para>
+/// </summary>
+public enum SavingKind { Common = 0, Debt = 1, Investment = 2, Expenses = 4 }
 
 /// <summary>
 /// A savings bucket (Kids, Vacations, Loan principal...). Like budget categories these form a tree
@@ -69,6 +85,9 @@ public sealed class SavingCategory : Entity
 
     public bool IsDebt => Kind == SavingKind.Debt;
     public bool IsInvestment => Kind == SavingKind.Investment;
+
+    /// <summary>A sinking fund: topped up to meet the costs in <see cref="Costs"/>, with no goal to finish.</summary>
+    public bool IsExpensesFund => Kind == SavingKind.Expenses;
 
     /// <summary>The fund this bucket's money is earmarked in ("held in"). A tag only — no money physically moves; it
     /// defaults the disburse/payment fund and shows where the bucket's money lives. Optional. Body data.</summary>
@@ -246,6 +265,23 @@ public sealed class SavingCategory : Entity
     {
         Kind = SavingKind.Common;
         ClearInvestmentFields();
+    }
+
+    /// <summary>Make this a sinking fund. A goal is cleared: an expenses fund has nothing to finish — next year's
+    /// insurance follows this year's — so a goal figure would only give the ring a meaning it can't keep.</summary>
+    public void ConfigureExpensesFund()
+    {
+        Kind = SavingKind.Expenses;
+        GoalAmount = null;
+        ClearDebtFields();
+        ClearInvestmentFields();
+    }
+
+    /// <summary>Revert a sinking fund to an ordinary savings bucket. Its cost list is left alone — clearing it
+    /// would throw away typed data on a toggle; callers that mean to drop the costs say so explicitly.</summary>
+    public void ClearExpensesFund()
+    {
+        if (Kind == SavingKind.Expenses) Kind = SavingKind.Common;
     }
 
     private void ClearDebtFields()

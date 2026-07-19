@@ -136,6 +136,42 @@ public class PlannedCostTests
     }
 
     [Fact]
+    public void Making_a_bucket_an_expenses_fund_drops_its_goal()
+    {
+        // A sinking fund has nothing to finish, so a leftover goal would give the ring a meaning it can't keep.
+        var account = new Account("Home", "EUR");
+        var car = account.AddSavingCategory("Car");
+        account.ConfigureSavingGoal(car.Id, 8_000m);
+        account.SetSavingCosts(car.Id, new[] { new PlannedCost("Insurance", 500m, CostCadence.Quarterly) });
+
+        account.ConfigureSavingExpensesFund(car.Id);
+
+        var bucket = account.FindSavingCategory(car.Id)!;
+        Assert.True(bucket.IsExpensesFund);
+        Assert.Null(bucket.GoalAmount);
+        Assert.Single(bucket.Costs);          // the costs are the point — they stay
+        Assert.False(bucket.IsDebt);
+        Assert.False(bucket.IsInvestment);
+    }
+
+    [Fact]
+    public void Reverting_an_expenses_fund_keeps_its_costs()
+    {
+        // Clearing the kind on a toggle shouldn't throw away rows the user typed; dropping them is a separate,
+        // explicit act.
+        var account = new Account("Home", "EUR");
+        var car = account.AddSavingCategory("Car");
+        account.SetSavingCosts(car.Id, new[] { new PlannedCost("Insurance", 500m, CostCadence.Quarterly) });
+        account.ConfigureSavingExpensesFund(car.Id);
+
+        var bucket = account.FindSavingCategory(car.Id)!;
+        bucket.ClearExpensesFund();
+
+        Assert.Equal(SavingKind.Common, bucket.Kind);
+        Assert.Single(bucket.Costs);
+    }
+
+    [Fact]
     public void Blank_or_zero_cost_lines_are_dropped_on_replace()
     {
         var account = new Account("Home", "EUR");

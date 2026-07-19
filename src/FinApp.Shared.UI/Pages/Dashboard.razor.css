@@ -1112,12 +1112,6 @@ html.dark .archived-h { color: #9aa7b4; }
     margin-top: 6px; padding-top: 8px; border-top: 1px solid #e6ece9; font-size: .88rem; color: #374151;
 }
 .cost-total strong { font-size: 1.05rem; color: #0f7a54; }
-/* Shown only when a bucket already carries both a goal and costs — pre-existing data we won't hide. */
-.bucket-conflict {
-    background: #fff8ed; border: 1px solid #f3d9a8; color: #8a5a12;
-    border-radius: 9px; padding: 8px 10px; font-size: .8rem; line-height: 1.35;
-}
-html.dark .bucket-conflict { background: #2a2113; border-color: #4a3a1c; color: #f0b26b; }
 .ring-setaside { color: #0f7a54; font-weight: 600; }
 html.dark .ring-setaside { color: #57d9a3; }
 .cost-short { color: #b45309; font-weight: 600; font-size: .78rem; }

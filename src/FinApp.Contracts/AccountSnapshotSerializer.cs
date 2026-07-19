@@ -146,6 +146,14 @@ public static class AccountSnapshotSerializer
         if (n.PlannedContribution is { } pc) s.SetPlannedContribution(pc);
         s.SetFund(n.FundId);
         if (n.Costs is { Count: > 0 }) s.ReplaceCosts(n.Costs);
+        // Costs are restored before the kind is settled, because an expenses fund is defined by them.
+        if (n.Kind == SavingKind.Expenses) s.ConfigureExpensesFund();
+        // Buckets that listed costs before the kind existed were saved as Common. One that has costs and no goal
+        // was already a sinking fund in everything but name, so it adopts the kind now and stops being offered a
+        // goal it never had. One that has BOTH is left alone — that's a genuine ambiguity, and the edit modal
+        // flags it rather than this quietly picking a side.
+        else if (n.Kind == SavingKind.Common && n.Costs is { Count: > 0 } && n.GoalAmount is not > 0m)
+            s.ConfigureExpensesFund();
         if (n.IsArchived) s.SetArchived(true);
         return s;
     }

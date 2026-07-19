@@ -985,12 +985,6 @@ else
                             var invProj = State.ProjectInvestment(bucketId, State.EffectiveSavingPace(bucketId)?.Amount ?? 0m);
                             <div class="ring-sub">@State.SavingBucketInvestmentRate(bucketId)% · @State.SavingBucketInvestmentTermYears(bucketId).ToString("0.#")@Loc["y"]@(invProj is { Months: > 0 } ip ? $" → ~{Fmt(State.Money(ip.FutureValue))}" : "")</div>
                         }
-                        else if (ctx.Bucket.IsExpensesFund)
-                        {
-                            @* "saved" is the wrong word for a sinking fund — the money is standing by to be spent,
-                               not accumulating toward anything. The set-aside line below says what it still needs. *@
-                            <span class="amt save">@Fmt(ctx.Total)</span> <span class="ring-muted">@Loc["set aside"]</span>
-                        }
                         else if (g is null)
                         {
                             <span class="amt save">@Fmt(ctx.Total)</span> <span class="ring-muted">@Loc["saved"]</span>
@@ -1046,7 +1040,6 @@ else
                         {
                             GoalFilter.Debts => Loc["Track a loan or debt: set money aside toward it, then pay the bank. Figures here are projections — they don't move real money."],
                             GoalFilter.Investments => Loc["Track an investment: fund it with 💰, set an expected return, and project its growth. Figures here are projections — they don't move real money."],
-                            GoalFilter.Expenses => Loc["Nothing here yet — add a fund for the costs you know are coming."],
                             _ => Loc["Nothing here yet — add a goal to start putting money aside."],
                         })
                     </p>
@@ -5530,7 +5523,6 @@ else
     {
         GoalFilter.Debts => SavingKind.Debt,
         GoalFilter.Investments => SavingKind.Investment,
-        GoalFilter.Expenses => SavingKind.Expenses,
         _ => SavingKind.Common,
     });
 

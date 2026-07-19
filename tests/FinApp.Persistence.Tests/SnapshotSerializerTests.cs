@@ -335,6 +335,61 @@ public class SnapshotSerializerTests
         Assert.False(copied.IsDebt);
         Assert.False(copied.IsInvestment);
         Assert.Equal(8_000m, copied.GoalAmount); // goal survives the fallback
+        Assert.NotEqual(SavingKind.Expenses, copied.Kind);   // the new kind took 4 precisely to leave 3 buried
+    }
+
+    [Fact]
+    public void An_expenses_fund_round_trips_with_its_costs()
+    {
+        var account = new Account("Home", "EUR");
+        account.AssignOwner(Guid.NewGuid(), "Me");
+        var car = account.AddSavingCategory("Car costs");
+        account.SetSavingCosts(car.Id, new[] { new PlannedCost("Insurance", 500m, CostCadence.Quarterly) });
+        account.ConfigureSavingExpensesFund(car.Id);
+
+        var copy = AccountSnapshotSerializer.Deserialize(AccountSnapshotSerializer.Serialize(account));
+
+        var copied = copy.SavingCategories.Single(s => s.Name == "Car costs");
+        Assert.Equal(SavingKind.Expenses, copied.Kind);
+        Assert.True(copied.IsExpensesFund);
+        Assert.Single(copied.Costs);
+        Assert.Null(copied.GoalAmount);
+    }
+
+    [Fact]
+    public void A_bucket_that_listed_costs_before_the_kind_existed_adopts_it_on_load()
+    {
+        // Costs shipped before the kind did, so those buckets are stored as Common. One with costs and no goal was
+        // already a sinking fund in all but name; it adopts the kind rather than being offered a goal forever.
+        var account = new Account("Home", "EUR");
+        account.AssignOwner(Guid.NewGuid(), "Me");
+        var car = account.AddSavingCategory("Car costs");
+        account.SetSavingCosts(car.Id, new[] { new PlannedCost("Insurance", 500m, CostCadence.Quarterly) });
+
+        var json = AccountSnapshotSerializer.Serialize(account);
+        Assert.Contains("\"Kind\":0", json);   // stored as Common, as an older build would have
+
+        var copied = AccountSnapshotSerializer.Deserialize(json).SavingCategories.Single(s => s.Name == "Car costs");
+        Assert.Equal(SavingKind.Expenses, copied.Kind);
+    }
+
+    [Fact]
+    public void A_bucket_with_both_a_goal_and_costs_is_left_as_a_goal_bucket()
+    {
+        // Genuinely ambiguous, so the loader doesn't pick a side — it keeps the goal, which is the thing the ring
+        // and its progress are already drawn from.
+        var account = new Account("Home", "EUR");
+        account.AssignOwner(Guid.NewGuid(), "Me");
+        var mixed = account.AddSavingCategory("Car");
+        account.ConfigureSavingGoal(mixed.Id, 8_000m);
+        account.SetSavingCosts(mixed.Id, new[] { new PlannedCost("Insurance", 500m, CostCadence.Quarterly) });
+
+        var copied = AccountSnapshotSerializer.Deserialize(AccountSnapshotSerializer.Serialize(account))
+            .SavingCategories.Single(s => s.Name == "Car");
+
+        Assert.Equal(SavingKind.Common, copied.Kind);
+        Assert.Equal(8_000m, copied.GoalAmount);
+        Assert.Single(copied.Costs);
     }
 
     [Fact]

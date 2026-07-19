@@ -1032,7 +1032,7 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     public async Task<Guid> AddSavingBucket(string name, decimal? goalAmount, decimal thresholdPercent, bool notifyOnMilestone, decimal initialAmount, string? icon = null,
         bool isDebt = false, decimal debtBalance = 0m, decimal debtRate = 0m, decimal debtInstallment = 0m, decimal? plannedContribution = null,
         bool isInvestment = false, decimal invRate = 0m, decimal invTermYears = 0m, int invCompounds = 12,
-        Guid? fundId = null, IEnumerable<PlannedCost>? costs = null)
+        Guid? fundId = null, IEnumerable<PlannedCost>? costs = null, bool isExpensesFund = false)
     {
         var bucket = Account.AddSavingCategory(name);
         Account.SetSavingCategoryIcon(bucket.Id, icon);
@@ -1046,6 +1046,8 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
         Account.SetSavingPlannedContribution(bucket.Id, plannedContribution);
         Account.SetSavingFund(bucket.Id, fundId);
         Account.SetSavingCosts(bucket.Id, costs ?? []);
+        // After the costs, since that's what the kind is about; it also clears any goal that came along for the ride.
+        if (isExpensesFund) Account.ConfigureSavingExpensesFund(bucket.Id);
         if (CanSetInitialSavings && initialAmount > 0m)
             Account.SetSavingInitialAmount(bucket.Id, initialAmount);
         await SaveAsync();
@@ -1055,7 +1057,7 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     public Task SaveSavingBucket(Guid savingCategoryId, string name, decimal? goalAmount, decimal thresholdPercent, bool notifyOnMilestone, decimal initialAmount, string? icon = null,
         bool isDebt = false, decimal debtBalance = 0m, decimal debtRate = 0m, decimal debtInstallment = 0m, decimal? plannedContribution = null,
         bool isInvestment = false, decimal invRate = 0m, decimal invTermYears = 0m, int invCompounds = 12,
-        Guid? fundId = null, IEnumerable<PlannedCost>? costs = null)
+        Guid? fundId = null, IEnumerable<PlannedCost>? costs = null, bool isExpensesFund = false)
     {
         Account.RenameSavingCategory(savingCategoryId, name);
         Account.SetSavingCategoryIcon(savingCategoryId, icon);
@@ -1080,6 +1082,9 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
         Account.SetSavingPlannedContribution(savingCategoryId, plannedContribution);
         Account.SetSavingFund(savingCategoryId, fundId);
         Account.SetSavingCosts(savingCategoryId, costs ?? []);
+        // Applied last so it wins over the goal branch above: switching a bucket to a sinking fund clears the goal
+        // rather than leaving a stale target behind a ring that no longer means anything.
+        if (isExpensesFund) Account.ConfigureSavingExpensesFund(savingCategoryId);
         if (CanSetInitialSavings)
             Account.SetSavingInitialAmount(savingCategoryId, initialAmount);
         return SaveAsync();
