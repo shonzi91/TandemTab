@@ -89,21 +89,33 @@ known-good baseline.
 - ☐ **README refresh** — the "Tech decisions"/persistence copy still describes the retired local-first
   SQLCipher/MAUI design; the Storage/sync rows were corrected in Session 37 but the rest is due a pass.
 
-## Phase 1 — server-side domain (Option A, ratified) — next
-**First slice (recommended):** one computed-read endpoint — `GET /accounts/{id}/overview` returning the
-header figures (`current/free/saved/spent/contributed/billsDue/safeAfterBills`) computed server-side
-from the snapshot the server already loads, with the web header rendering the DTO instead of computing
-locally. Proves the whole pattern (server computes → DTO → client renders) on a small, reversible
-surface, **no persistence change required** (the snapshot store stays; row-per-entity persistence is a
-later payoff, not a prerequisite). Then grow endpoint-by-endpoint, reads before mutations, web app green
-throughout.
+## Phase 1 — server-side domain (Option A, ratified) — IN PROGRESS
+Grow the computed-read API endpoint-by-endpoint from the snapshot the server already loads, **no
+persistence change required** (the snapshot store stays; row-per-entity persistence is a later payoff,
+not a prerequisite). Each read = a pure domain service + a `FinApp.Contracts` DTO + an endpoint + tests,
+mirroring what `BudgetingState` computes so the numbers can't drift. Reads before mutations; the Blazor
+web app stays the acceptance test throughout.
 
-## Phase 1 — server-side domain (only if Option A) 
-- Design the computed-read API surface; grow `FinApp.Contracts` endpoint by endpoint.
-- Move domain computation server-side incrementally, **keeping the Blazor web app working throughout** —
-  it is the acceptance test for API completeness.
-- Settle the offline/caching story.
-- Exit criteria: the web app runs against the new API with no client-side domain computation left.
+**Shipped so far (Session 37, not yet wired into the web client):**
+- ✅ `GET /accounts/{id}/overview` → `AccountOverviewDto` — the balance-header figures
+  (`current/free/saved/spent/contributed/billsDue/safeAfterBills`). Domain: `AccountOverview.For`.
+- ✅ `GET /accounts/{id}/runway` → `RunwayDto` (204 when no basis) — the cash runway. Domain:
+  `AccountForecast.Runway`.
+
+**Next reads (increasing cost):**
+- ☐ **Targets** — the "on track for" goal/debt payoff dates. Bigger: iterates buckets, composes
+  `LoanForecast` + savings pace per row.
+- ☐ **Milestones** count (`AchievementsService` — currently Shared.UI).
+- ☐ ⚠️ **Health score / insights** — the real wall: `InsightsService` lives in **`Shared.UI`, not the
+  domain**, so it must be ported into the domain first before it can move server-side.
+
+**Deferred / to settle:**
+- ☐ **Wire the web client** to the endpoints — deliberately NOT done per read; a piecemeal hybrid (client
+  computes some figures, fetches others) adds a network round-trip for data it already holds. Cut over in
+  one meaningful chunk once enough reads exist. Mind the **live-bank-balance adjustment**, which the header
+  applies client-side and the server figures deliberately omit (identical only when no fund is synced).
+- ☐ **Offline/caching story** — a thin client needs one; design endpoints with it in mind.
+- **Exit criteria:** the web app runs against the API with **no client-side domain computation left.**
 
 ## Phase 2 — native Android (Kotlin / Jetpack Compose)
 - Install Android SDK/JDK on the dev box (not present today).
