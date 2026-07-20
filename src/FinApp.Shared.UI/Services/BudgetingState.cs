@@ -373,6 +373,11 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     public bool CanGoNext => _selectedIndex < Account.Periods.Count - 1;
     public bool IsLatestPeriod => _selectedIndex == Account.Periods.Count - 1;
 
+    /// <summary>How many completed periods the runway's demonstrated average is built on — the same filter
+    /// <see cref="CashFlowForecast.Demonstrated"/> uses, surfaced so the runway can name its basis ("based on your
+    /// last N months") instead of presenting a projection as a certainty.</summary>
+    public int CompletedPeriodCount => Account.Periods.Count(p => p.Status == PeriodStatus.Closed);
+
     /// <summary>You can only roll into the next period once the current one has actually ended — this blocks creating
     /// future periods in advance (which would let milestones/streaks be farmed). Viewing past periods stays allowed.</summary>
     public bool CanStartNextPeriod =>
@@ -791,7 +796,7 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     public Money BillsDueThisPeriod =>
         !IsPeriodOpen ? Money(0m)
         : Money(Account.RecurringItems
-            .Where(r => r.Kind == RecurringKind.Expense && r.HasKnownAmount && r.IsPending(Period.From))
+            .Where(r => r.Kind == RecurringKind.Expense && r.HasKnownAmount && r.IsPending(Period.From, Period.To))
             .Sum(r => r.ExpectedAmount));
 
     public Task AddRecurring(string name, RecurringKind kind, RecurringAmountMode mode, decimal expected, int dayOfMonth, Guid categoryId, Guid fundId, string? icon, bool autoPost = false)

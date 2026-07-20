@@ -1106,6 +1106,9 @@ public sealed class Localizer(IJSRuntime js)
 
         // Balance header: "free" is savings-based, so the budget claim rides alongside it as context.
         ["planned"] = "планирани",
+        ["after bills"] = "след сметки",
+        ["{0} in known bills is still expected this period — this is what stays free once they are paid."] =
+            "{0} в познати сметки още се очакват този период — това остава свободно, след като бъдат платени.",
         ["Set aside for savings — reserved, not spent. Budgets aren't counted here."] =
             "Заделени за спестявания — резервирани, не похарчени. Бюджетите не се броят тук.",
         ["Not set aside for savings. Budgets are plans, so they don't reserve this — see what's still planned below."] =
@@ -1148,10 +1151,12 @@ public sealed class Localizer(IJSRuntime js)
 
         // Cash-flow runway on Home. Plain words on purpose — "in the black" and "committed" are finance jargon
         // that also translate badly.
-        ["Money runs out in {0}"] = "Парите свършват през {0}",
-        ["You're good for the next {0} months"] = "Спокоен си за следващите {0} месеца",
+        ["At this rate, money runs short in {0}"] = "При това темпо парите ще стигнат до {0}",
+        ["At this rate, you're covered for the next {0} months"] = "При това темпо си спокоен за следващите {0} месеца",
         ["{0} in, {1} out a month"] = "{0} влизат, {1} излизат месечно",
-        ["based on your recurring items"] = "по повтарящите се пера",
+        ["based on your recurring bills"] = "по повтарящите се сметки",
+        ["based on your last month"] = "по последния ти месец",
+        ["based on your last {0} months"] = "по последните ти {0} месеца",
         ["some bills have no amount yet"] = "някои сметки още нямат сума",
     };
 }

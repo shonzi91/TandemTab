@@ -181,6 +181,11 @@ else
             // plan €180 against €0 free without the header flinching, which is what made "free" read as "safe to spend".
             var _balPlanned = State.TotalBudgeted - State.TotalSpent;
             var _plannedOverFree = _balPlanned.Amount > 0m && _balPlanned.Amount > _balFree.Amount;
+            // Known bills still expected out this period (recurring, not yet posted). Unlike budgets these are real,
+            // near-certain outflows, so "free once they're paid" is an honest look-ahead — the number that answers
+            // "what can I actually spend without shorting a bill I already know is coming". Can go negative.
+            var _billsDue = State.BillsDueThisPeriod;
+            var _safeAfterBills = _balFree - _billsDue;
         }
         <div class="hdr-hero @(State.IsPeriodOpen ? "" : "hero-solo")">
             <div class="bal-part bal-part-main">
@@ -192,6 +197,10 @@ else
                 <div class="bal-part">
                     <span class="bal-label">@Loc["Free"]</span>
                     <strong class="@(State.IsOverAllocated ? "warn-text" : "bal-free-v")" title="@Loc["Not set aside for savings. Budgets are plans, so they don't reserve this — see what's still planned below."]">@Fmt(_balFree)</strong>
+                    @if (_billsDue.Amount > 0m)
+                    {
+                        <small class="bal-sub @(_safeAfterBills.IsNegative ? "warn-text" : "")" title="@string.Format(Loc["{0} in known bills is still expected this period — this is what stays free once they are paid."], Fmt(_billsDue))">@Fmt(_safeAfterBills) @Loc["after bills"]</small>
+                    }
                     @if (_balPlanned.Amount > 0m)
                     {
                         <small class="bal-sub @(_plannedOverFree ? "warn-text" : "")" title="@Loc["Your budgets still plan to spend this much. It's a plan, not a reservation — but if it's more than what's free, something has to give."]">@Fmt(_balPlanned) @Loc["planned"]</small>
@@ -354,8 +363,11 @@ else
 
             @{
                 var homeTargets = HomeTargets();
-                // Null when there's no trustworthy basis; showing nothing beats showing a confident wrong number.
-                var runway = State.ProjectCashFlow(_balCur);
+                // Only on the current period. The runway is a from-today-forward projection: its income/spending come
+                // from an average of ALL closed periods and it walks forward from the viewed period's start, so on a
+                // past period it renders the same "good for 6 months" pasted onto history — which is what made it read
+                // as "every old period shows today's numbers". A forecast belongs on the month you're actually in.
+                var runway = State.IsLatestPeriod ? State.ProjectCashFlow(_balCur) : null;
             }
             @* The runway stands alone rather than sitting under "You're on track for". They answer different
                questions — this one is about your whole balance, the targets below are each about one goal — and
@@ -365,25 +377,31 @@ else
                 <section class="panel runway-card @(rw.FirstShortfallMonth is null ? "" : "runway-warn")">
                     <div class="runway-row">
                         <span class="runway-ico">@(rw.FirstShortfallMonth is null ? "🛟" : "⚠️")</span>
-                        @* Two lines, and a caveat only when it actually changes how much to trust the answer.
-                           This line used to carry five ideas at once — headline, in/out, which basis, unknown
-                           amounts, and the committed total — three of them in jargon ("in the black",
-                           "committed", "amounts unknown"). The committed figure is gone from here entirely; it
-                           already reads better per bucket on Goals ("€X/mo to stay covered"), so nothing is
-                           lost. The basis is only named when it's the weaker one — history is the normal case
-                           and doesn't need announcing, whereas "this rests on what you declared" does. *@
+                        @* "At this rate" up front, and the basis always named. The old headline ("You're good for
+                           the next 6 months") read as a promise, when it only means "at your recent average the
+                           balance never went negative over the months I looked ahead" — the user rightly asked how
+                           they could be sure it holds. So the qualifier leads, and the sub-line says exactly what the
+                           numbers rest on: an average of your last N closed months, or your declared recurring bills.
+                           The committed figure stays off here (it reads better per bucket on Goals). *@
                         <span class="runway-text">
                             @if (rw.FirstShortfallMonth is { } sm)
                             {
-                                <strong>@string.Format(Loc["Money runs out in {0}"], sm.ToString("MMM yyyy"))</strong>
+                                <strong>@string.Format(Loc["At this rate, money runs short in {0}"], sm.ToString("MMM yyyy"))</strong>
                             }
                             else
                             {
-                                <strong>@string.Format(Loc["You're good for the next {0} months"], rw.Months.Count)</strong>
+                                <strong>@string.Format(Loc["At this rate, you're covered for the next {0} months"], rw.Months.Count)</strong>
                             }
                             <span class="runway-sub">
-                                @string.Format(Loc["{0} in, {1} out a month"],
-                                    Fmt(State.Money(rw.Months[0].Income)), Fmt(State.Money(rw.Months[0].Spending)))@(rw.Basis == CashFlowBasis.Recurring ? " · " + Loc["based on your recurring items"] : "")@(rw.HasUnknownAmounts ? " · " + Loc["some bills have no amount yet"] : "")
+                                @{
+                                    var basisNote = rw.Basis == CashFlowBasis.Recurring
+                                        ? Loc["based on your recurring bills"]
+                                        : State.CompletedPeriodCount == 1
+                                            ? Loc["based on your last month"]
+                                            : string.Format(Loc["based on your last {0} months"], State.CompletedPeriodCount);
+                                }
+                                @basisNote · @string.Format(Loc["{0} in, {1} out a month"],
+                                    Fmt(State.Money(rw.Months[0].Income)), Fmt(State.Money(rw.Months[0].Spending)))@(rw.HasUnknownAmounts ? " · " + Loc["some bills have no amount yet"] : "")
                             </span>
                         </span>
                     </div>
