@@ -177,10 +177,6 @@ else
             // Current − free reduces to the savings earmark (free = current − savings − priorSaved). Budgets are
             // deliberately NOT in it: only savings reserve cash (Period.FreeToAllocateAfter).
             var _balAlloc = _balCur - _balFree;
-            // What budgets still claim. Advisory — it doesn't reduce "free" — but leaving it off the header let you
-            // plan €180 against €0 free without the header flinching, which is what made "free" read as "safe to spend".
-            var _balPlanned = State.TotalBudgeted - State.TotalSpent;
-            var _plannedOverFree = _balPlanned.Amount > 0m && _balPlanned.Amount > _balFree.Amount;
             // Known bills still expected out this period (recurring, not yet posted). Unlike budgets these are real,
             // near-certain outflows, so "free once they're paid" is an honest look-ahead — the number that answers
             // "what can I actually spend without shorting a bill I already know is coming". Can go negative.
@@ -196,14 +192,13 @@ else
             {
                 <div class="bal-part">
                     <span class="bal-label">@Loc["Free"]</span>
-                    <strong class="@(State.IsOverAllocated ? "warn-text" : "bal-free-v")" title="@Loc["Not set aside for savings. Budgets are plans, so they don't reserve this — see what's still planned below."]">@Fmt(_balFree)</strong>
+                    <strong class="@(State.IsOverAllocated ? "warn-text" : "bal-free-v")" title="@Loc["Not set aside for savings. Budgets are plans, so they don't reserve this."]">@Fmt(_balFree)</strong>
+                    @* One context line at most: the bills still due this period, which "free" doesn't yet subtract.
+                       The old "planned" line was dropped — when budgets outrun free cash the urgent Home alert
+                       ("budgets still plan €X but only €Y is free") already says it, so the header no longer repeats it. *@
                     @if (_billsDue.Amount > 0m)
                     {
                         <small class="bal-sub @(_safeAfterBills.IsNegative ? "warn-text" : "")" title="@string.Format(Loc["{0} in known bills is still expected this period — this is what stays free once they are paid."], Fmt(_billsDue))">@Fmt(_safeAfterBills) @Loc["after bills"]</small>
-                    }
-                    @if (_balPlanned.Amount > 0m)
-                    {
-                        <small class="bal-sub @(_plannedOverFree ? "warn-text" : "")" title="@Loc["Your budgets still plan to spend this much. It's a plan, not a reservation — but if it's more than what's free, something has to give."]">@Fmt(_balPlanned) @Loc["planned"]</small>
                     }
                 </div>
                 <div class="bal-part">

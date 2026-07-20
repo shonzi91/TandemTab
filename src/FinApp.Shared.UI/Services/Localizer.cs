@@ -1104,17 +1104,14 @@ public sealed class Localizer(IJSRuntime js)
         ["Shorter term costs {0} less overall — lower installment buys monthly room instead."] =
             "По-краткият срок излиза {0} по-евтино общо — по-ниската вноска вместо това дава месечен въздух.",
 
-        // Balance header: "free" is savings-based, so the budget claim rides alongside it as context.
-        ["planned"] = "планирани",
+        // Balance header: "free" is savings-based; the bills-due context rides alongside it.
         ["after bills"] = "след сметки",
         ["{0} in known bills is still expected this period — this is what stays free once they are paid."] =
             "{0} в познати сметки още се очакват този период — това остава свободно, след като бъдат платени.",
         ["Set aside for savings — reserved, not spent. Budgets aren't counted here."] =
             "Заделени за спестявания — резервирани, не похарчени. Бюджетите не се броят тук.",
-        ["Not set aside for savings. Budgets are plans, so they don't reserve this — see what's still planned below."] =
-            "Не са заделени за спестявания. Бюджетите са планове и не резервират тези пари — виж какво още е планирано отдолу.",
-        ["Your budgets still plan to spend this much. It's a plan, not a reservation — but if it's more than what's free, something has to give."] =
-            "Бюджетите ти още планират да похарчат толкова. Това е план, не резервация — но ако е повече от свободните пари, нещо трябва да отстъпи.",
+        ["Not set aside for savings. Budgets are plans, so they don't reserve this."] =
+            "Не са заделени за спестявания. Бюджетите са планове и не резервират тези пари.",
 
         // Goals tab: one filtered grid instead of a section per bucket kind.
         ["Your goals"] = "Твоите цели",

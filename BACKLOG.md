@@ -91,23 +91,25 @@ commit noted.
     "set aside €X/month to meet due dates" idea (Session 26) are the same territory. One engine.
 
 ## Home density — the app's own kitchen-sink risk (added Session 37, from a competitor-honesty review)
-16. **Prune the Home tab.** The tab structure is disciplined (4 tabs, cut from 6), but **Home stacks ~8
-    sections plus a 5-number balance header** (Current / Free / Saved + "after bills" + "planned"). The real
-    smell isn't the count — it's **redundancy**: the health score, the runway, the "on track for" targets,
-    the milestones, and the collapsible deep-insights all answer the same question — *"how am I doing?"* — in
-    five formats, stacked vertically. This quietly undercuts the product's own positioning (calm & focused vs
-    a maximalist competitor like **Beyond Budget**, which ships AI receipt-scan + SMS import + AI insights +
-    leagues + both budgeting models); the "calm" wedge is only credible if Home *feels* calm.
-    - **Root cause is additive design:** every good idea becomes a new panel/number instead of replacing one.
-      The "avoid overwhelming sections" ethos is real but **reactive** (cleanup after the fact), not a gate at
-      the door. The Session-37 "safe to spend after bills" line is itself an example — a good idea shipped as
-      a *5th* header number.
-    - **Direction:** Home answers ONE question above the fold — *"Am I okay, and what needs me?"* (one status
-      line + urgent alerts + the primary action). Collapse the five "how am I doing" surfaces into a single
-      "Progress" view one tap deeper. Header back to 3 numbers; "after bills" / "planned" become on-tap
-      context. Audit whether the 4th savings-bucket kind (**Investment**) earns a permanent toggle.
-    - **Consolidate, don't add:** any future in-app assistant should *replace* stacked panels with an
-      on-demand "how am I doing?" answer — not become a 9th section.
+16. **Home density — mostly already addressed; the header was the real issue. ✅ (Session 37).**
+    ⚠️ **Correction:** the original write-up here ("~8 sections, five redundant 'how am I doing?' panels
+    stacked") was drawn from the *old* handoff, not the current code. Reading Home as it actually is: the
+    **milestones** strip is already a one-line link → Achievements modal; the **health score** is a one-line
+    card → modal; the **deep-insights** panel is gone from Home entirely (it lives in the Health Score modal).
+    Prior sessions already did most of the consolidation. The remaining sections — score card, urgent alerts,
+    runway line, targets list, milestones line — are each compact and answer *distinct* questions, not five
+    framings of one. **Don't cut good, distinct content to hit a reduction target.**
+    - **The one genuine issue was the 5-number header** (Current / Free / **after bills** / **planned** /
+      Saved) — which Session 37 itself bloated. **Fixed:** dropped the "planned" sub-line (it duplicated the
+      urgent "budgets still plan €X but only €Y is free" alert), keeping the unique "after bills". Header is
+      now 3 numbers + at most one context line. Verified live.
+    - **Still open — audit the 4th savings-bucket kind (`Investment`).** A permanent extra toggle on the
+      add/edit bucket modal + a Goals filter chip; unclear it earns its keep. But removing a `SavingKind`
+      has migration weight (values get burned, like the reverted PlannedExpense kind) — **decide on real
+      usage data, not a hunch.** Defer until there are users.
+    - **Standing principle — consolidate, don't add:** every good idea has defaulted to a *new* panel/number
+      rather than replacing one; the "avoid overwhelming" ethos is reactive cleanup, not a gate. Any future
+      in-app assistant should *replace* stacked panels with an on-demand answer, not become a new section.
 
 17. **AI assistant — "narrate, don't compute" (added Session 37).** An in-app assistant is compatible with the
     privacy wedge (#5) *and* the honesty brand (#4) **only** if it never does the math and never sees raw data.
