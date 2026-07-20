@@ -1,6 +1,32 @@
 # TandemTab (FinApp) — session handoff
 
-Last updated: 2026-07-19 (Session 35b). Read this + [README.md](README.md) + [TRANSFER.md](TRANSFER.md) + recent `git log` to catch up.
+Last updated: 2026-07-19 (Session 36). Read this + [README.md](README.md) + [TRANSFER.md](TRANSFER.md) + recent `git log` to catch up.
+
+## Session 36 (2026-07-19) — runway plain-worded & split out; two past-rewriting bugs; one-tap reserve; expenses-fund kind; nudges that respect free cash. COMMITTED, PUSHED & DEPLOYED (`finapp-00194-86s`).
+Seven commits (`77c51f0`, `26adc8e`, `c86cedc`, `d7b1f7c`, `78981d9`, `2ea3dc9`, `157c63d`). Image `finapp:157c63d` (digest `sha256:319670e9…`, Cloud Build 4m12s) → **`finapp-00194-86s`**. Post-deploy: both URLs 200 on `app.css?v=33`, 5 `secretKeyRef`, `Kms__KeyName` set, `Snapshots__CompressWrites=true` intact. **340 tests green** (208 domain + 44 persistence + 88 server). The only WARNING+ in the revision's logs are routine **401s** on `/me` + `/auth/refresh` (unauthenticated visitors; Cloud Run logs 401 as WARNING) — not app errors.
+
+### Runway copy simplified, then split off the "on track for" card (`77c51f0`, `d7b1f7c`)
+The line carried five ideas at once, three in jargon ("in the black", "committed", "amounts unknown"). Now **two lines**: *"You're good for the next 6 months"* / *"€X in, €Y out a month"*. The committed figure is gone from here (it reads better per-bucket on Goals); the basis is named **only when it's the weaker one** (recurring, not history); the caveat now says which thing is missing (*"some bills have no amount yet"*). Then the runway got **its own panel** above the targets card — it's about the whole balance, while every line in that card is about one goal, so sharing the heading "You're on track for" was the confusion the user reported.
+
+### Two bugs that silently rewrote the past (`26adc8e`)
+- **Recurring back-posting.** A recurring item had no idea when it was created, so `IsDue` only checked whether its day had arrived — add "rent, day 10" on the 19th and it was instantly due for the 10th, and with auto-post on that **silently posted an expense dated to a day already gone**. New `RecurringItem.CreatedOn`: an item never falls due for a date preceding it (starts next period instead). Legacy items keep `CreatedOn=null` and behave as before — stamping load-time would suppress a bill that should genuinely fire. Round-trips through the serializer verbatim (incl. null). `IsPending` gained a `(from,to)` overload for the same guard.
+- **Past periods showed today's bucket balance.** `AllocationsFor` summed **every** period regardless of which one you were viewing, so navigating back to January showed today's total — a number January's own movements can't add up to. Funds/spending already read as-of; savings didn't. `ForBucket` now cuts allocations at the viewed period; the all-time `AccumulatedTotal` is deliberately unchanged.
+
+### Reserve-for-costs is one tap (`c86cedc`)
+The sinking-fund nudge already names the bucket and amount, so opening a modal only asked again. The button now allocates directly, **capped at free cash** (same guard as the loan nudge — no button when there's none). Nothing is remembered: the nudge is derived from what the bucket holds vs. needs, so deleting the deposit brings it back, and spending €80 from a funded bucket brings it back asking for **€80**, not the full amount. Verified both.
+
+### Expenses fund is now a real bucket kind (`78981d9`) — a reversal of an earlier call
+The user pushed back on my "kind is the wrong axis" reasoning and was right: hiding the goal field when costs existed (and vice-versa, added earlier this session) **was already an implicit type system**; naming it is the same design, honestly, and lets the cost list be *required*. The PlannedExpense revert was about **presentation** (every kind bought its own tab section) — Session 31 rebuilt that tab as one filtered grid, so a kind now costs one **filter chip**. Reason for the revert is gone.
+- **`SavingKind.Expenses = 4`, NOT 3.** ⚠️ **Value 3 stays permanently burned** by the reverted PlannedExpense kind (wild snapshots encode it; must keep restoring as `Common`). Tests pin both.
+- **Existing cost-buckets migrate on load:** a `Common` bucket with costs and no goal adopts `Expenses` (it was a sinking fund in all but name); one with **both** a goal and costs is left as a goal bucket (real ambiguity — the loader doesn't pick a side). `ConfigureExpensesFund` clears the goal; reads "set aside" not "saved"; can't be saved with zero costs.
+- The 4th kind adds a 🗓️ Expenses chip to the Goals filter + the add/edit modal's type toggle. Browser-verified: migration, add, save-gating, and that the plain Savings goal type is unaffected.
+- `d7b1f7c` had shipped the interim implicit-hiding version with a "both" conflict banner; `78981d9` removed that banner + its now-dead CSS/strings.
+
+### Nudges stop urging money that isn't there (`157c63d`)
+Two nudges ignored free cash. The **savings nudge**'s *"money came in — move some into savings"* branch never checked (only the rate branch did), and the **loan nudge** showed its "spare budget → loan" text even when nothing was moveable. Both now gated on `MaxAdditionalSavings > 0` — urging you to set more aside while **Free is already negative** is asking you to dig deeper. Plus a **new urgent Home alert** (🧮) when budgets plan more than there's free cash to cover: *"Your budgets still plan €X but only €Y is free — trim a budget or add income"* → jumps to Spending. Until now this only whispered as an amber header sub-line, and reserving into a bucket (a common cause) isn't visible from the Spending tab. Browser-verified: fires at €2,920-planned vs €2,400-free, tracks down to €0 free, savings nudge correctly suppressed, sinking nudge keeps its text but loses its button.
+
+### Housekeeping
+- `2ea3dc9` removed a stray `Dashboard.razor.bak` left by a `sed -i`, added `*.bak` to `.gitignore`. **Lesson: don't `sed -i` tracked files — it drops a `.bak`.**
 
 ## Session 35b (2026-07-19) — the runway was wrong on a real account; plus taps, a sinking-fund nudge, an unclipped bank review. COMMITTED, PUSHED & DEPLOYED (`finapp-00193-p6q`).
 Commits `4640d67` (runway fix), `2907a3a` (the three UI asks). Image `finapp:2907a3a` (digest `sha256:22dacce1…`, Cloud Build 4m19s) → **`finapp-00193-p6q`**. Post-deploy: both URLs 200 on `app.css?v=33`, 5 `secretKeyRef`, `Kms__KeyName` set, `Snapshots__CompressWrites=true` intact, zero WARNING+. **329 tests green** (200 domain + 41 persistence + 88 server).
