@@ -833,7 +833,7 @@ public sealed class Localizer(IJSRuntime js)
             "Приложение за споделен бюджет за двойки и семейства — планирайте разходите, изчистете дълговете и постигайте целите за спестяване заедно.",
         ["Free to start"] = "Безплатно за начало",
         ["Built for two"] = "Създадено за двама",
-        ["Private by design"] = "Поверително по замисъл",
+        ["Encrypted — your raw data is never sold or fed to AI"] = "Криптирано — суровите ти данни никога не се продават или подават на ИИ",
         ["Create your free account"] = "Създай безплатен профил",
         ["Already have an account? Sign in below."] = "Вече имаш профил? Влез по-долу.",
         ["Already have an account?"] = "Вече имаш профил?",
