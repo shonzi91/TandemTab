@@ -1,6 +1,8 @@
 using System.Text;
 using FinApp.Contracts;
 using FinApp.Domain.Common;
+using FinApp.Domain.Forecasting;
+using FinApp.Domain.Periods;
 using FinApp.Domain.Services;
 using FinApp.Persistence;
 using FinApp.Server.Accounts;
@@ -521,6 +523,23 @@ accounts.MapGet("/{id:guid}/overview", async (Guid id, ClaimsPrincipal user, Sna
     return Results.Ok(new AccountOverviewDto(
         account.Currency, ov.Current.Amount, ov.Free.Amount, ov.Saved.Amount,
         ov.Spent.Amount, ov.Contributed.Amount, ov.BillsDue.Amount, ov.SafeAfterBills.Amount));
+});
+
+// The cash runway (first month the balance runs short, or null when there's no basis to project from).
+accounts.MapGet("/{id:guid}/runway", async (Guid id, ClaimsPrincipal user, SnapshotService svc, CancellationToken ct) =>
+{
+    // 204 when there's no runway to show (no snapshot, or no trustworthy basis to project from) — the UI
+    // renders nothing in that case, which is a real state distinct from "the figures are zero".
+    var snap = await svc.GetAsync(user.UserId(), id, ct);
+    if (string.IsNullOrEmpty(snap.Payload)) return Results.NoContent();
+    var account = AccountSnapshotSerializer.Deserialize(snap.Payload);
+    if (AccountForecast.Runway(account) is not { } proj) return Results.NoContent();
+    return Results.Ok(new RunwayDto(
+        account.Currency, proj.Months.Count, proj.FirstShortfallMonth,
+        proj.Months[0].Income, proj.Months[0].Spending,
+        proj.Basis == CashFlowBasis.Recurring,
+        account.Periods.Count(p => p.Status == PeriodStatus.Closed),
+        proj.HasUnknownAmounts));
 });
 
 accounts.MapPut("/{id:guid}/snapshot", async (Guid id, SaveAccountRequest req, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>

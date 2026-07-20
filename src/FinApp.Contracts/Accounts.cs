@@ -59,3 +59,20 @@ public record AccountOverviewDto(
 {
     public static readonly AccountOverviewDto Empty = new("", 0m, 0m, 0m, 0m, 0m, 0m, 0m);
 }
+
+/// <summary>
+/// The cash-runway line on Home, computed server-side (Option-A migration). Returned as <c>null</c> when there's
+/// no trustworthy basis to project from (the UI shows no runway). <see cref="Months"/> is the horizon actually
+/// projected; <see cref="FirstShortfallMonth"/> is the first month the balance ends below zero, or null if none
+/// does. <see cref="BasedOnRecurring"/> distinguishes the young-account fallback (declared recurring bills) from
+/// the normal basis (an average of the last <see cref="CompletedPeriodCount"/> closed months).
+/// </summary>
+public record RunwayDto(
+    string Currency,
+    int Months,
+    DateOnly? FirstShortfallMonth,
+    decimal MonthlyIncome,
+    decimal MonthlySpending,
+    bool BasedOnRecurring,
+    int CompletedPeriodCount,
+    bool HasUnknownAmounts);
