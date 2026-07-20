@@ -14,9 +14,9 @@ This doc is the single source of truth for the mobile plan. Update it as decisio
 ---
 
 ## What exists today
-- **`FinApp.App.Maui`** — a MAUI **Blazor Hybrid** scaffold (native shell, UI renders `Shared.UI` Razor
-  in a WebView). Pinned to `net9.0-windows`; Android/iOS/MacCatalyst commented out. **Slated for
-  removal** under the no-MAUI decision.
+- ~~**`FinApp.App.Maui`**~~ — **removed (Session 37).** The MAUI Blazor Hybrid scaffold is deleted and
+  dropped from the solution; this also unblocked a clean **full-solution build** (it had been failing on
+  the missing `maui-tizen` workload).
 - **`FinApp.Shared.UI`** — the whole Blazor UI (`Dashboard.razor` ~6k lines) + client services
   (`BudgetingState`, `AuthState`, `SyncClient`, `FinAppApiClient`, `Localizer`, `InsightsService`,
   `AchievementsService`). This stays — it is the **web** app.
@@ -81,11 +81,22 @@ requirement, true of Swift, Flutter, RN and MAUI alike. You don't have to own on
 
 ## Phase 0 — verify + pre-mobile changes on the current app  ← we are here
 Harden and confirm the existing web app **before** committing to the port, so it starts from a
-known-good baseline. Concrete items **TBD — to be filled in from the user's list.**
-Candidates worth folding in:
-- Full end-to-end verification pass (register → account → budgets → expense → savings → recurring).
-- Any UX/domain changes to settle before they're frozen into a native rewrite.
-- **Decide Option A vs B above.** Everything downstream depends on it.
+known-good baseline.
+- ✅ **Option A ratified (Session 37)** — server-side domain. See the Open decisions note.
+- ✅ **`FinApp.App.Maui` retired (Session 37)** — full-solution build is green again.
+- ☐ Full end-to-end verification pass (register → account → budgets → expense → savings → recurring).
+- ☐ Any UX/domain changes to settle before they're frozen into a native rewrite.
+- ☐ **README refresh** — the "Tech decisions"/persistence copy still describes the retired local-first
+  SQLCipher/MAUI design; the Storage/sync rows were corrected in Session 37 but the rest is due a pass.
+
+## Phase 1 — server-side domain (Option A, ratified) — next
+**First slice (recommended):** one computed-read endpoint — `GET /accounts/{id}/overview` returning the
+header figures (`current/free/saved/spent/contributed/billsDue/safeAfterBills`) computed server-side
+from the snapshot the server already loads, with the web header rendering the DTO instead of computing
+locally. Proves the whole pattern (server computes → DTO → client renders) on a small, reversible
+surface, **no persistence change required** (the snapshot store stays; row-per-entity persistence is a
+later payoff, not a prerequisite). Then grow endpoint-by-endpoint, reads before mutations, web app green
+throughout.
 
 ## Phase 1 — server-side domain (only if Option A) 
 - Design the computed-read API surface; grow `FinApp.Contracts` endpoint by endpoint.
@@ -117,9 +128,11 @@ Candidates worth folding in:
 ---
 
 ## Open decisions
-- **⚠️ Option A vs B (server-side domain vs per-platform reimplementation)** — the load-bearing one.
-  Recommendation: **A**. Nothing native should start before this is settled.
-- **Retiring `FinApp.App.Maui`** — agreed in principle (no MAUI); needs doing, along with the `maui`
-  workload note in TRANSFER.md and any solution-filter references.
+- ~~**⚠️ Option A vs B**~~ — **RATIFIED: A (server-side domain), Session 37.** B (reimplement in
+  Kotlin + Swift) stays rejected — three implementations of the same money maths that must agree forever.
+  The web app is the incremental acceptance test; native starts only once it runs with **no** client-side
+  domain computation left.
+- ~~**Retiring `FinApp.App.Maui`**~~ — **DONE (Session 37).** Removed from the solution and deleted;
+  full-solution build green. (No `maui` note in TRANSFER.md; no solution filters referenced it.)
 - **Mac access** — user expects access "soon"; iOS is blocked until then, Android is not.
 - **Phase 0 scope** — the specific verify/change list the user wants done first.

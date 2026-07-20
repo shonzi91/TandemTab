@@ -13,9 +13,9 @@ share an account and stay in sync.
 | Concern | Decision | Why |
 |---|---|---|
 | Language/stack | **.NET 9 / C#** | Matches the team's expertise. |
-| UI | **Blazor**, shared across **MAUI Blazor Hybrid** (mobile/desktop) and **Blazor WebAssembly** (web) | One UI codebase, two hosts. Native first (strongest local-privacy story). |
-| Local storage | **SQLite + EF Core**; SQLCipher-encrypted on native, OPFS-persisted on web | Same data layer everywhere; real at-rest encryption for financial data. |
-| Multi-user sync | **ASP.NET Core + SignalR** relay of **E2E-encrypted** event blobs | Native .NET, real-time, server never sees plaintext. (MQTT/RabbitMQ only if scale later demands a true broker.) |
+| UI | **Blazor WebAssembly** (web) today; **native Android/iOS planned** (Kotlin/Swift, no MAUI) | Web ships now; native is gated on moving the domain server-side — see [docs/MOBILE.md](docs/MOBILE.md). |
+| Storage | Account **snapshots stored server-side** (Neon Postgres via `FinApp.Server`), gzipped and **encrypted at rest with Cloud KMS** | Real at-rest encryption for financial data; the server is the source of truth the web client syncs against. |
+| Multi-user sync | **ASP.NET Core + SignalR** on Cloud Run relays account changes | Real-time sync. **Trust model is server-side** ("the server may read your data"); confidentiality comes from encryption at rest + access control — **not** end-to-end. |
 | Conflict handling | Append-only **ledger** for expenses/contributions; last-writer-wins for settings | Merges cleanly across devices; makes period reconciliation auditable. |
 | Notifications | On-device local reminders + push (FCM/APNs) for cross-user events | Reminders work offline; live events arrive when the app is closed. |
 
@@ -30,8 +30,9 @@ FinApp.sln
 src/
   FinApp.Domain/            ← pure C# domain model + business rules (no UI, no storage)
   FinApp.Persistence/       ← EF Core + SQLite (SQLCipher-encrypted), maps the domain aggregate
-  FinApp.Shared.UI/         ← shared Blazor components + app state (reused by every client)
-  FinApp.App.Maui/          ← MAUI Blazor Hybrid host (Windows target enabled today)
+  FinApp.Shared.UI/         ← shared Blazor components + app state (the web client's UI)
+  FinApp.App.Web/           ← Blazor WebAssembly host (the shipping web client)
+  FinApp.Server/            ← ASP.NET Core API on Cloud Run (auth, sync, snapshot storage, bank sync)
 tests/
   FinApp.Domain.Tests/      ← xUnit tests for the rules
   FinApp.Persistence.Tests/ ← encrypted save/reload round-trip tests
@@ -72,11 +73,9 @@ dotnet test
 `FinApp.Persistence` maps the rich domain aggregate directly with EF Core:
 - `Money` is value-converted to a single text column (keeps every entity constructor-bindable).
 - Collections map through their private backing fields; computed properties are `Ignore`d.
-- The SQLite file is **SQLCipher-encrypted**; the key lives in the OS keystore (MAUI `SecureStorage`,
-  DPAPI-backed on Windows). A round-trip test asserts a wrong key cannot open the database.
-
-On the MAUI host the DB lives in the app-data directory and is created/seeded on first launch;
-edits persist immediately and survive restarts.
+A round-trip test asserts encrypted save/reload works. (`FinApp.Persistence` was designed for a
+local-first SQLCipher client; the shipping app persists server-side snapshots instead — see the Storage
+row above. **⚠️ This section predates that move and is due a refresh.**)
 
 ## Roadmap
 1. ✅ Domain model + rules + tests
