@@ -90,6 +90,43 @@ commit noted.
     **Fold in, don't duplicate:** "predictive budgeting" (noted below) and the Wave-4 calendar +
     "set aside €X/month to meet due dates" idea (Session 26) are the same territory. One engine.
 
+## Home density — the app's own kitchen-sink risk (added Session 37, from a competitor-honesty review)
+16. **Prune the Home tab.** The tab structure is disciplined (4 tabs, cut from 6), but **Home stacks ~8
+    sections plus a 5-number balance header** (Current / Free / Saved + "after bills" + "planned"). The real
+    smell isn't the count — it's **redundancy**: the health score, the runway, the "on track for" targets,
+    the milestones, and the collapsible deep-insights all answer the same question — *"how am I doing?"* — in
+    five formats, stacked vertically. This quietly undercuts the product's own positioning (calm & focused vs
+    a maximalist competitor like **Beyond Budget**, which ships AI receipt-scan + SMS import + AI insights +
+    leagues + both budgeting models); the "calm" wedge is only credible if Home *feels* calm.
+    - **Root cause is additive design:** every good idea becomes a new panel/number instead of replacing one.
+      The "avoid overwhelming sections" ethos is real but **reactive** (cleanup after the fact), not a gate at
+      the door. The Session-37 "safe to spend after bills" line is itself an example — a good idea shipped as
+      a *5th* header number.
+    - **Direction:** Home answers ONE question above the fold — *"Am I okay, and what needs me?"* (one status
+      line + urgent alerts + the primary action). Collapse the five "how am I doing" surfaces into a single
+      "Progress" view one tap deeper. Header back to 3 numbers; "after bills" / "planned" become on-tap
+      context. Audit whether the 4th savings-bucket kind (**Investment**) earns a permanent toggle.
+    - **Consolidate, don't add:** any future in-app assistant should *replace* stacked panels with an
+      on-demand "how am I doing?" answer — not become a 9th section.
+
+17. **AI assistant — "narrate, don't compute" (added Session 37).** An in-app assistant is compatible with the
+    privacy wedge (#5) *and* the honesty brand (#4) **only** if it never does the math and never sees raw data.
+    - **Always-on, safe kind:** natural-language **navigation** ("take me to my car fund"), **help/explainers**
+      ("how does the runway work?") from static docs, and **narrating numbers the engine already computed** in
+      plain language. The LLM produces *no* figures, so it can't hallucinate one — the deterministic engine
+      (already correct) owns every number.
+    - **Opt-in, off by default:** anything that summarises the user's actual money sends only **aggregated /
+      anonymised** inputs ("groceries €430, up 12%"), never raw transactions, to a **no-training / no-retention**
+      API. Consistent with the already-declined **LLM auto-categorisation** (inspectability).
+    - **Do NOT:** pipe raw transactions to a cloud LLM for advice/categorisation — that becomes the thing we
+      differentiate against (Beyond Budget) *and* risks stating a wrong number.
+    - **Two payoffs:** a marketable position — *"AI that helps you understand your money without ever getting
+      your raw data, and can't make up a number"* — and a lever against the Home kitchen-sink (item 16): one
+      on-demand "how am I doing?" answer can **replace** stacked status panels, not add a 9th.
+    - ⚠️ **Only claim what you can deliver.** On-device / anonymised + no-retention is harder than piping to a
+      cloud LLM; a fig-leaf "private AI" badge would wreck the trust brand faster than shipping no AI. The
+      privacy-absolutist core of the wedge may reject *any* cloud LLM touching finances — keep it opt-in.
+
 **Considered and declined in the same review** (don't re-litigate without new information):
 - **Multiple budgeting methodologies** (zero-based / 50-30-20 / envelope side by side) — **declined.** A
   method isn't a feature, it's the meaning of every number on screen; supporting several gives every

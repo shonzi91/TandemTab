@@ -1,6 +1,24 @@
 # TandemTab (FinApp) — session handoff
 
-Last updated: 2026-07-19 (Session 36). Read this + [README.md](README.md) + [TRANSFER.md](TRANSFER.md) + recent `git log` to catch up.
+Last updated: 2026-07-20 (Session 37). Read this + [README.md](README.md) + [TRANSFER.md](TRANSFER.md) + recent `git log` to catch up.
+
+## Session 37 (2026-07-20) — Home forward-honesty shipped; subscriptions designed; a competitor reality-check. COMMITTED, PUSHED & DEPLOYED (`finapp-00195-mv5`).
+Two commits (`ab23822` docs, `f13d584` code). Image `finapp:f13d584` (digest `sha256:c1eac4fd…`, Cloud Build 4m50s) → **`finapp-00195-mv5`**. Post-deploy: both URLs 200, `Kms__KeyName` + `Snapshots__CompressWrites` intact, 5 `secretKeyRef`, **zero WARNING+** on the revision. **340 tests green** (208+44+88), Release build clean. Browser-verified on the live dev account before deploy.
+
+### Home now looks forward honestly (`f13d584`)
+- **Runway is gated to the current period.** It projects from today using an all-periods average, so on a *past* period it pasted the same "good for 6 months" onto history — the user's "every previous period shows the current data" report. Now `State.IsLatestPeriod ? ProjectCashFlow(...) : null`.
+- **Runway copy stops over-promising.** ~~"You're good for the next 6 months"~~ → **"At this rate, you're covered for the next N months"**, and the basis is now *always* named: **"based on your last N months"** (new `BudgetingState.CompletedPeriodCount`) or "based on your recurring bills". Shortfall line likewise prefixed "At this rate,".
+- **"Safe to spend after bills" — the new number.** "Free" is cash − savings and deliberately ignores upcoming bills, so it read as safe-to-spend while rent was still due. A new **sub-line under Free** nets the known recurring bills still expected this period (`BillsDueThisPeriod`, tightened to the accurate `IsPending(from,to)` overload) → **"€Y after bills"**, amber when negative. **Free's meaning and the budget model are untouched** — this is additive, not a move to zero-based. Verified live: €0 free with a €900 bill → "€-900.00 after bills" in amber, correct tooltip.
+
+### Subscriptions & entitlements designed → [docs/BILLING.md](docs/BILLING.md) (`ab23822`)
+Full design to fold into the server-side migration. **Decisions:** monetize *after* mobile + push (a paid web-only app with no notifications churns); gate depth/collaboration/cost, **never the hook or history**; **Free = 1 debt + 1 goal**, recurring *definition* free but **auto-post Premium**, auto-import Premium; **Premium $4.99/mo · $39.99/yr**, **Ultra $8.99/mo** (bank sync + FX, *later*). **Entitlement resolves through `Account.OwnerUserId`** so the guest inherits the host's plan with no per-guest state; `Subscription` lives in server EF (not the snapshot); **45-day cardless trial** auto-downgrades via the same resolver; Terms + Privacy revision is a **hard pre-launch gate**.
+
+### The honest competitive picture — read this before more building
+- **Beyond Budget** (beyondbudgetapp.com, live on Google Play) is **nearly this product, already shipped on mobile**, with things we lack: **AI receipt scan, SMS/notification auto-import** (solves manual-entry friction with no bank API — our Achilles' heel, and cheaper than our Enable-Banking path), **AI forecasting** (occupies the "look forward" wedge I'd oversold as ours), leagues, knowledge hub. We are **web-only, pre-users, verified only on a test account.**
+- **Where a real, defensible edge could still be** (only if focused + validated): **calm/opinionated** vs their kitchen sink; a **provably-correct engine** (340 tests, debt-schedule derivation, honest forecasts — this session's whole theme) as "the app that never lies to you"; **privacy** as a *structural* moat (their SMS-read + receipt-to-AI features we can't be out-privacy'd on — GDPR/EU/BG audience); **couples-first** (it's in our name, an afterthought in theirs). Position: *"a calm, couples-first budgeting app that looks forward honestly and never sends your data to an AI."*
+- **⚠️ Our own kitchen-sink risk is real** — see BACKLOG item 16. Home stacks ~8 sections + a 5-number header, five of them different framings of "how am I doing?". The "calm" claim isn't credible until Home is pruned. **Highest-leverage next non-code step: put it in front of 5–10 real users** — validate before building mobile or billing.
+
+
 
 ## Session 36 (2026-07-19) — runway plain-worded & split out; two past-rewriting bugs; one-tap reserve; expenses-fund kind; nudges that respect free cash. COMMITTED, PUSHED & DEPLOYED (`finapp-00194-86s`).
 Seven commits (`77c51f0`, `26adc8e`, `c86cedc`, `d7b1f7c`, `78981d9`, `2ea3dc9`, `157c63d`). Image `finapp:157c63d` (digest `sha256:319670e9…`, Cloud Build 4m12s) → **`finapp-00194-86s`**. Post-deploy: both URLs 200 on `app.css?v=33`, 5 `secretKeyRef`, `Kms__KeyName` set, `Snapshots__CompressWrites=true` intact. **340 tests green** (208 domain + 44 persistence + 88 server). The only WARNING+ in the revision's logs are routine **401s** on `/me` + `/auth/refresh` (unauthenticated visitors; Cloud Run logs 401 as WARNING) — not app errors.
