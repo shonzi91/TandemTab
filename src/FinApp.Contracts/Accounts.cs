@@ -40,3 +40,22 @@ public record AccountSnapshot(Guid Id, long Version, string Payload);
 
 /// <summary>Push a locally-edited snapshot back to the server. <see cref="ExpectedVersion"/> enables optimistic concurrency.</summary>
 public record SaveAccountRequest(string Payload, long ExpectedVersion);
+
+/// <summary>
+/// The Home balance-header figures, computed <b>server-side</b> from the account snapshot — the first read
+/// moved off the client under the Option-A migration (docs/MOBILE.md). Amounts are plain decimals in
+/// <see cref="Currency"/>. <see cref="Saved"/> = current − free (savings earmarked, this period + prior);
+/// <see cref="SafeAfterBills"/> = free − known recurring bills still due this period, and may be negative.
+/// </summary>
+public record AccountOverviewDto(
+    string Currency,
+    decimal Current,
+    decimal Free,
+    decimal Saved,
+    decimal Spent,
+    decimal Contributed,
+    decimal BillsDue,
+    decimal SafeAfterBills)
+{
+    public static readonly AccountOverviewDto Empty = new("", 0m, 0m, 0m, 0m, 0m, 0m, 0m);
+}

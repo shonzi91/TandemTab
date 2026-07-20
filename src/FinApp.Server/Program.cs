@@ -1,6 +1,7 @@
 using System.Text;
 using FinApp.Contracts;
 using FinApp.Domain.Common;
+using FinApp.Domain.Services;
 using FinApp.Persistence;
 using FinApp.Server.Accounts;
 using FinApp.Server.Auth;
@@ -506,6 +507,21 @@ accounts.MapPost("/{id:guid}/reactivate", async (Guid id, ClaimsPrincipal user, 
 // --- Account snapshot (full aggregate, opaque blob) ----------------------
 accounts.MapGet("/{id:guid}/snapshot", async (Guid id, ClaimsPrincipal user, SnapshotService svc, CancellationToken ct) =>
     Results.Ok(await svc.GetAsync(user.UserId(), id, ct)));
+
+// --- Computed reads (Option-A migration, docs/MOBILE.md) -----------------
+// First read moved server-side: the Home balance-header figures, computed from the snapshot the server
+// already loads. Reuses SnapshotService.GetAsync for the contributor auth + decrypt; the domain does the maths.
+accounts.MapGet("/{id:guid}/overview", async (Guid id, ClaimsPrincipal user, SnapshotService svc, CancellationToken ct) =>
+{
+    var snap = await svc.GetAsync(user.UserId(), id, ct);
+    if (string.IsNullOrEmpty(snap.Payload)) return Results.Ok(AccountOverviewDto.Empty);
+    var account = AccountSnapshotSerializer.Deserialize(snap.Payload);
+    if (account.CurrentPeriod is not { } period) return Results.Ok(AccountOverviewDto.Empty with { Currency = account.Currency });
+    var ov = AccountOverview.For(account, period);
+    return Results.Ok(new AccountOverviewDto(
+        account.Currency, ov.Current.Amount, ov.Free.Amount, ov.Saved.Amount,
+        ov.Spent.Amount, ov.Contributed.Amount, ov.BillsDue.Amount, ov.SafeAfterBills.Amount));
+});
 
 accounts.MapPut("/{id:guid}/snapshot", async (Guid id, SaveAccountRequest req, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
 {
