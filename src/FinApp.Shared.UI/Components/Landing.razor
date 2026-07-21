@@ -1,5 +1,6 @@
 @inject Localizer Loc
 @inject AuthState Auth
+@inject IJSRuntime JS
 @implements IDisposable
 
 @* Logged-out marketing landing. The sign-in card (<AuthPanel/>) opens as an overlay from the CTA — the auth
@@ -9,7 +10,10 @@
 
     <div class="lp-topbar">
         <span class="lp-brand-sm"><span class="lp-logo-sm"><TandemLogo /></span><span class="brand-word">Tandem<span class="brand-tab">Tab</span></span></span>
-        <LanguagePicker />
+        <span class="lp-topbar-actions">
+            <button class="lp-theme-toggle" title="@Loc[_dark ? "Light theme" : "Dark theme"]" @onclick="ToggleTheme">@(_dark ? "☀️" : "🌙")</button>
+            <LanguagePicker />
+        </span>
     </div>
 
     <section class="lp-hero">
@@ -21,7 +25,7 @@
                 <li>@Loc["Great solo, better together"]</li>
                 <li>@Loc["Encrypted — your raw data is never sold or fed to AI"]</li>
             </ul>
-            <button class="lp-cta lp-cta-glow" @onclick="OpenRegister">@Loc["Try it free"]</button>
+            <button class="lp-cta lp-cta-glow" @onclick="OpenAuth">@Loc["Try it free"]</button>
         </div>
     </section>
 
@@ -84,7 +88,7 @@
 
     <section class="lp-closing">
         <h3>@Loc["Ready to take control of your money — together?"]</h3>
-        <button class="lp-cta lp-cta-glow" @onclick="OpenRegister">@Loc["Try it free"]</button>
+        <button class="lp-cta lp-cta-glow" @onclick="OpenAuth">@Loc["Try it free"]</button>
     </section>
 
 </div>
@@ -94,18 +98,36 @@
     <div class="lp-auth-backdrop" @onclick="CloseAuth">
         <div class="lp-auth-modal" @onclick:stopPropagation="true">
             <button class="lp-auth-x" title="@Loc["Close"]" @onclick="CloseAuth">×</button>
-            <AuthPanel StartInRegister="_startRegister" />
+            <AuthPanel />
         </div>
     </div>
 }
 
 @code {
     private bool _showAuth;
-    private bool _startRegister;
+    // Dark is the app-wide default (see index.html), so start assuming dark and correct from storage on first render.
+    private bool _dark = true;
 
-    private void OpenRegister() { _startRegister = true; _showAuth = true; }
-    private void OpenLogin() { _startRegister = false; _showAuth = true; }
+    // The auth overlay always opens on Sign-in (AuthPanel's default); new users pick the Create-account tab there.
+    private void OpenAuth() => _showAuth = true;
     private void CloseAuth() => _showAuth = false;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        try
+        {
+            var saved = (await JS.InvokeAsync<string>("finappGetTheme")) == "dark";
+            if (saved != _dark) { _dark = saved; StateHasChanged(); }
+        }
+        catch { /* host without the theme helper — keep the dark default */ }
+    }
+
+    private async Task ToggleTheme()
+    {
+        _dark = !_dark;
+        try { await JS.InvokeVoidAsync("finappSetTheme", _dark ? "dark" : "light"); } catch { /* ignore */ }
+    }
 
     protected override void OnInitialized()
     {

@@ -131,18 +131,23 @@
                 }
                 else
                 {
-                    <h4>@Loc["Change password"]</h4>
-                    @if (_pwdError is not null)
-                    {
-                        <div class="pm-msg pm-error">@_pwdError</div>
-                    }
-                    @if (_pwdOk)
-                    {
-                        <div class="pm-msg pm-ok">@Loc["Password changed."]</div>
-                    }
-                    <label>@Loc["Current password"] <input type="password" @bind="_curPwd" /></label>
-                    <label>@Loc["New password"] <input type="password" @bind="_newPwd" /></label>
-                    <label>@Loc["Confirm new password"] <input type="password" @bind="_confirmPwd" /></label>
+                    <details class="pm-section">
+                        <summary>@Loc["Change password"]</summary>
+                        @if (_pwdError is not null)
+                        {
+                            <div class="pm-msg pm-error">@_pwdError</div>
+                        }
+                        @if (_pwdOk)
+                        {
+                            <div class="pm-msg pm-ok">@Loc["Password changed."]</div>
+                        }
+                        <label>@Loc["Current password"] <input type="password" @bind="_curPwd" /></label>
+                        <label>@Loc["New password"] <input type="password" @bind="_newPwd" /></label>
+                        <label>@Loc["Confirm new password"] <input type="password" @bind="_confirmPwd" /></label>
+                        <div class="pm-actions">
+                            <button @onclick="ChangePassword" disabled="@(_pwdBusy || _curPwd.Length == 0 || _newPwd.Length < 8)">@Loc["Change password"]</button>
+                        </div>
+                    </details>
                 }
 
                 @if (!Auth.CurrentUser!.IsExternal)
@@ -227,18 +232,20 @@
 
                 @if (!InProfileSubflow && _archived.Count > 0)
                 {
-                    <h4>@Loc["Archived accounts"]</h4>
-                    <p class="pm-hint">@Loc["Archived accounts are deleted after 30 days. Restore one to bring it back."]</p>
-                    <ul class="pm-archived">
-                        @foreach (var a in _archived)
-                        {
-                            var aid = a.Id;
-                            <li>
-                                <span class="pm-arch-name">@a.Name <span class="pm-hint">· @DaysLeft(a.PurgeAt)</span></span>
-                                <button class="ghost" @onclick="() => Reactivate(aid)" disabled="@_archiveBusy">@Loc["Restore"]</button>
-                            </li>
-                        }
-                    </ul>
+                    <details class="pm-section">
+                        <summary>@Loc["Archived accounts"] <span class="pm-badge">@_archived.Count</span></summary>
+                        <p class="pm-hint">@Loc["Archived accounts are deleted after 30 days. Restore one to bring it back."]</p>
+                        <ul class="pm-archived">
+                            @foreach (var a in _archived)
+                            {
+                                var aid = a.Id;
+                                <li>
+                                    <span class="pm-arch-name">@a.Name <span class="pm-hint">· @DaysLeft(a.PurgeAt)</span></span>
+                                    <button class="ghost" @onclick="() => Reactivate(aid)" disabled="@_archiveBusy">@Loc["Restore"]</button>
+                                </li>
+                            }
+                        </ul>
+                    </details>
                 }
                 @if (!_2faDisabling && _2faSetup is null && _2faRecoveryCodes is null)
                 {
@@ -271,10 +278,6 @@
                 {
                     <div class="pm-actions">
                         <button class="ghost" @onclick="CloseProfile">@Loc["Close"]</button>
-                        @if (!Auth.CurrentUser!.IsExternal)
-                        {
-                            <button @onclick="ChangePassword" disabled="@(_pwdBusy || _curPwd.Length == 0 || _newPwd.Length < 8)">@Loc["Change password"]</button>
-                        }
                     </div>
                 }
             </div>

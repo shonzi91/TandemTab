@@ -99,8 +99,8 @@ else
                 <button class="nav @(State.CanGoNext ? "" : "nav-hidden")" title="@Loc["Next period"]" @onclick="State.GoNext" disabled="@(!State.CanGoNext)">›</button>
             </div>
 
-            @* Header utility icons, left→right: notifications · achievements · import · settings (settings last).
-               Import lives here because it's an occasional utility, not a daily money move. *@
+            @* Header utility icons, left→right: notifications · achievements · settings (settings last).
+               Import / Recurring / External accounts moved to the labelled action row below the balance. *@
             <span class="hdr-icons">
                 <span class="acct-notify">
                     <button class="link bell" title="@Loc["Notifications"]" @onclick="() => _bellOpen = !_bellOpen">
@@ -140,11 +140,6 @@ else
                     }
                 </span>
                 <button class="link hdr-trophy" title="@Loc["Achievements"]" @onclick="() => _modal = Modal.Achievements">🏆</button>
-                <button class="link" title="@Loc["Import statement"]" @onclick="OpenImport">📥</button>
-                @if (_bankStatus?.Enabled == true)
-                {
-                    <button class="link" title="@Loc["External accounts"]" @onclick="ShowBankTab">🏦</button>
-                }
                 <span class="acct-menu">
                     <button class="link" title="@Loc["Account actions"]" @onclick="() => _acctMenuOpen = !_acctMenuOpen">⚙️</button>
                     @if (_acctMenuOpen)
@@ -185,7 +180,7 @@ else
         }
         <div class="hdr-hero @(State.IsPeriodOpen ? "" : "hero-solo")">
             <div class="bal-part bal-part-main">
-                <span class="bal-label">@Loc[State.IsPeriodOpen ? "Current" : "Closed on"]</span>
+                <span class="bal-label">@Loc[State.IsPeriodOpen ? "Current" : "Closed on"]@if (LiveBalancePending) { <span class="bal-refreshing" title="@Loc["Updating live balance…"]"></span> }</span>
                 <strong>@Fmt(_balCur)</strong>
             </div>
             @if (State.IsPeriodOpen)
@@ -205,6 +200,16 @@ else
                     <span class="bal-label">@Loc["Saved"]</span>
                     <strong class="bal-alloc-v" title="@Loc["Set aside for savings — reserved, not spent. Budgets aren't counted here."]">@Fmt(_balAlloc)</strong>
                 </div>
+            }
+        </div>
+        @* Account-level utilities that aren't daily money moves — grouped below the balance as labelled buttons
+           rather than easy-to-miss header icons. External accounts appears only when a bank connection exists. *@
+        <div class="hdr-actions">
+            <button class="hdr-action" @onclick="OpenImport">📥 <span>@Loc["Import statement"]</span></button>
+            <button class="hdr-action" @onclick="OpenRecurring">🔁 <span>@Loc["Recurring"]</span></button>
+            @if (_bankStatus?.Enabled == true)
+            {
+                <button class="hdr-action" @onclick="ShowBankTab">🏦 <span>@Loc["External accounts"]</span></button>
             }
         </div>
     </header>
@@ -266,7 +271,7 @@ else
                     (State.TotalContributed.Amount > 0m, "💵", Loc["Add your income"], Loc["Tell TandemTab what's coming in this month."], OpenDeposit),
                     (State.TotalBudgeted.Amount > 0m, "🎯", Loc["Set a budget"], Loc["Cap a category so you know what's safe to spend."], OpenAddBudget),
                     (State.AllExpenses.Count > 0, "🧾", Loc["Log an expense"], Loc["Record your first spend — or import a statement."], OpenAddOrImport),
-                    (State.SavingBuckets.Any(b => !b.Bucket.IsArchived && (b.Bucket.GoalAmount is > 0m || b.Bucket.IsDebt || b.Bucket.IsInvestment || b.Total.Amount > 0m)), "🏆", Loc["Create a goal"], Loc["Add a savings goal or a debt to pay off."], OpenAddBucket),
+                    (State.SavingBuckets.Any(b => !b.Bucket.IsArchived), "🏆", Loc["Create a savings bucket"], Loc["Set money aside — with or without a goal or debt to pay off."], OpenAddBucket),
                 };
                 var obDone = obSteps.Count(s => s.Done);
             }
@@ -296,10 +301,11 @@ else
                     </div>
                 </section>
             }
-            @* Home's two everyday moves sit on the numbers they change: Spent carries "Add expense", Contributed
-               carries "Contribute" — money out and money in. Health score beneath, then what needs attention, then
-               what you're on track for. (Move-to-savings dropped — the bell nudges it and the Goals tab owns it;
-               Recurring moved to Spending; Import and the bank became header/settings icons.) *@
+            @* Home's two everyday moves sit on the numbers they change: Spent carries "Add expense", Income
+               carries "Add income" — money out and money in. Each also shows a quieter reference figure on the
+               right: Spent against what was budgeted, Income against what was saved this period (the app is
+               savings-driven, so the saved figure belongs here, not only on Goals). Health score beneath, then
+               what needs attention, then what you're on track for. *@
             <section class="cards cards-2 action-cards">
                 @{
                     // Spent tile shades along the same green→red heat ramp as the progress rings, by how close
@@ -307,16 +313,49 @@ else
                     var _sh = SpendHeatHue();
                 }
                 <div class="card tile-spend action-card" style="background:hsl(@_sh 62% 50% / .12);border-color:hsl(@_sh 62% 50% / .34)">
-                    <span class="card-label">@Loc["Spent"]</span>
-                    <span class="card-value" style="color:hsl(@_sh 72% 56%)">@Fmt(State.TotalSpent)</span>
-                    <button class="card-act card-act-spend" @onclick="OpenAddExpenseTab">🧾 @Loc["Add expense"]</button>
+                    <div class="card-top">
+                        <div class="card-main">
+                            <span class="card-label">@Loc["Spent"]</span>
+                            <span class="card-value" style="color:hsl(@_sh 72% 56%)">@Fmt(State.TotalSpent)</span>
+                        </div>
+                        <div class="card-aside">
+                            <span class="card-aside-label">@Loc["budgeted"]</span>
+                            <span class="card-aside-value">@Fmt(State.TotalBudgeted)</span>
+                        </div>
+                    </div>
+                    @* Hovering the fast button reveals the most-used categories; clicking one opens Add-expense with
+                       that category pre-selected. The button itself still opens the blank modal (and is the only path
+                       on touch, where there's no hover). *@
+                    <div class="quick-spend">
+                        <button class="card-act card-act-spend" @onclick="OpenAddExpenseTab">🧾 @Loc["Add expense"]</button>
+                        @{ var homeRecentCats = State.RecentCategories(5); }
+                        @if (homeRecentCats.Count > 0)
+                        {
+                            <div class="quick-cats" role="menu">
+                                <span class="quick-cats-label">@Loc["Quick add to"]</span>
+                                @foreach (var cid in homeRecentCats)
+                                {
+                                    var catId = cid;
+                                    <button type="button" class="quick-cat" role="menuitem" @onclick="() => OpenAddExpense(catId)"><span class="cat-ico">@State.CategoryIcon(catId)</span> @State.CategoryName(catId)</button>
+                                }
+                            </div>
+                        }
+                    </div>
                 </div>
                 <div class="card savings action-card">
-                    <span class="card-label">@Loc["Contributed"]</span>
-                    <span class="card-value">@Fmt(State.TotalContributed)</span>
+                    <div class="card-top">
+                        <div class="card-main">
+                            <span class="card-label">@Loc["Income"]</span>
+                            <span class="card-value">@Fmt(State.TotalContributed)</span>
+                        </div>
+                        <div class="card-aside">
+                            <span class="card-aside-label">@Loc["saved"]</span>
+                            <span class="card-aside-value">@Fmt(State.SavingsThisPeriod)</span>
+                        </div>
+                    </div>
                     @if (State.IsPeriodOpen)
                     {
-                        <button class="card-act card-act-income" @onclick="OpenDeposit">💵 @Loc["Contribute"]</button>
+                        <button class="card-act card-act-income" @onclick="OpenDeposit">💵 @Loc["Add income"]</button>
                     }
                 </div>
             </section>
@@ -385,12 +424,16 @@ else
                             }
                             else
                             {
-                                <strong>@string.Format(Loc["At this rate, you're covered for the next {0} months"], rw.Months.Count)</strong>
+                                <strong>@string.Format(Loc["At this rate, your balance lasts about {0} months"], rw.Months.Count)</strong>
                             }
                             <span class="runway-sub">
                                 @{
+                                    // The demonstrated basis averages every actual movement (including one-off spending),
+                                    // so it's a fair runway. The recurring basis only knows declared bills — it can't see
+                                    // day-to-day spending, so it will read optimistically; say so plainly rather than let
+                                    // "covered" imply everything is accounted for.
                                     var basisNote = rw.Basis == CashFlowBasis.Recurring
-                                        ? Loc["based on your recurring bills"]
+                                        ? Loc["counts recurring bills only — not day-to-day spending"]
                                         : State.CompletedPeriodCount == 1
                                             ? Loc["based on your last month"]
                                             : string.Format(Loc["based on your last {0} months"], State.CompletedPeriodCount);
@@ -454,7 +497,7 @@ else
                warning that used to sit here now shows on Home, where the eye lands first. *@
             <section class="panel">
                 <div class="spending-head">
-                    <span class="insight-h">@Loc["Where your money is"]</span>
+                    <span class="insight-h">@Loc["Where your money is"]@if (LiveBalancePending) { <span class="bal-refreshing" title="@Loc["Updating live balance…"]"></span> }</span>
                     <button class="fund-add" @onclick="OpenAddFund">＋ @Loc["Add a fund"]</button>
                 </div>
                 @{
@@ -638,7 +681,7 @@ else
                     <h2>@Loc["Income"]</h2>
                     @if (State.IsPeriodOpen)
                     {
-                        <button class="fund-add" @onclick="OpenDeposit">＋ @Loc["Contribute"]</button>
+                        <button class="fund-add" @onclick="OpenDeposit">＋ @Loc["Add income"]</button>
                     }
                     <span class="spending-sub">@Fmt(State.TotalContributed) @Loc["this period"]</span>
                     @if (State.IsPeriodOpen)
@@ -654,8 +697,15 @@ else
                     {
                         var cid = c.Id;
                         <li class="row-menu-host">
-                            <span class="row-main">@c.Date.ToString("dd MMM") · <Avatar Name="@State.MemberName(c.MemberId)" Picture="@State.MemberAvatar(c.MemberId)" Size="20" /> @State.MemberName(c.MemberId)@(State.IsRealUser(c.MemberId) ? "" : $" ({Loc["imported"]})") · <span class="cat-ico">@State.ContributionCategoryIcon(c.CategoryId)</span> @State.ContributionCategoryName(c.CategoryId) · @Loc["to"] <span class="cat-ico">@State.FundIcon(c.FundId)</span> @State.FundName(c.FundId)</span>
-                            <span class="amt">@Fmt(c.Paid)</span>
+                            <span class="row-main row-stack">
+                                <span class="row-title"><span class="cat-ico">@State.ContributionCategoryIcon(c.CategoryId)</span> <span class="row-title-txt">@State.ContributionCategoryName(c.CategoryId)</span></span>
+                                <span class="row-sub">
+                                    <span>@c.Date.ToString("dd MMM")</span>
+                                    <span class="sub-to"><Avatar Name="@State.MemberName(c.MemberId)" Picture="@State.MemberAvatar(c.MemberId)" Size="18" /> @State.MemberName(c.MemberId)@(State.IsRealUser(c.MemberId) ? "" : $" ({Loc["imported"]})")</span>
+                                    <span class="sub-to">@Loc["to"] <span class="cat-ico">@State.FundIcon(c.FundId)</span> @State.FundName(c.FundId)</span>
+                                </span>
+                            </span>
+                            <span class="amt credit">@Fmt(c.Paid)</span>
                             <span class="row-actions">
                                 @if (State.IsPeriodOpen && State.CanHandleContribution(c))
                                 {
@@ -707,7 +757,6 @@ else
                 <div class="spending-head">
                     <span class="insight-h">@Loc["This month's budgets"]</span>
                     <button class="fund-add" @onclick="OpenAddBudget">＋ @Loc["Add budget"]</button>
-                    <button class="fund-add" @onclick="OpenRecurring">🔁 @Loc["Recurring"]</button>
                     @* Only the spent figure takes the heat — it carries the verdict; the cap it's measured against
                        stays quiet. Same ramp as the Home "Spent" tile and the rings below, so one fact reads one way. *@
                     <span class="spending-sub"><strong class="spend-heat" style="color:hsl(@SpendHeatHue() 72% 56%)">@Fmt(State.TotalSpent)</strong> @Loc["of"] @Fmt(State.TotalBudgeted) @Loc["spent"]</span>
@@ -779,28 +828,36 @@ else
                     {
                         <h2>@Loc["All expenses"]</h2>
                     }
-                    <span class="view-toggle">
-                        <button class="view-btn @(_calendar ? "" : "active")" title="@Loc["List"]" @onclick="ShowDayList">☰</button>
-                        <button class="view-btn @(_calendar ? "active" : "")" title="@Loc["Calendar"]" @onclick="ShowCalendarView">📅</button>
+                    <span class="panel-head-actions">
+                        @if (State.IsPeriodOpen)
+                        {
+                            <button class="fund-add exp-add-head" @onclick="AddExpenseFromHeader">🧾 @Loc["Add expense"]</button>
+                        }
+                        <span class="view-toggle">
+                            <button class="view-btn @(_calendar ? "" : "active")" title="@Loc["List"]" @onclick="ShowDayList">☰</button>
+                            <button class="view-btn @(_calendar ? "active" : "")" title="@Loc["Calendar"]" @onclick="ShowCalendarView">📅</button>
+                        </span>
                     </span>
                 </div>
                 @{
                     RenderFragment<FinApp.Domain.Budgeting.Expense> row = e =>
                         @<li>
-                            <span class="row-main">
-                                <span class="cat-ico">@State.CategoryIcon(e.CategoryId)</span> @State.CategoryName(e.CategoryId) <span class="exp-arrow">⟵</span> <span class="cat-ico">@State.FundIcon(e.FundId)</span> @State.FundName(e.FundId)@(e.IsFromSavings ? " · 💰saving" : "")@(string.IsNullOrEmpty(e.Note) ? "" : $" · {e.Note}")
-                                @if (e.IsSettlementSource)
-                                {
-                                    <span class="settle-tag" title="@Loc["Settled onto another account"]">🤝 @Fmt(e.SettledMoney) → @State.AccountName(e.SettledToAccountId!.Value)</span>
-                                }
-                                else if (e.IsSettlementDestination)
-                                {
-                                    <span class="settle-tag" title="@Loc["Settled from another account"]">↩ @Loc["from"] @State.AccountName(e.SettledFromAccountId!.Value)</span>
-                                }
-                                @if (e.AutoFiled)
-                                {
-                                    <span class="row-note" title="@AutoFiledTitle(e)">🏦</span>
-                                }
+                            <span class="row-main row-stack">
+                                <span class="row-title"><span class="cat-ico">@State.CategoryIcon(e.CategoryId)</span> <span class="row-title-txt">@State.CategoryName(e.CategoryId)</span></span>
+                                <span class="row-sub">
+                                    <span class="sub-to"><span class="cat-ico">@State.FundIcon(e.FundId)</span> @State.FundName(e.FundId)</span>
+                                    @if (e.IsFromSavings) { <span>💰 @Loc["saving"]</span> }
+                                    @if (!string.IsNullOrEmpty(e.Note)) { <span class="sub-note">@e.Note</span> }
+                                    @if (e.IsSettlementSource)
+                                    {
+                                        <span class="settle-tag" title="@Loc["Settled onto another account"]">🤝 @Fmt(e.SettledMoney) → @State.AccountName(e.SettledToAccountId!.Value)</span>
+                                    }
+                                    else if (e.IsSettlementDestination)
+                                    {
+                                        <span class="settle-tag" title="@Loc["Settled from another account"]">↩ @Loc["from"] @State.AccountName(e.SettledFromAccountId!.Value)</span>
+                                    }
+                                    @if (e.AutoFiled) { <span class="row-note" title="@AutoFiledTitle(e)">🏦</span> }
+                                </span>
                             </span>
                             <span class="amt">@Fmt(e.Amount)</span>
                             <span class="row-actions">
@@ -1043,6 +1100,10 @@ else
                 <div class="spending-head">
                     <span class="insight-h">🎯 @Loc["Your goals"]</span>
                     <button class="fund-add" @onclick="AddGoalForFilter">＋ @Loc["Add goal"]</button>
+                    @if (State.SavingBuckets.Any(b => !b.Bucket.IsArchived))
+                    {
+                        <button class="fund-add" @onclick="OpenMoveToSavings">💰 @Loc["Add to savings"]</button>
+                    }
                     <span class="spending-sub">@Fmt(State.SavingsAccumulated) @Loc["saved"] · @Fmt(State.SavingsThisPeriod) @Loc["this period"]</span>
                 </div>
                 <div class="goal-filters" role="group">
@@ -1109,25 +1170,33 @@ else
             {
                 <section class="panel">
                     <h2>@Loc["Goals activity"]</h2>
-                    <ul class="list">
+                    <ul class="list list-even">
                         @foreach (var d in State.SavingDepositsThisPeriod)
                         {
                             <li>
-                                <span class="row-lead">
+                                <span class="row-main row-stack">
+                                    <span class="row-title">💰 <span class="row-title-txt">@State.SavingBucketName(d.SavingCategoryId)</span></span>
+                                    <span class="row-sub"><span>@d.Date.ToString("dd MMM")</span></span>
+                                </span>
+                                <span class="amt credit">@Fmt(d.Amount)</span>
+                                <span class="row-actions">
                                     @if (State.IsPeriodOpen)
                                     {
                                         <button class="exp-edit" title="@Loc["Edit"]" @onclick="() => OpenEditSavingDeposit(d.Id)">✏️</button>
                                         <button class="exp-edit" title="@Loc["Remove"]" @onclick="() => OpenDeleteSavingDeposit(d.Id)">🗑️</button>
                                     }
-                                    <span>@d.Date.ToString("dd MMM") · 💰 @State.SavingBucketName(d.SavingCategoryId)</span>
                                 </span>
-                                <span class="amt save">@Fmt(d.Amount)</span>
                             </li>
                         }
                         @foreach (var m in State.SavingMovementsThisPeriod)
                         {
                             <li>
-                                <span class="row-lead">
+                                <span class="row-main row-stack">
+                                    <span class="row-title">@MovementIcon(m) <span class="row-title-txt">@State.SavingMovementTarget(m)</span></span>
+                                    <span class="row-sub"><span>@m.Date.ToString("dd MMM")</span></span>
+                                </span>
+                                <span class="amt debit">@Fmt(State.Money(-m.Amount.Amount))</span>
+                                <span class="row-actions">
                                     @if (State.IsPeriodOpen)
                                     {
                                         @if (!m.IsDisbursement)
@@ -1136,9 +1205,7 @@ else
                                         }
                                         <button class="exp-edit" title="@Loc["Remove"]" @onclick="() => OpenDeleteSavingMovement(m.Id)">🗑️</button>
                                     }
-                                    <span>@m.Date.ToString("dd MMM") · @MovementIcon(m) @State.SavingMovementTarget(m)</span>
                                 </span>
-                                <span class="amt save">@Fmt(State.Money(-m.Amount.Amount))</span>
                             </li>
                         }
                     </ul>
@@ -1580,14 +1647,17 @@ else
                     {
                         <button type="button" class="repeat-last" @onclick="RepeatLastExpense">↻ @Loc["Repeat last"]: <strong>@State.CategoryName(lastExp.CategoryId)</strong> · @Fmt(lastExp.Amount)</button>
                     }
-                    var recentMerchants = State.RecentMerchants();
-                    @if (recentMerchants.Count > 0)
+                    @* Recent categories (most-used first) rather than raw expense notes — bank-style descriptions
+                       read as noise, whereas the category is the choice you're actually about to make. *@
+                    var recentCats = State.RecentCategories();
+                    @if (recentCats.Count > 0)
                     {
                         <div class="merchant-chips">
                             <span class="chips-label">@Loc["Recent"]</span>
-                            @foreach (var m in recentMerchants)
+                            @foreach (var cid in recentCats)
                             {
-                                <button type="button" class="merchant-chip" @onclick="() => ApplyMerchant(m)" title="@($"{State.CategoryName(m.CategoryId)} · {Fmt(m.Amount)}")">@m.Note</button>
+                                var catId = cid;
+                                <button type="button" class="merchant-chip @(_categoryId == catId ? "on" : "")" @onclick="() => ApplyRecentCategory(catId)"><span class="cat-ico">@State.CategoryIcon(catId)</span> @State.CategoryName(catId)</button>
                             }
                         </div>
                     }
@@ -1986,7 +2056,7 @@ else
                     break;
 
                 case Modal.Deposit:
-                    <h3>@Loc["Contribute"]</h3>
+                    <h3>@Loc["Add income"]</h3>
                     <label><span class="lbl-row">@Loc["Category"] <button type="button" class="lbl-add" title="@Loc["New contribution category"]" @onclick="DepositAddCategory">+</button></span>
                         <select @bind="_depCategoryId">
                             @foreach (var cc in State.ContributionCategories)
@@ -2007,7 +2077,7 @@ else
                     <label>@Loc["Date"] <input type="date" @bind="_depDate" min="@State.Period.From.ToString("yyyy-MM-dd")" max="@State.Period.To.ToString("yyyy-MM-dd")" /></label>
                     <div class="modal-actions">
                         <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
-                        <button @onclick="RecordDeposit" disabled="@(_depAmount <= 0)">@Loc["Contribute"]</button>
+                        <button @onclick="RecordDeposit" disabled="@(_depAmount <= 0)">@Loc["Add income"]</button>
                     </div>
                     break;
 
@@ -2617,10 +2687,10 @@ else
                     <p class="hint pm-hint">@string.Format(Loc["{0} installment + {1} extra = {2}/mo"], Fmt(State.Money(pjInst)), Fmt(State.Money(pjExtra)), Fmt(State.Money(pjTotal)))@(pjPace is { } pc && pc.Amount > 0m ? string.Format(pjPlanned ? Loc[" · your plan {0}/period"] : Loc[" · your pace ~{0}/period"], Fmt(pc)) : "")</p>
                     @if (pjAtTotal is { } ap)
                     {
-                        <p class="hint">🏁 @string.Format(Loc["Clear in {0} (~{1}) · interest {2}"], MonthsText(ap.Months), PayoffDate(ap.Months), Fmt(State.Money(ap.TotalInterest)))</p>
+                        <p class="proj-result">🏁 @string.Format(Loc["Clear in {0} (~{1}) · interest {2}"], MonthsText(ap.Months), PayoffDate(ap.Months), Fmt(State.Money(ap.TotalInterest)))</p>
                         @if (pjAtInst is { } bi && (bi.Months > ap.Months || bi.TotalInterest > ap.TotalInterest))
                         {
-                            <p class="hint good-text">➡️ @string.Format(Loc["{0} sooner · {1} less interest than the installment alone"], MonthsText(bi.Months - ap.Months), Fmt(State.Money(Math.Max(0m, bi.TotalInterest - ap.TotalInterest))))</p>
+                            <p class="proj-result good-text">➡️ @string.Format(Loc["{0} sooner · {1} less interest than the installment alone"], MonthsText(bi.Months - ap.Months), Fmt(State.Money(Math.Max(0m, bi.TotalInterest - ap.TotalInterest))))</p>
                         }
                     }
                     else
@@ -2651,11 +2721,11 @@ else
                         <p class="hint">@string.Format(gpPlanned ? Loc["You plan to set aside {0}/period."] : Loc["You set aside about {0}/period."], Fmt(gpace))</p>
                         @if (gpPeriods is { } gper)
                         {
-                            <p class="hint">🏁 @string.Format(Loc["Reach your goal in {0} (~{1})"], MonthsText(gper), PayoffDate(gper))</p>
+                            <p class="proj-result">🏁 @string.Format(Loc["Reach your goal in {0} (~{1})"], MonthsText(gper), PayoffDate(gper))</p>
                         }
                         else if (gpGoal is not null)
                         {
-                            <p class="hint good-text">✓ @Loc["Goal already reached."]</p>
+                            <p class="proj-result good-text">✓ @Loc["Goal already reached."]</p>
                         }
                         else
                         {
@@ -2690,7 +2760,7 @@ else
                     <h4 class="detail-sub">@Loc["Just what's invested now"] @infoTip(("iv-base", Loc["Grows only your current balance at the expected return over the horizon — no further contributions."]))</h4>
                     @if (ivBase is { Months: > 0 } b0)
                     {
-                        <p class="hint">🏁 @string.Format(Loc["~{0} in {1} ({2} growth)"], Fmt(State.Money(b0.FutureValue)), MonthsText(b0.Months), Fmt(State.Money(b0.Growth)))</p>
+                        <p class="proj-result">🏁 @string.Format(Loc["~{0} in {1} ({2} growth)"], Fmt(State.Money(b0.FutureValue)), MonthsText(b0.Months), Fmt(State.Money(b0.Growth)))</p>
                     }
                     else
                     {
@@ -2707,10 +2777,10 @@ else
                     }
                     @if (ivWith is { Months: > 0 } bw)
                     {
-                        <p class="hint">🏁 @string.Format(Loc["~{0} in {1} — {2} your contributions, {3} growth"], Fmt(State.Money(bw.FutureValue)), MonthsText(bw.Months), Fmt(State.Money(bw.Contributed)), Fmt(State.Money(bw.Growth)))</p>
+                        <p class="proj-result">🏁 @string.Format(Loc["~{0} in {1} — {2} your contributions, {3} growth"], Fmt(State.Money(bw.FutureValue)), MonthsText(bw.Months), Fmt(State.Money(bw.Contributed)), Fmt(State.Money(bw.Growth)))</p>
                         @if (ivBase is { } b1 && bw.FutureValue > b1.FutureValue)
                         {
-                            <p class="hint good-text">➡️ @string.Format(Loc["{0} more than leaving it alone."], Fmt(State.Money(bw.FutureValue - b1.FutureValue)))</p>
+                            <p class="proj-result good-text">➡️ @string.Format(Loc["{0} more than leaving it alone."], Fmt(State.Money(bw.FutureValue - b1.FutureValue)))</p>
                         }
                     }
                     <div class="proj-disclaimer">⚠️ @Loc["For planning only — returns aren't guaranteed and real investments fluctuate. This isn't financial advice."]</div>
@@ -2992,12 +3062,15 @@ else
                     }
                     else
                     {
-                        <ul class="list">
+                        <ul class="list list-even">
                             @foreach (var m in _fmMoves)
                             {
                                 <li>
-                                    <span class="row-main">@m.Date.ToString("dd MMM") · @m.Label</span>
-                                    <span class="amt @(m.In ? "credit" : "")">@(m.In ? "+" : "−")@Fmt(m.Amount)</span>
+                                    <span class="row-main row-stack">
+                                        <span class="row-title"><span class="row-title-txt">@m.Label</span></span>
+                                        <span class="row-sub"><span>@m.Date.ToString("dd MMM")</span></span>
+                                    </span>
+                                    <span class="amt @(m.In ? "credit" : "debit")">@(m.In ? "+" : "−")@Fmt(m.Amount)</span>
                                 </li>
                             }
                         </ul>
@@ -3206,7 +3279,7 @@ else
                         {
                             <button @onclick="() => FundAct(() => OpenTransferFromFund(fid))">🔁 @Loc["Transfer"]</button>
                         }
-                        <button @onclick="() => FundAct(() => OpenDepositToFund(fid))">➕ @Loc["Contribute"]</button>
+                        <button @onclick="() => FundAct(() => OpenDepositToFund(fid))">➕ @Loc["Add income"]</button>
                     }
                     <button class="danger" @onclick="() => FundAct(() => OpenArchiveFund(fid))">📦 @Loc["Archive"]</button>
                 }
@@ -3551,10 +3624,19 @@ else
         await State.InitializeAsync();
         ResetPickers();
 
-        // Phones used to be redirected to the Spending tab so adding an expense was one tap away. Home now opens
-        // with that button on its Spent card, so the redirect only buried the summary it was meant to skip past.
-        await LoadBankAsync();            // our own server (a DB read) — cheap enough to gate the first paint on
+        // The bank status (live balance + pending rows) is fetched OFF the critical path: it's several server
+        // round-trips and, for a synced account, the live provider balance — awaiting it here blocked the whole
+        // dashboard (and the Add-expense fast button) behind the bank. The account renders now on its own figures;
+        // the live balance fills in with a loader where it's shown (see LiveBalancePending).
+        _ = LoadBankOnEntryAsync();
+    }
+
+    /// <summary>The on-entry bank load + OAuth-return handling + review prompt, run off the first paint.</summary>
+    private async Task LoadBankOnEntryAsync()
+    {
+        await LoadBankAsync();
         await HandleBankReturnAsync();
+        if (!_disposed) await InvokeAsync(StateHasChanged);
         await MaybePromptOnEntryAsync();
     }
 
@@ -3692,6 +3774,12 @@ else
 
     // --- Bank sync (Open Banking) ----------------------------------------
     /// <summary>Fetch the account's bank-sync status and any staged transactions (silent if the feature is off).</summary>
+    // True while the on-entry / on-switch bank fetch is in flight. Drives the small "refreshing" loader on the
+    // live-balance figures for a synced account, since that fetch now runs off the first paint (LiveBalancePending).
+    private bool _bankLoading;
+    /// <summary>A synced fund's live balance is still being fetched, so the balance figures shown are provisional.</summary>
+    private bool LiveBalancePending => _bankLoading && State.HasSyncedFund;
+
     private async Task LoadBankAsync()
     {
         if (!State.HasAccounts) return;
@@ -3700,6 +3788,7 @@ else
         _bankSharedAckKnown = false;
         // Unverified users can't touch the bank endpoints (they'd 403); the tab shows a "verify first" prompt instead.
         if (Auth.CurrentUser is { EmailVerified: false }) { _bankStatus = null; return; }
+        _bankLoading = true;
         try
         {
             _bankStatus = await State.GetBankStatus();
@@ -3720,6 +3809,7 @@ else
             else { _bankPending = []; _bankMappings = new(); DefaultBankPickers(); }
         }
         catch { _bankStatus = null; } // unreachable/unconfigured — hide the panel/tab entirely
+        finally { _bankLoading = false; }
         if (_bankStatus is not null) _bankStatusByAccount[_bankAccountId] = _bankStatus;   // cache for instant re-show
     }
 
@@ -3833,7 +3923,9 @@ else
                 <span class="bank-tx-desc" title="@t.Description"><span class="vendor-badge" style="background:@VendorColor(t.Description)">@VendorInitial(t.Description)</span>@t.Description</span>
                 <span class="amt @(isDebit ? "" : "credit")">@(isDebit ? "−" : "+")@Fmt(new Money(Math.Abs(t.Amount), State.Currency))</span>
             </div>
-            @if (isDebit && !_dupDismissed.Contains(id) && DupSuggestions.TryGetValue(id, out var dup))
+            @* While a row is being confirmed the new expense is posted before this pending row is removed, so it
+               would momentarily match itself and flash "you already logged this". Suppress the hint mid-save. *@
+            @if (isDebit && !_dupDismissed.Contains(id) && !_rowSaving.Contains(id) && DupSuggestions.TryGetValue(id, out var dup))
             {
                 <div class="dup-hint">
                     <span class="dup-txt">🔁 @string.Format(Loc["Looks like you already logged this: {0} · {1} {2} · {3} · {4}"], Fmt(dup.Amount), dup.CategoryIcon, dup.Category, dup.Fund, dup.Date.ToString("dd MMM"))</span>
@@ -4064,6 +4156,9 @@ else
 
     // Bank de-duplication: suggestions for the current debits, and the set the user chose to "keep both" on.
     private readonly HashSet<string> _dupDismissed = new();
+    // Rows whose confirm is in flight — the dup-hint is suppressed for them so it can't flash against the
+    // expense they're in the middle of posting (which isn't removed from the pending list until the await returns).
+    private readonly HashSet<string> _rowSaving = new();
     private IReadOnlyDictionary<string, BudgetingState.DuplicateSuggestion> DupSuggestions =>
         State.BankDuplicateSuggestions(BankDebits());
 
@@ -4088,14 +4183,14 @@ else
         // debited — the real bank balance handles it). Fall back to the row's fund only if no fund is synced yet.
         var fund = State.HasSyncedFund ? State.SyncedFundId : RowFund(tx.ExternalId);
         if (cat == Guid.Empty || fund == Guid.Empty) { _bankError = Loc["Pick a category first."]; return; }
-        _bankBusy = true; _bankError = null;
+        _bankBusy = true; _bankError = null; _rowSaving.Add(tx.ExternalId);
         try
         {
             await State.ConfirmBankTransaction(tx.ExternalId, cat, Math.Abs(tx.Amount), fund, tx.Description, ClampToPeriod(tx.Date));
             _bankPending.RemoveAll(p => p.ExternalId == tx.ExternalId);
         }
         catch (Exception ex) { _bankError = ex.Message; }
-        finally { _bankBusy = false; }
+        finally { _bankBusy = false; _rowSaving.Remove(tx.ExternalId); }
     }
 
     private PendingBankTransactionDto? _bankXferTx;   // the money-out row being routed as a transfer (Modal.BankTransfer)
@@ -4302,12 +4397,12 @@ else
         finally { _bankBusy = false; }
     }
 
-    /// <summary>Open the Spending tab focused on today's expenses (clamped into the current period).</summary>
+    /// <summary>Open the Spending tab on the full grouped expenses list (the default view).</summary>
     private void ShowExpensesTab()
     {
         _tab = Tab.Budgets;
         _calendar = false;
-        _dayView = ClampToPeriod(DateOnly.FromDateTime(DateTime.Today));   // default to today's day view
+        _dayView = null;   // default to the grouped all-dates list, not a single day
     }
 
     private DateOnly ClampToPeriod(DateOnly d) =>
@@ -5448,18 +5543,24 @@ else
         _modal = Modal.AddExpense;
     }
 
-    /// <summary>Apply a recent-merchant chip: copy its note, category, fund and amount into the open add-expense modal (#11).</summary>
-    private void ApplyMerchant(FinApp.Domain.Budgeting.Expense e)
+    /// <summary>Apply a recent-category chip in the add-expense modal: select it and follow to its usual fund
+    /// (unless an amount is already typed, matching the select's own behaviour).</summary>
+    private void ApplyRecentCategory(Guid categoryId)
     {
-        _note = e.Note;
-        _categoryId = e.CategoryId;
-        _amount = e.Amount.Amount;
-        if (State.SelectableFunds.Any(f => f.Id == e.FundId)) _fundId = e.FundId;
+        _categoryId = categoryId;
+        OnExpenseCategoryChanged();
     }
 
 
     /// <summary>Open the add-expense popup from the Expenses tab (no category pre-selected — pick it in the modal).</summary>
     private void OpenAddExpenseTab() => OpenAddExpense(State.AllCategories.FirstOrDefault()?.Id ?? Guid.Empty);
+
+    /// <summary>Add-expense from the Spending view header — pre-dated to the focused day when one is open.</summary>
+    private void AddExpenseFromHeader()
+    {
+        if (_dayView is { } d) OpenAddExpenseOn(d);
+        else OpenAddExpenseTab();
+    }
 
     private Task AddExpenseFromModal() => RunModal(async () =>
     {

@@ -310,6 +310,7 @@ public sealed class Localizer(IJSRuntime js)
         ["Add bucket"] = "Добави джоб",
         ["Account actions"] = "Действия с профила",
         ["to"] = "към",
+        ["saving"] = "спестяване",
 
         // Insights tab — generated narrative, signals, trend, quick wins (format strings keep their {0}, {1}… slots)
         ["You're up {0} points from last month."] = "Нагоре с {0} точки спрямо миналия месец.",
@@ -380,6 +381,7 @@ public sealed class Localizer(IJSRuntime js)
         ["Profile picture"] = "Профилна снимка",
         ["Appearance"] = "Облик",
         ["Dark theme"] = "Тъмна тема",
+        ["Light theme"] = "Светла тема",
         ["Sign-in"] = "Вход",
         ["You sign in with {0} — there's no password to manage."] = "Влизате чрез {0} — няма парола за управление.",
         ["Upload"] = "Качи",
@@ -648,6 +650,8 @@ public sealed class Localizer(IJSRuntime js)
         ["Repeat last"] = "Повтори последния",
         ["Move to savings"] = "Към спестявания",
         ["Recent"] = "Скорошни",
+        ["Quick add to"] = "Бързо добавяне към",
+        ["Updating live balance…"] = "Обновяване на живия баланс…",
         ["By day"] = "По ден",
         ["Review"] = "Виж",
         ["You're {0} over your {1} budget."] = "Надхвърли с {0} бюджета за {1}.",
@@ -893,6 +897,8 @@ public sealed class Localizer(IJSRuntime js)
         ["Record your first spend — or import a statement."] = "Запиши първия си разход — или импортирай извлечение.",
         ["Create a goal"] = "Създай цел",
         ["Add a savings goal or a debt to pay off."] = "Добави цел за спестяване или дълг за изплащане.",
+        ["Create a savings bucket"] = "Създай кофичка за спестяване",
+        ["Set money aside — with or without a goal or debt to pay off."] = "Заделяй пари — със или без цел или дълг за изплащане.",
 
         // ---- Batch: previously-untranslated UI, achievements & milestones ----
         [" (synced)"] = " (синхр.)",
@@ -1149,9 +1155,9 @@ public sealed class Localizer(IJSRuntime js)
         // Cash-flow runway on Home. Plain words on purpose — "in the black" and "committed" are finance jargon
         // that also translate badly.
         ["At this rate, money runs short in {0}"] = "При това темпо парите ще стигнат до {0}",
-        ["At this rate, you're covered for the next {0} months"] = "При това темпо си спокоен за следващите {0} месеца",
+        ["At this rate, your balance lasts about {0} months"] = "При това темпо балансът ти стига за около {0} месеца",
         ["{0} in, {1} out a month"] = "{0} влизат, {1} излизат месечно",
-        ["based on your recurring bills"] = "по повтарящите се сметки",
+        ["counts recurring bills only — not day-to-day spending"] = "отчита само повтарящите се сметки — не и ежедневните разходи",
         ["based on your last month"] = "по последния ти месец",
         ["based on your last {0} months"] = "по последните ти {0} месеца",
         ["some bills have no amount yet"] = "някои сметки още нямат сума",

@@ -8,6 +8,7 @@ using FinApp.Domain.Periods;
 using FinApp.Domain.Recurring;
 using FinApp.Domain.Savings;
 using FinApp.Domain.Services;
+using Microsoft.JSInterop;
 
 namespace FinApp.Shared.UI.Services;
 
@@ -17,10 +18,13 @@ namespace FinApp.Shared.UI.Services;
 /// The UI mutates the loaded aggregate through domain methods; every mutation re-serializes the account
 /// and pushes the snapshot to the server (which relays the change to other contributors).
 /// </summary>
-public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClient sync)
+public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClient sync, IJSRuntime js)
 {
     private readonly BudgetCoverageService _coverage = new();
     private readonly SavingsReportService _savings = new();
+
+    // Remembers the last account the user was on, so a reload lands back where they left off (not always the first).
+    private const string LastAccountKey = "finapp-last-account";
 
     private List<AccountSummaryDto> _summaries = [];
     private Account? _account;
@@ -66,7 +70,10 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
         }
 
         _summaries = await api.GetAccountsAsync();
-        _accountIndex = 0;
+        // Land on the account the user last had open (persisted in the browser), falling back to the first.
+        var lastId = await ReadLastAccountAsync();
+        var restored = lastId is { } lid ? _summaries.FindIndex(a => a.Id == lid) : -1;
+        _accountIndex = restored >= 0 ? restored : 0;
         await SubscribeAllAsync();   // so AccountChanged invalidates cached background accounts too
         await LoadSelectedAccountAsync();
         await RefreshInvitationsAsync();
@@ -114,7 +121,25 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
         if (index < 0 || index == _accountIndex) return;
         _accountIndex = index;
         await LoadSelectedAccountAsync();
+        await RememberSelectedAccountAsync();
         RaiseChanged();
+    }
+
+    // Persist / restore the last-open account id so a reload returns to it. Best-effort — storage may be unavailable.
+    private async Task RememberSelectedAccountAsync()
+    {
+        try { await js.InvokeVoidAsync("localStorage.setItem", LastAccountKey, CurrentAccountId.ToString()); }
+        catch { /* storage unavailable — the first account is a fine fallback */ }
+    }
+
+    private async Task<Guid?> ReadLastAccountAsync()
+    {
+        try
+        {
+            var saved = await js.InvokeAsync<string?>("localStorage.getItem", LastAccountKey);
+            return Guid.TryParse(saved, out var id) ? id : null;
+        }
+        catch { return null; }
     }
 
     public async Task AddAccount(string name, string currency, decimal savingsRateTarget = 0.20m)
@@ -130,6 +155,7 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
             _account.SetSavingsRateTarget(savingsRateTarget);
             await PushSnapshotAsync();
         }
+        await RememberSelectedAccountAsync();
         RaiseChanged();
     }
 
@@ -575,6 +601,28 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
             .Select(g => g.First())
             .Take(max)
             .ToList();
+
+    /// <summary>Recently-used expense categories for one-tap entry — most-used first, recency breaking ties. Only
+    /// categories that still exist (not archived/deleted); auto-filed bank rows are excluded (see the stream above).</summary>
+    public IReadOnlyList<Guid> RecentCategories(int max = 6)
+    {
+        var live = AllCategories.Select(c => c.Id).ToHashSet();
+        var stats = new Dictionary<Guid, (int Count, int FirstSeen)>();
+        var i = 0;
+        foreach (var e in ManualExpensesNewestFirst)
+        {
+            if (!live.Contains(e.CategoryId)) { i++; continue; }
+            if (stats.TryGetValue(e.CategoryId, out var v)) stats[e.CategoryId] = (v.Count + 1, v.FirstSeen);
+            else stats[e.CategoryId] = (1, i);
+            i++;
+        }
+        return stats
+            .OrderByDescending(kv => kv.Value.Count)   // most used first
+            .ThenBy(kv => kv.Value.FirstSeen)          // then most recently used (stream is newest-first)
+            .Take(max)
+            .Select(kv => kv.Key)
+            .ToList();
+    }
 
     /// <summary>The category to pre-fill for an imported expense with this description: reuse the one from the most
     /// recent past expense whose note matches (same normalization the bank sync uses), so a merchant you've filed
@@ -2046,7 +2094,9 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     {
         foreach (var (name, icon) in new[] { ("Food", "🍽️"), ("Bills", "💡"), ("Transport", "🚗"), ("Other", "🏷️") })
             account.AddCategory(name, icon: icon);
-        account.AddSavingCategory("General");
+        // No starter savings bucket: creating the first one (with or without a goal) is an onboarding step and
+        // earns the "Piggy" achievement itself, so pre-seeding one both robs that moment and misleads the user
+        // into thinking they already have a bucket set up.
         foreach (var c in new[] { "Salary", "Other" })
             account.AddContributionCategory(c);
         account.AddDefaultFunds();
@@ -2054,9 +2104,5 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
         var today = DateOnly.FromDateTime(DateTime.Today);
         var from = new DateOnly(today.Year, today.Month, 1);
         account.StartPeriod(from, from.AddMonths(1).AddDays(-1));
-
-        // "Piggy" (first savings bucket) is awarded up-front on account creation — the starter bucket earns it, so
-        // stamp it immediately rather than waiting for the first render's achievement pass. Key: AchievementsService.
-        account.RecordAchievement("first_bucket", today);
     }
 }

@@ -10,6 +10,13 @@
 
 /* ---- Top bar: brand lockup with the language picker beside it ---- */
 .lp-topbar { display: flex; align-items: center; gap: 12px; padding: 12px 0 0; }
+.lp-topbar-actions { display: flex; align-items: center; gap: 10px; margin-left: auto; }
+.lp-theme-toggle {
+    display: inline-flex; align-items: center; justify-content: center; width: 38px; height: 38px;
+    background: #f4f7f6; border: 1px solid #d6f0e3; border-radius: 11px; cursor: pointer; font-size: 1.05rem;
+    line-height: 1; transition: border-color .15s, background .15s;
+}
+.lp-theme-toggle:hover { border-color: #13a06e; background: #eef9f3; }
 .lp-brand-sm { display: flex; align-items: center; gap: 9px; font-size: 1.2rem; font-weight: 800; color: #13a06e; }
 .lp-logo-sm {
     width: 36px; height: 36px; flex: 0 0 auto;
@@ -131,3 +138,7 @@ html.dark .lp-signin { border-color: #24493a; color: #7ee3b4; }
 html.dark .lp-signin:hover { background: #14251d; border-color: #2f7d5c; }
 html.dark .lp-link { color: #57d9a3; }
 html.dark .lp-auth-backdrop { background: rgba(0,0,0,.6); }
+/* The logo tile kept its near-white gradient in dark mode, so it read as a white blob. Give it a dark tile. */
+html.dark .lp-logo-sm, html.dark .lp-logo { background: linear-gradient(135deg, #14251d, #163024); border-color: #24493a; }
+html.dark .lp-theme-toggle { background: #181c25; border-color: #262d3d; }
+html.dark .lp-theme-toggle:hover { border-color: #2f7d5c; background: #14251d; }
