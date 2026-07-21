@@ -77,6 +77,7 @@ builder.Services.AddScoped<AuthCodeService>();
 builder.Services.Configure<EmailOptions>(builder.Configuration.GetSection("Email"));
 builder.Services.AddScoped<IEmailSender, EmailSender>();
 builder.Services.AddScoped<EmailVerificationService>();
+builder.Services.AddScoped<PasswordResetService>();
 builder.Services.AddScoped<TwoFactorService>();
 builder.Services.AddScoped<SessionPolicy>();
 builder.Services.AddScoped<AuthService>();
@@ -200,6 +201,7 @@ using (var scope = app.Services.CreateScope())
     await scope.ServiceProvider.GetRequiredService<AuthCodeService>().EnsureSchemaAsync();
     // Email-verification state + one-time confirmation tokens.
     await scope.ServiceProvider.GetRequiredService<EmailVerificationService>().EnsureSchemaAsync();
+    await scope.ServiceProvider.GetRequiredService<PasswordResetService>().EnsureSchemaAsync();
     // Two-factor (TOTP) secrets + recovery codes.
     await scope.ServiceProvider.GetRequiredService<TwoFactorService>().EnsureSchemaAsync();
     // Archived-accounts table + purge anything past its 30-day grace window on startup.
@@ -336,6 +338,22 @@ auth.MapPost("/resend-verification", async (ClaimsPrincipal user, HttpContext ht
     await svc.SendVerificationEmailAsync(user.UserId(), user.Email(), AppBaseUrl(http, cfg), ct);
     return Results.NoContent();
 }).RequireAuthorization().RequireRateLimiting("auth");
+
+// --- Forgotten-password reset (anonymous) ---------------------------------
+// Always succeeds regardless of whether the identifier matched an account (no enumeration); a real match gets a
+// mailed link. Rate-limited like the rest of auth. Email failures are swallowed so we still don't leak existence.
+auth.MapPost("/password/forgot", async (ForgotPasswordRequest req, HttpContext http, AuthService svc, IConfiguration cfg, CancellationToken ct) =>
+{
+    try { await svc.SendPasswordResetEmailAsync(req.Identifier, AppBaseUrl(http, cfg), ct); }
+    catch { /* logged by EmailSender; never reveal success/failure to the caller */ }
+    return Results.NoContent();
+}).RequireRateLimiting("auth");
+// Redeem the one-time token from the emailed link and set a new password. 400 on an invalid/expired token.
+auth.MapPost("/password/reset", async (ResetPasswordRequest req, AuthService svc, CancellationToken ct) =>
+{
+    await svc.ResetPasswordAsync(req.Token, req.NewPassword, ct);
+    return Results.NoContent();
+}).RequireRateLimiting("auth");
 
 // --- Two-factor (TOTP) management (signed-in) -----------------------------
 // Begin enrollment: returns the secret + otpauth URI to add to an authenticator app.

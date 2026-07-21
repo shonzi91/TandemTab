@@ -59,5 +59,12 @@ public record SetAvatarRequest(string? DataUrl);
 /// <summary>Change the signed-in user's password (the server verifies <see cref="CurrentPassword"/> first).</summary>
 public record ChangePasswordRequest(string CurrentPassword, string NewPassword);
 
+/// <summary>Request a password-reset link for a username or email. The server always responds the same way, so it
+/// never reveals whether the identifier matched an account.</summary>
+public record ForgotPasswordRequest(string Identifier);
+
+/// <summary>Set a new password using the one-time token from a reset link.</summary>
+public record ResetPasswordRequest(string Token, string NewPassword);
+
 /// <summary>Which external sign-in providers the server has configured (controls which buttons the client shows).</summary>
 public record ExternalProvidersDto(bool Google, bool Facebook);

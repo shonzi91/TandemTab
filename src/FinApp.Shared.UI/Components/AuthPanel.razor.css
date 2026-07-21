@@ -166,3 +166,10 @@
     width: 22px; height: 22px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
     font-weight: 700; background: #eef1f4; color: #374151;
 }
+/* Quiet "Forgot your password?" link under the sign-in button. */
+.auth-forgot {
+    align-self: center; background: none; border: none; padding: 2px 4px; margin-top: -2px;
+    color: #0f7a54; font: inherit; font-size: .82rem; font-weight: 600; cursor: pointer; text-decoration: underline;
+}
+.auth-forgot:hover { color: #0b5f42; }
+html.dark .auth-forgot { color: #57d9a3; }

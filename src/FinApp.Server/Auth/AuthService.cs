@@ -12,9 +12,49 @@ public sealed class AuthService(
     FinAppDbContext db, IPasswordHasher hasher, JwtTokenService tokens,
     RefreshTokenService refreshTokens, AuthCodeService authCodes,
     EmailVerificationService emailVerification, IEmailSender email, TwoFactorService twoFactor,
-    SessionPolicy sessionPolicy)
+    SessionPolicy sessionPolicy, PasswordResetService passwordReset)
 {
     private const int MinPasswordLength = 8;
+
+    /// <summary>Send a password-reset link to whoever owns <paramref name="identifier"/> (a username or email).
+    /// Deliberately silent about whether an account exists: it always succeeds from the caller's view, and only a
+    /// real, matching account receives a mail — otherwise the endpoint would leak which emails are registered.</summary>
+    public async Task SendPasswordResetEmailAsync(string identifier, string linkBaseUrl, CancellationToken ct = default)
+    {
+        var id = (identifier ?? "").Trim();
+        if (id.Length == 0) return;
+        var lowered = id.ToLowerInvariant();
+        var user = await db.Users.FirstOrDefaultAsync(
+            u => u.Email == lowered || u.Username.ToLower() == lowered, ct);
+        if (user is null) return;   // no such account — say nothing, do nothing (no enumeration)
+
+        var token = await passwordReset.IssueTokenAsync(user.Id, ct);
+        var link = $"{linkBaseUrl.TrimEnd('/')}/?resetToken={Uri.EscapeDataString(token)}";
+        var html =
+            $"<p>Someone asked to reset the password for your TandemTab account.</p>" +
+            $"<p>Click the link below to choose a new password. It expires in an hour and can be used once:</p>" +
+            $"<p><a href=\"{link}\">Reset my password</a></p>" +
+            $"<p>If you didn't ask for this, you can safely ignore this email — your password won't change.</p>";
+        var text = $"Someone asked to reset the password for your TandemTab account.\n\n" +
+                   $"Choose a new password (link expires in an hour, single use):\n{link}\n\n" +
+                   "If you didn't ask for this, you can ignore this email — your password won't change.";
+        await email.SendAsync(user.Email, "Reset your TandemTab password", html, text, ct);
+    }
+
+    /// <summary>Redeem a reset token and set a new password. Throws on an invalid/expired token or a too-short
+    /// password. On success every existing session is revoked, so a compromised session can't outlive the reset.</summary>
+    public async Task ResetPasswordAsync(string token, string newPassword, CancellationToken ct = default)
+    {
+        if ((newPassword ?? "").Length < MinPasswordLength)
+            throw new BadRequestException($"Password must be at least {MinPasswordLength} characters.");
+        var userId = await passwordReset.ConsumeAsync(token, ct)
+            ?? throw new BadRequestException("This reset link is invalid or has expired. Request a new one.");
+        var user = await db.Users.FirstOrDefaultAsync(u => u.Id == userId, ct)
+            ?? throw new BadRequestException("This reset link is invalid or has expired. Request a new one.");
+        user.SetPasswordHash(hasher.Hash(newPassword!));
+        await db.SaveChangesAsync(ct);
+        await refreshTokens.RevokeAllForUserAsync(userId, ct);   // sign out everywhere after a reset
+    }
 
     /// <summary>Issue a verification token and email the confirmation link. Best-effort: failures don't block sign-up.</summary>
     public async Task SendVerificationEmailAsync(Guid userId, string toEmail, string linkBaseUrl, CancellationToken ct = default)

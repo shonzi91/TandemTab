@@ -48,6 +48,19 @@
             } catch (e) { }
             return null;
         };
+        window.finappTakeResetToken = () => {
+            try {
+                const params = new URLSearchParams(window.location.search);
+                const token = params.get('resetToken');
+                if (token) {
+                    params.delete('resetToken');
+                    const qs = params.toString();
+                    history.replaceState(null, '', window.location.pathname + (qs ? '?' + qs : '') + window.location.hash);
+                    return token;
+                }
+            } catch (e) { }
+            return null;
+        };
         window.finappGetTheme = () => { try { return localStorage.getItem('finapp-theme') || 'dark'; } catch (e) { return 'dark'; } };
         window.finappSetTheme = (theme) => {
             const dark = theme === 'dark';

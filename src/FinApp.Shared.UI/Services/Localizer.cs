@@ -72,6 +72,19 @@ public sealed class Localizer(IJSRuntime js)
         ["Confirm new password"] = "Потвърди новата парола",
         ["Password changed."] = "Паролата е сменена.",
         ["The new passwords don’t match."] = "Новите пароли не съвпадат.",
+        ["Forgot your password?"] = "Забравена парола?",
+        ["Enter your username or email and we'll send you a link to reset your password."] =
+            "Въведи потребителско име или имейл и ще ти изпратим връзка за възстановяване на паролата.",
+        ["Send reset link"] = "Изпрати връзка за възстановяване",
+        ["Sending…"] = "Изпраща се…",
+        ["If an account matches, we've emailed a link to reset your password. It expires in an hour."] =
+            "Ако има съвпадащ профил, изпратихме имейл с връзка за смяна на паролата. Валидна е един час.",
+        ["Back to sign in"] = "Обратно към вход",
+        ["Enter your username or email."] = "Въведи потребителско име или имейл.",
+        ["Choose a new password for your account."] = "Избери нова парола за профила си.",
+        ["Set new password"] = "Запази новата парола",
+        ["Your password has been updated. Sign in with your new password."] =
+            "Паролата ти е обновена. Влез с новата парола.",
         ["Loading…"] = "Зареждане…",
         ["Saving…"] = "Запазване…",
         ["Dismiss"] = "Затвори",

@@ -98,29 +98,39 @@
     <div class="lp-auth-backdrop" @onclick="CloseAuth">
         <div class="lp-auth-modal" @onclick:stopPropagation="true">
             <button class="lp-auth-x" title="@Loc["Close"]" @onclick="CloseAuth">×</button>
-            <AuthPanel />
+            <AuthPanel ResetToken="_resetToken" />
         </div>
     </div>
 }
 
 @code {
     private bool _showAuth;
+    private string? _resetToken;   // from a ?resetToken=… reset link → open the auth overlay on the reset form
     // Dark is the app-wide default (see index.html), so start assuming dark and correct from storage on first render.
     private bool _dark = true;
 
     // The auth overlay always opens on Sign-in (AuthPanel's default); new users pick the Create-account tab there.
     private void OpenAuth() => _showAuth = true;
-    private void CloseAuth() => _showAuth = false;
+    // Closing also drops any reset token, so reopening shows a normal sign-in rather than the reset form again.
+    private void CloseAuth() { _showAuth = false; _resetToken = null; }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (!firstRender) return;
+        var changed = false;
         try
         {
             var saved = (await JS.InvokeAsync<string>("finappGetTheme")) == "dark";
-            if (saved != _dark) { _dark = saved; StateHasChanged(); }
+            if (saved != _dark) { _dark = saved; changed = true; }
         }
         catch { /* host without the theme helper — keep the dark default */ }
+        try
+        {
+            var token = await JS.InvokeAsync<string?>("finappTakeResetToken");
+            if (!string.IsNullOrEmpty(token)) { _resetToken = token; _showAuth = true; changed = true; }
+        }
+        catch { /* host without the helper — no reset link to honour */ }
+        if (changed) StateHasChanged();
     }
 
     private async Task ToggleTheme()

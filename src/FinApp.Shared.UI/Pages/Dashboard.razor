@@ -591,13 +591,19 @@ else
                     </div>
                     @if (transfers.Any())
                     {
-                        <ul class="list transfer-log">
+                        <ul class="list list-even transfer-log">
                             @foreach (var t in transfers)
                             {
                                 <li>
-                                    <span>@t.Date.ToString("dd MMM") · @t.Label@(string.IsNullOrEmpty(t.Note) ? "" : $" · {t.Note}")@if (t.AutoFiled) { <span class="row-note" title="@AutoFiledTransferTitle(t.Note)">🏦</span> }</span>
+                                    <span class="row-main row-stack">
+                                        <span class="row-title"><span class="row-title-txt">@t.Label</span>@if (t.AutoFiled) { <span class="row-note" title="@AutoFiledTransferTitle(t.Note)">🏦</span> }</span>
+                                        <span class="row-sub">
+                                            <span>@t.Date.ToString("dd MMM")</span>
+                                            @if (!string.IsNullOrEmpty(t.Note)) { <span class="sub-note">@t.Note</span> }
+                                        </span>
+                                    </span>
+                                    <span class="amt">@Fmt(t.Amount)</span>
                                     <span class="row-actions">
-                                        <span class="amt">@Fmt(t.Amount)</span>
                                         @if (State.IsPeriodOpen && !t.IsExternal)
                                         {
                                             <button class="exp-edit" title="@Loc["Edit transfer"]" @onclick="() => OpenEditTransfer(t.Id)">✏️</button>
@@ -1414,15 +1420,21 @@ else
                     }
                     RenderFragment<FinApp.Domain.Budgeting.Expense> detailRow = e =>
                         @<li>
-                            <span class="row-lead">
+                            <span class="row-main row-stack">
+                                <span class="row-title"><span class="cat-ico">@State.FundIcon(e.FundId)</span> <span class="row-title-txt">@State.FundName(e.FundId)</span></span>
+                                <span class="row-sub">
+                                    <span>@e.Date.ToString("dd MMM")</span>
+                                    @if (!string.IsNullOrEmpty(e.Note)) { <span class="sub-note">@e.Note</span> }
+                                </span>
+                            </span>
+                            <span class="amt">@Fmt(e.Amount)</span>
+                            <span class="row-actions">
                                 @if (State.IsPeriodOpen)
                                 {
                                     <button class="exp-edit" title="@Loc["Edit"]" @onclick="() => DetailEditExpense(e.Id)">✏️</button>
                                     <button class="exp-edit" title="@Loc["Remove"]" @onclick="() => DetailDeleteExpense(e.Id)">🗑️</button>
                                 }
-                                <span>@e.Date.ToString("dd MMM") · <span class="cat-ico">@State.FundIcon(e.FundId)</span> @State.FundName(e.FundId)@(string.IsNullOrEmpty(e.Note) ? "" : $" · {e.Note}")</span>
                             </span>
-                            <span class="amt">@Fmt(e.Amount)</span>
                         </li>;
                     // Parent's own expenses, then one labelled block per sub-category that has any — so the whole
                     // tree reads at a glance without drilling into each sub-category.
@@ -1431,7 +1443,7 @@ else
                         .Select(c => (Cat: c, Items: State.ExpensesFor(c.Id)))
                         .Where(x => x.Items.Count > 0).ToList();
                     <h4 class="detail-sub">@Loc["Expenses"]</h4>
-                    <ul class="list">
+                    <ul class="list list-even">
                         @foreach (var e in ownExpenses) { @detailRow(e) }
                         @if (ownExpenses.Count == 0 && childSections.Count == 0)
                         {
@@ -1441,7 +1453,7 @@ else
                     @foreach (var (sub, items) in childSections)
                     {
                         <h5 class="detail-subcat"><span class="cat-ico">@State.CategoryIcon(sub.Id)</span> @sub.Name <span class="detail-subcat-sum">@Fmt(items.Aggregate(State.Money(0m), (s, e) => s + e.Amount))</span></h5>
-                        <ul class="list">
+                        <ul class="list list-even">
                             @foreach (var e in items) { @detailRow(e) }
                         </ul>
                     }

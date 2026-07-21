@@ -138,6 +138,15 @@ public sealed class RefreshTokenService(FinAppDbContext db, IOptions<JwtOptions>
         finally { if (opened) await conn.CloseAsync(); }
     }
 
+    /// <summary>Revoke every active session for a user — e.g. after a password reset, so a stolen session can't outlive it.</summary>
+    public async Task RevokeAllForUserAsync(Guid userId, CancellationToken ct = default)
+    {
+        var conn = db.Database.GetDbConnection();
+        var opened = await OpenAsync(conn, ct);
+        try { await RevokeAllForUserCoreAsync(conn, userId, ct); }
+        finally { if (opened) await conn.CloseAsync(); }
+    }
+
     private static async Task RevokeAllForUserCoreAsync(System.Data.Common.DbConnection conn, Guid userId, CancellationToken ct)
     {
         await using var cmd = conn.CreateCommand();

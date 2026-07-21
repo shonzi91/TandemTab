@@ -13,7 +13,7 @@
     <p class="auth-slogan">@Loc["Track together, save together."]</p>
     <p class="hint">@Loc["Simple family goals, zero stress. Sign in or create an account to begin."]</p>
 
-    @if (_twoFactorTicket is null)
+    @if (_twoFactorTicket is null && _resetToken is null && !_forgotMode)
     {
         <div class="auth-tabs">
             <button class="tab @(_mode == Mode.Login ? "active" : "")" @onclick="() => Switch(Mode.Login)">@Loc["Sign in"]</button>
@@ -26,7 +26,43 @@
         <div class="alert warn-bg">@_error</div>
     }
 
-    @if (_twoFactorTicket is not null)
+    @if (_resetToken is not null)
+    {
+        @* Arrived from a reset link (?resetToken=…). Set a new password, then drop back to sign-in. *@
+        @if (_resetDone)
+        {
+            <p class="hint">✓ @Loc["Your password has been updated. Sign in with your new password."]</p>
+            <button class="primary" @onclick="BackToSignIn">@Loc["Sign in"]</button>
+        }
+        else
+        {
+            <p class="hint">@Loc["Choose a new password for your account."]</p>
+            <label>@Loc["New password"] <input type="password" placeholder="@Loc["At least 8 characters"]" autocomplete="new-password" @bind="_password" @bind:event="oninput" @bind:after="ClearError" /></label>
+            <label>@Loc["Confirm new password"] <input type="password" autocomplete="new-password" @bind="_confirmPassword" @bind:event="oninput" @bind:after="ClearError" @onkeydown="OnKey" /></label>
+            <button class="primary" @onclick="ResetPassword" disabled="@(_busy || _password.Length < 8 || _confirmPassword.Length == 0)">
+                @(_busy ? Loc["Saving…"] : Loc["Set new password"])
+            </button>
+        }
+    }
+    else if (_forgotMode)
+    {
+        @* Request a reset link. The response never says whether the account exists, so the confirmation is neutral. *@
+        @if (_forgotSent)
+        {
+            <p class="hint">📧 @Loc["If an account matches, we've emailed a link to reset your password. It expires in an hour."]</p>
+            <button class="auth-provider" @onclick="BackToSignIn">@Loc["Back to sign in"]</button>
+        }
+        else
+        {
+            <p class="hint">@Loc["Enter your username or email and we'll send you a link to reset your password."]</p>
+            <label>@Loc["Username or email"] <input type="text" placeholder="@Loc["you@example.com or username"]" autocomplete="username" @bind="_identifier" @bind:event="oninput" @bind:after="ClearError" @onkeydown="OnKey" /></label>
+            <button class="primary" @onclick="SendResetLink" disabled="@(_busy || string.IsNullOrWhiteSpace(_identifier))">
+                @(_busy ? Loc["Sending…"] : Loc["Send reset link"])
+            </button>
+            <button class="auth-provider" @onclick="BackToSignIn">@Loc["Back to sign in"]</button>
+        }
+    }
+    else if (_twoFactorTicket is not null)
     {
         <p class="hint">@Loc["Enter the 6-digit code from your authenticator app, or a recovery code."]</p>
         <label>@Loc["Authentication code"] <input type="text" inputmode="numeric" autocomplete="one-time-code" placeholder="123456" @bind="_twoFactorCode" @bind:event="oninput" @bind:after="ClearError" @onkeydown="OnKey" /></label>
@@ -42,6 +78,7 @@
         <button class="primary" @onclick="SignIn" disabled="@(_busy || string.IsNullOrWhiteSpace(_identifier) || string.IsNullOrEmpty(_password))">
             @(_busy ? Loc["Signing in…"] : Loc["Sign in"])
         </button>
+        <button class="auth-forgot" @onclick="() => { _forgotMode = true; _error = null; }">@Loc["Forgot your password?"]</button>
     }
     else
     {
@@ -54,7 +91,7 @@
         <small class="hint">@Loc["Password must be at least 8 characters."]</small>
     }
 
-    @if (_twoFactorTicket is null && _providers is { Google: true } or { Facebook: true })
+    @if (_twoFactorTicket is null && _resetToken is null && !_forgotMode && _providers is { Google: true } or { Facebook: true })
     {
         <div class="auth-or"><span>@Loc["or"]</span></div>
         @if (_providers.Google)
@@ -75,12 +112,20 @@
 </div>
 
 @code {
+    /// <summary>One-time token from a reset link (?resetToken=…), passed in by the host so the panel opens straight
+    /// into the "set a new password" form.</summary>
+    [Parameter] public string? ResetToken { get; set; }
+
     private enum Mode { Login, Register }
     private Mode _mode = Mode.Login;
-    private string _identifier = "", _username = "", _email = "", _password = "";
+    private string _identifier = "", _username = "", _email = "", _password = "", _confirmPassword = "";
     private string? _error;
     private bool _busy;
     private ExternalProvidersDto? _providers;
+
+    // Password-reset sub-flows: request a link (_forgotMode) or set a new password from a link (_resetToken).
+    private bool _forgotMode, _forgotSent, _resetDone;
+    private string? _resetToken;
 
     // Set after a password login when the account has 2FA on — prompts for the second-factor code.
     private string? _twoFactorTicket;
@@ -101,6 +146,7 @@
         // An external (Google/Facebook) sign-in whose account has 2FA on lands here with a pending challenge —
         // drop straight into the code prompt instead of the username/password form.
         _twoFactorTicket = Auth.PendingTwoFactorTicket;
+        _resetToken = ResetToken;   // opened from a reset link → show the set-new-password form
         try { _providers = await Api.GetProvidersAsync(); } catch { /* providers endpoint unreachable — hide buttons */ }
     }
 
@@ -123,9 +169,33 @@
     private Task OnKey(KeyboardEventArgs e)
     {
         if (e.Key != "Enter") return Task.CompletedTask;
+        if (_resetToken is not null) return ResetPassword();
+        if (_forgotMode) return SendResetLink();
         if (_twoFactorTicket is not null) return CompleteTwoFactor();
         return _mode == Mode.Login ? SignIn() : Register();
     }
+
+    // Leave both reset sub-flows and return to a clean sign-in form.
+    private void BackToSignIn()
+    {
+        _forgotMode = _forgotSent = _resetDone = false;
+        _resetToken = null; _password = _confirmPassword = ""; _error = null; _mode = Mode.Login;
+    }
+
+    private Task SendResetLink() => Run(async () =>
+    {
+        if (string.IsNullOrWhiteSpace(_identifier)) { _error = Loc["Enter your username or email."]; return; }
+        await Api.ForgotPasswordAsync(_identifier);   // always succeeds; the response never reveals if it matched
+        _forgotSent = true;
+    });
+
+    private Task ResetPassword() => Run(async () =>
+    {
+        if (_password.Length < 8) { _error = Loc["Password must be at least 8 characters."]; return; }
+        if (_password != _confirmPassword) { _error = Loc["The new passwords don’t match."]; return; }
+        await Api.ResetPasswordAsync(_resetToken!, _password);
+        _resetDone = true; _password = _confirmPassword = "";
+    });
 
     private Task SignIn() => Run(async () =>
     {

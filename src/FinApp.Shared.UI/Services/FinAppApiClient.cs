@@ -68,6 +68,11 @@ public sealed class FinAppApiClient(HttpClient http)
         SendAsync(HttpMethod.Post, "/consent", new RecordConsentRequest(scope, accountId, granted), ct);
     public Task ChangePasswordAsync(string currentPassword, string newPassword, CancellationToken ct = default) =>
         SendAsync(HttpMethod.Post, "/auth/password", new ChangePasswordRequest(currentPassword, newPassword), ct);
+    // Anonymous: always resolves (the server never says whether the identifier matched an account).
+    public Task ForgotPasswordAsync(string identifier, CancellationToken ct = default) =>
+        SendAsync(HttpMethod.Post, "/auth/password/forgot", new ForgotPasswordRequest(identifier), ct);
+    public Task ResetPasswordAsync(string token, string newPassword, CancellationToken ct = default) =>
+        SendAsync(HttpMethod.Post, "/auth/password/reset", new ResetPasswordRequest(token, newPassword), ct);
     public Task UpdateAvatarAsync(string? dataUrl, CancellationToken ct = default) =>
         SendAsync(HttpMethod.Put, "/me/avatar", new SetAvatarRequest(dataUrl), ct);
     public Task<Dictionary<Guid, string>> GetAccountAvatarsAsync(Guid accountId, CancellationToken ct = default) =>
