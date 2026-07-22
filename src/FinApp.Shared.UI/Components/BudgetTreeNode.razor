@@ -7,9 +7,9 @@
             <span class="tree-twig">↳</span>
         }
         <span class="tree-actions">
-            <button title="Edit budget / rename" @onclick="() => OnEdit.InvokeAsync(Node.Id)">✏️</button>
+            <button title="Edit budget / rename" @onclick="() => OnEdit.InvokeAsync(Node.Id)"><Icon Name="pencil" /></button>
             <button title="Add sub-category" @onclick="() => OnAddSub.InvokeAsync(Node.Id)">➕</button>
-            <button title="Delete category" @onclick="() => OnDelete.InvokeAsync(Node.Id)">🗑️</button>
+            <button title="Delete category" @onclick="() => OnDelete.InvokeAsync(Node.Id)"><Icon Name="trash" /></button>
         </span>
         <span class="tree-name @(Depth > 0 ? "tree-name-child" : "")">@Node.Name</span>
     </span>
@@ -59,8 +59,8 @@
                 <span class="exp-left">
                     @if (State.IsPeriodOpen)
                     {
-                        <button class="exp-edit" title="Edit expense" @onclick="() => OnEditExpense.InvokeAsync(e.Id)">✏️</button>
-                        <button class="exp-edit" title="Remove expense" @onclick="() => OnDeleteExpense.InvokeAsync(e.Id)">🗑️</button>
+                        <button class="exp-edit" title="Edit expense" @onclick="() => OnEditExpense.InvokeAsync(e.Id)"><Icon Name="pencil" /></button>
+                        <button class="exp-edit" title="Remove expense" @onclick="() => OnDeleteExpense.InvokeAsync(e.Id)"><Icon Name="trash" /></button>
                     }
                     <span class="exp-meta">@e.Date.ToString("dd MMM") <span class="exp-arrow">⟵</span> @State.FundName(e.FundId) 🏦@(e.IsFromSavings ? " · 💰saving" : "")@(string.IsNullOrEmpty(e.Note) ? "" : $" · {e.Note}")</span>
                 </span>

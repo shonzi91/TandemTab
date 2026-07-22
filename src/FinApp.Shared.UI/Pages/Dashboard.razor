@@ -75,7 +75,7 @@ else
                                 @if (aid == State.CurrentAccountId) { <span class="acct-check">✓</span> }
                             </button>
                         }
-                        <button class="acct-drop-add" @onclick="@(() => { _acctDropOpen = false; OpenAddAccount(); })">➕ @Loc["Add a new account"]</button>
+                        <button class="acct-drop-add" @onclick="@(() => { _acctDropOpen = false; OpenAddAccount(); })"><Icon Name="plus" /> @Loc["Add a new account"]</button>
                     </div>
                 }
             </div>
@@ -88,7 +88,7 @@ else
                     <span class="period-ops">
                         @if (State.IsLatestPeriod && State.PeriodCount > 1)
                         {
-                            <button class="exp-edit" title="@Loc["Remove this period and reopen the previous one"]" @onclick="OpenRemovePeriod">🗑️</button>
+                            <button class="exp-edit" title="@Loc["Remove this period and reopen the previous one"]" @onclick="OpenRemovePeriod"><Icon Name="trash" /></button>
                         }
                         @if (State.IsLatestPeriod)
                         {
@@ -110,7 +110,7 @@ else
                     {
                         <div class="acct-menu-backdrop" @onclick="() => _bellOpen = false"></div>
                         <div class="bell-menu">
-                            <div class="bell-head">🔔 @Loc["Notifications"]</div>
+                            <div class="bell-head"><Icon Name="bell" /> @Loc["Notifications"]</div>
                             @if (notifications.Count == 0)
                             {
                                 <div class="bell-empty">@Loc["You're all caught up."] ✅</div>
@@ -130,7 +130,7 @@ else
                                             }
                                         </div>
                                         <span class="bell-item-ops">
-                                            @if (n.Rotate is { } rot) { <button class="tip-x" title="@Loc["Another idea"]" @onclick="rot">↻</button> }
+                                            @if (n.Rotate is { } rot) { <button class="tip-x" title="@Loc["Another idea"]" @onclick="rot"><Icon Name="rotate" /></button> }
                                             @if (n.Dismiss is { } dis) { <button class="tip-x" title="@Loc["Dismiss for this period"]" @onclick="dis">×</button> }
                                         </span>
                                     </div>
@@ -141,24 +141,24 @@ else
                 </span>
                 <button class="link hdr-trophy" title="@Loc["Achievements"]" @onclick="() => _modal = Modal.Achievements">🏆</button>
                 <span class="acct-menu">
-                    <button class="link" title="@Loc["Account actions"]" @onclick="() => _acctMenuOpen = !_acctMenuOpen">⚙️</button>
+                    <button class="link" title="@Loc["Account actions"]" @onclick="() => _acctMenuOpen = !_acctMenuOpen"><Icon Name="sliders" /></button>
                     @if (_acctMenuOpen)
                     {
                         <div class="acct-menu-backdrop" @onclick="() => _acctMenuOpen = false"></div>
                         <div class="acct-menu-pop">
                             @if (State.IsOwnerOfCurrent)
                             {
-                                <button @onclick="() => RunAcct(OpenEditAccount)">✏️ @Loc["Rename account"]</button>
+                                <button @onclick="() => RunAcct(OpenEditAccount)"><Icon Name="pencil" /> @Loc["Rename account"]</button>
                             }
                             @if (HasArchivedItems)
                             {
-                                <button @onclick="() => RunAcct(() => _modal = Modal.Archived)">📦 @Loc["Archived items"]</button>
+                                <button @onclick="() => RunAcct(() => _modal = Modal.Archived)"><Icon Name="archive" /> @Loc["Archived items"]</button>
                             }
-                            <button @onclick="MenuExport">📊 @Loc["Export to Excel"]</button>
-                            <button class="danger" @onclick="() => RunAcct(OpenLeaveAccount)">🚪 @Loc["Leave account"]</button>
+                            <button @onclick="MenuExport"><Icon Name="chart" /> @Loc["Export to Excel"]</button>
+                            <button class="danger" @onclick="() => RunAcct(OpenLeaveAccount)"><Icon Name="logout" /> @Loc["Leave account"]</button>
                             @if (State.IsOwnerOfCurrent)
                             {
-                                <button class="danger" @onclick="() => RunAcct(OpenDeleteAccount)">🗑️ @Loc["Delete account"]</button>
+                                <button class="danger" @onclick="() => RunAcct(OpenDeleteAccount)"><Icon Name="trash" /> @Loc["Delete account"]</button>
                             }
                         </div>
                     }
@@ -550,7 +550,7 @@ else
             @if (!ov.HasData)
             {
                 <section class="panel insight-empty">
-                    <p>📊 @Loc["Log some income or expenses to see your account overview here."]</p>
+                    <p><Icon Name="chart" /> @Loc["Log some income or expenses to see your account overview here."]</p>
                 </section>
             }
         </div>
@@ -560,7 +560,7 @@ else
             <section class="panel">
                 <div class="spending-head">
                     <span class="insight-h">@Loc["Where your money is"]@if (LiveBalancePending) { <span class="bal-refreshing" title="@Loc["Updating live balance…"]"></span> }</span>
-                    <button class="fund-add" @onclick="OpenAddFund">＋ @Loc["Add a fund"]</button>
+                    <button class="fund-add" @onclick="OpenAddFund"><Icon Name="plus" /> @Loc["Add a fund"]</button>
                 </div>
                 @{
                     var funds = State.RootFunds.ToList();
@@ -648,7 +648,7 @@ else
                 var transfers = MergedTransfers();
                 <section class="panel">
                     <div class="panel-head">
-                        <h2>🔁 @Loc["Money moved"]</h2>
+                        <h2><Icon Name="repeat" /> @Loc["Money moved"]</h2>
                         <small class="hint">@Loc["Use a fund's ⋯ menu to move money."]</small>
                     </div>
                     @if (transfers.Any())
@@ -658,7 +658,7 @@ else
                             {
                                 <li>
                                     <span class="row-main row-stack">
-                                        <span class="row-title"><span class="row-title-txt">@t.Label</span>@if (t.AutoFiled) { <span class="row-note" title="@AutoFiledTransferTitle(t.Note)">🏦</span> }</span>
+                                        <span class="row-title"><span class="row-title-txt">@t.Label</span>@if (t.AutoFiled) { <span class="row-note" title="@AutoFiledTransferTitle(t.Note)"><Icon Name="bank" Class="ic-s" /></span> }</span>
                                         <span class="row-sub">
                                             <span>@t.Date.ToString("dd MMM")</span>
                                             @if (!string.IsNullOrEmpty(t.Note)) { <span class="sub-note">@t.Note</span> }
@@ -668,12 +668,12 @@ else
                                     <span class="row-actions">
                                         @if (State.IsPeriodOpen && !t.IsExternal)
                                         {
-                                            <button class="exp-edit" title="@Loc["Edit transfer"]" @onclick="() => OpenEditTransfer(t.Id)">✏️</button>
-                                            <button class="exp-edit" title="@Loc["Remove transfer"]" @onclick="() => OpenDeleteTransfer(t.Id)">🗑️</button>
+                                            <button class="exp-edit" title="@Loc["Edit transfer"]" @onclick="() => OpenEditTransfer(t.Id)"><Icon Name="pencil" /></button>
+                                            <button class="exp-edit" title="@Loc["Remove transfer"]" @onclick="() => OpenDeleteTransfer(t.Id)"><Icon Name="trash" /></button>
                                         }
                                         else if (State.IsPeriodOpen && t.IsExternal)
                                         {
-                                            <button class="exp-edit" title="@Loc["Remove this transfer (does not reverse the deposit in the other account)"]" @onclick="() => OpenDeleteExternalTransfer(t.Id)">🗑️</button>
+                                            <button class="exp-edit" title="@Loc["Remove this transfer (does not reverse the deposit in the other account)"]" @onclick="() => OpenDeleteExternalTransfer(t.Id)"><Icon Name="trash" /></button>
                                         }
                                     </span>
                                 </li>
@@ -691,13 +691,13 @@ else
                     <h2>@Loc["Income"]</h2>
                     @if (State.IsPeriodOpen)
                     {
-                        <button class="fund-add" @onclick="OpenDeposit">＋ @Loc["Add income"]</button>
+                        <button class="fund-add" @onclick="OpenDeposit"><Icon Name="plus" /> @Loc["Add income"]</button>
                     }
                     <span class="spending-sub">@Fmt(State.TotalContributed) @Loc["this period"]</span>
                     @if (State.IsPeriodOpen)
                     {
                         <span class="head-actions">
-                            <button class="link" title="@Loc["Manage categories"]" @onclick="OpenManageContribCats">🏷️</button>
+                            <button class="link" title="@Loc["Manage categories"]" @onclick="OpenManageContribCats"><Icon Name="tag" /></button>
                         </span>
                     }
                 </div>
@@ -726,8 +726,8 @@ else
                             {
                                 <div class="row-menu-backdrop" @onclick="() => _rowMenuId = Guid.Empty"></div>
                                 <div class="row-menu">
-                                    <button @onclick="() => RowAct(() => OpenEditDeposit(cid))">✏️ @Loc["Edit"]</button>
-                                    <button class="danger" @onclick="() => RowAct(() => OpenDeleteDeposit(cid))">🗑️ @Loc["Remove"]</button>
+                                    <button @onclick="() => RowAct(() => OpenEditDeposit(cid))"><Icon Name="pencil" /> @Loc["Edit"]</button>
+                                    <button class="danger" @onclick="() => RowAct(() => OpenDeleteDeposit(cid))"><Icon Name="trash" /> @Loc["Remove"]</button>
                                 </div>
                             }
                         </li>
@@ -742,7 +742,7 @@ else
             <section class="panel people-panel">
                 <div class="spending-head">
                     <h2>@Loc["People"]</h2>
-                    <button class="fund-add" @onclick="OpenInvite">＋ @Loc["Invite"]</button>
+                    <button class="fund-add" @onclick="OpenInvite"><Icon Name="plus" /> @Loc["Invite"]</button>
                 </div>
                 <div class="people-row">
                     @foreach (var m in State.RealUsers)
@@ -766,7 +766,7 @@ else
             <section class="panel">
                 <div class="spending-head">
                     <span class="insight-h">@Loc["This month's budgets"]</span>
-                    <button class="fund-add" @onclick="OpenAddBudget">＋ @Loc["Add budget"]</button>
+                    <button class="fund-add" @onclick="OpenAddBudget"><Icon Name="plus" /> @Loc["Add budget"]</button>
                     @* Only the spent figure takes the heat — it carries the verdict; the cap it's measured against
                        stays quiet. Same ramp as the Home "Spent" tile and the rings below, so one fact reads one way. *@
                     <span class="spending-sub"><strong class="spend-heat" style="color:hsl(@SpendHeatHue() 72% 56%)">@Fmt(State.TotalSpent)</strong> @Loc["of"] @Fmt(State.TotalBudgeted) @Loc["spent"]</span>
@@ -841,13 +841,13 @@ else
                         }
                         @if (State.IsPeriodOpen)
                         {
-                            <button class="fund-add exp-add-head" @onclick="AddExpenseFromHeader">🧾 @Loc["Add expense"]</button>
+                            <button class="fund-add exp-add-head" @onclick="AddExpenseFromHeader"><Icon Name="receipt" /> @Loc["Add expense"]</button>
                         }
                     </span>
                     <span class="panel-head-actions">
                         <span class="view-toggle">
-                            <button class="view-btn @(_calendar ? "" : "active")" title="@Loc["List"]" @onclick="ShowDayList">☰</button>
-                            <button class="view-btn @(_calendar ? "active" : "")" title="@Loc["Calendar"]" @onclick="ShowCalendarView">📅</button>
+                            <button class="view-btn @(_calendar ? "" : "active")" title="@Loc["List"]" @onclick="ShowDayList"><Icon Name="list" /></button>
+                            <button class="view-btn @(_calendar ? "active" : "")" title="@Loc["Calendar"]" @onclick="ShowCalendarView"><Icon Name="calendar" /></button>
                         </span>
                     </span>
                 </div>
@@ -858,7 +858,7 @@ else
                                 <span class="row-title"><span class="cat-ico">@State.CategoryIcon(e.CategoryId)</span> <span class="row-title-txt">@State.CategoryName(e.CategoryId)</span></span>
                                 <span class="row-sub">
                                     <span class="sub-to"><span class="cat-ico">@State.FundIcon(e.FundId)</span> @State.FundName(e.FundId)</span>
-                                    @if (e.IsFromSavings) { <span>💰 @Loc["saving"]</span> }
+                                    @if (e.IsFromSavings) { <span><Icon Name="coins" /> @Loc["saving"]</span> }
                                     @if (!string.IsNullOrEmpty(e.Note)) { <span class="sub-note">@e.Note</span> }
                                     @if (e.IsSettlementSource)
                                     {
@@ -868,15 +868,15 @@ else
                                     {
                                         <span class="settle-tag" title="@Loc["Settled from another account"]">↩ @Loc["from"] @State.AccountName(e.SettledFromAccountId!.Value)</span>
                                     }
-                                    @if (e.AutoFiled) { <span class="row-note" title="@AutoFiledTitle(e)">🏦</span> }
+                                    @if (e.AutoFiled) { <span class="row-note" title="@AutoFiledTitle(e)"><Icon Name="bank" Class="ic-s" /></span> }
                                 </span>
                             </span>
                             <span class="amt">@Fmt(e.Amount)</span>
                             <span class="row-actions">
                                 @if (State.IsPeriodOpen)
                                 {
-                                    <button class="exp-edit" title="@Loc["Edit expense"]" @onclick="() => OpenEditExpense(e.Id)">✏️</button>
-                                    <button class="exp-edit" title="@Loc["Remove expense"]" @onclick="() => OpenDeleteExpense(e.Id)">🗑️</button>
+                                    <button class="exp-edit" title="@Loc["Edit expense"]" @onclick="() => OpenEditExpense(e.Id)"><Icon Name="pencil" /></button>
+                                    <button class="exp-edit" title="@Loc["Remove expense"]" @onclick="() => OpenDeleteExpense(e.Id)"><Icon Name="trash" /></button>
                                 }
                             </span>
                         </li>;
@@ -910,7 +910,7 @@ else
                                     <span class="cal-num">@d.Day</span>
                                     @if (inRange && State.IsPeriodOpen)
                                     {
-                                        <button class="cal-add" title="@Loc["Add expense"]" @onclick:stopPropagation="true" @onclick="() => OpenAddExpenseOn(day)">🧾</button>
+                                        <button class="cal-add" title="@Loc["Add expense"]" @onclick:stopPropagation="true" @onclick="() => OpenAddExpenseOn(day)"><Icon Name="receipt" /></button>
                                     }
                                 </span>
                                 @if (inRange && info.Count > 0)
@@ -993,34 +993,34 @@ else
                             {
                                 @if (isDebt)
                                 {
-                                    <button @onclick="() => RowAct(() => OpenPayoffProjection(bucketId))">📈 @Loc["Payoff projection"]</button>
+                                    <button @onclick="() => RowAct(() => OpenPayoffProjection(bucketId))"><Icon Name="trending" /> @Loc["Payoff projection"]</button>
                                 }
                                 else if (isInvestment)
                                 {
-                                    <button @onclick="() => RowAct(() => OpenInvestmentProjection(bucketId))">📈 @Loc["Growth projection"]</button>
+                                    <button @onclick="() => RowAct(() => OpenInvestmentProjection(bucketId))"><Icon Name="trending" /> @Loc["Growth projection"]</button>
                                 }
                                 else
                                 {
-                                    <button @onclick="() => RowAct(() => OpenGoalProjection(bucketId))">📅 @Loc["Goal projection"]</button>
+                                    <button @onclick="() => RowAct(() => OpenGoalProjection(bucketId))"><Icon Name="calendar" /> @Loc["Goal projection"]</button>
                                 }
                             }
                             @if (State.IsPeriodOpen)
                             {
-                                <button @onclick="() => RowAct(() => OpenAddSaving(bucketId))">💰 @Loc["Add to savings"]</button>
-                                <button @onclick="() => RowAct(() => OpenDisburseSaving(bucketId))">🎯 @(isDebt ? Loc["Make a payment"] : isInvestment ? Loc["Withdraw"] : Loc["Apply to a goal"])</button>
-                                <button @onclick="() => RowAct(() => OpenBudgetSaving(bucketId))">➡️ @Loc["Budget savings"]</button>
-                                <button @onclick="() => RowAct(() => OpenSpendSaving(bucketId))">💸 @Loc["Spend savings"]</button>
+                                <button @onclick="() => RowAct(() => OpenAddSaving(bucketId))"><Icon Name="coins" /> @Loc["Add to savings"]</button>
+                                <button @onclick="() => RowAct(() => OpenDisburseSaving(bucketId))"><Icon Name="target" /> @(isDebt ? Loc["Make a payment"] : isInvestment ? Loc["Withdraw"] : Loc["Apply to a goal"])</button>
+                                <button @onclick="() => RowAct(() => OpenBudgetSaving(bucketId))"><Icon Name="arrow-right" /> @Loc["Budget savings"]</button>
+                                <button @onclick="() => RowAct(() => OpenSpendSaving(bucketId))"><Icon Name="note" /> @Loc["Spend savings"]</button>
                             }
-                            <button @onclick="() => RowAct(() => OpenEditBucket(bucketId))">✏️ @Loc["Edit"]</button>
-                            <button @onclick="() => ArchiveBucket(bucketId)">📦 @Loc["Archive"]</button>
-                            <button class="danger" @onclick="() => RowAct(() => OpenDeleteBucket(bucketId))">🗑️ @Loc["Remove"]</button>
+                            <button @onclick="() => RowAct(() => OpenEditBucket(bucketId))"><Icon Name="pencil" /> @Loc["Edit"]</button>
+                            <button @onclick="() => ArchiveBucket(bucketId)"><Icon Name="archive" /> @Loc["Archive"]</button>
+                            <button class="danger" @onclick="() => RowAct(() => OpenDeleteBucket(bucketId))"><Icon Name="trash" /> @Loc["Remove"]</button>
                         </div>
                     }
                     <div class="ring-label">
                         @if (done)
                         {
                             <span class="amt good-text">@(isDebt ? Loc["🎉 Paid off!"] : Loc["🎉 Goal reached!"])</span>
-                            <div class="ring-sub"><button class="link" @onclick="() => ArchiveBucket(bucketId)">📦 @Loc["Archive it"]</button></div>
+                            <div class="ring-sub"><button class="link" @onclick="() => ArchiveBucket(bucketId)"><Icon Name="archive" /> @Loc["Archive it"]</button></div>
                         }
                         else if (isDebt)
                         {
@@ -1069,7 +1069,7 @@ else
                         }
                         @if (State.SavingBucketFundId(bucketId) is { } heldFund)
                         {
-                            <div class="ring-sub ring-muted">🏦 @Loc["in"] @State.FundName(heldFund)</div>
+                            <div class="ring-sub ring-muted"><Icon Name="bank" /> @Loc["in"] @State.FundName(heldFund)</div>
                         }
                     </div>
                 </div>;
@@ -1090,20 +1090,20 @@ else
             }
             <section class="panel">
                 <div class="spending-head">
-                    <span class="insight-h">🎯 @Loc["Your goals"]</span>
-                    <button class="fund-add" @onclick="AddGoalForFilter">＋ @Loc["Add goal"]</button>
+                    <span class="insight-h"><Icon Name="target" /> @Loc["Your goals"]</span>
+                    <button class="fund-add" @onclick="AddGoalForFilter"><Icon Name="plus" /> @Loc["Add goal"]</button>
                     @if (State.SavingBuckets.Any(b => !b.Bucket.IsArchived))
                     {
-                        <button class="fund-add" @onclick="OpenMoveToSavings">💰 @Loc["Add to savings"]</button>
+                        <button class="fund-add" @onclick="OpenMoveToSavings"><Icon Name="coins" /> @Loc["Add to savings"]</button>
                     }
                     <span class="spending-sub">@Fmt(State.SavingsAccumulated) @Loc["saved"] · @Fmt(State.SavingsThisPeriod) @Loc["this period"]</span>
                 </div>
                 <div class="goal-filters" role="group">
                     <button type="button" class="chip @(_goalFilter == GoalFilter.All ? "on" : "")" @onclick="() => _goalFilter = GoalFilter.All">@Loc["All"] <span class="chip-n">@goalTotal</span></button>
-                    <button type="button" class="chip @(_goalFilter == GoalFilter.Debts ? "on" : "")" @onclick="() => _goalFilter = GoalFilter.Debts">💳 @Loc["Debts"] <span class="chip-n">@debtBuckets.Count</span></button>
-                    <button type="button" class="chip @(_goalFilter == GoalFilter.Savings ? "on" : "")" @onclick="() => _goalFilter = GoalFilter.Savings">🐷 @Loc["Savings"] <span class="chip-n">@plainBuckets.Count</span></button>
-                    <button type="button" class="chip @(_goalFilter == GoalFilter.Investments ? "on" : "")" @onclick="() => _goalFilter = GoalFilter.Investments">📈 @Loc["Investments"] <span class="chip-n">@investmentBuckets.Count</span></button>
-                    <button type="button" class="chip @(_goalFilter == GoalFilter.Expenses ? "on" : "")" @onclick="() => _goalFilter = GoalFilter.Expenses">🗓️ @Loc["Expenses"] <span class="chip-n">@expenseBuckets.Count</span></button>
+                    <button type="button" class="chip @(_goalFilter == GoalFilter.Debts ? "on" : "")" @onclick="() => _goalFilter = GoalFilter.Debts"><Icon Name="card" /> @Loc["Debts"] <span class="chip-n">@debtBuckets.Count</span></button>
+                    <button type="button" class="chip @(_goalFilter == GoalFilter.Savings ? "on" : "")" @onclick="() => _goalFilter = GoalFilter.Savings"><Icon Name="coins" /> @Loc["Savings"] <span class="chip-n">@plainBuckets.Count</span></button>
+                    <button type="button" class="chip @(_goalFilter == GoalFilter.Investments ? "on" : "")" @onclick="() => _goalFilter = GoalFilter.Investments"><Icon Name="trending" /> @Loc["Investments"] <span class="chip-n">@investmentBuckets.Count</span></button>
+                    <button type="button" class="chip @(_goalFilter == GoalFilter.Expenses ? "on" : "")" @onclick="() => _goalFilter = GoalFilter.Expenses"><Icon Name="calendar" /> @Loc["Expenses"] <span class="chip-n">@expenseBuckets.Count</span></button>
                 </div>
                 @if (goalBuckets.Count == 0)
                 {
@@ -1124,7 +1124,7 @@ else
             @if (debtBuckets.Count >= 2)
             {
                 <section class="panel">
-                    <div class="panel-head"><h2>🎯 @Loc["Payoff plan"] @infoTip(("plan-how", Loc["One spare amount is thrown at your debts each month on top of every installment. As each debt clears, its installment rolls onto the next one."]))</h2></div>
+                    <div class="panel-head"><h2><Icon Name="target" /> @Loc["Payoff plan"] @infoTip(("plan-how", Loc["One spare amount is thrown at your debts each month on top of every installment. As each debt clears, its installment rolls onto the next one."]))</h2></div>
                     <div class="plan-controls">
                         <label>@Loc["Extra /mo across all debts"] <input type="number" step="10" min="0" @bind="_planExtra" @bind:event="oninput" /></label>
                         <div class="plan-toggle" role="group">
@@ -1174,8 +1174,8 @@ else
                                 <span class="row-actions">
                                     @if (State.IsPeriodOpen)
                                     {
-                                        <button class="exp-edit" title="@Loc["Edit"]" @onclick="() => OpenEditSavingDeposit(d.Id)">✏️</button>
-                                        <button class="exp-edit" title="@Loc["Remove"]" @onclick="() => OpenDeleteSavingDeposit(d.Id)">🗑️</button>
+                                        <button class="exp-edit" title="@Loc["Edit"]" @onclick="() => OpenEditSavingDeposit(d.Id)"><Icon Name="pencil" /></button>
+                                        <button class="exp-edit" title="@Loc["Remove"]" @onclick="() => OpenDeleteSavingDeposit(d.Id)"><Icon Name="trash" /></button>
                                     }
                                 </span>
                             </li>
@@ -1193,9 +1193,9 @@ else
                                     {
                                         @if (!m.IsDisbursement)
                                         {
-                                            <button class="exp-edit" title="@Loc["Edit"]" @onclick="() => OpenEditSavingMovement(m.Id)">✏️</button>
+                                            <button class="exp-edit" title="@Loc["Edit"]" @onclick="() => OpenEditSavingMovement(m.Id)"><Icon Name="pencil" /></button>
                                         }
-                                        <button class="exp-edit" title="@Loc["Remove"]" @onclick="() => OpenDeleteSavingMovement(m.Id)">🗑️</button>
+                                        <button class="exp-edit" title="@Loc["Remove"]" @onclick="() => OpenDeleteSavingMovement(m.Id)"><Icon Name="trash" /></button>
                                     }
                                 </span>
                             </li>
@@ -1236,7 +1236,7 @@ else
                 case Modal.BankReview:
                     var reviewDebits = BankDebits();
                     var reviewCredits = BankCredits();
-                    <h3>🏦 @Loc["Review bank transactions"]</h3>
+                    <h3><Icon Name="bank" /> @Loc["Review bank transactions"]</h3>
                     <p class="hint">@string.Format(Loc["{0} imported from {1} need a quick review."], reviewDebits.Count + reviewCredits.Count, _bankStatus?.InstitutionName ?? Loc["your bank"])</p>
                     @if (reviewDebits.Count > 0)
                     {
@@ -1321,9 +1321,9 @@ else
                     <div class="modal-head">
                         <h3>@State.CategoryIcon(_modalCatId) @Loc["Edit"] @State.CategoryName(_modalCatId)</h3>
                         <span class="modal-head-actions">
-                            <button class="exp-edit" title="@Loc["Delete"]" @onclick="EditDeleteSelf">🗑️</button>
-                            <button class="exp-edit" title="@Loc["Cancel"]" @onclick="Back">✕</button>
-                            <button class="exp-edit head-ok" title="@Loc["Save"]" @onclick="SaveEditCat" disabled="@(string.IsNullOrWhiteSpace(_fName))">✓</button>
+                            <button class="exp-edit" title="@Loc["Delete"]" @onclick="EditDeleteSelf"><Icon Name="trash" /></button>
+                            <button class="exp-edit" title="@Loc["Cancel"]" @onclick="Back"><Icon Name="x" /></button>
+                            <button class="exp-edit head-ok" title="@Loc["Save"]" @onclick="SaveEditCat" disabled="@(string.IsNullOrWhiteSpace(_fName))"><Icon Name="check" /></button>
                         </span>
                     </div>
                     <div class="name-icon-row">
@@ -1350,8 +1350,8 @@ else
                                 <li>
                                     <span class="row-main"><span class="cat-ico">@State.CategoryIcon(subId)</span> @sub.Name</span>
                                     <span class="row-actions">
-                                        <button class="exp-edit" title="@Loc["Edit"]" @onclick="() => EditEditSub(subId)">✏️</button>
-                                        <button class="exp-edit" title="@Loc["Remove"]" @onclick="() => EditDeleteSub(subId)">🗑️</button>
+                                        <button class="exp-edit" title="@Loc["Edit"]" @onclick="() => EditEditSub(subId)"><Icon Name="pencil" /></button>
+                                        <button class="exp-edit" title="@Loc["Remove"]" @onclick="() => EditDeleteSub(subId)"><Icon Name="trash" /></button>
                                     </span>
                                 </li>
                             }
@@ -1395,9 +1395,9 @@ else
                     <div class="modal-head">
                         <h3>@State.CategoryIcon(_modalCatId) @State.CategoryName(_modalCatId)</h3>
                         <span class="modal-head-actions">
-                            <button class="exp-edit" title="@Loc["Edit / budget"]" @onclick="DetailEdit">✏️</button>
-                            <button class="exp-edit" title="@Loc["Delete"]" @onclick="DetailDelete">🗑️</button>
-                            <button class="exp-edit" title="@Loc["Close"]" @onclick="Back">✕</button>
+                            <button class="exp-edit" title="@Loc["Edit / budget"]" @onclick="DetailEdit"><Icon Name="pencil" /></button>
+                            <button class="exp-edit" title="@Loc["Delete"]" @onclick="DetailDelete"><Icon Name="trash" /></button>
+                            <button class="exp-edit" title="@Loc["Close"]" @onclick="Back"><Icon Name="x" /></button>
                         </span>
                     </div>
                     @if (State.BudgetFor(_modalCatId) is { } cb)
@@ -1421,8 +1421,8 @@ else
                             <span class="row-actions">
                                 @if (State.IsPeriodOpen)
                                 {
-                                    <button class="exp-edit" title="@Loc["Edit"]" @onclick="() => DetailEditExpense(e.Id)">✏️</button>
-                                    <button class="exp-edit" title="@Loc["Remove"]" @onclick="() => DetailDeleteExpense(e.Id)">🗑️</button>
+                                    <button class="exp-edit" title="@Loc["Edit"]" @onclick="() => DetailEditExpense(e.Id)"><Icon Name="pencil" /></button>
+                                    <button class="exp-edit" title="@Loc["Remove"]" @onclick="() => DetailDeleteExpense(e.Id)"><Icon Name="trash" /></button>
                                 }
                             </span>
                         </li>;
@@ -1453,7 +1453,7 @@ else
                     <div class="modal-head">
                         <h3>🏆 @Loc["Achievements"]</h3>
                         <span class="modal-head-actions">
-                            <button class="exp-edit" title="@Loc["Close"]" @onclick="Back">✕</button>
+                            <button class="exp-edit" title="@Loc["Close"]" @onclick="Back"><Icon Name="x" /></button>
                         </span>
                     </div>
                     var achLog = State.Account.AchievementLog;
@@ -1517,9 +1517,9 @@ else
 
                 case Modal.Archived:
                     <div class="modal-head">
-                        <h3>📦 @Loc["Archived items"]</h3>
+                        <h3><Icon Name="archive" /> @Loc["Archived items"]</h3>
                         <span class="modal-head-actions">
-                            <button class="exp-edit" title="@Loc["Close"]" @onclick="Back">✕</button>
+                            <button class="exp-edit" title="@Loc["Close"]" @onclick="Back"><Icon Name="x" /></button>
                         </span>
                     </div>
                     var arFunds = State.ArchivedFunds;
@@ -1531,34 +1531,34 @@ else
                     }
                     @if (arFunds.Any())
                     {
-                        <h4 class="archived-h">💰 @Loc["Funds"]</h4>
+                        <h4 class="archived-h"><Icon Name="coins" /> @Loc["Funds"]</h4>
                         <ul class="list">
                             @foreach (var f in arFunds)
                             {
                                 var fid = f.Id;
                                 <li class="row-menu-host">
                                     <span class="row-main"><span class="cat-ico">@State.FundIcon(fid)</span> @f.Name</span>
-                                    <span class="row-actions"><button class="exp-edit" title="@Loc["Restore"]" @onclick="() => State.RestoreFund(fid)">♻️</button></span>
+                                    <span class="row-actions"><button class="exp-edit" title="@Loc["Restore"]" @onclick="() => State.RestoreFund(fid)"><Icon Name="rotate" /></button></span>
                                 </li>
                             }
                         </ul>
                     }
                     @if (arCats.Any())
                     {
-                        <h4 class="archived-h">🍽️ @Loc["Spending categories"]</h4>
+                        <h4 class="archived-h"><Icon Name="tag" /> @Loc["Spending categories"]</h4>
                         <ul class="list">
                             @foreach (var c in arCats)
                             {
                                 <li class="row-menu-host">
                                     <span class="row-main"><span class="cat-ico">@State.CategoryIcon(c.Id)</span> @c.Name</span>
-                                    <span class="row-actions"><button class="exp-edit" title="@Loc["Restore"]" @onclick="() => State.RestoreCategory(c.Id)">♻️</button></span>
+                                    <span class="row-actions"><button class="exp-edit" title="@Loc["Restore"]" @onclick="() => State.RestoreCategory(c.Id)"><Icon Name="rotate" /></button></span>
                                 </li>
                             }
                         </ul>
                     }
                     @if (arBuckets.Count > 0)
                     {
-                        <h4 class="archived-h">🎯 @Loc["Debts & savings"]</h4>
+                        <h4 class="archived-h"><Icon Name="target" /> @Loc["Debts & savings"]</h4>
                         <ul class="list">
                             @foreach (var a in arBuckets)
                             {
@@ -1567,7 +1567,7 @@ else
                                     <span class="row-lead"><span class="cat-ico">@State.SavingBucketIcon(aid)</span> @a.Bucket.Name <span class="row-note">· @(a.Bucket.IsDebt ? Loc["debt"] : Loc["savings"])</span></span>
                                     <span class="row-actions">
                                         <button class="exp-edit" title="@Loc["Restore"]" @onclick="() => RestoreBucket(aid)">↩️</button>
-                                        <button class="exp-edit" title="@Loc["Remove"]" @onclick="() => OpenDeleteBucket(aid)">🗑️</button>
+                                        <button class="exp-edit" title="@Loc["Remove"]" @onclick="() => OpenDeleteBucket(aid)"><Icon Name="trash" /></button>
                                     </span>
                                 </li>
                             }
@@ -1647,7 +1647,7 @@ else
                     <h3>@Loc["Add expense"]</h3>
                     @if (State.LastExpense is { } lastExp)
                     {
-                        <button type="button" class="repeat-last" @onclick="RepeatLastExpense">↻ @Loc["Repeat last"]: <strong>@State.CategoryName(lastExp.CategoryId)</strong> · @Fmt(lastExp.Amount)</button>
+                        <button type="button" class="repeat-last" @onclick="RepeatLastExpense"><Icon Name="rotate" /> @Loc["Repeat last"]: <strong>@State.CategoryName(lastExp.CategoryId)</strong> · @Fmt(lastExp.Amount)</button>
                     }
                     @* No "Recent" chips here: the most-used categories are already reachable from the Home
                        Add-expense hover menu ("Quick add to"), which opens this modal pre-selected. *@
@@ -1765,17 +1765,17 @@ else
                     {
                         @if (!string.IsNullOrEmpty(editExp.Note) && MappedLabel(editExp.Note!) is { } target)
                         {
-                            <p class="hint">🏦 @Loc["Auto-filed from a saved bank rule:"] <strong>@editExp.Note</strong> → <strong>@target</strong></p>
+                            <p class="hint"><Icon Name="bank" /> @Loc["Auto-filed from a saved bank rule:"] <strong>@editExp.Note</strong> → <strong>@target</strong></p>
                             <ul class="list">@BankRuleRow((BudgetingState.BankMatchKey(editExp.Note!), "category", "🔖"))</ul>
                         }
                         else
                         {
-                            <p class="hint">🏦 @Loc["Filed automatically from your bank."]</p>
+                            <p class="hint"><Icon Name="bank" /> @Loc["Filed automatically from your bank."]</p>
                         }
                     }
                     @if (State.FindExpense(_editExpenseId) is { IsSettlementDestination: false } && State.TransferableAccounts.Any())
                     {
-                        <button type="button" class="link settle-link" @onclick="() => OpenSettleExpense(_editExpenseId)">🤝 @(State.FindExpense(_editExpenseId)!.IsSettlementSource ? Loc["Edit settlement onto another account"] : Loc["Settle part onto another account"])</button>
+                        <button type="button" class="link settle-link" @onclick="() => OpenSettleExpense(_editExpenseId)"><Icon Name="users" /> @(State.FindExpense(_editExpenseId)!.IsSettlementSource ? Loc["Edit settlement onto another account"] : Loc["Settle part onto another account"])</button>
                     }
                     <div class="modal-actions">
                         <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
@@ -1841,7 +1841,7 @@ else
                                 <button class="ghost danger" @onclick="UnsettleFromModal">@Loc["Unsettle"]</button>
                             }
                             <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
-                            <button @onclick="ConfirmSettleExpense" disabled="@(_settleAmount <= 0 || _settleDestId == Guid.Empty)">🤝 @(_settleIsEdit ? Loc["Save"] : Loc["Settle"])</button>
+                            <button @onclick="ConfirmSettleExpense" disabled="@(_settleAmount <= 0 || _settleDestId == Guid.Empty)"><Icon Name="users" /> @(_settleIsEdit ? Loc["Save"] : Loc["Settle"])</button>
                         </div>
                     }
                     break;
@@ -1856,10 +1856,10 @@ else
                     @iconGrid
                     <label>@Loc["Type"]</label>
                     <div class="plan-toggle bucket-type" role="group">
-                        <button type="button" class="chip @(_bucketKind == SavingKind.Common ? "on" : "")" @onclick="() => _bucketKind = SavingKind.Common">💰 @Loc["Savings goal"]</button>
-                        <button type="button" class="chip @(_bucketKind == SavingKind.Debt ? "on" : "")" @onclick="() => _bucketKind = SavingKind.Debt">💳 @Loc["Debt payoff"]</button>
-                        <button type="button" class="chip @(_bucketKind == SavingKind.Investment ? "on" : "")" @onclick="() => _bucketKind = SavingKind.Investment">📈 @Loc["Investment"]</button>
-                        <button type="button" class="chip @(_bucketKind == SavingKind.Expenses ? "on" : "")" @onclick="() => _bucketKind = SavingKind.Expenses">🗓️ @Loc["Expenses fund"]</button>
+                        <button type="button" class="chip @(_bucketKind == SavingKind.Common ? "on" : "")" @onclick="() => _bucketKind = SavingKind.Common"><Icon Name="coins" /> @Loc["Savings goal"]</button>
+                        <button type="button" class="chip @(_bucketKind == SavingKind.Debt ? "on" : "")" @onclick="() => _bucketKind = SavingKind.Debt"><Icon Name="card" /> @Loc["Debt payoff"]</button>
+                        <button type="button" class="chip @(_bucketKind == SavingKind.Investment ? "on" : "")" @onclick="() => _bucketKind = SavingKind.Investment"><Icon Name="trending" /> @Loc["Investment"]</button>
+                        <button type="button" class="chip @(_bucketKind == SavingKind.Expenses ? "on" : "")" @onclick="() => _bucketKind = SavingKind.Expenses"><Icon Name="calendar" /> @Loc["Expenses fund"]</button>
                     </div>
                     @if (_bucketKind == SavingKind.Debt)
                     {
@@ -1889,7 +1889,7 @@ else
                            year's — so a goal would give the ring a meaning it can't keep. *@
                         <div class="cost-head">
                             <label>@Loc["Costs this covers"]</label>
-                            <button type="button" class="fund-add" @onclick="AddCostRow">＋ @Loc["Add a cost"]</button>
+                            <button type="button" class="fund-add" @onclick="AddCostRow"><Icon Name="plus" /> @Loc["Add a cost"]</button>
                         </div>
                         @foreach (var costRow in _costRows)
                         {
@@ -1906,7 +1906,7 @@ else
                                 {
                                     <input type="date" class="cost-due" @bind="costRow.DueDate" />
                                 }
-                                <button type="button" class="exp-edit cost-del" title="@Loc["Remove"]" @onclick="() => RemoveCostRow(costRow)">🗑️</button>
+                                <button type="button" class="exp-edit cost-del" title="@Loc["Remove"]" @onclick="() => RemoveCostRow(costRow)"><Icon Name="trash" /></button>
                             </div>
                         }
                         @if (_costRows.Count > 0)
@@ -1999,12 +1999,12 @@ else
                     }
                     <div class="modal-actions">
                         <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
-                        <button @onclick="ConfirmTransfer" disabled="@(_mTransferAmount <= 0 || _mTransferDestId == Guid.Empty || _mTransferDestId == _mTransferFromId || _mTransferAmount > MTransferMax)">🔁 @Loc["Transfer money"]</button>
+                        <button @onclick="ConfirmTransfer" disabled="@(_mTransferAmount <= 0 || _mTransferDestId == Guid.Empty || _mTransferDestId == _mTransferFromId || _mTransferAmount > MTransferMax)"><Icon Name="swap" /> @Loc["Transfer money"]</button>
                     </div>
                     break;
 
                 case Modal.BankTransfer:
-                    <h3>⇄ @Loc["Transfer this money-out"]</h3>
+                    <h3><Icon Name="swap" /> @Loc["Transfer this money-out"]</h3>
                     @if (_bankXferTx is { } bx)
                     {
                         <p class="hint">@string.Format(Loc["{0} left {1} on {2}. Send it to another fund or account instead of logging an expense."], Fmt(new Money(Math.Abs(bx.Amount), State.Currency)), State.SyncedFundName, bx.Date.ToString("dd MMM"))</p>
@@ -2041,7 +2041,7 @@ else
                     }
                     <div class="modal-actions">
                         <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
-                        <button @onclick="ConfirmBankTransferRow" disabled="@(_bankBusy || _mTransferDestId == Guid.Empty || _mTransferDestId == State.SyncedFundId)">⇄ @Loc["Record transfer"]</button>
+                        <button @onclick="ConfirmBankTransferRow" disabled="@(_bankBusy || _mTransferDestId == Guid.Empty || _mTransferDestId == State.SyncedFundId)"><Icon Name="swap" /> @Loc["Record transfer"]</button>
                     </div>
                     break;
 
@@ -2078,8 +2078,8 @@ else
                         {
                             <li>
                                 <span class="row-lead">
-                                    <button class="exp-edit" title="@Loc["Rename"]" @onclick="() => OpenEditContribCat(cc.Id)">✏️</button>
-                                    <button class="exp-edit" title="@Loc["Remove"]" @onclick="() => OpenDeleteContribCat(cc.Id)">🗑️</button>
+                                    <button class="exp-edit" title="@Loc["Rename"]" @onclick="() => OpenEditContribCat(cc.Id)"><Icon Name="pencil" /></button>
+                                    <button class="exp-edit" title="@Loc["Remove"]" @onclick="() => OpenDeleteContribCat(cc.Id)"><Icon Name="trash" /></button>
                                     <span><span class="cat-ico">@State.ContributionCategoryIcon(cc.Id)</span> @cc.Name</span>
                                 </span>
                             </li>
@@ -2087,7 +2087,7 @@ else
                     </ul>
                     <div class="modal-actions">
                         <button class="ghost" @onclick="Back">@Loc["Close"]</button>
-                        <button @onclick="OpenAddContribCat">➕ @Loc["Add category"]</button>
+                        <button @onclick="OpenAddContribCat"><Icon Name="plus" /> @Loc["Add category"]</button>
                     </div>
                     break;
 
@@ -2113,7 +2113,7 @@ else
                     <div class="avail-note">@Loc["Available to save:"] <strong>@Fmt(State.AvailableToSaveDisplay(_bankStatus?.Balance, _bankStatus?.BalanceCurrency))</strong> — @Loc["your cash that isn't already set aside for savings"].</div>
                     <div class="modal-actions">
                         <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
-                        <button @onclick="AllocateSaving" disabled="@(_savingAmount <= 0)">💰 @Loc["Add"]</button>
+                        <button @onclick="AllocateSaving" disabled="@(_savingAmount <= 0)"><Icon Name="coins" /> @Loc["Add"]</button>
                     </div>
                     break;
 
@@ -2127,16 +2127,16 @@ else
                     <small class="hint">@Loc["This moves real money into your debt earmark and lowers this budget. You can change both later."]</small>
                     <div class="modal-actions">
                         <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
-                        <button @onclick="DoReallocate">💪 @Loc["Move it"]</button>
+                        <button @onclick="DoReallocate"><Icon Name="arrow-right" /> @Loc["Move it"]</button>
                     </div>
                     break;
 
                 case Modal.Recurring:
                     <div class="modal-head">
-                        <h3>🔁 @Loc["Recurring"]</h3>
+                        <h3><Icon Name="repeat" /> @Loc["Recurring"]</h3>
                         <span class="modal-head-actions">
                             <button class="lbl-add" title="@Loc["Add recurring"]" @onclick="OpenAddRecurring">+</button>
-                            <button class="exp-edit" title="@Loc["Close"]" @onclick="Back">✕</button>
+                            <button class="exp-edit" title="@Loc["Close"]" @onclick="Back"><Icon Name="x" /></button>
                         </span>
                     </div>
                     <p class="hint">@Loc["Bills, salary and standing transfers that repeat monthly. They remind you when due — you confirm the real amount, so bills that vary stay accurate."]</p>
@@ -2159,8 +2159,8 @@ else
                                         <span class="row-note">· @amountText · @Loc["day"] @r.DayOfMonth@(r.AutoPost ? " · ⚡" + @Loc["auto"] : "")@(r.Active ? "" : " · " + @Loc["paused"])</span>
                                     </span>
                                     <span class="row-actions">
-                                        <button class="exp-edit" title="@Loc["Edit"]" @onclick="() => OpenEditRecurring(rid)">✏️</button>
-                                        <button class="exp-edit" title="@Loc["Remove"]" @onclick="() => RemoveRecurringItem(rid)">🗑️</button>
+                                        <button class="exp-edit" title="@Loc["Edit"]" @onclick="() => OpenEditRecurring(rid)"><Icon Name="pencil" /></button>
+                                        <button class="exp-edit" title="@Loc["Remove"]" @onclick="() => RemoveRecurringItem(rid)"><Icon Name="trash" /></button>
                                     </span>
                                 </li>
                             }
@@ -2173,8 +2173,8 @@ else
                 case Modal.RecurringEdit:
                     <h3>@(_recEditId == Guid.Empty ? Loc["Add recurring"] : Loc["Edit recurring"])</h3>
                     <div class="plan-toggle" role="group">
-                        <button type="button" class="chip @(_recKind == RecurringKind.Expense ? "on" : "")" @onclick="() => SetRecurringKind(RecurringKind.Expense)">💸 @Loc["Bill"]</button>
-                        <button type="button" class="chip @(_recKind == RecurringKind.Income ? "on" : "")" @onclick="() => SetRecurringKind(RecurringKind.Income)">💷 @Loc["Income"]</button>
+                        <button type="button" class="chip @(_recKind == RecurringKind.Expense ? "on" : "")" @onclick="() => SetRecurringKind(RecurringKind.Expense)"><Icon Name="note" /> @Loc["Bill"]</button>
+                        <button type="button" class="chip @(_recKind == RecurringKind.Income ? "on" : "")" @onclick="() => SetRecurringKind(RecurringKind.Income)"><Icon Name="coins" /> @Loc["Income"]</button>
                     </div>
                     <label>@Loc["Name"] <input type="text" @bind="_recName" placeholder="@(_recKind == RecurringKind.Income ? "Salary" : "Rent")" /></label>
                     <label>@Loc["Category"]
@@ -2237,10 +2237,10 @@ else
                     break;
 
                 case Modal.AddOrImport:
-                    <h3>➕ @Loc["Add a transaction"]</h3>
+                    <h3><Icon Name="plus" /> @Loc["Add a transaction"]</h3>
                     <p class="hint">@Loc["Record a single entry, or import many at once from a bank statement (expenses and income)."]</p>
-                    <button class="qa-choice" @onclick="OpenAddExpenseTab">🧾 <span><strong>@Loc["Log an expense"]</strong><small>@Loc["Enter one spend by hand."]</small></span></button>
-                    <button class="qa-choice" @onclick="OpenImport">📥 <span><strong>@Loc["Import statement"]</strong><small>@Loc["Bring in many from a bank file."]</small></span></button>
+                    <button class="qa-choice" @onclick="OpenAddExpenseTab"><Icon Name="receipt" /> <span><strong>@Loc["Log an expense"]</strong><small>@Loc["Enter one spend by hand."]</small></span></button>
+                    <button class="qa-choice" @onclick="OpenImport"><Icon Name="import" /> <span><strong>@Loc["Import statement"]</strong><small>@Loc["Bring in many from a bank file."]</small></span></button>
                     <div class="modal-actions">
                         <button class="ghost" @onclick="Back">@Loc["Close"]</button>
                     </div>
@@ -2315,7 +2315,7 @@ else
                                         </select>
                                         @if (r.Tx.Amount < 0m && !string.IsNullOrWhiteSpace(r.Tx.Description))
                                         {
-                                            <button type="button" class="icon-btn pin @(pinned ? "on" : "")" title="@(pinned ? Loc["Auto-files this merchant here — click to forget"] : Loc["Always file this merchant here in future"])" @onclick="() => ToggleImportPin(r)">📌</button>
+                                            <button type="button" class="icon-btn pin @(pinned ? "on" : "")" title="@(pinned ? Loc["Auto-files this merchant here — click to forget"] : Loc["Always file this merchant here in future"])" @onclick="() => ToggleImportPin(r)"><Icon Name="pin" /></button>
                                         }
                                         <span class="amt @(r.Tx.Amount < 0m ? "" : "good-text")">@Fmt(State.Money(r.Tx.Amount))</span>
                                     </span>
@@ -2330,7 +2330,7 @@ else
                     break;
 
                 case Modal.ExternalAccounts:
-                    <h3>🏦 @Loc["External accounts"]</h3>
+                    <h3><Icon Name="bank" /> @Loc["External accounts"]</h3>
                     @if (Auth.CurrentUser is { EmailVerified: false })
                     {
                         <div class="alert warn-bg"><span>@Loc["Verify your email address before you can link a bank or view its data — bank connections show real financial information."]</span></div>
@@ -2360,7 +2360,7 @@ else
                         @if (!_bankStatus.Connected)
                         {
                             <p class="hint">@Loc["Link your Revolut account to pull transactions in automatically."] @Loc["Each account links its own bank."]</p>
-                            <button class="primary" @onclick="LinkBankAsync" disabled="@_bankBusy">🔗 @Loc["Link Revolut"]</button>
+                            <button class="primary" @onclick="LinkBankAsync" disabled="@_bankBusy"><Icon Name="link" /> @Loc["Link Revolut"]</button>
                         }
                         else
                         {
@@ -2432,7 +2432,7 @@ else
                     <small class="hint">@Loc["A budget matures the saving into this month's plan; another bucket just shifts it across. The source bucket drops either way."]</small>
                     <div class="modal-actions">
                         <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
-                        <button @onclick="MoveSaving" disabled="@(_spendAmount <= 0 || _spendDestId == Guid.Empty || _spendDestId == _spendBucketId)">➡️ @Loc["Move"]</button>
+                        <button @onclick="MoveSaving" disabled="@(_spendAmount <= 0 || _spendDestId == Guid.Empty || _spendDestId == _spendBucketId)"><Icon Name="arrow-right" /> @Loc["Move"]</button>
                     </div>
                     break;
 
@@ -2450,13 +2450,13 @@ else
                     <small class="hint">@Loc["Records a real expense paid straight from this bucket (dated today)."]</small>
                     <div class="modal-actions">
                         <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
-                        <button @onclick="SpendBucketAsExpense" disabled="@(_spendExpAmount <= 0 || _spendExpCategoryId == Guid.Empty)">💸 @Loc["Spend"]</button>
+                        <button @onclick="SpendBucketAsExpense" disabled="@(_spendExpAmount <= 0 || _spendExpCategoryId == Guid.Empty)"><Icon Name="note" /> @Loc["Spend"]</button>
                     </div>
                     break;
 
                 case Modal.DisburseSaving:
                     var disBucketBal = DisburseBucketBalance();
-                    <h3>🎯 @Loc["Apply to a goal"] — @State.SavingBucketName(_disburseBucketId)</h3>
+                    <h3><Icon Name="target" /> @Loc["Apply to a goal"] — @State.SavingBucketName(_disburseBucketId)</h3>
                     <label>@Loc["Amount"] <input type="number" step="0.01" min="0" @bind="_disburseAmount" /></label>
                     <small class="hint">@Loc["Saved in this bucket:"] <strong>@Fmt(disBucketBal)</strong></small>
                     <label>@Loc["Take the money from"]
@@ -2471,7 +2471,7 @@ else
                     <small class="hint">@Loc["Money leaves that fund for this goal — it’s not counted as an expense and doesn’t dent your savings figures."]</small>
                     <div class="modal-actions">
                         <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
-                        <button @onclick="DisburseSavingFromModal" disabled="@(_disburseAmount <= 0 || _disburseAmount > disBucketBal.Amount || _disburseFundId == Guid.Empty)">🎯 @Loc["Apply"]</button>
+                        <button @onclick="DisburseSavingFromModal" disabled="@(_disburseAmount <= 0 || _disburseAmount > disBucketBal.Amount || _disburseFundId == Guid.Empty)"><Icon Name="target" /> @Loc["Apply"]</button>
                     </div>
                     break;
 
@@ -2480,7 +2480,7 @@ else
                     <h3>💗 @Loc["Health score & trends"] @infoTip(("score-how", Loc["How your score works: four equal parts (25 pts each) — how much you saved vs your target, how well you kept to budget, living within your income, and your spending vs your recent average."]))</h3>
                     @if (!hs.HasData)
                     {
-                        <p class="hint">📊 @Loc["Log some income or expenses to see your account overview here."]</p>
+                        <p class="hint"><Icon Name="chart" /> @Loc["Log some income or expenses to see your account overview here."]</p>
                     }
                     else
                     {
@@ -2604,7 +2604,7 @@ else
                     var pjLowerInst = pjKeepMonths > 0
                         ? FinApp.Domain.Forecasting.LoanForecast.PaymentFor(pjAfterBal, pjRate, pjKeepMonths)
                         : null;
-                    <h3>📈 @Loc["Payoff projection"] — @State.SavingBucketName(_projBucketId)</h3>
+                    <h3><Icon Name="trending" /> @Loc["Payoff projection"] — @State.SavingBucketName(_projBucketId)</h3>
                     <div class="proj-grid">
                         <span class="proj-k">@Loc["Balance owed"]</span><span class="proj-v">@Fmt(State.Money(pjBal))</span>
                         <span class="proj-k">@Loc["Set aside"]</span><span class="proj-v">@Fmt(State.SavingBucketSaved(_projBucketId))</span>
@@ -2627,7 +2627,7 @@ else
                         @* Two questions, deliberately kept apart: this one is "the money I have, once"; the next is
                            "money I'd add every month, forever". They used to read as one because the same set-aside
                            figure defaulted into both — the second then quoted an implausible per-month total. *@
-                        <h4 class="detail-sub">💸 @string.Format(Loc["One-off — pay your {0} set aside now"], Fmt(State.Money(pjPayNow)))
+                        <h4 class="detail-sub"><Icon Name="note" /> @string.Format(Loc["One-off — pay your {0} set aside now"], Fmt(State.Money(pjPayNow)))
                             @infoTip(("pp-partial", Loc["A payment lowers the balance right away, so the interest you're charged each period drops from then on. This is a single payment out of what you've already set aside — not a new monthly commitment."]))</h4>
                         @if (pjShorter is not null || pjLowerInst is not null)
                         {
@@ -2669,7 +2669,7 @@ else
                             </table>
                         }
                     }
-                    <h4 class="detail-sub">🔁 @Loc["Ongoing — add more every month"]
+                    <h4 class="detail-sub"><Icon Name="repeat" /> @Loc["Ongoing — add more every month"]
                         @infoTip(("pp-pace", Loc["A recurring amount you'd pay on top of the installment every month, month after month — separate from the one-off above. Starts from your recent saving pace; change it to see how paying more (or less) moves the date and interest."]))
                         <button type="button" class="info-ico reset-ico" title="@(pjPlanned ? Loc["Reset to your planned contribution"] : Loc["Reset to your saving pace"])" @onclick="() => _payoffExtra = State.EffectiveSavingPace(_projBucketId)?.Amount ?? 0m">↺</button>
                     </h4>
@@ -2687,7 +2687,7 @@ else
                     {
                         <p class="hint warn-text">@Loc["At this amount it wouldn’t cover the interest."]</p>
                     }
-                    <div class="proj-disclaimer">⚠️ @Loc["For planning only — these figures are estimates, not financial advice. Your lender's actual terms (fees, rate changes, payment timing) can differ. For exact numbers, please check with your loan provider."]</div>
+                    <div class="proj-disclaimer"><Icon Name="alert" /> @Loc["For planning only — these figures are estimates, not financial advice. Your lender's actual terms (fees, rate changes, payment timing) can differ. For exact numbers, please check with your loan provider."]</div>
                     <div class="modal-actions">
                         <button class="ghost" @onclick="Back">@Loc["Close"]</button>
                     </div>
@@ -2700,7 +2700,7 @@ else
                     var gpPlanned = false;   // planned-contribution field retired — see pjPlanned
                     int? gpPeriods = gpPace is { } gpp && gpp.Amount > 0m && gpGoal is { } gpg && gpg > gpSaved.Amount
                         ? (int)Math.Ceiling((double)((gpg - gpSaved.Amount) / gpp.Amount)) : null;
-                    <h3>📅 @Loc["Goal projection"] — @State.SavingBucketName(_projBucketId)</h3>
+                    <h3><Icon Name="calendar" /> @Loc["Goal projection"] — @State.SavingBucketName(_projBucketId)</h3>
                     <div class="proj-grid">
                         <span class="proj-k">@Loc["Saved so far"]</span><span class="proj-v">@Fmt(gpSaved)</span>
                         <span class="proj-k">@Loc["Goal"]</span><span class="proj-v">@(gpGoal is { } gg ? Fmt(State.Money(gg)) : "—")</span>
@@ -2741,7 +2741,7 @@ else
                     var ivExtra = _invExtra > 0m ? _invExtra : 0m;
                     var ivBase = State.ProjectInvestment(_projBucketId, 0m);
                     var ivWith = State.ProjectInvestment(_projBucketId, ivExtra);
-                    <h3>📈 @Loc["Growth projection"] — @State.SavingBucketName(_projBucketId)</h3>
+                    <h3><Icon Name="trending" /> @Loc["Growth projection"] — @State.SavingBucketName(_projBucketId)</h3>
                     <div class="proj-grid">
                         <span class="proj-k">@Loc["Invested so far"]</span><span class="proj-v">@Fmt(ivSaved)</span>
                         <span class="proj-k">@Loc["Expected return"]</span><span class="proj-v">@ivRate% / @Loc["yr"]</span>
@@ -2773,7 +2773,7 @@ else
                             <p class="proj-result good-text">➡️ @string.Format(Loc["{0} more than leaving it alone."], Fmt(State.Money(bw.FutureValue - b1.FutureValue)))</p>
                         }
                     }
-                    <div class="proj-disclaimer">⚠️ @Loc["For planning only — returns aren't guaranteed and real investments fluctuate. This isn't financial advice."]</div>
+                    <div class="proj-disclaimer"><Icon Name="alert" /> @Loc["For planning only — returns aren't guaranteed and real investments fluctuate. This isn't financial advice."]</div>
                     <div class="modal-actions">
                         <button class="ghost" @onclick="Back">@Loc["Close"]</button>
                     </div>
@@ -2996,7 +2996,7 @@ else
                     break;
 
                 case Modal.ArchiveFund:
-                    <h3>📦 @Loc["Archive"] @State.FundName(_modalFundId)</h3>
+                    <h3><Icon Name="archive" /> @Loc["Archive"] @State.FundName(_modalFundId)</h3>
                     var _arcBal = State.FundBalance(_modalFundId);
                     @if (_arcBal.Amount > 0m)
                     {
@@ -3017,7 +3017,7 @@ else
                     }
                     <div class="modal-actions">
                         <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
-                        <button class="danger-btn" @onclick="ConfirmArchiveFund" disabled="@(_arcBal.Amount > 0m && _moveBalanceToId == Guid.Empty)">📦 @Loc["Archive"]</button>
+                        <button class="danger-btn" @onclick="ConfirmArchiveFund" disabled="@(_arcBal.Amount > 0m && _moveBalanceToId == Guid.Empty)"><Icon Name="archive" /> @Loc["Archive"]</button>
                     </div>
                     break;
 
@@ -3109,12 +3109,12 @@ else
                     {
                         @if (!string.IsNullOrEmpty(autoTr.Note) && MappingFor(autoTr.Note!) is { Kind: "fund" })
                         {
-                            <p class="hint">🏦 @Loc["Auto-filed from a saved money-in rule:"] <strong>@autoTr.Note</strong> → <strong>@State.FundName(autoTr.FromFundId)</strong></p>
+                            <p class="hint"><Icon Name="bank" /> @Loc["Auto-filed from a saved money-in rule:"] <strong>@autoTr.Note</strong> → <strong>@State.FundName(autoTr.FromFundId)</strong></p>
                             <ul class="list">@BankRuleRow((BudgetingState.BankMatchKey(autoTr.Note!), "fund", "🏦"))</ul>
                         }
                         else
                         {
-                            <p class="hint">🏦 @Loc["Filed automatically from your bank."]</p>
+                            <p class="hint"><Icon Name="bank" /> @Loc["Filed automatically from your bank."]</p>
                         }
                     }
                     <div class="modal-actions">
@@ -3219,10 +3219,10 @@ else
             <div class="row-menu">
                 @if (State.IsPeriodOpen)
                 {
-                    <button @onclick="() => BudgetAct(() => OpenAddExpense(catId))">🧾 @Loc["Add expense"]</button>
+                    <button @onclick="() => BudgetAct(() => OpenAddExpense(catId))"><Icon Name="receipt" /> @Loc["Add expense"]</button>
                 }
-                <button @onclick="() => BudgetAct(() => OpenCategoryDetail(catId))">📋 @Loc["Expenses"]</button>
-                <button @onclick="() => BudgetAct(() => OpenEdit(catId))">✏️ @Loc["Edit budget"]</button>
+                <button @onclick="() => BudgetAct(() => OpenCategoryDetail(catId))"><Icon Name="list" /> @Loc["Expenses"]</button>
+                <button @onclick="() => BudgetAct(() => OpenEdit(catId))"><Icon Name="pencil" /> @Loc["Edit budget"]</button>
                 @{
                     var subs = State.ChildrenOf(catId).ToList();
                 }
@@ -3237,9 +3237,9 @@ else
                 }
                 @if (State.IsPeriodOpen)
                 {
-                    <button @onclick="() => BudgetAct(() => OpenAddSub(catId))">➕ @Loc["Add sub-category"]</button>
+                    <button @onclick="() => BudgetAct(() => OpenAddSub(catId))"><Icon Name="plus" /> @Loc["Add sub-category"]</button>
                 }
-                <button class="danger" @onclick="() => ArchiveCat(catId)">📦 @Loc["Archive"]</button>
+                <button class="danger" @onclick="() => ArchiveCat(catId)"><Icon Name="archive" /> @Loc["Archive"]</button>
             </div>
         </text>;
 
@@ -3259,19 +3259,19 @@ else
         @<text>
             <div class="row-menu-backdrop" @onclick="() => _fundMenuId = Guid.Empty"></div>
             <div class="row-menu">
-                <button @onclick="() => FundAct(() => OpenFundMovements(fid))">📋 @Loc["Movements"]</button>
-                <button @onclick="() => FundAct(() => OpenEditFund(fid))">✏️ @Loc["Edit"]</button>
+                <button @onclick="() => FundAct(() => OpenFundMovements(fid))"><Icon Name="list" /> @Loc["Movements"]</button>
+                <button @onclick="() => FundAct(() => OpenEditFund(fid))"><Icon Name="pencil" /> @Loc["Edit"]</button>
                 @if (!State.FundIsSynced(fid))
                 {
                     @if (State.IsPeriodOpen)
                     {
                         @if (CanTransfer)
                         {
-                            <button @onclick="() => FundAct(() => OpenTransferFromFund(fid))">🔁 @Loc["Transfer"]</button>
+                            <button @onclick="() => FundAct(() => OpenTransferFromFund(fid))"><Icon Name="swap" /> @Loc["Transfer"]</button>
                         }
-                        <button @onclick="() => FundAct(() => OpenDepositToFund(fid))">➕ @Loc["Add income"]</button>
+                        <button @onclick="() => FundAct(() => OpenDepositToFund(fid))"><Icon Name="plus" /> @Loc["Add income"]</button>
                     }
-                    <button class="danger" @onclick="() => FundAct(() => OpenArchiveFund(fid))">📦 @Loc["Archive"]</button>
+                    <button class="danger" @onclick="() => FundAct(() => OpenArchiveFund(fid))"><Icon Name="archive" /> @Loc["Archive"]</button>
                 }
             </div>
         </text>;
@@ -3992,20 +3992,20 @@ else
                     }
                 }
                 <span class="bank-tx-icons">
-                    <button class="icon-btn pin @(mappedLabel is not null ? "on" : "")" title="@pinTitle" @onclick="() => TogglePin(t)" disabled="@_bankBusy">📌</button>
+                    <button class="icon-btn pin @(mappedLabel is not null ? "on" : "")" title="@pinTitle" @onclick="() => TogglePin(t)" disabled="@_bankBusy"><Icon Name="pin" /></button>
                     @if (isDebit)
                     {
                         @if (State.HasSyncedFund)
                         {
                             <button class="icon-btn" title="@Loc["Record as a transfer to another fund/account"]" @onclick="() => OpenBankTransfer(t)" disabled="@_bankBusy">⇄</button>
                         }
-                        <button class="icon-btn ok" title="@Loc["Add expense"]" @onclick="() => ConfirmBankRow(t)" disabled="@_bankBusy">✓</button>
+                        <button class="icon-btn ok" title="@Loc["Add expense"]" @onclick="() => ConfirmBankRow(t)" disabled="@_bankBusy"><Icon Name="check" /></button>
                     }
                     else
                     {
-                        <button class="icon-btn ok" title="@Loc["Add movement"]" @onclick="() => ConfirmMoneyInRow(t)" disabled="@(_bankBusy || !State.HasSyncedFund)">✓</button>
+                        <button class="icon-btn ok" title="@Loc["Add movement"]" @onclick="() => ConfirmMoneyInRow(t)" disabled="@(_bankBusy || !State.HasSyncedFund)"><Icon Name="check" /></button>
                     }
-                    <button class="icon-btn x" title="@Loc["Dismiss"]" @onclick="() => DismissBankRow(t)" disabled="@_bankBusy">✕</button>
+                    <button class="icon-btn x" title="@Loc["Dismiss"]" @onclick="() => DismissBankRow(t)" disabled="@_bankBusy"><Icon Name="x" /></button>
                 </span>
             </div>
         </li>;
@@ -4050,15 +4050,15 @@ else
                             }
                         </select>
                     }
-                    <button class="exp-edit" title="@Loc["Save"]" @onclick="SaveRuleEdit" disabled="@_bankBusy">✓</button>
-                    <button class="exp-edit" title="@Loc["Cancel"]" @onclick="CancelRuleEdit" disabled="@_bankBusy">✕</button>
+                    <button class="exp-edit" title="@Loc["Save"]" @onclick="SaveRuleEdit" disabled="@_bankBusy"><Icon Name="check" /></button>
+                    <button class="exp-edit" title="@Loc["Cancel"]" @onclick="CancelRuleEdit" disabled="@_bankBusy"><Icon Name="x" /></button>
                 </span>
             }
             else
             {
                 <span class="row-actions">
-                    <button class="exp-edit" title="@Loc["Edit rule: where it files and which words match"]" @onclick="() => BeginRuleEdit(ctx.Key)" disabled="@_bankBusy">✏️</button>
-                    <button class="exp-edit" title="@Loc["Remove"]" @onclick="() => RemoveBankRuleKey(ctx.Key)" disabled="@_bankBusy">🗑️</button>
+                    <button class="exp-edit" title="@Loc["Edit rule: where it files and which words match"]" @onclick="() => BeginRuleEdit(ctx.Key)" disabled="@_bankBusy"><Icon Name="pencil" /></button>
+                    <button class="exp-edit" title="@Loc["Remove"]" @onclick="() => RemoveBankRuleKey(ctx.Key)" disabled="@_bankBusy"><Icon Name="trash" /></button>
                 </span>
             }
         </li>;
