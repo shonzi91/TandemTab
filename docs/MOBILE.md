@@ -107,7 +107,10 @@ web app stays the acceptance test throughout.
   `AccountForecast.Targets` (+ `AccountTarget`/`TargetKind`) — the all-debts debt-free date (each debt at its
   installment + demonstrated pace, latest clears) plus each savings goal at its pace. Mirrors `Dashboard.HomeTargets`
   / `DebtFreeMonthsAtPace`; 4 domain tests pin the math. NOT wired into the web client yet.
-- ☐ **Milestones** count (`AchievementsService` — currently Shared.UI).
+- ✅ `GET /accounts/{id}/milestones` → `MilestonesDto(Earned, Total, InProgress)`. **`AchievementsService` moved
+  Shared.UI → `FinApp.Domain.Services`** (it only ever depended on domain reads; the client passes its `fmt`/`translate`
+  for localized copy, the server ignores copy and counts). New `AchievementsService.Counts` + `MilestoneCounts`; 3
+  domain tests. Single source of truth — the count can't drift from the on-screen catalogue. NOT wired into the web client.
 - ☐ ⚠️ **Health score / insights** — the real wall: `InsightsService` lives in **`Shared.UI`, not the
   domain**, so it must be ported into the domain first before it can move server-side.
 

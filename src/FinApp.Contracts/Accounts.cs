@@ -90,3 +90,13 @@ public record TargetsDto(IReadOnlyList<TargetDto> Targets)
 }
 
 public record TargetDto(string Kind, string Name, string? Icon, int Months, bool Reached);
+
+/// <summary>
+/// The Home milestone tallies, computed server-side (Option-A migration): how many are <see cref="Earned"/>, the
+/// <see cref="Total"/> in the catalogue, and how many are <see cref="InProgress"/> (locked but above 0% — the set the
+/// Home "Milestones in progress" strip draws). The full localized catalogue stays a client concern.
+/// </summary>
+public record MilestonesDto(int Earned, int Total, int InProgress)
+{
+    public static readonly MilestonesDto Empty = new(0, 0, 0);
+}

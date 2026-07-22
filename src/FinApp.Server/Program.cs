@@ -573,6 +573,16 @@ accounts.MapGet("/{id:guid}/targets", async (Guid id, ClaimsPrincipal user, Snap
     return Results.Ok(new TargetsDto(targets));
 });
 
+// The Home milestone tallies (earned / total / in-progress). The full localized catalogue stays client-side.
+accounts.MapGet("/{id:guid}/milestones", async (Guid id, ClaimsPrincipal user, SnapshotService svc, CancellationToken ct) =>
+{
+    var snap = await svc.GetAsync(user.UserId(), id, ct);
+    if (string.IsNullOrEmpty(snap.Payload)) return Results.Ok(MilestonesDto.Empty);
+    var account = AccountSnapshotSerializer.Deserialize(snap.Payload);
+    var c = new AchievementsService().Counts(account);
+    return Results.Ok(new MilestonesDto(c.Earned, c.Total, c.InProgress));
+});
+
 accounts.MapPut("/{id:guid}/snapshot", async (Guid id, SaveAccountRequest req, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
 {
     var version = await svc.SaveAsync(user.UserId(), id, req, ct);

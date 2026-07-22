@@ -2,9 +2,8 @@ using FinApp.Domain.Accounts;
 using FinApp.Domain.Common;
 using FinApp.Domain.Forecasting;
 using FinApp.Domain.Periods;
-using FinApp.Domain.Services;
 
-namespace FinApp.Shared.UI.Services;
+namespace FinApp.Domain.Services;
 
 /// <summary>A motivational milestone or streak (BACKLOG #12). Derived from account history but keyed by a <b>stable</b>
 /// <see cref="Key"/> so the Dashboard can stamp a "date earned" into the account's achievement log the first time it's
@@ -14,9 +13,15 @@ public enum AchievementTier { Bronze, Silver, Gold }
 
 public sealed record Achievement(string Key, string Icon, string Title, string Desc, bool Earned, int? Percent = null, AchievementTier Tier = AchievementTier.Bronze);
 
+/// <summary>Milestone tallies for the server-side read: how many are <see cref="Earned"/>, the <see cref="Total"/>
+/// in the catalogue, and how many are <see cref="InProgress"/> (locked but above 0% — the Home strip's set).</summary>
+public readonly record struct MilestoneCounts(int Earned, int Total, int InProgress);
+
 /// <summary>
-/// Computes the full achievement catalogue (earned + locked) for the Achievements modal and Home strip. Pure
-/// presentation-layer logic over the domain aggregate's public reads. Everything counts from the account's
+/// Computes the full achievement catalogue (earned + locked) for the Achievements modal and Home strip. Moved
+/// server-side under the Option-A migration (docs/MOBILE.md): it depends only on the domain aggregate's public reads,
+/// so the same computation drives the web client (which passes its <c>fmt</c>/<c>translate</c> for localized copy) and
+/// the server-side milestones count (which ignores the copy). Everything counts from the account's
 /// <see cref="Account.AchievementsAnchor"/> onward, so an existing account doesn't retroactively unlock its history
 /// and back-/forward-dated periods can't farm milestones.
 /// </summary>
@@ -133,6 +138,17 @@ public sealed class AchievementsService
                 list[i] = list[i] with { Tier = t };
 
         return list;
+    }
+
+    /// <summary>The milestone tallies for the server-side read (the copy is irrelevant to a count, so a no-op
+    /// formatter is passed). Same catalogue the client builds, so the counts can't drift from what's on screen.</summary>
+    public MilestoneCounts Counts(Account account)
+    {
+        var all = Build(account, static _ => string.Empty);
+        return new MilestoneCounts(
+            all.Count(a => a.Earned),
+            all.Count,
+            all.Count(a => !a.Earned && a.Percent is > 0));
     }
 
     private static AchievementTier TierFor(string key)
