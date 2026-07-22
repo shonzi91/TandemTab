@@ -543,6 +543,8 @@ html.dark .avail-note strong { color: #57d9a3; }
 
 .panel-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .panel-head h2 { margin: 0; }
+/* Title + the Add-expense button sit together on the left; the view-toggle stays on the right. */
+.panel-head-title { display: inline-flex; align-items: center; gap: 10px; flex-wrap: wrap; min-width: 0; }
 .panel-head-actions { display: inline-flex; align-items: center; gap: 8px; }
 .exp-add-head { margin-top: 0; align-self: center; }
 button.link { background: none; border: none; color: #13a06e; font-weight: 600; cursor: pointer; }
@@ -1428,17 +1430,6 @@ html.dark .ach-date, html.dark .ach-cell-date { color: #7c8a94; }
 .repeat-last strong { font-weight: 800; }
 html.dark .repeat-last { background: #16241d; border-color: #2b4438; color: #57d9a3; }
 
-/* Recent-merchant chips in the add-expense modal (#11) */
-.merchant-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 0 10px; }
-.chips-label { font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; color: #8a97a0; margin-right: 2px; }
-.merchant-chip {
-    padding: 5px 11px; border-radius: 999px; border: 1px solid #cdeadd; background: #f3fbf7; color: #0f7a54;
-    font-size: .82rem; font-weight: 600; cursor: pointer; max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-.merchant-chip:hover { background: #e3f6ec; border-color: #13a06e; }
-html.dark .merchant-chip { background: #16241d; border-color: #2b4438; color: #57d9a3; }
-html.dark .chips-label { color: #7c8a94; }
-
 /* Forecasts tab */
 .networth-value { font-size: 1.8rem; font-weight: 800; color: #13a06e; margin-top: 6px; }
 .networth-value.warn-text { color: #c0392b; }
@@ -1735,3 +1726,28 @@ html.dark .card-act-spend { background: #566173; }
 .setaside-nudge { color: #0e7c55; display: flex; align-items: center; justify-content: center; gap: 6px; flex-wrap: wrap; }
 .setaside-nudge .link { font-size: .67rem; }
 html.dark .setaside-nudge { color: #57d9a3; }
+
+/* Dark-mode hover fix: many buttons set a light-mint hover background (e.g. #f0fbf6, #e4f6ee) with no dark
+   override, so on the dark theme they flash as near-white tiles. Re-tint them all to the theme's own dark
+   hover surfaces (#1b2230, matching .hdr-action / .quick-cat), keeping a mint accent where the light rule
+   set a border colour. */
+html.dark .fund-add:hover,
+html.dark .lbl-add:hover,
+html.dark .ring-plus:hover { border-color: var(--tm-mint); background: #1b2230; }
+html.dark .exp-edit:hover,
+html.dark .detail-actions button:hover,
+html.dark .ring-actions button:hover,
+html.dark .ring-add:hover,
+html.dark .ring-expense:hover,
+html.dark .cal-add:hover,
+html.dark .bell-act:hover,
+html.dark .icon-btn.ok:hover { background: #1b2230; }
+html.dark .repeat-last:hover { background: #1c3529; border-color: var(--tm-mint); }
+html.dark .acct-chip:hover,
+html.dark .acct-drop-item:hover,
+html.dark .acct-drop-add:hover,
+html.dark .acct-menu-pop button:hover,
+html.dark .row-menu button:hover { background: rgba(255,255,255,.06); }
+html.dark .period-btn:hover,
+html.dark .nav:hover:not(:disabled) { background: rgba(63,224,197,.12); color: var(--tm-mint); }
+html.dark .cal-cell:hover:not(.cal-out) { border-color: #3a8f6c; background: #161b24; }

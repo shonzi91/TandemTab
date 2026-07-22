@@ -704,7 +704,7 @@ else
                         var cid = c.Id;
                         <li class="row-menu-host">
                             <span class="row-main row-stack">
-                                <span class="row-title"><span class="cat-ico">@State.ContributionCategoryIcon(c.CategoryId)</span> <span class="row-title-txt">@State.ContributionCategoryName(c.CategoryId)</span></span>
+                                <span class="row-title"><span class="cat-ico">@State.ContributionCategoryIcon(c.CategoryId)</span> <span class="row-title-txt">@ContribCatDisplay(c.CategoryId)</span></span>
                                 <span class="row-sub">
                                     <span>@c.Date.ToString("dd MMM")</span>
                                     <span class="sub-to"><Avatar Name="@State.MemberName(c.MemberId)" Picture="@State.MemberAvatar(c.MemberId)" Size="18" /> @State.MemberName(c.MemberId)@(State.IsRealUser(c.MemberId) ? "" : $" ({Loc["imported"]})")</span>
@@ -818,27 +818,29 @@ else
 
             <section class="panel">
                 <div class="panel-head">
-                    @if (_calendar)
-                    {
-                        <h2>@State.Period.From.ToString("MMMM yyyy")</h2>
-                    }
-                    else if (_dayView is { } dv)
-                    {
-                        <span class="day-nav">
-                            <button class="exp-edit" title="@Loc["Previous day"]" @onclick="PrevDay" disabled="@(dv <= State.Period.From)">◀</button>
-                            <input type="date" @bind:get="dv" @bind:set="GoToDay" min="@State.Period.From.ToString("yyyy-MM-dd")" max="@State.Period.To.ToString("yyyy-MM-dd")" />
-                            <button class="exp-edit" title="@Loc["Next day"]" @onclick="NextDay" disabled="@(dv >= State.Period.To)">▶</button>
-                        </span>
-                    }
-                    else
-                    {
-                        <h2>@Loc["All expenses"]</h2>
-                    }
-                    <span class="panel-head-actions">
+                    <span class="panel-head-title">
+                        @if (_calendar)
+                        {
+                            <h2>@State.Period.From.ToString("MMMM yyyy")</h2>
+                        }
+                        else if (_dayView is { } dv)
+                        {
+                            <span class="day-nav">
+                                <button class="exp-edit" title="@Loc["Previous day"]" @onclick="PrevDay" disabled="@(dv <= State.Period.From)">◀</button>
+                                <input type="date" @bind:get="dv" @bind:set="GoToDay" min="@State.Period.From.ToString("yyyy-MM-dd")" max="@State.Period.To.ToString("yyyy-MM-dd")" />
+                                <button class="exp-edit" title="@Loc["Next day"]" @onclick="NextDay" disabled="@(dv >= State.Period.To)">▶</button>
+                            </span>
+                        }
+                        else
+                        {
+                            <h2>@Loc["All expenses"]</h2>
+                        }
                         @if (State.IsPeriodOpen)
                         {
                             <button class="fund-add exp-add-head" @onclick="AddExpenseFromHeader">🧾 @Loc["Add expense"]</button>
                         }
+                    </span>
+                    <span class="panel-head-actions">
                         <span class="view-toggle">
                             <button class="view-btn @(_calendar ? "" : "active")" title="@Loc["List"]" @onclick="ShowDayList">☰</button>
                             <button class="view-btn @(_calendar ? "active" : "")" title="@Loc["Calendar"]" @onclick="ShowCalendarView">📅</button>
@@ -1659,20 +1661,8 @@ else
                     {
                         <button type="button" class="repeat-last" @onclick="RepeatLastExpense">↻ @Loc["Repeat last"]: <strong>@State.CategoryName(lastExp.CategoryId)</strong> · @Fmt(lastExp.Amount)</button>
                     }
-                    @* Recent categories (most-used first) rather than raw expense notes — bank-style descriptions
-                       read as noise, whereas the category is the choice you're actually about to make. *@
-                    var recentCats = State.RecentCategories();
-                    @if (recentCats.Count > 0)
-                    {
-                        <div class="merchant-chips">
-                            <span class="chips-label">@Loc["Recent"]</span>
-                            @foreach (var cid in recentCats)
-                            {
-                                var catId = cid;
-                                <button type="button" class="merchant-chip @(_categoryId == catId ? "on" : "")" @onclick="() => ApplyRecentCategory(catId)"><span class="cat-ico">@State.CategoryIcon(catId)</span> @State.CategoryName(catId)</button>
-                            }
-                        </div>
-                    }
+                    @* No "Recent" chips here: the most-used categories are already reachable from the Home
+                       Add-expense hover menu ("Quick add to"), which opens this modal pre-selected. *@
                     <label><span class="lbl-row">@Loc["Category"] <button type="button" class="lbl-add" title="@Loc["Add category"]" @onclick="ExpenseAddCategory">+</button></span>
                         <select @bind="_categoryId" @bind:after="OnExpenseCategoryChanged">
                             @foreach (var (cat, depth) in State.CategoryOptions)
@@ -5380,7 +5370,11 @@ else
     });
 
     private string RecurringName(Guid categoryId, RecurringKind kind) =>
-        kind == RecurringKind.Income ? State.ContributionCategoryName(categoryId) : State.CategoryName(categoryId);
+        kind == RecurringKind.Income ? ContribCatDisplay(categoryId) : State.CategoryName(categoryId);
+
+    // Income with no (or a deleted) category read as a bare "—"; show a friendly, localized default instead.
+    private string ContribCatDisplay(Guid categoryId) =>
+        State.HasContributionCategory(categoryId) ? State.ContributionCategoryName(categoryId) : Loc["General income"];
 
     // Rotating over-budget alert: like the spare→debt nudge, but for NON-essential categories that are over budget.
     private int _overIndex = Random.Shared.Next(0, 997);
@@ -5554,15 +5548,6 @@ else
         _fundId = State.SelectableFunds.Any(f => f.Id == e.FundId) ? e.FundId : DefaultFundForCategory(e.CategoryId);
         _modal = Modal.AddExpense;
     }
-
-    /// <summary>Apply a recent-category chip in the add-expense modal: select it and follow to its usual fund
-    /// (unless an amount is already typed, matching the select's own behaviour).</summary>
-    private void ApplyRecentCategory(Guid categoryId)
-    {
-        _categoryId = categoryId;
-        OnExpenseCategoryChanged();
-    }
-
 
     /// <summary>Open the add-expense popup from the Expenses tab (no category pre-selected — pick it in the modal).</summary>
     private void OpenAddExpenseTab() => OpenAddExpense(State.AllCategories.FirstOrDefault()?.Id ?? Guid.Empty);
@@ -5891,9 +5876,9 @@ else
     /// <summary>This period's fund-to-fund transfers and out-to-account transfers, merged newest-first.</summary>
     private List<(DateOnly Date, string Label, Money Amount, Guid Id, bool IsExternal, string? Note, bool AutoFiled)> MergedTransfers() =>
         State.FundTransfers
-            .Select(t => (t.Date, Label: $"{State.FundName(t.FromFundId)} 🏦 → {State.FundName(t.ToFundId)} 🏦", t.Amount, t.Id, IsExternal: false, t.Note, t.AutoFiled))
+            .Select(t => (t.Date, Label: $"{State.FundIcon(t.FromFundId)} {State.FundName(t.FromFundId)} → {State.FundIcon(t.ToFundId)} {State.FundName(t.ToFundId)}", t.Amount, t.Id, IsExternal: false, t.Note, t.AutoFiled))
             .Concat(State.ExternalTransfers
-                .Select(t => (t.Date, Label: $"{State.FundName(t.FundId)} 🏦 📤 {State.AccountName(t.ToAccountId ?? Guid.Empty)}", t.Amount, t.Id, IsExternal: true, t.Note, AutoFiled: false)))
+                .Select(t => (t.Date, Label: $"{State.FundIcon(t.FundId)} {State.FundName(t.FundId)} 📤 {State.AccountName(t.ToAccountId ?? Guid.Empty)}", t.Amount, t.Id, IsExternal: true, t.Note, AutoFiled: false)))
             .OrderByDescending(t => t.Date)
             .ToList();
 

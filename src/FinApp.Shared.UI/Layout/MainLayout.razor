@@ -95,13 +95,10 @@
                 @if (!InProfileSubflow)
                 {
                 <h4>@Loc["Appearance"]</h4>
-                <label class="pm-theme-row">
-                    <span>@Loc["Dark theme"]</span>
-                    <span class="switch @(_dark ? "on" : "")">
-                        <input type="checkbox" checked="@_dark" @onchange="ToggleTheme" />
-                        <span class="switch-track"><span class="switch-thumb"></span></span>
-                    </span>
-                </label>
+                <div class="pm-theme-row">
+                    <span>@Loc[_dark ? "Dark theme" : "Light theme"]</span>
+                    <button type="button" class="pm-theme-toggle" title="@Loc[_dark ? "Light theme" : "Dark theme"]" @onclick="ToggleTheme">@(_dark ? "☀️" : "🌙")</button>
+                </div>
                 <h4>@Loc["Profile picture"]</h4>
                 <div class="pm-avatar-row">
                     <span class="pm-avatar">
@@ -486,9 +483,9 @@
         finally { _consentBusy = false; }
     }
 
-    private async Task ToggleTheme(ChangeEventArgs e)
+    private async Task ToggleTheme()
     {
-        _dark = e.Value is true;
+        _dark = !_dark;
         try { await JS.InvokeVoidAsync("finappSetTheme", _dark ? "dark" : "light"); } catch { /* ignore */ }
     }
 

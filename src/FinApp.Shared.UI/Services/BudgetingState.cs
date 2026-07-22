@@ -738,6 +738,8 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     public IReadOnlyList<ContributionCategory> ContributionCategories => Account.ContributionCategories;
     public string ContributionCategoryName(Guid id) =>
         Account.FindContributionCategory(id)?.Name ?? "—";
+    /// <summary>False when a contribution has no (or a since-deleted) income category — the UI shows a friendly default.</summary>
+    public bool HasContributionCategory(Guid id) => Account.FindContributionCategory(id) is not null;
     public string? ContributionCategoryRemovalBlocker(Guid id) => Account.ContributionCategoryRemovalBlocker(id);
 
     /// <summary>This period's real member deposits (excludes the carryover sentinel), newest first.</summary>
