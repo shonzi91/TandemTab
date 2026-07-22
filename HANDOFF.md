@@ -1,6 +1,33 @@
 # TandemTab (FinApp) — session handoff
 
-Last updated: 2026-07-22 (Session 39). Read this + [README.md](README.md) + [TRANSFER.md](TRANSFER.md) + recent `git log` to catch up.
+Last updated: 2026-07-22 (Session 40). Read this + [README.md](README.md) + [TRANSFER.md](TRANSFER.md) + recent `git log` to catch up.
+
+## Session 40 (2026-07-22) — icon system + Home de-emoji, account-pick bug fix, runway what-if, privacy panel, review-badge simplification. COMMITTED, PUSHED & DEPLOYED (`finapp-00200-dpn`).
+One commit `7905de4` → image `finapp:7905de4` (digest `sha256:33ef0793…`, Cloud Build 3m31s) → **`finapp-00200-dpn`** (live, 100%). Post-deploy: run URL + tandemtab.com 200, **5 `secretKeyRef`**, `Kms__KeyName` + `Snapshots__CompressWrites=true` intact, **zero WARNING+**. **354 tests green** (212 domain + 98 server + 44 persistence), Release build clean.
+- **⚠️ Verification caveat (important this session):** everything is login-gated or dark-mode, and I had **no test-account creds** to drive the preview, so **none of it was browser-verified** — it rests on the build, the 354 tests, and (for the icons) the fact that the geometry is the same paths validated in a `show_widget` mockup. **The account-pick fix and the new icons especially want a real logged-in eyeball.**
+
+### Account-pick on entry — two bugs fixed (user-reported)
+- **Picker only appeared after the first click.** It was set at the tail of the fire-and-forget bank load (`MaybePromptOnEntryAsync`) with no `StateHasChanged`, so it waited on several bank round-trips *and* then only surfaced when a later event repainted. Now decided in **`OnInitializedAsync` right after `InitializeAsync()`** (before any bank call), so it paints on first render. Skipped on an OAuth `bank=` return (that path still falls back to `MaybePromptOnEntryAsync`).
+- **Selecting an account held the whole screen.** `PickAccountOnEntry` awaited switch+bank+sync *before* `CloseModal`. Now it **closes first** (`CloseModal` + `await InvokeAsync(StateHasChanged)`), then loads async — structure via `RaiseChanged`, bank into its own strip. No blocking modal.
+
+### The "looks generic / AI-generated" feedback → a real icon system
+A real user said the design reads as AI-generated/generic. Diagnosis: the app already has a **typeface (Quicksand)** and the **coral+mint "tandem" palette** (dark theme), so those weren't the gap — **emoji-as-icons was** the biggest tell. Built:
+- **`Components/Icon.razor`** (`<Icon Name="…" Class="…"/>` → inline `<svg><use href="#i-…"></svg>`) + **`Components/IconSprite.razor`** (the symbol set, mounted once at the top of `MainLayout`). Global **`.ic`** rule in `app.css` (bumped `?v=33`→`?v=34`): `width/height:1.1em`, `stroke:currentColor`, `fill:none` — icons inherit colour + size from context. `.ic-s` for the small badge bell. 12 icons: import, repeat, bank, bell, shield, alert, receipt, note, target, pulse, sliders, chevron.
+- **Converted the Home chrome only** (the flagship, matching a validated mockup): header actions (import/repeat/bank), review **bell** badge, runway **shield/alert**, the two action cards (**note**=income, **receipt**=expense), targets **target** header. **User-chosen category/fund emoji stay emoji** (they're data). **Logo (`TandemLogo`) left untouched — user said they may want it kept.**
+- **⚠️ Rollout is unfinished by design:** every other screen (Spending/Goals/Wallets tabs, all modals, `HomeReminder` alert icons, "Money moved" 🔁, achievements 🏆🎉) still uses emoji. Converting them is the mechanical follow-on — add symbols to `IconSprite`, swap the inline emoji for `<Icon>`. Alert icons are data-driven (`HomeReminder.Icon`) so they need a type→name map, not a 1:1 swap.
+
+### Bank review simplified off the tabs
+Removed both inline "for review" panels — money-in *"Incoming from bank"* (Wallets) and money-out *"From your bank"* (Spending). A **🔔 count badge on the External-accounts button** (a segmented `.hdr-action-grp`) opens the existing `Modal.BankReview`, which already lists **both** directions (`BankTxRow` handles debit *and* credit rows, so nothing was lost). New `OpenBankReview()` (manual, no dismissal check).
+
+### Runway "show the math" + what-if slider (no-AI credibility, made visible)
+Home runway gains a folded **"Show the math"** panel: starting balance · money in/out · net, a plain-language rule, and a **live what-if spending slider** (−50…+50%) that recomputes through the *same* engine. `ProjectCashFlow` refactored to share one `CashFlowBase()` so the plain runway and the slider can't diverge (`ProjectCashFlow(balance, spendingDelta, months)`). Honesty fix it forced: a **surplus** headline no longer says "lasts about N months" — now "your balance keeps growing" / declining-but-survives → "lasts beyond N months".
+
+### Profile "Your data & privacy" panel
+New collapsible section in Profile settings: encrypted · never sold/fed to AI · on-device import · export anytime, with a working **"Export this account (Excel)"** button (reuses `ExportCurrentAccountAsync` + `finappDownloadFile`). Turns the landing privacy claim into a visible feature.
+
+Note: the runway what-if + privacy panel were **built in Session 39 but held** (not in `d2fef09`); they shipped now in `7905de4`. The Session-39 "smaller" items (sun/moon switch, money-moved fund icons, "General income") were already in `finapp-00199-k6h`.
+
+
 
 ## Session 39 (2026-07-22) — six small UI asks across two rounds. COMMITTED, PUSHED & DEPLOYED (`finapp-00199-k6h`).
 One commit `d2fef09` → image `finapp:d2fef09` (digest `sha256:b07fe9e9…`, Cloud Build 3m56s) → **`finapp-00199-k6h`** (live, 100%). Post-deploy: run URL + tandemtab.com both 200, **5 `secretKeyRef`**, `Kms__KeyName` + `Snapshots__CompressWrites=true` intact, **zero WARNING+** on the revision. **354 tests green** (212 domain + 98 server + 44 persistence), Release build clean.
