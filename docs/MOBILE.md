@@ -103,8 +103,10 @@ web app stays the acceptance test throughout.
   `AccountForecast.Runway`.
 
 **Next reads (increasing cost):**
-- ☐ **Targets** — the "on track for" goal/debt payoff dates. Bigger: iterates buckets, composes
-  `LoanForecast` + savings pace per row.
+- ✅ `GET /accounts/{id}/targets` → `TargetsDto` (empty list when nothing to project). Domain:
+  `AccountForecast.Targets` (+ `AccountTarget`/`TargetKind`) — the all-debts debt-free date (each debt at its
+  installment + demonstrated pace, latest clears) plus each savings goal at its pace. Mirrors `Dashboard.HomeTargets`
+  / `DebtFreeMonthsAtPace`; 4 domain tests pin the math. NOT wired into the web client yet.
 - ☐ **Milestones** count (`AchievementsService` — currently Shared.UI).
 - ☐ ⚠️ **Health score / insights** — the real wall: `InsightsService` lives in **`Shared.UI`, not the
   domain**, so it must be ported into the domain first before it can move server-side.
