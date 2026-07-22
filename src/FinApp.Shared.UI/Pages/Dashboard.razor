@@ -104,7 +104,7 @@ else
             <span class="hdr-icons">
                 <span class="acct-notify">
                     <button class="link bell" title="@Loc["Notifications"]" @onclick="() => _bellOpen = !_bellOpen">
-                        🔔@if (notifications.Count > 0) { <span class="bell-badge">@notifications.Count</span> }
+                        <Icon Name="bell" />@if (notifications.Count > 0) { <span class="bell-badge">@notifications.Count</span> }
                     </button>
                     @if (_bellOpen)
                     {
@@ -120,7 +120,7 @@ else
                                 @foreach (var n in notifications)
                                 {
                                     <div class="bell-item @(n.Urgent ? "urgent" : "")">
-                                        <span class="bell-ico">@n.Icon</span>
+                                        <span class="bell-ico">@IconOrEmoji(n.Icon)</span>
                                         <div class="bell-body">
                                             <div class="bell-text">@n.Text</div>
                                             @if (n.Desc is { } d) { <div class="bell-desc">@d</div> }
@@ -139,7 +139,7 @@ else
                         </div>
                     }
                 </span>
-                <button class="link hdr-trophy" title="@Loc["Achievements"]" @onclick="() => _modal = Modal.Achievements">🏆</button>
+                <button class="link hdr-trophy" title="@Loc["Achievements"]" @onclick="() => _modal = Modal.Achievements"><Icon Name="trophy" /></button>
                 <span class="acct-menu">
                     <button class="link" title="@Loc["Account actions"]" @onclick="() => _acctMenuOpen = !_acctMenuOpen"><Icon Name="sliders" /></button>
                     @if (_acctMenuOpen)
@@ -240,7 +240,7 @@ else
         // Reused on every projection/simulator label so less confident users can see how the number is worked out.
         RenderFragment<(string Id, string Text)> infoTip = ctx =>
         @<span class="info-wrap">
-            <button type="button" class="info-ico" title="@ctx.Text" @onclick="() => _openTip = _openTip == ctx.Id ? null : ctx.Id" @onclick:stopPropagation="true">ⓘ</button>
+            <button type="button" class="info-ico" title="@ctx.Text" @onclick="() => _openTip = _openTip == ctx.Id ? null : ctx.Id" @onclick:stopPropagation="true"><Icon Name="info" /></button>
             @if (_openTip == ctx.Id)
             {
                 <span class="info-pop">@ctx.Text</span>
@@ -275,10 +275,10 @@ else
                 // own as the user completes them; the × persists a dismiss so it never nags. Body-data flag.
                 var obSteps = new (bool Done, string Icon, string Title, string Desc, Action Act)[]
                 {
-                    (State.TotalContributed.Amount > 0m, "💵", Loc["Add your income"], Loc["Tell TandemTab what's coming in this month."], OpenDeposit),
-                    (State.TotalBudgeted.Amount > 0m, "🎯", Loc["Set a budget"], Loc["Cap a category so you know what's safe to spend."], OpenAddBudget),
-                    (State.AllExpenses.Count > 0, "🧾", Loc["Log an expense"], Loc["Record your first spend — or import a statement."], OpenAddOrImport),
-                    (State.SavingBuckets.Any(b => !b.Bucket.IsArchived), "🏆", Loc["Create a savings bucket"], Loc["Set money aside — with or without a goal or debt to pay off."], OpenAddBucket),
+                    (State.TotalContributed.Amount > 0m, "note", Loc["Add your income"], Loc["Tell TandemTab what's coming in this month."], OpenDeposit),
+                    (State.TotalBudgeted.Amount > 0m, "target", Loc["Set a budget"], Loc["Cap a category so you know what's safe to spend."], OpenAddBudget),
+                    (State.AllExpenses.Count > 0, "receipt", Loc["Log an expense"], Loc["Record your first spend — or import a statement."], OpenAddOrImport),
+                    (State.SavingBuckets.Any(b => !b.Bucket.IsArchived), "coins", Loc["Create a savings bucket"], Loc["Set money aside — with or without a goal or debt to pay off."], OpenAddBucket),
                 };
                 var obDone = obSteps.Count(s => s.Done);
             }
@@ -297,7 +297,7 @@ else
                         @foreach (var s in obSteps)
                         {
                             <button class="onboard-step @(s.Done ? "done" : "")" @onclick="@(() => s.Act())" disabled="@s.Done">
-                                <span class="onboard-check">@(s.Done ? "✓" : s.Icon)</span>
+                                <span class="onboard-check">@if (s.Done) { <Icon Name="check" /> } else { <Icon Name="@s.Icon" /> }</span>
                                 <span class="onboard-body">
                                     <span class="onboard-title">@s.Title</span>
                                     <span class="onboard-desc">@s.Desc</span>
@@ -385,7 +385,7 @@ else
                     @foreach (var n in homeAlerts.Take(3))
                     {
                         <div class="home-alert">
-                            <span class="home-alert-ico">@n.Icon</span>
+                            <span class="home-alert-ico">@IconOrEmoji(n.Icon)</span>
                             <div class="home-alert-body">
                                 <span class="home-alert-text">@n.Text</span>
                                 @if (n is { ActionLabel: { } al, Act: { } act })
@@ -632,7 +632,7 @@ else
                             <div class="fund-row@(over ? " over" : "")">
                                 <span class="fund-sw@(empty ? " empty" : "")" style="@(empty ? "" : $"background:{fundColor[fid]}")"></span>
                                 <button class="fund-row-name" title="@(string.IsNullOrEmpty(note) ? Loc["Actions"] : note)" @onclick="() => ToggleFundMenu(fid)">
-                                    <span class="fund-row-ico">@(synced ? "🔗" : State.FundIcon(fid))</span> @f.Name
+                                    <span class="fund-row-ico">@if (synced) { <Icon Name="link" /> } else { @State.FundIcon(fid) }</span> @f.Name
                                 </button>
                                 <span class="fund-row-amt" title="@(synced ? SyncedFundDisplay(fid).Title : "")">@Fmt(bal)</span>
                                 <button class="fund-row-more" title="@Loc["Actions"]" @onclick="() => ToggleFundMenu(fid)">⋯</button>
@@ -778,7 +778,7 @@ else
                 }
                 @if (overPlanned.Amount > 0m)
                 {
-                    <p class="budget-over-note">💡 @string.Format(Loc["Your remaining budgets ({0}) are {1} more than you have left ({2}) — budgets are plans, not commitments, so trim one or top up when you can."], Fmt(_bnRemaining), Fmt(overPlanned), Fmt(_bnFree))</p>
+                    <p class="budget-over-note"><Icon Name="bulb" /> @string.Format(Loc["Your remaining budgets ({0}) are {1} more than you have left ({2}) — budgets are plans, not commitments, so trim one or top up when you can."], Fmt(_bnRemaining), Fmt(overPlanned), Fmt(_bnFree))</p>
                 }
                 @{
                     // Top-level categories only — sub-categories roll up into their parent's ring.
@@ -1367,7 +1367,7 @@ else
                             <ul class="list">
                                 @foreach (var v in _editCatVendors)
                                 {
-                                    @BankRuleRow((v, "category", "🔖"))
+                                    @BankRuleRow((v, "category", "bookmark"))
                                 }
                             </ul>
                         </details>
@@ -1451,7 +1451,7 @@ else
 
                 case Modal.Achievements:
                     <div class="modal-head">
-                        <h3>🏆 @Loc["Achievements"]</h3>
+                        <h3><Icon Name="trophy" /> @Loc["Achievements"]</h3>
                         <span class="modal-head-actions">
                             <button class="exp-edit" title="@Loc["Close"]" @onclick="Back"><Icon Name="x" /></button>
                         </span>
@@ -1766,7 +1766,7 @@ else
                         @if (!string.IsNullOrEmpty(editExp.Note) && MappedLabel(editExp.Note!) is { } target)
                         {
                             <p class="hint"><Icon Name="bank" /> @Loc["Auto-filed from a saved bank rule:"] <strong>@editExp.Note</strong> → <strong>@target</strong></p>
-                            <ul class="list">@BankRuleRow((BudgetingState.BankMatchKey(editExp.Note!), "category", "🔖"))</ul>
+                            <ul class="list">@BankRuleRow((BudgetingState.BankMatchKey(editExp.Note!), "category", "bookmark"))</ul>
                         }
                         else
                         {
@@ -2155,7 +2155,7 @@ else
                                     : (r.AmountMode == RecurringAmountMode.Typical ? "~" : "") + Fmt(State.Money(r.ExpectedAmount));
                                 <li>
                                     <span class="row-main">
-                                        <span class="cat-ico">@(r.Icon ?? (r.Kind == RecurringKind.Income ? "💷" : "🔁"))</span> @r.Name
+                                        <span class="cat-ico">@IconOrEmoji(r.Icon ?? (r.Kind == RecurringKind.Income ? "note" : "repeat"))</span> @r.Name
                                         <span class="row-note">· @amountText · @Loc["day"] @r.DayOfMonth@(r.AutoPost ? " · ⚡" + @Loc["auto"] : "")@(r.Active ? "" : " · " + @Loc["paused"])</span>
                                     </span>
                                     <span class="row-actions">
@@ -2247,7 +2247,7 @@ else
                     break;
 
                 case Modal.Import:
-                    <h3>📥 @Loc["Import statement"]</h3>
+                    <h3><Icon Name="import" /> @Loc["Import statement"]</h3>
                     @if (_importError is not null)
                     {
                         <div class="alert warn-bg"><span>@_importError</span></div>
@@ -2288,7 +2288,7 @@ else
                             <button type="button" class="link" @onclick="() => SetAllImport(true)">@Loc["Select all"]</button>
                             <span>·</span>
                             <button type="button" class="link" @onclick="() => SetAllImport(false)">@Loc["Deselect all"]</button>
-                            <span class="import-head-hint">📌 @Loc["pin a merchant to auto-file it (and similar names) here next time"]</span>
+                            <span class="import-head-hint"><Icon Name="pin" /> @Loc["pin a merchant to auto-file it (and similar names) here next time"]</span>
                         </div>
                         <ul class="list import-list">
                             @foreach (var imp in _importRows)
@@ -2302,7 +2302,7 @@ else
                                         <span class="import-desc">@(string.IsNullOrWhiteSpace(r.Tx.Description) ? Loc["(no description)"] : r.Tx.Description)</span>
                                     </span>
                                     <span class="row-ops">
-                                        @if (r.Duplicate) { <span class="row-note" title="@Loc["Looks already logged"]">⚠️</span> }
+                                        @if (r.Duplicate) { <span class="row-note" title="@Loc["Looks already logged"]"><Icon Name="alert" Class="ic-s" /></span> }
                                         <select @bind="r.CategoryId">
                                             @if (r.Tx.Amount < 0m)
                                             {
@@ -2365,7 +2365,7 @@ else
                         else
                         {
                             <p class="bank-conn">
-                                <span>@if (_bankStatus.InstitutionLogo is { } logo) { <img class="bank-logo-img" src="@logo" alt="" /> } else { <text>✅</text> } @_bankStatus.InstitutionName</span>
+                                <span>@if (_bankStatus.InstitutionLogo is { } logo) { <img class="bank-logo-img" src="@logo" alt="" /> } else { <Icon Name="bank" /> } @_bankStatus.InstitutionName</span>
                                 @if (_bankStatus.Balance is { } bal)
                                 {
                                     <span class="bank-balance" title="@Loc["Live account balance"]">@Fmt(new Money(bal, _bankStatus.BalanceCurrency ?? State.Currency))</span>
@@ -2477,7 +2477,7 @@ else
 
                 case Modal.HealthScore:
                     var hs = CurrentReport();
-                    <h3>💗 @Loc["Health score & trends"] @infoTip(("score-how", Loc["How your score works: four equal parts (25 pts each) — how much you saved vs your target, how well you kept to budget, living within your income, and your spending vs your recent average."]))</h3>
+                    <h3><Icon Name="pulse" /> @Loc["Health score & trends"] @infoTip(("score-how", Loc["How your score works: four equal parts (25 pts each) — how much you saved vs your target, how well you kept to budget, living within your income, and your spending vs your recent average."]))</h3>
                     @if (!hs.HasData)
                     {
                         <p class="hint"><Icon Name="chart" /> @Loc["Log some income or expenses to see your account overview here."]</p>
@@ -2528,7 +2528,7 @@ else
                             <div class="savings-footer">
                                 <span>0%</span><span class="goal-label">@Loc["Goal"] @PctText(hs.SavingsTarget)</span><span>100%</span>
                             </div>
-                            <div class="savings-critique">💡 @hs.SavingsCritique</div>
+                            <div class="savings-critique"><Icon Name="bulb" /> @hs.SavingsCritique</div>
                         </section>
 
                         @if (hs.Trend.Count > 1)
@@ -2671,7 +2671,7 @@ else
                     }
                     <h4 class="detail-sub"><Icon Name="repeat" /> @Loc["Ongoing — add more every month"]
                         @infoTip(("pp-pace", Loc["A recurring amount you'd pay on top of the installment every month, month after month — separate from the one-off above. Starts from your recent saving pace; change it to see how paying more (or less) moves the date and interest."]))
-                        <button type="button" class="info-ico reset-ico" title="@(pjPlanned ? Loc["Reset to your planned contribution"] : Loc["Reset to your saving pace"])" @onclick="() => _payoffExtra = State.EffectiveSavingPace(_projBucketId)?.Amount ?? 0m">↺</button>
+                        <button type="button" class="info-ico reset-ico" title="@(pjPlanned ? Loc["Reset to your planned contribution"] : Loc["Reset to your saving pace"])" @onclick="() => _payoffExtra = State.EffectiveSavingPace(_projBucketId)?.Amount ?? 0m"><Icon Name="rotate" /></button>
                     </h4>
                     <label class="proj-extra">@Loc["Extra on top /mo"] <input type="number" step="10" min="0" @bind="_payoffExtra" @bind:event="oninput" /></label>
                     <p class="hint pm-hint">@string.Format(Loc["{0} installment + {1} extra = {2}/mo"], Fmt(State.Money(pjInst)), Fmt(State.Money(pjExtra)), Fmt(State.Money(pjTotal)))@(pjPace is { } pc && pc.Amount > 0m ? string.Format(pjPlanned ? Loc[" · your plan {0}/period"] : Loc[" · your pace ~{0}/period"], Fmt(pc)) : "")</p>
@@ -2758,7 +2758,7 @@ else
                     }
                     <h4 class="detail-sub">@Loc["Adding more each month"]
                         @infoTip(("iv-extra", Loc["Money you add on top each month. Starts from your saving pace — change it to see how investing more grows the total."]))
-                        <button type="button" class="info-ico reset-ico" title="@(ivPlanned ? Loc["Reset to your planned contribution"] : Loc["Reset to your saving pace"])" @onclick="() => _invExtra = State.EffectiveSavingPace(_projBucketId)?.Amount ?? 0m">↺</button>
+                        <button type="button" class="info-ico reset-ico" title="@(ivPlanned ? Loc["Reset to your planned contribution"] : Loc["Reset to your saving pace"])" @onclick="() => _invExtra = State.EffectiveSavingPace(_projBucketId)?.Amount ?? 0m"><Icon Name="rotate" /></button>
                     </h4>
                     <label class="proj-extra">@Loc["Extra /mo"] <input type="number" step="10" min="0" @bind="_invExtra" @bind:event="oninput" /></label>
                     @if (ivPace is { } ivp && ivp.Amount > 0m)
@@ -2952,7 +2952,7 @@ else
                         <ul class="list">
                             @foreach (var key in fundRules)
                             {
-                                @BankRuleRow((key, "fund", "🏦"))
+                                @BankRuleRow((key, "fund", "bank"))
                             }
                         </ul>
                     }
@@ -3110,7 +3110,7 @@ else
                         @if (!string.IsNullOrEmpty(autoTr.Note) && MappingFor(autoTr.Note!) is { Kind: "fund" })
                         {
                             <p class="hint"><Icon Name="bank" /> @Loc["Auto-filed from a saved money-in rule:"] <strong>@autoTr.Note</strong> → <strong>@State.FundName(autoTr.FromFundId)</strong></p>
-                            <ul class="list">@BankRuleRow((BudgetingState.BankMatchKey(autoTr.Note!), "fund", "🏦"))</ul>
+                            <ul class="list">@BankRuleRow((BudgetingState.BankMatchKey(autoTr.Note!), "fund", "bank"))</ul>
                         }
                         else
                         {
@@ -4018,7 +4018,7 @@ else
             @if (_ruleEditKey == ctx.Key)
             {
                 <span class="row-main rule-tokens" title="@Loc["Tap a word to include or exclude it from matching. A transaction matches when all the highlighted words appear in it."]">
-                    @ctx.Icon
+                    @IconOrEmoji(ctx.Icon)
                     @foreach (var tok in _ruleEditTokens)
                     {
                         <button type="button" class="rule-chip @(_ruleEditOn.Contains(tok) ? "on" : "")" @onclick="() => ToggleRuleToken(tok)">@tok</button>
@@ -4027,7 +4027,7 @@ else
             }
             else
             {
-                <span class="row-main">@ctx.Icon @ctx.Key</span>
+                <span class="row-main">@IconOrEmoji(ctx.Icon) @ctx.Key</span>
             }
             @if (_ruleEditKey == ctx.Key)
             {
@@ -4837,6 +4837,29 @@ else
     private sealed record Notification(string Icon, string Text, string? Desc, string? ActionLabel, Action? Act,
         Action? Rotate, Action? Dismiss, bool Urgent);
 
+    // Notification/reminder rows carry a mixed "icon" stream: mostly our chrome icon names (rendered as <Icon>), but
+    // a few are user data — a bucket's or recurring item's own emoji — which have no sprite symbol and must render as
+    // the raw emoji. IconOrEmoji picks per value so the data rows don't break on a missing <use href>.
+    private static readonly HashSet<string> IconNames = new(StringComparer.Ordinal)
+    {
+        "import","repeat","bank","bell","shield","alert","receipt","note","target","pulse","sliders","pencil","trash",
+        "check","x","plus","tag","archive","coins","swap","trending","bulb","pin","link","list","share","info","rotate",
+        "calendar","card","chart","users","logout","arrow-right","scale","calculator","bookmark","trophy",
+    };
+    private RenderFragment IconOrEmoji(string icon) => builder =>
+    {
+        if (IconNames.Contains(icon))
+        {
+            builder.OpenComponent<Icon>(0);
+            builder.AddAttribute(1, "Name", icon);
+            builder.CloseComponent();
+        }
+        else
+        {
+            builder.AddContent(2, icon);
+        }
+    };
+
     /// <summary>Everything that used to stack on Home: the budget/savings reminders, the spare→debt and over-budget
     /// tips (rotating + dismissible), and the "needs attention" warning signals — collected for the bell dropdown.</summary>
     private IReadOnlyList<Notification> HomeNotifications(FinancialHealthReport ov)
@@ -4846,7 +4869,7 @@ else
         // Overspent into the savings earmark — the single most urgent state, so it leads and shows inline on Home
         // (it used to sit only on the Wallets tab, out of sight of the tab you land on).
         if (State.Deficit.Amount > 0m)
-            list.Add(new Notification("⚖️", Loc["Off balance — overspent by"] + " " + Fmt(State.Deficit) + ".",
+            list.Add(new Notification("scale", Loc["Off balance — overspent by"] + " " + Fmt(State.Deficit) + ".",
                 Loc["Expenses ate into your savings earmark. This will need to be covered next period (from a savings bucket or fresh contributions)."],
                 null, null, null, null, true));
 
@@ -4854,7 +4877,7 @@ else
         foreach (var ap in _autoPostedNotices)
         {
             var notice = ap;
-            list.Add(new Notification("✅", string.Format(Loc["{0} ({1}) was posted automatically."], ap.Name, Fmt(ap.Amount)), null,
+            list.Add(new Notification("check", string.Format(Loc["{0} ({1}) was posted automatically."], ap.Name, Fmt(ap.Amount)), null,
                 Loc["Review"], () => { _autoPostedNotices.Remove(notice); if (ap.Kind == RecurringKind.Income) _tab = Tab.Account; else ShowExpensesTab(); },
                 null, () => _autoPostedNotices.Remove(notice), false));
         }
@@ -4869,7 +4892,7 @@ else
             var text = due.AmountMode == RecurringAmountMode.ReminderOnly
                 ? string.Format(Loc["{0} is due — enter the amount."], due.Name)
                 : string.Format(Loc["{0} is due (about {1}) — confirm it."], due.Name, Fmt(State.Money(due.ExpectedAmount)));
-            list.Add(new Notification(due.Icon ?? (due.Kind == RecurringKind.Income ? "💷" : "🔁"), text, null,
+            list.Add(new Notification(due.Icon ?? (due.Kind == RecurringKind.Income ? "note" : "repeat"), text, null,
                 Loc["Confirm"], () => OpenConfirmRecurring(id), null, () => SkipRecurringFromBell(id), false));
         }
 
@@ -4882,7 +4905,7 @@ else
             var text = soon.HasKnownAmount
                 ? string.Format(Loc["{0} (about {1}) is due {2}."], soon.Name, Fmt(State.Money(soon.ExpectedAmount)), whenText)
                 : string.Format(Loc["{0} is due {1}."], soon.Name, whenText);
-            list.Add(new Notification("🗓️", text, null, Loc["Confirm"], () => OpenConfirmRecurring(id), null, () => SkipRecurringFromBell(id), false));
+            list.Add(new Notification("calendar", text, null, Loc["Confirm"], () => OpenConfirmRecurring(id), null, () => SkipRecurringFromBell(id), false));
         }
 
         // "Move it" reallocates for real (trims the budget + sets aside toward the debt), so the whole tip is gated
@@ -4895,19 +4918,19 @@ else
             var (label, act) = State.IsPeriodOpen && moveable > 0m
                 ? (Loc["Move it to the loan"], (Action)(() => OpenReallocate(tip.BudgetId, tip.DebtId, moveable, tip.BudgetName, tip.DebtName)))
                 : (null, (Action?)null);
-            list.Add(new Notification("💡", tip.Title, tip.Desc, label, act, rotate, () => DismissNudge(tip.BudgetId), false));
+            list.Add(new Notification("bulb", tip.Title, tip.Desc, label, act, rotate, () => DismissNudge(tip.BudgetId), false));
         }
         if (OverBudgetTip() is { } ob)
         {
             Action? rotate = OverBudgetCandidates().Count > 1 ? () => _overIndex++ : null;
-            list.Add(new Notification("⚠️", ob.Title, ob.Desc, Loc["Review"], () => OpenCategoryDetail(ob.CatId), rotate, () => DismissOverBudget(ob.CatId), true));
+            list.Add(new Notification("alert", ob.Title, ob.Desc, Loc["Review"], () => OpenCategoryDetail(ob.CatId), rotate, () => DismissOverBudget(ob.CatId), true));
         }
         // Pace reminders: at most one per off-track debt/goal, with the payoff-date slip and a "set aside" action.
         list.AddRange(PaceReminders());
 
         if (ov.HasData)
             foreach (var s in ov.Signals.Where(s => s.Kind == SignalKind.Warn))
-                list.Add(new Notification("⚠️", s.Title, s.Desc, null, null, null, null, true));
+                list.Add(new Notification("alert", s.Title, s.Desc, null, null, null, null, true));
         return list;
     }
 
@@ -4923,7 +4946,7 @@ else
 
         // Fresh period with no income logged yet — prompt to add it so budgets/insights reflect real money.
         if (State.TotalContributed.Amount <= 0m)
-            list.Add(new HomeReminder("📥", Loc["No income added this period yet — log it so your plan reflects real money."],
+            list.Add(new HomeReminder("import", Loc["No income added this period yet — log it so your plan reflects real money."],
                 Loc["Add income"], OpenDeposit, false));
 
         // Budgets plan to spend more than there is free cash to cover. Budgets are advisory, so nothing is broken
@@ -4934,7 +4957,7 @@ else
         var planFree = State.DisplayFreeToAllocate(_bankStatus?.Balance, _bankStatus?.BalanceCurrency);
         var planLeft = State.TotalBudgeted - State.TotalSpent;
         if (planLeft.Amount > 0m && planLeft.Amount > planFree.Amount)
-            list.Add(new HomeReminder("🧮",
+            list.Add(new HomeReminder("calculator",
                 string.Format(Loc["Your budgets still plan {0} but only {1} is free — trim a budget or add income."],
                     Fmt(planLeft), Fmt(planFree)),
                 Loc["Adjust budgets"], ShowExpensesTab, true));
@@ -4952,7 +4975,7 @@ else
                 near = (b.CategoryId, State.CategoryName(b.CategoryId), cov.Remaining.Amount, ratio);
         }
         if (near is { } n)
-            list.Add(new HomeReminder("🟡", string.Format(Loc["You're {0} from your {1} budget."], Fmt(State.Money(n.Remaining)), n.Name),
+            list.Add(new HomeReminder("info", string.Format(Loc["You're {0} from your {1} budget."], Fmt(State.Money(n.Remaining)), n.Name),
                 Loc["Review"], () => OpenCategoryDetail(n.CatId), false));
 
         // Sinking-fund nudge: a bucket with listed future costs hasn't had this month's set-aside put in yet.
@@ -4969,7 +4992,7 @@ else
             var (label, act) = State.IsPeriodOpen && reservable > 0m
                 ? (Loc["Reserve for upcoming costs"], (Action)(() => ReserveForCosts(bucketId, reservable)))
                 : (null, (Action?)null);
-            list.Add(new HomeReminder("🗓️",
+            list.Add(new HomeReminder("calendar",
                 string.Format(Loc["{0} needs {1} set aside this period to stay ahead of its costs."],
                     bucket.Name, Fmt(State.Money(owed))),
                 label, act, false));
@@ -4985,10 +5008,10 @@ else
             var suggest = ov.SavingsShortfall is { } gap
                 ? State.Money(Math.Min(gap.Amount, State.MaxAdditionalSavings.Amount)) : (Money?)null;
             if (suggest is { Amount: > 0m } s)
-                list.Add(new HomeReminder("💰", string.Format(Loc["Set aside {0} more to hit your {1} savings goal this period."], Fmt(s), PctText(ov.SavingsTarget)),
+                list.Add(new HomeReminder("coins", string.Format(Loc["Set aside {0} more to hit your {1} savings goal this period."], Fmt(s), PctText(ov.SavingsTarget)),
                     Loc["Move to savings"], OpenMoveToSavings, false));
             else if (State.SavingsThisPeriod.Amount <= 0m && State.TotalContributed.Amount > 0m)
-                list.Add(new HomeReminder("💰", Loc["Money came in this period — move some into savings while it's here."],
+                list.Add(new HomeReminder("coins", Loc["Money came in this period — move some into savings while it's here."],
                     Loc["Move to savings"], OpenMoveToSavings, false));
         }
 
