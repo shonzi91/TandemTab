@@ -1208,25 +1208,38 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     /// </para>
     /// </summary>
     public CashFlowProjection? ProjectCashFlow(Money openingBalance, int months = 6)
-    {
-        var committed = TotalMonthlySetAside;
+        => ProjectCashFlow(openingBalance, 0m, months);
 
+    /// <summary>
+    /// The runway projection, optionally with monthly spending nudged by <paramref name="spendingDelta"/> — the
+    /// "what if I spent differently?" slider. delta 0 is the plain runway shown on Home; a negative delta models
+    /// spending less. Reuses the same demonstrated/recurring base figures as the plain runway so the two always agree.
+    /// </summary>
+    public CashFlowProjection? ProjectCashFlow(Money openingBalance, decimal spendingDelta, int months = 6)
+    {
+        if (CashFlowBase() is not { } b) return null;   // no history and nothing declared — say nothing
+        return CashFlowForecast.Project(
+            openingBalance.Amount, b.Income, b.Spending + spendingDelta, Period.From, months,
+            b.Basis, TotalMonthlySetAside, b.HasUnknown);
+    }
+
+    /// <summary>The income/spending figures the runway rests on: an average of completed periods when there's history
+    /// (the honest basis), else the declared recurring items. Null when there's neither. Kept in one place so the
+    /// plain runway and the what-if slider can never diverge.</summary>
+    private (decimal Income, decimal Spending, CashFlowBasis Basis, bool HasUnknown)? CashFlowBase()
+    {
         if (CashFlowForecast.Demonstrated(Account.Periods) is { } seen)
-            return CashFlowForecast.Project(
-                openingBalance.Amount, seen.Income, seen.Spending, Period.From, months,
-                CashFlowBasis.Demonstrated, committed);
+            return (seen.Income, seen.Spending, CashFlowBasis.Demonstrated, false);
 
         var active = RecurringItems.Where(r => r.Active).ToList();
         var counted = active.Where(r => r.HasKnownAmount).ToList();
-        if (counted.Count == 0) return null;   // nothing declared and nothing to average — say nothing
+        if (counted.Count == 0) return null;
 
-        return CashFlowForecast.Project(
-            openingBalance.Amount,
+        return (
             counted.Where(r => r.Kind == RecurringKind.Income).Sum(r => r.ExpectedAmount),
             counted.Where(r => r.Kind == RecurringKind.Expense).Sum(r => r.ExpectedAmount),
-            Period.From, months,
-            CashFlowBasis.Recurring, committed,
-            hasUnknownAmounts: active.Any(r => !r.HasKnownAmount));
+            CashFlowBasis.Recurring,
+            active.Any(r => !r.HasKnownAmount));
     }
 
     /// <summary>What this bucket's dated one-offs still need beyond what it holds — the "you're €X short" read, or null

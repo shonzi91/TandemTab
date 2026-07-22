@@ -97,6 +97,17 @@ h1:focus {
     }
 }
 
+/* ─────────────────────────── ICON SYSTEM ───────────────────────────
+   Chrome icons are inline SVG (<Icon Name="…"/> → the <IconSprite/> in MainLayout), not emoji: one consistent
+   line set that inherits colour (currentColor) and size (1.1em) from its context. User-chosen category/fund
+   emoji are data and stay emoji. */
+.icon-sprite { width: 0; height: 0; overflow: hidden; }
+.ic {
+    width: 1.1em; height: 1.1em; flex: none; display: inline-block; vertical-align: -0.16em;
+    fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;
+}
+.ic-s { width: .95em; height: .95em; }
+
 /* ─────────────────────────── DARK THEME ───────────────────────────
    The app's colours are hardcoded hex inside scoped component CSS. Rather than
    re-theme every file, this layer overrides the structural surfaces/text from a

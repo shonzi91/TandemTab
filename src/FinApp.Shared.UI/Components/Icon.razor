@@ -1,0 +1,9 @@
+@* Inline SVG icon that references the app-wide sprite (mounted once by <IconSprite/> in MainLayout).
+   Chrome/UI icons only — user-chosen category and fund emoji deliberately stay as emoji. Colour follows
+   `currentColor`; size follows font-size (1.1em) unless a class overrides it. *@
+<svg class="ic@(Class is null ? "" : " " + Class)" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#i-@Name"></use></svg>
+
+@code {
+    [Parameter, EditorRequired] public string Name { get; set; } = "";
+    [Parameter] public string? Class { get; set; }
+}

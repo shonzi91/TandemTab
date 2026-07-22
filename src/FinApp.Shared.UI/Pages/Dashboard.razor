@@ -205,11 +205,18 @@ else
         @* Account-level utilities that aren't daily money moves — grouped below the balance as labelled buttons
            rather than easy-to-miss header icons. External accounts appears only when a bank connection exists. *@
         <div class="hdr-actions">
-            <button class="hdr-action" @onclick="OpenImport">📥 <span>@Loc["Import statement"]</span></button>
-            <button class="hdr-action" @onclick="OpenRecurring">🔁 <span>@Loc["Recurring"]</span></button>
+            <button class="hdr-action" @onclick="OpenImport"><Icon Name="import" /> <span>@Loc["Import statement"]</span></button>
+            <button class="hdr-action" @onclick="OpenRecurring"><Icon Name="repeat" /> <span>@Loc["Recurring"]</span></button>
             @if (_bankStatus?.Enabled == true)
             {
-                <button class="hdr-action" @onclick="ShowBankTab">🏦 <span>@Loc["External accounts"]</span></button>
+                var reviewCount = _bankStatus.Connected ? BankDebits().Count + BankCredits().Count : 0;
+                <span class="hdr-action hdr-action-grp @(reviewCount > 0 ? "has-review" : "")">
+                    <button class="hdr-action-main" @onclick="ShowBankTab"><Icon Name="bank" /> <span>@Loc["External accounts"]</span></button>
+                    @if (reviewCount > 0)
+                    {
+                        <button class="hdr-review" title="@string.Format(Loc["{0} to review"], reviewCount)" @onclick="OpenBankReview"><Icon Name="bell" Class="ic-s" /> <span class="hdr-review-n">@reviewCount</span></button>
+                    }
+                </span>
             }
         </div>
     </header>
@@ -327,7 +334,7 @@ else
                        that category pre-selected. The button itself still opens the blank modal (and is the only path
                        on touch, where there's no hover). *@
                     <div class="quick-spend">
-                        <button class="card-act card-act-spend" @onclick="OpenAddExpenseTab">🧾 @Loc["Add expense"]</button>
+                        <button class="card-act card-act-spend" @onclick="OpenAddExpenseTab"><Icon Name="receipt" /> @Loc["Add expense"]</button>
                         @{ var homeRecentCats = State.RecentCategories(5); }
                         @if (homeRecentCats.Count > 0)
                         {
@@ -355,7 +362,7 @@ else
                     </div>
                     @if (State.IsPeriodOpen)
                     {
-                        <button class="card-act card-act-income" @onclick="OpenDeposit">💵 @Loc["Add income"]</button>
+                        <button class="card-act card-act-income" @onclick="OpenDeposit"><Icon Name="note" /> @Loc["Add income"]</button>
                     }
                 </div>
             </section>
@@ -410,7 +417,7 @@ else
             {
                 <section class="panel runway-card @(rw.FirstShortfallMonth is null ? "" : "runway-warn")">
                     <div class="runway-row">
-                        <span class="runway-ico">@(rw.FirstShortfallMonth is null ? "🛟" : "⚠️")</span>
+                        <span class="runway-ico"><Icon Name="@(rw.FirstShortfallMonth is null ? "shield" : "alert")" /></span>
                         @* "At this rate" up front, and the basis always named. The old headline ("You're good for
                            the next 6 months") read as a promise, when it only means "at your recent average the
                            balance never went negative over the months I looked ahead" — the user rightly asked how
@@ -422,9 +429,16 @@ else
                             {
                                 <strong>@string.Format(Loc["At this rate, money runs short in {0}"], sm.ToString("MMM yyyy"))</strong>
                             }
+                            else if (rw.Months[0].Income - rw.Months[0].Spending >= 0)
+                            {
+                                @* Surplus: the balance isn't running down at all — saying it "lasts N months" undersells
+                                   and would contradict the math panel's positive net line. Say what's true. *@
+                                <strong>@Loc["At this rate, your balance keeps growing"]</strong>
+                            }
                             else
                             {
-                                <strong>@string.Format(Loc["At this rate, your balance lasts about {0} months"], rw.Months.Count)</strong>
+                                @* Declining but survives the whole horizon — it lasts beyond it, not "about" it. *@
+                                <strong>@string.Format(Loc["At this rate, your balance lasts beyond {0} months"], rw.Months.Count)</strong>
                             }
                             <span class="runway-sub">
                                 @{
@@ -441,14 +455,62 @@ else
                                 @basisNote · @string.Format(Loc["{0} in, {1} out a month"],
                                     Fmt(State.Money(rw.Months[0].Income)), Fmt(State.Money(rw.Months[0].Spending)))@(rw.HasUnknownAmounts ? " · " + Loc["some bills have no amount yet"] : "")
                             </span>
+                            @* "Show the math" — the anti-black-box move: no AI, so we can show exactly how the number
+                               is built and let you nudge the inputs. Off by default to keep Home calm. *@
+                            <button type="button" class="runway-toggle" @onclick="() => _runwayOpen = !_runwayOpen">
+                                @(_runwayOpen ? Loc["Hide the math"] : Loc["Show the math"]) <span class="runway-caret @(_runwayOpen ? "open" : "")">▾</span>
+                            </button>
                         </span>
                     </div>
+                    @if (_runwayOpen)
+                    {
+                        var inM = rw.Months[0].Income;
+                        var outM = rw.Months[0].Spending;
+                        <div class="runway-detail">
+                            <div class="runway-math">
+                                <span>@Loc["Starting balance"]</span><span class="rm-num">@Fmt(_balCur)</span>
+                                <span>@Loc["Money in / month"]</span><span class="rm-num credit">+ @Fmt(State.Money(inM))</span>
+                                <span>@Loc["Money out / month"]</span><span class="rm-num debit">− @Fmt(State.Money(outM))</span>
+                                <span class="rm-net">@Loc["Net / month"]</span><span class="rm-num rm-net @(inM - outM < 0 ? "debit" : "credit")">@(inM - outM < 0 ? "− " : "+ ")@Fmt(State.Money(Math.Abs(inM - outM)))</span>
+                            </div>
+                            <p class="runway-basis">@Loc["Each month adds the money in and takes the money out; the runway is how long your balance stays above zero. No AI, no guesswork — just this arithmetic on your own numbers."]</p>
+
+                            @* What-if: recompute the same projection with spending nudged, live. *@
+                            <div class="whatif">
+                                <label class="whatif-label">@Loc["What if I spent differently?"]</label>
+                                <input type="range" class="whatif-slider" min="-50" max="50" step="5" @bind:event="oninput" @bind="_whatIfPct" />
+                                @{
+                                    var delta = decimal.Round(outM * _whatIfPct / 100m, 2);
+                                    var adjOut = State.Money(Math.Max(0m, outM + delta));
+                                    var whatIf = _whatIfPct == 0 ? null : State.ProjectCashFlow(_balCur, delta);
+                                }
+                                <div class="whatif-out">
+                                    @if (_whatIfPct == 0)
+                                    {
+                                        <span class="whatif-hint">@Loc["Slide to spend less or more and see the runway change."]</span>
+                                    }
+                                    else if (whatIf is { } wi)
+                                    {
+                                        <span class="whatif-amt"><strong>@Fmt(adjOut)</strong> <span class="whatif-pct">(@(_whatIfPct > 0 ? "+" : "")@(_whatIfPct)%)</span> @Loc["out a month"]</span>
+                                        @if (wi.FirstShortfallMonth is { } wsm)
+                                        {
+                                            <span class="whatif-bad">— @string.Format(Loc["runs short in {0}"], wsm.ToString("MMM yyyy"))</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="whatif-good">— @string.Format(Loc["balance holds ~{0} months, ending near {1}"], wi.Months.Count, Fmt(State.Money(wi.Months[^1].Closing)))</span>
+                                        }
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                    }
                 </section>
             }
             @if (homeTargets.Count > 0)
             {
                 <section class="panel targets-card">
-                    <h2 class="targets-h">🎯 @Loc["You're on track for"]</h2>
+                    <h2 class="targets-h"><Icon Name="target" /> @Loc["You're on track for"]</h2>
                     <div class="targets-list">
                         @foreach (var t in homeTargets)
                         {
@@ -621,66 +683,8 @@ else
                 </section>
             }
 
-            @if (_bankStatus is { Enabled: true, Connected: true } && BankCredits() is { Count: > 0 } bankCredits)
-            {
-                <section class="panel">
-                    <div class="panel-head"><h2>💰 @Loc["Incoming from bank"]</h2></div>
-                    @if (!State.HasSyncedFund)
-                    {
-                        <div class="alert warn-bg"><span>@Loc["Mark a fund as synced to this bank (Edit a fund) to receive these."]</span></div>
-                    }
-                    else
-                    {
-                        <p class="hint">@string.Format(Loc["Money that arrived in {0}. Choose where each came from — the destination is your synced fund."], State.SyncedFundName)</p>
-                    }
-                    <ul class="list bank-pending">
-                        @foreach (var t in bankCredits)
-                        {
-                            var tx = t;
-                            var id = tx.ExternalId;
-                            var mappedLabel = MappedLabel(tx.Description);
-                            var pinTitle = mappedLabel is not null ? string.Format(Loc["Auto-fills {0} — click to forget"], mappedLabel) : Loc["Always use this source for this merchant"];
-                            <li class="bank-tx">
-                                <div class="bank-tx-top">
-                                    <span class="bank-tx-desc" title="@tx.Description"><span class="vendor-badge" style="background:@VendorColor(tx.Description)">@VendorInitial(tx.Description)</span>@tx.Description</span>
-                                    <span class="amt credit">+@Fmt(new Money(tx.Amount, State.Currency))</span>
-                                </div>
-                                <div class="bank-tx-row">
-                                    <span class="bank-tx-date">@tx.Date.ToString("dd MMM")</span>
-                                    <select class="bank-sel" value="@RowCredit(id)" @onchange="e => _bankRowCredit[id] = e.Value?.ToString() ?? string.Empty">
-                                        <option value="">@Loc["From… (source)"]</option>
-                                        <optgroup label="@Loc["Wallets"]">
-                                            @foreach (var f in State.RootFunds.Where(f => f.Id != State.SyncedFundId))
-                                            {
-                                                <option value="fund:@f.Id">@f.Name</option>
-                                            }
-                                        </optgroup>
-                                        <optgroup label="@Loc["People"]">
-                                            @foreach (var m in State.RealUsers)
-                                            {
-                                                <option value="contributor:@m.UserId">@m.DisplayName</option>
-                                            }
-                                        </optgroup>
-                                    </select>
-                                    @if (State.HasSyncedFund)
-                                    {
-                                        <span class="bank-tx-fund" title="@Loc["Into your synced fund"]">↦ @State.SyncedFundName</span>
-                                    }
-                                    <span class="bank-tx-icons">
-                                        <button class="icon-btn pin @(mappedLabel is not null ? "on" : "")" title="@pinTitle" @onclick="() => TogglePin(tx)" disabled="@_bankBusy">📌</button>
-                                        <button class="icon-btn ok" title="@Loc["Add movement"]" @onclick="() => ConfirmMoneyInRow(tx)" disabled="@(_bankBusy || !State.HasSyncedFund)">✓</button>
-                                        <button class="icon-btn x" title="@Loc["Dismiss"]" @onclick="() => DismissBankRow(tx)" disabled="@_bankBusy">✕</button>
-                                    </span>
-                                </div>
-                            </li>
-                        }
-                    </ul>
-                    @if (_bankError is not null)
-                    {
-                        <div class="alert warn-bg"><span>@_bankError</span><button class="alert-x" title="@Loc["Dismiss"]" @onclick="() => _bankError = null">×</button></div>
-                    }
-                </section>
-            }
+            @* Bank transactions to review are no longer an inline panel here — they live behind the 🔔 badge on the
+               External-accounts button, which opens the review window (both money-in and money-out). *@
 
             <section class="panel">
                 <div class="spending-head">
@@ -935,27 +939,7 @@ else
                 }
             </section>
 
-            @if (_bankStatus is { Enabled: true, Connected: true } && BankDebits() is { Count: > 0 } bankExpenses)
-            {
-                <section class="panel">
-                    <div class="panel-head">
-                        <h2>💳 @Loc["From your bank"] <span class="bank-group-count">@bankExpenses.Count</span></h2>
-                    </div>
-                    @if (!State.HasSyncedFund)
-                    {
-                        <div class="alert warn-bg"><span>@Loc["Mark a fund as synced to this bank (a fund → Edit) so imports file automatically."]</span></div>
-                    }
-                    @foreach (var grp in bankExpenses.GroupBy(t => t.Date).OrderByDescending(g => g.Key))
-                    {
-                        <div class="date-sep">@grp.Key.ToString("dddd, dd MMM yyyy")</div>
-                        <ul class="list bank-pending">@foreach (var t in grp) { @BankTxRow(t) }</ul>
-                    }
-                    @if (_bankError is not null)
-                    {
-                        <div class="alert warn-bg"><span>@_bankError</span><button class="alert-x" title="@Loc["Dismiss"]" @onclick="() => _bankError = null">×</button></div>
-                    }
-                </section>
-            }
+            @* Bank expenses to review moved off the Spending tab into the 🔔 review window (see the External-accounts button). *@
         </div>
         <div class="tabpanel" hidden="@(_tab != Tab.Savings)">
             @{
@@ -1375,14 +1359,18 @@ else
                     }
                     @if (_editCatVendors.Count > 0)
                     {
-                        <h4 class="detail-sub">@Loc["Auto-categorized merchants"]</h4>
-                        <small class="hint">@Loc["Imported transactions from these are filed here automatically. Unmapping only stops future auto-filing."]</small>
-                        <ul class="list">
-                            @foreach (var v in _editCatVendors)
-                            {
-                                @BankRuleRow((v, "category", "🔖"))
-                            }
-                        </ul>
+                        @* Folded by default — it's reference detail, not something you edit every visit; the count is
+                           visible on the summary so you know it's there without it taking over the modal. *@
+                        <details class="cat-fold">
+                            <summary class="detail-sub">@Loc["Auto-categorized merchants"] <span class="cat-fold-n">@_editCatVendors.Count</span></summary>
+                            <small class="hint">@Loc["Imported transactions from these are filed here automatically. Unmapping only stops future auto-filing."]</small>
+                            <ul class="list">
+                                @foreach (var v in _editCatVendors)
+                                {
+                                    @BankRuleRow((v, "category", "🔖"))
+                                }
+                            </ul>
+                        </details>
                     }
                     break;
 
@@ -3432,6 +3420,9 @@ else
     private DateOnly? _dayView;   // when set, the Expenses tab focuses a single day
     private bool _calendar;       // Expenses tab: month-grid view instead of the list
 
+    private bool _runwayOpen;     // Home runway: "show the math" breakdown + what-if slider expanded
+    private int _whatIfPct;       // what-if slider: % change to monthly spending (−50..+50, 0 = the plain runway)
+
     // Settle-expense modal (feature 1)
     private Guid _settleExpenseId;
     private Guid _settleDestId;
@@ -3626,6 +3617,15 @@ else
         await State.InitializeAsync();
         ResetPickers();
 
+        // Ask which account to work in immediately — decided here (right after the account list loads), before any
+        // bank round-trips, so the picker paints on the first render. It used to be set at the tail of the
+        // fire-and-forget bank load, which meant it only appeared once some later event forced a re-render — the
+        // "the picker shows up on my first click" bug. Skipped on an OAuth bank-return, where a specific account's
+        // consent flow owns the screen (that rare path still falls back to MaybePromptOnEntryAsync).
+        if (State.Accounts.Count > 1 && !_entryAccountPicked
+            && !new Uri(Nav.Uri).Query.Contains("bank=", StringComparison.Ordinal))
+            _modal = Modal.PickAccount;
+
         // The bank status (live balance + pending rows) is fetched OFF the critical path: it's several server
         // round-trips and, for a synced account, the live provider balance — awaiting it here blocked the whole
         // dashboard (and the Add-expense fast button) behind the bank. The account renders now on its own figures;
@@ -3723,13 +3723,18 @@ else
     private async Task PickAccountOnEntry(Guid accountId)
     {
         _entryAccountPicked = true;
+        // Close the picker at once, before any loading — the account's data streams in behind it, each segment
+        // repainting as its call returns (SwitchAccount → RaiseChanged, then the bank fills its own strip). This
+        // is what makes picking feel instant instead of holding a blocking modal over the whole screen.
+        CloseModal();
+        await InvokeAsync(StateHasChanged);
+
         if (accountId != State.CurrentAccountId)
         {
-            await State.SwitchAccount(accountId);
-            await LoadBankAsync();
+            await State.SwitchAccount(accountId);   // structure load; RaiseChanged repaints the segments
+            await LoadBankAsync();                   // bank status/pending for the picked account
         }
         await SyncOnOpenAsync();   // fetch fresh transactions for the picked account (throttled)
-        CloseModal();
         await MaybeOpenBankReviewAsync();
     }
 
@@ -3747,6 +3752,9 @@ else
         _modal = Modal.BankReview;
         StateHasChanged();
     }
+
+    /// <summary>Open the review window on demand from the 🔔 badge — no dismissal check (the user asked for it).</summary>
+    private void OpenBankReview() => _modal = Modal.BankReview;
 
     /// <summary>Close the review modal and remember the newest transaction, so we don't nag until a newer one lands.</summary>
     private async Task DismissBankReview()

@@ -685,6 +685,32 @@ public sealed class Localizer(IJSRuntime js)
             "Още няма добавен доход този период — впиши го, за да отразява планът реални пари.",
         ["Add income"] = "Добави доход",
         ["General income"] = "Общ доход",
+        ["{0} to review"] = "{0} за преглед",
+        ["At this rate, your balance keeps growing"] = "При това темпо балансът ти продължава да расте",
+        ["At this rate, your balance lasts beyond {0} months"] = "При това темпо балансът ти издържа над {0} месеца",
+        // Runway "show the math" + what-if slider
+        ["Show the math"] = "Покажи изчислението",
+        ["Hide the math"] = "Скрий изчислението",
+        ["Starting balance"] = "Начален баланс",
+        ["Money in / month"] = "Приход / месец",
+        ["Money out / month"] = "Разход / месец",
+        ["Net / month"] = "Нето / месец",
+        ["Each month adds the money in and takes the money out; the runway is how long your balance stays above zero. No AI, no guesswork — just this arithmetic on your own numbers."] =
+            "Всеки месец добавя прихода и изважда разхода; резервът е колко дълго балансът ти остава над нулата. Без изкуствен интелект, без гадаене — само тази аритметика върху твоите числа.",
+        ["What if I spent differently?"] = "Ами ако харчех различно?",
+        ["Slide to spend less or more and see the runway change."] = "Плъзни, за да харчиш повече или по-малко и виж как се променя резервът.",
+        ["out a month"] = "разход на месец",
+        ["runs short in {0}"] = "парите свършват през {0}",
+        ["balance holds ~{0} months, ending near {1}"] = "балансът издържа ~{0} месеца, завършвайки около {1}",
+        // Profile → Your data & privacy panel
+        ["Your data & privacy"] = "Твоите данни и поверителност",
+        ["Your data is encrypted and stored per account."] = "Данните ти са криптирани и се съхраняват по сметка.",
+        ["We never sell your data, and never feed your raw data to any AI."] =
+            "Никога не продаваме данните ти и никога не подаваме суровите ти данни към изкуствен интелект.",
+        ["Statement import runs on your device — a file you choose, not a bank login we hold."] =
+            "Импортът на извлечения се извършва на твоето устройство — файл, който ти избираш, а не банков достъп, който пазим.",
+        ["You can export any account to a spreadsheet at any time."] = "Можеш да експортираш всяка сметка в електронна таблица по всяко време.",
+        ["Export this account (Excel)"] = "Експортирай тази сметка (Excel)",
         ["Your remaining budgets ({0}) are {1} more than you have left ({2}) — budgets are plans, not commitments, so trim one or top up when you can."] =
             "Оставащите ви бюджети ({0}) са с {1} повече от парите, които ви остават ({2}) — бюджетите са планове, не задължения, така че намалете някой или добавете пари, когато можете.",
         ["Money came in this period — move some into savings while it's here."] = "Този период постъпиха средства — задели част, докато са налични.",

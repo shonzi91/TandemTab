@@ -6,6 +6,7 @@
 @inject FinAppApiClient Api
 @inject IJSRuntime JS
 
+<IconSprite />
 <div class="app-shell">
     @if (Auth.IsAuthenticated)
     {
@@ -244,6 +245,26 @@
                         </ul>
                     </details>
                 }
+                @if (!InProfileSubflow)
+                {
+                    @* Privacy as a visible feature, not just a landing-page line: state plainly what we do and don't
+                       do, and back the "you can always leave with your data" claim with a real one-tap export. *@
+                    <details class="pm-section">
+                        <summary>@Loc["Your data & privacy"]</summary>
+                        <ul class="pm-privacy">
+                            <li>🔒 @Loc["Your data is encrypted and stored per account."]</li>
+                            <li>🚫 @Loc["We never sell your data, and never feed your raw data to any AI."]</li>
+                            <li>📄 @Loc["Statement import runs on your device — a file you choose, not a bank login we hold."]</li>
+                            <li>📤 @Loc["You can export any account to a spreadsheet at any time."]</li>
+                        </ul>
+                        @if (State.CurrentAccountId != Guid.Empty)
+                        {
+                            <div class="pm-actions">
+                                <button class="ghost" @onclick="DownloadData" disabled="@_exportBusy">📊 @Loc["Export this account (Excel)"]</button>
+                            </div>
+                        }
+                    </details>
+                }
                 @if (!_2faDisabling && _2faSetup is null && _2faRecoveryCodes is null)
                 {
                     <h4 class="pm-danger-h">@Loc["Delete account"]</h4>
@@ -327,6 +348,23 @@
         StateHasChanged();
     }
     private void CloseProfile() => _profileOpen = false;
+
+    private bool _exportBusy;
+    /// <summary>One-tap data export from the privacy panel — the same current-account Excel export offered in the
+    /// account menu, surfaced here so "you can always leave with your data" is a button, not just a promise.</summary>
+    private async Task DownloadData()
+    {
+        if (_exportBusy) return;
+        _exportBusy = true; StateHasChanged();
+        try
+        {
+            var (bytes, fileName) = await State.ExportCurrentAccountAsync();
+            await JS.InvokeVoidAsync("finappDownloadFile", fileName, Convert.ToBase64String(bytes),
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        }
+        catch { /* keep the panel quiet — the account-menu export is the primary path if this ever fails */ }
+        finally { _exportBusy = false; StateHasChanged(); }
+    }
 
     /// <summary>Schedule the signed-in user's account for deletion; on success /me flips to pending and the app shows the grace gate.</summary>
     private async Task DeleteAccount()
