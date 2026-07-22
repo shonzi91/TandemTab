@@ -1,6 +1,23 @@
 # TandemTab (FinApp) — session handoff
 
-Last updated: 2026-07-22 (Session 40). Read this + [README.md](README.md) + [TRANSFER.md](TRANSFER.md) + recent `git log` to catch up.
+Last updated: 2026-07-22 (Session 41). Read this + [README.md](README.md) + [TRANSFER.md](TRANSFER.md) + recent `git log` to catch up.
+
+## Session 41 (2026-07-22) — the login/reset-form bug (a Razor footgun), plus bank-review pin word-chooser. COMMITTED, PUSHED & DEPLOYED (`finapp-00206-4mf`).
+Live on **`finapp-00206-4mf`** (both URLs 200, **5 `secretKeyRef`**). Deploy chain this session: `fde46bb`→`finapp-00204-hjq` (reset escape hatch), `7a67a44`→`00205-b7k` (the real reset fix), `65baf15`→`00206-4mf` (bank pin). Note: the three icon commits before this session (`abb6782`, `117b42a`, `5596de2` — "Option A" line-icons on semantic colour chips for categories/funds) were already on `main`, deployed by a prior session.
+
+### The urgent one: the sign-in overlay always showed "set a new password"
+User report: clicking **Try it free** (and after an external login with 2FA) landed on the reset-password form instead of sign-in. **Root cause (a classic Blazor footgun):** `<AuthPanel ResetToken="_resetToken" />` in `Landing.razor` — a quoted component attribute with **no `@`** is a *string literal*, so AuthPanel received the text `"_resetToken"` (always non-null), and its `_resetToken = ResetToken` made the reset branch fire on **every** overlay open. **Fix: `ResetToken="@_resetToken"`** so the real (null) value flows. (One-liner: [Landing.razor:101](src/FinApp.Shared.UI/Components/Landing.razor:101).)
+- **Kept as hardening:** AuthPanel ignores a reset token while a 2FA challenge is pending (`_resetToken = _twoFactorTicket is null ? ResetToken : null`); `OpenAuth()` clears the token; and the earlier **"Back to sign in"** escape on the reset form (`fde46bb`) stays.
+- **⚠️ Debugging lessons worth keeping:** (1) I first **misdiagnosed** this as stale cache / a lingering token and shipped two symptom-fixes (`fde46bb`, and part of `7a67a44`) that didn't address it — the static trace *said* it was impossible. (2) What cracked it: reproducing on **prod** (fresh, no service worker) ruled out local cache, then adding a temporary `Console.WriteLine` in `OnInitializedAsync` printed `ResetToken param='_resetToken'` — the literal string, caught red-handed. (3) **The preview harness keeps ONE long-lived Blazor WASM instance and aggressively caches DLLs** (`caches` API key `dotnet-resources-/`), so local browser tests can silently run stale code — adding any code (new DLL hash) or clearing that cache forces fresh. This is *the* reason auth/login UI keeps being "unverifiable" in prior handoffs.
+
+### Bank review: pin now opens a word-chooser; kill the mid-save flash (`65baf15`)
+- **Pin → inline word chooser.** Pinning a review row used to save a rule from the whole description immediately. Now the pin button opens the **same `.rule-chip` word toggles the edit-expense rule editor uses** (`BankTokens` → chips): pick which words identify the merchant, then **Save rule**. Rule key = the selected words; target = the row's already-chosen category (debit) or fund/contributor (credit); still auto-files matching pending rows. New state `_pinEditId`/`_pinTokens`/`_pinOn` + `BeginPinEdit`/`TogglePinToken`/`SavePinEdit`; `TogglePin` now opens the chooser instead of calling the (removed) `RememberMapping`. New `.pin-rule-edit` CSS (reuses `.rule-tokens`/`.rule-chip`).
+- **Mid-save "already logged this" flash fixed.** Added `&& !_bankBusy` to the dup-hint guard — pinning auto-files the row, which briefly self-matches; suppressing during any bank op covers it (same reason the confirm path was already guarded).
+- **⚠️ Bank sync is PROD-ONLY** (Enable Banking isn't credentialed in dev), so both bank changes are **build- + review-verified only — NOT browser-verified.** Exercise the pin word-chooser and the no-flash behaviour on a real bank-connected account.
+
+### Open loose ends (carried from Session 33-era work, still unverified)
+- **Email send-test:** the rotated `admin@tandemtab.com` password is live but never positively send-tested — trigger one verification/invite email (failures are silent). See [[project-email-secret-rotation]].
+- **External-accounts header icon** is bank-gated, so it never rendered on a no-bank dev account — confirm it shows on a bank-enabled account.
 
 ## Session 40 (2026-07-22) — icon system + Home de-emoji, account-pick bug fix, runway what-if, privacy panel, review-badge simplification. COMMITTED, PUSHED & DEPLOYED (`finapp-00200-dpn`).
 One commit `7905de4` → image `finapp:7905de4` (digest `sha256:33ef0793…`, Cloud Build 3m31s) → **`finapp-00200-dpn`** (live, 100%). Post-deploy: run URL + tandemtab.com 200, **5 `secretKeyRef`**, `Kms__KeyName` + `Snapshots__CompressWrites=true` intact, **zero WARNING+**. **354 tests green** (212 domain + 98 server + 44 persistence), Release build clean.
