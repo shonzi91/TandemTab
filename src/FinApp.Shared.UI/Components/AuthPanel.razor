@@ -42,6 +42,8 @@
             <button class="primary" @onclick="ResetPassword" disabled="@(_busy || _password.Length < 8 || _confirmPassword.Length == 0)">
                 @(_busy ? Loc["Saving…"] : Loc["Set new password"])
             </button>
+            @* Escape hatch: a stale/bookmarked reset link shouldn't trap someone who just wants to sign in. *@
+            <button class="auth-provider" @onclick="BackToSignIn">@Loc["Back to sign in"]</button>
         }
     }
     else if (_forgotMode)
