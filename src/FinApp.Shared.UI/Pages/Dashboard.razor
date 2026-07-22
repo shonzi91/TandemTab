@@ -3936,8 +3936,9 @@ else
                 <span class="amt @(isDebit ? "" : "credit")">@(isDebit ? "−" : "+")@Fmt(new Money(Math.Abs(t.Amount), State.Currency))</span>
             </div>
             @* While a row is being confirmed the new expense is posted before this pending row is removed, so it
-               would momentarily match itself and flash "you already logged this". Suppress the hint mid-save. *@
-            @if (isDebit && !_dupDismissed.Contains(id) && !_rowSaving.Contains(id) && DupSuggestions.TryGetValue(id, out var dup))
+               would momentarily match itself and flash "you already logged this". Suppress the hint mid-save —
+               including while pinning (the rule auto-files matching rows, which briefly self-matches too). *@
+            @if (isDebit && !_bankBusy && !_dupDismissed.Contains(id) && !_rowSaving.Contains(id) && DupSuggestions.TryGetValue(id, out var dup))
             {
                 <div class="dup-hint">
                     <span class="dup-txt">🔁 @string.Format(Loc["Looks like you already logged this: {0} · {1} {2} · {3} · {4}"], Fmt(dup.Amount), dup.CategoryIcon, dup.Category, dup.Fund, dup.Date.ToString("dd MMM"))</span>
@@ -4010,6 +4011,23 @@ else
                     <button class="icon-btn x" title="@Loc["Dismiss"]" @onclick="() => DismissBankRow(t)" disabled="@_bankBusy"><Icon Name="x" /></button>
                 </span>
             </div>
+            @* Pinning opens an inline word-chooser (same chips as the edit-expense rule editor): pick which words
+               identify this merchant, then save the auto-file rule. *@
+            @if (_pinEditId == id)
+            {
+                <div class="pin-rule-edit">
+                    <span class="rule-tokens" title="@Loc["Tap a word to include or exclude it from matching. A transaction matches when all the highlighted words appear in it."]">
+                        @foreach (var tok in _pinTokens)
+                        {
+                            <button type="button" class="rule-chip @(_pinOn.Contains(tok) ? "on" : "")" @onclick="() => TogglePinToken(tok)">@tok</button>
+                        }
+                    </span>
+                    <span class="pin-rule-actions">
+                        <button class="chip on" @onclick="() => SavePinEdit(t)" disabled="@_bankBusy">@Loc["Save rule"]</button>
+                        <button class="chip" @onclick="() => _pinEditId = null" disabled="@_bankBusy">@Loc["Cancel"]</button>
+                    </span>
+                </div>
+            }
         </li>;
 
     /// <summary>A saved auto-file rule row (a merchant match-key mapped to a category or fund), with inline
@@ -4262,35 +4280,59 @@ else
     }
 
     // --- Merchant mapping (feature 2.3) -----------------------------------
-    /// <summary>Remember the current pick for this merchant so future imports pre-fill it. Debits map to the
-    /// chosen category; credits map to the chosen fund/contributor (kept for when credits become entries).</summary>
-    private async Task RememberMapping(PendingBankTransactionDto tx)
+    /// <summary>The pin toggle: if this merchant already has a rule, clear it; otherwise open the inline word-chooser
+    /// so the user picks which words identify the merchant before the auto-file rule is saved.</summary>
+    private Task TogglePin(PendingBankTransactionDto tx)
     {
+        if (MappingFor(tx.Description) is not null) return ForgetMapping(tx);   // pinned → unpin
+        BeginPinEdit(tx);   // not pinned → choose the matching words, then SavePinEdit
+        return Task.CompletedTask;
+    }
+
+    // Pin word-chooser state: which review row is choosing its rule tokens, the tokens, and which are selected.
+    private string? _pinEditId;
+    private List<string> _pinTokens = [];
+    private HashSet<string> _pinOn = new(StringComparer.Ordinal);
+
+    private void BeginPinEdit(PendingBankTransactionDto tx)
+    {
+        _pinEditId = tx.ExternalId;
+        _pinTokens = BudgetingState.BankTokens(tx.Description).ToList();
+        _pinOn = _pinTokens.ToHashSet(StringComparer.Ordinal);   // start with every word on (most specific)
+        _bankError = null;
+    }
+
+    private void TogglePinToken(string token)
+    {
+        if (!_pinOn.Remove(token)) _pinOn.Add(token);
+        if (_pinOn.Count == 0) _pinOn.Add(token);   // keep at least one word selected
+    }
+
+    /// <summary>Save the auto-file rule from the pin chooser: key = the selected words, target = the row's current
+    /// category (debit) or fund/contributor (credit). Then auto-file this merchant's matching pending rows.</summary>
+    private async Task SavePinEdit(PendingBankTransactionDto tx)
+    {
+        var newKey = string.Join(' ', _pinTokens.Where(_pinOn.Contains));
+        if (newKey.Length == 0) newKey = string.Join(' ', _pinTokens);
+        string kind; Guid target;
+        if (tx.Amount < 0) { kind = "category"; target = RowCat(tx.ExternalId); }
+        else { var (k, t) = ParseCredit(RowCredit(tx.ExternalId)); kind = k; target = t; }
+        if (target == Guid.Empty) { _bankError = Loc["Pick something to map to first."]; return; }
+
         _bankBusy = true; _bankError = null;
         try
         {
-            string kind; Guid target;
-            if (tx.Amount < 0) { kind = "category"; target = RowCat(tx.ExternalId); }
-            else
-            {
-                var (k, t) = ParseCredit(RowCredit(tx.ExternalId));
-                kind = k; target = t;
-            }
-            if (target == Guid.Empty) { _bankError = Loc["Pick something to map to first."]; return; }
-            await State.SetBankMapping(tx.Description, kind, target);
-            _bankMappings[BudgetingState.BankMatchKey(tx.Description)] = (kind, target);
-            // The new rule now covers this merchant's pending rows in the current period — auto-file those so the
-            // review list clears itself. Prior-period rows stay pending until their own period is viewed.
+            await State.SetBankMapping(newKey, kind, target);
+            _bankMappings[newKey] = (kind, target);
+            _pinEditId = null;
+            // The new rule covers this merchant's pending rows in the current period — auto-file those so the review
+            // list clears itself. Prior-period rows stay pending until their own period is viewed.
             await AutoHandleMappedDebitsAsync();
             await AutoHandleMappedCreditsAsync();
         }
         catch (Exception ex) { _bankError = ex.Message; }
         finally { _bankBusy = false; }
     }
-
-    /// <summary>One toggle for the merchant rule: save the current pick, or clear an existing rule.</summary>
-    private Task TogglePin(PendingBankTransactionDto tx) =>
-        MappingFor(tx.Description) is null ? RememberMapping(tx) : ForgetMapping(tx);
 
     private async Task ForgetMapping(PendingBankTransactionDto tx)
     {

@@ -809,6 +809,7 @@ public sealed class Localizer(IJSRuntime js)
         // Modal action buttons
         ["Cancel"] = "Отказ",
         ["Save"] = "Запази",
+        ["Save rule"] = "Запази правило",
         ["Add"] = "Добави",
         ["Create"] = "Създай",
         ["Delete"] = "Изтрий",
