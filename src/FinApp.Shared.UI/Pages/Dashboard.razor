@@ -1653,12 +1653,7 @@ else
                     @* No "Recent" chips here: the most-used categories are already reachable from the Home
                        Add-expense hover menu ("Quick add to"), which opens this modal pre-selected. *@
                     <label><span class="lbl-row">@Loc["Category"] <button type="button" class="lbl-add" title="@Loc["Add category"]" @onclick="ExpenseAddCategory">+</button></span>
-                        <select @bind="_categoryId" @bind:after="OnExpenseCategoryChanged">
-                            @foreach (var (cat, depth) in State.CategoryOptions)
-                            {
-                                <option value="@cat.Id">@CatOption(cat.Id, cat.Name, depth)</option>
-                            }
-                        </select>
+                        <CategoryPicker Value="_categoryId" ValueChanged="OnExpenseCategoryPicked" Options="State.CategoryOptions" />
                     </label>
                     <label>@Loc["Amount"] <input type="number" step="0.01" min="0" @bind="_amount" @bind:event="oninput" /></label>
                     @if (_amount < 0)
@@ -1735,12 +1730,7 @@ else
                 case Modal.EditExpense:
                     <h3>@Loc["Edit expense"]</h3>
                     <label>@Loc["Category"]
-                        <select @bind="_categoryId">
-                            @foreach (var (cat, depth) in State.CategoryOptions)
-                            {
-                                <option value="@cat.Id">@CatOption(cat.Id, cat.Name, depth)</option>
-                            }
-                        </select>
+                        <CategoryPicker @bind-Value="_categoryId" Options="State.CategoryOptions" />
                     </label>
                     <label>@Loc["Amount"] <input type="number" step="0.01" min="0" @bind="_amount" /></label>
                     <label>@Loc["Date"] <input type="date" @bind="_expenseDate" /></label>
@@ -2440,12 +2430,7 @@ else
                 case Modal.SpendSaving:
                     <h3>@Loc["Spend savings"] — @State.SavingBucketName(_spendExpBucketId)</h3>
                     <label>@Loc["Category"]
-                        <select @bind="_spendExpCategoryId">
-                            @foreach (var (cat, depth) in State.CategoryOptions)
-                            {
-                                <option value="@cat.Id">@CatOption(cat.Id, cat.Name, depth)</option>
-                            }
-                        </select>
+                        <CategoryPicker @bind-Value="_spendExpCategoryId" Options="State.CategoryOptions" />
                     </label>
                     <label>@Loc["Amount"] <input type="number" step="0.01" min="0" @bind="_spendExpAmount" /></label>
                     <small class="hint">@Loc["Records a real expense paid straight from this bucket (dated today)."]</small>
@@ -5611,6 +5596,9 @@ else
     {
         if (_amount <= 0) _fundId = DefaultFundForCategory(_categoryId);
     }
+
+    /// <summary>CategoryPicker (Add-expense) sets the id then runs the same follow-to-default-fund as the old select.</summary>
+    private void OnExpenseCategoryPicked(Guid id) { _categoryId = id; OnExpenseCategoryChanged(); }
 
     /// <summary>Prefill the add-expense modal from the most recent manual expense — the "repeat last" quick action (#11).</summary>
     private void RepeatLastExpense()
