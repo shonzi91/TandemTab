@@ -131,6 +131,25 @@ web app stays the acceptance test throughout.
 - **Push notifications** (FCM/APNs) — deferred backlog item #10; recurring bills-due + savings nudges.
 - **Biometric unlock** (Face ID / fingerprint) gating a finance app.
 - Deep links for OAuth code exchange and the Enable Banking `/bank/callback`.
+- **On-device SMS/notification importer** — the lowest-friction capture loop (Beyond Budget's edge: a
+  transaction notification is parsed into a pending expense with no export/upload ritual). This is the single
+  most on-strategy capture feature we could build **because** it can beat their convenience *without* their
+  privacy cost — but only under a hard rule (see the red line below). Android only (iOS forbids reading SMS).
+
+### ⚠️ Privacy red line for any capture feature (SMS parse, receipt OCR, "smart" categorisation)
+Our one clean differentiator is **"your raw data is never sold or fed to AI."** The convenience features that
+out-capture us (Beyond Budget's SMS auto-import, AI receipt scan, AI suggestions) are exactly the ones that
+**breach that promise the instant raw data touches an off-device AI/cloud service.** So the rule is absolute:
+
+- **Any capture/categorisation that uses ML/AI MUST run strictly on-device with ZERO raw-data egress.** No cloud
+  OCR call, no categorisation LLM over the wire, no "we only send the merchant string" — that is still egress.
+- On-device only: local notification/SMS regex/parsing, on-device OCR (e.g. platform Vision/MLKit **local**
+  models), on-device categorisation against the user's own history (we already do merchant→category mapping).
+- If a feature can't be done on-device, **don't ship it** rather than quietly relax the claim. One convenient
+  cloud API call is enough to make "never fed to AI" a lie, and that claim is the reason to exist vs Beyond
+  Budget. Convenience bought by breaking it turns us into "Beyond Budget with worse mobile."
+- Statement import (CSV/OFX/QIF/…) stays the privacy-preserving baseline: the user hands over a file they
+  control, parsed locally — no aggregator, no AI. On-device SMS import is the same principle, made continuous.
 
 ## Phase 5 — distribution
 - Android: signed AAB → Play Console (internal testing first).
