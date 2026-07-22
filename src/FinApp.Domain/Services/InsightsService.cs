@@ -5,7 +5,7 @@ using FinApp.Domain.Common;
 using FinApp.Domain.Periods;
 using FinApp.Domain.Services;
 
-namespace FinApp.Shared.UI.Services;
+namespace FinApp.Domain.Services;
 
 /// <summary>How a delta should read: <c>Up</c> = spending/cost rose (bad, red), <c>Down</c> = fell (good, green), <c>Flat</c> = neutral.</summary>
 public enum DeltaDir { Up, Down, Flat }
@@ -18,14 +18,14 @@ public enum SignalKind { Warn, Good, Info }
 
 public sealed record Signal(SignalKind Kind, string Title, string Desc, string Delta, DeltaDir Dir);
 
-public sealed record CategorySpend(string Name, string Icon, Money Amount, decimal BarFraction, DeltaDir Dir, string ColorHex);
+public sealed record CategorySpend(string Name, string? Icon, Money Amount, decimal BarFraction, DeltaDir Dir, string ColorHex);
 
 public sealed record TrendPoint(string Label, Money Outgoings, decimal BarFraction, bool IsCurrent);
 
 /// <summary>A labelled mini-trend across recent periods for the Insights "trends over time" strip (#9). <see cref="Points"/>
 /// are chronological raw values (percentage points for rates, currency amounts otherwise). <see cref="Dir"/> is already
 /// framed as a sentiment colour — <c>Down</c> = good/green, <c>Up</c> = bad/red — matching the signal cards.</summary>
-public sealed record TrendSeries(string Label, string Icon, IReadOnlyList<decimal> Points, string CurrentText, string DeltaNote, DeltaDir Dir);
+public sealed record TrendSeries(string Label, string? Icon, IReadOnlyList<decimal> Points, string CurrentText, string DeltaNote, DeltaDir Dir);
 
 public sealed record QuickWin(string Text);
 
@@ -274,7 +274,7 @@ public sealed class InsightsService
             var (cat, cur, prevAmt) = rows[i];
             var dir = DeltaDirection(cur.Amount, prevAmt.Amount);
             var bar = max > 0m ? cur.Amount / max : 0m;
-            result.Add(new CategorySpend(cat.Name, CategoryIcons.Effective(cat), cur, bar, dir, Palette[i % Palette.Length]));
+            result.Add(new CategorySpend(cat.Name, cat.Icon, cur, bar, dir, Palette[i % Palette.Length]));
         }
         return result;
     }
@@ -401,7 +401,7 @@ public sealed class InsightsService
                     : diff > 0m
                         ? string.Format(_t("Up {0} vs your {1}-period average of {2}."), fmt(new Money(decimal.Round(diff, 2), currency)), priorK, fmt(new Money(decimal.Round(avg, 2), currency)))
                         : string.Format(_t("Down {0} vs your {1}-period average of {2}."), fmt(new Money(decimal.Round(-diff, 2), currency)), priorK, fmt(new Money(decimal.Round(avg, 2), currency)));
-            result.Add(new TrendSeries(top.Cat.Name, CategoryIcons.Effective(top.Cat), spend, fmt(new Money(cur, currency)), note, dir));
+            result.Add(new TrendSeries(top.Cat.Name, top.Cat.Icon, spend, fmt(new Money(cur, currency)), note, dir));
         }
 
         return result;

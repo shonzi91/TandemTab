@@ -100,3 +100,34 @@ public record MilestonesDto(int Earned, int Total, int InProgress)
 {
     public static readonly MilestonesDto Empty = new(0, 0, 0);
 }
+
+/// <summary>
+/// The Insights health read for the account's latest period, computed server-side (Option-A migration). Carries the
+/// <b>structural</b> figures — the gauge <see cref="Score"/> (0–100) and <see cref="Band"/> ("at-risk"/"average"/
+/// "healthy"), the savings rate vs target + shortfall, the outgoings trend, and the per-category breakdown. The
+/// <b>localized narrative</b> (verdict, signal cards, savings critique, quick wins) is deliberately NOT exposed: the
+/// domain bakes it in English via a translate delegate, so each client builds that copy in its own language.
+/// <see cref="HasData"/> is false (and everything zeroed) when the period has nothing to score yet.
+/// </summary>
+public record InsightsDto(
+    bool HasData,
+    int Score,
+    int? ScoreDelta,
+    string Band,
+    decimal? SavingsRate,
+    decimal SavingsTarget,
+    decimal? SavingsShortfall,
+    bool TrendUp,
+    decimal TrendAverage,
+    IReadOnlyList<InsightCategoryDto> Breakdown,
+    IReadOnlyList<InsightTrendPointDto> Trend)
+{
+    public static readonly InsightsDto Empty = new(false, 0, null, "average", null, 0.20m, null, false, 0m, [], []);
+}
+
+/// <summary>One row of the Insights spending breakdown. <see cref="Icon"/> is the category's raw stored icon (the
+/// client resolves it to a display icon); <see cref="Dir"/> is "up"/"down"/"flat" vs the prior period.</summary>
+public record InsightCategoryDto(string Name, string? Icon, decimal Amount, decimal BarFraction, string Dir);
+
+/// <summary>One bar of the Insights outgoings trend (one recent period).</summary>
+public record InsightTrendPointDto(string Label, decimal Outgoings, decimal BarFraction, bool IsCurrent);

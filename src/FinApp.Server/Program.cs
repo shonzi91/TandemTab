@@ -583,6 +583,28 @@ accounts.MapGet("/{id:guid}/milestones", async (Guid id, ClaimsPrincipal user, S
     return Results.Ok(new MilestonesDto(c.Earned, c.Total, c.InProgress));
 });
 
+// The Insights health read (latest period): the gauge score/band + savings + trend + breakdown numbers. The
+// localized narrative (verdict, signals, critique, quick-wins) stays a per-client concern — see InsightsDto.
+accounts.MapGet("/{id:guid}/insights", async (Guid id, ClaimsPrincipal user, SnapshotService svc, CancellationToken ct) =>
+{
+    var snap = await svc.GetAsync(user.UserId(), id, ct);
+    if (string.IsNullOrEmpty(snap.Payload)) return Results.Ok(InsightsDto.Empty);
+    var account = AccountSnapshotSerializer.Deserialize(snap.Payload);
+    if (account.Periods.Count == 0) return Results.Ok(InsightsDto.Empty);
+    // Copy is irrelevant here (the DTO exposes numbers, not narrative), so a no-op formatter is fine.
+    var report = new InsightsService().Build(account, account.Periods.Count - 1, static _ => string.Empty);
+    if (!report.HasData) return Results.Ok(InsightsDto.Empty);
+
+    static string Dir(DeltaDir d) => d == DeltaDir.Up ? "up" : d == DeltaDir.Down ? "down" : "flat";
+    static string Band(HealthBand b) => b == HealthBand.Healthy ? "healthy" : b == HealthBand.AtRisk ? "at-risk" : "average";
+    return Results.Ok(new InsightsDto(
+        report.HasData, report.Score, report.ScoreDelta, Band(report.Band),
+        report.SavingsRate, report.SavingsTarget, report.SavingsShortfall?.Amount,
+        report.TrendUp, report.TrendAverage.Amount,
+        report.Breakdown.Select(c => new InsightCategoryDto(c.Name, c.Icon, c.Amount.Amount, c.BarFraction, Dir(c.Dir))).ToList(),
+        report.Trend.Select(t => new InsightTrendPointDto(t.Label, t.Outgoings.Amount, t.BarFraction, t.IsCurrent)).ToList()));
+});
+
 accounts.MapPut("/{id:guid}/snapshot", async (Guid id, SaveAccountRequest req, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
 {
     var version = await svc.SaveAsync(user.UserId(), id, req, ct);

@@ -2550,7 +2550,7 @@ else
                                 {
                                     <div class="mini-trend @(mt.Dir == DeltaDir.Up ? "up" : mt.Dir == DeltaDir.Down ? "down" : "flat")">
                                         <div class="mt-head">
-                                            <span class="mt-label"><CatIcon Name="@mt.Icon" /> @mt.Label</span>
+                                            <span class="mt-label"><CatIcon Name="@CategoryIcons.Effective(mt.Icon, mt.Label)" /> @mt.Label</span>
                                             <span class="mt-cur">@mt.CurrentText</span>
                                         </div>
                                         @TrendSparkline(mt.Points)

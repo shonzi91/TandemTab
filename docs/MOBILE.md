@@ -111,8 +111,14 @@ web app stays the acceptance test throughout.
   Shared.UI → `FinApp.Domain.Services`** (it only ever depended on domain reads; the client passes its `fmt`/`translate`
   for localized copy, the server ignores copy and counts). New `AchievementsService.Counts` + `MilestoneCounts`; 3
   domain tests. Single source of truth — the count can't drift from the on-screen catalogue. NOT wired into the web client.
-- ☐ ⚠️ **Health score / insights** — the real wall: `InsightsService` lives in **`Shared.UI`, not the
-  domain**, so it must be ported into the domain first before it can move server-side.
+- ✅ `GET /accounts/{id}/insights` → `InsightsDto` (empty when the latest period has nothing to score). **The wall
+  is cleared: `InsightsService` moved Shared.UI → `FinApp.Domain.Services`.** Its only Shared.UI tie was `CategoryIcons`
+  on two lines — decoupled by carrying the category's **raw stored icon** (client resolves the display icon), same as
+  Targets. The DTO exposes the **structural** figures — gauge score/band, savings rate/target/shortfall, outgoings
+  trend, per-category breakdown; the **localized narrative** (verdict, signal cards, savings critique, quick-wins)
+  stays a per-client concern (the domain bakes it in English via a `translate` delegate). 3 domain tests (was
+  untestable in Shared.UI). NOT wired into the web client. **Follow-on:** restructure signals/verdict into structured
+  data so native clients can localize them — the narrative isn't in the API yet.
 
 **Deferred / to settle:**
 - ☐ **Wire the web client** to the endpoints — deliberately NOT done per read; a piecemeal hybrid (client
