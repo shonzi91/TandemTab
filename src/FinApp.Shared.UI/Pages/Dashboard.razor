@@ -252,16 +252,17 @@ else
         // Compact icon control: a button showing the current (or name-guessed) icon that sits next to the Name field
         // and toggles a collapsible palette below it. Clicking a swatch sets the icon and closes the palette.
         RenderFragment iconButton =
-        @<button type="button" class="name-icon-btn @(_iconOpen ? "open" : "")" title="@Loc["Choose an icon"]" @onclick="() => _iconOpen = !_iconOpen">@(_fIcon ?? (string.IsNullOrEmpty(_fName) ? "🏷️" : CategoryIcons.Guess(_fName)))</button>;
+        @<button type="button" class="name-icon-btn @(_iconOpen ? "open" : "")" title="@Loc["Choose an icon"]" @onclick="() => _iconOpen = !_iconOpen"><CatIcon Name="@CategoryIcons.Effective(_fIcon, _fName)" /></button>;
         RenderFragment iconGrid =
         @<text>
             @if (_iconOpen)
             {
+                var curIcon = _fIcon is null ? null : CategoryIcons.Effective(_fIcon, _fName);
                 <div class="icon-grid">
-                    <button type="button" class="icon-opt @(_fIcon is null ? "sel" : "")" title="@Loc["Auto (from name)"]" @onclick="@(() => { _fIcon = null; _iconOpen = false; })">@(string.IsNullOrEmpty(_fName) ? "🏷️" : CategoryIcons.Guess(_fName))</button>
+                    <button type="button" class="icon-opt @(_fIcon is null ? "sel" : "")" title="@Loc["Auto (from name)"]" @onclick="@(() => { _fIcon = null; _iconOpen = false; })"><CatIcon Name="@(string.IsNullOrEmpty(_fName) ? CategoryIcons.Fallback : CategoryIcons.Guess(_fName))" /></button>
                     @foreach (var ic in CategoryIcons.Palette)
                     {
-                        <button type="button" class="icon-opt @(_fIcon == ic ? "sel" : "")" @onclick="@(() => { _fIcon = ic; _iconOpen = false; })">@ic</button>
+                        <button type="button" class="icon-opt @(curIcon == ic ? "sel" : "")" @onclick="@(() => { _fIcon = ic; _iconOpen = false; })"><CatIcon Name="@ic" /></button>
                     }
                 </div>
             }
@@ -343,7 +344,7 @@ else
                                 @foreach (var cid in homeRecentCats)
                                 {
                                     var catId = cid;
-                                    <button type="button" class="quick-cat" role="menuitem" @onclick="() => OpenAddExpense(catId)"><span class="cat-ico">@State.CategoryIcon(catId)</span> @State.CategoryName(catId)</button>
+                                    <button type="button" class="quick-cat" role="menuitem" @onclick="() => OpenAddExpense(catId)"><CatIcon Name="@State.CategoryIcon(catId)" /> @State.CategoryName(catId)</button>
                                 }
                             </div>
                         }
@@ -515,7 +516,7 @@ else
                         @foreach (var t in homeTargets)
                         {
                             <div class="target-row">
-                                <span class="target-ico">@t.Icon</span>
+                                <CatIcon Name="@t.Icon" />
                                 <span class="target-name">@t.Name</span>
                                 @if (t.Reached)
                                 {
@@ -632,7 +633,7 @@ else
                             <div class="fund-row@(over ? " over" : "")">
                                 <span class="fund-sw@(empty ? " empty" : "")" style="@(empty ? "" : $"background:{fundColor[fid]}")"></span>
                                 <button class="fund-row-name" title="@(string.IsNullOrEmpty(note) ? Loc["Actions"] : note)" @onclick="() => ToggleFundMenu(fid)">
-                                    <span class="fund-row-ico">@if (synced) { <Icon Name="link" /> } else { @State.FundIcon(fid) }</span> @f.Name
+                                    @if (synced) { <span class="fund-row-ico"><Icon Name="link" /></span> } else { <CatIcon Name="@State.FundIcon(fid)" /> } @f.Name
                                 </button>
                                 <span class="fund-row-amt" title="@(synced ? SyncedFundDisplay(fid).Title : "")">@Fmt(bal)</span>
                                 <button class="fund-row-more" title="@Loc["Actions"]" @onclick="() => ToggleFundMenu(fid)">⋯</button>
@@ -708,11 +709,11 @@ else
                         var cid = c.Id;
                         <li class="row-menu-host">
                             <span class="row-main row-stack">
-                                <span class="row-title"><span class="cat-ico">@State.ContributionCategoryIcon(c.CategoryId)</span> <span class="row-title-txt">@ContribCatDisplay(c.CategoryId)</span></span>
+                                <span class="row-title"><CatIcon Name="@State.ContributionCategoryIcon(c.CategoryId)" /> <span class="row-title-txt">@ContribCatDisplay(c.CategoryId)</span></span>
                                 <span class="row-sub">
                                     <span>@c.Date.ToString("dd MMM")</span>
                                     <span class="sub-to"><Avatar Name="@State.MemberName(c.MemberId)" Picture="@State.MemberAvatar(c.MemberId)" Size="18" /> @State.MemberName(c.MemberId)@(State.IsRealUser(c.MemberId) ? "" : $" ({Loc["imported"]})")</span>
-                                    <span class="sub-to">@Loc["to"] <span class="cat-ico">@State.FundIcon(c.FundId)</span> @State.FundName(c.FundId)</span>
+                                    <span class="sub-to">@Loc["to"] <CatIcon Name="@State.FundIcon(c.FundId)" /> @State.FundName(c.FundId)</span>
                                 </span>
                             </span>
                             <span class="amt credit">@Fmt(c.Paid)</span>
@@ -798,7 +799,7 @@ else
                         var catId = cat.Id;
                         <div class="ring-card ring-card-lg@(State.ChildrenOf(catId).Any() ? " has-subs" : "")">
                             <ProgressRing Percent="@((double)(cov.Percent ?? 0))" Class="@cls" Ramp="spend">
-                                <button class="ring-ico-big" title="@Loc["Actions"]" @onclick="() => ToggleBudgetMenu(catId)">@State.CategoryIcon(catId)</button>
+                                <button class="ring-ico-big" title="@Loc["Actions"]" @onclick="() => ToggleBudgetMenu(catId)"><CatIcon Name="@State.CategoryIcon(catId)" Class="cat-chip-lg" /></button>
                                 <button class="ring-name" title="@Loc["Actions"]" @onclick="() => ToggleBudgetMenu(catId)">@cat.Name</button>
                             </ProgressRing>
                             <div class="ring-label"><span>@Fmt(cov.Spent) / @Fmt(cov.Allocated)</span></div>
@@ -810,7 +811,7 @@ else
                         var catId = cat.Id;
                         <div class="ring-card ring-card-lg@(State.ChildrenOf(catId).Any() ? " has-subs" : "")">
                             <ProgressRing Percent="0" Class="mint" Dashed="true">
-                                <button class="ring-ico-big" title="@Loc["Actions"]" @onclick="() => ToggleBudgetMenu(catId)">@State.CategoryIcon(catId)</button>
+                                <button class="ring-ico-big" title="@Loc["Actions"]" @onclick="() => ToggleBudgetMenu(catId)"><CatIcon Name="@State.CategoryIcon(catId)" Class="cat-chip-lg" /></button>
                                 <button class="ring-name" title="@Loc["Actions"]" @onclick="() => ToggleBudgetMenu(catId)">@cat.Name</button>
                             </ProgressRing>
                             <div class="ring-label"><span class="amt">@Fmt(State.SpentInCategory(catId))</span> <span class="ring-muted">@Loc["no budget"]</span></div>
@@ -855,9 +856,9 @@ else
                     RenderFragment<FinApp.Domain.Budgeting.Expense> row = e =>
                         @<li>
                             <span class="row-main row-stack">
-                                <span class="row-title"><span class="cat-ico">@State.CategoryIcon(e.CategoryId)</span> <span class="row-title-txt">@State.CategoryName(e.CategoryId)</span></span>
+                                <span class="row-title"><CatIcon Name="@State.CategoryIcon(e.CategoryId)" /> <span class="row-title-txt">@State.CategoryName(e.CategoryId)</span></span>
                                 <span class="row-sub">
-                                    <span class="sub-to"><span class="cat-ico">@State.FundIcon(e.FundId)</span> @State.FundName(e.FundId)</span>
+                                    <span class="sub-to"><CatIcon Name="@State.FundIcon(e.FundId)" /> @State.FundName(e.FundId)</span>
                                     @if (e.IsFromSavings) { <span><Icon Name="coins" /> @Loc["saving"]</span> }
                                     @if (!string.IsNullOrEmpty(e.Note)) { <span class="sub-note">@e.Note</span> }
                                     @if (e.IsSettlementSource)
@@ -978,7 +979,7 @@ else
                         var done = isDebt ? ctx.Bucket.IsDebtCleared : (g is not null && g.GoalReached);
                     }
                     <ProgressRing Percent="@ringPct" Percent2="@(isDebt ? stagedPct : 0)" Class="@ringCls" Class2="staged" Dashed="@ringDashed" Ramp="@ringRamp">
-                        <button class="ring-ico-big" title="@Loc["Actions"]" @onclick="() => ToggleRowMenu(bucketId)">@State.SavingBucketIcon(bucketId)</button>
+                        <button class="ring-ico-big" title="@Loc["Actions"]" @onclick="() => ToggleRowMenu(bucketId)"><CatIcon Name="@State.SavingBucketIcon(bucketId)" Class="cat-chip-lg" /></button>
                         <button class="ring-name" title="@Loc["Actions"]" @onclick="() => ToggleRowMenu(bucketId)">@ctx.Bucket.Name</button>
                         @if (done)
                         {
@@ -1319,7 +1320,7 @@ else
                     @* Cancel/Save live in the head, not at the foot: this modal has its own sticky header, so the
                        floating ✕/✓ would land on top of it. Same ✕/✓ language as every other modal. *@
                     <div class="modal-head">
-                        <h3>@State.CategoryIcon(_modalCatId) @Loc["Edit"] @State.CategoryName(_modalCatId)</h3>
+                        <h3><CatIcon Name="@State.CategoryIcon(_modalCatId)" /> @Loc["Edit"] @State.CategoryName(_modalCatId)</h3>
                         <span class="modal-head-actions">
                             <button class="exp-edit" title="@Loc["Delete"]" @onclick="EditDeleteSelf"><Icon Name="trash" /></button>
                             <button class="exp-edit" title="@Loc["Cancel"]" @onclick="Back"><Icon Name="x" /></button>
@@ -1348,7 +1349,7 @@ else
                             {
                                 var subId = sub.Id;
                                 <li>
-                                    <span class="row-main"><span class="cat-ico">@State.CategoryIcon(subId)</span> @sub.Name</span>
+                                    <span class="row-main"><CatIcon Name="@State.CategoryIcon(subId)" /> @sub.Name</span>
                                     <span class="row-actions">
                                         <button class="exp-edit" title="@Loc["Edit"]" @onclick="() => EditEditSub(subId)"><Icon Name="pencil" /></button>
                                         <button class="exp-edit" title="@Loc["Remove"]" @onclick="() => EditDeleteSub(subId)"><Icon Name="trash" /></button>
@@ -1393,7 +1394,7 @@ else
 
                 case Modal.CategoryDetail:
                     <div class="modal-head">
-                        <h3>@State.CategoryIcon(_modalCatId) @State.CategoryName(_modalCatId)</h3>
+                        <h3><CatIcon Name="@State.CategoryIcon(_modalCatId)" /> @State.CategoryName(_modalCatId)</h3>
                         <span class="modal-head-actions">
                             <button class="exp-edit" title="@Loc["Edit / budget"]" @onclick="DetailEdit"><Icon Name="pencil" /></button>
                             <button class="exp-edit" title="@Loc["Delete"]" @onclick="DetailDelete"><Icon Name="trash" /></button>
@@ -1411,7 +1412,7 @@ else
                     RenderFragment<FinApp.Domain.Budgeting.Expense> detailRow = e =>
                         @<li>
                             <span class="row-main row-stack">
-                                <span class="row-title"><span class="cat-ico">@State.FundIcon(e.FundId)</span> <span class="row-title-txt">@State.FundName(e.FundId)</span></span>
+                                <span class="row-title"><CatIcon Name="@State.FundIcon(e.FundId)" /> <span class="row-title-txt">@State.FundName(e.FundId)</span></span>
                                 <span class="row-sub">
                                     <span>@e.Date.ToString("dd MMM")</span>
                                     @if (!string.IsNullOrEmpty(e.Note)) { <span class="sub-note">@e.Note</span> }
@@ -1442,7 +1443,7 @@ else
                     </ul>
                     @foreach (var (sub, items) in childSections)
                     {
-                        <h5 class="detail-subcat"><span class="cat-ico">@State.CategoryIcon(sub.Id)</span> @sub.Name <span class="detail-subcat-sum">@Fmt(items.Aggregate(State.Money(0m), (s, e) => s + e.Amount))</span></h5>
+                        <h5 class="detail-subcat"><CatIcon Name="@State.CategoryIcon(sub.Id)" /> @sub.Name <span class="detail-subcat-sum">@Fmt(items.Aggregate(State.Money(0m), (s, e) => s + e.Amount))</span></h5>
                         <ul class="list list-even">
                             @foreach (var e in items) { @detailRow(e) }
                         </ul>
@@ -1537,7 +1538,7 @@ else
                             {
                                 var fid = f.Id;
                                 <li class="row-menu-host">
-                                    <span class="row-main"><span class="cat-ico">@State.FundIcon(fid)</span> @f.Name</span>
+                                    <span class="row-main"><CatIcon Name="@State.FundIcon(fid)" /> @f.Name</span>
                                     <span class="row-actions"><button class="exp-edit" title="@Loc["Restore"]" @onclick="() => State.RestoreFund(fid)"><Icon Name="rotate" /></button></span>
                                 </li>
                             }
@@ -1550,7 +1551,7 @@ else
                             @foreach (var c in arCats)
                             {
                                 <li class="row-menu-host">
-                                    <span class="row-main"><span class="cat-ico">@State.CategoryIcon(c.Id)</span> @c.Name</span>
+                                    <span class="row-main"><CatIcon Name="@State.CategoryIcon(c.Id)" /> @c.Name</span>
                                     <span class="row-actions"><button class="exp-edit" title="@Loc["Restore"]" @onclick="() => State.RestoreCategory(c.Id)"><Icon Name="rotate" /></button></span>
                                 </li>
                             }
@@ -1564,7 +1565,7 @@ else
                             {
                                 var aid = a.Bucket.Id;
                                 <li>
-                                    <span class="row-lead"><span class="cat-ico">@State.SavingBucketIcon(aid)</span> @a.Bucket.Name <span class="row-note">· @(a.Bucket.IsDebt ? Loc["debt"] : Loc["savings"])</span></span>
+                                    <span class="row-lead"><CatIcon Name="@State.SavingBucketIcon(aid)" /> @a.Bucket.Name <span class="row-note">· @(a.Bucket.IsDebt ? Loc["debt"] : Loc["savings"])</span></span>
                                     <span class="row-actions">
                                         <button class="exp-edit" title="@Loc["Restore"]" @onclick="() => RestoreBucket(aid)">↩️</button>
                                         <button class="exp-edit" title="@Loc["Remove"]" @onclick="() => OpenDeleteBucket(aid)"><Icon Name="trash" /></button>
@@ -2080,7 +2081,7 @@ else
                                 <span class="row-lead">
                                     <button class="exp-edit" title="@Loc["Rename"]" @onclick="() => OpenEditContribCat(cc.Id)"><Icon Name="pencil" /></button>
                                     <button class="exp-edit" title="@Loc["Remove"]" @onclick="() => OpenDeleteContribCat(cc.Id)"><Icon Name="trash" /></button>
-                                    <span><span class="cat-ico">@State.ContributionCategoryIcon(cc.Id)</span> @cc.Name</span>
+                                    <span><CatIcon Name="@State.ContributionCategoryIcon(cc.Id)" /> @cc.Name</span>
                                 </span>
                             </li>
                         }
@@ -2100,7 +2101,7 @@ else
                             <select @bind="_savingBucketId">
                                 @foreach (var (bucket, _) in saveBuckets)
                                 {
-                                    <option value="@bucket.Id">@(bucket.Icon ?? (bucket.IsDebt ? "💳" : "🐷")) @bucket.Name</option>
+                                    <option value="@bucket.Id">@bucket.Name</option>
                                 }
                             </select>
                         </label>
@@ -2564,7 +2565,7 @@ else
                                 {
                                     <div class="mini-trend @(mt.Dir == DeltaDir.Up ? "up" : mt.Dir == DeltaDir.Down ? "down" : "flat")">
                                         <div class="mt-head">
-                                            <span class="mt-label">@mt.Icon @mt.Label</span>
+                                            <span class="mt-label"><CatIcon Name="@mt.Icon" /> @mt.Label</span>
                                             <span class="mt-cur">@mt.CurrentText</span>
                                         </div>
                                         @TrendSparkline(mt.Points)
@@ -2816,16 +2817,17 @@ else
                 case Modal.ContribCat:
                     <h3>@(_contribCatId == Guid.Empty ? Loc["New contribution category"] : Loc["Rename category"])</h3>
                     <div class="name-icon-row">
-                        <button type="button" class="name-icon-btn @(_iconOpen ? "open" : "")" title="@Loc["Choose an icon"]" @onclick="() => _iconOpen = !_iconOpen">@(_fIcon ?? (string.IsNullOrEmpty(_contribCatName) ? "🏷️" : CategoryIcons.Guess(_contribCatName)))</button>
+                        <button type="button" class="name-icon-btn @(_iconOpen ? "open" : "")" title="@Loc["Choose an icon"]" @onclick="() => _iconOpen = !_iconOpen"><CatIcon Name="@CategoryIcons.Effective(_fIcon, _contribCatName)" /></button>
                         <label class="grow">@Loc["Name"] <input type="text" @bind="_contribCatName" /></label>
                     </div>
                     @if (_iconOpen)
                     {
+                        var curContribIcon = _fIcon is null ? null : CategoryIcons.Effective(_fIcon, _contribCatName);
                         <div class="icon-grid">
-                            <button type="button" class="icon-opt @(_fIcon is null ? "sel" : "")" title="@Loc["Auto (from name)"]" @onclick="@(() => { _fIcon = null; _iconOpen = false; })">@(string.IsNullOrEmpty(_contribCatName) ? "🏷️" : CategoryIcons.Guess(_contribCatName))</button>
+                            <button type="button" class="icon-opt @(_fIcon is null ? "sel" : "")" title="@Loc["Auto (from name)"]" @onclick="@(() => { _fIcon = null; _iconOpen = false; })"><CatIcon Name="@(string.IsNullOrEmpty(_contribCatName) ? CategoryIcons.Fallback : CategoryIcons.Guess(_contribCatName))" /></button>
                             @foreach (var ic in CategoryIcons.Palette)
                             {
-                                <button type="button" class="icon-opt @(_fIcon == ic ? "sel" : "")" @onclick="@(() => { _fIcon = ic; _iconOpen = false; })">@ic</button>
+                                <button type="button" class="icon-opt @(curContribIcon == ic ? "sel" : "")" @onclick="@(() => { _fIcon = ic; _iconOpen = false; })"><CatIcon Name="@ic" /></button>
                             }
                         </div>
                     }
@@ -2906,7 +2908,7 @@ else
                     break;
 
                 case Modal.EditFund:
-                    <h3>@State.FundIcon(_modalFundId) @Loc["Edit"] @State.FundName(_modalFundId)</h3>
+                    <h3><CatIcon Name="@State.FundIcon(_modalFundId)" /> @Loc["Edit"] @State.FundName(_modalFundId)</h3>
                     <div class="name-icon-row">
                         @iconButton
                         <label class="grow">@Loc["Name"] <input type="text" @bind="_fName" /></label>
@@ -3022,7 +3024,7 @@ else
                     break;
 
                 case Modal.FundMovements:
-                    <h3>@(State.FundIsSynced(_modalFundId) ? "🔗" : State.FundIcon(_modalFundId)) @State.FundName(_modalFundId)</h3>
+                    <h3>@if (State.FundIsSynced(_modalFundId)) { <span class="fund-row-ico"><Icon Name="link" /></span> } else { <CatIcon Name="@State.FundIcon(_modalFundId)" /> } @State.FundName(_modalFundId)</h3>
                     var _fmBal = State.FundIsSynced(_modalFundId) ? SyncedFundDisplay(_modalFundId).Amount : State.FundBalance(_modalFundId);
                     var _fmEarmarks = FundEarmarks(_modalFundId);
                     var _fmEarmarked = _fmEarmarks.Aggregate(State.Money(0), (s, e) => s + e.Total);
@@ -3041,7 +3043,7 @@ else
                         <ul class="list">
                             @foreach (var (bucket, total) in _fmEarmarks)
                             {
-                                <li><span class="row-main"><span class="cat-ico">@State.SavingBucketIcon(bucket.Id)</span> @bucket.Name</span><span class="amt">@Fmt(total)</span></li>
+                                <li><span class="row-main"><CatIcon Name="@State.SavingBucketIcon(bucket.Id)" /> @bucket.Name</span><span class="amt">@Fmt(total)</span></li>
                             }
                         </ul>
                     }
@@ -3232,7 +3234,7 @@ else
                     @foreach (var sub in subs)
                     {
                         var subId = sub.Id;
-                        <button class="row-menu-sub" @onclick="() => BudgetAct(() => OpenCategoryDetail(subId))"><span class="cat-ico">@State.CategoryIcon(subId)</span> @sub.Name</button>
+                        <button class="row-menu-sub" @onclick="() => BudgetAct(() => OpenCategoryDetail(subId))"><CatIcon Name="@State.CategoryIcon(subId)" /> @sub.Name</button>
                     }
                 }
                 @if (State.IsPeriodOpen)
@@ -4848,7 +4850,7 @@ else
     };
     private RenderFragment IconOrEmoji(string icon) => builder =>
     {
-        if (IconNames.Contains(icon))
+        if (IconNames.Contains(icon) || CategoryIcons.Names.Contains(icon))
         {
             builder.OpenComponent<Icon>(0);
             builder.AddAttribute(1, "Name", icon);
@@ -5907,9 +5909,9 @@ else
     /// <summary>This period's fund-to-fund transfers and out-to-account transfers, merged newest-first.</summary>
     private List<(DateOnly Date, string Label, Money Amount, Guid Id, bool IsExternal, string? Note, bool AutoFiled)> MergedTransfers() =>
         State.FundTransfers
-            .Select(t => (t.Date, Label: $"{State.FundIcon(t.FromFundId)} {State.FundName(t.FromFundId)} → {State.FundIcon(t.ToFundId)} {State.FundName(t.ToFundId)}", t.Amount, t.Id, IsExternal: false, t.Note, t.AutoFiled))
+            .Select(t => (t.Date, Label: $"{State.FundName(t.FromFundId)} → {State.FundName(t.ToFundId)}", t.Amount, t.Id, IsExternal: false, t.Note, t.AutoFiled))
             .Concat(State.ExternalTransfers
-                .Select(t => (t.Date, Label: $"{State.FundIcon(t.FundId)} {State.FundName(t.FundId)} 📤 {State.AccountName(t.ToAccountId ?? Guid.Empty)}", t.Amount, t.Id, IsExternal: true, t.Note, AutoFiled: false)))
+                .Select(t => (t.Date, Label: $"{State.FundName(t.FundId)} → {State.AccountName(t.ToAccountId ?? Guid.Empty)}", t.Amount, t.Id, IsExternal: true, t.Note, AutoFiled: false)))
             .OrderByDescending(t => t.Date)
             .ToList();
 
@@ -6247,7 +6249,7 @@ else
 
     /// <summary>Indent a category name in a flat &lt;select&gt; so the tree shape reads (sub-categories under parents).</summary>
     private string CatOption(Guid id, string name, int depth) =>
-        (depth == 0 ? "" : new string(' ', depth * 3) + "↳ ") + $"{State.CategoryIcon(id)} {name}";
+        (depth == 0 ? "" : new string(' ', depth * 3) + "↳ ") + name;
 
     private static string IndentLabel(string name, int depth) =>
         depth == 0 ? name : new string(' ', depth * 3) + "↳ " + name;

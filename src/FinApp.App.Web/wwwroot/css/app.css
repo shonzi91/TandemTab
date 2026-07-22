@@ -108,6 +108,16 @@ h1:focus {
 }
 .ic-s { width: .95em; height: .95em; }
 
+/* Category/fund/bucket icon chip: the white line icon on its semantic colour (see CatIcon + CategoryIcons.Color).
+   Sized in em so it tracks the surrounding text; the -lg variant is for the big progress-ring cards. */
+.cat-chip {
+    display: inline-grid; place-items: center; width: 1.9em; height: 1.9em; border-radius: .5em; flex: none;
+    color: #fff; vertical-align: -0.45em; line-height: 0;
+}
+.cat-chip .ic { width: 1.1em; height: 1.1em; stroke-width: 1.9; }
+.cat-chip-lg { width: 2.6rem; height: 2.6rem; border-radius: .8rem; }
+.cat-chip-lg .ic { width: 1.5rem; height: 1.5rem; }
+
 /* ─────────────────────────── DARK THEME ───────────────────────────
    The app's colours are hardcoded hex inside scoped component CSS. Rather than
    re-theme every file, this layer overrides the structural surfaces/text from a

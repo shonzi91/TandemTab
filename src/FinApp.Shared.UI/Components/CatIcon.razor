@@ -1,0 +1,11 @@
+@* A category/fund/bucket icon rendered as a coloured chip — the white line icon on its semantic colour, so a list
+   stays scannable by colour the way emoji were. `Name` is an icon name (see CategoryIcons.Effective). `Color`
+   defaults to the icon's semantic colour but can be overridden (e.g. a fund's own colour). Size follows font-size;
+   pass Class="cat-chip-lg" for the big ring cards. *@
+<span class="cat-chip @Class" style="background:@(Color ?? FinApp.Shared.UI.Services.CategoryIcons.Color(Name))"><Icon Name="@Name" /></span>
+
+@code {
+    [Parameter, EditorRequired] public string Name { get; set; } = "";
+    [Parameter] public string? Color { get; set; }
+    [Parameter] public string? Class { get; set; }
+}
