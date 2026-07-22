@@ -76,3 +76,17 @@ public record RunwayDto(
     bool BasedOnRecurring,
     int CompletedPeriodCount,
     bool HasUnknownAmounts);
+
+/// <summary>
+/// The Home "on track for" targets, computed server-side (Option-A migration). Empty when there's nothing to project
+/// (the client hides the card). Each target is a debt-free date or a savings goal: <see cref="TargetDto.Kind"/> is
+/// "debt-free" or "goal". For a goal, <see cref="TargetDto.Name"/> is the bucket name and <see cref="TargetDto.Icon"/>
+/// its stored icon; for debt-free both are empty/null (the client supplies the localized label + flag icon). A
+/// reached goal has <see cref="TargetDto.Reached"/> true and <see cref="TargetDto.Months"/> 0.
+/// </summary>
+public record TargetsDto(IReadOnlyList<TargetDto> Targets)
+{
+    public static readonly TargetsDto Empty = new([]);
+}
+
+public record TargetDto(string Kind, string Name, string? Icon, int Months, bool Reached);

@@ -560,6 +560,19 @@ accounts.MapGet("/{id:guid}/runway", async (Guid id, ClaimsPrincipal user, Snaps
         proj.HasUnknownAmounts));
 });
 
+// The Home "on track for" targets — the debt-free date + each savings goal's date. 200 with an empty list when
+// there's nothing to project (distinct from runway's 204: an empty target set is a normal, expected state).
+accounts.MapGet("/{id:guid}/targets", async (Guid id, ClaimsPrincipal user, SnapshotService svc, CancellationToken ct) =>
+{
+    var snap = await svc.GetAsync(user.UserId(), id, ct);
+    if (string.IsNullOrEmpty(snap.Payload)) return Results.Ok(TargetsDto.Empty);
+    var account = AccountSnapshotSerializer.Deserialize(snap.Payload);
+    var targets = AccountForecast.Targets(account)
+        .Select(t => new TargetDto(t.Kind == TargetKind.DebtFree ? "debt-free" : "goal", t.Name, t.Icon, t.Months, t.Reached))
+        .ToList();
+    return Results.Ok(new TargetsDto(targets));
+});
+
 accounts.MapPut("/{id:guid}/snapshot", async (Guid id, SaveAccountRequest req, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
 {
     var version = await svc.SaveAsync(user.UserId(), id, req, ct);
