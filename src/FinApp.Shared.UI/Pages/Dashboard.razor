@@ -858,7 +858,7 @@ else
                             <span class="row-main row-stack">
                                 <span class="row-title"><CatIcon Name="@State.CategoryIcon(e.CategoryId)" /> <span class="row-title-txt">@State.CategoryName(e.CategoryId)</span></span>
                                 <span class="row-sub">
-                                    <span class="sub-to"><CatIcon Name="@State.FundIcon(e.FundId)" /> @State.FundName(e.FundId)</span>
+                                    <span class="sub-to">@State.FundName(e.FundId)</span>
                                     @if (e.IsFromSavings) { <span><Icon Name="coins" /> @Loc["saving"]</span> }
                                     @if (!string.IsNullOrEmpty(e.Note)) { <span class="sub-note">@e.Note</span> }
                                     @if (e.IsSettlementSource)

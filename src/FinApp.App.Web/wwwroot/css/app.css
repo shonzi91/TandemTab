@@ -108,15 +108,44 @@ h1:focus {
 }
 .ic-s { width: .95em; height: .95em; }
 
-/* Category/fund/bucket icon chip: the white line icon on its semantic colour (see CatIcon + CategoryIcons.Color).
+/* Category/fund/bucket icon (see CatIcon) — Option B: a plain monochrome line icon in the brand accent, no chip.
    Sized in em so it tracks the surrounding text; the -lg variant is for the big progress-ring cards. */
-.cat-chip {
-    display: inline-grid; place-items: center; width: 1.9em; height: 1.9em; border-radius: .5em; flex: none;
-    color: #fff; vertical-align: -0.45em; line-height: 0;
+.cat-ic { display: inline-flex; align-items: center; flex: none; color: #13a06e; vertical-align: -0.18em; line-height: 0; }
+.cat-ic .ic { width: 1.15em; height: 1.15em; stroke-width: 1.9; }
+.cat-ic.cat-chip-lg .ic { width: 1.7rem; height: 1.7rem; }
+html.dark .cat-ic { color: var(--tm-mint); }
+
+/* CategoryPicker — a custom category dropdown that can show the icon chips a native <select> can't. */
+.cat-picker { position: relative; width: 100%; }
+.cat-picker-btn {
+    display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; cursor: pointer;
+    padding: 9px 10px; border: 1px solid #dde6e1; border-radius: 10px; background: #fff; font: inherit;
+    font-size: .95rem; font-weight: 600; color: inherit;
 }
-.cat-chip .ic { width: 1.1em; height: 1.1em; stroke-width: 1.9; }
-.cat-chip-lg { width: 2.6rem; height: 2.6rem; border-radius: .8rem; }
-.cat-chip-lg .ic { width: 1.5rem; height: 1.5rem; }
+.cat-picker-btn:hover { border-color: #12b29a; }
+.cat-picker.open .cat-picker-btn { border-color: #12b29a; box-shadow: 0 0 0 3px rgba(18,178,154,.16); }
+.cat-picker-btn:disabled { opacity: .6; cursor: default; }
+.cat-picker-lbl { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cat-picker-caret { flex: none; color: #12b29a; transition: transform .15s; }
+.cat-picker.open .cat-picker-caret { transform: rotate(180deg); }
+.cat-picker-backdrop { position: fixed; inset: 0; z-index: 90; }
+.cat-picker-menu {
+    position: absolute; z-index: 91; top: calc(100% + 4px); left: 0; right: 0; margin: 0; padding: 4px; list-style: none;
+    max-height: 260px; overflow-y: auto; background: #fff; border: 1px solid #e6ece9; border-radius: 10px;
+    box-shadow: 0 8px 24px rgba(0,0,0,.16);
+}
+.cat-picker-opt {
+    display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; cursor: pointer;
+    padding: 8px 10px; border: none; border-radius: 7px; background: none; font: inherit; font-size: .9rem; color: #374151;
+}
+.cat-picker-opt-lbl { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cat-picker-opt:hover { background: #f0faf5; }
+.cat-picker-opt.sel { background: #eef9f3; color: #0e9e6d; font-weight: 700; }
+html.dark .cat-picker-btn { background: #161a23; border-color: #313a4a; color: #e8eaf0; }
+html.dark .cat-picker-menu { background: #181c25; border-color: #262d3d; }
+html.dark .cat-picker-opt { color: #cfd4de; }
+html.dark .cat-picker-opt:hover { background: #1b2236; }
+html.dark .cat-picker-opt.sel { background: #14352a; color: #6fe0b4; }
 
 /* ─────────────────────────── DARK THEME ───────────────────────────
    The app's colours are hardcoded hex inside scoped component CSS. Rather than

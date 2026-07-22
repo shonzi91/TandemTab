@@ -1,8 +1,7 @@
-@* A category/fund/bucket icon rendered as a coloured chip — the white line icon on its semantic colour, so a list
-   stays scannable by colour the way emoji were. `Name` is an icon name (see CategoryIcons.Effective). `Color`
-   defaults to the icon's semantic colour but can be overridden (e.g. a fund's own colour). Size follows font-size;
-   pass Class="cat-chip-lg" for the big ring cards. *@
-<span class="cat-chip @Class" style="background:@(Color ?? FinApp.Shared.UI.Services.CategoryIcons.Color(Name))"><Icon Name="@Name" /></span>
+@* Category/fund/bucket icon — Option B: a plain monochrome line icon in the brand accent (no colour chip).
+   `Name` is an icon name (see CategoryIcons.Effective). Pass Class="cat-chip-lg" for the big ring cards.
+   `Color` is accepted for call-site compatibility but ignored in monochrome mode. *@
+<span class="cat-ic @Class"><Icon Name="@Name" /></span>
 
 @code {
     [Parameter, EditorRequired] public string Name { get; set; } = "";

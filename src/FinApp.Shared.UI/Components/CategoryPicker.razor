@@ -1,0 +1,52 @@
+@inject Localizer Loc
+
+@* A category dropdown that shows each option's icon chip + name. Native <option> can only hold text, so where we
+   want the category icons visible in the picker we use this instead of a plain <select>. Supports @bind-Value
+   (and @bind-Value:after). Options are (Category, depth) — sub-categories indent. *@
+<div class="cat-picker @(_open ? "open" : "") @Class">
+    <button type="button" class="cat-picker-btn" @onclick="Toggle" disabled="@Disabled">
+        <CatIcon Name="@SelectedIcon" />
+        <span class="cat-picker-lbl">@SelectedName</span>
+        <Icon Name="chevron" Class="cat-picker-caret" />
+    </button>
+    @if (_open)
+    {
+        <div class="cat-picker-backdrop" @onclick="Close"></div>
+        <ul class="cat-picker-menu">
+            @foreach (var (cat, depth) in Options)
+            {
+                <li>
+                    <button type="button" class="cat-picker-opt @(cat.Id == Value ? "sel" : "")"
+                            style="@(depth > 0 ? $"padding-inline-start:{10 + depth * 16}px" : null)"
+                            @onclick="() => Pick(cat.Id)">
+                        <CatIcon Name="@CategoryIcons.Effective(cat.Icon, cat.Name)" />
+                        <span class="cat-picker-opt-lbl">@cat.Name</span>
+                    </button>
+                </li>
+            }
+        </ul>
+    }
+</div>
+
+@code {
+    [Parameter] public Guid Value { get; set; }
+    [Parameter] public EventCallback<Guid> ValueChanged { get; set; }
+    [Parameter] public IReadOnlyList<(Category Category, int Depth)> Options { get; set; } = [];
+    [Parameter] public string? Class { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+
+    private bool _open;
+
+    private void Toggle() { if (!Disabled) _open = !_open; }
+    private void Close() => _open = false;
+
+    private async Task Pick(Guid id)
+    {
+        _open = false;
+        if (id != Value) await ValueChanged.InvokeAsync(id);
+    }
+
+    private Category? Selected => Options.FirstOrDefault(o => o.Category.Id == Value).Category;
+    private string SelectedIcon => Selected is { } c ? CategoryIcons.Effective(c.Icon, c.Name) : CategoryIcons.Fallback;
+    private string SelectedName => Selected?.Name ?? Loc["Choose…"];
+}
