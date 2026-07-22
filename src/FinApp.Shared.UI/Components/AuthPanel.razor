@@ -26,9 +26,10 @@
         <div class="alert warn-bg">@_error</div>
     }
 
-    @if (_resetToken is not null)
+    @if (_resetToken is not null && _twoFactorTicket is null)
     {
-        @* Arrived from a reset link (?resetToken=…). Set a new password, then drop back to sign-in. *@
+        @* Arrived from a reset link (?resetToken=…). Set a new password, then drop back to sign-in. A pending 2FA
+           challenge (e.g. an external sign-in mid-flight) always wins over this, so a stray token can't hijack login. *@
         @if (_resetDone)
         {
             <p class="hint">✓ @Loc["Your password has been updated. Sign in with your new password."]</p>
@@ -148,7 +149,9 @@
         // An external (Google/Facebook) sign-in whose account has 2FA on lands here with a pending challenge —
         // drop straight into the code prompt instead of the username/password form.
         _twoFactorTicket = Auth.PendingTwoFactorTicket;
-        _resetToken = ResetToken;   // opened from a reset link → show the set-new-password form
+        // Only honour a reset link when there's no 2FA challenge in flight — otherwise an external sign-in that needs
+        // a code would land on "set a new password" instead of the code prompt.
+        _resetToken = _twoFactorTicket is null ? ResetToken : null;   // reset link → show the set-new-password form
         try { _providers = await Api.GetProvidersAsync(); } catch { /* providers endpoint unreachable — hide buttons */ }
     }
 

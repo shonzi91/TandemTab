@@ -98,7 +98,7 @@
     <div class="lp-auth-backdrop" @onclick="CloseAuth">
         <div class="lp-auth-modal" @onclick:stopPropagation="true">
             <button class="lp-auth-x" title="@Loc["Close"]" @onclick="CloseAuth">×</button>
-            <AuthPanel ResetToken="_resetToken" />
+            <AuthPanel ResetToken="@_resetToken" />
         </div>
     </div>
 }
@@ -110,7 +110,9 @@
     private bool _dark = true;
 
     // The auth overlay always opens on Sign-in (AuthPanel's default); new users pick the Create-account tab there.
-    private void OpenAuth() => _showAuth = true;
+    // Clear any reset token first: the "set a new password" form must appear ONLY from a genuine email-link
+    // navigation (handled in OnAfterRenderAsync below), never because someone clicked the sign-in CTA.
+    private void OpenAuth() { _resetToken = null; _showAuth = true; }
     // Closing also drops any reset token, so reopening shows a normal sign-in rather than the reset form again.
     private void CloseAuth() { _showAuth = false; _resetToken = null; }
 
