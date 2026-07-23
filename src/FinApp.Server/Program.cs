@@ -591,6 +591,24 @@ accounts.MapGet("/{id:guid}/savings", async (Guid id, ClaimsPrincipal user, Snap
     return Results.Ok(SavingsMap.View(account, snap.Version, bank.Balance, bank.BalanceCurrency));
 });
 
+// Path-B thin-Budgets read: every budgeted category with its coverage. Paired with the budget writes (delta below).
+accounts.MapGet("/{id:guid}/budgets", async (Guid id, ClaimsPrincipal user, SnapshotService svc, CancellationToken ct) =>
+{
+    var snap = await svc.GetAsync(user.UserId(), id, ct);
+    if (string.IsNullOrEmpty(snap.Payload)) return Results.Ok(BudgetsViewDto.Empty);
+    var account = AccountSnapshotSerializer.Deserialize(snap.Payload);
+    return Results.Ok(BudgetsMap.View(account, snap.Version));
+});
+
+// Path-B thin-Recurring read: bills/income expectations with their due state for the open period.
+accounts.MapGet("/{id:guid}/recurring", async (Guid id, ClaimsPrincipal user, SnapshotService svc, CancellationToken ct) =>
+{
+    var snap = await svc.GetAsync(user.UserId(), id, ct);
+    if (string.IsNullOrEmpty(snap.Payload)) return Results.Ok(RecurringViewDto.Empty);
+    var account = AccountSnapshotSerializer.Deserialize(snap.Payload);
+    return Results.Ok(RecurringView.Of(account, snap.Version));
+});
+
 // The cash runway (first month the balance runs short, or null when there's no basis to project from).
 accounts.MapGet("/{id:guid}/runway", async (Guid id, ClaimsPrincipal user, SnapshotService svc, CancellationToken ct) =>
 {
@@ -748,10 +766,11 @@ accounts.MapDelete("/{id:guid}/expenses/{expenseId:guid}", async (Guid id, Guid 
 
 // Income (deposits). A deposit's category is a *contribution* category (or empty = general income); deposits with the
 // same (member, category, fund) merge. Edits/removes are the caller's own only (403 otherwise) — deposits are per-member.
-accounts.MapPost("/{id:guid}/deposits", async (Guid id, AddDepositRequest req, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
+accounts.MapPost("/{id:guid}/deposits", async (Guid id, AddDepositRequest req, ClaimsPrincipal user, SnapshotService svc, BankSyncService bankSvc, SyncNotifier notifier, CancellationToken ct) =>
 {
     var userId = user.UserId();
-    var (version, depositId) = await svc.MutateAsync(userId, id, account =>
+    var bank = await bankSvc.GetStatusAsync(userId, id, ct);
+    var (version, delta) = await svc.MutateAsync(userId, id, account =>
     {
         var period = account.CurrentPeriod ?? throw new InvalidOperationException("There's no open period to record income in.");
         if (req.CategoryId != Guid.Empty && account.FindContributionCategory(req.CategoryId) is null)
@@ -760,16 +779,17 @@ accounts.MapPost("/{id:guid}/deposits", async (Guid id, AddDepositRequest req, C
             : account.FindFund(req.FundId) ?? throw new InvalidOperationException("That fund doesn't exist in this account.");
         var contribution = period.Deposit(userId, new Money(req.Amount, account.Currency), req.CategoryId, req.FundId, req.Date);
         contribution.SetFundSynced(fund?.IsSynced ?? false);   // synced destination fund isn't credited here
-        return contribution.Id;
+        return (contribution.Id, SpendingMap.Overview(account, period, bank.Balance, bank.BalanceCurrency));
     }, ct);
     await notifier.AccountChangedAsync(id, userId, version);
-    return Results.Ok(new MutationResultDto(version, depositId));
+    return Results.Ok(new DepositMutationDto(version, delta.Id, delta.Item2));
 });
 
-accounts.MapPut("/{id:guid}/deposits/{depositId:guid}", async (Guid id, Guid depositId, EditDepositRequest req, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
+accounts.MapPut("/{id:guid}/deposits/{depositId:guid}", async (Guid id, Guid depositId, EditDepositRequest req, ClaimsPrincipal user, SnapshotService svc, BankSyncService bankSvc, SyncNotifier notifier, CancellationToken ct) =>
 {
     var userId = user.UserId();
-    var (version, _) = await svc.MutateAsync<object?>(userId, id, account =>
+    var bank = await bankSvc.GetStatusAsync(userId, id, ct);
+    var (version, overview) = await svc.MutateAsync(userId, id, account =>
     {
         var period = account.CurrentPeriod ?? throw new InvalidOperationException("There's no open period.");
         var contribution = period.FindContribution(depositId)
@@ -782,16 +802,17 @@ accounts.MapPut("/{id:guid}/deposits/{depositId:guid}", async (Guid id, Guid dep
             : account.FindFund(req.FundId) ?? throw new InvalidOperationException("That fund doesn't exist in this account.");
         period.EditContribution(depositId, new Money(req.Amount, account.Currency), req.CategoryId, req.FundId, req.Date);
         period.FindContribution(depositId)?.SetFundSynced(fund?.IsSynced ?? false);   // recompute at edit time
-        return null;
+        return SpendingMap.Overview(account, period, bank.Balance, bank.BalanceCurrency);
     }, ct);
     await notifier.AccountChangedAsync(id, userId, version);
-    return Results.Ok(new MutationResultDto(version, depositId));
+    return Results.Ok(new DepositMutationDto(version, depositId, overview));
 });
 
-accounts.MapDelete("/{id:guid}/deposits/{depositId:guid}", async (Guid id, Guid depositId, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
+accounts.MapDelete("/{id:guid}/deposits/{depositId:guid}", async (Guid id, Guid depositId, ClaimsPrincipal user, SnapshotService svc, BankSyncService bankSvc, SyncNotifier notifier, CancellationToken ct) =>
 {
     var userId = user.UserId();
-    var (version, _) = await svc.MutateAsync<object?>(userId, id, account =>
+    var bank = await bankSvc.GetStatusAsync(userId, id, ct);
+    var (version, overview) = await svc.MutateAsync(userId, id, account =>
     {
         var period = account.CurrentPeriod ?? throw new InvalidOperationException("There's no open period.");
         var contribution = period.FindContribution(depositId)
@@ -799,10 +820,10 @@ accounts.MapDelete("/{id:guid}/deposits/{depositId:guid}", async (Guid id, Guid 
         if (contribution.MemberId != userId)
             throw new ForbiddenException("You can only change your own deposits.");
         period.RemoveContribution(depositId);
-        return null;
+        return SpendingMap.Overview(account, period, bank.Balance, bank.BalanceCurrency);
     }, ct);
     await notifier.AccountChangedAsync(id, userId, version);
-    return Results.Ok(new MutationResultDto(version, depositId));
+    return Results.Ok(new DepositMutationDto(version, depositId, overview));
 });
 
 // Statement import — commit a batch of reviewed rows in one save: a negative amount posts an expense (its absolute
@@ -946,28 +967,28 @@ accounts.MapDelete("/{id:guid}/expenses/{expenseId:guid}/settle", async (Guid id
 accounts.MapPut("/{id:guid}/budgets/{categoryId:guid}", async (Guid id, Guid categoryId, SetBudgetRequest req, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
 {
     var userId = user.UserId();
-    var (version, _) = await svc.MutateAsync<object?>(userId, id, account =>
+    var (version, view) = await svc.MutateAsync(userId, id, account =>
     {
         var period = account.CurrentPeriod ?? throw new InvalidOperationException("There's no open period to budget in.");
         if (account.FindCategory(categoryId) is null) throw new InvalidOperationException("That category doesn't exist in this account.");
         period.SetBudget(categoryId, new Money(req.Amount, account.Currency), req.ThresholdPercent / 100m, req.NotifyEvery);
-        return null;
+        return BudgetsMap.View(account, 0);
     }, ct);
     await notifier.AccountChangedAsync(id, userId, version);
-    return Results.Ok(new MutationResultDto(version, categoryId));
+    return Results.Ok(new BudgetMutationDto(version, categoryId, view with { Version = version }));
 });
 
 accounts.MapDelete("/{id:guid}/budgets/{categoryId:guid}", async (Guid id, Guid categoryId, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
 {
     var userId = user.UserId();
-    var (version, _) = await svc.MutateAsync<object?>(userId, id, account =>
+    var (version, view) = await svc.MutateAsync(userId, id, account =>
     {
         var period = account.CurrentPeriod ?? throw new InvalidOperationException("There's no open period.");
         period.RemoveBudget(categoryId);   // 400 if no budget exists for the category in this period
-        return null;
+        return BudgetsMap.View(account, 0);
     }, ct);
     await notifier.AccountChangedAsync(id, userId, version);
-    return Results.Ok(new MutationResultDto(version, categoryId));
+    return Results.Ok(new BudgetMutationDto(version, categoryId, view with { Version = version }));
 });
 
 // Reallocation. to-savings mirrors the web's live "Move it to the loan" nudge (BudgetingState.ReallocateBudgetToSaving):
@@ -1482,30 +1503,30 @@ accounts.MapDelete("/{id:guid}/recurring/{recurringId:guid}", async (Guid id, Gu
 accounts.MapPost("/{id:guid}/recurring/{recurringId:guid}/confirm", async (Guid id, Guid recurringId, ConfirmRecurringRequest req, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
 {
     var userId = user.UserId();
-    var (version, _) = await svc.MutateAsync<object?>(userId, id, account =>
+    var (version, view) = await svc.MutateAsync(userId, id, account =>
     {
         var period = account.CurrentPeriod ?? throw new InvalidOperationException("There's no open period.");
         var item = account.FindRecurring(recurringId) ?? throw new InvalidOperationException("That recurring item doesn't exist in this account.");
         if (req.ActualAmount > 0m) item.LearnFromActual(req.ActualAmount);   // tune a "typical" estimate toward reality
         period.PostRecurring(item, req.ActualAmount, userId, account.FindFund(item.FundId)?.IsSynced ?? false);
-        return null;
+        return RecurringView.Of(account, 0);
     }, ct);
     await notifier.AccountChangedAsync(id, userId, version);
-    return Results.Ok(new MutationResultDto(version, recurringId));
+    return Results.Ok(new RecurringMutationDto(version, recurringId, view with { Version = version }));
 });
 
 accounts.MapPost("/{id:guid}/recurring/{recurringId:guid}/skip", async (Guid id, Guid recurringId, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
 {
     var userId = user.UserId();
-    var (version, _) = await svc.MutateAsync<object?>(userId, id, account =>
+    var (version, view) = await svc.MutateAsync(userId, id, account =>
     {
         var period = account.CurrentPeriod ?? throw new InvalidOperationException("There's no open period.");
         var item = account.FindRecurring(recurringId) ?? throw new InvalidOperationException("That recurring item doesn't exist in this account.");
         item.MarkHandled(period.From);   // handled for this period without posting anything
-        return null;
+        return RecurringView.Of(account, 0);
     }, ct);
     await notifier.AccountChangedAsync(id, userId, version);
-    return Results.Ok(new MutationResultDto(version, recurringId));
+    return Results.Ok(new RecurringMutationDto(version, recurringId, view with { Version = version }));
 });
 
 // Period lifecycle: roll into the next period (close current + open next, carrying opening balances), reschedule a

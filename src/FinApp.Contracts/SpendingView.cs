@@ -50,3 +50,8 @@ public record SpendingViewDto(
 /// client to reconcile its cache with no re-fetch. A structural superset of <see cref="MutationResultDto"/> (same
 /// <c>Version</c>/<c>EntityId</c> lead), so a caller that only wants those two deserializes it unchanged.</summary>
 public record ExpenseMutationDto(long Version, Guid? EntityId, ExpenseDto? Expense, AccountOverviewDto Overview);
+
+/// <summary>The delta an income (deposit) mutation returns: new <see cref="Version"/>, the deposit row's id, and the
+/// recomputed bank-adjusted <see cref="Overview"/> (deposits move Contributed/Current/Free, not the expense list).
+/// A superset of <see cref="MutationResultDto"/>. Lets a thin Home/Spending reflect income without a re-fetch.</summary>
+public record DepositMutationDto(long Version, Guid? EntityId, AccountOverviewDto Overview);

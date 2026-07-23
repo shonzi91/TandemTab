@@ -272,6 +272,26 @@ public sealed class FinAppApiClient(HttpClient http)
     public Task<ExpenseMutationDto> RemoveExpenseDeltaAsync(Guid id, Guid expenseId, CancellationToken ct = default) =>
         SendAsync<ExpenseMutationDto>(HttpMethod.Delete, $"/accounts/{id}/expenses/{expenseId}", null, ct);
 
+    // --- Path-B thin Budgets slice ----------------------------------------
+    public Task<BudgetsViewDto> GetBudgetsAsync(Guid id, CancellationToken ct = default) =>
+        SendAsync<BudgetsViewDto>(HttpMethod.Get, $"/accounts/{id}/budgets", null, ct);
+    public Task<BudgetMutationDto> SetBudgetDeltaAsync(Guid id, Guid categoryId, SetBudgetRequest req, CancellationToken ct = default) =>
+        SendAsync<BudgetMutationDto>(HttpMethod.Put, $"/accounts/{id}/budgets/{categoryId}", req, ct);
+    public Task<BudgetMutationDto> RemoveBudgetDeltaAsync(Guid id, Guid categoryId, CancellationToken ct = default) =>
+        SendAsync<BudgetMutationDto>(HttpMethod.Delete, $"/accounts/{id}/budgets/{categoryId}", null, ct);
+
+    // --- Path-B thin Recurring slice --------------------------------------
+    public Task<RecurringViewDto> GetRecurringAsync(Guid id, CancellationToken ct = default) =>
+        SendAsync<RecurringViewDto>(HttpMethod.Get, $"/accounts/{id}/recurring", null, ct);
+    public Task<RecurringMutationDto> ConfirmRecurringDeltaAsync(Guid id, Guid recurringId, decimal actualAmount, CancellationToken ct = default) =>
+        SendAsync<RecurringMutationDto>(HttpMethod.Post, $"/accounts/{id}/recurring/{recurringId}/confirm", new ConfirmRecurringRequest(actualAmount), ct);
+    public Task<RecurringMutationDto> SkipRecurringDeltaAsync(Guid id, Guid recurringId, CancellationToken ct = default) =>
+        SendAsync<RecurringMutationDto>(HttpMethod.Post, $"/accounts/{id}/recurring/{recurringId}/skip", null, ct);
+
+    // --- Path-B thin income delta -----------------------------------------
+    public Task<DepositMutationDto> AddDepositDeltaAsync(Guid id, AddDepositRequest req, CancellationToken ct = default) =>
+        SendAsync<DepositMutationDto>(HttpMethod.Post, $"/accounts/{id}/deposits", req, ct);
+
     // --- Path-B thin Goals/Savings slice ----------------------------------
     public Task<SavingsViewDto> GetSavingsAsync(Guid id, CancellationToken ct = default) =>
         SendAsync<SavingsViewDto>(HttpMethod.Get, $"/accounts/{id}/savings", null, ct);
