@@ -186,6 +186,40 @@ public record SetActiveRequest(bool Active);
 /// nothing). Mirrors <c>BudgetingState.ConfirmRecurring</c>.</summary>
 public record ConfirmRecurringRequest(decimal ActualAmount);
 
+// --- Settlement / cross-account (money or an expense moved between two of the caller's accounts) ---------------
+
+/// <summary>Send money from a fund on this account to another account the caller also belongs to (same currency): an
+/// outflow (external transfer) here and a matching deposit there, in one atomic two-account save. Capped at the source
+/// fund's balance. <see cref="DestinationFundId"/> empty picks the destination's first unsynced fund; <see cref="Date"/>
+/// defaults to the server date. Mirrors <c>BudgetingState.TransferToAccount</c>.</summary>
+public record TransferToAccountRequest(Guid DestinationAccountId, Guid FromFundId, decimal Amount,
+    Guid DestinationFundId = default, string? Note = null, DateOnly? Date = null);
+
+/// <summary>Settle (or re-settle) part of an "on behalf of another account" expense onto another account: the amount
+/// becomes that account's own expense (in the picked fund + category) and this expense is reduced by it, the two linked
+/// by a settlement id so either side's edits keep the other in step. Capped at the expense's original amount. Empty
+/// destination fund/category resolve to the destination's defaults. Mirrors <c>BudgetingState.SettleExpenseToAccount</c>.</summary>
+public record SettleExpenseRequest(Guid DestinationAccountId, Guid DestinationFundId, Guid DestinationCategoryId,
+    decimal Amount, string? Note = null);
+
+// --- Statement import (reviewed rows -> real expenses & income in one save) -----------------------------------
+
+/// <summary>One reviewed statement row to import. A <b>negative</b> <see cref="Amount"/> posts an expense (its
+/// absolute value) with <see cref="CategoryId"/> read as a spend category; a <b>positive</b> one posts income with
+/// <see cref="CategoryId"/> read as a contribution category. Both attribute to <see cref="FundId"/>. Rows with a zero
+/// amount or an empty category/fund are skipped. Mirrors a row of <c>BudgetingState.ImportTransactions</c>.</summary>
+public record ImportRowDto(decimal Amount, DateOnly Date, Guid CategoryId, Guid FundId, string? Note = null);
+
+/// <summary>Import a batch of reviewed statement rows in one save (all-or-nothing — a row that names a missing
+/// category/fund fails the whole batch with 400). Duplicate detection and in-period filtering are the caller's review
+/// step (mirroring the web's <c>ImportLooksDuplicate</c>/<c>ImportInPeriod</c>); this commits the final rows.
+/// Mirrors <c>BudgetingState.ImportTransactions</c>.</summary>
+public record ImportTransactionsRequest(IReadOnlyList<ImportRowDto> Rows);
+
+/// <summary>Result of a statement import: the new snapshot <see cref="Version"/>, how many rows posted
+/// (<see cref="Imported"/>) and how many were skipped as zero/empty (<see cref="Skipped"/>).</summary>
+public record ImportResultDto(long Version, int Imported, int Skipped);
+
 // --- Reallocation (move a budget's spare toward savings or another budget) ------------------------------------
 
 /// <summary>The web's one-step "Move it to the loan" nudge: trim a category's budget to <see cref="NewBudget"/> (an

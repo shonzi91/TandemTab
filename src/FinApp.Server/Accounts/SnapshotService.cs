@@ -162,6 +162,69 @@ public sealed class SnapshotService(FinAppDbContext db, ISnapshotCipher cipher, 
         }
     }
 
+    /// <summary>
+    /// The two-account counterpart of <see cref="MutateAsync{T}"/>, for cross-account writes (settlement / transfers
+    /// on behalf of another account). Loads both snapshots (the caller must be a contributor on <b>both</b>), applies
+    /// <paramref name="mutate"/> to the pair, and saves them together — EF batches both row UPDATEs in one transaction,
+    /// so they commit atomically (either both land or neither does). Both carry the <c>Version</c> concurrency token, so
+    /// a concurrent write to <em>either</em> account triggers the same reload-both-and-re-apply retry the single-account
+    /// spine uses. <paramref name="mutate"/> must be a pure function of the two accounts it's handed (it can run more
+    /// than once). Returns each account's new version and whatever <paramref name="mutate"/> yields.
+    /// </summary>
+    public async Task<(long PrimaryVersion, long SecondaryVersion, T Result)> MutateTwoAsync<T>(
+        Guid userId, Guid primaryId, Guid secondaryId, Func<Account, Account, T> mutate, CancellationToken ct = default)
+    {
+        if (primaryId == secondaryId)
+            throw new BadRequestException("The two accounts must be different.");
+        await EnsureContributorAsync(userId, primaryId, ct);
+        await EnsureContributorAsync(userId, secondaryId, ct);
+
+        var primary = await db.AccountSnapshots.FindAsync([primaryId], ct);
+        var secondary = await db.AccountSnapshots.FindAsync([secondaryId], ct);
+        if (primary is null || string.IsNullOrEmpty(primary.Payload))
+            throw new BadRequestException("This account has no data to change yet.");
+        if (secondary is null || string.IsNullOrEmpty(secondary.Payload))
+            throw new BadRequestException("The other account hasn't been opened yet.");
+
+        const int maxAttempts = 4;
+        for (var attempt = 1; ; attempt++)
+        {
+            var a = AccountSnapshotSerializer.Deserialize(await cipher.UnprotectAsync(primary.Payload, ct));
+            var b = AccountSnapshotSerializer.Deserialize(await cipher.UnprotectAsync(secondary.Payload, ct));
+            T result;
+            try
+            {
+                result = mutate(a, b);
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or ArgumentException)
+            {
+                throw new BadRequestException(ex.CleanMessage());
+            }
+
+            primary.Payload = await cipher.ProtectAsync(AccountSnapshotSerializer.Serialize(a), ct);
+            primary.Version++;
+            primary.UpdatedAt = DateTimeOffset.UtcNow;
+            secondary.Payload = await cipher.ProtectAsync(AccountSnapshotSerializer.Serialize(b), ct);
+            secondary.Version++;
+            secondary.UpdatedAt = DateTimeOffset.UtcNow;
+            try
+            {
+                await db.SaveChangesAsync(ct);   // one transaction → both rows commit together, or neither
+                return (primary.Version, secondary.Version, result);
+            }
+            catch (DbUpdateConcurrencyException) when (attempt < maxAttempts)
+            {
+                // Whichever row lost the race (or both), pull fresh Payload+Version into the tracked entities and loop.
+                await db.Entry(primary).ReloadAsync(ct);
+                await db.Entry(secondary).ReloadAsync(ct);
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                throw new ConflictException("An account is being changed too rapidly. Reload and retry.");
+            }
+        }
+    }
+
     /// <summary>One-off: encrypt any snapshot rows still stored as plaintext (only does work when a real cipher is
     /// configured). Idempotent — already-encrypted rows are skipped, and the content/version are unchanged. Returns
     /// how many rows were migrated.</summary>

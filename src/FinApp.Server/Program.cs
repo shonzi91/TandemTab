@@ -754,6 +754,140 @@ accounts.MapDelete("/{id:guid}/deposits/{depositId:guid}", async (Guid id, Guid 
     return Results.Ok(new MutationResultDto(version, depositId));
 });
 
+// Statement import — commit a batch of reviewed rows in one save: a negative amount posts an expense (its absolute
+// value, category read as a spend category), a positive one posts income (category read as a contribution category);
+// both attribute to the row's fund and inherit its synced flag. Zero-amount / empty-ref rows are skipped (as the web
+// does); a row naming a missing category/fund fails the whole batch (400). The review-step dedupe/in-period gating is
+// the caller's (those are reads). Mirrors BudgetingState.ImportTransactions.
+accounts.MapPost("/{id:guid}/import", async (Guid id, ImportTransactionsRequest req, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
+{
+    var userId = user.UserId();
+    var (version, result) = await svc.MutateAsync(userId, id, account =>
+    {
+        var period = account.CurrentPeriod ?? throw new InvalidOperationException("There's no open period to import into.");
+        int imported = 0, skipped = 0;
+        foreach (var row in req.Rows)
+        {
+            if (row.Amount == 0m || row.CategoryId == Guid.Empty || row.FundId == Guid.Empty) { skipped++; continue; }
+            var fund = account.FindFund(row.FundId) ?? throw new InvalidOperationException("A row references a fund that doesn't exist in this account.");
+            var note = string.IsNullOrWhiteSpace(row.Note) ? null : row.Note;
+            if (row.Amount < 0m)
+            {
+                if (account.FindCategory(row.CategoryId) is null) throw new InvalidOperationException("A row references a spend category that doesn't exist in this account.");
+                var expense = new Expense(row.CategoryId, new Money(Math.Abs(row.Amount), account.Currency), row.Date, userId, row.FundId, note);
+                expense.SetFundSynced(fund.IsSynced);
+                period.AddExpense(expense);
+            }
+            else
+            {
+                if (account.FindContributionCategory(row.CategoryId) is null) throw new InvalidOperationException("A row references an income category that doesn't exist in this account.");
+                var contribution = period.Deposit(userId, new Money(row.Amount, account.Currency), row.CategoryId, row.FundId, row.Date);
+                contribution.SetFundSynced(fund.IsSynced);
+            }
+            imported++;
+        }
+        return (imported, skipped);
+    }, ct);
+    await notifier.AccountChangedAsync(id, userId, version);
+    return Results.Ok(new ImportResultDto(version, result.imported, result.skipped));
+});
+
+// Settlement / cross-account writes — the only commands that touch TWO accounts, applied atomically through
+// SnapshotService.MutateTwoAsync (both saved in one transaction; the caller must be a contributor on both, same
+// currency). Mirrors BudgetingState.TransferToAccount / SettleExpenseToAccount / UnsettleExpense. Both accounts are
+// notified. Scope: bank-import provenance (ConfirmBankMoneyOutAsTransfer) stays deferred — it's a prod-only bank flow.
+accounts.MapPost("/{id:guid}/transfers-out", async (Guid id, TransferToAccountRequest req, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
+{
+    var userId = user.UserId();
+    var date = req.Date ?? DateOnly.FromDateTime(DateTime.UtcNow);
+    var (version, destVersion, transferId) = await svc.MutateTwoAsync(userId, id, req.DestinationAccountId, (source, dest) =>
+    {
+        if (req.Amount <= 0m) throw new InvalidOperationException("The amount must be positive.");
+        if (!string.Equals(source.Currency, dest.Currency, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("Both accounts must use the same currency.");
+        var sourceFund = source.FindFund(req.FromFundId) ?? throw new InvalidOperationException("The source fund doesn't exist in this account.");
+        var sourcePeriod = source.CurrentPeriod ?? throw new InvalidOperationException("There's no open period.");
+        var destPeriod = dest.CurrentPeriod ?? throw new InvalidOperationException("The other account has no open period to receive the transfer.");
+
+        // Outflow here (caps at the source fund's balance); a synced source keeps its real bank balance so it's informational.
+        var outflow = sourcePeriod.TransferOut(req.FromFundId, new Money(req.Amount, source.Currency), date, req.DestinationAccountId, req.Note);
+        outflow.SetFundSynced(sourceFund.IsSynced);
+
+        // Deposit there, into the resolved destination fund (empty → first unsynced, else first fund).
+        var destFundId = req.DestinationFundId != Guid.Empty && dest.RootFunds.Any(f => f.Id == req.DestinationFundId)
+            ? req.DestinationFundId
+            : (dest.RootFunds.FirstOrDefault(f => !f.IsSynced) ?? dest.RootFunds.FirstOrDefault())?.Id
+              ?? throw new InvalidOperationException("The other account has no fund to receive the transfer.");
+        var destDeposit = destPeriod.Deposit(userId, new Money(req.Amount, dest.Currency), Guid.Empty, destFundId, date);
+        destDeposit.SetFundSynced(dest.FindFund(destFundId)?.IsSynced ?? false);
+        return outflow.Id;
+    }, ct);
+    await notifier.AccountChangedAsync(id, userId, version);
+    await notifier.AccountChangedAsync(req.DestinationAccountId, userId, destVersion);
+    return Results.Ok(new MutationResultDto(version, transferId));
+});
+
+accounts.MapPost("/{id:guid}/expenses/{expenseId:guid}/settle", async (Guid id, Guid expenseId, SettleExpenseRequest req, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
+{
+    var userId = user.UserId();
+    var today = DateOnly.FromDateTime(DateTime.UtcNow);
+    var (version, destVersion, settlementId) = await svc.MutateTwoAsync(userId, id, req.DestinationAccountId, (source, dest) =>
+    {
+        if (req.Amount <= 0m) throw new InvalidOperationException("The amount must be positive.");
+        if (!string.Equals(source.Currency, dest.Currency, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("Both accounts must use the same currency.");
+        var sourcePeriod = source.CurrentPeriod ?? throw new InvalidOperationException("There's no open period.");
+        var expense = sourcePeriod.Expenses.FirstOrDefault(e => e.Id == expenseId)
+            ?? throw new InvalidOperationException("That expense doesn't exist in this period.");
+        if (new Money(req.Amount, source.Currency) > expense.OriginalAmount)
+            throw new InvalidOperationException($"You can settle at most {expense.OriginalAmount}.");
+        var destPeriod = dest.CurrentPeriod ?? throw new InvalidOperationException("The other account has no open period to receive the expense.");
+
+        var sid = expense.SettlementId ?? Guid.NewGuid();
+        var note = string.IsNullOrWhiteSpace(req.Note) ? $"On behalf — from {source.Name}" : req.Note;
+        var destCategoryId = req.DestinationCategoryId != Guid.Empty && dest.Categories.Any(c => c.Id == req.DestinationCategoryId)
+            ? req.DestinationCategoryId
+            : dest.RootCategories.FirstOrDefault()?.Id ?? throw new InvalidOperationException("The other account has no category to record the expense against.");
+        var destFundId = req.DestinationFundId != Guid.Empty && dest.RootFunds.Any(f => f.Id == req.DestinationFundId)
+            ? req.DestinationFundId
+            : (dest.RootFunds.FirstOrDefault(f => !f.IsSynced) ?? dest.RootFunds.FirstOrDefault())?.Id
+              ?? throw new InvalidOperationException("The other account has no fund to record the expense against.");
+
+        // Re-settle replaces the prior linked destination expense so the amount can't double up.
+        if (destPeriod.Expenses.FirstOrDefault(e => e.SettlementId == sid) is { } existing)
+            destPeriod.RemoveExpense(existing.Id);
+        destPeriod.AddExpense(new Expense(destCategoryId, new Money(req.Amount, dest.Currency), today, userId, destFundId,
+            note, settlementId: sid, settledFromAccountId: id));
+        sourcePeriod.SetSettlement(expenseId, sid, req.DestinationAccountId, new Money(req.Amount, source.Currency));
+        return sid;
+    }, ct);
+    await notifier.AccountChangedAsync(id, userId, version);
+    await notifier.AccountChangedAsync(req.DestinationAccountId, userId, destVersion);
+    return Results.Ok(new MutationResultDto(version, settlementId));
+});
+
+// Undo a settlement from the source side: remove the linked destination expense and restore this expense's full amount.
+// The destination account is passed explicitly (the caller holds it as the expense's SettledToAccountId).
+accounts.MapDelete("/{id:guid}/expenses/{expenseId:guid}/settle", async (Guid id, Guid expenseId, Guid destinationAccountId, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
+{
+    var userId = user.UserId();
+    var (version, destVersion, _) = await svc.MutateTwoAsync<object?>(userId, id, destinationAccountId, (source, dest) =>
+    {
+        var sourcePeriod = source.CurrentPeriod ?? throw new InvalidOperationException("There's no open period.");
+        var expense = sourcePeriod.Expenses.FirstOrDefault(e => e.Id == expenseId)
+            ?? throw new InvalidOperationException("That expense doesn't exist in this period.");
+        if (!expense.IsSettlementSource || expense.SettledToAccountId != destinationAccountId || expense.SettlementId is not { } sid)
+            throw new InvalidOperationException("That expense isn't settled onto this account.");
+        foreach (var p in dest.Periods)
+            if (p.Expenses.FirstOrDefault(e => e.SettlementId == sid) is { } linked) { p.RemoveExpense(linked.Id); break; }
+        sourcePeriod.SetSettlement(expenseId, sid, destinationAccountId, new Money(0m, source.Currency));   // restores the full amount
+        return null;
+    }, ct);
+    await notifier.AccountChangedAsync(id, userId, version);
+    await notifier.AccountChangedAsync(destinationAccountId, userId, destVersion);
+    return Results.Ok(new MutationResultDto(version, expenseId));
+});
+
 // Budgets — a category's planned allocation for the open period. One idempotent upsert (create-or-update, mirroring
 // BudgetingState.SaveBudget → Period.SetBudget) keyed by category, plus a remove. Budgets are advisory: they don't
 // reserve cash and are never capped, so this never rejects for being "too big" (only a negative amount → 400). The
