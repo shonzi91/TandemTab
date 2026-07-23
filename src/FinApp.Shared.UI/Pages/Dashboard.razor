@@ -80,25 +80,6 @@ else
                 }
             </div>
 
-            <div class="period-nav">
-                <button class="nav @(State.CanGoPrev ? "" : "nav-hidden")" title="@Loc["Previous period"]" @onclick="State.GoPrev" disabled="@(!State.CanGoPrev)">‹</button>
-                <div class="period-row">
-                    <button class="period period-btn" title="@Loc["Edit period dates"]" @onclick="OpenEditPeriod">@State.Period.From.ToString("dd MMM") – @State.Period.To.ToString("dd MMM yyyy")</button>
-                    <span class="status @(State.IsPeriodOpen ? "" : "status-closed")"><i class="status-dot"></i>@Loc[State.IsPeriodOpen ? "Active" : "Closed"]</span>
-                    <span class="period-ops">
-                        @if (State.IsLatestPeriod && State.PeriodCount > 1)
-                        {
-                            <button class="exp-edit" title="@Loc["Remove this period and reopen the previous one"]" @onclick="OpenRemovePeriod"><Icon Name="trash" /></button>
-                        }
-                        @if (State.IsLatestPeriod)
-                        {
-                            <button class="period-next" title="@(State.CanStartNextPeriod ? Loc["Start next month"] : Loc["You can start next month once this period's end date has passed."])" @onclick="OpenNextPeriod" disabled="@(!State.CanStartNextPeriod)">⏭️</button>
-                        }
-                    </span>
-                </div>
-                <button class="nav @(State.CanGoNext ? "" : "nav-hidden")" title="@Loc["Next period"]" @onclick="State.GoNext" disabled="@(!State.CanGoNext)">›</button>
-            </div>
-
             @* Header utility icons, left→right: notifications · achievements · settings (settings last).
                Import / Recurring / External accounts moved to the labelled action row below the balance. *@
             <span class="hdr-icons">
@@ -164,6 +145,38 @@ else
                     }
                 </span>
             </span>
+        </div>
+
+        @* Period navigation on its own row: the dates/edit/remove/start-next + Active label are folded behind one
+           compact chip, and keeping it off the identity strip above stops the header crowding on mobile. *@
+        <div class="period-nav">
+            <button class="nav @(State.CanGoPrev ? "" : "nav-hidden")" title="@Loc["Previous period"]" @onclick="State.GoPrev" disabled="@(!State.CanGoPrev)">‹</button>
+            <span class="period-menu">
+                <button class="period-chip" title="@Loc["Period options"]" @onclick="() => _periodMenuOpen = !_periodMenuOpen">
+                    <span class="period-chip-label">@State.Period.From.ToString("MMM yyyy")</span>
+                    <span class="status @(State.IsPeriodOpen ? "" : "status-closed")"><i class="status-dot"></i>@Loc[State.IsPeriodOpen ? "Active" : "Closed"]</span>
+                    <Icon Name="chevron" Class="period-chip-caret" />
+                </button>
+                @if (_periodMenuOpen)
+                {
+                    <div class="acct-menu-backdrop" @onclick="() => _periodMenuOpen = false"></div>
+                    <div class="acct-menu-pop period-pop">
+                        <div class="period-pop-head">
+                            <span class="period-pop-range">@State.Period.From.ToString("dd MMM") – @State.Period.To.ToString("dd MMM yyyy")</span>
+                        </div>
+                        <button @onclick="@(() => { _periodMenuOpen = false; OpenEditPeriod(); })"><Icon Name="pencil" /> @Loc["Edit period dates"]</button>
+                        @if (State.IsLatestPeriod)
+                        {
+                            <button disabled="@(!State.CanStartNextPeriod)" title="@(State.CanStartNextPeriod ? "" : Loc["You can start next month once this period's end date has passed."])" @onclick="@(() => { _periodMenuOpen = false; OpenNextPeriod(); })"><Icon Name="arrow-right" /> @Loc["Start next month"]</button>
+                        }
+                        @if (State.IsLatestPeriod && State.PeriodCount > 1)
+                        {
+                            <button class="danger" @onclick="@(() => { _periodMenuOpen = false; OpenRemovePeriod(); })"><Icon Name="trash" /> @Loc["Remove this period"]</button>
+                        }
+                    </div>
+                }
+            </span>
+            <button class="nav @(State.CanGoNext ? "" : "nav-hidden")" title="@Loc["Next period"]" @onclick="State.GoNext" disabled="@(!State.CanGoNext)">›</button>
         </div>
 
         @{
@@ -2245,9 +2258,21 @@ else
                     }
                     @if (_importStep == ImportStep.Upload)
                     {
-                        <p class="hint">@Loc["Export a statement from your bank (Excel, CSV, XML, OFX or QIF) and upload it here. It's parsed on your device — nothing is sent until you confirm the rows."]</p>
-                        <p class="hint">@Loc["Tip: if your bank only offers a PDF, look for a \"download/export transactions\" option — it usually also offers Excel or CSV, which import cleanly."]</p>
-                        <InputFile OnChange="OnImportFileSelected" accept=".xlsx,.xlsm,.xls,.htm,.html,.csv,.tsv,.txt,.xml,.camt,.ofx,.qfx,.qif" />
+                        <p class="hint">@Loc["Parsed on your device — nothing is sent until you confirm the rows."]</p>
+                        <div class="fmt-chips" aria-label="@Loc["Supported formats"]">
+                            <span class="fmt-chip">Excel</span>
+                            <span class="fmt-chip">CSV</span>
+                            <span class="fmt-chip">XML</span>
+                            <span class="fmt-chip">OFX</span>
+                            <span class="fmt-chip">QIF</span>
+                        </div>
+                        <label class="file-drop">
+                            <span class="file-drop-ic"><Icon Name="import" /></span>
+                            <span class="file-drop-main">@Loc["Choose a file"]</span>
+                            <span class="file-drop-sub">@Loc["or drop it here"]</span>
+                            <InputFile class="file-drop-input" OnChange="OnImportFileSelected" accept=".xlsx,.xlsm,.xls,.htm,.html,.csv,.tsv,.txt,.xml,.camt,.ofx,.qfx,.qif" />
+                        </label>
+                        <p class="hint import-tip"><Icon Name="info" /> @Loc["Only a PDF? Use your bank's \"export transactions\" — it usually offers Excel or CSV too."]</p>
                         <div class="modal-actions"><button class="ghost" @onclick="Back">@Loc["Cancel"]</button></div>
                     }
                     else if (_importStep == ImportStep.MapCsv)
@@ -4848,7 +4873,7 @@ else
         // aside — the same "installment + extra on top" math as the payoff modal, so the two agree. You're debt-free
         // when the last one clears, hence the latest month wins.
         if (DebtFreeMonthsAtPace() is { } dfMonths)
-            list.Add(new HomeTarget("🏁", Loc["Debt-free"], dfMonths, false));
+            list.Add(new HomeTarget("flag", Loc["Debt-free"], dfMonths, false));
         // Each ordinary savings goal, dated at the pace the user actually sets aside (mirrors the goal-projection modal).
         foreach (var x in State.SavingBuckets.Where(b => !b.Bucket.IsDebt && !b.Bucket.IsArchived && b.Bucket.HasGoal))
         {
@@ -6125,6 +6150,7 @@ else
     private bool _acctMenuOpen;
     private void RunAcct(Action a) { _acctMenuOpen = false; a(); }
     private bool _acctDropOpen;   // header account switcher (avatars) dropdown
+    private bool _periodMenuOpen; // period chip popover (dates + edit/remove/start-next + status)
     private Task SwitchAccountTo(Guid id) => Run(async () => { _acctDropOpen = false; await State.SwitchAccount(id); });
     // "just you" / "you & Alex" / "you + 2" sub-line for the account chip and switcher rows.
     private string MembersLine(IReadOnlyList<FinApp.Contracts.MemberDto> members)
