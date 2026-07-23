@@ -219,6 +219,8 @@ html.dark .bal-refreshing { border-color: rgba(63,224,197,.3); border-top-color:
 html.dark .hdr-action { background: #161b24; border-color: #2b3446; color: #cdd4de; }
 html.dark .hdr-action:hover { border-color: var(--tm-mint); background: #1b2230; color: var(--tm-mint); }
 @media (max-width: 560px) { .hdr-action { flex: 1 1 calc(50% - 4px); justify-content: center; } }
+/* Desktop: Import / Recurring / External-accounts stretch to fill the whole row equally (mobile keeps the 2-up wrap). */
+@media (min-width: 561px) { .hdr-action { flex: 1 1 0; justify-content: center; } }
 /* When bank transactions are waiting, the External-accounts pill becomes a segmented control: the label opens the
    accounts modal, the 🔔 badge on the right opens the review window (both money-in and money-out). */
 .hdr-action-grp { padding: 0; gap: 0; }
@@ -336,6 +338,8 @@ html.dark .bal-alloc { color: #5f8c79; }
 }
 .tab:hover { color: #13a06e; }
 .tab.active { color: #13a06e; border-bottom-color: #13a06e; }
+/* Desktop: the four tabs stretch to fill the whole row equally (mobile scrolls instead — see the 720px block). */
+@media (min-width: 721px) { .tab { flex: 1 1 0; text-align: center; } }
 
 .warn-text { color: #b45309; }
 
@@ -597,7 +601,7 @@ html.dark .avail-note strong { color: #57d9a3; }
 .check { display: block; margin: 8px 0; font-size: .9rem; }
 .check input { margin-right: 6px; }
 
-/* Its own row under the identity strip, centred like a month selector (was a bordered segment inside .hdr-top). */
+/* Shares the top row (inside .hdr-top) on desktop, beside the account chip; drops to its own row on mobile (720px block). */
 .period-nav { display: flex; align-items: center; justify-content: center; gap: 4px; }
 .nav {
     background: none; color: #9aa3af; border: none; border-radius: 8px;
@@ -950,6 +954,8 @@ input[type=date]::-webkit-calendar-picker-indicator:hover { opacity: 1; backgrou
     .acct-chip { max-width: none; width: 100%; min-width: 0; }
     .acct-nm { overflow: hidden; }
     .bal-mini { flex: 1 1 auto; }
+    /* Period selector drops to its own full-width row below the account chip + icons (it shares the top row on desktop). */
+    .period-nav { flex: 1 1 100%; order: 3; }
 
     /* Tabs scroll horizontally rather than cramming. */
     .tabs { overflow-x: auto; flex-wrap: nowrap; -webkit-overflow-scrolling: touch; }
@@ -1276,11 +1282,13 @@ html.dark .cost-short { color: #f0b26b; }
 /* Notifications bell (header) + its dropdown — collects reminders/tips/warnings off Home. */
 .acct-notify { position: relative; display: inline-flex; }
 .bell { position: relative; }
+/* Gold, not the accent green — a green badge blended into the (mint/green) bell icon it sits on. */
 .bell-badge {
     position: absolute; top: -4px; right: -6px; min-width: 16px; height: 16px; padding: 0 4px;
-    border-radius: 999px; background: #13a06e; color: #ffffff; font-size: .66rem; font-weight: 700;
+    border-radius: 999px; background: #f4b73d; color: #4a3408; font-size: .66rem; font-weight: 700;
     line-height: 16px; text-align: center;
 }
+html.dark .bell-badge { background: #f0b26b; color: #33240a; }
 .bell-menu {
     position: absolute; top: calc(100% + 6px); right: 0; z-index: 91; width: min(340px, 88vw);
     background: #ffffff; border: 1px solid #e6ece9; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,.14);

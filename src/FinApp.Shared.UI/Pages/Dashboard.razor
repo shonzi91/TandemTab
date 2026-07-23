@@ -80,6 +80,37 @@ else
                 }
             </div>
 
+            @* Period navigation sits in the top row on desktop (dates/edit/remove/start-next + Active label folded
+               behind one compact chip); on mobile it wraps to its own row below so the header doesn't crowd. *@
+            <div class="period-nav">
+                <button class="nav @(State.CanGoPrev ? "" : "nav-hidden")" title="@Loc["Previous period"]" @onclick="State.GoPrev" disabled="@(!State.CanGoPrev)">‹</button>
+                <span class="period-menu">
+                    <button class="period-chip" title="@Loc["Period options"]" @onclick="() => _periodMenuOpen = !_periodMenuOpen">
+                        <span class="period-chip-label">@State.Period.From.ToString("MMM yyyy")</span>
+                        <span class="status @(State.IsPeriodOpen ? "" : "status-closed")"><i class="status-dot"></i>@Loc[State.IsPeriodOpen ? "Active" : "Closed"]</span>
+                    </button>
+                    @if (_periodMenuOpen)
+                    {
+                        <div class="acct-menu-backdrop" @onclick="() => _periodMenuOpen = false"></div>
+                        <div class="acct-menu-pop period-pop">
+                            <div class="period-pop-head">
+                                <span class="period-pop-range">@State.Period.From.ToString("dd MMM") – @State.Period.To.ToString("dd MMM yyyy")</span>
+                            </div>
+                            <button @onclick="@(() => { _periodMenuOpen = false; OpenEditPeriod(); })"><Icon Name="pencil" /> @Loc["Edit period dates"]</button>
+                            @if (State.IsLatestPeriod)
+                            {
+                                <button disabled="@(!State.CanStartNextPeriod)" title="@(State.CanStartNextPeriod ? "" : Loc["You can start next month once this period's end date has passed."])" @onclick="@(() => { _periodMenuOpen = false; OpenNextPeriod(); })"><Icon Name="arrow-right" /> @Loc["Start next month"]</button>
+                            }
+                            @if (State.IsLatestPeriod && State.PeriodCount > 1)
+                            {
+                                <button class="danger" @onclick="@(() => { _periodMenuOpen = false; OpenRemovePeriod(); })"><Icon Name="trash" /> @Loc["Remove this period"]</button>
+                            }
+                        </div>
+                    }
+                </span>
+                <button class="nav @(State.CanGoNext ? "" : "nav-hidden")" title="@Loc["Next period"]" @onclick="State.GoNext" disabled="@(!State.CanGoNext)">›</button>
+            </div>
+
             @* Header utility icons, left→right: notifications · achievements · settings (settings last).
                Import / Recurring / External accounts moved to the labelled action row below the balance. *@
             <span class="hdr-icons">
@@ -145,37 +176,6 @@ else
                     }
                 </span>
             </span>
-        </div>
-
-        @* Period navigation on its own row: the dates/edit/remove/start-next + Active label are folded behind one
-           compact chip, and keeping it off the identity strip above stops the header crowding on mobile. *@
-        <div class="period-nav">
-            <button class="nav @(State.CanGoPrev ? "" : "nav-hidden")" title="@Loc["Previous period"]" @onclick="State.GoPrev" disabled="@(!State.CanGoPrev)">‹</button>
-            <span class="period-menu">
-                <button class="period-chip" title="@Loc["Period options"]" @onclick="() => _periodMenuOpen = !_periodMenuOpen">
-                    <span class="period-chip-label">@State.Period.From.ToString("MMM yyyy")</span>
-                    <span class="status @(State.IsPeriodOpen ? "" : "status-closed")"><i class="status-dot"></i>@Loc[State.IsPeriodOpen ? "Active" : "Closed"]</span>
-                </button>
-                @if (_periodMenuOpen)
-                {
-                    <div class="acct-menu-backdrop" @onclick="() => _periodMenuOpen = false"></div>
-                    <div class="acct-menu-pop period-pop">
-                        <div class="period-pop-head">
-                            <span class="period-pop-range">@State.Period.From.ToString("dd MMM") – @State.Period.To.ToString("dd MMM yyyy")</span>
-                        </div>
-                        <button @onclick="@(() => { _periodMenuOpen = false; OpenEditPeriod(); })"><Icon Name="pencil" /> @Loc["Edit period dates"]</button>
-                        @if (State.IsLatestPeriod)
-                        {
-                            <button disabled="@(!State.CanStartNextPeriod)" title="@(State.CanStartNextPeriod ? "" : Loc["You can start next month once this period's end date has passed."])" @onclick="@(() => { _periodMenuOpen = false; OpenNextPeriod(); })"><Icon Name="arrow-right" /> @Loc["Start next month"]</button>
-                        }
-                        @if (State.IsLatestPeriod && State.PeriodCount > 1)
-                        {
-                            <button class="danger" @onclick="@(() => { _periodMenuOpen = false; OpenRemovePeriod(); })"><Icon Name="trash" /> @Loc["Remove this period"]</button>
-                        }
-                    </div>
-                }
-            </span>
-            <button class="nav @(State.CanGoNext ? "" : "nav-hidden")" title="@Loc["Next period"]" @onclick="State.GoNext" disabled="@(!State.CanGoNext)">›</button>
         </div>
 
         @{
