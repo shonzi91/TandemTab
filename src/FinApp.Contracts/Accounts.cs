@@ -73,6 +73,71 @@ public record AddDepositRequest(Guid CategoryId, Guid FundId, decimal Amount, Da
 /// route; a caller may only change their own deposits (else 403). Mirrors <c>BudgetingState.EditDeposit</c>.</summary>
 public record EditDepositRequest(Guid CategoryId, Guid FundId, decimal Amount, DateOnly Date);
 
+/// <summary>Set money aside into a savings bucket ("Add to savings"), computed server-side. A plain (un-noted) deposit
+/// stays editable/removable; a note turns it into a non-editable annotated allocation (as in the web). Amount must be
+/// positive (draw down via the spend endpoint). Mirrors <c>BudgetingState.AllocateSaving</c>.</summary>
+public record AddSavingDepositRequest(Guid SavingCategoryId, decimal Amount, DateOnly Date, string? Note = null);
+
+/// <summary>Change the amount of a manual savings deposit (append-only — the row is replaced, keeping its original
+/// date/bucket). The allocation id travels in the route. Mirrors <c>BudgetingState.EditSavingDeposit</c>.</summary>
+public record EditSavingDepositRequest(decimal Amount);
+
+/// <summary>
+/// Spend accumulated savings: records a real expense against <see cref="CategoryId"/> plus a matching negative
+/// drawdown from <see cref="SavingCategoryId"/>, so the earmark and the balance both fall. The member is the caller.
+/// <see cref="FundId"/> is the fund the money physically leaves; pass <see cref="System.Guid.Empty"/> to let the
+/// server pick the first spendable (non-synced) fund, matching the web default. Mirrors <c>BudgetingState.SpendFromSavings</c>.
+/// </summary>
+public record SpendFromSavingsRequest(Guid SavingCategoryId, Guid CategoryId, decimal Amount, DateOnly Date, Guid FundId = default, string? Note = null);
+
+/// <summary>One planned future cost of a sinking-fund bucket (pure planning data — never moves money). <see cref="Cadence"/>
+/// is "one-off"/"monthly"/"quarterly"/"yearly"; <see cref="DueDate"/> applies to a one-off target.</summary>
+public record PlannedCostDto(string Label, decimal Amount, string Cadence, DateOnly? DueDate = null);
+
+/// <summary>
+/// Create or configure a savings bucket in one shot (mirrors <c>BudgetingState.AddSavingBucket</c>/<c>SaveSavingBucket</c>).
+/// The bucket's <b>kind</b> is chosen by the flags, in priority order: <see cref="IsDebt"/> (payoff envelope, using
+/// Debt* + re-anchored to the server date) → <see cref="IsInvestment"/> (growth envelope, using Inv*) → otherwise an
+/// ordinary goal (<see cref="GoalAmount"/> &gt; 0, with <see cref="ThresholdPercent"/> alert 0–100 and
+/// <see cref="NotifyOnMilestone"/>). <see cref="IsExpensesFund"/> turns it into a sinking fund for <see cref="Costs"/>
+/// and clears any goal. <see cref="PlannedContribution"/>, <see cref="FundId"/> (earmark tag) and <see cref="InitialAmount"/>
+/// (only honoured while the account has a single period) apply regardless of kind.
+/// </summary>
+public record SaveSavingBucketRequest(
+    string Name,
+    string? Icon = null,
+    decimal? GoalAmount = null,
+    decimal ThresholdPercent = 80m,
+    bool NotifyOnMilestone = false,
+    decimal InitialAmount = 0m,
+    bool IsDebt = false,
+    decimal DebtBalance = 0m,
+    decimal DebtRate = 0m,
+    decimal DebtInstallment = 0m,
+    decimal? PlannedContribution = null,
+    bool IsInvestment = false,
+    decimal InvRate = 0m,
+    decimal InvTermYears = 0m,
+    int InvCompounds = 12,
+    Guid? FundId = null,
+    IReadOnlyList<PlannedCostDto>? Costs = null,
+    bool IsExpensesFund = false);
+
+/// <summary>Archive (hide) or restore a resource that supports it (e.g. a savings bucket). Reversible; keeps history.</summary>
+public record SetArchivedRequest(bool Archived);
+
+/// <summary>Deploy a savings bucket to its goal (e.g. a loan prepayment): money leaves the account from <see cref="FundId"/>,
+/// recorded as an external-transfer-out (not consumption, so it doesn't hit the expenses ledger) plus a drawdown that
+/// drains the bucket. On a debt bucket it also counts as an extra principal payment. Mirrors <c>BudgetingState.DisburseSaving</c>.</summary>
+public record DisburseSavingRequest(Guid SavingCategoryId, Guid FundId, decimal Amount, DateOnly Date, string? Note = null);
+
+/// <summary>Mature saved money into a spendable budget for this period: release the earmark from <see cref="SavingCategoryId"/>
+/// and add <see cref="Amount"/> to <see cref="CategoryId"/>'s budget (no money physically moves). Mirrors <c>BudgetingState.ConvertSavingToBudget</c>.</summary>
+public record ConvertSavingToBudgetRequest(Guid SavingCategoryId, Guid CategoryId, decimal Amount, DateOnly Date, string? Note = null);
+
+/// <summary>Move earmarked money from one savings bucket to another (net-neutral). Mirrors <c>BudgetingState.MoveSavingToBucket</c>.</summary>
+public record MoveSavingsRequest(Guid FromBucketId, Guid ToBucketId, decimal Amount, DateOnly Date, string? Note = null);
+
 /// <summary>Result of a command write: the account's new snapshot <see cref="Version"/> (so the caller keeps optimistic
 /// concurrency in step) and the affected entity's id — the newly-created id on an add, the target id echoed otherwise.</summary>
 public record MutationResultDto(long Version, Guid? EntityId);

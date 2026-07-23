@@ -159,9 +159,36 @@ used to be able to clobber a concurrent write). Every future mutation reuses thi
   - Deposits are **per-member**: edit/remove of someone else's deposit is a **403** (`ForbiddenException`, thrown
     from inside the mutate delegate so it bypasses the 400 translation) — stricter/cleaner than the web client's
     in-process guard. 8 server tests (`DepositMutationApiTests`), confirmed through /overview's Contributed.
-- ☐ **Remaining writes:** savings allocations + spend-from-savings, buckets & goals, funds, categories, recurring
-  items, period lifecycle (start/close/reschedule/remove), reallocation, settlement (needs a two-account mutation
-  helper).
+- ✅ **Savings money-movements** — mirroring `BudgetingState.AllocateSaving/EditSavingDeposit/RemoveSavingDeposit/SpendFromSavings`:
+  - `POST /accounts/{id}/savings/deposits` (`AddSavingDepositRequest`: bucket, amount, date, note?) — earmarks money
+    within the balance (raises "saved", lowers "free"; nothing leaves). `PUT`/`DELETE .../{allocationId}` edit/remove
+    a manual deposit (the domain replaces the row on edit — append-only).
+  - `POST /accounts/{id}/savings/spend` (`SpendFromSavingsRequest`: bucket, spend category, amount, date, fund?, note?)
+    — records a real expense **and** a matching negative drawdown, so the earmark and the balance both fall. Member =
+    caller; empty `FundId` derives the web default (first non-synced top-level fund); `FundSynced` set from the chosen
+    fund (a correctness nudge over the web, which only ever picks a non-synced fund). Validates bucket/category/fund.
+  - The `priorSaved` the web passes to allocate/edit is **unused by the domain**, so it's omitted. 8 server tests
+    (`SavingsMutationApiTests`), confirmed through /overview (Saved/Free/Current/Spent).
+- ✅ **Savings-bucket CRUD/config** — mirroring `BudgetingState.AddSavingBucket/SaveSavingBucket` + archive/remove:
+  - `POST /accounts/{id}/savings/buckets` (create) / `PUT .../{bucketId}` (update) share one `SaveSavingBucketRequest`
+    (the 18-field upsert) applied by **`SavingBucketConfig.Apply`** (Server) so the two can't drift. Kind is chosen by
+    flags in the web's priority order — debt → investment → ordinary goal — and `IsExpensesFund` (sinking fund for
+    `Costs`, a language-independent `PlannedCostDto` with a string cadence) clears any goal. `PlannedContribution`,
+    `FundId`, and `InitialAmount` (honoured only while the account has a single period) apply regardless. Debt balance
+    anchored to the server UTC date.
+  - `PUT .../{bucketId}/archived` (`SetArchivedRequest`) archive/restore; `DELETE .../{bucketId}` remove (domain
+    blocker on sub-buckets / savings activity → 400). 9 tests (`SavingBucketApiTests`), verified by deserializing the
+    snapshot and inspecting the `SavingCategory`.
+- ✅ **Savings bucket money-movements** (completes the savings story) — mirroring `DisburseSaving/ConvertSavingToBudget/MoveSavingToBucket`:
+  - `POST /accounts/{id}/savings/disburse` — deploy a bucket to its goal: money out from the chosen fund (external
+    transfer, not an expense) + a drawdown; on a debt bucket also an extra principal payment (`RecordSavingDebtPayment`,
+    a no-op otherwise). `POST .../savings/to-budget` — mature a save into a category's budget (no money moves, releases
+    the earmark). `POST .../savings/transfer` — move between buckets (net-neutral). `DELETE .../savings/movements/{id}`
+    — undo any of the three. 7 tests (`SavingBucketMovementApiTests`), verified via /overview + snapshot.
+  - **⚠️ Like the web, the domain does NOT enforce "can't deploy more than the bucket holds"** — the caller owns that
+    (the web UI does; a native client must too, or a later slice adds server-side enforcement).
+- ☐ **Remaining writes:** funds, categories (+ contribution categories), recurring items, period lifecycle
+  (start/close/reschedule/remove), budgets, reallocation, settlement (needs a two-account mutation helper).
 
 **Deferred / to settle:**
 - ☐ **Wire the web client** to the endpoints — deliberately NOT done per read/write; a piecemeal hybrid (client

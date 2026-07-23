@@ -753,6 +753,197 @@ accounts.MapDelete("/{id:guid}/deposits/{depositId:guid}", async (Guid id, Guid 
     return Results.Ok(new MutationResultDto(version, depositId));
 });
 
+// Savings money-movements (mirroring BudgetingState AllocateSaving/EditSavingDeposit/RemoveSavingDeposit/SpendFromSavings).
+// A savings deposit earmarks money within the balance (raises "saved", lowers "free"); it never leaves the account.
+// Spend-from-savings records a real expense AND a matching negative drawdown, so the earmark and the balance both fall.
+// (Bucket/goal CRUD is a separate later slice; the "priorSaved" the client passes is unused by the domain, so it's omitted.)
+accounts.MapPost("/{id:guid}/savings/deposits", async (Guid id, AddSavingDepositRequest req, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
+{
+    var userId = user.UserId();
+    var (version, allocationId) = await svc.MutateAsync(userId, id, account =>
+    {
+        var period = account.CurrentPeriod ?? throw new InvalidOperationException("There's no open period to save into.");
+        if (account.FindSavingCategory(req.SavingCategoryId) is null)
+            throw new InvalidOperationException("That savings bucket doesn't exist in this account.");
+        return period.AllocateToSavings(req.SavingCategoryId, new Money(req.Amount, account.Currency), req.Date, req.Note).Id;
+    }, ct);
+    await notifier.AccountChangedAsync(id, userId, version);
+    return Results.Ok(new MutationResultDto(version, allocationId));
+});
+
+accounts.MapPut("/{id:guid}/savings/deposits/{allocationId:guid}", async (Guid id, Guid allocationId, EditSavingDepositRequest req, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
+{
+    var userId = user.UserId();
+    var (version, _) = await svc.MutateAsync<object?>(userId, id, account =>
+    {
+        var period = account.CurrentPeriod ?? throw new InvalidOperationException("There's no open period.");
+        period.EditSavingDeposit(allocationId, new Money(req.Amount, account.Currency));
+        return null;
+    }, ct);
+    await notifier.AccountChangedAsync(id, userId, version);
+    return Results.Ok(new MutationResultDto(version, allocationId));
+});
+
+accounts.MapDelete("/{id:guid}/savings/deposits/{allocationId:guid}", async (Guid id, Guid allocationId, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
+{
+    var userId = user.UserId();
+    var (version, _) = await svc.MutateAsync<object?>(userId, id, account =>
+    {
+        var period = account.CurrentPeriod ?? throw new InvalidOperationException("There's no open period.");
+        period.RemoveSavingAllocation(allocationId);
+        return null;
+    }, ct);
+    await notifier.AccountChangedAsync(id, userId, version);
+    return Results.Ok(new MutationResultDto(version, allocationId));
+});
+
+accounts.MapPost("/{id:guid}/savings/spend", async (Guid id, SpendFromSavingsRequest req, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
+{
+    var userId = user.UserId();
+    var (version, expenseId) = await svc.MutateAsync(userId, id, account =>
+    {
+        var period = account.CurrentPeriod ?? throw new InvalidOperationException("There's no open period to spend from.");
+        if (account.FindSavingCategory(req.SavingCategoryId) is null)
+            throw new InvalidOperationException("That savings bucket doesn't exist in this account.");
+        if (account.FindCategory(req.CategoryId) is null)
+            throw new InvalidOperationException("That category doesn't exist in this account.");
+        // Explicit fund, or the web default: the first spendable (non-synced, non-archived) top-level fund.
+        var fund = req.FundId != Guid.Empty
+            ? account.FindFund(req.FundId) ?? throw new InvalidOperationException("That fund doesn't exist in this account.")
+            : account.RootFunds.FirstOrDefault(f => !f.IsSynced && !f.IsArchived) ?? account.RootFunds.FirstOrDefault()
+              ?? throw new InvalidOperationException("This account has no fund to spend from.");
+        var expense = period.ConvertSavingToExpense(req.SavingCategoryId, req.CategoryId, new Money(req.Amount, account.Currency), req.Date, userId, fund.Id, req.Note);
+        expense.SetFundSynced(fund.IsSynced);   // correct for an explicitly-chosen synced fund (the web default never is)
+        return expense.Id;
+    }, ct);
+    await notifier.AccountChangedAsync(id, userId, version);
+    return Results.Ok(new MutationResultDto(version, expenseId));
+});
+
+// Savings-bucket CRUD/config (mirroring BudgetingState AddSavingBucket/SaveSavingBucket + archive/remove). The 18-field
+// upsert is applied by the shared SavingBucketConfig.Apply so create and update can't drift. A debt bucket's stated
+// balance is anchored to the server's UTC date. Money-movements between/out of buckets are a separate slice.
+accounts.MapPost("/{id:guid}/savings/buckets", async (Guid id, SaveSavingBucketRequest req, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
+{
+    var userId = user.UserId();
+    var today = DateOnly.FromDateTime(DateTime.UtcNow);
+    var (version, bucketId) = await svc.MutateAsync(userId, id, account =>
+    {
+        var bucket = account.AddSavingCategory(req.Name);   // enforces a unique name
+        SavingBucketConfig.Apply(account, bucket.Id, req, today);
+        return bucket.Id;
+    }, ct);
+    await notifier.AccountChangedAsync(id, userId, version);
+    return Results.Ok(new MutationResultDto(version, bucketId));
+});
+
+accounts.MapPut("/{id:guid}/savings/buckets/{bucketId:guid}", async (Guid id, Guid bucketId, SaveSavingBucketRequest req, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
+{
+    var userId = user.UserId();
+    var today = DateOnly.FromDateTime(DateTime.UtcNow);
+    var (version, _) = await svc.MutateAsync<object?>(userId, id, account =>
+    {
+        if (account.FindSavingCategory(bucketId) is null)
+            throw new InvalidOperationException("That savings bucket doesn't exist in this account.");
+        SavingBucketConfig.Apply(account, bucketId, req, today);
+        return null;
+    }, ct);
+    await notifier.AccountChangedAsync(id, userId, version);
+    return Results.Ok(new MutationResultDto(version, bucketId));
+});
+
+accounts.MapPut("/{id:guid}/savings/buckets/{bucketId:guid}/archived", async (Guid id, Guid bucketId, SetArchivedRequest req, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
+{
+    var userId = user.UserId();
+    var (version, _) = await svc.MutateAsync<object?>(userId, id, account =>
+    {
+        account.SetSavingArchived(bucketId, req.Archived);   // throws if the bucket is missing
+        return null;
+    }, ct);
+    await notifier.AccountChangedAsync(id, userId, version);
+    return Results.Ok(new MutationResultDto(version, bucketId));
+});
+
+accounts.MapDelete("/{id:guid}/savings/buckets/{bucketId:guid}", async (Guid id, Guid bucketId, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
+{
+    var userId = user.UserId();
+    var (version, _) = await svc.MutateAsync<object?>(userId, id, account =>
+    {
+        account.RemoveSavingCategory(bucketId);   // throws on a removal blocker (sub-buckets / savings activity) or if missing
+        return null;
+    }, ct);
+    await notifier.AccountChangedAsync(id, userId, version);
+    return Results.Ok(new MutationResultDto(version, bucketId));
+});
+
+// Savings bucket money-movements (mirroring DisburseSaving/ConvertSavingToBudget/MoveSavingToBucket + the undo). These
+// complete the savings story: deploy a bucket to its goal (money out), mature a save into a budget (no money moves),
+// move between buckets (net-neutral), and undo any of them.
+// Scope note: like the web, the domain does NOT enforce "can't deploy more than the bucket holds" — the caller owns that.
+accounts.MapPost("/{id:guid}/savings/disburse", async (Guid id, DisburseSavingRequest req, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
+{
+    var userId = user.UserId();
+    var (version, transferId) = await svc.MutateAsync(userId, id, account =>
+    {
+        var period = account.CurrentPeriod ?? throw new InvalidOperationException("There's no open period.");
+        if (account.FindSavingCategory(req.SavingCategoryId) is null)
+            throw new InvalidOperationException("That savings bucket doesn't exist in this account.");
+        var fund = account.FindFund(req.FundId) ?? throw new InvalidOperationException("That fund doesn't exist in this account.");
+        var transfer = period.DisburseSaving(req.SavingCategoryId, req.FundId, new Money(req.Amount, account.Currency), req.Date, req.Note);
+        transfer.SetFundSynced(fund.IsSynced);   // a synced fund's real balance already reflects the outflow
+        // On a debt bucket, deploying to the bank is an extra payment on top of the schedule (no-op for other kinds).
+        account.RecordSavingDebtPayment(req.SavingCategoryId, req.Amount, req.Date);
+        return transfer.Id;
+    }, ct);
+    await notifier.AccountChangedAsync(id, userId, version);
+    return Results.Ok(new MutationResultDto(version, transferId));
+});
+
+accounts.MapPost("/{id:guid}/savings/to-budget", async (Guid id, ConvertSavingToBudgetRequest req, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
+{
+    var userId = user.UserId();
+    var (version, _) = await svc.MutateAsync<object?>(userId, id, account =>
+    {
+        var period = account.CurrentPeriod ?? throw new InvalidOperationException("There's no open period.");
+        if (account.FindSavingCategory(req.SavingCategoryId) is null)
+            throw new InvalidOperationException("That savings bucket doesn't exist in this account.");
+        if (account.FindCategory(req.CategoryId) is null)
+            throw new InvalidOperationException("That category doesn't exist in this account.");
+        period.ConvertSavingToBudget(req.SavingCategoryId, req.CategoryId, new Money(req.Amount, account.Currency), req.Date, req.Note);
+        return null;
+    }, ct);
+    await notifier.AccountChangedAsync(id, userId, version);
+    return Results.Ok(new MutationResultDto(version, req.SavingCategoryId));
+});
+
+accounts.MapPost("/{id:guid}/savings/transfer", async (Guid id, MoveSavingsRequest req, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
+{
+    var userId = user.UserId();
+    var (version, _) = await svc.MutateAsync<object?>(userId, id, account =>
+    {
+        var period = account.CurrentPeriod ?? throw new InvalidOperationException("There's no open period.");
+        if (account.FindSavingCategory(req.FromBucketId) is null || account.FindSavingCategory(req.ToBucketId) is null)
+            throw new InvalidOperationException("A savings bucket in the move doesn't exist in this account.");
+        period.TransferSavings(req.FromBucketId, req.ToBucketId, new Money(req.Amount, account.Currency), req.Date, req.Note);
+        return null;
+    }, ct);
+    await notifier.AccountChangedAsync(id, userId, version);
+    return Results.Ok(new MutationResultDto(version, req.ToBucketId));
+});
+
+accounts.MapDelete("/{id:guid}/savings/movements/{allocationId:guid}", async (Guid id, Guid allocationId, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
+{
+    var userId = user.UserId();
+    var (version, _) = await svc.MutateAsync<object?>(userId, id, account =>
+    {
+        var period = account.CurrentPeriod ?? throw new InvalidOperationException("There's no open period.");
+        period.RemoveSavingMovement(allocationId);   // undoes a to-budget / transfer / disburse (throws if missing)
+        return null;
+    }, ct);
+    await notifier.AccountChangedAsync(id, userId, version);
+    return Results.Ok(new MutationResultDto(version, allocationId));
+});
+
 accounts.MapPut("/{id:guid}/snapshot", async (Guid id, SaveAccountRequest req, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
 {
     var version = await svc.SaveAsync(user.UserId(), id, req, ct);
