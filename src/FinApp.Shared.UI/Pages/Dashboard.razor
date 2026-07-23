@@ -155,7 +155,6 @@ else
                 <button class="period-chip" title="@Loc["Period options"]" @onclick="() => _periodMenuOpen = !_periodMenuOpen">
                     <span class="period-chip-label">@State.Period.From.ToString("MMM yyyy")</span>
                     <span class="status @(State.IsPeriodOpen ? "" : "status-closed")"><i class="status-dot"></i>@Loc[State.IsPeriodOpen ? "Active" : "Closed"]</span>
-                    <Icon Name="chevron" Class="period-chip-caret" />
                 </button>
                 @if (_periodMenuOpen)
                 {

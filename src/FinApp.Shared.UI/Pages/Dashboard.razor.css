@@ -36,10 +36,13 @@ html.dark .fmt-chip { color: var(--tm-mint); background: #14261f; border-color: 
 }
 .file-drop:hover, .file-drop:focus-within { border-color: #13a06e; background: #f0fbf6; box-shadow: 0 3px 10px rgba(19,160,110,.14); }
 .file-drop-ic { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 12px; background: #13a06e; color: #fff; margin-bottom: 4px; }
-.file-drop-ic .ic { width: 22px; height: 22px; }
+.file-drop-ic ::deep .ic { width: 22px; height: 22px; }
 .file-drop-main { font-size: .98rem; font-weight: 700; color: #0f7a54; }
 .file-drop-sub { font-size: .8rem; color: #6b7d72; }
-.file-drop-input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+/* The <InputFile> renders its own <input type=file> (a child component), so ::deep is required to reach it —
+   a plain scoped selector never applies, which is why the native "Choose file / No file chosen" showed through.
+   Cover the whole zone transparently so it's the click + drag-drop target while our styled label shows. */
+.file-drop ::deep input[type=file] { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
 html.dark .file-drop { background: #161b24; border-color: #2b3446; }
 html.dark .file-drop:hover, html.dark .file-drop:focus-within { border-color: var(--tm-mint); background: #1b2230; }
 html.dark .file-drop-ic { background: var(--tm-mint); color: #0f1322; }
@@ -47,7 +50,7 @@ html.dark .file-drop-main { color: var(--tm-mint); }
 html.dark .file-drop-sub { color: #a9b6ad; }
 
 .import-tip { display: flex; align-items: center; gap: 6px; margin-top: 10px; opacity: .85; }
-.import-tip .ic { flex: none; }
+.import-tip ::deep .ic { flex: none; }
 
 /* First-run onboarding checklist (Home) */
 .onboard-card { margin: 0 0 14px; padding: 16px 16px 14px; background: linear-gradient(135deg, #eef9f3, #e9f7f0); border: 1px solid #d6f0e3; }
@@ -267,7 +270,6 @@ html.dark .hdr-review:hover { background: rgba(240,178,107,.26); }
 }
 .period-chip:hover { color: #12b29a; background: #eafaf6; }
 .period-chip .status { font-size: .66rem; padding: 2px 8px; }   /* the Active/Closed pill sits inside the chip */
-.period-chip-caret { width: .78em; height: .78em; opacity: .5; transform: rotate(90deg); }
 .period-pop { left: 50%; right: auto; transform: translateX(-50%); min-width: 212px; }
 .period-pop-head {
     display: flex; align-items: center; justify-content: space-between; gap: 10px;
@@ -942,9 +944,11 @@ input[type=date]::-webkit-calendar-picker-indicator:hover { opacity: 1; backgrou
     .two-col { grid-template-columns: 1fr; }
     .panel { padding: 14px; }
 
-    /* Header on phones: the strip wraps, the account chip takes the row and the balance sits under it. */
-    .acct-wrap { flex: 1 1 100%; }
-    .acct-chip { max-width: none; width: 100%; }
+    /* Header on phones: keep the account chip and the icons on ONE row — the chip flexes to fill and shrinks
+       (min-width:0 + clipped name) so the bell/trophy/settings icons stay beside it instead of wrapping below. */
+    .acct-wrap { flex: 1 1 auto; min-width: 0; }
+    .acct-chip { max-width: none; width: 100%; min-width: 0; }
+    .acct-nm { overflow: hidden; }
     .bal-mini { flex: 1 1 auto; }
 
     /* Tabs scroll horizontally rather than cramming. */
