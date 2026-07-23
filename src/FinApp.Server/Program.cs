@@ -116,6 +116,16 @@ builder.Services.AddSingleton<SyncNotifier>();
 // Accept gzipped request bodies (see UseRequestDecompression below).
 builder.Services.AddRequestDecompression();
 
+// Gzip JSON responses. The payoff is GET /accounts/{id}/snapshot (~260KB of JSON, compresses ~8×), which the
+// client now re-fetches after every command write (the Option-A cutover) — without this, each mutation costs a
+// quarter-megabyte download. Cloud Run does not compress for us. HTTPS is fine here: BREACH needs a secret
+// reflected next to attacker-controlled bytes in one response; snapshot responses carry only the user's own data.
+builder.Services.AddResponseCompression(o =>
+{
+    o.EnableForHttps = true;
+    o.MimeTypes = ["application/json"];
+});
+
 // SignalR needs an explicit origin list + AllowCredentials (can't use AllowAnyOrigin with credentials).
 const string WasmCorsPolicy = "wasm";
 var corsOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()
@@ -294,6 +304,9 @@ if (app.Environment.IsDevelopment())
 // endpoints; requests without the header pass straight through. Kestrel's max-request-body limit still applies
 // to the *decompressed* stream, so a zip bomb can't buy extra headroom here.
 app.UseRequestDecompression();
+
+// Gzip JSON responses for clients that ask (Accept-Encoding) — see AddResponseCompression above.
+app.UseResponseCompression();
 
 app.UseRateLimiter();
 app.UseAuthentication();

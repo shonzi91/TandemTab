@@ -111,6 +111,134 @@ public sealed class FinAppApiClient(HttpClient http)
     public Task<AccountSnapshot> SaveSnapshotAsync(Guid id, SaveAccountRequest req, CancellationToken ct = default) =>
         SendAsync<AccountSnapshot>(HttpMethod.Put, $"/accounts/{id}/snapshot", req, ct);
 
+    // --- Command writes (Option-A cutover) --------------------------------
+    // One method per mutation endpoint. All return MutationResultDto (new Version + affected entity id);
+    // BudgetingState re-fetches the snapshot after each so the local aggregate reflects the server's result.
+
+    public Task<MutationResultDto> BootstrapAccountAsync(Guid id, DateOnly? today = null, CancellationToken ct = default) =>
+        SendAsync<MutationResultDto>(HttpMethod.Post, $"/accounts/{id}/bootstrap", new BootstrapAccountRequest(today), ct);
+
+    // Expenses
+    public Task<MutationResultDto> AddExpenseAsync(Guid id, AddExpenseRequest req, CancellationToken ct = default) =>
+        SendAsync<MutationResultDto>(HttpMethod.Post, $"/accounts/{id}/expenses", req, ct);
+    public Task<MutationResultDto> EditExpenseAsync(Guid id, Guid expenseId, EditExpenseRequest req, CancellationToken ct = default) =>
+        SendAsync<MutationResultDto>(HttpMethod.Put, $"/accounts/{id}/expenses/{expenseId}", req, ct);
+    public Task<MutationResultDto> RemoveExpenseAsync(Guid id, Guid expenseId, CancellationToken ct = default) =>
+        SendAsync<MutationResultDto>(HttpMethod.Delete, $"/accounts/{id}/expenses/{expenseId}", null, ct);
+
+    // Deposits (income)
+    public Task<MutationResultDto> AddDepositAsync(Guid id, AddDepositRequest req, CancellationToken ct = default) =>
+        SendAsync<MutationResultDto>(HttpMethod.Post, $"/accounts/{id}/deposits", req, ct);
+    public Task<MutationResultDto> EditDepositAsync(Guid id, Guid depositId, EditDepositRequest req, CancellationToken ct = default) =>
+        SendAsync<MutationResultDto>(HttpMethod.Put, $"/accounts/{id}/deposits/{depositId}", req, ct);
+    public Task<MutationResultDto> RemoveDepositAsync(Guid id, Guid depositId, CancellationToken ct = default) =>
+        SendAsync<MutationResultDto>(HttpMethod.Delete, $"/accounts/{id}/deposits/{depositId}", null, ct);
+
+    // Savings money-movements
+    public Task<MutationResultDto> AddSavingDepositAsync(Guid id, AddSavingDepositRequest req, CancellationToken ct = default) =>
+        SendAsync<MutationResultDto>(HttpMethod.Post, $"/accounts/{id}/savings/deposits", req, ct);
+    public Task<MutationResultDto> EditSavingDepositAsync(Guid id, Guid allocationId, EditSavingDepositRequest req, CancellationToken ct = default) =>
+        SendAsync<MutationResultDto>(HttpMethod.Put, $"/accounts/{id}/savings/deposits/{allocationId}", req, ct);
+    public Task<MutationResultDto> RemoveSavingDepositAsync(Guid id, Guid allocationId, CancellationToken ct = default) =>
+        SendAsync<MutationResultDto>(HttpMethod.Delete, $"/accounts/{id}/savings/deposits/{allocationId}", null, ct);
+    public Task<MutationResultDto> SpendFromSavingsAsync(Guid id, SpendFromSavingsRequest req, CancellationToken ct = default) =>
+        SendAsync<MutationResultDto>(HttpMethod.Post, $"/accounts/{id}/savings/spend", req, ct);
+    public Task<MutationResultDto> DisburseSavingAsync(Guid id, DisburseSavingRequest req, CancellationToken ct = default) =>
+        SendAsync<MutationResultDto>(HttpMethod.Post, $"/accounts/{id}/savings/disburse", req, ct);
+    public Task<MutationResultDto> ConvertSavingToBudgetAsync(Guid id, ConvertSavingToBudgetRequest req, CancellationToken ct = default) =>
+        SendAsync<MutationResultDto>(HttpMethod.Post, $"/accounts/{id}/savings/to-budget", req, ct);
+    public Task<MutationResultDto> MoveSavingsAsync(Guid id, MoveSavingsRequest req, CancellationToken ct = default) =>
+        SendAsync<MutationResultDto>(HttpMethod.Post, $"/accounts/{id}/savings/transfer", req, ct);
+    public Task<MutationResultDto> RemoveSavingMovementAsync(Guid id, Guid allocationId, CancellationToken ct = default) =>
+        SendAsync<MutationResultDto>(HttpMethod.Delete, $"/accounts/{id}/savings/movements/{allocationId}", null, ct);
+
+    // Savings buckets
+    public Task<MutationResultDto> AddSavingBucketAsync(Guid id, SaveSavingBucketRequest req, CancellationToken ct = default) =>
+        SendAsync<MutationResultDto>(HttpMethod.Post, $"/accounts/{id}/savings/buckets", req, ct);
+    public Task<MutationResultDto> SaveSavingBucketAsync(Guid id, Guid bucketId, SaveSavingBucketRequest req, CancellationToken ct = default) =>
+        SendAsync<MutationResultDto>(HttpMethod.Put, $"/accounts/{id}/savings/buckets/{bucketId}", req, ct);
+    public Task<MutationResultDto> SetSavingBucketArchivedAsync(Guid id, Guid bucketId, bool archived, CancellationToken ct = default) =>
+        SendAsync<MutationResultDto>(HttpMethod.Put, $"/accounts/{id}/savings/buckets/{bucketId}/archived", new SetArchivedRequest(archived), ct);
+    public Task<MutationResultDto> RemoveSavingBucketAsync(Guid id, Guid bucketId, CancellationToken ct = default) =>
+        SendAsync<MutationResultDto>(HttpMethod.Delete, $"/accounts/{id}/savings/buckets/{bucketId}", null, ct);
+
+    // Account structure: categories, funds, contribution categories
+    public Task<MutationResultDto> CreateCategoryAsync(Guid id, CreateCategoryRequest req, CancellationToken ct = default) =>
+        SendAsync<MutationResultDto>(HttpMethod.Post, $"/accounts/{id}/categories", req, ct);
+    public Task<MutationResultDto> EditCategoryAsync(Guid id, Guid categoryId, EditCategoryRequest req, CancellationToken ct = default) =>
+        SendAsync<MutationResultDto>(HttpMethod.Put, $"/accounts/{id}/categories/{categoryId}", req, ct);
+    public Task<MutationResultDto> SetCategoryArchivedAsync(Guid id, Guid categoryId, bool archived, CancellationToken ct = default) =>
+        SendAsync<MutationResultDto>(HttpMethod.Put, $"/accounts/{id}/categories/{categoryId}/archived", new SetArchivedRequest(archived), ct);
+    public Task<MutationResultDto> RemoveCategoryAsync(Guid id, Guid categoryId, CancellationToken ct = default) =>
+        SendAsync<MutationResultDto>(HttpMethod.Delete, $"/accounts/{id}/categories/{categoryId}", null, ct);
+    public Task<MutationResultDto> CreateFundAsync(Guid id, CreateFundRequest req, CancellationToken ct = default) =>
+        SendAsync<MutationResultDto>(HttpMethod.Post, $"/accounts/{id}/funds", req, ct);
+    public Task<MutationResultDto> EditFundAsync(Guid id, Guid fundId, EditFundRequest req, CancellationToken ct = default) =>
+        SendAsync<MutationResultDto>(HttpMethod.Put, $"/accounts/{id}/funds/{fundId}", req, ct);
+    public Task<MutationResultDto> SetFundArchivedAsync(Guid id, Guid fundId, bool archived, CancellationToken ct = default) =>
+        SendAsync<MutationResultDto>(HttpMethod.Put, $"/accounts/{id}/funds/{fundId}/archived", new SetArchivedRequest(archived), ct);
+    public Task<MutationResultDto> SetFundOpeningBalanceAsync(Guid id, Guid fundId, decimal amount, CancellationToken ct = default) =>
+        SendAsync<MutationResultDto>(HttpMethod.Put, $"/accounts/{id}/funds/{fundId}/opening-balance", new SetFundOpeningBalanceRequest(amount), ct);
+    public Task<MutationResultDto> RemoveFundAsync(Guid id, Guid fundId, Guid? moveOpeningBalancesTo = null, CancellationToken ct = default) =>
+        SendAsync<MutationResultDto>(HttpMethod.Delete,
+            $"/accounts/{id}/funds/{fundId}{(moveOpeningBalancesTo is { } m ? $"?moveOpeningBalancesTo={m}" : "")}", null, ct);
+    public Task<MutationResultDto> CreateContributionCategoryAsync(Guid id, CreateContributionCategoryRequest req, CancellationToken ct = default) =>
+        SendAsync<MutationResultDto>(HttpMethod.Post, $"/accounts/{id}/contribution-categories", req, ct);
+    public Task<MutationResultDto> EditContributionCategoryAsync(Guid id, Guid catId, EditContributionCategoryRequest req, CancellationToken ct = default) =>
+        SendAsync<MutationResultDto>(HttpMethod.Put, $"/accounts/{id}/contribution-categories/{catId}", req, ct);
+    public Task<MutationResultDto> RemoveContributionCategoryAsync(Guid id, Guid catId, CancellationToken ct = default) =>
+        SendAsync<MutationResultDto>(HttpMethod.Delete, $"/accounts/{id}/contribution-categories/{catId}", null, ct);
+
+    // Recurring items
+    public Task<MutationResultDto> AddRecurringAsync(Guid id, AddRecurringRequest req, CancellationToken ct = default) =>
+        SendAsync<MutationResultDto>(HttpMethod.Post, $"/accounts/{id}/recurring", req, ct);
+    public Task<MutationResultDto> UpdateRecurringAsync(Guid id, Guid recurringId, UpdateRecurringRequest req, CancellationToken ct = default) =>
+        SendAsync<MutationResultDto>(HttpMethod.Put, $"/accounts/{id}/recurring/{recurringId}", req, ct);
+    public Task<MutationResultDto> SetRecurringActiveAsync(Guid id, Guid recurringId, bool active, CancellationToken ct = default) =>
+        SendAsync<MutationResultDto>(HttpMethod.Put, $"/accounts/{id}/recurring/{recurringId}/active", new SetActiveRequest(active), ct);
+    public Task<MutationResultDto> RemoveRecurringAsync(Guid id, Guid recurringId, CancellationToken ct = default) =>
+        SendAsync<MutationResultDto>(HttpMethod.Delete, $"/accounts/{id}/recurring/{recurringId}", null, ct);
+    public Task<MutationResultDto> ConfirmRecurringAsync(Guid id, Guid recurringId, decimal actualAmount, CancellationToken ct = default) =>
+        SendAsync<MutationResultDto>(HttpMethod.Post, $"/accounts/{id}/recurring/{recurringId}/confirm", new ConfirmRecurringRequest(actualAmount), ct);
+    public Task<MutationResultDto> SkipRecurringAsync(Guid id, Guid recurringId, CancellationToken ct = default) =>
+        SendAsync<MutationResultDto>(HttpMethod.Post, $"/accounts/{id}/recurring/{recurringId}/skip", null, ct);
+
+    // Budgets + reallocation
+    public Task<MutationResultDto> SetBudgetAsync(Guid id, Guid categoryId, SetBudgetRequest req, CancellationToken ct = default) =>
+        SendAsync<MutationResultDto>(HttpMethod.Put, $"/accounts/{id}/budgets/{categoryId}", req, ct);
+    public Task<MutationResultDto> RemoveBudgetAsync(Guid id, Guid categoryId, CancellationToken ct = default) =>
+        SendAsync<MutationResultDto>(HttpMethod.Delete, $"/accounts/{id}/budgets/{categoryId}", null, ct);
+    public Task<MutationResultDto> ReallocateToSavingsAsync(Guid id, ReallocateToSavingsRequest req, CancellationToken ct = default) =>
+        SendAsync<MutationResultDto>(HttpMethod.Post, $"/accounts/{id}/reallocations/to-savings", req, ct);
+
+    // Fund transfers (intra-account)
+    public Task<MutationResultDto> TransferFundsAsync(Guid id, TransferFundsRequest req, CancellationToken ct = default) =>
+        SendAsync<MutationResultDto>(HttpMethod.Post, $"/accounts/{id}/fund-transfers", req, ct);
+    public Task<MutationResultDto> EditFundTransferAsync(Guid id, Guid transferId, EditFundTransferRequest req, CancellationToken ct = default) =>
+        SendAsync<MutationResultDto>(HttpMethod.Put, $"/accounts/{id}/fund-transfers/{transferId}", req, ct);
+    public Task<MutationResultDto> RemoveFundTransferAsync(Guid id, Guid transferId, CancellationToken ct = default) =>
+        SendAsync<MutationResultDto>(HttpMethod.Delete, $"/accounts/{id}/fund-transfers/{transferId}", null, ct);
+
+    // Period lifecycle
+    public Task<MutationResultDto> StartNextPeriodAsync(Guid id, StartNextPeriodRequest req, CancellationToken ct = default) =>
+        SendAsync<MutationResultDto>(HttpMethod.Post, $"/accounts/{id}/periods/start-next", req, ct);
+    public Task<MutationResultDto> ReschedulePeriodAsync(Guid id, int index, ReschedulePeriodRequest req, CancellationToken ct = default) =>
+        SendAsync<MutationResultDto>(HttpMethod.Put, $"/accounts/{id}/periods/{index}/schedule", req, ct);
+    public Task<MutationResultDto> RemoveLatestPeriodAsync(Guid id, CancellationToken ct = default) =>
+        SendAsync<MutationResultDto>(HttpMethod.Delete, $"/accounts/{id}/periods/latest", null, ct);
+
+    // Statement import
+    public Task<ImportResultDto> ImportTransactionsAsync(Guid id, ImportTransactionsRequest req, CancellationToken ct = default) =>
+        SendAsync<ImportResultDto>(HttpMethod.Post, $"/accounts/{id}/import", req, ct);
+
+    // Settlement / cross-account (two-account writes)
+    public Task<MutationResultDto> TransferToAccountAsync(Guid id, TransferToAccountRequest req, CancellationToken ct = default) =>
+        SendAsync<MutationResultDto>(HttpMethod.Post, $"/accounts/{id}/transfers-out", req, ct);
+    public Task<MutationResultDto> SettleExpenseAsync(Guid id, Guid expenseId, SettleExpenseRequest req, CancellationToken ct = default) =>
+        SendAsync<MutationResultDto>(HttpMethod.Post, $"/accounts/{id}/expenses/{expenseId}/settle", req, ct);
+    public Task<MutationResultDto> UnsettleExpenseAsync(Guid id, Guid expenseId, Guid destinationAccountId, CancellationToken ct = default) =>
+        SendAsync<MutationResultDto>(HttpMethod.Delete, $"/accounts/{id}/expenses/{expenseId}/settle?destinationAccountId={destinationAccountId}", null, ct);
+
     /// <summary>Download the account as an .xlsx (one sheet per period). Returns the bytes + suggested file name.</summary>
     public async Task<(byte[] Bytes, string FileName)> ExportAccountAsync(Guid id, CancellationToken ct = default)
     {
