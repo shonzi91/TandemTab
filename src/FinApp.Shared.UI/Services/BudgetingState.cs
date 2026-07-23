@@ -396,17 +396,77 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     }
 
     /// <summary>
-    /// The command-write spine (Option-A cutover): run a mutation endpoint against the current account, then
-    /// re-fetch the snapshot so the local aggregate reflects the server's authoritative result — server-generated
-    /// entity ids, server dates, deposit merges. Two round-trips per write; the price of the server owning the
-    /// domain (the offline/caching story is a later design — see docs/MOBILE.md).
+    /// The command-write spine, no optimism: run a mutation endpoint against the current account, then re-fetch the
+    /// snapshot so the local aggregate reflects the server's authoritative result. Used by the writes that can't be
+    /// applied locally first — the two-account settlement/transfer writes (the other account isn't loaded) and the
+    /// batch import. Most writes use <see cref="ExecuteOptimisticAsync"/> instead, which repaints instantly.
     /// </summary>
     private async Task<MutationResultDto> ExecuteAsync(Func<Guid, Task<MutationResultDto>> command)
     {
         var accountId = CurrentAccountId;
-        var result = await command(accountId);
-        await RefreshFromServerAsync(accountId);
-        return result;
+        // Share the one push lock with PushSnapshotAsync so a deferred whole-snapshot PUT (achievements stamp,
+        // settings) can't run mid-command and collide with the server-side change.
+        await _pushLock.WaitAsync();
+        try
+        {
+            var result = await command(accountId);
+            await RefreshFromServerAsync(accountId);
+            return result;
+        }
+        finally { _pushLock.Release(); }
+    }
+
+    /// <summary>
+    /// The optimistic command-write spine. Applies <paramref name="optimistic"/> to the loaded aggregate and repaints
+    /// <b>immediately</b> (the same domain the server runs, so the figures match), then sends <paramref name="command"/>
+    /// in the background. The domain is still on-device for the reads this slice, so applying it for the write too costs
+    /// nothing extra and removes the round-trip latency the user would otherwise feel on every action.
+    /// <para>
+    /// The flag follows a deliberately conservative rule so no id can silently drift: <b>deletes</b> pass
+    /// <paramref name="refetchAfter"/> false — they mint no id and touch only an already-agreed one, so we skip the
+    /// re-fetch and just advance the version from the command result (one round-trip). <b>Everything else</b> (creates,
+    /// and edits that are append-only so they mint a fresh id) passes true and re-fetches in the background to adopt
+    /// the server's canonical ids; the UI has already painted so that round-trip isn't felt, but callers must read the
+    /// <b>server</b> id from the returned result, never the optimistic one. <b>On failure</b>: re-fetch to roll the
+    /// optimistic change back to server truth, then the exception propagates so the UI shows the error.
+    /// </para>
+    /// </summary>
+    private async Task<MutationResultDto> ExecuteOptimisticAsync(Action optimistic, Func<Guid, Task<MutationResultDto>> command, bool refetchAfter)
+    {
+        // Hold the push lock for the whole operation, taken BEFORE the optimistic apply. This is the crux of mixing
+        // optimistic local mutations with the deferred whole-snapshot PUT: the optimistic change lives on the same
+        // _account that PushSnapshotAsync serializes, so a PUT that fired between the local apply and the command's
+        // confirmation would persist the not-yet-confirmed mutation AND the command would re-apply it — a duplicate.
+        // Serialising through the one lock means no PUT runs until the command has confirmed (refetched, or the
+        // delete settled), so the whole-snapshot path only ever sees server-consistent state.
+        await _pushLock.WaitAsync();
+        try
+        {
+            var accountId = CurrentAccountId;
+            optimistic();
+            RaiseChanged();                 // instant repaint from the local apply (the render is queued, not sync)
+            MutationResultDto result;
+            try
+            {
+                result = await command(accountId);
+            }
+            catch
+            {
+                await RefreshFromServerAsync(accountId);   // undo the optimistic change — server is the truth
+                throw;
+            }
+            if (refetchAfter)
+            {
+                await RefreshFromServerAsync(accountId);   // adopt the server's entity ids
+            }
+            else if (accountId == CurrentAccountId && result.Version >= _version)
+            {
+                _version = result.Version;                 // keep optimistic concurrency in step without a round-trip
+                if (_cache.TryGetValue(accountId, out var c)) c.Version = _version;
+            }
+            return result;
+        }
+        finally { _pushLock.Release(); }
     }
 
     /// <summary>Re-fetch and swap in the server's snapshot for <paramref name="accountId"/>. Drops stale results:
@@ -468,6 +528,10 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
 
     public IReadOnlyList<FundTransfer> FundTransfers =>
         Period.FundTransfers.OrderByDescending(t => t.Date).ToList();
+
+    // The web default fund for a spend/drawdown: first selectable (non-synced, non-archived) root fund, matching
+    // what the server derives when the request's FundId is empty — so the optimistic apply picks the same one.
+    private Guid DefaultFundId => SelectableFunds.FirstOrDefault()?.Id ?? Account.RootFunds.FirstOrDefault()?.Id ?? Guid.Empty;
 
     /// <summary>The period's opening balance: the sum of the real (non-informative) initial fund values.
     /// Independent of how the money is later budgeted/saved (unallocations never change it).</summary>
@@ -754,7 +818,8 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     }
 
     public Task RemoveSavingMovement(Guid allocationId) =>
-        ExecuteAsync(id => api.RemoveSavingMovementAsync(id, allocationId));
+        ExecuteOptimisticAsync(() => Period.RemoveSavingMovement(allocationId),
+            id => api.RemoveSavingMovementAsync(id, allocationId), refetchAfter: false);
 
     public IReadOnlyList<AccountMember> Members => Account.Members;
     public Contribution? ContributionFor(Guid memberId) =>
@@ -794,7 +859,14 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     public IReadOnlyList<Fund> SelectableFunds => Account.RootFunds.Where(f => !f.IsSynced && !f.IsArchived).ToList();
 
     public Task AddExpense(Guid categoryId, decimal amount, Guid fundId, string? note, DateOnly date, bool onBehalfOfOtherAccount = false) =>
-        ExecuteAsync(id => api.AddExpenseAsync(id, new AddExpenseRequest(categoryId, amount, fundId, date, note, onBehalfOfOtherAccount)));
+        ExecuteOptimisticAsync(() =>
+        {
+            var expense = new Expense(categoryId, Money(amount), date, CurrentMemberId, fundId, note, onBehalfOfOtherAccount: onBehalfOfOtherAccount);
+            expense.SetFundSynced(FundIsSynced(fundId));
+            Period.AddExpense(expense);
+        },
+        id => api.AddExpenseAsync(id, new AddExpenseRequest(categoryId, amount, fundId, date, note, onBehalfOfOtherAccount)),
+        refetchAfter: true);
 
     // Bank-confirm flows only — bank provenance (externalId + auto-filed badge) isn't in the command API yet.
     // TODO(cutover): fold into POST /expenses once AddExpenseRequest carries bankExternalId/autoFiled.
@@ -811,7 +883,14 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     public async Task EditExpense(Guid expenseId, Guid categoryId, decimal amount, Guid fundId, string? note, DateOnly date)
     {
         var before = Period.Expenses.FirstOrDefault(e => e.Id == expenseId);
-        await ExecuteAsync(id => api.EditExpenseAsync(id, expenseId, new EditExpenseRequest(categoryId, amount, fundId, date, note)));
+        await ExecuteOptimisticAsync(() =>
+        {
+            var edited = Period.EditExpense(expenseId, categoryId, Money(amount), fundId, note, date);
+            edited.SetFundSynced(FundIsSynced(fundId));
+            edited.SetBankLink(before?.BankExternalId, autoFiled: false);   // keep provenance, clear the auto-filed badge
+        },
+        id => api.EditExpenseAsync(id, expenseId, new EditExpenseRequest(categoryId, amount, fundId, date, note)),
+        refetchAfter: true);   // EditExpense is append-only (mints a new id) — reconcile to adopt the server's
         // Editing a settlement-destination expense mirrors the new amount back to the source expense.
         if (before is { IsSettlementDestination: true, SettlementId: { } sid, SettledFromAccountId: { } sourceAccount })
             await SyncSourceSettlementAmount(sourceAccount, sid, amount);
@@ -820,7 +899,8 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     public async Task RemoveExpense(Guid expenseId)
     {
         var before = Period.Expenses.FirstOrDefault(e => e.Id == expenseId);
-        await ExecuteAsync(id => api.RemoveExpenseAsync(id, expenseId));
+        await ExecuteOptimisticAsync(() => Period.RemoveExpense(expenseId),
+            id => api.RemoveExpenseAsync(id, expenseId), refetchAfter: false);
         // Removing one side of a settlement reverses the other: deleting the source drops the destination expense;
         // deleting the destination un-settles the source (restores its full amount).
         if (before is { IsSettlementSource: true, SettledToAccountId: { } destAccount, SettlementId: { } sid })
@@ -831,20 +911,33 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
 
     /// <summary>Record a deposit for the signed-in user, classified by category and attributed to a fund.</summary>
     public Task RecordDeposit(Guid categoryId, Guid fundId, decimal amount, DateOnly date) =>
-        ExecuteAsync(id => api.AddDepositAsync(id, new AddDepositRequest(categoryId, fundId, amount, date)));
+        ExecuteOptimisticAsync(() =>
+        {
+            var contribution = Period.Deposit(CurrentMemberId, Money(amount), categoryId, fundId, date);
+            contribution.SetFundSynced(FundIsSynced(fundId));
+        },
+        id => api.AddDepositAsync(id, new AddDepositRequest(categoryId, fundId, amount, date)),
+        refetchAfter: true);   // a fresh row mints an id (a merge reuses one) — reconcile to be safe
 
     /// <summary>Edit one of the signed-in user's own deposit rows.</summary>
     public Task EditDeposit(Guid contributionId, Guid categoryId, Guid fundId, decimal amount, DateOnly date)
     {
         EnsureOwnContribution(contributionId);   // friendlier local message; the server 403s regardless
-        return ExecuteAsync(id => api.EditDepositAsync(id, contributionId, new EditDepositRequest(categoryId, fundId, amount, date)));
+        return ExecuteOptimisticAsync(() =>
+        {
+            Period.EditContribution(contributionId, Money(amount), categoryId, fundId, date);
+            Period.FindContribution(contributionId)?.SetFundSynced(FundIsSynced(fundId));
+        },
+        id => api.EditDepositAsync(id, contributionId, new EditDepositRequest(categoryId, fundId, amount, date)),
+        refetchAfter: true);
     }
 
     /// <summary>Remove one of the signed-in user's own deposit rows.</summary>
     public Task RemoveDeposit(Guid contributionId)
     {
         EnsureOwnContribution(contributionId);
-        return ExecuteAsync(id => api.RemoveDepositAsync(id, contributionId));
+        return ExecuteOptimisticAsync(() => Period.RemoveContribution(contributionId),
+            id => api.RemoveDepositAsync(id, contributionId), refetchAfter: false);
     }
 
     // --- Recurring items (BACKLOG #13, phase 1) — expectations that post a real expense/deposit on confirm ------
@@ -871,15 +964,26 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
             .Sum(r => r.ExpectedAmount));
 
     public Task AddRecurring(string name, RecurringKind kind, RecurringAmountMode mode, decimal expected, int dayOfMonth, Guid categoryId, Guid fundId, string? icon, bool autoPost = false) =>
-        ExecuteAsync(id => api.AddRecurringAsync(id, new AddRecurringRequest(name, RecurringKindString(kind), RecurringModeString(mode),
-            expected, dayOfMonth, categoryId, fundId, icon, autoPost)));
+        ExecuteOptimisticAsync(() =>
+        {
+            var item = new RecurringItem(name, kind, mode, expected, dayOfMonth, categoryId, fundId, icon, autoPost);
+            item.SetCreatedOn(Today());
+            Account.AddRecurring(item);
+        },
+        id => api.AddRecurringAsync(id, new AddRecurringRequest(name, RecurringKindString(kind), RecurringModeString(mode),
+            expected, dayOfMonth, categoryId, fundId, icon, autoPost)),
+        refetchAfter: true);
 
     public Task UpdateRecurring(Guid id, string name, RecurringAmountMode mode, decimal expected, int dayOfMonth, Guid categoryId, Guid fundId, string? icon, bool autoPost = false) =>
-        ExecuteAsync(acct => api.UpdateRecurringAsync(acct, id, new UpdateRecurringRequest(name, RecurringModeString(mode),
-            expected, dayOfMonth, categoryId, fundId, icon, autoPost)));
+        ExecuteOptimisticAsync(() => Account.FindRecurring(id)?.Update(name, mode, expected, dayOfMonth, categoryId, fundId, icon, autoPost),
+            acct => api.UpdateRecurringAsync(acct, id, new UpdateRecurringRequest(name, RecurringModeString(mode),
+                expected, dayOfMonth, categoryId, fundId, icon, autoPost)),
+            refetchAfter: true);
 
-    public Task RemoveRecurring(Guid id) => ExecuteAsync(acct => api.RemoveRecurringAsync(acct, id));
-    public Task SetRecurringActive(Guid id, bool active) => ExecuteAsync(acct => api.SetRecurringActiveAsync(acct, id, active));
+    public Task RemoveRecurring(Guid id) =>
+        ExecuteOptimisticAsync(() => Account.RemoveRecurring(id), acct => api.RemoveRecurringAsync(acct, id), refetchAfter: false);
+    public Task SetRecurringActive(Guid id, bool active) =>
+        ExecuteOptimisticAsync(() => Account.FindRecurring(id)?.SetActive(active), acct => api.SetRecurringActiveAsync(acct, id, active), refetchAfter: true);
 
     // The request DTOs carry kind/mode as language-independent strings (the server's RecurringMap parses them).
     private static string RecurringKindString(RecurringKind kind) => kind == RecurringKind.Income ? "income" : "expense";
@@ -895,7 +999,14 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     public Task ConfirmRecurring(Guid id, decimal actualAmount)
     {
         if (Account.FindRecurring(id) is null) return Task.CompletedTask;
-        return ExecuteAsync(acct => api.ConfirmRecurringAsync(acct, id, actualAmount));
+        return ExecuteOptimisticAsync(() =>
+        {
+            var item = Account.FindRecurring(id)!;
+            if (actualAmount > 0m) item.LearnFromActual(actualAmount);
+            Period.PostRecurring(item, actualAmount, CurrentMemberId, FundIsSynced(item.FundId));
+        },
+        acct => api.ConfirmRecurringAsync(acct, id, actualAmount),
+        refetchAfter: true);   // posts a real expense/income (mints an id) — reconcile
     }
 
     // --- Statement file import (CSV/OFX/QIF → real expenses & income) ------
@@ -912,8 +1023,13 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
             .ToList();
         if (dto.Count == 0) return;
         var accountId = CurrentAccountId;
-        await api.ImportTransactionsAsync(accountId, new ImportTransactionsRequest(dto));
-        await RefreshFromServerAsync(accountId);
+        await _pushLock.WaitAsync();   // serialize with the deferred whole-snapshot PUT (see ExecuteAsync)
+        try
+        {
+            await api.ImportTransactionsAsync(accountId, new ImportTransactionsRequest(dto));
+            await RefreshFromServerAsync(accountId);
+        }
+        finally { _pushLock.Release(); }
     }
 
     /// <summary>Does an expense/contribution with this date and (absolute) amount already exist this period? Used to
@@ -933,7 +1049,8 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     public Task SkipRecurring(Guid id)
     {
         if (Account.FindRecurring(id) is null) return Task.CompletedTask;
-        return ExecuteAsync(acct => api.SkipRecurringAsync(acct, id));
+        return ExecuteOptimisticAsync(() => Account.FindRecurring(id)?.MarkHandled(Period.From),
+            acct => api.SkipRecurringAsync(acct, id), refetchAfter: true);
     }
 
     /// <summary>Auto-post every due Fixed item flagged for it, marking each handled — one confirm command per item
@@ -948,6 +1065,7 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
         var due = Account.RecurringItems.Where(r => r.AutoPost && r.IsDue(Period.From, Period.To, Today())).ToList();
         if (due.Count == 0) return [];
         _autoPosting = true;
+        await _pushLock.WaitAsync();   // serialize with the deferred whole-snapshot PUT (see ExecuteAsync)
         try
         {
             var posted = new List<(string, Money, RecurringKind)>();
@@ -960,7 +1078,7 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
             await RefreshFromServerAsync(accountId);
             return posted;
         }
-        finally { _autoPosting = false; }
+        finally { _pushLock.Release(); _autoPosting = false; }
     }
 
     /// <summary>Log per-fund reconciliation drift as recategorizable <b>Adjustment</b> entries in the current
@@ -998,55 +1116,87 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
 
     public async Task<Guid> AddContributionCategory(string name, string? icon = null)
     {
-        var result = await ExecuteAsync(id => api.CreateContributionCategoryAsync(id, new CreateContributionCategoryRequest(name, icon)));
+        var result = await ExecuteOptimisticAsync(() =>
+        {
+            var c = Account.AddContributionCategory(name);
+            Account.SetContributionCategoryIcon(c.Id, icon);
+        },
+        id => api.CreateContributionCategoryAsync(id, new CreateContributionCategoryRequest(name, icon)),
+        refetchAfter: true);
         return result.EntityId ?? Guid.Empty;
     }
 
-    public Task RenameContributionCategory(Guid id, string name) =>
-        ExecuteAsync(acct => api.EditContributionCategoryAsync(acct, id, new EditContributionCategoryRequest(name, ContributionCategoryStoredIcon(id))));
+    public Task RenameContributionCategory(Guid id, string name)
+    {
+        var icon = ContributionCategoryStoredIcon(id);
+        return ExecuteOptimisticAsync(() => Account.RenameContributionCategory(id, name),
+            acct => api.EditContributionCategoryAsync(acct, id, new EditContributionCategoryRequest(name, icon)), refetchAfter: true);
+    }
 
     /// <summary>Rename a contribution category and set its icon in one save.</summary>
     public Task SaveContributionCategory(Guid id, string name, string? icon) =>
-        ExecuteAsync(acct => api.EditContributionCategoryAsync(acct, id, new EditContributionCategoryRequest(name, icon)));
+        ExecuteOptimisticAsync(() =>
+        {
+            Account.RenameContributionCategory(id, name);
+            Account.SetContributionCategoryIcon(id, icon);
+        },
+        acct => api.EditContributionCategoryAsync(acct, id, new EditContributionCategoryRequest(name, icon)),
+        refetchAfter: true);
 
     public string ContributionCategoryIcon(Guid id) =>
         CategoryIcons.Effective(Account.FindContributionCategory(id)?.Icon, Account.FindContributionCategory(id)?.Name);
     public string? ContributionCategoryStoredIcon(Guid id) => Account.FindContributionCategory(id)?.Icon;
 
     public Task RemoveContributionCategory(Guid id) =>
-        ExecuteAsync(acct => api.RemoveContributionCategoryAsync(acct, id));
+        ExecuteOptimisticAsync(() => Account.RemoveContributionCategory(id),
+            acct => api.RemoveContributionCategoryAsync(acct, id), refetchAfter: false);
 
     public Task AllocateSaving(Guid savingCategoryId, decimal amount, string? note) =>
-        ExecuteAsync(id => api.AddSavingDepositAsync(id, new AddSavingDepositRequest(savingCategoryId, amount, Today(), note)));
+        ExecuteOptimisticAsync(() => Period.AllocateToSavings(savingCategoryId, Money(amount), Today(), note, PriorSaved),
+            id => api.AddSavingDepositAsync(id, new AddSavingDepositRequest(savingCategoryId, amount, Today(), note)), refetchAfter: true);
 
     public Task EditSavingDeposit(Guid allocationId, decimal amount) =>
-        ExecuteAsync(id => api.EditSavingDepositAsync(id, allocationId, new EditSavingDepositRequest(amount)));
+        ExecuteOptimisticAsync(() => Period.EditSavingDeposit(allocationId, Money(amount), PriorSaved),
+            id => api.EditSavingDepositAsync(id, allocationId, new EditSavingDepositRequest(amount)), refetchAfter: true);
 
     public Task RemoveSavingDeposit(Guid allocationId) =>
-        ExecuteAsync(id => api.RemoveSavingDepositAsync(id, allocationId));
+        ExecuteOptimisticAsync(() => Period.RemoveSavingAllocation(allocationId),
+            id => api.RemoveSavingDepositAsync(id, allocationId), refetchAfter: false);
 
-    // Empty FundId: the server derives the same default the web used (first spendable non-synced fund).
+    // Empty FundId: the server derives the same default the web used (first spendable non-synced fund) — so the
+    // optimistic apply resolves it locally the same way (DefaultFundId) to keep the instant paint faithful.
     public Task SpendFromSavings(Guid savingCategoryId, Guid categoryId, decimal amount, string? note) =>
-        ExecuteAsync(id => api.SpendFromSavingsAsync(id, new SpendFromSavingsRequest(savingCategoryId, categoryId, amount, Today(), Guid.Empty, note)));
+        ExecuteOptimisticAsync(() => Period.ConvertSavingToExpense(savingCategoryId, categoryId, Money(amount), Today(), CurrentMemberId, DefaultFundId, note),
+            id => api.SpendFromSavingsAsync(id, new SpendFromSavingsRequest(savingCategoryId, categoryId, amount, Today(), Guid.Empty, note)), refetchAfter: true);
 
     public Task ConvertSavingToBudget(Guid savingCategoryId, Guid categoryId, decimal amount, string? note) =>
-        ExecuteAsync(id => api.ConvertSavingToBudgetAsync(id, new ConvertSavingToBudgetRequest(savingCategoryId, categoryId, amount, Today(), note)));
+        ExecuteOptimisticAsync(() => Period.ConvertSavingToBudget(savingCategoryId, categoryId, Money(amount), Today(), note),
+            id => api.ConvertSavingToBudgetAsync(id, new ConvertSavingToBudgetRequest(savingCategoryId, categoryId, amount, Today(), note)), refetchAfter: true);
 
     /// <summary>Deploy a bucket to its goal (e.g. a loan prepayment) from a chosen fund: money leaves the account but
     /// it's not an expense and doesn't dent the savings figures. The fund is the one physically holding the money.
     /// On a debt bucket the server also records an extra principal payment.</summary>
     public Task DisburseSaving(Guid savingCategoryId, Guid fundId, decimal amount, string? note) =>
-        ExecuteAsync(id => api.DisburseSavingAsync(id, new DisburseSavingRequest(savingCategoryId, fundId, amount, Today(), note)));
+        ExecuteOptimisticAsync(() =>
+        {
+            var transfer = Period.DisburseSaving(savingCategoryId, fundId, Money(amount), Today(), note);
+            transfer.SetFundSynced(FundIsSynced(fundId));
+            Account.RecordSavingDebtPayment(savingCategoryId, amount, Today());
+        },
+        id => api.DisburseSavingAsync(id, new DisburseSavingRequest(savingCategoryId, fundId, amount, Today(), note)),
+        refetchAfter: true);
 
     // --- Bucket lifecycle (archive a paid-off debt / reached goal) ---
     public bool SavingBucketIsArchived(Guid id) => FindSavingBucket(id)?.IsArchived ?? false;
     public bool SavingBucketIsDebtCleared(Guid id) => FindSavingBucket(id)?.IsDebtCleared ?? false;
     public Task SetSavingBucketArchived(Guid id, bool archived) =>
-        ExecuteAsync(acct => api.SetSavingBucketArchivedAsync(acct, id, archived));
+        ExecuteOptimisticAsync(() => Account.SetSavingArchived(id, archived),
+            acct => api.SetSavingBucketArchivedAsync(acct, id, archived), refetchAfter: true);
 
     /// <summary>Move earmarked money from one savings bucket to another (net-neutral).</summary>
     public Task MoveSavingToBucket(Guid fromBucketId, Guid toBucketId, decimal amount, string? note) =>
-        ExecuteAsync(id => api.MoveSavingsAsync(id, new MoveSavingsRequest(fromBucketId, toBucketId, amount, Today(), note)));
+        ExecuteOptimisticAsync(() => Period.TransferSavings(fromBucketId, toBucketId, Money(amount), Today(), note),
+            id => api.MoveSavingsAsync(id, new MoveSavingsRequest(fromBucketId, toBucketId, amount, Today(), note)), refetchAfter: true);
 
     /// <summary>True during initial setup (only the first period exists) — when a bucket's pre-existing initial balance may be set.</summary>
     public bool CanSetInitialSavings => PeriodCount == 1;
@@ -1294,23 +1444,38 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     public decimal SavingInitialAmount(Guid savingCategoryId) => FindSavingBucket(savingCategoryId)?.InitialAmount ?? 0m;
 
     public Task RemoveSavingBucket(Guid savingCategoryId) =>
-        ExecuteAsync(id => api.RemoveSavingBucketAsync(id, savingCategoryId));
+        ExecuteOptimisticAsync(() => Account.RemoveSavingCategory(savingCategoryId),
+            id => api.RemoveSavingBucketAsync(id, savingCategoryId), refetchAfter: false);
 
     // Fund CRUD + transfers
     public async Task<Guid> AddFund(string name, string? note = null, string? icon = null)
     {
-        var result = await ExecuteAsync(id => api.CreateFundAsync(id,
-            new CreateFundRequest(name, null, string.IsNullOrWhiteSpace(note) ? null : note, icon)));
+        var result = await ExecuteOptimisticAsync(() =>
+        {
+            var fund = Account.AddFund(name);
+            if (!string.IsNullOrWhiteSpace(note)) Account.SetFundNote(fund.Id, note);
+            Account.SetFundIcon(fund.Id, icon);
+        },
+        id => api.CreateFundAsync(id, new CreateFundRequest(name, null, string.IsNullOrWhiteSpace(note) ? null : note, icon)),
+        refetchAfter: true);
         return result.EntityId ?? Guid.Empty;
     }
 
     // The fund edit endpoint takes the full (name, note, icon) triple, so single-field setters pass the current
-    // values of the other two along.
-    public Task RenameFund(Guid fundId, string name) =>
-        ExecuteAsync(id => api.EditFundAsync(id, fundId, new EditFundRequest(name, FundNote(fundId), FundStoredIcon(fundId))));
+    // values of the other two along (captured before the optimistic apply changes them).
+    public Task RenameFund(Guid fundId, string name)
+    {
+        var (note, icon) = (FundNote(fundId), FundStoredIcon(fundId));
+        return ExecuteOptimisticAsync(() => Account.RenameFund(fundId, name),
+            id => api.EditFundAsync(id, fundId, new EditFundRequest(name, note, icon)), refetchAfter: true);
+    }
 
-    public Task SetFundIcon(Guid fundId, string? icon) =>
-        ExecuteAsync(id => api.EditFundAsync(id, fundId, new EditFundRequest(FundName(fundId), FundNote(fundId), icon)));
+    public Task SetFundIcon(Guid fundId, string? icon)
+    {
+        var (name, note) = (FundName(fundId), FundNote(fundId));
+        return ExecuteOptimisticAsync(() => Account.SetFundIcon(fundId, icon),
+            id => api.EditFundAsync(id, fundId, new EditFundRequest(name, note, icon)), refetchAfter: true);
+    }
 
     /// <summary>Toggle a fund's bank-synced flag (forward-only — see <see cref="Fund.IsSynced"/>).</summary>
     // TODO(cutover): needs a command endpoint (fund synced flag) — still local-mutate + whole-snapshot push.
@@ -1346,13 +1511,18 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
         CategoryIcons.Effective(Account.FindFund(fundId)?.Icon, Account.FindFund(fundId)?.Name);
     public string? FundStoredIcon(Guid fundId) => Account.FindFund(fundId)?.Icon;
 
-    public Task SetFundNote(Guid fundId, string? note) =>
-        ExecuteAsync(id => api.EditFundAsync(id, fundId, new EditFundRequest(FundName(fundId), note, FundStoredIcon(fundId))));
+    public Task SetFundNote(Guid fundId, string? note)
+    {
+        var (name, icon) = (FundName(fundId), FundStoredIcon(fundId));
+        return ExecuteOptimisticAsync(() => Account.SetFundNote(fundId, note),
+            id => api.EditFundAsync(id, fundId, new EditFundRequest(name, note, icon)), refetchAfter: true);
+    }
 
     public bool FundHasOpeningBalance(Guid fundId) => Account.FundHasOpeningBalance(fundId);
 
     public Task RemoveFund(Guid fundId, Guid? moveOpeningBalancesTo = null) =>
-        ExecuteAsync(id => api.RemoveFundAsync(id, fundId, moveOpeningBalancesTo));
+        ExecuteOptimisticAsync(() => Account.RemoveFund(fundId, moveOpeningBalancesTo),
+            id => api.RemoveFundAsync(id, fundId, moveOpeningBalancesTo), refetchAfter: false);
 
     /// <summary>Archive a fund (hide it, keep its history). If it still holds a balance, pass a <paramref name="moveBalanceTo"/>
     /// fund + <paramref name="amount"/> to move that money out first as a real transfer, so the account total is preserved
@@ -1361,25 +1531,50 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     public async Task ArchiveFund(Guid fundId, Guid? moveBalanceTo, decimal amount)
     {
         if (moveBalanceTo is { } target && target != Guid.Empty && amount > 0m)
-            await ExecuteAsync(id => api.TransferFundsAsync(id, new TransferFundsRequest(fundId, target, amount, Today())));
-        await ExecuteAsync(id => api.SetFundArchivedAsync(id, fundId, true));
+            await ExecuteOptimisticAsync(() =>
+            {
+                var transfer = Period.TransferFunds(fundId, target, Money(amount), Today(), null);
+                transfer.SetSyncedSides(FundIsSynced(fundId), FundIsSynced(target));
+            },
+            id => api.TransferFundsAsync(id, new TransferFundsRequest(fundId, target, amount, Today())),
+            refetchAfter: true);
+        await ExecuteOptimisticAsync(() => Account.SetFundArchived(fundId, true),
+            id => api.SetFundArchivedAsync(id, fundId, true), refetchAfter: true);
     }
 
-    public Task RestoreFund(Guid fundId) => ExecuteAsync(id => api.SetFundArchivedAsync(id, fundId, false));
+    public Task RestoreFund(Guid fundId) =>
+        ExecuteOptimisticAsync(() => Account.SetFundArchived(fundId, false),
+            id => api.SetFundArchivedAsync(id, fundId, false), refetchAfter: true);
 
     public Task SetFundOpeningBalance(Guid fundId, decimal amount) =>
-        ExecuteAsync(id => api.SetFundOpeningBalanceAsync(id, fundId, amount));
+        ExecuteOptimisticAsync(() => Period.SetInitialBalance(fundId, Money(amount)),
+            id => api.SetFundOpeningBalanceAsync(id, fundId, amount), refetchAfter: true);
 
     public Task TransferFunds(Guid fromFundId, Guid toFundId, decimal amount, string? note) =>
-        ExecuteAsync(id => api.TransferFundsAsync(id, new TransferFundsRequest(fromFundId, toFundId, amount, Today(), note)));
+        ExecuteOptimisticAsync(() =>
+        {
+            var transfer = Period.TransferFunds(fromFundId, toFundId, Money(amount), Today(), note);
+            transfer.SetSyncedSides(FundIsSynced(fromFundId), FundIsSynced(toFundId));
+        },
+        id => api.TransferFundsAsync(id, new TransferFundsRequest(fromFundId, toFundId, amount, Today(), note)),
+        refetchAfter: true);
 
     public FundTransfer? FindFundTransfer(Guid id) => Period.FundTransfers.FirstOrDefault(t => t.Id == id);
 
     public Task EditFundTransfer(Guid id, Guid fromFundId, Guid toFundId, decimal amount, string? note) =>
-        ExecuteAsync(acct => api.EditFundTransferAsync(acct, id, new EditFundTransferRequest(fromFundId, toFundId, amount, note)));
+        ExecuteOptimisticAsync(() =>
+        {
+            var before = FindFundTransfer(id);
+            var transfer = Period.EditFundTransfer(id, fromFundId, toFundId, Money(amount), note);
+            transfer.SetSyncedSides(FundIsSynced(fromFundId), FundIsSynced(toFundId));
+            transfer.SetBankLink(before?.BankExternalId, autoFiled: false);
+        },
+        acct => api.EditFundTransferAsync(acct, id, new EditFundTransferRequest(fromFundId, toFundId, amount, note)),
+        refetchAfter: true);   // EditFundTransfer is append-only (mints a new id)
 
     public Task RemoveFundTransfer(Guid id) =>
-        ExecuteAsync(acct => api.RemoveFundTransferAsync(acct, id));
+        ExecuteOptimisticAsync(() => Period.RemoveFundTransfer(id),
+            acct => api.RemoveFundTransferAsync(acct, id), refetchAfter: false);
 
     // --- Cross-account transfers (money out -> a contribution in another account) ---
 
@@ -1703,13 +1898,23 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     }
 
     // The server identifies the period positionally (oldest = 0) — the same index this state navigates by.
-    public Task ReschedulePeriod(DateOnly from, DateOnly to) =>
-        ExecuteAsync(id => api.ReschedulePeriodAsync(id, _selectedIndex, new ReschedulePeriodRequest(from, to)));
+    public Task ReschedulePeriod(DateOnly from, DateOnly to)
+    {
+        var period = Period;
+        return ExecuteOptimisticAsync(() => Account.ReschedulePeriod(period, from, to),
+            id => api.ReschedulePeriodAsync(id, _selectedIndex, new ReschedulePeriodRequest(from, to)), refetchAfter: true);
+    }
 
     // Category CRUD
     public async Task<Guid> AddCategory(string name, Guid? parentId, string? icon = null, bool essential = false)
     {
-        var result = await ExecuteAsync(id => api.CreateCategoryAsync(id, new CreateCategoryRequest(name, parentId, icon, essential)));
+        var result = await ExecuteOptimisticAsync(() =>
+        {
+            var category = Account.AddCategory(name, parentId, icon);
+            if (essential) Account.SetCategoryEssential(category.Id, true);
+        },
+        id => api.CreateCategoryAsync(id, new CreateCategoryRequest(name, parentId, icon, essential)),
+        refetchAfter: true);
         return result.EntityId ?? Guid.Empty;
     }
 
@@ -1742,17 +1947,29 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
 
     // The category edit endpoint takes (name, icon, essential?) together, so single-field setters pass the
     // current values of the fields they don't change (a null Essential leaves the flag untouched server-side).
-    public Task RenameCategory(Guid categoryId, string name) =>
-        ExecuteAsync(id => api.EditCategoryAsync(id, categoryId, new EditCategoryRequest(name, CategoryStoredIcon(categoryId))));
+    public Task RenameCategory(Guid categoryId, string name)
+    {
+        var icon = CategoryStoredIcon(categoryId);
+        return ExecuteOptimisticAsync(() => Account.RenameCategory(categoryId, name),
+            id => api.EditCategoryAsync(id, categoryId, new EditCategoryRequest(name, icon)), refetchAfter: true);
+    }
 
     /// <summary>Rename a category and set its icon in one save.</summary>
     public Task EditCategory(Guid categoryId, string name, string? icon) =>
-        ExecuteAsync(id => api.EditCategoryAsync(id, categoryId, new EditCategoryRequest(name, icon)));
+        ExecuteOptimisticAsync(() =>
+        {
+            Account.RenameCategory(categoryId, name);
+            Account.SetCategoryIcon(categoryId, icon);
+        },
+        id => api.EditCategoryAsync(id, categoryId, new EditCategoryRequest(name, icon)), refetchAfter: true);
 
     /// <summary>Set a category's essential/discretionary flag (advisory only).</summary>
-    public Task SetCategoryEssential(Guid categoryId, bool essential) =>
-        ExecuteAsync(id => api.EditCategoryAsync(id, categoryId,
-            new EditCategoryRequest(Account.FindCategory(categoryId)?.Name ?? "", CategoryStoredIcon(categoryId), essential)));
+    public Task SetCategoryEssential(Guid categoryId, bool essential)
+    {
+        var (name, icon) = (Account.FindCategory(categoryId)?.Name ?? "", CategoryStoredIcon(categoryId));
+        return ExecuteOptimisticAsync(() => Account.SetCategoryEssential(categoryId, essential),
+            id => api.EditCategoryAsync(id, categoryId, new EditCategoryRequest(name, icon, essential)), refetchAfter: true);
+    }
 
     /// <summary>The icon to show for a category — its explicit choice, or one guessed from the name.</summary>
     public string CategoryIcon(Guid categoryId) => CategoryIcons.Effective(Account.FindCategory(categoryId));
@@ -1761,32 +1978,46 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     public string? CategoryStoredIcon(Guid categoryId) => Account.FindCategory(categoryId)?.Icon;
 
     public Task RemoveCategory(Guid categoryId) =>
-        ExecuteAsync(id => api.RemoveCategoryAsync(id, categoryId));
+        ExecuteOptimisticAsync(() => Account.RemoveCategory(categoryId),
+            id => api.RemoveCategoryAsync(id, categoryId), refetchAfter: false);
 
     /// <summary>Archive a category (hide it, keep its expenses/budgets in history). No reference blocker — unlike
     /// <see cref="RemoveCategory"/> this works even when expenses/budgets/sub-categories reference it.</summary>
-    public Task ArchiveCategory(Guid categoryId) => ExecuteAsync(id => api.SetCategoryArchivedAsync(id, categoryId, true));
-    public Task RestoreCategory(Guid categoryId) => ExecuteAsync(id => api.SetCategoryArchivedAsync(id, categoryId, false));
+    public Task ArchiveCategory(Guid categoryId) =>
+        ExecuteOptimisticAsync(() => Account.SetCategoryArchived(categoryId, true),
+            id => api.SetCategoryArchivedAsync(id, categoryId, true), refetchAfter: true);
+    public Task RestoreCategory(Guid categoryId) =>
+        ExecuteOptimisticAsync(() => Account.SetCategoryArchived(categoryId, false),
+            id => api.SetCategoryArchivedAsync(id, categoryId, false), refetchAfter: true);
 
     // Budget CRUD (the endpoint takes the threshold as a percent 0–100, same as these signatures)
     public Task SaveBudget(Guid categoryId, decimal amount, decimal thresholdPercent, bool notifyEvery) =>
-        ExecuteAsync(id => api.SetBudgetAsync(id, categoryId, new SetBudgetRequest(amount, thresholdPercent, notifyEvery)));
+        ExecuteOptimisticAsync(() => Period.SetBudget(categoryId, Money(amount), thresholdPercent / 100m, notifyEvery),
+            id => api.SetBudgetAsync(id, categoryId, new SetBudgetRequest(amount, thresholdPercent, notifyEvery)), refetchAfter: true);
 
     /// <summary>Reallocate spare budget toward a debt in one step: trim <paramref name="categoryId"/>'s budget to
     /// <paramref name="newBudget"/> and set <paramref name="amount"/> aside toward <paramref name="savingCategoryId"/>.
     /// Backs the "Move it to the loan" nudge action — one save, so the spare disappears and the earmark grows together.</summary>
     public Task ReallocateBudgetToSaving(Guid categoryId, decimal newBudget, decimal thresholdPercent, bool notifyEvery,
         Guid savingCategoryId, decimal amount) =>
-        ExecuteAsync(id => api.ReallocateToSavingsAsync(id, new ReallocateToSavingsRequest(
-            categoryId, newBudget, thresholdPercent, notifyEvery, savingCategoryId, amount, Today())));
+        ExecuteOptimisticAsync(() =>
+        {
+            Period.SetBudget(categoryId, Money(newBudget), thresholdPercent / 100m, notifyEvery);
+            Period.AllocateToSavings(savingCategoryId, Money(amount), Today(), null, PriorSaved);
+        },
+        id => api.ReallocateToSavingsAsync(id, new ReallocateToSavingsRequest(
+            categoryId, newBudget, thresholdPercent, notifyEvery, savingCategoryId, amount, Today())),
+        refetchAfter: true);
 
     public Task RemoveBudget(Guid categoryId) =>
-        ExecuteAsync(id => api.RemoveBudgetAsync(id, categoryId));
+        ExecuteOptimisticAsync(() => Period.RemoveBudget(categoryId),
+            id => api.RemoveBudgetAsync(id, categoryId), refetchAfter: false);
 
     /// <summary>Remove the latest period and make the previous one active again.</summary>
     public async Task RemoveLatestPeriod()
     {
-        await ExecuteAsync(id => api.RemoveLatestPeriodAsync(id));
+        await ExecuteOptimisticAsync(() => Account.RemoveLatestPeriod(),
+            id => api.RemoveLatestPeriodAsync(id), refetchAfter: false);
         _selectedIndex = Account.Periods.Count - 1;
         RaiseChanged();
     }
