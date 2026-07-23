@@ -546,47 +546,49 @@ accounts.MapGet("/{id:guid}/snapshot", async (Guid id, ClaimsPrincipal user, Sna
 // --- Computed reads (Option-A migration, docs/MOBILE.md) -----------------
 // First read moved server-side: the Home balance-header figures, computed from the snapshot the server
 // already loads. Reuses SnapshotService.GetAsync for the contributor auth + decrypt; the domain does the maths.
-accounts.MapGet("/{id:guid}/overview", async (Guid id, ClaimsPrincipal user, SnapshotService svc, CancellationToken ct) =>
+accounts.MapGet("/{id:guid}/overview", async (Guid id, ClaimsPrincipal user, SnapshotService svc, BankSyncService bankSvc, CancellationToken ct) =>
 {
     var snap = await svc.GetAsync(user.UserId(), id, ct);
     if (string.IsNullOrEmpty(snap.Payload)) return Results.Ok(AccountOverviewDto.Empty);
     var account = AccountSnapshotSerializer.Deserialize(snap.Payload);
     if (account.CurrentPeriod is not { } period) return Results.Ok(AccountOverviewDto.Empty with { Currency = account.Currency });
-    var ov = AccountOverview.For(account, period);
-    return Results.Ok(new AccountOverviewDto(
-        account.Currency, ov.Current.Amount, ov.Free.Amount, ov.Saved.Amount,
-        ov.Spent.Amount, ov.Contributed.Amount, ov.BillsDue.Amount, ov.SafeAfterBills.Amount));
+    // Overlay the live bank balance so the thin header matches the thick app (see SpendingMap.Overview).
+    var bank = await bankSvc.GetStatusAsync(user.UserId(), id, ct);
+    return Results.Ok(SpendingMap.Overview(account, period, bank.Balance, bank.BalanceCurrency));
 });
 
 // Path-B thin-Spending read: the whole surface (expenses + overview + picker options) in one call, so a thin
 // client renders the tab with no snapshot and no domain. Paired with the delta-returning expense writes above.
-accounts.MapGet("/{id:guid}/spending", async (Guid id, ClaimsPrincipal user, SnapshotService svc, CancellationToken ct) =>
+accounts.MapGet("/{id:guid}/spending", async (Guid id, ClaimsPrincipal user, SnapshotService svc, BankSyncService bankSvc, CancellationToken ct) =>
 {
     var snap = await svc.GetAsync(user.UserId(), id, ct);
     if (string.IsNullOrEmpty(snap.Payload)) return Results.Ok(SpendingViewDto.Empty);
     var account = AccountSnapshotSerializer.Deserialize(snap.Payload);
-    return Results.Ok(SpendingMap.View(account, snap.Version));
+    var bank = await bankSvc.GetStatusAsync(user.UserId(), id, ct);
+    return Results.Ok(SpendingMap.View(account, snap.Version, bank.Balance, bank.BalanceCurrency));
 });
 
 // Path-B thin-Wallets read: funds + balances + this period's transfers in one call. Paired with the fund writes
 // below, which return a FundMutationDto carrying a refreshed view so the client reconciles with no re-fetch.
-accounts.MapGet("/{id:guid}/wallets", async (Guid id, ClaimsPrincipal user, SnapshotService svc, CancellationToken ct) =>
+accounts.MapGet("/{id:guid}/wallets", async (Guid id, ClaimsPrincipal user, SnapshotService svc, BankSyncService bankSvc, CancellationToken ct) =>
 {
     var snap = await svc.GetAsync(user.UserId(), id, ct);
     if (string.IsNullOrEmpty(snap.Payload)) return Results.Ok(WalletsViewDto.Empty);
     var account = AccountSnapshotSerializer.Deserialize(snap.Payload);
-    return Results.Ok(WalletsMap.View(account, snap.Version));
+    var bank = await bankSvc.GetStatusAsync(user.UserId(), id, ct);
+    return Results.Ok(WalletsMap.View(account, snap.Version, bank.Balance, bank.BalanceCurrency));
 });
 
 // Path-B thin-Goals read: every bucket with its computed figures (goal progress / debt payoff / investment
 // projection / sinking set-aside), the free-to-save cap, and this period's deposits. Paired with the savings-deposit
 // write below (returns a SavingsMutationDto carrying a refreshed view).
-accounts.MapGet("/{id:guid}/savings", async (Guid id, ClaimsPrincipal user, SnapshotService svc, CancellationToken ct) =>
+accounts.MapGet("/{id:guid}/savings", async (Guid id, ClaimsPrincipal user, SnapshotService svc, BankSyncService bankSvc, CancellationToken ct) =>
 {
     var snap = await svc.GetAsync(user.UserId(), id, ct);
     if (string.IsNullOrEmpty(snap.Payload)) return Results.Ok(SavingsViewDto.Empty);
     var account = AccountSnapshotSerializer.Deserialize(snap.Payload);
-    return Results.Ok(SavingsMap.View(account, snap.Version));
+    var bank = await bankSvc.GetStatusAsync(user.UserId(), id, ct);
+    return Results.Ok(SavingsMap.View(account, snap.Version, bank.Balance, bank.BalanceCurrency));
 });
 
 // The cash runway (first month the balance runs short, or null when there's no basis to project from).
@@ -690,9 +692,10 @@ accounts.MapPost("/{id:guid}/bootstrap", async (Guid id, BootstrapAccountRequest
     return Results.Ok(new MutationResultDto(version, id));
 });
 
-accounts.MapPost("/{id:guid}/expenses", async (Guid id, AddExpenseRequest req, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
+accounts.MapPost("/{id:guid}/expenses", async (Guid id, AddExpenseRequest req, ClaimsPrincipal user, SnapshotService svc, BankSyncService bankSvc, SyncNotifier notifier, CancellationToken ct) =>
 {
     var userId = user.UserId();
+    var bank = await bankSvc.GetStatusAsync(userId, id, ct);   // for the delta's bank-adjusted overview
     var (version, delta) = await svc.MutateAsync(userId, id, account =>
     {
         var period = account.CurrentPeriod ?? throw new InvalidOperationException("There's no open period to add an expense to.");
@@ -703,15 +706,16 @@ accounts.MapPost("/{id:guid}/expenses", async (Guid id, AddExpenseRequest req, C
         expense.SetFundSynced(fund.IsSynced);   // synced funds aren't debited — the real bank balance handles it
         period.AddExpense(expense);
         // The delta a thin client reconciles from (the thick client reads only Version/EntityId — a superset).
-        return (expense.Id, SpendingMap.ToDto(account, expense), SpendingMap.Overview(account, period));
+        return (expense.Id, SpendingMap.ToDto(account, expense), SpendingMap.Overview(account, period, bank.Balance, bank.BalanceCurrency));
     }, ct);
     await notifier.AccountChangedAsync(id, userId, version);
     return Results.Ok(new ExpenseMutationDto(version, delta.Id, delta.Item2, delta.Item3));
 });
 
-accounts.MapPut("/{id:guid}/expenses/{expenseId:guid}", async (Guid id, Guid expenseId, EditExpenseRequest req, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
+accounts.MapPut("/{id:guid}/expenses/{expenseId:guid}", async (Guid id, Guid expenseId, EditExpenseRequest req, ClaimsPrincipal user, SnapshotService svc, BankSyncService bankSvc, SyncNotifier notifier, CancellationToken ct) =>
 {
     var userId = user.UserId();
+    var bank = await bankSvc.GetStatusAsync(userId, id, ct);
     var (version, delta) = await svc.MutateAsync(userId, id, account =>
     {
         var period = account.CurrentPeriod ?? throw new InvalidOperationException("There's no open period.");
@@ -722,20 +726,21 @@ accounts.MapPut("/{id:guid}/expenses/{expenseId:guid}", async (Guid id, Guid exp
         edited.SetFundSynced(fund.IsSynced);            // recompute at edit time (moving to/from a synced fund)
         edited.SetBankLink(before?.BankExternalId, autoFiled: false);   // keep provenance, clear the auto-filed badge
         // Edit is append-only (a new id), so the delta carries the NEW row for the client to swap in.
-        return (edited.Id, SpendingMap.ToDto(account, edited), SpendingMap.Overview(account, period));
+        return (edited.Id, SpendingMap.ToDto(account, edited), SpendingMap.Overview(account, period, bank.Balance, bank.BalanceCurrency));
     }, ct);
     await notifier.AccountChangedAsync(id, userId, version);
     return Results.Ok(new ExpenseMutationDto(version, delta.Id, delta.Item2, delta.Item3));
 });
 
-accounts.MapDelete("/{id:guid}/expenses/{expenseId:guid}", async (Guid id, Guid expenseId, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
+accounts.MapDelete("/{id:guid}/expenses/{expenseId:guid}", async (Guid id, Guid expenseId, ClaimsPrincipal user, SnapshotService svc, BankSyncService bankSvc, SyncNotifier notifier, CancellationToken ct) =>
 {
     var userId = user.UserId();
+    var bank = await bankSvc.GetStatusAsync(userId, id, ct);
     var (version, overview) = await svc.MutateAsync(userId, id, account =>
     {
         var period = account.CurrentPeriod ?? throw new InvalidOperationException("There's no open period.");
         period.RemoveExpense(expenseId);
-        return SpendingMap.Overview(account, period);   // nothing to echo on a delete — just the recomputed totals
+        return SpendingMap.Overview(account, period, bank.Balance, bank.BalanceCurrency);   // recomputed, bank-adjusted totals
     }, ct);
     await notifier.AccountChangedAsync(id, userId, version);
     return Results.Ok(new ExpenseMutationDto(version, expenseId, null, overview));
@@ -1005,16 +1010,17 @@ accounts.MapPost("/{id:guid}/reallocations/to-budget", async (Guid id, Reallocat
 // A savings deposit earmarks money within the balance (raises "saved", lowers "free"); it never leaves the account.
 // Spend-from-savings records a real expense AND a matching negative drawdown, so the earmark and the balance both fall.
 // (Bucket/goal CRUD is a separate later slice; the "priorSaved" the client passes is unused by the domain, so it's omitted.)
-accounts.MapPost("/{id:guid}/savings/deposits", async (Guid id, AddSavingDepositRequest req, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
+accounts.MapPost("/{id:guid}/savings/deposits", async (Guid id, AddSavingDepositRequest req, ClaimsPrincipal user, SnapshotService svc, BankSyncService bankSvc, SyncNotifier notifier, CancellationToken ct) =>
 {
     var userId = user.UserId();
+    var bank = await bankSvc.GetStatusAsync(userId, id, ct);
     var (version, delta) = await svc.MutateAsync(userId, id, account =>
     {
         var period = account.CurrentPeriod ?? throw new InvalidOperationException("There's no open period to save into.");
         if (account.FindSavingCategory(req.SavingCategoryId) is null)
             throw new InvalidOperationException("That savings bucket doesn't exist in this account.");
         var allocation = period.AllocateToSavings(req.SavingCategoryId, new Money(req.Amount, account.Currency), req.Date, req.Note);
-        return (allocation.Id, SavingsMap.View(account, 0));
+        return (allocation.Id, SavingsMap.View(account, 0, bank.Balance, bank.BalanceCurrency));
     }, ct);
     await notifier.AccountChangedAsync(id, userId, version);
     return Results.Ok(new SavingsMutationDto(version, delta.Id, delta.Item2 with { Version = version }));
@@ -1251,15 +1257,16 @@ accounts.MapDelete("/{id:guid}/categories/{categoryId:guid}", async (Guid id, Gu
 });
 
 // Funds
-accounts.MapPost("/{id:guid}/funds", async (Guid id, CreateFundRequest req, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
+accounts.MapPost("/{id:guid}/funds", async (Guid id, CreateFundRequest req, ClaimsPrincipal user, SnapshotService svc, BankSyncService bankSvc, SyncNotifier notifier, CancellationToken ct) =>
 {
     var userId = user.UserId();
+    var bank = await bankSvc.GetStatusAsync(userId, id, ct);
     var (version, delta) = await svc.MutateAsync(userId, id, account =>
     {
         var fund = account.AddFund(req.Name, req.ParentId);   // validates parent + unique name
         account.SetFundNote(fund.Id, req.Note);
         account.SetFundIcon(fund.Id, req.Icon);
-        return (fund.Id, WalletsMap.View(account, 0));   // version stamped on the way out
+        return (fund.Id, WalletsMap.View(account, 0, bank.Balance, bank.BalanceCurrency));   // version stamped on the way out
     }, ct);
     await notifier.AccountChangedAsync(id, userId, version);
     return Results.Ok(new FundMutationDto(version, delta.Id, delta.Item2 with { Version = version }));
@@ -1323,10 +1330,11 @@ accounts.MapPut("/{id:guid}/funds/{fundId:guid}/opening-balance", async (Guid id
 // Fund transfers — move money between two of the account's own funds within the open period (total-preserving, so the
 // source may go negative; the domain caps only money leaving the account, which is a later cross-account slice).
 // Mirrors BudgetingState.TransferFunds/EditFundTransfer/RemoveFundTransfer; synced sides are recorded (not moved).
-accounts.MapPost("/{id:guid}/fund-transfers", async (Guid id, TransferFundsRequest req, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
+accounts.MapPost("/{id:guid}/fund-transfers", async (Guid id, TransferFundsRequest req, ClaimsPrincipal user, SnapshotService svc, BankSyncService bankSvc, SyncNotifier notifier, CancellationToken ct) =>
 {
     var userId = user.UserId();
     var date = req.Date ?? DateOnly.FromDateTime(DateTime.UtcNow);
+    var bank = await bankSvc.GetStatusAsync(userId, id, ct);
     var (version, delta) = await svc.MutateAsync(userId, id, account =>
     {
         var from = account.FindFund(req.FromFundId) ?? throw new InvalidOperationException("The source fund doesn't exist in this account.");
@@ -1334,7 +1342,7 @@ accounts.MapPost("/{id:guid}/fund-transfers", async (Guid id, TransferFundsReque
         var period = account.CurrentPeriod ?? throw new InvalidOperationException("There's no open period.");
         var transfer = period.TransferFunds(req.FromFundId, req.ToFundId, new Money(req.Amount, account.Currency), date, req.Note);
         transfer.SetSyncedSides(from.IsSynced, to.IsSynced);   // a synced side's real bank balance already reflects it
-        return (transfer.Id, WalletsMap.View(account, 0));
+        return (transfer.Id, WalletsMap.View(account, 0, bank.Balance, bank.BalanceCurrency));
     }, ct);
     await notifier.AccountChangedAsync(id, userId, version);
     return Results.Ok(new FundMutationDto(version, delta.Id, delta.Item2 with { Version = version }));

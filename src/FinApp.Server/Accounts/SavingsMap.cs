@@ -14,7 +14,7 @@ namespace FinApp.Server.Accounts;
 /// </summary>
 public static class SavingsMap
 {
-    public static SavingsViewDto View(Account account, long version)
+    public static SavingsViewDto View(Account account, long version, decimal? bankBalance = null, string? bankCurrency = null)
     {
         if (account.CurrentPeriod is not { } period)
             return SavingsViewDto.Empty with { Version = version, Currency = account.Currency };
@@ -34,7 +34,7 @@ public static class SavingsMap
                 account.FindSavingCategory(a.SavingCategoryId)?.Name ?? "—", a.Amount.Amount, a.Date, a.Note))
             .ToList();
 
-        return new SavingsViewDto(version, account.Currency, SpendingMap.Overview(account, period),
+        return new SavingsViewDto(version, account.Currency, SpendingMap.Overview(account, period, bankBalance, bankCurrency),
             availableToSave, buckets, deposits);
     }
 

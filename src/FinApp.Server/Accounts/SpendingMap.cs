@@ -13,13 +13,33 @@ namespace FinApp.Server.Accounts;
 /// </summary>
 public static class SpendingMap
 {
-    /// <summary>The balance-header figures for a period, as the wire DTO.</summary>
-    public static AccountOverviewDto Overview(Account account, Period period)
+    /// <summary>
+    /// The balance-header figures for a period, as the wire DTO. When the account has a bank-synced fund and a
+    /// <paramref name="bankBalance"/> is supplied (same currency), <see cref="AccountOverviewDto.Current"/> and
+    /// <see cref="AccountOverviewDto.Free"/> are adjusted to reflect the <b>live</b> bank balance — the synced fund's
+    /// ledger position is swapped for its real external balance. This mirrors the web client's
+    /// <c>BudgetingState.BankAdjust</c> exactly, so a thin client's header matches the thick app's (the money model
+    /// itself still uses the conservative ledger figures — this is a display overlay of live external data only).
+    /// </summary>
+    public static AccountOverviewDto Overview(Account account, Period period, decimal? bankBalance = null, string? bankCurrency = null)
     {
         var ov = AccountOverview.For(account, period);
-        return new AccountOverviewDto(
+        var dto = new AccountOverviewDto(
             account.Currency, ov.Current.Amount, ov.Free.Amount, ov.Saved.Amount,
             ov.Spent.Amount, ov.Contributed.Amount, ov.BillsDue.Amount, ov.SafeAfterBills.Amount);
+        return AdjustForBank(dto, account, period, bankBalance, bankCurrency);
+    }
+
+    // Swap the synced fund's ledger balance for its live bank balance in Current/Free (display only). No-op without a
+    // synced fund / live balance, and skipped across currencies — identical to BudgetingState.BankAdjust.
+    private static AccountOverviewDto AdjustForBank(AccountOverviewDto ov, Account account, Period period, decimal? bankBalance, string? bankCurrency)
+    {
+        var synced = account.Funds.FirstOrDefault(f => f.IsSynced);
+        if (synced is null || bankBalance is not { } live) return ov;
+        if (!string.IsNullOrEmpty(bankCurrency) && !string.Equals(bankCurrency, account.Currency, StringComparison.OrdinalIgnoreCase))
+            return ov;
+        var delta = live - period.LedgerFundBalance(synced.Id).Amount;
+        return ov with { Current = ov.Current + delta, Free = ov.Free + delta };
     }
 
     /// <summary>One expense row with its display fields resolved.</summary>
@@ -40,7 +60,7 @@ public static class SpendingMap
         e.IsSettlementDestination);
 
     /// <summary>The full Spending surface for the account's current period (empty currency-only view when none).</summary>
-    public static SpendingViewDto View(Account account, long version)
+    public static SpendingViewDto View(Account account, long version, decimal? bankBalance = null, string? bankCurrency = null)
     {
         if (account.CurrentPeriod is not { } period)
             return SpendingViewDto.Empty with { Version = version, Currency = account.Currency };
@@ -61,6 +81,6 @@ public static class SpendingMap
             .Select(f => new FundOptionDto(f.Id, f.Name, f.IsSynced))
             .ToList();
 
-        return new SpendingViewDto(version, account.Currency, Overview(account, period), expenses, categories, funds);
+        return new SpendingViewDto(version, account.Currency, Overview(account, period, bankBalance, bankCurrency), expenses, categories, funds);
     }
 }

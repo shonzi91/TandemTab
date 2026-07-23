@@ -21,7 +21,7 @@ public static class WalletsMap
         f.IsSynced,
         f.IsArchived);
 
-    public static WalletsViewDto View(Account account, long version)
+    public static WalletsViewDto View(Account account, long version, decimal? bankBalance = null, string? bankCurrency = null)
     {
         if (account.CurrentPeriod is not { } period)
             return WalletsViewDto.Empty with { Version = version, Currency = account.Currency };
@@ -35,6 +35,6 @@ public static class WalletsMap
                 t.Amount.Amount, t.Date, t.Note))
             .ToList();
 
-        return new WalletsViewDto(version, account.Currency, SpendingMap.Overview(account, period), funds, archived, transfers);
+        return new WalletsViewDto(version, account.Currency, SpendingMap.Overview(account, period, bankBalance, bankCurrency), funds, archived, transfers);
     }
 }
