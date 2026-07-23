@@ -34,6 +34,11 @@
     @if (HasRamp)
     {
         <div class="pring-ramp ramp-@Ramp" style="--sweep:@SweepDeg" aria-hidden="true"></div>
+        @if (SweepRaw > NotchDeg)
+        {
+            <div class="pring-cap" style="--capc:@CapStart;transform:rotate(@StartCapRot)" aria-hidden="true"></div>
+            <div class="pring-cap" style="--capc:@CapTip;transform:rotate(@TipCapRot)" aria-hidden="true"></div>
+        }
     }
     <div class="pring-center">@ChildContent</div>
 </div>
@@ -59,11 +64,33 @@
     private static readonly System.Globalization.CultureInfo Inv = System.Globalization.CultureInfo.InvariantCulture;
     private double T => Math.Clamp(Percent, 0, 100) / 100.0;
     private bool HasRamp => !string.IsNullOrEmpty(Ramp) && !Dashed;
-    private string SweepDeg => (T * 360).ToString("0.##", Inv) + "deg";
-    private const string Green = "hsl(152 70% 55%)";
-    private static string Heat(double x) { var h = 152 - x * 172; if (h < 0) h += 360; return $"hsl({h.ToString("0.#", Inv)} 70% 55%)"; }
-    private string RampStop0 => Ramp == "goal" ? Heat(1 - T) : Green;
-    private string RampStop1 => Ramp == "goal" ? Green : Heat(T);
+    private double SweepRaw => T * 360;
+    private string SweepDeg => SweepRaw.ToString("0.##", Inv) + "deg";
+    // A small 12-o'clock notch keeps a full spend ring's coral end off its mint start (see ProgressRing.razor.css).
+    // The caps sit on the notch edges: the start pins to the notch, the tip can't cross into it.
+    private const double NotchDeg = 6;
+    private string StartCapRot => NotchDeg.ToString("0.##", Inv) + "deg";
+    private string TipCapRot => Math.Clamp(SweepRaw, NotchDeg, 360 - NotchDeg).ToString("0.##", Inv) + "deg";
+
+    // Tandem ramp colours — MUST match the CSS conic ramp (.ramp-spend/.ramp-goal in ProgressRing.razor.css).
+    // The rounded end-caps and the SVG fallback gradient sample these so nothing seams against the arc.
+    private static readonly (int R, int G, int B) Mint = (0x2F, 0xB9, 0x9A);
+    private static readonly (int R, int G, int B) Coral = (0xFF, 0x7A, 0x59);
+    private const double CoralFrom = 0.75;   // mint until here, then blend to coral by CoralFull
+    private const double CoralFull = 0.90;
+    private static string Hex((int R, int G, int B) c) => $"#{c.R:X2}{c.G:X2}{c.B:X2}";
+    private static string Mix((int R, int G, int B) a, (int R, int G, int B) b, double t)
+    {
+        t = Math.Clamp(t, 0, 1);
+        return $"#{(int)Math.Round(a.R + (b.R - a.R) * t):X2}{(int)Math.Round(a.G + (b.G - a.G) * t):X2}{(int)Math.Round(a.B + (b.B - a.B) * t):X2}";
+    }
+    // Spend colour at fraction f along the visible arc: calm mint, blending to coral only near the cap.
+    private static string SpendColorAt(double f) =>
+        f <= CoralFrom ? Hex(Mint) : f >= CoralFull ? Hex(Coral) : Mix(Mint, Coral, (f - CoralFrom) / (CoralFull - CoralFrom));
+    private string CapStart => Hex(Mint);                                   // both ramps begin mint at 12 o'clock
+    private string CapTip => Ramp == "goal" ? Hex(Mint) : SpendColorAt(T);  // goal stays mint; spend may reach coral
+    private string RampStop0 => Hex(Mint);
+    private string RampStop1 => CapTip;
     private string? RampStyle => string.IsNullOrEmpty(Ramp) ? null : $"stroke:url(#{_gid})";
 
     private const double R = 42;

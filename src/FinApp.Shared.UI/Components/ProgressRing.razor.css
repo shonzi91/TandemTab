@@ -1,11 +1,14 @@
 .pring { position: relative; width: 100%; aspect-ratio: 1; }
 .pring-svg { width: 100%; height: 100%; display: block; }
-.pring-track { fill: none; stroke: #eef0f2; stroke-width: 7; }
-.pring-arc { fill: none; stroke-width: 7; stroke-linecap: round; }
-.pring-arc.ok { stroke: #22c55e; }
-.pring-arc.warn { stroke: #f59e0b; }
-.pring-arc.over { stroke: #ef4444; }
-.pring-arc.mint { stroke: #13a06e; }
+.pring-track { fill: none; stroke: #eef0f2; stroke-width: 4.5; }
+.pring-arc { fill: none; stroke-width: 4.5; stroke-linecap: round; }
+/* Tandem palette: positive/neutral arcs are brand mint, the caution/over arcs are coral (soft → full).
+   Debt (indigo) and investment/milestone (gold) keep their own identities on purpose — they're categories,
+   not a good/bad verdict. */
+.pring-arc.ok { stroke: #2fb99a; }
+.pring-arc.warn { stroke: #ffab73; }
+.pring-arc.over { stroke: #ff7a59; }
+.pring-arc.mint { stroke: #2fb99a; }
 .pring-arc.muted { stroke: #c7c9d6; }
 .pring-arc.debt { stroke: #6366f1; }   /* debt buckets: a full solid ring in a distinct indigo */
 .pring-arc.staged { stroke: #6366f1; } /* debt: money set aside but not yet paid — a second segment past "paid off" */
@@ -16,24 +19,54 @@
 
 /* Heat ramp that follows the arc clockwise (see ProgressRing.razor). The colour wheel is fixed to the
    budget scale — a full turn is 100% — and the first mask reveals only the swept part, so "how far round"
-   and "what colour" always agree. Radii track the r=42 / stroke-width=7 arc: 38.5/45.5 of the 50-unit
-   half-box = 77%/91% of the farthest-side radius.
+   and "what colour" always agree. Radii track the r=42 / stroke-width=4.5 arc: 39.75/44.25 of the 50-unit
+   half-box = 79.5%/88.5% of the farthest-side radius.
    `from 0deg` is 12 o'clock: a conic gradient already starts at the top, so it needs no rotating (the SVG
    arc below does — its dasharray starts at 3 o'clock, hence that one's rotate(-90)). Both the colour wheel
    and the sweep mask must share this origin or the tip's colour stops matching how far round it is. */
+/* Tandem "calm → caution" ramp. Budget (spend) rings stay brand mint the whole way and only bloom coral in
+   the last stretch near the cap — calm day-to-day, a clear nudge only when you're about to overspend (coral
+   starts ~90%, full coral ~98%). Goal rings are solid mint: reaching a savings goal is a win, never a
+   caution (completion is marked with the 🎉). Kept in sync with the C# cap colours (Mint/Coral) in
+   ProgressRing.razor so the rounded end-caps can't seam against the arc tip. */
 .pring-ramp { position: absolute; inset: 0; border-radius: 50%; pointer-events: none; }
-.pring-ramp.ramp-spend { background: conic-gradient(from 0deg, #22c55e 0deg, #eab308 180deg, #ef4444 360deg); }
-.pring-ramp.ramp-goal { background: conic-gradient(from 0deg, #ef4444 0deg, #eab308 180deg, #22c55e 360deg); }
+.pring-ramp.ramp-spend { background: conic-gradient(from 0deg, #2fb99a 0 270deg, #ff7a59 324deg 360deg); }
+.pring-ramp.ramp-goal { background: #2fb99a; }
+
+/* Rounded end-caps for the ramp arc (the solid arcs already round via stroke-linecap). Each is a dot the
+   width of the stroke, sitting on the band centre (r=42 → 8% from the top) and rotated into place: the
+   start cap stays at 12 o'clock, the tip cap rotates by the sweep. */
+.pring-cap { position: absolute; inset: 0; pointer-events: none; }
+.pring-cap::after {
+    content: ''; position: absolute; top: 8%; left: 50%; width: 4.5%; aspect-ratio: 1;
+    border-radius: 50%; background: var(--capc); transform: translate(-50%, -50%);
+}
 
 @supports ((mask-composite: intersect) or (-webkit-mask-composite: source-in)) {
     .pring-ramp {
         -webkit-mask:
             conic-gradient(from 0deg, #000 0 var(--sweep), transparent var(--sweep) 360deg),
-            radial-gradient(circle farthest-side, transparent 0 77%, #000 77% 91%, transparent 91%);
+            radial-gradient(circle farthest-side, transparent 0 79.5%, #000 79.5% 88.5%, transparent 88.5%);
         -webkit-mask-composite: source-in;
         mask:
             conic-gradient(from 0deg, #000 0 var(--sweep), transparent var(--sweep) 360deg),
-            radial-gradient(circle farthest-side, transparent 0 77%, #000 77% 91%, transparent 91%);
+            radial-gradient(circle farthest-side, transparent 0 79.5%, #000 79.5% 88.5%, transparent 88.5%);
+        mask-composite: intersect;
+    }
+    /* Spend ramp only: carve a small 12-o'clock notch (±6°) so a full ring's coral END never butts against
+       its mint START — the extra transparent wedge shows a sliver of track as a clean gauge origin instead
+       of a hard coral→mint seam. The caps (ProgressRing.razor) sit on the notch edges so the gap reads as
+       two rounded ends. The goal ramp is solid mint (no seam), so it keeps a fully-closed circle. */
+    .pring-ramp.ramp-spend {
+        -webkit-mask:
+            conic-gradient(from 0deg, #000 0 var(--sweep), transparent var(--sweep) 360deg),
+            conic-gradient(from 0deg, transparent 0 6deg, #000 6deg 354deg, transparent 354deg 360deg),
+            radial-gradient(circle farthest-side, transparent 0 79.5%, #000 79.5% 88.5%, transparent 88.5%);
+        -webkit-mask-composite: source-in;
+        mask:
+            conic-gradient(from 0deg, #000 0 var(--sweep), transparent var(--sweep) 360deg),
+            conic-gradient(from 0deg, transparent 0 6deg, #000 6deg 354deg, transparent 354deg 360deg),
+            radial-gradient(circle farthest-side, transparent 0 79.5%, #000 79.5% 88.5%, transparent 88.5%);
         mask-composite: intersect;
     }
     /* The overlay covers the same band — drop the SVG arc so they can't fight over antialiasing. */
