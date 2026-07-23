@@ -558,6 +558,16 @@ accounts.MapGet("/{id:guid}/overview", async (Guid id, ClaimsPrincipal user, Sna
         ov.Spent.Amount, ov.Contributed.Amount, ov.BillsDue.Amount, ov.SafeAfterBills.Amount));
 });
 
+// Path-B thin-Spending read: the whole surface (expenses + overview + picker options) in one call, so a thin
+// client renders the tab with no snapshot and no domain. Paired with the delta-returning expense writes above.
+accounts.MapGet("/{id:guid}/spending", async (Guid id, ClaimsPrincipal user, SnapshotService svc, CancellationToken ct) =>
+{
+    var snap = await svc.GetAsync(user.UserId(), id, ct);
+    if (string.IsNullOrEmpty(snap.Payload)) return Results.Ok(SpendingViewDto.Empty);
+    var account = AccountSnapshotSerializer.Deserialize(snap.Payload);
+    return Results.Ok(SpendingMap.View(account, snap.Version));
+});
+
 // The cash runway (first month the balance runs short, or null when there's no basis to project from).
 accounts.MapGet("/{id:guid}/runway", async (Guid id, ClaimsPrincipal user, SnapshotService svc, CancellationToken ct) =>
 {
@@ -662,7 +672,7 @@ accounts.MapPost("/{id:guid}/bootstrap", async (Guid id, BootstrapAccountRequest
 accounts.MapPost("/{id:guid}/expenses", async (Guid id, AddExpenseRequest req, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
 {
     var userId = user.UserId();
-    var (version, expenseId) = await svc.MutateAsync(userId, id, account =>
+    var (version, delta) = await svc.MutateAsync(userId, id, account =>
     {
         var period = account.CurrentPeriod ?? throw new InvalidOperationException("There's no open period to add an expense to.");
         if (account.FindCategory(req.CategoryId) is null) throw new InvalidOperationException("That category doesn't exist in this account.");
@@ -671,16 +681,17 @@ accounts.MapPost("/{id:guid}/expenses", async (Guid id, AddExpenseRequest req, C
             onBehalfOfOtherAccount: req.OnBehalfOfOtherAccount);
         expense.SetFundSynced(fund.IsSynced);   // synced funds aren't debited — the real bank balance handles it
         period.AddExpense(expense);
-        return expense.Id;
+        // The delta a thin client reconciles from (the thick client reads only Version/EntityId — a superset).
+        return (expense.Id, SpendingMap.ToDto(account, expense), SpendingMap.Overview(account, period));
     }, ct);
     await notifier.AccountChangedAsync(id, userId, version);
-    return Results.Ok(new MutationResultDto(version, expenseId));
+    return Results.Ok(new ExpenseMutationDto(version, delta.Id, delta.Item2, delta.Item3));
 });
 
 accounts.MapPut("/{id:guid}/expenses/{expenseId:guid}", async (Guid id, Guid expenseId, EditExpenseRequest req, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
 {
     var userId = user.UserId();
-    var (version, _) = await svc.MutateAsync<object?>(userId, id, account =>
+    var (version, delta) = await svc.MutateAsync(userId, id, account =>
     {
         var period = account.CurrentPeriod ?? throw new InvalidOperationException("There's no open period.");
         if (account.FindCategory(req.CategoryId) is null) throw new InvalidOperationException("That category doesn't exist in this account.");
@@ -689,23 +700,24 @@ accounts.MapPut("/{id:guid}/expenses/{expenseId:guid}", async (Guid id, Guid exp
         var edited = period.EditExpense(expenseId, req.CategoryId, new Money(req.Amount, account.Currency), req.FundId, req.Note, req.Date);
         edited.SetFundSynced(fund.IsSynced);            // recompute at edit time (moving to/from a synced fund)
         edited.SetBankLink(before?.BankExternalId, autoFiled: false);   // keep provenance, clear the auto-filed badge
-        return null;
+        // Edit is append-only (a new id), so the delta carries the NEW row for the client to swap in.
+        return (edited.Id, SpendingMap.ToDto(account, edited), SpendingMap.Overview(account, period));
     }, ct);
     await notifier.AccountChangedAsync(id, userId, version);
-    return Results.Ok(new MutationResultDto(version, expenseId));
+    return Results.Ok(new ExpenseMutationDto(version, delta.Id, delta.Item2, delta.Item3));
 });
 
 accounts.MapDelete("/{id:guid}/expenses/{expenseId:guid}", async (Guid id, Guid expenseId, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
 {
     var userId = user.UserId();
-    var (version, _) = await svc.MutateAsync<object?>(userId, id, account =>
+    var (version, overview) = await svc.MutateAsync(userId, id, account =>
     {
         var period = account.CurrentPeriod ?? throw new InvalidOperationException("There's no open period.");
         period.RemoveExpense(expenseId);
-        return null;
+        return SpendingMap.Overview(account, period);   // nothing to echo on a delete — just the recomputed totals
     }, ct);
     await notifier.AccountChangedAsync(id, userId, version);
-    return Results.Ok(new MutationResultDto(version, expenseId));
+    return Results.Ok(new ExpenseMutationDto(version, expenseId, null, overview));
 });
 
 // Income (deposits). A deposit's category is a *contribution* category (or empty = general income); deposits with the

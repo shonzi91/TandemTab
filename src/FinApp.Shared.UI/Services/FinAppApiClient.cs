@@ -239,6 +239,18 @@ public sealed class FinAppApiClient(HttpClient http)
     public Task<MutationResultDto> UnsettleExpenseAsync(Guid id, Guid expenseId, Guid destinationAccountId, CancellationToken ct = default) =>
         SendAsync<MutationResultDto>(HttpMethod.Delete, $"/accounts/{id}/expenses/{expenseId}/settle?destinationAccountId={destinationAccountId}", null, ct);
 
+    // --- Path-B thin Spending slice (docs/MOBILE.md) ----------------------
+    // The thin client renders Spending from these DTOs directly (no domain). The delta methods hit the SAME expense
+    // routes as the thick client's command methods above — the server response is a superset, so both coexist.
+    public Task<SpendingViewDto> GetSpendingAsync(Guid id, CancellationToken ct = default) =>
+        SendAsync<SpendingViewDto>(HttpMethod.Get, $"/accounts/{id}/spending", null, ct);
+    public Task<ExpenseMutationDto> AddExpenseDeltaAsync(Guid id, AddExpenseRequest req, CancellationToken ct = default) =>
+        SendAsync<ExpenseMutationDto>(HttpMethod.Post, $"/accounts/{id}/expenses", req, ct);
+    public Task<ExpenseMutationDto> EditExpenseDeltaAsync(Guid id, Guid expenseId, EditExpenseRequest req, CancellationToken ct = default) =>
+        SendAsync<ExpenseMutationDto>(HttpMethod.Put, $"/accounts/{id}/expenses/{expenseId}", req, ct);
+    public Task<ExpenseMutationDto> RemoveExpenseDeltaAsync(Guid id, Guid expenseId, CancellationToken ct = default) =>
+        SendAsync<ExpenseMutationDto>(HttpMethod.Delete, $"/accounts/{id}/expenses/{expenseId}", null, ct);
+
     /// <summary>Download the account as an .xlsx (one sheet per period). Returns the bytes + suggested file name.</summary>
     public async Task<(byte[] Bytes, string FileName)> ExportAccountAsync(Guid id, CancellationToken ct = default)
     {
