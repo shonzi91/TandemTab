@@ -239,6 +239,27 @@ public sealed class FinAppApiClient(HttpClient http)
     public Task<MutationResultDto> UnsettleExpenseAsync(Guid id, Guid expenseId, Guid destinationAccountId, CancellationToken ct = default) =>
         SendAsync<MutationResultDto>(HttpMethod.Delete, $"/accounts/{id}/expenses/{expenseId}/settle?destinationAccountId={destinationAccountId}", null, ct);
 
+    // --- Path-B thin reads: the computed Home figures (docs/MOBILE.md) ----
+    // These endpoints existed since Sessions 37/42 but were never wired to a client — the thin Home is their first use.
+    public Task<AccountOverviewDto> GetOverviewAsync(Guid id, CancellationToken ct = default) =>
+        SendAsync<AccountOverviewDto>(HttpMethod.Get, $"/accounts/{id}/overview", null, ct);
+    public Task<TargetsDto> GetTargetsAsync(Guid id, CancellationToken ct = default) =>
+        SendAsync<TargetsDto>(HttpMethod.Get, $"/accounts/{id}/targets", null, ct);
+    public Task<MilestonesDto> GetMilestonesAsync(Guid id, CancellationToken ct = default) =>
+        SendAsync<MilestonesDto>(HttpMethod.Get, $"/accounts/{id}/milestones", null, ct);
+    public Task<InsightsDto> GetInsightsAsync(Guid id, CancellationToken ct = default) =>
+        SendAsync<InsightsDto>(HttpMethod.Get, $"/accounts/{id}/insights", null, ct);
+
+    /// <summary>The cash runway, or null when the server has no basis to project from (it answers 204, a real state
+    /// distinct from zeroed figures).</summary>
+    public async Task<RunwayDto?> GetRunwayAsync(Guid id, CancellationToken ct = default)
+    {
+        using var response = await SendRawAsync(HttpMethod.Get, $"/accounts/{id}/runway", null, ct);
+        if (response.StatusCode == HttpStatusCode.NoContent) return null;
+        await EnsureSuccessAsync(response, ct);
+        return await response.Content.ReadFromJsonAsync<RunwayDto>(Json, ct);
+    }
+
     // --- Path-B thin Spending slice (docs/MOBILE.md) ----------------------
     // The thin client renders Spending from these DTOs directly (no domain). The delta methods hit the SAME expense
     // routes as the thick client's command methods above — the server response is a superset, so both coexist.
