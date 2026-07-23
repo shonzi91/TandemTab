@@ -568,6 +568,16 @@ accounts.MapGet("/{id:guid}/spending", async (Guid id, ClaimsPrincipal user, Sna
     return Results.Ok(SpendingMap.View(account, snap.Version));
 });
 
+// Path-B thin-Wallets read: funds + balances + this period's transfers in one call. Paired with the fund writes
+// below, which return a FundMutationDto carrying a refreshed view so the client reconciles with no re-fetch.
+accounts.MapGet("/{id:guid}/wallets", async (Guid id, ClaimsPrincipal user, SnapshotService svc, CancellationToken ct) =>
+{
+    var snap = await svc.GetAsync(user.UserId(), id, ct);
+    if (string.IsNullOrEmpty(snap.Payload)) return Results.Ok(WalletsViewDto.Empty);
+    var account = AccountSnapshotSerializer.Deserialize(snap.Payload);
+    return Results.Ok(WalletsMap.View(account, snap.Version));
+});
+
 // The cash runway (first month the balance runs short, or null when there's no basis to project from).
 accounts.MapGet("/{id:guid}/runway", async (Guid id, ClaimsPrincipal user, SnapshotService svc, CancellationToken ct) =>
 {
@@ -1232,15 +1242,15 @@ accounts.MapDelete("/{id:guid}/categories/{categoryId:guid}", async (Guid id, Gu
 accounts.MapPost("/{id:guid}/funds", async (Guid id, CreateFundRequest req, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
 {
     var userId = user.UserId();
-    var (version, fundId) = await svc.MutateAsync(userId, id, account =>
+    var (version, delta) = await svc.MutateAsync(userId, id, account =>
     {
         var fund = account.AddFund(req.Name, req.ParentId);   // validates parent + unique name
         account.SetFundNote(fund.Id, req.Note);
         account.SetFundIcon(fund.Id, req.Icon);
-        return fund.Id;
+        return (fund.Id, WalletsMap.View(account, 0));   // version stamped on the way out
     }, ct);
     await notifier.AccountChangedAsync(id, userId, version);
-    return Results.Ok(new MutationResultDto(version, fundId));
+    return Results.Ok(new FundMutationDto(version, delta.Id, delta.Item2 with { Version = version }));
 });
 
 accounts.MapPut("/{id:guid}/funds/{fundId:guid}", async (Guid id, Guid fundId, EditFundRequest req, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
@@ -1305,17 +1315,17 @@ accounts.MapPost("/{id:guid}/fund-transfers", async (Guid id, TransferFundsReque
 {
     var userId = user.UserId();
     var date = req.Date ?? DateOnly.FromDateTime(DateTime.UtcNow);
-    var (version, transferId) = await svc.MutateAsync(userId, id, account =>
+    var (version, delta) = await svc.MutateAsync(userId, id, account =>
     {
         var from = account.FindFund(req.FromFundId) ?? throw new InvalidOperationException("The source fund doesn't exist in this account.");
         var to = account.FindFund(req.ToFundId) ?? throw new InvalidOperationException("The destination fund doesn't exist in this account.");
         var period = account.CurrentPeriod ?? throw new InvalidOperationException("There's no open period.");
         var transfer = period.TransferFunds(req.FromFundId, req.ToFundId, new Money(req.Amount, account.Currency), date, req.Note);
         transfer.SetSyncedSides(from.IsSynced, to.IsSynced);   // a synced side's real bank balance already reflects it
-        return transfer.Id;
+        return (transfer.Id, WalletsMap.View(account, 0));
     }, ct);
     await notifier.AccountChangedAsync(id, userId, version);
-    return Results.Ok(new MutationResultDto(version, transferId));
+    return Results.Ok(new FundMutationDto(version, delta.Id, delta.Item2 with { Version = version }));
 });
 
 accounts.MapPut("/{id:guid}/fund-transfers/{transferId:guid}", async (Guid id, Guid transferId, EditFundTransferRequest req, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>

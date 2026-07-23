@@ -272,6 +272,14 @@ public sealed class FinAppApiClient(HttpClient http)
     public Task<ExpenseMutationDto> RemoveExpenseDeltaAsync(Guid id, Guid expenseId, CancellationToken ct = default) =>
         SendAsync<ExpenseMutationDto>(HttpMethod.Delete, $"/accounts/{id}/expenses/{expenseId}", null, ct);
 
+    // --- Path-B thin Wallets slice ----------------------------------------
+    public Task<WalletsViewDto> GetWalletsAsync(Guid id, CancellationToken ct = default) =>
+        SendAsync<WalletsViewDto>(HttpMethod.Get, $"/accounts/{id}/wallets", null, ct);
+    public Task<FundMutationDto> AddFundDeltaAsync(Guid id, CreateFundRequest req, CancellationToken ct = default) =>
+        SendAsync<FundMutationDto>(HttpMethod.Post, $"/accounts/{id}/funds", req, ct);
+    public Task<FundMutationDto> TransferFundsDeltaAsync(Guid id, TransferFundsRequest req, CancellationToken ct = default) =>
+        SendAsync<FundMutationDto>(HttpMethod.Post, $"/accounts/{id}/fund-transfers", req, ct);
+
     /// <summary>Download the account as an .xlsx (one sheet per period). Returns the bytes + suggested file name.</summary>
     public async Task<(byte[] Bytes, string FileName)> ExportAccountAsync(Guid id, CancellationToken ct = default)
     {
