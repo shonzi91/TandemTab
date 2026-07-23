@@ -1,5 +1,6 @@
 using System.Text;
 using FinApp.Contracts;
+using FinApp.Domain.Budgeting;
 using FinApp.Domain.Common;
 using FinApp.Domain.Forecasting;
 using FinApp.Domain.Periods;
@@ -622,6 +623,134 @@ accounts.MapGet("/{id:guid}/insights", async (Guid id, ClaimsPrincipal user, Sna
         report.MiniTrends.Select(mt => new InsightMiniTrendDto(
             Msg(mt.Label), mt.Icon, mt.Points, Msg(mt.CurrentText), Msg(mt.DeltaNote), Dir(mt.Dir))).ToList(),
         report.QuickWins.Select(w => Msg(w.Message)).ToList()));
+});
+
+// --- Command writes (Option-A migration, docs/MOBILE.md) -----------------
+// The client still saves whole snapshots (below); these let a thin client send just the command. The server applies
+// it through the same domain the reads use — one place for the money maths — via SnapshotService.MutateAsync (the
+// server-side read-modify-write). Reads-first discipline holds: these are NOT wired into the web client yet.
+// Scope note: settlement (on-behalf) and bank-import provenance are cross-account / bank-flow concerns and are NOT
+// mirrored here yet — editing/removing a settlement-linked expense through this API won't keep its counterpart in
+// step. The web app's whole-snapshot path still handles those; this first slice is the plain manual capture loop.
+
+// Initialize a freshly-created account's snapshot server-side (the thin-client counterpart of the web app's
+// first-load seed). 409 if it's already set up. Body is optional; a client sends its local date so the first period
+// lands in the right month.
+accounts.MapPost("/{id:guid}/bootstrap", async (Guid id, BootstrapAccountRequest? req, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
+{
+    var userId = user.UserId();
+    var today = req?.Today ?? DateOnly.FromDateTime(DateTime.UtcNow);
+    var version = await svc.BootstrapAsync(userId, id, today, ct);
+    await notifier.AccountChangedAsync(id, userId, version);
+    return Results.Ok(new MutationResultDto(version, id));
+});
+
+accounts.MapPost("/{id:guid}/expenses", async (Guid id, AddExpenseRequest req, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
+{
+    var userId = user.UserId();
+    var (version, expenseId) = await svc.MutateAsync(userId, id, account =>
+    {
+        var period = account.CurrentPeriod ?? throw new InvalidOperationException("There's no open period to add an expense to.");
+        if (account.FindCategory(req.CategoryId) is null) throw new InvalidOperationException("That category doesn't exist in this account.");
+        var fund = account.FindFund(req.FundId) ?? throw new InvalidOperationException("That fund doesn't exist in this account.");
+        var expense = new Expense(req.CategoryId, new Money(req.Amount, account.Currency), req.Date, userId, req.FundId, req.Note,
+            onBehalfOfOtherAccount: req.OnBehalfOfOtherAccount);
+        expense.SetFundSynced(fund.IsSynced);   // synced funds aren't debited — the real bank balance handles it
+        period.AddExpense(expense);
+        return expense.Id;
+    }, ct);
+    await notifier.AccountChangedAsync(id, userId, version);
+    return Results.Ok(new MutationResultDto(version, expenseId));
+});
+
+accounts.MapPut("/{id:guid}/expenses/{expenseId:guid}", async (Guid id, Guid expenseId, EditExpenseRequest req, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
+{
+    var userId = user.UserId();
+    var (version, _) = await svc.MutateAsync<object?>(userId, id, account =>
+    {
+        var period = account.CurrentPeriod ?? throw new InvalidOperationException("There's no open period.");
+        if (account.FindCategory(req.CategoryId) is null) throw new InvalidOperationException("That category doesn't exist in this account.");
+        var fund = account.FindFund(req.FundId) ?? throw new InvalidOperationException("That fund doesn't exist in this account.");
+        var before = period.Expenses.FirstOrDefault(e => e.Id == expenseId);
+        var edited = period.EditExpense(expenseId, req.CategoryId, new Money(req.Amount, account.Currency), req.FundId, req.Note, req.Date);
+        edited.SetFundSynced(fund.IsSynced);            // recompute at edit time (moving to/from a synced fund)
+        edited.SetBankLink(before?.BankExternalId, autoFiled: false);   // keep provenance, clear the auto-filed badge
+        return null;
+    }, ct);
+    await notifier.AccountChangedAsync(id, userId, version);
+    return Results.Ok(new MutationResultDto(version, expenseId));
+});
+
+accounts.MapDelete("/{id:guid}/expenses/{expenseId:guid}", async (Guid id, Guid expenseId, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
+{
+    var userId = user.UserId();
+    var (version, _) = await svc.MutateAsync<object?>(userId, id, account =>
+    {
+        var period = account.CurrentPeriod ?? throw new InvalidOperationException("There's no open period.");
+        period.RemoveExpense(expenseId);
+        return null;
+    }, ct);
+    await notifier.AccountChangedAsync(id, userId, version);
+    return Results.Ok(new MutationResultDto(version, expenseId));
+});
+
+// Income (deposits). A deposit's category is a *contribution* category (or empty = general income); deposits with the
+// same (member, category, fund) merge. Edits/removes are the caller's own only (403 otherwise) — deposits are per-member.
+accounts.MapPost("/{id:guid}/deposits", async (Guid id, AddDepositRequest req, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
+{
+    var userId = user.UserId();
+    var (version, depositId) = await svc.MutateAsync(userId, id, account =>
+    {
+        var period = account.CurrentPeriod ?? throw new InvalidOperationException("There's no open period to record income in.");
+        if (req.CategoryId != Guid.Empty && account.FindContributionCategory(req.CategoryId) is null)
+            throw new InvalidOperationException("That income category doesn't exist in this account.");
+        var fund = req.FundId == Guid.Empty ? null
+            : account.FindFund(req.FundId) ?? throw new InvalidOperationException("That fund doesn't exist in this account.");
+        var contribution = period.Deposit(userId, new Money(req.Amount, account.Currency), req.CategoryId, req.FundId, req.Date);
+        contribution.SetFundSynced(fund?.IsSynced ?? false);   // synced destination fund isn't credited here
+        return contribution.Id;
+    }, ct);
+    await notifier.AccountChangedAsync(id, userId, version);
+    return Results.Ok(new MutationResultDto(version, depositId));
+});
+
+accounts.MapPut("/{id:guid}/deposits/{depositId:guid}", async (Guid id, Guid depositId, EditDepositRequest req, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
+{
+    var userId = user.UserId();
+    var (version, _) = await svc.MutateAsync<object?>(userId, id, account =>
+    {
+        var period = account.CurrentPeriod ?? throw new InvalidOperationException("There's no open period.");
+        var contribution = period.FindContribution(depositId)
+            ?? throw new InvalidOperationException("That deposit doesn't exist in this period.");
+        if (contribution.MemberId != userId)
+            throw new ForbiddenException("You can only change your own deposits.");
+        if (req.CategoryId != Guid.Empty && account.FindContributionCategory(req.CategoryId) is null)
+            throw new InvalidOperationException("That income category doesn't exist in this account.");
+        var fund = req.FundId == Guid.Empty ? null
+            : account.FindFund(req.FundId) ?? throw new InvalidOperationException("That fund doesn't exist in this account.");
+        period.EditContribution(depositId, new Money(req.Amount, account.Currency), req.CategoryId, req.FundId, req.Date);
+        period.FindContribution(depositId)?.SetFundSynced(fund?.IsSynced ?? false);   // recompute at edit time
+        return null;
+    }, ct);
+    await notifier.AccountChangedAsync(id, userId, version);
+    return Results.Ok(new MutationResultDto(version, depositId));
+});
+
+accounts.MapDelete("/{id:guid}/deposits/{depositId:guid}", async (Guid id, Guid depositId, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
+{
+    var userId = user.UserId();
+    var (version, _) = await svc.MutateAsync<object?>(userId, id, account =>
+    {
+        var period = account.CurrentPeriod ?? throw new InvalidOperationException("There's no open period.");
+        var contribution = period.FindContribution(depositId)
+            ?? throw new InvalidOperationException("That deposit doesn't exist in this period.");
+        if (contribution.MemberId != userId)
+            throw new ForbiddenException("You can only change your own deposits.");
+        period.RemoveContribution(depositId);
+        return null;
+    }, ct);
+    await notifier.AccountChangedAsync(id, userId, version);
+    return Results.Ok(new MutationResultDto(version, depositId));
 });
 
 accounts.MapPut("/{id:guid}/snapshot", async (Guid id, SaveAccountRequest req, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>

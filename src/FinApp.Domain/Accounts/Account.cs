@@ -415,6 +415,27 @@ public sealed class Account : Entity
             AddFund(name);
     }
 
+    /// <summary>
+    /// Seed the starter body of a brand-new account — the default categories, contribution categories and funds,
+    /// plus the first (current-month) period dated from <paramref name="today"/>. Shared by the web client
+    /// (first-load bootstrap) and the server-side bootstrap endpoint so a native and a web account start identically.
+    /// Call once, on an otherwise-empty account.
+    /// </summary>
+    public void SeedStarter(DateOnly today)
+    {
+        foreach (var (name, icon) in new[] { ("Food", "🍽️"), ("Bills", "💡"), ("Transport", "🚗"), ("Other", "🏷️") })
+            AddCategory(name, icon: icon);
+        // No starter savings bucket: creating the first one (with or without a goal) is an onboarding step and earns
+        // the "Piggy" achievement itself, so pre-seeding one both robs that moment and misleads the user into
+        // thinking they already have a bucket set up.
+        foreach (var c in new[] { "Salary", "Other" })
+            AddContributionCategory(c);
+        AddDefaultFunds();
+
+        var from = new DateOnly(today.Year, today.Month, 1);
+        StartPeriod(from, from.AddMonths(1).AddDays(-1));
+    }
+
     public Fund? FindFund(Guid fundId) => _funds.FirstOrDefault(f => f.Id == fundId);
     public string FundName(Guid fundId) => FindFund(fundId)?.Name ?? "—";
 

@@ -1,4 +1,5 @@
 using FinApp.Contracts;
+using FinApp.Domain.Accounts;
 using FinApp.Persistence;
 using FinApp.Server.Infrastructure;
 using Microsoft.EntityFrameworkCore;
@@ -52,11 +53,113 @@ public sealed class SnapshotService(FinAppDbContext db, ISnapshotCipher cipher, 
             row.UpdatedAt = DateTimeOffset.UtcNow;
         }
 
-        await db.SaveChangesAsync(ct);
+        try
+        {
+            await db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            // The manual check above catches a stale caller; this catches a concurrent write that committed between
+            // our read and our save (the Version concurrency token makes the UPDATE match 0 rows). Same 409 either way.
+            throw new ConflictException("This account changed while you were saving. Reload and retry.");
+        }
         log.LogInformation(
             "[save] account={AccountId} payload={PayloadBytes}B stored={StoredBytes}B protect={ProtectMs}ms db={DbMs}ms v={Version}",
             accountId, request.Payload.Length, stored.Length, protectMs.ToString("0.#"), sw.Elapsed.TotalMilliseconds.ToString("0.#"), row.Version);
         return row.Version;
+    }
+
+    /// <summary>
+    /// Initialize a freshly-created account's snapshot server-side: build the header (name/currency/owner/members)
+    /// from the relational account, seed the shared starter body (<see cref="Account.SeedStarter"/>), anchor
+    /// achievements to the first period, and save it as v1. The thin-client counterpart of the web app's first-load
+    /// bootstrap — a native client can create an account without carrying the domain. Idempotent guard: fails with a
+    /// 409 if a snapshot already exists. <paramref name="today"/> dates the first period (the caller's local month).
+    /// </summary>
+    public async Task<long> BootstrapAsync(Guid userId, Guid accountId, DateOnly today, CancellationToken ct = default)
+    {
+        // Load the relational account for its header only; its body collections are empty (the body lives in the
+        // snapshot). Build a SEPARATE aggregate via CreateForHeader — never seed the EF-tracked entity, whose body
+        // isn't mapped relationally.
+        var relational = await db.Accounts.Include(a => a.Members).FirstOrDefaultAsync(a => a.Id == accountId, ct);
+        if (relational is null || !relational.IsContributor(userId))
+            throw new NotFoundException("Account not found.");
+
+        var existing = await db.AccountSnapshots.FindAsync([accountId], ct);
+        if (existing is not null && !string.IsNullOrEmpty(existing.Payload))
+            throw new ConflictException("This account is already set up.");
+
+        var account = AccountSnapshotSerializer.CreateForHeader(
+            relational.Id, relational.Name, relational.Currency, relational.OwnerUserId,
+            relational.Members.Select(m => (m.UserId, m.DisplayName)));
+        account.SeedStarter(today);
+        if (account.CurrentPeriod is { } period)
+            account.SetAchievementsAnchor(period.From);   // matches the web client's first-load anchor
+
+        return await SaveAsync(userId, accountId, new SaveAccountRequest(AccountSnapshotSerializer.Serialize(account), 0), ct);
+    }
+
+    /// <summary>
+    /// The server-side mutation spine for the Option-A migration (docs/MOBILE.md): load the snapshot (contributor
+    /// auth + decrypt), deserialize the aggregate, apply <paramref name="mutate"/>, then serialize and save under the
+    /// same optimistic concurrency a whole-snapshot PUT uses. This is the read-modify-write the client used to do
+    /// locally, relocated so a thin (native) client can send just a command instead of the whole payload — and the
+    /// money maths runs through the one domain, so it can't drift between clients.
+    ///
+    /// <para>Domain validation (<see cref="InvalidOperationException"/> / <see cref="ArgumentException"/> thrown by
+    /// <paramref name="mutate"/>) surfaces as 400. Unlike a whole-snapshot save — where the caller owns the stale
+    /// version and gets a 409 to reload — this owns the whole read-modify-write, so a concurrent write that lands
+    /// mid-call is handled here: it reloads the winner's state and re-applies <paramref name="mutate"/>, up to a
+    /// small retry budget (a 409 only after that's exhausted). <paramref name="mutate"/> must therefore be a pure
+    /// function of the account it's handed — it can run more than once. Returns the new snapshot version and whatever
+    /// <paramref name="mutate"/> yields (e.g. a newly-created entity's id).</para>
+    /// </summary>
+    public async Task<(long Version, T Result)> MutateAsync<T>(
+        Guid userId, Guid accountId, Func<Account, T> mutate, CancellationToken ct = default)
+    {
+        await EnsureContributorAsync(userId, accountId, ct);
+
+        var row = await db.AccountSnapshots.FindAsync([accountId], ct);
+        if (row is null || string.IsNullOrEmpty(row.Payload))
+            throw new BadRequestException("This account has no data to change yet.");
+
+        const int maxAttempts = 4;
+        for (var attempt = 1; ; attempt++)
+        {
+            // Work from the row's current state (freshened by ReloadAsync on a retry), applying the mutation to a
+            // fresh aggregate each attempt so a re-run can't compound.
+            var account = AccountSnapshotSerializer.Deserialize(await cipher.UnprotectAsync(row.Payload, ct));
+            T result;
+            try
+            {
+                result = mutate(account);
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or ArgumentException)
+            {
+                // The domain guards invariants by throwing; translate to a clean 400 so a client sees the reason
+                // (an unhandled throw would be masked as a 500). ApiExceptions from within mutate pass straight through.
+                throw new BadRequestException(ex.CleanMessage());
+            }
+
+            row.Payload = await cipher.ProtectAsync(AccountSnapshotSerializer.Serialize(account), ct);
+            row.Version++;
+            row.UpdatedAt = DateTimeOffset.UtcNow;
+            try
+            {
+                await db.SaveChangesAsync(ct);
+                return (row.Version, result);
+            }
+            catch (DbUpdateConcurrencyException) when (attempt < maxAttempts)
+            {
+                // Another writer bumped the row between our read and save. Pull their Payload + Version into the
+                // tracked row and loop — the next pass re-applies the mutation on top of the winner's state.
+                await db.Entry(row).ReloadAsync(ct);
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                throw new ConflictException("This account is being changed too rapidly. Reload and retry.");
+            }
+        }
     }
 
     /// <summary>One-off: encrypt any snapshot rows still stored as plaintext (only does work when a real cipher is

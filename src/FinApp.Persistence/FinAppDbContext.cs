@@ -111,7 +111,11 @@ public sealed class FinAppDbContext(DbContextOptions<FinAppDbContext> options) :
             s.HasKey(x => x.AccountId);
             s.Property(x => x.AccountId).ValueGeneratedNever();
             s.Property(x => x.Payload).IsRequired();
-            s.Property(x => x.Version);
+            // Optimistic-concurrency token: EF adds "AND Version = <original>" to the UPDATE, so a write that lost a
+            // race updates 0 rows and throws DbUpdateConcurrencyException (surfaced as a 409, or retried by the
+            // server-side MutateAsync). Without this the manual version check in SnapshotService.SaveAsync only
+            // catches a stale *caller*, not a concurrent write landing mid-request. Runtime-only (no schema change).
+            s.Property(x => x.Version).IsConcurrencyToken();
             s.Property(x => x.UpdatedAt);
         });
 

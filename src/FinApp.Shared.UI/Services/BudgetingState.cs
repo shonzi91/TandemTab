@@ -2105,19 +2105,7 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     }
 
     /// <summary>A fresh, usable account body: starter categories/buckets, default funds, and the current month's period.</summary>
-    private static void SeedStarterBody(Account account)
-    {
-        foreach (var (name, icon) in new[] { ("Food", "🍽️"), ("Bills", "💡"), ("Transport", "🚗"), ("Other", "🏷️") })
-            account.AddCategory(name, icon: icon);
-        // No starter savings bucket: creating the first one (with or without a goal) is an onboarding step and
-        // earns the "Piggy" achievement itself, so pre-seeding one both robs that moment and misleads the user
-        // into thinking they already have a bucket set up.
-        foreach (var c in new[] { "Salary", "Other" })
-            account.AddContributionCategory(c);
-        account.AddDefaultFunds();
-
-        var today = DateOnly.FromDateTime(DateTime.Today);
-        var from = new DateOnly(today.Year, today.Month, 1);
-        account.StartPeriod(from, from.AddMonths(1).AddDays(-1));
-    }
+    // Delegates to the domain's shared starter-seed so the web and the server-side bootstrap endpoint can't drift.
+    private static void SeedStarterBody(Account account) =>
+        account.SeedStarter(DateOnly.FromDateTime(DateTime.Today));
 }

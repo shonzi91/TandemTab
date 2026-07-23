@@ -120,8 +120,51 @@ web app stays the acceptance test throughout.
   untestable in Shared.UI). NOT wired into the web client. **Follow-on:** restructure signals/verdict into structured
   data so native clients can localize them — the narrative isn't in the API yet.
 
+**Writes (the mutation API) — STARTED:**
+The write half of Phase 1. The client used to mutate the aggregate locally and PUT the whole snapshot; the mutation
+API lets a thin client send just a command. The spine is **`SnapshotService.MutateAsync<T>`** — a server-side
+read-modify-write: load (contributor auth + decrypt) → deserialize → apply a `Func<Account,T>` → serialize → save
+under optimistic concurrency. Domain validation (`InvalidOperationException`/`ArgumentException`) surfaces as **400**.
+Concurrency is now backed by a real token: **`AccountSnapshots.Version` is an EF concurrency token** (migration
+`AddSnapshotVersionConcurrencyToken` — model-only, empty Up/Down), so a write that lost a race throws
+`DbUpdateConcurrencyException` instead of silently clobbering. On that, MutateAsync **reloads the winner's state and
+re-applies the mutation** (bounded retry, then a 409) — so the `mutate` delegate must be a pure function of the
+account it's handed. The whole-snapshot `SaveAsync` now also translates the token failure to a clean **409** (it
+used to be able to clobber a concurrent write). Every future mutation reuses this spine.
+- ✅ **Account bootstrap** — `POST /accounts/{id}/bootstrap` (optional `BootstrapAccountRequest(Today?)`, 409 if
+  already set up) → `MutationResultDto(v1, id)`. Seeds a freshly-created account's snapshot server-side (the header
+  from the relational account via `CreateForHeader`, then the shared **`Account.SeedStarter(today)`** — default
+  categories/contribution-categories/funds + the first current-month period + achievements anchor). The starter seed
+  **moved into the domain** and the web client's `SeedStarterBody` now delegates to it, so a native and a web account
+  start byte-identically. `today` dates the first period to the caller's local month (server UTC when omitted). This
+  is the thin-client counterpart of the web app's first-load seed — a native client can now create an account without
+  carrying the domain. 5 server tests (`BootstrapApiTests`).
+- ✅ **Expenses** — the manual capture loop, mirroring `BudgetingState.AddExpense/EditExpense/RemoveExpense`:
+  - `POST /accounts/{id}/expenses` → `MutationResultDto(Version, EntityId)`. Body `AddExpenseRequest`
+    (category, amount, fund, date, note, onBehalfOfOtherAccount). Member = caller; `FundSynced` derived from the
+    fund — neither is in the request. Validates category/fund exist (else 400); posts to the open period.
+  - `PUT /accounts/{id}/expenses/{expenseId}` — `EditExpenseRequest`; append-only edit; preserves bank provenance,
+    clears the auto-filed badge.
+  - `DELETE /accounts/{id}/expenses/{expenseId}`.
+  - 8 server tests (`ExpenseMutationApiTests`), each confirmed **through the /overview read** so the two halves
+    prove each other. NOT wired into the web client (same reads-first discipline).
+  - **⚠️ Scope gap to close in a later mutation slice:** settlement (on-behalf) mirroring and bank-import
+    provenance are cross-account / bank-flow concerns and are **not** handled here — editing/removing a
+    settlement-linked expense through this API won't keep its counterpart in step (the web app's whole-snapshot
+    path still does).
+- ✅ **Deposits (income)** — mirroring `BudgetingState.RecordDeposit/EditDeposit/RemoveDeposit`:
+  - `POST /accounts/{id}/deposits` (`AddDepositRequest`: contribution category — empty = general income — fund,
+    amount, date). Member = caller; `FundSynced` derived; deposits with the same (member, category, fund) **merge**
+    into one row (the response `EntityId` is that row's id). `PUT`/`DELETE .../{depositId}` edit/remove.
+  - Deposits are **per-member**: edit/remove of someone else's deposit is a **403** (`ForbiddenException`, thrown
+    from inside the mutate delegate so it bypasses the 400 translation) — stricter/cleaner than the web client's
+    in-process guard. 8 server tests (`DepositMutationApiTests`), confirmed through /overview's Contributed.
+- ☐ **Remaining writes:** savings allocations + spend-from-savings, buckets & goals, funds, categories, recurring
+  items, period lifecycle (start/close/reschedule/remove), reallocation, settlement (needs a two-account mutation
+  helper).
+
 **Deferred / to settle:**
-- ☐ **Wire the web client** to the endpoints — deliberately NOT done per read; a piecemeal hybrid (client
+- ☐ **Wire the web client** to the endpoints — deliberately NOT done per read/write; a piecemeal hybrid (client
   computes some figures, fetches others) adds a network round-trip for data it already holds. Cut over in
   one meaningful chunk once enough reads exist. Mind the **live-bank-balance adjustment**, which the header
   applies client-side and the server figures deliberately omit (identical only when no fund is synced).

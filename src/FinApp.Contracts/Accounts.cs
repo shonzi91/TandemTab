@@ -41,6 +41,42 @@ public record AccountSnapshot(Guid Id, long Version, string Payload);
 /// <summary>Push a locally-edited snapshot back to the server. <see cref="ExpectedVersion"/> enables optimistic concurrency.</summary>
 public record SaveAccountRequest(string Payload, long ExpectedVersion);
 
+// --- Command writes (Option-A migration, docs/MOBILE.md) ---------------------------------------------------
+// The client used to mutate the aggregate locally and PUT the whole snapshot; these let a thin (native) client send
+// just the command — the server applies it through the same domain, so the money maths can't drift between clients.
+
+/// <summary>Seed a freshly-created account's starter body server-side (default categories/funds + the first period),
+/// so a thin client doesn't need the domain to initialize an account. <see cref="Today"/> dates the first period to
+/// the caller's local month; when null the server uses its own UTC date. Fails (409) if the account is already set up.</summary>
+public record BootstrapAccountRequest(DateOnly? Today = null);
+
+/// <summary>
+/// Log a new expense in the account's open period, computed server-side. The member is the caller and the fund's
+/// "synced" flag is derived from the fund itself, so neither is in the request. Bank-import and on-behalf settlement
+/// provenance are handled by their own flows, not here. Mirrors <c>BudgetingState.AddExpense</c>.
+/// </summary>
+public record AddExpenseRequest(Guid CategoryId, decimal Amount, Guid FundId, DateOnly Date, string? Note = null, bool OnBehalfOfOtherAccount = false);
+
+/// <summary>Replace an existing expense's category/amount/fund/note/date (an append-only edit — see
+/// <c>Period.EditExpense</c>). The expense id travels in the route. Mirrors <c>BudgetingState.EditExpense</c>.</summary>
+public record EditExpenseRequest(Guid CategoryId, decimal Amount, Guid FundId, DateOnly Date, string? Note = null);
+
+/// <summary>
+/// Record income (a deposit) for the caller in the open period, computed server-side. The member is the caller and
+/// the fund's "synced" flag is derived from the fund. <see cref="CategoryId"/> is an optional <b>contribution</b>
+/// category (Salary, Vouchers…); pass <see cref="System.Guid.Empty"/> for general income. Deposits with the same
+/// (member, category, fund) <b>merge</b> into one row. Mirrors <c>BudgetingState.RecordDeposit</c>.
+/// </summary>
+public record AddDepositRequest(Guid CategoryId, Guid FundId, decimal Amount, DateOnly Date);
+
+/// <summary>Overwrite one of the caller's own deposit rows (amount/category/fund/date). The deposit id travels in the
+/// route; a caller may only change their own deposits (else 403). Mirrors <c>BudgetingState.EditDeposit</c>.</summary>
+public record EditDepositRequest(Guid CategoryId, Guid FundId, decimal Amount, DateOnly Date);
+
+/// <summary>Result of a command write: the account's new snapshot <see cref="Version"/> (so the caller keeps optimistic
+/// concurrency in step) and the affected entity's id — the newly-created id on an add, the target id echoed otherwise.</summary>
+public record MutationResultDto(long Version, Guid? EntityId);
+
 /// <summary>
 /// The Home balance-header figures, computed <b>server-side</b> from the account snapshot — the first read
 /// moved off the client under the Option-A migration (docs/MOBILE.md). Amounts are plain decimals in
