@@ -1,6 +1,7 @@
 using FinApp.Domain.Budgeting;
 using FinApp.Domain.Common;
 using FinApp.Domain.Funds;
+using FinApp.Domain.Recurring;
 using FinApp.Domain.Savings;
 
 namespace FinApp.Domain.Periods;
@@ -375,6 +376,34 @@ public sealed class Period : Entity
                 settledToAccountId: old.SettledToAccountId,
                 settledFromAccountId: old.SettledFromAccountId,
                 settledAmount: old.SettledAmount));
+    }
+
+    /// <summary>
+    /// Post a due recurring item's amount as a real transaction and mark it handled for this period: a
+    /// <see cref="RecurringKind.Expense"/> becomes an <see cref="Expense"/>, income a <see cref="Contribution"/>
+    /// (both named after the item and tagged with <paramref name="fundSynced"/>). A zero/negative amount posts
+    /// nothing (a skip) but still marks the item handled. Single source of truth for confirm + auto-post, on both
+    /// the web client and the server-side confirm endpoint, so the posting can't drift.
+    /// </summary>
+    public void PostRecurring(RecurringItem item, decimal amount, Guid memberId, bool fundSynced)
+    {
+        ArgumentNullException.ThrowIfNull(item);
+        if (amount > 0m)
+        {
+            var date = item.DueDateWithin(From, To);
+            if (item.Kind == RecurringKind.Expense)
+            {
+                var expense = new Expense(item.CategoryId, new Money(amount, Currency), date, memberId, item.FundId, item.Name);
+                expense.SetFundSynced(fundSynced);
+                AddExpense(expense);
+            }
+            else
+            {
+                var contribution = Deposit(memberId, new Money(amount, Currency), item.CategoryId, item.FundId, date);
+                contribution.SetFundSynced(fundSynced);
+            }
+        }
+        item.MarkHandled(From);
     }
 
     /// <summary>

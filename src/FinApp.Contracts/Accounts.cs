@@ -138,6 +138,54 @@ public record ConvertSavingToBudgetRequest(Guid SavingCategoryId, Guid CategoryI
 /// <summary>Move earmarked money from one savings bucket to another (net-neutral). Mirrors <c>BudgetingState.MoveSavingToBucket</c>.</summary>
 public record MoveSavingsRequest(Guid FromBucketId, Guid ToBucketId, decimal Amount, DateOnly Date, string? Note = null);
 
+// --- Account structure: spend categories, funds, contribution categories ------------------------------------
+
+/// <summary>Add a spend category. <see cref="ParentId"/> nests it under another; <see cref="Essential"/> marks it an
+/// essential spend (advisory). Mirrors <c>BudgetingState.AddCategory</c>.</summary>
+public record CreateCategoryRequest(string Name, Guid? ParentId = null, string? Icon = null, bool Essential = false);
+
+/// <summary>Edit a spend category's name and icon (a null icon clears it). <see cref="Essential"/> is applied only when
+/// provided, so an edit that doesn't carry it leaves the flag untouched. Mirrors <c>BudgetingState.EditCategory</c>.</summary>
+public record EditCategoryRequest(string Name, string? Icon = null, bool? Essential = null);
+
+/// <summary>Add a fund (a place money lives). <see cref="ParentId"/> nests it as an informational sub-fund. Mirrors
+/// <c>BudgetingState.AddFund</c>.</summary>
+public record CreateFundRequest(string Name, Guid? ParentId = null, string? Note = null, string? Icon = null);
+
+/// <summary>Edit a fund's name, note and icon (null note/icon clear them). Mirrors <c>BudgetingState.RenameFund</c>+note/icon.</summary>
+public record EditFundRequest(string Name, string? Note = null, string? Icon = null);
+
+/// <summary>Add a contribution (income) category (Salary, Vouchers…). Mirrors <c>BudgetingState.AddContributionCategory</c>.</summary>
+public record CreateContributionCategoryRequest(string Name, string? Icon = null);
+
+/// <summary>Edit a contribution category's name and icon (null icon clears it). Mirrors <c>BudgetingState.SaveContributionCategory</c>.</summary>
+public record EditContributionCategoryRequest(string Name, string? Icon = null);
+
+// --- Recurring items (bills / income expectations) ----------------------------------------------------------
+
+/// <summary>
+/// Add a recurring expectation (a bill or regular income). <see cref="Kind"/> is "expense"/"income";
+/// <see cref="Mode"/> is "fixed" (same every time), "typical" (a self-tuning estimate) or "reminder" (no amount,
+/// just prompts). <see cref="CategoryId"/> is a spend category for an expense, a contribution category for income;
+/// <see cref="DayOfMonth"/> is 1–28. <see cref="AutoPost"/> only applies to a fixed amount. The item is stamped with
+/// the server date so it can't fall due before it existed. Mirrors <c>BudgetingState.AddRecurring</c>.
+/// </summary>
+public record AddRecurringRequest(string Name, string Kind, string Mode, decimal Expected, int DayOfMonth,
+    Guid CategoryId, Guid FundId, string? Icon = null, bool AutoPost = false);
+
+/// <summary>Edit a recurring item (its kind can't change). Fields as in <see cref="AddRecurringRequest"/>. Mirrors
+/// <c>BudgetingState.UpdateRecurring</c>.</summary>
+public record UpdateRecurringRequest(string Name, string Mode, decimal Expected, int DayOfMonth,
+    Guid CategoryId, Guid FundId, string? Icon = null, bool AutoPost = false);
+
+/// <summary>Pause or resume a recurring item (a paused item never falls due).</summary>
+public record SetActiveRequest(bool Active);
+
+/// <summary>Confirm a due recurring item with the real amount: posts a normal expense/income, nudges a "typical"
+/// estimate toward the actual, and marks it handled for this period. A zero amount skips (marks handled, posts
+/// nothing). Mirrors <c>BudgetingState.ConfirmRecurring</c>.</summary>
+public record ConfirmRecurringRequest(decimal ActualAmount);
+
 /// <summary>Result of a command write: the account's new snapshot <see cref="Version"/> (so the caller keeps optimistic
 /// concurrency in step) and the affected entity's id — the newly-created id on an add, the target id echoed otherwise.</summary>
 public record MutationResultDto(long Version, Guid? EntityId);

@@ -187,8 +187,27 @@ used to be able to clobber a concurrent write). Every future mutation reuses thi
     — undo any of the three. 7 tests (`SavingBucketMovementApiTests`), verified via /overview + snapshot.
   - **⚠️ Like the web, the domain does NOT enforce "can't deploy more than the bucket holds"** — the caller owns that
     (the web UI does; a native client must too, or a later slice adds server-side enforcement).
-- ☐ **Remaining writes:** funds, categories (+ contribution categories), recurring items, period lifecycle
-  (start/close/reschedule/remove), budgets, reallocation, settlement (needs a two-account mutation helper).
+- ✅ **Account-structure CRUD** — spend categories, funds, contribution categories (mirroring the client Add/Edit/Archive/Remove):
+  - Categories: `POST /accounts/{id}/categories` (name, parent?, icon, essential) · `PUT .../{categoryId}` (rename+icon,
+    essential applied only when sent) · `PUT .../{categoryId}/archived` · `DELETE .../{categoryId}`.
+  - Funds: `POST /accounts/{id}/funds` (name, parent?, note, icon) · `PUT .../{fundId}` · `PUT .../{fundId}/archived` ·
+    `DELETE .../{fundId}?moveOpeningBalancesTo={fundId}` (consolidate opening balances before removal, total-preserving).
+  - Contribution categories: `POST /accounts/{id}/contribution-categories` · `PUT .../{catId}` · `DELETE .../{catId}`.
+  - All domain guards (unique names, valid parents, removal blockers, last-fund) → 400. 12 tests (`StructureCrudApiTests`),
+    verified via snapshot; removal blockers exercised with a real referencing expense/deposit created through the endpoints.
+  - **Note:** fund *transfers* + opening-balance edits are period money-movements (a separate later slice); `archived`
+    here is a plain hide — the web's move-balance-then-archive convenience comes with that slice.
+- ✅ **Recurring items** (bills / income expectations) — mirroring the client's recurring methods:
+  - CRUD + pause: `POST /accounts/{id}/recurring` (kind/mode as language-independent strings via `RecurringMap` →
+    domain enums; validates category-for-kind + fund; stamped with the server date) · `PUT .../{recurringId}`
+    (kind can't change) · `PUT .../{recurringId}/active` · `DELETE .../{recurringId}`.
+  - Due handlers: `POST .../{recurringId}/confirm` (posts a real expense/income with the actual amount, tunes a
+    "typical" estimate, marks handled) · `POST .../{recurringId}/skip` (marks handled, posts nothing).
+  - **Posting single-sourced in the domain:** the confirm/auto-post logic moved to **`Period.PostRecurring`**
+    (Domain) and the web client's private `PostRecurring` now delegates to it, so the web and the server confirm
+    endpoint can't drift. +3 domain tests (`PeriodPostRecurringTests`), 9 server tests (`RecurringApiTests`).
+- ☐ **Remaining writes:** period lifecycle (start/close/reschedule/remove), budgets, fund transfers + opening
+  balances, reallocation, statement import, settlement (needs a two-account mutation helper).
 
 **Deferred / to settle:**
 - ☐ **Wire the web client** to the endpoints — deliberately NOT done per read/write; a piecemeal hybrid (client

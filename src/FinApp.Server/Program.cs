@@ -4,6 +4,7 @@ using FinApp.Domain.Budgeting;
 using FinApp.Domain.Common;
 using FinApp.Domain.Forecasting;
 using FinApp.Domain.Periods;
+using FinApp.Domain.Recurring;
 using FinApp.Domain.Services;
 using FinApp.Persistence;
 using FinApp.Server.Accounts;
@@ -942,6 +943,247 @@ accounts.MapDelete("/{id:guid}/savings/movements/{allocationId:guid}", async (Gu
     }, ct);
     await notifier.AccountChangedAsync(id, userId, version);
     return Results.Ok(new MutationResultDto(version, allocationId));
+});
+
+// --- Account structure: spend categories, funds, contribution categories -------------------------------------
+// Straight CRUD on the aggregate (mirroring BudgetingState Add/Edit/Archive/Remove). All domain guards — unique
+// names, valid parents, removal blockers (references / sub-items / last fund) — surface as 400. Fund transfers and
+// opening balances are period money-movements, a separate later slice; archived here is a plain hide (no balance move).
+
+// Spend categories
+accounts.MapPost("/{id:guid}/categories", async (Guid id, CreateCategoryRequest req, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
+{
+    var userId = user.UserId();
+    var (version, categoryId) = await svc.MutateAsync(userId, id, account =>
+    {
+        var category = account.AddCategory(req.Name, req.ParentId, req.Icon);   // validates parent + unique name
+        if (req.Essential) account.SetCategoryEssential(category.Id, true);
+        return category.Id;
+    }, ct);
+    await notifier.AccountChangedAsync(id, userId, version);
+    return Results.Ok(new MutationResultDto(version, categoryId));
+});
+
+accounts.MapPut("/{id:guid}/categories/{categoryId:guid}", async (Guid id, Guid categoryId, EditCategoryRequest req, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
+{
+    var userId = user.UserId();
+    var (version, _) = await svc.MutateAsync<object?>(userId, id, account =>
+    {
+        account.RenameCategory(categoryId, req.Name);   // throws if missing / duplicate name
+        account.SetCategoryIcon(categoryId, req.Icon);
+        if (req.Essential is { } essential) account.SetCategoryEssential(categoryId, essential);
+        return null;
+    }, ct);
+    await notifier.AccountChangedAsync(id, userId, version);
+    return Results.Ok(new MutationResultDto(version, categoryId));
+});
+
+accounts.MapPut("/{id:guid}/categories/{categoryId:guid}/archived", async (Guid id, Guid categoryId, SetArchivedRequest req, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
+{
+    var userId = user.UserId();
+    var (version, _) = await svc.MutateAsync<object?>(userId, id, account =>
+    {
+        account.SetCategoryArchived(categoryId, req.Archived);
+        return null;
+    }, ct);
+    await notifier.AccountChangedAsync(id, userId, version);
+    return Results.Ok(new MutationResultDto(version, categoryId));
+});
+
+accounts.MapDelete("/{id:guid}/categories/{categoryId:guid}", async (Guid id, Guid categoryId, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
+{
+    var userId = user.UserId();
+    var (version, _) = await svc.MutateAsync<object?>(userId, id, account =>
+    {
+        account.RemoveCategory(categoryId);   // 400 on a removal blocker (sub-categories / budget / expense refs)
+        return null;
+    }, ct);
+    await notifier.AccountChangedAsync(id, userId, version);
+    return Results.Ok(new MutationResultDto(version, categoryId));
+});
+
+// Funds
+accounts.MapPost("/{id:guid}/funds", async (Guid id, CreateFundRequest req, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
+{
+    var userId = user.UserId();
+    var (version, fundId) = await svc.MutateAsync(userId, id, account =>
+    {
+        var fund = account.AddFund(req.Name, req.ParentId);   // validates parent + unique name
+        account.SetFundNote(fund.Id, req.Note);
+        account.SetFundIcon(fund.Id, req.Icon);
+        return fund.Id;
+    }, ct);
+    await notifier.AccountChangedAsync(id, userId, version);
+    return Results.Ok(new MutationResultDto(version, fundId));
+});
+
+accounts.MapPut("/{id:guid}/funds/{fundId:guid}", async (Guid id, Guid fundId, EditFundRequest req, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
+{
+    var userId = user.UserId();
+    var (version, _) = await svc.MutateAsync<object?>(userId, id, account =>
+    {
+        account.RenameFund(fundId, req.Name);   // throws if missing / duplicate name
+        account.SetFundNote(fundId, req.Note);
+        account.SetFundIcon(fundId, req.Icon);
+        return null;
+    }, ct);
+    await notifier.AccountChangedAsync(id, userId, version);
+    return Results.Ok(new MutationResultDto(version, fundId));
+});
+
+accounts.MapPut("/{id:guid}/funds/{fundId:guid}/archived", async (Guid id, Guid fundId, SetArchivedRequest req, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
+{
+    var userId = user.UserId();
+    var (version, _) = await svc.MutateAsync<object?>(userId, id, account =>
+    {
+        account.SetFundArchived(fundId, req.Archived);
+        return null;
+    }, ct);
+    await notifier.AccountChangedAsync(id, userId, version);
+    return Results.Ok(new MutationResultDto(version, fundId));
+});
+
+// Optional ?moveOpeningBalancesTo={fundId} consolidates this fund's opening balances onto another (total-preserving)
+// before removal; without it any balance is dropped with the fund. 400 on a removal blocker (sub-funds / last fund / refs).
+accounts.MapDelete("/{id:guid}/funds/{fundId:guid}", async (Guid id, Guid fundId, Guid? moveOpeningBalancesTo, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
+{
+    var userId = user.UserId();
+    var (version, _) = await svc.MutateAsync<object?>(userId, id, account =>
+    {
+        account.RemoveFund(fundId, moveOpeningBalancesTo);
+        return null;
+    }, ct);
+    await notifier.AccountChangedAsync(id, userId, version);
+    return Results.Ok(new MutationResultDto(version, fundId));
+});
+
+// Contribution (income) categories
+accounts.MapPost("/{id:guid}/contribution-categories", async (Guid id, CreateContributionCategoryRequest req, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
+{
+    var userId = user.UserId();
+    var (version, catId) = await svc.MutateAsync(userId, id, account =>
+    {
+        var category = account.AddContributionCategory(req.Name);   // validates unique name
+        account.SetContributionCategoryIcon(category.Id, req.Icon);
+        return category.Id;
+    }, ct);
+    await notifier.AccountChangedAsync(id, userId, version);
+    return Results.Ok(new MutationResultDto(version, catId));
+});
+
+accounts.MapPut("/{id:guid}/contribution-categories/{catId:guid}", async (Guid id, Guid catId, EditContributionCategoryRequest req, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
+{
+    var userId = user.UserId();
+    var (version, _) = await svc.MutateAsync<object?>(userId, id, account =>
+    {
+        account.RenameContributionCategory(catId, req.Name);   // throws if missing / duplicate name
+        account.SetContributionCategoryIcon(catId, req.Icon);
+        return null;
+    }, ct);
+    await notifier.AccountChangedAsync(id, userId, version);
+    return Results.Ok(new MutationResultDto(version, catId));
+});
+
+accounts.MapDelete("/{id:guid}/contribution-categories/{catId:guid}", async (Guid id, Guid catId, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
+{
+    var userId = user.UserId();
+    var (version, _) = await svc.MutateAsync<object?>(userId, id, account =>
+    {
+        account.RemoveContributionCategory(catId);   // 400 on a removal blocker (deposits reference it)
+        return null;
+    }, ct);
+    await notifier.AccountChangedAsync(id, userId, version);
+    return Results.Ok(new MutationResultDto(version, catId));
+});
+
+// --- Recurring items (bills / income expectations) -----------------------------------------------------------
+// CRUD + pause/resume, plus the due-item handlers: confirm (posts a real expense/income with the actual amount, tunes
+// a "typical" estimate, marks handled) and skip (marks handled, posts nothing). Posting goes through the shared
+// Period.PostRecurring so it can't drift from the web. Kind/mode arrive as strings (RecurringMap → domain enums).
+accounts.MapPost("/{id:guid}/recurring", async (Guid id, AddRecurringRequest req, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
+{
+    var userId = user.UserId();
+    var today = DateOnly.FromDateTime(DateTime.UtcNow);
+    var (version, recurringId) = await svc.MutateAsync(userId, id, account =>
+    {
+        var kind = RecurringMap.Kind(req.Kind);
+        RecurringMap.ValidateRefs(account, kind, req.CategoryId, req.FundId);
+        var item = new RecurringItem(req.Name, kind, RecurringMap.Mode(req.Mode), req.Expected, req.DayOfMonth,
+            req.CategoryId, req.FundId, req.Icon, req.AutoPost);
+        item.SetCreatedOn(today);   // can't fall due before it existed
+        account.AddRecurring(item);
+        return item.Id;
+    }, ct);
+    await notifier.AccountChangedAsync(id, userId, version);
+    return Results.Ok(new MutationResultDto(version, recurringId));
+});
+
+accounts.MapPut("/{id:guid}/recurring/{recurringId:guid}", async (Guid id, Guid recurringId, UpdateRecurringRequest req, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
+{
+    var userId = user.UserId();
+    var (version, _) = await svc.MutateAsync<object?>(userId, id, account =>
+    {
+        var item = account.FindRecurring(recurringId) ?? throw new InvalidOperationException("That recurring item doesn't exist in this account.");
+        RecurringMap.ValidateRefs(account, item.Kind, req.CategoryId, req.FundId);   // kind can't change on edit
+        item.Update(req.Name, RecurringMap.Mode(req.Mode), req.Expected, req.DayOfMonth, req.CategoryId, req.FundId, req.Icon, req.AutoPost);
+        return null;
+    }, ct);
+    await notifier.AccountChangedAsync(id, userId, version);
+    return Results.Ok(new MutationResultDto(version, recurringId));
+});
+
+accounts.MapPut("/{id:guid}/recurring/{recurringId:guid}/active", async (Guid id, Guid recurringId, SetActiveRequest req, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
+{
+    var userId = user.UserId();
+    var (version, _) = await svc.MutateAsync<object?>(userId, id, account =>
+    {
+        var item = account.FindRecurring(recurringId) ?? throw new InvalidOperationException("That recurring item doesn't exist in this account.");
+        item.SetActive(req.Active);
+        return null;
+    }, ct);
+    await notifier.AccountChangedAsync(id, userId, version);
+    return Results.Ok(new MutationResultDto(version, recurringId));
+});
+
+accounts.MapDelete("/{id:guid}/recurring/{recurringId:guid}", async (Guid id, Guid recurringId, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
+{
+    var userId = user.UserId();
+    var (version, _) = await svc.MutateAsync<object?>(userId, id, account =>
+    {
+        account.RemoveRecurring(recurringId);
+        return null;
+    }, ct);
+    await notifier.AccountChangedAsync(id, userId, version);
+    return Results.Ok(new MutationResultDto(version, recurringId));
+});
+
+accounts.MapPost("/{id:guid}/recurring/{recurringId:guid}/confirm", async (Guid id, Guid recurringId, ConfirmRecurringRequest req, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
+{
+    var userId = user.UserId();
+    var (version, _) = await svc.MutateAsync<object?>(userId, id, account =>
+    {
+        var period = account.CurrentPeriod ?? throw new InvalidOperationException("There's no open period.");
+        var item = account.FindRecurring(recurringId) ?? throw new InvalidOperationException("That recurring item doesn't exist in this account.");
+        if (req.ActualAmount > 0m) item.LearnFromActual(req.ActualAmount);   // tune a "typical" estimate toward reality
+        period.PostRecurring(item, req.ActualAmount, userId, account.FindFund(item.FundId)?.IsSynced ?? false);
+        return null;
+    }, ct);
+    await notifier.AccountChangedAsync(id, userId, version);
+    return Results.Ok(new MutationResultDto(version, recurringId));
+});
+
+accounts.MapPost("/{id:guid}/recurring/{recurringId:guid}/skip", async (Guid id, Guid recurringId, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
+{
+    var userId = user.UserId();
+    var (version, _) = await svc.MutateAsync<object?>(userId, id, account =>
+    {
+        var period = account.CurrentPeriod ?? throw new InvalidOperationException("There's no open period.");
+        var item = account.FindRecurring(recurringId) ?? throw new InvalidOperationException("That recurring item doesn't exist in this account.");
+        item.MarkHandled(period.From);   // handled for this period without posting anything
+        return null;
+    }, ct);
+    await notifier.AccountChangedAsync(id, userId, version);
+    return Results.Ok(new MutationResultDto(version, recurringId));
 });
 
 accounts.MapPut("/{id:guid}/snapshot", async (Guid id, SaveAccountRequest req, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>

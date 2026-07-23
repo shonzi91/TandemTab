@@ -868,25 +868,9 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     public Task SetRecurringActive(Guid id, bool active) { Account.FindRecurring(id)?.SetActive(active); return SaveAsync(); }
 
     // Post a recurring item's amount as a real expense/contribution (shared by confirm + auto-post). Marks it handled.
-    private void PostRecurring(RecurringItem item, decimal amount)
-    {
-        if (amount > 0m)
-        {
-            var date = item.DueDateWithin(Period.From, Period.To);
-            if (item.Kind == RecurringKind.Expense)
-            {
-                var expense = new Expense(item.CategoryId, Money(amount), date, CurrentMemberId, item.FundId, item.Name);
-                expense.SetFundSynced(FundIsSynced(item.FundId));
-                Period.AddExpense(expense);
-            }
-            else
-            {
-                var contribution = Period.Deposit(CurrentMemberId, Money(amount), item.CategoryId, item.FundId, date);
-                contribution.SetFundSynced(FundIsSynced(item.FundId));
-            }
-        }
-        item.MarkHandled(Period.From);
-    }
+    // Delegates to the domain's Period.PostRecurring so the web and the server-side confirm endpoint can't drift.
+    private void PostRecurring(RecurringItem item, decimal amount) =>
+        Period.PostRecurring(item, amount, CurrentMemberId, FundIsSynced(item.FundId));
 
     /// <summary>Confirm a due recurring item with the <b>real</b> amount: posts a normal expense/contribution, nudges a
     /// Typical estimate toward the actual, and marks it handled for this period — all in a single save.</summary>
