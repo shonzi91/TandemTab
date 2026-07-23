@@ -16,7 +16,9 @@ public enum HealthBand { AtRisk, Average, Healthy }
 /// <summary>Kind of signal card (matches the template's warn / good / info icon tints).</summary>
 public enum SignalKind { Warn, Good, Info }
 
-public sealed record Signal(SignalKind Kind, string Title, string Desc, string Delta, DeltaDir Dir);
+/// <summary>A signal card. <see cref="Title"/>, <see cref="Desc"/> and the <see cref="Delta"/> badge are language-independent
+/// <see cref="InsightMessage"/>s — the client localizes them.</summary>
+public sealed record Signal(SignalKind Kind, InsightMessage Title, InsightMessage Desc, InsightMessage Delta, DeltaDir Dir);
 
 public sealed record CategorySpend(string Name, string? Icon, Money Amount, decimal BarFraction, DeltaDir Dir, string ColorHex);
 
@@ -24,14 +26,19 @@ public sealed record TrendPoint(string Label, Money Outgoings, decimal BarFracti
 
 /// <summary>A labelled mini-trend across recent periods for the Insights "trends over time" strip (#9). <see cref="Points"/>
 /// are chronological raw values (percentage points for rates, currency amounts otherwise). <see cref="Dir"/> is already
-/// framed as a sentiment colour — <c>Down</c> = good/green, <c>Up</c> = bad/red — matching the signal cards.</summary>
-public sealed record TrendSeries(string Label, string? Icon, IReadOnlyList<decimal> Points, string CurrentText, string DeltaNote, DeltaDir Dir);
+/// framed as a sentiment colour — <c>Down</c> = good/green, <c>Up</c> = bad/red — matching the signal cards. <see cref="Label"/>,
+/// <see cref="CurrentText"/> and <see cref="DeltaNote"/> are language-independent <see cref="InsightMessage"/>s.</summary>
+public sealed record TrendSeries(InsightMessage Label, string? Icon, IReadOnlyList<decimal> Points, InsightMessage CurrentText, InsightMessage DeltaNote, DeltaDir Dir);
 
-public sealed record QuickWin(string Text);
+public sealed record QuickWin(InsightMessage Message);
 
 /// <summary>
 /// A read-only financial-health/insights view model for one period of an account, derived entirely from
-/// existing domain reads (no stored state). Built by <see cref="InsightsService"/>.
+/// existing domain reads (no stored state). Built by <see cref="InsightsService"/>. All narrative fields
+/// (<see cref="Verdict"/>, <see cref="Summary"/>, <see cref="SavingsCritique"/>, <see cref="TrendNote"/>, the
+/// <see cref="Signals"/> and <see cref="QuickWins"/>) are language-independent <see cref="InsightMessage"/>s: the domain
+/// bakes in no English, so every client renders them in its own language. <see cref="Summary"/> and
+/// <see cref="SavingsCritique"/> are ordered fragments a client joins with a space.
 /// </summary>
 public sealed record FinancialHealthReport(
     bool HasData,
@@ -39,14 +46,14 @@ public sealed record FinancialHealthReport(
     int Score,
     int? ScoreDelta,
     HealthBand Band,
-    string Verdict,
-    string Summary,
+    InsightMessage Verdict,
+    IReadOnlyList<InsightMessage> Summary,
     decimal? SavingsRate,
     decimal SavingsTarget,
     Money? SavingsShortfall,
-    string SavingsCritique,
+    IReadOnlyList<InsightMessage> SavingsCritique,
     bool TrendUp,
-    string TrendNote,
+    InsightMessage TrendNote,
     Money TrendAverage,
     decimal TrendAvgFraction,
     IReadOnlyList<Signal> Signals,
@@ -56,9 +63,10 @@ public sealed record FinancialHealthReport(
     IReadOnlyList<QuickWin> QuickWins);
 
 /// <summary>
-/// Computes the Insights tab's financial-health report for a given period. Pure presentation-layer logic over
-/// the domain aggregate's public reads — it adds no domain concepts and stores nothing. The savings-rate target
-/// is a fixed default (<see cref="DefaultSavingsTarget"/>) until/unless it becomes a per-account setting.
+/// Computes the Insights tab's financial-health report for a given period. Pure logic over the domain aggregate's
+/// public reads — it adds no domain concepts and stores nothing, and it emits narrative as language-independent
+/// <see cref="InsightMessage"/>s (codes + args) rather than formatted strings, so no language is baked in. The
+/// savings-rate target is a fixed default (<see cref="DefaultSavingsTarget"/>) until/unless it becomes a per-account setting.
 /// </summary>
 public sealed class InsightsService
 {
@@ -70,13 +78,9 @@ public sealed class InsightsService
 
     private readonly SavingsReportService _savings = new();
 
-    // Translator (Localizer.T): English text is the key, so an absent translation falls back to English.
-    private Func<string, string> _t = s => s;
-
-    public FinancialHealthReport Build(Account account, int periodIndex, Func<Money, string> fmt, Func<string, string>? translate = null)
+    public FinancialHealthReport Build(Account account, int periodIndex)
     {
         ArgumentNullException.ThrowIfNull(account);
-        _t = translate ?? (s => s);
         var periods = account.Periods;
         var currency = account.Currency;
 
@@ -96,7 +100,7 @@ public sealed class InsightsService
         var savingsRate = _savings.PeriodSavingsRate(p);
 
         var breakdown = BuildBreakdown(account, periods, periodIndex);
-        var trend = BuildTrend(periods, periodIndex, currency, fmt);
+        var trend = BuildTrend(periods, periodIndex, currency);
 
         var score = ComputeScore(account, periodIndex, target);
         int? delta = periodIndex > 0 ? score - ComputeScore(account, periodIndex - 1, target) : null;
@@ -111,11 +115,11 @@ public sealed class InsightsService
             var gap = (target - (savingsRate ?? 0m)) * income.Amount;
             if (gap > 0m) shortfall = new Money(decimal.Round(gap, 2), currency);
         }
-        var savingsCritique = SavingsCritique(savingsRate, shortfall, target, fmt);
+        var savingsCritique = SavingsCritique(savingsRate, shortfall, target);
 
-        var signals = BuildSignals(account, periods, periodIndex, savingsRate, target, fmt);
-        var miniTrends = BuildMiniTrends(account, periods, periodIndex, currency, fmt);
-        var wins = BuildQuickWins(account, p, savingsRate, income, target, fmt);
+        var signals = BuildSignals(account, periods, periodIndex, savingsRate, target);
+        var miniTrends = BuildMiniTrends(account, periods, periodIndex, currency);
+        var wins = BuildQuickWins(account, p, savingsRate, income, target);
 
         return new FinancialHealthReport(
             HasData: true,
@@ -142,8 +146,9 @@ public sealed class InsightsService
 
     private static FinancialHealthReport Empty(string currency) => new(
         HasData: false, PeriodLabel: "", Score: 0, ScoreDelta: null, Band: HealthBand.Average,
-        Verdict: "", Summary: "", SavingsRate: null, SavingsTarget: DefaultSavingsTarget,
-        SavingsShortfall: null, SavingsCritique: "", TrendUp: false, TrendNote: "",
+        Verdict: InsightMessage.Plain(InsightCodes.VerdictAverage), Summary: [],
+        SavingsRate: null, SavingsTarget: DefaultSavingsTarget, SavingsShortfall: null, SavingsCritique: [],
+        TrendUp: false, TrendNote: InsightMessage.Plain(InsightCodes.TrendNone),
         TrendAverage: Money.Zero(currency), TrendAvgFraction: 0m,
         Signals: [], Breakdown: [], Trend: [], MiniTrends: [], QuickWins: []);
 
@@ -230,23 +235,22 @@ public sealed class InsightsService
     private static HealthBand BandFor(int score) =>
         score >= 70 ? HealthBand.Healthy : score >= 40 ? HealthBand.Average : HealthBand.AtRisk;
 
-    private (string Verdict, string Summary) Narrative(HealthBand band, int? delta)
+    private static (InsightMessage Verdict, IReadOnlyList<InsightMessage> Summary) Narrative(HealthBand band, int? delta)
     {
-        var move = delta switch
+        var (verdictCode, summaryCode) = band switch
         {
-            > 0 => " " + string.Format(_t("You're up {0} points from last month."), delta),
-            < 0 => " " + string.Format(_t("You're down {0} points from last month."), -delta),
-            _ => ""
+            HealthBand.Healthy => (InsightCodes.VerdictHealthy, InsightCodes.SummaryHealthy),
+            HealthBand.Average => (InsightCodes.VerdictAverage, InsightCodes.SummaryAverage),
+            _ => (InsightCodes.VerdictAtRisk, InsightCodes.SummaryAtRisk),
         };
-        return band switch
-        {
-            HealthBand.Healthy => (_t("Looking healthy"),
-                _t("Your habits are solid — saving steadily, spending within plan.") + move),
-            HealthBand.Average => (_t("Getting there"),
-                _t("Solid foundations, but a couple of habits are dragging you down. Tighten one area and next month could look very different.") + move),
-            _ => (_t("Needs attention"),
-                _t("A few things need a look this period — overspending or thin savings. Small fixes add up fast.") + move),
-        };
+
+        var summary = new List<InsightMessage> { InsightMessage.Plain(summaryCode) };
+        if (delta is > 0)
+            summary.Add(InsightMessage.Of(InsightCodes.MoveUp, InsightArg.Count(delta.Value)));
+        else if (delta is < 0)
+            summary.Add(InsightMessage.Of(InsightCodes.MoveDown, InsightArg.Count(-delta.Value)));
+
+        return (InsightMessage.Plain(verdictCode), summary);
     }
 
     // --- Spending breakdown by root category ----------------------------------------------------
@@ -292,8 +296,8 @@ public sealed class InsightsService
     // included the current period couldn't be meaningfully "above" or "below". This mirrors how the score's
     // spending-trend component computes its trailing average (see TrailingAverageOutgoings).
 
-    private (IReadOnlyList<TrendPoint> Points, Money Average, decimal AvgFraction, bool Up, string Note)
-        BuildTrend(IReadOnlyList<Period> periods, int idx, string currency, Func<Money, string> fmt)
+    private (IReadOnlyList<TrendPoint> Points, Money Average, decimal AvgFraction, bool Up, InsightMessage Note)
+        BuildTrend(IReadOnlyList<Period> periods, int idx, string currency)
     {
         var start = Math.Max(0, idx - 5);
         var series = new List<(string Label, decimal Amt, bool Cur)>();
@@ -312,15 +316,15 @@ public sealed class InsightsService
 
         var current = series.Count > 0 ? series[^1].Amt : 0m;
         var diff = current - avg;
-        bool up; string note;
+        bool up; InsightMessage note;
         if (priorCount < 1)
-            (up, note) = (false, _t("Not enough history yet to spot a trend."));
+            (up, note) = (false, InsightMessage.Plain(InsightCodes.TrendNone));
         else if (Math.Abs(diff) < 1m)
-            (up, note) = (false, string.Format(_t("This month is right around your {0}-month average of {1}."), priorCount, fmt(avgMoney)));
+            (up, note) = (false, InsightMessage.Of(InsightCodes.TrendAround, InsightArg.Count(priorCount), InsightArg.Cash(avgMoney)));
         else if (diff > 0m)
-            (up, note) = (true, string.Format(_t("This month is {0} above your {1}-month average of {2}."), fmt(new Money(decimal.Round(diff, 2), currency)), priorCount, fmt(avgMoney)));
+            (up, note) = (true, InsightMessage.Of(InsightCodes.TrendAbove, InsightArg.Cash(new Money(decimal.Round(diff, 2), currency)), InsightArg.Count(priorCount), InsightArg.Cash(avgMoney)));
         else
-            (up, note) = (false, string.Format(_t("This month is {0} below your {1}-month average of {2}."), fmt(new Money(decimal.Round(-diff, 2), currency)), priorCount, fmt(avgMoney)));
+            (up, note) = (false, InsightMessage.Of(InsightCodes.TrendBelow, InsightArg.Cash(new Money(decimal.Round(-diff, 2), currency)), InsightArg.Count(priorCount), InsightArg.Cash(avgMoney)));
 
         return (points, avgMoney, avgFraction, up, note);
     }
@@ -330,7 +334,7 @@ public sealed class InsightsService
     // for a sparkline. Direction is pre-framed as sentiment colour (Down = good/green, Up = bad/red).
 
     private IReadOnlyList<TrendSeries> BuildMiniTrends(
-        Account account, IReadOnlyList<Period> periods, int idx, string currency, Func<Money, string> fmt)
+        Account account, IReadOnlyList<Period> periods, int idx, string currency)
     {
         var start = Math.Max(0, idx - 5);
         var priorK = idx - start;              // periods before the current one, in the window
@@ -347,11 +351,12 @@ public sealed class InsightsService
             var diff = cur - avg;
             var dir = diff > 0.5m ? DeltaDir.Down : diff < -0.5m ? DeltaDir.Up : DeltaDir.Flat;
             var note = Math.Abs(diff) <= 0.5m
-                ? string.Format(_t("Steady around your {0}-period average of {1}%."), priorK, decimal.Round(avg, 0))
+                ? InsightMessage.Of(InsightCodes.MtSavSteady, InsightArg.Count(priorK), InsightArg.Count(decimal.Round(avg, 0)))
                 : diff > 0m
-                    ? string.Format(_t("Up {0} pts vs your {1}-period average of {2}%."), decimal.Round(diff, 0), priorK, decimal.Round(avg, 0))
-                    : string.Format(_t("Down {0} pts vs your {1}-period average of {2}%."), decimal.Round(-diff, 0), priorK, decimal.Round(avg, 0));
-            result.Add(new TrendSeries(_t("Savings rate"), "💰", rates, $"{decimal.Round(cur, 0)}%", note, dir));
+                    ? InsightMessage.Of(InsightCodes.MtSavUp, InsightArg.Count(decimal.Round(diff, 0)), InsightArg.Count(priorK), InsightArg.Count(decimal.Round(avg, 0)))
+                    : InsightMessage.Of(InsightCodes.MtSavDown, InsightArg.Count(decimal.Round(-diff, 0)), InsightArg.Count(priorK), InsightArg.Count(decimal.Round(avg, 0)));
+            var curText = InsightMessage.Of(InsightCodes.MtCurPct, InsightArg.Count(decimal.Round(cur, 0)));
+            result.Add(new TrendSeries(InsightMessage.Plain(InsightCodes.MtLabelSavings), "💰", rates, curText, note, dir));
         }
 
         // 2) Total debt owed per period, reconstructed from payment (disbursement) history — lower is better.
@@ -371,11 +376,12 @@ public sealed class InsightsService
             var dir = diff < -0.01m ? DeltaDir.Down : diff > 0.01m ? DeltaDir.Up : DeltaDir.Flat;
             var firstLabel = periods[start].From.ToString("MMM", CultureInfo.InvariantCulture);
             var note = Math.Abs(diff) <= 0.01m
-                ? _t("No change over this window.")
+                ? InsightMessage.Plain(InsightCodes.MtDebtNoChange)
                 : diff < 0m
-                    ? string.Format(_t("Down {0} since {1}."), fmt(new Money(decimal.Round(-diff, 2), currency)), firstLabel)
-                    : string.Format(_t("Up {0} since {1}."), fmt(new Money(decimal.Round(diff, 2), currency)), firstLabel);
-            result.Add(new TrendSeries(_t("Debt owed"), "💳", owed, fmt(new Money(cur, currency)), note, dir));
+                    ? InsightMessage.Of(InsightCodes.MtDebtDown, InsightArg.Cash(new Money(decimal.Round(-diff, 2), currency)), InsightArg.Str(firstLabel))
+                    : InsightMessage.Of(InsightCodes.MtDebtUp, InsightArg.Cash(new Money(decimal.Round(diff, 2), currency)), InsightArg.Str(firstLabel));
+            var curText = InsightMessage.Of(InsightCodes.MtCurMoney, InsightArg.Cash(new Money(cur, currency)));
+            result.Add(new TrendSeries(InsightMessage.Plain(InsightCodes.MtLabelDebt), "💳", owed, curText, note, dir));
         }
 
         // 3) The biggest spending category this period, tracked across the window — lower is better.
@@ -395,13 +401,14 @@ public sealed class InsightsService
             var tol = 0.05m * avg;
             var dir = avg <= 0m ? DeltaDir.Flat : diff > tol ? DeltaDir.Up : diff < -tol ? DeltaDir.Down : DeltaDir.Flat;
             var note = avg <= 0m
-                ? _t("First period with spend here.")
+                ? InsightMessage.Plain(InsightCodes.MtCatFirst)
                 : Math.Abs(diff) <= tol
-                    ? string.Format(_t("About your {0}-period average of {1}."), priorK, fmt(new Money(decimal.Round(avg, 2), currency)))
+                    ? InsightMessage.Of(InsightCodes.MtCatAbout, InsightArg.Count(priorK), InsightArg.Cash(new Money(decimal.Round(avg, 2), currency)))
                     : diff > 0m
-                        ? string.Format(_t("Up {0} vs your {1}-period average of {2}."), fmt(new Money(decimal.Round(diff, 2), currency)), priorK, fmt(new Money(decimal.Round(avg, 2), currency)))
-                        : string.Format(_t("Down {0} vs your {1}-period average of {2}."), fmt(new Money(decimal.Round(-diff, 2), currency)), priorK, fmt(new Money(decimal.Round(avg, 2), currency)));
-            result.Add(new TrendSeries(top.Cat.Name, top.Cat.Icon, spend, fmt(new Money(cur, currency)), note, dir));
+                        ? InsightMessage.Of(InsightCodes.MtCatUp, InsightArg.Cash(new Money(decimal.Round(diff, 2), currency)), InsightArg.Count(priorK), InsightArg.Cash(new Money(decimal.Round(avg, 2), currency)))
+                        : InsightMessage.Of(InsightCodes.MtCatDown, InsightArg.Cash(new Money(decimal.Round(-diff, 2), currency)), InsightArg.Count(priorK), InsightArg.Cash(new Money(decimal.Round(avg, 2), currency)));
+            var curText = InsightMessage.Of(InsightCodes.MtCurMoney, InsightArg.Cash(new Money(cur, currency)));
+            result.Add(new TrendSeries(InsightMessage.Of(InsightCodes.MtLabelRaw, InsightArg.Str(top.Cat.Name)), top.Cat.Icon, spend, curText, note, dir));
         }
 
         return result;
@@ -423,7 +430,7 @@ public sealed class InsightsService
 
     private IReadOnlyList<Signal> BuildSignals(
         Account account, IReadOnlyList<Period> periods, int idx,
-        decimal? savingsRate, decimal target, Func<Money, string> fmt)
+        decimal? savingsRate, decimal target)
     {
         var p = periods[idx];
         var prev = idx > 0 ? periods[idx - 1] : null;
@@ -434,32 +441,36 @@ public sealed class InsightsService
         // Category running materially above its usual pace (budget-aware; ignores within-budget spend and small amounts).
         var spike = TopSpikingCategory(account, periods, idx);
         if (spike is { } s)
-            warn.Add(new Signal(SignalKind.Warn, string.Format(_t("{0} is running high"), s.Name),
-                string.Format(_t("You've spent {0} on {1} — {2} ({3}%) above your recent average of {4}."), fmt(s.Cur), s.Name, fmt(s.Delta), s.Pct, fmt(s.Avg)),
-                $"+{s.Pct}%", DeltaDir.Up));
+            warn.Add(new Signal(SignalKind.Warn,
+                InsightMessage.Of(InsightCodes.SigCatHighTitle, InsightArg.Str(s.Name)),
+                InsightMessage.Of(InsightCodes.SigCatHighDesc, InsightArg.Cash(s.Cur), InsightArg.Str(s.Name), InsightArg.Cash(s.Delta), InsightArg.Count(s.Pct), InsightArg.Cash(s.Avg)),
+                InsightMessage.Of(InsightCodes.BadgePctUp, InsightArg.Count(s.Pct)), DeltaDir.Up));
 
         // (Overspent budgets are surfaced as always-visible rings in the Overview, not as a signal here.)
 
         // No savings set aside.
         if (p.SavingsNetTotal.Amount <= 0m)
-            warn.Add(new Signal(SignalKind.Warn, _t("No savings set aside"),
-                _t("You haven't moved anything into savings this period. Even a small amount keeps the habit alive."),
-                "—", DeltaDir.Flat));
+            warn.Add(new Signal(SignalKind.Warn,
+                InsightMessage.Plain(InsightCodes.SigNoSavingsTitle),
+                InsightMessage.Plain(InsightCodes.SigNoSavingsDesc),
+                InsightMessage.Plain(InsightCodes.BadgeDash), DeltaDir.Flat));
 
         // Savings rate above target.
         if (savingsRate is { } r && r >= target)
-            good.Add(new Signal(SignalKind.Good, _t("Savings on track"),
-                string.Format(_t("You set aside {0} of what came in — at or above your {1} goal."), Pct(r), Pct(target)),
-                $"{Pct(r)}", DeltaDir.Down));
+            good.Add(new Signal(SignalKind.Good,
+                InsightMessage.Plain(InsightCodes.SigSavingsOkTitle),
+                InsightMessage.Of(InsightCodes.SigSavingsOkDesc, InsightArg.Ratio(r), InsightArg.Ratio(target)),
+                InsightMessage.Of(InsightCodes.BadgeValue, InsightArg.Ratio(r)), DeltaDir.Down));
 
         // A category that fell vs last month.
         if (prev is not null)
         {
             var drop = TopDroppingCategory(account, p, prev);
             if (drop is { } d)
-                good.Add(new Signal(SignalKind.Good, string.Format(_t("{0} spend down"), d.Name),
-                    string.Format(_t("{0} vs {1} last month. Keep it up."), fmt(d.Cur), fmt(d.Prev)),
-                    $"−{d.Pct}%", DeltaDir.Down));
+                good.Add(new Signal(SignalKind.Good,
+                    InsightMessage.Of(InsightCodes.SigCatDownTitle, InsightArg.Str(d.Name)),
+                    InsightMessage.Of(InsightCodes.SigCatDownDesc, InsightArg.Cash(d.Cur), InsightArg.Cash(d.Prev)),
+                    InsightMessage.Of(InsightCodes.BadgePctDown, InsightArg.Count(d.Pct)), DeltaDir.Down));
         }
 
         // End-of-period runway (only for the latest, still-open period).
@@ -469,9 +480,10 @@ public sealed class InsightsService
             if (today <= p.To && today >= p.From)
             {
                 var daysLeft = p.To.DayNumber - today.DayNumber;
-                info.Add(new Signal(SignalKind.Info, _t("Days left in the period"),
-                    string.Format(_t("You have {0} on hand with {1} days to go."), fmt(p.ExpectedClosingBalance), daysLeft),
-                    string.Format(_t("{0}d left"), daysLeft), DeltaDir.Flat));
+                info.Add(new Signal(SignalKind.Info,
+                    InsightMessage.Plain(InsightCodes.SigDaysLeftTitle),
+                    InsightMessage.Of(InsightCodes.SigDaysLeftDesc, InsightArg.Cash(p.ExpectedClosingBalance), InsightArg.Count(daysLeft)),
+                    InsightMessage.Of(InsightCodes.BadgeDaysLeft, InsightArg.Count(daysLeft)), DeltaDir.Flat));
             }
         }
 
@@ -481,12 +493,14 @@ public sealed class InsightsService
         {
             var hasSavings = _savings.AccumulatedTotal(account).Amount > 0m;
             warn.Add(hasSavings
-                ? new Signal(SignalKind.Warn, _t("Spending dipped into savings"),
-                    string.Format(_t("{0} of this period's spend isn't backed by fresh cash — it leans on your savings earmark."), fmt(p.Deficit)),
-                    "deficit", DeltaDir.Up)
-                : new Signal(SignalKind.Warn, _t("Spending outran your income"),
-                    string.Format(_t("{0} of this period's spend isn't backed by fresh cash that came in this period."), fmt(p.Deficit)),
-                    "deficit", DeltaDir.Up));
+                ? new Signal(SignalKind.Warn,
+                    InsightMessage.Plain(InsightCodes.SigDeficitSavingsTitle),
+                    InsightMessage.Of(InsightCodes.SigDeficitSavingsDesc, InsightArg.Cash(p.Deficit)),
+                    InsightMessage.Plain(InsightCodes.BadgeDeficit), DeltaDir.Up)
+                : new Signal(SignalKind.Warn,
+                    InsightMessage.Plain(InsightCodes.SigDeficitIncomeTitle),
+                    InsightMessage.Of(InsightCodes.SigDeficitIncomeDesc, InsightArg.Cash(p.Deficit)),
+                    InsightMessage.Plain(InsightCodes.BadgeDeficit), DeltaDir.Up));
         }
 
         // Priority: warnings first, then a positive, then info — capped at 5.
@@ -559,7 +573,7 @@ public sealed class InsightsService
     // --- Quick wins -----------------------------------------------------------------------------
 
     private IReadOnlyList<QuickWin> BuildQuickWins(
-        Account account, Period p, decimal? savingsRate, Money income, decimal target, Func<Money, string> fmt)
+        Account account, Period p, decimal? savingsRate, Money income, decimal target)
     {
         var wins = new List<QuickWin>();
 
@@ -576,8 +590,10 @@ public sealed class InsightsService
         }
         if (worst is { } w)
         {
-            var name = account.FindCategory(w.B.CategoryId)?.Name ?? _t("that category");
-            wins.Add(new QuickWin(string.Format(_t("Rein in {0}: you're {1} over budget this month."), name, fmt(w.Over))));
+            // The category name is user data (never translated); when the budget's category is missing (an orphaned
+            // budget — rare), the client substitutes a localized "that category" for the empty name arg.
+            var name = account.FindCategory(w.B.CategoryId)?.Name ?? "";
+            wins.Add(new QuickWin(InsightMessage.Of(InsightCodes.WinReinIn, InsightArg.Str(name), InsightArg.Cash(w.Over))));
         }
 
         // Below savings target — but never suggest more than there's free cash to earmark this period.
@@ -586,7 +602,7 @@ public sealed class InsightsService
             var gap = (target - (savingsRate ?? 0m)) * income.Amount;
             var suggest = Math.Min(gap, p.MaxAdditionalSavings.Amount);
             if (suggest > 0m)
-                wins.Add(new QuickWin(string.Format(_t("Set aside {0} more to hit your {1} savings goal."), fmt(new Money(decimal.Round(suggest, 2), account.Currency)), Pct(target))));
+                wins.Add(new QuickWin(InsightMessage.Of(InsightCodes.WinSetAside, InsightArg.Cash(new Money(decimal.Round(suggest, 2), account.Currency)), InsightArg.Ratio(target))));
         }
 
         // A meaningful category with spend but no budget.
@@ -596,7 +612,7 @@ public sealed class InsightsService
             var spent = SpentInTree(account, p, root.Id);
             if (spent.Amount > 0m)
             {
-                wins.Add(new QuickWin(string.Format(_t("Give {0} a budget — you've spent {1} with no plan in place."), root.Name, fmt(spent))));
+                wins.Add(new QuickWin(InsightMessage.Of(InsightCodes.WinGiveBudget, InsightArg.Str(root.Name), InsightArg.Cash(spent))));
                 break;
             }
         }
@@ -604,18 +620,21 @@ public sealed class InsightsService
         return wins.Take(3).ToList();
     }
 
-    private string SavingsCritique(decimal? rate, Money? shortfall, decimal target, Func<Money, string> fmt)
+    private static IReadOnlyList<InsightMessage> SavingsCritique(decimal? rate, Money? shortfall, decimal target)
     {
         if (rate is null)
-            return _t("No contributions recorded this period, so there's no savings rate to measure yet.");
+            return [InsightMessage.Plain(InsightCodes.CritNoContrib)];
         if (rate.Value >= target)
-            return string.Format(_t("You saved {0} this period — at or above your {1} goal. Keep that rhythm."), Pct(rate.Value), Pct(target));
-        var tail = shortfall is { } s ? " " + string.Format(_t("That's about {0} short of your goal this period."), fmt(s)) : "";
-        if (rate.Value <= 0m)
-            return string.Format(_t("You haven't set anything aside this period yet — your goal is {0}."), Pct(target)) + tail;
-        return string.Format(_t("You saved {0} this period — a start, but short of your {1} goal."), Pct(rate.Value), Pct(target)) + tail;
-    }
+            return [InsightMessage.Of(InsightCodes.CritAtTarget, InsightArg.Ratio(rate.Value), InsightArg.Ratio(target))];
 
-    private static string Pct(decimal ratio) =>
-        $"{decimal.Round(ratio * 100m, 0, MidpointRounding.AwayFromZero)}%";
+        var parts = new List<InsightMessage>
+        {
+            rate.Value <= 0m
+                ? InsightMessage.Of(InsightCodes.CritNoneYet, InsightArg.Ratio(target))
+                : InsightMessage.Of(InsightCodes.CritShort, InsightArg.Ratio(rate.Value), InsightArg.Ratio(target))
+        };
+        if (shortfall is { } s)
+            parts.Add(InsightMessage.Of(InsightCodes.CritTailShort, InsightArg.Cash(s)));
+        return parts;
+    }
 }

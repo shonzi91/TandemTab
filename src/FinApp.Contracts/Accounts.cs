@@ -104,9 +104,11 @@ public record MilestonesDto(int Earned, int Total, int InProgress)
 /// <summary>
 /// The Insights health read for the account's latest period, computed server-side (Option-A migration). Carries the
 /// <b>structural</b> figures — the gauge <see cref="Score"/> (0–100) and <see cref="Band"/> ("at-risk"/"average"/
-/// "healthy"), the savings rate vs target + shortfall, the outgoings trend, and the per-category breakdown. The
-/// <b>localized narrative</b> (verdict, signal cards, savings critique, quick wins) is deliberately NOT exposed: the
-/// domain bakes it in English via a translate delegate, so each client builds that copy in its own language.
+/// "healthy"), the savings rate vs target + shortfall, the outgoings trend, and the per-category breakdown — plus the
+/// <b>narrative</b> as language-independent <see cref="InsightMessageDto"/>s (code + args): the verdict, the summary
+/// fragments, the signal cards, the savings critique, the quick wins, the trend note and the mini-trends. Each client
+/// owns the per-language templates and formats the args locally, so no language is baked into the payload.
+/// <see cref="Summary"/> and <see cref="SavingsCritique"/> are ordered fragments a client joins with a space.
 /// <see cref="HasData"/> is false (and everything zeroed) when the period has nothing to score yet.
 /// </summary>
 public record InsightsDto(
@@ -119,10 +121,22 @@ public record InsightsDto(
     decimal? SavingsShortfall,
     bool TrendUp,
     decimal TrendAverage,
+    decimal TrendAvgFraction,
+    InsightMessageDto Verdict,
+    IReadOnlyList<InsightMessageDto> Summary,
+    IReadOnlyList<InsightMessageDto> SavingsCritique,
+    InsightMessageDto TrendNote,
+    IReadOnlyList<InsightSignalDto> Signals,
     IReadOnlyList<InsightCategoryDto> Breakdown,
-    IReadOnlyList<InsightTrendPointDto> Trend)
+    IReadOnlyList<InsightTrendPointDto> Trend,
+    IReadOnlyList<InsightMiniTrendDto> MiniTrends,
+    IReadOnlyList<InsightMessageDto> QuickWins)
 {
-    public static readonly InsightsDto Empty = new(false, 0, null, "average", null, 0.20m, null, false, 0m, [], []);
+    public static readonly InsightMessageDto EmptyVerdict = new("verdict.average", []);
+    public static readonly InsightMessageDto EmptyTrendNote = new("trend.none", []);
+    public static readonly InsightsDto Empty = new(
+        false, 0, null, "average", null, 0.20m, null, false, 0m, 0m,
+        EmptyVerdict, [], [], EmptyTrendNote, [], [], [], [], []);
 }
 
 /// <summary>One row of the Insights spending breakdown. <see cref="Icon"/> is the category's raw stored icon (the
@@ -131,3 +145,23 @@ public record InsightCategoryDto(string Name, string? Icon, decimal Amount, deci
 
 /// <summary>One bar of the Insights outgoings trend (one recent period).</summary>
 public record InsightTrendPointDto(string Label, decimal Outgoings, decimal BarFraction, bool IsCurrent);
+
+/// <summary>One fill value for an <see cref="InsightMessageDto"/> template. <see cref="Kind"/> is "text"/"money"/
+/// "percent"/"int": text = verbatim <see cref="Text"/>; money = <see cref="Number"/> as a currency amount (account
+/// currency); percent = <see cref="Number"/> as a 0..1 ratio rendered as a whole percent; int = <see cref="Number"/>
+/// as an already-rounded whole number.</summary>
+public record InsightArgDto(string Kind, decimal Number, string? Text);
+
+/// <summary>A language-independent narrative fragment: a stable <see cref="Code"/> naming the template and the
+/// <see cref="Args"/> that fill it. The client maps the code to a localized template and formats the args.</summary>
+public record InsightMessageDto(string Code, IReadOnlyList<InsightArgDto> Args);
+
+/// <summary>An Insights signal card. <see cref="Kind"/> is "warn"/"good"/"info"; <see cref="Dir"/> is "up"/"down"/"flat".
+/// <see cref="Title"/>, <see cref="Desc"/> and the <see cref="Delta"/> badge are localizable messages.</summary>
+public record InsightSignalDto(string Kind, InsightMessageDto Title, InsightMessageDto Desc, InsightMessageDto Delta, string Dir);
+
+/// <summary>One "trends over time" mini-trend (#9). <see cref="Icon"/> is the raw icon (emoji or a category's stored icon,
+/// which the client resolves); <see cref="Points"/> is the chronological sparkline series; <see cref="Dir"/> is
+/// "up"/"down"/"flat" pre-framed as sentiment. <see cref="Label"/>, <see cref="CurrentText"/> and <see cref="DeltaNote"/>
+/// are localizable messages.</summary>
+public record InsightMiniTrendDto(InsightMessageDto Label, string? Icon, IReadOnlyList<decimal> Points, InsightMessageDto CurrentText, InsightMessageDto DeltaNote, string Dir);

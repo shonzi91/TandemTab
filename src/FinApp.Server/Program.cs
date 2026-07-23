@@ -583,26 +583,45 @@ accounts.MapGet("/{id:guid}/milestones", async (Guid id, ClaimsPrincipal user, S
     return Results.Ok(new MilestonesDto(c.Earned, c.Total, c.InProgress));
 });
 
-// The Insights health read (latest period): the gauge score/band + savings + trend + breakdown numbers. The
-// localized narrative (verdict, signals, critique, quick-wins) stays a per-client concern — see InsightsDto.
+// The Insights health read (latest period): the gauge score/band + savings + trend + breakdown numbers, plus the
+// narrative as language-independent messages (code + args). The client owns the per-language templates — see InsightsDto.
 accounts.MapGet("/{id:guid}/insights", async (Guid id, ClaimsPrincipal user, SnapshotService svc, CancellationToken ct) =>
 {
     var snap = await svc.GetAsync(user.UserId(), id, ct);
     if (string.IsNullOrEmpty(snap.Payload)) return Results.Ok(InsightsDto.Empty);
     var account = AccountSnapshotSerializer.Deserialize(snap.Payload);
     if (account.Periods.Count == 0) return Results.Ok(InsightsDto.Empty);
-    // Copy is irrelevant here (the DTO exposes numbers, not narrative), so a no-op formatter is fine.
-    var report = new InsightsService().Build(account, account.Periods.Count - 1, static _ => string.Empty);
+    var report = new InsightsService().Build(account, account.Periods.Count - 1);
     if (!report.HasData) return Results.Ok(InsightsDto.Empty);
 
     static string Dir(DeltaDir d) => d == DeltaDir.Up ? "up" : d == DeltaDir.Down ? "down" : "flat";
     static string Band(HealthBand b) => b == HealthBand.Healthy ? "healthy" : b == HealthBand.AtRisk ? "at-risk" : "average";
+    static string ArgKind(InsightArgKind k) => k switch
+    {
+        InsightArgKind.Money => "money",
+        InsightArgKind.Percent => "percent",
+        InsightArgKind.Int => "int",
+        _ => "text",
+    };
+    static InsightMessageDto Msg(InsightMessage m) =>
+        new(m.Code, m.Args.Select(a => new InsightArgDto(ArgKind(a.Kind), a.Number, a.Text)).ToList());
+
     return Results.Ok(new InsightsDto(
         report.HasData, report.Score, report.ScoreDelta, Band(report.Band),
         report.SavingsRate, report.SavingsTarget, report.SavingsShortfall?.Amount,
-        report.TrendUp, report.TrendAverage.Amount,
+        report.TrendUp, report.TrendAverage.Amount, report.TrendAvgFraction,
+        Msg(report.Verdict),
+        report.Summary.Select(Msg).ToList(),
+        report.SavingsCritique.Select(Msg).ToList(),
+        Msg(report.TrendNote),
+        report.Signals.Select(s => new InsightSignalDto(
+            s.Kind == SignalKind.Warn ? "warn" : s.Kind == SignalKind.Good ? "good" : "info",
+            Msg(s.Title), Msg(s.Desc), Msg(s.Delta), Dir(s.Dir))).ToList(),
         report.Breakdown.Select(c => new InsightCategoryDto(c.Name, c.Icon, c.Amount.Amount, c.BarFraction, Dir(c.Dir))).ToList(),
-        report.Trend.Select(t => new InsightTrendPointDto(t.Label, t.Outgoings.Amount, t.BarFraction, t.IsCurrent)).ToList()));
+        report.Trend.Select(t => new InsightTrendPointDto(t.Label, t.Outgoings.Amount, t.BarFraction, t.IsCurrent)).ToList(),
+        report.MiniTrends.Select(mt => new InsightMiniTrendDto(
+            Msg(mt.Label), mt.Icon, mt.Points, Msg(mt.CurrentText), Msg(mt.DeltaNote), Dir(mt.Dir))).ToList(),
+        report.QuickWins.Select(w => Msg(w.Message)).ToList()));
 });
 
 accounts.MapPut("/{id:guid}/snapshot", async (Guid id, SaveAccountRequest req, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>

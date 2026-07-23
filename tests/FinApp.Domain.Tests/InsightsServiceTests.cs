@@ -11,7 +11,6 @@ public class InsightsServiceTests
 {
     private const string Eur = "EUR";
     private static Money M(decimal v) => new(v, Eur);
-    private static readonly Func<Money, string> NoFmt = static _ => string.Empty;
 
     [Fact]
     public void An_empty_period_has_no_data_to_score()
@@ -20,7 +19,7 @@ public class InsightsServiceTests
         account.AddDefaultFunds();
         account.StartPeriod(new DateOnly(2026, 1, 1), new DateOnly(2026, 1, 31));
 
-        Assert.False(new InsightsService().Build(account, 0, NoFmt).HasData);
+        Assert.False(new InsightsService().Build(account, 0).HasData);
     }
 
     [Fact]
@@ -29,7 +28,7 @@ public class InsightsServiceTests
         var account = new Account("Home", Eur);
         account.AddDefaultFunds();
 
-        Assert.False(new InsightsService().Build(account, 0, NoFmt).HasData);   // no periods at all
+        Assert.False(new InsightsService().Build(account, 0).HasData);   // no periods at all
     }
 
     [Fact]
@@ -44,7 +43,7 @@ public class InsightsServiceTests
         p.Deposit(me.UserId, M(2000));
         p.AddExpense(new Expense(food, M(500), new DateOnly(2026, 1, 10), Guid.NewGuid(), fund));
 
-        var report = new InsightsService().Build(account, 0, NoFmt);
+        var report = new InsightsService().Build(account, 0);
 
         Assert.True(report.HasData);
         Assert.InRange(report.Score, 0, 100);
@@ -52,5 +51,52 @@ public class InsightsServiceTests
         // The breakdown carries the category's RAW stored icon — null here (no explicit icon), NOT a guessed display
         // icon. Resolving to a display icon is now the client's job (CategoryIcons decoupled from the domain service).
         Assert.Null(foodRow.Icon);
+    }
+
+    [Fact]
+    public void The_narrative_is_language_independent_coded_messages_not_baked_english()
+    {
+        var account = new Account("Home", Eur);
+        account.AddDefaultFunds();
+        var food = account.AddCategory("Food").Id;
+        var fund = account.FundId("Bank");
+        var me = account.AddMember(Guid.NewGuid(), "Me");
+        var p = account.StartPeriod(new DateOnly(2026, 1, 1), new DateOnly(2026, 1, 31));
+        p.Deposit(me.UserId, M(2000));
+        p.AddExpense(new Expense(food, M(500), new DateOnly(2026, 1, 10), Guid.NewGuid(), fund));
+
+        var report = new InsightsService().Build(account, 0);
+
+        // The verdict is a code from the band catalogue, not a formatted sentence.
+        Assert.Contains(report.Verdict.Code, new[] { InsightCodes.VerdictHealthy, InsightCodes.VerdictAverage, InsightCodes.VerdictAtRisk });
+        // The summary is one fragment (no prior period → no score-movement clause).
+        var summary = Assert.Single(report.Summary);
+        Assert.Contains(summary.Code, new[] { InsightCodes.SummaryHealthy, InsightCodes.SummaryAverage, InsightCodes.SummaryAtRisk });
+    }
+
+    [Fact]
+    public void A_savings_shortfall_produces_a_critique_with_a_percent_target_arg()
+    {
+        var account = new Account("Home", Eur);
+        account.AddDefaultFunds();
+        var food = account.AddCategory("Food").Id;
+        var fund = account.FundId("Bank");
+        var me = account.AddMember(Guid.NewGuid(), "Me");
+        var p = account.StartPeriod(new DateOnly(2026, 1, 1), new DateOnly(2026, 1, 31));
+        p.Deposit(me.UserId, M(2000));
+        // Spend everything → nothing saved → below the 20% target → "none yet" critique + shortfall tail.
+        p.AddExpense(new Expense(food, M(2000), new DateOnly(2026, 1, 10), Guid.NewGuid(), fund));
+
+        var report = new InsightsService().Build(account, 0);
+
+        Assert.NotNull(report.SavingsShortfall);
+        // Base critique + shortfall tail = two coded fragments; the base carries a Percent arg (the target).
+        Assert.Equal(2, report.SavingsCritique.Count);
+        Assert.Equal(InsightCodes.CritNoneYet, report.SavingsCritique[0].Code);
+        Assert.Equal(InsightArgKind.Percent, report.SavingsCritique[0].Args[0].Kind);
+        Assert.Equal(InsightsService.DefaultSavingsTarget, report.SavingsCritique[0].Args[0].Number);
+        Assert.Equal(InsightCodes.CritTailShort, report.SavingsCritique[1].Code);
+        // A "no savings set aside" warning signal is present, carrying the dash badge.
+        Assert.Contains(report.Signals, s => s.Kind == SignalKind.Warn && s.Title.Code == InsightCodes.SigNoSavingsTitle);
     }
 }

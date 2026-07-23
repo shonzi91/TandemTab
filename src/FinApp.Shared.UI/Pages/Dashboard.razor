@@ -372,7 +372,7 @@ else
             <button id="home-score" class="card card-score card-score-wide" @onclick="() => _modal = Modal.HealthScore" title="@Loc["Health score & trends"]">
                 <span class="card-label">@Loc["Health score & trends"]</span>
                 <span class="card-value @ovBand">@(ov.HasData ? ov.Score.ToString() : "—")</span>
-                <span class="card-sub">@(ov.HasData ? ov.Verdict : "")</span>
+                <span class="card-sub">@(ov.HasData ? N(ov.Verdict) : "")</span>
             </button>
 
             @{
@@ -2472,8 +2472,8 @@ else
                     {
                         var hsBand = hs.Band switch { HealthBand.Healthy => "ok", HealthBand.Average => "warn", _ => "bad" };
                         <section class="score-detail">
-                            <div class="score-verdict score-@hsBand">@hs.Verdict</div>
-                            <p class="score-line">@hs.Summary</p>
+                            <div class="score-verdict score-@hsBand">@N(hs.Verdict)</div>
+                            <p class="score-line">@N(hs.Summary)</p>
                             <div class="score-bar-wrap">
                                 <div class="score-bar-track">
                                     <div class="score-bar-needle" style="left:@(Math.Clamp(hs.Score, 2, 98))%"></div>
@@ -2492,7 +2492,7 @@ else
                                 @foreach (var w in hs.QuickWins)
                                 {
                                     qn++;
-                                    <div class="win"><div class="win-bullet">@qn</div><div class="win-text">@w.Text</div></div>
+                                    <div class="win"><div class="win-bullet">@qn</div><div class="win-text">@N(w.Message)</div></div>
                                 }
                             </div>
                         }
@@ -2514,7 +2514,7 @@ else
                             <div class="savings-footer">
                                 <span>0%</span><span class="goal-label">@Loc["Goal"] @PctText(hs.SavingsTarget)</span><span>100%</span>
                             </div>
-                            <div class="savings-critique"><Icon Name="bulb" /> @hs.SavingsCritique</div>
+                            <div class="savings-critique"><Icon Name="bulb" /> @N(hs.SavingsCritique)</div>
                         </section>
 
                         @if (hs.Trend.Count > 1)
@@ -2538,7 +2538,7 @@ else
                                         <span class="@(t.IsCurrent ? "cur" : "")">@t.Label</span>
                                     }
                                 </div>
-                                <div class="trend-note">@hs.TrendNote</div>
+                                <div class="trend-note">@N(hs.TrendNote)</div>
                             </section>
                         }
 
@@ -2548,13 +2548,14 @@ else
                             <section class="mini-trends">
                                 @foreach (var mt in hs.MiniTrends)
                                 {
+                                    var mtLabel = N(mt.Label);
                                     <div class="mini-trend @(mt.Dir == DeltaDir.Up ? "up" : mt.Dir == DeltaDir.Down ? "down" : "flat")">
                                         <div class="mt-head">
-                                            <span class="mt-label"><CatIcon Name="@CategoryIcons.Effective(mt.Icon, mt.Label)" /> @mt.Label</span>
-                                            <span class="mt-cur">@mt.CurrentText</span>
+                                            <span class="mt-label"><CatIcon Name="@CategoryIcons.Effective(mt.Icon, mtLabel)" /> @mtLabel</span>
+                                            <span class="mt-cur">@N(mt.CurrentText)</span>
                                         </div>
                                         @TrendSparkline(mt.Points)
-                                        <div class="mt-note">@mt.DeltaNote</div>
+                                        <div class="mt-note">@N(mt.DeltaNote)</div>
                                     </div>
                                 }
                             </section>
@@ -3343,18 +3344,18 @@ else
 
     // Memoized health/insights report. Build(...) is O(periods × categories × expenses) and used to run on every
     // render — including UI-only re-renders (opening a modal, the bell, switching tabs) that change no data. Cache
-    // it keyed by the data that actually feeds it: the account, its change revision, the selected period, and the
-    // UI culture (translated copy). Recomputes only when one of those changes.
+    // it keyed by the data that actually feeds it: the account, its change revision, and the selected period. The
+    // report is now language-independent (narrative travels as coded messages localized at render), so culture no
+    // longer keys it — a language switch re-renders (re-localizes) without recomputing.
     private FinancialHealthReport? _reportCache;
-    private (Guid acct, long rev, int period, string culture)? _reportKey;
+    private (Guid acct, long rev, int period)? _reportKey;
 
     private FinancialHealthReport CurrentReport()
     {
-        var key = (State.CurrentAccountId, State.Revision, State.PeriodNumber,
-                   System.Globalization.CultureInfo.CurrentUICulture.Name);
+        var key = (State.CurrentAccountId, State.Revision, State.PeriodNumber);
         if (_reportKey != key)
         {
-            _reportCache = _insights.Build(State.Account, State.PeriodNumber - 1, Fmt, Loc.T);
+            _reportCache = _insights.Build(State.Account, State.PeriodNumber - 1);
             _reportKey = key;
         }
         return _reportCache!;
@@ -4959,7 +4960,7 @@ else
 
         if (ov.HasData)
             foreach (var s in ov.Signals.Where(s => s.Kind == SignalKind.Warn))
-                list.Add(new Notification("alert", s.Title, s.Desc, null, null, null, null, true));
+                list.Add(new Notification("alert", N(s.Title), N(s.Desc), null, null, null, null, true));
         return list;
     }
 
@@ -6276,6 +6277,11 @@ else
         var symbol = m.Currency switch { "EUR" => "€", "USD" => "$", "GBP" => "£", _ => m.Currency + " " };
         return $"{symbol}{m.Amount:N2}";
     }
+
+    // Render the domain's language-independent insight messages (code + args) into the active UI language.
+    private string MoneyN(decimal amount) => Fmt(new Money(amount, State.Currency));
+    private string N(InsightMessage m) => InsightNarrator.Render(m, Loc, MoneyN);
+    private string N(IReadOnlyList<InsightMessage> parts) => InsightNarrator.Render(parts, Loc, MoneyN);
 
     /// <summary>Indent a category name in a flat &lt;select&gt; so the tree shape reads (sub-categories under parents).</summary>
     private string CatOption(Guid id, string name, int depth) =>
