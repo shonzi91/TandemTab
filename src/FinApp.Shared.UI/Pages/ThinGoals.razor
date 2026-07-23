@@ -1,0 +1,171 @@
+@page "/thin-goals"
+@using FinApp.Contracts
+@using FinApp.Shared.UI.Services
+@implements IDisposable
+@inject FinAppApiClient Api
+@inject AuthState Auth
+
+<div class="tg">
+    <p class="tg-tag">Path-B preview · thin Goals (goal / debt / investment math computed server-side)</p>
+
+    @if (!Auth.IsAuthenticated)
+    {
+        <p>Please sign in on the main app first, then return to this page.</p>
+    }
+    else if (_error is { } err)
+    {
+        <p class="tg-err">@err</p>
+    }
+    else if (_state is null || !_state.IsReady)
+    {
+        <p>Loading goals…</p>
+    }
+    else
+    {
+        <div class="tg-tiles">
+            <div class="tg-tile"><span>Saved</span><b>@Fmt(_state.Overview.Saved)</b></div>
+            <div class="tg-tile"><span>Free to save</span><b>@Fmt(_state.AvailableToSave)</b></div>
+        </div>
+
+        <h3>Buckets</h3>
+        @if (_state.ActiveBuckets.Count == 0)
+        {
+            <p class="tg-muted">No savings buckets yet.</p>
+        }
+        else
+        {
+            <ul class="tg-list">
+                @foreach (var b in _state.ActiveBuckets)
+                {
+                    <li>
+                        <span class="tg-ico">@(string.IsNullOrEmpty(b.Icon) ? "•" : b.Icon)</span>
+                        <div class="tg-body">
+                            <div class="tg-row1">
+                                <span class="tg-name">@b.Name</span>
+                                <em class="tg-kind tg-@b.Kind">@b.Kind</em>
+                                <span class="tg-saved">@Fmt(b.Saved)</span>
+                            </div>
+                            <div class="tg-detail">@Detail(b)</div>
+                            @if (Bar(b) is { } frac)
+                            {
+                                <div class="tg-bar"><span style="width:@(Pct(frac))"></span></div>
+                            }
+                        </div>
+                    </li>
+                }
+            </ul>
+        }
+
+        <h3>Add to savings</h3>
+        <div class="tg-form">
+            <select @bind="_bucketId">
+                @foreach (var b in _state.ActiveBuckets) { <option value="@b.Id">@b.Name</option> }
+            </select>
+            <input type="number" step="0.01" min="0" placeholder="0.00" @bind="_amount" />
+            <button @onclick="Allocate" disabled="@(_busy || _amount <= 0 || _bucketId == Guid.Empty)">Save it</button>
+        </div>
+
+        <h3>This period's deposits</h3>
+        <ul class="tg-list tg-plain">
+            @foreach (var d in _state.Deposits)
+            {
+                <li><span class="tg-name">@d.BucketName</span><span class="tg-note">@d.Note</span><span class="tg-saved">@Fmt(d.Amount)</span></li>
+            }
+            @if (_state.Deposits.Count == 0) { <li class="tg-muted">No deposits this period.</li> }
+        </ul>
+    }
+</div>
+
+@code {
+    private SavingsViewState? _state;
+    private string? _error;
+    private bool _busy;
+    private Guid _bucketId;
+    private decimal _amount;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!Auth.IsAuthenticated) return;
+        try
+        {
+            var accounts = await Api.GetAccountsAsync();
+            if (accounts.Count == 0) { _error = "No accounts on this user."; return; }
+            _state = new SavingsViewState(Api);
+            _state.Changed += OnChanged;
+            await _state.LoadAsync(accounts[0].Id);
+            _bucketId = _state.ActiveBuckets.FirstOrDefault()?.Id ?? Guid.Empty;
+        }
+        catch (Exception ex) { _error = ex.Message; }
+    }
+
+    private void OnChanged() => InvokeAsync(StateHasChanged);
+
+    private async Task Allocate()
+    {
+        if (_state is null || _amount <= 0 || _bucketId == Guid.Empty) return;
+        _busy = true;
+        try { await _state.AllocateAsync(_bucketId, _amount, null); _amount = 0; }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    // The kind-specific one-liner the DTO already resolved server-side.
+    private string Detail(SavingBucketDto b) => b.Kind switch
+    {
+        "goal" => b.GoalTarget is { } g ? $"Goal {Fmt(g)} · {PctText(b.GoalProgress)}" : "No goal set",
+        "debt" => $"Owed {Fmt(b.DebtBalance ?? 0)} · {PctText(b.DebtProgress)} paid off"
+                  + (b.DebtMonthsAhead is { } m ? $" · {m} mo ahead" : ""),
+        "investment" => b.InvestmentProjected is { } v ? $"Projected {Fmt(v)}" : "Investment",
+        "sinking" => (b.MonthlySetAside is { } s ? $"Set aside {Fmt(s)}/mo" : "Sinking fund")
+                     + (b.TargetShortfall is { } sh ? $" · {Fmt(sh)} short" : ""),
+        _ => "",
+    };
+
+    // The progress bar fraction for kinds that have one (goal + debt); null otherwise.
+    private decimal? Bar(SavingBucketDto b) => b.Kind switch
+    {
+        "goal" => b.GoalProgress,
+        "debt" => b.DebtProgress,
+        _ => null,
+    };
+
+    private string Fmt(decimal amount) => $"{_state?.Currency} {amount:0.00}";
+    private static string Pct(decimal frac) => $"{Math.Clamp(frac, 0m, 1m) * 100m:0}%";
+    private static string PctText(decimal? frac) => frac is { } f ? $"{f * 100m:0}%" : "0%";
+
+    public void Dispose() { if (_state is not null) _state.Changed -= OnChanged; }
+}
+
+<style>
+    .tg { max-width: 720px; margin: 1rem auto; padding: 0 1rem; }
+    .tg-tag { font-size: .75rem; opacity: .7; margin: 0 0 1rem; }
+    .tg-err { color: #ff7a59; }
+    .tg-muted { opacity: .6; }
+    .tg h3 { margin: 1.2rem 0 .4rem; font-size: .9rem; text-transform: uppercase; letter-spacing: .03em; opacity: .7; }
+    .tg-tiles { display: flex; gap: .75rem; }
+    .tg-tile { flex: 1 1 0; border: 1px solid rgba(128,128,128,.3); border-radius: .6rem; padding: .6rem .8rem; }
+    .tg-tile span { display: block; font-size: .7rem; text-transform: uppercase; opacity: .6; }
+    .tg-tile b { font-size: 1.1rem; }
+    .tg-list { list-style: none; padding: 0; margin: 0; }
+    .tg-list li { display: flex; gap: .6rem; padding: .55rem .2rem; border-bottom: 1px solid rgba(128,128,128,.15); }
+    .tg-plain li { align-items: center; }
+    .tg-ico { width: 1.4rem; text-align: center; padding-top: .1rem; }
+    .tg-body { flex: 1 1 auto; }
+    .tg-row1 { display: flex; align-items: center; gap: .5rem; }
+    .tg-name { font-weight: 600; }
+    .tg-kind { font-style: normal; font-size: .62rem; text-transform: uppercase; letter-spacing: .04em; border-radius: .3rem; padding: 0 .35rem; opacity: .85; }
+    .tg-goal { background: rgba(47,185,154,.18); }
+    .tg-debt { background: rgba(120,110,220,.2); }
+    .tg-investment { background: rgba(244,183,61,.2); }
+    .tg-sinking { background: rgba(128,128,128,.2); }
+    .tg-saved { margin-left: auto; font-variant-numeric: tabular-nums; font-weight: 600; }
+    .tg-detail { font-size: .8rem; opacity: .75; margin-top: .15rem; }
+    .tg-note { font-size: .8rem; opacity: .7; flex: 1 1 auto; }
+    .tg-bar { height: 5px; border-radius: 3px; background: rgba(128,128,128,.2); margin-top: .35rem; overflow: hidden; }
+    .tg-bar span { display: block; height: 100%; background: #2fb99a; }
+    .tg-form { display: flex; flex-wrap: wrap; gap: .4rem; }
+    .tg-form select, .tg-form input { padding: .4rem .5rem; border-radius: .4rem; border: 1px solid rgba(128,128,128,.4); background: transparent; color: inherit; }
+    .tg-form input[type=number] { width: 6rem; }
+    .tg-form button { padding: .4rem 1rem; border-radius: .4rem; border: none; background: #2fb99a; color: #05201a; font-weight: 600; cursor: pointer; }
+    .tg-form button:disabled { opacity: .5; cursor: default; }
+</style>

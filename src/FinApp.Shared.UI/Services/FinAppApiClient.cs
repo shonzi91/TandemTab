@@ -272,6 +272,12 @@ public sealed class FinAppApiClient(HttpClient http)
     public Task<ExpenseMutationDto> RemoveExpenseDeltaAsync(Guid id, Guid expenseId, CancellationToken ct = default) =>
         SendAsync<ExpenseMutationDto>(HttpMethod.Delete, $"/accounts/{id}/expenses/{expenseId}", null, ct);
 
+    // --- Path-B thin Goals/Savings slice ----------------------------------
+    public Task<SavingsViewDto> GetSavingsAsync(Guid id, CancellationToken ct = default) =>
+        SendAsync<SavingsViewDto>(HttpMethod.Get, $"/accounts/{id}/savings", null, ct);
+    public Task<SavingsMutationDto> AddSavingDepositDeltaAsync(Guid id, AddSavingDepositRequest req, CancellationToken ct = default) =>
+        SendAsync<SavingsMutationDto>(HttpMethod.Post, $"/accounts/{id}/savings/deposits", req, ct);
+
     // --- Path-B thin Wallets slice ----------------------------------------
     public Task<WalletsViewDto> GetWalletsAsync(Guid id, CancellationToken ct = default) =>
         SendAsync<WalletsViewDto>(HttpMethod.Get, $"/accounts/{id}/wallets", null, ct);

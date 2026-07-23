@@ -578,6 +578,17 @@ accounts.MapGet("/{id:guid}/wallets", async (Guid id, ClaimsPrincipal user, Snap
     return Results.Ok(WalletsMap.View(account, snap.Version));
 });
 
+// Path-B thin-Goals read: every bucket with its computed figures (goal progress / debt payoff / investment
+// projection / sinking set-aside), the free-to-save cap, and this period's deposits. Paired with the savings-deposit
+// write below (returns a SavingsMutationDto carrying a refreshed view).
+accounts.MapGet("/{id:guid}/savings", async (Guid id, ClaimsPrincipal user, SnapshotService svc, CancellationToken ct) =>
+{
+    var snap = await svc.GetAsync(user.UserId(), id, ct);
+    if (string.IsNullOrEmpty(snap.Payload)) return Results.Ok(SavingsViewDto.Empty);
+    var account = AccountSnapshotSerializer.Deserialize(snap.Payload);
+    return Results.Ok(SavingsMap.View(account, snap.Version));
+});
+
 // The cash runway (first month the balance runs short, or null when there's no basis to project from).
 accounts.MapGet("/{id:guid}/runway", async (Guid id, ClaimsPrincipal user, SnapshotService svc, CancellationToken ct) =>
 {
@@ -997,15 +1008,16 @@ accounts.MapPost("/{id:guid}/reallocations/to-budget", async (Guid id, Reallocat
 accounts.MapPost("/{id:guid}/savings/deposits", async (Guid id, AddSavingDepositRequest req, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
 {
     var userId = user.UserId();
-    var (version, allocationId) = await svc.MutateAsync(userId, id, account =>
+    var (version, delta) = await svc.MutateAsync(userId, id, account =>
     {
         var period = account.CurrentPeriod ?? throw new InvalidOperationException("There's no open period to save into.");
         if (account.FindSavingCategory(req.SavingCategoryId) is null)
             throw new InvalidOperationException("That savings bucket doesn't exist in this account.");
-        return period.AllocateToSavings(req.SavingCategoryId, new Money(req.Amount, account.Currency), req.Date, req.Note).Id;
+        var allocation = period.AllocateToSavings(req.SavingCategoryId, new Money(req.Amount, account.Currency), req.Date, req.Note);
+        return (allocation.Id, SavingsMap.View(account, 0));
     }, ct);
     await notifier.AccountChangedAsync(id, userId, version);
-    return Results.Ok(new MutationResultDto(version, allocationId));
+    return Results.Ok(new SavingsMutationDto(version, delta.Id, delta.Item2 with { Version = version }));
 });
 
 accounts.MapPut("/{id:guid}/savings/deposits/{allocationId:guid}", async (Guid id, Guid allocationId, EditSavingDepositRequest req, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
