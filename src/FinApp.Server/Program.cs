@@ -754,6 +754,73 @@ accounts.MapDelete("/{id:guid}/deposits/{depositId:guid}", async (Guid id, Guid 
     return Results.Ok(new MutationResultDto(version, depositId));
 });
 
+// Budgets — a category's planned allocation for the open period. One idempotent upsert (create-or-update, mirroring
+// BudgetingState.SaveBudget → Period.SetBudget) keyed by category, plus a remove. Budgets are advisory: they don't
+// reserve cash and are never capped, so this never rejects for being "too big" (only a negative amount → 400). The
+// threshold arrives as a percent (0–100) and is stored as a fraction, matching the web's SaveBudget contract.
+accounts.MapPut("/{id:guid}/budgets/{categoryId:guid}", async (Guid id, Guid categoryId, SetBudgetRequest req, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
+{
+    var userId = user.UserId();
+    var (version, _) = await svc.MutateAsync<object?>(userId, id, account =>
+    {
+        var period = account.CurrentPeriod ?? throw new InvalidOperationException("There's no open period to budget in.");
+        if (account.FindCategory(categoryId) is null) throw new InvalidOperationException("That category doesn't exist in this account.");
+        period.SetBudget(categoryId, new Money(req.Amount, account.Currency), req.ThresholdPercent / 100m, req.NotifyEvery);
+        return null;
+    }, ct);
+    await notifier.AccountChangedAsync(id, userId, version);
+    return Results.Ok(new MutationResultDto(version, categoryId));
+});
+
+accounts.MapDelete("/{id:guid}/budgets/{categoryId:guid}", async (Guid id, Guid categoryId, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
+{
+    var userId = user.UserId();
+    var (version, _) = await svc.MutateAsync<object?>(userId, id, account =>
+    {
+        var period = account.CurrentPeriod ?? throw new InvalidOperationException("There's no open period.");
+        period.RemoveBudget(categoryId);   // 400 if no budget exists for the category in this period
+        return null;
+    }, ct);
+    await notifier.AccountChangedAsync(id, userId, version);
+    return Results.Ok(new MutationResultDto(version, categoryId));
+});
+
+// Reallocation. to-savings mirrors the web's live "Move it to the loan" nudge (BudgetingState.ReallocateBudgetToSaving):
+// it sets the budget to an absolute NewBudget and earmarks Amount to a bucket in one save (advisory — uncapped, matching
+// the client). to-budget exposes the domain BudgetReallocationService.ToBudget: move a budget's leftover into another,
+// capped so a budget can't drop below what's already spent (no web UI yet, but the tested domain capability).
+accounts.MapPost("/{id:guid}/reallocations/to-savings", async (Guid id, ReallocateToSavingsRequest req, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
+{
+    var userId = user.UserId();
+    var date = req.Date ?? DateOnly.FromDateTime(DateTime.UtcNow);
+    var (version, _) = await svc.MutateAsync<object?>(userId, id, account =>
+    {
+        var period = account.CurrentPeriod ?? throw new InvalidOperationException("There's no open period.");
+        if (account.FindCategory(req.CategoryId) is null) throw new InvalidOperationException("That category doesn't exist in this account.");
+        if (account.FindSavingCategory(req.SavingCategoryId) is null) throw new InvalidOperationException("That savings bucket doesn't exist in this account.");
+        period.SetBudget(req.CategoryId, new Money(req.NewBudget, account.Currency), req.ThresholdPercent / 100m, req.NotifyEvery);
+        period.AllocateToSavings(req.SavingCategoryId, new Money(req.Amount, account.Currency), date);
+        return null;
+    }, ct);
+    await notifier.AccountChangedAsync(id, userId, version);
+    return Results.Ok(new MutationResultDto(version, req.SavingCategoryId));
+});
+
+accounts.MapPost("/{id:guid}/reallocations/to-budget", async (Guid id, ReallocateToBudgetRequest req, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
+{
+    var userId = user.UserId();
+    var (version, _) = await svc.MutateAsync<object?>(userId, id, account =>
+    {
+        var period = account.CurrentPeriod ?? throw new InvalidOperationException("There's no open period.");
+        // ToBudget validates both budgets exist, the categories differ, and the amount is positive and ≤ leftover → 400.
+        new FinApp.Domain.Services.BudgetReallocationService()
+            .ToBudget(account, period, req.FromCategoryId, req.ToCategoryId, new Money(req.Amount, account.Currency));
+        return null;
+    }, ct);
+    await notifier.AccountChangedAsync(id, userId, version);
+    return Results.Ok(new MutationResultDto(version, req.ToCategoryId));
+});
+
 // Savings money-movements (mirroring BudgetingState AllocateSaving/EditSavingDeposit/RemoveSavingDeposit/SpendFromSavings).
 // A savings deposit earmarks money within the balance (raises "saved", lowers "free"); it never leaves the account.
 // Spend-from-savings records a real expense AND a matching negative drawdown, so the earmark and the balance both fall.
@@ -1057,6 +1124,72 @@ accounts.MapDelete("/{id:guid}/funds/{fundId:guid}", async (Guid id, Guid fundId
     return Results.Ok(new MutationResultDto(version, fundId));
 });
 
+// A fund's opening balance for the open period — what it held at the period's start (overwrites any existing opening).
+accounts.MapPut("/{id:guid}/funds/{fundId:guid}/opening-balance", async (Guid id, Guid fundId, SetFundOpeningBalanceRequest req, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
+{
+    var userId = user.UserId();
+    var (version, _) = await svc.MutateAsync<object?>(userId, id, account =>
+    {
+        var period = account.CurrentPeriod ?? throw new InvalidOperationException("There's no open period.");
+        if (account.FindFund(fundId) is null) throw new InvalidOperationException("That fund doesn't exist in this account.");
+        period.SetInitialBalance(fundId, new Money(req.Amount, account.Currency));
+        return null;
+    }, ct);
+    await notifier.AccountChangedAsync(id, userId, version);
+    return Results.Ok(new MutationResultDto(version, fundId));
+});
+
+// Fund transfers — move money between two of the account's own funds within the open period (total-preserving, so the
+// source may go negative; the domain caps only money leaving the account, which is a later cross-account slice).
+// Mirrors BudgetingState.TransferFunds/EditFundTransfer/RemoveFundTransfer; synced sides are recorded (not moved).
+accounts.MapPost("/{id:guid}/fund-transfers", async (Guid id, TransferFundsRequest req, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
+{
+    var userId = user.UserId();
+    var date = req.Date ?? DateOnly.FromDateTime(DateTime.UtcNow);
+    var (version, transferId) = await svc.MutateAsync(userId, id, account =>
+    {
+        var from = account.FindFund(req.FromFundId) ?? throw new InvalidOperationException("The source fund doesn't exist in this account.");
+        var to = account.FindFund(req.ToFundId) ?? throw new InvalidOperationException("The destination fund doesn't exist in this account.");
+        var period = account.CurrentPeriod ?? throw new InvalidOperationException("There's no open period.");
+        var transfer = period.TransferFunds(req.FromFundId, req.ToFundId, new Money(req.Amount, account.Currency), date, req.Note);
+        transfer.SetSyncedSides(from.IsSynced, to.IsSynced);   // a synced side's real bank balance already reflects it
+        return transfer.Id;
+    }, ct);
+    await notifier.AccountChangedAsync(id, userId, version);
+    return Results.Ok(new MutationResultDto(version, transferId));
+});
+
+accounts.MapPut("/{id:guid}/fund-transfers/{transferId:guid}", async (Guid id, Guid transferId, EditFundTransferRequest req, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
+{
+    var userId = user.UserId();
+    var (version, _) = await svc.MutateAsync<object?>(userId, id, account =>
+    {
+        var from = account.FindFund(req.FromFundId) ?? throw new InvalidOperationException("The source fund doesn't exist in this account.");
+        var to = account.FindFund(req.ToFundId) ?? throw new InvalidOperationException("The destination fund doesn't exist in this account.");
+        var period = account.CurrentPeriod ?? throw new InvalidOperationException("There's no open period.");
+        var before = period.FundTransfers.FirstOrDefault(t => t.Id == transferId);
+        var transfer = period.EditFundTransfer(transferId, req.FromFundId, req.ToFundId, new Money(req.Amount, account.Currency), req.Note);
+        transfer.SetSyncedSides(from.IsSynced, to.IsSynced);
+        transfer.SetBankLink(before?.BankExternalId, autoFiled: false);   // keep provenance, clear the auto-filed badge
+        return null;
+    }, ct);
+    await notifier.AccountChangedAsync(id, userId, version);
+    return Results.Ok(new MutationResultDto(version, transferId));
+});
+
+accounts.MapDelete("/{id:guid}/fund-transfers/{transferId:guid}", async (Guid id, Guid transferId, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
+{
+    var userId = user.UserId();
+    var (version, _) = await svc.MutateAsync<object?>(userId, id, account =>
+    {
+        var period = account.CurrentPeriod ?? throw new InvalidOperationException("There's no open period.");
+        period.RemoveFundTransfer(transferId);   // 400 if the transfer isn't in this period
+        return null;
+    }, ct);
+    await notifier.AccountChangedAsync(id, userId, version);
+    return Results.Ok(new MutationResultDto(version, transferId));
+});
+
 // Contribution (income) categories
 accounts.MapPost("/{id:guid}/contribution-categories", async (Guid id, CreateContributionCategoryRequest req, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
 {
@@ -1184,6 +1317,75 @@ accounts.MapPost("/{id:guid}/recurring/{recurringId:guid}/skip", async (Guid id,
     }, ct);
     await notifier.AccountChangedAsync(id, userId, version);
     return Results.Ok(new MutationResultDto(version, recurringId));
+});
+
+// Period lifecycle: roll into the next period (close current + open next, carrying opening balances), reschedule a
+// period (later periods shift to stay contiguous), and undo the last period (re-opening the previous one). Mirrors
+// BudgetingState.StartNextPeriod / ReschedulePeriod / RemoveLatestPeriod. Carry-over/reconciliation stays the caller's:
+// the domain doesn't read live bank balances, so opening balances arrive in the request (as the web computes them).
+accounts.MapPost("/{id:guid}/periods/start-next", async (Guid id, StartNextPeriodRequest req, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
+{
+    var userId = user.UserId();
+    var today = req.Today ?? DateOnly.FromDateTime(DateTime.UtcNow);
+    var (version, periodId) = await svc.MutateAsync(userId, id, account =>
+    {
+        var previous = account.CurrentPeriod ?? throw new InvalidOperationException("There's no period to roll forward from.");
+        // You can only roll into the next period once the current one has actually ended (mirrors CanStartNextPeriod).
+        // This also makes a concurrency re-apply safe: if our start-next didn't win the save, the reloaded account still
+        // has the old open period; a genuine double-submit against the freshly-opened (future-dated) period is rejected.
+        if (previous.To >= today)
+            throw new InvalidOperationException("The current period hasn't ended yet — you can only start the next period once it has.");
+        previous.Close();
+
+        var from = previous.To.AddDays(1);
+        var to = from.AddMonths(1).AddDays(-1);
+        var next = account.StartPeriod(from, to, req.CopyBudgets, req.AdjustBudgets && req.CopyBudgets);
+
+        foreach (var f in account.RootFunds)
+        {
+            if (f.IsSynced)
+            {
+                // A synced fund's opening isn't hand-entered — the caller supplies the live bank balance captured at
+                // rollover, stored informative-only so it doesn't move the money model. The server can't read the bank,
+                // so when it's absent the synced fund simply carries no opening (same as the web with no live balance).
+                if (req.SyncedFundClosingBalance is { } bal)
+                    next.SetInitialBalance(f.Id, new Money(bal, account.Currency), informative: true);
+                continue;
+            }
+            var opening = req.FundOpenings is not null && req.FundOpenings.TryGetValue(f.Id, out var v) ? v : 0m;
+            next.SetInitialBalance(f.Id, new Money(opening, account.Currency));
+        }
+        return next.Id;
+    }, ct);
+    await notifier.AccountChangedAsync(id, userId, version);
+    return Results.Ok(new MutationResultDto(version, periodId));
+});
+
+accounts.MapPut("/{id:guid}/periods/{index:int}/schedule", async (Guid id, int index, ReschedulePeriodRequest req, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
+{
+    var userId = user.UserId();
+    var (version, periodId) = await svc.MutateAsync(userId, id, account =>
+    {
+        if (index < 0 || index >= account.Periods.Count)
+            throw new InvalidOperationException("That period doesn't exist in this account.");
+        var period = account.Periods[index];
+        account.ReschedulePeriod(period, req.From, req.To);   // domain guards To >= From; shifts later periods
+        return period.Id;
+    }, ct);
+    await notifier.AccountChangedAsync(id, userId, version);
+    return Results.Ok(new MutationResultDto(version, periodId));
+});
+
+accounts.MapDelete("/{id:guid}/periods/latest", async (Guid id, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
+{
+    var userId = user.UserId();
+    var (version, periodId) = await svc.MutateAsync(userId, id, account =>
+    {
+        account.RemoveLatestPeriod();   // 400 if it's the only period; re-opens the now-latest period
+        return account.CurrentPeriod!.Id;
+    }, ct);
+    await notifier.AccountChangedAsync(id, userId, version);
+    return Results.Ok(new MutationResultDto(version, periodId));
 });
 
 accounts.MapPut("/{id:guid}/snapshot", async (Guid id, SaveAccountRequest req, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>

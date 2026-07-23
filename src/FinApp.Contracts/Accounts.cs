@@ -186,6 +186,71 @@ public record SetActiveRequest(bool Active);
 /// nothing). Mirrors <c>BudgetingState.ConfirmRecurring</c>.</summary>
 public record ConfirmRecurringRequest(decimal ActualAmount);
 
+// --- Reallocation (move a budget's spare toward savings or another budget) ------------------------------------
+
+/// <summary>The web's one-step "Move it to the loan" nudge: trim a category's budget to <see cref="NewBudget"/> (an
+/// absolute new allocation, with its alert <see cref="ThresholdPercent"/> 0–100 and <see cref="NotifyEvery"/>) and set
+/// <see cref="Amount"/> aside toward the <see cref="SavingCategoryId"/> bucket — one save, so the spare disappears and
+/// the earmark grows together. Advisory: saving beyond free cash is allowed. <see cref="Date"/> defaults to the server
+/// date. Mirrors <c>BudgetingState.ReallocateBudgetToSaving</c>.</summary>
+public record ReallocateToSavingsRequest(Guid CategoryId, decimal NewBudget, decimal ThresholdPercent, bool NotifyEvery,
+    Guid SavingCategoryId, decimal Amount, DateOnly? Date = null);
+
+/// <summary>Move the unspent part of one budget into another (both in the open period). Capped at the source budget's
+/// leftover (allocated − spent) so it can't be cut below what's already been spent; the amount must be positive and the
+/// categories differ. Exposes the domain <c>BudgetReallocationService.ToBudget</c> (no web UI yet).</summary>
+public record ReallocateToBudgetRequest(Guid FromCategoryId, Guid ToCategoryId, decimal Amount);
+
+// --- Fund transfers + opening balances (intra-account money placement) ----------------------------------------
+
+/// <summary>Set a fund's opening balance for the open period (what it held at the period's start). Overwrites any
+/// existing opening for that fund. Mirrors <c>BudgetingState.SetFundOpeningBalance</c>.</summary>
+public record SetFundOpeningBalanceRequest(decimal Amount);
+
+/// <summary>Move money between two funds within the account. Intra-account moves are total-preserving (only where the
+/// money sits changes), so the source may go negative — no balance cap. The funds must differ and the amount be
+/// positive. <see cref="Date"/> defaults to the server date. Synced sides are recorded but not moved (the real bank
+/// balance is authoritative). Mirrors <c>BudgetingState.TransferFunds</c>.</summary>
+public record TransferFundsRequest(Guid FromFundId, Guid ToFundId, decimal Amount, DateOnly? Date = null, string? Note = null);
+
+/// <summary>Edit a fund transfer (its original date is preserved). Fields as in <see cref="TransferFundsRequest"/>,
+/// minus the date. Bank provenance is kept but the auto-filed badge is cleared. Mirrors
+/// <c>BudgetingState.EditFundTransfer</c>.</summary>
+public record EditFundTransferRequest(Guid FromFundId, Guid ToFundId, decimal Amount, string? Note = null);
+
+// --- Budgets (per-category spending plans within a period) ----------------------------------------------------
+
+/// <summary>Create or update the budget for a category in the open period (idempotent — no separate add vs. edit).
+/// <see cref="Amount"/> is the planned allocation; <see cref="ThresholdPercent"/> (0–100, default 80) is the spend
+/// level that fires an alert; <see cref="NotifyEvery"/> pings on every expense. Budgets are advisory and never
+/// capped (only savings reserves real cash). Mirrors <c>BudgetingState.SaveBudget</c>.</summary>
+public record SetBudgetRequest(decimal Amount, decimal ThresholdPercent = 80m, bool NotifyEvery = false);
+
+// --- Period lifecycle (roll into the next period / reschedule / undo the last) --------------------------------
+
+/// <summary>
+/// Roll into the next period: closes the current one and opens the next (its <c>From</c> = the day after the current
+/// <c>To</c>, running one calendar month). Only allowed once the current period has actually ended (<c>To</c> before
+/// <see cref="Today"/>) — this blocks farming future periods. <see cref="CopyBudgets"/> carries the current budgets
+/// forward; <see cref="AdjustBudgets"/> (only with <see cref="CopyBudgets"/>) nudges each toward what was spent.
+/// <see cref="FundOpenings"/> is each top-level fund's real current balance, which becomes the new period's opening
+/// balance (funds omitted open at zero). <see cref="SyncedFundClosingBalance"/> is the live bank balance captured for
+/// a <b>synced</b> fund — stored as an informative-only opening (never entered by hand; the server can't read it, so
+/// the caller supplies it or it's skipped). <see cref="Today"/> is the caller's local date (server UTC when omitted).
+/// Mirrors <c>BudgetingState.StartNextPeriod</c>.
+/// </summary>
+public record StartNextPeriodRequest(
+    bool CopyBudgets = false,
+    bool AdjustBudgets = false,
+    IReadOnlyDictionary<Guid, decimal>? FundOpenings = null,
+    decimal? SyncedFundClosingBalance = null,
+    DateOnly? Today = null);
+
+/// <summary>Reschedule a period's date range; every later period shifts to stay contiguous, each keeping its length.
+/// The target period is identified positionally (oldest = 0), matching the web's period navigation. Mirrors
+/// <c>BudgetingState.ReschedulePeriod</c>.</summary>
+public record ReschedulePeriodRequest(DateOnly From, DateOnly To);
+
 /// <summary>Result of a command write: the account's new snapshot <see cref="Version"/> (so the caller keeps optimistic
 /// concurrency in step) and the affected entity's id — the newly-created id on an add, the target id echoed otherwise.</summary>
 public record MutationResultDto(long Version, Guid? EntityId);
