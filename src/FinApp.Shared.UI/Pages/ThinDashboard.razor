@@ -1,4 +1,3 @@
-@page "/"
 @page "/thin-dash"
 @using FinApp.Contracts
 @using FinApp.Shared.UI.Services
@@ -13,6 +12,8 @@
    is built out — see the handoff. *@
 
 <div class="thd">
+    <p class="thd-tag">Path-B · thin Dashboard (no on-device domain)</p>
+
     @if (_invites is { Count: > 0 })
     {
         <div class="thd-invites">
@@ -43,14 +44,7 @@
     }
     else if (_accounts.Count == 0)
     {
-        @* First run (or the user left/deleted their last account): the front door must be able to create an
-           account, otherwise a fresh sign-up is stranded. Mirrors the thick Dashboard's first-run form. *@
-        <div class="thd-firstrun">
-            <h1>Welcome to TandemTab</h1>
-            <p class="thd-fr-lead">Let's get you rolling. Create your first account to get started (e.g. Personal, Shared, Family).</p>
-            @CreateAccountForm
-            <small class="thd-fr-hint">It starts with a few starter categories and the current month's period — you can change everything.</small>
-        </div>
+        <p>No accounts on this user.</p>
     }
     else
     {
@@ -72,7 +66,6 @@
                     <span class="thd-acct-nm">@acct.Name</span>
                 }
                 <small class="thd-acct-sub">@acct.Currency · @(acct.Members.Count) member@(acct.Members.Count == 1 ? "" : "s")</small>
-                <button class="thd-acct-add" title="Add a new account" @onclick="() => _showCreate = !_showCreate">＋</button>
             </div>
 
             @if (period is { } p)
@@ -122,14 +115,6 @@
                 }
             </div>
         </header>
-
-        @if (_showCreate)
-        {
-            <div class="thd-create">
-                <div class="thd-create-head">New account</div>
-                @CreateAccountForm
-            </div>
-        }
 
         <nav class="thd-tabs">
             @foreach (var t in Tabs)
@@ -202,47 +187,6 @@
     private bool _inviteBusy;
     private NotificationsViewDto? _notifications;
     private bool _bellOpen;
-
-    // First-run / add-account: the thin dashboard is now the "/" front door, so it must be able to create an
-    // account (a fresh sign-up has none). Account creation is a plain POST /accounts; the server bootstraps the
-    // starter body on the first computed read. The savings target rides the existing thin endpoint (20% default).
-    private bool _showCreate;
-    private bool _creating;
-    private string _fName = "";
-    private string _fCurrency = "EUR";
-    private int _fSavingsTarget = 20;
-
-    private RenderFragment CreateAccountForm => @<div class="thd-fr-form">
-        @if (_error is { } e) { <p class="thd-err">@e</p> }
-        <label>Account name <input type="text" placeholder="Personal" @bind="_fName" /></label>
-        <label>Currency <input type="text" maxlength="3" @bind="_fCurrency" /></label>
-        <label>Savings target (%) <input type="number" min="0" max="100" @bind="_fSavingsTarget" @bind:event="oninput" /></label>
-        <button class="thd-fr-create" @onclick="CreateAccount" disabled="@(_creating || string.IsNullOrWhiteSpace(_fName))">@(_creating ? "Creating…" : "Create account")</button>
-    </div>;
-
-    private async Task CreateAccount()
-    {
-        if (_creating || string.IsNullOrWhiteSpace(_fName)) return;
-        _creating = true; _error = null;
-        try
-        {
-            var currency = string.IsNullOrWhiteSpace(_fCurrency) ? "EUR" : _fCurrency.Trim().ToUpperInvariant();
-            var summary = await Api.CreateAccountAsync(new CreateAccountRequest(_fName.Trim(), currency));
-            // Select first — GetPeriodsAsync is the first computed read, which triggers the server-side bootstrap.
-            _accounts = await Api.GetAccountsAsync();
-            _tab = "Home"; _showCreate = false;
-            await SelectAccountAsync(summary.Id);
-            // 20% is the domain default; only set when the user picked something else (one extra write, avoided otherwise).
-            var target = Math.Clamp(_fSavingsTarget, 0, 100);
-            if (target != 20)
-            {
-                try { await Api.SetSavingsTargetAsync(summary.Id, target); } catch { /* non-fatal — target can be set later in Settings */ }
-            }
-            _fName = "";
-        }
-        catch (Exception ex) { _error = ex.Message; }
-        finally { _creating = false; }
-    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -381,19 +325,6 @@
     .thd-acct-nm { font-size: 1.3rem; font-weight: 700; }
     .thd-acct-sel { font-size: 1.1rem; font-weight: 700; padding: .25rem .4rem; border-radius: .4rem; border: 1px solid rgba(128,128,128,.4); background: transparent; color: inherit; }
     .thd-acct-sub { opacity: .6; font-size: .8rem; }
-    .thd-acct-add { border: 1px solid rgba(128,128,128,.4); background: transparent; color: inherit; cursor: pointer; border-radius: .4rem; width: 1.6rem; height: 1.6rem; font-size: 1rem; line-height: 1; opacity: .8; }
-    .thd-acct-add:hover { opacity: 1; }
-    .thd-firstrun { max-width: 26rem; margin: 2rem auto; text-align: center; }
-    .thd-firstrun h1 { font-size: 1.5rem; margin: 0 0 .5rem; }
-    .thd-fr-lead { opacity: .8; margin: 0 0 1.25rem; }
-    .thd-fr-hint { display: block; opacity: .55; font-size: .78rem; margin-top: .75rem; }
-    .thd-create { border: 1px solid rgba(128,128,128,.3); border-radius: .6rem; padding: .9rem; margin-bottom: 1rem; }
-    .thd-create-head { font-weight: 600; margin-bottom: .6rem; }
-    .thd-fr-form { display: flex; flex-direction: column; gap: .6rem; text-align: left; }
-    .thd-fr-form label { display: flex; flex-direction: column; gap: .2rem; font-size: .85rem; opacity: .85; }
-    .thd-fr-form input { padding: .45rem .55rem; border-radius: .4rem; border: 1px solid rgba(128,128,128,.4); background: transparent; color: inherit; font-size: 1rem; }
-    .thd-fr-create { margin-top: .3rem; padding: .55rem 1rem; border-radius: .45rem; border: none; background: #2fb99a; color: #05201a; font-weight: 600; cursor: pointer; }
-    .thd-fr-create:disabled { opacity: .5; cursor: default; }
     .thd-period { display: flex; align-items: center; gap: .3rem; }
     .thd-nav { border: 1px solid rgba(128,128,128,.4); background: transparent; color: inherit; cursor: pointer; border-radius: .4rem; width: 1.9rem; height: 1.9rem; font-size: 1.1rem; line-height: 1; }
     .thd-nav:disabled { opacity: .35; cursor: default; }
