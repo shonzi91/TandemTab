@@ -46,22 +46,32 @@ public static class SavingsMap
         decimal? goalTarget = null, goalProgress = null, debtBalance = null, debtProgress = null,
                  investmentProjected = null, monthlySetAside = null, targetShortfall = null;
         int? debtMonthsAhead = null;
+        SavingBucketForecastDto? forecast = null;
+        var pace = report.AverageDepositPace(account, b.Id)?.Amount;
 
         switch (kind)
         {
             case "goal":
                 goalTarget = b.GoalAmount;
                 goalProgress = report.GoalProgress(account, b.Id).Ratio;
+                forecast = new SavingBucketForecastDto(pace, b.PlannedContribution,
+                    null, null, null, null, null, null, null, null);
                 break;
             case "debt":
                 debtBalance = b.DebtBalanceOn(today);
                 debtProgress = b.DebtProgressRatioOn(today);
                 debtMonthsAhead = DebtMonthsAhead(account, report, b);
+                forecast = new SavingBucketForecastDto(pace, b.PlannedContribution,
+                    null, null, null,
+                    b.DebtBalance, b.DebtOriginalBalance, b.DebtAnnualRatePercent, b.DebtInstallment, b.DebtBalanceAsOf);
                 break;
             case "investment":
                 investmentProjected = InvestmentForecast
                     .Project(saved, b.InvestmentAnnualRatePercent, b.InvestmentTermYears, b.InvestmentCompoundsPerYear, 0m)
                     .FutureValue;
+                forecast = new SavingBucketForecastDto(pace, b.PlannedContribution,
+                    b.InvestmentAnnualRatePercent, b.InvestmentTermYears, b.InvestmentCompoundsPerYear,
+                    null, null, null, null, null);
                 break;
             case "sinking":
                 var setAside = b.MonthlySetAside(period.From, saved);
@@ -73,7 +83,7 @@ public static class SavingsMap
 
         return new SavingBucketDto(b.Id, b.Name, b.Icon, saved, kind, b.IsArchived,
             goalTarget, goalProgress, debtBalance, debtProgress, debtMonthsAhead,
-            investmentProjected, monthlySetAside, targetShortfall);
+            investmentProjected, monthlySetAside, targetShortfall, forecast);
     }
 
     // Whole months a debt is paid off ahead of its contractual installment, at the demonstrated pace. Mirrors

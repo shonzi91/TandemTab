@@ -14,7 +14,9 @@ namespace FinApp.Contracts;
 /// <item><b>investment</b>: <see cref="InvestmentProjected"/> future value at the current balance + pace.</item>
 /// <item><b>sinking</b>: <see cref="MonthlySetAside"/> and any <see cref="TargetShortfall"/>.</item>
 /// </list>
-/// <see cref="Saved"/> (the accumulated earmark) and <see cref="Icon"/> (raw stored icon) apply to every kind.</summary>
+/// <see cref="Saved"/> (the accumulated earmark) and <see cref="Icon"/> (raw stored icon) apply to every kind.
+/// <see cref="Forecast"/> carries the raw inputs the interactive what-if modals re-project from — null for kinds
+/// with no projection (sinking).</summary>
 public record SavingBucketDto(
     Guid Id,
     string Name,
@@ -29,7 +31,32 @@ public record SavingBucketDto(
     int? DebtMonthsAhead,
     decimal? InvestmentProjected,
     decimal? MonthlySetAside,
-    decimal? TargetShortfall);
+    decimal? TargetShortfall,
+    SavingBucketForecastDto? Forecast = null);
+
+/// <summary>The raw knobs an interactive projection modal drags — supplied so the thin client can re-run the pure
+/// forecast math (<c>FinApp.Forecasting</c>: <c>InvestmentForecast</c>/<c>LoanForecast</c>) locally with zero
+/// latency, rather than round-tripping the server on every slider tick. Only the fields for the bucket's kind are
+/// populated; <see cref="DemonstratedPace"/> and <see cref="PlannedContribution"/> apply to goal/debt/investment.
+/// <list type="bullet">
+/// <item><b>investment</b>: <see cref="InvestmentRatePercent"/>, <see cref="InvestmentTermYears"/>,
+/// <see cref="InvestmentCompoundsPerYear"/> (present value is the bucket's <c>Saved</c>).</item>
+/// <item><b>debt</b>: <see cref="DebtStoredBalance"/> (the anchored balance the multi-debt planner uses — the
+/// <c>SavingBucketDto.DebtBalance</c> above is the balance walked forward to <i>today</i>),
+/// <see cref="DebtOriginalBalance"/>, <see cref="DebtRatePercent"/>, <see cref="DebtInstallment"/>,
+/// <see cref="DebtBalanceAsOf"/>.</item>
+/// </list></summary>
+public record SavingBucketForecastDto(
+    decimal? DemonstratedPace,
+    decimal? PlannedContribution,
+    decimal? InvestmentRatePercent,
+    decimal? InvestmentTermYears,
+    int? InvestmentCompoundsPerYear,
+    decimal? DebtStoredBalance,
+    decimal? DebtOriginalBalance,
+    decimal? DebtRatePercent,
+    decimal? DebtInstallment,
+    DateOnly? DebtBalanceAsOf);
 
 /// <summary>One manual "Add to savings" deposit this period (editable/removable), the bucket name resolved.</summary>
 public record SavingDepositRowDto(Guid Id, Guid BucketId, string BucketName, decimal Amount, DateOnly Date, string? Note);

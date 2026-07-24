@@ -187,6 +187,39 @@ public class SavingBucketApiTests : IClassFixture<FinAppServerFactory>
     }
 
     [Fact]
+    public async Task Savings_view_carries_the_raw_forecast_inputs_for_client_side_whatif_reprojection()
+    {
+        var (client, auth) = await _factory.RegisterAndAuthAsync("bk_forecast");
+        var account = await CreateAccount(client, "Forecast");
+        await SeedAsync(client, account.Id, auth.UserId);
+
+        var debtId = (await (await client.PostAsJsonAsync($"/accounts/{account.Id}/savings/buckets",
+            new SaveSavingBucketRequest("Car loan", IsDebt: true, DebtBalance: 8000m, DebtRate: 6.5m,
+                DebtInstallment: 300m, PlannedContribution: 350m))).Content.ReadFromJsonAsync<MutationResultDto>())!.EntityId!.Value;
+        var invId = (await (await client.PostAsJsonAsync($"/accounts/{account.Id}/savings/buckets",
+            new SaveSavingBucketRequest("Index fund", IsInvestment: true, InvRate: 5m, InvTermYears: 10m,
+                InvCompounds: 4))).Content.ReadFromJsonAsync<MutationResultDto>())!.EntityId!.Value;
+
+        var view = (await client.GetFromJsonAsync<SavingsViewDto>($"/accounts/{account.Id}/savings"))!;
+
+        var debt = view.Buckets.Single(b => b.Id == debtId);
+        Assert.NotNull(debt.Forecast);
+        Assert.Equal(8000m, debt.Forecast!.DebtStoredBalance);
+        Assert.Equal(8000m, debt.Forecast.DebtOriginalBalance);   // original defaults to the opening balance
+        Assert.Equal(6.5m, debt.Forecast.DebtRatePercent);
+        Assert.Equal(300m, debt.Forecast.DebtInstallment);
+        Assert.Equal(350m, debt.Forecast.PlannedContribution);
+        Assert.Null(debt.Forecast.InvestmentRatePercent);         // debt carries no investment knobs
+
+        var inv = view.Buckets.Single(b => b.Id == invId);
+        Assert.NotNull(inv.Forecast);
+        Assert.Equal(5m, inv.Forecast!.InvestmentRatePercent);
+        Assert.Equal(10m, inv.Forecast.InvestmentTermYears);
+        Assert.Equal(4, inv.Forecast.InvestmentCompoundsPerYear);
+        Assert.Null(inv.Forecast.DebtStoredBalance);              // investment carries no debt knobs
+    }
+
+    [Fact]
     public async Task Stranger_cannot_create_a_bucket()
     {
         var (owner, auth) = await _factory.RegisterAndAuthAsync("bk_owner");
