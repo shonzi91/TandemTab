@@ -544,7 +544,11 @@ public sealed class InsightsService
             if (pct < 40) continue;                       // a real jump, not noise
             if (delta < 0.10m * totalSpend) continue;     // the jump is a meaningful slice of the month (not a low-base illusion)
             if (cur < 0.15m * totalSpend) continue;       // the category itself is a meaningful chunk of spending
-            if (p.FindBudget(root.Id) is { } b && cur <= b.Allocated.Amount) continue; // within its plan — not concerning
+            // Budgeted categories are handled entirely by the budget system: within plan isn't concerning, and over
+            // plan is already surfaced as the over-budget ring + alert. Signalling "running high" on top just
+            // double-flags the same category (over budget ⇒ running high), so skip any category that has a budget.
+            // The spike signal is for UN-budgeted categories quietly ballooning, with no plan to catch them.
+            if (p.FindBudget(root.Id) is not null) continue;
 
             // Rank by the absolute money jump, so we surface the biggest real overspend, not the biggest percentage.
             if (best is null || delta > best.Value.Delta.Amount)

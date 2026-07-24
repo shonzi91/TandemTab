@@ -1686,7 +1686,13 @@ html.dark .rule-chip.on { background: #14352a; border-color: #2bbd86; color: #6f
 .pin-rule-edit { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 6px 0 2px; padding: 7px 10px; background: #f0faf5; border: 1px solid #cdeadd; border-radius: 9px; }
 .pin-rule-edit .rule-tokens { flex: 1 1 200px; min-width: 0; }
 .pin-rule-actions { display: inline-flex; gap: 6px; flex: 0 0 auto; margin-left: auto; }
-.pin-rule-actions .chip { cursor: pointer; }
+/* Give the actions real button colours. Without this the bare .chip is a peach pill with inherited text — which in
+   dark mode is white, so "Save rule"/"Cancel" render near-invisible. "Save rule" (.chip.on) is a filled primary,
+   "Cancel" (.chip) a subtle secondary; both themed for light + dark. */
+.pin-rule-actions .chip { cursor: pointer; border: 1px solid #dbe4df; background: #ffffff; color: #48607a; font-weight: 600; }
+.pin-rule-actions .chip.on { background: #13a06e; border-color: #13a06e; color: #ffffff; }
+html.dark .pin-rule-actions .chip { background: #1e2330; border-color: #2c3142; color: #cfd6e4; }
+html.dark .pin-rule-actions .chip.on { background: var(--tm-mint); border-color: var(--tm-mint); color: #0f1322; }
 html.dark .pin-rule-edit { background: #14271f; border-color: #1c3d38; }
 /* Controls row: date · pickers (grow) · icon actions (fixed, right-aligned).
    Wraps so it never clips — in the narrow review modal and on phones the pickers

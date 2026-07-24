@@ -4950,7 +4950,9 @@ else
                 Loc["Confirm"], () => OpenConfirmRecurring(id), null, () => SkipRecurringFromBell(id), false));
         }
 
-        // Recurring items coming up soon (not due yet) — a gentle heads-up so nothing sneaks up on you.
+        // Recurring items coming up soon (not due yet) — a gentle heads-up so nothing sneaks up on you. Deliberately
+        // NO Confirm here: an item isn't confirmable until its due date arrives (then it moves to the DueRecurring
+        // block above, which carries Confirm). This stays a pure reminder — dismissable via skip, but not postable early.
         foreach (var soon in State.UpcomingRecurring())
         {
             var id = soon.Id;
@@ -4959,7 +4961,7 @@ else
             var text = soon.HasKnownAmount
                 ? string.Format(Loc["{0} (about {1}) is due {2}."], soon.Name, Fmt(State.Money(soon.ExpectedAmount)), whenText)
                 : string.Format(Loc["{0} is due {1}."], soon.Name, whenText);
-            list.Add(new Notification("calendar", text, null, Loc["Confirm"], () => OpenConfirmRecurring(id), null, () => SkipRecurringFromBell(id), false));
+            list.Add(new Notification("calendar", text, null, null, null, null, () => SkipRecurringFromBell(id), false));
         }
 
         // "Move it" reallocates for real (trims the budget + sets aside toward the debt), so the whole tip is gated

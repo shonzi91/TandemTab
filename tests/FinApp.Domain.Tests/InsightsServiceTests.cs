@@ -99,4 +99,42 @@ public class InsightsServiceTests
         // A "no savings set aside" warning signal is present, carrying the dash badge.
         Assert.Contains(report.Signals, s => s.Kind == SignalKind.Warn && s.Title.Code == InsightCodes.SigNoSavingsTitle);
     }
+
+    /// <summary>Builds a two-period account where "Food" spikes from 100 → 1000 in the second period (a clear "running
+    /// high" spike). <paramref name="foodBudget"/>>0 puts a budget on the spiking period.</summary>
+    private static FinancialHealthReport SpikeReport(decimal foodBudget)
+    {
+        var account = new Account("Home", Eur);
+        account.AddDefaultFunds();
+        var food = account.AddCategory("Food").Id;
+        var fund = account.FundId("Bank");
+        var me = account.AddMember(Guid.NewGuid(), "Me");
+
+        var jan = account.StartPeriod(new DateOnly(2026, 1, 1), new DateOnly(2026, 1, 31));
+        jan.Deposit(me.UserId, M(3000));
+        jan.AddExpense(new Expense(food, M(100), new DateOnly(2026, 1, 10), me.UserId, fund));   // baseline
+
+        var feb = account.StartPeriod(new DateOnly(2026, 2, 1), new DateOnly(2026, 2, 28));
+        feb.Deposit(me.UserId, M(3000));
+        feb.AddExpense(new Expense(food, M(1000), new DateOnly(2026, 2, 10), me.UserId, fund));  // 10× the baseline
+        if (foodBudget > 0m) feb.SetBudget(food, M(foodBudget));
+
+        return new InsightsService().Build(account, 1);   // score the February period
+    }
+
+    [Fact]
+    public void A_spiking_category_with_no_budget_signals_running_high()
+    {
+        var report = SpikeReport(foodBudget: 0m);
+        Assert.Contains(report.Signals, s => s.Kind == SignalKind.Warn && s.Title.Code == InsightCodes.SigCatHighTitle);
+    }
+
+    [Fact]
+    public void A_spiking_category_that_is_over_budget_does_not_also_signal_running_high()
+    {
+        // Food spends 1000 against a 200 budget — over budget, which is surfaced by its own ring/alert. The spike
+        // signal must not double-flag it ("over budget ⇒ running high"), so no SigCatHigh here.
+        var report = SpikeReport(foodBudget: 200m);
+        Assert.DoesNotContain(report.Signals, s => s.Title.Code == InsightCodes.SigCatHighTitle);
+    }
 }
