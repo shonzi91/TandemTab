@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using FinApp.Contracts;
+using FinApp.Domain.Accounts;
 
 namespace FinApp.Server.Tests;
 

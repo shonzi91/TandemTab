@@ -23,8 +23,11 @@ very last step; convert incrementally underneath it.
   interactive "what-if" modals** (investment/loan/cash-flow sliders) re-project on every drag, so a
   per-tick server round-trip would be poor UX — instead the *pure* forecast math ships client-side (see
   the leaf-project note below) and the DTOs carry the raw projection *inputs*.
-- **Phase 1 — Sever `Contracts → Domain`.** Move `AccountSnapshotSerializer` server-side. (Fully lands only
-  after Phase 2, when `BudgetingState` stops deserializing on-device.)
+- **Phase 1 — Sever `Contracts → Domain`. ✅ DONE (Session 54).** `AccountSnapshotSerializer` (the sole
+  Contracts file that pulled Domain) moved into `FinApp.Domain.Accounts`; `FinApp.Contracts` dropped its
+  `FinApp.Domain` `ProjectReference` and is now pure wire DTOs. Every consumer already referenced Domain, so the
+  move was mechanical (add `using FinApp.Domain.Accounts;`). Whole solution builds, **514 tests green**. The
+  `Web → Shared.UI → Domain` path still ships the domain to the bundle — that's Phase 2/3.
 - **Phase 2 — Rebind `BudgetingState` to thin DTOs, surface by surface.** Re-express its ~100 members from the
   thin DTOs instead of the domain `Account`, keeping `Dashboard.razor` markup identical. Replace the client
   `Money` type with `decimal`+currency (matching the DTOs). One verified slice per surface.

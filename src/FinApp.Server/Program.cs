@@ -1,5 +1,6 @@
 using System.Text;
 using FinApp.Contracts;
+using FinApp.Domain.Accounts;
 using FinApp.Domain.Budgeting;
 using FinApp.Domain.Common;
 using FinApp.Domain.Forecasting;

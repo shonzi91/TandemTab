@@ -6,8 +6,7 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
-  <ItemGroup>
-    <ProjectReference Include="..\FinApp.Domain\FinApp.Domain.csproj" />
-  </ItemGroup>
+  <!-- No FinApp.Domain reference: Contracts is pure wire DTOs. The one file that pulled Domain
+       (AccountSnapshotSerializer) moved into FinApp.Domain (Path B, docs/DOMAIN-REMOVAL.md). -->
 
 </Project>

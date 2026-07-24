@@ -1,6 +1,5 @@
 using System.Reflection;
 using System.Text.Json;
-using FinApp.Domain.Accounts;
 using FinApp.Domain.Budgeting;
 using FinApp.Domain.Common;
 using FinApp.Domain.Funds;
@@ -8,7 +7,7 @@ using FinApp.Domain.Periods;
 using FinApp.Domain.Recurring;
 using FinApp.Domain.Savings;
 
-namespace FinApp.Contracts;
+namespace FinApp.Domain.Accounts;
 
 /// <summary>
 /// Serializes a full <see cref="Account"/> aggregate to/from JSON, <b>preserving every entity id</b> so
@@ -20,8 +19,10 @@ namespace FinApp.Contracts;
 /// tiny reflection helper restores the bits constructors don't take: the <see cref="Entity.Id"/>, a closed
 /// period's status / carried-in amount, and the private child collections.
 ///
-/// Lives in <c>FinApp.Contracts</c> (Domain-only deps, no EF/SQLite) so both the SQLite-backed MAUI host and
-/// the SQLite-free Blazor WASM host can use it.
+/// Lives in <c>FinApp.Domain</c> (Domain-only deps, no EF/SQLite): moving it here severs the last
+/// <c>FinApp.Contracts → FinApp.Domain</c> reference (Path B, docs/DOMAIN-REMOVAL.md). Both the SQLite-backed
+/// MAUI host and the SQLite-free Blazor WASM host can use it — it's a server/host concern, never used by a thin
+/// client that binds DTOs instead of deserializing the aggregate.
 /// </summary>
 public static class AccountSnapshotSerializer
 {
