@@ -620,6 +620,28 @@ accounts.MapGet("/{id:guid}/income", async (Guid id, int? period, ClaimsPrincipa
     return Results.Ok(IncomeMap.View(account, snap.Version, bank.Balance, bank.BalanceCurrency, ResolvePeriod(account, period)));
 });
 
+// Path-B thin Account settings: the editable per-account settings (name, currency, savings-rate target). Name is
+// changed via PUT /{id}/name (relational); the savings target rides the mutation spine (PUT /{id}/savings-target).
+accounts.MapGet("/{id:guid}/settings", async (Guid id, ClaimsPrincipal user, SnapshotService svc, CancellationToken ct) =>
+{
+    var snap = await svc.GetAsync(user.UserId(), id, ct);
+    if (string.IsNullOrEmpty(snap.Payload)) return Results.Ok(AccountSettingsDto.Empty);
+    var account = AccountSnapshotSerializer.Deserialize(snap.Payload);
+    return Results.Ok(new AccountSettingsDto(account.Name, account.Currency, account.SavingsRateTarget));
+});
+
+accounts.MapPut("/{id:guid}/savings-target", async (Guid id, SetSavingsTargetRequest req, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
+{
+    var userId = user.UserId();
+    var (version, _) = await svc.MutateAsync(userId, id, account =>
+    {
+        account.SetSavingsRateTarget(req.Percent / 100m);   // domain validates 0..1 (else 400)
+        return 0;
+    }, ct);
+    await notifier.AccountChangedAsync(id, userId, version);
+    return Results.Ok(new MutationResultDto(version, null));
+});
+
 // Path-B thin period navigation: the account's periods (oldest→newest) so the thin client can render prev/next
 // month nav and know which one is open/latest. The surface reads above take ?period={Index} to view a past one.
 accounts.MapGet("/{id:guid}/periods", async (Guid id, ClaimsPrincipal user, SnapshotService svc, CancellationToken ct) =>

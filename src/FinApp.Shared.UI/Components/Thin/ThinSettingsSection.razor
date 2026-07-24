@@ -1,0 +1,105 @@
+@* Thin (domain-free) Account settings. Rename the account (relational PUT /name) and set the savings-rate
+   target (rides the mutation spine, PUT /savings-target). Account-level, so not period-scoped. *@
+@using FinApp.Contracts
+@using FinApp.Shared.UI.Services
+@inject FinAppApiClient Api
+
+@if (_error is { } err)
+{
+    <p class="tst-err">@err</p>
+}
+else if (_settings is null)
+{
+    <p>Loading settings…</p>
+}
+else
+{
+    <h3>Account name</h3>
+    <div class="tst-row">
+        <input type="text" @bind="_name" />
+        <button @onclick="SaveName" disabled="@(_busy || string.IsNullOrWhiteSpace(_name) || _name.Trim() == _settings.Name)">Save</button>
+    </div>
+
+    <h3>Savings target</h3>
+    <p class="tst-hint">The share of income you aim to set aside. Drives the Home health score (savings rate vs target).</p>
+    <div class="tst-row">
+        <input type="number" step="1" min="0" max="100" @bind="_targetPercent" /> <span class="tst-unit">%</span>
+        <button @onclick="SaveTarget" disabled="@(_busy || _targetPercent < 0 || _targetPercent > 100 || _targetPercent == _originalPercent)">Save</button>
+    </div>
+
+    <p class="tst-meta">Currency @_settings.Currency · changes are not period-specific.</p>
+    @if (_saved is { } msg) { <p class="tst-ok">@msg</p> }
+}
+
+@code {
+    [Parameter, EditorRequired] public Guid AccountId { get; set; }
+    [Parameter] public EventCallback<string> OnRenamed { get; set; }
+
+    private AccountSettingsDto? _settings;
+    private string _name = "";
+    private decimal _targetPercent;
+    private decimal _originalPercent;
+    private string? _error;
+    private string? _saved;
+    private bool _busy;
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    private async Task Load()
+    {
+        try
+        {
+            _settings = await Api.GetSettingsAsync(AccountId);
+            _name = _settings.Name;
+            _originalPercent = decimal.Round(_settings.SavingsRateTarget * 100m, 0);
+            _targetPercent = _originalPercent;
+        }
+        catch (Exception ex) { _error = ex.Message; }
+    }
+
+    private async Task SaveName()
+    {
+        if (_settings is null || string.IsNullOrWhiteSpace(_name)) return;
+        _busy = true; _saved = null;
+        try
+        {
+            var name = _name.Trim();
+            await Api.RenameAccountAsync(AccountId, name);
+            _settings = _settings with { Name = name };
+            _saved = "Name updated.";
+            if (OnRenamed.HasDelegate) await OnRenamed.InvokeAsync(name);
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    private async Task SaveTarget()
+    {
+        if (_settings is null) return;
+        _busy = true; _saved = null;
+        try
+        {
+            await Api.SetSavingsTargetAsync(AccountId, _targetPercent);
+            _settings = _settings with { SavingsRateTarget = _targetPercent / 100m };
+            _originalPercent = _targetPercent;
+            _saved = "Savings target updated.";
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+}
+
+<style>
+    .tst-err { color: #ff7a59; }
+    .tst-ok { color: #2fb99a; font-size: .85rem; }
+    h3 { margin: 1.2rem 0 .4rem; font-size: .9rem; text-transform: uppercase; letter-spacing: .03em; opacity: .7; }
+    h3:first-child { margin-top: 0; }
+    .tst-hint { font-size: .8rem; opacity: .7; margin: 0 0 .5rem; }
+    .tst-row { display: flex; align-items: center; gap: .5rem; }
+    .tst-row input { padding: .4rem .5rem; border-radius: .4rem; border: 1px solid rgba(128,128,128,.4); background: transparent; color: inherit; }
+    .tst-row input[type=number] { width: 5rem; }
+    .tst-unit { opacity: .7; }
+    .tst-row button { padding: .4rem 1rem; border-radius: .4rem; border: none; background: #2fb99a; color: #05201a; font-weight: 600; cursor: pointer; }
+    .tst-row button:disabled { opacity: .5; cursor: default; }
+    .tst-meta { font-size: .78rem; opacity: .6; margin-top: 1.2rem; }
+</style>

@@ -102,13 +102,16 @@
                 case "Recurring":
                     <ThinRecurringSection @key="key" AccountId="_accountId" PeriodIndex="_periodIndex" CanWrite="canWrite" />
                     break;
+                case "Settings":
+                    <ThinSettingsSection @key="_accountId" AccountId="_accountId" OnRenamed="OnAccountRenamed" />
+                    break;
             }
         </section>
     }
 </div>
 
 @code {
-    private static readonly string[] Tabs = ["Home", "Spending", "Income", "Wallets", "Goals", "Budgets", "Recurring"];
+    private static readonly string[] Tabs = ["Home", "Spending", "Income", "Wallets", "Goals", "Budgets", "Recurring", "Settings"];
 
     private List<AccountSummaryDto>? _accounts;
     private Guid _accountId;
@@ -146,6 +149,13 @@
 
     private void Prev() { if (_periodIndex > 0) _periodIndex--; }
     private void Next() { if (_periods is not null && _periodIndex < _periods.Periods.Count - 1) _periodIndex++; }
+
+    // Keep the header's account name in sync when Settings renames the account.
+    private void OnAccountRenamed(string name)
+    {
+        var i = _accounts?.FindIndex(a => a.Id == _accountId) ?? -1;
+        if (i >= 0 && _accounts is not null) _accounts[i] = _accounts[i] with { Name = name };
+    }
 }
 
 <style>

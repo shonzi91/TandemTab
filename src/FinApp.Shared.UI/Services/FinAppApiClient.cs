@@ -85,6 +85,11 @@ public sealed class FinAppApiClient(HttpClient http)
         SendAsync<AccountSummaryDto>(HttpMethod.Post, "/accounts", req, ct);
     public Task RenameAccountAsync(Guid id, string name, CancellationToken ct = default) =>
         SendAsync(HttpMethod.Put, $"/accounts/{id}/name", new RenameAccountRequest(name), ct);
+    // Path-B thin Account settings: read the editable settings + set the savings-rate target (percent 0..100).
+    public Task<AccountSettingsDto> GetSettingsAsync(Guid id, CancellationToken ct = default) =>
+        SendAsync<AccountSettingsDto>(HttpMethod.Get, $"/accounts/{id}/settings", null, ct);
+    public Task<MutationResultDto> SetSavingsTargetAsync(Guid id, decimal percent, CancellationToken ct = default) =>
+        SendAsync<MutationResultDto>(HttpMethod.Put, $"/accounts/{id}/savings-target", new SetSavingsTargetRequest(percent), ct);
     public Task DeleteAccountAsync(Guid id, CancellationToken ct = default) =>
         SendAsync(HttpMethod.Delete, $"/accounts/{id}", null, ct);
 
