@@ -46,6 +46,20 @@ public class SavingsMutationApiTests : IClassFixture<FinAppServerFactory>
         client.GetFromJsonAsync<AccountOverviewDto>($"/accounts/{accountId}/overview");
 
     [Fact]
+    public async Task Savings_view_exposes_the_reserve_more_cap_for_the_loan_nudges()
+    {
+        var (client, auth) = await _factory.RegisterAndAuthAsync("sv_maxadd");
+        var account = await CreateAccount(client, "MaxAdd");
+        await SeedAsync(client, account.Id, auth.UserId);   // 1000 income, nothing saved yet
+
+        var view = (await client.GetFromJsonAsync<SavingsViewDto>($"/accounts/{account.Id}/savings"))!;
+
+        // MaxAdditionalSavings is the cap the thick "reserve it toward this loan/goal" nudges clamp to.
+        Assert.True(view.MaxAdditionalSavings > 0m);
+        Assert.True(view.MaxAdditionalSavings <= view.Overview.Current);
+    }
+
+    [Fact]
     public async Task Add_saving_deposit_raises_saved_and_lowers_free()
     {
         var (client, auth) = await _factory.RegisterAndAuthAsync("sv_add");

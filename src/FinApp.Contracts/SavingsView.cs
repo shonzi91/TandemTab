@@ -62,16 +62,19 @@ public record SavingBucketForecastDto(
 public record SavingDepositRowDto(Guid Id, Guid BucketId, string BucketName, decimal Amount, DateOnly Date, string? Note);
 
 /// <summary>The whole Goals surface in one read: the header figures, the amount still free to set aside
-/// (<see cref="AvailableToSave"/>, the add-to-savings cap), every bucket, and this period's manual deposits.</summary>
+/// (<see cref="AvailableToSave"/>, the add-to-savings cap), the reallocation cap
+/// (<see cref="MaxAdditionalSavings"/>, the most that can be *moved into* savings without breaking the plan — what
+/// the thick "reserve it toward this loan/goal" nudges clamp to), every bucket, and this period's manual deposits.</summary>
 public record SavingsViewDto(
     long Version,
     string Currency,
     AccountOverviewDto Overview,
     decimal AvailableToSave,
+    decimal MaxAdditionalSavings,
     IReadOnlyList<SavingBucketDto> Buckets,
     IReadOnlyList<SavingDepositRowDto> Deposits)
 {
-    public static readonly SavingsViewDto Empty = new(0, "", AccountOverviewDto.Empty, 0m, [], []);
+    public static readonly SavingsViewDto Empty = new(0, "", AccountOverviewDto.Empty, 0m, 0m, [], []);
 }
 
 /// <summary>The delta a savings mutation returns: new <see cref="Version"/>, affected entity id, and the whole

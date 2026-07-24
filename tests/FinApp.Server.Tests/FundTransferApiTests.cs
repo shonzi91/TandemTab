@@ -44,6 +44,30 @@ public class FundTransferApiTests : IClassFixture<FinAppServerFactory>
     }
 
     [Fact]
+    public async Task Wallets_view_carries_the_per_fund_send_money_cap()
+    {
+        var (client, auth) = await _factory.RegisterAndAuthAsync("ft_transfercap");
+        var account = await CreateAccount(client, "Cap");
+
+        // A Bank fund with a €1,000 opening balance and nothing earmarked → its whole balance can be sent out.
+        var agg = new Account("Seed", "EUR");
+        agg.AddDefaultFunds();
+        agg.AddMember(auth.UserId, "Me");
+        var period = agg.StartPeriod(new DateOnly(2026, 1, 1), new DateOnly(2026, 1, 31));
+        var bank = agg.FundId("Bank");
+        period.SetInitialBalance(bank, new FinApp.Domain.Common.Money(1000m, "EUR"));
+        (await client.PutAsJsonAsync($"/accounts/{account.Id}/snapshot",
+            new SaveAccountRequest(AccountSnapshotSerializer.Serialize(agg), 0))).EnsureSuccessStatusCode();
+
+        var view = (await client.GetFromJsonAsync<WalletsViewDto>($"/accounts/{account.Id}/wallets"))!;
+        var bankRow = view.Funds.Single(f => f.Id == bank);
+
+        Assert.Equal(1000m, bankRow.Balance);
+        Assert.True(bankRow.AvailableToTransferOut > 0m);
+        Assert.True(bankRow.AvailableToTransferOut <= bankRow.Balance);   // never sends more than the fund holds
+    }
+
+    [Fact]
     public async Task Set_opening_balance_records_it_for_the_fund()
     {
         var (client, auth) = await _factory.RegisterAndAuthAsync("ft_open");

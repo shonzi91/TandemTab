@@ -1,7 +1,9 @@
 using FinApp.Contracts;
 using FinApp.Domain.Accounts;
+using FinApp.Domain.Common;
 using FinApp.Domain.Funds;
 using FinApp.Domain.Periods;
+using FinApp.Domain.Services;
 
 namespace FinApp.Server.Accounts;
 
@@ -11,7 +13,7 @@ namespace FinApp.Server.Accounts;
 /// </summary>
 public static class WalletsMap
 {
-    private static FundRowDto Row(Account account, Period period, Fund f) => new(
+    private static FundRowDto Row(Account account, Period period, Fund f, Money priorSaved) => new(
         f.Id,
         f.Name,
         f.Icon,
@@ -19,15 +21,21 @@ public static class WalletsMap
         period.FundBalance(f.Id).Amount,
         period.InitialBalances.FirstOrDefault(b => b.FundId == f.Id)?.Amount.Amount ?? 0m,
         f.IsSynced,
-        f.IsArchived);
+        f.IsArchived,
+        period.AvailableToTransferOutFromFundAfter(f.Id, priorSaved).Amount);
 
     public static WalletsViewDto View(Account account, long version, decimal? bankBalance = null, string? bankCurrency = null, Period? viewPeriod = null)
     {
         if ((viewPeriod ?? account.CurrentPeriod) is not { } period)
             return WalletsViewDto.Empty with { Version = version, Currency = account.Currency };
 
-        var funds = account.RootFunds.Where(f => !f.IsArchived).Select(f => Row(account, period, f)).ToList();
-        var archived = account.Funds.Where(f => f.IsRoot && f.IsArchived).Select(f => Row(account, period, f)).ToList();
+        // The savings reserved before this period — subtracted from every transfer-out cap so already-saved money
+        // isn't offered up to send away (mirrors BudgetingState.PriorSaved).
+        var report = new SavingsReportService();
+        var priorSaved = report.AccumulatedTotal(account) - period.SavingsNetTotal;
+
+        var funds = account.RootFunds.Where(f => !f.IsArchived).Select(f => Row(account, period, f, priorSaved)).ToList();
+        var archived = account.Funds.Where(f => f.IsRoot && f.IsArchived).Select(f => Row(account, period, f, priorSaved)).ToList();
         var transfers = period.FundTransfers
             .OrderByDescending(t => t.Date)
             .Select(t => new FundTransferRowDto(

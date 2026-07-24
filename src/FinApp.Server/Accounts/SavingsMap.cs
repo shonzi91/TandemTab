@@ -23,6 +23,7 @@ public static class SavingsMap
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
         var priorSaved = report.AccumulatedTotal(account) - period.SavingsNetTotal;
         var availableToSave = period.AvailableToSaveAfter(priorSaved).Amount;
+        var maxAdditionalSavings = period.MaxAdditionalSavingsAfter(priorSaved).Amount;
 
         var buckets = account.SavingCategories
             .Select(b => Bucket(account, period, report, b, today))
@@ -35,7 +36,7 @@ public static class SavingsMap
             .ToList();
 
         return new SavingsViewDto(version, account.Currency, SpendingMap.Overview(account, period, bankBalance, bankCurrency),
-            availableToSave, buckets, deposits);
+            availableToSave, maxAdditionalSavings, buckets, deposits);
     }
 
     private static SavingBucketDto Bucket(Account account, Period period, SavingsReportService report, SavingCategory b, DateOnly today)

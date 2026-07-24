@@ -8,7 +8,9 @@ namespace FinApp.Contracts;
 
 /// <summary>One fund row with its computed <see cref="Balance"/> and period <see cref="OpeningBalance"/>. A
 /// <see cref="Synced"/> fund is bank-driven (its balance is externally authoritative and it's excluded from manual
-/// transfer pickers). <see cref="Icon"/> is the raw stored icon (the client applies its name-based fallback).</summary>
+/// transfer pickers). <see cref="Icon"/> is the raw stored icon (the client applies its name-based fallback).
+/// <see cref="AvailableToTransferOut"/> is the most that can be sent from this fund to another account without
+/// breaking the savings earmark (≤ the fund's balance) — the cap the thick send-money modal validates against.</summary>
 public record FundRowDto(
     Guid Id,
     string Name,
@@ -17,7 +19,8 @@ public record FundRowDto(
     decimal Balance,
     decimal OpeningBalance,
     bool Synced,
-    bool Archived);
+    bool Archived,
+    decimal AvailableToTransferOut = 0m);
 
 /// <summary>One intra-account fund transfer this period, with both fund names resolved for display.</summary>
 public record FundTransferRowDto(
