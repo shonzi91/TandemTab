@@ -90,6 +90,9 @@ public sealed class FinAppApiClient(HttpClient http)
         SendAsync<AccountSettingsDto>(HttpMethod.Get, $"/accounts/{id}/settings", null, ct);
     public Task<MutationResultDto> SetSavingsTargetAsync(Guid id, decimal percent, CancellationToken ct = default) =>
         SendAsync<MutationResultDto>(HttpMethod.Put, $"/accounts/{id}/savings-target", new SetSavingsTargetRequest(percent), ct);
+    // Path-B thin Structure editor: read the account's categories/funds/contribution categories (writes below).
+    public Task<StructureViewDto> GetStructureAsync(Guid id, CancellationToken ct = default) =>
+        SendAsync<StructureViewDto>(HttpMethod.Get, $"/accounts/{id}/structure", null, ct);
     public Task DeleteAccountAsync(Guid id, CancellationToken ct = default) =>
         SendAsync(HttpMethod.Delete, $"/accounts/{id}", null, ct);
 

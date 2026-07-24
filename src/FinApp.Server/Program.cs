@@ -630,6 +630,16 @@ accounts.MapGet("/{id:guid}/settings", async (Guid id, ClaimsPrincipal user, Sna
     return Results.Ok(new AccountSettingsDto(account.Name, account.Currency, account.SavingsRateTarget));
 });
 
+// Path-B thin account structure: the editable categories, funds and contribution categories (for the thin
+// structure editor). Account-level; the create/edit/archive/remove commands live below (Session 44).
+accounts.MapGet("/{id:guid}/structure", async (Guid id, ClaimsPrincipal user, SnapshotService svc, CancellationToken ct) =>
+{
+    var snap = await svc.GetAsync(user.UserId(), id, ct);
+    if (string.IsNullOrEmpty(snap.Payload)) return Results.Ok(StructureViewDto.Empty);
+    var account = AccountSnapshotSerializer.Deserialize(snap.Payload);
+    return Results.Ok(StructureMap.View(account, snap.Version));
+});
+
 accounts.MapPut("/{id:guid}/savings-target", async (Guid id, SetSavingsTargetRequest req, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
 {
     var userId = user.UserId();

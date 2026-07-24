@@ -1,0 +1,206 @@
+@* Thin (domain-free) account members & sharing: list contributors, invite by username, and the account-admin
+   actions — transfer ownership, remove a member (owner only), leave, and delete. All ride existing endpoints
+   (membership + invitations); no on-device domain. Account-level (not period-scoped). Destructive actions
+   (leave / remove / delete) require an inline confirm. Membership changes call back to the shell so the account
+   list + header re-pull; leaving or deleting calls OnAccountExited so the shell drops this account. *@
+@using FinApp.Contracts
+@using FinApp.Shared.UI.Services
+@inject FinAppApiClient Api
+@inject AuthState Auth
+
+@if (_error is { } err)
+{
+    <p class="tst-err">@err <button class="lnk" @onclick="() => _error = null">dismiss</button></p>
+}
+@if (_ok is { } ok)
+{
+    <p class="tst-ok">@ok</p>
+}
+
+<h3>Members</h3>
+<div class="tm-list">
+    @foreach (var m in Account.Members)
+    {
+        <div class="ts-row">
+            <span class="ts-name">@m.DisplayName</span>
+            @if (m.UserId == Account.OwnerUserId) { <span class="ts-badge own">owner</span> }
+            @if (m.UserId == Auth.UserId) { <span class="ts-badge">you</span> }
+            @if (Account.IsOwner && m.UserId != Auth.UserId)
+            {
+                <span class="ts-actions">
+                    <button class="lnk danger" disabled="@_busy" @onclick="() => RemoveMember(m)">remove</button>
+                </span>
+            }
+        </div>
+    }
+</div>
+
+<h3>Invite someone</h3>
+<p class="tst-hint">They'll get a pending invitation to accept. Invite by their username.</p>
+<div class="tst-row">
+    <input placeholder="username" @bind="_inviteName" />
+    <button @onclick="Invite" disabled="@(_busy || string.IsNullOrWhiteSpace(_inviteName))">Send invite</button>
+</div>
+
+@if (Account.IsOwner && OtherMembers.Any())
+{
+    <h3>Transfer ownership</h3>
+    <p class="tst-hint">Hand this account to another member. You stay on as a contributor.</p>
+    <div class="tst-row">
+        <select @bind="_transferTo">
+            <option value="">— choose a member —</option>
+            @foreach (var m in OtherMembers)
+            {
+                <option value="@m.UserId">@m.DisplayName</option>
+            }
+        </select>
+        <button @onclick="TransferOwnership" disabled="@(_busy || !Guid.TryParse(_transferTo, out _))">Transfer</button>
+    </div>
+}
+
+<h3>Leave this account</h3>
+@if (Account.IsOwner && OtherMembers.Any())
+{
+    <p class="tst-hint">You're the owner. Choose who takes over, then leave.</p>
+    <div class="tst-row">
+        <select @bind="_leaveNewOwner">
+            <option value="">— new owner —</option>
+            @foreach (var m in OtherMembers)
+            {
+                <option value="@m.UserId">@m.DisplayName</option>
+            }
+        </select>
+        <button class="danger-btn" @onclick="Leave" disabled="@(_busy || !Guid.TryParse(_leaveNewOwner, out _))">Leave</button>
+    </div>
+}
+else
+{
+    <p class="tst-hint">
+        @(OtherMembers.Any() ? "You'll be removed from this shared account." : "You're the only member — leaving archives the account.")
+    </p>
+    @if (_confirmLeave)
+    {
+        <div class="tst-row">
+            <span class="tm-confirm">Sure?</span>
+            <button class="danger-btn" @onclick="Leave" disabled="@_busy">Yes, leave</button>
+            <button class="lnk" @onclick="() => _confirmLeave = false">cancel</button>
+        </div>
+    }
+    else
+    {
+        <button class="danger-btn" @onclick="() => _confirmLeave = true" disabled="@_busy">Leave account</button>
+    }
+}
+
+@if (Account.IsOwner)
+{
+    <h3>Delete this account</h3>
+    <p class="tst-hint">Permanently removes the account for everyone. This can't be undone.</p>
+    @if (_confirmDelete)
+    {
+        <div class="tst-row">
+            <span class="tm-confirm">Type the account name to confirm:</span>
+            <input placeholder="@Account.Name" @bind="_deleteConfirmName" />
+            <button class="danger-btn" @onclick="Delete" disabled="@(_busy || _deleteConfirmName?.Trim() != Account.Name)">Delete</button>
+            <button class="lnk" @onclick="() => { _confirmDelete = false; _deleteConfirmName = null; }">cancel</button>
+        </div>
+    }
+    else
+    {
+        <button class="danger-btn" @onclick="() => _confirmDelete = true" disabled="@_busy">Delete account</button>
+    }
+}
+
+@code {
+    [Parameter, EditorRequired] public AccountSummaryDto Account { get; set; } = default!;
+    // The membership changed but the account still exists (invite/remove/transfer) — the shell re-pulls accounts.
+    [Parameter] public EventCallback OnMembershipChanged { get; set; }
+    // This account is no longer the caller's (left or deleted) — the shell drops it and reselects.
+    [Parameter] public EventCallback OnAccountExited { get; set; }
+
+    private string _inviteName = "";
+    private string _transferTo = "";
+    private string _leaveNewOwner = "";
+    private string? _deleteConfirmName;
+    private bool _confirmLeave, _confirmDelete;
+    private bool _busy;
+    private string? _error, _ok;
+
+    private IEnumerable<MemberDto> OtherMembers => Account.Members.Where(m => m.UserId != Auth.UserId);
+
+    private async Task Invite()
+    {
+        var name = _inviteName.Trim();
+        if (name.Length == 0) return;
+        await Run(async () =>
+        {
+            await Api.InviteAsync(Account.Id, name);
+            _inviteName = "";
+            _ok = $"Invitation sent to {name}.";
+        });
+    }
+
+    private Task RemoveMember(MemberDto m) => Run(async () =>
+    {
+        await Api.RemoveMemberAsync(Account.Id, m.UserId);
+        _ok = $"Removed {m.DisplayName}.";
+        if (OnMembershipChanged.HasDelegate) await OnMembershipChanged.InvokeAsync();
+    });
+
+    private async Task TransferOwnership()
+    {
+        if (!Guid.TryParse(_transferTo, out var newOwner)) return;
+        await Run(async () =>
+        {
+            await Api.TransferOwnershipAsync(Account.Id, newOwner);
+            _ok = "Ownership transferred.";
+            _transferTo = "";
+            if (OnMembershipChanged.HasDelegate) await OnMembershipChanged.InvokeAsync();
+        });
+    }
+
+    private Task Leave() => Run(async () =>
+    {
+        Guid? newOwner = Guid.TryParse(_leaveNewOwner, out var g) ? g : null;
+        await Api.LeaveAccountAsync(Account.Id, newOwner);
+        if (OnAccountExited.HasDelegate) await OnAccountExited.InvokeAsync();
+    });
+
+    private Task Delete() => Run(async () =>
+    {
+        await Api.DeleteAccountAsync(Account.Id);
+        if (OnAccountExited.HasDelegate) await OnAccountExited.InvokeAsync();
+    });
+
+    private async Task Run(Func<Task> action)
+    {
+        if (_busy) return;
+        _busy = true; _error = null; _ok = null;
+        try { await action(); }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+}
+
+<style>
+    .tst-err { color: #ff7a59; }
+    .tst-ok { color: #2fb99a; font-size: .85rem; }
+    h3 { margin: 1.3rem 0 .4rem; font-size: .9rem; text-transform: uppercase; letter-spacing: .03em; opacity: .7; }
+    h3:first-of-type { margin-top: 0; }
+    .tst-hint { font-size: .8rem; opacity: .7; margin: 0 0 .5rem; }
+    .tm-list { margin-bottom: .5rem; }
+    .ts-row { display: flex; align-items: center; gap: .5rem; padding: .35rem 0; border-bottom: 1px solid rgba(128,128,128,.12); }
+    .ts-name { font-weight: 500; }
+    .ts-badge { font-size: .62rem; text-transform: uppercase; letter-spacing: .03em; border-radius: .3rem; padding: .05rem .35rem; background: rgba(128,128,128,.2); }
+    .ts-badge.own { background: rgba(47,185,154,.18); color: #2fb99a; }
+    .ts-actions { margin-left: auto; display: inline-flex; gap: .6rem; }
+    .tst-row { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+    .tst-row input, .tst-row select { padding: .4rem .5rem; border-radius: .4rem; border: 1px solid rgba(128,128,128,.4); background: transparent; color: inherit; }
+    .tst-row button { padding: .4rem 1rem; border-radius: .4rem; border: none; background: #2fb99a; color: #05201a; font-weight: 600; cursor: pointer; }
+    .tst-row button:disabled { opacity: .5; cursor: default; }
+    .tm-confirm { font-size: .85rem; opacity: .85; }
+    .danger-btn { padding: .4rem 1rem; border-radius: .4rem; border: 1px solid #ff7a59; background: transparent; color: #ff7a59; font-weight: 600; cursor: pointer; }
+    .danger-btn:disabled { opacity: .5; cursor: default; }
+    .lnk { border: none; background: none; color: #2fb99a; cursor: pointer; font-size: .8rem; padding: 0; }
+    .lnk.danger { color: #ff7a59; }
+</style>

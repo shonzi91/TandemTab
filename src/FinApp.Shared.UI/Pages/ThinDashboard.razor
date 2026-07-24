@@ -14,6 +14,22 @@
 <div class="thd">
     <p class="thd-tag">Path-B · thin Dashboard (no on-device domain)</p>
 
+    @if (_invites is { Count: > 0 })
+    {
+        <div class="thd-invites">
+            @foreach (var inv in _invites)
+            {
+                <div class="thd-invite">
+                    <span><strong>@inv.InvitedByUsername</strong> invited you to <strong>@inv.AccountName</strong>.</span>
+                    <span class="thd-invite-acts">
+                        <button class="thd-inv-accept" disabled="@_inviteBusy" @onclick="() => AcceptInvite(inv)">Accept</button>
+                        <button class="thd-inv-decline" disabled="@_inviteBusy" @onclick="() => DeclineInvite(inv)">Decline</button>
+                    </span>
+                </div>
+            }
+        </div>
+    }
+
     @if (!Auth.IsAuthenticated)
     {
         <p>Please sign in on the main app first, then return to this page.</p>
@@ -102,6 +118,12 @@
                 case "Recurring":
                     <ThinRecurringSection @key="key" AccountId="_accountId" PeriodIndex="_periodIndex" CanWrite="canWrite" />
                     break;
+                case "Structure":
+                    <ThinStructureSection @key="_accountId" AccountId="_accountId" />
+                    break;
+                case "Members":
+                    <ThinMembersSection @key="_accountId" Account="acct" OnMembershipChanged="ReloadAccounts" OnAccountExited="OnAccountExited" />
+                    break;
                 case "Settings":
                     <ThinSettingsSection @key="_accountId" AccountId="_accountId" OnRenamed="OnAccountRenamed" />
                     break;
@@ -111,7 +133,7 @@
 </div>
 
 @code {
-    private static readonly string[] Tabs = ["Home", "Spending", "Income", "Wallets", "Goals", "Budgets", "Recurring", "Settings"];
+    private static readonly string[] Tabs = ["Home", "Spending", "Income", "Wallets", "Goals", "Budgets", "Recurring", "Structure", "Members", "Settings"];
 
     private List<AccountSummaryDto>? _accounts;
     private Guid _accountId;
@@ -119,6 +141,8 @@
     private int _periodIndex;
     private string _tab = "Home";
     private string? _error;
+    private List<InvitationDto>? _invites;
+    private bool _inviteBusy;
 
     protected override async Task OnInitializedAsync()
     {
@@ -127,6 +151,66 @@
         {
             _accounts = await Api.GetAccountsAsync();
             if (_accounts.Count > 0) await SelectAccountAsync(_accounts[0].Id);
+            await LoadInvites();
+        }
+        catch (Exception ex) { _error = ex.Message; }
+    }
+
+    private async Task LoadInvites()
+    {
+        try
+        {
+            var all = await Api.GetPendingInvitationsAsync();
+            _invites = all.Where(i => string.Equals(i.Status, "Pending", StringComparison.OrdinalIgnoreCase)).ToList();
+        }
+        catch { /* invitations are non-critical chrome — never block the dashboard on them */ }
+    }
+
+    private async Task AcceptInvite(InvitationDto inv)
+    {
+        if (_inviteBusy) return;
+        _inviteBusy = true;
+        try
+        {
+            var accountId = await Api.AcceptInvitationAsync(inv.Id);
+            _invites?.RemoveAll(i => i.Id == inv.Id);
+            _accounts = await Api.GetAccountsAsync();
+            if (_accounts.Any(a => a.Id == accountId)) await SelectAccountAsync(accountId);
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _inviteBusy = false; }
+    }
+
+    private async Task DeclineInvite(InvitationDto inv)
+    {
+        if (_inviteBusy) return;
+        _inviteBusy = true;
+        try { await Api.DeclineInvitationAsync(inv.Id); _invites?.RemoveAll(i => i.Id == inv.Id); }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _inviteBusy = false; }
+    }
+
+    // A member/owner change that keeps this account: re-pull the account list + header, keep the selection.
+    private async Task ReloadAccounts()
+    {
+        try
+        {
+            _accounts = await Api.GetAccountsAsync();
+            if (!_accounts.Any(a => a.Id == _accountId) && _accounts.Count > 0)
+                await SelectAccountAsync(_accounts[0].Id);
+        }
+        catch (Exception ex) { _error = ex.Message; }
+    }
+
+    // The caller left or deleted this account: drop it and fall back to the first remaining one.
+    private async Task OnAccountExited()
+    {
+        try
+        {
+            _accounts = await Api.GetAccountsAsync();
+            _tab = "Home";
+            if (_accounts.Count > 0) await SelectAccountAsync(_accounts[0].Id);
+            else _accountId = Guid.Empty;
         }
         catch (Exception ex) { _error = ex.Message; }
     }
@@ -162,6 +246,12 @@
     .thd { max-width: 760px; margin: 1rem auto; padding: 0 1rem; }
     .thd-tag { font-size: .75rem; opacity: .7; margin: 0 0 1rem; }
     .thd-err { color: #ff7a59; }
+    .thd-invites { display: flex; flex-direction: column; gap: .5rem; margin-bottom: 1rem; }
+    .thd-invite { display: flex; align-items: center; justify-content: space-between; gap: .75rem; flex-wrap: wrap; padding: .6rem .8rem; border: 1px solid rgba(47,185,154,.4); border-radius: .5rem; background: rgba(47,185,154,.08); font-size: .9rem; }
+    .thd-invite-acts { display: inline-flex; gap: .5rem; }
+    .thd-inv-accept { padding: .35rem .9rem; border-radius: .4rem; border: none; background: #2fb99a; color: #05201a; font-weight: 600; cursor: pointer; }
+    .thd-inv-decline { padding: .35rem .9rem; border-radius: .4rem; border: 1px solid rgba(128,128,128,.4); background: transparent; color: inherit; cursor: pointer; }
+    .thd-inv-accept:disabled, .thd-inv-decline:disabled { opacity: .5; cursor: default; }
     .thd-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; margin-bottom: .75rem; }
     .thd-acct { display: flex; align-items: baseline; gap: .6rem; flex-wrap: wrap; }
     .thd-acct-nm { font-size: 1.3rem; font-weight: 700; }

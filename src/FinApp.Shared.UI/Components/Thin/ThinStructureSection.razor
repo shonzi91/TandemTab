@@ -1,0 +1,300 @@
+@* Thin (domain-free) account-structure editor: spend categories, funds (wallets) and contribution (income)
+   categories — create / edit / archive / remove. Account-level (not period-scoped). Every write is a command
+   endpoint that already exists (Session 44); after each one we re-pull GET /structure for the canonical list
+   (structure edits are infrequent, so a full re-read is simpler and always correct — no echo-optimism needed).
+   Removal blockers (a category/fund still referenced by a row) surface as the server's 400 message. Styling is
+   deliberately plain — parity, not polish (see the handoff). *@
+@using FinApp.Contracts
+@using FinApp.Shared.UI.Services
+@inject FinAppApiClient Api
+
+@if (_error is { } err)
+{
+    <p class="tst-err">@err <button class="lnk" @onclick="() => _error = null">dismiss</button></p>
+}
+
+@if (_view is null)
+{
+    <p>Loading structure…</p>
+}
+else
+{
+    <div class="ts-head">
+        <label class="ts-arch-toggle"><input type="checkbox" @bind="_showArchived" /> Show archived</label>
+    </div>
+
+    @* ---- Spend categories ---------------------------------------------------- *@
+    <h3>Spend categories</h3>
+    @foreach (var c in Roots(_view.Categories))
+    {
+        @RenderCategory(c, 0)
+        @foreach (var child in _view.Categories.Where(x => x.ParentId == c.Id).Where(Visible))
+        {
+            @RenderCategory(child, 1)
+        }
+    }
+    @if (_addingCat)
+    {
+        <div class="ts-add">
+            <input placeholder="Name" @bind="_catName" />
+            <input class="ts-icon-in" placeholder="icon" @bind="_catIcon" />
+            <select @bind="_catParent">
+                <option value="">— top level —</option>
+                @foreach (var p in Roots(_view.Categories))
+                {
+                    <option value="@p.Id">@p.Name</option>
+                }
+            </select>
+            <label class="ts-ess"><input type="checkbox" @bind="_catEssential" /> Essential</label>
+            <button class="ts-save" disabled="@(_busy || string.IsNullOrWhiteSpace(_catName))" @onclick="AddCategory">Add</button>
+            <button class="lnk" @onclick="() => _addingCat = false">cancel</button>
+        </div>
+    }
+    else
+    {
+        <button class="ts-addbtn" @onclick="StartAddCategory">+ Add category</button>
+    }
+
+    @* ---- Funds --------------------------------------------------------------- *@
+    <h3>Funds (wallets)</h3>
+    @foreach (var f in _view.Funds.Where(Visible))
+    {
+        <div class="ts-row @(f.Archived ? "arch" : "")">
+            @if (_editId == f.Id && _editKind == "fund")
+            {
+                <input @bind="_eName" />
+                <input class="ts-icon-in" placeholder="icon" @bind="_eIcon" />
+                <input class="ts-note-in" placeholder="note" @bind="_eNote" />
+                <button class="ts-save" disabled="@(_busy || string.IsNullOrWhiteSpace(_eName))" @onclick="() => SaveFund(f)">Save</button>
+                <button class="lnk" @onclick="CancelEdit">cancel</button>
+            }
+            else
+            {
+                <span class="ts-name">@Ic(f.Icon)@f.Name</span>
+                @if (f.Synced) { <span class="ts-badge sync">synced</span> }
+                @if (!string.IsNullOrWhiteSpace(f.Note)) { <span class="ts-sub">@f.Note</span> }
+                @if (f.Archived) { <span class="ts-badge">archived</span> }
+                <span class="ts-actions">
+                    @if (!f.Synced)
+                    {
+                        <button class="lnk" @onclick="() => BeginEditFund(f)">edit</button>
+                        <button class="lnk" @onclick="() => SetFundArchived(f, !f.Archived)">@(f.Archived ? "restore" : "archive")</button>
+                        <button class="lnk danger" @onclick="() => RemoveFund(f)">remove</button>
+                    }
+                    else
+                    {
+                        <span class="ts-sub">bank-linked</span>
+                    }
+                </span>
+            }
+        </div>
+    }
+    @if (_addingFund)
+    {
+        <div class="ts-add">
+            <input placeholder="Name" @bind="_fundName" />
+            <input class="ts-icon-in" placeholder="icon" @bind="_fundIcon" />
+            <input class="ts-note-in" placeholder="note" @bind="_fundNote" />
+            <button class="ts-save" disabled="@(_busy || string.IsNullOrWhiteSpace(_fundName))" @onclick="AddFund">Add</button>
+            <button class="lnk" @onclick="() => _addingFund = false">cancel</button>
+        </div>
+    }
+    else
+    {
+        <button class="ts-addbtn" @onclick="StartAddFund">+ Add fund</button>
+    }
+
+    @* ---- Contribution (income) categories ------------------------------------ *@
+    <h3>Income categories</h3>
+    @foreach (var cc in _view.ContributionCategories)
+    {
+        <div class="ts-row">
+            @if (_editId == cc.Id && _editKind == "cc")
+            {
+                <input @bind="_eName" />
+                <input class="ts-icon-in" placeholder="icon" @bind="_eIcon" />
+                <button class="ts-save" disabled="@(_busy || string.IsNullOrWhiteSpace(_eName))" @onclick="() => SaveContribution(cc)">Save</button>
+                <button class="lnk" @onclick="CancelEdit">cancel</button>
+            }
+            else
+            {
+                <span class="ts-name">@Ic(cc.Icon)@cc.Name</span>
+                <span class="ts-actions">
+                    <button class="lnk" @onclick="() => BeginEditContribution(cc)">edit</button>
+                    <button class="lnk danger" @onclick="() => RemoveContribution(cc)">remove</button>
+                </span>
+            }
+        </div>
+    }
+    @if (_addingCc)
+    {
+        <div class="ts-add">
+            <input placeholder="Name" @bind="_ccName" />
+            <input class="ts-icon-in" placeholder="icon" @bind="_ccIcon" />
+            <button class="ts-save" disabled="@(_busy || string.IsNullOrWhiteSpace(_ccName))" @onclick="AddContribution">Add</button>
+            <button class="lnk" @onclick="() => _addingCc = false">cancel</button>
+        </div>
+    }
+    else
+    {
+        <button class="ts-addbtn" @onclick="StartAddContribution">+ Add income category</button>
+    }
+}
+
+@code {
+    [Parameter, EditorRequired] public Guid AccountId { get; set; }
+
+    private StructureViewDto? _view;
+    private string? _error;
+    private bool _busy;
+    private bool _showArchived;
+
+    // add-form state
+    private bool _addingCat, _addingFund, _addingCc;
+    private string _catName = "", _catIcon = "", _catParent = ""; private bool _catEssential;
+    private string _fundName = "", _fundIcon = "", _fundNote = "";
+    private string _ccName = "", _ccIcon = "";
+
+    // edit-in-place state (one row at a time, across all three kinds)
+    private Guid? _editId; private string _editKind = "";
+    private string _eName = "", _eIcon = "", _eNote = "";
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    private async Task Load()
+    {
+        try { _view = await Api.GetStructureAsync(AccountId); }
+        catch (Exception ex) { _error = ex.Message; }
+    }
+
+    private IEnumerable<StructureCategoryDto> Roots(IReadOnlyList<StructureCategoryDto> cats) => cats.Where(c => c.ParentId is null).Where(Visible);
+    private bool Visible(StructureCategoryDto c) => _showArchived || !c.Archived;
+    private bool Visible(StructureFundDto f) => _showArchived || !f.Archived;
+    private static string Ic(string? icon) => string.IsNullOrWhiteSpace(icon) ? "" : $"[{icon}] ";
+
+    // ---- categories ----
+    private void StartAddCategory() { _addingCat = true; _catName = ""; _catIcon = ""; _catParent = ""; _catEssential = false; }
+
+    private async Task AddCategory()
+    {
+        Guid? parent = Guid.TryParse(_catParent, out var p) ? p : null;
+        await Run(() => Api.CreateCategoryAsync(AccountId,
+            new CreateCategoryRequest(_catName.Trim(), parent, Blank(_catIcon), _catEssential)));
+        _addingCat = false;
+    }
+
+    private void BeginEditCategory(StructureCategoryDto c) { _editId = c.Id; _editKind = "cat"; _eName = c.Name; _eIcon = c.Icon ?? ""; _catEssential = c.Essential; }
+
+    private async Task SaveCategory(StructureCategoryDto c)
+    {
+        await Run(() => Api.EditCategoryAsync(AccountId, c.Id, new EditCategoryRequest(_eName.Trim(), Blank(_eIcon), _catEssential)));
+        CancelEdit();
+    }
+
+    private Task SetCategoryArchived(StructureCategoryDto c, bool archived) => Run(() => Api.SetCategoryArchivedAsync(AccountId, c.Id, archived));
+    private Task RemoveCategory(StructureCategoryDto c) => Run(() => Api.RemoveCategoryAsync(AccountId, c.Id));
+
+    // ---- funds ----
+    private void StartAddFund() { _addingFund = true; _fundName = ""; _fundIcon = ""; _fundNote = ""; }
+
+    private async Task AddFund()
+    {
+        await Run(() => Api.CreateFundAsync(AccountId, new CreateFundRequest(_fundName.Trim(), null, Blank(_fundNote), Blank(_fundIcon))));
+        _addingFund = false;
+    }
+
+    private void BeginEditFund(StructureFundDto f) { _editId = f.Id; _editKind = "fund"; _eName = f.Name; _eIcon = f.Icon ?? ""; _eNote = f.Note ?? ""; }
+
+    private async Task SaveFund(StructureFundDto f)
+    {
+        await Run(() => Api.EditFundAsync(AccountId, f.Id, new EditFundRequest(_eName.Trim(), Blank(_eNote), Blank(_eIcon))));
+        CancelEdit();
+    }
+
+    private Task SetFundArchived(StructureFundDto f, bool archived) => Run(() => Api.SetFundArchivedAsync(AccountId, f.Id, archived));
+    private Task RemoveFund(StructureFundDto f) => Run(() => Api.RemoveFundAsync(AccountId, f.Id));
+
+    // ---- contribution categories ----
+    private void StartAddContribution() { _addingCc = true; _ccName = ""; _ccIcon = ""; }
+
+    private async Task AddContribution()
+    {
+        await Run(() => Api.CreateContributionCategoryAsync(AccountId, new CreateContributionCategoryRequest(_ccName.Trim(), Blank(_ccIcon))));
+        _addingCc = false;
+    }
+
+    private void BeginEditContribution(StructureContributionCategoryDto cc) { _editId = cc.Id; _editKind = "cc"; _eName = cc.Name; _eIcon = cc.Icon ?? ""; }
+
+    private async Task SaveContribution(StructureContributionCategoryDto cc)
+    {
+        await Run(() => Api.EditContributionCategoryAsync(AccountId, cc.Id, new EditContributionCategoryRequest(_eName.Trim(), Blank(_eIcon))));
+        CancelEdit();
+    }
+
+    private Task RemoveContribution(StructureContributionCategoryDto cc) => Run(() => Api.RemoveContributionCategoryAsync(AccountId, cc.Id));
+
+    // ---- shared ----
+    private void CancelEdit() { _editId = null; _editKind = ""; }
+    private static string? Blank(string s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();
+
+    // Run a write, then re-pull the canonical structure. Any domain rejection (duplicate name, in-use removal)
+    // arrives as the server's 400 message.
+    private async Task Run(Func<Task> write)
+    {
+        if (_busy) return;
+        _busy = true; _error = null;
+        try { await write(); await Load(); }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    private RenderFragment RenderCategory(StructureCategoryDto c, int depth) => __builder =>
+    {
+        <div class="ts-row @(c.Archived ? "arch" : "")" style="@(depth > 0 ? "padding-left:1.4rem" : "")">
+            @if (_editId == c.Id && _editKind == "cat")
+            {
+                <input @bind="_eName" />
+                <input class="ts-icon-in" placeholder="icon" @bind="_eIcon" />
+                <label class="ts-ess"><input type="checkbox" @bind="_catEssential" /> Essential</label>
+                <button class="ts-save" disabled="@(_busy || string.IsNullOrWhiteSpace(_eName))" @onclick="() => SaveCategory(c)">Save</button>
+                <button class="lnk" @onclick="CancelEdit">cancel</button>
+            }
+            else
+            {
+                <span class="ts-name">@Ic(c.Icon)@c.Name</span>
+                @if (c.Essential) { <span class="ts-badge ess">essential</span> }
+                @if (c.Archived) { <span class="ts-badge">archived</span> }
+                <span class="ts-actions">
+                    <button class="lnk" @onclick="() => BeginEditCategory(c)">edit</button>
+                    <button class="lnk" @onclick="() => SetCategoryArchived(c, !c.Archived)">@(c.Archived ? "restore" : "archive")</button>
+                    <button class="lnk danger" @onclick="() => RemoveCategory(c)">remove</button>
+                </span>
+            }
+        </div>
+    };
+}
+
+<style>
+    .tst-err { color: #ff7a59; }
+    h3 { margin: 1.3rem 0 .4rem; font-size: .9rem; text-transform: uppercase; letter-spacing: .03em; opacity: .7; }
+    .ts-head { display: flex; justify-content: flex-end; }
+    .ts-arch-toggle { font-size: .8rem; opacity: .75; display: inline-flex; gap: .3rem; align-items: center; }
+    .ts-row { display: flex; align-items: center; gap: .5rem; padding: .35rem 0; border-bottom: 1px solid rgba(128,128,128,.12); flex-wrap: wrap; }
+    .ts-row.arch { opacity: .5; }
+    .ts-name { font-weight: 500; }
+    .ts-sub { font-size: .78rem; opacity: .6; }
+    .ts-badge { font-size: .62rem; text-transform: uppercase; letter-spacing: .03em; border-radius: .3rem; padding: .05rem .35rem; background: rgba(128,128,128,.2); }
+    .ts-badge.ess { background: rgba(255,122,89,.18); color: #ff7a59; }
+    .ts-badge.sync { background: rgba(47,185,154,.18); color: #2fb99a; }
+    .ts-actions { margin-left: auto; display: inline-flex; gap: .6rem; }
+    .ts-add { display: flex; align-items: center; gap: .5rem; padding: .5rem 0; flex-wrap: wrap; }
+    .ts-add input, .ts-add select, .ts-row input, .ts-row select { padding: .35rem .5rem; border-radius: .4rem; border: 1px solid rgba(128,128,128,.4); background: transparent; color: inherit; }
+    .ts-icon-in { width: 5rem; }
+    .ts-note-in { width: 8rem; }
+    .ts-ess { font-size: .8rem; opacity: .8; display: inline-flex; gap: .3rem; align-items: center; }
+    .ts-save { padding: .35rem 1rem; border-radius: .4rem; border: none; background: #2fb99a; color: #05201a; font-weight: 600; cursor: pointer; }
+    .ts-save:disabled { opacity: .5; cursor: default; }
+    .ts-addbtn { margin: .5rem 0 .2rem; padding: .35rem .8rem; border-radius: .4rem; border: 1px dashed rgba(128,128,128,.5); background: transparent; color: inherit; cursor: pointer; font-size: .85rem; }
+    .lnk { border: none; background: none; color: #2fb99a; cursor: pointer; font-size: .8rem; padding: 0; }
+    .lnk.danger { color: #ff7a59; }
+</style>
