@@ -1,6 +1,6 @@
 using FinApp.Contracts;
 using FinApp.Domain.Accounts;
-using FinApp.Domain.Forecasting;
+using FinApp.Forecasting;
 using FinApp.Domain.Periods;
 using FinApp.Domain.Savings;
 using FinApp.Domain.Services;

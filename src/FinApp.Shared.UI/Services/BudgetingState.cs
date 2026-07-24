@@ -4,6 +4,7 @@ using FinApp.Domain.Accounts;
 using FinApp.Domain.Budgeting;
 using FinApp.Domain.Common;
 using FinApp.Domain.Forecasting;
+using FinApp.Forecasting;
 using FinApp.Domain.Funds;
 using FinApp.Domain.Periods;
 using FinApp.Domain.Recurring;
@@ -494,7 +495,7 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     public bool IsLatestPeriod => _selectedIndex == Account.Periods.Count - 1;
 
     /// <summary>How many completed periods the runway's demonstrated average is built on — the same filter
-    /// <see cref="CashFlowForecast.Demonstrated"/> uses, surfaced so the runway can name its basis ("based on your
+    /// <see cref="CashFlowHistory.Demonstrated"/> uses, surfaced so the runway can name its basis ("based on your
     /// last N months") instead of presenting a projection as a certainty.</summary>
     public int CompletedPeriodCount => Account.Periods.Count(p => p.Status == PeriodStatus.Closed);
 
@@ -1327,7 +1328,7 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     /// plain runway and the what-if slider can never diverge.</summary>
     private (decimal Income, decimal Spending, CashFlowBasis Basis, bool HasUnknown)? CashFlowBase()
     {
-        if (CashFlowForecast.Demonstrated(Account.Periods) is { } seen)
+        if (CashFlowHistory.Demonstrated(Account.Periods) is { } seen)
             return (seen.Income, seen.Spending, CashFlowBasis.Demonstrated, false);
 
         var active = RecurringItems.Where(r => r.Active).ToList();
@@ -1388,11 +1389,11 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
 
     /// <summary>Project an investment bucket's future value — present value is its accumulated balance, adding
     /// <paramref name="extraPerMonth"/> each month over its term at its rate/compounding. Null when it isn't an investment.</summary>
-    public FinApp.Domain.Forecasting.InvestmentForecast.Projection? ProjectInvestment(Guid id, decimal extraPerMonth)
+    public FinApp.Forecasting.InvestmentForecast.Projection? ProjectInvestment(Guid id, decimal extraPerMonth)
     {
         var bucket = FindSavingBucket(id);
         if (bucket is null || !bucket.IsInvestment) return null;
-        return FinApp.Domain.Forecasting.InvestmentForecast.Project(
+        return FinApp.Forecasting.InvestmentForecast.Project(
             SavingBucketSaved(id).Amount, bucket.InvestmentAnnualRatePercent, bucket.InvestmentTermYears, bucket.InvestmentCompoundsPerYear, extraPerMonth);
     }
 
@@ -1418,7 +1419,7 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
         var pace = EffectiveSavingPace(id)?.Amount ?? 0m;
         var extra = pace - bucket.DebtInstallment;
         if (extra <= 0m) return null;
-        var sim = FinApp.Domain.Forecasting.LoanForecast.SimulateExtra(
+        var sim = FinApp.Forecasting.LoanForecast.SimulateExtra(
             bucket.DebtOriginalBalance, bucket.DebtAnnualRatePercent, bucket.DebtInstallment, extra);
         return sim is { MonthsSaved: > 0 } s ? s.MonthsSaved : null;
     }
@@ -1431,9 +1432,9 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     }
 
     /// <summary>Debt buckets mapped to loan-forecast inputs (balance/rate/installment) for the multi-debt planner.</summary>
-    public IReadOnlyList<FinApp.Domain.Forecasting.LoanForecast.LoanInput> DebtLoanInputs =>
+    public IReadOnlyList<FinApp.Forecasting.LoanForecast.LoanInput> DebtLoanInputs =>
         SavingBuckets.Where(x => x.Bucket.IsDebt && !x.Bucket.IsArchived && x.Bucket.DebtBalance > 0m)
-            .Select(x => new FinApp.Domain.Forecasting.LoanForecast.LoanInput(
+            .Select(x => new FinApp.Forecasting.LoanForecast.LoanInput(
                 x.Bucket.Id, x.Bucket.Name, x.Bucket.DebtBalance, x.Bucket.DebtAnnualRatePercent, x.Bucket.DebtInstallment))
             .ToList();
 

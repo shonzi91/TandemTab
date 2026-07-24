@@ -1,4 +1,4 @@
-namespace FinApp.Domain.Forecasting;
+namespace FinApp.Forecasting;
 
 /// <summary>
 /// Pure compound-growth math for the Investment bucket's projection — estimates only. Like <see cref="LoanForecast"/>

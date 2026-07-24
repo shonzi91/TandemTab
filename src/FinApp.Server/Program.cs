@@ -6,6 +6,7 @@ using FinApp.Domain.Forecasting;
 using FinApp.Domain.Periods;
 using FinApp.Domain.Recurring;
 using FinApp.Domain.Services;
+using FinApp.Forecasting;
 using FinApp.Persistence;
 using FinApp.Server.Accounts;
 using FinApp.Server.Auth;

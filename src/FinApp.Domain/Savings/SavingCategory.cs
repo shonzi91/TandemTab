@@ -119,7 +119,7 @@ public sealed class SavingCategory : Entity
         if (!IsDebt || DebtBalanceAsOf is not { } anchor || DebtInstallment <= 0m) return DebtBalance;
         var months = MonthsBetween(anchor, asOf);
         if (months <= 0) return DebtBalance;
-        return Forecasting.LoanForecast.BalanceAfter(DebtBalance, DebtAnnualRatePercent, DebtInstallment, months);
+        return FinApp.Forecasting.LoanForecast.BalanceAfter(DebtBalance, DebtAnnualRatePercent, DebtInstallment, months);
     }
 
     /// <summary>Whole installments due between two dates — a payment lands once a month on the anchor's day-of-month,

@@ -1,6 +1,7 @@
 using FinApp.Domain.Budgeting;
 using FinApp.Domain.Common;
 using FinApp.Domain.Forecasting;
+using FinApp.Forecasting;
 using FinApp.Domain.Periods;
 using Xunit;
 
@@ -132,7 +133,7 @@ public class CashFlowForecastTests
     [Fact]
     public void Demonstrated_averages_what_actually_came_in_and_went_out()
     {
-        var seen = CashFlowForecast.Demonstrated(new[] { Month(1, 3_000m, 2_000m), Month(2, 3_500m, 2_400m) });
+        var seen = CashFlowHistory.Demonstrated(new[] { Month(1, 3_000m, 2_000m), Month(2, 3_500m, 2_400m) });
 
         Assert.NotNull(seen);
         Assert.Equal(3_250m, seen!.Value.Income);     // (3000 + 3500) / 2
@@ -144,7 +145,7 @@ public class CashFlowForecastTests
     {
         // Checking on the 3rd of the month, the open period has barely any income in it yet. Averaging it in
         // would drag the projection down purely because of when you looked.
-        var seen = CashFlowForecast.Demonstrated(new[]
+        var seen = CashFlowHistory.Demonstrated(new[]
         {
             Month(1, 3_000m, 2_000m),
             Month(2, 3_000m, 2_000m),
@@ -158,8 +159,8 @@ public class CashFlowForecastTests
     [Fact]
     public void No_completed_period_means_no_demonstrated_basis_at_all()
     {
-        Assert.Null(CashFlowForecast.Demonstrated(new[] { Month(1, 3_000m, 2_000m, closed: false) }));
-        Assert.Null(CashFlowForecast.Demonstrated(Array.Empty<Period>()));
+        Assert.Null(CashFlowHistory.Demonstrated(new[] { Month(1, 3_000m, 2_000m, closed: false) }));
+        Assert.Null(CashFlowHistory.Demonstrated(Array.Empty<Period>()));
     }
 
     [Fact]

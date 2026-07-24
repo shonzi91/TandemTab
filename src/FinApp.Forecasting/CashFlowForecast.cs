@@ -1,6 +1,4 @@
-using FinApp.Domain.Periods;
-
-namespace FinApp.Domain.Forecasting;
+namespace FinApp.Forecasting;
 
 /// <summary>Where the income and spending figures being projected came from — shown to the user, because a runway
 /// built on two months of history means something different from one built on declared recurring items.</summary>
@@ -48,8 +46,9 @@ public sealed record CashFlowProjection(
 /// <para>
 /// <b>It takes plain income/spending figures, not recurring items.</b> Deciding what a month costs is a question
 /// about the account's history and declarations, which belongs to the caller — the first version read only declared
-/// <c>RecurringItem</c>s and so reported €0 income for anyone who logs their salary as it arrives rather than
-/// declaring it. Projecting from a source the user hasn't filled in produces confident nonsense.
+/// recurring items and so reported €0 income for anyone who logs their salary as it arrives rather than declaring
+/// it. Projecting from a source the user hasn't filled in produces confident nonsense. The completed-period average
+/// lives server-side in <c>CashFlowHistory.Demonstrated</c>; this class only walks the numbers forward.
 /// </para>
 ///
 /// <para>
@@ -69,30 +68,6 @@ public static class CashFlowForecast
 {
     /// <summary>Cap the horizon — beyond a couple of years "this repeats monthly" is fiction.</summary>
     public const int MaxMonths = 24;
-
-    /// <summary>
-    /// Average money-in and money-out per period across <b>completed</b> periods, or null when there are none.
-    /// This is the preferred basis for a runway: it reflects what actually happens, including the income and
-    /// spending a user never declared as recurring — which is exactly the case that made the first version report
-    /// €0 income and warn a healthy account it was about to run dry.
-    /// <para>
-    /// Only closed periods count. The period in progress is part-way through, so averaging it in drags both figures
-    /// down and makes the projection look worse the earlier in the month you check it.
-    /// </para>
-    /// <para>
-    /// Money out is expenses <i>plus</i> transfers to other accounts — both actually leave. Savings are excluded:
-    /// earmarking doesn't move money out of the account (see the class docs).
-    /// </para>
-    /// </summary>
-    public static (decimal Income, decimal Spending)? Demonstrated(IEnumerable<Period> periods)
-    {
-        var closed = periods.Where(p => p.Status == PeriodStatus.Closed).ToList();
-        if (closed.Count == 0) return null;
-
-        var income = closed.Sum(p => p.ContributionsPaidTotal.Amount) / closed.Count;
-        var spending = closed.Sum(p => p.ExpensesTotal.Amount + p.ExternalOutTotal.Amount) / closed.Count;
-        return (decimal.Round(income, 2), decimal.Round(spending, 2));
-    }
 
     /// <summary>
     /// Walk <paramref name="months"/> months forward from <paramref name="openingBalance"/>, applying a flat

@@ -1,4 +1,4 @@
-using FinApp.Domain.Forecasting;
+using FinApp.Forecasting;
 using Xunit;
 
 namespace FinApp.Domain.Tests;

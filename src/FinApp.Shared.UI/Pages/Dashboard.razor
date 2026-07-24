@@ -1141,12 +1141,12 @@ else
                     <div class="plan-controls">
                         <label>@Loc["Extra /mo across all debts"] <input type="number" step="10" min="0" @bind="_planExtra" @bind:event="oninput" /></label>
                         <div class="plan-toggle" role="group">
-                            <button type="button" class="chip @(_planStrategy == FinApp.Domain.Forecasting.LoanForecast.Strategy.Avalanche ? "on" : "")" @onclick="() => _planStrategy = FinApp.Domain.Forecasting.LoanForecast.Strategy.Avalanche" title="@Loc["Highest interest rate first — cheapest overall."]">🏔️ @Loc["Avalanche"]</button>
-                            <button type="button" class="chip @(_planStrategy == FinApp.Domain.Forecasting.LoanForecast.Strategy.Snowball ? "on" : "")" @onclick="() => _planStrategy = FinApp.Domain.Forecasting.LoanForecast.Strategy.Snowball" title="@Loc["Smallest balance first — quickest wins."]">⛄ @Loc["Snowball"]</button>
+                            <button type="button" class="chip @(_planStrategy == FinApp.Forecasting.LoanForecast.Strategy.Avalanche ? "on" : "")" @onclick="() => _planStrategy = FinApp.Forecasting.LoanForecast.Strategy.Avalanche" title="@Loc["Highest interest rate first — cheapest overall."]">🏔️ @Loc["Avalanche"]</button>
+                            <button type="button" class="chip @(_planStrategy == FinApp.Forecasting.LoanForecast.Strategy.Snowball ? "on" : "")" @onclick="() => _planStrategy = FinApp.Forecasting.LoanForecast.Strategy.Snowball" title="@Loc["Smallest balance first — quickest wins."]">⛄ @Loc["Snowball"]</button>
                             @infoTip(("plan-strat", Loc["Avalanche pays the highest-rate debt first (least interest overall). Snowball pays the smallest balance first (a quicker first win)."]))
                         </div>
                     </div>
-                    <p class="hint plan-strat-note">@(_planStrategy == FinApp.Domain.Forecasting.LoanForecast.Strategy.Avalanche ? Loc["🏔️ Attacking the highest-rate debt first — least interest overall."] : Loc["⛄ Attacking the smallest balance first — a quicker first win."])</p>
+                    <p class="hint plan-strat-note">@(_planStrategy == FinApp.Forecasting.LoanForecast.Strategy.Avalanche ? Loc["🏔️ Attacking the highest-rate debt first — least interest overall."] : Loc["⛄ Attacking the smallest balance first — a quicker first win."])</p>
                     @if (DebtPlan is { } plan)
                     {
                         <div class="plan-summary">
@@ -2598,22 +2598,22 @@ else
                     var pjPlanned = false;   // planned-contribution field retired — projections always use the demonstrated pace
                     var pjExtra = _payoffExtra > 0m ? _payoffExtra : 0m;
                     var pjTotal = pjInst + pjExtra;                       // installment is always there; extra is on top
-                    var pjAtInst = FinApp.Domain.Forecasting.LoanForecast.PayOff(pjBal, pjRate, pjInst);
-                    var pjAtTotal = FinApp.Domain.Forecasting.LoanForecast.PayOff(pjBal, pjRate, pjTotal);
+                    var pjAtInst = FinApp.Forecasting.LoanForecast.PayOff(pjBal, pjRate, pjInst);
+                    var pjAtTotal = FinApp.Forecasting.LoanForecast.PayOff(pjBal, pjRate, pjTotal);
                     // What changes the moment you actually pay what's set aside: the balance drops, so you're charged
                     // less interest every period from then on.
                     var pjSetAside = State.SavingBucketSaved(_projBucketId).Amount;
                     var pjPayNow = Math.Min(pjSetAside, pjBal);
-                    var pjIntNow = FinApp.Domain.Forecasting.LoanForecast.MonthlyInterest(pjBal, pjRate);
-                    var pjIntAfter = FinApp.Domain.Forecasting.LoanForecast.MonthlyInterest(pjBal - pjPayNow, pjRate);
+                    var pjIntNow = FinApp.Forecasting.LoanForecast.MonthlyInterest(pjBal, pjRate);
+                    var pjIntAfter = FinApp.Forecasting.LoanForecast.MonthlyInterest(pjBal - pjPayNow, pjRate);
                     // The two ways a lender can apply a lump-sum overpayment. Same money, same rate — the choice is
                     // only whether the saving lands as time or as monthly headroom, so show both and let the numbers
                     // argue. Shorter term always costs less interest; lower installment buys breathing room instead.
                     var pjAfterBal = pjBal - pjPayNow;
-                    var pjShorter = FinApp.Domain.Forecasting.LoanForecast.PayOff(pjAfterBal, pjRate, pjInst);
+                    var pjShorter = FinApp.Forecasting.LoanForecast.PayOff(pjAfterBal, pjRate, pjInst);
                     var pjKeepMonths = pjAtInst?.Months ?? 0;
                     var pjLowerInst = pjKeepMonths > 0
-                        ? FinApp.Domain.Forecasting.LoanForecast.PaymentFor(pjAfterBal, pjRate, pjKeepMonths)
+                        ? FinApp.Forecasting.LoanForecast.PaymentFor(pjAfterBal, pjRate, pjKeepMonths)
                         : null;
                     <h3><Icon Name="trending" /> @Loc["Payoff projection"] — @State.SavingBucketName(_projBucketId)</h3>
                     <div class="proj-grid">
@@ -4779,13 +4779,13 @@ else
     private decimal _payoffExtra;               // payoff modal: extra /mo ON TOP of the installment (defaults to pace)
     private decimal _invExtra;                  // investment growth modal: extra /mo invested (defaults to pace)
     private decimal _planExtra;                 // multi-debt planner: shared extra /period
-    private FinApp.Domain.Forecasting.LoanForecast.Strategy _planStrategy = FinApp.Domain.Forecasting.LoanForecast.Strategy.Avalanche;
+    private FinApp.Forecasting.LoanForecast.Strategy _planStrategy = FinApp.Forecasting.LoanForecast.Strategy.Avalanche;
 
     // The multi-debt plan (reads the debt buckets), and its "installments only" baseline for the savings figure.
-    private FinApp.Domain.Forecasting.LoanForecast.StrategyPlan? DebtPlan =>
-        FinApp.Domain.Forecasting.LoanForecast.PlanPayoff(State.DebtLoanInputs, _planExtra, _planStrategy);
-    private FinApp.Domain.Forecasting.LoanForecast.StrategyPlan? DebtBaseline =>
-        FinApp.Domain.Forecasting.LoanForecast.PlanPayoff(State.DebtLoanInputs, 0m, _planStrategy);
+    private FinApp.Forecasting.LoanForecast.StrategyPlan? DebtPlan =>
+        FinApp.Forecasting.LoanForecast.PlanPayoff(State.DebtLoanInputs, _planExtra, _planStrategy);
+    private FinApp.Forecasting.LoanForecast.StrategyPlan? DebtBaseline =>
+        FinApp.Forecasting.LoanForecast.PlanPayoff(State.DebtLoanInputs, 0m, _planStrategy);
 
     /// <summary>Months until every debt bucket is cleared, projecting each at its installment + the pace/plan the user
     /// actually sets aside (<see cref="BudgetingState.EffectiveSavingPace"/>) — mirroring the payoff modal's
@@ -4801,7 +4801,7 @@ else
         foreach (var d in debts)
         {
             var pace = State.EffectiveSavingPace(d.Id)?.Amount ?? 0m;
-            if (FinApp.Domain.Forecasting.LoanForecast.PayOff(d.DebtBalance, d.DebtAnnualRatePercent, d.DebtInstallment + pace) is not { } p)
+            if (FinApp.Forecasting.LoanForecast.PayOff(d.DebtBalance, d.DebtAnnualRatePercent, d.DebtInstallment + pace) is not { } p)
                 return null;   // one debt never clears at this amount → no debt-free date to show
             months = Math.Max(months, p.Months);
         }
@@ -5104,7 +5104,7 @@ else
         var debt = State.SavingBuckets.Where(x => x.Bucket.IsDebt && x.Bucket.DebtBalance > 0m)
             .OrderByDescending(x => x.Bucket.DebtAnnualRatePercent).Select(x => x.Bucket).FirstOrDefault();
         if (debt is null) return null;
-        if (FinApp.Domain.Forecasting.LoanForecast.PayOff(debt.DebtBalance, debt.DebtAnnualRatePercent, debt.DebtInstallment) is not { } b) return null;
+        if (FinApp.Forecasting.LoanForecast.PayOff(debt.DebtBalance, debt.DebtAnnualRatePercent, debt.DebtInstallment) is not { } b) return null;
 
         // Specific discretionary budgets with spare (up to 10) that would actually move the payoff — minus any the
         // user has already dismissed this period, so a handled/ignored suggestion never re-nags.
@@ -5122,10 +5122,10 @@ else
 
     /// <summary>Discretionary budgets with spare that would speed up <paramref name="debt"/>, excluding ones dismissed
     /// this period. Shared by the nudge and the "↻ another" affordance so both agree on what's left to show.</summary>
-    private List<(Guid Id, string Name, decimal Amount, FinApp.Domain.Forecasting.LoanForecast.Payoff? Fast)> NudgeCandidates(
-        SavingCategory debt, FinApp.Domain.Forecasting.LoanForecast.Payoff b) =>
+    private List<(Guid Id, string Name, decimal Amount, FinApp.Forecasting.LoanForecast.Payoff? Fast)> NudgeCandidates(
+        SavingCategory debt, FinApp.Forecasting.LoanForecast.Payoff b) =>
         State.DiscretionaryLeftovers().Where(c => !_dismissedNudges.Contains(c.Id)).Take(10)
-            .Select(c => (c.Id, c.Name, c.Amount, Fast: FinApp.Domain.Forecasting.LoanForecast.PayOff(debt.DebtBalance, debt.DebtAnnualRatePercent, debt.DebtInstallment + c.Amount)))
+            .Select(c => (c.Id, c.Name, c.Amount, Fast: FinApp.Forecasting.LoanForecast.PayOff(debt.DebtBalance, debt.DebtAnnualRatePercent, debt.DebtInstallment + c.Amount)))
             .Where(c => c.Fast is { } f && (b.Months > f.Months || b.TotalInterest > f.TotalInterest))
             .ToList();
 
@@ -5162,8 +5162,8 @@ else
             if (b.IsDebt)
             {
                 if (b.DebtBalance <= 0m) continue;
-                monthsPlanned = FinApp.Domain.Forecasting.LoanForecast.PayOff(b.DebtBalance, b.DebtAnnualRatePercent, planned)?.Months;
-                monthsPace = FinApp.Domain.Forecasting.LoanForecast.PayOff(b.DebtBalance, b.DebtAnnualRatePercent, pace)?.Months;
+                monthsPlanned = FinApp.Forecasting.LoanForecast.PayOff(b.DebtBalance, b.DebtAnnualRatePercent, planned)?.Months;
+                monthsPace = FinApp.Forecasting.LoanForecast.PayOff(b.DebtBalance, b.DebtAnnualRatePercent, pace)?.Months;
             }
             else
             {

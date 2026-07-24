@@ -1,9 +1,9 @@
-namespace FinApp.Domain.Forecasting;
+namespace FinApp.Forecasting;
 
 /// <summary>
 /// Pure loan amortization math for the Forecasts tab — projections and "what-if" simulations only. It touches
-/// nothing in the money model (no <see cref="Periods.Period"/>, funds, savings or balances): it just takes numbers
-/// and returns numbers, so a loan/goal can be forecast without ever affecting the account's actual money flow.
+/// nothing in the money model (no periods, funds, savings or balances): it just takes numbers and returns numbers,
+/// so a loan/goal can be forecast without ever affecting the account's actual money flow.
 /// </summary>
 public static class LoanForecast
 {

@@ -1,6 +1,6 @@
 using FinApp.Domain.Accounts;
 using FinApp.Domain.Common;
-using FinApp.Domain.Forecasting;
+using FinApp.Forecasting;
 using FinApp.Domain.Periods;
 
 namespace FinApp.Domain.Services;

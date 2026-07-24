@@ -2,6 +2,7 @@ using FinApp.Domain.Accounts;
 using FinApp.Domain.Forecasting;
 using FinApp.Domain.Periods;
 using FinApp.Domain.Recurring;
+using FinApp.Forecasting;
 
 namespace FinApp.Domain.Services;
 
@@ -37,7 +38,7 @@ public static class AccountForecast
         var committed = TotalMonthlySetAside(account, period);
         var opening = period.ExpectedClosingBalance.Amount;
 
-        if (CashFlowForecast.Demonstrated(account.Periods) is { } seen)
+        if (CashFlowHistory.Demonstrated(account.Periods) is { } seen)
             return CashFlowForecast.Project(
                 opening, seen.Income, seen.Spending, period.From, months,
                 CashFlowBasis.Demonstrated, committed);
