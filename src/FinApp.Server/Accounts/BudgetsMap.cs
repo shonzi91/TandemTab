@@ -14,6 +14,11 @@ public static class BudgetsMap
         if ((viewPeriod ?? account.CurrentPeriod) is not { } period)
             return BudgetsViewDto.Empty with { Version = version, Currency = account.Currency };
 
+        // The savings already reserved before this period — the same figure the domain's planning caps subtract so
+        // previously-saved money isn't offered up again (mirrors BudgetingState.PriorSaved / SavingsMap).
+        var report = new SavingsReportService();
+        var priorSaved = report.AccumulatedTotal(account) - period.SavingsNetTotal;
+
         var coverage = new BudgetCoverageService();
         var rows = period.Budgets.Select(b =>
         {
@@ -21,7 +26,8 @@ public static class BudgetsMap
             var cat = account.FindCategory(b.CategoryId);
             return new BudgetRowDto(b.CategoryId, cat?.Name ?? "—", cat?.Icon,
                 cov.Allocated.Amount, cov.Spent.Amount, cov.Remaining.Amount,
-                b.AlertThreshold, b.NotifyOnEveryExpense, cov.IsOverBudget);
+                b.AlertThreshold, b.NotifyOnEveryExpense, cov.IsOverBudget,
+                cat?.IsEssential ?? false, period.MaxBudgetFor(b.CategoryId, priorSaved).Amount);
         }).ToList();
 
         var categories = account.Categories

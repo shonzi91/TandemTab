@@ -2,6 +2,8 @@ using System.Net;
 using System.Net.Http.Json;
 using FinApp.Contracts;
 using FinApp.Domain.Accounts;
+using FinApp.Domain.Budgeting;
+using FinApp.Domain.Common;
 
 namespace FinApp.Server.Tests;
 
@@ -125,6 +127,49 @@ public class BudgetMutationApiTests : IClassFixture<FinAppServerFactory>
 
         var resp = await client.PutAsJsonAsync($"/accounts/{account.Id}/budgets/{rent}", new SetBudgetRequest(-10m));
         Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
+    }
+
+    [Fact]
+    public async Task Budgets_view_carries_the_essential_flag_and_the_per_category_edit_cap()
+    {
+        var (client, auth) = await _factory.RegisterAndAuthAsync("bd_view");
+        var account = await CreateAccount(client, "View");
+
+        // Seed two budgeted categories — Rent (essential) and Fun (discretionary, with some spend) — plus income,
+        // so MaxBudget has a real reserve to work against.
+        var agg = new Account("Seed", "EUR");
+        agg.AddDefaultFunds();
+        var rentCat = agg.AddCategory("Rent"); rentCat.SetEssential(true);
+        var funCat = agg.AddCategory("Fun");   funCat.SetEssential(false);
+        agg.AddMember(auth.UserId, "Me");
+        var fund = agg.FundId("Bank");
+        var period = agg.StartPeriod(new DateOnly(2026, 1, 1), new DateOnly(2026, 1, 31));
+        period.Deposit(auth.UserId, new Money(1000m, "EUR"));
+        period.AddBudget(rentCat.Id, new Money(300m, "EUR"));
+        period.AddBudget(funCat.Id, new Money(200m, "EUR"));
+        period.AddExpense(new Expense(funCat.Id, new Money(50m, "EUR"), new DateOnly(2026, 1, 5), auth.UserId, fund));
+        (await client.PutAsJsonAsync($"/accounts/{account.Id}/snapshot",
+            new SaveAccountRequest(AccountSnapshotSerializer.Serialize(agg), 0))).EnsureSuccessStatusCode();
+
+        var view = (await client.GetFromJsonAsync<BudgetsViewDto>($"/accounts/{account.Id}/budgets"))!;
+
+        var rent = view.Budgets.Single(b => b.CategoryId == rentCat.Id);
+        var fun = view.Budgets.Single(b => b.CategoryId == funCat.Id);
+
+        Assert.True(rent.Essential);
+        Assert.False(fun.Essential);
+
+        // Fun is a discretionary row with money left → the client's "discretionary leftovers" reallocation source.
+        Assert.Equal(200m, fun.Allocated);
+        Assert.Equal(50m, fun.Spent);
+        Assert.Equal(150m, fun.Remaining);
+
+        // MaxBudget is a real computed cap: never below the current allocation (you can keep your budget), and below
+        // the whole balance (the other category's budget is reserved out of what's available to this one).
+        Assert.True(rent.MaxBudget >= rent.Allocated);
+        Assert.True(fun.MaxBudget >= fun.Allocated);
+        Assert.True(rent.MaxBudget < 1000m);
+        Assert.True(fun.MaxBudget < 1000m);
     }
 
     [Fact]
