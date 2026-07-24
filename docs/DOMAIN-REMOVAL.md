@@ -43,25 +43,26 @@ structure CRUD, budgets, fund transfers + opening balances, reallocation, period
 settlement, recurring confirm/skip, membership/invitations. Only deferred write: bank-import provenance
 (`ConfirmBankMoneyOutAsTransfer`, prod-only).
 
-**Read gaps — verified against the code (Session 54):**
-- **Goal/debt/investment what-if modals** (`ProjectInvestment`, `ProjectCashFlow`, `DebtLoanInputs`, the loan
+**Read gaps — verified against the code (Session 54), with status:**
+- ✅ **Goal/debt/investment what-if modals** (`ProjectInvestment`, `ProjectCashFlow`, `DebtLoanInputs`, the loan
   simulator, the avalanche/snowball planner): the underlying math — `LoanForecast`, `InvestmentForecast`,
   `CashFlowForecast.Project` — was verified **entirely pure** (`decimal`/`Guid`/`string` only; no `Money`,
   `Account`, or `Period`). **RESOLVED as a client-side move, not a server endpoint** — see the leaf project below.
-  Still TODO: the savings DTO (`SavingBucketDto`) must carry the raw **projection inputs** the sliders re-project
-  from (annual rate, term years, compounds/yr, installment, original balance, debt-as-of, planned contribution,
-  current saved) — today it carries only the pre-resolved figures. And a small **cash-flow-basis read**
-  (demonstrated income/spending + basis + `hasUnknown`) so the runway what-if slider can re-run `Project` locally
-  (the `/runway` endpoint returns the projection but not the basis income/spending figures the slider needs).
-- **Reallocation/savings caps** (`MaxAdditionalSavings`, `MaxBudgetFor(cat)`, `AvailableToTransferOut[FromFund]`):
-  **genuine server gaps** — they call `Period.*After(PriorSaved)`, needing the whole account. Add to the relevant
-  DTOs (savings/budgets) or a small reallocation read. `DiscretionaryLeftovers` is **already derivable** from the
-  budgets DTO coverage rows — only needs `Essential` added to `BudgetRowDto` (it isn't there yet).
-- **Health-score trends** modal (multi-period series): still a gap — `/insights` returns the current score/band only.
-- **Expense entry helpers**: `SuggestExpenseCategory` + the "faster entry" reads (`RecentMerchants`,
-  `RecentCategories`, `LastFundForCategory`, `LastExpense`) walk all periods' manual expenses — a spending-history
-  read gap. `ImportLooksDuplicate` is largely covered server-side already (S52 import dedupe snapshots existing keys).
-- **Bank review details** (`BankMatchKey`, per-transaction mapping) — prod-only, bank-gated; last.
+  **DONE:** `SavingBucketDto.Forecast` (nested `SavingBucketForecastDto`) now carries the raw projection inputs
+  (rate/term/compounds; debt stored+original balance/rate/installment/as-of; demonstrated pace + planned
+  contribution); `RunwayDto` now carries `OpeningBalance`/`FromMonth`/`MonthlyCommitted` so the runway what-if
+  slider re-runs `Project` client-side. (commits: forecast leaf; SavingBucketDto inputs; RunwayDto inputs.)
+- ✅ **Reallocation/savings caps** (`MaxAdditionalSavings`, `MaxBudgetFor(cat)`, `AvailableToTransferOut[FromFund]`):
+  **DONE** — `BudgetRowDto` gained `Essential` + `MaxBudget`; `SavingsViewDto` gained `MaxAdditionalSavings`;
+  `FundRowDto` gained `AvailableToTransferOut`. All computed server-side against the same prior-saved reserve the
+  domain uses. `DiscretionaryLeftovers` is now derivable client-side from the budgets coverage rows + `Essential`.
+- ⬜ **Health-score trends** modal (multi-period series): still a gap — `/insights` returns the current score/band only.
+- ✅ **Expense entry helpers**: **DONE** — new `GET /accounts/{id}/expense-entry` → `ExpenseEntryDto` returns the
+  recent manual expenses (capped at 100, newest-first, auto-filed excluded) and the client derives `RecentMerchants`,
+  `RecentCategories`, `LastFundForCategory`, `LastExpense` and `SuggestExpenseCategory` from that one list (pure list
+  arithmetic — `BankMatchKey` == the server's `MatchKeyOf`, so the suggestion stays identical). `ImportLooksDuplicate`
+  is largely covered server-side already (S52 import dedupe snapshots existing keys).
+- ⬜ **Bank review details** (`BankMatchKey`, per-transaction mapping) — prod-only, bank-gated; last.
 
 ### Keystone move done (Session 54): pure forecast math extracted to a domain-free leaf project
 New project **`FinApp.Forecasting`** (no dependencies) now holds `LoanForecast`, `InvestmentForecast`, and the pure

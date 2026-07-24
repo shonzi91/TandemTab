@@ -45,6 +45,28 @@ public class ExpenseMutationApiTests : IClassFixture<FinAppServerFactory>
         client.GetFromJsonAsync<AccountOverviewDto>($"/accounts/{accountId}/overview");
 
     [Fact]
+    public async Task Expense_entry_history_returns_recent_manual_expenses_newest_first()
+    {
+        var (client, auth) = await _factory.RegisterAndAuthAsync("exp_entry");
+        var account = await CreateAccount(client, "Entry");
+        var (cat, fund) = await SeedAsync(client, account.Id, auth.UserId);
+
+        (await client.PostAsJsonAsync($"/accounts/{account.Id}/expenses",
+            new AddExpenseRequest(cat, 200m, fund, When, "Lunch"))).EnsureSuccessStatusCode();
+        (await client.PostAsJsonAsync($"/accounts/{account.Id}/expenses",
+            new AddExpenseRequest(cat, 5m, fund, When, "Coffee"))).EnsureSuccessStatusCode();
+
+        var entry = (await client.GetFromJsonAsync<ExpenseEntryDto>($"/accounts/{account.Id}/expense-entry"))!;
+
+        Assert.Equal(2, entry.Recent.Count);
+        Assert.Equal("Coffee", entry.Recent[0].Note);   // last-added first
+        Assert.Equal(5m, entry.Recent[0].Amount);
+        Assert.Equal(cat, entry.Recent[0].CategoryId);
+        Assert.Equal(fund, entry.Recent[0].FundId);
+        Assert.Equal("Lunch", entry.Recent[1].Note);
+    }
+
+    [Fact]
     public async Task Add_expense_advances_the_version_and_shows_in_the_overview()
     {
         var (client, auth) = await _factory.RegisterAndAuthAsync("exp_add");

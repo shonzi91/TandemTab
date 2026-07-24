@@ -601,6 +601,16 @@ accounts.MapGet("/{id:guid}/budgets", async (Guid id, int? period, ClaimsPrincip
     return Results.Ok(BudgetsMap.View(account, snap.Version, ResolvePeriod(account, period)));
 });
 
+// Path-B faster-expense-entry read: recent manual expenses the add-expense modal derives its chips/suggestions from
+// (account-level — spans all periods, not period-scoped).
+accounts.MapGet("/{id:guid}/expense-entry", async (Guid id, ClaimsPrincipal user, SnapshotService svc, CancellationToken ct) =>
+{
+    var snap = await svc.GetAsync(user.UserId(), id, ct);
+    if (string.IsNullOrEmpty(snap.Payload)) return Results.Ok(ExpenseEntryDto.Empty);
+    var account = AccountSnapshotSerializer.Deserialize(snap.Payload);
+    return Results.Ok(ExpenseEntryMap.View(account, snap.Version));
+});
+
 // Path-B thin-Recurring read: bills/income expectations with their due state for the open period.
 accounts.MapGet("/{id:guid}/recurring", async (Guid id, int? period, ClaimsPrincipal user, SnapshotService svc, CancellationToken ct) =>
 {
