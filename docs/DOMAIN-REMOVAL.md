@@ -56,7 +56,12 @@ settlement, recurring confirm/skip, membership/invitations. Only deferred write:
   **DONE** — `BudgetRowDto` gained `Essential` + `MaxBudget`; `SavingsViewDto` gained `MaxAdditionalSavings`;
   `FundRowDto` gained `AvailableToTransferOut`. All computed server-side against the same prior-saved reserve the
   domain uses. `DiscretionaryLeftovers` is now derivable client-side from the budgets coverage rows + `Essential`.
-- ⬜ **Health-score trends** modal (multi-period series): still a gap — `/insights` returns the current score/band only.
+- ✅ **Health-score trends** modal: **NOT a gap** — the prior "score/band only" note was stale. `/insights` →
+  `InsightsDto` already maps the whole `FinancialHealthReport` (verdict, summary, signals, breakdown, **Trend**,
+  **MiniTrends**, quick wins) with language-independent `InsightMessageDto` (code+args) so clients localize locally.
+  The only real shortfall was that `/insights` was hardwired to the latest period while the thick modal recomputes
+  for the *viewed* period — **fixed** by adding `?period=` (0-based, oldest=0; out-of-range → latest), + 2 tests
+  (insights had no coverage before).
 - ✅ **Expense entry helpers**: **DONE** — new `GET /accounts/{id}/expense-entry` → `ExpenseEntryDto` returns the
   recent manual expenses (capped at 100, newest-first, auto-filed excluded) and the client derives `RecentMerchants`,
   `RecentCategories`, `LastFundForCategory`, `LastExpense` and `SuggestExpenseCategory` from that one list (pure list

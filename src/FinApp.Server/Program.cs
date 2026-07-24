@@ -759,13 +759,16 @@ accounts.MapGet("/{id:guid}/notifications", async (Guid id, ClaimsPrincipal user
 
 // The Insights health read (latest period): the gauge score/band + savings + trend + breakdown numbers, plus the
 // narrative as language-independent messages (code + args). The client owns the per-language templates — see InsightsDto.
-accounts.MapGet("/{id:guid}/insights", async (Guid id, ClaimsPrincipal user, SnapshotService svc, CancellationToken ct) =>
+accounts.MapGet("/{id:guid}/insights", async (Guid id, int? period, ClaimsPrincipal user, SnapshotService svc, CancellationToken ct) =>
 {
     var snap = await svc.GetAsync(user.UserId(), id, ct);
     if (string.IsNullOrEmpty(snap.Payload)) return Results.Ok(InsightsDto.Empty);
     var account = AccountSnapshotSerializer.Deserialize(snap.Payload);
     if (account.Periods.Count == 0) return Results.Ok(InsightsDto.Empty);
-    var report = new InsightsService().Build(account, account.Periods.Count - 1);
+    // Insights reflect the *viewed* period (the thick modal recomputes per period, keyed on PeriodNumber). ?period is
+    // the 0-based oldest=0 index shared by the other reads; out-of-range/absent falls back to the latest period.
+    var idx = period is int p && p >= 0 && p < account.Periods.Count ? p : account.Periods.Count - 1;
+    var report = new InsightsService().Build(account, idx);
     if (!report.HasData) return Results.Ok(InsightsDto.Empty);
 
     static string Dir(DeltaDir d) => d == DeltaDir.Up ? "up" : d == DeltaDir.Down ? "down" : "flat";
