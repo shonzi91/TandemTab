@@ -28,11 +28,27 @@ very last step; convert incrementally underneath it.
   `FinApp.Domain` `ProjectReference` and is now pure wire DTOs. Every consumer already referenced Domain, so the
   move was mechanical (add `using FinApp.Domain.Accounts;`). Whole solution builds, **514 tests green**. The
   `Web → Shared.UI → Domain` path still ships the domain to the bundle — that's Phase 2/3.
-- **Phase 2 — Rebind `BudgetingState` to thin DTOs, surface by surface.** Re-express its ~100 members from the
-  thin DTOs instead of the domain `Account`, keeping `Dashboard.razor` markup identical. Replace the client
-  `Money` type with `decimal`+currency (matching the DTOs). One verified slice per surface.
-- **Phase 3 — Drop the domain.** Remove the final references, delete the on-device money model + `InsightNarrator`,
-  drop the `FinApp.Domain` `ProjectReference`, confirm the WASM bundle no longer ships the domain assembly.
+- **Phase 2 — Rebind `BudgetingState` to thin DTOs.** ⚠️ **Corrected approach (Session 54, from reading the code):
+  the "one tab per slice" framing does NOT survive contact with `Dashboard.razor`.** The tabs are not isolated —
+  every tabpanel exposes the domain `Period` (e.g. `State.Period`, used across Home/Account/Budgets/Savings) and a
+  shared foundation of `Money` (97 uses), category/coverage reads (`CategoryOptions`/`HasBudget`/`ChildrenOf`/
+  `CategoryIcon`/`Coverage`), and fund/member reads. And the "Budgets" tab is actually the combined **Spending+
+  Budgets** panel (`Tab.Budgets`). So a slice can't be cut by tab. **Sequence by foundational read instead**, in two
+  movements that keep the UI pixel-identical:
+  - **2a — Re-source `BudgetingState`'s members from the thin DTOs while keeping their existing signatures**
+    (return `Money`/domain-shaped values built from the DTOs' `decimal`+`Currency`). `Dashboard.razor` does **not
+    change** — it still calls `State.X`. This moves the computation off the on-device `Account` (the real Path-B
+    win) invisibly to the UI, and is where the risk-laden logic lives; do it in coherent read-cluster commits
+    (period/overview → spending/budgets → wallets → savings → insights → structure/members), each build+render-verified.
+    The `FinApp.Domain` reference stays (Money is still domain) — nothing drops from the bundle yet.
+  - **2b — Global `Money` → `decimal`+currency swap.** Once no member sources from `Account`, replace the client
+    `Money` type. This is cross-cutting by nature (touches `Fmt`/`MoneyN` and ~97 sites) but purely a type change —
+    the formatted output is provably identical. There's already a `decimal` path (`Dashboard.MoneyN(decimal)` wraps
+    `Fmt(new Money(x, State.Currency))`), so a `Fmt(decimal)` overload + collapsing the 60 `Fmt(State.Money(x))`
+    round-trips is the natural on-ramp.
+- **Phase 3 — Drop the domain.** Remove the final `Account`/`Money`/`AccountSnapshotSerializer` client usage + the
+  `FinApp.Domain` `ProjectReference` (keep `FinApp.Forecasting`), delete the on-device money model + `InsightNarrator`,
+  confirm the WASM bundle no longer ships the domain assembly (the Phase-1 exit criterion).
 
 ## Phase 0 coverage audit
 
