@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using FinApp.Contracts;
 using FinApp.Domain.Accounts;
 using FinApp.Domain.Recurring;
+using FinApp.Forecasting;
 
 namespace FinApp.Server.Tests;
 
@@ -40,6 +41,37 @@ public class RunwayApiTests : IClassFixture<FinAppServerFactory>
         Assert.Equal(3000m, rw.MonthlyIncome);
         Assert.Equal(1000m, rw.MonthlySpending);
         Assert.Null(rw.FirstShortfallMonth); // income exceeds spending → never runs short
+    }
+
+    [Fact]
+    public async Task Runway_carries_the_inputs_to_reproject_the_whatif_slider_client_side()
+    {
+        var (client, _) = await _factory.RegisterAndAuthAsync("rw_reproject");
+        var summary = await CreateAccount(client, "Reproject");
+
+        var agg = new Account("Reproject", "EUR");
+        agg.AddDefaultFunds();
+        var category = agg.AddCategory("Rent").Id;
+        var fund = agg.FundId("Bank");
+        agg.StartPeriod(new DateOnly(2026, 1, 1), new DateOnly(2026, 1, 31));
+        agg.AddRecurring(new RecurringItem("Salary", RecurringKind.Income, RecurringAmountMode.Fixed, 2000m, 25, category, fund));
+        agg.AddRecurring(new RecurringItem("Rent", RecurringKind.Expense, RecurringAmountMode.Fixed, 2200m, 1, category, fund));
+        await client.PutAsJsonAsync($"/accounts/{summary.Id}/snapshot",
+            new SaveAccountRequest(AccountSnapshotSerializer.Serialize(agg), 0));
+
+        var rw = (await client.GetFromJsonAsync<RunwayDto>($"/accounts/{summary.Id}/runway"))!;
+
+        // Reconstruct the exact server projection from the DTO fields alone, using the client-shippable pure math.
+        var basis = rw.BasedOnRecurring ? CashFlowBasis.Recurring : CashFlowBasis.Demonstrated;
+        var local = CashFlowForecast.Project(rw.OpeningBalance, rw.MonthlyIncome, rw.MonthlySpending,
+            rw.FromMonth, rw.Months, basis, rw.MonthlyCommitted, rw.HasUnknownAmounts);
+        Assert.Equal(rw.Months, local.Months.Count);
+        Assert.Equal(rw.FirstShortfallMonth, local.FirstShortfallMonth);   // spends more than it earns → a shortfall
+
+        // And the "what if I spent €300 less each month?" slider pushes the shortfall out — all computed locally.
+        var eased = CashFlowForecast.Project(rw.OpeningBalance, rw.MonthlyIncome, rw.MonthlySpending - 300m,
+            rw.FromMonth, rw.Months, basis, rw.MonthlyCommitted, rw.HasUnknownAmounts);
+        Assert.True(eased.FirstShortfallMonth is null || eased.FirstShortfallMonth > local.FirstShortfallMonth);
     }
 
     [Fact]

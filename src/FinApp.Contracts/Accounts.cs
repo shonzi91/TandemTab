@@ -316,6 +316,12 @@ public record AccountOverviewDto(
 /// projected; <see cref="FirstShortfallMonth"/> is the first month the balance ends below zero, or null if none
 /// does. <see cref="BasedOnRecurring"/> distinguishes the young-account fallback (declared recurring bills) from
 /// the normal basis (an average of the last <see cref="CompletedPeriodCount"/> closed months).
+/// <para>
+/// <see cref="OpeningBalance"/>, <see cref="FromMonth"/> and <see cref="MonthlyCommitted"/> are the remaining inputs
+/// <c>FinApp.Forecasting.CashFlowForecast.Project</c> needs, so a thin client can reconstruct the whole month-by-month
+/// series <b>and</b> re-run the "what if I spent €X less?" slider entirely client-side (basis = <c>Recurring</c> when
+/// <see cref="BasedOnRecurring"/>, else <c>Demonstrated</c>) — no per-tick server round-trip.
+/// </para>
 /// </summary>
 public record RunwayDto(
     string Currency,
@@ -325,7 +331,10 @@ public record RunwayDto(
     decimal MonthlySpending,
     bool BasedOnRecurring,
     int CompletedPeriodCount,
-    bool HasUnknownAmounts);
+    bool HasUnknownAmounts,
+    decimal OpeningBalance,
+    DateOnly FromMonth,
+    decimal MonthlyCommitted);
 
 /// <summary>
 /// The Home "on track for" targets, computed server-side (Option-A migration). Empty when there's nothing to project

@@ -681,7 +681,8 @@ accounts.MapGet("/{id:guid}/runway", async (Guid id, ClaimsPrincipal user, Snaps
         proj.Months[0].Income, proj.Months[0].Spending,
         proj.Basis == CashFlowBasis.Recurring,
         account.Periods.Count(p => p.Status == PeriodStatus.Closed),
-        proj.HasUnknownAmounts));
+        proj.HasUnknownAmounts,
+        proj.Months[0].Opening, proj.Months[0].Month, proj.MonthlyCommitted));
 });
 
 // The Home "on track for" targets — the debt-free date + each savings goal's date. 200 with an empty list when
