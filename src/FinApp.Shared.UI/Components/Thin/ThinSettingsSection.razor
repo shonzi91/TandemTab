@@ -1,8 +1,14 @@
 @* Thin (domain-free) Account settings. Rename the account (relational PUT /name) and set the savings-rate
-   target (rides the mutation spine, PUT /savings-target). Account-level, so not period-scoped. *@
+   target (rides the mutation spine, PUT /savings-target). Account-level, so not period-scoped. Also hosts
+   Backup & restore: a LOSSLESS account snapshot (GET/PUT /snapshot) — the real recovery path (the .xlsx export
+   is a human-readable report and can't be re-imported). *@
+@using System.Text
+@using System.Text.Json
 @using FinApp.Contracts
 @using FinApp.Shared.UI.Services
+@using Microsoft.AspNetCore.Components.Forms
 @inject FinAppApiClient Api
+@inject IJSRuntime JS
 
 @if (_error is { } err)
 {
@@ -27,6 +33,36 @@ else
         <button @onclick="SaveTarget" disabled="@(_busy || _targetPercent < 0 || _targetPercent > 100 || _targetPercent == _originalPercent)">Save</button>
     </div>
 
+    <h3>Backup &amp; restore</h3>
+    <p class="tst-hint">
+        A <strong>backup</strong> is a complete, lossless copy of this account's data — the real safety net (the
+        report below is for reading, not restoring). Keep the file safe: it is <strong>unencrypted</strong>.
+    </p>
+    <div class="tst-row">
+        <button @onclick="DownloadBackup" disabled="@_busy">Download backup (.json)</button>
+        <a class="tst-link" href="javascript:void(0)" @onclick="DownloadReport">Download report (.xlsx)</a>
+    </div>
+
+    <p class="tst-hint tst-danger-hint">
+        Restoring <strong>replaces everything</strong> in this account with the backup's contents. This can't be undone.
+    </p>
+    @if (!_restoreConfirm)
+    {
+        <div class="tst-row">
+            <InputFile OnChange="OnRestoreFilePicked" accept=".json" />
+        </div>
+    }
+    else
+    {
+        <div class="tst-row tst-restore-confirm">
+            <span>Restore from this backup (v@_pendingVersion, @_pendingSizeKb KB)? It overwrites all current data.</span>
+        </div>
+        <div class="tst-row">
+            <button class="tst-danger" @onclick="ConfirmRestore" disabled="@_busy">Yes, restore</button>
+            <button class="tst-link" @onclick="CancelRestore">cancel</button>
+        </div>
+    }
+
     <p class="tst-meta">Currency @_settings.Currency · changes are not period-specific.</p>
     @if (_saved is { } msg) { <p class="tst-ok">@msg</p> }
 }
@@ -42,6 +78,12 @@ else
     private string? _error;
     private string? _saved;
     private bool _busy;
+
+    // Restore staging: the parsed backup awaiting a confirm.
+    private AccountSnapshot? _pendingRestore;
+    private bool _restoreConfirm;
+    private long _pendingVersion;
+    private int _pendingSizeKb;
 
     protected override async Task OnInitializedAsync() => await Load();
 
@@ -87,6 +129,85 @@ else
         catch (Exception ex) { _error = ex.Message; }
         finally { _busy = false; }
     }
+
+    // --- Backup & restore (lossless snapshot round-trip) ---
+
+    private async Task DownloadBackup()
+    {
+        _busy = true; _saved = null; _error = null;
+        try
+        {
+            var snap = await Api.GetSnapshotAsync(AccountId);   // Payload is the decrypted, lossless account JSON
+            var json = JsonSerializer.Serialize(snap);
+            var b64 = Convert.ToBase64String(Encoding.UTF8.GetBytes(json));
+            var name = $"tandemtab-backup-{Sanitize(_settings?.Name)}-{DateTime.Now:yyyyMMdd}.json";
+            await JS.InvokeVoidAsync("finappDownloadFile", name, b64, "application/json");
+            _saved = "Backup downloaded. Keep it somewhere safe.";
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    private async Task DownloadReport()
+    {
+        _busy = true; _saved = null; _error = null;
+        try
+        {
+            var (bytes, fileName) = await Api.ExportAccountAsync(AccountId);
+            await JS.InvokeVoidAsync("finappDownloadFile", fileName, Convert.ToBase64String(bytes),
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    private async Task OnRestoreFilePicked(InputFileChangeEventArgs e)
+    {
+        _error = null; _saved = null;
+        try
+        {
+            using var stream = e.File.OpenReadStream(maxAllowedSize: 64 * 1024 * 1024);
+            using var reader = new StreamReader(stream);
+            var json = await reader.ReadToEndAsync();
+            var snap = JsonSerializer.Deserialize<AccountSnapshot>(json);
+            if (snap is null || string.IsNullOrEmpty(snap.Payload))
+            {
+                _error = "That doesn't look like a TandemTab backup.";
+                return;
+            }
+            _pendingRestore = snap;
+            _pendingVersion = snap.Version;
+            _pendingSizeKb = (int)Math.Ceiling(Encoding.UTF8.GetByteCount(snap.Payload) / 1024.0);
+            _restoreConfirm = true;
+        }
+        catch (Exception ex) { _error = $"Couldn't read that file: {ex.Message}"; }
+    }
+
+    private void CancelRestore() { _restoreConfirm = false; _pendingRestore = null; }
+
+    private async Task ConfirmRestore()
+    {
+        if (_pendingRestore is null) return;
+        _busy = true; _saved = null; _error = null;
+        try
+        {
+            // Overwrite in place: send the CURRENT stored version so the concurrency check passes, then push the
+            // backup's payload. Restores the account body (periods/categories/funds/…); the relational header
+            // (name/members) is untouched.
+            var current = await Api.GetSnapshotAsync(AccountId);
+            await Api.SaveSnapshotAsync(AccountId, new SaveAccountRequest(_pendingRestore.Payload, current.Version));
+            _restoreConfirm = false; _pendingRestore = null;
+            _saved = "Restored. Reload the page to see the restored data.";
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    private static string Sanitize(string? name)
+    {
+        var clean = new string((name ?? "account").Where(c => char.IsLetterOrDigit(c) || c is ' ' or '-' or '_').ToArray()).Trim().Replace(' ', '-');
+        return string.IsNullOrEmpty(clean) ? "account" : clean;
+    }
 }
 
 <style>
@@ -101,5 +222,9 @@ else
     .tst-unit { opacity: .7; }
     .tst-row button { padding: .4rem 1rem; border-radius: .4rem; border: none; background: #2fb99a; color: #05201a; font-weight: 600; cursor: pointer; }
     .tst-row button:disabled { opacity: .5; cursor: default; }
+    .tst-row.tst-restore-confirm { font-size: .82rem; opacity: .9; }
+    .tst-danger-hint { color: #ff7a59; opacity: .9; margin-top: 1rem; }
+    .tst-danger { background: transparent !important; border: 1px solid #ff7a59 !important; color: #ff7a59 !important; }
+    .tst-link { color: #2fb99a; cursor: pointer; font-size: .82rem; text-decoration: none; }
     .tst-meta { font-size: .78rem; opacity: .6; margin-top: 1.2rem; }
 </style>
