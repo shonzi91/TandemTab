@@ -13,6 +13,39 @@ This doc is the single source of truth for the mobile plan. Update it as decisio
 
 ---
 
+## Pre-native prerequisites — the checklist (Session 54)
+Native starts **only** once the ratified gate below is met. The API itself is now essentially complete; the gate is
+**proving** it by thinning the web client. Web-thinning detail lives in [DOMAIN-REMOVAL.md](DOMAIN-REMOVAL.md) (Path B).
+
+**THE GATE (ratified acceptance test):**
+- ◻ **The web app runs with `FinApp.Domain` dropped from the WASM bundle** — no client-side domain computation left.
+  This is the *proof* the thin API can back a native UI. = DOMAIN-REMOVAL Path B Phases 2–3:
+  - ✅ Phase 1 — `Contracts → Domain` severed (Session 54)
+  - ◻ Phase 2 — rebind `BudgetingState` off the domain + `Money`→`decimal` (started: the `Fmt` on-ramp, `7002c63`)
+  - ◻ Phase 3 — drop the `FinApp.Domain` `ProjectReference`; confirm the bundle no longer ships the domain assembly
+
+**Already done (so the gate is closer than it looks):**
+- ✅ **Thin read API complete** — Phase-0 coverage audit (Session 54) verified every Dashboard surface has a DTO,
+  incl. the what-if forecast inputs, reallocation caps, expense-entry helpers, and period-selectable insights.
+- ✅ **Thin write API functionally complete** — Sessions 44–46 (every `BudgetingState` write has a command endpoint).
+- ✅ **Insights narrative is language-independent** (`InsightMessageDto` code+args) — native clients localize locally.
+- ✅ **Forecast math extracted** to `FinApp.Forecasting` (pure, portable).
+
+**Secondary prerequisites (can run in parallel with the gate):**
+- ◻ **Offline / caching story** — a thin client degrades on a train; design it before native (endpoints exist, the cache doesn't).
+- ◻ **Full end-to-end verification pass** (register → account → budgets → expense → savings → recurring) — freeze a known-good baseline.
+- ◻ **Settle UX/domain changes** you don't want to rewrite three times once frozen into native.
+- ◻ **README refresh** — still describes the retired local-first SQLCipher/MAUI design.
+- ◻ **Bank-import provenance** — the one deferred read+write; prod-only (bank sync uncredentialed in dev).
+
+**Not required first:** row-per-entity persistence (a later payoff, not a prerequisite).
+
+**Tooling gates (defer until the gate above is near):**
+- ◻ **Android SDK/JDK** not installed on this box — needed for native Android (goes first: needs no Mac).
+- ◻ **iOS blocked on Mac / cloud-Mac access** — Android is not.
+
+---
+
 ## What exists today
 - ~~**`FinApp.App.Maui`**~~ — **removed (Session 37).** The MAUI Blazor Hybrid scaffold is deleted and
   dropped from the solution; this also unblocked a clean **full-solution build** (it had been failing on
@@ -89,12 +122,17 @@ known-good baseline.
 - ☐ **README refresh** — the "Tech decisions"/persistence copy still describes the retired local-first
   SQLCipher/MAUI design; the Storage/sync rows were corrected in Session 37 but the rest is due a pass.
 
-## Phase 1 — server-side domain (Option A, ratified) — IN PROGRESS
+## Phase 1 — server-side domain (Option A, ratified) — API COMPLETE; web cutover is the remaining work
 Grow the computed-read API endpoint-by-endpoint from the snapshot the server already loads, **no
 persistence change required** (the snapshot store stays; row-per-entity persistence is a later payoff,
 not a prerequisite). Each read = a pure domain service + a `FinApp.Contracts` DTO + an endpoint + tests,
 mirroring what `BudgetingState` computes so the numbers can't drift. Reads before mutations; the Blazor
 web app stays the acceptance test throughout.
+
+> **Status (Session 54):** the read **and** write API is now complete (Sessions 37–54; Phase-0 coverage audit
+> confirmed every Dashboard surface has a DTO). The remaining Phase-1 work is the **web-client cutover** — running
+> the web app thin with no client-side domain — which is tracked in its own plan, [DOMAIN-REMOVAL.md](DOMAIN-REMOVAL.md)
+> (Path B). That cutover *is* the pre-native gate. The endpoint-by-endpoint history below is kept for reference.
 
 **Shipped so far (Session 37, not yet wired into the web client):**
 - ✅ `GET /accounts/{id}/overview` → `AccountOverviewDto` — the balance-header figures
@@ -206,8 +244,9 @@ used to be able to clobber a concurrent write). Every future mutation reuses thi
   - **Posting single-sourced in the domain:** the confirm/auto-post logic moved to **`Period.PostRecurring`**
     (Domain) and the web client's private `PostRecurring` now delegates to it, so the web and the server confirm
     endpoint can't drift. +3 domain tests (`PeriodPostRecurringTests`), 9 server tests (`RecurringApiTests`).
-- ☐ **Remaining writes:** period lifecycle (start/close/reschedule/remove), budgets, fund transfers + opening
-  balances, reallocation, statement import, settlement (needs a two-account mutation helper).
+- ✅ **Remaining writes — DONE (Sessions 44–46):** period lifecycle, budgets, fund transfers + opening balances,
+  reallocation, statement import (+ dedupe), settlement (two-account helper). The **only** deferred write is
+  **bank-import provenance** (`ConfirmBankMoneyOutAsTransfer`) — prod-only, bank sync uncredentialed in dev.
 
 **Deferred / to settle:**
 - ☐ **Wire the web client** to the endpoints — deliberately NOT done per read/write; a piecemeal hybrid (client
@@ -266,4 +305,5 @@ out-capture us (Beyond Budget's SMS auto-import, AI receipt scan, AI suggestions
 - ~~**Retiring `FinApp.App.Maui`**~~ — **DONE (Session 37).** Removed from the solution and deleted;
   full-solution build green. (No `maui` note in TRANSFER.md; no solution filters referenced it.)
 - **Mac access** — user expects access "soon"; iOS is blocked until then, Android is not.
-- **Phase 0 scope** — the specific verify/change list the user wants done first.
+- ~~**Phase 0 scope**~~ — **captured (Session 54)** in the "Pre-native prerequisites — the checklist" section at the
+  top of this doc. The gate is the web-client thinning ([DOMAIN-REMOVAL.md](DOMAIN-REMOVAL.md) Path B, Phases 2–3).
