@@ -1,7 +1,7 @@
 @page "/thin-budgets"
 @using FinApp.Contracts
 @using FinApp.Shared.UI.Services
-@implements IDisposable
+@using FinApp.Shared.UI.Components.Thin
 @inject FinAppApiClient Api
 @inject AuthState Auth
 
@@ -10,54 +10,13 @@
 
     @if (!Auth.IsAuthenticated) { <p>Please sign in on the main app first.</p> }
     else if (_error is { } err) { <p class="tb-err">@err</p> }
-    else if (_state is null || !_state.IsReady) { <p>Loading budgets…</p> }
-    else
-    {
-        <div class="tb-tiles">
-            <div class="tb-tile"><span>Budgeted</span><b>@Fmt(_state.TotalBudgeted)</b></div>
-            <div class="tb-tile"><span>Spent</span><b>@Fmt(_state.TotalSpent)</b></div>
-        </div>
-
-        <h3>Budgets</h3>
-        @if (_state.Budgets.Count == 0) { <p class="tb-muted">No budgets set.</p> }
-        else
-        {
-            <ul class="tb-list">
-                @foreach (var b in _state.Budgets)
-                {
-                    <li>
-                        <span class="tb-ico">@(string.IsNullOrEmpty(b.Icon) ? "•" : b.Icon)</span>
-                        <div class="tb-body">
-                            <div class="tb-row1">
-                                <span class="tb-name">@b.Name</span>
-                                <span class="tb-nums @(b.Over ? "tb-over" : null)">@Fmt(b.Spent) / @Fmt(b.Allocated)</span>
-                                <button class="tb-del" title="Remove" @onclick="() => Remove(b.CategoryId)">✕</button>
-                            </div>
-                            <div class="tb-bar"><span class="@(b.Over ? "tb-barover" : null)" style="width:@Frac(b)"></span></div>
-                        </div>
-                    </li>
-                }
-            </ul>
-        }
-
-        <h3>Set a budget</h3>
-        <div class="tb-form">
-            <select @bind="_categoryId">
-                <option value="@Guid.Empty" disabled>Category…</option>
-                @foreach (var c in _state.UnbudgetedCategories) { <option value="@c.Id">@(c.Icon) @c.Name</option> }
-            </select>
-            <input type="number" step="0.01" min="0" placeholder="0.00" @bind="_amount" />
-            <button @onclick="Set" disabled="@(_busy || _amount <= 0 || _categoryId == Guid.Empty)">Set budget</button>
-        </div>
-    }
+    else if (_accountId is { } id) { <ThinBudgetsSection AccountId="id" /> }
+    else { <p>Loading…</p> }
 </div>
 
 @code {
-    private BudgetsViewState? _state;
+    private Guid? _accountId;
     private string? _error;
-    private bool _busy;
-    private Guid _categoryId;
-    private decimal _amount;
 
     protected override async Task OnInitializedAsync()
     {
@@ -66,61 +25,14 @@
         {
             var accounts = await Api.GetAccountsAsync();
             if (accounts.Count == 0) { _error = "No accounts on this user."; return; }
-            _state = new BudgetsViewState(Api);
-            _state.Changed += OnChanged;
-            await _state.LoadAsync(accounts[0].Id);
+            _accountId = accounts[0].Id;
         }
         catch (Exception ex) { _error = ex.Message; }
     }
-
-    private void OnChanged() => InvokeAsync(StateHasChanged);
-
-    private async Task Set()
-    {
-        if (_state is null || _amount <= 0 || _categoryId == Guid.Empty) return;
-        _busy = true;
-        try { await _state.SetAsync(_categoryId, _amount, 80m, false); _amount = 0; _categoryId = Guid.Empty; }
-        catch (Exception ex) { _error = ex.Message; }
-        finally { _busy = false; }
-    }
-
-    private async Task Remove(Guid categoryId)
-    {
-        if (_state is null) return;
-        try { await _state.RemoveAsync(categoryId); }
-        catch (Exception ex) { _error = ex.Message; }
-    }
-
-    private string Fmt(decimal amount) => $"{_state?.Currency} {amount:0.00}";
-    private static string Frac(BudgetRowDto b) => b.Allocated <= 0 ? "0%" : $"{Math.Clamp(b.Spent / b.Allocated, 0m, 1m) * 100m:0}%";
-
-    public void Dispose() { if (_state is not null) _state.Changed -= OnChanged; }
 }
 
 <style>
     .tb { max-width: 720px; margin: 1rem auto; padding: 0 1rem; }
     .tb-tag { font-size: .75rem; opacity: .7; margin: 0 0 1rem; }
-    .tb-err { color: #ff7a59; } .tb-muted { opacity: .6; }
-    .tb h3 { margin: 1.2rem 0 .4rem; font-size: .9rem; text-transform: uppercase; letter-spacing: .03em; opacity: .7; }
-    .tb-tiles { display: flex; gap: .75rem; }
-    .tb-tile { flex: 1 1 0; border: 1px solid rgba(128,128,128,.3); border-radius: .6rem; padding: .6rem .8rem; }
-    .tb-tile span { display: block; font-size: .7rem; text-transform: uppercase; opacity: .6; }
-    .tb-tile b { font-size: 1.1rem; }
-    .tb-list { list-style: none; padding: 0; margin: 0; }
-    .tb-list li { display: flex; gap: .6rem; padding: .55rem .2rem; border-bottom: 1px solid rgba(128,128,128,.15); }
-    .tb-ico { width: 1.4rem; text-align: center; padding-top: .1rem; }
-    .tb-body { flex: 1 1 auto; }
-    .tb-row1 { display: flex; align-items: center; gap: .5rem; }
-    .tb-name { font-weight: 600; }
-    .tb-nums { margin-left: auto; font-variant-numeric: tabular-nums; opacity: .85; }
-    .tb-over { color: #ff7a59; }
-    .tb-del { background: none; border: none; color: inherit; opacity: .5; cursor: pointer; }
-    .tb-bar { height: 5px; border-radius: 3px; background: rgba(128,128,128,.2); margin-top: .35rem; overflow: hidden; }
-    .tb-bar span { display: block; height: 100%; background: #2fb99a; }
-    .tb-bar span.tb-barover { background: #ff7a59; }
-    .tb-form { display: flex; flex-wrap: wrap; gap: .4rem; }
-    .tb-form select, .tb-form input { padding: .4rem .5rem; border-radius: .4rem; border: 1px solid rgba(128,128,128,.4); background: transparent; color: inherit; }
-    .tb-form input[type=number] { width: 6rem; }
-    .tb-form button { padding: .4rem 1rem; border-radius: .4rem; border: none; background: #2fb99a; color: #05201a; font-weight: 600; cursor: pointer; }
-    .tb-form button:disabled { opacity: .5; cursor: default; }
+    .tb-err { color: #ff7a59; }
 </style>

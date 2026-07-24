@@ -1,7 +1,7 @@
 @page "/thin-recurring"
 @using FinApp.Contracts
 @using FinApp.Shared.UI.Services
-@implements IDisposable
+@using FinApp.Shared.UI.Components.Thin
 @inject FinAppApiClient Api
 @inject AuthState Auth
 
@@ -10,48 +10,13 @@
 
     @if (!Auth.IsAuthenticated) { <p>Please sign in on the main app first.</p> }
     else if (_error is { } err) { <p class="tr-err">@err</p> }
-    else if (_state is null || !_state.IsReady) { <p>Loading recurring…</p> }
-    else
-    {
-        <p class="tr-bills">Bills still due this period: <b>@Fmt(_state.BillsDue)</b></p>
-
-        <h3>Items</h3>
-        @if (_state.Items.Count == 0) { <p class="tr-muted">No recurring items.</p> }
-        else
-        {
-            <ul class="tr-list">
-                @foreach (var r in _state.Items)
-                {
-                    <li class="@(r.Active ? null : "tr-paused")">
-                        <span class="tr-ico">@(string.IsNullOrEmpty(r.Icon) ? (r.Kind == "income" ? "＋" : "•") : r.Icon)</span>
-                        <div class="tr-body">
-                            <div class="tr-row1">
-                                <span class="tr-name">@r.Name</span>
-                                <em class="tr-tag2 tr-@r.Kind">@r.Kind</em>
-                                @if (r.Due) { <em class="tr-due">due</em> }
-                                else if (r.Upcoming) { <em class="tr-soon">in @r.DaysUntilDue d</em> }
-                                <span class="tr-amt">@(r.HasKnownAmount ? Fmt(r.Expected) : "—")</span>
-                            </div>
-                            <div class="tr-detail">@r.CategoryName · @r.FundName · day @r.DayOfMonth · @r.Mode</div>
-                        </div>
-                        @if (r.Due)
-                        {
-                            <div class="tr-actions">
-                                <button @onclick="() => Confirm(r)" disabled="@_busy">Confirm</button>
-                                <button class="tr-skip" @onclick="() => Skip(r.Id)" disabled="@_busy">Skip</button>
-                            </div>
-                        }
-                    </li>
-                }
-            </ul>
-        }
-    }
+    else if (_accountId is { } id) { <ThinRecurringSection AccountId="id" /> }
+    else { <p>Loading…</p> }
 </div>
 
 @code {
-    private RecurringViewState? _state;
+    private Guid? _accountId;
     private string? _error;
-    private bool _busy;
 
     protected override async Task OnInitializedAsync()
     {
@@ -60,60 +25,14 @@
         {
             var accounts = await Api.GetAccountsAsync();
             if (accounts.Count == 0) { _error = "No accounts on this user."; return; }
-            _state = new RecurringViewState(Api);
-            _state.Changed += OnChanged;
-            await _state.LoadAsync(accounts[0].Id);
+            _accountId = accounts[0].Id;
         }
         catch (Exception ex) { _error = ex.Message; }
     }
-
-    private void OnChanged() => InvokeAsync(StateHasChanged);
-
-    private async Task Confirm(RecurringRowDto r)
-    {
-        if (_state is null) return;
-        _busy = true;
-        try { await _state.ConfirmAsync(r.Id, r.Expected); }   // confirm at the expected amount (preview)
-        catch (Exception ex) { _error = ex.Message; }
-        finally { _busy = false; }
-    }
-
-    private async Task Skip(Guid id)
-    {
-        if (_state is null) return;
-        _busy = true;
-        try { await _state.SkipAsync(id); }
-        catch (Exception ex) { _error = ex.Message; }
-        finally { _busy = false; }
-    }
-
-    private string Fmt(decimal amount) => $"{_state?.Currency} {amount:0.00}";
-
-    public void Dispose() { if (_state is not null) _state.Changed -= OnChanged; }
 }
 
 <style>
     .tr { max-width: 720px; margin: 1rem auto; padding: 0 1rem; }
     .tr-tag { font-size: .75rem; opacity: .7; margin: 0 0 1rem; }
-    .tr-err { color: #ff7a59; } .tr-muted { opacity: .6; }
-    .tr-bills { font-size: .9rem; }
-    .tr h3 { margin: 1.2rem 0 .4rem; font-size: .9rem; text-transform: uppercase; letter-spacing: .03em; opacity: .7; }
-    .tr-list { list-style: none; padding: 0; margin: 0; }
-    .tr-list li { display: flex; align-items: center; gap: .6rem; padding: .55rem .2rem; border-bottom: 1px solid rgba(128,128,128,.15); }
-    .tr-paused { opacity: .5; }
-    .tr-ico { width: 1.4rem; text-align: center; }
-    .tr-body { flex: 1 1 auto; }
-    .tr-row1 { display: flex; align-items: center; gap: .5rem; }
-    .tr-name { font-weight: 600; }
-    .tr-tag2 { font-style: normal; font-size: .62rem; text-transform: uppercase; border-radius: .3rem; padding: 0 .35rem; }
-    .tr-expense { background: rgba(255,122,89,.18); }
-    .tr-income { background: rgba(47,185,154,.18); }
-    .tr-due { font-style: normal; font-size: .62rem; text-transform: uppercase; color: #ff7a59; font-weight: 700; }
-    .tr-soon { font-style: normal; font-size: .62rem; opacity: .7; }
-    .tr-amt { margin-left: auto; font-variant-numeric: tabular-nums; }
-    .tr-detail { font-size: .78rem; opacity: .7; margin-top: .15rem; }
-    .tr-actions { display: flex; gap: .3rem; }
-    .tr-actions button { padding: .3rem .7rem; border-radius: .4rem; border: none; background: #2fb99a; color: #05201a; font-weight: 600; cursor: pointer; }
-    .tr-actions button.tr-skip { background: transparent; color: inherit; border: 1px solid rgba(128,128,128,.4); }
-    .tr-actions button:disabled { opacity: .5; cursor: default; }
+    .tr-err { color: #ff7a59; }
 </style>

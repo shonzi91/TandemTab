@@ -1,0 +1,138 @@
+@* Thin (domain-free) Spending surface. Owns a SpendingViewState for the given account and mutates through the
+   delta-returning expense endpoints — see docs/MOBILE.md (Path B). Hosted by ThinSpending.razor (preview) and
+   ThinDashboard.razor. Presentation is intentionally plain for now; production styling is a later pass. *@
+@using FinApp.Contracts
+@using FinApp.Shared.UI.Services
+@implements IDisposable
+@inject FinAppApiClient Api
+
+@if (_error is { } err)
+{
+    <p class="ts-err">@err</p>
+}
+else if (_state is null || !_state.IsReady)
+{
+    <p>Loading spending…</p>
+}
+else
+{
+    <div class="ts-tiles">
+        <div class="ts-tile"><span>Current</span><b>@Fmt(_state.Overview.Current)</b></div>
+        <div class="ts-tile"><span>Free</span><b>@Fmt(_state.Overview.Free)</b></div>
+        <div class="ts-tile ts-spent"><span>Spent</span><b>@Fmt(_state.Overview.Spent)</b></div>
+    </div>
+
+    <div class="ts-add">
+        <select @bind="_categoryId">
+            <option value="@Guid.Empty" disabled>Category…</option>
+            @foreach (var c in _state.Categories)
+            {
+                <option value="@c.Id">@(c.Icon) @c.Name</option>
+            }
+        </select>
+        <select @bind="_fundId">
+            @foreach (var f in _state.SelectableFunds)
+            {
+                <option value="@f.Id">@f.Name</option>
+            }
+        </select>
+        <input type="number" step="0.01" min="0" placeholder="0.00" @bind="_amount" />
+        <input type="text" placeholder="note (optional)" @bind="_note" />
+        <input type="date" @bind="_date" />
+        <button @onclick="Add" disabled="@(_busy || _amount <= 0 || _categoryId == Guid.Empty)">Add</button>
+    </div>
+
+    <ul class="ts-list">
+        @foreach (var e in _state.Expenses)
+        {
+            <li>
+                <span class="ts-ico">@(string.IsNullOrEmpty(e.CategoryIcon) ? "•" : e.CategoryIcon)</span>
+                <span class="ts-cat">@e.CategoryName</span>
+                <span class="ts-fund">@e.FundName</span>
+                <span class="ts-note">@e.Note</span>
+                <span class="ts-amt">@Fmt(e.Amount)</span>
+                <button class="ts-del" title="Remove" @onclick="() => Remove(e.Id)">✕</button>
+            </li>
+        }
+        @if (_state.Expenses.Count == 0)
+        {
+            <li class="ts-empty">No expenses yet this period.</li>
+        }
+    </ul>
+}
+
+@code {
+    [Parameter, EditorRequired] public Guid AccountId { get; set; }
+
+    private SpendingViewState? _state;
+    private string? _error;
+    private bool _busy;
+
+    private Guid _categoryId;
+    private Guid _fundId;
+    private decimal _amount;
+    private string? _note;
+    private DateOnly _date = DateOnly.FromDateTime(DateTime.Today);
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _state = new SpendingViewState(Api);
+            _state.Changed += OnChanged;
+            await _state.LoadAsync(AccountId);
+            _fundId = _state.SelectableFunds.FirstOrDefault()?.Id ?? Guid.Empty;
+        }
+        catch (Exception ex) { _error = ex.Message; }
+    }
+
+    private void OnChanged() => InvokeAsync(StateHasChanged);
+
+    private async Task Add()
+    {
+        if (_state is null || _amount <= 0 || _categoryId == Guid.Empty) return;
+        _busy = true;
+        try
+        {
+            await _state.AddAsync(_categoryId, _amount, _fundId, _note, _date);
+            _amount = 0; _note = null;
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    private async Task Remove(Guid id)
+    {
+        if (_state is null) return;
+        try { await _state.RemoveAsync(id); }
+        catch (Exception ex) { _error = ex.Message; }
+    }
+
+    private string Fmt(decimal amount) => $"{_state?.Currency} {amount:0.00}";
+
+    public void Dispose() { if (_state is not null) _state.Changed -= OnChanged; }
+}
+
+<style>
+    .ts-err { color: #ff7a59; }
+    .ts-tiles { display: flex; gap: .75rem; margin-bottom: 1rem; }
+    .ts-tile { flex: 1 1 0; border: 1px solid rgba(128,128,128,.3); border-radius: .6rem; padding: .6rem .8rem; }
+    .ts-tile span { display: block; font-size: .7rem; text-transform: uppercase; opacity: .6; }
+    .ts-tile b { font-size: 1.15rem; }
+    .ts-spent b { color: #ff7a59; }
+    .ts-add { display: flex; flex-wrap: wrap; gap: .4rem; margin-bottom: 1rem; }
+    .ts-add select, .ts-add input { padding: .4rem .5rem; border-radius: .4rem; border: 1px solid rgba(128,128,128,.4); background: transparent; color: inherit; }
+    .ts-add input[type=number] { width: 6rem; }
+    .ts-add button { padding: .4rem 1rem; border-radius: .4rem; border: none; background: #2fb99a; color: #05201a; font-weight: 600; cursor: pointer; }
+    .ts-add button:disabled { opacity: .5; cursor: default; }
+    .ts-list { list-style: none; padding: 0; margin: 0; }
+    .ts-list li { display: flex; align-items: center; gap: .6rem; padding: .5rem .2rem; border-bottom: 1px solid rgba(128,128,128,.15); }
+    .ts-ico { width: 1.4rem; text-align: center; }
+    .ts-cat { font-weight: 600; }
+    .ts-fund { font-size: .75rem; opacity: .6; }
+    .ts-note { font-size: .8rem; opacity: .8; flex: 1 1 auto; }
+    .ts-amt { margin-left: auto; font-variant-numeric: tabular-nums; }
+    .ts-del { background: none; border: none; color: inherit; opacity: .5; cursor: pointer; }
+    .ts-del:disabled { opacity: .2; cursor: default; }
+    .ts-empty { opacity: .6; }
+</style>

@@ -1,0 +1,129 @@
+@page "/thin-dash"
+@using FinApp.Contracts
+@using FinApp.Shared.UI.Services
+@using FinApp.Shared.UI.Components.Thin
+@inject FinAppApiClient Api
+@inject AuthState Auth
+
+@* Path-B thin Dashboard shell. Composes the six domain-free Section components (each owns its own ViewState and
+   talks only to the computed read + delta-write endpoints) behind a single tab bar. No FinApp.Domain, no on-device
+   money model. This is the skeleton that will replace the thick Dashboard at "/" once chrome parity (account switch
+   detail, period navigation, settings, import, onboarding, achievements) is built out — see the handoff. *@
+
+<div class="thd">
+    <p class="thd-tag">Path-B · thin Dashboard (no on-device domain)</p>
+
+    @if (!Auth.IsAuthenticated)
+    {
+        <p>Please sign in on the main app first, then return to this page.</p>
+    }
+    else if (_error is { } err)
+    {
+        <p class="thd-err">@err</p>
+    }
+    else if (_accounts is null)
+    {
+        <p>Loading…</p>
+    }
+    else if (_accounts.Count == 0)
+    {
+        <p>No accounts on this user.</p>
+    }
+    else
+    {
+        var acct = _accounts.First(a => a.Id == _accountId);
+        <header class="thd-head">
+            <div class="thd-acct">
+                @if (_accounts.Count > 1)
+                {
+                    <select class="thd-acct-sel" @onchange="OnAccountChange">
+                        @foreach (var a in _accounts)
+                        {
+                            <option value="@a.Id" selected="@(a.Id == _accountId)">@a.Name</option>
+                        }
+                    </select>
+                }
+                else
+                {
+                    <span class="thd-acct-nm">@acct.Name</span>
+                }
+                <small class="thd-acct-sub">@acct.Currency · @(acct.Members.Count) member@(acct.Members.Count == 1 ? "" : "s")</small>
+            </div>
+        </header>
+
+        <nav class="thd-tabs">
+            @foreach (var t in Tabs)
+            {
+                <button class="thd-tab @(t == _tab ? "sel" : "")" @onclick="() => _tab = t">@t</button>
+            }
+        </nav>
+
+        <section class="thd-body">
+            @{
+                // A fresh component instance per (account, tab) so switching either reloads from the server.
+                var key = ($"{_accountId}:{_tab}");
+            }
+            @switch (_tab)
+            {
+                case "Home":
+                    <ThinHomeSection @key="key" AccountId="_accountId" />
+                    break;
+                case "Spending":
+                    <ThinSpendingSection @key="key" AccountId="_accountId" />
+                    break;
+                case "Wallets":
+                    <ThinWalletsSection @key="key" AccountId="_accountId" />
+                    break;
+                case "Goals":
+                    <ThinGoalsSection @key="key" AccountId="_accountId" />
+                    break;
+                case "Budgets":
+                    <ThinBudgetsSection @key="key" AccountId="_accountId" />
+                    break;
+                case "Recurring":
+                    <ThinRecurringSection @key="key" AccountId="_accountId" />
+                    break;
+            }
+        </section>
+    }
+</div>
+
+@code {
+    private static readonly string[] Tabs = ["Home", "Spending", "Wallets", "Goals", "Budgets", "Recurring"];
+
+    private List<AccountSummaryDto>? _accounts;
+    private Guid _accountId;
+    private string _tab = "Home";
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!Auth.IsAuthenticated) return;
+        try
+        {
+            _accounts = await Api.GetAccountsAsync();
+            if (_accounts.Count > 0) _accountId = _accounts[0].Id;
+        }
+        catch (Exception ex) { _error = ex.Message; }
+    }
+
+    private void OnAccountChange(ChangeEventArgs e)
+    {
+        if (Guid.TryParse(e.Value?.ToString(), out var id)) _accountId = id;
+    }
+}
+
+<style>
+    .thd { max-width: 760px; margin: 1rem auto; padding: 0 1rem; }
+    .thd-tag { font-size: .75rem; opacity: .7; margin: 0 0 1rem; }
+    .thd-err { color: #ff7a59; }
+    .thd-head { margin-bottom: .75rem; }
+    .thd-acct { display: flex; align-items: baseline; gap: .6rem; flex-wrap: wrap; }
+    .thd-acct-nm { font-size: 1.3rem; font-weight: 700; }
+    .thd-acct-sel { font-size: 1.1rem; font-weight: 700; padding: .25rem .4rem; border-radius: .4rem; border: 1px solid rgba(128,128,128,.4); background: transparent; color: inherit; }
+    .thd-acct-sub { opacity: .6; font-size: .8rem; }
+    .thd-tabs { display: flex; flex-wrap: wrap; gap: .3rem; border-bottom: 1px solid rgba(128,128,128,.2); margin-bottom: 1rem; }
+    .thd-tab { padding: .45rem .8rem; border: none; background: transparent; color: inherit; cursor: pointer; border-bottom: 2px solid transparent; opacity: .7; font-size: .9rem; }
+    .thd-tab.sel { opacity: 1; font-weight: 600; border-bottom-color: #2fb99a; }
+    .thd-tab:hover { opacity: 1; }
+</style>

@@ -1,7 +1,7 @@
 @page "/thin-home"
 @using FinApp.Contracts
 @using FinApp.Shared.UI.Services
-@implements IDisposable
+@using FinApp.Shared.UI.Components.Thin
 @inject FinAppApiClient Api
 @inject AuthState Auth
 
@@ -16,77 +16,19 @@
     {
         <p class="th-err">@err</p>
     }
-    else if (_home is null || !_home.IsReady)
+    else if (_accountId is { } id)
     {
-        <p>Loading home…</p>
+        <ThinHomeSection AccountId="id" />
     }
     else
     {
-        <div class="th-tiles">
-            <div class="th-tile"><span>Current</span><b>@Fmt(_home.Overview.Current)</b></div>
-            <div class="th-tile"><span>Free</span><b>@Fmt(_home.Overview.Free)</b></div>
-            <div class="th-tile"><span>Saved</span><b>@Fmt(_home.Overview.Saved)</b></div>
-            <div class="th-tile"><span>Spent</span><b>@Fmt(_home.Overview.Spent)</b></div>
-        </div>
-        <p class="th-sub">
-            Contributed @Fmt(_home.Overview.Contributed) · Bills due @Fmt(_home.Overview.BillsDue) ·
-            Safe after bills @Fmt(_home.Overview.SafeAfterBills)
-        </p>
-
-        <h3>Runway</h3>
-        @if (_home.Runway is { } r)
-        {
-            <p>
-                @if (r.FirstShortfallMonth is { } m) { <text>Runs short around <b>@m.ToString("MMM yyyy")</b></text> }
-                else { <text>Balance holds beyond <b>@r.Months months</b></text> }
-                — income @Fmt(r.MonthlyIncome)/mo, spending @Fmt(r.MonthlySpending)/mo
-                (@(r.BasedOnRecurring ? "based on declared bills" : $"avg of {r.CompletedPeriodCount} closed months"))
-            </p>
-        }
-        else
-        {
-            <p class="th-muted">No basis to project a runway yet.</p>
-        }
-
-        <h3>On track for</h3>
-        @if (_home.Targets.Targets.Count == 0)
-        {
-            <p class="th-muted">Nothing to project yet.</p>
-        }
-        else
-        {
-            <ul class="th-list">
-                @foreach (var t in _home.Targets.Targets)
-                {
-                    <li>
-                        <span>@(string.IsNullOrEmpty(t.Icon) ? (t.Kind == "debt-free" ? "🏁" : "🎯") : t.Icon)</span>
-                        <span class="th-name">@(t.Kind == "debt-free" ? "Debt-free" : t.Name)</span>
-                        <span class="th-when">@(t.Reached ? "reached 🎉" : $"~{t.Months} mo")</span>
-                    </li>
-                }
-            </ul>
-        }
-
-        <h3>Insights</h3>
-        <p>
-            Health score <b>@_home.Insights.Score</b> (@_home.Insights.Band)@(_home.Insights.ScoreDelta is { } d ? $", {(d >= 0 ? "+" : "")}{d} vs last" : "").
-            @if (_home.Insights.SavingsRate is { } sr)
-            {
-                <text> Savings rate @Pct(sr) vs target @Pct(_home.Insights.SavingsTarget).</text>
-            }
-        </p>
-
-        <h3>Milestones</h3>
-        <p>@_home.Milestones.Earned of @_home.Milestones.Total earned · @_home.Milestones.InProgress in progress.</p>
-
-        <button class="th-refresh" @onclick="Refresh" disabled="@_busy">Refresh</button>
+        <p>Loading…</p>
     }
 </div>
 
 @code {
-    private HomeViewState? _home;
+    private Guid? _accountId;
     private string? _error;
-    private bool _busy;
 
     protected override async Task OnInitializedAsync()
     {
@@ -95,44 +37,14 @@
         {
             var accounts = await Api.GetAccountsAsync();
             if (accounts.Count == 0) { _error = "No accounts on this user."; return; }
-            _home = new HomeViewState(Api);
-            _home.Changed += OnChanged;
-            await _home.LoadAsync(accounts[0].Id);
+            _accountId = accounts[0].Id;
         }
         catch (Exception ex) { _error = ex.Message; }
     }
-
-    private void OnChanged() => InvokeAsync(StateHasChanged);
-
-    private async Task Refresh()
-    {
-        if (_home is null) return;
-        _busy = true;
-        try { await _home.RefreshAsync(); }
-        catch (Exception ex) { _error = ex.Message; }
-        finally { _busy = false; }
-    }
-
-    private string Fmt(decimal amount) => $"{_home?.Overview.Currency} {amount:0.00}";
-    private static string Pct(decimal ratio) => $"{ratio * 100m:0}%";
-
-    public void Dispose() { if (_home is not null) _home.Changed -= OnChanged; }
 }
 
 <style>
     .thin-home { max-width: 720px; margin: 1rem auto; padding: 0 1rem; }
     .th-tag { font-size: .75rem; opacity: .7; margin: 0 0 1rem; }
     .th-err { color: #ff7a59; }
-    .th-muted { opacity: .6; }
-    .thin-home h3 { margin: 1.2rem 0 .4rem; font-size: .9rem; text-transform: uppercase; letter-spacing: .03em; opacity: .7; }
-    .th-tiles { display: flex; gap: .75rem; }
-    .th-tile { flex: 1 1 0; border: 1px solid rgba(128,128,128,.3); border-radius: .6rem; padding: .6rem .8rem; }
-    .th-tile span { display: block; font-size: .7rem; text-transform: uppercase; opacity: .6; }
-    .th-tile b { font-size: 1.1rem; }
-    .th-sub { font-size: .8rem; opacity: .75; margin: .5rem 0 0; }
-    .th-list { list-style: none; padding: 0; margin: 0; }
-    .th-list li { display: flex; align-items: center; gap: .6rem; padding: .35rem .2rem; border-bottom: 1px solid rgba(128,128,128,.15); }
-    .th-name { font-weight: 600; }
-    .th-when { margin-left: auto; opacity: .8; font-variant-numeric: tabular-nums; }
-    .th-refresh { margin-top: 1.2rem; padding: .4rem 1rem; border-radius: .4rem; border: 1px solid rgba(128,128,128,.4); background: transparent; color: inherit; cursor: pointer; }
 </style>
