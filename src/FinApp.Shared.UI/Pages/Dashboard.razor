@@ -466,7 +466,7 @@ else
                                             : string.Format(Loc["based on your last {0} months"], State.CompletedPeriodCount);
                                 }
                                 @basisNote · @string.Format(Loc["{0} in, {1} out a month"],
-                                    Fmt(State.Money(rw.Months[0].Income)), Fmt(State.Money(rw.Months[0].Spending)))@(rw.HasUnknownAmounts ? " · " + Loc["some bills have no amount yet"] : "")
+                                    Fmt(rw.Months[0].Income), Fmt(rw.Months[0].Spending))@(rw.HasUnknownAmounts ? " · " + Loc["some bills have no amount yet"] : "")
                             </span>
                             @* "Show the math" — the anti-black-box move: no AI, so we can show exactly how the number
                                is built and let you nudge the inputs. Off by default to keep Home calm. *@
@@ -482,9 +482,9 @@ else
                         <div class="runway-detail">
                             <div class="runway-math">
                                 <span>@Loc["Starting balance"]</span><span class="rm-num">@Fmt(_balCur)</span>
-                                <span>@Loc["Money in / month"]</span><span class="rm-num credit">+ @Fmt(State.Money(inM))</span>
-                                <span>@Loc["Money out / month"]</span><span class="rm-num debit">− @Fmt(State.Money(outM))</span>
-                                <span class="rm-net">@Loc["Net / month"]</span><span class="rm-num rm-net @(inM - outM < 0 ? "debit" : "credit")">@(inM - outM < 0 ? "− " : "+ ")@Fmt(State.Money(Math.Abs(inM - outM)))</span>
+                                <span>@Loc["Money in / month"]</span><span class="rm-num credit">+ @Fmt(inM)</span>
+                                <span>@Loc["Money out / month"]</span><span class="rm-num debit">− @Fmt(outM)</span>
+                                <span class="rm-net">@Loc["Net / month"]</span><span class="rm-num rm-net @(inM - outM < 0 ? "debit" : "credit")">@(inM - outM < 0 ? "− " : "+ ")@Fmt(Math.Abs(inM - outM))</span>
                             </div>
                             <p class="runway-basis">@Loc["Each month adds the money in and takes the money out; the runway is how long your balance stays above zero. No AI, no guesswork — just this arithmetic on your own numbers."]</p>
 
@@ -511,7 +511,7 @@ else
                                         }
                                         else
                                         {
-                                            <span class="whatif-good">— @string.Format(Loc["balance holds ~{0} months, ending near {1}"], wi.Months.Count, Fmt(State.Money(wi.Months[^1].Closing)))</span>
+                                            <span class="whatif-good">— @string.Format(Loc["balance holds ~{0} months, ending near {1}"], wi.Months.Count, Fmt(wi.Months[^1].Closing))</span>
                                         }
                                     }
                                 </div>
@@ -928,7 +928,7 @@ else
                                 </span>
                                 @if (inRange && info.Count > 0)
                                 {
-                                    <span class="cal-total">@Fmt(State.Money(info.Total))</span>
+                                    <span class="cal-total">@Fmt(info.Total)</span>
                                 }
                             </div>
                         }
@@ -1038,7 +1038,7 @@ else
                         else if (isDebt)
                         {
                             <span class="amt save">@Fmt(ctx.Total)</span> <span class="ring-muted">@Loc["set aside"]</span>
-                            <div class="ring-sub">@Fmt(State.Money(State.SavingBucketDebtBalance(bucketId))) @Loc["owed"] · @State.SavingBucketDebtRate(bucketId)% · @Fmt(State.Money(State.SavingBucketDebtInstallment(bucketId)))/@Loc["mo"]</div>
+                            <div class="ring-sub">@Fmt(State.SavingBucketDebtBalance(bucketId)) @Loc["owed"] · @State.SavingBucketDebtRate(bucketId)% · @Fmt(State.SavingBucketDebtInstallment(bucketId))/@Loc["mo"]</div>
                             var dPaid = State.SavingBucketDebtPaidOff(bucketId);
                             var dOrig = State.SavingBucketDebtOriginal(bucketId);
                             var dProg = State.SavingBucketDebtProgress(bucketId);
@@ -1049,7 +1049,7 @@ else
                             if (dProg is { } pr && dPaid > 0m)
                             {
                                 <div class="debt-progress">
-                                    <span class="debt-prog-txt">@string.Format(Loc["Paid off {0} of {1} ({2}%)"], Fmt(State.Money(dPaid)), Fmt(State.Money(dOrig)), (int)Math.Round((double)pr * 100))</span>
+                                    <span class="debt-prog-txt">@string.Format(Loc["Paid off {0} of {1} ({2}%)"], Fmt(dPaid), Fmt(dOrig), (int)Math.Round((double)pr * 100))</span>
                                     @DebtSparkline(dSpark)
                                 </div>
                             }
@@ -1058,7 +1058,7 @@ else
                         {
                             <span class="amt save">@Fmt(ctx.Total)</span> <span class="ring-muted">@Loc["invested"]</span>
                             var invProj = State.ProjectInvestment(bucketId, State.EffectiveSavingPace(bucketId)?.Amount ?? 0m);
-                            <div class="ring-sub">@State.SavingBucketInvestmentRate(bucketId)% · @State.SavingBucketInvestmentTermYears(bucketId).ToString("0.#")@Loc["y"]@(invProj is { Months: > 0 } ip ? $" → ~{Fmt(State.Money(ip.FutureValue))}" : "")</div>
+                            <div class="ring-sub">@State.SavingBucketInvestmentRate(bucketId)% · @State.SavingBucketInvestmentTermYears(bucketId).ToString("0.#")@Loc["y"]@(invProj is { Months: > 0 } ip ? $" → ~{Fmt(ip.FutureValue)}" : "")</div>
                         }
                         else if (ctx.Bucket.IsExpensesFund)
                         {
@@ -1078,7 +1078,7 @@ else
                            only tells you where you are, this tells you what to do. One line, no extra section. *@
                         @if (State.BucketMonthlySetAside(bucketId) is { } setAside and > 0m)
                         {
-                            <div class="ring-sub ring-setaside">🗓️ @Fmt(State.Money(setAside))/@Loc["mo"] @Loc["to stay covered"]</div>
+                            <div class="ring-sub ring-setaside">🗓️ @Fmt(setAside)/@Loc["mo"] @Loc["to stay covered"]</div>
                         }
                         @if (State.SavingBucketFundId(bucketId) is { } heldFund)
                         {
@@ -1151,11 +1151,11 @@ else
                     {
                         <div class="plan-summary">
                             <span class="plan-big">🏁 @Loc["Debt-free"] @PayoffDate(plan.Months)</span>
-                            <span class="spending-sub">@string.Format(Loc["{0} · total interest {1}"], MonthsText(plan.Months), Fmt(State.Money(plan.TotalInterest)))</span>
+                            <span class="spending-sub">@string.Format(Loc["{0} · total interest {1}"], MonthsText(plan.Months), Fmt(plan.TotalInterest))</span>
                         </div>
                         @if (_planExtra > 0 && DebtBaseline is { } baseNoExtra && (baseNoExtra.Months > plan.Months || baseNoExtra.TotalInterest > plan.TotalInterest))
                         {
-                            <p class="hint good-text">➡️ @string.Format(Loc["That extra clears you {0} sooner and saves {1} in interest."], MonthsText(baseNoExtra.Months - plan.Months), Fmt(State.Money(Math.Max(0m, baseNoExtra.TotalInterest - plan.TotalInterest))))</p>
+                            <p class="hint good-text">➡️ @string.Format(Loc["That extra clears you {0} sooner and saves {1} in interest."], MonthsText(baseNoExtra.Months - plan.Months), Fmt(Math.Max(0m, baseNoExtra.TotalInterest - plan.TotalInterest)))</p>
                         }
                         <ol class="plan-order">
                             @for (var oi = 0; oi < plan.Order.Count; oi++)
@@ -1200,7 +1200,7 @@ else
                                     <span class="row-title">@MovementIcon(m) <span class="row-title-txt">@State.SavingMovementTarget(m)</span></span>
                                     <span class="row-sub"><span>@m.Date.ToString("dd MMM")</span></span>
                                 </span>
-                                <span class="amt debit">@Fmt(State.Money(-m.Amount.Amount))</span>
+                                <span class="amt debit">@Fmt(-m.Amount.Amount)</span>
                                 <span class="row-actions">
                                     @if (State.IsPeriodOpen)
                                     {
@@ -1719,7 +1719,7 @@ else
                                 {
                                     <li>
                                         <span class="row-main">@State.FundName(g.FundId)</span>
-                                        <span>@Fmt(State.Money(Math.Abs(g.Gap))) @(g.Gap < 0 ? Loc["less than expected (unlogged spending)"] : Loc["more than expected (unlogged money-in)"])</span>
+                                        <span>@Fmt(Math.Abs(g.Gap)) @(g.Gap < 0 ? Loc["less than expected (unlogged spending)"] : Loc["more than expected (unlogged money-in)"])</span>
                                     </li>
                                 }
                             </ul>
@@ -1917,10 +1917,10 @@ else
                             var setAside = EditingSetAside();
                             var shortfall = PlannedCost.TargetShortfallFor(ValidCostRows(), EditingSaved());
                             <div class="cost-total">
-                                <span>@Loc["Set aside"] <strong>@Fmt(State.Money(setAside))</strong> @Loc["/ month"]</span>
+                                <span>@Loc["Set aside"] <strong>@Fmt(setAside)</strong> @Loc["/ month"]</span>
                                 @if (shortfall > 0m)
                                 {
-                                    <small class="cost-short">@string.Format(Loc["{0} still to find"], Fmt(State.Money(shortfall)))</small>
+                                    <small class="cost-short">@string.Format(Loc["{0} still to find"], Fmt(shortfall))</small>
                                 }
                             </div>
                             <small class="hint">@Loc["An amount to aim for, not a reservation — nothing moves on its own. Repeating costs are averaged over the year; a dated one-off is spread over the months until it's due, less what this bucket already holds."]</small>
@@ -2122,10 +2122,10 @@ else
 
                 case Modal.Reallocate:
                     <h3>@Loc["Move budget to your debt"]</h3>
-                    <p>@string.Format(Loc["Move {0} from your {1} budget toward {2}?"], Fmt(State.Money(_reallocAmount)), _reallocBudgetName, _reallocDebtName)</p>
+                    <p>@string.Format(Loc["Move {0} from your {1} budget toward {2}?"], Fmt(_reallocAmount), _reallocBudgetName, _reallocDebtName)</p>
                     <ul class="realloc-effects">
-                        <li>✂️ @string.Format(Loc["{0} budget trimmed to {1}"], _reallocBudgetName, Fmt(State.Money(_reallocNewBudget)))</li>
-                        <li>💰 @string.Format(Loc["{0} set aside toward {1}"], Fmt(State.Money(_reallocAmount)), _reallocDebtName)</li>
+                        <li>✂️ @string.Format(Loc["{0} budget trimmed to {1}"], _reallocBudgetName, Fmt(_reallocNewBudget))</li>
+                        <li>💰 @string.Format(Loc["{0} set aside toward {1}"], Fmt(_reallocAmount), _reallocDebtName)</li>
                     </ul>
                     <small class="hint">@Loc["This moves real money into your debt earmark and lowers this budget. You can change both later."]</small>
                     <div class="modal-actions">
@@ -2155,7 +2155,7 @@ else
                                 var rid = r.Id;
                                 var amountText = r.AmountMode == RecurringAmountMode.ReminderOnly
                                     ? Loc["reminder only"]
-                                    : (r.AmountMode == RecurringAmountMode.Typical ? "~" : "") + Fmt(State.Money(r.ExpectedAmount));
+                                    : (r.AmountMode == RecurringAmountMode.Typical ? "~" : "") + Fmt(r.ExpectedAmount);
                                 <li>
                                     <span class="row-main">
                                         <span class="cat-ico">@IconOrEmoji(r.Icon ?? (r.Kind == RecurringKind.Income ? "note" : "repeat"))</span> @r.Name
@@ -2230,7 +2230,7 @@ else
                     {
                         <p class="hint">@(rc.AmountMode == RecurringAmountMode.ReminderOnly
                             ? Loc["Enter what actually came in or went out."]
-                            : string.Format(Loc["Expected about {0}. Adjust to the real amount if it differs."], Fmt(State.Money(rc.ExpectedAmount))))</p>
+                            : string.Format(Loc["Expected about {0}. Adjust to the real amount if it differs."], Fmt(rc.ExpectedAmount)))</p>
                     }
                     <label>@Loc["Actual amount"] <input type="number" step="0.01" min="0" @bind="_recConfirmAmount" @bind:event="oninput" /></label>
                     <div class="modal-actions">
@@ -2332,7 +2332,7 @@ else
                                         {
                                             <button type="button" class="icon-btn pin @(pinned ? "on" : "")" title="@(pinned ? Loc["Auto-files this merchant here — click to forget"] : Loc["Always file this merchant here in future"])" @onclick="() => ToggleImportPin(r)"><Icon Name="pin" /></button>
                                         }
-                                        <span class="amt @(r.Tx.Amount < 0m ? "" : "good-text")">@Fmt(State.Money(r.Tx.Amount))</span>
+                                        <span class="amt @(r.Tx.Amount < 0m ? "" : "good-text")">@Fmt(r.Tx.Amount)</span>
                                     </span>
                                 </li>
                             }
@@ -2617,16 +2617,16 @@ else
                         : null;
                     <h3><Icon Name="trending" /> @Loc["Payoff projection"] — @State.SavingBucketName(_projBucketId)</h3>
                     <div class="proj-grid">
-                        <span class="proj-k">@Loc["Balance owed"]</span><span class="proj-v">@Fmt(State.Money(pjBal))</span>
+                        <span class="proj-k">@Loc["Balance owed"]</span><span class="proj-v">@Fmt(pjBal)</span>
                         <span class="proj-k">@Loc["Set aside"]</span><span class="proj-v">@Fmt(State.SavingBucketSaved(_projBucketId))</span>
                         <span class="proj-k">@Loc["Rate"]</span><span class="proj-v">@pjRate% APR</span>
-                        <span class="proj-k">@Loc["Installment"]</span><span class="proj-v">@Fmt(State.Money(pjInst))/@Loc["mo"]</span>
+                        <span class="proj-k">@Loc["Installment"]</span><span class="proj-v">@Fmt(pjInst)/@Loc["mo"]</span>
                         @* Was its own "At your installment" section; it's really just two more facts about the loan
                            as it stands, so it belongs in the summary rather than in a heading of its own. *@
                         @if (pjAtInst is { } ai)
                         {
                             <span class="proj-k">@Loc["Ends"]</span><span class="proj-v">@PayoffDate(ai.Months) <span class="ring-muted">(@MonthsText(ai.Months))</span></span>
-                            <span class="proj-k">@Loc["Total interest"]</span><span class="proj-v">@Fmt(State.Money(ai.TotalInterest))</span>
+                            <span class="proj-k">@Loc["Total interest"]</span><span class="proj-v">@Fmt(ai.TotalInterest)</span>
                         }
                         else
                         {
@@ -2638,7 +2638,7 @@ else
                         @* Two questions, deliberately kept apart: this one is "the money I have, once"; the next is
                            "money I'd add every month, forever". They used to read as one because the same set-aside
                            figure defaulted into both — the second then quoted an implausible per-month total. *@
-                        <h4 class="detail-sub"><Icon Name="note" /> @string.Format(Loc["One-off — pay your {0} set aside now"], Fmt(State.Money(pjPayNow)))
+                        <h4 class="detail-sub"><Icon Name="note" /> @string.Format(Loc["One-off — pay your {0} set aside now"], Fmt(pjPayNow))
                             @infoTip(("pp-partial", Loc["A payment lowers the balance right away, so the interest you're charged each period drops from then on. This is a single payment out of what you've already set aside — not a new monthly commitment."]))</h4>
                         @if (pjShorter is not null || pjLowerInst is not null)
                         {
@@ -2657,23 +2657,23 @@ else
                                     {
                                         <tr>
                                             <td>⏱️ @Loc["Shorter term"]</td>
-                                            <td>@Fmt(State.Money(pjInst))</td>
+                                            <td>@Fmt(pjInst)</td>
                                             <td>@PayoffDate(shorter.Months)
                                                 @if (pjAtInst is { } baseline && baseline.Months > shorter.Months)
                                                 {
                                                     <span class="good-text">@string.Format(Loc[" ({0} sooner)"], MonthsText(baseline.Months - shorter.Months))</span>
                                                 }
                                             </td>
-                                            <td>@Fmt(State.Money(decimal.Round(pjInst * shorter.Months - pjAfterBal, 2)))</td>
+                                            <td>@Fmt(decimal.Round(pjInst * shorter.Months - pjAfterBal, 2))</td>
                                         </tr>
                                     }
                                     @if (pjLowerInst is { } lower && pjKeepMonths > 0)
                                     {
                                         <tr>
                                             <td>💶 @Loc["Lower installment"]</td>
-                                            <td>@Fmt(State.Money(lower)) <span class="good-text">(−@Fmt(State.Money(Math.Max(0m, pjInst - lower))))</span></td>
+                                            <td>@Fmt(lower) <span class="good-text">(−@Fmt(Math.Max(0m, pjInst - lower)))</span></td>
                                             <td>@PayoffDate(pjKeepMonths) <span class="ring-muted">@Loc["(unchanged)"]</span></td>
-                                            <td>@Fmt(State.Money(decimal.Round(lower * pjKeepMonths - pjAfterBal, 2)))</td>
+                                            <td>@Fmt(decimal.Round(lower * pjKeepMonths - pjAfterBal, 2))</td>
                                         </tr>
                                     }
                                 </tbody>
@@ -2685,13 +2685,13 @@ else
                         <button type="button" class="info-ico reset-ico" title="@(pjPlanned ? Loc["Reset to your planned contribution"] : Loc["Reset to your saving pace"])" @onclick="() => _payoffExtra = State.EffectiveSavingPace(_projBucketId)?.Amount ?? 0m"><Icon Name="rotate" /></button>
                     </h4>
                     <label class="proj-extra">@Loc["Extra on top /mo"] <input type="number" step="10" min="0" @bind="_payoffExtra" @bind:event="oninput" /></label>
-                    <p class="hint pm-hint">@string.Format(Loc["{0} installment + {1} extra = {2}/mo"], Fmt(State.Money(pjInst)), Fmt(State.Money(pjExtra)), Fmt(State.Money(pjTotal)))@(pjPace is { } pc && pc.Amount > 0m ? string.Format(pjPlanned ? Loc[" · your plan {0}/period"] : Loc[" · your pace ~{0}/period"], Fmt(pc)) : "")</p>
+                    <p class="hint pm-hint">@string.Format(Loc["{0} installment + {1} extra = {2}/mo"], Fmt(pjInst), Fmt(pjExtra), Fmt(pjTotal))@(pjPace is { } pc && pc.Amount > 0m ? string.Format(pjPlanned ? Loc[" · your plan {0}/period"] : Loc[" · your pace ~{0}/period"], Fmt(pc)) : "")</p>
                     @if (pjAtTotal is { } ap)
                     {
-                        <p class="proj-result">🏁 @string.Format(Loc["Clear in {0} (~{1}) · interest {2}"], MonthsText(ap.Months), PayoffDate(ap.Months), Fmt(State.Money(ap.TotalInterest)))</p>
+                        <p class="proj-result">🏁 @string.Format(Loc["Clear in {0} (~{1}) · interest {2}"], MonthsText(ap.Months), PayoffDate(ap.Months), Fmt(ap.TotalInterest))</p>
                         @if (pjAtInst is { } bi && (bi.Months > ap.Months || bi.TotalInterest > ap.TotalInterest))
                         {
-                            <p class="proj-result good-text">➡️ @string.Format(Loc["{0} sooner · {1} less interest than the installment alone"], MonthsText(bi.Months - ap.Months), Fmt(State.Money(Math.Max(0m, bi.TotalInterest - ap.TotalInterest))))</p>
+                            <p class="proj-result good-text">➡️ @string.Format(Loc["{0} sooner · {1} less interest than the installment alone"], MonthsText(bi.Months - ap.Months), Fmt(Math.Max(0m, bi.TotalInterest - ap.TotalInterest)))</p>
                         }
                     }
                     else
@@ -2714,7 +2714,7 @@ else
                     <h3><Icon Name="calendar" /> @Loc["Goal projection"] — @State.SavingBucketName(_projBucketId)</h3>
                     <div class="proj-grid">
                         <span class="proj-k">@Loc["Saved so far"]</span><span class="proj-v">@Fmt(gpSaved)</span>
-                        <span class="proj-k">@Loc["Goal"]</span><span class="proj-v">@(gpGoal is { } gg ? Fmt(State.Money(gg)) : "—")</span>
+                        <span class="proj-k">@Loc["Goal"]</span><span class="proj-v">@(gpGoal is { } gg ? Fmt(gg) : "—")</span>
                     </div>
                     <h4 class="detail-sub">@(gpPlanned ? Loc["At your planned contribution"] : Loc["At your saving pace"]) @infoTip(("gp-pace", gpPlanned ? Loc["Uses the contribution you planned for this bucket, then counts how many periods until you reach the goal."] : Loc["Uses the average you actually set aside each period, then counts how many periods until you reach the goal."]))</h4>
                     @if (gpPace is { } gpace && gpace.Amount > 0m)
@@ -2761,7 +2761,7 @@ else
                     <h4 class="detail-sub">@Loc["Just what's invested now"] @infoTip(("iv-base", Loc["Grows only your current balance at the expected return over the horizon — no further contributions."]))</h4>
                     @if (ivBase is { Months: > 0 } b0)
                     {
-                        <p class="proj-result">🏁 @string.Format(Loc["~{0} in {1} ({2} growth)"], Fmt(State.Money(b0.FutureValue)), MonthsText(b0.Months), Fmt(State.Money(b0.Growth)))</p>
+                        <p class="proj-result">🏁 @string.Format(Loc["~{0} in {1} ({2} growth)"], Fmt(b0.FutureValue), MonthsText(b0.Months), Fmt(b0.Growth))</p>
                     }
                     else
                     {
@@ -2778,10 +2778,10 @@ else
                     }
                     @if (ivWith is { Months: > 0 } bw)
                     {
-                        <p class="proj-result">🏁 @string.Format(Loc["~{0} in {1} — {2} your contributions, {3} growth"], Fmt(State.Money(bw.FutureValue)), MonthsText(bw.Months), Fmt(State.Money(bw.Contributed)), Fmt(State.Money(bw.Growth)))</p>
+                        <p class="proj-result">🏁 @string.Format(Loc["~{0} in {1} — {2} your contributions, {3} growth"], Fmt(bw.FutureValue), MonthsText(bw.Months), Fmt(bw.Contributed), Fmt(bw.Growth))</p>
                         @if (ivBase is { } b1 && bw.FutureValue > b1.FutureValue)
                         {
-                            <p class="proj-result good-text">➡️ @string.Format(Loc["{0} more than leaving it alone."], Fmt(State.Money(bw.FutureValue - b1.FutureValue)))</p>
+                            <p class="proj-result good-text">➡️ @string.Format(Loc["{0} more than leaving it alone."], Fmt(bw.FutureValue - b1.FutureValue))</p>
                         }
                     }
                     <div class="proj-disclaimer"><Icon Name="alert" /> @Loc["For planning only — returns aren't guaranteed and real investments fluctuate. This isn't financial advice."]</div>
@@ -3175,7 +3175,7 @@ else
                     <h3>@Loc["Undo this savings movement?"]</h3>
                     @if (State.FindSavingMovement(_savingMovementId) is { } mvd)
                     {
-                        <p class="hint">@mvd.Date.ToString("dd MMM") · @State.SavingMovementTarget(mvd) · @Fmt(State.Money(-mvd.Amount.Amount)). @(mvd.BudgetCategoryId is not null ? "The funded budget is reduced by this amount." : "Both buckets are restored.")</p>
+                        <p class="hint">@mvd.Date.ToString("dd MMM") · @State.SavingMovementTarget(mvd) · @Fmt(-mvd.Amount.Amount). @(mvd.BudgetCategoryId is not null ? "The funded budget is reduced by this amount." : "Both buckets are restored.")</p>
                     }
                     <div class="modal-actions">
                         <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
@@ -4945,7 +4945,7 @@ else
             var id = due.Id;
             var text = due.AmountMode == RecurringAmountMode.ReminderOnly
                 ? string.Format(Loc["{0} is due — enter the amount."], due.Name)
-                : string.Format(Loc["{0} is due (about {1}) — confirm it."], due.Name, Fmt(State.Money(due.ExpectedAmount)));
+                : string.Format(Loc["{0} is due (about {1}) — confirm it."], due.Name, Fmt(due.ExpectedAmount));
             list.Add(new Notification(due.Icon ?? (due.Kind == RecurringKind.Income ? "note" : "repeat"), text, null,
                 Loc["Confirm"], () => OpenConfirmRecurring(id), null, () => SkipRecurringFromBell(id), false));
         }
@@ -4959,7 +4959,7 @@ else
             var days = State.RecurringDaysUntilDue(soon);
             var whenText = days <= 1 ? Loc["tomorrow"] : string.Format(Loc["in {0} days"], days);
             var text = soon.HasKnownAmount
-                ? string.Format(Loc["{0} (about {1}) is due {2}."], soon.Name, Fmt(State.Money(soon.ExpectedAmount)), whenText)
+                ? string.Format(Loc["{0} (about {1}) is due {2}."], soon.Name, Fmt(soon.ExpectedAmount), whenText)
                 : string.Format(Loc["{0} is due {1}."], soon.Name, whenText);
             list.Add(new Notification("calendar", text, null, null, null, null, () => SkipRecurringFromBell(id), false));
         }
@@ -5031,7 +5031,7 @@ else
                 near = (b.CategoryId, State.CategoryName(b.CategoryId), cov.Remaining.Amount, ratio);
         }
         if (near is { } n)
-            list.Add(new HomeReminder("info", string.Format(Loc["You're {0} from your {1} budget."], Fmt(State.Money(n.Remaining)), n.Name),
+            list.Add(new HomeReminder("info", string.Format(Loc["You're {0} from your {1} budget."], Fmt(n.Remaining), n.Name),
                 Loc["Review"], () => OpenCategoryDetail(n.CatId), false));
 
         // Sinking-fund nudge: a bucket with listed future costs hasn't had this month's set-aside put in yet.
@@ -5050,7 +5050,7 @@ else
                 : (null, (Action?)null);
             list.Add(new HomeReminder("calendar",
                 string.Format(Loc["{0} needs {1} set aside this period to stay ahead of its costs."],
-                    bucket.Name, Fmt(State.Money(owed))),
+                    bucket.Name, Fmt(owed)),
                 label, act, false));
         }
 
@@ -5115,9 +5115,9 @@ else
         var f2 = pick.Fast!.Value;
         return (
             pick.Id, debt.Id, pick.Amount, pick.Name, debt.Name,
-            string.Format(Loc["Your {0} budget has about {1} to spare"], pick.Name, Fmt(State.Money(pick.Amount))),
+            string.Format(Loc["Your {0} budget has about {1} to spare"], pick.Name, Fmt(pick.Amount)),
             string.Format(Loc["Put it toward {0} every period and you'd clear it {1} sooner and save around {2} in interest. Budgets vary, so treat it as a what-if — essential budgets are never counted."],
-                debt.Name, MonthsText(b.Months - f2.Months), Fmt(State.Money(Math.Max(0m, b.TotalInterest - f2.TotalInterest)))));
+                debt.Name, MonthsText(b.Months - f2.Months), Fmt(Math.Max(0m, b.TotalInterest - f2.TotalInterest))));
     }
 
     /// <summary>Discretionary budgets with spare that would speed up <paramref name="debt"/>, excluding ones dismissed
@@ -5179,10 +5179,10 @@ else
             string desc;
             if (monthsPace is { } ms && ms > mp)
                 desc = string.Format(Loc["Planned {0}/mo reaches {1}. At your recent {2}/mo it slips to {3} — about {4} later. Set aside {5} more this month to stay on track."],
-                    Fmt(State.Money(planned)), PayoffDate(mp), Fmt(State.Money(pace)), PayoffDate(ms), MonthsText(ms - mp), Fmt(State.Money(shortfall)));
+                    Fmt(planned), PayoffDate(mp), Fmt(pace), PayoffDate(ms), MonthsText(ms - mp), Fmt(shortfall));
             else if (monthsPace is null)
                 desc = string.Format(Loc["Planned {0}/mo reaches {1}, but your recent {2}/mo won't get there. Set aside {3} more this month to stay on track."],
-                    Fmt(State.Money(planned)), PayoffDate(mp), Fmt(State.Money(pace)), Fmt(State.Money(shortfall)));
+                    Fmt(planned), PayoffDate(mp), Fmt(pace), Fmt(shortfall));
             else
                 continue;   // slower pace isn't actually later → nothing worth saying
 
@@ -5476,7 +5476,7 @@ else
         if (over.Count == 0) return null;
         var pick = over[_overIndex % over.Count];
         return (pick.CatId,
-            string.Format(Loc["You're {0} over your {1} budget"], Fmt(State.Money(pick.Over)), pick.Name),
+            string.Format(Loc["You're {0} over your {1} budget"], Fmt(pick.Over), pick.Name),
             Loc["A non-essential category — easing off here frees up cash for savings or debt."]);
     }
 
@@ -6299,11 +6299,19 @@ else
         await State.AddAccount(_fName!, string.IsNullOrWhiteSpace(_fCurrency) ? "EUR" : _fCurrency!, Math.Clamp(_fSavingsTarget, 0, 100) / 100m);
     });
 
-    private static string Fmt(Money m)
+    // Currency formatting. Two entry points during the Money→decimal migration (Path B, docs/DOMAIN-REMOVAL.md):
+    // Fmt(decimal) formats in the account currency (the common case — the whole account is single-currency), while
+    // Fmt(Money) honours the value's own currency (needed for cross-currency figures like settlement amounts). Both
+    // share one core, so the rendered string is byte-identical however a figure is sourced.
+    private static string FmtCurrency(decimal amount, string currency)
     {
-        var symbol = m.Currency switch { "EUR" => "€", "USD" => "$", "GBP" => "£", _ => m.Currency + " " };
-        return $"{symbol}{m.Amount:N2}";
+        var symbol = currency switch { "EUR" => "€", "USD" => "$", "GBP" => "£", _ => currency + " " };
+        return $"{symbol}{amount:N2}";
     }
+
+    private string Fmt(decimal amount) => FmtCurrency(amount, State.Currency);
+
+    private static string Fmt(Money m) => FmtCurrency(m.Amount, m.Currency);
 
     // Render the domain's language-independent insight messages (code + args) into the active UI language.
     private string MoneyN(decimal amount) => Fmt(new Money(amount, State.Currency));
