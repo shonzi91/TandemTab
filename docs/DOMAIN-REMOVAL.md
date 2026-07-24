@@ -41,11 +41,16 @@ very last step; convert incrementally underneath it.
     win) invisibly to the UI, and is where the risk-laden logic lives; do it in coherent read-cluster commits
     (period/overview → spending/budgets → wallets → savings → insights → structure/members), each build+render-verified.
     The `FinApp.Domain` reference stays (Money is still domain) — nothing drops from the bundle yet.
-  - **2b — Global `Money` → `decimal`+currency swap.** Once no member sources from `Account`, replace the client
-    `Money` type. This is cross-cutting by nature (touches `Fmt`/`MoneyN` and ~97 sites) but purely a type change —
-    the formatted output is provably identical. There's already a `decimal` path (`Dashboard.MoneyN(decimal)` wraps
-    `Fmt(new Money(x, State.Currency))`), so a `Fmt(decimal)` overload + collapsing the 60 `Fmt(State.Money(x))`
-    round-trips is the natural on-ramp.
+  - **2b — decouple `Money` from `FinApp.Domain`.** ⚠️ **Corrected (Session 54): relocate, don't convert.** The
+    original plan was to replace the client `Money` type with `decimal`+currency across ~97 sites — a large,
+    rounding-sensitive rewrite (`Money` rounds to 2dp banker's on every op, so a naive `decimal` swap can drift the
+    last digit in chained arithmetic). Instead, since `Money` is a **self-contained, dependency-free struct**, it was
+    **moved to the new `FinApp.Kernel` leaf** (same trick as the forecast math), keeping the `FinApp.Domain.Common`
+    namespace so the ~79 consuming files need no edits. The client keeps its `Money`-typed display surface and Kernel
+    ships to the WASM bundle after Domain is dropped. ✅ **DONE** (`FinApp.Kernel`, behaviour-neutral, 514 green).
+    The earlier `Fmt(decimal)` on-ramp (`7002c63`, collapsing 60 `Fmt(State.Money(x))` round-trips) stands — a small
+    tidy, not a prerequisite. **So `Money` no longer forces a client→Domain dependency; the remaining coupling is the
+    aggregate itself** (`Account`/`Period`/`Expense`/…), which is the 2a re-sourcing work.
 - **Phase 3 — Drop the domain.** Remove the final `Account`/`Money`/`AccountSnapshotSerializer` client usage + the
   `FinApp.Domain` `ProjectReference` (keep `FinApp.Forecasting`), delete the on-device money model + `InsightNarrator`,
   confirm the WASM bundle no longer ships the domain assembly (the Phase-1 exit criterion).

@@ -19,9 +19,10 @@
   <ItemGroup>
     <ProjectReference Include="..\FinApp.Domain\FinApp.Domain.csproj" />
     <ProjectReference Include="..\FinApp.Contracts\FinApp.Contracts.csproj" />
-    <!-- Direct reference (not just transitive via Domain): the pure forecast math must keep shipping to the
-         WASM bundle after FinApp.Domain is dropped from the client (Path B, docs/DOMAIN-REMOVAL.md). -->
+    <!-- Direct references (not just transitive via Domain): the pure forecast math and the Money value type must
+         keep shipping to the WASM bundle after FinApp.Domain is dropped from the client (Path B, docs/DOMAIN-REMOVAL.md). -->
     <ProjectReference Include="..\FinApp.Forecasting\FinApp.Forecasting.csproj" />
+    <ProjectReference Include="..\FinApp.Kernel\FinApp.Kernel.csproj" />
   </ItemGroup>
 
 </Project>

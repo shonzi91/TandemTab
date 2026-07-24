@@ -8,6 +8,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\FinApp.Forecasting\FinApp.Forecasting.csproj" />
+    <ProjectReference Include="..\FinApp.Kernel\FinApp.Kernel.csproj" />
   </ItemGroup>
 
 </Project>

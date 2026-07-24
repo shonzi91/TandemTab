@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <!-- Dependency-free shared kernel: value types (Money) that both the domain and a thin client need.
+       Keeping Money here — rather than in FinApp.Domain — lets the WASM client keep its Money-typed display
+       surface after FinApp.Domain is dropped from the bundle (Path B, docs/DOMAIN-REMOVAL.md). -->
+
+</Project>

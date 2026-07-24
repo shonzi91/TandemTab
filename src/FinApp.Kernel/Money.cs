@@ -1,3 +1,8 @@
+// Lives in the FinApp.Kernel assembly (not FinApp.Domain) so the thin WASM client can keep its Money-typed
+// display surface after FinApp.Domain is dropped from the bundle (Path B, docs/DOMAIN-REMOVAL.md). The namespace
+// stays FinApp.Domain.Common — deliberately unchanged — so the ~79 files that `using` it need no edits; the
+// namespace simply spans two assemblies now (Money here, Entity/IPasswordHasher still in Domain). A namespace
+// rename to match the assembly is a possible later cleanup, not worth the churn today.
 namespace FinApp.Domain.Common;
 
 /// <summary>
