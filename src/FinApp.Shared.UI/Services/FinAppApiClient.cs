@@ -101,6 +101,9 @@ public sealed class FinAppApiClient(HttpClient http)
         SendAsync<OnboardingViewDto>(HttpMethod.Get, $"/accounts/{id}/onboarding", null, ct);
     public Task<MutationResultDto> DismissOnboardingAsync(Guid id, CancellationToken ct = default) =>
         SendAsync<MutationResultDto>(HttpMethod.Put, $"/accounts/{id}/onboarding/dismissed", null, ct);
+    // Path-B thin notifications bell: the current-period domain-derived alerts. Read-only.
+    public Task<NotificationsViewDto> GetNotificationsAsync(Guid id, CancellationToken ct = default) =>
+        SendAsync<NotificationsViewDto>(HttpMethod.Get, $"/accounts/{id}/notifications", null, ct);
     public Task DeleteAccountAsync(Guid id, CancellationToken ct = default) =>
         SendAsync(HttpMethod.Delete, $"/accounts/{id}", null, ct);
 

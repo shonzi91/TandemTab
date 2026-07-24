@@ -735,6 +735,16 @@ accounts.MapPut("/{id:guid}/onboarding/dismissed", async (Guid id, ClaimsPrincip
     return Results.Ok(new MutationResultDto(version, null));
 });
 
+// Path-B thin notifications bell: the current-period domain-derived alerts (deficit, over/near budgets, due
+// recurring, no income yet). Read-only — each item carries a TargetTab the client can jump to. See NotificationsMap.
+accounts.MapGet("/{id:guid}/notifications", async (Guid id, ClaimsPrincipal user, SnapshotService svc, CancellationToken ct) =>
+{
+    var snap = await svc.GetAsync(user.UserId(), id, ct);
+    if (string.IsNullOrEmpty(snap.Payload)) return Results.Ok(NotificationsViewDto.Empty);
+    var account = AccountSnapshotSerializer.Deserialize(snap.Payload);
+    return Results.Ok(NotificationsMap.View(account));
+});
+
 // The Insights health read (latest period): the gauge score/band + savings + trend + breakdown numbers, plus the
 // narrative as language-independent messages (code + args). The client owns the per-language templates — see InsightsDto.
 accounts.MapGet("/{id:guid}/insights", async (Guid id, ClaimsPrincipal user, SnapshotService svc, CancellationToken ct) =>
