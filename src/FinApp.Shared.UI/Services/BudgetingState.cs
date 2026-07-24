@@ -1972,7 +1972,11 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     }
 
     /// <summary>The icon to show for a category — its explicit choice, or one guessed from the name.</summary>
-    public string CategoryIcon(Guid categoryId) => CategoryIcons.Effective(Account.FindCategory(categoryId));
+    public string CategoryIcon(Guid categoryId)
+    {
+        var c = Account.FindCategory(categoryId);
+        return CategoryIcons.Effective(c?.Icon, c?.Name);
+    }
 
     /// <summary>The category's explicitly-stored icon (null when none) — for pre-selecting the edit picker.</summary>
     public string? CategoryStoredIcon(Guid categoryId) => Account.FindCategory(categoryId)?.Icon;

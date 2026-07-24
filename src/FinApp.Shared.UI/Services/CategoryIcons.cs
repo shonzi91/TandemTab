@@ -1,5 +1,3 @@
-using FinApp.Domain.Budgeting;
-
 namespace FinApp.Shared.UI.Services;
 
 /// <summary>
@@ -9,7 +7,7 @@ namespace FinApp.Shared.UI.Services;
 /// <para>
 /// Stored values used to be emoji (the old palette). New picks store an icon <b>name</b>; <see cref="Effective"/>
 /// translates any legacy emoji still on disk via <see cref="EmojiToName"/>, so existing categories render as icons
-/// without a data migration. Presentation only — the chosen value is stored on <see cref="Category.Icon"/>.
+/// without a data migration. Presentation only — the chosen value is stored on the category's icon field.
 /// </para>
 /// </summary>
 public static class CategoryIcons
@@ -105,10 +103,6 @@ public static class CategoryIcons
         (["garden", "plant", "flower"], "plant"),
         (["hobby", "hobbies", "craft", "art", "leisure", "fun"], "palette"),
     ];
-
-    /// <summary>The icon to display for a category: its explicit icon, else a guess from the name, else the fallback.</summary>
-    public static string Effective(Category? category) =>
-        category is null ? Fallback : Effective(category.Icon, category.Name);
 
     /// <summary>The icon name to display given an explicit (maybe-null, maybe legacy-emoji) icon and a name.</summary>
     public static string Effective(string? icon, string? name)
