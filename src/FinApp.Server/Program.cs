@@ -706,6 +706,35 @@ accounts.MapGet("/{id:guid}/milestones", async (Guid id, ClaimsPrincipal user, S
     return Results.Ok(new MilestonesDto(c.Earned, c.Total, c.InProgress));
 });
 
+// Path-B thin Achievements: the full catalogue (earned + locked with progress), same computation as the
+// milestones counts above. Read-only. See AchievementsMap / AchievementsView.cs.
+accounts.MapGet("/{id:guid}/achievements", async (Guid id, ClaimsPrincipal user, SnapshotService svc, CancellationToken ct) =>
+{
+    var snap = await svc.GetAsync(user.UserId(), id, ct);
+    if (string.IsNullOrEmpty(snap.Payload)) return Results.Ok(AchievementsViewDto.Empty);
+    var account = AccountSnapshotSerializer.Deserialize(snap.Payload);
+    return Results.Ok(AchievementsMap.View(account));
+});
+
+// Path-B thin onboarding checklist: the four first-run steps (Done derived from the account) + the dismissed flag.
+accounts.MapGet("/{id:guid}/onboarding", async (Guid id, ClaimsPrincipal user, SnapshotService svc, CancellationToken ct) =>
+{
+    var snap = await svc.GetAsync(user.UserId(), id, ct);
+    if (string.IsNullOrEmpty(snap.Payload)) return Results.Ok(OnboardingViewDto.Empty);
+    var account = AccountSnapshotSerializer.Deserialize(snap.Payload);
+    return Results.Ok(OnboardingMap.View(account));
+});
+
+// Dismiss the getting-started card (persist so it stays gone). A former deferred whole-snapshot write, now on the
+// mutation spine — mirrors BudgetingState.DismissOnboarding.
+accounts.MapPut("/{id:guid}/onboarding/dismissed", async (Guid id, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
+{
+    var userId = user.UserId();
+    var (version, _) = await svc.MutateAsync(userId, id, account => { account.DismissOnboarding(); return 0; }, ct);
+    await notifier.AccountChangedAsync(id, userId, version);
+    return Results.Ok(new MutationResultDto(version, null));
+});
+
 // The Insights health read (latest period): the gauge score/band + savings + trend + breakdown numbers, plus the
 // narrative as language-independent messages (code + args). The client owns the per-language templates — see InsightsDto.
 accounts.MapGet("/{id:guid}/insights", async (Guid id, ClaimsPrincipal user, SnapshotService svc, CancellationToken ct) =>

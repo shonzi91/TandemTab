@@ -1,0 +1,111 @@
+@* Thin (domain-free) Achievements panel: the full catalogue computed server-side (same source as the Home
+   milestones count). Read-only — earned medals (coloured by tier), then in-progress (with a % bar), then locked.
+   Account-level (not period-scoped). English copy for now (see AchievementsView.cs i18n note). *@
+@using FinApp.Contracts
+@using FinApp.Shared.UI.Services
+@inject FinAppApiClient Api
+
+@if (_error is { } err)
+{
+    <p class="tst-err">@err</p>
+}
+else if (_view is null)
+{
+    <p>Loading achievements…</p>
+}
+else
+{
+    <p class="ta-summary"><strong>@_view.Earned</strong> of @_view.Total earned · @_view.InProgress in progress</p>
+
+    @if (EarnedItems.Count > 0)
+    {
+        <h3>Earned</h3>
+        <div class="ta-grid">
+            @foreach (var a in EarnedItems)
+            {
+                <div class="ta-card earned @a.Tier.ToLowerInvariant()">
+                    <span class="ta-ic">@a.Icon</span>
+                    <div class="ta-body">
+                        <span class="ta-title">@a.Title</span>
+                        <span class="ta-desc">@a.Desc</span>
+                        @if (a.EarnedOn is { } d) { <span class="ta-date">Earned @d.ToString("d MMM yyyy")</span> }
+                    </div>
+                </div>
+            }
+        </div>
+    }
+
+    @if (InProgressItems.Count > 0)
+    {
+        <h3>In progress</h3>
+        <div class="ta-grid">
+            @foreach (var a in InProgressItems)
+            {
+                <div class="ta-card locked">
+                    <span class="ta-ic">@a.Icon</span>
+                    <div class="ta-body">
+                        <span class="ta-title">@a.Title</span>
+                        <span class="ta-desc">@a.Desc</span>
+                        <div class="ta-bar"><div class="ta-bar-fill" style="width:@(a.Percent ?? 0)%"></div></div>
+                        <span class="ta-pct">@(a.Percent ?? 0)%</span>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+
+    @if (LockedItems.Count > 0)
+    {
+        <h3>Locked</h3>
+        <div class="ta-grid">
+            @foreach (var a in LockedItems)
+            {
+                <div class="ta-card locked dim">
+                    <span class="ta-ic">@a.Icon</span>
+                    <div class="ta-body">
+                        <span class="ta-title">@a.Title</span>
+                        <span class="ta-desc">@a.Desc</span>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+}
+
+@code {
+    [Parameter, EditorRequired] public Guid AccountId { get; set; }
+
+    private AchievementsViewDto? _view;
+    private string? _error;
+
+    private IReadOnlyList<AchievementDto> EarnedItems => _view is null ? [] : _view.Items.Where(a => a.Earned).ToList();
+    private IReadOnlyList<AchievementDto> InProgressItems => _view is null ? [] : _view.Items.Where(a => !a.Earned && a.Percent is > 0).OrderByDescending(a => a.Percent).ToList();
+    private IReadOnlyList<AchievementDto> LockedItems => _view is null ? [] : _view.Items.Where(a => !a.Earned && !(a.Percent is > 0)).ToList();
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { _view = await Api.GetAchievementsAsync(AccountId); }
+        catch (Exception ex) { _error = ex.Message; }
+    }
+}
+
+<style>
+    .tst-err { color: #ff7a59; }
+    .ta-summary { font-size: .9rem; opacity: .85; margin: 0 0 .5rem; }
+    h3 { margin: 1.3rem 0 .5rem; font-size: .9rem; text-transform: uppercase; letter-spacing: .03em; opacity: .7; }
+    .ta-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: .6rem; }
+    .ta-card { display: flex; gap: .6rem; padding: .6rem .7rem; border-radius: .5rem; border: 1px solid rgba(128,128,128,.25); align-items: flex-start; }
+    .ta-card.locked { opacity: .8; }
+    .ta-card.dim { opacity: .5; }
+    .ta-card.earned { border-color: rgba(47,185,154,.5); background: rgba(47,185,154,.06); }
+    .ta-card.earned.silver { border-color: rgba(160,170,180,.6); background: rgba(160,170,180,.08); }
+    .ta-card.earned.gold { border-color: rgba(214,178,74,.65); background: rgba(214,178,74,.1); }
+    .ta-ic { font-size: 1.5rem; line-height: 1; }
+    .ta-body { display: flex; flex-direction: column; gap: .15rem; min-width: 0; }
+    .ta-title { font-weight: 600; font-size: .9rem; }
+    .ta-desc { font-size: .78rem; opacity: .75; }
+    .ta-date { font-size: .7rem; color: #2fb99a; margin-top: .1rem; }
+    .ta-bar { height: 5px; border-radius: 3px; background: rgba(128,128,128,.25); margin-top: .3rem; overflow: hidden; }
+    .ta-bar-fill { height: 100%; background: #2fb99a; }
+    .ta-pct { font-size: .7rem; opacity: .7; margin-top: .15rem; }
+</style>

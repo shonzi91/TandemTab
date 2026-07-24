@@ -93,6 +93,14 @@ public sealed class FinAppApiClient(HttpClient http)
     // Path-B thin Structure editor: read the account's categories/funds/contribution categories (writes below).
     public Task<StructureViewDto> GetStructureAsync(Guid id, CancellationToken ct = default) =>
         SendAsync<StructureViewDto>(HttpMethod.Get, $"/accounts/{id}/structure", null, ct);
+    // Path-B thin Achievements: the full catalogue (earned + locked with progress). Read-only.
+    public Task<AchievementsViewDto> GetAchievementsAsync(Guid id, CancellationToken ct = default) =>
+        SendAsync<AchievementsViewDto>(HttpMethod.Get, $"/accounts/{id}/achievements", null, ct);
+    // Path-B thin onboarding: read the getting-started checklist; dismiss the card.
+    public Task<OnboardingViewDto> GetOnboardingAsync(Guid id, CancellationToken ct = default) =>
+        SendAsync<OnboardingViewDto>(HttpMethod.Get, $"/accounts/{id}/onboarding", null, ct);
+    public Task<MutationResultDto> DismissOnboardingAsync(Guid id, CancellationToken ct = default) =>
+        SendAsync<MutationResultDto>(HttpMethod.Put, $"/accounts/{id}/onboarding/dismissed", null, ct);
     public Task DeleteAccountAsync(Guid id, CancellationToken ct = default) =>
         SendAsync(HttpMethod.Delete, $"/accounts/{id}", null, ct);
 

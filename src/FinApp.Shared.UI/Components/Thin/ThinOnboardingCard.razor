@@ -1,0 +1,84 @@
+@* Thin (domain-free) "Getting started" checklist — the four first-run steps with server-derived Done state.
+   Shown on Home until every step is done or the user dismisses it (PUT /onboarding/dismissed, a real command).
+   Each open step jumps to the tab where you'd complete it. Renders nothing when dismissed / all done / empty. *@
+@using FinApp.Contracts
+@using FinApp.Shared.UI.Services
+@inject FinAppApiClient Api
+
+@if (_view is { Dismissed: false, AllDone: false } v && v.Steps.Count > 0)
+{
+    var done = v.Steps.Count(s => s.Done);
+    <div class="ob-card">
+        <div class="ob-head">
+            <div>
+                <h3 class="ob-h">👋 Welcome! Let's get you set up</h3>
+                <p class="ob-sub">@done of @v.Steps.Count done — takes a couple of minutes.</p>
+            </div>
+            <button class="ob-x" title="Dismiss" @onclick="Dismiss" disabled="@_busy">×</button>
+        </div>
+        <div class="ob-prog"><div class="ob-prog-fill" style="width:@(done * 100 / v.Steps.Count)%"></div></div>
+        <div class="ob-steps">
+            @foreach (var s in v.Steps)
+            {
+                <button class="ob-step @(s.Done ? "done" : "")" disabled="@s.Done" @onclick="() => Go(s.Key)">
+                    <span class="ob-check">@(s.Done ? "✓" : "○")</span>
+                    <span class="ob-body">
+                        <span class="ob-title">@s.Title</span>
+                        <span class="ob-desc">@s.Desc</span>
+                    </span>
+                    @if (!s.Done) { <span class="ob-go">›</span> }
+                </button>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter, EditorRequired] public Guid AccountId { get; set; }
+    // Jump to the tab where a step is completed (income->Income, budget->Budgets, expense->Spending, bucket->Goals).
+    [Parameter] public EventCallback<string> OnGoToTab { get; set; }
+
+    private OnboardingViewDto? _view;
+    private bool _busy;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { _view = await Api.GetOnboardingAsync(AccountId); }
+        catch { /* onboarding is optional chrome — never block Home on it */ }
+    }
+
+    private async Task Dismiss()
+    {
+        if (_busy) return;
+        _busy = true;
+        try { await Api.DismissOnboardingAsync(AccountId); _view = _view is null ? null : _view with { Dismissed = true }; }
+        catch { /* best-effort */ }
+        finally { _busy = false; }
+    }
+
+    private Task Go(string key)
+    {
+        var tab = key switch { "income" => "Income", "budget" => "Budgets", "expense" => "Spending", "bucket" => "Goals", _ => "Home" };
+        return OnGoToTab.HasDelegate ? OnGoToTab.InvokeAsync(tab) : Task.CompletedTask;
+    }
+}
+
+<style>
+    .ob-card { border: 1px solid rgba(47,185,154,.4); background: rgba(47,185,154,.06); border-radius: .6rem; padding: .8rem .9rem; margin-bottom: 1rem; }
+    .ob-head { display: flex; align-items: flex-start; justify-content: space-between; gap: .5rem; }
+    .ob-h { margin: 0; font-size: 1rem; }
+    .ob-sub { margin: .1rem 0 0; font-size: .8rem; opacity: .75; }
+    .ob-x { border: none; background: none; color: inherit; font-size: 1.4rem; line-height: 1; cursor: pointer; opacity: .6; }
+    .ob-x:hover { opacity: 1; }
+    .ob-prog { height: 5px; border-radius: 3px; background: rgba(128,128,128,.25); margin: .6rem 0; overflow: hidden; }
+    .ob-prog-fill { height: 100%; background: #2fb99a; transition: width .2s; }
+    .ob-steps { display: flex; flex-direction: column; gap: .35rem; }
+    .ob-step { display: flex; align-items: center; gap: .6rem; padding: .5rem .6rem; border-radius: .45rem; border: 1px solid rgba(128,128,128,.25); background: transparent; color: inherit; cursor: pointer; text-align: left; }
+    .ob-step:hover:not(.done) { border-color: rgba(47,185,154,.5); }
+    .ob-step.done { opacity: .6; cursor: default; }
+    .ob-check { font-size: 1rem; color: #2fb99a; width: 1.1rem; text-align: center; }
+    .ob-body { display: flex; flex-direction: column; min-width: 0; }
+    .ob-title { font-weight: 600; font-size: .88rem; }
+    .ob-desc { font-size: .76rem; opacity: .7; }
+    .ob-go { margin-left: auto; opacity: .6; font-size: 1.1rem; }
+</style>
