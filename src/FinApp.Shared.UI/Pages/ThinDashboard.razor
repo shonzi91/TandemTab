@@ -157,6 +157,9 @@
                 case "Structure":
                     <ThinStructureSection @key="_accountId" AccountId="_accountId" />
                     break;
+                case "Import":
+                    <ThinImportSection @key="_accountId" AccountId="_accountId" />
+                    break;
                 case "Members":
                     <ThinMembersSection @key="_accountId" Account="acct" OnMembershipChanged="ReloadAccounts" OnAccountExited="OnAccountExited" />
                     break;
@@ -172,7 +175,7 @@
 </div>
 
 @code {
-    private static readonly string[] Tabs = ["Home", "Spending", "Income", "Wallets", "Goals", "Budgets", "Recurring", "Structure", "Members", "Awards", "Settings"];
+    private static readonly string[] Tabs = ["Home", "Spending", "Income", "Wallets", "Goals", "Budgets", "Recurring", "Structure", "Import", "Members", "Awards", "Settings"];
 
     private List<AccountSummaryDto>? _accounts;
     private Guid _accountId;

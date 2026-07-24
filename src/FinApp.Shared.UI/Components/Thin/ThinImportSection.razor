@@ -1,0 +1,306 @@
+@* Thin (domain-free) statement / migration import. Upload a bank statement OR a transaction export from another
+   app; the shared BankFileParser/XlsxReader (in FinApp.Contracts, WASM-safe) parse OFX/QIF/XML/HTML/CSV/XLSX into
+   signed transactions. Tabular formats go through a column mapper; then rows are grouped by (description, sign) so
+   you assign each merchant/source-category to one of your categories + a fund ONCE (the migration accelerator),
+   and commit via POST /import. Account-level.
+   ⚠️ The server posts every row to the CURRENT open period (dates are kept per-row) — great for statements and
+   recent transactions; a multi-month historical migration lands under the current period, not split by month. *@
+@using System.Text
+@using FinApp.Contracts
+@using FinApp.Shared.UI.Services
+@using Microsoft.AspNetCore.Components.Forms
+@inject FinAppApiClient Api
+
+@if (_error is { } err) { <p class="ti-err">@err <button class="ti-lnk" @onclick="() => _error = null">dismiss</button></p> }
+
+@if (_structure is null)
+{
+    <p>Loading…</p>
+}
+else if (_step == Step.Upload)
+{
+    <h3>Import transactions</h3>
+    <p class="ti-hint">Upload a bank statement or a transaction export from another app. Supported: CSV, Excel (.xlsx),
+        OFX/QFX, QIF, and XML/HTML statements. Migrating? Export your history as CSV from the old app and bring it here.</p>
+    <div class="ti-drop">
+        <InputFile OnChange="OnFilePicked" accept=".csv,.tsv,.txt,.xlsx,.ofx,.qfx,.qif,.xml,.camt,.htm,.html" />
+    </div>
+    <p class="ti-note">Rows post to the current open period (each keeps its own date). A whole-history migration
+        across many months will land under the current period.</p>
+}
+else if (_step == Step.Map)
+{
+    <h3>Map the columns</h3>
+    <p class="ti-hint">Tell us which column is which. We guessed from the headers — adjust if needed.</p>
+    <table class="ti-maptable">
+        <tr><td>Date</td><td>@ColSelect(i => _dateCol = i, _dateCol)</td></tr>
+        <tr><td>Description</td><td>@ColSelect(i => _descCol = i, _descCol)</td></tr>
+        <tr><td>Amount (signed)</td><td>@ColSelect(i => _amountCol = i, _amountCol, allowNone: true)</td></tr>
+        <tr><td>— or Money out</td><td>@ColSelect(i => _debitCol = i, _debitCol, allowNone: true)</td></tr>
+        <tr><td>— and Money in</td><td>@ColSelect(i => _creditCol = i, _creditCol, allowNone: true)</td></tr>
+    </table>
+
+    <p class="ti-hint">Preview (first rows):</p>
+    <div class="ti-preview">
+        <table>
+            <thead><tr>@foreach (var h in _headers) { <th>@h</th> }</tr></thead>
+            <tbody>
+                @foreach (var row in _rows.Take(4))
+                {
+                    <tr>@foreach (var cell in row) { <td>@cell</td> }</tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+    <div class="ti-actions">
+        <button class="ti-primary" @onclick="ParseTabular" disabled="@(_dateCol < 0 || (_amountCol < 0 && _debitCol < 0 && _creditCol < 0))">Next</button>
+        <button class="ti-lnk" @onclick="Reset">start over</button>
+    </div>
+}
+else if (_step == Step.Review)
+{
+    var toImport = _groups.Where(g => !g.Skip).Sum(g => g.Rows.Count);
+    <h3>Review &amp; categorise</h3>
+    <p class="ti-hint">@_transactions.Count transactions in @_groups.Count groups. Assign each group a category and a
+        wallet — assign once and it applies to every matching row. Untick a group to skip it.</p>
+
+    <div class="ti-groups">
+        @foreach (var g in _groups)
+        {
+            <div class="ti-group @(g.Skip ? "skip" : "")">
+                <label class="ti-gcheck"><input type="checkbox" checked="@(!g.Skip)" @onchange="e => g.Skip = !(bool)e.Value!" /></label>
+                <div class="ti-gmain">
+                    <div class="ti-grow1">
+                        <span class="ti-gdesc" title="@g.Description">@(string.IsNullOrWhiteSpace(g.Description) ? "(no description)" : g.Description)</span>
+                        <span class="ti-gkind @(g.IsIncome ? "in" : "out")">@(g.IsIncome ? "income" : "expense")</span>
+                        <span class="ti-gcount">@g.Rows.Count× · @FmtTotal(g)</span>
+                    </div>
+                    <div class="ti-grow2">
+                        <select value="@g.CategoryId" @onchange="e => g.CategoryId = Guid.Parse((string)e.Value!)">
+                            @foreach (var (cid, cname) in CategoryOptions(g.IsIncome))
+                            {
+                                <option value="@cid" selected="@(cid == g.CategoryId)">@cname</option>
+                            }
+                        </select>
+                        <select value="@g.FundId" @onchange="e => g.FundId = Guid.Parse((string)e.Value!)">
+                            @foreach (var f in Funds)
+                            {
+                                <option value="@f.Id" selected="@(f.Id == g.FundId)">@f.Name</option>
+                            }
+                        </select>
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+
+    <label class="ti-dupe"><input type="checkbox" @bind="_skipDuplicates" /> Skip transactions already in this period (avoids double-importing the same statement)</label>
+
+    <div class="ti-actions">
+        <button class="ti-primary" @onclick="DoImport" disabled="@(_busy || toImport == 0)">Import @toImport transaction@(toImport == 1 ? "" : "s")</button>
+        <button class="ti-lnk" @onclick="Reset">start over</button>
+    </div>
+}
+else if (_step == Step.Done && _result is { } res)
+{
+    <h3>Import complete ✅</h3>
+    <p class="ti-ok"><strong>@res.Imported</strong> imported@(res.Duplicates > 0 ? $", {res.Duplicates} skipped as duplicates" : "")@(res.Skipped > 0 ? $", {res.Skipped} skipped as blank" : "").</p>
+    <p class="ti-hint">They're in the current period — check the Spending and Income tabs. Reload if a tab looks stale.</p>
+    <button class="ti-primary" @onclick="Reset">Import another file</button>
+}
+
+@code {
+    [Parameter, EditorRequired] public Guid AccountId { get; set; }
+
+    private enum Step { Upload, Map, Review, Done }
+    private Step _step = Step.Upload;
+
+    private StructureViewDto? _structure;
+    private string? _error;
+    private bool _busy;
+
+    // tabular staging (CSV/HTML/XLSX)
+    private IReadOnlyList<string> _headers = [];
+    private IReadOnlyList<IReadOnlyList<string>> _rows = [];
+    private int _dateCol = -1, _amountCol = -1, _descCol = -1, _debitCol = -1, _creditCol = -1;
+
+    private List<ImportedTransaction> _transactions = [];
+    private readonly List<Group> _groups = [];
+    private ImportResultDto? _result;
+    private bool _skipDuplicates = true;
+
+    private sealed class Group
+    {
+        public string Description = "";
+        public bool IsIncome;
+        public List<ImportedTransaction> Rows = [];
+        public Guid CategoryId;
+        public Guid FundId;
+        public bool Skip;
+    }
+
+    private IEnumerable<StructureFundDto> Funds => _structure!.Funds.Where(f => !f.Archived);
+    private Guid DefaultFundId => (Funds.FirstOrDefault(f => !f.Synced) ?? Funds.FirstOrDefault())?.Id ?? Guid.Empty;
+
+    private IEnumerable<(Guid Id, string Name)> CategoryOptions(bool income) => income
+        ? _structure!.ContributionCategories.Select(c => (c.Id, c.Name))
+        : _structure!.Categories.Where(c => !c.Archived).Select(c => (c.Id, c.Name));
+
+    private Guid DefaultCategoryId(bool income) => CategoryOptions(income).Select(c => c.Id).FirstOrDefault();
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { _structure = await Api.GetStructureAsync(AccountId); }
+        catch (Exception ex) { _error = ex.Message; }
+    }
+
+    private async Task OnFilePicked(InputFileChangeEventArgs e)
+    {
+        _error = null;
+        try
+        {
+            var file = e.File;
+            var name = file.Name;
+            if (name.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
+            {
+                using var ms = new MemoryStream();
+                await file.OpenReadStream(maxAllowedSize: 32 * 1024 * 1024).CopyToAsync(ms);
+                ms.Position = 0;
+                (_headers, _rows) = XlsxReader.Read(ms);
+                GuessColumns();
+                _step = Step.Map;
+                return;
+            }
+
+            using var reader = new StreamReader(file.OpenReadStream(maxAllowedSize: 32 * 1024 * 1024));
+            var text = await reader.ReadToEndAsync();
+            switch (BankFileParser.Detect(name, text))
+            {
+                case BankFileParser.Format.Ofx: BuildGroups(BankFileParser.ParseOfx(text)); break;
+                case BankFileParser.Format.Qif: BuildGroups(BankFileParser.ParseQif(text)); break;
+                case BankFileParser.Format.Xml: BuildGroups(BankFileParser.ParseXml(text)); break;
+                case BankFileParser.Format.Html: (_headers, _rows) = BankFileParser.ReadHtmlTable(text); GuessColumns(); _step = Step.Map; break;
+                case BankFileParser.Format.Csv: (_headers, _rows) = BankFileParser.ReadCsv(text); GuessColumns(); _step = Step.Map; break;
+                default: _error = "Couldn't recognise that file's format."; break;
+            }
+        }
+        catch (Exception ex) { _error = $"Couldn't read that file: {ex.Message}"; }
+    }
+
+    private void GuessColumns()
+    {
+        int Find(params string[] hints) => _headers
+            .Select((h, i) => (h: h.ToLowerInvariant(), i))
+            .Where(x => hints.Any(hint => x.h.Contains(hint)))
+            .Select(x => x.i).DefaultIfEmpty(-1).First();
+
+        _dateCol = Find("date", "дата", "дата на");
+        _descCol = Find("desc", "narrative", "payee", "detail", "reference", "reason", "memo", "note", "основание", "получател");
+        _debitCol = Find("debit", "withdrawal", "money out", "дебит");
+        _creditCol = Find("credit", "deposit", "money in", "кредит");
+        _amountCol = (_debitCol >= 0 || _creditCol >= 0) ? -1 : Find("amount", "sum", "value", "сума");
+        if (_amountCol < 0 && _debitCol < 0 && _creditCol < 0) _amountCol = Math.Min(2, _headers.Count - 1);
+    }
+
+    private void ParseTabular()
+    {
+        var txns = BankFileParser.ParseCsv(_rows, _dateCol, _descCol,
+            _amountCol < 0 ? 0 : _amountCol,
+            _debitCol < 0 ? null : _debitCol,
+            _creditCol < 0 ? null : _creditCol);
+        BuildGroups(txns);
+    }
+
+    private void BuildGroups(IReadOnlyList<ImportedTransaction> txns)
+    {
+        _transactions = txns.Where(t => t.Amount != 0m).ToList();
+        _groups.Clear();
+        foreach (var byKind in _transactions.GroupBy(t => (income: t.Amount > 0m, desc: Normalize(t.Description))))
+        {
+            var income = byKind.Key.income;
+            _groups.Add(new Group
+            {
+                Description = byKind.First().Description,
+                IsIncome = income,
+                Rows = byKind.ToList(),
+                CategoryId = DefaultCategoryId(income),
+                FundId = DefaultFundId,
+            });
+        }
+        _groups.Sort((a, b) => b.Rows.Count.CompareTo(a.Rows.Count));
+        _result = null;
+        if (_transactions.Count == 0) { _error = "No transactions found in that file."; _step = Step.Upload; }
+        else _step = Step.Review;
+    }
+
+    private static string Normalize(string s) => new string((s ?? "").ToLowerInvariant().Where(char.IsLetterOrDigit).ToArray());
+
+    private async Task DoImport()
+    {
+        _busy = true; _error = null;
+        try
+        {
+            var rows = new List<ImportRowDto>();
+            foreach (var g in _groups.Where(g => !g.Skip))
+                foreach (var t in g.Rows)
+                    rows.Add(new ImportRowDto(t.Amount, t.Date, g.CategoryId, g.FundId,
+                        string.IsNullOrWhiteSpace(t.Description) ? null : t.Description));
+
+            _result = await Api.ImportTransactionsAsync(AccountId, new ImportTransactionsRequest(rows, _skipDuplicates));
+            _step = Step.Done;
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    private void Reset()
+    {
+        _step = Step.Upload; _headers = []; _rows = []; _transactions = []; _groups.Clear();
+        _dateCol = _amountCol = _descCol = _debitCol = _creditCol = -1; _result = null; _error = null;
+    }
+
+    private static string FmtTotal(Group g) => g.Rows.Sum(r => Math.Abs(r.Amount)).ToString("0.00");
+
+    private RenderFragment ColSelect(Action<int> set, int value, bool allowNone = false) => __builder =>
+    {
+        <select value="@value" @onchange="e => set(int.Parse((string)e.Value!))">
+            @if (allowNone) { <option value="-1" selected="@(value < 0)">— none —</option> }
+            @for (var i = 0; i < _headers.Count; i++)
+            {
+                var idx = i;
+                <option value="@idx" selected="@(idx == value)">@_headers[idx]</option>
+            }
+        </select>
+    };
+}
+
+<style>
+    .ti-err { color: #ff7a59; }
+    .ti-ok { color: #2fb99a; }
+    h3 { margin: 0 0 .5rem; font-size: .95rem; }
+    .ti-hint { font-size: .82rem; opacity: .75; margin: 0 0 .6rem; }
+    .ti-note { font-size: .75rem; opacity: .6; margin-top: .8rem; }
+    .ti-drop { border: 1px dashed rgba(128,128,128,.5); border-radius: .6rem; padding: 1.2rem; text-align: center; }
+    .ti-maptable td { padding: .25rem .5rem .25rem 0; font-size: .85rem; }
+    .ti-preview { overflow-x: auto; border: 1px solid rgba(128,128,128,.2); border-radius: .4rem; margin-bottom: .8rem; }
+    .ti-preview table { border-collapse: collapse; font-size: .75rem; }
+    .ti-preview th, .ti-preview td { border: 1px solid rgba(128,128,128,.15); padding: .2rem .4rem; white-space: nowrap; max-width: 14rem; overflow: hidden; text-overflow: ellipsis; }
+    select { padding: .3rem .4rem; border-radius: .4rem; border: 1px solid rgba(128,128,128,.4); background: transparent; color: inherit; max-width: 12rem; }
+    .ti-groups { display: flex; flex-direction: column; gap: .4rem; margin-bottom: 1rem; }
+    .ti-group { display: flex; gap: .5rem; padding: .5rem .6rem; border: 1px solid rgba(128,128,128,.25); border-radius: .5rem; }
+    .ti-group.skip { opacity: .45; }
+    .ti-gmain { flex: 1; min-width: 0; }
+    .ti-grow1 { display: flex; align-items: center; gap: .5rem; margin-bottom: .35rem; }
+    .ti-gdesc { font-weight: 600; font-size: .85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 16rem; }
+    .ti-gkind { font-size: .6rem; text-transform: uppercase; letter-spacing: .03em; border-radius: .3rem; padding: .05rem .35rem; }
+    .ti-gkind.out { background: rgba(255,122,89,.18); color: #ff7a59; }
+    .ti-gkind.in { background: rgba(47,185,154,.18); color: #2fb99a; }
+    .ti-gcount { font-size: .75rem; opacity: .65; margin-left: auto; white-space: nowrap; }
+    .ti-grow2 { display: flex; gap: .4rem; flex-wrap: wrap; }
+    .ti-dupe { display: flex; align-items: center; gap: .4rem; font-size: .8rem; opacity: .85; margin-bottom: .8rem; }
+    .ti-actions { display: flex; align-items: center; gap: .8rem; }
+    .ti-primary { padding: .45rem 1.1rem; border-radius: .4rem; border: none; background: #2fb99a; color: #05201a; font-weight: 600; cursor: pointer; }
+    .ti-primary:disabled { opacity: .5; cursor: default; }
+    .ti-lnk { border: none; background: none; color: #2fb99a; cursor: pointer; font-size: .82rem; }
+</style>

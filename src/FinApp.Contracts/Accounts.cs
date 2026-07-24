@@ -211,14 +211,16 @@ public record SettleExpenseRequest(Guid DestinationAccountId, Guid DestinationFu
 public record ImportRowDto(decimal Amount, DateOnly Date, Guid CategoryId, Guid FundId, string? Note = null);
 
 /// <summary>Import a batch of reviewed statement rows in one save (all-or-nothing — a row that names a missing
-/// category/fund fails the whole batch with 400). Duplicate detection and in-period filtering are the caller's review
-/// step (mirroring the web's <c>ImportLooksDuplicate</c>/<c>ImportInPeriod</c>); this commits the final rows.
-/// Mirrors <c>BudgetingState.ImportTransactions</c>.</summary>
-public record ImportTransactionsRequest(IReadOnlyList<ImportRowDto> Rows);
+/// category/fund fails the whole batch with 400). When <see cref="SkipDuplicates"/> is true (the default), a row that
+/// matches an entry <b>already</b> in the target period (same date + amount + fund) is skipped, so re-importing the
+/// same statement is safe; duplicates <i>within</i> one batch still post (they're compared against pre-existing data
+/// only). Mirrors <c>BudgetingState.ImportTransactions</c> + the web's <c>ImportLooksDuplicate</c> hint.</summary>
+public record ImportTransactionsRequest(IReadOnlyList<ImportRowDto> Rows, bool SkipDuplicates = true);
 
 /// <summary>Result of a statement import: the new snapshot <see cref="Version"/>, how many rows posted
-/// (<see cref="Imported"/>) and how many were skipped as zero/empty (<see cref="Skipped"/>).</summary>
-public record ImportResultDto(long Version, int Imported, int Skipped);
+/// (<see cref="Imported"/>), how many were skipped as zero/empty (<see cref="Skipped"/>), and how many were skipped
+/// as <see cref="Duplicates"/> of existing entries.</summary>
+public record ImportResultDto(long Version, int Imported, int Skipped, int Duplicates = 0);
 
 // --- Reallocation (move a budget's spare toward savings or another budget) ------------------------------------
 

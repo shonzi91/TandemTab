@@ -153,4 +153,40 @@ public class StatementImportApiTests : IClassFixture<FinAppServerFactory>
             new ImportTransactionsRequest(new[] { new ImportRowDto(-20m, new DateOnly(2026, 1, 8), groceries, fund, null) }));
         Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
     }
+
+    [Fact]
+    public async Task Re_importing_the_same_statement_skips_duplicates_but_keeps_in_batch_repeats()
+    {
+        var (client, auth) = await _factory.RegisterAndAuthAsync("im_dupe");
+        var account = await CreateAccount(client, "Dupe");
+        var (groceries, salary, fund) = await SeedAsync(client, account.Id, auth.UserId);
+
+        // A fresh batch with TWO identical rows: both post (they only dedupe against PRE-EXISTING data, not each other).
+        var first = await (await client.PostAsJsonAsync($"/accounts/{account.Id}/import",
+            new ImportTransactionsRequest(new[]
+            {
+                new ImportRowDto(-42.50m, new DateOnly(2026, 1, 8), groceries, fund, "Tesco"),
+                new ImportRowDto(-42.50m, new DateOnly(2026, 1, 8), groceries, fund, "Tesco"),
+                new ImportRowDto(2000m, new DateOnly(2026, 1, 1), salary, fund, "Payday"),
+            }))).Content.ReadFromJsonAsync<ImportResultDto>();
+        Assert.Equal(3, first!.Imported);
+        Assert.Equal(0, first.Duplicates);
+
+        // Re-import the same statement (default SkipDuplicates=true): every row now matches existing data → all skipped.
+        var again = await (await client.PostAsJsonAsync($"/accounts/{account.Id}/import",
+            new ImportTransactionsRequest(new[]
+            {
+                new ImportRowDto(-42.50m, new DateOnly(2026, 1, 8), groceries, fund, "Tesco"),
+                new ImportRowDto(2000m, new DateOnly(2026, 1, 1), salary, fund, "Payday"),
+            }))).Content.ReadFromJsonAsync<ImportResultDto>();
+        Assert.Equal(0, again!.Imported);
+        Assert.Equal(2, again.Duplicates);
+
+        // Opting out re-imports them.
+        var forced = await (await client.PostAsJsonAsync($"/accounts/{account.Id}/import",
+            new ImportTransactionsRequest(new[] { new ImportRowDto(-42.50m, new DateOnly(2026, 1, 8), groceries, fund, "Tesco") }, SkipDuplicates: false)))
+            .Content.ReadFromJsonAsync<ImportResultDto>();
+        Assert.Equal(1, forced!.Imported);
+        Assert.Equal(0, forced.Duplicates);
+    }
 }

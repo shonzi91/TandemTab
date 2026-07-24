@@ -933,7 +933,18 @@ accounts.MapPost("/{id:guid}/import", async (Guid id, ImportTransactionsRequest 
     var (version, result) = await svc.MutateAsync(userId, id, account =>
     {
         var period = account.CurrentPeriod ?? throw new InvalidOperationException("There's no open period to import into.");
-        int imported = 0, skipped = 0;
+        int imported = 0, skipped = 0, duplicates = 0;
+
+        // Snapshot the period's existing (date, amount, fund) keys BEFORE importing, so re-running the same
+        // statement skips its rows — but two identical rows within one fresh batch both post (they only match
+        // pre-existing data, not each other). Debits match expenses; credits match real (non-carryover) contributions.
+        var existingExpenses = req.SkipDuplicates
+            ? period.Expenses.Select(e => (e.Date, e.Amount.Amount, e.FundId)).ToHashSet()
+            : new HashSet<(DateOnly, decimal, Guid)>();
+        var existingIncome = req.SkipDuplicates
+            ? period.Contributions.Where(c => c.MemberId != Period.CarryoverSource).Select(c => (c.Date, c.Paid.Amount, c.FundId)).ToHashSet()
+            : new HashSet<(DateOnly, decimal, Guid)>();
+
         foreach (var row in req.Rows)
         {
             if (row.Amount == 0m || row.CategoryId == Guid.Empty || row.FundId == Guid.Empty) { skipped++; continue; }
@@ -942,6 +953,7 @@ accounts.MapPost("/{id:guid}/import", async (Guid id, ImportTransactionsRequest 
             if (row.Amount < 0m)
             {
                 if (account.FindCategory(row.CategoryId) is null) throw new InvalidOperationException("A row references a spend category that doesn't exist in this account.");
+                if (req.SkipDuplicates && existingExpenses.Contains((row.Date, Math.Abs(row.Amount), row.FundId))) { duplicates++; continue; }
                 var expense = new Expense(row.CategoryId, new Money(Math.Abs(row.Amount), account.Currency), row.Date, userId, row.FundId, note);
                 expense.SetFundSynced(fund.IsSynced);
                 period.AddExpense(expense);
@@ -949,15 +961,16 @@ accounts.MapPost("/{id:guid}/import", async (Guid id, ImportTransactionsRequest 
             else
             {
                 if (account.FindContributionCategory(row.CategoryId) is null) throw new InvalidOperationException("A row references an income category that doesn't exist in this account.");
+                if (req.SkipDuplicates && existingIncome.Contains((row.Date, row.Amount, row.FundId))) { duplicates++; continue; }
                 var contribution = period.Deposit(userId, new Money(row.Amount, account.Currency), row.CategoryId, row.FundId, row.Date);
                 contribution.SetFundSynced(fund.IsSynced);
             }
             imported++;
         }
-        return (imported, skipped);
+        return (imported, skipped, duplicates);
     }, ct);
     await notifier.AccountChangedAsync(id, userId, version);
-    return Results.Ok(new ImportResultDto(version, result.imported, result.skipped));
+    return Results.Ok(new ImportResultDto(version, result.imported, result.skipped, result.duplicates));
 });
 
 // Settlement / cross-account writes — the only commands that touch TWO accounts, applied atomically through
