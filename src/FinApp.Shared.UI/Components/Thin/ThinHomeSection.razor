@@ -76,6 +76,7 @@ else
 
 @code {
     [Parameter, EditorRequired] public Guid AccountId { get; set; }
+    [Parameter] public int? PeriodIndex { get; set; }
 
     private HomeViewState? _home;
     private string? _error;
@@ -87,7 +88,7 @@ else
         {
             _home = new HomeViewState(Api);
             _home.Changed += OnChanged;
-            await _home.LoadAsync(AccountId);
+            await _home.LoadAsync(AccountId, PeriodIndex);
         }
         catch (Exception ex) { _error = ex.Message; }
     }

@@ -10,10 +10,10 @@ namespace FinApp.Server.Accounts;
 /// <see cref="RecurringMap"/> string-enum helper without clashing.)</summary>
 public static class RecurringView
 {
-    public static RecurringViewDto Of(Account account, long version)
+    public static RecurringViewDto Of(Account account, long version, Period? viewPeriod = null)
     {
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
-        if (account.CurrentPeriod is not { } period)
+        if ((viewPeriod ?? account.CurrentPeriod) is not { } period)
             return RecurringViewDto.Empty with { Version = version, Currency = account.Currency };
 
         var open = period.Status == PeriodStatus.Open;

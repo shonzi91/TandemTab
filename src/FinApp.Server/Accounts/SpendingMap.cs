@@ -59,10 +59,11 @@ public static class SpendingMap
         e.IsSettlementSource,
         e.IsSettlementDestination);
 
-    /// <summary>The full Spending surface for the account's current period (empty currency-only view when none).</summary>
-    public static SpendingViewDto View(Account account, long version, decimal? bankBalance = null, string? bankCurrency = null)
+    /// <summary>The full Spending surface for <paramref name="viewPeriod"/> (the current period when null; empty
+    /// currency-only view when the account has no period).</summary>
+    public static SpendingViewDto View(Account account, long version, decimal? bankBalance = null, string? bankCurrency = null, Period? viewPeriod = null)
     {
-        if (account.CurrentPeriod is not { } period)
+        if ((viewPeriod ?? account.CurrentPeriod) is not { } period)
             return SpendingViewDto.Empty with { Version = version, Currency = account.Currency };
 
         var expenses = period.Expenses

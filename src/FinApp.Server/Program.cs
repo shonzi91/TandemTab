@@ -546,67 +546,81 @@ accounts.MapGet("/{id:guid}/snapshot", async (Guid id, ClaimsPrincipal user, Sna
 // --- Computed reads (Option-A migration, docs/MOBILE.md) -----------------
 // First read moved server-side: the Home balance-header figures, computed from the snapshot the server
 // already loads. Reuses SnapshotService.GetAsync for the contributor auth + decrypt; the domain does the maths.
-accounts.MapGet("/{id:guid}/overview", async (Guid id, ClaimsPrincipal user, SnapshotService svc, BankSyncService bankSvc, CancellationToken ct) =>
+accounts.MapGet("/{id:guid}/overview", async (Guid id, int? period, ClaimsPrincipal user, SnapshotService svc, BankSyncService bankSvc, CancellationToken ct) =>
 {
     var snap = await svc.GetAsync(user.UserId(), id, ct);
     if (string.IsNullOrEmpty(snap.Payload)) return Results.Ok(AccountOverviewDto.Empty);
     var account = AccountSnapshotSerializer.Deserialize(snap.Payload);
-    if (account.CurrentPeriod is not { } period) return Results.Ok(AccountOverviewDto.Empty with { Currency = account.Currency });
+    if ((ResolvePeriod(account, period) ?? account.CurrentPeriod) is not { } target) return Results.Ok(AccountOverviewDto.Empty with { Currency = account.Currency });
     // Overlay the live bank balance so the thin header matches the thick app (see SpendingMap.Overview).
     var bank = await bankSvc.GetStatusAsync(user.UserId(), id, ct);
-    return Results.Ok(SpendingMap.Overview(account, period, bank.Balance, bank.BalanceCurrency));
+    return Results.Ok(SpendingMap.Overview(account, target, bank.Balance, bank.BalanceCurrency));
 });
 
 // Path-B thin-Spending read: the whole surface (expenses + overview + picker options) in one call, so a thin
 // client renders the tab with no snapshot and no domain. Paired with the delta-returning expense writes above.
-accounts.MapGet("/{id:guid}/spending", async (Guid id, ClaimsPrincipal user, SnapshotService svc, BankSyncService bankSvc, CancellationToken ct) =>
+accounts.MapGet("/{id:guid}/spending", async (Guid id, int? period, ClaimsPrincipal user, SnapshotService svc, BankSyncService bankSvc, CancellationToken ct) =>
 {
     var snap = await svc.GetAsync(user.UserId(), id, ct);
     if (string.IsNullOrEmpty(snap.Payload)) return Results.Ok(SpendingViewDto.Empty);
     var account = AccountSnapshotSerializer.Deserialize(snap.Payload);
     var bank = await bankSvc.GetStatusAsync(user.UserId(), id, ct);
-    return Results.Ok(SpendingMap.View(account, snap.Version, bank.Balance, bank.BalanceCurrency));
+    return Results.Ok(SpendingMap.View(account, snap.Version, bank.Balance, bank.BalanceCurrency, ResolvePeriod(account, period)));
 });
 
 // Path-B thin-Wallets read: funds + balances + this period's transfers in one call. Paired with the fund writes
 // below, which return a FundMutationDto carrying a refreshed view so the client reconciles with no re-fetch.
-accounts.MapGet("/{id:guid}/wallets", async (Guid id, ClaimsPrincipal user, SnapshotService svc, BankSyncService bankSvc, CancellationToken ct) =>
+accounts.MapGet("/{id:guid}/wallets", async (Guid id, int? period, ClaimsPrincipal user, SnapshotService svc, BankSyncService bankSvc, CancellationToken ct) =>
 {
     var snap = await svc.GetAsync(user.UserId(), id, ct);
     if (string.IsNullOrEmpty(snap.Payload)) return Results.Ok(WalletsViewDto.Empty);
     var account = AccountSnapshotSerializer.Deserialize(snap.Payload);
     var bank = await bankSvc.GetStatusAsync(user.UserId(), id, ct);
-    return Results.Ok(WalletsMap.View(account, snap.Version, bank.Balance, bank.BalanceCurrency));
+    return Results.Ok(WalletsMap.View(account, snap.Version, bank.Balance, bank.BalanceCurrency, ResolvePeriod(account, period)));
 });
 
 // Path-B thin-Goals read: every bucket with its computed figures (goal progress / debt payoff / investment
 // projection / sinking set-aside), the free-to-save cap, and this period's deposits. Paired with the savings-deposit
 // write below (returns a SavingsMutationDto carrying a refreshed view).
-accounts.MapGet("/{id:guid}/savings", async (Guid id, ClaimsPrincipal user, SnapshotService svc, BankSyncService bankSvc, CancellationToken ct) =>
+accounts.MapGet("/{id:guid}/savings", async (Guid id, int? period, ClaimsPrincipal user, SnapshotService svc, BankSyncService bankSvc, CancellationToken ct) =>
 {
     var snap = await svc.GetAsync(user.UserId(), id, ct);
     if (string.IsNullOrEmpty(snap.Payload)) return Results.Ok(SavingsViewDto.Empty);
     var account = AccountSnapshotSerializer.Deserialize(snap.Payload);
     var bank = await bankSvc.GetStatusAsync(user.UserId(), id, ct);
-    return Results.Ok(SavingsMap.View(account, snap.Version, bank.Balance, bank.BalanceCurrency));
+    return Results.Ok(SavingsMap.View(account, snap.Version, bank.Balance, bank.BalanceCurrency, ResolvePeriod(account, period)));
 });
 
 // Path-B thin-Budgets read: every budgeted category with its coverage. Paired with the budget writes (delta below).
-accounts.MapGet("/{id:guid}/budgets", async (Guid id, ClaimsPrincipal user, SnapshotService svc, CancellationToken ct) =>
+accounts.MapGet("/{id:guid}/budgets", async (Guid id, int? period, ClaimsPrincipal user, SnapshotService svc, CancellationToken ct) =>
 {
     var snap = await svc.GetAsync(user.UserId(), id, ct);
     if (string.IsNullOrEmpty(snap.Payload)) return Results.Ok(BudgetsViewDto.Empty);
     var account = AccountSnapshotSerializer.Deserialize(snap.Payload);
-    return Results.Ok(BudgetsMap.View(account, snap.Version));
+    return Results.Ok(BudgetsMap.View(account, snap.Version, ResolvePeriod(account, period)));
 });
 
 // Path-B thin-Recurring read: bills/income expectations with their due state for the open period.
-accounts.MapGet("/{id:guid}/recurring", async (Guid id, ClaimsPrincipal user, SnapshotService svc, CancellationToken ct) =>
+accounts.MapGet("/{id:guid}/recurring", async (Guid id, int? period, ClaimsPrincipal user, SnapshotService svc, CancellationToken ct) =>
 {
     var snap = await svc.GetAsync(user.UserId(), id, ct);
     if (string.IsNullOrEmpty(snap.Payload)) return Results.Ok(RecurringViewDto.Empty);
     var account = AccountSnapshotSerializer.Deserialize(snap.Payload);
-    return Results.Ok(RecurringView.Of(account, snap.Version));
+    return Results.Ok(RecurringView.Of(account, snap.Version, ResolvePeriod(account, period)));
+});
+
+// Path-B thin period navigation: the account's periods (oldest→newest) so the thin client can render prev/next
+// month nav and know which one is open/latest. The surface reads above take ?period={Index} to view a past one.
+accounts.MapGet("/{id:guid}/periods", async (Guid id, ClaimsPrincipal user, SnapshotService svc, CancellationToken ct) =>
+{
+    var snap = await svc.GetAsync(user.UserId(), id, ct);
+    if (string.IsNullOrEmpty(snap.Payload)) return Results.Ok(PeriodsViewDto.Empty);
+    var account = AccountSnapshotSerializer.Deserialize(snap.Payload);
+    var periods = account.Periods;
+    var rows = periods
+        .Select((p, i) => new PeriodRowDto(i, p.From, p.To, p.Status == PeriodStatus.Open, i == periods.Count - 1))
+        .ToList();
+    return Results.Ok(new PeriodsViewDto(account.Currency, periods.Count - 1, rows));
 });
 
 // The cash runway (first month the balance runs short, or null when there's no basis to project from).
@@ -1748,6 +1762,11 @@ app.MapFallbackToFile("index.html", new StaticFileOptions
 });
 
 app.Run();
+
+// Resolve a thin surface read's optional ?period={index} to a Period. Null (absent or out-of-range) lets the
+// map fall back to the account's current period — so an old/bad index degrades to "current" rather than 400ing.
+static FinApp.Domain.Periods.Period? ResolvePeriod(FinApp.Domain.Accounts.Account account, int? index) =>
+    index is { } i && i >= 0 && i < account.Periods.Count ? account.Periods[i] : null;
 
 // The provider redirect URI must exactly match what's registered in the Google/Facebook console.
 // Behind a proxy (Cloud Run) the request scheme can read as http, so prefer an explicit Auth:PublicBaseUrl.

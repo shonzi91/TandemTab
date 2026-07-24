@@ -32,6 +32,8 @@ else
         }
     </ul>
 
+    @if (CanWrite)
+    {
     <h3>Move money</h3>
     <div class="tw-form">
         <select @bind="_from">
@@ -50,6 +52,7 @@ else
         <input type="text" placeholder="fund name" @bind="_newName" />
         <button @onclick="AddFund" disabled="@(_busy || string.IsNullOrWhiteSpace(_newName))">Add fund</button>
     </div>
+    }
 
     <h3>This period's transfers</h3>
     <ul class="tw-list">
@@ -67,6 +70,8 @@ else
 
 @code {
     [Parameter, EditorRequired] public Guid AccountId { get; set; }
+    [Parameter] public int? PeriodIndex { get; set; }
+    [Parameter] public bool CanWrite { get; set; } = true;
 
     private WalletsViewState? _state;
     private string? _error;
@@ -81,7 +86,7 @@ else
         {
             _state = new WalletsViewState(Api);
             _state.Changed += OnChanged;
-            await _state.LoadAsync(AccountId);
+            await _state.LoadAsync(AccountId, PeriodIndex);
             var sel = _state.SelectableFunds;
             _from = sel.ElementAtOrDefault(0)?.Id ?? Guid.Empty;
             _to = sel.ElementAtOrDefault(1)?.Id ?? _from;

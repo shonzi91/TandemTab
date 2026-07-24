@@ -26,7 +26,7 @@ else
                         <div class="tb-row1">
                             <span class="tb-name">@b.Name</span>
                             <span class="tb-nums @(b.Over ? "tb-over" : null)">@Fmt(b.Spent) / @Fmt(b.Allocated)</span>
-                            <button class="tb-del" title="Remove" @onclick="() => Remove(b.CategoryId)">✕</button>
+                            @if (CanWrite) { <button class="tb-del" title="Remove" @onclick="() => Remove(b.CategoryId)">✕</button> }
                         </div>
                         <div class="tb-bar"><span class="@(b.Over ? "tb-barover" : null)" style="width:@Frac(b)"></span></div>
                     </div>
@@ -35,6 +35,8 @@ else
         </ul>
     }
 
+    @if (CanWrite)
+    {
     <h3>Set a budget</h3>
     <div class="tb-form">
         <select @bind="_categoryId">
@@ -44,10 +46,13 @@ else
         <input type="number" step="0.01" min="0" placeholder="0.00" @bind="_amount" />
         <button @onclick="Set" disabled="@(_busy || _amount <= 0 || _categoryId == Guid.Empty)">Set budget</button>
     </div>
+    }
 }
 
 @code {
     [Parameter, EditorRequired] public Guid AccountId { get; set; }
+    [Parameter] public int? PeriodIndex { get; set; }
+    [Parameter] public bool CanWrite { get; set; } = true;
 
     private BudgetsViewState? _state;
     private string? _error;
@@ -61,7 +66,7 @@ else
         {
             _state = new BudgetsViewState(Api);
             _state.Changed += OnChanged;
-            await _state.LoadAsync(AccountId);
+            await _state.LoadAsync(AccountId, PeriodIndex);
         }
         catch (Exception ex) { _error = ex.Message; }
     }

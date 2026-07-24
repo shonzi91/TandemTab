@@ -241,8 +241,14 @@ public sealed class FinAppApiClient(HttpClient http)
 
     // --- Path-B thin reads: the computed Home figures (docs/MOBILE.md) ----
     // These endpoints existed since Sessions 37/42 but were never wired to a client — the thin Home is their first use.
-    public Task<AccountOverviewDto> GetOverviewAsync(Guid id, CancellationToken ct = default) =>
-        SendAsync<AccountOverviewDto>(HttpMethod.Get, $"/accounts/{id}/overview", null, ct);
+    // Path-B thin period navigation: ?period={index} views a past period; omitted = the current one.
+    private static string PeriodQuery(int? periodIndex) => periodIndex is { } i ? $"?period={i}" : "";
+
+    public Task<PeriodsViewDto> GetPeriodsAsync(Guid id, CancellationToken ct = default) =>
+        SendAsync<PeriodsViewDto>(HttpMethod.Get, $"/accounts/{id}/periods", null, ct);
+
+    public Task<AccountOverviewDto> GetOverviewAsync(Guid id, int? periodIndex = null, CancellationToken ct = default) =>
+        SendAsync<AccountOverviewDto>(HttpMethod.Get, $"/accounts/{id}/overview{PeriodQuery(periodIndex)}", null, ct);
     public Task<TargetsDto> GetTargetsAsync(Guid id, CancellationToken ct = default) =>
         SendAsync<TargetsDto>(HttpMethod.Get, $"/accounts/{id}/targets", null, ct);
     public Task<MilestonesDto> GetMilestonesAsync(Guid id, CancellationToken ct = default) =>
@@ -263,8 +269,8 @@ public sealed class FinAppApiClient(HttpClient http)
     // --- Path-B thin Spending slice (docs/MOBILE.md) ----------------------
     // The thin client renders Spending from these DTOs directly (no domain). The delta methods hit the SAME expense
     // routes as the thick client's command methods above — the server response is a superset, so both coexist.
-    public Task<SpendingViewDto> GetSpendingAsync(Guid id, CancellationToken ct = default) =>
-        SendAsync<SpendingViewDto>(HttpMethod.Get, $"/accounts/{id}/spending", null, ct);
+    public Task<SpendingViewDto> GetSpendingAsync(Guid id, int? periodIndex = null, CancellationToken ct = default) =>
+        SendAsync<SpendingViewDto>(HttpMethod.Get, $"/accounts/{id}/spending{PeriodQuery(periodIndex)}", null, ct);
     public Task<ExpenseMutationDto> AddExpenseDeltaAsync(Guid id, AddExpenseRequest req, CancellationToken ct = default) =>
         SendAsync<ExpenseMutationDto>(HttpMethod.Post, $"/accounts/{id}/expenses", req, ct);
     public Task<ExpenseMutationDto> EditExpenseDeltaAsync(Guid id, Guid expenseId, EditExpenseRequest req, CancellationToken ct = default) =>
@@ -273,16 +279,16 @@ public sealed class FinAppApiClient(HttpClient http)
         SendAsync<ExpenseMutationDto>(HttpMethod.Delete, $"/accounts/{id}/expenses/{expenseId}", null, ct);
 
     // --- Path-B thin Budgets slice ----------------------------------------
-    public Task<BudgetsViewDto> GetBudgetsAsync(Guid id, CancellationToken ct = default) =>
-        SendAsync<BudgetsViewDto>(HttpMethod.Get, $"/accounts/{id}/budgets", null, ct);
+    public Task<BudgetsViewDto> GetBudgetsAsync(Guid id, int? periodIndex = null, CancellationToken ct = default) =>
+        SendAsync<BudgetsViewDto>(HttpMethod.Get, $"/accounts/{id}/budgets{PeriodQuery(periodIndex)}", null, ct);
     public Task<BudgetMutationDto> SetBudgetDeltaAsync(Guid id, Guid categoryId, SetBudgetRequest req, CancellationToken ct = default) =>
         SendAsync<BudgetMutationDto>(HttpMethod.Put, $"/accounts/{id}/budgets/{categoryId}", req, ct);
     public Task<BudgetMutationDto> RemoveBudgetDeltaAsync(Guid id, Guid categoryId, CancellationToken ct = default) =>
         SendAsync<BudgetMutationDto>(HttpMethod.Delete, $"/accounts/{id}/budgets/{categoryId}", null, ct);
 
     // --- Path-B thin Recurring slice --------------------------------------
-    public Task<RecurringViewDto> GetRecurringAsync(Guid id, CancellationToken ct = default) =>
-        SendAsync<RecurringViewDto>(HttpMethod.Get, $"/accounts/{id}/recurring", null, ct);
+    public Task<RecurringViewDto> GetRecurringAsync(Guid id, int? periodIndex = null, CancellationToken ct = default) =>
+        SendAsync<RecurringViewDto>(HttpMethod.Get, $"/accounts/{id}/recurring{PeriodQuery(periodIndex)}", null, ct);
     public Task<RecurringMutationDto> ConfirmRecurringDeltaAsync(Guid id, Guid recurringId, decimal actualAmount, CancellationToken ct = default) =>
         SendAsync<RecurringMutationDto>(HttpMethod.Post, $"/accounts/{id}/recurring/{recurringId}/confirm", new ConfirmRecurringRequest(actualAmount), ct);
     public Task<RecurringMutationDto> SkipRecurringDeltaAsync(Guid id, Guid recurringId, CancellationToken ct = default) =>
@@ -293,14 +299,14 @@ public sealed class FinAppApiClient(HttpClient http)
         SendAsync<DepositMutationDto>(HttpMethod.Post, $"/accounts/{id}/deposits", req, ct);
 
     // --- Path-B thin Goals/Savings slice ----------------------------------
-    public Task<SavingsViewDto> GetSavingsAsync(Guid id, CancellationToken ct = default) =>
-        SendAsync<SavingsViewDto>(HttpMethod.Get, $"/accounts/{id}/savings", null, ct);
+    public Task<SavingsViewDto> GetSavingsAsync(Guid id, int? periodIndex = null, CancellationToken ct = default) =>
+        SendAsync<SavingsViewDto>(HttpMethod.Get, $"/accounts/{id}/savings{PeriodQuery(periodIndex)}", null, ct);
     public Task<SavingsMutationDto> AddSavingDepositDeltaAsync(Guid id, AddSavingDepositRequest req, CancellationToken ct = default) =>
         SendAsync<SavingsMutationDto>(HttpMethod.Post, $"/accounts/{id}/savings/deposits", req, ct);
 
     // --- Path-B thin Wallets slice ----------------------------------------
-    public Task<WalletsViewDto> GetWalletsAsync(Guid id, CancellationToken ct = default) =>
-        SendAsync<WalletsViewDto>(HttpMethod.Get, $"/accounts/{id}/wallets", null, ct);
+    public Task<WalletsViewDto> GetWalletsAsync(Guid id, int? periodIndex = null, CancellationToken ct = default) =>
+        SendAsync<WalletsViewDto>(HttpMethod.Get, $"/accounts/{id}/wallets{PeriodQuery(periodIndex)}", null, ct);
     public Task<FundMutationDto> AddFundDeltaAsync(Guid id, CreateFundRequest req, CancellationToken ct = default) =>
         SendAsync<FundMutationDto>(HttpMethod.Post, $"/accounts/{id}/funds", req, ct);
     public Task<FundMutationDto> TransferFundsDeltaAsync(Guid id, TransferFundsRequest req, CancellationToken ct = default) =>

@@ -21,9 +21,9 @@ public static class WalletsMap
         f.IsSynced,
         f.IsArchived);
 
-    public static WalletsViewDto View(Account account, long version, decimal? bankBalance = null, string? bankCurrency = null)
+    public static WalletsViewDto View(Account account, long version, decimal? bankBalance = null, string? bankCurrency = null, Period? viewPeriod = null)
     {
-        if (account.CurrentPeriod is not { } period)
+        if ((viewPeriod ?? account.CurrentPeriod) is not { } period)
             return WalletsViewDto.Empty with { Version = version, Currency = account.Currency };
 
         var funds = account.RootFunds.Where(f => !f.IsArchived).Select(f => Row(account, period, f)).ToList();

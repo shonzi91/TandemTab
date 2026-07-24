@@ -14,9 +14,9 @@ namespace FinApp.Server.Accounts;
 /// </summary>
 public static class SavingsMap
 {
-    public static SavingsViewDto View(Account account, long version, decimal? bankBalance = null, string? bankCurrency = null)
+    public static SavingsViewDto View(Account account, long version, decimal? bankBalance = null, string? bankCurrency = null, Period? viewPeriod = null)
     {
-        if (account.CurrentPeriod is not { } period)
+        if ((viewPeriod ?? account.CurrentPeriod) is not { } period)
             return SavingsViewDto.Empty with { Version = version, Currency = account.Currency };
 
         var report = new SavingsReportService();

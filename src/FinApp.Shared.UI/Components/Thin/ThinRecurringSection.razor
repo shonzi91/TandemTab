@@ -29,7 +29,7 @@ else
                         </div>
                         <div class="tr-detail">@r.CategoryName · @r.FundName · day @r.DayOfMonth · @r.Mode</div>
                     </div>
-                    @if (r.Due)
+                    @if (r.Due && CanWrite)
                     {
                         <div class="tr-actions">
                             <button @onclick="() => Confirm(r)" disabled="@_busy">Confirm</button>
@@ -44,6 +44,8 @@ else
 
 @code {
     [Parameter, EditorRequired] public Guid AccountId { get; set; }
+    [Parameter] public int? PeriodIndex { get; set; }
+    [Parameter] public bool CanWrite { get; set; } = true;
 
     private RecurringViewState? _state;
     private string? _error;
@@ -55,7 +57,7 @@ else
         {
             _state = new RecurringViewState(Api);
             _state.Changed += OnChanged;
-            await _state.LoadAsync(AccountId);
+            await _state.LoadAsync(AccountId, PeriodIndex);
         }
         catch (Exception ex) { _error = ex.Message; }
     }

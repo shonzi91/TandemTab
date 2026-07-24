@@ -22,6 +22,8 @@ else
         <div class="ts-tile ts-spent"><span>Spent</span><b>@Fmt(_state.Overview.Spent)</b></div>
     </div>
 
+    @if (CanWrite)
+    {
     <div class="ts-add">
         <select @bind="_categoryId">
             <option value="@Guid.Empty" disabled>Category…</option>
@@ -41,6 +43,7 @@ else
         <input type="date" @bind="_date" />
         <button @onclick="Add" disabled="@(_busy || _amount <= 0 || _categoryId == Guid.Empty)">Add</button>
     </div>
+    }
 
     <ul class="ts-list">
         @foreach (var e in _state.Expenses)
@@ -51,7 +54,7 @@ else
                 <span class="ts-fund">@e.FundName</span>
                 <span class="ts-note">@e.Note</span>
                 <span class="ts-amt">@Fmt(e.Amount)</span>
-                <button class="ts-del" title="Remove" @onclick="() => Remove(e.Id)">✕</button>
+                @if (CanWrite) { <button class="ts-del" title="Remove" @onclick="() => Remove(e.Id)">✕</button> }
             </li>
         }
         @if (_state.Expenses.Count == 0)
@@ -63,6 +66,8 @@ else
 
 @code {
     [Parameter, EditorRequired] public Guid AccountId { get; set; }
+    [Parameter] public int? PeriodIndex { get; set; }
+    [Parameter] public bool CanWrite { get; set; } = true;
 
     private SpendingViewState? _state;
     private string? _error;
@@ -80,7 +85,7 @@ else
         {
             _state = new SpendingViewState(Api);
             _state.Changed += OnChanged;
-            await _state.LoadAsync(AccountId);
+            await _state.LoadAsync(AccountId, PeriodIndex);
             _fundId = _state.SelectableFunds.FirstOrDefault()?.Id ?? Guid.Empty;
         }
         catch (Exception ex) { _error = ex.Message; }

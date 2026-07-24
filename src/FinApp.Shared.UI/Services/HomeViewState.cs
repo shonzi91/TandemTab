@@ -16,6 +16,7 @@ namespace FinApp.Shared.UI.Services;
 public sealed class HomeViewState(FinAppApiClient api)
 {
     private Guid _accountId;
+    private int? _periodIndex;
 
     public bool IsReady { get; private set; }
     public AccountOverviewDto Overview { get; private set; } = AccountOverviewDto.Empty;
@@ -27,19 +28,21 @@ public sealed class HomeViewState(FinAppApiClient api)
     public event Action? Changed;
     private void Raise() => Changed?.Invoke();
 
-    public async Task LoadAsync(Guid accountId)
+    public async Task LoadAsync(Guid accountId, int? periodIndex = null)
     {
         _accountId = accountId;
+        _periodIndex = periodIndex;
         await RefreshAsync();
         IsReady = true;
         Raise();
     }
 
     /// <summary>Re-pull every Home figure (call after a write on another surface). The reads are independent, so they
-    /// go in parallel — one round-trip's worth of latency, not five.</summary>
+    /// go in parallel — one round-trip's worth of latency, not five. Only the overview is period-scoped; runway /
+    /// targets / milestones / insights are account-level (or latest-period) and ignore the selected period.</summary>
     public async Task RefreshAsync()
     {
-        var overview = api.GetOverviewAsync(_accountId);
+        var overview = api.GetOverviewAsync(_accountId, _periodIndex);
         var runway = api.GetRunwayAsync(_accountId);
         var targets = api.GetTargetsAsync(_accountId);
         var milestones = api.GetMilestonesAsync(_accountId);

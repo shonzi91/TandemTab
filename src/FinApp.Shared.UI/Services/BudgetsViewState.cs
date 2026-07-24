@@ -11,6 +11,7 @@ namespace FinApp.Shared.UI.Services;
 public sealed class BudgetsViewState(FinAppApiClient api)
 {
     private Guid _accountId;
+    private int? _periodIndex;
     private long _version;
 
     public bool IsReady { get; private set; }
@@ -27,15 +28,16 @@ public sealed class BudgetsViewState(FinAppApiClient api)
     public event Action? Changed;
     private void Raise() => Changed?.Invoke();
 
-    public async Task LoadAsync(Guid accountId)
+    public async Task LoadAsync(Guid accountId, int? periodIndex = null)
     {
         _accountId = accountId;
-        Apply(await api.GetBudgetsAsync(accountId));
+        _periodIndex = periodIndex;
+        Apply(await api.GetBudgetsAsync(accountId, periodIndex));
         IsReady = true;
         Raise();
     }
 
-    private async Task ReloadAsync() => Apply(await api.GetBudgetsAsync(_accountId));
+    private async Task ReloadAsync() => Apply(await api.GetBudgetsAsync(_accountId, _periodIndex));
 
     private void Apply(BudgetsViewDto v)
     {

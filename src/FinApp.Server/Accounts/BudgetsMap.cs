@@ -1,5 +1,6 @@
 using FinApp.Contracts;
 using FinApp.Domain.Accounts;
+using FinApp.Domain.Periods;
 using FinApp.Domain.Services;
 
 namespace FinApp.Server.Accounts;
@@ -8,9 +9,9 @@ namespace FinApp.Server.Accounts;
 /// coverage (allocated / spent / remaining), computed server-side via <see cref="BudgetCoverageService"/>.</summary>
 public static class BudgetsMap
 {
-    public static BudgetsViewDto View(Account account, long version)
+    public static BudgetsViewDto View(Account account, long version, Period? viewPeriod = null)
     {
-        if (account.CurrentPeriod is not { } period)
+        if ((viewPeriod ?? account.CurrentPeriod) is not { } period)
             return BudgetsViewDto.Empty with { Version = version, Currency = account.Currency };
 
         var coverage = new BudgetCoverageService();

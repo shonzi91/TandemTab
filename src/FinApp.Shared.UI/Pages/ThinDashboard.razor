@@ -6,9 +6,10 @@
 @inject AuthState Auth
 
 @* Path-B thin Dashboard shell. Composes the six domain-free Section components (each owns its own ViewState and
-   talks only to the computed read + delta-write endpoints) behind a single tab bar. No FinApp.Domain, no on-device
-   money model. This is the skeleton that will replace the thick Dashboard at "/" once chrome parity (account switch
-   detail, period navigation, settings, import, onboarding, achievements) is built out — see the handoff. *@
+   talks only to the computed read + delta-write endpoints) behind a single tab bar, with prev/next period
+   navigation. No FinApp.Domain, no on-device money model. This is the skeleton that will replace the thick
+   Dashboard at "/" once the rest of the chrome (account switch detail, settings, import, onboarding, achievements)
+   is built out — see the handoff. *@
 
 <div class="thd">
     <p class="thd-tag">Path-B · thin Dashboard (no on-device domain)</p>
@@ -32,6 +33,7 @@
     else
     {
         var acct = _accounts.First(a => a.Id == _accountId);
+        var period = _periods?.Periods.ElementAtOrDefault(_periodIndex);
         <header class="thd-head">
             <div class="thd-acct">
                 @if (_accounts.Count > 1)
@@ -49,6 +51,18 @@
                 }
                 <small class="thd-acct-sub">@acct.Currency · @(acct.Members.Count) member@(acct.Members.Count == 1 ? "" : "s")</small>
             </div>
+
+            @if (period is { } p)
+            {
+                <div class="thd-period">
+                    <button class="thd-nav" title="Previous period" @onclick="Prev" disabled="@(_periodIndex <= 0)">‹</button>
+                    <span class="thd-period-lbl">
+                        @p.From.ToString("MMM yyyy")
+                        <span class="thd-status @(p.IsOpen ? "" : "closed")">@(p.IsOpen ? "Active" : "Closed")</span>
+                    </span>
+                    <button class="thd-nav" title="Next period" @onclick="Next" disabled="@(_periods is null || _periodIndex >= _periods.Periods.Count - 1)">›</button>
+                </div>
+            }
         </header>
 
         <nav class="thd-tabs">
@@ -60,28 +74,30 @@
 
         <section class="thd-body">
             @{
-                // A fresh component instance per (account, tab) so switching either reloads from the server.
-                var key = ($"{_accountId}:{_tab}");
+                // A fresh component instance per (account, period, tab) so switching any of them reloads from the
+                // server. Writes always target the open period server-side, so a non-open period is read-only.
+                var key = $"{_accountId}:{_periodIndex}:{_tab}";
+                var canWrite = period?.IsOpen ?? true;
             }
             @switch (_tab)
             {
                 case "Home":
-                    <ThinHomeSection @key="key" AccountId="_accountId" />
+                    <ThinHomeSection @key="key" AccountId="_accountId" PeriodIndex="_periodIndex" />
                     break;
                 case "Spending":
-                    <ThinSpendingSection @key="key" AccountId="_accountId" />
+                    <ThinSpendingSection @key="key" AccountId="_accountId" PeriodIndex="_periodIndex" CanWrite="canWrite" />
                     break;
                 case "Wallets":
-                    <ThinWalletsSection @key="key" AccountId="_accountId" />
+                    <ThinWalletsSection @key="key" AccountId="_accountId" PeriodIndex="_periodIndex" CanWrite="canWrite" />
                     break;
                 case "Goals":
-                    <ThinGoalsSection @key="key" AccountId="_accountId" />
+                    <ThinGoalsSection @key="key" AccountId="_accountId" PeriodIndex="_periodIndex" CanWrite="canWrite" />
                     break;
                 case "Budgets":
-                    <ThinBudgetsSection @key="key" AccountId="_accountId" />
+                    <ThinBudgetsSection @key="key" AccountId="_accountId" PeriodIndex="_periodIndex" CanWrite="canWrite" />
                     break;
                 case "Recurring":
-                    <ThinRecurringSection @key="key" AccountId="_accountId" />
+                    <ThinRecurringSection @key="key" AccountId="_accountId" PeriodIndex="_periodIndex" CanWrite="canWrite" />
                     break;
             }
         </section>
@@ -93,6 +109,8 @@
 
     private List<AccountSummaryDto>? _accounts;
     private Guid _accountId;
+    private PeriodsViewDto? _periods;
+    private int _periodIndex;
     private string _tab = "Home";
     private string? _error;
 
@@ -102,26 +120,46 @@
         try
         {
             _accounts = await Api.GetAccountsAsync();
-            if (_accounts.Count > 0) _accountId = _accounts[0].Id;
+            if (_accounts.Count > 0) await SelectAccountAsync(_accounts[0].Id);
         }
         catch (Exception ex) { _error = ex.Message; }
     }
 
-    private void OnAccountChange(ChangeEventArgs e)
+    private async Task SelectAccountAsync(Guid id)
     {
-        if (Guid.TryParse(e.Value?.ToString(), out var id)) _accountId = id;
+        _accountId = id;
+        _periods = await Api.GetPeriodsAsync(id);
+        _periodIndex = _periods.CurrentIndex >= 0 ? _periods.CurrentIndex : 0;   // default to the current period
     }
+
+    private async Task OnAccountChange(ChangeEventArgs e)
+    {
+        if (Guid.TryParse(e.Value?.ToString(), out var id))
+        {
+            try { await SelectAccountAsync(id); }
+            catch (Exception ex) { _error = ex.Message; }
+        }
+    }
+
+    private void Prev() { if (_periodIndex > 0) _periodIndex--; }
+    private void Next() { if (_periods is not null && _periodIndex < _periods.Periods.Count - 1) _periodIndex++; }
 }
 
 <style>
     .thd { max-width: 760px; margin: 1rem auto; padding: 0 1rem; }
     .thd-tag { font-size: .75rem; opacity: .7; margin: 0 0 1rem; }
     .thd-err { color: #ff7a59; }
-    .thd-head { margin-bottom: .75rem; }
+    .thd-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; margin-bottom: .75rem; }
     .thd-acct { display: flex; align-items: baseline; gap: .6rem; flex-wrap: wrap; }
     .thd-acct-nm { font-size: 1.3rem; font-weight: 700; }
     .thd-acct-sel { font-size: 1.1rem; font-weight: 700; padding: .25rem .4rem; border-radius: .4rem; border: 1px solid rgba(128,128,128,.4); background: transparent; color: inherit; }
     .thd-acct-sub { opacity: .6; font-size: .8rem; }
+    .thd-period { display: flex; align-items: center; gap: .3rem; }
+    .thd-nav { border: 1px solid rgba(128,128,128,.4); background: transparent; color: inherit; cursor: pointer; border-radius: .4rem; width: 1.9rem; height: 1.9rem; font-size: 1.1rem; line-height: 1; }
+    .thd-nav:disabled { opacity: .35; cursor: default; }
+    .thd-period-lbl { display: inline-flex; align-items: center; gap: .4rem; font-weight: 600; min-width: 6.5rem; justify-content: center; }
+    .thd-status { font-size: .62rem; text-transform: uppercase; letter-spacing: .03em; border-radius: .3rem; padding: .05rem .35rem; background: rgba(47,185,154,.18); color: #2fb99a; }
+    .thd-status.closed { background: rgba(128,128,128,.2); color: inherit; opacity: .7; }
     .thd-tabs { display: flex; flex-wrap: wrap; gap: .3rem; border-bottom: 1px solid rgba(128,128,128,.2); margin-bottom: 1rem; }
     .thd-tab { padding: .45rem .8rem; border: none; background: transparent; color: inherit; cursor: pointer; border-bottom: 2px solid transparent; opacity: .7; font-size: .9rem; }
     .thd-tab.sel { opacity: 1; font-weight: 600; border-bottom-color: #2fb99a; }
