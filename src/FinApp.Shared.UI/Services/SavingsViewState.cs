@@ -69,6 +69,30 @@ public sealed class SavingsViewState(FinAppApiClient api)
         catch { await ReloadAsync(); Raise(); throw; }
     }
 
+    /// <summary>Create a savings bucket (goal/debt/investment/sinking — the kind is chosen by the request's flags).
+    /// The create returns no savings delta, so re-pull the computed view to pick up the new bucket's projections.</summary>
+    public async Task CreateBucketAsync(SaveSavingBucketRequest req)
+    {
+        await api.AddSavingBucketAsync(_accountId, req);
+        await ReloadAsync();
+        Raise();
+    }
+
+    /// <summary>Archive/restore or remove a bucket, then re-pull (removal is rejected 400 if the bucket has movements).</summary>
+    public async Task ArchiveBucketAsync(Guid bucketId, bool archived)
+    {
+        await api.SetSavingBucketArchivedAsync(_accountId, bucketId, archived);
+        await ReloadAsync();
+        Raise();
+    }
+
+    public async Task RemoveBucketAsync(Guid bucketId)
+    {
+        await api.RemoveSavingBucketAsync(_accountId, bucketId);
+        await ReloadAsync();
+        Raise();
+    }
+
     private string BucketName(Guid id) => Buckets.FirstOrDefault(b => b.Id == id)?.Name ?? "…";
 
     private void BumpSaved(Guid bucketId, decimal delta)

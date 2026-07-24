@@ -37,6 +37,13 @@ else
                             <div class="tg-bar"><span style="width:@(Pct(frac))"></span></div>
                         }
                     </div>
+                    @if (CanWrite)
+                    {
+                        <span class="tg-actions">
+                            <button class="tg-lnk" disabled="@_busy" @onclick="() => Archive(b)">archive</button>
+                            <button class="tg-lnk danger" disabled="@_busy" @onclick="() => Remove(b)">remove</button>
+                        </span>
+                    }
                 </li>
             }
         </ul>
@@ -52,6 +59,87 @@ else
         <input type="number" step="0.01" min="0" placeholder="0.00" @bind="_amount" />
         <button @onclick="Allocate" disabled="@(_busy || _amount <= 0 || _bucketId == Guid.Empty)">Save it</button>
     </div>
+
+    <h3>New bucket</h3>
+    @if (!_showAdd)
+    {
+        <button class="tg-addbtn" @onclick="() => _showAdd = true">+ Create a savings bucket</button>
+    }
+    else
+    {
+        <div class="tg-newbucket">
+            <div class="tg-kinds">
+                @foreach (var k in Kinds)
+                {
+                    <button class="tg-kindbtn @(_nKind == k ? "sel" : "")" @onclick="() => _nKind = k">@KindLabel(k)</button>
+                }
+            </div>
+
+            <div class="tg-form">
+                <input placeholder="Name" @bind="_nName" />
+                <input class="tg-icon-in" placeholder="icon" @bind="_nIcon" />
+            </div>
+
+            @switch (_nKind)
+            {
+                case "goal":
+                    <div class="tg-form">
+                        <label class="tg-lbl">Target <input type="number" step="0.01" min="0" placeholder="0.00" @bind="_nGoal" /></label>
+                        <label class="tg-lbl">Alert at <input type="number" step="1" min="0" max="100" @bind="_nThreshold" />%</label>
+                        <label class="tg-chk"><input type="checkbox" @bind="_nNotify" /> Notify on milestones</label>
+                    </div>
+                    break;
+                case "debt":
+                    <div class="tg-form">
+                        <label class="tg-lbl">Balance owed <input type="number" step="0.01" min="0" placeholder="0.00" @bind="_nDebtBalance" /></label>
+                        <label class="tg-lbl">Rate <input type="number" step="0.01" min="0" @bind="_nDebtRate" />%</label>
+                        <label class="tg-lbl">Installment <input type="number" step="0.01" min="0" placeholder="0.00" @bind="_nDebtInstallment" /></label>
+                    </div>
+                    break;
+                case "investment":
+                    <div class="tg-form">
+                        <label class="tg-lbl">Return <input type="number" step="0.01" min="0" @bind="_nInvRate" />%/yr</label>
+                        <label class="tg-lbl">Term <input type="number" step="1" min="0" @bind="_nInvYears" /> yrs</label>
+                        <label class="tg-lbl">Compounds/yr <input type="number" step="1" min="1" @bind="_nInvCompounds" /></label>
+                    </div>
+                    break;
+                case "sinking":
+                    <p class="tg-muted tg-hint">A sinking fund sets money aside for planned future costs. Add them below (optional).</p>
+                    @if (_costs.Count > 0)
+                    {
+                        <ul class="tg-list tg-plain">
+                            @foreach (var c in _costs)
+                            {
+                                <li><span class="tg-name">@c.Label</span><span class="tg-note">@c.Cadence</span><span class="tg-saved">@Fmt(c.Amount)</span>
+                                    <button class="tg-lnk danger" @onclick="() => _costs.Remove(c)">×</button></li>
+                            }
+                        </ul>
+                    }
+                    <div class="tg-form">
+                        <input placeholder="Cost label" @bind="_costLabel" />
+                        <input type="number" step="0.01" min="0" placeholder="0.00" @bind="_costAmount" />
+                        <select @bind="_costCadence">
+                            <option value="monthly">monthly</option>
+                            <option value="quarterly">quarterly</option>
+                            <option value="yearly">yearly</option>
+                            <option value="one-off">one-off</option>
+                        </select>
+                        <button class="tg-lnk" disabled="@(string.IsNullOrWhiteSpace(_costLabel) || _costAmount <= 0)" @onclick="AddCost">add cost</button>
+                    </div>
+                    break;
+            }
+
+            <div class="tg-form">
+                <label class="tg-lbl">Planned/mo <input type="number" step="0.01" min="0" placeholder="0.00" @bind="_nPlanned" /></label>
+                <label class="tg-lbl">Start with <input type="number" step="0.01" min="0" placeholder="0.00" @bind="_nInitial" /></label>
+            </div>
+
+            <div class="tg-form">
+                <button @onclick="CreateBucket" disabled="@(_busy || string.IsNullOrWhiteSpace(_nName))">Create</button>
+                <button class="tg-lnk" @onclick="() => _showAdd = false">cancel</button>
+            </div>
+        </div>
+    }
     }
 
     <h3>This period's deposits</h3>
@@ -75,6 +163,34 @@ else
     private Guid _bucketId;
     private decimal _amount;
 
+    // --- New-bucket form ---
+    private static readonly string[] Kinds = ["goal", "debt", "investment", "sinking"];
+    private bool _showAdd;
+    private string _nKind = "goal";
+    private string _nName = "", _nIcon = "";
+    private decimal? _nGoal;
+    private decimal _nThreshold = 80m;
+    private bool _nNotify;
+    private decimal _nDebtBalance, _nDebtRate, _nDebtInstallment;
+    private decimal _nInvRate, _nInvYears;
+    private int _nInvCompounds = 12;
+    private decimal? _nPlanned;
+    private decimal _nInitial;
+    private readonly List<PlannedCostDto> _costs = new();
+    private string _costLabel = "";
+    private decimal _costAmount;
+    private string _costCadence = "monthly";
+
+    private static string KindLabel(string k) => k switch
+    { "goal" => "🎯 Goal", "debt" => "💳 Debt", "investment" => "📈 Investment", "sinking" => "🧾 Sinking", _ => k };
+
+    private void AddCost()
+    {
+        if (string.IsNullOrWhiteSpace(_costLabel) || _costAmount <= 0) return;
+        _costs.Add(new PlannedCostDto(_costLabel.Trim(), _costAmount, _costCadence));
+        _costLabel = ""; _costAmount = 0;
+    }
+
     protected override async Task OnInitializedAsync()
     {
         try
@@ -94,6 +210,60 @@ else
         if (_state is null || _amount <= 0 || _bucketId == Guid.Empty) return;
         _busy = true;
         try { await _state.AllocateAsync(_bucketId, _amount, null); _amount = 0; }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    private string? Blank(string s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();
+
+    private async Task CreateBucket()
+    {
+        if (_state is null || string.IsNullOrWhiteSpace(_nName)) return;
+        _busy = true; _error = null;
+        try
+        {
+            var req = _nKind switch
+            {
+                "debt" => Base() with { IsDebt = true, DebtBalance = _nDebtBalance, DebtRate = _nDebtRate, DebtInstallment = _nDebtInstallment },
+                "investment" => Base() with { IsInvestment = true, InvRate = _nInvRate, InvTermYears = _nInvYears, InvCompounds = _nInvCompounds },
+                "sinking" => Base() with { IsExpensesFund = true, Costs = _costs.Count > 0 ? _costs.ToList() : null },
+                _ => Base() with { GoalAmount = _nGoal, ThresholdPercent = _nThreshold, NotifyOnMilestone = _nNotify },
+            };
+            await _state.CreateBucketAsync(req);
+            ResetForm();
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+
+        // Fields common to every kind.
+        SaveSavingBucketRequest Base() => new(_nName.Trim(), Blank(_nIcon),
+            PlannedContribution: _nPlanned, InitialAmount: _nInitial);
+    }
+
+    private void ResetForm()
+    {
+        _showAdd = false; _nKind = "goal"; _nName = ""; _nIcon = "";
+        _nGoal = null; _nThreshold = 80m; _nNotify = false;
+        _nDebtBalance = _nDebtRate = _nDebtInstallment = 0m;
+        _nInvRate = _nInvYears = 0m; _nInvCompounds = 12;
+        _nPlanned = null; _nInitial = 0m;
+        _costs.Clear(); _costLabel = ""; _costAmount = 0m; _costCadence = "monthly";
+    }
+
+    private async Task Archive(SavingBucketDto b)
+    {
+        if (_state is null) return;
+        _busy = true; _error = null;
+        try { await _state.ArchiveBucketAsync(b.Id, true); }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    private async Task Remove(SavingBucketDto b)
+    {
+        if (_state is null) return;
+        _busy = true; _error = null;
+        try { await _state.RemoveBucketAsync(b.Id); }
         catch (Exception ex) { _error = ex.Message; }
         finally { _busy = false; }
     }
@@ -155,4 +325,18 @@ else
     .tg-form input[type=number] { width: 6rem; }
     .tg-form button { padding: .4rem 1rem; border-radius: .4rem; border: none; background: #2fb99a; color: #05201a; font-weight: 600; cursor: pointer; }
     .tg-form button:disabled { opacity: .5; cursor: default; }
+    .tg-actions { margin-left: .5rem; display: inline-flex; gap: .5rem; align-items: flex-start; }
+    .tg-lnk { border: none; background: none; color: #2fb99a; cursor: pointer; font-size: .78rem; padding: 0; }
+    .tg-lnk.danger { color: #ff7a59; }
+    .tg-lnk:disabled { opacity: .5; cursor: default; }
+    .tg-addbtn { padding: .4rem .8rem; border-radius: .4rem; border: 1px dashed rgba(128,128,128,.5); background: transparent; color: inherit; cursor: pointer; font-size: .85rem; }
+    .tg-newbucket { border: 1px solid rgba(128,128,128,.3); border-radius: .6rem; padding: .7rem .8rem; display: flex; flex-direction: column; gap: .55rem; }
+    .tg-kinds { display: flex; flex-wrap: wrap; gap: .35rem; }
+    .tg-kindbtn { padding: .35rem .7rem; border-radius: .4rem; border: 1px solid rgba(128,128,128,.4); background: transparent; color: inherit; cursor: pointer; font-size: .82rem; }
+    .tg-kindbtn.sel { border-color: #2fb99a; background: rgba(47,185,154,.15); font-weight: 600; }
+    .tg-icon-in { width: 5rem; }
+    .tg-lbl { display: inline-flex; align-items: center; gap: .35rem; font-size: .8rem; opacity: .85; }
+    .tg-lbl input { width: 6rem; }
+    .tg-chk { display: inline-flex; align-items: center; gap: .3rem; font-size: .8rem; opacity: .85; }
+    .tg-hint { font-size: .8rem; margin: 0; }
 </style>
