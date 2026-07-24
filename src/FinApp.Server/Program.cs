@@ -609,6 +609,17 @@ accounts.MapGet("/{id:guid}/recurring", async (Guid id, int? period, ClaimsPrinc
     return Results.Ok(RecurringView.Of(account, snap.Version, ResolvePeriod(account, period)));
 });
 
+// Path-B thin-Income read: this period's deposits + the contribution-category/fund pickers + overview. Paired
+// with the delta-returning deposit writes (POST/PUT/DELETE /deposits) below.
+accounts.MapGet("/{id:guid}/income", async (Guid id, int? period, ClaimsPrincipal user, SnapshotService svc, BankSyncService bankSvc, CancellationToken ct) =>
+{
+    var snap = await svc.GetAsync(user.UserId(), id, ct);
+    if (string.IsNullOrEmpty(snap.Payload)) return Results.Ok(IncomeViewDto.Empty);
+    var account = AccountSnapshotSerializer.Deserialize(snap.Payload);
+    var bank = await bankSvc.GetStatusAsync(user.UserId(), id, ct);
+    return Results.Ok(IncomeMap.View(account, snap.Version, bank.Balance, bank.BalanceCurrency, ResolvePeriod(account, period)));
+});
+
 // Path-B thin period navigation: the account's periods (oldest→newest) so the thin client can render prev/next
 // month nav and know which one is open/latest. The surface reads above take ?period={Index} to view a past one.
 accounts.MapGet("/{id:guid}/periods", async (Guid id, ClaimsPrincipal user, SnapshotService svc, CancellationToken ct) =>

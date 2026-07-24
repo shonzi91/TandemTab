@@ -294,7 +294,9 @@ public sealed class FinAppApiClient(HttpClient http)
     public Task<RecurringMutationDto> SkipRecurringDeltaAsync(Guid id, Guid recurringId, CancellationToken ct = default) =>
         SendAsync<RecurringMutationDto>(HttpMethod.Post, $"/accounts/{id}/recurring/{recurringId}/skip", null, ct);
 
-    // --- Path-B thin income delta -----------------------------------------
+    // --- Path-B thin Income slice -----------------------------------------
+    public Task<IncomeViewDto> GetIncomeAsync(Guid id, int? periodIndex = null, CancellationToken ct = default) =>
+        SendAsync<IncomeViewDto>(HttpMethod.Get, $"/accounts/{id}/income{PeriodQuery(periodIndex)}", null, ct);
     public Task<DepositMutationDto> AddDepositDeltaAsync(Guid id, AddDepositRequest req, CancellationToken ct = default) =>
         SendAsync<DepositMutationDto>(HttpMethod.Post, $"/accounts/{id}/deposits", req, ct);
 

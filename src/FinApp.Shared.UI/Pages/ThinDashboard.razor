@@ -87,6 +87,9 @@
                 case "Spending":
                     <ThinSpendingSection @key="key" AccountId="_accountId" PeriodIndex="_periodIndex" CanWrite="canWrite" />
                     break;
+                case "Income":
+                    <ThinIncomeSection @key="key" AccountId="_accountId" PeriodIndex="_periodIndex" CanWrite="canWrite" />
+                    break;
                 case "Wallets":
                     <ThinWalletsSection @key="key" AccountId="_accountId" PeriodIndex="_periodIndex" CanWrite="canWrite" />
                     break;
@@ -105,7 +108,7 @@
 </div>
 
 @code {
-    private static readonly string[] Tabs = ["Home", "Spending", "Wallets", "Goals", "Budgets", "Recurring"];
+    private static readonly string[] Tabs = ["Home", "Spending", "Income", "Wallets", "Goals", "Budgets", "Recurring"];
 
     private List<AccountSummaryDto>? _accounts;
     private Guid _accountId;
