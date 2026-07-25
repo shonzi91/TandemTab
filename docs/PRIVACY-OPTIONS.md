@@ -49,6 +49,36 @@ merging hard (you lose the referee).
 
 ---
 
+## Offline editing ("airplane mode, then reconnect") — what today does vs. what it'd take
+
+**Today: online-only.** The version token is an *online referee* — it resolves near-simultaneous writes that **both
+reach the server**; it does nothing for a disconnected client. Concretely, offline right now:
+- **Reads** work until you reload — the account is in memory. **Reload offline → blank** (the snapshot is fetched from
+  the server on load; there is **no local copy on the device**).
+- **Writes fail.** Since S47 every edit is a **command sent to the server**; offline it errors and the optimistic
+  change is **rolled back**. You can't add an expense in airplane mode and have it stick.
+
+Two pieces are missing: **(1) local persistence** (state lives in memory + server, not on-device) and **(2) an offline
+write queue** (edits aren't buffered to replay later).
+
+**What it'd take (and why the architecture suits it):**
+- Persist the account snapshot **+ a queue of pending commands** to the device (IndexedDB / native storage).
+- On reconnect, **replay the queue** — the server applies each command and the version advances.
+- **Command-based writes merge gracefully:** "add €12 expense" and a partner's "add €30 expense" don't conflict and
+  can apply in any order, so replay usually just lands. The **version token gets reused** as the check for the *rare*
+  genuine conflict (both edited the *same* item).
+
+**Difficulty split (same as the rest):**
+- **Single-user** offline (your phone in airplane mode → back online): **tractable** — a bounded, moderate feature;
+  conflicts are rare because it's just you.
+- **Multi-user both offline** (you *and* a partner edit disconnected, then both reconnect): the **hard quadrant** —
+  command-replay covers a lot, but truly conflicting edits need a resolution rule (→ op-log/CRDT territory).
+
+Note this is **independent of the privacy question**: you could add single-user offline to *today's* server-can-read
+app without going E2E. It's just the offline half of the local-first direction below.
+
+---
+
 ## Lane 2 privacy options (all require thick; ordered by attractiveness)
 
 ### Opt-in E2E — *recommended if pursuing privacy*

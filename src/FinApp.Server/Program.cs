@@ -412,10 +412,15 @@ auth.MapGet("/external/{provider}", (string provider, HttpContext http, External
     if (!ext.IsEnabled(provider)) return Results.NotFound();
     var redirectUri = ExternalRedirectUri(http, cfg, provider);
     var state = Guid.NewGuid().ToString("N");
-    http.Response.Cookies.Append("finapp_oauth_state", state, new CookieOptions
+    var oauthCookie = new CookieOptions
     {
         HttpOnly = true, Secure = true, SameSite = SameSiteMode.Lax, MaxAge = TimeSpan.FromMinutes(10), Path = "/",
-    });
+    };
+    http.Response.Cookies.Append("finapp_oauth_state", state, oauthCookie);
+    // A native (mobile app) start (?native=1) is remembered so the callback redirects the result back into the
+    // app via the com.tandemtab.app:// deep link instead of the web SPA. Web callers never send this.
+    if (http.Request.Query["native"] == "1")
+        http.Response.Cookies.Append("finapp_oauth_native", "1", oauthCookie);
     return Results.Redirect(ext.BuildAuthorizeUrl(provider, redirectUri, state));
 });
 
@@ -423,10 +428,18 @@ auth.MapGet("/external/{provider}/callback", async (string provider, string? cod
     HttpContext http, ExternalAuthService ext, AuthService authSvc, AuthCodeService authCodes,
     AvatarService avatars, ExternalIdentityService identities, IConfiguration cfg, CancellationToken ct) =>
 {
-    if (!ext.IsEnabled(provider) || string.IsNullOrEmpty(code)) return Results.Redirect("/?authError=1");
+    // Was this flow started from the native app? Route the outcome back into the app via its deep link.
+    var native = http.Request.Cookies["finapp_oauth_native"] == "1";
+    http.Response.Cookies.Delete("finapp_oauth_native");
+    string Fail() => native ? "com.tandemtab.app://auth/callback?error=1" : "/?authError=1";
+    string Ok(string authCode) => native
+        ? $"com.tandemtab.app://auth/callback?authCode={Uri.EscapeDataString(authCode)}"
+        : $"/?authCode={Uri.EscapeDataString(authCode)}";
+
+    if (!ext.IsEnabled(provider) || string.IsNullOrEmpty(code)) return Results.Redirect(Fail());
     var expectedState = http.Request.Cookies["finapp_oauth_state"];
     http.Response.Cookies.Delete("finapp_oauth_state");
-    if (string.IsNullOrEmpty(state) || state != expectedState) return Results.Redirect("/?authError=1");
+    if (string.IsNullOrEmpty(state) || state != expectedState) return Results.Redirect(Fail());
     try
     {
         var redirectUri = ExternalRedirectUri(http, cfg, provider);
@@ -436,12 +449,12 @@ auth.MapGet("/external/{provider}/callback", async (string provider, string? cod
         // Adopt the provider's profile picture only if the user hasn't set one of their own.
         if (!string.IsNullOrWhiteSpace(picture) && await avatars.GetAsync(userId, ct) is null)
             await avatars.SetAsync(userId, picture, ct);
-        // Hand the SPA a one-time code (not a token) in the query string. The client POSTs it to /auth/exchange
+        // Hand the caller a one-time code (not a token) in the query string. The client POSTs it to /auth/exchange
         // for the real access + refresh token, keeping session tokens out of the URL/history/Referer.
         var authCode = await authCodes.IssueAsync(userId, ct);
-        return Results.Redirect($"/?authCode={Uri.EscapeDataString(authCode)}");
+        return Results.Redirect(Ok(authCode));
     }
-    catch { return Results.Redirect("/?authError=1"); }
+    catch { return Results.Redirect(Fail()); }
 });
 
 // --- Consent (audit-logged: login / bank-link / bank-sync) ---------------

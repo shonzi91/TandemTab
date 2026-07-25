@@ -81,6 +81,28 @@ class TandemTabApi(
         }
     }
 
+    /** Which external sign-in providers the server has configured (controls which buttons to show). */
+    suspend fun getProviders(): ExternalProvidersDto {
+        val resp = client.get("/auth/providers")
+        if (resp.status.value !in 200..299) return ExternalProvidersDto()
+        return resp.body()
+    }
+
+    /** The URL to open in a browser to start an external sign-in; `native=1` tells the server to
+     *  redirect the result back into the app via the com.tandemtab.app:// deep link. */
+    fun externalAuthUrl(provider: String): String = "$baseUrl/auth/external/$provider?native=1"
+
+    /** Exchange the one-time code from the external-sign-in deep link for real session tokens. */
+    suspend fun exchangeCode(code: String): AuthResponse {
+        val resp = client.post("/auth/exchange") { setBody(ExchangeCodeRequest(code)) }
+        if (resp.status.value !in 200..299) {
+            throw ApiException(resp.status.value, "Sign-in didn't complete. Please try again.")
+        }
+        val result: AuthResponse = resp.body()
+        accessToken = result.token
+        return result
+    }
+
     suspend fun listAccounts(): List<AccountSummaryDto> {
         val resp = client.get("/accounts") { header(HttpHeaders.Authorization, "Bearer ${requireToken()}") }
         ensureOk(resp.status, resp.bodyAsText())

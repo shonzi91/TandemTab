@@ -22,6 +22,7 @@ data class UiState(
     val busy: Boolean = false,
     val error: String? = null,
     val resetLinkSent: Boolean = false,
+    val googleEnabled: Boolean = false,
     val username: String = "",
     // Home data
     val accounts: List<AccountSummaryDto> = emptyList(),
@@ -38,6 +39,35 @@ class AppViewModel(
 
     private val _state = MutableStateFlow(UiState())
     val state: StateFlow<UiState> = _state.asStateFlow()
+
+    init {
+        // Discover which external providers to show (best-effort — button stays hidden if unreachable).
+        viewModelScope.launch {
+            val providers = runCatching { api.getProviders() }.getOrNull() ?: return@launch
+            _state.update { it.copy(googleEnabled = providers.google) }
+        }
+    }
+
+    /** URL to open in a browser to start Google sign-in (result deep-links back into the app). */
+    fun googleAuthUrl(): String = api.externalAuthUrl("google")
+
+    /** Handle the com.tandemtab.app://auth/callback deep link after external sign-in. */
+    fun onExternalAuthResult(authCode: String?, error: Boolean) {
+        if (error || authCode.isNullOrBlank()) {
+            _state.update { it.copy(busy = false, error = "Google sign-in was cancelled or failed.") }
+            return
+        }
+        _state.update { it.copy(busy = true, error = null) }
+        viewModelScope.launch {
+            try {
+                val auth = api.exchangeCode(authCode)
+                _state.update { it.copy(username = auth.username) }
+                loadHome()
+            } catch (e: Exception) {
+                _state.update { it.copy(busy = false, error = e.message ?: "Sign-in didn't complete.") }
+            }
+        }
+    }
 
     fun login(usernameOrEmail: String, password: String) {
         if (usernameOrEmail.isBlank() || password.isBlank()) {

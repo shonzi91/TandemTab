@@ -3,6 +3,7 @@ package com.tandemtab.app.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,6 +14,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -33,6 +36,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -51,10 +55,12 @@ fun LoginScreen(
     busy: Boolean,
     error: String?,
     resetLinkSent: Boolean,
+    googleEnabled: Boolean,
     onSignIn: (String, String) -> Unit,
     onRegister: (String, String, String) -> Unit,
     onSendResetLink: (String) -> Unit,
     onClearResetSent: () -> Unit,
+    onGoogle: () -> Unit,
 ) {
     val tandem = LocalTandemColors.current
     var mode by rememberSaveable { mutableStateOf(AuthMode.Login) }
@@ -144,6 +150,11 @@ fun LoginScreen(
                         SecondaryButton("Back to sign in") { mode = AuthMode.Login }
                     }
                 }
+            }
+
+            if (mode != AuthMode.Forgot && googleEnabled) {
+                OrDivider()
+                GoogleButton(enabled = !busy, onClick = onGoogle)
             }
 
             LegalFooter()
@@ -321,14 +332,65 @@ private fun ForgotLink(onClick: () -> Unit) {
 
 @Composable
 private fun AlertBox(message: String) {
+    val dark = isSystemInDarkTheme()
+    val bg = if (dark) Color(0x21EF4444) else Color(0x14EF4444)
+    val border = if (dark) Color(0x61EF4444) else Color(0x33EF4444)
+    val fg = if (dark) Color(0xFFFCA5A5) else Color(0xFF991B1B)
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .background(androidx.compose.ui.graphics.Color(0x1AEF4444), RoundedCornerShape(10.dp))
-            .border(1.dp, androidx.compose.ui.graphics.Color(0x33EF4444), RoundedCornerShape(10.dp))
+            .background(bg, RoundedCornerShape(10.dp))
+            .border(1.dp, border, RoundedCornerShape(10.dp))
             .padding(horizontal = 12.dp, vertical = 10.dp),
     ) {
-        Text(message, color = androidx.compose.ui.graphics.Color(0xFFB4232A), style = MaterialTheme.typography.bodySmall)
+        Text(message, color = fg, style = MaterialTheme.typography.bodySmall)
+    }
+}
+
+@Composable
+private fun OrDivider() {
+    val tandem = LocalTandemColors.current
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Box(Modifier.weight(1f).height(1.dp).background(MaterialTheme.colorScheme.outline))
+        Text("or", fontSize = 13.sp, color = tandem.muted)
+        Box(Modifier.weight(1f).height(1.dp).background(MaterialTheme.colorScheme.outline))
+    }
+}
+
+@Composable
+private fun GoogleButton(enabled: Boolean, onClick: () -> Unit) {
+    val tandem = LocalTandemColors.current
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(10.dp))
+            .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(10.dp))
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(vertical = 11.dp),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        // Google "G" in its four brand colours, drawn small so no asset is needed.
+        GoogleGlyph()
+        Spacer(Modifier.width(10.dp))
+        Text("Continue with Google", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
+    }
+}
+
+@Composable
+private fun GoogleGlyph() {
+    androidx.compose.foundation.Canvas(modifier = Modifier.size(18.dp)) {
+        val w = size.width
+        val stroke = w * 0.22f
+        // Simplified multicolour ring segments evoking the Google mark.
+        val rect = androidx.compose.ui.geometry.Rect(stroke / 2, stroke / 2, w - stroke / 2, w - stroke / 2)
+        val style = androidx.compose.ui.graphics.drawscope.Stroke(width = stroke)
+        drawArc(Color(0xFF4285F4), -45f, 110f, false, topLeft = rect.topLeft, size = rect.size, style = style)
+        drawArc(Color(0xFF34A853), 65f, 90f, false, topLeft = rect.topLeft, size = rect.size, style = style)
+        drawArc(Color(0xFFFBBC05), 155f, 60f, false, topLeft = rect.topLeft, size = rect.size, style = style)
+        drawArc(Color(0xFFEA4335), 215f, 90f, false, topLeft = rect.topLeft, size = rect.size, style = style)
+        // The horizontal bar of the "G"
+        drawRect(Color(0xFF4285F4), topLeft = androidx.compose.ui.geometry.Offset(w * 0.52f, w * 0.42f), size = androidx.compose.ui.geometry.Size(w * 0.46f, stroke))
     }
 }
 

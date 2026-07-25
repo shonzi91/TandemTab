@@ -172,4 +172,39 @@
     color: #0f7a54; font: inherit; font-size: .82rem; font-weight: 600; cursor: pointer; text-decoration: underline;
 }
 .auth-forgot:hover { color: #0b5f42; }
+
+/* ───────────────────────── Dark theme ─────────────────────────
+   The landing toggle sets html.dark; the auth card was light-only until now. Mirrors the app's dark
+   surfaces (#161b2c card / #293049 border / mint accent) so sign-in matches the rest of the dark app. */
+html.dark .auth {
+    background: #161b2c; border-color: #293049; color: #e8eaf0;
+    box-shadow: 0 16px 46px rgba(0, 0, 0, .5);
+}
+html.dark .auth h1 { color: #3fe0c5; }
+html.dark .brand-tab { background: #12151d; color: #3fe0c5; border-color: rgba(63, 224, 197, .4); }
+html.dark .auth-logo {
+    background: linear-gradient(135deg, rgba(63, 224, 197, .12), rgba(63, 224, 197, .05));
+    border-color: rgba(63, 224, 197, .28);
+}
+html.dark .auth-slogan { color: #6fe0b4; }
+html.dark .auth .hint { color: #aab0c0; }
+html.dark .auth-tabs { background: #0e1220; }
+html.dark .auth-tabs .tab { color: #aab0c0; }
+html.dark .auth-tabs .tab:hover:not(.active) { color: #3fe0c5; }
+html.dark .auth-tabs .tab.active { background: #1c2338; color: #3fe0c5; box-shadow: 0 1px 3px rgba(0, 0, 0, .45); }
+html.dark .auth label { color: #aab0c0; }
+html.dark .auth label input { background: #12151d; border-color: #313a4a; color: #e8eaf0; }
+html.dark .auth label input:focus { border-color: #3fe0c5; box-shadow: 0 0 0 3px rgba(63, 224, 197, .18); }
+html.dark .auth .primary { background: #13a06e; color: #ffffff; }
+html.dark .auth .primary:hover:not(:disabled) { background: #17b47c; }
+html.dark .auth .primary:disabled { background: #2b3350; color: #7c8496; }
+html.dark .auth .alert { background: rgba(239, 68, 68, .13); border-color: rgba(239, 68, 68, .38); color: #fca5a5; }
+html.dark .auth-or { color: #7c8496; }
+html.dark .auth-or::before, html.dark .auth-or::after { background: #293049; }
+html.dark .auth-provider { background: #12151d; border-color: #313a4a; color: #e8eaf0; }
+html.dark .auth-provider:hover { background: #1c2338; border-color: #3a445c; }
+html.dark .auth-provider-ico { background: #232a3a; color: #e8eaf0; }
+html.dark .auth-legal { color: #7c8496; }
+html.dark .auth-legal a { color: #aab0c0; }
+html.dark .auth-legal a:hover { color: #3fe0c5; }
 html.dark .auth-forgot { color: #57d9a3; }

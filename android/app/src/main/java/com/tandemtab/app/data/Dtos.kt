@@ -26,6 +26,15 @@ data class RegisterRequest(
 data class ForgotPasswordRequest(val identifier: String)
 
 @Serializable
+data class ExternalProvidersDto(
+    val google: Boolean = false,
+    val facebook: Boolean = false,
+)
+
+@Serializable
+data class ExchangeCodeRequest(val code: String)
+
+@Serializable
 data class AuthResponse(
     val token: String,
     val userId: String,
