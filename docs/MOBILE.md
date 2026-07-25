@@ -7,7 +7,12 @@
 this doc previously recommended — is off the table, and the existing `FinApp.App.Maui` Hybrid
 scaffold is to be **retired**, not repurposed.
 
-Mobile work stays **deferred** until Phase 0 lands (see below).
+**Update (2026-07-25, Session 55): native Android has STARTED — ahead of the gate below, by user decision ("lets go android native").**
+The web-thinning gate was a *proof mechanism*, not a hard technical dependency; the read+write API is functionally
+complete (S37–54) and every Dashboard surface has a verified DTO, so the native client itself now serves as the proof.
+A working Kotlin/Compose app lives in [../android/](../android/) — built, booted on an emulator, and verified against
+the **live prod API** (login → error path). Web-thinning (Path B Phase 2/3) is now decoupled from native and continues
+in parallel. See the Session-55 HANDOFF entry.
 
 This doc is the single source of truth for the mobile plan. Update it as decisions firm up.
 
@@ -41,7 +46,9 @@ Native starts **only** once the ratified gate below is met. The API itself is no
 **Not required first:** row-per-entity persistence (a later payoff, not a prerequisite).
 
 **Tooling gates (defer until the gate above is near):**
-- ◻ **Android SDK/JDK** not installed on this box — needed for native Android (goes first: needs no Mac).
+- ✅ **Android SDK/JDK installed (Session 55).** Android Studio 2026.1.2 + JBR 21 were already present (the "not installed"
+  note was stale); SDK (platform/build-tools 35, platform-tools, emulator, android-35 system image) + Gradle 8.10.2 added.
+  Build/run recipe in the Session-55 HANDOFF + saved to agent memory.
 - ◻ **iOS blocked on Mac / cloud-Mac access** — Android is not.
 
 ---
@@ -256,12 +263,13 @@ used to be able to clobber a concurrent write). Every future mutation reuses thi
 - ☐ **Offline/caching story** — a thin client needs one; design endpoints with it in mind.
 - **Exit criteria:** the web app runs against the API with **no client-side domain computation left.**
 
-## Phase 2 — native Android (Kotlin / Jetpack Compose)
-- Install Android SDK/JDK on the dev box (not present today).
-- Stand up auth against prod, then port the surfaces: Home, Spending, Goals, Wallets, Insights,
-  Recurring, bank review, modals.
+## Phase 2 — native Android (Kotlin / Jetpack Compose)  ← STARTED (Session 55)
+- ✅ Install Android SDK/JDK on the dev box (Session 55).
+- ✅ Stand up auth against prod (`POST /auth/login`) — done + verified against live; first screen (Home overview) built.
+- Port the remaining surfaces: Home (started), Spending, Goals, Wallets, Insights, Recurring, bank review, modals.
+- Persistent token store (DataStore) + refresh (`POST /auth/refresh`) — next.
 - Re-implement the EN/BG strings against Android resources (`Localizer` does not come along).
-- Go/no-go on the port after the first real screen.
+- ✅ Go/no-go on the port after the first real screen — **GO** (login+overview slice built, app boots + reaches live API).
 
 ## Phase 3 — native iOS (Swift / SwiftUI)
 - Same surfaces against the same API. Needs Mac/cloud-Mac access.

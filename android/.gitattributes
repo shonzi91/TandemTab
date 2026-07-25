@@ -1,0 +1,4 @@
+# The Gradle wrapper Unix script must keep LF endings or it fails on macOS/Linux CI.
+gradlew text eol=lf
+*.bat text eol=crlf
+gradle-wrapper.jar binary
