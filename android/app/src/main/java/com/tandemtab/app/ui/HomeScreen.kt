@@ -23,7 +23,6 @@ import androidx.compose.material.icons.rounded.AccountBalanceWallet
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Flag
 import androidx.compose.material.icons.rounded.Home
-import androidx.compose.material.icons.rounded.MoreHoriz
 import androidx.compose.material.icons.rounded.ReceiptLong
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -60,12 +59,13 @@ import java.text.NumberFormat
 import java.util.Currency
 import java.util.Locale
 
+// Mirrors the thick prod Dashboard's 4 tabs (Dashboard.razor: Overview/Budgets/Savings/Account),
+// in the same order and labels.
 private enum class NavDest(val label: String, val icon: ImageVector) {
     Home("Home", Icons.Rounded.Home),
     Spending("Spending", Icons.Rounded.ReceiptLong),
-    Wallets("Wallets", Icons.Rounded.AccountBalanceWallet),
     Goals("Goals", Icons.Rounded.Flag),
-    More("More", Icons.Rounded.MoreHoriz),
+    Wallets("Wallets", Icons.Rounded.AccountBalanceWallet),
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
