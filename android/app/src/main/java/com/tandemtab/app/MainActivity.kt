@@ -36,7 +36,11 @@ private fun App(vm: AppViewModel = viewModel()) {
         Screen.Login -> LoginScreen(
             busy = state.busy,
             error = state.error,
-            onSubmit = vm::login,
+            resetLinkSent = state.resetLinkSent,
+            onSignIn = vm::login,
+            onRegister = vm::register,
+            onSendResetLink = vm::sendResetLink,
+            onClearResetSent = vm::clearResetLinkSent,
         )
         Screen.Home -> HomeScreen(
             state = state,

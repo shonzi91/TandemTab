@@ -60,6 +60,27 @@ class TandemTabApi(
         return result
     }
 
+    /** Register a new account. The server returns tokens (auto sign-in), mirroring the web. */
+    suspend fun register(username: String, email: String, password: String): AuthResponse {
+        val resp = client.post("/auth/register") {
+            setBody(RegisterRequest(username.trim(), email.trim(), password))
+        }
+        if (resp.status.value !in 200..299) {
+            throw ApiException(resp.status.value, serverMessageOr(resp.bodyAsText(), "Couldn't create your account."))
+        }
+        val result: AuthResponse = resp.body()
+        accessToken = result.token
+        return result
+    }
+
+    /** Request a password-reset link. Always succeeds (never reveals whether the identifier matched). */
+    suspend fun forgotPassword(identifier: String) {
+        val resp = client.post("/auth/password/forgot") { setBody(ForgotPasswordRequest(identifier.trim())) }
+        if (resp.status.value !in 200..299 && resp.status.value != 204) {
+            throw ApiException(resp.status.value, "Couldn't send the reset link. Try again.")
+        }
+    }
+
     suspend fun listAccounts(): List<AccountSummaryDto> {
         val resp = client.get("/accounts") { header(HttpHeaders.Authorization, "Bearer ${requireToken()}") }
         ensureOk(resp.status, resp.bodyAsText())
@@ -84,6 +105,17 @@ class TandemTabApi(
         if (status.value !in 200..299) {
             throw ApiException(status.value, if (body.isBlank()) status.description else body)
         }
+    }
+
+    /** Pull a human message out of the server's error body ({"error":…} or {"title":…}), else a default. */
+    private fun serverMessageOr(body: String, default: String): String {
+        return runCatching {
+            val el = json.parseToJsonElement(body)
+            val obj = (el as? kotlinx.serialization.json.JsonObject) ?: return default
+            (obj["error"] ?: obj["title"] ?: obj["message"])
+                ?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content }
+                ?.takeIf { it.isNotBlank() }
+        }.getOrNull() ?: default
     }
 
     private fun loginError(status: HttpStatusCode): String = when (status.value) {

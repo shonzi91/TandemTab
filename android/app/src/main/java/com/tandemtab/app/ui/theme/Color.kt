@@ -55,6 +55,7 @@ data class TandemColors(
     val warn: Color,
     val alertBg: Color,
     val alertBorder: Color,
+    val segmentTrack: Color,
 )
 
 val LightTandemColors = TandemColors(
@@ -70,6 +71,7 @@ val LightTandemColors = TandemColors(
     warn = Amber,
     alertBg = LightAlertBg,
     alertBorder = LightAlertBorder,
+    segmentTrack = Color(0xFFF1F3F6),
 )
 
 val DarkTandemColors = TandemColors(
@@ -85,6 +87,7 @@ val DarkTandemColors = TandemColors(
     warn = Color(0xFFF5B24E),
     alertBg = Color(0xFF2A2417),
     alertBorder = Color(0xFF4A3D22),
+    segmentTrack = Color(0xFF0E1220),
 )
 
 val LocalTandemColors = staticCompositionLocalOf { LightTandemColors }

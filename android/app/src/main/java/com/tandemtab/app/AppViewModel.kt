@@ -21,6 +21,7 @@ data class UiState(
     val screen: Screen = Screen.Login,
     val busy: Boolean = false,
     val error: String? = null,
+    val resetLinkSent: Boolean = false,
     val username: String = "",
     // Home data
     val accounts: List<AccountSummaryDto> = emptyList(),
@@ -62,6 +63,45 @@ class AppViewModel(
             }
         }
     }
+
+    fun register(username: String, email: String, password: String) {
+        when {
+            username.isBlank() || email.isBlank() ->
+                _state.update { it.copy(error = "Fill in a username, email and password to continue.") }
+            password.length < 8 ->
+                _state.update { it.copy(error = "Password must be at least 8 characters.") }
+            else -> {
+                _state.update { it.copy(busy = true, error = null) }
+                viewModelScope.launch {
+                    try {
+                        val auth = api.register(username, email, password)
+                        _state.update { it.copy(username = auth.username) }
+                        loadHome()
+                    } catch (e: Exception) {
+                        _state.update { it.copy(busy = false, error = e.message ?: "Sign-up failed.") }
+                    }
+                }
+            }
+        }
+    }
+
+    fun sendResetLink(identifier: String) {
+        if (identifier.isBlank()) {
+            _state.update { it.copy(error = "Enter your username or email.") }
+            return
+        }
+        _state.update { it.copy(busy = true, error = null) }
+        viewModelScope.launch {
+            try {
+                api.forgotPassword(identifier)
+                _state.update { it.copy(busy = false, resetLinkSent = true, error = null) }
+            } catch (e: Exception) {
+                _state.update { it.copy(busy = false, error = e.message ?: "Couldn't send the reset link.") }
+            }
+        }
+    }
+
+    fun clearResetLinkSent() = _state.update { it.copy(resetLinkSent = false) }
 
     private suspend fun loadHome() {
         try {
