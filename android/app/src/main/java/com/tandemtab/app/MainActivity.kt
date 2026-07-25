@@ -74,6 +74,7 @@ private fun App(vm: AppViewModel, onGoogle: () -> Unit) {
             state = state,
             onSelectAccount = vm::selectAccount,
             onSignOut = vm::signOut,
+            onLoadSpending = vm::loadSpending,
         )
     }
 }

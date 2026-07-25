@@ -81,3 +81,37 @@ data class AccountOverviewDto(
     val billsDue: Double,
     val safeAfterBills: Double,
 )
+
+@Serializable
+data class ExpenseDto(
+    val id: String,
+    val categoryId: String,
+    val categoryName: String,
+    val categoryIcon: String? = null,
+    val fundId: String,
+    val fundName: String,
+    val amount: Double,
+    val date: String, // ISO yyyy-MM-dd
+    val note: String? = null,
+    val autoFiled: Boolean = false,
+    val fromSavings: Boolean = false,
+    val onBehalfOfOtherAccount: Boolean = false,
+    val isSettlementSource: Boolean = false,
+    val isSettlementDestination: Boolean = false,
+)
+
+@Serializable
+data class CategoryOptionDto(val id: String, val name: String, val icon: String? = null, val parentId: String? = null)
+
+@Serializable
+data class FundOptionDto(val id: String, val name: String, val synced: Boolean = false)
+
+@Serializable
+data class SpendingViewDto(
+    val version: Long = 0,
+    val currency: String = "",
+    val overview: AccountOverviewDto,
+    val expenses: List<ExpenseDto> = emptyList(),
+    val categories: List<CategoryOptionDto> = emptyList(),
+    val funds: List<FundOptionDto> = emptyList(),
+)

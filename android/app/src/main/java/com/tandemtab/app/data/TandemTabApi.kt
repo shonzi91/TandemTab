@@ -109,6 +109,14 @@ class TandemTabApi(
         return resp.body()
     }
 
+    suspend fun spending(accountId: String): SpendingViewDto {
+        val resp = client.get("/accounts/$accountId/spending") {
+            header(HttpHeaders.Authorization, "Bearer ${requireToken()}")
+        }
+        ensureOk(resp.status, resp.bodyAsText())
+        return resp.body()
+    }
+
     suspend fun overview(accountId: String): AccountOverviewDto {
         val resp = client.get("/accounts/$accountId/overview") {
             header(HttpHeaders.Authorization, "Bearer ${requireToken()}")

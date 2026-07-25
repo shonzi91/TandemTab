@@ -40,6 +40,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -74,6 +75,7 @@ fun HomeScreen(
     state: UiState,
     onSelectAccount: (String) -> Unit,
     onSignOut: () -> Unit,
+    onLoadSpending: (Boolean) -> Unit,
 ) {
     val tandem = LocalTandemColors.current
     var dest by rememberSaveable { mutableStateOf(NavDest.Home) }
@@ -127,6 +129,9 @@ fun HomeScreen(
         },
         snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
+        LaunchedEffect(dest, state.selectedAccountId) {
+            if (dest == NavDest.Spending) onLoadSpending(false)
+        }
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -134,6 +139,10 @@ fun HomeScreen(
                 .verticalScroll(rememberScrollState())
                 .padding(16.dp),
         ) {
+            if (dest == NavDest.Spending) {
+                SpendingScreen(spending = state.spending, onRetry = { onLoadSpending(true) })
+                return@Column
+            }
             if (dest != NavDest.Home) {
                 Placeholder(dest.label)
                 return@Column

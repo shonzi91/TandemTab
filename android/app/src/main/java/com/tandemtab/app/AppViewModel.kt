@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.tandemtab.app.data.AccountOverviewDto
 import com.tandemtab.app.data.AccountSummaryDto
+import com.tandemtab.app.data.ExpenseDto
 import com.tandemtab.app.data.TandemTabApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -28,10 +29,21 @@ data class UiState(
     val accounts: List<AccountSummaryDto> = emptyList(),
     val selectedAccountId: String? = null,
     val overview: AccountOverviewDto? = null,
+    val spending: SpendingUi = SpendingUi(),
 ) {
     val selectedAccount: AccountSummaryDto?
         get() = accounts.firstOrNull { it.id == selectedAccountId }
 }
+
+/** Lazy-loaded state for the Spending tab. */
+data class SpendingUi(
+    val loading: Boolean = false,
+    val loaded: Boolean = false,
+    val error: String? = null,
+    val currency: String = "",
+    val spent: Double = 0.0,
+    val expenses: List<ExpenseDto> = emptyList(),
+)
 
 class AppViewModel(
     private val api: TandemTabApi = TandemTabApi(),
@@ -155,13 +167,31 @@ class AppViewModel(
 
     fun selectAccount(accountId: String) {
         if (accountId == _state.value.selectedAccountId) return
-        _state.update { it.copy(busy = true, selectedAccountId = accountId, overview = null) }
+        _state.update { it.copy(busy = true, selectedAccountId = accountId, overview = null, spending = SpendingUi()) }
         viewModelScope.launch {
             try {
                 val overview = api.overview(accountId)
                 _state.update { it.copy(busy = false, overview = overview) }
             } catch (e: Exception) {
                 _state.update { it.copy(busy = false, error = e.message ?: "Couldn't load that account.") }
+            }
+        }
+    }
+
+    /** Lazily load the Spending tab the first time it's shown (or when forced, e.g. pull-to-refresh). */
+    fun loadSpending(force: Boolean = false) {
+        val accountId = _state.value.selectedAccountId ?: return
+        val cur = _state.value.spending
+        if (!force && (cur.loaded || cur.loading)) return
+        _state.update { it.copy(spending = it.spending.copy(loading = true, error = null)) }
+        viewModelScope.launch {
+            try {
+                val v = api.spending(accountId)
+                _state.update {
+                    it.copy(spending = SpendingUi(loaded = true, currency = v.currency, spent = v.overview.spent, expenses = v.expenses))
+                }
+            } catch (e: Exception) {
+                _state.update { it.copy(spending = it.spending.copy(loading = false, error = e.message ?: "Couldn't load spending.")) }
             }
         }
     }
