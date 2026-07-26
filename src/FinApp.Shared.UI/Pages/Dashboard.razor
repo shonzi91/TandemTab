@@ -795,7 +795,18 @@ else
                 }
                 <div class="spending-head">
                     <span class="insight-h">@Loc["This month's budgets"]</span>
-                    <button class="fund-add" @onclick="OpenAddBudget"><Icon Name="plus" /> @Loc["Add budget"]</button>
+                    <span class="plan-toggle bview-toggle" role="group">
+                        <button type="button" class="chip @(_budgetByDate ? "" : "on")" @onclick="() => _budgetByDate = false"><Icon Name="chart" /> @Loc["Categories"]</button>
+                        <button type="button" class="chip @(_budgetByDate ? "on" : "")" @onclick="() => _budgetByDate = true"><Icon Name="list" /> @Loc["By date"]</button>
+                    </span>
+                    @if (!_budgetByDate)
+                    {
+                        <button class="fund-add" @onclick="OpenAddBudget"><Icon Name="plus" /> @Loc["Add budget"]</button>
+                    }
+                    else if (State.IsPeriodOpen)
+                    {
+                        <button class="fund-add" @onclick="AddExpenseFromHeader"><Icon Name="receipt" /> @Loc["Add expense"]</button>
+                    }
                 </div>
                 @{
                     // Top-level categories only — sub-categories roll up into their parent's ring.
@@ -871,70 +882,136 @@ else
                 {
                     <p class="budget-over-note"><Icon Name="bulb" /> @string.Format(Loc["Your remaining budgets ({0}) are {1} more than you have left ({2}) — budgets are plans, not commitments, so trim one or top up when you can."], Fmt(_bnRemaining), Fmt(overPlanned), Fmt(_bnFree))</p>
                 }
-                <div class="ring-grid">
+                @* Category list: a status-ring chip + a gradient progress bar per row, ordered by spend. Tapping a
+                   row opens a drawer with its expenses, sub-categories and actions — so the actions and the spend
+                   detail are inline instead of behind a ring popover (which is why the ring's menu is gone). *@
+                @if (!_budgetByDate)
+                {
+                <div class="cat-list">
                     @foreach (var rc in ringCards)
                     {
                         var cat = rc.Cat;
                         var catId = cat.Id;
-                        if (rc.HasBudget)
-                        {
-                            var cov = State.Coverage(catId);
-                            var cls = cov.IsOverBudget ? "over" : cov.ThresholdReached ? "warn" : "ok";
-                            <div class="ring-card ring-card-lg@(State.ChildrenOf(catId).Any() ? " has-subs" : "")" data-ring-cat="@catId">
-                                <ProgressRing Percent="@((double)(cov.Percent ?? 0))" Class="@cls" Ramp="spend">
-                                    <button class="ring-ico-big" title="@Loc["Actions"]" @onclick="() => ToggleBudgetMenu(catId)"><CatIcon Name="@State.CategoryIcon(catId)" Class="cat-chip-lg" /></button>
-                                    <button class="ring-name" title="@Loc["Actions"]" @onclick="() => ToggleBudgetMenu(catId)">@cat.Name</button>
-                                </ProgressRing>
-                                <div class="ring-label"><span>@Fmt(cov.Spent) / @Fmt(cov.Allocated)</span></div>
-                                @if (_budgetMenuId == catId) { @BudgetCircleMenu(catId) }
-                            </div>
-                        }
-                        else
-                        {
-                            <div class="ring-card ring-card-lg@(State.ChildrenOf(catId).Any() ? " has-subs" : "")" data-ring-cat="@catId">
-                                <ProgressRing Percent="0" Class="mint" Dashed="true">
-                                    <button class="ring-ico-big" title="@Loc["Actions"]" @onclick="() => ToggleBudgetMenu(catId)"><CatIcon Name="@State.CategoryIcon(catId)" Class="cat-chip-lg" /></button>
-                                    <button class="ring-name" title="@Loc["Actions"]" @onclick="() => ToggleBudgetMenu(catId)">@cat.Name</button>
-                                </ProgressRing>
-                                <div class="ring-label"><span class="amt">@Fmt(State.SpentInCategory(catId))</span> <span class="ring-muted">@Loc["no budget"]</span></div>
-                                @if (_budgetMenuId == catId) { @BudgetCircleMenu(catId) }
-                            </div>
-                        }
+                        var hasBudget = rc.HasBudget;
+                        var cov = hasBudget ? State.Coverage(catId) : null;
+                        var spent = hasBudget ? cov!.Spent : State.SpentInCategory(catId);
+                        var pct = hasBudget ? Math.Clamp((double)(cov!.Percent ?? 0), 0, 100) : 0;
+                        var cls = hasBudget ? (cov!.IsOverBudget ? "over" : cov.ThresholdReached ? "warn" : "ok") : "mint";
+                        var over = hasBudget && cov!.IsOverBudget;
+                        var subCount = State.ChildrenOf(catId).Count();
+                        var open = _expandedCatId == catId;
+                        <div class="cat-row@(open ? " open" : "")" data-ring-cat="@catId">
+                            <button class="cat-row-head" @onclick="() => ToggleCatRow(catId)">
+                                <span class="cat-chip-ring">
+                                    <ProgressRing Percent="@pct" Class="@cls" Ramp="@(hasBudget ? "spend" : null)" Dashed="@(!hasBudget)">
+                                        <CatIcon Name="@State.CategoryIcon(catId)" Class="cat-chip-ring-ico" />
+                                    </ProgressRing>
+                                </span>
+                                <span class="cat-row-main">
+                                    <span class="cat-row-top">
+                                        <span class="cat-row-name">@cat.Name@if (subCount > 0) { <span class="cat-row-subn">@subCount</span> }</span>
+                                        <span class="cat-row-amt @(over ? "warn-text" : "")">@Fmt(spent)@if (hasBudget) { <text> / @Fmt(cov!.Allocated)</text> } else { <span class="cat-row-nb"> · @Loc["no budget"]</span> }</span>
+                                    </span>
+                                    <span class="cbar-track"><span class="cbar-grad@(hasBudget ? "" : " cbar-flat")" style="--pct:@pct.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)%"></span></span>
+                                </span>
+                                <Icon Name="chevron" Class="cat-chev" />
+                            </button>
+                            @if (open)
+                            {
+                                <div class="cat-drawer">
+                                    @{ var subs = State.ChildrenOf(catId).ToList(); }
+                                    @if (subs.Count > 0)
+                                    {
+                                        <div class="cat-drawer-label">@Loc["Sub-categories"]</div>
+                                        @foreach (var sub in subs)
+                                        {
+                                            var subHas = State.HasBudget(sub.Id);
+                                            var subCov = subHas ? State.Coverage(sub.Id) : null;
+                                            var subSpent = subHas ? subCov!.Spent : State.SpentInCategory(sub.Id);
+                                            var subPct = subHas ? Math.Clamp((double)(subCov!.Percent ?? 0), 0, 100) : 0;
+                                            <div class="cat-subrow">
+                                                <span class="cat-subrow-top">
+                                                    <span><CatIcon Name="@State.CategoryIcon(sub.Id)" /> @sub.Name</span>
+                                                    <span class="cat-subrow-amt">@Fmt(subSpent)@(subHas ? $" / {Fmt(subCov!.Allocated)}" : "")</span>
+                                                </span>
+                                                <span class="cbar-track cbar-track-sm"><span class="cbar-grad@(subHas ? "" : " cbar-flat")" style="--pct:@subPct.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)%"></span></span>
+                                            </div>
+                                        }
+                                    }
+                                    @{
+                                        var ownExpenses = State.ExpensesFor(catId);
+                                        var shownExpenses = _catShowAllExp ? ownExpenses : ownExpenses.Take(CatDrawerExpenseCap).ToList();
+                                    }
+                                    <div class="cat-drawer-label">@Loc["Expenses"]</div>
+                                    @if (ownExpenses.Count == 0)
+                                    {
+                                        <p class="cat-drawer-empty">@Loc["No expenses in this category yet."]</p>
+                                    }
+                                    else
+                                    {
+                                        <ul class="cat-exp-list">
+                                            @foreach (var e in shownExpenses)
+                                            {
+                                                var eid = e.Id;
+                                                <li class="cat-exp">
+                                                    <span class="cat-exp-main"><CatIcon Name="@State.FundIcon(e.FundId)" /> <span class="cat-exp-fund">@State.FundName(e.FundId)</span> <span class="cat-exp-date">@e.Date.ToString("dd MMM")@(string.IsNullOrEmpty(e.Note) ? "" : " · " + e.Note)</span></span>
+                                                    <span class="amt">@Fmt(e.Amount)</span>
+                                                    @if (State.IsPeriodOpen)
+                                                    {
+                                                        <span class="cat-exp-acts">
+                                                            <button class="exp-edit" title="@Loc["Edit"]" @onclick="() => OpenEditExpense(eid)"><Icon Name="pencil" /></button>
+                                                            <button class="exp-edit" title="@Loc["Remove"]" @onclick="() => OpenDeleteExpense(eid)"><Icon Name="trash" /></button>
+                                                        </span>
+                                                    }
+                                                </li>
+                                            }
+                                        </ul>
+                                        @if (!_catShowAllExp && ownExpenses.Count > CatDrawerExpenseCap)
+                                        {
+                                            <button class="cat-viewmore" @onclick="() => _catShowAllExp = true">@string.Format(Loc["View all {0} expenses"], ownExpenses.Count) <Icon Name="chevron" Class="cat-viewmore-chev" /></button>
+                                        }
+                                    }
+                                    <div class="cat-drawer-actions">
+                                        @if (State.IsPeriodOpen)
+                                        {
+                                            <button class="cat-act" @onclick="() => OpenAddExpense(catId)"><Icon Name="receipt" /> @Loc["Add expense"]</button>
+                                        }
+                                        <button class="cat-act" @onclick="() => OpenEdit(catId)"><Icon Name="pencil" /> @(hasBudget ? Loc["Edit budget"] : Loc["Add budget"])</button>
+                                        <button class="cat-act danger" @onclick="() => OpenDelete(catId)"><Icon Name="trash" /> @Loc["Remove"]</button>
+                                    </div>
+                                </div>
+                            }
+                        </div>
                     }
                 </div>
-            </section>
-
-            <section class="panel">
-                <div class="panel-head">
-                    <span class="panel-head-title">
-                        @if (_calendar)
-                        {
-                            <h2>@State.Period.From.ToString("MMMM yyyy")</h2>
-                        }
-                        else if (_dayView is { } dv)
-                        {
-                            <span class="day-nav">
-                                <button class="exp-edit" title="@Loc["Previous day"]" @onclick="PrevDay" disabled="@(dv <= State.Period.From)">◀</button>
-                                <input type="date" @bind:get="dv" @bind:set="GoToDay" min="@State.Period.From.ToString("yyyy-MM-dd")" max="@State.Period.To.ToString("yyyy-MM-dd")" />
-                                <button class="exp-edit" title="@Loc["Next day"]" @onclick="NextDay" disabled="@(dv >= State.Period.To)">▶</button>
-                            </span>
-                        }
-                        else
-                        {
-                            <h2>@Loc["All expenses"]</h2>
-                        }
-                        @if (State.IsPeriodOpen)
-                        {
-                            <button class="fund-add exp-add-head" @onclick="AddExpenseFromHeader"><Icon Name="receipt" /> @Loc["Add expense"]</button>
-                        }
-                    </span>
-                    <span class="panel-head-actions">
-                        <span class="view-toggle">
-                            <button class="view-btn @(_calendar ? "" : "active")" title="@Loc["List"]" @onclick="ShowDayList"><Icon Name="list" /></button>
-                            <button class="view-btn @(_calendar ? "active" : "")" title="@Loc["Calendar"]" @onclick="ShowCalendarView"><Icon Name="calendar" /></button>
+                }
+                else
+                {
+                @* Same expenses, organised by date instead of by category — folded in here as a toggle so the ledger
+                   isn't shown twice. Day-nav / calendar sub-view lives on the right; Add-expense is in the head above. *@
+                <div class="bydate-head">
+                    @if (_calendar)
+                    {
+                        <span class="bydate-ctx">@State.Period.From.ToString("MMMM yyyy")</span>
+                    }
+                    else if (_dayView is { } dv)
+                    {
+                        <span class="day-nav">
+                            <button class="exp-edit" title="@Loc["Previous day"]" @onclick="PrevDay" disabled="@(dv <= State.Period.From)">◀</button>
+                            <input type="date" @bind:get="dv" @bind:set="GoToDay" min="@State.Period.From.ToString("yyyy-MM-dd")" max="@State.Period.To.ToString("yyyy-MM-dd")" />
+                            <button class="exp-edit" title="@Loc["Next day"]" @onclick="NextDay" disabled="@(dv >= State.Period.To)">▶</button>
                         </span>
+                    }
+                    else
+                    {
+                        <span class="bydate-ctx">@Loc["Newest first"]</span>
+                    }
+                    <span class="view-toggle">
+                        <button class="view-btn @(_calendar ? "" : "active")" title="@Loc["List"]" @onclick="ShowDayList"><Icon Name="list" /></button>
+                        <button class="view-btn @(_calendar ? "active" : "")" title="@Loc["Calendar"]" @onclick="ShowCalendarView"><Icon Name="calendar" /></button>
                     </span>
                 </div>
+                <div class="bydate-body">
                 @{
                     RenderFragment<FinApp.Domain.Budgeting.Expense> row = e =>
                         @<li>
@@ -1020,6 +1097,8 @@ else
                         <button class="date-sep" @onclick="() => GoToDay(grp.Key)">@grp.Key.ToString("dddd, dd MMM yyyy")</button>
                         <ul class="list list-even">@foreach (var e in grp) { @row(e) }</ul>
                     }
+                }
+                </div>
                 }
             </section>
 
@@ -3329,6 +3408,16 @@ else
     private Guid _budgetMenuId;
     private void ToggleBudgetMenu(Guid id) => _budgetMenuId = _budgetMenuId == id ? Guid.Empty : id;
     private void BudgetAct(Action a) { _budgetMenuId = Guid.Empty; a(); }
+
+    // Budget category list: which row's drawer (expenses + sub-categories + actions) is open. One at a time (accordion).
+    private Guid _expandedCatId;
+    private bool _catShowAllExp;   // drawer shows the first few expenses; this reveals the rest for the open row
+    private void ToggleCatRow(Guid id) { _expandedCatId = _expandedCatId == id ? Guid.Empty : id; _catShowAllExp = false; }
+    private const int CatDrawerExpenseCap = 5;
+
+    // Budgets panel view: false = by category (the ring/bar list), true = the same expenses flat, organised by date
+    // (the old separate "All expenses" panel, folded in here as a toggle so the ledger isn't shown twice).
+    private bool _budgetByDate;
 
     /// <summary>The click-anywhere-to-close action menu for a budget circle, listing its actions + sub-categories.</summary>
     private RenderFragment<Guid> BudgetCircleMenu => catId =>

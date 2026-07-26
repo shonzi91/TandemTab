@@ -724,6 +724,71 @@ html.dark .budget-bar-labels strong { color: #e2e8f0; }
 .budget-bar-labels .bbl-unspent:not(.warn-text) { color: #0e9e6d; }
 html.dark .budget-bar-labels .bbl-unspent:not(.warn-text) { color: #34d399; }
 .ring-card.ring-hi .ring-name { text-decoration: underline; text-underline-offset: 3px; }
+.cat-row.ring-hi { border-color: #13a06e; }
+
+/* Budget category list — status-ring chip + gradient bar per row, expandable to a drawer. */
+.cat-list { display: flex; flex-direction: column; gap: 8px; }
+.cat-row { border: 0.5px solid #e6ece9; border-radius: 12px; background: #fff; overflow: hidden; }
+html.dark .cat-row { border-color: #2b3446; background: #14181f; }
+.cat-row-head { display: flex; align-items: center; gap: 13px; width: 100%; padding: 11px 14px; background: none; border: none; cursor: pointer; text-align: left; font: inherit; }
+.cat-row-head:hover { background: #f6faf8; }
+html.dark .cat-row-head:hover { background: #191e27; }
+.cat-chip-ring { width: 42px; height: 42px; flex: none; }
+.cat-chip-ring ::deep .pring-center { font-size: 15px; padding: 22%; }
+.cat-row-main { flex: 1; min-width: 0; }
+.cat-row-top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.cat-row-name { font-weight: 600; font-size: .95rem; color: #1f2937; }
+html.dark .cat-row-name { color: #e8eaf0; }
+.cat-row-subn { font-size: .68rem; font-weight: 600; color: #94a3b8; margin-left: 6px; padding: 1px 6px; border-radius: 8px; background: #f1f4f7; }
+html.dark .cat-row-subn { background: #232a37; }
+.cat-row-amt { font-size: .82rem; color: #64748b; white-space: nowrap; }
+html.dark .cat-row-amt { color: #94a3b8; }
+.cat-row-nb { font-size: .72rem; color: #94a3b8; }
+/* The bar fill follows the same calm mint → coral spend ramp as the rings; the gradient is anchored to the whole
+   track (100% = budget) and revealed up to --pct by the clip, so colour-at-a-point always matches how full it is. */
+.cbar-track { display: block; height: 9px; border-radius: 6px; background: #eef1f4; overflow: hidden; margin-top: 6px; }
+html.dark .cbar-track { background: #2a3341; }
+.cbar-grad { display: block; height: 100%; background: linear-gradient(90deg, #2fb99a 0%, #2fb99a 68%, #ffab73 88%, #ff7a59 100%); clip-path: inset(0 calc(100% - var(--pct, 0%)) 0 0); }
+.cbar-grad.cbar-flat { background: #2fb99a; opacity: .4; clip-path: none; }
+.cat-row-head ::deep .cat-chev { color: #b6c0cc; flex: none; transition: transform .15s; }
+.cat-row.open ::deep .cat-chev { transform: rotate(90deg); }
+.cat-drawer { padding: 4px 14px 14px 60px; border-top: 0.5px solid #eef1f4; }
+html.dark .cat-drawer { border-color: #232a37; }
+.cat-drawer-label { font-size: .68rem; text-transform: uppercase; letter-spacing: .06em; color: #94a3b8; margin: 13px 0 6px; }
+.cat-subrow { margin-bottom: 9px; }
+.cat-subrow-top { display: flex; justify-content: space-between; font-size: .84rem; color: #64748b; }
+html.dark .cat-subrow-top { color: #a9b2c0; }
+.cat-subrow-amt { white-space: nowrap; }
+.cbar-track-sm { height: 6px; margin-top: 4px; }
+.cat-exp-list { list-style: none; margin: 0; padding: 0; }
+.cat-exp { display: flex; align-items: center; gap: 8px; padding: 7px 0; border-bottom: 0.5px solid #eef1f4; font-size: .85rem; }
+html.dark .cat-exp { border-color: #232a37; }
+.cat-exp:last-child { border-bottom: none; }
+.cat-exp-main { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; color: #384250; }
+html.dark .cat-exp-main { color: #cdd4de; }
+.cat-exp-fund { white-space: nowrap; }
+.cat-exp-date { color: #94a3b8; font-size: .78rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cat-exp .amt { white-space: nowrap; }
+.cat-exp-acts { display: flex; gap: 4px; flex: none; }
+.cat-drawer-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.cat-act { display: inline-flex; align-items: center; gap: 6px; font-size: .84rem; padding: 7px 12px; border: 0.5px solid #d2ded7; border-radius: 9px; background: none; color: #384250; cursor: pointer; }
+.cat-act:hover { border-color: #13a06e; background: #f0fbf6; color: #0f7a54; }
+.cat-act.danger { color: #dc2626; }
+.cat-act.danger:hover { border-color: #dc2626; background: #fef2f2; color: #b91c1c; }
+html.dark .cat-act { border-color: #2b3648; color: #cdd4de; }
+html.dark .cat-act:hover { background: #16241d; border-color: #17a877; color: #3fe0c5; }
+html.dark .cat-act.danger { color: #f87171; }
+html.dark .cat-act.danger:hover { background: #2a1616; border-color: #f87171; color: #fca5a5; }
+.cat-drawer-empty { font-size: .84rem; color: #94a3b8; margin: 2px 0; font-style: italic; }
+.cat-viewmore { display: inline-flex; align-items: center; gap: 4px; font-size: .8rem; font-weight: 600; padding: 7px 0 2px; background: none; border: none; color: #13a06e; cursor: pointer; }
+.cat-viewmore:hover { text-decoration: underline; }
+.cat-viewmore ::deep .cat-viewmore-chev { transform: rotate(90deg); }
+html.dark .cat-viewmore { color: #3fe0c5; }
+/* "By date" view sub-header: day/calendar context on the left, list/calendar toggle on the right. */
+.bydate-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 10px; }
+.bydate-ctx { font-size: .85rem; font-weight: 600; color: #64748b; }
+html.dark .bydate-ctx { color: #94a3b8; }
+.spending-head .bview-toggle { margin-right: auto; }
 /* The "NN%" badge over a highlighted segment is created + styled in JS (index.html) — it lives outside this
    scoped stylesheet, so its styles can't go here. */
 
