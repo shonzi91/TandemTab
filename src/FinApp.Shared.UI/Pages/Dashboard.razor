@@ -218,6 +218,7 @@ else
            rather than easy-to-miss header icons. External accounts appears only when a bank connection exists. *@
         <div class="hdr-actions">
             <button class="hdr-action" @onclick="OpenImport"><Icon Name="import" /> <span>@Loc["Import statement"]</span></button>
+            <button class="hdr-action" @onclick="OpenManageCats"><Icon Name="tag" /> <span>@Loc["Categories"]</span></button>
             <button class="hdr-action" @onclick="OpenRecurring"><Icon Name="repeat" /> <span>@Loc["Recurring"]</span></button>
             @if (_bankStatus?.Enabled == true)
             {
@@ -347,7 +348,13 @@ else
                        that category pre-selected. The button itself still opens the blank modal (and is the only path
                        on touch, where there's no hover). *@
                     <div class="quick-spend">
-                        <button class="card-act card-act-spend" @onclick="OpenAddExpenseTab"><Icon Name="receipt" /> @Loc["Add expense"]</button>
+                        <span class="card-act-row">
+                            <button class="card-act card-act-spend" @onclick="OpenAddExpenseTab"><Icon Name="receipt" /> @Loc["Add expense"]</button>
+                            @if (State.IsPeriodOpen && State.LastExpense is { } lastEx)
+                            {
+                                <button class="card-act-edit" title="@Loc["Edit the last expense you logged"]" @onclick="() => OpenEditExpense(lastEx.Id)"><Icon Name="pencil" /> @Loc["Edit last"]</button>
+                            }
+                        </span>
                         @{ var homeRecentCats = State.RecentCategories(5); }
                         @if (homeRecentCats.Count > 0)
                         {
@@ -375,7 +382,13 @@ else
                     </div>
                     @if (State.IsPeriodOpen)
                     {
-                        <button class="card-act card-act-income" @onclick="OpenDeposit"><Icon Name="note" /> @Loc["Add income"]</button>
+                        <span class="card-act-row">
+                            <button class="card-act card-act-income" @onclick="OpenDeposit"><Icon Name="note" /> @Loc["Add income"]</button>
+                            @if (State.LastContribution is { } lastInc && State.CanHandleContribution(lastInc))
+                            {
+                                <button class="card-act-edit" title="@Loc["Edit the last income you logged"]" @onclick="() => OpenEditDeposit(lastInc.Id)"><Icon Name="pencil" /> @Loc["Edit last"]</button>
+                            }
+                        </span>
                     }
                 </div>
             </section>
@@ -730,19 +743,13 @@ else
                             </span>
                             <span class="amt credit">@Fmt(c.Paid)</span>
                             <span class="row-actions">
+                                @* Only two actions — show them directly rather than behind a ⋯ menu (matches the expense rows). *@
                                 @if (State.IsPeriodOpen && State.CanHandleContribution(c))
                                 {
-                                    <button class="exp-edit" title="@Loc["Actions"]" @onclick="() => ToggleRowMenu(cid)">⋯</button>
+                                    <button class="exp-edit" title="@Loc["Edit"]" @onclick="() => OpenEditDeposit(cid)"><Icon Name="pencil" /></button>
+                                    <button class="exp-edit" title="@Loc["Remove"]" @onclick="() => OpenDeleteDeposit(cid)"><Icon Name="trash" /></button>
                                 }
                             </span>
-                            @if (_rowMenuId == cid)
-                            {
-                                <div class="row-menu-backdrop" @onclick="() => _rowMenuId = Guid.Empty"></div>
-                                <div class="row-menu">
-                                    <button @onclick="() => RowAct(() => OpenEditDeposit(cid))"><Icon Name="pencil" /> @Loc["Edit"]</button>
-                                    <button class="danger" @onclick="() => RowAct(() => OpenDeleteDeposit(cid))"><Icon Name="trash" /> @Loc["Remove"]</button>
-                                </div>
-                            }
                         </li>
                     }
                     @if (!State.ContributionsThisPeriod.Any())
@@ -777,58 +784,118 @@ else
         </div>
         <div class="tabpanel" hidden="@(_tab != Tab.Budgets)">
             <section class="panel">
-                <div class="spending-head">
-                    <span class="insight-h">@Loc["This month's budgets"]</span>
-                    <button class="fund-add" @onclick="OpenAddBudget"><Icon Name="plus" /> @Loc["Add budget"]</button>
-                    @* Only the spent figure takes the heat — it carries the verdict; the cap it's measured against
-                       stays quiet. Same ramp as the Home "Spent" tile and the rings below, so one fact reads one way. *@
-                    <span class="spending-sub"><strong class="spend-heat" style="color:hsl(@SpendHeatHue() 72% 56%)">@Fmt(State.TotalSpent)</strong> @Loc["of"] @Fmt(State.TotalBudgeted) @Loc["spent"]</span>
-                </div>
                 @{
                     var _bnFree = State.DisplayFreeToAllocate(_bankStatus?.Balance, _bankStatus?.BalanceCurrency);
                     var _bnRemaining = State.TotalBudgeted - State.TotalSpent;
                     var overPlanned = _bnRemaining - _bnFree;
                 }
-                @if (overPlanned.Amount > 0m)
-                {
-                    <p class="budget-over-note"><Icon Name="bulb" /> @string.Format(Loc["Your remaining budgets ({0}) are {1} more than you have left ({2}) — budgets are plans, not commitments, so trim one or top up when you can."], Fmt(_bnRemaining), Fmt(overPlanned), Fmt(_bnFree))</p>
-                }
+                <div class="spending-head">
+                    <span class="insight-h">@Loc["This month's budgets"]</span>
+                    <button class="fund-add" @onclick="OpenAddBudget"><Icon Name="plus" /> @Loc["Add budget"]</button>
+                </div>
                 @{
                     // Top-level categories only — sub-categories roll up into their parent's ring.
-                    var budgeted = State.CategoryOptions.Where(c => c.Depth == 0 && State.HasBudget(c.Category.Id)).ToList();
+                    // Rings (and bar segments) are ordered by spend, largest first — where the money actually went.
+                    var budgeted = State.CategoryOptions
+                        .Where(c => c.Depth == 0 && State.HasBudget(c.Category.Id))
+                        .OrderByDescending(c => State.Coverage(c.Category.Id).Spent.Amount)
+                        .ToList();
                     var unbudgeted = State.CategoryOptions
                         .Where(c => c.Depth == 0
                                     && !State.HasBudget(c.Category.Id)
                                     && State.SpentInCategory(c.Category.Id).Amount > 0
                                     && !State.ChildrenOf(c.Category.Id).Any(ch => State.HasBudget(ch.Id)))
+                        .OrderByDescending(c => State.SpentInCategory(c.Category.Id).Amount)
+                        .ToList();
+
+                    // Bar segments: every shown category with spend, biggest first — the same set as the rings, so a
+                    // segment maps 1:1 to a ring (hover links them). Grey tail = unspent budget.
+                    var barSegs = budgeted.Select(b => (Id: b.Category.Id, Name: b.Category.Name, Spent: State.Coverage(b.Category.Id).Spent.Amount))
+                        .Concat(unbudgeted.Select(u => (Id: u.Category.Id, Name: u.Category.Name, Spent: State.SpentInCategory(u.Category.Id).Amount)))
+                        .Where(x => x.Spent > 0m)
+                        .OrderByDescending(x => x.Spent)
+                        .ToList();
+                    var barScale = Math.Max(State.TotalBudgeted.Amount, State.TotalSpent.Amount);
+                    var totalSpentAmt = State.TotalSpent.Amount;
+
+                    // Rings, budgeted and unbudgeted together, ordered by spend — biggest first — so the grid reads in
+                    // the same order as the bar. Budgeted with no spend fall to the end (they still show their ring).
+                    var ringCards = budgeted.Select(b => (Cat: b.Category, HasBudget: true, Spent: State.Coverage(b.Category.Id).Spent.Amount))
+                        .Concat(unbudgeted.Select(u => (Cat: u.Category, HasBudget: false, Spent: State.SpentInCategory(u.Category.Id).Amount)))
+                        .OrderByDescending(x => x.Spent)
                         .ToList();
                 }
+                @if (barScale > 0m)
+                {
+                    @* One bar for the whole budget: coloured slices are each category's spend (biggest first), the grey
+                       tail is what's left unspent. Spent on the left, budget on the right, unspent in the middle. *@
+                    <div class="budget-bar-wrap">
+                        <div class="budget-bar">
+                            @foreach (var seg in barSegs)
+                            {
+                                var w = (double)(seg.Spent / barScale) * 100;
+                                var shareOfSpend = totalSpentAmt > 0m ? (double)(seg.Spent / totalSpentAmt) * 100 : 0;
+                                var segTitle = $"{seg.Name} — {Fmt(State.Money(seg.Spent))} ({shareOfSpend:0}% {Loc["of spending"]})";
+                                <div class="bseg" data-seg-cat="@seg.Id" style="width:@w.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)%;background:hsl(@SegHue(seg.Id) 62% 55%)" title="@segTitle"></div>
+                            }
+                            @if (_bnRemaining.Amount > 0m)
+                            {
+                                var uw = (double)(_bnRemaining.Amount / barScale) * 100;
+                                <div class="bseg bseg-unspent" style="width:@uw.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)%" title="@($"{Loc["Unspent budget"]}: {Fmt(_bnRemaining)}")"></div>
+                            }
+                        </div>
+                        @* Overspent: the bar scales to total spend, so mark where the budget line sits — everything
+                           to its right is the overspend. (Under budget, the budget IS the bar's end, so no marker.) *@
+                        @if (State.TotalBudgeted.Amount > 0m && _bnRemaining.IsNegative)
+                        {
+                            var markPct = (double)(State.TotalBudgeted.Amount / barScale) * 100;
+                            <div class="budget-marker" style="left:@markPct.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)%" title="@($"{Loc["budget"]}: {Fmt(State.TotalBudgeted)}")"></div>
+                        }
+                        @* Spent sits under the coloured slices (left); unspent + budget group on the right, over the
+                           grey tail — putting "unspent" in the middle read as if it labelled the segment above it. *@
+                        <div class="budget-bar-labels">
+                            <span class="bbl-end"><strong>@Fmt(State.TotalSpent)</strong> @Loc["spent"]</span>
+                            <span class="bbl-right-group">
+                                <span class="bbl-unspent @(_bnRemaining.IsNegative ? "warn-text" : "")">@(_bnRemaining.IsNegative ? $"{Fmt(-_bnRemaining)} {Loc["over"]}" : $"{Fmt(_bnRemaining)} {Loc["unspent"]}")</span>
+                                <span class="bbl-end"><strong>@Fmt(State.TotalBudgeted)</strong> @Loc["budget"]</span>
+                            </span>
+                        </div>
+                    </div>
+                }
+                @* Only meaningful while the period is open — you can't trim or top up a closed period. *@
+                @if (State.IsPeriodOpen && overPlanned.Amount > 0m)
+                {
+                    <p class="budget-over-note"><Icon Name="bulb" /> @string.Format(Loc["Your remaining budgets ({0}) are {1} more than you have left ({2}) — budgets are plans, not commitments, so trim one or top up when you can."], Fmt(_bnRemaining), Fmt(overPlanned), Fmt(_bnFree))</p>
+                }
                 <div class="ring-grid">
-                    @foreach (var (cat, _) in budgeted)
+                    @foreach (var rc in ringCards)
                     {
-                        var cov = State.Coverage(cat.Id);
-                        var cls = cov.IsOverBudget ? "over" : cov.ThresholdReached ? "warn" : "ok";
+                        var cat = rc.Cat;
                         var catId = cat.Id;
-                        <div class="ring-card ring-card-lg@(State.ChildrenOf(catId).Any() ? " has-subs" : "")">
-                            <ProgressRing Percent="@((double)(cov.Percent ?? 0))" Class="@cls" Ramp="spend">
-                                <button class="ring-ico-big" title="@Loc["Actions"]" @onclick="() => ToggleBudgetMenu(catId)"><CatIcon Name="@State.CategoryIcon(catId)" Class="cat-chip-lg" /></button>
-                                <button class="ring-name" title="@Loc["Actions"]" @onclick="() => ToggleBudgetMenu(catId)">@cat.Name</button>
-                            </ProgressRing>
-                            <div class="ring-label"><span>@Fmt(cov.Spent) / @Fmt(cov.Allocated)</span></div>
-                            @if (_budgetMenuId == catId) { @BudgetCircleMenu(catId) }
-                        </div>
-                    }
-                    @foreach (var (cat, _) in unbudgeted)
-                    {
-                        var catId = cat.Id;
-                        <div class="ring-card ring-card-lg@(State.ChildrenOf(catId).Any() ? " has-subs" : "")">
-                            <ProgressRing Percent="0" Class="mint" Dashed="true">
-                                <button class="ring-ico-big" title="@Loc["Actions"]" @onclick="() => ToggleBudgetMenu(catId)"><CatIcon Name="@State.CategoryIcon(catId)" Class="cat-chip-lg" /></button>
-                                <button class="ring-name" title="@Loc["Actions"]" @onclick="() => ToggleBudgetMenu(catId)">@cat.Name</button>
-                            </ProgressRing>
-                            <div class="ring-label"><span class="amt">@Fmt(State.SpentInCategory(catId))</span> <span class="ring-muted">@Loc["no budget"]</span></div>
-                            @if (_budgetMenuId == catId) { @BudgetCircleMenu(catId) }
-                        </div>
+                        if (rc.HasBudget)
+                        {
+                            var cov = State.Coverage(catId);
+                            var cls = cov.IsOverBudget ? "over" : cov.ThresholdReached ? "warn" : "ok";
+                            <div class="ring-card ring-card-lg@(State.ChildrenOf(catId).Any() ? " has-subs" : "")" data-ring-cat="@catId">
+                                <ProgressRing Percent="@((double)(cov.Percent ?? 0))" Class="@cls" Ramp="spend">
+                                    <button class="ring-ico-big" title="@Loc["Actions"]" @onclick="() => ToggleBudgetMenu(catId)"><CatIcon Name="@State.CategoryIcon(catId)" Class="cat-chip-lg" /></button>
+                                    <button class="ring-name" title="@Loc["Actions"]" @onclick="() => ToggleBudgetMenu(catId)">@cat.Name</button>
+                                </ProgressRing>
+                                <div class="ring-label"><span>@Fmt(cov.Spent) / @Fmt(cov.Allocated)</span></div>
+                                @if (_budgetMenuId == catId) { @BudgetCircleMenu(catId) }
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="ring-card ring-card-lg@(State.ChildrenOf(catId).Any() ? " has-subs" : "")" data-ring-cat="@catId">
+                                <ProgressRing Percent="0" Class="mint" Dashed="true">
+                                    <button class="ring-ico-big" title="@Loc["Actions"]" @onclick="() => ToggleBudgetMenu(catId)"><CatIcon Name="@State.CategoryIcon(catId)" Class="cat-chip-lg" /></button>
+                                    <button class="ring-name" title="@Loc["Actions"]" @onclick="() => ToggleBudgetMenu(catId)">@cat.Name</button>
+                                </ProgressRing>
+                                <div class="ring-label"><span class="amt">@Fmt(State.SpentInCategory(catId))</span> <span class="ring-muted">@Loc["no budget"]</span></div>
+                                @if (_budgetMenuId == catId) { @BudgetCircleMenu(catId) }
+                            </div>
+                        }
                     }
                 </div>
             </section>
@@ -2074,6 +2141,39 @@ else
                     </div>
                     break;
 
+                case Modal.ManageCats:
+                    @* Manage spending categories without going through a budget. Top-level only — a category's
+                       sub-categories are managed inside its own Edit modal (reached via the pencil). *@
+                    <h3><Icon Name="tag" /> @Loc["Categories"]</h3>
+                    var topCats = State.CategoryOptions.Where(c => c.Depth == 0).ToList();
+                    @if (topCats.Count == 0)
+                    {
+                        <p class="hint">@Loc["No categories yet — add one to start filing expenses."]</p>
+                    }
+                    else
+                    {
+                        <ul class="list">
+                            @foreach (var (cat, _) in topCats)
+                            {
+                                var catId = cat.Id;
+                                var subCount = State.ChildrenOf(catId).Count();
+                                <li>
+                                    <span class="row-lead">
+                                        <button class="exp-edit" title="@Loc["Edit"]" @onclick="() => ManageEditCat(catId)"><Icon Name="pencil" /></button>
+                                        <button class="exp-edit" title="@Loc["Remove"]" @onclick="() => ManageDeleteCat(catId)"><Icon Name="trash" /></button>
+                                        <span><CatIcon Name="@State.CategoryIcon(catId)" /> @cat.Name</span>
+                                    </span>
+                                    @if (subCount > 0) { <span class="ring-muted">@string.Format(Loc["{0} sub"], subCount)</span> }
+                                </li>
+                            }
+                        </ul>
+                    }
+                    <div class="modal-actions">
+                        <button class="ghost" @onclick="Back">@Loc["Close"]</button>
+                        <button @onclick="ManageAddCat"><Icon Name="plus" /> @Loc["Add category"]</button>
+                    </div>
+                    break;
+
                 case Modal.ManageContribCats:
                     <h3>@Loc["Contribution categories"]</h3>
                     <ul class="list">
@@ -3202,7 +3302,7 @@ else
 }
 
 @code {
-    private enum Modal { None, PickAccount, BankReview, BankConsent, AddCat, AddBudget, DisburseSaving, PayoffProjection, GoalProjection, InvestmentProjection, BankTransfer, ExternalAccounts, HealthScore, EditCat, DeleteCat, CategoryDetail, AddAccount, EditAccount, DeleteAccount, RemoveMember, LeaveAccount, AddExpense, NextPeriod, RemovePeriod, EditExpense, DeleteExpense, SettleExpense, AddBucket, EditBucket, DeleteBucket, AddFund, EditFund, DeleteFund, Invite, Transfer, Deposit, EditDeposit, DeleteDeposit, ManageContribCats, ContribCat, DeleteContribCat, AddSaving, BudgetSaving, SpendSaving, EditSavingDeposit, DeleteSavingDeposit, EditTransfer, DeleteTransfer, EditPeriod, EditSavingMovement, DeleteSavingMovement, DeleteExternalTransfer, Achievements, Reallocate, Recurring, RecurringEdit, RecurringConfirm, Import, AddOrImport, ArchiveFund, FundMovements, Archived }
+    private enum Modal { None, PickAccount, BankReview, BankConsent, AddCat, AddBudget, DisburseSaving, PayoffProjection, GoalProjection, InvestmentProjection, BankTransfer, ExternalAccounts, HealthScore, EditCat, DeleteCat, CategoryDetail, AddAccount, EditAccount, DeleteAccount, RemoveMember, LeaveAccount, AddExpense, NextPeriod, RemovePeriod, EditExpense, DeleteExpense, SettleExpense, AddBucket, EditBucket, DeleteBucket, AddFund, EditFund, DeleteFund, Invite, Transfer, Deposit, EditDeposit, DeleteDeposit, ManageCats, ManageContribCats, ContribCat, DeleteContribCat, AddSaving, BudgetSaving, SpendSaving, EditSavingDeposit, DeleteSavingDeposit, EditTransfer, DeleteTransfer, EditPeriod, EditSavingMovement, DeleteSavingMovement, DeleteExternalTransfer, Achievements, Reallocate, Recurring, RecurringEdit, RecurringConfirm, Import, AddOrImport, ArchiveFund, FundMovements, Archived }
     private enum Tab { Overview, Account, Budgets, Savings }
 
     /// <summary>Which kind of goal the Goals grid is showing. Defaults to All so the filter narrows on request
@@ -3673,6 +3773,14 @@ else
         // bails out when the URL carries a bank= return, which is the only case that flow runs.
         if (firstRender) _ = SyncOnOpenInBackgroundAsync();
 
+        // Hook the browser Back button up to our layer stack (see finappBack in index.html).
+        if (firstRender)
+        {
+            _backRef = DotNetObjectReference.Create(this);
+            try { await JS.InvokeVoidAsync("finappBack.init", _backRef); } catch { /* host without the shim */ }
+        }
+        await SyncBackDepthAsync();
+
         if (State.IsReady && State.HasAccounts)
         {
             await State.StampAchievementsAsync(_achievements, Fmt, Loc.T);
@@ -3681,6 +3789,34 @@ else
             var posted = await State.AutoPostDueRecurringAsync();
             if (posted.Count > 0) { _autoPostedNotices.AddRange(posted); StateHasChanged(); }
         }
+    }
+
+    // --- Browser Back integration --------------------------------------------------------------------
+    // The dashboard is one route with many closable layers (a modal, a chained sub-modal, a non-Home tab).
+    // We mirror that depth into synthetic history entries so Back pops one layer instead of leaving the app.
+    private DotNetObjectReference<Dashboard>? _backRef;
+
+    /// <summary>How many times "Back" can be pressed before the app should exit: each chained modal frame plus
+    /// the modal itself, plus one for being on a non-Home tab.</summary>
+    private int BackDepth => (_modal != Modal.None ? _modalBack.Count + 1 : 0) + (_tab != Tab.Overview ? 1 : 0);
+
+    /// <summary>Keep the browser's synthetic history entries equal to <see cref="BackDepth"/>. Cheap and idempotent
+    /// (the JS side no-ops when already in sync), so it's safe to call after every render.</summary>
+    private async Task SyncBackDepthAsync()
+    {
+        if (_disposed) return;
+        try { await JS.InvokeVoidAsync("finappBack.sync", BackDepth); } catch { /* host without the shim */ }
+    }
+
+    /// <summary>Invoked from JS when the user presses browser/hardware Back. Undo exactly one layer, mirroring a
+    /// single press of the in-modal Back/✕. A render follows, which re-syncs the trap depth.</summary>
+    [JSInvokable]
+    public void OnBrowserBack()
+    {
+        if (_modal == Modal.PickAccount) { /* mandatory choice — swallow Back; the render re-arms the trap */ }
+        else if (_modal != Modal.None) Back();
+        else if (_tab != Tab.Overview) _tab = Tab.Overview;
+        StateHasChanged();
     }
 
     /// <summary>The compact Home strip: only the milestones you're actively making progress on (not yet earned, but
@@ -4627,6 +4763,13 @@ else
     });
 
     private void OpenManageContribCats() => _modal = Modal.ManageContribCats;
+
+    // Spending-category manager (the "Categories" header button) — a fast home for add/edit/remove without a budget.
+    // Edit/Add/Delete remember to return here on Cancel (Save/Delete close out, matching the CategoryDetail flow).
+    private void OpenManageCats() => _modal = Modal.ManageCats;
+    private void ManageAddCat() { _modalBack.Push(OpenManageCats); OpenAdd(null); }
+    private void ManageEditCat(Guid id) { _modalBack.Push(OpenManageCats); OpenEdit(id); }
+    private void ManageDeleteCat(Guid id) { _modalBack.Push(OpenManageCats); OpenDelete(id); }
 
     private void OpenEditDeposit(Guid contributionId)
     {
@@ -6343,9 +6486,15 @@ else
     private static string PctText(decimal ratio) =>
         $"{decimal.Round(ratio * 100m, 0, MidpointRounding.AwayFromZero)}%";
 
+    /// <summary>A stable, distinct hue for a category's segment in the budget bar. Derived from the id so the same
+    /// category keeps its colour across renders. Drawn from a categorical palette that deliberately avoids the
+    /// traffic-light greens/reds — those carry the "under vs over budget" meaning on the rings, not category identity.</summary>
+    private static readonly int[] SegHues = { 210, 265, 300, 32, 190, 48, 330, 240, 165, 285 };
+    private static int SegHue(Guid id) => SegHues[(int)((uint)id.GetHashCode() * 2654435761u % (uint)SegHues.Length)];
+
     // Set on dispose so the fire-and-forget on-entry bank sync can't re-render a component that's gone
     // (it outlives the page when you navigate away mid-call).
     private bool _disposed;
 
-    public void Dispose() { _disposed = true; State.Changed -= OnChanged; Loc.Changed -= OnLocChanged; }
+    public void Dispose() { _disposed = true; State.Changed -= OnChanged; Loc.Changed -= OnLocChanged; _backRef?.Dispose(); }
 }

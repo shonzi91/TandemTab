@@ -248,6 +248,11 @@ public sealed class Localizer(IJSRuntime js)
         ["imported"] = "импортиран",
         ["of"] = "от",
         ["spent"] = "похарчени",
+        ["budget"] = "бюджет",
+        ["unspent"] = "неизразходвани",
+        ["over"] = "над",
+        ["of spending"] = "от разходите",
+        ["Unspent budget"] = "Неизразходван бюджет",
         ["Trends, savings rate & score"] = "Тенденции, норма на спестяване и оценка",
 
         // Overview tab
@@ -838,6 +843,11 @@ public sealed class Localizer(IJSRuntime js)
         ["Manage category"] = "Управление на категорията",
         ["no budget"] = "без бюджет",
         ["No categories yet — add one."] = "Все още няма категории — добави.",
+        ["No categories yet — add one to start filing expenses."] = "Все още няма категории — добави, за да започнеш да завеждаш разходи.",
+        ["{0} sub"] = "{0} подкатегории",
+        ["Edit last"] = "Редактирай последното",
+        ["Edit the last expense you logged"] = "Редактирай последния въведен разход",
+        ["Edit the last income you logged"] = "Редактирай последния въведен доход",
         ["No budgets yet — add a category with a budget (the ➕ above)."] = "Все още няма бюджети — добави категория с бюджет (➕ горе).",
         ["saved"] = "спестено",
         ["spent of"] = "похарчени от",

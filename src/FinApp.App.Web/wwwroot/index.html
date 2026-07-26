@@ -94,6 +94,50 @@
             };
             input.click();
         });
+        // Browser Back integration for the single-page dashboard. The app has one route but many "layers"
+        // (open modal, chained sub-modal, a non-Home tab). We mirror that layer depth with synthetic history
+        // entries so the hardware/browser Back button pops one layer instead of leaving the app. C# owns the
+        // truth: it calls sync(depth) after every render, and we make the history stack match.
+        window.finappBack = (function () {
+            let dotnet = null, depth = 0, suppress = 0;
+            function onpop() {
+                if (suppress > 0) { suppress--; return; }   // a self-initiated history.go(), not a user Back
+                if (depth > 0) {
+                    depth--;                                 // this Back consumed one of our trap entries
+                    if (dotnet) dotnet.invokeMethodAsync('OnBrowserBack');
+                }
+                // depth === 0 → nothing of ours to pop; let the browser navigate away as normal.
+            }
+            return {
+                init(ref) { dotnet = ref; window.removeEventListener('popstate', onpop); window.addEventListener('popstate', onpop); },
+                // Make the number of trap entries equal `target` (the app's current layer depth).
+                sync(target) {
+                    if (target > depth) { for (let i = depth; i < target; i++) history.pushState({ finapp: true }, ''); depth = target; }
+                    else if (target < depth) { const d = depth - target; suppress += d; depth = target; history.go(-d); }
+                }
+            };
+        })();
+        // Link the budget bar's segments to their category rings: hovering either highlights the other. Uses a
+        // delegated listener so it keeps working as Blazor re-renders the (data-seg-cat / data-ring-cat) nodes.
+        (function () {
+            function clearHi() { document.querySelectorAll('.seg-hi, .ring-hi').forEach(el => el.classList.remove('seg-hi', 'ring-hi')); }
+            document.addEventListener('mouseover', e => {
+                var t = e.target instanceof Element ? e.target : null;
+                var ring = t && t.closest('[data-ring-cat]');
+                var seg = t && t.closest('[data-seg-cat]');
+                if (!ring && !seg) return;
+                var id = (ring || seg).getAttribute(ring ? 'data-ring-cat' : 'data-seg-cat');
+                if (!id) return;
+                clearHi();
+                var esc = window.CSS && CSS.escape ? CSS.escape(id) : id;
+                document.querySelectorAll('[data-seg-cat="' + esc + '"]').forEach(x => x.classList.add('seg-hi'));
+                document.querySelectorAll('[data-ring-cat="' + esc + '"]').forEach(x => x.classList.add('ring-hi'));
+            });
+            document.addEventListener('mouseout', e => {
+                var t = e.target instanceof Element ? e.target : null;
+                if (t && t.closest('[data-ring-cat], [data-seg-cat]')) clearHi();
+            });
+        })();
         window.finappDownloadFile = (fileName, base64, contentType) => {
             const bytes = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
             const blob = new Blob([bytes], { type: contentType });

@@ -844,6 +844,12 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
 
     public Contribution? FindContribution(Guid id) => Period.FindContribution(id);
 
+    /// <summary>The most recently added member contribution this period, for the Home "edit last income" shortcut.
+    /// List order ≈ entry order, so the last-added is taken (not the latest-dated). Null when none logged yet.</summary>
+    public Contribution? LastContribution =>
+        Enumerable.Reverse(Period.Contributions.ToList())
+            .FirstOrDefault(c => c.MemberId != Period.CarryoverSource);
+
     // --- Commands ---------------------------------------------------------
 
     /// <summary>Whether a fund is currently synced to a bank account (its balance is externally authoritative).</summary>

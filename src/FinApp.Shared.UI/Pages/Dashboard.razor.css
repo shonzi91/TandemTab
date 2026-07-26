@@ -696,6 +696,35 @@ html.dark .acct-chip-label { color: #9aa4b2; }
 .tab-content { min-height: 55vh; }
 .tabpanel[hidden] { display: none; }
 
+/* Segmented total-budget bar above the rings: each colour = a category's spend, grey tail = unspent budget. */
+.budget-bar-wrap { position: relative; margin: 4px 0 18px; }
+.budget-bar {
+    display: flex; height: 16px; border-radius: 9px; overflow: hidden;
+    background: #eef1f4; box-shadow: inset 0 0 0 1px rgba(0,0,0,.05);
+}
+html.dark .budget-bar { background: #2a3341; box-shadow: inset 0 0 0 1px rgba(255,255,255,.06); }
+.bseg { height: 100%; min-width: 2px; transition: filter .12s, transform .12s; cursor: default; }
+.bseg + .bseg { box-shadow: inset 1px 0 0 rgba(255,255,255,.45); }
+/* Unspent tail reads as headroom, so it's green (money still to spend) — over is orange, categories are neutral hues. */
+.bseg-unspent { background: #bfe6cf; }
+html.dark .bseg-unspent { background: #2f5a45; }
+/* Budget marker: shown only when overspent (bar scales to spend), so it flags where the budget line fell. */
+.budget-marker { position: absolute; top: -2px; height: 20px; width: 2px; background: #d97706; box-shadow: 0 0 0 1px rgba(255,255,255,.6); border-radius: 2px; }
+html.dark .budget-marker { background: #fb923c; box-shadow: 0 0 0 1px rgba(0,0,0,.55); }
+/* Hover: a segment (or its ring, via the shared data-cat) lifts and the rest dim, so the pair reads as linked. */
+.budget-bar:hover .bseg:not(:hover):not(.seg-hi) { filter: saturate(.5) opacity(.55); }
+.bseg:hover, .bseg.seg-hi { filter: brightness(1.08); transform: scaleY(1.35); }
+.budget-bar-labels { display: flex; justify-content: space-between; align-items: baseline; margin-top: 7px; font-size: .82rem; color: #64748b; }
+html.dark .budget-bar-labels { color: #94a3b8; }
+.budget-bar-labels strong { color: #0f172a; font-size: .92rem; }
+html.dark .budget-bar-labels strong { color: #e2e8f0; }
+.budget-bar-labels .bbl-right-group { display: flex; gap: 14px; align-items: baseline; }
+.budget-bar-labels .bbl-unspent { font-weight: 600; }
+/* Green = money still unspent (good); the over variant keeps .warn-text's orange. */
+.budget-bar-labels .bbl-unspent:not(.warn-text) { color: #0e9e6d; }
+html.dark .budget-bar-labels .bbl-unspent:not(.warn-text) { color: #34d399; }
+.ring-card.ring-hi .ring-name { text-decoration: underline; text-underline-offset: 3px; }
+
 /* Circular budget/savings cards */
 .ring-grid { display: flex; flex-wrap: wrap; gap: 22px 18px; padding-top: 6px; }
 .ring-card { width: 118px; display: flex; flex-direction: column; align-items: center; position: relative; }
@@ -1852,6 +1881,19 @@ html.dark .quick-cat:hover { background: #1b2230; color: var(--tm-mint); }
 .card-act-spend:hover { background: #3a4453; }
 html.dark .card-act-income { background: #17a877; }
 html.dark .card-act-spend { background: #566173; }
+
+/* Primary "Add…" button with a compact quiet "Edit last" beside it (edit the most recently logged item). */
+.card-act-row { display: flex; align-items: stretch; gap: 8px; margin-top: auto; }
+.card-act-row .card-act { margin-top: 0; width: auto; flex: 1 1 auto; }
+.card-act-edit {
+    flex: 0 0 auto; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
+    padding: 0 12px; border-radius: 12px; font: inherit; font-weight: 700; font-size: .85rem;
+    background: transparent; color: #64748b; border: 1px solid rgba(100,116,139,.35); cursor: pointer;
+    transition: background .15s, border-color .15s;
+}
+.card-act-edit:hover { background: rgba(100,116,139,.12); border-color: rgba(100,116,139,.6); }
+html.dark .card-act-edit { color: #94a3b8; border-color: rgba(148,163,184,.35); }
+html.dark .card-act-edit:hover { background: rgba(148,163,184,.14); }
 
 /* Health score as a full-width bar beneath the two action cards, with breathing room before what follows. */
 .card-score-wide { width: 100%; flex-direction: row; align-items: center; gap: 12px; padding-right: 36px; margin-bottom: 18px; }
