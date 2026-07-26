@@ -823,15 +823,8 @@ else
                         .OrderByDescending(c => State.SpentInCategory(c.Category.Id).Amount)
                         .ToList();
 
-                    // Bar segments: every shown category with spend, biggest first — the same set as the rings, so a
-                    // segment maps 1:1 to a ring (hover links them). Grey tail = unspent budget.
-                    var barSegs = budgeted.Select(b => (Id: b.Category.Id, Name: b.Category.Name, Spent: State.Coverage(b.Category.Id).Spent.Amount))
-                        .Concat(unbudgeted.Select(u => (Id: u.Category.Id, Name: u.Category.Name, Spent: State.SpentInCategory(u.Category.Id).Amount)))
-                        .Where(x => x.Spent > 0m)
-                        .OrderByDescending(x => x.Spent)
-                        .ToList();
+                    // Gate for the totals summary: there's something to sum once any budget or spend exists.
                     var barScale = Math.Max(State.TotalBudgeted.Amount, State.TotalSpent.Amount);
-                    var totalSpentAmt = State.TotalSpent.Amount;
 
                     // Rings, budgeted and unbudgeted together, ordered by spend — biggest first — so the grid reads in
                     // the same order as the bar. Budgeted with no spend fall to the end (they still show their ring).
@@ -842,39 +835,29 @@ else
                 }
                 @if (barScale > 0m)
                 {
-                    @* One bar for the whole budget: coloured slices are each category's spend (biggest first), the grey
-                       tail is what's left unspent. Spent on the left, budget on the right, unspent in the middle. *@
-                    <div class="budget-bar-wrap">
-                        <div class="budget-bar">
-                            @foreach (var seg in barSegs)
-                            {
-                                var w = (double)(seg.Spent / barScale) * 100;
-                                var shareOfSpend = totalSpentAmt > 0m ? (double)(seg.Spent / totalSpentAmt) * 100 : 0;
-                                var segTitle = $"{seg.Name} — {Fmt(State.Money(seg.Spent))} ({shareOfSpend:0}% {Loc["of spending"]})";
-                                <div class="bseg" data-seg-cat="@seg.Id" style="width:@w.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)%;background:hsl(@SegHue(seg.Id) 62% 55%)" title="@segTitle"></div>
-                            }
-                            @if (_bnRemaining.Amount > 0m)
-                            {
-                                var uw = (double)(_bnRemaining.Amount / barScale) * 100;
-                                <div class="bseg bseg-unspent" style="width:@uw.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)%" title="@($"{Loc["Unspent budget"]}: {Fmt(_bnRemaining)}")"></div>
-                            }
-                        </div>
-                        @* Overspent: the bar scales to total spend, so mark where the budget line sits — everything
-                           to its right is the overspend. (Under budget, the budget IS the bar's end, so no marker.) *@
-                        @if (State.TotalBudgeted.Amount > 0m && _bnRemaining.IsNegative)
-                        {
-                            var markPct = (double)(State.TotalBudgeted.Amount / barScale) * 100;
-                            <div class="budget-marker" style="left:@markPct.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)%" title="@($"{Loc["budget"]}: {Fmt(State.TotalBudgeted)}")"></div>
-                        }
-                        @* Spent sits under the coloured slices (left); unspent + budget group on the right, over the
-                           grey tail — putting "unspent" in the middle read as if it labelled the segment above it. *@
-                        <div class="budget-bar-labels">
-                            <span class="bbl-end"><strong>@Fmt(State.TotalSpent)</strong> @Loc["spent"]</span>
-                            <span class="bbl-right-group">
-                                <span class="bbl-unspent @(_bnRemaining.IsNegative ? "warn-text" : "")">@(_bnRemaining.IsNegative ? $"{Fmt(-_bnRemaining)} {Loc["over"]}" : $"{Fmt(_bnRemaining)} {Loc["unspent"]}")</span>
-                                <span class="bbl-end"><strong>@Fmt(State.TotalBudgeted)</strong> @Loc["budget"]</span>
+                    var totHasBudget = State.TotalBudgeted.Amount > 0m;
+                    var totPct = totHasBudget ? Math.Clamp((double)(State.TotalSpent.Amount / State.TotalBudgeted.Amount) * 100, 0, 100) : 0;
+                    var totCount = State.AllExpenses.Count;
+                    @* "All expenses" section header — a summary banner the category cards sit under: a status ring +
+                       title + totals on one line, then a FULL-WIDTH bar spanning the whole section (category rows keep
+                       their bar indented past the ring, so the full-width bar + tint marks this out as the header). *@
+                    <div class="budget-header">
+                        <div class="bh-top">
+                            <span class="bh-ring">
+                                <ProgressRing Percent="@totPct" Class="mint" Color="@(totHasBudget ? SpendBarColorAt(totPct) : null)" Dashed="@(!totHasBudget)">
+                                    <CatIcon Name="receipt" Class="cat-chip-ring-ico" />
+                                </ProgressRing>
+                            </span>
+                            <span class="bh-title">@Loc["All expenses"]@if (totCount > 0) { <span class="cat-row-subn">@totCount</span> }</span>
+                            <span class="bh-figs">
+                                <span class="bh-amt">@Fmt(State.TotalSpent)@if (totHasBudget) { <text> / @Fmt(State.TotalBudgeted)</text> }</span>
+                                @if (totHasBudget)
+                                {
+                                    <span class="bh-remain @(_bnRemaining.IsNegative ? "warn-text" : "good-text")">@(_bnRemaining.IsNegative ? $"{Fmt(-_bnRemaining)} {Loc["over"]}" : $"{Fmt(_bnRemaining)} {Loc["left"]}")</span>
+                                }
                             </span>
                         </div>
+                        <span class="cbar-track bh-bar"><span class="cbar-grad@(totHasBudget ? "" : " cbar-flat")" style="--pct:@totPct.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)%"></span></span>
                     </div>
                 }
                 @* Only meaningful while the period is open — you can't trim or top up a closed period. *@
@@ -898,18 +881,20 @@ else
                         var pct = hasBudget ? Math.Clamp((double)(cov!.Percent ?? 0), 0, 100) : 0;
                         var cls = hasBudget ? (cov!.IsOverBudget ? "over" : cov.ThresholdReached ? "warn" : "ok") : "mint";
                         var over = hasBudget && cov!.IsOverBudget;
-                        var subCount = State.ChildrenOf(catId).Count();
+                        var expCount = State.ExpenseCountInCategory(catId);
                         var open = _expandedCatId == catId;
                         <div class="cat-row@(open ? " open" : "")" data-ring-cat="@catId">
                             <button class="cat-row-head" @onclick="() => ToggleCatRow(catId)">
                                 <span class="cat-chip-ring">
-                                    <ProgressRing Percent="@pct" Class="@cls" Ramp="@(hasBudget ? "spend" : null)" Dashed="@(!hasBudget)">
+                                    @* Solid ring in the exact colour the row's progress bar has reached — the ring shows
+                                       status, the bar (below) shows the gradient fill, so the two don't double up. *@
+                                    <ProgressRing Percent="@pct" Class="@cls" Color="@(hasBudget ? SpendBarColorAt(pct) : null)" Dashed="@(!hasBudget)">
                                         <CatIcon Name="@State.CategoryIcon(catId)" Class="cat-chip-ring-ico" />
                                     </ProgressRing>
                                 </span>
                                 <span class="cat-row-main">
                                     <span class="cat-row-top">
-                                        <span class="cat-row-name">@cat.Name@if (subCount > 0) { <span class="cat-row-subn">@subCount</span> }</span>
+                                        <span class="cat-row-name">@cat.Name@if (expCount > 0) { <span class="cat-row-subn" title="@(expCount == 1 ? Loc["1 expense logged"] : string.Format(Loc["{0} expenses logged"], expCount))">@expCount</span> }</span>
                                         <span class="cat-row-amt @(over ? "warn-text" : "")">@Fmt(spent)@if (hasBudget) { <text> / @Fmt(cov!.Allocated)</text> } else { <span class="cat-row-nb"> · @Loc["no budget"]</span> }</span>
                                     </span>
                                     <span class="cbar-track"><span class="cbar-grad@(hasBudget ? "" : " cbar-flat")" style="--pct:@pct.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)%"></span></span>
@@ -6586,6 +6571,25 @@ else
     /// traffic-light greens/reds — those carry the "under vs over budget" meaning on the rings, not category identity.</summary>
     private static readonly int[] SegHues = { 210, 265, 300, 32, 190, 48, 330, 240, 165, 285 };
     private static int SegHue(Guid id) => SegHues[(int)((uint)id.GetHashCode() * 2654435761u % (uint)SegHues.Length)];
+
+    // The colour a category's progress bar (.cbar-grad) has reached at fill pct — mirrors that gradient's stops
+    // (mint to 68%, amber #ffab73 at 88%, coral at 100%) so the status ring is tinted to exactly where the bar ends.
+    private static readonly (int R, int G, int B) BarMint = (0x2F, 0xB9, 0x9A);
+    private static readonly (int R, int G, int B) BarAmber = (0xFF, 0xAB, 0x73);
+    private static readonly (int R, int G, int B) BarCoral = (0xFF, 0x7A, 0x59);
+    private static string SpendBarColorAt(double pct)
+    {
+        pct = Math.Clamp(pct, 0, 100);
+        if (pct <= 68) return HexColor(BarMint);
+        if (pct <= 88) return MixColor(BarMint, BarAmber, (pct - 68) / 20.0);
+        return MixColor(BarAmber, BarCoral, (pct - 88) / 12.0);
+    }
+    private static string HexColor((int R, int G, int B) c) => $"#{c.R:X2}{c.G:X2}{c.B:X2}";
+    private static string MixColor((int R, int G, int B) a, (int R, int G, int B) b, double t)
+    {
+        t = Math.Clamp(t, 0, 1);
+        return $"#{(int)Math.Round(a.R + (b.R - a.R) * t):X2}{(int)Math.Round(a.G + (b.G - a.G) * t):X2}{(int)Math.Round(a.B + (b.B - a.B) * t):X2}";
+    }
 
     // Set on dispose so the fire-and-forget on-entry bank sync can't re-render a component that's gone
     // (it outlives the page when you navigate away mid-call).

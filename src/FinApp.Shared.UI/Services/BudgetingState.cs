@@ -618,6 +618,13 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
             .Aggregate(Money(0), (acc, m) => acc + m);
     }
 
+    /// <summary>How many expenses were logged in a category and its sub-categories this period.</summary>
+    public int ExpenseCountInCategory(Guid categoryId)
+    {
+        var ids = Account.CategoryWithDescendantIds(categoryId).ToHashSet();
+        return Period.Expenses.Count(e => ids.Contains(e.CategoryId));
+    }
+
     // --- Totals & reports -------------------------------------------------
 
     public Money TotalBudgeted => Period.BudgetedTotal;

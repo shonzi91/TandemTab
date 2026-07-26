@@ -20,7 +20,7 @@
         {
             @if (Percent > 0)
             {
-                <circle class="pring-arc @Class @(HasRamp ? "ramped" : "") @(Percent2 > 0 ? "seg1" : "")" cx="50" cy="50" r="42" transform="rotate(-90 50 50)" stroke-dasharray="@DashArray" style="@RampStyle" />
+                <circle class="pring-arc @Class @(HasRamp ? "ramped" : "") @(Percent2 > 0 ? "seg1" : "")" cx="50" cy="50" r="42" transform="rotate(-90 50 50)" stroke-dasharray="@DashArray" style="@ArcStyle" />
             }
             @* Optional second segment, drawn straight after the first in its own colour — e.g. a debt's "set aside
                but not yet paid" sitting past the "already paid off" arc. Butt-capped with a small gap so the two read
@@ -50,6 +50,7 @@
     [Parameter] public string? Class2 { get; set; }            // colour for the second segment
     [Parameter] public bool Dashed { get; set; }               // true = full dashed ring (no target)
     [Parameter] public string? Ramp { get; set; }              // "spend" = green→red as it fills; "goal" = reverse (green when full)
+    [Parameter] public string? Color { get; set; }             // solid CSS colour for the arc (overrides Class); ignored when Ramp is set
     [Parameter] public RenderFragment? ChildContent { get; set; }
 
     // Progress-driven heat GRADIENT. The ring is a scale: a full turn == 100% of the budget/goal, so a point's
@@ -92,6 +93,9 @@
     private string RampStop0 => Hex(Mint);
     private string RampStop1 => CapTip;
     private string? RampStyle => string.IsNullOrEmpty(Ramp) ? null : $"stroke:url(#{_gid})";
+    // Ramp wins; otherwise an explicit solid Color paints the arc (used for the spending rows' status ring, tinted
+    // to the exact colour the category's progress bar has reached). Falls back to the named Class stroke.
+    private string? ArcStyle => HasRamp ? RampStyle : (string.IsNullOrEmpty(Color) ? null : $"stroke:{Color}");
 
     private const double R = 42;
     private static readonly double Circ = 2 * Math.PI * R;
