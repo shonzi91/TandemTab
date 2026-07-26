@@ -1,6 +1,27 @@
 # TandemTab (FinApp) — session handoff
 
-Last updated: 2026-07-26 (Session 56, live on `finapp-00236-tb6`). Read this + [README.md](README.md) + [TRANSFER.md](TRANSFER.md) + [docs/MOBILE.md](docs/MOBILE.md) + [docs/DOMAIN-REMOVAL.md](docs/DOMAIN-REMOVAL.md) + [android/README.md](android/README.md) + recent `git log` to catch up.
+Last updated: 2026-07-26 (Session 57, live on `finapp-00238-7cw`). Read this + [README.md](README.md) + [TRANSFER.md](TRANSFER.md) + [docs/MOBILE.md](docs/MOBILE.md) + [docs/DOMAIN-REMOVAL.md](docs/DOMAIN-REMOVAL.md) + [android/README.md](android/README.md) + recent `git log` to catch up.
+
+## Session 57 (2026-07-26) — **Spending-tab budgets header redesign (friend-feedback follow-through); 514 tests green; DEPLOYED `finapp-00238-7cw`.**
+One focused web-UI slice, iterated live against a seeded throwaway account, then shipped. Commit `5524dbf` on `main`.
+
+### What changed (all in `FinApp.Shared.UI`, browser-verified light + dark)
+1. **Removed the segmented spent/unspent/budget bar** (the friend found it busy on mobile) and replaced it with an **"All expenses" section-header banner** above the category list: a status ring + title + **expense count**, `spent / budget` on the right with **what's left (green) / over (red)** beneath it, over a **full-width progress bar that spans the whole section**. The full-width bar + a subtle tint are what make it read as the *header* the category cards sit under (category rows keep their bar indented past the ring). It renders in both the `Categories` and `By date` views (gated on `barScale > 0`, same as the old bar). Iterated twice on the user's feedback: v1 was a compact two-cell summary → v2 mirrored a category row (they liked the ring but it "felt like a row") → v3 (shipped) is the tinted full-width banner.
+2. **Category status rings now take the exact colour the row's gradient bar reached** — new `SpendBarColorAt(pct)` mirrors the `.cbar-grad` stops (mint→#ffab73→coral) and paints the ring via a **new `ProgressRing.Color` param** (solid arc stroke; `Ramp` still wins when set). Removes the redundant second gradient — the bar shows the fill, the ring shows the status colour at that fill. Verified computed strokes match the bar exactly (e.g. 79.6% → `#A8B183`, 95% → `#FF8E64`).
+3. **The badge next to each category is now the number of expenses logged** (new `BudgetingState.ExpenseCountInCategory`, counts category + descendants), not the sub-category count.
+- Bulgarian strings added (`left`, plus unused `overspent`/`{0} expenses logged` from the earlier iterations). Files: [Dashboard.razor](src/FinApp.Shared.UI/Pages/Dashboard.razor) (`.budget-header` markup + `SpendBarColorAt`), [Dashboard.razor.css](src/FinApp.Shared.UI/Pages/Dashboard.razor.css), [ProgressRing.razor](src/FinApp.Shared.UI/Components/ProgressRing.razor), [BudgetingState.cs](src/FinApp.Shared.UI/Services/BudgetingState.cs), [Localizer.cs](src/FinApp.Shared.UI/Services/Localizer.cs).
+
+### Verify recipe that worked great this session
+Seeded a throwaway account **entirely via the API** (curl): `POST /auth/register` → `POST /accounts` → `POST /accounts/{id}/bootstrap` (seeds Food/Bills/Transport/Other + funds) → `PUT …/funds/{bank}/opening-balance` → `PUT …/budgets/{cat}` → `POST …/expenses` at varying fill levels. Then **injected the session into the WASM app** by setting `localStorage['finapp-auth-token']` + `finapp-refresh-token` (keys from [WebTokenStore.cs](src/FinApp.App.Web/WebTokenStore.cs)) and reloading — no flaky UI login needed. Drove the rest with `read_page`/`computer`/`javascript_tool` (computed `getComputedStyle(arc).stroke` to prove ring==bar colour). ⚠️ **`python` is a Store stub on this box (permission denied)** — parse JSON with `node` via **stdin** (`node -e` with a Windows CWD can't see Git-Bash `/tmp` paths). Screenshots worked fine this session (Browser pane was displayed).
+
+### DEPLOYED — `finapp-00238-7cw` (live, 100%), verified on both hosts
+514 tests green (229 domain + 241 server + 44 persistence) → commit `5524dbf` → **3-step deploy** (`builds submit` image `finapp:5524dbf` digest `sha256:9ab56c1d…`, 5m9s → `run deploy` → **`update-traffic --to-latest`**). **Served-bytes proof** (not just the revision name): the fingerprinted scoped bundle `_content/FinApp.Shared.UI/…bundle.scp.css` now has `budget-header`×2 + `bh-bar`×1 and **zero** `budget-bar` on **both** the run URL AND tandemtab.com; root 200 both; `secretKeyRef`=5. Recipe unchanged — see [[reference_build_deploy_thisdevice]].
+
+### ⚠️ Carry-over / next
+- **Dead code from the removed segmented bar** (not cleaned — offered, user said finish): `SegHue`/`SegHues` in Dashboard.razor, the `.bseg`/`data-seg-cat` hover-link + `%`-badge JS in [index.html](src/FinApp.App.Web/wwwroot/index.html), the old `.budget-bar*` … actually those CSS rules were replaced; the JS + `SegHue` + unused `overspent` loc key remain. Strip in a follow-up.
+- **Deletable revisions:** `finapp-00234-c2l` and older (all 0% traffic).
+- **Friend-feedback items still open (from S56):** **#2** "remove = archive everywhere" + delete-on-archived (large; start with an archive-semantics survey); **#5** replace subcategories with tags (recommended: add tags *alongside*, no migration).
+- **Android next:** port Goals (`Savings`) / Wallets (`Account`) tabs; user still to confirm session-persistence + Google sign-in on the emulator (S56 build-verified only).
 
 ## Session 56 (2026-07-26) — **Android session-persistence slice + a batch of web UI fixes from friend feedback; 514 tests green; DEPLOYED.**
 Two tracks in one session. (A) **Android:** shipped the "stay signed in" slice. (B) **Web:** knocked out 4 of 6 UI items a friend raised, each browser-verified on a throwaway local account.
