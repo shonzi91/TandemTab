@@ -1,6 +1,6 @@
 # TandemTab (FinApp) — session handoff
 
-Last updated: 2026-07-26 (Session 56, live on `finapp-00236`). Read this + [README.md](README.md) + [TRANSFER.md](TRANSFER.md) + [docs/MOBILE.md](docs/MOBILE.md) + [docs/DOMAIN-REMOVAL.md](docs/DOMAIN-REMOVAL.md) + [android/README.md](android/README.md) + recent `git log` to catch up.
+Last updated: 2026-07-26 (Session 56, live on `finapp-00236-tb6`). Read this + [README.md](README.md) + [TRANSFER.md](TRANSFER.md) + [docs/MOBILE.md](docs/MOBILE.md) + [docs/DOMAIN-REMOVAL.md](docs/DOMAIN-REMOVAL.md) + [android/README.md](android/README.md) + recent `git log` to catch up.
 
 ## Session 56 (2026-07-26) — **Android session-persistence slice + a batch of web UI fixes from friend feedback; 514 tests green; DEPLOYED.**
 Two tracks in one session. (A) **Android:** shipped the "stay signed in" slice. (B) **Web:** knocked out 4 of 6 UI items a friend raised, each browser-verified on a throwaway local account.
