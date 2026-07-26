@@ -58,9 +58,13 @@ data class RefreshRequest(val refreshToken: String)
 data class LogoutRequest(val refreshToken: String)
 
 @Serializable
+data class TwoFactorLoginRequest(val ticket: String, val code: String)
+
+@Serializable
 data class MemberDto(
     val userId: String,
-    val username: String,
+    // Server sends "displayName" (FinApp.Contracts.MemberDto), not "username".
+    val displayName: String = "",
 )
 
 @Serializable

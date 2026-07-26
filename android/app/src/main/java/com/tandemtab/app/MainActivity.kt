@@ -18,6 +18,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import com.tandemtab.app.ui.HomeScreen
 import com.tandemtab.app.ui.LoginScreen
+import com.tandemtab.app.ui.TwoFactorScreen
 import com.tandemtab.app.ui.theme.TandemTabTheme
 
 class MainActivity : ComponentActivity() {
@@ -75,6 +76,12 @@ private fun App(vm: AppViewModel, onGoogle: () -> Unit) {
             onSendResetLink = vm::sendResetLink,
             onClearResetSent = vm::clearResetLinkSent,
             onGoogle = onGoogle,
+        )
+        Screen.TwoFactor -> TwoFactorScreen(
+            busy = state.busy,
+            error = state.error,
+            onSubmit = vm::submitTwoFactor,
+            onCancel = vm::cancelTwoFactor,
         )
         Screen.Home -> HomeScreen(
             state = state,

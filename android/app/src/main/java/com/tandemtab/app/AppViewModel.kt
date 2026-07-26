@@ -19,6 +19,8 @@ sealed interface Screen {
     /** Brief startup state while we check for a persisted session. */
     data object Splash : Screen
     data object Login : Screen
+    /** A 2FA-gated account: enter the TOTP/recovery code to finish signing in. */
+    data object TwoFactor : Screen
     data object Home : Screen
 }
 
@@ -29,6 +31,8 @@ data class UiState(
     val resetLinkSent: Boolean = false,
     val googleEnabled: Boolean = false,
     val username: String = "",
+    // Outstanding 2FA challenge ticket (from login/exchange), consumed on the TwoFactor screen.
+    val twoFactorTicket: String? = null,
     // Home data
     val accounts: List<AccountSummaryDto> = emptyList(),
     val selectedAccountId: String? = null,
@@ -94,14 +98,51 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         _state.update { it.copy(busy = true, error = null) }
         viewModelScope.launch {
             try {
-                val auth = api.exchangeCode(authCode)
-                _state.update { it.copy(username = auth.username) }
-                loadHome()
+                handleAuthOutcome(api.exchangeCode(authCode), "Sign-in didn't complete.")
             } catch (e: Exception) {
                 _state.update { it.copy(busy = false, error = e.message ?: "Sign-in didn't complete.") }
             }
         }
     }
+
+    /** Route a login/exchange result: 2FA-gate → the code screen, tokens → Home, otherwise a fallback error. */
+    private suspend fun handleAuthOutcome(result: com.tandemtab.app.data.LoginResponse, fallbackError: String) {
+        when {
+            result.twoFactorRequired && result.twoFactorTicket != null ->
+                _state.update { it.copy(busy = false, screen = Screen.TwoFactor, twoFactorTicket = result.twoFactorTicket, error = null) }
+            result.auth != null -> {
+                _state.update { it.copy(username = result.auth.username) }
+                loadHome()
+            }
+            else -> _state.update { it.copy(busy = false, error = fallbackError) }
+        }
+    }
+
+    /** Finish a 2FA-gated sign-in with the code the user typed. */
+    fun submitTwoFactor(code: String) {
+        val ticket = _state.value.twoFactorTicket
+        if (ticket == null) {
+            _state.update { it.copy(screen = Screen.Login, error = "That sign-in expired. Please try again.") }
+            return
+        }
+        if (code.isBlank()) {
+            _state.update { it.copy(error = "Enter the code from your authenticator app.") }
+            return
+        }
+        _state.update { it.copy(busy = true, error = null) }
+        viewModelScope.launch {
+            try {
+                val auth = api.twoFactor(ticket, code)
+                _state.update { it.copy(username = auth.username, twoFactorTicket = null) }
+                loadHome()
+            } catch (e: Exception) {
+                _state.update { it.copy(busy = false, error = e.message ?: "Couldn't verify the code.") }
+            }
+        }
+    }
+
+    /** Abandon the 2FA challenge and go back to the sign-in screen. */
+    fun cancelTwoFactor() = _state.update { it.copy(screen = Screen.Login, twoFactorTicket = null, busy = false, error = null) }
 
     fun login(usernameOrEmail: String, password: String) {
         if (usernameOrEmail.isBlank() || password.isBlank()) {
@@ -111,17 +152,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         _state.update { it.copy(busy = true, error = null) }
         viewModelScope.launch {
             try {
-                val result = api.login(usernameOrEmail, password)
-                when {
-                    result.twoFactorRequired -> _state.update {
-                        it.copy(busy = false, error = "This account has two-factor sign-in, which the app doesn't support yet.")
-                    }
-                    result.auth != null -> {
-                        _state.update { it.copy(username = result.auth.username) }
-                        loadHome()
-                    }
-                    else -> _state.update { it.copy(busy = false, error = "Unexpected sign-in response.") }
-                }
+                handleAuthOutcome(api.login(usernameOrEmail, password), "Unexpected sign-in response.")
             } catch (e: Exception) {
                 _state.update { it.copy(busy = false, error = e.message ?: "Sign-in failed.") }
             }

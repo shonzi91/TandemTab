@@ -116,21 +116,31 @@ class TandemTabApi(
      *  redirect the result back into the app via the com.tandemtab.app:// deep link. */
     fun externalAuthUrl(provider: String): String = "$baseUrl/auth/external/$provider?native=1"
 
-    /** Exchange the one-time code from the external-sign-in deep link for real session tokens.
-     *  /auth/exchange returns a LoginResponse (it can also 2FA-gate), same envelope as /auth/login. */
-    suspend fun exchangeCode(code: String): AuthResponse {
+    /** Exchange the one-time code from the external-sign-in deep link for a session. Returns the LoginResponse
+     *  envelope — like /auth/login it can 2FA-gate, so the caller handles twoFactorRequired. */
+    suspend fun exchangeCode(code: String): LoginResponse {
         val resp = client.post("/auth/exchange") { setBody(ExchangeCodeRequest(code)) }
         if (resp.status.value !in 200..299) {
             throw ApiException(resp.status.value, "Sign-in didn't complete. Please try again.")
         }
         val result: LoginResponse = resp.body()
-        val auth = result.auth ?: throw ApiException(
-            resp.status.value,
-            if (result.twoFactorRequired) "This account has two-factor sign-in, which the app doesn't support yet."
-            else "Sign-in didn't complete. Please try again.",
-        )
-        adoptSession(auth)
-        return auth
+        result.auth?.let { adoptSession(it) }
+        return result
+    }
+
+    /** Complete a 2FA-gated sign-in with the ticket from login/exchange plus a TOTP or recovery code. */
+    suspend fun twoFactor(ticket: String, code: String): AuthResponse {
+        val resp = client.post("/auth/2fa") { setBody(TwoFactorLoginRequest(ticket, code.trim())) }
+        if (resp.status.value !in 200..299) {
+            throw ApiException(resp.status.value, when (resp.status.value) {
+                401, 400 -> "That code didn't match. Try again."
+                429 -> "Too many attempts. Wait a moment and try again."
+                else -> "Couldn't verify the code (${resp.status.value})."
+            })
+        }
+        val result: AuthResponse = resp.body()
+        adoptSession(result)
+        return result
     }
 
     suspend fun listAccounts(): List<AccountSummaryDto> = authedGet("/accounts").body()
