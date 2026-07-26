@@ -117,10 +117,28 @@
                 }
             };
         })();
-        // Link the budget bar's segments to their category rings: hovering either highlights the other. Uses a
-        // delegated listener so it keeps working as Blazor re-renders the (data-seg-cat / data-ring-cat) nodes.
+        // Link the budget bar's segments to their category rings: hovering either highlights the other AND floats a
+        // "Name · NN%" label over the matching bar segment. Delegated so it survives Blazor re-renders.
         (function () {
             function clearHi() { document.querySelectorAll('.seg-hi, .ring-hi').forEach(el => el.classList.remove('seg-hi', 'ring-hi')); }
+            // Styled inline (not via CSS) because the badge is created here, outside Blazor's scoped stylesheet.
+            var TIP_CSS = 'position:absolute;transform:translate(-50%,-50%);background:rgba(15,23,42,.85);color:#fff;' +
+                'font-size:.68rem;font-weight:700;white-space:nowrap;padding:1px 7px;border-radius:999px;' +
+                'opacity:0;transition:opacity .1s;z-index:50;pointer-events:none;';
+            function hideTip() { var t = document.querySelector('.bseg-tip'); if (t) t.style.opacity = '0'; }
+            function showTip(seg) {
+                var bar = seg.closest('.budget-bar'), wrap = seg.closest('.budget-bar-wrap');
+                if (!bar || !wrap) return;
+                var pm = (seg.getAttribute('title') || '').match(/(\d+)%/);
+                if (!pm) { hideTip(); return; }
+                var tip = wrap.querySelector('.bseg-tip');
+                if (!tip) { tip = document.createElement('div'); tip.className = 'bseg-tip'; tip.style.cssText = TIP_CSS; wrap.appendChild(tip); }
+                tip.textContent = pm[1] + '%';
+                var barRect = bar.getBoundingClientRect(), segRect = seg.getBoundingClientRect(), wrapRect = wrap.getBoundingClientRect();
+                tip.style.left = ((segRect.left + segRect.width / 2) - wrapRect.left) + 'px';
+                tip.style.top = ((barRect.top + barRect.height / 2) - wrapRect.top) + 'px';
+                tip.style.opacity = '1';
+            }
             document.addEventListener('mouseover', e => {
                 var t = e.target instanceof Element ? e.target : null;
                 var ring = t && t.closest('[data-ring-cat]');
@@ -132,10 +150,12 @@
                 var esc = window.CSS && CSS.escape ? CSS.escape(id) : id;
                 document.querySelectorAll('[data-seg-cat="' + esc + '"]').forEach(x => x.classList.add('seg-hi'));
                 document.querySelectorAll('[data-ring-cat="' + esc + '"]').forEach(x => x.classList.add('ring-hi'));
+                var segEl = document.querySelector('.bseg[data-seg-cat="' + esc + '"]');
+                if (segEl) showTip(segEl); else hideTip();
             });
             document.addEventListener('mouseout', e => {
                 var t = e.target instanceof Element ? e.target : null;
-                if (t && t.closest('[data-ring-cat], [data-seg-cat]')) clearHi();
+                if (t && t.closest('[data-ring-cat], [data-seg-cat]')) { clearHi(); hideTip(); }
             });
         })();
         window.finappDownloadFile = (fileName, base64, contentType) => {

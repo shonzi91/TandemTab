@@ -347,26 +347,30 @@ else
                     @* Hovering the fast button reveals the most-used categories; clicking one opens Add-expense with
                        that category pre-selected. The button itself still opens the blank modal (and is the only path
                        on touch, where there's no hover). *@
+                    @{ var homeRecentCats = State.RecentCategories(5); }
                     <div class="quick-spend">
                         <span class="card-act-row">
-                            <button class="card-act card-act-spend" @onclick="OpenAddExpenseTab"><Icon Name="receipt" /> @Loc["Add expense"]</button>
+                            @* Only the Add-expense button reveals the quick-cats menu (qs-primary is the hover zone) —
+                               hovering "Edit last" must not pop it, and the menu bridges the gap so it can't vanish. *@
+                            <span class="qs-primary">
+                                <button class="card-act card-act-spend" @onclick="OpenAddExpenseTab"><Icon Name="receipt" /> @Loc["Add expense"]</button>
+                                @if (homeRecentCats.Count > 0)
+                                {
+                                    <div class="quick-cats" role="menu">
+                                        <span class="quick-cats-label">@Loc["Quick add to"]</span>
+                                        @foreach (var cid in homeRecentCats)
+                                        {
+                                            var catId = cid;
+                                            <button type="button" class="quick-cat" role="menuitem" @onclick="() => OpenAddExpense(catId)"><CatIcon Name="@State.CategoryIcon(catId)" /> @State.CategoryName(catId)</button>
+                                        }
+                                    </div>
+                                }
+                            </span>
                             @if (State.IsPeriodOpen && State.LastExpense is { } lastEx)
                             {
                                 <button class="card-act-edit" title="@Loc["Edit the last expense you logged"]" @onclick="() => OpenEditExpense(lastEx.Id)"><Icon Name="pencil" /> @Loc["Edit last"]</button>
                             }
                         </span>
-                        @{ var homeRecentCats = State.RecentCategories(5); }
-                        @if (homeRecentCats.Count > 0)
-                        {
-                            <div class="quick-cats" role="menu">
-                                <span class="quick-cats-label">@Loc["Quick add to"]</span>
-                                @foreach (var cid in homeRecentCats)
-                                {
-                                    var catId = cid;
-                                    <button type="button" class="quick-cat" role="menuitem" @onclick="() => OpenAddExpense(catId)"><CatIcon Name="@State.CategoryIcon(catId)" /> @State.CategoryName(catId)</button>
-                                }
-                            </div>
-                        }
                     </div>
                 </div>
                 <div class="card savings action-card">
@@ -2144,8 +2148,14 @@ else
                 case Modal.ManageCats:
                     @* Manage spending categories without going through a budget. Top-level only — a category's
                        sub-categories are managed inside its own Edit modal (reached via the pencil). *@
-                    <h3><Icon Name="tag" /> @Loc["Categories"]</h3>
+                    <div class="modal-head">
+                        <h3><Icon Name="tag" /> @Loc["Categories"]</h3>
+                        <span class="modal-head-actions">
+                            <button class="exp-edit" title="@Loc["Close"]" @onclick="Back"><Icon Name="x" /></button>
+                        </span>
+                    </div>
                     var topCats = State.CategoryOptions.Where(c => c.Depth == 0).ToList();
+                    <button class="fund-add" @onclick="ManageAddCat"><Icon Name="plus" /> @Loc["Add category"]</button>
                     @if (topCats.Count == 0)
                     {
                         <p class="hint">@Loc["No categories yet — add one to start filing expenses."]</p>
@@ -2168,14 +2178,16 @@ else
                             }
                         </ul>
                     }
-                    <div class="modal-actions">
-                        <button class="ghost" @onclick="Back">@Loc["Close"]</button>
-                        <button @onclick="ManageAddCat"><Icon Name="plus" /> @Loc["Add category"]</button>
-                    </div>
                     break;
 
                 case Modal.ManageContribCats:
-                    <h3>@Loc["Contribution categories"]</h3>
+                    <div class="modal-head">
+                        <h3><Icon Name="tag" /> @Loc["Contribution categories"]</h3>
+                        <span class="modal-head-actions">
+                            <button class="exp-edit" title="@Loc["Close"]" @onclick="Back"><Icon Name="x" /></button>
+                        </span>
+                    </div>
+                    <button class="fund-add" @onclick="OpenAddContribCat"><Icon Name="plus" /> @Loc["Add category"]</button>
                     <ul class="list">
                         @foreach (var cc in State.ContributionCategories)
                         {
@@ -2188,10 +2200,6 @@ else
                             </li>
                         }
                     </ul>
-                    <div class="modal-actions">
-                        <button class="ghost" @onclick="Back">@Loc["Close"]</button>
-                        <button @onclick="OpenAddContribCat"><Icon Name="plus" /> @Loc["Add category"]</button>
-                    </div>
                     break;
 
                 case Modal.AddSaving:
@@ -2238,11 +2246,11 @@ else
                     <div class="modal-head">
                         <h3><Icon Name="repeat" /> @Loc["Recurring"]</h3>
                         <span class="modal-head-actions">
-                            <button class="lbl-add" title="@Loc["Add recurring"]" @onclick="OpenAddRecurring">+</button>
                             <button class="exp-edit" title="@Loc["Close"]" @onclick="Back"><Icon Name="x" /></button>
                         </span>
                     </div>
                     <p class="hint">@Loc["Bills, salary and standing transfers that repeat monthly. They remind you when due — you confirm the real amount, so bills that vary stay accurate."]</p>
+                    <button class="fund-add" @onclick="OpenAddRecurring"><Icon Name="plus" /> @Loc["Add recurring"]</button>
                     @if (State.RecurringItems.Count == 0)
                     {
                         <p class="hint">@Loc["Nothing recurring yet. Add your rent, salary or a monthly bill."]</p>
@@ -2269,8 +2277,6 @@ else
                             }
                         </ul>
                     }
-                    @* Both of these already live in the sticky head (✕ and +), and a second sticky bar would have
-                       floated straight on top of it. *@
                     break;
 
                 case Modal.RecurringEdit:

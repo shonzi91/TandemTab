@@ -724,6 +724,8 @@ html.dark .budget-bar-labels strong { color: #e2e8f0; }
 .budget-bar-labels .bbl-unspent:not(.warn-text) { color: #0e9e6d; }
 html.dark .budget-bar-labels .bbl-unspent:not(.warn-text) { color: #34d399; }
 .ring-card.ring-hi .ring-name { text-decoration: underline; text-underline-offset: 3px; }
+/* The "NN%" badge over a highlighted segment is created + styled in JS (index.html) — it lives outside this
+   scoped stylesheet, so its styles can't go here. */
 
 /* Circular budget/savings cards */
 .ring-grid { display: flex; flex-wrap: wrap; gap: 22px 18px; padding-top: 6px; }
@@ -792,6 +794,8 @@ html.dark .budget-bar-labels .bbl-unspent:not(.warn-text) { color: #34d399; }
     color: #13a06e; cursor: pointer; font-size: .84rem; font-weight: 600; padding: 6px 13px;
 }
 .fund-add:hover { border-color: #13a06e; background: #f0fbf6; }
+/* When it's a standalone "+ Add …" button in a modal body (not a section head), give it room from the list below. */
+.modal > .fund-add { margin: 2px 0 12px; }
 html.dark .fund-donut-track { stroke: #232a37; }
 html.dark .fund-donut-total { fill: #e8eaf0; }
 html.dark .fund-donut-sub { fill: #8a94a6; }
@@ -1853,11 +1857,13 @@ html.dark .card-score::after { color: #3fe0c5; }
 .action-card .quick-spend .card-act { margin-top: 0; }
 /* Hover-reveal recent-category menu rising from the Add-expense fast button. */
 .quick-cats {
-    position: absolute; bottom: 100%; left: 0; right: 0; z-index: 40; margin-bottom: 4px;
+    position: absolute; bottom: 100%; left: 0; right: 0; z-index: 40; margin-bottom: 6px;
     display: none; flex-direction: column; gap: 2px; padding: 6px;
     background: #fff; border: 1px solid #e6ece9; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,.16);
 }
-.quick-spend:hover .quick-cats, .quick-cats:hover { display: flex; }
+/* Transparent bridge over the visual gap so moving from the button up into the menu never crosses a dead zone. */
+.quick-cats::after { content: ""; position: absolute; top: 100%; left: 0; right: 0; height: 8px; }
+.qs-primary:hover .quick-cats, .quick-cats:hover { display: flex; }
 .quick-cats-label { font-size: .64rem; color: #6b7280; text-transform: uppercase; letter-spacing: .08em; padding: 2px 6px 4px; }
 .quick-cat {
     display: flex; align-items: center; gap: 7px; background: none; border: none; border-radius: 8px;
@@ -1884,7 +1890,10 @@ html.dark .card-act-spend { background: #566173; }
 
 /* Primary "Add…" button with a compact quiet "Edit last" beside it (edit the most recently logged item). */
 .card-act-row { display: flex; align-items: stretch; gap: 8px; margin-top: auto; }
-.card-act-row .card-act { margin-top: 0; width: auto; flex: 1 1 auto; }
+.card-act-row > .card-act { margin-top: 0; width: auto; flex: 1 1 auto; }
+/* Spent card: the Add-expense button + its hover menu live in qs-primary so ONLY that button pops the menu. */
+.qs-primary { position: relative; flex: 1 1 auto; display: flex; min-width: 0; }
+.qs-primary .card-act { width: 100%; margin-top: 0; }
 .card-act-edit {
     flex: 0 0 auto; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
     padding: 0 12px; border-radius: 12px; font: inherit; font-weight: 700; font-size: .85rem;
