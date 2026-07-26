@@ -1,11 +1,13 @@
 package com.tandemtab.app
 
-import androidx.lifecycle.ViewModel
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.tandemtab.app.data.AccountOverviewDto
 import com.tandemtab.app.data.AccountSummaryDto
 import com.tandemtab.app.data.ExpenseDto
 import com.tandemtab.app.data.TandemTabApi
+import com.tandemtab.app.data.TokenStore
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -14,12 +16,14 @@ import kotlinx.coroutines.launch
 
 /** Top-level screens for the first vertical slice. */
 sealed interface Screen {
+    /** Brief startup state while we check for a persisted session. */
+    data object Splash : Screen
     data object Login : Screen
     data object Home : Screen
 }
 
 data class UiState(
-    val screen: Screen = Screen.Login,
+    val screen: Screen = Screen.Splash,
     val busy: Boolean = false,
     val error: String? = null,
     val resetLinkSent: Boolean = false,
@@ -45,9 +49,9 @@ data class SpendingUi(
     val expenses: List<ExpenseDto> = emptyList(),
 )
 
-class AppViewModel(
-    private val api: TandemTabApi = TandemTabApi(),
-) : ViewModel() {
+class AppViewModel(app: Application) : AndroidViewModel(app) {
+
+    private val api: TandemTabApi = TandemTabApi(store = TokenStore(app))
 
     private val _state = MutableStateFlow(UiState())
     val state: StateFlow<UiState> = _state.asStateFlow()
@@ -57,6 +61,24 @@ class AppViewModel(
         viewModelScope.launch {
             val providers = runCatching { api.getProviders() }.getOrNull() ?: return@launch
             _state.update { it.copy(googleEnabled = providers.google) }
+        }
+        // Resume a persisted session if there is one, else fall through to the login screen.
+        viewModelScope.launch { resumeSession() }
+    }
+
+    /** On launch: seed the saved session and open Home; if it's expired/revoked, drop cleanly to Login. */
+    private suspend fun resumeSession() {
+        val saved = api.restore()
+        if (saved == null) {
+            _state.update { it.copy(screen = Screen.Login) }
+            return
+        }
+        _state.update { it.copy(busy = true, username = saved.username, error = null) }
+        loadHome()
+        if (_state.value.screen != Screen.Home) {
+            // Couldn't resume — forget the dead session and show a clean login (no scary error).
+            api.signOut()
+            _state.update { UiState(screen = Screen.Login, googleEnabled = it.googleEnabled) }
         }
     }
 
@@ -202,8 +224,9 @@ class AppViewModel(
     }
 
     fun signOut() {
-        api.signOut()
-        _state.value = UiState()
+        val google = _state.value.googleEnabled
+        _state.value = UiState(screen = Screen.Login, googleEnabled = google)
+        viewModelScope.launch { api.signOut() }
     }
 
     fun clearError() = _state.update { it.copy(error = null) }

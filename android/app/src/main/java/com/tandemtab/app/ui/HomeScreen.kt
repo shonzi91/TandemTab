@@ -23,7 +23,7 @@ import androidx.compose.material.icons.rounded.AccountBalanceWallet
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Flag
 import androidx.compose.material.icons.rounded.Home
-import androidx.compose.material.icons.rounded.ReceiptLong
+import androidx.compose.material.icons.automirrored.rounded.ReceiptLong
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
@@ -64,7 +64,7 @@ import java.util.Locale
 // in the same order and labels.
 private enum class NavDest(val label: String, val icon: ImageVector) {
     Home("Home", Icons.Rounded.Home),
-    Spending("Spending", Icons.Rounded.ReceiptLong),
+    Spending("Spending", Icons.AutoMirrored.Rounded.ReceiptLong),
     Goals("Goals", Icons.Rounded.Flag),
     Wallets("Wallets", Icons.Rounded.AccountBalanceWallet),
 }

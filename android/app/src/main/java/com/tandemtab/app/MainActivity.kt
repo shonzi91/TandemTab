@@ -7,11 +7,14 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import com.tandemtab.app.ui.HomeScreen
 import com.tandemtab.app.ui.LoginScreen
@@ -59,6 +62,9 @@ class MainActivity : ComponentActivity() {
 private fun App(vm: AppViewModel, onGoogle: () -> Unit) {
     val state by vm.state.collectAsState()
     when (state.screen) {
+        Screen.Splash -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            CircularProgressIndicator()
+        }
         Screen.Login -> LoginScreen(
             busy = state.busy,
             error = state.error,

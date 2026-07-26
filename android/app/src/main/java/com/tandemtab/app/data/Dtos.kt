@@ -55,6 +55,9 @@ data class LoginResponse(
 data class RefreshRequest(val refreshToken: String)
 
 @Serializable
+data class LogoutRequest(val refreshToken: String)
+
+@Serializable
 data class MemberDto(
     val userId: String,
     val username: String,
