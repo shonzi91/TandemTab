@@ -1,6 +1,26 @@
 # TandemTab (FinApp) — session handoff
 
-Last updated: 2026-07-27 (Session 58, live on `finapp-00239-nkd`). Read this + [README.md](README.md) + [TRANSFER.md](TRANSFER.md) + [docs/MOBILE.md](docs/MOBILE.md) + [docs/DOMAIN-REMOVAL.md](docs/DOMAIN-REMOVAL.md) + [android/README.md](android/README.md) + recent `git log` to catch up.
+Last updated: 2026-07-27 (Session 59, live on `finapp-00240-7jd`). Read this + [README.md](README.md) + [TRANSFER.md](TRANSFER.md) + [docs/MOBILE.md](docs/MOBILE.md) + [docs/DOMAIN-REMOVAL.md](docs/DOMAIN-REMOVAL.md) + [android/README.md](android/README.md) + recent `git log` to catch up.
+
+## Session 59 (2026-07-27) — **UI-simplification pass 2: 1-level category guard + onboarding steps + icon fixes + People into the account switcher; 515 tests green; DEPLOYED `finapp-00240-7jd`.**
+Continuation of the S58 "make it simpler" arc; two deploys same day (S58 `…nkd`, S59 `…7jd`). Web + one domain guard. Committed `83e6c62`, pushed, deployed. Browser-verified (light).
+
+### What changed
+1. **Server-side 1-level nesting guard** — `Account.AddCategory` (Domain) now rejects a `parentId` whose own `ParentId` is set (`"Categories can only be nested one level deep."`). This backs the S58 **UI-only** cap with a real invariant (API/future clients can't nest deeper). New test in [CategoryAdminTests.cs](tests/FinApp.Domain.Tests/CategoryAdminTests.cs) → suite is now **515** (230 domain + 241 server + 44 persistence).
+2. **External accounts → a button on the Wallets "Where your money is" row** (right-aligned via a new `.wallet-head-actions` group), with an amber count badge when transactions await review. Replaced the standalone S58 section. ⚠️ Still **bank-gated → not visually verified** (needs a bank-connected account; [[project_bank_allowlist]]).
+3. **Onboarding: two new steps** (the `obSteps` tuple array on Home) — **Add categories** (done when `CategoryOptions.Any(c => c.Depth > 0)`, i.e. a sub-category exists; opens Manage categories) and **Invite a partner** (done when `State.OtherMembers.Any()`; opens the invite modal). Verified showing "3 of 6 done" with Add-categories ticked on the seeded Groceries sub.
+4. **Icon fixes** in [IconSprite.razor](src/FinApp.Shared.UI/Components/IconSprite.razor): `i-utensils` spoon redrawn as a proper `<ellipse>` bowl (was a too-narrow bezier that read as trimmed) beside the fork; `i-plane` redrawn as a symmetric top-view airplane (the old path's two wings attached at different heights / weren't mirror images). Verified by rendering both at 90px.
+5. **People moved off the Wallets tab into the account-switcher dropdown** (`.acct-drop-people` — Invite + member list + owner-only remove, reusing `.person-tag`/`.person-x`). Rationale: account identity/membership belongs with the account chip, and inviting a partner is a headline flow that shouldn't be buried in a ⋯ menu (chosen over the Account-actions menu). Wallets is now just funds + income.
+- Files: [Dashboard.razor](src/FinApp.Shared.UI/Pages/Dashboard.razor), [Dashboard.razor.css](src/FinApp.Shared.UI/Pages/Dashboard.razor.css), [IconSprite.razor](src/FinApp.Shared.UI/Components/IconSprite.razor), [Localizer.cs](src/FinApp.Shared.UI/Services/Localizer.cs), [Account.cs](src/FinApp.Domain/Accounts/Account.cs), [CategoryAdminTests.cs](tests/FinApp.Domain.Tests/CategoryAdminTests.cs).
+
+### DEPLOYED — `finapp-00240-7jd` (live, 100%), verified both hosts
+515 green → `83e6c62` → pushed → 3-step deploy (`builds submit` image `finapp:83e6c62` digest `sha256:3a80b12d…` 4m42s → `run deploy` → `update-traffic --to-latest`). **Served-bytes proof**: scoped bundle has `acct-drop-people`×2 + `wallet-head-actions`×1 on **both** the run URL AND tandemtab.com; root 200 both.
+
+### ⚠️ Carry-over / next
+- **Dead code to strip** (still pending, growing): old `.cat-exp*`/`.cat-subrow*`/`.people-row`/`.person`/`.budget-bar*` CSS, the `BudgetCircleMenu`+`_budgetMenuId` ring popover, `SegHue`/`SegHues`, the `.bseg` hover-link + %-badge JS in [index.html](src/FinApp.App.Web/wwwroot/index.html), unused loc keys (`overspent`, `Manage`, the bank-connection hint strings). One focused cleanup PR.
+- **External-accounts-in-Wallets button**: verify with a bank-enabled account.
+- **Friend-feedback still open (S56)**: #2 archive-everywhere + delete-on-archived; #5 tags alongside sub-categories.
+- **Android**: port Goals / Wallets tabs; user still to confirm session-persistence + Google sign-in on the emulator. Note the web UI has diverged a lot this session (Spending redesign, header declutter, expandable subs) — the Android port should track the new layout.
 
 ## Session 58 (2026-07-27) — **UI-simplification pass: header declutter + expandable sub-categories + shared by-date expense rows; 514 tests green; DEPLOYED `finapp-00239-nkd` (pushed to GitHub too).**
 Web-only, all in `FinApp.Shared.UI`. Iterated live against the seeded throwaway account, browser-verified light + dark, then committed (`91b01a1`), **pushed** (remote was behind — this brought `origin/main` current through S54–58), and deployed. User is driving a "make the app simpler" arc — took direction in several mid-turn messages.
