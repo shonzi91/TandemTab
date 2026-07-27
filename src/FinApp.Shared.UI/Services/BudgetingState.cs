@@ -685,6 +685,13 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     public DateOnly? EarliestExpenseDate =>
         Account.Periods.SelectMany(p => p.Expenses).Select(e => (DateOnly?)e.Date).Min();
 
+    /// <summary>Total income (member contributions, excluding carryover) across all periods in [from, to] — pairs with
+    /// <see cref="ExpensesInRange"/> so the Breakdown view can show income for the same window.</summary>
+    public decimal IncomeInRange(DateOnly from, DateOnly to) =>
+        Account.Periods.SelectMany(p => p.Contributions)
+            .Where(c => c.MemberId != FinApp.Domain.Periods.Period.CarryoverSource && c.Date >= from && c.Date <= to)
+            .Sum(c => c.Paid.Amount);
+
     public bool IsPeriodOpen => Period.Status == PeriodStatus.Open;
 
     public Expense? FindExpense(Guid id) => Period.Expenses.FirstOrDefault(e => e.Id == id);

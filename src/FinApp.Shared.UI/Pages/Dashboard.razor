@@ -1229,7 +1229,10 @@ else
                         var brkSlices = BreakSlices();
                         var brkTotal = brkSlices.Sum(s => s.Amount);
                         var brkCi = System.Globalization.CultureInfo.InvariantCulture;
+                        var (brkFrom, brkTo) = BreakWindow();
+                        var brkIncome = State.IncomeInRange(brkFrom, brkTo);
                     }
+                    <div class="brk-range-lbl"><Icon Name="calendar" /> @brkFrom.ToString("dd MMM yyyy") – @brkTo.ToString("dd MMM yyyy")</div>
                     @if (_breakDrill is { } drillId)
                     {
                         <div class="brk-crumb">
@@ -1239,6 +1242,19 @@ else
                                 <button type="button" class="chip @(_breakByTag ? "" : "on")" @onclick="() => _breakByTag = false">@Loc["Sub-categories"]</button>
                                 <button type="button" class="chip @(_breakByTag ? "on" : "")" @onclick="() => _breakByTag = true">@Loc["Tags"]</button>
                             </span>
+                        </div>
+                    }
+                    @* Income for the same window (member contributions, not budgets) so spend has context. Top level only —
+                       a drilled single category vs total income wouldn't be a meaningful ratio. *@
+                    @if (_breakDrill is null && (brkIncome > 0m || brkTotal > 0m))
+                    {
+                        <div class="brk-summary">
+                            <span class="brk-sum"><span class="brk-sum-lbl">@Loc["Income"]</span><span class="brk-sum-val good-text">@Fmt(brkIncome)</span></span>
+                            <span class="brk-sum"><span class="brk-sum-lbl">@Loc["Spent"]</span><span class="brk-sum-val">@Fmt(brkTotal)</span></span>
+                            @if (brkIncome > 0m)
+                            {
+                                <span class="brk-sum"><span class="brk-sum-lbl">@Loc["of income"]</span><span class="brk-sum-val">@((brkTotal / brkIncome * 100).ToString("0.#", brkCi))%</span></span>
+                            }
                         </div>
                     }
                     @if (brkSlices.Count == 0 || brkTotal <= 0m)
@@ -1251,7 +1267,7 @@ else
                             <svg class="brk-donut" viewBox="0 0 200 200" role="img" aria-label="@Loc["Spending breakdown"]">
                                 @if (brkSlices.Count == 1)
                                 {
-                                    <circle cx="100" cy="100" r="73" fill="none" stroke="@brkSlices[0].Color" stroke-width="34" />
+                                    <circle cx="100" cy="100" r="73" fill="none" stroke="@brkSlices[0].Color" stroke-width="34"><title>@brkSlices[0].Label · 100%</title></circle>
                                 }
                                 else
                                 {
@@ -1260,8 +1276,14 @@ else
                                     {
                                         var sweep = (double)(s.Amount / brkTotal) * 100.0;
                                         var d = DonutArc(acc, sweep, 100, 100, 90, 56);
+                                        // Pop the slice out along its own bisector when its row is expanded — a focus cue,
+                                        // tied to selection not to value, so it never distorts the chart.
+                                        var midA = ((acc + sweep / 2) / 100.0) * 2 * Math.PI - Math.PI / 2;
+                                        var popped = _breakExpanded.Contains(s.Key);
+                                        var tx = popped ? Math.Cos(midA) * 8 : 0;
+                                        var ty = popped ? Math.Sin(midA) * 8 : 0;
                                         acc += sweep;
-                                        <path d="@d" fill="@s.Color"></path>
+                                        <path class="brk-slice" d="@d" fill="@s.Color" transform="translate(@tx.ToString("0.##", brkCi) @ty.ToString("0.##", brkCi))"><title>@s.Label · @sweep.ToString("0.#", brkCi)%</title></path>
                                     }
                                 }
                                 <text x="100" y="94" class="brk-donut-tot" text-anchor="middle">@Fmt(brkTotal)</text>
@@ -1272,7 +1294,7 @@ else
                             @foreach (var s in brkSlices)
                             {
                                 var pct = (double)(s.Amount / brkTotal) * 100.0;
-                                var canDrill = _breakDrill is null && s.Key != Guid.Empty;
+                                var canDrill = _breakDrill is null && s.Key != Guid.Empty && s.Key != OtherKey;
                                 var expanded = _breakExpanded.Contains(s.Key);
                                 <li class="brk-item @(expanded ? "open" : "")">
                                     @* Row body: tap to expand the expenses. The pie icon (top level) re-slices the chart. *@
@@ -1283,7 +1305,7 @@ else
                                             {
                                                 @if (!string.IsNullOrEmpty(s.Icon)) { <span class="tag-emoji">@s.Icon</span> }
                                             }
-                                            else if (s.Key != Guid.Empty)
+                                            else if (s.Key != Guid.Empty && s.Key != OtherKey)
                                             {
                                                 <CatIcon Name="@State.CategoryIcon(s.Key)" />
                                             }
@@ -1299,7 +1321,7 @@ else
                                     @if (expanded)
                                     {
                                         var slExps = BreakSliceExpenses(s.Key);
-                                        <ul class="brk-exp-list">
+                                        <ul class="brk-exp-list" style="--accent:@s.Color">
                                             @if (slExps.Count == 0)
                                             {
                                                 <li class="brk-exp-empty">@Loc["No expenses in this window yet."]</li>
@@ -1308,9 +1330,13 @@ else
                                             {
                                                 @foreach (var e in slExps.OrderByDescending(x => x.Date))
                                                 {
+                                                    var hasNote = !string.IsNullOrEmpty(e.Note);
                                                     <li class="brk-exp-row">
-                                                        <span class="brk-exp-date">@e.Date.ToString("dd MMM")</span>
-                                                        <span class="brk-exp-note">@(string.IsNullOrEmpty(e.Note) ? State.CategoryName(e.CategoryId) : e.Note)</span>
+                                                        <span class="brk-exp-date"><span class="brk-exp-d">@e.Date.ToString("dd")</span><span class="brk-exp-m">@e.Date.ToString("MMM")</span></span>
+                                                        <span class="brk-exp-main">
+                                                            <span class="brk-exp-title">@(hasNote ? e.Note : State.CategoryName(e.CategoryId))</span>
+                                                            <span class="brk-exp-sub">@(hasNote ? State.CategoryName(e.CategoryId) : State.FundName(e.FundId))</span>
+                                                        </span>
                                                         <span class="brk-exp-amt">@Fmt(e.Amount)</span>
                                                     </li>
                                                 }
@@ -3982,6 +4008,14 @@ else
     {
         var (from, to) = BreakWindow();
         var expenses = State.ExpensesInRange(from, to);
+        if (key == OtherKey)
+        {
+            // Everything the head slices don't cover (category levels only, matching where OtherKey is emitted).
+            var headKeys = BreakSlices().Where(x => x.Key != OtherKey).Select(x => x.Key).ToHashSet();
+            if (_breakDrill is { } od)
+                return expenses.Where(e => State.RootCategoryId(e.CategoryId) == od && !headKeys.Contains(e.CategoryId)).ToList();
+            return expenses.Where(e => !headKeys.Contains(State.RootCategoryId(e.CategoryId))).ToList();
+        }
         if (_breakDrill is { } drill)
         {
             var inCat = expenses.Where(e => State.RootCategoryId(e.CategoryId) == drill);
@@ -4006,6 +4040,12 @@ else
         "#22b8cf", "#e8590c", "#7cb342", "#ec407a", "#5c6bc0",
     };
     private static string SliceColor(int i) => SlicePalette[i % SlicePalette.Length];
+
+    // Long-tail grouping: past this many slices, keep the biggest (MaxSlices-1) and roll the rest into one grey
+    // "Everything else" slice so the pie doesn't dissolve into unreadable slivers. OtherKey is its sentinel id.
+    private static readonly Guid OtherKey = new("00000000-0000-0000-0000-0000000000fe");
+    private const int MaxSlices = 8;
+    private const string OtherColor = "#9aa5b1";
 
     // Build the slices for the current window + drill state, largest first. Amounts use the absolute expense value.
     private List<BreakSlice> BreakSlices()
@@ -4045,10 +4085,19 @@ else
 
         var ordered = groups.OrderByDescending(kv => kv.Value).ToList();
         var slices = new List<BreakSlice>();
-        for (var i = 0; i < ordered.Count; i++)
+        // Roll a long tail into "Everything else" — but only at category levels (top / drill-by-sub), where each
+        // expense maps to exactly one key so the bucket is well-defined. Skipped for tags (an expense has many).
+        var groupTail = ordered.Count > MaxSlices && !(_breakDrill is not null && _breakByTag);
+        var head = groupTail ? ordered.Take(MaxSlices - 1).ToList() : ordered;
+        for (var i = 0; i < head.Count; i++)
         {
-            var k = ordered[i].Key;
-            slices.Add(new BreakSlice(k, LabelFor(k), IconFor(k), ordered[i].Value, SliceColor(i)));
+            var k = head[i].Key;
+            slices.Add(new BreakSlice(k, LabelFor(k), IconFor(k), head[i].Value, SliceColor(i)));
+        }
+        if (groupTail)
+        {
+            var tailSum = ordered.Skip(MaxSlices - 1).Sum(kv => kv.Value);
+            slices.Add(new BreakSlice(OtherKey, Loc["Everything else"], null, tailSum, OtherColor));
         }
         return slices;
     }

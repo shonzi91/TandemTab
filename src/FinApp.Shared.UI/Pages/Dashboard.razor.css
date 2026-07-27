@@ -731,10 +731,23 @@ html.dark .brk-custom input[type=date] { background: #171d26; border-color: #2c3
 .brk-split { display: flex; gap: 6px; margin-left: auto; }
 html.dark .brk-back { color: #3fe0c5; }
 
+/* Income / spent context for the window (not budgets) + the resolved date range. */
+.brk-range-lbl { display: inline-flex; align-items: center; gap: 5px; color: #8a97a0; font-size: .78rem; font-weight: 600; }
+.brk-range-lbl svg { width: 14px; height: 14px; }
+html.dark .brk-range-lbl { color: #8b96a4; }
+.brk-summary { display: flex; flex-wrap: wrap; gap: 10px; }
+.brk-sum { display: flex; flex-direction: column; gap: 1px; background: #f6f8fa; border: 1px solid #eef1f4; border-radius: 11px; padding: 8px 14px; min-width: 92px; }
+.brk-sum-lbl { font-size: .66rem; font-weight: 700; letter-spacing: .4px; text-transform: uppercase; color: #8a97a0; }
+.brk-sum-val { font-size: 1.02rem; font-weight: 800; }
+html.dark .brk-sum { background: #171d26; border-color: #262f3c; }
+html.dark .brk-sum-lbl { color: #8b96a4; }
+
 .brk-chart { display: flex; justify-content: center; padding: 6px 0; }
 .brk-donut { width: min(240px, 68vw); height: auto; }
 .brk-donut path { stroke: var(--tt-donut-gap, #ffffff); stroke-width: 2; }
 html.dark .brk-donut path { stroke: #0f1420; }
+.brk-slice { transition: transform .2s ease, opacity .12s; }
+.brk-donut path:hover, .brk-donut circle:hover { opacity: .85; }
 .brk-donut-tot { font-size: 22px; font-weight: 800; fill: #1f2430; }
 .brk-donut-sub { font-size: 10px; font-weight: 600; fill: #8a97a0; text-transform: uppercase; letter-spacing: .4px; }
 html.dark .brk-donut-tot { fill: #eceff7; }
@@ -761,15 +774,22 @@ html.dark .brk-pie-btn { color: #7f8b9a; }
 html.dark .brk-pie-btn:hover { background: #17251e; color: #3fe0c5; }
 .brk-item-chev { width: 16px; height: 16px; color: #b6c0cc; flex: none; transition: transform .15s; }
 .brk-item.open .brk-item-chev { transform: rotate(90deg); }
-/* Expand-in-place: the expenses behind a slice. */
-.brk-exp-list { list-style: none; margin: 0; padding: 2px 6px 10px 30px; display: flex; flex-direction: column; gap: 1px; }
-.brk-exp-row { display: flex; align-items: center; gap: 10px; font-size: .82rem; color: #5b6470; padding: 3px 0; }
-.brk-exp-date { flex: none; width: 52px; color: #8a97a0; font-variant-numeric: tabular-nums; }
-.brk-exp-note { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.brk-exp-amt { font-weight: 700; white-space: nowrap; color: #1f2430; }
-.brk-exp-empty { font-size: .82rem; color: #8a97a0; padding: 4px 0; }
-html.dark .brk-exp-row { color: #aeb8c4; }
-html.dark .brk-exp-date { color: #8b96a4; }
+/* Expand-in-place: the expenses behind a slice — a tidy card indented under the row, accented in the slice colour. */
+.brk-exp-list { list-style: none; margin: 2px 6px 12px 30px; padding: 4px 4px 4px 12px; display: flex; flex-direction: column;
+    border-left: 2px solid var(--accent, #dde6e1); }
+.brk-exp-row { display: flex; align-items: center; gap: 11px; padding: 6px 8px; border-radius: 9px; }
+.brk-exp-row:hover { background: #f6faf8; }
+html.dark .brk-exp-row:hover { background: #191e27; }
+.brk-exp-date { flex: none; width: 34px; display: flex; flex-direction: column; align-items: center; line-height: 1.05; }
+.brk-exp-d { font-size: .92rem; font-weight: 800; color: #384250; font-variant-numeric: tabular-nums; }
+.brk-exp-m { font-size: .58rem; font-weight: 700; text-transform: uppercase; letter-spacing: .3px; color: #a0abb6; }
+.brk-exp-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.brk-exp-title { font-size: .85rem; font-weight: 600; color: #313a45; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.brk-exp-sub { font-size: .72rem; color: #97a2ad; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.brk-exp-amt { font-weight: 800; font-size: .9rem; white-space: nowrap; color: #1f2430; }
+.brk-exp-empty { font-size: .82rem; color: #8a97a0; padding: 6px 4px; }
+html.dark .brk-exp-d { color: #d3dae2; }
+html.dark .brk-exp-title { color: #d8dee6; }
 html.dark .brk-exp-amt { color: #eceff7; }
 .brk-empty { display: flex; align-items: center; gap: 8px; justify-content: center; color: #8a97a0; padding: 32px 0; font-size: .9rem; }
 .brk-empty svg { width: 18px; height: 18px; }
