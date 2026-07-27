@@ -1,6 +1,32 @@
 # TandemTab (FinApp) — session handoff
 
-Last updated: 2026-07-26 (Session 57, live on `finapp-00238-7cw`). Read this + [README.md](README.md) + [TRANSFER.md](TRANSFER.md) + [docs/MOBILE.md](docs/MOBILE.md) + [docs/DOMAIN-REMOVAL.md](docs/DOMAIN-REMOVAL.md) + [android/README.md](android/README.md) + recent `git log` to catch up.
+Last updated: 2026-07-27 (Session 58, live on `finapp-00239-nkd`). Read this + [README.md](README.md) + [TRANSFER.md](TRANSFER.md) + [docs/MOBILE.md](docs/MOBILE.md) + [docs/DOMAIN-REMOVAL.md](docs/DOMAIN-REMOVAL.md) + [android/README.md](android/README.md) + recent `git log` to catch up.
+
+## Session 58 (2026-07-27) — **UI-simplification pass: header declutter + expandable sub-categories + shared by-date expense rows; 514 tests green; DEPLOYED `finapp-00239-nkd` (pushed to GitHub too).**
+Web-only, all in `FinApp.Shared.UI`. Iterated live against the seeded throwaway account, browser-verified light + dark, then committed (`91b01a1`), **pushed** (remote was behind — this brought `origin/main` current through S54–58), and deployed. User is driving a "make the app simpler" arc — took direction in several mid-turn messages.
+
+### What changed (all browser-verified light + dark)
+1. **Killed the always-visible header utilities row** (`.hdr-actions`: Import / Categories / Recurring / External accounts). All four buttons were just modal launchers, so relocating them is low-risk. **Split** (user's call via AskUserQuestion): Import + Manage categories → a new **⋯ overflow menu in the Spending tab header**; **Recurring** → the top **Account-actions (⋯ sliders) menu**; **External accounts** → back into the **Wallets tab** as a bank-gated section (`@if (_bankStatus?.Enabled == true)`, with the review-count badge + Manage). ⚠️ **External-accounts-in-Wallets is NOT visually verified** — needs a bank-connected account (sync is allowlisted to 2 emails; [[project_bank_allowlist]]); the code mirrors the old header logic.
+2. **Spending tab reordered**: dropped the "This month's budgets" label; moved the `[Categories | By date]` switch + Add button + ⋯ to a **controls row BELOW the "All expenses" banner** (the banner is the constant summary; the row toggles the content beneath).
+3. **One shared expense-row template** (`expenseRow((Expense, bool ShowDate))`, defined once in the Budgets panel): the **By-date ledger** keeps category titles (`row = e => expenseRow((e,false))`); **category drawers** now show the **date** as the title (`ShowDate:true`, calendar icon + `ddd, dd MMM`) — cleaner on mobile. Replaced the old cramped one-line `.cat-exp` rows.
+4. **Sub-categories now expand like top-level rows** (`subRow` fragment): each sub is a full cat-row (own ring + gradient bar + count badge + chevron) that opens its own drawer of expenses (via `expenseRow`) + actions. Independent expand state in a `HashSet<Guid> _expandedSubs` (several can be open at once inside a parent). `.cat-drawer` left-indent cut 60px→12px so nested rows/expenses don't run off the right on mobile.
+5. **Nesting capped at one level** (simpler): the Edit-category modal only shows the "Sub-categories" add section when the edited category is top-level (`editIsTop = CategoryOptions.Any(c => c.Category.Id == _modalCatId && c.Depth == 0)`). Verified both ways (Food shows it, Groceries doesn't). *UI-only cap — the domain/server still permit deeper nesting; no API guard added.*
+6. **Dark "All expenses" header contrast fix**: the old near-solid `#171d26` read almost the same as the panel (`#161b2c`); now a mint-tinted translucent fill `rgba(63,224,197,.10)` (like the savings tile) so it clearly stands out.
+- Also: new `i-dots` sprite icon ([IconSprite.razor](src/FinApp.Shared.UI/Components/IconSprite.razor)); Bulgarian strings (Manage, bank-connection hints). New helper `State.ExpenseCountInCategory` was from S57. Files: [Dashboard.razor](src/FinApp.Shared.UI/Pages/Dashboard.razor), [Dashboard.razor.css](src/FinApp.Shared.UI/Pages/Dashboard.razor.css), [Localizer.cs](src/FinApp.Shared.UI/Services/Localizer.cs).
+
+### Verify recipe (same as S57, refined)
+Seed via API (curl): re-`POST /auth/login` for a fresh token when the old one expires (~1 day), inject `finapp-auth-token`+`finapp-refresh-token` into `localStorage`, reload. To test sub-categories: `POST /accounts/{id}/categories {name, parentId, icon}` → `PUT budgets/{subId}` → `POST expenses`. Drove with `read_page`/`computer`/`javascript_tool` (checked `getComputedStyle`, modal `.detail-sub-head` presence). **Screenshots worked this session** (pane was displayed). ⚠️ `python` is a Store stub → parse JSON with `node` via **stdin**.
+
+### DEPLOYED — `finapp-00239-nkd` (live, 100%), verified both hosts
+514 green → `91b01a1` → pushed → 3-step deploy (`builds submit` image `finapp:91b01a1` digest `sha256:edf5653e…` 4m42s → `run deploy` → `update-traffic --to-latest`). **Served-bytes proof**: the scoped bundle has `cat-row-sub`×4, `wallet-bank-actions`×4, `spend-menu`×3 on **both** the run URL AND tandemtab.com; root 200 both; `secretKeyRef`=5.
+
+### ⚠️ Carry-over / next
+- **Dead code to strip** (offered; do in a cleanup pass): the old `.cat-exp*` / `.cat-subrow*` / `.budget-bar*` CSS, the `BudgetCircleMenu` + `_budgetMenuId` ring popover (long dead), `SegHue`/`SegHues`, the `.bseg`/`data-seg-cat` hover-link + %-badge JS in [index.html](src/FinApp.App.Web/wwwroot/index.html), and unused loc keys (`overspent`, `{0} expenses logged`).
+- **External-accounts-in-Wallets**: verify with a bank-enabled account.
+- **1-level cap is UI-only** — if you want it enforced, add a server guard in the create-category endpoint (reject a parentId whose own parent is set).
+- **Deletable revisions**: `finapp-00238-7cw` and older (0% traffic).
+- **Friend-feedback still open (S56)**: #2 archive-everywhere + delete-on-archived; #5 tags alongside sub-categories.
+- **Android next**: port Goals / Wallets tabs; user still to confirm session-persistence + Google sign-in on the emulator.
 
 ## Session 57 (2026-07-26) — **Spending-tab budgets header redesign (friend-feedback follow-through); 514 tests green; DEPLOYED `finapp-00238-7cw`.**
 One focused web-UI slice, iterated live against a seeded throwaway account, then shipped. Commit `5524dbf` on `main`.
