@@ -833,6 +833,36 @@ else
                         .OrderByDescending(x => x.Spent)
                         .ToList();
                 }
+                @* View switch + add action + the ⋯ tools — the fixed anchor at the top of the panel. The summary
+                   header and the content below swap per view, so switching to Breakdown (which has no budget header)
+                   never yanks the switch upward. *@
+                <div class="spending-head budget-controls">
+                    <span class="plan-toggle bview-toggle" role="group">
+                        <button type="button" class="chip @(_spendView == SpendView.Categories ? "on" : "")" @onclick="() => _spendView = SpendView.Categories"><Icon Name="chart" /> @Loc["Categories"]</button>
+                        <button type="button" class="chip @(_spendView == SpendView.ByDate ? "on" : "")" @onclick="() => _spendView = SpendView.ByDate"><Icon Name="list" /> @Loc["By date"]</button>
+                        <button type="button" class="chip @(_spendView == SpendView.Breakdown ? "on" : "")" @onclick="() => _spendView = SpendView.Breakdown"><Icon Name="pie" /> @Loc["Breakdown"]</button>
+                    </span>
+                    @if (_spendView == SpendView.Categories)
+                    {
+                        <button class="fund-add" @onclick="OpenAddBudget"><Icon Name="plus" /> @Loc["Add budget"]</button>
+                    }
+                    else if (_spendView == SpendView.ByDate && State.IsPeriodOpen)
+                    {
+                        <button class="fund-add" @onclick="AddExpenseFromHeader"><Icon Name="receipt" /> @Loc["Add expense"]</button>
+                    }
+                    <span class="acct-menu spend-menu">
+                        <button class="link" title="@Loc["More"]" @onclick="() => _spendMenuOpen = !_spendMenuOpen"><Icon Name="dots" /></button>
+                        @if (_spendMenuOpen)
+                        {
+                            <div class="acct-menu-backdrop" @onclick="() => _spendMenuOpen = false"></div>
+                            <div class="acct-menu-pop">
+                                <button @onclick="async () => { _spendMenuOpen = false; await OpenImport(); }"><Icon Name="import" /> @Loc["Import statement"]</button>
+                                <button @onclick="() => { _spendMenuOpen = false; OpenManageCats(); }"><Icon Name="tag" /> @Loc["Manage categories"]</button>
+                                <button @onclick="() => { _spendMenuOpen = false; OpenManageTags(); }"><Icon Name="tag" /> @Loc["Manage tags"]</button>
+                            </div>
+                        }
+                    </span>
+                </div>
                 @if (barScale > 0m && _spendView != SpendView.Breakdown)
                 {
                     var totHasBudget = State.TotalBudgeted.Amount > 0m;
@@ -865,35 +895,6 @@ else
                 {
                     <p class="budget-over-note"><Icon Name="bulb" /> @string.Format(Loc["Your remaining budgets ({0}) are {1} more than you have left ({2}) — budgets are plans, not commitments, so trim one or top up when you can."], Fmt(_bnRemaining), Fmt(overPlanned), Fmt(_bnFree))</p>
                 }
-                @* View switch + add action + the ⋯ tools sit directly above the content they change — the "All expenses"
-                   summary above is the constant; this row just toggles what's beneath it. *@
-                <div class="spending-head budget-controls">
-                    <span class="plan-toggle bview-toggle" role="group">
-                        <button type="button" class="chip @(_spendView == SpendView.Categories ? "on" : "")" @onclick="() => _spendView = SpendView.Categories"><Icon Name="chart" /> @Loc["Categories"]</button>
-                        <button type="button" class="chip @(_spendView == SpendView.ByDate ? "on" : "")" @onclick="() => _spendView = SpendView.ByDate"><Icon Name="list" /> @Loc["By date"]</button>
-                        <button type="button" class="chip @(_spendView == SpendView.Breakdown ? "on" : "")" @onclick="() => _spendView = SpendView.Breakdown"><Icon Name="pie" /> @Loc["Breakdown"]</button>
-                    </span>
-                    @if (_spendView == SpendView.Categories)
-                    {
-                        <button class="fund-add" @onclick="OpenAddBudget"><Icon Name="plus" /> @Loc["Add budget"]</button>
-                    }
-                    else if (_spendView == SpendView.ByDate && State.IsPeriodOpen)
-                    {
-                        <button class="fund-add" @onclick="AddExpenseFromHeader"><Icon Name="receipt" /> @Loc["Add expense"]</button>
-                    }
-                    <span class="acct-menu spend-menu">
-                        <button class="link" title="@Loc["More"]" @onclick="() => _spendMenuOpen = !_spendMenuOpen"><Icon Name="dots" /></button>
-                        @if (_spendMenuOpen)
-                        {
-                            <div class="acct-menu-backdrop" @onclick="() => _spendMenuOpen = false"></div>
-                            <div class="acct-menu-pop">
-                                <button @onclick="async () => { _spendMenuOpen = false; await OpenImport(); }"><Icon Name="import" /> @Loc["Import statement"]</button>
-                                <button @onclick="() => { _spendMenuOpen = false; OpenManageCats(); }"><Icon Name="tag" /> @Loc["Manage categories"]</button>
-                                <button @onclick="() => { _spendMenuOpen = false; OpenManageTags(); }"><Icon Name="tag" /> @Loc["Manage tags"]</button>
-                            </div>
-                        }
-                    </span>
-                </div>
                 @{
                     var filterTags = State.ActiveTags;
                 }
