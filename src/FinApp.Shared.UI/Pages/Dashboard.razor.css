@@ -893,7 +893,8 @@ html.dark .ms-bar-desc { color: #8a94a6; }
 /* Saved-summary header — one compact tile (saved this period + its savings rate) with Add goal on the same row.
    Total saved isn't repeated here; it's already in the account balance bar up top. */
 .goal-summary { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
-.goal-stat { background: #f3fbf7; border: 1px solid #e2efe8; border-radius: 14px; padding: 8px 14px; display: flex; flex-direction: column; gap: 1px; }
+/* One row: "SAVED THIS PERIOD  €X  (Y% of income)" — items baseline-aligned, wrapping only if the tile is too narrow. */
+.goal-stat { background: #f3fbf7; border: 1px solid #e2efe8; border-radius: 14px; padding: 8px 14px; display: flex; flex-flow: row wrap; align-items: baseline; gap: 3px 8px; }
 html.dark .goal-stat { background: #14231d; border-color: #24463a; }
 .goal-summary .fund-add { margin-left: auto; }
 .goal-stat-k { font-size: .63rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: #8a97a0; }
@@ -901,7 +902,7 @@ html.dark .goal-stat { background: #14231d; border-color: #24463a; }
 html.dark .goal-stat-v { color: #3fe0c5; }
 .goal-stat-v-period { color: #16202b; }
 html.dark .goal-stat-v-period { color: #e8eef0; }
-.goal-stat-pct { font-size: .7rem; font-weight: 600; color: #6b7d72; margin-top: 1px; }
+.goal-stat-pct { font-size: .7rem; font-weight: 600; color: #6b7d72; }
 html.dark .goal-stat-pct { color: #9fb0a6; }
 .goal-done-badge { margin-left: 5px; }
 /* The ⋯ menu is absolutely positioned; let it escape the row's overflow:hidden while it's open. */
@@ -940,7 +941,8 @@ html.dark .payoff-sim-foot { color: #a9b6ad; }
 html.dark .payoff-date { color: #e8eef0; }
 /* When a debt row is open, its progress bar previews the payoff simulation — animate the fill as the slider moves. */
 .cbar-grad.cbar-sim { transition: clip-path .45s cubic-bezier(.4, 0, .2, 1); }
-/* Drawer ⋯ (secondary actions) menu — reuses .row-menu; keep it right-aligned and anchored to the ⋯ button. */
+/* Row ⋯ (secondary actions) menu — reuses .row-menu; right-aligned under the ⋯ button. On phones the media rule
+   turns it into a bottom sheet regardless. */
 .goal-more { position: relative; display: inline-flex; }
 .goal-more-menu { right: 0; left: auto; top: calc(100% + 2px); }
 
@@ -1038,7 +1040,9 @@ html.dark .detail-subcat-sum { color: #7c8a94; }
     background: #fef2f2; border: 1px solid #fecaca; color: #991b1b;
     border-radius: 10px; padding: 9px 12px; font-size: .85rem;
 }
-.modal label { display: flex; flex-direction: column; gap: 4px; font-size: .82rem; color: #6b7280; }
+/* .modal-field is a plain <div> used where a field's control isn't a native input (so wrapping it in a <label>
+   would forward stray clicks to the "+" button inside the label) — same column layout as .modal label. */
+.modal label, .modal .modal-field { display: flex; flex-direction: column; gap: 4px; font-size: .82rem; color: #6b7280; }
 .modal label input[type=text], .modal label input[type=number], .modal label input[type=date], .modal label select {
     padding: 9px 10px; border: 1px solid #dde6e1; border-radius: 10px; font-size: .95rem; background: #ffffff;
 }

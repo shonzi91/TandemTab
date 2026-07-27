@@ -1204,7 +1204,7 @@ else
                 // the bar shows how far along it is, and tapping opens a drawer with the detail + every action. Debt rows
                 // get an inline payoff simulator — drag "extra /mo" and the timeline animates to show the earlier payoff.
                 RenderFragment<(SavingCategory Bucket, Money Total)> goalRow = ctx =>
-                @<div class="cat-row goal-row@(_expandedGoalId == ctx.Bucket.Id ? (_goalMoreOpen ? " open goal-more-open" : " open") : "")">
+                @<div class="cat-row goal-row@((_expandedGoalId == ctx.Bucket.Id ? " open" : "") + (_goalMoreId == ctx.Bucket.Id ? " goal-more-open" : ""))">
                     @{
                         var bucketId = ctx.Bucket.Id;
                         var isDebt = ctx.Bucket.IsDebt;
@@ -1264,32 +1264,25 @@ else
                                 <span class="cbar-track"><span class="cbar-grad @((hasBar ? "cbar-good" : "cbar-flat") + (debtSimActive ? " cbar-sim" : ""))" style="--pct:@barShown.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)%"></span></span>
                             </span>
                         </button>
-                        @* Actions on the right of the row (always visible): for an expenses fund, "add expense" logs a
-                           spend from the fund; Add-to-savings + Edit are direct; everything else lives under the ⋯. *@
+                        @* Actions on the right of the row: Add-to-savings + Edit are direct; everything else (including
+                           Spend savings) lives under the ⋯. The ⋯ menu tracks a per-bucket id so it opens for one row only. *@
                         <div class="cat-row-acts">
-                            @if (isExpenses && State.IsPeriodOpen && !done)
-                            {
-                                <button class="row-ico" title="@Loc["Add expense"]" @onclick="() => OpenSpendSaving(bucketId)"><Icon Name="receipt" /></button>
-                            }
                             @if (State.IsPeriodOpen && !done)
                             {
                                 <button class="row-ico" title="@Loc["Add to savings"]" @onclick="() => OpenAddSaving(bucketId)"><Icon Name="coins" /></button>
                             }
                             <button class="row-ico" title="@Loc["Edit"]" @onclick="() => OpenEditBucket(bucketId)"><Icon Name="pencil" /></button>
                             <span class="goal-more">
-                                <button class="row-ico" title="@Loc["More actions"]" @onclick="() => _goalMoreOpen = !_goalMoreOpen"><Icon Name="dots" /></button>
-                                @if (_goalMoreOpen)
+                                <button class="row-ico" title="@Loc["More actions"]" @onclick="() => _goalMoreId = _goalMoreId == bucketId ? Guid.Empty : bucketId"><Icon Name="dots" /></button>
+                                @if (_goalMoreId == bucketId)
                                 {
-                                    <div class="row-menu-backdrop" @onclick="() => _goalMoreOpen = false"></div>
+                                    <div class="row-menu-backdrop" @onclick="() => _goalMoreId = Guid.Empty"></div>
                                     <div class="row-menu goal-more-menu">
                                         @if (State.IsPeriodOpen && !done)
                                         {
                                             <button @onclick="() => GoalMore(() => OpenDisburseSaving(bucketId))"><Icon Name="target" /> @(isDebt ? Loc["Make a payment"] : isInvestment ? Loc["Withdraw"] : Loc["Apply to a goal"])</button>
                                             <button @onclick="() => GoalMore(() => OpenBudgetSaving(bucketId))"><Icon Name="arrow-right" /> @Loc["Budget savings"]</button>
-                                            @if (!isExpenses)
-                                            {
-                                                <button @onclick="() => GoalMore(() => OpenSpendSaving(bucketId))"><Icon Name="note" /> @Loc["Spend savings"]</button>
-                                            }
+                                            <button @onclick="() => GoalMore(() => OpenSpendSaving(bucketId))"><Icon Name="note" /> @Loc["Spend savings"]</button>
                                         }
                                         <button @onclick="() => GoalMore(() => { _ = ArchiveBucket(bucketId); })"><Icon Name="archive" /> @Loc["Archive"]</button>
                                         <button class="danger" @onclick="() => GoalMore(() => OpenDeleteBucket(bucketId))"><Icon Name="trash" /> @Loc["Remove"]</button>
@@ -1481,7 +1474,7 @@ else
                     <div class="goal-stat">
                         <span class="goal-stat-k">@Loc["Saved this period"]</span>
                         <span class="goal-stat-v goal-stat-v-period">@Fmt(State.SavingsThisPeriod)</span>
-                        @if (State.PeriodSavingsRate is { } prate && prate > 0m) { <span class="goal-stat-pct">@(Math.Round(prate * 100m).ToString("0", System.Globalization.CultureInfo.InvariantCulture))% @Loc["of income"]</span> }
+                        @if (State.PeriodSavingsRate is { } prate && prate > 0m) { <span class="goal-stat-pct">(@(Math.Round(prate * 100m).ToString("0", System.Globalization.CultureInfo.InvariantCulture))% @Loc["of income"])</span> }
                     </div>
                     <button class="fund-add" @onclick="AddGoalForFilter"><Icon Name="plus" /> @Loc["Add goal"]</button>
                 </div>
@@ -1686,8 +1679,8 @@ else
                     }
                     else
                     {
-                        <label><span class="lbl-row">@Loc["Category"] <button type="button" class="lbl-add" title="@Loc["Add category"]" @onclick="BudgetAddCategory">+</button></span>
-                            <select @bind="_budgetCatId">
+                        <label for="addbudget-cat"><span class="lbl-row">@Loc["Category"] <button type="button" class="lbl-add" title="@Loc["Add category"]" @onclick="BudgetAddCategory">+</button></span>
+                            <select id="addbudget-cat" @bind="_budgetCatId">
                                 @foreach (var (cat, depth) in withoutBudget)
                                 {
                                     <option value="@cat.Id">@CatOption(cat.Id, cat.Name, depth)</option>
@@ -2044,17 +2037,17 @@ else
                     }
                     @* No "Recent" chips here: the most-used categories are already reachable from the Home
                        Add-expense hover menu ("Quick add to"), which opens this modal pre-selected. *@
-                    <label><span class="lbl-row">@Loc["Category"] <button type="button" class="lbl-add" title="@Loc["Add category"]" @onclick="ExpenseAddCategory">+</button></span>
+                    <div class="modal-field"><span class="lbl-row">@Loc["Category"] <button type="button" class="lbl-add" title="@Loc["Add category"]" @onclick="ExpenseAddCategory">+</button></span>
                         <CategoryPicker Value="_categoryId" ValueChanged="OnExpenseCategoryPicked" Options="State.CategoryOptions" />
-                    </label>
+                    </div>
                     <label>@Loc["Amount"] <input type="number" step="0.01" min="0" @bind="_amount" @bind:event="oninput" /></label>
                     @if (_amount < 0)
                     {
                         <small class="hint warn-text">@Loc["Amount can't be negative — enter what you spent."]</small>
                     }
                     <label>@Loc["Date"] <input type="date" @bind="_expenseDate" min="@State.Period.From.ToString("yyyy-MM-dd")" max="@State.Period.To.ToString("yyyy-MM-dd")" /></label>
-                    <label><span class="lbl-row">@Loc["Fund"] <button type="button" class="lbl-add" title="@Loc["New fund"]" @onclick="ExpenseAddFund">+</button></span>
-                        <select @bind="_fundId">
+                    <label for="addexp-fund"><span class="lbl-row">@Loc["Fund"] <button type="button" class="lbl-add" title="@Loc["New fund"]" @onclick="ExpenseAddFund">+</button></span>
+                        <select id="addexp-fund" @bind="_fundId">
                             @foreach (var f in State.SelectableFunds)
                             {
                                 <option value="@f.Id">@f.Name</option>
@@ -2430,16 +2423,16 @@ else
 
                 case Modal.Deposit:
                     <h3>@Loc["Add income"]</h3>
-                    <label><span class="lbl-row">@Loc["Category"] <button type="button" class="lbl-add" title="@Loc["New contribution category"]" @onclick="DepositAddCategory">+</button></span>
-                        <select @bind="_depCategoryId">
+                    <label for="dep-cat"><span class="lbl-row">@Loc["Category"] <button type="button" class="lbl-add" title="@Loc["New contribution category"]" @onclick="DepositAddCategory">+</button></span>
+                        <select id="dep-cat" @bind="_depCategoryId">
                             @foreach (var cc in State.ContributionCategories)
                             {
                                 <option value="@cc.Id">@cc.Name</option>
                             }
                         </select>
                     </label>
-                    <label><span class="lbl-row">@Loc["Fund"] <button type="button" class="lbl-add" title="@Loc["New fund"]" @onclick="DepositAddFund">+</button></span>
-                        <select @bind="_depFundId">
+                    <label for="dep-fund"><span class="lbl-row">@Loc["Fund"] <button type="button" class="lbl-add" title="@Loc["New fund"]" @onclick="DepositAddFund">+</button></span>
+                        <select id="dep-fund" @bind="_depFundId">
                             @foreach (var f in State.SelectableFunds)
                             {
                                 <option value="@f.Id">@f.Name</option>
@@ -3637,15 +3630,16 @@ else
     private const int CatDrawerExpenseCap = 5;
 
     // Goals list: which goal/debt/investment row's drawer is open (accordion, one at a time). The debt drawer's inline
-    // payoff simulator drives _goalExtra ("extra /mo"); _goalMoreOpen is the drawer's ⋯ (secondary actions) menu.
+    // payoff simulator drives _goalExtra ("extra /mo"); _goalMoreId is which row's ⋯ (secondary actions) menu is open —
+    // a per-bucket id, not a shared bool, so opening one row's menu doesn't pop every row's menu at once.
     private Guid _expandedGoalId;
     private decimal _goalExtra;
-    private bool _goalMoreOpen;
+    private Guid _goalMoreId;
     private void ToggleGoalRow(Guid id)
     {
         var opening = _expandedGoalId != id;
         _expandedGoalId = opening ? id : Guid.Empty;
-        _goalMoreOpen = false;
+        _goalMoreId = Guid.Empty;
         // A debt row opens with the payoff slider preset to the member's recent saving pace (rounded to the slider
         // step, clamped to its range), so the projection immediately shows what their current habit achieves.
         _goalExtra = 0m;
@@ -3656,7 +3650,7 @@ else
             _goalExtra = Math.Clamp(Math.Round(pace / 10m) * 10m, 0m, max);
         }
     }
-    private void GoalMore(Action a) { _goalMoreOpen = false; a(); }
+    private void GoalMore(Action a) { _goalMoreId = Guid.Empty; a(); }
 
     private string CadenceLabel(FinApp.Domain.Savings.CostCadence c) => c switch
     {
