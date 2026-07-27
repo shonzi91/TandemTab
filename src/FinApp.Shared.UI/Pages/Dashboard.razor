@@ -871,7 +871,7 @@ else
                     <span class="plan-toggle bview-toggle" role="group">
                         <button type="button" class="chip @(_spendView == SpendView.Categories ? "on" : "")" @onclick="() => _spendView = SpendView.Categories"><Icon Name="chart" /> @Loc["Categories"]</button>
                         <button type="button" class="chip @(_spendView == SpendView.ByDate ? "on" : "")" @onclick="() => _spendView = SpendView.ByDate"><Icon Name="list" /> @Loc["By date"]</button>
-                        <button type="button" class="chip @(_spendView == SpendView.Breakdown ? "on" : "")" @onclick="() => _spendView = SpendView.Breakdown"><Icon Name="chart" /> @Loc["Breakdown"]</button>
+                        <button type="button" class="chip @(_spendView == SpendView.Breakdown ? "on" : "")" @onclick="() => _spendView = SpendView.Breakdown"><Icon Name="pie" /> @Loc["Breakdown"]</button>
                     </span>
                     @if (_spendView == SpendView.Categories)
                     {
@@ -1242,7 +1242,7 @@ else
                     }
                     @if (brkSlices.Count == 0 || brkTotal <= 0m)
                     {
-                        <p class="brk-empty"><Icon Name="chart" /> @Loc["No expenses in this window yet."]</p>
+                        <p class="brk-empty"><Icon Name="pie" /> @Loc["No expenses in this window yet."]</p>
                     }
                     else
                     {
@@ -1272,21 +1272,50 @@ else
                             {
                                 var pct = (double)(s.Amount / brkTotal) * 100.0;
                                 var canDrill = _breakDrill is null && s.Key != Guid.Empty;
-                                <li class="brk-item @(canDrill ? "brk-item-drill" : "")" @onclick="() => { if (canDrill) DrillBreak(s.Key); }">
-                                    <span class="brk-sw" style="background:@s.Color"></span>
-                                    <span class="brk-item-name">
-                                        @if (_breakDrill is not null && _breakByTag)
+                                var expanded = _breakExpanded.Contains(s.Key);
+                                <li class="brk-item @(expanded ? "open" : "")">
+                                    @* Row body: tap to expand the expenses. The pie icon (top level) re-slices the chart. *@
+                                    <div class="brk-item-head" @onclick="() => ToggleBreakExpand(s.Key)">
+                                        <span class="brk-sw" style="background:@s.Color"></span>
+                                        <span class="brk-item-name">
+                                            @if (_breakDrill is not null && _breakByTag)
+                                            {
+                                                @if (!string.IsNullOrEmpty(s.Icon)) { <span class="tag-emoji">@s.Icon</span> }
+                                            }
+                                            else if (s.Key != Guid.Empty)
+                                            {
+                                                <CatIcon Name="@State.CategoryIcon(s.Key)" />
+                                            }
+                                            <span class="brk-item-lbl">@s.Label</span>
+                                        </span>
+                                        <span class="brk-item-amt">@Fmt(s.Amount)<span class="brk-item-pct">@pct.ToString("0.#", brkCi)%</span></span>
+                                        @if (canDrill)
                                         {
-                                            @if (!string.IsNullOrEmpty(s.Icon)) { <span class="tag-emoji">@s.Icon</span> }
+                                            <button class="brk-pie-btn" title="@Loc["Re-slice the chart"]" @onclick:stopPropagation="true" @onclick="() => DrillBreak(s.Key)"><Icon Name="pie" /></button>
                                         }
-                                        else if (s.Key != Guid.Empty)
-                                        {
-                                            <CatIcon Name="@State.CategoryIcon(s.Key)" />
-                                        }
-                                        <span class="brk-item-lbl">@s.Label</span>
-                                    </span>
-                                    <span class="brk-item-amt">@Fmt(s.Amount)<span class="brk-item-pct">@pct.ToString("0.#", brkCi)%</span></span>
-                                    @if (canDrill) { <Icon Name="chevron" Class="brk-item-chev" /> }
+                                        <Icon Name="chevron" Class="brk-item-chev" />
+                                    </div>
+                                    @if (expanded)
+                                    {
+                                        var slExps = BreakSliceExpenses(s.Key);
+                                        <ul class="brk-exp-list">
+                                            @if (slExps.Count == 0)
+                                            {
+                                                <li class="brk-exp-empty">@Loc["No expenses in this window yet."]</li>
+                                            }
+                                            else
+                                            {
+                                                @foreach (var e in slExps.OrderByDescending(x => x.Date))
+                                                {
+                                                    <li class="brk-exp-row">
+                                                        <span class="brk-exp-date">@e.Date.ToString("dd MMM")</span>
+                                                        <span class="brk-exp-note">@(string.IsNullOrEmpty(e.Note) ? State.CategoryName(e.CategoryId) : e.Note)</span>
+                                                        <span class="brk-exp-amt">@Fmt(e.Amount)</span>
+                                                    </li>
+                                                }
+                                            }
+                                        </ul>
+                                    }
                                 </li>
                             }
                         </ul>
@@ -3937,21 +3966,45 @@ else
         };
     }
 
-    private void SetBreakRange(BreakRange r) { _breakRange = r; _breakDrill = null; }
-    // Drill into a category: split by its sub-categories by default, but start on tags when it has none.
-    private void DrillBreak(Guid catId) { _breakDrill = catId; _breakByTag = !State.ChildrenOf(catId).Any(); }
-    private void ClearBreakDrill() { _breakDrill = null; }
+    private void SetBreakRange(BreakRange r) { _breakRange = r; _breakDrill = null; _breakExpanded.Clear(); }
+    // Drill into a category (the pie re-slices): split by its sub-categories by default, but start on tags when it
+    // has none. Triggered by the per-row pie icon, NOT the row body (that expands the expenses instead).
+    private void DrillBreak(Guid catId) { _breakDrill = catId; _breakByTag = !State.ChildrenOf(catId).Any(); _breakExpanded.Clear(); }
+    private void ClearBreakDrill() { _breakDrill = null; _breakExpanded.Clear(); }
+
+    // A tapped row expands in place to list its own expenses (several can be open at once).
+    private readonly HashSet<Guid> _breakExpanded = new();
+    private void ToggleBreakExpand(Guid key) { if (!_breakExpanded.Remove(key)) _breakExpanded.Add(key); }
+
+    // The expenses behind one slice, for the expand-in-place list — honouring the window + current drill split.
+    private IReadOnlyList<FinApp.Domain.Budgeting.Expense> BreakSliceExpenses(Guid key)
+    {
+        var (from, to) = BreakWindow();
+        var expenses = State.ExpensesInRange(from, to);
+        if (_breakDrill is { } drill)
+        {
+            var inCat = expenses.Where(e => State.RootCategoryId(e.CategoryId) == drill);
+            if (_breakByTag)
+                return key == Guid.Empty
+                    ? inCat.Where(e => State.ExpenseTags(e).Count == 0).ToList()
+                    : inCat.Where(e => e.TagIds.Contains(key)).ToList();
+            return inCat.Where(e => e.CategoryId == key).ToList();
+        }
+        return expenses.Where(e => State.RootCategoryId(e.CategoryId) == key).ToList();
+    }
 
     // A single pie/list entry: a stable key (category or tag id, or Guid.Empty for the "untagged/other" bucket),
     // its label + icon, the summed amount, and the slice colour.
     private record BreakSlice(Guid Key, string Label, string? Icon, decimal Amount, string Color);
 
-    // Distinct, evenly-spread hues so many categories stay tellable apart (the fund palette is only 6 colours).
-    private static string SliceHue(int i, int n)
+    // A curated categorical palette — mint/coral/amber/blue/violet first (on-brand), then five more distinct hues.
+    // Reads as one system with the app rather than a raw HSL rainbow; cycles if a window has more than ten slices.
+    private static readonly string[] SlicePalette =
     {
-        var hue = (int)(i * 360.0 / Math.Max(n, 1));
-        return $"hsl({hue}, 62%, 52%)";
-    }
+        "#13a06e", "#ff7a66", "#f5a623", "#5b8def", "#a06bd6",
+        "#22b8cf", "#e8590c", "#7cb342", "#ec407a", "#5c6bc0",
+    };
+    private static string SliceColor(int i) => SlicePalette[i % SlicePalette.Length];
 
     // Build the slices for the current window + drill state, largest first. Amounts use the absolute expense value.
     private List<BreakSlice> BreakSlices()
@@ -3994,7 +4047,7 @@ else
         for (var i = 0; i < ordered.Count; i++)
         {
             var k = ordered[i].Key;
-            slices.Add(new BreakSlice(k, LabelFor(k), IconFor(k), ordered[i].Value, SliceHue(i, ordered.Count)));
+            slices.Add(new BreakSlice(k, LabelFor(k), IconFor(k), ordered[i].Value, SliceColor(i)));
         }
         return slices;
     }

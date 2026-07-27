@@ -481,6 +481,7 @@ public sealed class Localizer(IJSRuntime js)
         ["No expenses in this window yet."] = "Още няма разходи в този период.",
         ["{0} categories"] = "{0} категории",
         ["{0} tags"] = "{0} етикета",
+        ["Re-slice the chart"] = "Пренареди диаграмата",
         ["Untagged"] = "Без етикет",
         ["Rename tag"] = "Преименувай етикет",
         ["Flat labels you attach to expenses alongside categories — to track things that cut across them (a trip, work, reimbursable)."] = "Плоски етикети, които слагаш на разходите, освен категориите — за неща, които ги пресичат (пътуване, работа, за възстановяване).",
