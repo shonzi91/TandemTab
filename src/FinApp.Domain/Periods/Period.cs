@@ -368,7 +368,7 @@ public sealed class Period : Entity
         var old = _expenses.FirstOrDefault(e => e.Id == expenseId)
             ?? throw new InvalidOperationException("Expense not found in this period.");
         RemoveExpense(expenseId);
-        return old.SourceSavingCategoryId is { } savingId
+        var edited = old.SourceSavingCategoryId is { } savingId
             ? ConvertSavingToExpense(savingId, categoryId, amount, date, old.MemberId, fundId, note)
             : AddExpense(new Expense(categoryId, amount, date, old.MemberId, fundId, note,
                 onBehalfOfOtherAccount: old.OnBehalfOfOtherAccount,
@@ -376,6 +376,8 @@ public sealed class Period : Entity
                 settledToAccountId: old.SettledToAccountId,
                 settledFromAccountId: old.SettledFromAccountId,
                 settledAmount: old.SettledAmount));
+        edited.SetTags(old.TagIds);   // tags survive an edit (edit mints a new id, so re-apply them)
+        return edited;
     }
 
     /// <summary>

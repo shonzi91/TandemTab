@@ -888,6 +888,7 @@ else
                             <div class="acct-menu-pop">
                                 <button @onclick="async () => { _spendMenuOpen = false; await OpenImport(); }"><Icon Name="import" /> @Loc["Import statement"]</button>
                                 <button @onclick="() => { _spendMenuOpen = false; OpenManageCats(); }"><Icon Name="tag" /> @Loc["Manage categories"]</button>
+                                <button @onclick="() => { _spendMenuOpen = false; OpenManageTags(); }"><Icon Name="tag" /> @Loc["Manage tags"]</button>
                             </div>
                         }
                     </span>
@@ -923,6 +924,10 @@ else
                                     <span class="settle-tag" title="@Loc["Settled from another account"]">↩ @Loc["from"] @State.AccountName(ctx.E.SettledFromAccountId!.Value)</span>
                                 }
                                 @if (ctx.E.AutoFiled) { <span class="row-note" title="@AutoFiledTitle(ctx.E)"><Icon Name="bank" Class="ic-s" /></span> }
+                                @foreach (var t in State.ExpenseTags(ctx.E))
+                                {
+                                    <span class="exp-tag">@if (!string.IsNullOrEmpty(t.Icon)) { <span class="tag-emoji">@t.Icon</span> }@t.Name</span>
+                                }
                             </span>
                         </span>
                         <span class="amt">@Fmt(ctx.E.Amount)</span>
@@ -1396,10 +1401,9 @@ else
                             else
                             {
                                 <div class="goal-facts">
-                                    @* Expenses fund: the amount saved is already the row headline + bar, so don't repeat it —
+                                    @* The saved/goal figure lives on the row headline + progress bar, so don't repeat it here —
                                        lead with the monthly set-aside and what's still to find. *@
-                                    @if (g is not null) { <span><strong>@Fmt(total)</strong> / @Fmt(g.Goal!.Value) (@((int)Math.Round(goalPct))%)</span> }
-                                    else if (!isExpenses) { <span><strong>@Fmt(total)</strong> @Loc["saved"]</span> }
+                                    @if (g is null && !isExpenses) { <span><strong>@Fmt(total)</strong> @Loc["saved"]</span> }
                                     @if (State.BucketMonthlySetAside(bucketId) is { } setAside and > 0m) { <span>🗓️ <strong>@Fmt(setAside)</strong>/@Loc["mo"] @Loc["to stay covered"]</span> }
                                     @if (isExpenses && State.BucketTargetShortfall(bucketId) is { } sf) { <span class="cost-short">@string.Format(Loc["{0} still to find"], Fmt(new Money(sf, State.Currency)))</span> }
                                 </div>
@@ -1420,7 +1424,6 @@ else
                                                 <button type="button" class="goal-cost-del" title="@Loc["Remove"]" @onclick="() => DeleteCost(bucketId, idx)"><Icon Name="trash" /></button>
                                             </div>
                                         }
-                                        <button type="button" class="goal-cost-add" @onclick="() => OpenAddCost(bucketId)"><Icon Name="plus" /> @Loc["Add a cost"]</button>
                                     </div>
                                 }
                                 else if (g is not null && !done)
@@ -1590,6 +1593,32 @@ else
             {
                 <div class="modal-error">@_modalError</div>
             }
+            @{
+                // Shared tag selector for the add/edit-expense modals: toggle chips for existing tags + an inline
+                // "new tag" input that creates and auto-selects. Tags are flat cross-cutting labels (sit alongside
+                // sub-categories). Selection lives in _fTagIds; the save handlers pass it to State.Add/EditExpense.
+                RenderFragment tagPicker =
+                @<div class="modal-field">
+                    <span class="lbl-row">@Loc["Tags (optional)"]</span>
+                    @if (State.ActiveTags.Count > 0)
+                    {
+                        <div class="tag-pick">
+                            @foreach (var t in State.ActiveTags)
+                            {
+                                var tid = t.Id;
+                                var on = _fTagIds.Contains(tid);
+                                <button type="button" class="tag-chip @(on ? "tag-chip-on" : "")" @onclick="() => ToggleTagSel(tid)">
+                                    @if (!string.IsNullOrEmpty(t.Icon)) { <span class="tag-emoji">@t.Icon</span> }@t.Name
+                                </button>
+                            }
+                        </div>
+                    }
+                    <div class="tag-new-row">
+                        <input type="text" class="tag-new-in" placeholder="@Loc["New tag…"]" maxlength="30" @bind="_newTagName" @bind:event="oninput" @onkeydown="TagNewKey" />
+                        <button type="button" class="lbl-add" title="@Loc["Add tag"]" disabled="@string.IsNullOrWhiteSpace(_newTagName)" @onclick="AddTagFromModal">+</button>
+                    </div>
+                </div>;
+            }
             @switch (_modal)
             {
                 case Modal.PickAccount:
@@ -1756,16 +1785,29 @@ else
 
                 case Modal.DeleteCat:
                     <h3>@Loc["Delete"] @State.CategoryName(_modalCatId)?</h3>
+                    var catArchived = State.CategoryIsArchived(_modalCatId);
                     @if (State.CategoryRemovalBlocker(_modalCatId) is {} blocker)
                     {
-                        <p class="hint">@Loc["Can’t delete —"] @blocker. @Loc["Remove those first."]</p>
-                        <div class="modal-actions"><button class="ghost" @onclick="Back">@Loc["Close"]</button></div>
+                        @if (catArchived)
+                        {
+                            <p class="hint">@Loc["Can’t delete —"] @blocker. @Loc["Remove those first."] @Loc["It stays archived and out of the way."]</p>
+                            <div class="modal-actions"><button class="ghost" @onclick="Back">@Loc["Close"]</button></div>
+                        }
+                        else
+                        {
+                            <p class="hint">@Loc["Can’t delete —"] @blocker. @Loc["Archive it instead to hide it while keeping its history."]</p>
+                            <div class="modal-actions">
+                                <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
+                                <button @onclick="ArchiveCat"><Icon Name="archive" /> @Loc["Archive"]</button>
+                            </div>
+                        }
                     }
                     else
                     {
-                        <p class="hint">@Loc["This removes the category permanently."]</p>
+                        <p class="hint">@Loc["This removes the category permanently."] @if (!catArchived) { @Loc["Prefer to keep its history? Archive it instead."] }</p>
                         <div class="modal-actions">
                             <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
+                            @if (!catArchived) { <button @onclick="ArchiveCat"><Icon Name="archive" /> @Loc["Archive"]</button> }
                             <button class="danger-btn" @onclick="ConfirmDelete">@Loc["Delete"]</button>
                         </div>
                     }
@@ -1918,7 +1960,10 @@ else
                                 var fid = f.Id;
                                 <li class="row-menu-host">
                                     <span class="row-main"><CatIcon Name="@State.FundIcon(fid)" /> @f.Name</span>
-                                    <span class="row-actions"><button class="exp-edit" title="@Loc["Restore"]" @onclick="() => State.RestoreFund(fid)"><Icon Name="rotate" /></button></span>
+                                    <span class="row-actions">
+                                        <button class="exp-edit" title="@Loc["Restore"]" @onclick="() => State.RestoreFund(fid)"><Icon Name="rotate" /></button>
+                                        <button class="exp-edit" title="@Loc["Remove"]" @onclick="() => OpenDeleteFund(fid)"><Icon Name="trash" /></button>
+                                    </span>
                                 </li>
                             }
                         </ul>
@@ -1931,7 +1976,10 @@ else
                             {
                                 <li class="row-menu-host">
                                     <span class="row-main"><CatIcon Name="@State.CategoryIcon(c.Id)" /> @c.Name</span>
-                                    <span class="row-actions"><button class="exp-edit" title="@Loc["Restore"]" @onclick="() => State.RestoreCategory(c.Id)"><Icon Name="rotate" /></button></span>
+                                    <span class="row-actions">
+                                        <button class="exp-edit" title="@Loc["Restore"]" @onclick="() => State.RestoreCategory(c.Id)"><Icon Name="rotate" /></button>
+                                        <button class="exp-edit" title="@Loc["Remove"]" @onclick="() => OpenDelete(c.Id)"><Icon Name="trash" /></button>
+                                    </span>
                                 </li>
                             }
                         </ul>
@@ -2049,6 +2097,7 @@ else
                         </select>
                     </label>
                     <label>@Loc["Note (optional)"] <input type="text" @bind="_note" /></label>
+                    @tagPicker
                     <div class="modal-actions">
                         <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
                         <button @onclick="AddExpenseFromModal" disabled="@(_amount <= 0)">@Loc["Add"]</button>
@@ -2143,6 +2192,7 @@ else
                             <p class="hint"><Icon Name="bank" /> @Loc["Filed automatically from your bank."]</p>
                         }
                     }
+                    @tagPicker
                     @if (State.FindExpense(_editExpenseId) is { IsSettlementDestination: false } && State.TransferableAccounts.Any())
                     {
                         <button type="button" class="link settle-link" @onclick="() => OpenSettleExpense(_editExpenseId)"><Icon Name="users" /> @(State.FindExpense(_editExpenseId)!.IsSettlementSource ? Loc["Edit settlement onto another account"] : Loc["Settle part onto another account"])</button>
@@ -2534,6 +2584,52 @@ else
                             </li>
                         }
                     </ul>
+                    break;
+
+                case Modal.ManageTags:
+                    <div class="modal-head">
+                        <h3><Icon Name="tag" /> @Loc["Tags"]</h3>
+                        <span class="modal-head-actions">
+                            <button class="exp-edit" title="@Loc["Close"]" @onclick="Back"><Icon Name="x" /></button>
+                        </span>
+                    </div>
+                    <p class="hint">@Loc["Flat labels you attach to expenses alongside categories — to track things that cut across them (a trip, work, reimbursable)."]</p>
+                    <div class="tag-new-row">
+                        <input type="text" class="tag-new-in grow" placeholder="@Loc["New tag…"]" maxlength="30" @bind="_manageTagName" @bind:event="oninput" @onkeydown="ManageTagKey" />
+                        <button class="fund-add" disabled="@string.IsNullOrWhiteSpace(_manageTagName)" @onclick="AddTagFromManage"><Icon Name="plus" /> @Loc["Add tag"]</button>
+                    </div>
+                    var allTags = State.AllTags;
+                    @if (allTags.Count == 0)
+                    {
+                        <p class="hint">@Loc["No tags yet — add one above, or from the tag box when logging an expense."]</p>
+                    }
+                    else
+                    {
+                        <ul class="list">
+                            @foreach (var t in allTags)
+                            {
+                                var tid = t.Id;
+                                var archived = t.IsArchived;
+                                <li>
+                                    <span class="row-main"><span class="exp-tag @(archived ? "exp-tag-off" : "")">@t.Name</span>@if (archived) { <span class="row-note"> · @Loc["archived"]</span> }</span>
+                                    <span class="row-actions">
+                                        <button class="exp-edit" title="@Loc["Rename"]" @onclick="() => OpenEditTag(tid)"><Icon Name="pencil" /></button>
+                                        <button class="exp-edit" title="@(archived ? Loc["Restore"] : Loc["Archive"])" @onclick="() => (archived ? State.RestoreTag(tid) : State.ArchiveTag(tid))"><Icon Name="@(archived ? "rotate" : "archive")" /></button>
+                                        <button class="exp-edit" title="@Loc["Remove"]" @onclick="() => State.RemoveTag(tid)"><Icon Name="trash" /></button>
+                                    </span>
+                                </li>
+                            }
+                        </ul>
+                    }
+                    break;
+
+                case Modal.EditTag:
+                    <h3>@Loc["Rename tag"]</h3>
+                    <label>@Loc["Name"] <input type="text" maxlength="30" @bind="_editTagName" @bind:event="oninput" @onkeydown="EditTagKey" /></label>
+                    <div class="modal-actions">
+                        <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
+                        <button @onclick="SaveEditTag" disabled="@string.IsNullOrWhiteSpace(_editTagName)">@Loc["Save"]</button>
+                    </div>
                     break;
 
                 case Modal.AddSaving:
@@ -3642,7 +3738,7 @@ else
 }
 
 @code {
-    private enum Modal { None, PickAccount, BankReview, BankConsent, AddCat, AddBudget, DisburseSaving, PayoffProjection, GoalProjection, InvestmentProjection, BankTransfer, ExternalAccounts, HealthScore, EditCat, DeleteCat, CategoryDetail, AddAccount, EditAccount, DeleteAccount, RemoveMember, LeaveAccount, AddExpense, NextPeriod, RemovePeriod, EditExpense, DeleteExpense, SettleExpense, AddBucket, EditBucket, DeleteBucket, EditCost, AddFund, EditFund, DeleteFund, Invite, Transfer, Deposit, EditDeposit, DeleteDeposit, ManageCats, ManageContribCats, ContribCat, DeleteContribCat, AddSaving, BudgetSaving, SpendSaving, EditSavingDeposit, DeleteSavingDeposit, EditTransfer, DeleteTransfer, EditPeriod, EditSavingMovement, DeleteSavingMovement, DeleteExternalTransfer, Achievements, Reallocate, Recurring, RecurringEdit, RecurringConfirm, Import, AddOrImport, ArchiveFund, FundMovements, Archived }
+    private enum Modal { None, PickAccount, BankReview, BankConsent, AddCat, AddBudget, DisburseSaving, PayoffProjection, GoalProjection, InvestmentProjection, BankTransfer, ExternalAccounts, HealthScore, EditCat, DeleteCat, CategoryDetail, AddAccount, EditAccount, DeleteAccount, RemoveMember, LeaveAccount, AddExpense, NextPeriod, RemovePeriod, EditExpense, DeleteExpense, SettleExpense, AddBucket, EditBucket, DeleteBucket, EditCost, AddFund, EditFund, DeleteFund, Invite, Transfer, Deposit, EditDeposit, DeleteDeposit, ManageCats, ManageContribCats, ContribCat, DeleteContribCat, AddSaving, BudgetSaving, SpendSaving, EditSavingDeposit, DeleteSavingDeposit, EditTransfer, DeleteTransfer, EditPeriod, EditSavingMovement, DeleteSavingMovement, DeleteExternalTransfer, Achievements, Reallocate, Recurring, RecurringEdit, RecurringConfirm, Import, AddOrImport, ArchiveFund, FundMovements, Archived, ManageTags, EditTag }
     private enum Tab { Overview, Account, Budgets, Savings }
 
     /// <summary>Which kind of goal the Goals grid is showing. Defaults to All so the filter narrows on request
@@ -3842,6 +3938,9 @@ else
     private decimal _amount;
     private Guid _fundId;
     private string? _note;
+    // Tag selection for the current add/edit-expense modal + the inline "new tag" input.
+    private readonly HashSet<Guid> _fTagIds = new();
+    private string? _newTagName;
 
     // Bank sync (Open Banking) — its own tab. Null status = feature off / unreachable (tab hidden).
     private BankSyncStatusDto? _bankStatus;
@@ -5128,6 +5227,32 @@ else
     private void ManageEditCat(Guid id) { _modalBack.Push(OpenManageCats); OpenEdit(id); }
     private void ManageDeleteCat(Guid id) { _modalBack.Push(OpenManageCats); OpenDelete(id); }
 
+    // --- Tags management ---
+    private string? _manageTagName;
+    private Guid _editTagId;
+    private string? _editTagName;
+    private void OpenManageTags() { _manageTagName = null; _modal = Modal.ManageTags; }
+
+    private Task AddTagFromManage() => RunModal(async () =>
+    {
+        var name = _manageTagName?.Trim();
+        if (string.IsNullOrWhiteSpace(name)) return;
+        if (State.AllTags.Any(t => string.Equals(t.Name, name, StringComparison.CurrentCultureIgnoreCase))) { _manageTagName = null; return; }
+        await State.AddTag(name);
+        _manageTagName = null;
+    });
+    private async Task ManageTagKey(KeyboardEventArgs e) { if (e.Key is "Enter" && !string.IsNullOrWhiteSpace(_manageTagName)) await AddTagFromManage(); }
+
+    private void OpenEditTag(Guid tagId) { _editTagId = tagId; _editTagName = State.TagName(tagId); _modalBack.Push(OpenManageTags); _modal = Modal.EditTag; }
+    private Task SaveEditTag() => RunModal(async () =>
+    {
+        var name = _editTagName?.Trim();
+        if (string.IsNullOrWhiteSpace(name)) return;
+        await State.SaveTag(_editTagId, name, State.TagIcon(_editTagId));
+        Back();
+    });
+    private async Task EditTagKey(KeyboardEventArgs e) { if (e.Key is "Enter" && !string.IsNullOrWhiteSpace(_editTagName)) await SaveEditTag(); }
+
     private void OpenEditDeposit(Guid contributionId)
     {
         if (State.FindContribution(contributionId) is not { } c) return;
@@ -6109,6 +6234,7 @@ else
     private void OpenAddExpense(Guid categoryId)
     {
         _categoryId = categoryId; _amount = 0; _note = null;
+        _fTagIds.Clear(); _newTagName = null;
         _expenseDate = _dayView ?? DateOnly.FromDateTime(DateTime.Today);
         _fundId = DefaultFundForCategory(categoryId); _modal = Modal.AddExpense;
     }
@@ -6134,6 +6260,7 @@ else
         _categoryId = e.CategoryId;
         _amount = e.Amount.Amount;
         _note = e.Note;
+        _fTagIds.Clear(); foreach (var t in State.ExpenseTags(e)) _fTagIds.Add(t.Id); _newTagName = null;
         _expenseDate = _dayView ?? ClampToPeriod(DateOnly.FromDateTime(DateTime.Today));
         _fundId = State.SelectableFunds.Any(f => f.Id == e.FundId) ? e.FundId : DefaultFundForCategory(e.CategoryId);
         _modal = Modal.AddExpense;
@@ -6152,10 +6279,30 @@ else
     private Task AddExpenseFromModal() => RunModal(async () =>
     {
         if (_amount <= 0) return;
-        await State.AddExpense(_categoryId, _amount, _fundId, _note, _expenseDate);
+        await State.AddExpense(_categoryId, _amount, _fundId, _note, _expenseDate, tagIds: _fTagIds.ToList());
         _dayView = ClampToPeriod(_expenseDate); // keep the Expenses tab on the day just used (feature 6)
         CloseModal();
     });
+
+    // --- Tags: selection + inline create inside the expense modals ---
+    private void ToggleTagSel(Guid tagId) { if (!_fTagIds.Remove(tagId)) _fTagIds.Add(tagId); }
+
+    /// <summary>Create the tag typed in the modal's "new tag" box and select it (so it's attached on save).</summary>
+    private Task AddTagFromModal() => RunModal(async () =>
+    {
+        var name = _newTagName?.Trim();
+        if (string.IsNullOrWhiteSpace(name)) return;
+        // If a tag by that name already exists (active or archived), just select it rather than erroring.
+        var existing = State.AllTags.FirstOrDefault(t => string.Equals(t.Name, name, StringComparison.CurrentCultureIgnoreCase));
+        var id = existing?.Id ?? await State.AddTag(name);
+        if (id != Guid.Empty) _fTagIds.Add(id);
+        _newTagName = null;
+    });
+
+    private async Task TagNewKey(KeyboardEventArgs e)
+    {
+        if (e.Key is "Enter" && !string.IsNullOrWhiteSpace(_newTagName)) await AddTagFromModal();
+    }
 
     // --- Settle expense onto another account (feature 1) -----------------
     private async Task OpenSettleExpense(Guid expenseId)
@@ -6220,13 +6367,14 @@ else
         if (State.FindExpense(expenseId) is not { } e) return;
         _editExpenseId = expenseId;
         _categoryId = e.CategoryId; _amount = e.Amount.Amount; _fundId = e.FundId; _note = e.Note; _expenseDate = e.Date;
+        _fTagIds.Clear(); foreach (var t in State.ExpenseTags(e)) _fTagIds.Add(t.Id); _newTagName = null;
         _modal = Modal.EditExpense;
     }
 
     private Task SaveEditExpense() => RunModal(async () =>
     {
         if (_amount <= 0) return;
-        await State.EditExpense(_editExpenseId, _categoryId, _amount, _fundId, _note, _expenseDate);
+        await State.EditExpense(_editExpenseId, _categoryId, _amount, _fundId, _note, _expenseDate, tagIds: _fTagIds.ToList());
         CloseModal();
     });
 
@@ -6819,6 +6967,12 @@ else
     private Task ConfirmDelete() => RunModal(async () =>
     {
         await State.RemoveCategory(_modalCatId);
+        CloseModal();
+    });
+
+    private Task ArchiveCat() => RunModal(async () =>
+    {
+        await State.ArchiveCategory(_modalCatId);
         CloseModal();
     });
 

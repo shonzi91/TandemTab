@@ -519,6 +519,7 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
 
     /// <summary>Archived root funds (hidden from the main list) — for the collapsible "archived" section.</summary>
     public IReadOnlyList<Fund> ArchivedFunds => Account.Funds.Where(f => f.IsRoot && f.IsArchived).ToList();
+    public bool FundIsArchived(Guid fundId) => Account.FindFund(fundId)?.IsArchived ?? false;
     public Fund? FindFund(Guid fundId) => Account.FindFund(fundId);
     public string? FundNote(Guid fundId) => Account.FindFund(fundId)?.Note;
     public string FundName(Guid fundId) => Account.FundName(fundId);
@@ -887,14 +888,15 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     /// they're driven only by the bank import flow.</summary>
     public IReadOnlyList<Fund> SelectableFunds => Account.RootFunds.Where(f => !f.IsSynced && !f.IsArchived).ToList();
 
-    public Task AddExpense(Guid categoryId, decimal amount, Guid fundId, string? note, DateOnly date, bool onBehalfOfOtherAccount = false) =>
+    public Task AddExpense(Guid categoryId, decimal amount, Guid fundId, string? note, DateOnly date, bool onBehalfOfOtherAccount = false, IReadOnlyList<Guid>? tagIds = null) =>
         ExecuteOptimisticAsync(() =>
         {
             var expense = new Expense(categoryId, Money(amount), date, CurrentMemberId, fundId, note, onBehalfOfOtherAccount: onBehalfOfOtherAccount);
             expense.SetFundSynced(FundIsSynced(fundId));
+            if (tagIds is { Count: > 0 }) expense.SetTags(tagIds);
             Period.AddExpense(expense);
         },
-        id => api.AddExpenseAsync(id, new AddExpenseRequest(categoryId, amount, fundId, date, note, onBehalfOfOtherAccount)),
+        id => api.AddExpenseAsync(id, new AddExpenseRequest(categoryId, amount, fundId, date, note, onBehalfOfOtherAccount, tagIds)),
         refetchAfter: true);
 
     // Bank-confirm flows only — bank provenance (externalId + auto-filed badge) isn't in the command API yet.
@@ -909,7 +911,7 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
         return SaveAsync();
     }
 
-    public async Task EditExpense(Guid expenseId, Guid categoryId, decimal amount, Guid fundId, string? note, DateOnly date)
+    public async Task EditExpense(Guid expenseId, Guid categoryId, decimal amount, Guid fundId, string? note, DateOnly date, IReadOnlyList<Guid>? tagIds = null)
     {
         var before = Period.Expenses.FirstOrDefault(e => e.Id == expenseId);
         await ExecuteOptimisticAsync(() =>
@@ -917,8 +919,9 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
             var edited = Period.EditExpense(expenseId, categoryId, Money(amount), fundId, note, date);
             edited.SetFundSynced(FundIsSynced(fundId));
             edited.SetBankLink(before?.BankExternalId, autoFiled: false);   // keep provenance, clear the auto-filed badge
+            if (tagIds is not null) edited.SetTags(tagIds);   // null leaves the carried-over tags (EditExpense re-applies them)
         },
-        id => api.EditExpenseAsync(id, expenseId, new EditExpenseRequest(categoryId, amount, fundId, date, note)),
+        id => api.EditExpenseAsync(id, expenseId, new EditExpenseRequest(categoryId, amount, fundId, date, note, tagIds)),
         refetchAfter: true);   // EditExpense is append-only (mints a new id) — reconcile to adopt the server's
         // Editing a settlement-destination expense mirrors the new amount back to the source expense.
         if (before is { IsSettlementDestination: true, SettlementId: { } sid, SettledFromAccountId: { } sourceAccount })
@@ -2021,6 +2024,8 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     /// <summary>The category's explicitly-stored icon (null when none) — for pre-selecting the edit picker.</summary>
     public string? CategoryStoredIcon(Guid categoryId) => Account.FindCategory(categoryId)?.Icon;
 
+    public bool CategoryIsArchived(Guid categoryId) => Account.FindCategory(categoryId)?.IsArchived ?? false;
+
     public Task RemoveCategory(Guid categoryId) =>
         ExecuteOptimisticAsync(() => Account.RemoveCategory(categoryId),
             id => api.RemoveCategoryAsync(id, categoryId), refetchAfter: false);
@@ -2033,6 +2038,39 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     public Task RestoreCategory(Guid categoryId) =>
         ExecuteOptimisticAsync(() => Account.SetCategoryArchived(categoryId, false),
             id => api.SetCategoryArchivedAsync(id, categoryId, false), refetchAfter: true);
+
+    // --- Tags: flat, cross-cutting labels attached to expenses (sit alongside sub-categories) ---
+    /// <summary>Active (non-archived) tags — the pickers. Ordered by name for a stable list.</summary>
+    public IReadOnlyList<Tag> ActiveTags => Account.ActiveTags.OrderBy(t => t.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
+    /// <summary>All tags including archived — for the manage-tags surface.</summary>
+    public IReadOnlyList<Tag> AllTags => Account.Tags.OrderBy(t => t.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
+    public Tag? FindTag(Guid tagId) => Account.FindTag(tagId);
+    public string TagName(Guid tagId) => Account.FindTag(tagId)?.Name ?? "—";
+    public string? TagIcon(Guid tagId) => Account.FindTag(tagId)?.Icon;
+    public bool TagIsArchived(Guid tagId) => Account.FindTag(tagId)?.IsArchived ?? false;
+
+    /// <summary>The active tags attached to an expense, resolved to entities (dangling ids from removed tags are dropped).</summary>
+    public IReadOnlyList<Tag> ExpenseTags(FinApp.Domain.Budgeting.Expense expense) =>
+        expense.TagIds.Select(id => Account.FindTag(id)).Where(t => t is not null).Select(t => t!).ToList();
+
+    public async Task<Guid> AddTag(string name, string? icon = null)
+    {
+        var result = await ExecuteOptimisticAsync(() => { Account.AddTag(name, icon); },
+            id => api.CreateTagAsync(id, new CreateTagRequest(name, icon)), refetchAfter: true);
+        return result.EntityId ?? Guid.Empty;
+    }
+    public Task SaveTag(Guid tagId, string name, string? icon) =>
+        ExecuteOptimisticAsync(() => { Account.RenameTag(tagId, name); Account.SetTagIcon(tagId, icon); },
+            id => api.EditTagAsync(id, tagId, new EditTagRequest(name, icon)), refetchAfter: true);
+    public Task ArchiveTag(Guid tagId) =>
+        ExecuteOptimisticAsync(() => Account.SetTagArchived(tagId, true),
+            id => api.SetTagArchivedAsync(id, tagId, true), refetchAfter: true);
+    public Task RestoreTag(Guid tagId) =>
+        ExecuteOptimisticAsync(() => Account.SetTagArchived(tagId, false),
+            id => api.SetTagArchivedAsync(id, tagId, false), refetchAfter: true);
+    public Task RemoveTag(Guid tagId) =>
+        ExecuteOptimisticAsync(() => Account.RemoveTag(tagId),
+            id => api.RemoveTagAsync(id, tagId), refetchAfter: true);
 
     // Budget CRUD (the endpoint takes the threshold as a percent 0–100, same as these signatures)
     public Task SaveBudget(Guid categoryId, decimal amount, decimal thresholdPercent, bool notifyEvery) =>

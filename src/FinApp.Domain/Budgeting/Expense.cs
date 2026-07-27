@@ -66,6 +66,22 @@ public sealed class Expense : Entity
         AutoFiled = autoFiled;
     }
 
+    private readonly List<Guid> _tagIds = [];
+
+    /// <summary>Cross-cutting <see cref="Tag"/> ids attached to this expense. Unlike the ledger fields (amount,
+    /// category, date) tags are user labels that can be re-assigned in place — so this is mutable and does not
+    /// mint a new entry. Ids of tags that were later hard-removed simply stop resolving; callers ignore them.</summary>
+    public IReadOnlyList<Guid> TagIds => _tagIds;
+
+    /// <summary>Replace this expense's tag set (deduped, empties dropped). Pass an empty sequence to clear all tags.</summary>
+    public void SetTags(IEnumerable<Guid>? tagIds)
+    {
+        _tagIds.Clear();
+        if (tagIds is null) return;
+        foreach (var t in tagIds.Distinct())
+            if (t != Guid.Empty) _tagIds.Add(t);
+    }
+
     public Expense(
         Guid categoryId,
         Money amount,

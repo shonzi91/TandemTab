@@ -208,6 +208,16 @@ public sealed class FinAppApiClient(HttpClient http)
     public Task<MutationResultDto> RemoveContributionCategoryAsync(Guid id, Guid catId, CancellationToken ct = default) =>
         SendAsync<MutationResultDto>(HttpMethod.Delete, $"/accounts/{id}/contribution-categories/{catId}", null, ct);
 
+    // Tags (flat cross-cutting labels for expenses)
+    public Task<MutationResultDto> CreateTagAsync(Guid id, CreateTagRequest req, CancellationToken ct = default) =>
+        SendAsync<MutationResultDto>(HttpMethod.Post, $"/accounts/{id}/tags", req, ct);
+    public Task<MutationResultDto> EditTagAsync(Guid id, Guid tagId, EditTagRequest req, CancellationToken ct = default) =>
+        SendAsync<MutationResultDto>(HttpMethod.Put, $"/accounts/{id}/tags/{tagId}", req, ct);
+    public Task<MutationResultDto> SetTagArchivedAsync(Guid id, Guid tagId, bool archived, CancellationToken ct = default) =>
+        SendAsync<MutationResultDto>(HttpMethod.Put, $"/accounts/{id}/tags/{tagId}/archived", new SetArchivedRequest(archived), ct);
+    public Task<MutationResultDto> RemoveTagAsync(Guid id, Guid tagId, CancellationToken ct = default) =>
+        SendAsync<MutationResultDto>(HttpMethod.Delete, $"/accounts/{id}/tags/{tagId}", null, ct);
+
     // Recurring items
     public Task<MutationResultDto> AddRecurringAsync(Guid id, AddRecurringRequest req, CancellationToken ct = default) =>
         SendAsync<MutationResultDto>(HttpMethod.Post, $"/accounts/{id}/recurring", req, ct);

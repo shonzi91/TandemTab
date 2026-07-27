@@ -686,6 +686,24 @@ html.dark .acct-chip-label { color: #9aa4b2; }
     background: #e4f6ee; color: #13a06e; font-size: .72rem; font-weight: 600; white-space: nowrap;
 }
 
+/* Tags — flat cross-cutting labels on expenses. A small pill on the row's sub-line; toggle chips in the modal. */
+.exp-tag { display: inline-flex; align-items: center; gap: 3px; padding: 1px 8px; border-radius: 999px;
+    background: #eef2f7; color: #5b6470; font-size: .72rem; font-weight: 600; white-space: nowrap; }
+.exp-tag .tag-emoji { font-size: .95em; }
+.exp-tag-off { opacity: .55; text-decoration: line-through; }
+html.dark .exp-tag { background: #222a37; color: #a9b6ad; }
+/* Modal tag picker: selectable chips + inline "new tag" row. */
+.tag-pick { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
+.tag-chip { display: inline-flex; align-items: center; gap: 4px; padding: 4px 11px; border-radius: 999px;
+    border: 1px solid #dde6e1; background: #fff; color: #384250; font-size: .8rem; font-weight: 600; cursor: pointer; }
+.tag-chip:hover { border-color: #13a06e; }
+.tag-chip-on { background: #e4f6ee; border-color: #13a06e; color: #0f7a54; }
+html.dark .tag-chip { background: #171d26; border-color: #2c3644; color: #cdd4de; }
+html.dark .tag-chip-on { background: #16261f; border-color: #3fe0c5; color: #57d9a3; }
+.tag-new-row { display: flex; align-items: center; gap: 6px; }
+.tag-new-in { flex: 1; min-width: 0; padding: 7px 10px; border: 1px solid #dde6e1; border-radius: 9px; font: inherit; font-size: .84rem; }
+html.dark .tag-new-in { background: #171d26; border-color: #2c3644; color: #e8eef0; }
+
 /* Expenses day view + date separators */
 .day-nav { display: flex; align-items: center; gap: 6px; }
 .day-nav input[type=date] { padding: 5px 8px; border: 1px solid #dde6e1; border-radius: 8px; font-size: .82rem; }
@@ -937,10 +955,6 @@ html.dark .goal-cost-edit:hover { background: #16241d; color: #57d9a3; }
 .goal-cost-del { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border: none; border-radius: 8px; background: none; color: #a0aab6; cursor: pointer; }
 .goal-cost-del:hover { background: #fef2f2; color: #dc2626; }
 html.dark .goal-cost-del:hover { background: #2a1616; color: #f87171; }
-.goal-cost-add { display: inline-flex; align-items: center; gap: 6px; margin-top: 8px; padding: 6px 12px; border: 0.5px dashed #cdd9d2; border-radius: 9px; background: none; font-size: .82rem; font-weight: 600; color: #0f7a54; cursor: pointer; }
-.goal-cost-add:hover { border-color: #13a06e; background: #f0fbf6; }
-html.dark .goal-cost-add { border-color: #33414e; color: #57d9a3; }
-html.dark .goal-cost-add:hover { border-color: #3fe0c5; background: #16261f; }
 /* Debt payoff simulator: slider + result. The animation lives on the row's own progress bar (.cbar-sim) — as
    "extra /mo" rises the bar fills forward past the paid-off point. */
 .payoff-sim { background: #f3fbf7; border: 1px solid #d6f0e3; border-radius: 12px; padding: 12px; margin-bottom: 12px; }

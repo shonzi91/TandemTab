@@ -847,6 +847,7 @@ accounts.MapPost("/{id:guid}/expenses", async (Guid id, AddExpenseRequest req, C
         var expense = new Expense(req.CategoryId, new Money(req.Amount, account.Currency), req.Date, userId, req.FundId, req.Note,
             onBehalfOfOtherAccount: req.OnBehalfOfOtherAccount);
         expense.SetFundSynced(fund.IsSynced);   // synced funds aren't debited — the real bank balance handles it
+        if (req.TagIds is { Count: > 0 }) expense.SetTags(req.TagIds.Where(t => account.FindTag(t) is not null));
         period.AddExpense(expense);
         // The delta a thin client reconciles from (the thick client reads only Version/EntityId — a superset).
         return (expense.Id, SpendingMap.ToDto(account, expense), SpendingMap.Overview(account, period, bank.Balance, bank.BalanceCurrency));
@@ -868,6 +869,8 @@ accounts.MapPut("/{id:guid}/expenses/{expenseId:guid}", async (Guid id, Guid exp
         var edited = period.EditExpense(expenseId, req.CategoryId, new Money(req.Amount, account.Currency), req.FundId, req.Note, req.Date);
         edited.SetFundSynced(fund.IsSynced);            // recompute at edit time (moving to/from a synced fund)
         edited.SetBankLink(before?.BankExternalId, autoFiled: false);   // keep provenance, clear the auto-filed badge
+        if (req.TagIds is not null) edited.SetTags(req.TagIds.Where(t => account.FindTag(t) is not null));   // null leaves the carried-over tags
+
         // Edit is append-only (a new id), so the delta carries the NEW row for the client to swap in.
         return (edited.Id, SpendingMap.ToDto(account, edited), SpendingMap.Overview(account, period, bank.Balance, bank.BalanceCurrency));
     }, ct);
@@ -1413,6 +1416,57 @@ accounts.MapDelete("/{id:guid}/categories/{categoryId:guid}", async (Guid id, Gu
     }, ct);
     await notifier.AccountChangedAsync(id, userId, version);
     return Results.Ok(new MutationResultDto(version, categoryId));
+});
+
+// Tags — flat, cross-cutting labels attached to expenses (sit alongside sub-categories). Definitions live on the
+// aggregate and travel in the snapshot; attaching a tag to an expense rides the add/edit-expense endpoints.
+accounts.MapPost("/{id:guid}/tags", async (Guid id, CreateTagRequest req, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
+{
+    var userId = user.UserId();
+    var (version, tagId) = await svc.MutateAsync(userId, id, account =>
+    {
+        var tag = account.AddTag(req.Name, req.Icon);   // 400 on duplicate name
+        return tag.Id;
+    }, ct);
+    await notifier.AccountChangedAsync(id, userId, version);
+    return Results.Ok(new MutationResultDto(version, tagId));
+});
+
+accounts.MapPut("/{id:guid}/tags/{tagId:guid}", async (Guid id, Guid tagId, EditTagRequest req, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
+{
+    var userId = user.UserId();
+    var (version, _) = await svc.MutateAsync<object?>(userId, id, account =>
+    {
+        account.RenameTag(tagId, req.Name);   // throws if missing / duplicate name
+        account.SetTagIcon(tagId, req.Icon);
+        return null;
+    }, ct);
+    await notifier.AccountChangedAsync(id, userId, version);
+    return Results.Ok(new MutationResultDto(version, tagId));
+});
+
+accounts.MapPut("/{id:guid}/tags/{tagId:guid}/archived", async (Guid id, Guid tagId, SetArchivedRequest req, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
+{
+    var userId = user.UserId();
+    var (version, _) = await svc.MutateAsync<object?>(userId, id, account =>
+    {
+        account.SetTagArchived(tagId, req.Archived);
+        return null;
+    }, ct);
+    await notifier.AccountChangedAsync(id, userId, version);
+    return Results.Ok(new MutationResultDto(version, tagId));
+});
+
+accounts.MapDelete("/{id:guid}/tags/{tagId:guid}", async (Guid id, Guid tagId, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
+{
+    var userId = user.UserId();
+    var (version, _) = await svc.MutateAsync<object?>(userId, id, account =>
+    {
+        account.RemoveTag(tagId);   // hard delete; tagged expenses keep the (now-dangling) id, which stops resolving
+        return null;
+    }, ct);
+    await notifier.AccountChangedAsync(id, userId, version);
+    return Results.Ok(new MutationResultDto(version, tagId));
 });
 
 // Funds

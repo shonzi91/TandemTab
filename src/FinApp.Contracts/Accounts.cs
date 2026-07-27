@@ -55,11 +55,12 @@ public record BootstrapAccountRequest(DateOnly? Today = null);
 /// "synced" flag is derived from the fund itself, so neither is in the request. Bank-import and on-behalf settlement
 /// provenance are handled by their own flows, not here. Mirrors <c>BudgetingState.AddExpense</c>.
 /// </summary>
-public record AddExpenseRequest(Guid CategoryId, decimal Amount, Guid FundId, DateOnly Date, string? Note = null, bool OnBehalfOfOtherAccount = false);
+public record AddExpenseRequest(Guid CategoryId, decimal Amount, Guid FundId, DateOnly Date, string? Note = null, bool OnBehalfOfOtherAccount = false, IReadOnlyList<Guid>? TagIds = null);
 
 /// <summary>Replace an existing expense's category/amount/fund/note/date (an append-only edit — see
-/// <c>Period.EditExpense</c>). The expense id travels in the route. Mirrors <c>BudgetingState.EditExpense</c>.</summary>
-public record EditExpenseRequest(Guid CategoryId, decimal Amount, Guid FundId, DateOnly Date, string? Note = null);
+/// <c>Period.EditExpense</c>). The expense id travels in the route. <see cref="TagIds"/> replaces the whole tag set
+/// (null leaves it unchanged from the pre-edit expense). Mirrors <c>BudgetingState.EditExpense</c>.</summary>
+public record EditExpenseRequest(Guid CategoryId, decimal Amount, Guid FundId, DateOnly Date, string? Note = null, IReadOnlyList<Guid>? TagIds = null);
 
 /// <summary>
 /// Record income (a deposit) for the caller in the open period, computed server-side. The member is the caller and
@@ -160,6 +161,13 @@ public record CreateContributionCategoryRequest(string Name, string? Icon = null
 
 /// <summary>Edit a contribution category's name and icon (null icon clears it). Mirrors <c>BudgetingState.SaveContributionCategory</c>.</summary>
 public record EditContributionCategoryRequest(string Name, string? Icon = null);
+
+/// <summary>Add a cross-cutting tag (a flat label attached to expenses, alongside sub-categories). Rejects a duplicate
+/// name. Mirrors <c>BudgetingState.AddTag</c>.</summary>
+public record CreateTagRequest(string Name, string? Icon = null);
+
+/// <summary>Rename a tag and set its icon (a null icon clears it). Mirrors <c>BudgetingState.SaveTag</c>.</summary>
+public record EditTagRequest(string Name, string? Icon = null);
 
 // --- Recurring items (bills / income expectations) ----------------------------------------------------------
 
