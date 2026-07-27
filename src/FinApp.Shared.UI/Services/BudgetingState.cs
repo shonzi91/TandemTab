@@ -670,6 +670,21 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     public IReadOnlyList<Expense> ExpensesFor(Guid categoryId) =>
         Period.Expenses.Where(e => e.CategoryId == categoryId).OrderByDescending(e => e.Date).ToList();
 
+    /// <summary>Every expense across ALL periods whose date falls in [from, to] — the basis for the Breakdown view's
+    /// multi-period windows (3/6/12 months, all-time, custom). Newest first.</summary>
+    public IReadOnlyList<Expense> ExpensesInRange(DateOnly from, DateOnly to) =>
+        Account.Periods.SelectMany(p => p.Expenses)
+            .Where(e => e.Date >= from && e.Date <= to)
+            .OrderByDescending(e => e.Date).ToList();
+
+    /// <summary>The top-level category an expense rolls up to (a sub-category's parent, else the category itself).
+    /// Categories are capped at one level deep, so parent-or-self is enough.</summary>
+    public Guid RootCategoryId(Guid categoryId) => Account.FindCategory(categoryId)?.ParentId ?? categoryId;
+
+    /// <summary>Earliest expense date on record (across all periods) — the "beginning of time" for the all-time window.</summary>
+    public DateOnly? EarliestExpenseDate =>
+        Account.Periods.SelectMany(p => p.Expenses).Select(e => (DateOnly?)e.Date).Min();
+
     public bool IsPeriodOpen => Period.Status == PeriodStatus.Open;
 
     public Expense? FindExpense(Guid id) => Period.Expenses.FirstOrDefault(e => e.Id == id);

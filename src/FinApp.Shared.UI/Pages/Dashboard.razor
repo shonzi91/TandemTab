@@ -833,7 +833,7 @@ else
                         .OrderByDescending(x => x.Spent)
                         .ToList();
                 }
-                @if (barScale > 0m)
+                @if (barScale > 0m && _spendView != SpendView.Breakdown)
                 {
                     var totHasBudget = State.TotalBudgeted.Amount > 0m;
                     var totPct = totHasBudget ? Math.Clamp((double)(State.TotalSpent.Amount / State.TotalBudgeted.Amount) * 100, 0, 100) : 0;
@@ -861,7 +861,7 @@ else
                     </div>
                 }
                 @* Only meaningful while the period is open — you can't trim or top up a closed period. *@
-                @if (State.IsPeriodOpen && overPlanned.Amount > 0m)
+                @if (State.IsPeriodOpen && overPlanned.Amount > 0m && _spendView != SpendView.Breakdown)
                 {
                     <p class="budget-over-note"><Icon Name="bulb" /> @string.Format(Loc["Your remaining budgets ({0}) are {1} more than you have left ({2}) — budgets are plans, not commitments, so trim one or top up when you can."], Fmt(_bnRemaining), Fmt(overPlanned), Fmt(_bnFree))</p>
                 }
@@ -869,14 +869,15 @@ else
                    summary above is the constant; this row just toggles what's beneath it. *@
                 <div class="spending-head budget-controls">
                     <span class="plan-toggle bview-toggle" role="group">
-                        <button type="button" class="chip @(_budgetByDate ? "" : "on")" @onclick="() => _budgetByDate = false"><Icon Name="chart" /> @Loc["Categories"]</button>
-                        <button type="button" class="chip @(_budgetByDate ? "on" : "")" @onclick="() => _budgetByDate = true"><Icon Name="list" /> @Loc["By date"]</button>
+                        <button type="button" class="chip @(_spendView == SpendView.Categories ? "on" : "")" @onclick="() => _spendView = SpendView.Categories"><Icon Name="chart" /> @Loc["Categories"]</button>
+                        <button type="button" class="chip @(_spendView == SpendView.ByDate ? "on" : "")" @onclick="() => _spendView = SpendView.ByDate"><Icon Name="list" /> @Loc["By date"]</button>
+                        <button type="button" class="chip @(_spendView == SpendView.Breakdown ? "on" : "")" @onclick="() => _spendView = SpendView.Breakdown"><Icon Name="chart" /> @Loc["Breakdown"]</button>
                     </span>
-                    @if (!_budgetByDate)
+                    @if (_spendView == SpendView.Categories)
                     {
                         <button class="fund-add" @onclick="OpenAddBudget"><Icon Name="plus" /> @Loc["Add budget"]</button>
                     }
-                    else if (State.IsPeriodOpen)
+                    else if (_spendView == SpendView.ByDate && State.IsPeriodOpen)
                     {
                         <button class="fund-add" @onclick="AddExpenseFromHeader"><Icon Name="receipt" /> @Loc["Add expense"]</button>
                     }
@@ -896,7 +897,7 @@ else
                 @{
                     var filterTags = State.ActiveTags;
                 }
-                @if (filterTags.Count > 0)
+                @if (filterTags.Count > 0 && _spendView != SpendView.Breakdown)
                 {
                     @* Tag filter: narrows every expense list below to the chosen tags (the bars/totals stay whole). *@
                     <div class="tag-filter">
@@ -1018,7 +1019,7 @@ else
                 @* Category list: a status-ring chip + a gradient progress bar per row, ordered by spend. Tapping a
                    row opens a drawer with its expenses, sub-categories and actions — so the actions and the spend
                    detail are inline instead of behind a ring popover (which is why the ring's menu is gone). *@
-                @if (!_budgetByDate)
+                @if (_spendView == SpendView.Categories)
                 {
                 <div class="cat-list">
                     @foreach (var rc in ringCards)
@@ -1104,7 +1105,7 @@ else
                     }
                 </div>
                 }
-                else
+                else if (_spendView == SpendView.ByDate)
                 {
                 @* Same expenses, organised by date instead of by category — folded in here as a toggle so the ledger
                    isn't shown twice. Day-nav / calendar sub-view lives on the right; Add-expense is in the head above. *@
@@ -1192,6 +1193,104 @@ else
                         <ul class="list list-even">@foreach (var e in grp) { @row(e) }</ul>
                     }
                 }
+                </div>
+                }
+                else
+                {
+                @* Breakdown: a budget-free pie of where the money actually went, over an adjustable window. Tap a
+                   category slice/row to re-slice it by sub-category (or tags). *@
+                <div class="brk">
+                    <div class="brk-ranges" role="group">
+                        @{
+                            (BreakRange R, string L)[] ranges = new[]
+                            {
+                                (BreakRange.ThisPeriod, Loc["This period"]),
+                                (BreakRange.M3, Loc["3 months"]),
+                                (BreakRange.M6, Loc["6 months"]),
+                                (BreakRange.M12, Loc["12 months"]),
+                                (BreakRange.All, Loc["All time"]),
+                                (BreakRange.Custom, Loc["Custom"]),
+                            };
+                        }
+                        @foreach (var (r, l) in ranges)
+                        {
+                            <button type="button" class="chip @(_breakRange == r ? "on" : "")" @onclick="() => SetBreakRange(r)">@l</button>
+                        }
+                    </div>
+                    @if (_breakRange == BreakRange.Custom)
+                    {
+                        <div class="brk-custom">
+                            <label>@Loc["From"] <input type="date" @bind="_breakFrom" max="@_breakTo.ToString("yyyy-MM-dd")" /></label>
+                            <label>@Loc["To"] <input type="date" @bind="_breakTo" min="@_breakFrom.ToString("yyyy-MM-dd")" /></label>
+                        </div>
+                    }
+                    @{
+                        var brkSlices = BreakSlices();
+                        var brkTotal = brkSlices.Sum(s => s.Amount);
+                        var brkCi = System.Globalization.CultureInfo.InvariantCulture;
+                    }
+                    @if (_breakDrill is { } drillId)
+                    {
+                        <div class="brk-crumb">
+                            <button class="brk-back" @onclick="ClearBreakDrill"><Icon Name="chevron" Class="brk-back-chev" /> @Loc["All categories"]</button>
+                            <span class="brk-crumb-cur"><CatIcon Name="@State.CategoryIcon(drillId)" /> @State.CategoryName(drillId)</span>
+                            <span class="brk-split">
+                                <button type="button" class="chip @(_breakByTag ? "" : "on")" @onclick="() => _breakByTag = false">@Loc["Sub-categories"]</button>
+                                <button type="button" class="chip @(_breakByTag ? "on" : "")" @onclick="() => _breakByTag = true">@Loc["Tags"]</button>
+                            </span>
+                        </div>
+                    }
+                    @if (brkSlices.Count == 0 || brkTotal <= 0m)
+                    {
+                        <p class="brk-empty"><Icon Name="chart" /> @Loc["No expenses in this window yet."]</p>
+                    }
+                    else
+                    {
+                        <div class="brk-chart">
+                            <svg class="brk-donut" viewBox="0 0 200 200" role="img" aria-label="@Loc["Spending breakdown"]">
+                                @if (brkSlices.Count == 1)
+                                {
+                                    <circle cx="100" cy="100" r="73" fill="none" stroke="@brkSlices[0].Color" stroke-width="34" />
+                                }
+                                else
+                                {
+                                    double acc = 0;
+                                    @foreach (var s in brkSlices)
+                                    {
+                                        var sweep = (double)(s.Amount / brkTotal) * 100.0;
+                                        var d = DonutArc(acc, sweep, 100, 100, 90, 56);
+                                        acc += sweep;
+                                        <path d="@d" fill="@s.Color"></path>
+                                    }
+                                }
+                                <text x="100" y="94" class="brk-donut-tot" text-anchor="middle">@Fmt(brkTotal)</text>
+                                <text x="100" y="112" class="brk-donut-sub" text-anchor="middle">@(brkSlices.Count == 1 ? brkSlices[0].Label : string.Format(_breakDrill is not null && _breakByTag ? Loc["{0} tags"] : Loc["{0} categories"], brkSlices.Count))</text>
+                            </svg>
+                        </div>
+                        <ul class="brk-list">
+                            @foreach (var s in brkSlices)
+                            {
+                                var pct = (double)(s.Amount / brkTotal) * 100.0;
+                                var canDrill = _breakDrill is null && s.Key != Guid.Empty;
+                                <li class="brk-item @(canDrill ? "brk-item-drill" : "")" @onclick="() => { if (canDrill) DrillBreak(s.Key); }">
+                                    <span class="brk-sw" style="background:@s.Color"></span>
+                                    <span class="brk-item-name">
+                                        @if (_breakDrill is not null && _breakByTag)
+                                        {
+                                            @if (!string.IsNullOrEmpty(s.Icon)) { <span class="tag-emoji">@s.Icon</span> }
+                                        }
+                                        else if (s.Key != Guid.Empty)
+                                        {
+                                            <CatIcon Name="@State.CategoryIcon(s.Key)" />
+                                        }
+                                        <span class="brk-item-lbl">@s.Label</span>
+                                    </span>
+                                    <span class="brk-item-amt">@Fmt(s.Amount)<span class="brk-item-pct">@pct.ToString("0.#", brkCi)%</span></span>
+                                    @if (canDrill) { <Icon Name="chevron" Class="brk-item-chev" /> }
+                                </li>
+                            }
+                        </ul>
+                    }
                 </div>
                 }
             </section>
@@ -3809,9 +3908,111 @@ else
         _ => Loc["One-off"],
     };
 
-    // Budgets panel view: false = by category (the ring/bar list), true = the same expenses flat, organised by date
-    // (the old separate "All expenses" panel, folded in here as a toggle so the ledger isn't shown twice).
-    private bool _budgetByDate;
+    // Spending panel view. Categories = the ring/bar budget list; ByDate = the same expenses flat, organised by date;
+    // Breakdown = a budget-free, multi-period pie of where the money actually went (drill into subcategories/tags).
+    private enum SpendView { Categories, ByDate, Breakdown }
+    private SpendView _spendView = SpendView.Categories;
+
+    // --- Breakdown (spending pie) view --------------------------------------------------------------
+    // Adjustable window; defaults to the current period. Longer windows aggregate expenses across all periods.
+    private enum BreakRange { ThisPeriod, M3, M6, M12, All, Custom }
+    private BreakRange _breakRange = BreakRange.ThisPeriod;
+    private DateOnly _breakFrom = DateOnly.FromDateTime(DateTime.Today).AddMonths(-1);
+    private DateOnly _breakTo = DateOnly.FromDateTime(DateTime.Today);
+    private Guid? _breakDrill;   // when set, the pie is scoped to this top-level category…
+    private bool _breakByTag;    // …split by its tags (true) or its sub-categories (false, the default).
+
+    private (DateOnly From, DateOnly To) BreakWindow()
+    {
+        var today = DateOnly.FromDateTime(DateTime.Today);
+        return _breakRange switch
+        {
+            BreakRange.ThisPeriod => (State.Period.From, State.Period.To),
+            BreakRange.M3 => (today.AddMonths(-3), today),
+            BreakRange.M6 => (today.AddMonths(-6), today),
+            BreakRange.M12 => (today.AddMonths(-12), today),
+            BreakRange.All => (State.EarliestExpenseDate ?? today, today),
+            BreakRange.Custom => (_breakFrom, _breakTo),
+            _ => (State.Period.From, State.Period.To),
+        };
+    }
+
+    private void SetBreakRange(BreakRange r) { _breakRange = r; _breakDrill = null; }
+    // Drill into a category: split by its sub-categories by default, but start on tags when it has none.
+    private void DrillBreak(Guid catId) { _breakDrill = catId; _breakByTag = !State.ChildrenOf(catId).Any(); }
+    private void ClearBreakDrill() { _breakDrill = null; }
+
+    // A single pie/list entry: a stable key (category or tag id, or Guid.Empty for the "untagged/other" bucket),
+    // its label + icon, the summed amount, and the slice colour.
+    private record BreakSlice(Guid Key, string Label, string? Icon, decimal Amount, string Color);
+
+    // Distinct, evenly-spread hues so many categories stay tellable apart (the fund palette is only 6 colours).
+    private static string SliceHue(int i, int n)
+    {
+        var hue = (int)(i * 360.0 / Math.Max(n, 1));
+        return $"hsl({hue}, 62%, 52%)";
+    }
+
+    // Build the slices for the current window + drill state, largest first. Amounts use the absolute expense value.
+    private List<BreakSlice> BreakSlices()
+    {
+        var (from, to) = BreakWindow();
+        var expenses = State.ExpensesInRange(from, to);
+        // Group key: drilling by tag → each tag id (an expense can appear under several tags); drilling by sub →
+        // the expense's own category (sub or the parent itself); top level → the root category.
+        var groups = new Dictionary<Guid, decimal>();
+        string LabelFor(Guid k) => k == Guid.Empty ? Loc["Untagged"] : (_breakDrill is not null && _breakByTag ? State.TagName(k) : State.CategoryName(k));
+        string? IconFor(Guid k) => k == Guid.Empty ? null : (_breakDrill is not null && _breakByTag ? State.TagIcon(k) : State.CategoryStoredIcon(k));
+
+        foreach (var e in expenses)
+        {
+            var amt = Math.Abs(e.Amount.Amount);
+            if (amt == 0) continue;
+            if (_breakDrill is { } drill)
+            {
+                if (State.RootCategoryId(e.CategoryId) != drill) continue;   // only this category's expenses
+                if (_breakByTag)
+                {
+                    var ids = State.ExpenseTags(e).Select(t => t.Id).ToList();
+                    if (ids.Count == 0) { groups[Guid.Empty] = groups.GetValueOrDefault(Guid.Empty) + amt; }
+                    else foreach (var id in ids) groups[id] = groups.GetValueOrDefault(id) + amt;
+                }
+                else
+                {
+                    groups[e.CategoryId] = groups.GetValueOrDefault(e.CategoryId) + amt;   // sub or parent-direct
+                }
+            }
+            else
+            {
+                var root = State.RootCategoryId(e.CategoryId);
+                groups[root] = groups.GetValueOrDefault(root) + amt;
+            }
+        }
+
+        var ordered = groups.OrderByDescending(kv => kv.Value).ToList();
+        var slices = new List<BreakSlice>();
+        for (var i = 0; i < ordered.Count; i++)
+        {
+            var k = ordered[i].Key;
+            slices.Add(new BreakSlice(k, LabelFor(k), IconFor(k), ordered[i].Value, SliceHue(i, ordered.Count)));
+        }
+        return slices;
+    }
+
+    // SVG donut: turn the slices into arc <path> d-strings over a 0–100 sweep. Returns (Slice, PathD) pairs.
+    private static string DonutArc(double startPct, double sweepPct, double cx, double cy, double rOuter, double rInner)
+    {
+        double A(double pct) => (pct / 100.0) * 2 * Math.PI - Math.PI / 2;   // 0% at 12 o'clock, clockwise
+        var a0 = A(startPct); var a1 = A(startPct + sweepPct);
+        var large = sweepPct > 50 ? 1 : 0;
+        double x(double a, double r) => cx + r * Math.Cos(a);
+        double y(double a, double r) => cy + r * Math.Sin(a);
+        var ci = System.Globalization.CultureInfo.InvariantCulture;
+        return string.Format(ci,
+            "M {0:0.##} {1:0.##} A {2:0.##} {2:0.##} 0 {3} 1 {4:0.##} {5:0.##} L {6:0.##} {7:0.##} A {8:0.##} {8:0.##} 0 {3} 0 {9:0.##} {10:0.##} Z",
+            x(a0, rOuter), y(a0, rOuter), rOuter, large, x(a1, rOuter), y(a1, rOuter),
+            x(a1, rInner), y(a1, rInner), rInner, x(a0, rInner), y(a0, rInner));
+    }
 
     // Tag filter for the Spending tab: when any tag is selected, every expense list (the by-date ledger and each
     // category/sub drawer) narrows to expenses carrying at least one of the chosen tags. Bars/totals stay unfiltered —

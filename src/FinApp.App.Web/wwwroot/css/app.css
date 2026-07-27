@@ -321,8 +321,8 @@ html.dark .loan-figs, html.dark .loan-sim label, html.dark .plan-controls label,
 html.dark .acct-sync-note { color: #aab0c0; }
 /* Toggle chips (payoff strategy, Goals kind filter) + loan-card borders on dark. Without this the bare .chip
    tag styling shows through: a light peach pill with inherited white text. */
-html.dark .plan-toggle .chip, html.dark .goal-filters .chip { background: #1e2330; border-color: #2c3142; color: #aab0c0; }
-html.dark .plan-toggle .chip.on, html.dark .goal-filters .chip.on { background: var(--tm-mint); border-color: var(--tm-mint); color: #0f1322; }
+html.dark .plan-toggle .chip, html.dark .goal-filters .chip, html.dark .brk-ranges .chip, html.dark .brk-split .chip { background: #1e2330; border-color: #2c3142; color: #aab0c0; }
+html.dark .plan-toggle .chip.on, html.dark .goal-filters .chip.on, html.dark .brk-ranges .chip.on, html.dark .brk-split .chip.on { background: var(--tm-mint); border-color: var(--tm-mint); color: #0f1322; }
 html.dark .loan-card { border-color: #262d3d; }
 /* Circle-menu bubble arrow + payoff disclaimer on dark. */
 html.dark .ring-card .row-menu::before { border-right-color: #181c25; }

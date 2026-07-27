@@ -712,6 +712,53 @@ html.dark .tag-new-in { background: #171d26; border-color: #2c3644; color: #e8ee
 html.dark .tag-filter-lbl { color: #8b96a4; }
 html.dark .tag-filter-clear { color: #3fe0c5; }
 
+/* Breakdown view: adjustable-window spending pie (no budgets). Reuses the toggle .chip look for its controls. */
+.brk { display: flex; flex-direction: column; gap: 14px; padding-top: 4px; }
+.brk-ranges { display: flex; flex-wrap: wrap; gap: 6px; }
+.brk-ranges .chip, .brk-split .chip { border-radius: 999px; padding: 5px 12px; font-size: .8rem; }
+.brk-custom { display: flex; flex-wrap: wrap; gap: 12px; }
+.brk-custom label { display: inline-flex; align-items: center; gap: 6px; font-size: .8rem; color: #6b7480; font-weight: 600; }
+.brk-custom input[type=date] { padding: 5px 8px; border: 1px solid #dde6e1; border-radius: 8px; font: inherit; font-size: .82rem; }
+html.dark .brk-custom label { color: #8b96a4; }
+html.dark .brk-custom input[type=date] { background: #171d26; border-color: #2c3644; color: #e8eef0; }
+
+.brk-crumb { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.brk-back { display: inline-flex; align-items: center; gap: 3px; border: none; background: none; cursor: pointer;
+    color: #0f7a54; font: inherit; font-size: .82rem; font-weight: 700; padding: 2px 4px; }
+.brk-back-chev { transform: rotate(90deg); width: 14px; height: 14px; }
+.brk-crumb-cur { display: inline-flex; align-items: center; gap: 5px; font-weight: 700; font-size: .88rem; }
+.brk-crumb-cur svg { width: 16px; height: 16px; }
+.brk-split { display: flex; gap: 6px; margin-left: auto; }
+html.dark .brk-back { color: #3fe0c5; }
+
+.brk-chart { display: flex; justify-content: center; padding: 6px 0; }
+.brk-donut { width: min(240px, 68vw); height: auto; }
+.brk-donut path { stroke: var(--tt-donut-gap, #ffffff); stroke-width: 1.5; }
+html.dark .brk-donut path { stroke: #0f1420; }
+.brk-donut-tot { font-size: 22px; font-weight: 800; fill: #1f2430; }
+.brk-donut-sub { font-size: 10px; font-weight: 600; fill: #8a97a0; text-transform: uppercase; letter-spacing: .4px; }
+html.dark .brk-donut-tot { fill: #eceff7; }
+html.dark .brk-donut-sub { fill: #8b96a4; }
+
+.brk-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.brk-item { display: flex; align-items: center; gap: 10px; padding: 9px 6px; border-bottom: 1px solid #f1f3f6;
+    font-size: .9rem; }
+.brk-item:last-child { border-bottom: none; }
+html.dark .brk-item { border-bottom-color: #222a37; }
+.brk-item-drill { cursor: pointer; border-radius: 9px; }
+.brk-item-drill:hover { background: #f6faf8; }
+html.dark .brk-item-drill:hover { background: #191e27; }
+.brk-sw { width: 12px; height: 12px; border-radius: 3px; flex: none; }
+.brk-item-name { display: flex; align-items: center; gap: 7px; min-width: 0; flex: 1; }
+.brk-item-name svg { width: 17px; height: 17px; flex: none; }
+.brk-item-lbl { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.brk-item-amt { font-weight: 700; white-space: nowrap; display: inline-flex; align-items: baseline; gap: 7px; }
+.brk-item-pct { font-size: .76rem; font-weight: 600; color: #8a97a0; min-width: 42px; text-align: right; }
+html.dark .brk-item-pct { color: #8b96a4; }
+.brk-item-chev { width: 16px; height: 16px; color: #b6c0cc; flex: none; }
+.brk-empty { display: flex; align-items: center; gap: 8px; justify-content: center; color: #8a97a0; padding: 32px 0; font-size: .9rem; }
+.brk-empty svg { width: 18px; height: 18px; }
+
 /* Expenses day view + date separators */
 .day-nav { display: flex; align-items: center; gap: 6px; }
 .day-nav input[type=date] { padding: 5px 8px; border: 1px solid #dde6e1; border-radius: 8px; font-size: .82rem; }
@@ -1792,8 +1839,8 @@ html.dark .repeat-last { background: #16241d; border-color: #2b4438; color: #57d
 .plan-toggle { display: flex; gap: 6px; }
 /* The toggle look for .chip — the bare .chip is a static peach tag, so anything clickable needs this.
    .goal-filters shares it so the Goals kind filter and the payoff strategy toggle stay one control. */
-.plan-toggle .chip, .goal-filters .chip { border: 1px solid #e6ece9; background: #faf8f3; color: #5b6270; cursor: pointer; font-weight: 600; }
-.plan-toggle .chip.on, .goal-filters .chip.on { background: #13a06e; border-color: #13a06e; color: #ffffff; }
+.plan-toggle .chip, .goal-filters .chip, .brk-ranges .chip, .brk-split .chip { border: 1px solid #e6ece9; background: #faf8f3; color: #5b6270; cursor: pointer; font-weight: 600; }
+.plan-toggle .chip.on, .goal-filters .chip.on, .brk-ranges .chip.on, .brk-split .chip.on { background: #13a06e; border-color: #13a06e; color: #ffffff; }
 /* Bucket type toggle (Savings goal / Debt payoff) in the add-bucket modal — a bit bigger for touch. */
 .bucket-type { flex-wrap: wrap; }
 .bucket-type .chip { padding: 8px 14px; font-size: .88rem; }
