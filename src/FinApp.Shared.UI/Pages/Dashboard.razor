@@ -173,6 +173,17 @@ else
                         </div>
                     }
                 </span>
+                @* Bank transactions awaiting review live next to the bell (they're notification-like), not on the
+                   Wallets External-accounts button. Only appears when a synced bank has staged imports. *@
+                @{
+                    var _reviewCount = _bankStatus is { Enabled: true, Connected: true } ? BankDebits().Count + BankCredits().Count : 0;
+                }
+                @if (_reviewCount > 0)
+                {
+                    <button class="link bell hdr-review" title="@string.Format(Loc["{0} bank transactions to review"], _reviewCount)" @onclick="OpenBankReview">
+                        <Icon Name="bank" /><span class="review-badge">@_reviewCount</span>
+                    </button>
+                }
                 <button class="link hdr-trophy" title="@Loc["Achievements"]" @onclick="() => _modal = Modal.Achievements"><Icon Name="trophy" /></button>
                 <span class="acct-menu">
                     <button class="link" title="@Loc["Account actions"]" @onclick="() => _acctMenuOpen = !_acctMenuOpen"><Icon Name="sliders" /></button>
@@ -604,11 +615,11 @@ else
                     <span class="wallet-head-actions">
                         <button class="fund-add" @onclick="OpenAddFund"><Icon Name="plus" /> @Loc["Add a fund"]</button>
                         @* External accounts (bank connection) — an account-level manage button at the right end,
-                           only when a bank connection exists; a badge flags transactions waiting to be reviewed. *@
+                           only when a bank connection exists. Transactions awaiting review are surfaced by the
+                           review icon next to the notifications bell, not here. *@
                         @if (_bankStatus?.Enabled == true)
                         {
-                            var reviewCount = _bankStatus.Connected ? BankDebits().Count + BankCredits().Count : 0;
-                            <button class="fund-add wallet-bank-btn@(reviewCount > 0 ? " has-review" : "")" @onclick="ShowBankTab"><Icon Name="bank" /> @Loc["External accounts"]@if (reviewCount > 0) { <span class="wallet-bank-badge" title="@string.Format(Loc["{0} to review"], reviewCount)">@reviewCount</span> }</button>
+                            <button class="fund-add" @onclick="ShowBankTab"><Icon Name="bank" /> @Loc["External accounts"]</button>
                         }
                     </span>
                 </div>
@@ -986,7 +997,7 @@ else
                         var over = hasBudget && cov!.IsOverBudget;
                         var expCount = State.ExpenseCountInCategory(catId);
                         var open = _expandedCatId == catId;
-                        <div class="cat-row@(open ? " open" : "")" data-ring-cat="@catId">
+                        <div class="cat-row@(open ? " open" : "")">
                             <button class="cat-row-head" @onclick="() => ToggleCatRow(catId)">
                                 <span class="cat-chip-ring">
                                     @* Solid ring in the exact colour the row's progress bar has reached — the ring shows
@@ -1154,130 +1165,157 @@ else
                 var plainBuckets = State.SavingBuckets.Where(x => x.Bucket.Kind == SavingKind.Common && !x.Bucket.IsArchived).ToList();
                 var expenseBuckets = State.SavingBuckets.Where(x => x.Bucket.IsExpensesFund && !x.Bucket.IsArchived).ToList();
 
-                // One card, reused in the Debts and Savings sections. Debt cards show "set aside" + what's still owed;
-                // ordinary cards show saved / goal. All bucket actions live in the ⋯ menu (same pattern as elsewhere).
-                RenderFragment<(SavingCategory Bucket, Money Total)> bucketCard = ctx =>
-                @<div class="ring-card ring-card-lg">
+                // Each goal/debt/investment is an expandable progress-bar row (mirrors the Spending tab's category rows):
+                // the bar shows how far along it is, and tapping opens a drawer with the detail + every action. Debt rows
+                // get an inline payoff simulator — drag "extra /mo" and the timeline animates to show the earlier payoff.
+                RenderFragment<(SavingCategory Bucket, Money Total)> goalRow = ctx =>
+                @<div class="cat-row goal-row@(_expandedGoalId == ctx.Bucket.Id ? " open" : "")">
                     @{
                         var bucketId = ctx.Bucket.Id;
                         var isDebt = ctx.Bucket.IsDebt;
                         var isInvestment = ctx.Bucket.IsInvestment;
+                        var isExpenses = ctx.Bucket.IsExpensesFund;
+                        var total = ctx.Total;
                         var g = (!isDebt && !isInvestment && ctx.Bucket.HasGoal) ? State.SavingGoal(bucketId) : (SavingGoalProgress?)null;
-                        var pct = (double)(g?.Percent ?? 0);
-                        var cls = g is null ? "mint" : g.ThresholdReached && !g.GoalReached ? "warn" : "ok";
-                        // Debt: the ring is the original loan. A green arc is how much you've already paid off; a second
-                        // indigo segment past it is money set aside but not yet applied — staged, not gone. The rest of
-                        // the track is what's still owed and unfunded.
                         var debtOwed = isDebt ? State.SavingBucketDebtBalance(bucketId) : 0m;
                         var debtOrig = isDebt ? State.SavingBucketDebtOriginal(bucketId) : 0m;
                         var debtPaid = isDebt ? State.SavingBucketDebtPaidOff(bucketId) : 0m;
-                        var debtScale = debtOrig > 0m ? debtOrig : debtOwed;   // fall back to owed for a debt with no baseline
-                        var paidPct = (isDebt && debtScale > 0m) ? (double)(debtPaid / debtScale) * 100.0 : 0.0;
-                        var stagedPct = (isDebt && debtScale > 0m) ? (double)(ctx.Total.Amount / debtScale) * 100.0 : 0.0;
-                        var ringPct = isDebt ? paidPct : (g is null ? 0 : pct);
-                        var ringCls = isInvestment ? "invest" : isDebt ? "ok" : cls;
-                        var ringDashed = !isDebt && g is null;
-                        // Goal progress shades pink→green (green = reached); investments keep their gold ring; debt now
-                        // uses the two solid segments above, so it opts out of the ramp.
+                        var debtScale = debtOrig > 0m ? debtOrig : debtOwed;
+                        var paidPct = (isDebt && debtScale > 0m) ? Math.Clamp((double)(debtPaid / debtScale) * 100.0, 0, 100) : 0.0;
+                        var stagedPct = (isDebt && debtScale > 0m) ? Math.Clamp((double)(total.Amount / debtScale) * 100.0, 0, 100) : 0.0;
+                        var goalPct = g is not null ? Math.Clamp((double)(g.Percent ?? 0), 0, 100) : 0.0;
+                        // The bar reads positive here (progress toward a goal / down a debt), so a green fill — not the
+                        // Spending tab's mint→coral spend-heat ramp. No goal/baseline → a flat, unfilled track.
+                        var barPct = isDebt ? paidPct : goalPct;
+                        var hasBar = isDebt ? debtScale > 0m : (g is not null);
+                        var ringCls = isInvestment ? "invest" : isDebt ? "ok" : (g is null ? "mint" : (g.ThresholdReached && !g.GoalReached ? "warn" : "ok"));
+                        var ringDashed = !isDebt && !isInvestment && g is null;
                         var ringRamp = (!isInvestment && !isDebt && !ringDashed) ? "goal" : null;
-                        // Lifecycle: a debt with nothing left owed, or a goal that's been reached, is "done".
                         var done = isDebt ? ctx.Bucket.IsDebtCleared : (g is not null && g.GoalReached);
+                        var open = _expandedGoalId == bucketId;
                     }
-                    <ProgressRing Percent="@ringPct" Percent2="@(isDebt ? stagedPct : 0)" Class="@ringCls" Class2="staged" Dashed="@ringDashed" Ramp="@ringRamp">
-                        <button class="ring-ico-big" title="@Loc["Actions"]" @onclick="() => ToggleRowMenu(bucketId)"><CatIcon Name="@State.SavingBucketIcon(bucketId)" Class="cat-chip-lg" /></button>
-                        <button class="ring-name" title="@Loc["Actions"]" @onclick="() => ToggleRowMenu(bucketId)">@ctx.Bucket.Name</button>
-                        @if (done)
-                        {
-                            <span class="ring-done">🎉</span>
-                        }
-                    </ProgressRing>
-                    @if (_rowMenuId == bucketId)
+                    <button class="cat-row-head" @onclick="() => ToggleGoalRow(bucketId)">
+                        <span class="cat-chip-ring">
+                            <ProgressRing Percent="@(isDebt ? paidPct : goalPct)" Percent2="@(isDebt ? stagedPct : 0)" Class="@ringCls" Class2="staged" Dashed="@ringDashed" Ramp="@ringRamp">
+                                <CatIcon Name="@State.SavingBucketIcon(bucketId)" Class="cat-chip-ring-ico" />
+                            </ProgressRing>
+                        </span>
+                        <span class="cat-row-main">
+                            <span class="cat-row-top">
+                                <span class="cat-row-name">@ctx.Bucket.Name@if (done) { <span class="goal-done-badge" title="@(isDebt ? Loc["Paid off"] : Loc["Goal reached"])">🎉</span> }</span>
+                                <span class="cat-row-amt">
+                                    @if (done) { <span class="good-text">@(isDebt ? Loc["Paid off"] : Loc["Goal reached"])</span> }
+                                    else if (isDebt) { <text>@Fmt(debtOwed)<span class="cat-row-nb"> · @Loc["owed"]</span></text> }
+                                    else if (isInvestment) { <text>@Fmt(total)<span class="cat-row-nb"> · @Loc["invested"]</span></text> }
+                                    else if (g is not null) { <text>@Fmt(total) / @Fmt(g.Goal!.Value)</text> }
+                                    else { <text>@Fmt(total)<span class="cat-row-nb"> · @Loc["saved"]</span></text> }
+                                </span>
+                            </span>
+                            <span class="cbar-track"><span class="cbar-grad @(hasBar ? "cbar-good" : "cbar-flat")" style="--pct:@barPct.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)%"></span></span>
+                        </span>
+                        <Icon Name="chevron" Class="cat-chev" />
+                    </button>
+                    @if (open)
                     {
-                        <div class="row-menu-backdrop" @onclick="() => _rowMenuId = Guid.Empty"></div>
-                        <div class="row-menu">
-                            @if (!done)
+                        <div class="cat-drawer goal-drawer">
+                            @* --- Type-specific detail --- *@
+                            @if (isDebt)
                             {
-                                @if (isDebt)
+                                <div class="goal-facts">
+                                    <span><strong>@Fmt(debtOwed)</strong> @Loc["owed"]</span>
+                                    <span><strong>@State.SavingBucketDebtRate(bucketId)%</strong> APR</span>
+                                    <span><strong>@Fmt(State.SavingBucketDebtInstallment(bucketId))</strong>/@Loc["mo"]</span>
+                                    <span><strong>@Fmt(total)</strong> @Loc["set aside"]</span>
+                                </div>
+                                var dProg = State.SavingBucketDebtProgress(bucketId);
+                                if (dProg is { } pr && debtPaid > 0m)
                                 {
-                                    <button @onclick="() => RowAct(() => OpenPayoffProjection(bucketId))"><Icon Name="trending" /> @Loc["Payoff projection"]</button>
+                                    <div class="debt-progress">
+                                        <span class="debt-prog-txt">@string.Format(Loc["Paid off {0} of {1} ({2}%)"], Fmt(debtPaid), Fmt(debtOrig), (int)Math.Round((double)pr * 100))</span>
+                                        @DebtSparkline(State.SavingBucketDebtHistory(bucketId))
+                                    </div>
                                 }
-                                else if (isInvestment)
+                                if (!done && State.SavingBucketDebtInstallment(bucketId) > 0m)
                                 {
-                                    <button @onclick="() => RowAct(() => OpenInvestmentProjection(bucketId))"><Icon Name="trending" /> @Loc["Growth projection"]</button>
-                                }
-                                else
-                                {
-                                    <button @onclick="() => RowAct(() => OpenGoalProjection(bucketId))"><Icon Name="calendar" /> @Loc["Goal projection"]</button>
+                                    // Inline payoff simulator: drag "extra /mo" and the timeline animates the earlier payoff.
+                                    var inst = State.SavingBucketDebtInstallment(bucketId);
+                                    var rate = State.SavingBucketDebtRate(bucketId);
+                                    var basePay = FinApp.Forecasting.LoanForecast.PayOff(debtOwed, rate, inst);
+                                    var fastPay = FinApp.Forecasting.LoanForecast.PayOff(debtOwed, rate, inst + _goalExtra);
+                                    var baseMonths = basePay?.Months ?? 0;
+                                    var fastMonths = fastPay?.Months ?? 0;
+                                    var monthsSaved = baseMonths > 0 && fastMonths > 0 ? Math.Max(0, baseMonths - fastMonths) : 0;
+                                    // The green "time saved" region grows from the payoff flag to the right as you add extra.
+                                    var flagPct = baseMonths > 0 && fastMonths > 0 ? Math.Clamp((double)fastMonths / baseMonths * 100.0, 0, 100) : 100.0;
+                                    var sliderMax = Math.Max(50m, Math.Ceiling(inst * 3m / 10m) * 10m);
+                                    <div class="payoff-sim">
+                                        <div class="payoff-sim-head">
+                                            <span><Icon Name="trending" /> @Loc["Pay extra on top"]</span>
+                                            <span class="payoff-extra-val">+@Fmt(new Money(_goalExtra, State.Currency))/@Loc["mo"]</span>
+                                        </div>
+                                        <input class="payoff-slider" type="range" min="0" max="@sliderMax.ToString(System.Globalization.CultureInfo.InvariantCulture)" step="10" @bind="_goalExtra" @bind:event="oninput" />
+                                        <div class="payoff-timeline" title="@Loc["Time until debt-free"]">
+                                            <span class="payoff-saved" style="left:@flagPct.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)%"></span>
+                                            <span class="payoff-flag" style="left:@flagPct.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)%">🏁</span>
+                                        </div>
+                                        <div class="payoff-sim-foot">
+                                            @if (fastPay is not null)
+                                            {
+                                                <span class="payoff-date">🏁 @Loc["Debt-free"] @PayoffDate(fastMonths)</span>
+                                                @if (monthsSaved > 0) { <span class="good-text">· @MonthsText(monthsSaved) @Loc["sooner"]</span> }
+                                                @if (basePay is { } bp && fastPay is { } fp && bp.TotalInterest > fp.TotalInterest) { <span class="good-text">· @Loc["save"] @Fmt(bp.TotalInterest - fp.TotalInterest)</span> }
+                                            }
+                                            else
+                                            {
+                                                <span class="warn-text">@Loc["At this installment it never clears — it doesn’t cover the interest."]</span>
+                                            }
+                                        </div>
+                                    </div>
                                 }
                             }
-                            @if (State.IsPeriodOpen)
+                            else if (isInvestment)
                             {
-                                <button @onclick="() => RowAct(() => OpenAddSaving(bucketId))"><Icon Name="coins" /> @Loc["Add to savings"]</button>
-                                <button @onclick="() => RowAct(() => OpenDisburseSaving(bucketId))"><Icon Name="target" /> @(isDebt ? Loc["Make a payment"] : isInvestment ? Loc["Withdraw"] : Loc["Apply to a goal"])</button>
-                                <button @onclick="() => RowAct(() => OpenBudgetSaving(bucketId))"><Icon Name="arrow-right" /> @Loc["Budget savings"]</button>
-                                <button @onclick="() => RowAct(() => OpenSpendSaving(bucketId))"><Icon Name="note" /> @Loc["Spend savings"]</button>
-                            }
-                            <button @onclick="() => RowAct(() => OpenEditBucket(bucketId))"><Icon Name="pencil" /> @Loc["Edit"]</button>
-                            <button @onclick="() => ArchiveBucket(bucketId)"><Icon Name="archive" /> @Loc["Archive"]</button>
-                            <button class="danger" @onclick="() => RowAct(() => OpenDeleteBucket(bucketId))"><Icon Name="trash" /> @Loc["Remove"]</button>
-                        </div>
-                    }
-                    <div class="ring-label">
-                        @if (done)
-                        {
-                            <span class="amt good-text">@(isDebt ? Loc["🎉 Paid off!"] : Loc["🎉 Goal reached!"])</span>
-                            <div class="ring-sub"><button class="link" @onclick="() => ArchiveBucket(bucketId)"><Icon Name="archive" /> @Loc["Archive it"]</button></div>
-                        }
-                        else if (isDebt)
-                        {
-                            <span class="amt save">@Fmt(ctx.Total)</span> <span class="ring-muted">@Loc["set aside"]</span>
-                            <div class="ring-sub">@Fmt(State.SavingBucketDebtBalance(bucketId)) @Loc["owed"] · @State.SavingBucketDebtRate(bucketId)% · @Fmt(State.SavingBucketDebtInstallment(bucketId))/@Loc["mo"]</div>
-                            var dPaid = State.SavingBucketDebtPaidOff(bucketId);
-                            var dOrig = State.SavingBucketDebtOriginal(bucketId);
-                            var dProg = State.SavingBucketDebtProgress(bucketId);
-                            var dSpark = State.SavingBucketDebtHistory(bucketId);
-                            @* "Ahead of the installment plan" used to sit here; it's a pace projection that reads as a
-                               result of your last payment and confused people. The Payoff projection modal owns that
-                               answer now. *@
-                            if (dProg is { } pr && dPaid > 0m)
-                            {
-                                <div class="debt-progress">
-                                    <span class="debt-prog-txt">@string.Format(Loc["Paid off {0} of {1} ({2}%)"], Fmt(dPaid), Fmt(dOrig), (int)Math.Round((double)pr * 100))</span>
-                                    @DebtSparkline(dSpark)
+                                var invProj = State.ProjectInvestment(bucketId, State.EffectiveSavingPace(bucketId)?.Amount ?? 0m);
+                                <div class="goal-facts">
+                                    <span><strong>@Fmt(total)</strong> @Loc["invested"]</span>
+                                    <span><strong>@State.SavingBucketInvestmentRate(bucketId)%</strong> @Loc["return"]</span>
+                                    <span><strong>@State.SavingBucketInvestmentTermYears(bucketId).ToString("0.#")@Loc["y"]</strong> @Loc["term"]</span>
+                                    @if (invProj is { Months: > 0 } ip) { <span><strong>~@Fmt(ip.FutureValue)</strong> @Loc["projected"]</span> }
                                 </div>
                             }
-                        }
-                        else if (isInvestment)
-                        {
-                            <span class="amt save">@Fmt(ctx.Total)</span> <span class="ring-muted">@Loc["invested"]</span>
-                            var invProj = State.ProjectInvestment(bucketId, State.EffectiveSavingPace(bucketId)?.Amount ?? 0m);
-                            <div class="ring-sub">@State.SavingBucketInvestmentRate(bucketId)% · @State.SavingBucketInvestmentTermYears(bucketId).ToString("0.#")@Loc["y"]@(invProj is { Months: > 0 } ip ? $" → ~{Fmt(ip.FutureValue)}" : "")</div>
-                        }
-                        else if (ctx.Bucket.IsExpensesFund)
-                        {
-                            @* "saved" is the wrong word for a sinking fund — the money is standing by to be spent,
-                               not accumulating toward anything. The set-aside line below says what it still needs. *@
-                            <span class="amt save">@Fmt(ctx.Total)</span> <span class="ring-muted">@Loc["set aside"]</span>
-                        }
-                        else if (g is null)
-                        {
-                            <span class="amt save">@Fmt(ctx.Total)</span> <span class="ring-muted">@Loc["saved"]</span>
-                        }
-                        else
-                        {
-                            <span class="amt save">@Fmt(ctx.Total)</span> <span class="ring-muted">/ @Fmt(g.Goal!.Value)</span>
-                        }
-                        @* A sinking fund's headline number is the monthly set-aside, not the balance — the balance
-                           only tells you where you are, this tells you what to do. One line, no extra section. *@
-                        @if (State.BucketMonthlySetAside(bucketId) is { } setAside and > 0m)
-                        {
-                            <div class="ring-sub ring-setaside">🗓️ @Fmt(setAside)/@Loc["mo"] @Loc["to stay covered"]</div>
-                        }
-                        @if (State.SavingBucketFundId(bucketId) is { } heldFund)
-                        {
-                            <div class="ring-sub ring-muted"><Icon Name="bank" /> @Loc["in"] @State.FundName(heldFund)</div>
-                        }
-                    </div>
+                            else
+                            {
+                                <div class="goal-facts">
+                                    @if (g is not null) { <span><strong>@Fmt(total)</strong> / @Fmt(g.Goal!.Value) (@((int)Math.Round(goalPct))%)</span> }
+                                    else { <span><strong>@Fmt(total)</strong> @Loc["saved"]</span> }
+                                    @if (State.BucketMonthlySetAside(bucketId) is { } setAside and > 0m) { <span>🗓️ <strong>@Fmt(setAside)</strong>/@Loc["mo"] @Loc["to stay covered"]</span> }
+                                </div>
+                            }
+                            @if (State.SavingBucketFundId(bucketId) is { } heldFund)
+                            {
+                                <div class="goal-held"><Icon Name="bank" /> @Loc["in"] @State.FundName(heldFund)</div>
+                            }
+                            @* --- Actions --- *@
+                            <div class="cat-drawer-actions">
+                                @if (!done)
+                                {
+                                    @if (isDebt) { <button class="cat-act" @onclick="() => OpenPayoffProjection(bucketId)"><Icon Name="trending" /> @Loc["Payoff projection"]</button> }
+                                    else if (isInvestment) { <button class="cat-act" @onclick="() => OpenInvestmentProjection(bucketId)"><Icon Name="trending" /> @Loc["Growth projection"]</button> }
+                                    else { <button class="cat-act" @onclick="() => OpenGoalProjection(bucketId)"><Icon Name="calendar" /> @Loc["Goal projection"]</button> }
+                                }
+                                @if (State.IsPeriodOpen)
+                                {
+                                    <button class="cat-act" @onclick="() => OpenAddSaving(bucketId)"><Icon Name="coins" /> @Loc["Add to savings"]</button>
+                                    <button class="cat-act" @onclick="() => OpenDisburseSaving(bucketId)"><Icon Name="target" /> @(isDebt ? Loc["Make a payment"] : isInvestment ? Loc["Withdraw"] : Loc["Apply to a goal"])</button>
+                                    <button class="cat-act" @onclick="() => OpenBudgetSaving(bucketId)"><Icon Name="arrow-right" /> @Loc["Budget savings"]</button>
+                                    <button class="cat-act" @onclick="() => OpenSpendSaving(bucketId)"><Icon Name="note" /> @Loc["Spend savings"]</button>
+                                }
+                                <button class="cat-act" @onclick="() => OpenEditBucket(bucketId)"><Icon Name="pencil" /> @Loc["Edit"]</button>
+                                <button class="cat-act" @onclick="() => ArchiveBucket(bucketId)"><Icon Name="archive" /> @Loc["Archive"]</button>
+                                <button class="cat-act danger" @onclick="() => OpenDeleteBucket(bucketId)"><Icon Name="trash" /> @Loc["Remove"]</button>
+                            </div>
+                        </div>
+                    }
                 </div>;
             }
             @{
@@ -1323,8 +1361,8 @@ else
                         })
                     </p>
                 }
-                <div class="ring-grid">
-                    @foreach (var b in goalBuckets) { @bucketCard(b) }
+                <div class="cat-list goal-list">
+                    @foreach (var b in goalBuckets) { @goalRow(b) }
                 </div>
             </section>
             @if (debtBuckets.Count >= 2)
@@ -3445,18 +3483,6 @@ else
     private GoalFilter _goalFilter = GoalFilter.All;
 
     private Tab _tab = Tab.Overview;
-    private bool _moveOpen;
-
-    // Per-row "⋯" action menu: the id of the row whose menu is open (Guid.Empty = none).
-    private Guid _rowMenuId;
-    private void ToggleRowMenu(Guid id) => _rowMenuId = _rowMenuId == id ? Guid.Empty : id;
-    private void RowAct(Action a) { _rowMenuId = Guid.Empty; a(); }
-
-    // Budget-circle popover: one action menu per category (edit / expenses / add / sub-categories) so the circles
-    // stay clean instead of piling on buttons.
-    private Guid _budgetMenuId;
-    private void ToggleBudgetMenu(Guid id) => _budgetMenuId = _budgetMenuId == id ? Guid.Empty : id;
-    private void BudgetAct(Action a) { _budgetMenuId = Guid.Empty; a(); }
 
     // Budget category list: which row's drawer (expenses + sub-categories + actions) is open. One at a time (accordion).
     private Guid _expandedCatId;
@@ -3467,46 +3493,17 @@ else
     private void ToggleSub(Guid id) { if (!_expandedSubs.Remove(id)) _expandedSubs.Add(id); }
     private const int CatDrawerExpenseCap = 5;
 
+    // Goals list: which goal/debt/investment row's drawer is open (accordion, one at a time). The debt drawer's inline
+    // payoff simulator drives _goalExtra ("extra /mo"); it resets to 0 whenever a different row opens.
+    private Guid _expandedGoalId;
+    private decimal _goalExtra;
+    private void ToggleGoalRow(Guid id) { _expandedGoalId = _expandedGoalId == id ? Guid.Empty : id; _goalExtra = 0m; }
+
     // Budgets panel view: false = by category (the ring/bar list), true = the same expenses flat, organised by date
     // (the old separate "All expenses" panel, folded in here as a toggle so the ledger isn't shown twice).
     private bool _budgetByDate;
 
-    /// <summary>The click-anywhere-to-close action menu for a budget circle, listing its actions + sub-categories.</summary>
-    private RenderFragment<Guid> BudgetCircleMenu => catId =>
-        @<text>
-            <div class="row-menu-backdrop" @onclick="() => _budgetMenuId = Guid.Empty"></div>
-            <div class="row-menu">
-                @if (State.IsPeriodOpen)
-                {
-                    <button @onclick="() => BudgetAct(() => OpenAddExpense(catId))"><Icon Name="receipt" /> @Loc["Add expense"]</button>
-                }
-                <button @onclick="() => BudgetAct(() => OpenCategoryDetail(catId))"><Icon Name="list" /> @Loc["Expenses"]</button>
-                <button @onclick="() => BudgetAct(() => OpenEdit(catId))"><Icon Name="pencil" /> @Loc["Edit budget"]</button>
-                @{
-                    var subs = State.ChildrenOf(catId).ToList();
-                }
-                @if (subs.Count > 0)
-                {
-                    <div class="row-menu-head">@Loc["Sub-categories"]</div>
-                    @foreach (var sub in subs)
-                    {
-                        var subId = sub.Id;
-                        <button class="row-menu-sub" @onclick="() => BudgetAct(() => OpenCategoryDetail(subId))"><CatIcon Name="@State.CategoryIcon(subId)" /> @sub.Name</button>
-                    }
-                }
-                @if (State.IsPeriodOpen)
-                {
-                    <button @onclick="() => BudgetAct(() => OpenAddSub(catId))"><Icon Name="plus" /> @Loc["Add sub-category"]</button>
-                }
-                <button class="danger" @onclick="() => ArchiveCat(catId)"><Icon Name="archive" /> @Loc["Archive"]</button>
-            </div>
-        </text>;
-
-    // Archive a category (and its sub-tree) — hides it but keeps every expense/budget in history. No reference blocker,
-    // so it works even when the category is referenced (unlike delete). Mirrors ArchiveBucket.
-    private async Task ArchiveCat(Guid catId) { _budgetMenuId = Guid.Empty; await State.ArchiveCategory(catId); }
-
-    // --- Funds-as-circles: per-fund bubble menu (mirrors BudgetCircleMenu) --------------------------
+    // --- Funds-as-circles: per-fund bubble menu --------------------------
     // Distinguishable colours for fund donut slices / legend swatches (synced=gold, over=red handled separately).
     private static readonly string[] FundPalette = { "#1d9e75", "#5dcaa5", "#0f6e56", "#37b6a0", "#8fd9c4", "#2a8f6b" };
 
@@ -3670,7 +3667,6 @@ else
     // Merchant rules + per-row picks (feature 2.3). Rules keyed by normalized merchant; picks keyed by transaction id.
     private Dictionary<string, (string Kind, Guid TargetId)> _bankMappings = new();
     private List<BankAccountDto> _bankAccounts = [];
-    private bool _bankAccountsOpen;
     private readonly Dictionary<string, Guid> _bankRowCat = new();      // debit → category
     private readonly Dictionary<string, Guid> _bankRowFund = new();     // debit → fund
     private readonly Dictionary<string, string> _bankRowCredit = new(); // credit → "fund:guid" | "contributor:guid"
@@ -3908,7 +3904,13 @@ else
     private async Task SyncOnOpenInBackgroundAsync()
     {
         await SyncOnOpenAsync();                       // already swallows its own failures
-        if (!_disposed) await InvokeAsync(StateHasChanged);
+        if (!_disposed)
+        {
+            await InvokeAsync(StateHasChanged);
+            // The fresh sync may have pulled in transactions that weren't staged when the on-entry review check ran.
+            // Surface them now — respecting dismissal so we don't re-pop a set the user just closed this session.
+            await MaybeOpenBankReviewAsync();
+        }
     }
 
     // Stamp any newly-earned achievement with today's date after each render. Only persists when something changed
@@ -4012,7 +4014,7 @@ else
             _modal = Modal.PickAccount;
             return;   // the review check runs once they've picked (PickAccountOnEntry)
         }
-        await MaybeOpenBankReviewAsync();
+        await MaybeOpenBankReviewAsync(bypassDismiss: true);   // fresh app load: always surface pending imports
     }
 
     private async Task PickAccountOnEntry(Guid accountId)
@@ -4030,20 +4032,25 @@ else
             await LoadBankAsync();                   // bank status/pending for the picked account
         }
         await SyncOnOpenAsync();   // fetch fresh transactions for the picked account (throttled)
-        await MaybeOpenBankReviewAsync();
+        await MaybeOpenBankReviewAsync(bypassDismiss: true);   // fresh app load: always surface pending imports
     }
 
     /// <summary>Auto-open the bank-review modal when the current account has a synced bank with unreviewed
-    /// transactions the user hasn't already dismissed — re-prompting only once a newer transaction arrives.</summary>
-    private async Task MaybeOpenBankReviewAsync()
+    /// transactions. On a fresh app load (<paramref name="bypassDismiss"/>) it always surfaces pending imports;
+    /// mid-session re-checks (e.g. a background sync finishing) respect the per-set dismissal so we don't re-nag
+    /// after the user has just closed it — re-prompting only once a newer transaction arrives.</summary>
+    private async Task MaybeOpenBankReviewAsync(bool bypassDismiss = false)
     {
         if (_modal != Modal.None || _bankStatus?.Connected != true) return;
         var pending = BankRowsForPeriod();
         if (pending.Count == 0) return;
-        var newest = NewestPendingId(pending);
-        string? dismissed = null;
-        try { dismissed = await JS.InvokeAsync<string?>("localStorage.getItem", BankReviewKey()); } catch { /* no storage */ }
-        if (dismissed == newest) return;   // already dismissed, and nothing newer has arrived since
+        if (!bypassDismiss)
+        {
+            var newest = NewestPendingId(pending);
+            string? dismissed = null;
+            try { dismissed = await JS.InvokeAsync<string?>("localStorage.getItem", BankReviewKey()); } catch { /* no storage */ }
+            if (dismissed == newest) return;   // already dismissed, and nothing newer has arrived since
+        }
         _modal = Modal.BankReview;
         StateHasChanged();
     }
@@ -4089,7 +4096,7 @@ else
     {
         if (!State.HasAccounts) return;
         _bankAccountId = State.CurrentAccountId;   // the account this status/pending belongs to
-        _bankAccounts = []; _bankAccountsOpen = false;   // reset per-account so a switch doesn't reuse another account's list
+        _bankAccounts = [];   // reset per-account so a switch doesn't reuse another account's list
         _bankSharedAckKnown = false;
         // Unverified users can't touch the bank endpoints (they'd 403); the tab shows a "verify first" prompt instead.
         if (Auth.CurrentUser is { EmailVerified: false }) { _bankStatus = null; return; }
@@ -6131,7 +6138,6 @@ else
 
     private async Task ArchiveBucket(Guid bucketId)
     {
-        _rowMenuId = Guid.Empty;
         await State.SetSavingBucketArchived(bucketId, true);
     }
 
@@ -6633,12 +6639,6 @@ else
 
     private static string PctText(decimal ratio) =>
         $"{decimal.Round(ratio * 100m, 0, MidpointRounding.AwayFromZero)}%";
-
-    /// <summary>A stable, distinct hue for a category's segment in the budget bar. Derived from the id so the same
-    /// category keeps its colour across renders. Drawn from a categorical palette that deliberately avoids the
-    /// traffic-light greens/reds — those carry the "under vs over budget" meaning on the rings, not category identity.</summary>
-    private static readonly int[] SegHues = { 210, 265, 300, 32, 190, 48, 330, 240, 165, 285 };
-    private static int SegHue(Guid id) => SegHues[(int)((uint)id.GetHashCode() * 2654435761u % (uint)SegHues.Length)];
 
     // The colour a category's progress bar (.cbar-grad) has reached at fill pct — mirrors that gradient's stops
     // (mint to 68%, amber #ffab73 at 88%, coral at 100%) so the status ring is tinted to exactly where the bar ends.

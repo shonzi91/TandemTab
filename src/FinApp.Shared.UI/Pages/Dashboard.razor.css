@@ -724,8 +724,6 @@ html.dark .bh-title { color: #e8eaf0; }
 html.dark .bh-amt { color: #cbd5e1; }
 .bh-remain { font-size: .76rem; font-weight: 600; }
 .bh-bar { height: 10px; margin-top: 11px; }
-.ring-card.ring-hi .ring-name { text-decoration: underline; text-underline-offset: 3px; }
-.cat-row.ring-hi { border-color: #13a06e; }
 
 /* Budget category list — status-ring chip + gradient bar per row, expandable to a drawer. */
 .cat-list { display: flex; flex-direction: column; gap: 8px; }
@@ -751,6 +749,8 @@ html.dark .cat-row-amt { color: #94a3b8; }
 html.dark .cbar-track { background: #2a3341; }
 .cbar-grad { display: block; height: 100%; background: linear-gradient(90deg, #2fb99a 0%, #2fb99a 68%, #ffab73 88%, #ff7a59 100%); clip-path: inset(0 calc(100% - var(--pct, 0%)) 0 0); }
 .cbar-grad.cbar-flat { background: #2fb99a; opacity: .4; clip-path: none; }
+/* Goals bars read positive (progress toward a goal / down a debt) — a solid green fill, not the spend-heat ramp. */
+.cbar-grad.cbar-good { background: linear-gradient(90deg, #2fb99a 0%, #13a06e 100%); clip-path: inset(0 calc(100% - var(--pct, 0%)) 0 0); }
 .cat-row-head ::deep .cat-chev { color: #b6c0cc; flex: none; transition: transform .15s; }
 .cat-row.open ::deep .cat-chev { transform: rotate(90deg); }
 /* Modest, even indent (was 60px to align under the name) so nested sub-rows and the shared expense rows don't run
@@ -766,16 +766,6 @@ html.dark .cat-row-sub { background: #11151c; }
 /* The shared expense list (row-main/row-title/row-sub) inside any drawer: drop default list margins. */
 .cat-drawer-list { margin: 0; }
 .cbar-track-sm { height: 6px; margin-top: 4px; }
-.cat-exp-list { list-style: none; margin: 0; padding: 0; }
-.cat-exp { display: flex; align-items: center; gap: 8px; padding: 7px 0; border-bottom: 0.5px solid #eef1f4; font-size: .85rem; }
-html.dark .cat-exp { border-color: #232a37; }
-.cat-exp:last-child { border-bottom: none; }
-.cat-exp-main { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; color: #384250; }
-html.dark .cat-exp-main { color: #cdd4de; }
-.cat-exp-fund { white-space: nowrap; }
-.cat-exp-date { color: #94a3b8; font-size: .78rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cat-exp .amt { white-space: nowrap; }
-.cat-exp-acts { display: flex; gap: 4px; flex: none; }
 .cat-drawer-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
 .cat-act { display: inline-flex; align-items: center; gap: 6px; font-size: .84rem; padding: 7px 12px; border: 0.5px solid #d2ded7; border-radius: 9px; background: none; color: #384250; cursor: pointer; }
 .cat-act:hover { border-color: #13a06e; background: #f0fbf6; color: #0f7a54; }
@@ -896,6 +886,31 @@ html.dark .ms-bar-desc { color: #8a94a6; }
 .debt-prog-txt { font-size: .66rem; font-weight: 700; color: #4f46e5; }
 .debt-spark { width: 108px; height: 22px; display: block; color: #6366f1; opacity: .9; }
 .debt-ahead { font-size: .64rem; font-weight: 700; margin-top: 1px; text-align: center; }
+
+/* ---- Goals list: expandable progress-bar rows (reuse .cat-row/.cat-drawer) + debt payoff simulator ---- */
+.goal-done-badge { margin-left: 5px; }
+.goal-drawer .debt-progress { align-items: flex-start; margin: 0 0 10px; }
+.goal-facts { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: .82rem; color: #5b6470; margin-bottom: 10px; }
+.goal-facts strong { color: #16202b; font-weight: 700; }
+html.dark .goal-facts { color: #a9b6ad; }
+html.dark .goal-facts strong { color: #e8eef0; }
+.goal-held { display: flex; align-items: center; gap: 6px; font-size: .8rem; color: #8a97a0; margin-bottom: 10px; }
+/* Debt payoff simulator: slider + animated timeline. As "extra /mo" rises the payoff flag slides left and the green
+   "time saved" region grows from the right — the transitions are what animate it. */
+.payoff-sim { background: #f3fbf7; border: 1px solid #d6f0e3; border-radius: 12px; padding: 12px; margin-bottom: 12px; }
+html.dark .payoff-sim { background: #14231d; border-color: #24463a; }
+.payoff-sim-head { display: flex; align-items: center; justify-content: space-between; font-size: .83rem; font-weight: 700; color: #0f7a54; margin-bottom: 8px; }
+html.dark .payoff-sim-head { color: #57d9a3; }
+.payoff-extra-val { font-variant-numeric: tabular-nums; }
+.payoff-slider { width: 100%; accent-color: #13a06e; margin: 2px 0 10px; }
+.payoff-timeline { position: relative; height: 12px; border-radius: 7px; background: #e2ece7; }
+html.dark .payoff-timeline { background: #24312b; }
+.payoff-saved { position: absolute; top: 0; bottom: 0; right: 0; left: 100%; background: linear-gradient(90deg, #34d399, #13a06e); border-radius: 7px; transition: left .45s cubic-bezier(.4,0,.2,1); }
+.payoff-flag { position: absolute; top: 50%; left: 100%; transform: translate(-50%, -50%); font-size: .82rem; transition: left .45s cubic-bezier(.4,0,.2,1); }
+.payoff-sim-foot { margin-top: 9px; font-size: .8rem; color: #5b6470; display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: baseline; }
+.payoff-date { font-weight: 700; color: #16202b; }
+html.dark .payoff-sim-foot { color: #a9b6ad; }
+html.dark .payoff-date { color: #e8eef0; }
 
 /* Category-detail modal action buttons */
 .detail-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 6px; }
@@ -1393,6 +1408,14 @@ html.dark .cost-short { color: #f0b26b; }
     line-height: 16px; text-align: center;
 }
 html.dark .bell-badge { background: #f0b26b; color: #33240a; }
+/* Bank-review icon badge (header, next to the bell) — amber, so "transactions to review" reads distinctly from the
+   gold notifications count sitting beside it. */
+.review-badge {
+    position: absolute; top: -4px; right: -6px; min-width: 16px; height: 16px; padding: 0 4px;
+    border-radius: 999px; background: #d97706; color: #fff; font-size: .66rem; font-weight: 700;
+    line-height: 16px; text-align: center;
+}
+html.dark .review-badge { background: #e08a2e; color: #2a1a04; }
 .bell-menu {
     position: absolute; top: calc(100% + 6px); right: 0; z-index: 91; width: min(340px, 88vw);
     background: #ffffff; border: 1px solid #e6ece9; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,.14);
@@ -1740,13 +1763,10 @@ html.dark .proj-result.good-text { color: var(--tm-mint); }
     border-radius: 50%; background: #13a06e; box-shadow: 0 0 0 2px #ffffff;
 }
 
-/* Setup tab — People row */
-.people-row { display: flex; flex-wrap: wrap; gap: 14px 18px; }
-.person { display: inline-flex; align-items: center; gap: 8px; font-size: .9rem; }
+/* Member tags/remove — reused by the People list in the account-switcher dropdown (.acct-drop-people). */
 .person-tag { font-size: .68rem; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; color: #13a06e; background: #e4f6ee; border-radius: 999px; padding: 1px 7px; }
 .person-x { border: none; background: none; color: #c0392b; font-size: 1.05rem; line-height: 1; cursor: pointer; padding: 0 2px; opacity: .7; }
 .person-x:hover { opacity: 1; }
-.people-actions { margin-top: 12px; }
 .link.danger { color: #c0392b; }
 
 /* Setup tab — Bank sync */
@@ -1842,11 +1862,6 @@ html.dark .spend-menu > .link:hover { background: #1b2230; color: var(--tm-mint)
 
 /* "Where your money is" header actions, right-aligned: Add a fund + (bank-gated) External accounts at the far end. */
 .wallet-head-actions { margin-left: auto; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-/* External-accounts manage button; with pending items it takes an amber "needs attention" tint + a count badge. */
-.wallet-bank-btn.has-review { border-color: #f0c05a; color: #92600b; background: #fdf6e3; }
-.wallet-bank-btn.has-review:hover { border-color: #e0a92e; background: #fbeecb; }
-html.dark .wallet-bank-btn.has-review { background: #2a2410; color: #f5d98a; border-color: #5c4a1e; }
-.wallet-bank-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 5px; margin-left: 6px; border-radius: 9px; background: #d97706; color: #fff; font-size: .72rem; font-weight: 700; }
 
 /* Goals: kind is a filter over one grid, not a section each. */
 .goal-filters { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 0 0 14px; }

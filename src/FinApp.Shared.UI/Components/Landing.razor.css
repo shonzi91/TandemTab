@@ -93,7 +93,11 @@ html.dark .lp-auth-x { background: #232a33; color: #aab0c0; }
     background: #ffffff; border: 1px solid #e6ece9; border-radius: 16px; padding: 20px 18px;
     box-shadow: 0 4px 16px rgba(17, 20, 28, .05);
 }
-.lp-feat-ico { font-size: 1.7rem; line-height: 1; display: block; margin-bottom: 10px; }
+/* App line-icons (from the shared sprite) so the landing matches the product's chrome, not stray emoji.
+   Brand green in light, mint in dark — the accent the rest of the app uses. `::deep` because the icon is a
+   child <Icon> component: its <svg> carries that component's CSS scope, not Landing's, so a plain rule wouldn't hit it. */
+.lp-feat ::deep .lp-feat-ico { display: block; width: 30px; height: 30px; margin-bottom: 12px; color: #13a06e; }
+html.dark .lp-feat ::deep .lp-feat-ico { color: #3fe0c5; }
 .lp-feat h4 { margin: 0 0 6px; font-size: 1.02rem; font-weight: 700; color: #16202b; }
 .lp-feat p { margin: 0; font-size: .9rem; line-height: 1.5; color: #5b6470; }
 
