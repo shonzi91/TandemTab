@@ -50,6 +50,8 @@ public sealed class FinAppDbContext(DbContextOptions<FinAppDbContext> options) :
             a.Ignore(x => x.AchievementLog);       // body data — rides in the snapshot
             a.Ignore(x => x.OnboardingDismissed);  // body data — rides in the snapshot
             a.Ignore(x => x.RecurringItems);       // body data — recurring templates ride in the snapshot
+            a.Ignore(x => x.Tags);                 // body data — cross-cutting tags ride in the snapshot, no relational header
+            a.Ignore(x => x.ActiveTags);           // computed view over Tags
 
             OwnedList(a, x => x.Members);
             OwnedList(a, x => x.Categories);

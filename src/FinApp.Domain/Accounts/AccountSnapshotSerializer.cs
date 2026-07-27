@@ -43,7 +43,8 @@ public static class AccountSnapshotSerializer
             account.AchievementLog.Count == 0 ? null : new Dictionary<string, DateOnly>(account.AchievementLog),
             account.RecurringItems.Count == 0 ? null : account.RecurringItems.Select(r => new RecurringItemNode(
                 r.Id, r.Name, r.Kind, r.AmountMode, r.ExpectedAmount, r.DayOfMonth, r.CategoryId, r.FundId, r.Active, r.Icon, r.LastHandledPeriodFrom, r.AutoPost, r.CreatedOn)).ToList(),
-            account.OnboardingDismissed);
+            account.OnboardingDismissed,
+            account.Tags.Count == 0 ? null : account.Tags.Select(t => new TagNode(t.Id, t.Name, t.Icon, t.IsArchived)).ToList());
         return JsonSerializer.Serialize(node, Json);
     }
 
@@ -86,6 +87,13 @@ public static class AccountSnapshotSerializer
             category.SetEssential(c.IsEssential);
             if (c.IsArchived) category.SetArchived(true);
             return category;
+        }).ToList());
+        SetField(account, "_tags", (node.Tags ?? []).Select(t =>
+        {
+            var tag = Build(new Tag(t.Name), t.Id);
+            tag.SetIcon(t.Icon);
+            if (t.IsArchived) tag.SetArchived(true);
+            return tag;
         }).ToList());
         SetField(account, "_savingCategories", node.SavingCategories.Select(ToEntity).ToList());
         SetField(account, "_contributionCategories",
@@ -244,7 +252,8 @@ public static class AccountSnapshotSerializer
         DateOnly? AchievementsAnchor = null,
         Dictionary<string, DateOnly>? AchievementLog = null,
         List<RecurringItemNode>? Recurring = null,
-        bool OnboardingDismissed = false);
+        bool OnboardingDismissed = false,
+        List<TagNode>? Tags = null);
 
     private record RecurringItemNode(Guid Id, string Name, RecurringKind Kind, RecurringAmountMode AmountMode,
         decimal ExpectedAmount, int DayOfMonth, Guid CategoryId, Guid FundId, bool Active, string? Icon, DateOnly? LastHandledPeriodFrom,
@@ -254,6 +263,7 @@ public static class AccountSnapshotSerializer
     private record ContributionCategoryNode(Guid Id, string Name, string? Icon = null);
     private record FundNode(Guid Id, string Name, Guid? ParentId, string? Note = null, string? Icon = null, bool IsSynced = false, bool IsArchived = false);
     private record CategoryNode(Guid Id, string Name, Guid? ParentId, string? Icon = null, bool IsEssential = false, bool IsArchived = false);
+    private record TagNode(Guid Id, string Name, string? Icon = null, bool IsArchived = false);
     private record SavingCategoryNode(Guid Id, string Name, Guid? ParentId, decimal? GoalAmount, decimal AlertThreshold, bool NotifyOnMilestone, decimal InitialAmount, string? Icon = null,
         SavingKind Kind = SavingKind.Common, decimal DebtBalance = 0m, decimal DebtAnnualRatePercent = 0m, decimal DebtInstallment = 0m, bool IsArchived = false,
         decimal DebtOriginalBalance = 0m, decimal? PlannedContribution = null,

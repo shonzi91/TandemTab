@@ -15,6 +15,7 @@ public sealed class Account : Entity
 {
     private readonly List<AccountMember> _members = [];
     private readonly List<Category> _categories = [];
+    private readonly List<Tag> _tags = [];
     private readonly List<SavingCategory> _savingCategories = [];
     private readonly List<ContributionCategory> _contributionCategories = [];
     private readonly List<Fund> _funds = [];
@@ -57,6 +58,7 @@ public sealed class Account : Entity
 
     /// <summary>All categories, flat. Use <see cref="RootCategories"/> / <see cref="ChildrenOfCategory"/> for the tree.</summary>
     public IReadOnlyList<Category> Categories => _categories;
+    public IReadOnlyList<Tag> Tags => _tags;
 
     /// <summary>All savings buckets, flat.</summary>
     public IReadOnlyList<SavingCategory> SavingCategories => _savingCategories;
@@ -211,6 +213,47 @@ public sealed class Account : Entity
     /// and budget intact (nothing reassigned or deleted). Unlike <see cref="RemoveCategory"/> there is no blocker.</summary>
     public void SetCategoryArchived(Guid categoryId, bool archived) =>
         (FindCategory(categoryId) ?? throw new InvalidOperationException("Category not found.")).SetArchived(archived);
+
+    // --- Tags: flat, cross-cutting labels attached to expenses (sit alongside sub-categories, not replacing them) ---
+
+    public Tag? FindTag(Guid tagId) => _tags.FirstOrDefault(t => t.Id == tagId);
+    public IEnumerable<Tag> ActiveTags => _tags.Where(t => !t.IsArchived);
+
+    /// <summary>Add a tag. Rejects a duplicate name (case-insensitive) within the account.</summary>
+    public Tag AddTag(string name, string? icon = null)
+    {
+        if (_tags.Any(t => NameEquals(t.Name, name)))
+            throw new InvalidOperationException($"A tag named “{name.Trim()}” already exists.");
+        var tag = new Tag(name);
+        tag.SetIcon(icon);
+        _tags.Add(tag);
+        return tag;
+    }
+
+    public void RenameTag(Guid tagId, string name)
+    {
+        var tag = FindTag(tagId) ?? throw new InvalidOperationException("Tag not found.");
+        if (_tags.Any(t => t.Id != tagId && NameEquals(t.Name, name)))
+            throw new InvalidOperationException($"A tag named “{name.Trim()}” already exists.");
+        tag.Rename(name);
+    }
+
+    /// <summary>Set (or clear) a tag's display icon.</summary>
+    public void SetTagIcon(Guid tagId, string? icon) =>
+        (FindTag(tagId) ?? throw new InvalidOperationException("Tag not found.")).SetIcon(icon);
+
+    /// <summary>Archive (or restore) a tag — hides it from pickers while leaving every tagged expense intact.</summary>
+    public void SetTagArchived(Guid tagId, bool archived) =>
+        (FindTag(tagId) ?? throw new InvalidOperationException("Tag not found.")).SetArchived(archived);
+
+    /// <summary>Remove a tag outright. Unlike archiving this drops it for good; callers that want to keep the
+    /// tag on historical expenses should archive instead. (Expense→tag references are pruned in <c>SetExpenseTags</c>
+    /// time; a hard remove here simply deletes the definition.)</summary>
+    public void RemoveTag(Guid tagId)
+    {
+        var tag = FindTag(tagId) ?? throw new InvalidOperationException("Tag not found.");
+        _tags.Remove(tag);
+    }
 
     /// <summary>Add a savings bucket. Pass <paramref name="parentId"/> to make it a sub-bucket.</summary>
     public SavingCategory AddSavingCategory(string name, Guid? parentId = null)
