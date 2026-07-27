@@ -703,6 +703,14 @@ html.dark .tag-chip-on { background: #16261f; border-color: #3fe0c5; color: #57d
 .tag-new-row { display: flex; align-items: center; gap: 6px; }
 .tag-new-in { flex: 1; min-width: 0; padding: 7px 10px; border: 1px solid #dde6e1; border-radius: 9px; font: inherit; font-size: .84rem; }
 html.dark .tag-new-in { background: #171d26; border-color: #2c3644; color: #e8eef0; }
+/* Spending-tab tag filter: a chip strip that narrows the expense lists (reuses the .tag-chip look). */
+.tag-filter { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 2px 0 12px; }
+.tag-filter-lbl { display: inline-flex; align-items: center; gap: 5px; color: #6b7480; font-size: .78rem; font-weight: 700; }
+.tag-filter-lbl svg { width: 14px; height: 14px; }
+.tag-filter-clear { border: none; background: none; color: #0f7a54; font: inherit; font-size: .78rem; font-weight: 700; cursor: pointer; padding: 4px 6px; }
+.tag-filter-clear:hover { text-decoration: underline; }
+html.dark .tag-filter-lbl { color: #8b96a4; }
+html.dark .tag-filter-clear { color: #3fe0c5; }
 
 /* Expenses day view + date separators */
 .day-nav { display: flex; align-items: center; gap: 6px; }
@@ -761,6 +769,13 @@ html.dark .cat-row-hit:hover { background: #191e27; }
 html.dark .row-ico { color: #7f8b9a; }
 html.dark .row-ico:hover { background: #17251e; color: #3fe0c5; }
 html.dark .row-ico.danger:hover { background: #2a1616; color: #f87171; }
+/* On phones the row can't fit ring + name + bar + icons on one line, so let the action
+   icons wrap under the progress bar (right-aligned). Laptops keep them inline on the right. */
+@media (max-width: 560px) {
+    .cat-row-head { flex-wrap: wrap; }
+    .cat-row-hit { flex: 1 1 100%; }
+    .cat-row-acts { width: 100%; box-sizing: border-box; justify-content: flex-end; gap: 2px; padding: 0 10px 9px; }
+}
 .cat-chip-ring { width: 42px; height: 42px; flex: none; }
 .cat-chip-ring ::deep .pring-center { font-size: 15px; padding: 22%; }
 .cat-row-main { flex: 1; min-width: 0; }

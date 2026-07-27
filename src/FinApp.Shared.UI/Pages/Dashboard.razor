@@ -894,6 +894,26 @@ else
                     </span>
                 </div>
                 @{
+                    var filterTags = State.ActiveTags;
+                }
+                @if (filterTags.Count > 0)
+                {
+                    @* Tag filter: narrows every expense list below to the chosen tags (the bars/totals stay whole). *@
+                    <div class="tag-filter">
+                        <span class="tag-filter-lbl"><Icon Name="tag" /> @Loc["Filter by tag"]</span>
+                        @foreach (var t in filterTags)
+                        {
+                            var tid = t.Id;
+                            var on = _spendTagFilter.Contains(tid);
+                            <button type="button" class="tag-chip @(on ? "tag-chip-on" : "")" @onclick="() => ToggleSpendTag(tid)">@if (!string.IsNullOrEmpty(t.Icon)) { <span class="tag-emoji">@t.Icon</span> }@t.Name</button>
+                        }
+                        @if (_spendTagFilter.Count > 0)
+                        {
+                            <button type="button" class="tag-filter-clear" @onclick="() => _spendTagFilter.Clear()">@Loc["Clear"]</button>
+                        }
+                    </div>
+                }
+                @{
                     // One shared expense-row template for both Spending views: the "By date" ledger (title = category)
                     // and a category's own drawer (title = the date, since the category is already the row you tapped).
                     // Same two-line row-main/row-sub layout so they read identically — cleaner on mobile than the old
@@ -981,7 +1001,7 @@ else
                         </div>
                         @if (sOpen)
                         {
-                            var sExps = State.ExpensesFor(sub.Id);
+                            var sExps = FilterByTags(State.ExpensesFor(sub.Id));
                             <div class="cat-drawer">
                                 @if (sExps.Count == 0)
                                 {
@@ -1057,7 +1077,7 @@ else
                                         </div>
                                     }
                                     @{
-                                        var ownExpenses = State.ExpensesFor(catId);
+                                        var ownExpenses = FilterByTags(State.ExpensesFor(catId));
                                         var shownExpenses = _catShowAllExp ? ownExpenses : ownExpenses.Take(CatDrawerExpenseCap).ToList();
                                     }
                                     <div class="cat-drawer-label">@Loc["Expenses"]</div>
@@ -1114,10 +1134,11 @@ else
                 @{
                     // Shared row template (defined above) — title = category in this "By date" ledger.
                     RenderFragment<FinApp.Domain.Budgeting.Expense> row = e => expenseRow((e, false));
+                    var ledger = FilterByTags(State.AllExpenses);
                     var shown = _dayView is { } dvf
-                        ? State.AllExpenses.Where(e => e.Date == dvf).ToList()
-                        : State.AllExpenses.ToList();
-                    var byDay = State.AllExpenses.GroupBy(e => e.Date)
+                        ? ledger.Where(e => e.Date == dvf).ToList()
+                        : ledger;
+                    var byDay = ledger.GroupBy(e => e.Date)
                         .ToDictionary(g => g.Key, g => (Count: g.Count(), Total: g.Aggregate(0m, (s, e) => s + e.Amount.Amount)));
                     var calToday = DateOnly.FromDateTime(DateTime.Today);
                 }
@@ -1157,7 +1178,7 @@ else
                 }
                 else if (!shown.Any())
                 {
-                    <ul class="list"><li><em>@Loc["Nothing’s perched here yet — add your first expense."]</em></li></ul>
+                    <ul class="list"><li><em>@(_spendTagFilter.Count > 0 ? Loc["No expenses match the selected tags."] : Loc["Nothing’s perched here yet — add your first expense."])</em></li></ul>
                 }
                 else if (_dayView is not null)
                 {
@@ -3791,6 +3812,16 @@ else
     // Budgets panel view: false = by category (the ring/bar list), true = the same expenses flat, organised by date
     // (the old separate "All expenses" panel, folded in here as a toggle so the ledger isn't shown twice).
     private bool _budgetByDate;
+
+    // Tag filter for the Spending tab: when any tag is selected, every expense list (the by-date ledger and each
+    // category/sub drawer) narrows to expenses carrying at least one of the chosen tags. Bars/totals stay unfiltered —
+    // this is a "find the tagged expenses" filter, not a re-budgeting view.
+    private readonly HashSet<Guid> _spendTagFilter = new();
+    private void ToggleSpendTag(Guid id) { if (!_spendTagFilter.Remove(id)) _spendTagFilter.Add(id); }
+    private bool ExpenseMatchesTagFilter(FinApp.Domain.Budgeting.Expense e) =>
+        _spendTagFilter.Count == 0 || e.TagIds.Any(_spendTagFilter.Contains);
+    private List<FinApp.Domain.Budgeting.Expense> FilterByTags(IEnumerable<FinApp.Domain.Budgeting.Expense> src) =>
+        _spendTagFilter.Count == 0 ? src.ToList() : src.Where(ExpenseMatchesTagFilter).ToList();
 
     // --- Funds-as-circles: per-fund bubble menu --------------------------
     // Distinguishable colours for fund donut slices / legend swatches (synced=gold, over=red handled separately).

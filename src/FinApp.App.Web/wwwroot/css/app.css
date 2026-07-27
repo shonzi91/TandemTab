@@ -186,7 +186,7 @@ html.dark .savings-footer span { color: #aab0c0; }
 html.dark .card, html.dark .panel, html.dark .modal, html.dark .score-card, html.dark .insight,
 html.dark .win, html.dark .row-menu, html.dark .acct-menu-pop, html.dark .langpick-menu,
 html.dark .home-more-toggle, html.dark .pm, html.dark .breakdown-card, html.dark .savings-rate-card,
-html.dark .trend-card, html.dark .onboard-card, html.dark .fund-panel {
+html.dark .trend-card, html.dark .onboard-card, html.dark .fund-panel, html.dark .consent-card {
     background: #161b2c; border-color: #293049; color: #eceff7;
 }
 /* Saved = mint tile, Spent = coral tile (the duo, on the summary row). */
