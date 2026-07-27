@@ -1,6 +1,27 @@
 # TandemTab (FinApp) — session handoff
 
-Last updated: 2026-07-27 (Session 61, live on `finapp-00243-4qt`). Read this + [README.md](README.md) + [TRANSFER.md](TRANSFER.md) + [docs/MOBILE.md](docs/MOBILE.md) + [docs/DOMAIN-REMOVAL.md](docs/DOMAIN-REMOVAL.md) + [android/README.md](android/README.md) + recent `git log` to catch up.
+Last updated: 2026-07-27 (Session 62, live on `finapp-00244-jqc`). Read this + [README.md](README.md) + [TRANSFER.md](TRANSFER.md) + [docs/MOBILE.md](docs/MOBILE.md) + [docs/DOMAIN-REMOVAL.md](docs/DOMAIN-REMOVAL.md) + [android/README.md](android/README.md) + recent `git log` to catch up.
+
+## Session 62 (2026-07-27) — **Sinking-fund costs managed inline (Add-a-cost + editable drawer list); edit-bucket modal trimmed (no cost editor, no type switch); Home cards → buttons only; 523 tests green; DEPLOYED `finapp-00244-jqc`.**
+Web-only, all in `FinApp.Shared.UI`. Iterated live against the seeded throwaway account (`ver1785150332` / `Passw0rd!23`, account `e8a6fa85-…`), browser-verified (dark). Commit `1774f3c` → deploy. **The whole session was a long back-and-forth where I over-interpreted the user twice — see the ⚠️ note on reading intent below.**
+
+### What changed
+1. **Sinking-fund (Expenses) costs are managed from the bucket, not the modal.** The expenses-fund row's primary icon is now **"Add a cost"** (＋, `OpenAddCost`) instead of Add-to-savings — Add-to-savings moved into that bucket's ⋯. New **`Modal.EditCost`**: a small form (name / amount / how-often / due-date-if-one-off) that adds or edits **one** `PlannedCost`. The drawer's "COSTS TO COVER" list is now **editable inline** — tap a cost (`.goal-cost-edit`) to edit, 🗑 (`.goal-cost-del`) to remove, dashed **＋ Add a cost** (`.goal-cost-add`) at the foot. Persisted by a new **`BudgetingState.SaveSavingBucketCosts(bucketId, costs)`** that re-saves the whole bucket with the new list (same path the modal Save uses; domain `ReplaceCosts` accepts an empty list, so deleting the last cost is fine). The drawer no longer repeats **"€X saved"** for an expenses fund (it's the row headline already) — leads with the monthly set-aside + "still to find".
+2. **Edit-bucket modal trimmed.** For an expenses fund it's just **name / icon / held-in-fund** (the cost editor is gated to `Modal.AddBucket` only; edit shows a hint pointing at "Add a cost"). The **type switch (kind chips) is removed in edit for all kinds** — kinds have different fields/actions/projections, so changing kind means delete + create. The create modal (`AddBucket`) still has the full cost editor + type chips.
+3. **Home action cards → buttons only.** The two cards dropped their figures (spent/budgeted, income/saved — all shown in Spending / Wallets / Goals) and keep just **Add expense + Edit last** / **Add income + Edit last**. Removed the dead `.action-card .card-top/.card-main/.card-aside*` CSS; cards now hug their buttons (`min-height:auto`). **Everything else on Home is unchanged** (health score, alert strip, "At this rate" runway, "You're on track for" targets, milestones all stayed).
+- Files: [Dashboard.razor](src/FinApp.Shared.UI/Pages/Dashboard.razor), [Dashboard.razor.css](src/FinApp.Shared.UI/Pages/Dashboard.razor.css), [BudgetingState.cs](src/FinApp.Shared.UI/Services/BudgetingState.cs), [Localizer.cs](src/FinApp.Shared.UI/Services/Localizer.cs).
+
+### ⚠️ Reading intent (this session's recurring failure)
+Twice I built more than asked and had to revert: (a) "move the costs section + buttons to the expandable section" meant **move the cost EDITOR into the drawer** (this session's #1), NOT move the row's action icons off the row — I moved the icons into the drawer and the user reverted it. (b) "leave only add expense+edit last and add income+edit last" meant **within each card**, not strip the whole Home screen — I nearly deleted the runway/health/targets. **Lesson: when the user points at a screenshot region, the change is scoped to that region; confirm before deleting whole sections or recently-built features.** The AskUserQuestion that caught (b) was worth it despite [[feedback_proceed_dont_ask]].
+
+### DEPLOYED — `finapp-00244-jqc` (live, 100%), verified both hosts
+523 green (238 domain + 241 server + 44 persistence) → `1774f3c` → pushed → 3-step deploy (image digest `sha256:bffd85f2…`). **Served-bytes proof** (scoped bundle, BOTH run URL + tandemtab.com): `.goal-cost-edit`×4 + `.goal-cost-add`×4 present, `.action-card .card-aside` **absent**; root 200 both; `secretKeyRef`=5.
+
+### ⚠️ Carry-over / next
+- **Tags (feature #5)**: still only layer-1 (`bff60c4`, domain+persistence). Needs DTO → API → UI.
+- **Runway earn-slider caveat** (S61): "Additional income" nudges total money-in, not investment earnings specifically.
+- **Verified dark-mode only**; light-mode not eyeballed. **Android**: port Goals/Wallets tracking the diverged web layout.
+- **Deletable revisions**: `finapp-00243-4qt` and older (0% traffic).
 
 ## Session 61 (2026-07-27) — **Goals/Spending per-row action icons; runway "show the math" is now an editable forecast (source label + spend/earn sliders drive the math); Goals ⋯ per-bucket fix; modal "+" precision; 523 tests green; TWO deploys, live on `finapp-00243-4qt`.**
 Web-only, all in `FinApp.Shared.UI`. Iterated live against the seeded throwaway account (`ver1785150332` / `Passw0rd!23`, account `e8a6fa85-…`), browser-verified (dark). Two commits/deploys this session: `d3790cd` → `finapp-00242-hdm`, then `9ac026b` → `finapp-00243-4qt`. The Tags feature (carry-over #5) was **not** touched this session — its layer-1 (domain+persistence, commit `bff60c4`) is still the only slice done.
