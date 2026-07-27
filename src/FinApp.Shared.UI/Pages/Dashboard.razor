@@ -158,6 +158,7 @@ else
                     {
                         <div class="acct-menu-backdrop" @onclick="() => _acctMenuOpen = false"></div>
                         <div class="acct-menu-pop">
+                            <button @onclick="OpenRecurring"><Icon Name="repeat" /> @Loc["Recurring"]</button>
                             @if (State.IsOwnerOfCurrent)
                             {
                                 <button @onclick="() => RunAcct(OpenEditAccount)"><Icon Name="pencil" /> @Loc["Rename account"]</button>
@@ -214,24 +215,10 @@ else
                 </div>
             }
         </div>
-        @* Account-level utilities that aren't daily money moves — grouped below the balance as labelled buttons
-           rather than easy-to-miss header icons. External accounts appears only when a bank connection exists. *@
-        <div class="hdr-actions">
-            <button class="hdr-action" @onclick="OpenImport"><Icon Name="import" /> <span>@Loc["Import statement"]</span></button>
-            <button class="hdr-action" @onclick="OpenManageCats"><Icon Name="tag" /> <span>@Loc["Categories"]</span></button>
-            <button class="hdr-action" @onclick="OpenRecurring"><Icon Name="repeat" /> <span>@Loc["Recurring"]</span></button>
-            @if (_bankStatus?.Enabled == true)
-            {
-                var reviewCount = _bankStatus.Connected ? BankDebits().Count + BankCredits().Count : 0;
-                <span class="hdr-action hdr-action-grp @(reviewCount > 0 ? "has-review" : "")">
-                    <button class="hdr-action-main" @onclick="ShowBankTab"><Icon Name="bank" /> <span>@Loc["External accounts"]</span></button>
-                    @if (reviewCount > 0)
-                    {
-                        <button class="hdr-review" title="@string.Format(Loc["{0} to review"], reviewCount)" @onclick="OpenBankReview"><Icon Name="bell" Class="ic-s" /> <span class="hdr-review-n">@reviewCount</span></button>
-                    }
-                </span>
-            }
-        </div>
+        @* The old always-visible utilities row was removed to declutter the header (web + mobile): the expense-side
+           tools (Import statement, Manage categories) now live in the Spending tab's ⋯ menu; Recurring moved to the
+           top Account-actions (⋯) menu; External accounts moved back into the Wallets tab (only shown when a bank
+           connection exists). *@
     </header>
 
     <InvitationsPanel />
@@ -713,8 +700,26 @@ else
                 </section>
             }
 
-            @* Bank transactions to review are no longer an inline panel here — they live behind the 🔔 badge on the
-               External-accounts button, which opens the review window (both money-in and money-out). *@
+            @* External accounts lives here in Wallets (account-level, not a daily move). Only shown when a bank
+               connection exists. The review count opens the review window (money-in + money-out); Manage opens the
+               connection screen. *@
+            @if (_bankStatus?.Enabled == true)
+            {
+                var reviewCount = _bankStatus.Connected ? BankDebits().Count + BankCredits().Count : 0;
+                <section class="panel">
+                    <div class="spending-head">
+                        <span class="insight-h"><Icon Name="bank" /> @Loc["External accounts"]</span>
+                        <span class="wallet-bank-actions">
+                            @if (reviewCount > 0)
+                            {
+                                <button class="fund-add wallet-bank-review" @onclick="OpenBankReview"><Icon Name="bell" /> @string.Format(Loc["{0} to review"], reviewCount)</button>
+                            }
+                            <button class="fund-add" @onclick="ShowBankTab"><Icon Name="sliders" /> @Loc["Manage"]</button>
+                        </span>
+                    </div>
+                    <p class="hint">@(_bankStatus.Connected ? Loc["Your bank connection keeps balances and transactions up to date."] : Loc["Connect a bank to auto-import transactions and keep balances current."])</p>
+                </section>
+            }
 
             <section class="panel">
                 <div class="spending-head">
@@ -793,21 +798,6 @@ else
                     var _bnRemaining = State.TotalBudgeted - State.TotalSpent;
                     var overPlanned = _bnRemaining - _bnFree;
                 }
-                <div class="spending-head">
-                    <span class="insight-h">@Loc["This month's budgets"]</span>
-                    <span class="plan-toggle bview-toggle" role="group">
-                        <button type="button" class="chip @(_budgetByDate ? "" : "on")" @onclick="() => _budgetByDate = false"><Icon Name="chart" /> @Loc["Categories"]</button>
-                        <button type="button" class="chip @(_budgetByDate ? "on" : "")" @onclick="() => _budgetByDate = true"><Icon Name="list" /> @Loc["By date"]</button>
-                    </span>
-                    @if (!_budgetByDate)
-                    {
-                        <button class="fund-add" @onclick="OpenAddBudget"><Icon Name="plus" /> @Loc["Add budget"]</button>
-                    }
-                    else if (State.IsPeriodOpen)
-                    {
-                        <button class="fund-add" @onclick="AddExpenseFromHeader"><Icon Name="receipt" /> @Loc["Add expense"]</button>
-                    }
-                </div>
                 @{
                     // Top-level categories only — sub-categories roll up into their parent's ring.
                     // Rings (and bar segments) are ordered by spend, largest first — where the money actually went.
@@ -865,6 +855,129 @@ else
                 {
                     <p class="budget-over-note"><Icon Name="bulb" /> @string.Format(Loc["Your remaining budgets ({0}) are {1} more than you have left ({2}) — budgets are plans, not commitments, so trim one or top up when you can."], Fmt(_bnRemaining), Fmt(overPlanned), Fmt(_bnFree))</p>
                 }
+                @* View switch + add action + the ⋯ tools sit directly above the content they change — the "All expenses"
+                   summary above is the constant; this row just toggles what's beneath it. *@
+                <div class="spending-head budget-controls">
+                    <span class="plan-toggle bview-toggle" role="group">
+                        <button type="button" class="chip @(_budgetByDate ? "" : "on")" @onclick="() => _budgetByDate = false"><Icon Name="chart" /> @Loc["Categories"]</button>
+                        <button type="button" class="chip @(_budgetByDate ? "on" : "")" @onclick="() => _budgetByDate = true"><Icon Name="list" /> @Loc["By date"]</button>
+                    </span>
+                    @if (!_budgetByDate)
+                    {
+                        <button class="fund-add" @onclick="OpenAddBudget"><Icon Name="plus" /> @Loc["Add budget"]</button>
+                    }
+                    else if (State.IsPeriodOpen)
+                    {
+                        <button class="fund-add" @onclick="AddExpenseFromHeader"><Icon Name="receipt" /> @Loc["Add expense"]</button>
+                    }
+                    <span class="acct-menu spend-menu">
+                        <button class="link" title="@Loc["More"]" @onclick="() => _spendMenuOpen = !_spendMenuOpen"><Icon Name="dots" /></button>
+                        @if (_spendMenuOpen)
+                        {
+                            <div class="acct-menu-backdrop" @onclick="() => _spendMenuOpen = false"></div>
+                            <div class="acct-menu-pop">
+                                <button @onclick="async () => { _spendMenuOpen = false; await OpenImport(); }"><Icon Name="import" /> @Loc["Import statement"]</button>
+                                <button @onclick="() => { _spendMenuOpen = false; OpenManageCats(); }"><Icon Name="tag" /> @Loc["Manage categories"]</button>
+                            </div>
+                        }
+                    </span>
+                </div>
+                @{
+                    // One shared expense-row template for both Spending views: the "By date" ledger (title = category)
+                    // and a category's own drawer (title = the date, since the category is already the row you tapped).
+                    // Same two-line row-main/row-sub layout so they read identically — cleaner on mobile than the old
+                    // one-line drawer row.
+                    RenderFragment<(FinApp.Domain.Budgeting.Expense E, bool ShowDate)> expenseRow = ctx =>
+                    @<li>
+                        <span class="row-main row-stack">
+                            <span class="row-title">
+                                @if (ctx.ShowDate)
+                                {
+                                    <Icon Name="calendar" /> <span class="row-title-txt">@ctx.E.Date.ToString("ddd, dd MMM")</span>
+                                }
+                                else
+                                {
+                                    <CatIcon Name="@State.CategoryIcon(ctx.E.CategoryId)" /> <span class="row-title-txt">@State.CategoryName(ctx.E.CategoryId)</span>
+                                }
+                            </span>
+                            <span class="row-sub">
+                                <span class="sub-to">@State.FundName(ctx.E.FundId)</span>
+                                @if (ctx.E.IsFromSavings) { <span><Icon Name="coins" /> @Loc["saving"]</span> }
+                                @if (!string.IsNullOrEmpty(ctx.E.Note)) { <span class="sub-note">@ctx.E.Note</span> }
+                                @if (ctx.E.IsSettlementSource)
+                                {
+                                    <span class="settle-tag" title="@Loc["Settled onto another account"]">🤝 @Fmt(ctx.E.SettledMoney) → @State.AccountName(ctx.E.SettledToAccountId!.Value)</span>
+                                }
+                                else if (ctx.E.IsSettlementDestination)
+                                {
+                                    <span class="settle-tag" title="@Loc["Settled from another account"]">↩ @Loc["from"] @State.AccountName(ctx.E.SettledFromAccountId!.Value)</span>
+                                }
+                                @if (ctx.E.AutoFiled) { <span class="row-note" title="@AutoFiledTitle(ctx.E)"><Icon Name="bank" Class="ic-s" /></span> }
+                            </span>
+                        </span>
+                        <span class="amt">@Fmt(ctx.E.Amount)</span>
+                        <span class="row-actions">
+                            @if (State.IsPeriodOpen)
+                            {
+                                <button class="exp-edit" title="@Loc["Edit expense"]" @onclick="() => OpenEditExpense(ctx.E.Id)"><Icon Name="pencil" /></button>
+                                <button class="exp-edit" title="@Loc["Remove expense"]" @onclick="() => OpenDeleteExpense(ctx.E.Id)"><Icon Name="trash" /></button>
+                            }
+                        </span>
+                    </li>;
+
+                    // A sub-category renders as its own expandable cat-row (same ring + bar + drawer as a top-level
+                    // row) so sub-categories expand just like the parents. Nesting is capped at one level, so a sub's
+                    // drawer only holds its expenses + actions — never more sub-rows.
+                    RenderFragment<FinApp.Domain.Budgeting.Category> subRow = sub =>
+                    @<div class="cat-row cat-row-sub@(_expandedSubs.Contains(sub.Id) ? " open" : "")">
+                        @{
+                            var sHas = State.HasBudget(sub.Id);
+                            var sCov = sHas ? State.Coverage(sub.Id) : null;
+                            var sSpent = sHas ? sCov!.Spent : State.SpentInCategory(sub.Id);
+                            var sPct = sHas ? Math.Clamp((double)(sCov!.Percent ?? 0), 0, 100) : 0;
+                            var sOver = sHas && sCov!.IsOverBudget;
+                            var sOpen = _expandedSubs.Contains(sub.Id);
+                            var sCount = State.ExpenseCountInCategory(sub.Id);
+                        }
+                        <button class="cat-row-head" @onclick="() => ToggleSub(sub.Id)">
+                            <span class="cat-chip-ring">
+                                <ProgressRing Percent="@sPct" Class="@(sHas ? (sOver ? "over" : sCov!.ThresholdReached ? "warn" : "ok") : "mint")" Color="@(sHas ? SpendBarColorAt(sPct) : null)" Dashed="@(!sHas)">
+                                    <CatIcon Name="@State.CategoryIcon(sub.Id)" Class="cat-chip-ring-ico" />
+                                </ProgressRing>
+                            </span>
+                            <span class="cat-row-main">
+                                <span class="cat-row-top">
+                                    <span class="cat-row-name">@sub.Name@if (sCount > 0) { <span class="cat-row-subn">@sCount</span> }</span>
+                                    <span class="cat-row-amt @(sOver ? "warn-text" : "")">@Fmt(sSpent)@if (sHas) { <text> / @Fmt(sCov!.Allocated)</text> } else { <span class="cat-row-nb"> · @Loc["no budget"]</span> }</span>
+                                </span>
+                                <span class="cbar-track"><span class="cbar-grad@(sHas ? "" : " cbar-flat")" style="--pct:@sPct.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)%"></span></span>
+                            </span>
+                            <Icon Name="chevron" Class="cat-chev" />
+                        </button>
+                        @if (sOpen)
+                        {
+                            var sExps = State.ExpensesFor(sub.Id);
+                            <div class="cat-drawer">
+                                @if (sExps.Count == 0)
+                                {
+                                    <p class="cat-drawer-empty">@Loc["No expenses in this category yet."]</p>
+                                }
+                                else
+                                {
+                                    <ul class="list list-even cat-drawer-list">@foreach (var e in sExps) { @expenseRow((e, true)) }</ul>
+                                }
+                                <div class="cat-drawer-actions">
+                                    @if (State.IsPeriodOpen)
+                                    {
+                                        <button class="cat-act" @onclick="() => OpenAddExpense(sub.Id)"><Icon Name="receipt" /> @Loc["Add expense"]</button>
+                                    }
+                                    <button class="cat-act" @onclick="() => OpenEdit(sub.Id)"><Icon Name="pencil" /> @(sHas ? Loc["Edit budget"] : Loc["Add budget"])</button>
+                                    <button class="cat-act danger" @onclick="() => OpenDelete(sub.Id)"><Icon Name="trash" /> @Loc["Remove"]</button>
+                                </div>
+                            </div>
+                        }
+                    </div>;
+                }
                 @* Category list: a status-ring chip + a gradient progress bar per row, ordered by spend. Tapping a
                    row opens a drawer with its expenses, sub-categories and actions — so the actions and the spend
                    detail are inline instead of behind a ring popover (which is why the ring's menu is gone). *@
@@ -908,20 +1021,12 @@ else
                                     @if (subs.Count > 0)
                                     {
                                         <div class="cat-drawer-label">@Loc["Sub-categories"]</div>
-                                        @foreach (var sub in subs)
-                                        {
-                                            var subHas = State.HasBudget(sub.Id);
-                                            var subCov = subHas ? State.Coverage(sub.Id) : null;
-                                            var subSpent = subHas ? subCov!.Spent : State.SpentInCategory(sub.Id);
-                                            var subPct = subHas ? Math.Clamp((double)(subCov!.Percent ?? 0), 0, 100) : 0;
-                                            <div class="cat-subrow">
-                                                <span class="cat-subrow-top">
-                                                    <span><CatIcon Name="@State.CategoryIcon(sub.Id)" /> @sub.Name</span>
-                                                    <span class="cat-subrow-amt">@Fmt(subSpent)@(subHas ? $" / {Fmt(subCov!.Allocated)}" : "")</span>
-                                                </span>
-                                                <span class="cbar-track cbar-track-sm"><span class="cbar-grad@(subHas ? "" : " cbar-flat")" style="--pct:@subPct.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)%"></span></span>
-                                            </div>
-                                        }
+                                        <div class="cat-subs">
+                                            @foreach (var sub in subs)
+                                            {
+                                                @subRow(sub)
+                                            }
+                                        </div>
                                     }
                                     @{
                                         var ownExpenses = State.ExpensesFor(catId);
@@ -934,21 +1039,10 @@ else
                                     }
                                     else
                                     {
-                                        <ul class="cat-exp-list">
+                                        <ul class="list list-even cat-drawer-list">
                                             @foreach (var e in shownExpenses)
                                             {
-                                                var eid = e.Id;
-                                                <li class="cat-exp">
-                                                    <span class="cat-exp-main"><CatIcon Name="@State.FundIcon(e.FundId)" /> <span class="cat-exp-fund">@State.FundName(e.FundId)</span> <span class="cat-exp-date">@e.Date.ToString("dd MMM")@(string.IsNullOrEmpty(e.Note) ? "" : " · " + e.Note)</span></span>
-                                                    <span class="amt">@Fmt(e.Amount)</span>
-                                                    @if (State.IsPeriodOpen)
-                                                    {
-                                                        <span class="cat-exp-acts">
-                                                            <button class="exp-edit" title="@Loc["Edit"]" @onclick="() => OpenEditExpense(eid)"><Icon Name="pencil" /></button>
-                                                            <button class="exp-edit" title="@Loc["Remove"]" @onclick="() => OpenDeleteExpense(eid)"><Icon Name="trash" /></button>
-                                                        </span>
-                                                    }
-                                                </li>
+                                                @expenseRow((e, true))
                                             }
                                         </ul>
                                         @if (!_catShowAllExp && ownExpenses.Count > CatDrawerExpenseCap)
@@ -998,34 +1092,8 @@ else
                 </div>
                 <div class="bydate-body">
                 @{
-                    RenderFragment<FinApp.Domain.Budgeting.Expense> row = e =>
-                        @<li>
-                            <span class="row-main row-stack">
-                                <span class="row-title"><CatIcon Name="@State.CategoryIcon(e.CategoryId)" /> <span class="row-title-txt">@State.CategoryName(e.CategoryId)</span></span>
-                                <span class="row-sub">
-                                    <span class="sub-to">@State.FundName(e.FundId)</span>
-                                    @if (e.IsFromSavings) { <span><Icon Name="coins" /> @Loc["saving"]</span> }
-                                    @if (!string.IsNullOrEmpty(e.Note)) { <span class="sub-note">@e.Note</span> }
-                                    @if (e.IsSettlementSource)
-                                    {
-                                        <span class="settle-tag" title="@Loc["Settled onto another account"]">🤝 @Fmt(e.SettledMoney) → @State.AccountName(e.SettledToAccountId!.Value)</span>
-                                    }
-                                    else if (e.IsSettlementDestination)
-                                    {
-                                        <span class="settle-tag" title="@Loc["Settled from another account"]">↩ @Loc["from"] @State.AccountName(e.SettledFromAccountId!.Value)</span>
-                                    }
-                                    @if (e.AutoFiled) { <span class="row-note" title="@AutoFiledTitle(e)"><Icon Name="bank" Class="ic-s" /></span> }
-                                </span>
-                            </span>
-                            <span class="amt">@Fmt(e.Amount)</span>
-                            <span class="row-actions">
-                                @if (State.IsPeriodOpen)
-                                {
-                                    <button class="exp-edit" title="@Loc["Edit expense"]" @onclick="() => OpenEditExpense(e.Id)"><Icon Name="pencil" /></button>
-                                    <button class="exp-edit" title="@Loc["Remove expense"]" @onclick="() => OpenDeleteExpense(e.Id)"><Icon Name="trash" /></button>
-                                }
-                            </span>
-                        </li>;
+                    // Shared row template (defined above) — title = category in this "By date" ledger.
+                    RenderFragment<FinApp.Domain.Budgeting.Expense> row = e => expenseRow((e, false));
                     var shown = _dayView is { } dvf
                         ? State.AllExpenses.Where(e => e.Date == dvf).ToList()
                         : State.AllExpenses.ToList();
@@ -1485,25 +1553,31 @@ else
                     <label class="check"><input type="checkbox" @bind="_fNotify" /> @Loc["Notify on every expense"]</label>
                     <label class="check"><input type="checkbox" @bind="_fEssential" /> @Loc["Essential spend (rent, groceries, health…)"]</label>
                     var subs = State.ChildrenOf(_modalCatId).ToList();
-                    <div class="detail-sub-head">
-                        <h4 class="detail-sub">@Loc["Sub-categories"]</h4>
-                        <button class="lbl-add" title="@Loc["Sub-category"]" @onclick="EditAddSub">+</button>
-                    </div>
-                    @if (subs.Count > 0)
+                    @* One level of sub-categories only (keeps the app simple): a sub-category can't have its own
+                       sub-categories, so this whole section is hidden when you're editing a sub. *@
+                    var editIsTop = State.CategoryOptions.Any(c => c.Category.Id == _modalCatId && c.Depth == 0);
+                    @if (editIsTop)
                     {
-                        <ul class="list">
-                            @foreach (var sub in subs)
-                            {
-                                var subId = sub.Id;
-                                <li>
-                                    <span class="row-main"><CatIcon Name="@State.CategoryIcon(subId)" /> @sub.Name</span>
-                                    <span class="row-actions">
-                                        <button class="exp-edit" title="@Loc["Edit"]" @onclick="() => EditEditSub(subId)"><Icon Name="pencil" /></button>
-                                        <button class="exp-edit" title="@Loc["Remove"]" @onclick="() => EditDeleteSub(subId)"><Icon Name="trash" /></button>
-                                    </span>
-                                </li>
-                            }
-                        </ul>
+                        <div class="detail-sub-head">
+                            <h4 class="detail-sub">@Loc["Sub-categories"]</h4>
+                            <button class="lbl-add" title="@Loc["Sub-category"]" @onclick="EditAddSub">+</button>
+                        </div>
+                        @if (subs.Count > 0)
+                        {
+                            <ul class="list">
+                                @foreach (var sub in subs)
+                                {
+                                    var subId = sub.Id;
+                                    <li>
+                                        <span class="row-main"><CatIcon Name="@State.CategoryIcon(subId)" /> @sub.Name</span>
+                                        <span class="row-actions">
+                                            <button class="exp-edit" title="@Loc["Edit"]" @onclick="() => EditEditSub(subId)"><Icon Name="pencil" /></button>
+                                            <button class="exp-edit" title="@Loc["Remove"]" @onclick="() => EditDeleteSub(subId)"><Icon Name="trash" /></button>
+                                        </span>
+                                    </li>
+                                }
+                            </ul>
+                        }
                     }
                     @if (_editCatVendors.Count > 0)
                     {
@@ -3398,6 +3472,9 @@ else
     private Guid _expandedCatId;
     private bool _catShowAllExp;   // drawer shows the first few expenses; this reveals the rest for the open row
     private void ToggleCatRow(Guid id) { _expandedCatId = _expandedCatId == id ? Guid.Empty : id; _catShowAllExp = false; }
+    // Sub-categories expand independently (a set, not a single id) so several can be open inside a parent's drawer.
+    private readonly HashSet<Guid> _expandedSubs = new();
+    private void ToggleSub(Guid id) { if (!_expandedSubs.Remove(id)) _expandedSubs.Add(id); }
     private const int CatDrawerExpenseCap = 5;
 
     // Budgets panel view: false = by category (the ring/bar list), true = the same expenses flat, organised by date
@@ -6372,6 +6449,7 @@ else
 
     // Account-actions cog menu.
     private bool _acctMenuOpen;
+    private bool _spendMenuOpen;   // Spending-tab header ⋯ menu (Import statement / Manage categories)
     private void RunAcct(Action a) { _acctMenuOpen = false; a(); }
     private bool _acctDropOpen;   // header account switcher (avatars) dropdown
     private bool _periodMenuOpen; // period chip popover (dates + edit/remove/start-next + status)
