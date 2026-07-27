@@ -960,6 +960,10 @@ public sealed class Localizer(IJSRuntime js)
         ["Add a savings goal or a debt to pay off."] = "Добави цел за спестяване или дълг за изплащане.",
         ["Create a savings bucket"] = "Създай кофичка за спестяване",
         ["Set money aside — with or without a goal or debt to pay off."] = "Заделяй пари — със или без цел или дълг за изплащане.",
+        ["Add categories"] = "Добави категории",
+        ["Organise your spending with your own categories and sub-categories."] = "Организирай разходите със свои категории и подкатегории.",
+        ["Invite a partner"] = "Покани партньор",
+        ["Share the budget in real time — invite your partner or housemate."] = "Споделяй бюджета в реално време — покани партньор или съквартирант.",
 
         // ---- Batch: previously-untranslated UI, achievements & milestones ----
         [" (synced)"] = " (синхр.)",

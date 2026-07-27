@@ -75,6 +75,28 @@ else
                                 @if (aid == State.CurrentAccountId) { <span class="acct-check">✓</span> }
                             </button>
                         }
+                        @* People on the current account live here — with the account identity, not on the Wallets tab.
+                           Invite + per-member remove for the owner. *@
+                        <div class="acct-drop-people">
+                            <div class="acct-drop-sec-head">
+                                <span>@Loc["People"]</span>
+                                <button class="link" @onclick="@(() => { _acctDropOpen = false; OpenInvite(); })"><Icon Name="plus" /> @Loc["Invite"]</button>
+                            </div>
+                            @foreach (var m in State.RealUsers)
+                            {
+                                var mid = m.UserId;
+                                <div class="acct-drop-person">
+                                    <Avatar Name="@m.DisplayName" Picture="@State.MemberAvatar(mid)" Size="22" />
+                                    <span class="acct-drop-person-nm">@m.DisplayName</span>
+                                    @if (mid == State.MyUserId) { <span class="person-tag">@Loc["you"]</span> }
+                                    else if (mid == State.CurrentOwnerId) { <span class="person-tag">@Loc["owner"]</span> }
+                                    @if (State.IsOwnerOfCurrent && mid != State.MyUserId)
+                                    {
+                                        <button class="person-x" title="@Loc["Remove from account"]" @onclick="() => OpenRemoveMember(mid, m.DisplayName)">×</button>
+                                    }
+                                </div>
+                            }
+                        </div>
                         <button class="acct-drop-add" @onclick="@(() => { _acctDropOpen = false; OpenAddAccount(); })"><Icon Name="plus" /> @Loc["Add a new account"]</button>
                     </div>
                 }
@@ -280,6 +302,8 @@ else
                     (State.TotalBudgeted.Amount > 0m, "target", Loc["Set a budget"], Loc["Cap a category so you know what's safe to spend."], OpenAddBudget),
                     (State.AllExpenses.Count > 0, "receipt", Loc["Log an expense"], Loc["Record your first spend — or import a statement."], OpenAddOrImport),
                     (State.SavingBuckets.Any(b => !b.Bucket.IsArchived), "coins", Loc["Create a savings bucket"], Loc["Set money aside — with or without a goal or debt to pay off."], OpenAddBucket),
+                    (State.CategoryOptions.Any(c => c.Depth > 0), "tag", Loc["Add categories"], Loc["Organise your spending with your own categories and sub-categories."], OpenManageCats),
+                    (State.OtherMembers.Any(), "users", Loc["Invite a partner"], Loc["Share the budget in real time — invite your partner or housemate."], OpenInvite),
                 };
                 var obDone = obSteps.Count(s => s.Done);
             }
@@ -577,7 +601,16 @@ else
             <section class="panel">
                 <div class="spending-head">
                     <span class="insight-h">@Loc["Where your money is"]@if (LiveBalancePending) { <span class="bal-refreshing" title="@Loc["Updating live balance…"]"></span> }</span>
-                    <button class="fund-add" @onclick="OpenAddFund"><Icon Name="plus" /> @Loc["Add a fund"]</button>
+                    <span class="wallet-head-actions">
+                        <button class="fund-add" @onclick="OpenAddFund"><Icon Name="plus" /> @Loc["Add a fund"]</button>
+                        @* External accounts (bank connection) — an account-level manage button at the right end,
+                           only when a bank connection exists; a badge flags transactions waiting to be reviewed. *@
+                        @if (_bankStatus?.Enabled == true)
+                        {
+                            var reviewCount = _bankStatus.Connected ? BankDebits().Count + BankCredits().Count : 0;
+                            <button class="fund-add wallet-bank-btn@(reviewCount > 0 ? " has-review" : "")" @onclick="ShowBankTab"><Icon Name="bank" /> @Loc["External accounts"]@if (reviewCount > 0) { <span class="wallet-bank-badge" title="@string.Format(Loc["{0} to review"], reviewCount)">@reviewCount</span> }</button>
+                        }
+                    </span>
                 </div>
                 @{
                     var funds = State.RootFunds.ToList();
@@ -700,27 +733,6 @@ else
                 </section>
             }
 
-            @* External accounts lives here in Wallets (account-level, not a daily move). Only shown when a bank
-               connection exists. The review count opens the review window (money-in + money-out); Manage opens the
-               connection screen. *@
-            @if (_bankStatus?.Enabled == true)
-            {
-                var reviewCount = _bankStatus.Connected ? BankDebits().Count + BankCredits().Count : 0;
-                <section class="panel">
-                    <div class="spending-head">
-                        <span class="insight-h"><Icon Name="bank" /> @Loc["External accounts"]</span>
-                        <span class="wallet-bank-actions">
-                            @if (reviewCount > 0)
-                            {
-                                <button class="fund-add wallet-bank-review" @onclick="OpenBankReview"><Icon Name="bell" /> @string.Format(Loc["{0} to review"], reviewCount)</button>
-                            }
-                            <button class="fund-add" @onclick="ShowBankTab"><Icon Name="sliders" /> @Loc["Manage"]</button>
-                        </span>
-                    </div>
-                    <p class="hint">@(_bankStatus.Connected ? Loc["Your bank connection keeps balances and transactions up to date."] : Loc["Connect a bank to auto-import transactions and keep balances current."])</p>
-                </section>
-            }
-
             <section class="panel">
                 <div class="spending-head">
                     <h2>@Loc["Income"]</h2>
@@ -766,28 +778,6 @@ else
                         <li><em>@Loc["Nothing on the tab yet — add a contribution."]</em></li>
                     }
                 </ul>
-            </section>
-
-            <section class="panel people-panel">
-                <div class="spending-head">
-                    <h2>@Loc["People"]</h2>
-                    <button class="fund-add" @onclick="OpenInvite"><Icon Name="plus" /> @Loc["Invite"]</button>
-                </div>
-                <div class="people-row">
-                    @foreach (var m in State.RealUsers)
-                    {
-                        var mid = m.UserId;
-                        <span class="person">
-                            <Avatar Name="@m.DisplayName" Picture="@State.MemberAvatar(mid)" Size="26" /> @m.DisplayName
-                            @if (mid == State.MyUserId) { <span class="person-tag">@Loc["you"]</span> }
-                            else if (mid == State.CurrentOwnerId) { <span class="person-tag">@Loc["owner"]</span> }
-                            @if (State.IsOwnerOfCurrent && mid != State.MyUserId)
-                            {
-                                <button class="person-x" title="@Loc["Remove from account"]" @onclick="() => OpenRemoveMember(mid, m.DisplayName)">×</button>
-                            }
-                        </span>
-                    }
-                </div>
             </section>
 
         </div>

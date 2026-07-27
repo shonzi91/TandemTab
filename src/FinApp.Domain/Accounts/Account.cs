@@ -183,8 +183,14 @@ public sealed class Account : Entity
     /// <summary>Add a category. Pass <paramref name="parentId"/> to make it a sub-category (e.g. Kids → Kid1).</summary>
     public Category AddCategory(string name, Guid? parentId = null, string? icon = null)
     {
-        if (parentId is { } pid && _categories.All(c => c.Id != pid))
-            throw new InvalidOperationException("Parent category does not exist in this account.");
+        if (parentId is { } pid)
+        {
+            var parent = _categories.FirstOrDefault(c => c.Id == pid)
+                ?? throw new InvalidOperationException("Parent category does not exist in this account.");
+            // One level of nesting only: a sub-category can't itself be a parent (keeps the tree simple).
+            if (parent.ParentId is not null)
+                throw new InvalidOperationException("Categories can only be nested one level deep.");
+        }
         if (_categories.Any(c => NameEquals(c.Name, name)))
             throw new InvalidOperationException($"A category named “{name.Trim()}” already exists.");
         var category = new Category(name, parentId);

@@ -51,6 +51,18 @@ public class CategoryAdminTests
     }
 
     [Fact]
+    public void Sub_category_cannot_have_its_own_sub_category()
+    {
+        var account = new Account("Personal", Eur);
+        var food = account.AddCategory("Food");
+        var groceries = account.AddCategory("Groceries", food.Id);   // one level deep: allowed
+
+        // Nesting is capped at one level, so a sub-category can't be a parent.
+        var ex = Assert.Throws<InvalidOperationException>(() => account.AddCategory("Fruit", groceries.Id));
+        Assert.Contains("one level", ex.Message);
+    }
+
+    [Fact]
     public void Unused_category_is_removed()
     {
         var account = new Account("Personal", Eur);

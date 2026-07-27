@@ -179,6 +179,14 @@ html.dark .home-ms-line:hover { color: #3fe0c5; }
     padding: 11px; border-radius: 11px;
 }
 .acct-drop-add:hover { background: #eefaf6; }
+/* People on the current account, moved off the Wallets tab into the account switcher (account identity lives here). */
+.acct-drop-people { border-top: 1px solid #eef1f4; margin-top: 5px; padding: 8px 3px 2px; }
+html.dark .acct-drop-people { border-top-color: #2b3350; }
+.acct-drop-sec-head { display: flex; align-items: center; justify-content: space-between; padding: 0 8px 3px; }
+.acct-drop-sec-head > span { font-size: .68rem; text-transform: uppercase; letter-spacing: .06em; color: #94a3b8; font-weight: 700; }
+.acct-drop-sec-head .link { display: inline-flex; align-items: center; gap: 4px; font-size: .8rem; }
+.acct-drop-person { display: flex; align-items: center; gap: 8px; padding: 6px 8px; font-size: .88rem; border-radius: 9px; }
+.acct-drop-person-nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* Balance hero — one bordered card split into three columns: Current · Free · Allocated. */
 .hdr-hero {
@@ -1832,12 +1840,13 @@ html.dark .pin-rule-edit { background: #14271f; border-color: #1c3d38; }
 .spend-menu > .link:hover { background: #eef3f0; color: #0f7a54; }
 html.dark .spend-menu > .link:hover { background: #1b2230; color: var(--tm-mint); }
 
-/* External accounts in the Wallets tab: the manage/review buttons row. The review button borrows .fund-add but
-   takes an amber "needs attention" tint (higher specificity, no !important). */
-.wallet-bank-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.wallet-bank-actions .wallet-bank-review { border-color: #f0c05a; color: #92600b; background: #fdf6e3; }
-.wallet-bank-actions .wallet-bank-review:hover { border-color: #e0a92e; background: #fbeecb; }
-html.dark .wallet-bank-actions .wallet-bank-review { background: #2a2410; color: #f5d98a; border-color: #5c4a1e; }
+/* "Where your money is" header actions, right-aligned: Add a fund + (bank-gated) External accounts at the far end. */
+.wallet-head-actions { margin-left: auto; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+/* External-accounts manage button; with pending items it takes an amber "needs attention" tint + a count badge. */
+.wallet-bank-btn.has-review { border-color: #f0c05a; color: #92600b; background: #fdf6e3; }
+.wallet-bank-btn.has-review:hover { border-color: #e0a92e; background: #fbeecb; }
+html.dark .wallet-bank-btn.has-review { background: #2a2410; color: #f5d98a; border-color: #5c4a1e; }
+.wallet-bank-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 5px; margin-left: 6px; border-radius: 9px; background: #d97706; color: #fff; font-size: .72rem; font-weight: 700; }
 
 /* Goals: kind is a filter over one grid, not a section each. */
 .goal-filters { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 0 0 14px; }
