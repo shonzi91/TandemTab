@@ -786,6 +786,21 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
 
     public string SavingBucketName(Guid id) => FindSavingBucket(id)?.Name ?? "—";
 
+    /// <summary>True when the account holds a live investment bucket with a positive expected return — the gate for
+    /// the runway's "Additional income" slider. We only offer the extra-income scenario to someone whose money is
+    /// already set up to grow, so it reads as "model your investment income", not "you ought to earn more".</summary>
+    public bool HasEarningInvestment =>
+        Account.SavingCategories.Any(b => !b.IsArchived && b.IsInvestment && b.InvestmentAnnualRatePercent > 0m);
+
+    /// <summary>Rough money-in per month the account's investments throw off right now: each earning bucket's balance
+    /// times its annual rate, spread over twelve months. Seeds the runway's "Additional income" slider so the
+    /// investments a member already holds are on it by default (simple interest — the compounding projection lives on
+    /// the bucket itself).</summary>
+    public decimal InvestmentMonthlyEarnings =>
+        decimal.Round(SavingBuckets
+            .Where(b => !b.Bucket.IsArchived && b.Bucket.IsInvestment && b.Bucket.InvestmentAnnualRatePercent > 0m)
+            .Sum(b => b.Total.Amount * b.Bucket.InvestmentAnnualRatePercent / 100m / 12m), 2);
+
     /// <summary>This period's manual "Add to savings" deposits, newest first (editable/removable).</summary>
     public IReadOnlyList<SavingAllocation> SavingDepositsThisPeriod =>
         Period.ManualSavingDeposits().OrderByDescending(a => a.Date).ToList();

@@ -729,9 +729,20 @@ html.dark .bh-amt { color: #cbd5e1; }
 .cat-list { display: flex; flex-direction: column; gap: 8px; }
 .cat-row { border: 0.5px solid #e6ece9; border-radius: 12px; background: #fff; overflow: hidden; }
 html.dark .cat-row { border-color: #2b3446; background: #14181f; }
-.cat-row-head { display: flex; align-items: center; gap: 13px; width: 100%; padding: 11px 14px; background: none; border: none; cursor: pointer; text-align: left; font: inherit; }
-.cat-row-head:hover { background: #f6faf8; }
-html.dark .cat-row-head:hover { background: #191e27; }
+/* Row head is a flex wrapper: the hit-area (ring + name + bar) toggles the drawer, an action cluster sits on the
+   right (add expense / edit / remove / ⋯ / chevron). The actions are their own buttons, so they can't nest inside
+   the toggle button — hence the wrapper. */
+.cat-row-head { display: flex; align-items: center; }
+.cat-row-hit { display: flex; align-items: center; gap: 13px; flex: 1; min-width: 0; padding: 11px 14px; background: none; border: none; cursor: pointer; text-align: left; font: inherit; }
+.cat-row-hit:hover { background: #f6faf8; }
+html.dark .cat-row-hit:hover { background: #191e27; }
+.cat-row-acts { display: flex; align-items: center; gap: 1px; padding: 0 6px 0 2px; flex: none; }
+.row-ico { display: inline-flex; align-items: center; justify-content: center; width: 31px; height: 31px; border: none; border-radius: 8px; background: none; color: #93a1ad; cursor: pointer; position: relative; }
+.row-ico:hover { background: #eef6f1; color: #0f7a54; }
+.row-ico.danger:hover { background: #fef2f2; color: #dc2626; }
+html.dark .row-ico { color: #7f8b9a; }
+html.dark .row-ico:hover { background: #17251e; color: #3fe0c5; }
+html.dark .row-ico.danger:hover { background: #2a1616; color: #f87171; }
 .cat-chip-ring { width: 42px; height: 42px; flex: none; }
 .cat-chip-ring ::deep .pring-center { font-size: 15px; padding: 22%; }
 .cat-row-main { flex: 1; min-width: 0; }
@@ -766,15 +777,6 @@ html.dark .cat-row-sub { background: #11151c; }
 /* The shared expense list (row-main/row-title/row-sub) inside any drawer: drop default list margins. */
 .cat-drawer-list { margin: 0; }
 .cbar-track-sm { height: 6px; margin-top: 4px; }
-.cat-drawer-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
-.cat-act { display: inline-flex; align-items: center; gap: 6px; font-size: .84rem; padding: 7px 12px; border: 0.5px solid #d2ded7; border-radius: 9px; background: none; color: #384250; cursor: pointer; }
-.cat-act:hover { border-color: #13a06e; background: #f0fbf6; color: #0f7a54; }
-.cat-act.danger { color: #dc2626; }
-.cat-act.danger:hover { border-color: #dc2626; background: #fef2f2; color: #b91c1c; }
-html.dark .cat-act { border-color: #2b3648; color: #cdd4de; }
-html.dark .cat-act:hover { background: #16241d; border-color: #17a877; color: #3fe0c5; }
-html.dark .cat-act.danger { color: #f87171; }
-html.dark .cat-act.danger:hover { background: #2a1616; border-color: #f87171; color: #fca5a5; }
 .cat-drawer-empty { font-size: .84rem; color: #94a3b8; margin: 2px 0; font-style: italic; }
 .cat-viewmore { display: inline-flex; align-items: center; gap: 4px; font-size: .8rem; font-weight: 600; padding: 7px 0 2px; background: none; border: none; color: #13a06e; cursor: pointer; }
 .cat-viewmore:hover { text-decoration: underline; }
@@ -888,29 +890,59 @@ html.dark .ms-bar-desc { color: #8a94a6; }
 .debt-ahead { font-size: .64rem; font-weight: 700; margin-top: 1px; text-align: center; }
 
 /* ---- Goals list: expandable progress-bar rows (reuse .cat-row/.cat-drawer) + debt payoff simulator ---- */
+/* Saved-summary header — one compact tile (saved this period + its savings rate) with Add goal on the same row.
+   Total saved isn't repeated here; it's already in the account balance bar up top. */
+.goal-summary { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
+.goal-stat { background: #f3fbf7; border: 1px solid #e2efe8; border-radius: 14px; padding: 8px 14px; display: flex; flex-direction: column; gap: 1px; }
+html.dark .goal-stat { background: #14231d; border-color: #24463a; }
+.goal-summary .fund-add { margin-left: auto; }
+.goal-stat-k { font-size: .63rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: #8a97a0; }
+.goal-stat-v { font-size: 1.18rem; font-weight: 800; color: #13a06e; line-height: 1.15; letter-spacing: -.01em; }
+html.dark .goal-stat-v { color: #3fe0c5; }
+.goal-stat-v-period { color: #16202b; }
+html.dark .goal-stat-v-period { color: #e8eef0; }
+.goal-stat-pct { font-size: .7rem; font-weight: 600; color: #6b7d72; margin-top: 1px; }
+html.dark .goal-stat-pct { color: #9fb0a6; }
 .goal-done-badge { margin-left: 5px; }
+/* The ⋯ menu is absolutely positioned; let it escape the row's overflow:hidden while it's open. */
+.goal-row.goal-more-open { overflow: visible; }
+/* Bank-offer table can be wide — let it scroll on narrow screens rather than pushing the layout. */
+.payoff-opts-scroll { overflow-x: auto; margin-bottom: 4px; }
 .goal-drawer .debt-progress { align-items: flex-start; margin: 0 0 10px; }
 .goal-facts { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: .82rem; color: #5b6470; margin-bottom: 10px; }
 .goal-facts strong { color: #16202b; font-weight: 700; }
 html.dark .goal-facts { color: #a9b6ad; }
 html.dark .goal-facts strong { color: #e8eef0; }
 .goal-held { display: flex; align-items: center; gap: 6px; font-size: .8rem; color: #8a97a0; margin-bottom: 10px; }
-/* Debt payoff simulator: slider + animated timeline. As "extra /mo" rises the payoff flag slides left and the green
-   "time saved" region grows from the right — the transitions are what animate it. */
+/* Inline projection result lines (payoff / growth / goal-reach) — replace the old projection modals. */
+.goal-proj { margin: 0 0 10px; font-size: .86rem; font-weight: 600; color: #0f7a54; }
+html.dark .goal-proj { color: #57d9a3; }
+.goal-proj-hint { margin: 0 0 10px; font-size: .8rem; color: #8a97a0; }
+/* Sinking-fund "costs to cover" list, shown in the drawer. */
+.goal-costs { margin-bottom: 10px; }
+.goal-costs-label { font-size: .68rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: #8a97a0; margin-bottom: 5px; }
+.goal-cost-row { display: flex; justify-content: space-between; gap: 10px; font-size: .84rem; padding: 4px 0; border-top: 0.5px solid #eef1f4; color: #384250; }
+.goal-cost-row:first-of-type { border-top: none; }
+html.dark .goal-cost-row { border-top-color: #232a37; color: #cdd4de; }
+.goal-cost-amt { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.goal-cost-cad { color: #94a3b8; }
+/* Debt payoff simulator: slider + result. The animation lives on the row's own progress bar (.cbar-sim) — as
+   "extra /mo" rises the bar fills forward past the paid-off point. */
 .payoff-sim { background: #f3fbf7; border: 1px solid #d6f0e3; border-radius: 12px; padding: 12px; margin-bottom: 12px; }
 html.dark .payoff-sim { background: #14231d; border-color: #24463a; }
 .payoff-sim-head { display: flex; align-items: center; justify-content: space-between; font-size: .83rem; font-weight: 700; color: #0f7a54; margin-bottom: 8px; }
 html.dark .payoff-sim-head { color: #57d9a3; }
 .payoff-extra-val { font-variant-numeric: tabular-nums; }
-.payoff-slider { width: 100%; accent-color: #13a06e; margin: 2px 0 10px; }
-.payoff-timeline { position: relative; height: 12px; border-radius: 7px; background: #e2ece7; }
-html.dark .payoff-timeline { background: #24312b; }
-.payoff-saved { position: absolute; top: 0; bottom: 0; right: 0; left: 100%; background: linear-gradient(90deg, #34d399, #13a06e); border-radius: 7px; transition: left .45s cubic-bezier(.4,0,.2,1); }
-.payoff-flag { position: absolute; top: 50%; left: 100%; transform: translate(-50%, -50%); font-size: .82rem; transition: left .45s cubic-bezier(.4,0,.2,1); }
-.payoff-sim-foot { margin-top: 9px; font-size: .8rem; color: #5b6470; display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: baseline; }
+.payoff-slider { width: 100%; accent-color: #13a06e; margin: 2px 0 8px; }
+.payoff-sim-foot { font-size: .8rem; color: #5b6470; display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: baseline; }
 .payoff-date { font-weight: 700; color: #16202b; }
 html.dark .payoff-sim-foot { color: #a9b6ad; }
 html.dark .payoff-date { color: #e8eef0; }
+/* When a debt row is open, its progress bar previews the payoff simulation — animate the fill as the slider moves. */
+.cbar-grad.cbar-sim { transition: clip-path .45s cubic-bezier(.4, 0, .2, 1); }
+/* Drawer ⋯ (secondary actions) menu — reuses .row-menu; keep it right-aligned and anchored to the ⋯ button. */
+.goal-more { position: relative; display: inline-flex; }
+.goal-more-menu { right: 0; left: auto; top: calc(100% + 2px); }
 
 /* Category-detail modal action buttons */
 .detail-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 6px; }
@@ -1505,8 +1537,17 @@ html.dark .runway-sub { color: #9aa4b2; }
 .runway-math .rm-num.debit { color: #dc2626; }
 .runway-math .rm-net { border-top: 1px solid #e2e8e2; padding-top: 4px; margin-top: 2px; font-weight: 700; }
 .runway-basis { margin: 0; font-size: .74rem; line-height: 1.4; color: #6b7280; }
-.whatif { display: flex; flex-direction: column; gap: 6px; }
+/* Small muted source note under a math label (e.g. where "money in" comes from, or the live slider %). */
+.rm-src { display: block; font-size: .68rem; font-weight: 500; color: #9aa0ad; line-height: 1.2; margin-top: -1px; }
+html.dark .rm-src { color: #7f8b9a; }
+/* The two what-if sliders sit side by side (spend | earn) and stack on narrow screens. */
+.whatif-row { display: flex; flex-wrap: wrap; gap: 10px 22px; }
+.whatif { display: flex; flex-direction: column; gap: 6px; flex: 1 1 200px; min-width: 200px; }
 .whatif-label { font-size: .78rem; font-weight: 700; color: #1f2430; }
+.whatif-val { font-weight: 600; color: #0e8a5d; font-variant-numeric: tabular-nums; }
+html.dark .whatif-val { color: #57d9a3; }
+.whatif-sub { font-size: .72rem; color: #9aa0ad; }
+html.dark .whatif-sub { color: #7f8b9a; }
 .whatif-slider { width: 100%; max-width: 320px; accent-color: #13a06e; cursor: pointer; }
 .whatif-out { font-size: .8rem; color: #4b5563; }
 .whatif-amt { white-space: nowrap; }

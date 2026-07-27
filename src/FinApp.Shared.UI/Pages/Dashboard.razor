@@ -509,51 +509,81 @@ else
                             </span>
                             @* "Show the math" — the anti-black-box move: no AI, so we can show exactly how the number
                                is built and let you nudge the inputs. Off by default to keep Home calm. *@
-                            <button type="button" class="runway-toggle" @onclick="() => _runwayOpen = !_runwayOpen">
+                            <button type="button" class="runway-toggle" @onclick="ToggleRunwayMath">
                                 @(_runwayOpen ? Loc["Hide the math"] : Loc["Show the math"]) <span class="runway-caret @(_runwayOpen ? "open" : "")">▾</span>
                             </button>
                         </span>
                     </div>
                     @if (_runwayOpen)
                     {
-                        var inM = rw.Months[0].Income;
-                        var outM = rw.Months[0].Spending;
+                        var inBase = rw.Months[0].Income;
+                        var outBase = rw.Months[0].Spending;
+                        var canEarn = State.HasEarningInvestment;
+                        var invEarn = State.InvestmentMonthlyEarnings;
+                        // The sliders are live inputs, not a side note: they nudge the money-in / money-out shown in the
+                        // math below and re-run the whole projection, so "show the math" is an editable forecast. Extra
+                        // income of +X/month moves the balance exactly like spending −X/month, so both feed one combined
+                        // delta. The Additional-income slider is an absolute €/month (seeded from investment earnings).
+                        var spendDelta = decimal.Round(outBase * _whatIfPct / 100m, 2);
+                        var earnDelta = canEarn ? Math.Max(0m, _whatIfEarnAmt) : 0m;
+                        var earnMax = Math.Max(500m, Math.Ceiling(inBase / 100m) * 100m);
+                        var inM = Math.Max(0m, inBase + earnDelta);
+                        var outM = Math.Max(0m, outBase + spendDelta);
+                        var scenario = _whatIfPct != 0 || (canEarn && earnDelta != 0m);
+                        var proj = scenario ? State.ProjectCashFlow(_balCur, spendDelta - earnDelta) : rw;
+                        // Where the baseline money-in comes from — the answer to "why doesn't this match what I've put in
+                        // this month?": it's a rate, drawn from history or your declared recurring income, not this
+                        // period's contributions.
+                        var inSrc = rw.Basis == CashFlowBasis.Recurring
+                            ? Loc["your recurring income"]
+                            : State.CompletedPeriodCount <= 1
+                                ? Loc["average of your last month"]
+                                : string.Format(Loc["average of your last {0} months"], State.CompletedPeriodCount);
                         <div class="runway-detail">
                             <div class="runway-math">
                                 <span>@Loc["Starting balance"]</span><span class="rm-num">@Fmt(_balCur)</span>
-                                <span>@Loc["Money in / month"]</span><span class="rm-num credit">+ @Fmt(inM)</span>
-                                <span>@Loc["Money out / month"]</span><span class="rm-num debit">− @Fmt(outM)</span>
-                                <span class="rm-net">@Loc["Net / month"]</span><span class="rm-num rm-net @(inM - outM < 0 ? "debit" : "credit")">@(inM - outM < 0 ? "− " : "+ ")@Fmt(Math.Abs(inM - outM))</span>
+                                <span>@Loc["Money in / month"]<span class="rm-src">@inSrc@(canEarn && earnDelta > 0m ? $" · +{Fmt(State.Money(earnDelta))}" : "")</span></span><span class="rm-num credit">+ @Fmt(State.Money(inM))</span>
+                                <span>@Loc["Money out / month"]@if (_whatIfPct != 0) { <span class="rm-src">@(_whatIfPct > 0 ? "+" : "")@(_whatIfPct)%</span> }</span><span class="rm-num debit">− @Fmt(State.Money(outM))</span>
+                                <span class="rm-net">@Loc["Net / month"]</span><span class="rm-num rm-net @(inM - outM < 0 ? "debit" : "credit")">@(inM - outM < 0 ? "− " : "+ ")@Fmt(State.Money(Math.Abs(inM - outM)))</span>
                             </div>
                             <p class="runway-basis">@Loc["Each month adds the money in and takes the money out; the runway is how long your balance stays above zero. No AI, no guesswork — just this arithmetic on your own numbers."]</p>
 
-                            @* What-if: recompute the same projection with spending nudged, live. *@
-                            <div class="whatif">
-                                <label class="whatif-label">@Loc["What if I spent differently?"]</label>
-                                <input type="range" class="whatif-slider" min="-50" max="50" step="5" @bind:event="oninput" @bind="_whatIfPct" />
-                                @{
-                                    var delta = decimal.Round(outM * _whatIfPct / 100m, 2);
-                                    var adjOut = State.Money(Math.Max(0m, outM + delta));
-                                    var whatIf = _whatIfPct == 0 ? null : State.ProjectCashFlow(_balCur, delta);
-                                }
-                                <div class="whatif-out">
-                                    @if (_whatIfPct == 0)
-                                    {
-                                        <span class="whatif-hint">@Loc["Slide to spend less or more and see the runway change."]</span>
-                                    }
-                                    else if (whatIf is { } wi)
-                                    {
-                                        <span class="whatif-amt"><strong>@Fmt(adjOut)</strong> <span class="whatif-pct">(@(_whatIfPct > 0 ? "+" : "")@(_whatIfPct)%)</span> @Loc["out a month"]</span>
-                                        @if (wi.FirstShortfallMonth is { } wsm)
-                                        {
-                                            <span class="whatif-bad">— @string.Format(Loc["runs short in {0}"], wsm.ToString("MMM yyyy"))</span>
-                                        }
-                                        else
-                                        {
-                                            <span class="whatif-good">— @string.Format(Loc["balance holds ~{0} months, ending near {1}"], wi.Months.Count, Fmt(wi.Months[^1].Closing))</span>
-                                        }
-                                    }
+                            @* What-if: the sliders drive the math above and the outcome below, live. Earning is only
+                               offered when an investment is already growing the money (so it reads as modelling that,
+                               not as "you should earn more"). *@
+                            <div class="whatif-row">
+                                <div class="whatif">
+                                    <label class="whatif-label">@Loc["What if I spent differently?"]</label>
+                                    <input type="range" class="whatif-slider" min="-50" max="50" step="5" @bind:event="oninput" @bind="_whatIfPct" />
                                 </div>
+                                @if (canEarn)
+                                {
+                                    <div class="whatif">
+                                        <label class="whatif-label">@Loc["Additional income"] <span class="whatif-val">+@Fmt(State.Money(earnDelta))/@Loc["mo"]</span></label>
+                                        <input type="range" class="whatif-slider" min="0" max="@earnMax.ToString(System.Globalization.CultureInfo.InvariantCulture)" step="25" @bind:event="oninput" @bind="_whatIfEarnAmt" />
+                                        @if (invEarn > 0m)
+                                        {
+                                            <span class="whatif-sub">@string.Format(Loc["≈ {0}/mo from your investments"], Fmt(State.Money(invEarn)))</span>
+                                        }
+                                    </div>
+                                }
+                            </div>
+                            <div class="whatif-out">
+                                @if (!scenario)
+                                {
+                                    <span class="whatif-hint">@(canEarn ? Loc["Slide to model spending or earning and see the runway change."] : Loc["Slide to spend less or more and see the runway change."])</span>
+                                }
+                                else if (proj is { } wi)
+                                {
+                                    @if (wi.FirstShortfallMonth is { } wsm)
+                                    {
+                                        <span class="whatif-bad">@string.Format(Loc["Runs short in {0}"], wsm.ToString("MMM yyyy"))</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="whatif-good">@string.Format(Loc["Balance holds ~{0} months, ending near {1}"], wi.Months.Count, Fmt(wi.Months[^1].Closing))</span>
+                                    }
+                                }
                             </div>
                         </div>
                     }
@@ -940,21 +970,31 @@ else
                             var sOpen = _expandedSubs.Contains(sub.Id);
                             var sCount = State.ExpenseCountInCategory(sub.Id);
                         }
-                        <button class="cat-row-head" @onclick="() => ToggleSub(sub.Id)">
-                            <span class="cat-chip-ring">
-                                <ProgressRing Percent="@sPct" Class="@(sHas ? (sOver ? "over" : sCov!.ThresholdReached ? "warn" : "ok") : "mint")" Color="@(sHas ? SpendBarColorAt(sPct) : null)" Dashed="@(!sHas)">
-                                    <CatIcon Name="@State.CategoryIcon(sub.Id)" Class="cat-chip-ring-ico" />
-                                </ProgressRing>
-                            </span>
-                            <span class="cat-row-main">
-                                <span class="cat-row-top">
-                                    <span class="cat-row-name">@sub.Name@if (sCount > 0) { <span class="cat-row-subn">@sCount</span> }</span>
-                                    <span class="cat-row-amt @(sOver ? "warn-text" : "")">@Fmt(sSpent)@if (sHas) { <text> / @Fmt(sCov!.Allocated)</text> } else { <span class="cat-row-nb"> · @Loc["no budget"]</span> }</span>
+                        <div class="cat-row-head">
+                            <button class="cat-row-hit" @onclick="() => ToggleSub(sub.Id)">
+                                <span class="cat-chip-ring">
+                                    <ProgressRing Percent="@sPct" Class="@(sHas ? (sOver ? "over" : sCov!.ThresholdReached ? "warn" : "ok") : "mint")" Color="@(sHas ? SpendBarColorAt(sPct) : null)" Dashed="@(!sHas)">
+                                        <CatIcon Name="@State.CategoryIcon(sub.Id)" Class="cat-chip-ring-ico" />
+                                    </ProgressRing>
                                 </span>
-                                <span class="cbar-track"><span class="cbar-grad@(sHas ? "" : " cbar-flat")" style="--pct:@sPct.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)%"></span></span>
-                            </span>
-                            <Icon Name="chevron" Class="cat-chev" />
-                        </button>
+                                <span class="cat-row-main">
+                                    <span class="cat-row-top">
+                                        <span class="cat-row-name">@sub.Name@if (sCount > 0) { <span class="cat-row-subn">@sCount</span> }</span>
+                                        <span class="cat-row-amt @(sOver ? "warn-text" : "")">@Fmt(sSpent)@if (sHas) { <text> / @Fmt(sCov!.Allocated)</text> } else { <span class="cat-row-nb"> · @Loc["no budget"]</span> }</span>
+                                    </span>
+                                    <span class="cbar-track"><span class="cbar-grad@(sHas ? "" : " cbar-flat")" style="--pct:@sPct.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)%"></span></span>
+                                </span>
+                            </button>
+                            <div class="cat-row-acts">
+                                @if (State.IsPeriodOpen)
+                                {
+                                    <button class="row-ico" title="@Loc["Add expense"]" @onclick="() => OpenAddExpense(sub.Id)"><Icon Name="receipt" /></button>
+                                }
+                                <button class="row-ico" title="@(sHas ? Loc["Edit budget"] : Loc["Add budget"])" @onclick="() => OpenEdit(sub.Id)"><Icon Name="pencil" /></button>
+                                <button class="row-ico danger" title="@Loc["Remove"]" @onclick="() => OpenDelete(sub.Id)"><Icon Name="trash" /></button>
+                                <button class="row-ico cat-chev-btn" @onclick="() => ToggleSub(sub.Id)"><Icon Name="chevron" Class="cat-chev" /></button>
+                            </div>
+                        </div>
                         @if (sOpen)
                         {
                             var sExps = State.ExpensesFor(sub.Id);
@@ -967,14 +1007,6 @@ else
                                 {
                                     <ul class="list list-even cat-drawer-list">@foreach (var e in sExps) { @expenseRow((e, true)) }</ul>
                                 }
-                                <div class="cat-drawer-actions">
-                                    @if (State.IsPeriodOpen)
-                                    {
-                                        <button class="cat-act" @onclick="() => OpenAddExpense(sub.Id)"><Icon Name="receipt" /> @Loc["Add expense"]</button>
-                                    }
-                                    <button class="cat-act" @onclick="() => OpenEdit(sub.Id)"><Icon Name="pencil" /> @(sHas ? Loc["Edit budget"] : Loc["Add budget"])</button>
-                                    <button class="cat-act danger" @onclick="() => OpenDelete(sub.Id)"><Icon Name="trash" /> @Loc["Remove"]</button>
-                                </div>
                             </div>
                         }
                     </div>;
@@ -998,23 +1030,34 @@ else
                         var expCount = State.ExpenseCountInCategory(catId);
                         var open = _expandedCatId == catId;
                         <div class="cat-row@(open ? " open" : "")">
-                            <button class="cat-row-head" @onclick="() => ToggleCatRow(catId)">
-                                <span class="cat-chip-ring">
-                                    @* Solid ring in the exact colour the row's progress bar has reached — the ring shows
-                                       status, the bar (below) shows the gradient fill, so the two don't double up. *@
-                                    <ProgressRing Percent="@pct" Class="@cls" Color="@(hasBudget ? SpendBarColorAt(pct) : null)" Dashed="@(!hasBudget)">
-                                        <CatIcon Name="@State.CategoryIcon(catId)" Class="cat-chip-ring-ico" />
-                                    </ProgressRing>
-                                </span>
-                                <span class="cat-row-main">
-                                    <span class="cat-row-top">
-                                        <span class="cat-row-name">@cat.Name@if (expCount > 0) { <span class="cat-row-subn" title="@(expCount == 1 ? Loc["1 expense logged"] : string.Format(Loc["{0} expenses logged"], expCount))">@expCount</span> }</span>
-                                        <span class="cat-row-amt @(over ? "warn-text" : "")">@Fmt(spent)@if (hasBudget) { <text> / @Fmt(cov!.Allocated)</text> } else { <span class="cat-row-nb"> · @Loc["no budget"]</span> }</span>
+                            <div class="cat-row-head">
+                                <button class="cat-row-hit" @onclick="() => ToggleCatRow(catId)">
+                                    <span class="cat-chip-ring">
+                                        @* Solid ring in the exact colour the row's progress bar has reached — the ring shows
+                                           status, the bar (below) shows the gradient fill, so the two don't double up. *@
+                                        <ProgressRing Percent="@pct" Class="@cls" Color="@(hasBudget ? SpendBarColorAt(pct) : null)" Dashed="@(!hasBudget)">
+                                            <CatIcon Name="@State.CategoryIcon(catId)" Class="cat-chip-ring-ico" />
+                                        </ProgressRing>
                                     </span>
-                                    <span class="cbar-track"><span class="cbar-grad@(hasBudget ? "" : " cbar-flat")" style="--pct:@pct.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)%"></span></span>
-                                </span>
-                                <Icon Name="chevron" Class="cat-chev" />
-                            </button>
+                                    <span class="cat-row-main">
+                                        <span class="cat-row-top">
+                                            <span class="cat-row-name">@cat.Name@if (expCount > 0) { <span class="cat-row-subn" title="@(expCount == 1 ? Loc["1 expense logged"] : string.Format(Loc["{0} expenses logged"], expCount))">@expCount</span> }</span>
+                                            <span class="cat-row-amt @(over ? "warn-text" : "")">@Fmt(spent)@if (hasBudget) { <text> / @Fmt(cov!.Allocated)</text> } else { <span class="cat-row-nb"> · @Loc["no budget"]</span> }</span>
+                                        </span>
+                                        <span class="cbar-track"><span class="cbar-grad@(hasBudget ? "" : " cbar-flat")" style="--pct:@pct.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)%"></span></span>
+                                    </span>
+                                </button>
+                                @* Actions on the right of the row (always visible): add expense / edit budget / remove. *@
+                                <div class="cat-row-acts">
+                                    @if (State.IsPeriodOpen)
+                                    {
+                                        <button class="row-ico" title="@Loc["Add expense"]" @onclick="() => OpenAddExpense(catId)"><Icon Name="receipt" /></button>
+                                    }
+                                    <button class="row-ico" title="@(hasBudget ? Loc["Edit budget"] : Loc["Add budget"])" @onclick="() => OpenEdit(catId)"><Icon Name="pencil" /></button>
+                                    <button class="row-ico danger" title="@Loc["Remove"]" @onclick="() => OpenDelete(catId)"><Icon Name="trash" /></button>
+                                    <button class="row-ico cat-chev-btn" @onclick="() => ToggleCatRow(catId)"><Icon Name="chevron" Class="cat-chev" /></button>
+                                </div>
+                            </div>
                             @if (open)
                             {
                                 <div class="cat-drawer">
@@ -1051,14 +1094,6 @@ else
                                             <button class="cat-viewmore" @onclick="() => _catShowAllExp = true">@string.Format(Loc["View all {0} expenses"], ownExpenses.Count) <Icon Name="chevron" Class="cat-viewmore-chev" /></button>
                                         }
                                     }
-                                    <div class="cat-drawer-actions">
-                                        @if (State.IsPeriodOpen)
-                                        {
-                                            <button class="cat-act" @onclick="() => OpenAddExpense(catId)"><Icon Name="receipt" /> @Loc["Add expense"]</button>
-                                        }
-                                        <button class="cat-act" @onclick="() => OpenEdit(catId)"><Icon Name="pencil" /> @(hasBudget ? Loc["Edit budget"] : Loc["Add budget"])</button>
-                                        <button class="cat-act danger" @onclick="() => OpenDelete(catId)"><Icon Name="trash" /> @Loc["Remove"]</button>
-                                    </div>
                                 </div>
                             }
                         </div>
@@ -1169,7 +1204,7 @@ else
                 // the bar shows how far along it is, and tapping opens a drawer with the detail + every action. Debt rows
                 // get an inline payoff simulator — drag "extra /mo" and the timeline animates to show the earlier payoff.
                 RenderFragment<(SavingCategory Bucket, Money Total)> goalRow = ctx =>
-                @<div class="cat-row goal-row@(_expandedGoalId == ctx.Bucket.Id ? " open" : "")">
+                @<div class="cat-row goal-row@(_expandedGoalId == ctx.Bucket.Id ? (_goalMoreOpen ? " open goal-more-open" : " open") : "")">
                     @{
                         var bucketId = ctx.Bucket.Id;
                         var isDebt = ctx.Bucket.IsDebt;
@@ -1193,32 +1228,81 @@ else
                         var ringRamp = (!isInvestment && !isDebt && !ringDashed) ? "goal" : null;
                         var done = isDebt ? ctx.Bucket.IsDebtCleared : (g is not null && g.GoalReached);
                         var open = _expandedGoalId == bucketId;
+                        // When a debt row is open, its OWN progress bar previews the payoff simulation (no separate
+                        // timeline): dragging "extra /mo" pushes the fill past the paid-off point by the share of the
+                        // remaining payoff time the extra would erase. Animated via the .cbar-sim transition.
+                        var barShown = barPct;
+                        var debtSimActive = open && isDebt && !done && State.SavingBucketDebtInstallment(bucketId) > 0m;
+                        if (debtSimActive)
+                        {
+                            var _si = State.SavingBucketDebtInstallment(bucketId);
+                            var _sr = State.SavingBucketDebtRate(bucketId);
+                            var _sbM = FinApp.Forecasting.LoanForecast.PayOff(debtOwed, _sr, _si)?.Months ?? 0;
+                            var _sfM = FinApp.Forecasting.LoanForecast.PayOff(debtOwed, _sr, _si + _goalExtra)?.Months ?? 0;
+                            var _sSaved = _sbM > 0 && _sfM > 0 ? Math.Max(0, _sbM - _sfM) : 0;
+                            if (_sbM > 0) barShown = paidPct + (100.0 - paidPct) * ((double)_sSaved / _sbM);
+                        }
                     }
-                    <button class="cat-row-head" @onclick="() => ToggleGoalRow(bucketId)">
-                        <span class="cat-chip-ring">
-                            <ProgressRing Percent="@(isDebt ? paidPct : goalPct)" Percent2="@(isDebt ? stagedPct : 0)" Class="@ringCls" Class2="staged" Dashed="@ringDashed" Ramp="@ringRamp">
-                                <CatIcon Name="@State.SavingBucketIcon(bucketId)" Class="cat-chip-ring-ico" />
-                            </ProgressRing>
-                        </span>
-                        <span class="cat-row-main">
-                            <span class="cat-row-top">
-                                <span class="cat-row-name">@ctx.Bucket.Name@if (done) { <span class="goal-done-badge" title="@(isDebt ? Loc["Paid off"] : Loc["Goal reached"])">🎉</span> }</span>
-                                <span class="cat-row-amt">
-                                    @if (done) { <span class="good-text">@(isDebt ? Loc["Paid off"] : Loc["Goal reached"])</span> }
-                                    else if (isDebt) { <text>@Fmt(debtOwed)<span class="cat-row-nb"> · @Loc["owed"]</span></text> }
-                                    else if (isInvestment) { <text>@Fmt(total)<span class="cat-row-nb"> · @Loc["invested"]</span></text> }
-                                    else if (g is not null) { <text>@Fmt(total) / @Fmt(g.Goal!.Value)</text> }
-                                    else { <text>@Fmt(total)<span class="cat-row-nb"> · @Loc["saved"]</span></text> }
-                                </span>
+                    <div class="cat-row-head">
+                        <button class="cat-row-hit" @onclick="() => ToggleGoalRow(bucketId)">
+                            <span class="cat-chip-ring">
+                                <ProgressRing Percent="@(isDebt ? paidPct : goalPct)" Percent2="@(isDebt ? stagedPct : 0)" Class="@ringCls" Class2="staged" Dashed="@ringDashed" Ramp="@ringRamp">
+                                    <CatIcon Name="@State.SavingBucketIcon(bucketId)" Class="cat-chip-ring-ico" />
+                                </ProgressRing>
                             </span>
-                            <span class="cbar-track"><span class="cbar-grad @(hasBar ? "cbar-good" : "cbar-flat")" style="--pct:@barPct.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)%"></span></span>
-                        </span>
-                        <Icon Name="chevron" Class="cat-chev" />
-                    </button>
+                            <span class="cat-row-main">
+                                <span class="cat-row-top">
+                                    <span class="cat-row-name">@ctx.Bucket.Name@if (done) { <span class="goal-done-badge" title="@(isDebt ? Loc["Paid off"] : Loc["Goal reached"])">🎉</span> }</span>
+                                    <span class="cat-row-amt">
+                                        @if (done) { <span class="good-text">@(isDebt ? Loc["Paid off"] : Loc["Goal reached"])</span> }
+                                        else if (isDebt) { <text>@Fmt(debtOwed)<span class="cat-row-nb"> · @Loc["owed"]</span></text> }
+                                        else if (isInvestment) { <text>@Fmt(total)<span class="cat-row-nb"> · @Loc["invested"]</span></text> }
+                                        else if (g is not null) { <text>@Fmt(total) / @Fmt(g.Goal!.Value)</text> }
+                                        else { <text>@Fmt(total)<span class="cat-row-nb"> · @Loc["saved"]</span></text> }
+                                    </span>
+                                </span>
+                                <span class="cbar-track"><span class="cbar-grad @((hasBar ? "cbar-good" : "cbar-flat") + (debtSimActive ? " cbar-sim" : ""))" style="--pct:@barShown.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)%"></span></span>
+                            </span>
+                        </button>
+                        @* Actions on the right of the row (always visible): for an expenses fund, "add expense" logs a
+                           spend from the fund; Add-to-savings + Edit are direct; everything else lives under the ⋯. *@
+                        <div class="cat-row-acts">
+                            @if (isExpenses && State.IsPeriodOpen && !done)
+                            {
+                                <button class="row-ico" title="@Loc["Add expense"]" @onclick="() => OpenSpendSaving(bucketId)"><Icon Name="receipt" /></button>
+                            }
+                            @if (State.IsPeriodOpen && !done)
+                            {
+                                <button class="row-ico" title="@Loc["Add to savings"]" @onclick="() => OpenAddSaving(bucketId)"><Icon Name="coins" /></button>
+                            }
+                            <button class="row-ico" title="@Loc["Edit"]" @onclick="() => OpenEditBucket(bucketId)"><Icon Name="pencil" /></button>
+                            <span class="goal-more">
+                                <button class="row-ico" title="@Loc["More actions"]" @onclick="() => _goalMoreOpen = !_goalMoreOpen"><Icon Name="dots" /></button>
+                                @if (_goalMoreOpen)
+                                {
+                                    <div class="row-menu-backdrop" @onclick="() => _goalMoreOpen = false"></div>
+                                    <div class="row-menu goal-more-menu">
+                                        @if (State.IsPeriodOpen && !done)
+                                        {
+                                            <button @onclick="() => GoalMore(() => OpenDisburseSaving(bucketId))"><Icon Name="target" /> @(isDebt ? Loc["Make a payment"] : isInvestment ? Loc["Withdraw"] : Loc["Apply to a goal"])</button>
+                                            <button @onclick="() => GoalMore(() => OpenBudgetSaving(bucketId))"><Icon Name="arrow-right" /> @Loc["Budget savings"]</button>
+                                            @if (!isExpenses)
+                                            {
+                                                <button @onclick="() => GoalMore(() => OpenSpendSaving(bucketId))"><Icon Name="note" /> @Loc["Spend savings"]</button>
+                                            }
+                                        }
+                                        <button @onclick="() => GoalMore(() => { _ = ArchiveBucket(bucketId); })"><Icon Name="archive" /> @Loc["Archive"]</button>
+                                        <button class="danger" @onclick="() => GoalMore(() => OpenDeleteBucket(bucketId))"><Icon Name="trash" /> @Loc["Remove"]</button>
+                                    </div>
+                                }
+                            </span>
+                            <button class="row-ico cat-chev-btn" @onclick="() => ToggleGoalRow(bucketId)"><Icon Name="chevron" Class="cat-chev" /></button>
+                        </div>
+                    </div>
                     @if (open)
                     {
                         <div class="cat-drawer goal-drawer">
-                            @* --- Type-specific detail --- *@
+                            @* --- Type-specific detail + inline projection (the projection modals moved in here) --- *@
                             @if (isDebt)
                             {
                                 <div class="goal-facts">
@@ -1237,7 +1321,7 @@ else
                                 }
                                 if (!done && State.SavingBucketDebtInstallment(bucketId) > 0m)
                                 {
-                                    // Inline payoff simulator: drag "extra /mo" and the timeline animates the earlier payoff.
+                                    // Inline payoff projection: the "extra /mo" slider animates the row's OWN progress bar (above).
                                     var inst = State.SavingBucketDebtInstallment(bucketId);
                                     var rate = State.SavingBucketDebtRate(bucketId);
                                     var basePay = FinApp.Forecasting.LoanForecast.PayOff(debtOwed, rate, inst);
@@ -1245,8 +1329,6 @@ else
                                     var baseMonths = basePay?.Months ?? 0;
                                     var fastMonths = fastPay?.Months ?? 0;
                                     var monthsSaved = baseMonths > 0 && fastMonths > 0 ? Math.Max(0, baseMonths - fastMonths) : 0;
-                                    // The green "time saved" region grows from the payoff flag to the right as you add extra.
-                                    var flagPct = baseMonths > 0 && fastMonths > 0 ? Math.Clamp((double)fastMonths / baseMonths * 100.0, 0, 100) : 100.0;
                                     var sliderMax = Math.Max(50m, Math.Ceiling(inst * 3m / 10m) * 10m);
                                     <div class="payoff-sim">
                                         <div class="payoff-sim-head">
@@ -1254,10 +1336,6 @@ else
                                             <span class="payoff-extra-val">+@Fmt(new Money(_goalExtra, State.Currency))/@Loc["mo"]</span>
                                         </div>
                                         <input class="payoff-slider" type="range" min="0" max="@sliderMax.ToString(System.Globalization.CultureInfo.InvariantCulture)" step="10" @bind="_goalExtra" @bind:event="oninput" />
-                                        <div class="payoff-timeline" title="@Loc["Time until debt-free"]">
-                                            <span class="payoff-saved" style="left:@flagPct.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)%"></span>
-                                            <span class="payoff-flag" style="left:@flagPct.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)%">🏁</span>
-                                        </div>
                                         <div class="payoff-sim-foot">
                                             @if (fastPay is not null)
                                             {
@@ -1271,17 +1349,68 @@ else
                                             }
                                         </div>
                                     </div>
+                                    // One-off: pay what's already set aside now — it lowers the balance, so the interest
+                                    // you're charged each period drops. Show the two ways a bank typically applies it.
+                                    var setAside = total.Amount;
+                                    var payNow = Math.Min(setAside, debtOwed);
+                                    var intNow = FinApp.Forecasting.LoanForecast.MonthlyInterest(debtOwed, rate);
+                                    if (payNow > 0m && intNow > 0m)
+                                    {
+                                        var afterBal = debtOwed - payNow;
+                                        var shorter = FinApp.Forecasting.LoanForecast.PayOff(afterBal, rate, inst);
+                                        var lowerInst = baseMonths > 0 ? FinApp.Forecasting.LoanForecast.PaymentFor(afterBal, rate, baseMonths) : (decimal?)null;
+                                        <h4 class="detail-sub"><Icon Name="note" /> @string.Format(Loc["One-off — pay your {0} set aside now"], Fmt(payNow))
+                                            @infoTip(("pp-partial", Loc["A payment lowers the balance right away, so the interest you're charged each period drops from then on. This is a single payment out of what you've already set aside — not a new monthly commitment."]))</h4>
+                                        if (shorter is not null || lowerInst is not null)
+                                        {
+                                            <p class="hint pm-hint">@Loc["Your bank may offer a choice like:"]</p>
+                                            <div class="payoff-opts-scroll">
+                                                <table class="payoff-opts">
+                                                    <thead>
+                                                        <tr><th>@Loc["Their offer"]</th><th>@Loc["Per month"]</th><th>@Loc["Ends"]</th><th>@Loc["Total interest"]</th></tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        @if (shorter is { } sh)
+                                                        {
+                                                            <tr>
+                                                                <td>⏱️ @Loc["Shorter term"]</td>
+                                                                <td>@Fmt(inst)</td>
+                                                                <td>@PayoffDate(sh.Months)@if (basePay is { } bl && bl.Months > sh.Months) { <span class="good-text">@string.Format(Loc[" ({0} sooner)"], MonthsText(bl.Months - sh.Months))</span> }</td>
+                                                                <td>@Fmt(decimal.Round(inst * sh.Months - afterBal, 2))</td>
+                                                            </tr>
+                                                        }
+                                                        @if (lowerInst is { } lw && baseMonths > 0)
+                                                        {
+                                                            <tr>
+                                                                <td>💶 @Loc["Lower installment"]</td>
+                                                                <td>@Fmt(lw) <span class="good-text">(−@Fmt(Math.Max(0m, inst - lw)))</span></td>
+                                                                <td>@PayoffDate(baseMonths) <span class="ring-muted">@Loc["(unchanged)"]</span></td>
+                                                                <td>@Fmt(decimal.Round(lw * baseMonths - afterBal, 2))</td>
+                                                            </tr>
+                                                        }
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        }
+                                    }
                                 }
                             }
                             else if (isInvestment)
                             {
-                                var invProj = State.ProjectInvestment(bucketId, State.EffectiveSavingPace(bucketId)?.Amount ?? 0m);
+                                var invBase = State.ProjectInvestment(bucketId, 0m);
                                 <div class="goal-facts">
                                     <span><strong>@Fmt(total)</strong> @Loc["invested"]</span>
                                     <span><strong>@State.SavingBucketInvestmentRate(bucketId)%</strong> @Loc["return"]</span>
                                     <span><strong>@State.SavingBucketInvestmentTermYears(bucketId).ToString("0.#")@Loc["y"]</strong> @Loc["term"]</span>
-                                    @if (invProj is { Months: > 0 } ip) { <span><strong>~@Fmt(ip.FutureValue)</strong> @Loc["projected"]</span> }
                                 </div>
+                                if (invBase is { Months: > 0 } b0)
+                                {
+                                    <p class="goal-proj">🏁 @string.Format(Loc["~{0} in {1} ({2} growth)"], Fmt(b0.FutureValue), MonthsText(b0.Months), Fmt(b0.Growth))</p>
+                                }
+                                else
+                                {
+                                    <p class="goal-proj-hint">@Loc["Set a horizon (Edit) to project this investment's growth."]</p>
+                                }
                             }
                             else
                             {
@@ -1290,30 +1419,43 @@ else
                                     else { <span><strong>@Fmt(total)</strong> @Loc["saved"]</span> }
                                     @if (State.BucketMonthlySetAside(bucketId) is { } setAside and > 0m) { <span>🗓️ <strong>@Fmt(setAside)</strong>/@Loc["mo"] @Loc["to stay covered"]</span> }
                                 </div>
+                                if (isExpenses)
+                                {
+                                    var costs = State.SavingBucketCosts(bucketId);
+                                    if (costs.Count > 0)
+                                    {
+                                        <div class="goal-costs">
+                                            <div class="goal-costs-label">@Loc["Costs to cover"]</div>
+                                            @foreach (var cost in costs)
+                                            {
+                                                <div class="goal-cost-row">
+                                                    <span class="goal-cost-name">@cost.Label</span>
+                                                    <span class="goal-cost-amt">@Fmt(new Money(cost.Amount, State.Currency))<span class="goal-cost-cad"> · @CadenceLabel(cost.Cadence)</span></span>
+                                                </div>
+                                            }
+                                        </div>
+                                    }
+                                }
+                                else if (g is not null && !done)
+                                {
+                                    var gGoalAmt = State.FindSavingBucket(bucketId)?.GoalAmount;
+                                    var gPace = State.EffectiveSavingPace(bucketId);
+                                    int? gPeriods = gPace is { } gpp && gpp.Amount > 0m && gGoalAmt is { } gga && gga > total.Amount
+                                        ? (int)Math.Ceiling((double)((gga - total.Amount) / gpp.Amount)) : null;
+                                    if (gPeriods is { } gper)
+                                    {
+                                        <p class="goal-proj">🏁 @string.Format(Loc["Reach your goal in {0} (~{1})"], MonthsText(gper), PayoffDate(gper))</p>
+                                    }
+                                    else if (gPace is null || gPace.Value.Amount <= 0m)
+                                    {
+                                        <p class="goal-proj-hint">@Loc["Not enough history yet — set money aside a few times and we’ll project a date."]</p>
+                                    }
+                                }
                             }
                             @if (State.SavingBucketFundId(bucketId) is { } heldFund)
                             {
                                 <div class="goal-held"><Icon Name="bank" /> @Loc["in"] @State.FundName(heldFund)</div>
                             }
-                            @* --- Actions --- *@
-                            <div class="cat-drawer-actions">
-                                @if (!done)
-                                {
-                                    @if (isDebt) { <button class="cat-act" @onclick="() => OpenPayoffProjection(bucketId)"><Icon Name="trending" /> @Loc["Payoff projection"]</button> }
-                                    else if (isInvestment) { <button class="cat-act" @onclick="() => OpenInvestmentProjection(bucketId)"><Icon Name="trending" /> @Loc["Growth projection"]</button> }
-                                    else { <button class="cat-act" @onclick="() => OpenGoalProjection(bucketId)"><Icon Name="calendar" /> @Loc["Goal projection"]</button> }
-                                }
-                                @if (State.IsPeriodOpen)
-                                {
-                                    <button class="cat-act" @onclick="() => OpenAddSaving(bucketId)"><Icon Name="coins" /> @Loc["Add to savings"]</button>
-                                    <button class="cat-act" @onclick="() => OpenDisburseSaving(bucketId)"><Icon Name="target" /> @(isDebt ? Loc["Make a payment"] : isInvestment ? Loc["Withdraw"] : Loc["Apply to a goal"])</button>
-                                    <button class="cat-act" @onclick="() => OpenBudgetSaving(bucketId)"><Icon Name="arrow-right" /> @Loc["Budget savings"]</button>
-                                    <button class="cat-act" @onclick="() => OpenSpendSaving(bucketId)"><Icon Name="note" /> @Loc["Spend savings"]</button>
-                                }
-                                <button class="cat-act" @onclick="() => OpenEditBucket(bucketId)"><Icon Name="pencil" /> @Loc["Edit"]</button>
-                                <button class="cat-act" @onclick="() => ArchiveBucket(bucketId)"><Icon Name="archive" /> @Loc["Archive"]</button>
-                                <button class="cat-act danger" @onclick="() => OpenDeleteBucket(bucketId)"><Icon Name="trash" /> @Loc["Remove"]</button>
-                            </div>
                         </div>
                     }
                 </div>;
@@ -1333,14 +1475,15 @@ else
                 var goalTotal = debtBuckets.Count + plainBuckets.Count + investmentBuckets.Count + expenseBuckets.Count;
             }
             <section class="panel">
-                <div class="spending-head">
-                    <span class="insight-h"><Icon Name="target" /> @Loc["Your goals"]</span>
+                @* Small saved-summary header: what went into savings this period (with its savings rate) + Add goal.
+                   Total saved is already in the account balance bar up top, so it isn't repeated here. *@
+                <div class="goal-summary">
+                    <div class="goal-stat">
+                        <span class="goal-stat-k">@Loc["Saved this period"]</span>
+                        <span class="goal-stat-v goal-stat-v-period">@Fmt(State.SavingsThisPeriod)</span>
+                        @if (State.PeriodSavingsRate is { } prate && prate > 0m) { <span class="goal-stat-pct">@(Math.Round(prate * 100m).ToString("0", System.Globalization.CultureInfo.InvariantCulture))% @Loc["of income"]</span> }
+                    </div>
                     <button class="fund-add" @onclick="AddGoalForFilter"><Icon Name="plus" /> @Loc["Add goal"]</button>
-                    @if (State.SavingBuckets.Any(b => !b.Bucket.IsArchived))
-                    {
-                        <button class="fund-add" @onclick="OpenMoveToSavings"><Icon Name="coins" /> @Loc["Add to savings"]</button>
-                    }
-                    <span class="spending-sub">@Fmt(State.SavingsAccumulated) @Loc["saved"] · @Fmt(State.SavingsThisPeriod) @Loc["this period"]</span>
                 </div>
                 <div class="goal-filters" role="group">
                     <button type="button" class="chip @(_goalFilter == GoalFilter.All ? "on" : "")" @onclick="() => _goalFilter = GoalFilter.All">@Loc["All"] <span class="chip-n">@goalTotal</span></button>
@@ -3494,10 +3637,34 @@ else
     private const int CatDrawerExpenseCap = 5;
 
     // Goals list: which goal/debt/investment row's drawer is open (accordion, one at a time). The debt drawer's inline
-    // payoff simulator drives _goalExtra ("extra /mo"); it resets to 0 whenever a different row opens.
+    // payoff simulator drives _goalExtra ("extra /mo"); _goalMoreOpen is the drawer's ⋯ (secondary actions) menu.
     private Guid _expandedGoalId;
     private decimal _goalExtra;
-    private void ToggleGoalRow(Guid id) { _expandedGoalId = _expandedGoalId == id ? Guid.Empty : id; _goalExtra = 0m; }
+    private bool _goalMoreOpen;
+    private void ToggleGoalRow(Guid id)
+    {
+        var opening = _expandedGoalId != id;
+        _expandedGoalId = opening ? id : Guid.Empty;
+        _goalMoreOpen = false;
+        // A debt row opens with the payoff slider preset to the member's recent saving pace (rounded to the slider
+        // step, clamped to its range), so the projection immediately shows what their current habit achieves.
+        _goalExtra = 0m;
+        if (opening && State.FindSavingBucket(id) is { IsDebt: true } d && d.DebtInstallment > 0m)
+        {
+            var pace = State.EffectiveSavingPace(id)?.Amount ?? 0m;
+            var max = Math.Max(50m, Math.Ceiling(d.DebtInstallment * 3m / 10m) * 10m);
+            _goalExtra = Math.Clamp(Math.Round(pace / 10m) * 10m, 0m, max);
+        }
+    }
+    private void GoalMore(Action a) { _goalMoreOpen = false; a(); }
+
+    private string CadenceLabel(FinApp.Domain.Savings.CostCadence c) => c switch
+    {
+        FinApp.Domain.Savings.CostCadence.Monthly => Loc["Monthly"],
+        FinApp.Domain.Savings.CostCadence.Quarterly => Loc["Quarterly"],
+        FinApp.Domain.Savings.CostCadence.Yearly => Loc["Yearly"],
+        _ => Loc["One-off"],
+    };
 
     // Budgets panel view: false = by category (the ring/bar list), true = the same expenses flat, organised by date
     // (the old separate "All expenses" panel, folded in here as a toggle so the ledger isn't shown twice).
@@ -3677,6 +3844,16 @@ else
 
     private bool _runwayOpen;     // Home runway: "show the math" breakdown + what-if slider expanded
     private int _whatIfPct;       // what-if slider: % change to monthly spending (−50..+50, 0 = the plain runway)
+    private decimal _whatIfEarnAmt; // "Additional income" slider: extra €/month (seeded from investment earnings)
+
+    // Runway "show the math": on open, reset the spend slider and seed the Additional-income slider with whatever the
+    // member's investments currently throw off, so their investment income is on the slider by default.
+    private void ToggleRunwayMath()
+    {
+        _runwayOpen = !_runwayOpen;
+        // Seed snapped to the slider's €25 step so the thumb lands exactly on its label (the caption keeps the exact figure).
+        if (_runwayOpen) { _whatIfPct = 0; _whatIfEarnAmt = Math.Round(State.InvestmentMonthlyEarnings / 25m) * 25m; }
+    }
 
     // Settle-expense modal (feature 1)
     private Guid _settleExpenseId;
