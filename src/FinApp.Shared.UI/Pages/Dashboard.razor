@@ -344,11 +344,10 @@ else
                     </div>
                 </section>
             }
-            @* Home's two everyday moves sit on the numbers they change: Spent carries "Add expense", Income
-               carries "Add income" — money out and money in. Each also shows a quieter reference figure on the
-               right: Spent against what was budgeted, Income against what was saved this period (the app is
-               savings-driven, so the saved figure belongs here, not only on Goals). Health score beneath, then
-               what needs attention, then what you're on track for. *@
+            @* Home's two everyday moves: money out (Add expense) and money in (Add income), each with an "Edit last".
+               The reference figures they used to carry (spent/budgeted, income/saved) live in Spending / Wallets / Goals,
+               so the cards stay to just the actions. The Spent tile keeps its green→red spend-heat tint as a glanceable
+               cue. Everything below (health score, alerts, runway, targets) is unchanged. *@
             <section class="cards cards-2 action-cards">
                 @{
                     // Spent tile shades along the same green→red heat ramp as the progress rings, by how close
@@ -356,16 +355,6 @@ else
                     var _sh = SpendHeatHue();
                 }
                 <div class="card tile-spend action-card" style="background:hsl(@_sh 62% 50% / .12);border-color:hsl(@_sh 62% 50% / .34)">
-                    <div class="card-top">
-                        <div class="card-main">
-                            <span class="card-label">@Loc["Spent"]</span>
-                            <span class="card-value" style="color:hsl(@_sh 72% 56%)">@Fmt(State.TotalSpent)</span>
-                        </div>
-                        <div class="card-aside">
-                            <span class="card-aside-label">@Loc["budgeted"]</span>
-                            <span class="card-aside-value">@Fmt(State.TotalBudgeted)</span>
-                        </div>
-                    </div>
                     @* Hovering the fast button reveals the most-used categories; clicking one opens Add-expense with
                        that category pre-selected. The button itself still opens the blank modal (and is the only path
                        on touch, where there's no hover). *@
@@ -396,16 +385,6 @@ else
                     </div>
                 </div>
                 <div class="card savings action-card">
-                    <div class="card-top">
-                        <div class="card-main">
-                            <span class="card-label">@Loc["Income"]</span>
-                            <span class="card-value">@Fmt(State.TotalContributed)</span>
-                        </div>
-                        <div class="card-aside">
-                            <span class="card-aside-label">@Loc["saved"]</span>
-                            <span class="card-aside-value">@Fmt(State.SavingsThisPeriod)</span>
-                        </div>
-                    </div>
                     @if (State.IsPeriodOpen)
                     {
                         <span class="card-act-row">
@@ -1264,10 +1243,15 @@ else
                                 <span class="cbar-track"><span class="cbar-grad @((hasBar ? "cbar-good" : "cbar-flat") + (debtSimActive ? " cbar-sim" : ""))" style="--pct:@barShown.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)%"></span></span>
                             </span>
                         </button>
-                        @* Actions on the right of the row: Add-to-savings + Edit are direct; everything else (including
-                           Spend savings) lives under the ⋯. The ⋯ menu tracks a per-bucket id so it opens for one row only. *@
+                        @* Actions on the right of the row. For an expenses fund the primary icon is "Add a cost" (a
+                           sinking fund is its cost list); Add-to-savings drops into the ⋯. Everything else lives under
+                           the ⋯, which tracks a per-bucket id so it opens for one row only. *@
                         <div class="cat-row-acts">
-                            @if (State.IsPeriodOpen && !done)
+                            @if (isExpenses)
+                            {
+                                <button class="row-ico" title="@Loc["Add a cost"]" @onclick="() => OpenAddCost(bucketId)"><Icon Name="plus" /></button>
+                            }
+                            else if (State.IsPeriodOpen && !done)
                             {
                                 <button class="row-ico" title="@Loc["Add to savings"]" @onclick="() => OpenAddSaving(bucketId)"><Icon Name="coins" /></button>
                             }
@@ -1280,6 +1264,10 @@ else
                                     <div class="row-menu goal-more-menu">
                                         @if (State.IsPeriodOpen && !done)
                                         {
+                                            @if (isExpenses)
+                                            {
+                                                <button @onclick="() => GoalMore(() => OpenAddSaving(bucketId))"><Icon Name="coins" /> @Loc["Add to savings"]</button>
+                                            }
                                             <button @onclick="() => GoalMore(() => OpenDisburseSaving(bucketId))"><Icon Name="target" /> @(isDebt ? Loc["Make a payment"] : isInvestment ? Loc["Withdraw"] : Loc["Apply to a goal"])</button>
                                             <button @onclick="() => GoalMore(() => OpenBudgetSaving(bucketId))"><Icon Name="arrow-right" /> @Loc["Budget savings"]</button>
                                             <button @onclick="() => GoalMore(() => OpenSpendSaving(bucketId))"><Icon Name="note" /> @Loc["Spend savings"]</button>
@@ -1408,26 +1396,32 @@ else
                             else
                             {
                                 <div class="goal-facts">
+                                    @* Expenses fund: the amount saved is already the row headline + bar, so don't repeat it —
+                                       lead with the monthly set-aside and what's still to find. *@
                                     @if (g is not null) { <span><strong>@Fmt(total)</strong> / @Fmt(g.Goal!.Value) (@((int)Math.Round(goalPct))%)</span> }
-                                    else { <span><strong>@Fmt(total)</strong> @Loc["saved"]</span> }
+                                    else if (!isExpenses) { <span><strong>@Fmt(total)</strong> @Loc["saved"]</span> }
                                     @if (State.BucketMonthlySetAside(bucketId) is { } setAside and > 0m) { <span>🗓️ <strong>@Fmt(setAside)</strong>/@Loc["mo"] @Loc["to stay covered"]</span> }
+                                    @if (isExpenses && State.BucketTargetShortfall(bucketId) is { } sf) { <span class="cost-short">@string.Format(Loc["{0} still to find"], Fmt(new Money(sf, State.Currency)))</span> }
                                 </div>
                                 if (isExpenses)
                                 {
                                     var costs = State.SavingBucketCosts(bucketId);
-                                    if (costs.Count > 0)
-                                    {
-                                        <div class="goal-costs">
-                                            <div class="goal-costs-label">@Loc["Costs to cover"]</div>
-                                            @foreach (var cost in costs)
-                                            {
-                                                <div class="goal-cost-row">
+                                    <div class="goal-costs">
+                                        <div class="goal-costs-label">@Loc["Costs to cover"]</div>
+                                        @for (var i = 0; i < costs.Count; i++)
+                                        {
+                                            var idx = i;
+                                            var cost = costs[idx];
+                                            <div class="goal-cost-row">
+                                                <button type="button" class="goal-cost-edit" @onclick="() => OpenEditCost(bucketId, idx)">
                                                     <span class="goal-cost-name">@cost.Label</span>
                                                     <span class="goal-cost-amt">@Fmt(new Money(cost.Amount, State.Currency))<span class="goal-cost-cad"> · @CadenceLabel(cost.Cadence)</span></span>
-                                                </div>
-                                            }
-                                        </div>
-                                    }
+                                                </button>
+                                                <button type="button" class="goal-cost-del" title="@Loc["Remove"]" @onclick="() => DeleteCost(bucketId, idx)"><Icon Name="trash" /></button>
+                                            </div>
+                                        }
+                                        <button type="button" class="goal-cost-add" @onclick="() => OpenAddCost(bucketId)"><Icon Name="plus" /> @Loc["Add a cost"]</button>
+                                    </div>
                                 }
                                 else if (g is not null && !done)
                                 {
@@ -2230,13 +2224,18 @@ else
                         <label class="grow">@Loc["Name"] <input type="text" @bind="_fName" /></label>
                     </div>
                     @iconGrid
-                    <label>@Loc["Type"]</label>
-                    <div class="plan-toggle bucket-type" role="group">
-                        <button type="button" class="chip @(_bucketKind == SavingKind.Common ? "on" : "")" @onclick="() => _bucketKind = SavingKind.Common"><Icon Name="coins" /> @Loc["Savings goal"]</button>
-                        <button type="button" class="chip @(_bucketKind == SavingKind.Debt ? "on" : "")" @onclick="() => _bucketKind = SavingKind.Debt"><Icon Name="card" /> @Loc["Debt payoff"]</button>
-                        <button type="button" class="chip @(_bucketKind == SavingKind.Investment ? "on" : "")" @onclick="() => _bucketKind = SavingKind.Investment"><Icon Name="trending" /> @Loc["Investment"]</button>
-                        <button type="button" class="chip @(_bucketKind == SavingKind.Expenses ? "on" : "")" @onclick="() => _bucketKind = SavingKind.Expenses"><Icon Name="calendar" /> @Loc["Expenses fund"]</button>
-                    </div>
+                    @* Type is chosen only at creation. In edit it's fixed — the kinds have different fields, actions and
+                       projections, so switching would strand data; to change kind, delete and create a new bucket. *@
+                    @if (_modal == Modal.AddBucket)
+                    {
+                        <label>@Loc["Type"]</label>
+                        <div class="plan-toggle bucket-type" role="group">
+                            <button type="button" class="chip @(_bucketKind == SavingKind.Common ? "on" : "")" @onclick="() => _bucketKind = SavingKind.Common"><Icon Name="coins" /> @Loc["Savings goal"]</button>
+                            <button type="button" class="chip @(_bucketKind == SavingKind.Debt ? "on" : "")" @onclick="() => _bucketKind = SavingKind.Debt"><Icon Name="card" /> @Loc["Debt payoff"]</button>
+                            <button type="button" class="chip @(_bucketKind == SavingKind.Investment ? "on" : "")" @onclick="() => _bucketKind = SavingKind.Investment"><Icon Name="trending" /> @Loc["Investment"]</button>
+                            <button type="button" class="chip @(_bucketKind == SavingKind.Expenses ? "on" : "")" @onclick="() => _bucketKind = SavingKind.Expenses"><Icon Name="calendar" /> @Loc["Expenses fund"]</button>
+                        </div>
+                    }
                     @if (_bucketKind == SavingKind.Debt)
                     {
                         <label>@Loc["Balance owed"] <input type="number" step="0.01" min="0" @bind="_debtBalance" /></label>
@@ -2257,6 +2256,12 @@ else
                             </select>
                         </label>
                         <small class="hint">@Loc["Used only to project growth — never changes budgets, savings or balances. Fund it with 💰; the projection grows your accumulated balance at this rate."]</small>
+                    }
+                    else if (_bucketKind == SavingKind.Expenses && _modal == Modal.EditBucket)
+                    {
+                        @* Costs are managed from the bucket itself (expand it → "Add a cost"), not here — so the edit
+                           form stays to name / icon / held-in-fund. *@
+                        <small class="hint">@Loc["Add or change the costs this fund covers from the bucket — expand it and use “Add a cost”."]</small>
                     }
                     else if (_bucketKind == SavingKind.Expenses)
                     {
@@ -2328,7 +2333,34 @@ else
                         <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
                         @* An expenses fund with no costs would compute a €0 set-aside and nudge about nothing —
                            the cost list is what the kind is for, so it's required rather than optional. *@
-                        <button @onclick="SaveBucket" disabled="@(string.IsNullOrWhiteSpace(_fName) || (_bucketKind == SavingKind.Expenses && ValidCostRows().Count == 0))">@(_modal == Modal.AddBucket ? "Add" : "Save")</button>
+                        <button @onclick="SaveBucket" disabled="@(string.IsNullOrWhiteSpace(_fName) || (_modal == Modal.AddBucket && _bucketKind == SavingKind.Expenses && ValidCostRows().Count == 0))">@(_modal == Modal.AddBucket ? "Add" : "Save")</button>
+                    </div>
+                    break;
+
+                case Modal.EditCost:
+                    <h3>@(_editCostIndex >= 0 ? Loc["Edit cost"] : Loc["Add a cost"])@(State.FindSavingBucket(_costBucketId) is { } costBkt ? $" · {costBkt.Name}" : "")</h3>
+                    <label>@Loc["Name"] <input type="text" placeholder="@Loc["e.g. Insurance"]" @bind="_editCost.Label" /></label>
+                    <label>@Loc["Amount"] <input type="number" step="0.01" min="0" @bind="_editCost.Amount" /></label>
+                    <label>@Loc["How often"]
+                        <select @bind="_editCost.Cadence">
+                            <option value="@CostCadence.Monthly">@Loc["Monthly"]</option>
+                            <option value="@CostCadence.Quarterly">@Loc["Quarterly"]</option>
+                            <option value="@CostCadence.Yearly">@Loc["Yearly"]</option>
+                            <option value="@CostCadence.OneOff">@Loc["One-off"]</option>
+                        </select>
+                    </label>
+                    @if (_editCost.Cadence == CostCadence.OneOff)
+                    {
+                        <label>@Loc["Due date"] <input type="date" @bind="_editCost.DueDate" /></label>
+                    }
+                    <small class="hint">@Loc["Repeating costs are averaged over the year; a dated one-off is spread over the months until it's due, less what this bucket already holds."]</small>
+                    <div class="modal-actions">
+                        @if (_editCostIndex >= 0)
+                        {
+                            <button class="ghost danger" @onclick="() => DeleteCost(_costBucketId, _editCostIndex)"><Icon Name="trash" /> @Loc["Remove"]</button>
+                        }
+                        <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
+                        <button @onclick="SaveCost" disabled="@(string.IsNullOrWhiteSpace(_editCost.Label) || _editCost.Amount <= 0m)">@(_editCostIndex >= 0 ? Loc["Save"] : Loc["Add"])</button>
                     </div>
                     break;
 
@@ -3610,7 +3642,7 @@ else
 }
 
 @code {
-    private enum Modal { None, PickAccount, BankReview, BankConsent, AddCat, AddBudget, DisburseSaving, PayoffProjection, GoalProjection, InvestmentProjection, BankTransfer, ExternalAccounts, HealthScore, EditCat, DeleteCat, CategoryDetail, AddAccount, EditAccount, DeleteAccount, RemoveMember, LeaveAccount, AddExpense, NextPeriod, RemovePeriod, EditExpense, DeleteExpense, SettleExpense, AddBucket, EditBucket, DeleteBucket, AddFund, EditFund, DeleteFund, Invite, Transfer, Deposit, EditDeposit, DeleteDeposit, ManageCats, ManageContribCats, ContribCat, DeleteContribCat, AddSaving, BudgetSaving, SpendSaving, EditSavingDeposit, DeleteSavingDeposit, EditTransfer, DeleteTransfer, EditPeriod, EditSavingMovement, DeleteSavingMovement, DeleteExternalTransfer, Achievements, Reallocate, Recurring, RecurringEdit, RecurringConfirm, Import, AddOrImport, ArchiveFund, FundMovements, Archived }
+    private enum Modal { None, PickAccount, BankReview, BankConsent, AddCat, AddBudget, DisburseSaving, PayoffProjection, GoalProjection, InvestmentProjection, BankTransfer, ExternalAccounts, HealthScore, EditCat, DeleteCat, CategoryDetail, AddAccount, EditAccount, DeleteAccount, RemoveMember, LeaveAccount, AddExpense, NextPeriod, RemovePeriod, EditExpense, DeleteExpense, SettleExpense, AddBucket, EditBucket, DeleteBucket, EditCost, AddFund, EditFund, DeleteFund, Invite, Transfer, Deposit, EditDeposit, DeleteDeposit, ManageCats, ManageContribCats, ContribCat, DeleteContribCat, AddSaving, BudgetSaving, SpendSaving, EditSavingDeposit, DeleteSavingDeposit, EditTransfer, DeleteTransfer, EditPeriod, EditSavingMovement, DeleteSavingMovement, DeleteExternalTransfer, Achievements, Reallocate, Recurring, RecurringEdit, RecurringConfirm, Import, AddOrImport, ArchiveFund, FundMovements, Archived }
     private enum Tab { Overview, Account, Budgets, Savings }
 
     /// <summary>Which kind of goal the Goals grid is showing. Defaults to All so the filter narrows on request
@@ -6306,6 +6338,42 @@ else
         CloseModal();
     });
 
+    // "Add a cost" — one sinking-fund cost edited straight on the bucket (not the create/edit-bucket modal).
+    // _editCostIndex is its position in the bucket's cost list; -1 means adding a new one.
+    private Guid _costBucketId;
+    private CostRow _editCost = new();
+    private int _editCostIndex = -1;
+
+    private void OpenAddCost(Guid bucketId)
+    {
+        _costBucketId = bucketId; _editCost = new CostRow(); _editCostIndex = -1; _goalMoreId = Guid.Empty; _modal = Modal.EditCost;
+    }
+
+    private void OpenEditCost(Guid bucketId, int index)
+    {
+        _costBucketId = bucketId;
+        var costs = State.SavingBucketCosts(bucketId);
+        _editCost = index >= 0 && index < costs.Count ? CostRow.From(costs[index]) : new CostRow();
+        _editCostIndex = index; _goalMoreId = Guid.Empty; _modal = Modal.EditCost;
+    }
+
+    private Task SaveCost() => RunModal(async () =>
+    {
+        var nc = _editCost.ToCost();
+        if (string.IsNullOrWhiteSpace(nc.Label) || nc.Amount <= 0m) return;
+        var costs = State.SavingBucketCosts(_costBucketId).ToList();
+        if (_editCostIndex >= 0 && _editCostIndex < costs.Count) costs[_editCostIndex] = nc; else costs.Add(nc);
+        await State.SaveSavingBucketCosts(_costBucketId, costs);
+        CloseModal();
+    });
+
+    private async Task DeleteCost(Guid bucketId, int index)
+    {
+        var costs = State.SavingBucketCosts(bucketId).ToList();
+        if (index >= 0 && index < costs.Count) costs.RemoveAt(index);
+        await State.SaveSavingBucketCosts(bucketId, costs);
+        if (_modal == Modal.EditCost) CloseModal();
+    }
 
     private async Task ArchiveBucket(Guid bucketId)
     {

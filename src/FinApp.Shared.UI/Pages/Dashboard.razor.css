@@ -920,13 +920,27 @@ html.dark .goal-facts strong { color: #e8eef0; }
 html.dark .goal-proj { color: #57d9a3; }
 .goal-proj-hint { margin: 0 0 10px; font-size: .8rem; color: #8a97a0; }
 /* Sinking-fund "costs to cover" list, shown in the drawer. */
+/* Sinking-fund "costs to cover" — an editable list right in the drawer: tap a row to edit it, ✕ to remove, and a
+   dashed "Add a cost" at the foot. Mirrors the create-modal editor, styled to sit in the drawer. */
 .goal-costs { margin-bottom: 10px; }
-.goal-costs-label { font-size: .68rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: #8a97a0; margin-bottom: 5px; }
-.goal-cost-row { display: flex; justify-content: space-between; gap: 10px; font-size: .84rem; padding: 4px 0; border-top: 0.5px solid #eef1f4; color: #384250; }
+.goal-costs-label { font-size: .68rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: #8a97a0; margin-bottom: 3px; }
+.goal-cost-row { display: flex; align-items: center; gap: 4px; border-top: 0.5px solid #eef1f4; }
 .goal-cost-row:first-of-type { border-top: none; }
-html.dark .goal-cost-row { border-top-color: #232a37; color: #cdd4de; }
-.goal-cost-amt { white-space: nowrap; font-variant-numeric: tabular-nums; }
+html.dark .goal-cost-row { border-top-color: #232a37; }
+.goal-cost-edit { flex: 1; min-width: 0; display: flex; justify-content: space-between; align-items: baseline; gap: 10px; padding: 7px 8px; border: none; border-radius: 8px; background: none; cursor: pointer; font: inherit; font-size: .84rem; color: #384250; text-align: left; }
+.goal-cost-edit:hover { background: #f0fbf6; color: #0f7a54; }
+html.dark .goal-cost-edit { color: #cdd4de; }
+html.dark .goal-cost-edit:hover { background: #16241d; color: #57d9a3; }
+.goal-cost-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.goal-cost-amt { flex: none; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .goal-cost-cad { color: #94a3b8; }
+.goal-cost-del { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border: none; border-radius: 8px; background: none; color: #a0aab6; cursor: pointer; }
+.goal-cost-del:hover { background: #fef2f2; color: #dc2626; }
+html.dark .goal-cost-del:hover { background: #2a1616; color: #f87171; }
+.goal-cost-add { display: inline-flex; align-items: center; gap: 6px; margin-top: 8px; padding: 6px 12px; border: 0.5px dashed #cdd9d2; border-radius: 9px; background: none; font-size: .82rem; font-weight: 600; color: #0f7a54; cursor: pointer; }
+.goal-cost-add:hover { border-color: #13a06e; background: #f0fbf6; }
+html.dark .goal-cost-add { border-color: #33414e; color: #57d9a3; }
+html.dark .goal-cost-add:hover { border-color: #3fe0c5; background: #16261f; }
 /* Debt payoff simulator: slider + result. The animation lives on the row's own progress bar (.cbar-sim) — as
    "extra /mo" rises the bar fills forward past the paid-off point. */
 .payoff-sim { background: #f3fbf7; border: 1px solid #d6f0e3; border-radius: 12px; padding: 12px; margin-bottom: 12px; }
@@ -1990,14 +2004,9 @@ html.dark .card-score::after { color: #3fe0c5; }
 
 /* Action cards: the stat number and the button that changes it live together — money out (Spent → Add expense)
    and money in (Contributed → Contribute). The button is the prominent, easy-to-hit primary action. */
-.action-card { min-height: 128px; }
-/* Top row of an action card: the main stat on the left, a quieter reference figure (budgeted / saved) on the right. */
-.action-card .card-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
-.action-card .card-main { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
-.action-card .card-aside { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; text-align: right; }
-.action-card .card-aside-label { color: #6b7280; font-size: .68rem; text-transform: lowercase; }
-.action-card .card-aside-value { font-size: .95rem; font-weight: 700; color: #6b7280; }
-.action-card .quick-spend { margin-top: auto; position: relative; }
+/* The cards now hold just their action buttons (the figures moved to the detail tabs), centred in the tile. */
+.action-card { min-height: auto; justify-content: center; }
+.action-card .quick-spend { position: relative; }
 .action-card .quick-spend .card-act { margin-top: 0; }
 /* Hover-reveal recent-category menu rising from the Add-expense fast button. */
 .quick-cats {

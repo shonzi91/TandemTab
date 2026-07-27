@@ -1385,6 +1385,17 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     /// <summary>The bucket's list of planned future costs (the sinking-fund lines), or empty when it has none.</summary>
     public IReadOnlyList<PlannedCost> SavingBucketCosts(Guid id) => FindSavingBucket(id)?.Costs ?? [];
 
+    /// <summary>Persist a changed cost list on an existing sinking fund, preserving its name/icon/fund/starting balance —
+    /// so costs can be added/edited/removed from the bucket itself (the inline "Add a cost" flow) rather than the edit
+    /// modal. Re-uses <see cref="SaveSavingBucket"/>, exactly as the modal's Save does, just with a new list.</summary>
+    public Task SaveSavingBucketCosts(Guid bucketId, IReadOnlyList<PlannedCost> costs)
+    {
+        var b = FindSavingBucket(bucketId);
+        if (b is null) return Task.CompletedTask;
+        return SaveSavingBucket(bucketId, b.Name, null, b.AlertThreshold * 100m, b.NotifyOnMilestone, b.InitialAmount,
+            b.Icon, false, 0m, 0m, 0m, null, false, 0m, 0m, 12, b.FundId, costs, isExpensesFund: true);
+    }
+
     /// <summary>Debt-payoff buckets vs ordinary savings buckets (each with its accumulated total), for the two
     /// Savings-tab sections. Reads the same <see cref="SavingBuckets"/> data — purely a split by kind.</summary>
     public bool SavingBucketIsDebt(Guid id) => FindSavingBucket(id)?.IsDebt ?? false;

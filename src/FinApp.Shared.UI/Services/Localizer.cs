@@ -1225,6 +1225,11 @@ public sealed class Localizer(IJSRuntime js)
         ["Expenses fund"] = "Фонд за разходи",
         ["Expenses"] = "Разходи",
         ["Costs this covers"] = "Разходи, които покрива",
+        ["Edit cost"] = "Редактирай разход",
+        ["How often"] = "Колко често",
+        ["Due date"] = "Дата на падеж",
+        ["Add or change the costs this fund covers from the bucket — expand it and use “Add a cost”."] =
+            "Добавяй или променяй разходите на този фонд от самия него — разгъни го и използвай „Добави разход“.",
         ["set aside"] = "заделени",
         ["Add the costs this fund covers — insurance, tax, a lease residual — and it works out the monthly set-aside."] =
             "Добави разходите, които този фонд покрива — застраховка, данък, остатъчна стойност — и той изчислява месечната вноска.",
