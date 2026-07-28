@@ -484,6 +484,8 @@ public sealed class Localizer(IJSRuntime js)
         ["Re-slice the chart"] = "Пренареди диаграмата",
         ["Untagged"] = "Без етикет",
         ["Everything else"] = "Всичко останало",
+        ["Transfers out"] = "Преводи навън",
+        ["Expenses with more than one tag are counted under each, so the tags here can add up to more than you actually spent."] = "Разходи с повече от един етикет се броят под всеки от тях, затова етикетите тук може да съберат повече от реално похарченото.",
         ["Income"] = "Приходи",
         ["Spent"] = "Похарчено",
         ["of income"] = "от приходите",

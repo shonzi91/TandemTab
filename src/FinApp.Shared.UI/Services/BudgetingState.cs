@@ -677,6 +677,13 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
             .Where(e => e.Date >= from && e.Date <= to)
             .OrderByDescending(e => e.Date).ToList();
 
+    /// <summary>Every out-transfer to another account across ALL periods in [from, to] — money that left the account,
+    /// so the Breakdown view can show it alongside expenses as part of total outflow. Newest first.</summary>
+    public IReadOnlyList<ExternalTransfer> ExternalTransfersInRange(DateOnly from, DateOnly to) =>
+        Account.Periods.SelectMany(p => p.ExternalTransfers)
+            .Where(t => t.Date >= from && t.Date <= to)
+            .OrderByDescending(t => t.Date).ToList();
+
     /// <summary>The top-level category an expense rolls up to (a sub-category's parent, else the category itself).
     /// Categories are capped at one level deep, so parent-or-self is enough.</summary>
     public Guid RootCategoryId(Guid categoryId) => Account.FindCategory(categoryId)?.ParentId ?? categoryId;

@@ -604,6 +604,8 @@ html.dark .fund-move-summary { border-bottom-color: #2a3550; }
    makes it reachable in testing and is right anyway, since a 560px-wide window is almost always a phone. */
 @media (pointer: coarse), (max-width: 560px) {
     .exp-edit { min-width: 44px; min-height: 44px; font-size: 1.05rem; }
+    /* The floating ✕/✓ are trimmed small on desktop; on a touchscreen keep them a comfortable tap size. */
+    .modal-actions button { min-width: 40px; min-height: 40px; }
     /* Adjacent destructive actions need room between them, not just size. */
     .row-actions, .modal-head-actions { gap: 6px; }
 }
@@ -743,19 +745,22 @@ html.dark .tag-filter-clear { color: #3fe0c5; }
 .brk { display: flex; flex-direction: column; gap: 14px; padding-top: 4px; }
 .brk-ranges { display: flex; flex-wrap: wrap; gap: 6px; }
 .brk-ranges .chip, .brk-split .chip { border-radius: 999px; padding: 5px 12px; font-size: .8rem; }
-.brk-custom { display: flex; flex-wrap: wrap; gap: 12px; }
-.brk-custom label { display: inline-flex; align-items: center; gap: 6px; font-size: .8rem; color: #6b7480; font-weight: 600; }
-.brk-custom input[type=date] { padding: 5px 8px; border: 1px solid #dde6e1; border-radius: 8px; font: inherit; font-size: .82rem; }
-html.dark .brk-custom label { color: #8b96a4; }
-html.dark .brk-custom input[type=date] { background: #171d26; border-color: #2c3644; color: #e8eef0; }
+/* Custom date inputs — inline chips inside the .brk-ranges row (they sit next to the Custom button, wrap if tight). */
+.brk-date { display: inline-flex; align-items: center; gap: 6px; font-size: .8rem; color: #6b7480; font-weight: 600; }
+.brk-date input[type=date] { padding: 4px 8px; border: 1px solid #dde6e1; border-radius: 999px; font: inherit; font-size: .8rem; }
+html.dark .brk-date { color: #8b96a4; }
+html.dark .brk-date input[type=date] { background: #171d26; border-color: #2c3644; color: #e8eef0; }
 
-.brk-crumb { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+/* One nav bar: breadcrumb (left, empty at top level) + the category/tag split (right, always the same spot). The
+   min-height reserves the row so drilling in/out never shifts the chart below. */
+.brk-nav { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; min-height: 34px; }
+.brk-nav-crumb { display: inline-flex; align-items: center; gap: 8px; min-width: 0; flex: 1 1 auto; }
 .brk-back { display: inline-flex; align-items: center; gap: 3px; border: none; background: none; cursor: pointer;
     color: #0f7a54; font: inherit; font-size: .82rem; font-weight: 700; padding: 2px 4px; }
 .brk-back-chev { transform: rotate(90deg); width: 14px; height: 14px; }
-.brk-crumb-cur { display: inline-flex; align-items: center; gap: 5px; font-weight: 700; font-size: .88rem; }
+.brk-crumb-cur { display: inline-flex; align-items: center; gap: 5px; font-weight: 700; font-size: .88rem; min-width: 0; }
 .brk-crumb-cur svg { width: 16px; height: 16px; }
-.brk-split { display: flex; gap: 6px; margin-left: auto; }
+.brk-split { display: flex; gap: 6px; margin-left: auto; flex: 0 0 auto; }
 html.dark .brk-back { color: #3fe0c5; }
 
 /* Income / spent context for the window (not budgets) + the resolved date range. */
@@ -820,6 +825,10 @@ html.dark .brk-exp-title { color: #d8dee6; }
 html.dark .brk-exp-amt { color: #eceff7; }
 .brk-empty { display: flex; align-items: center; gap: 8px; justify-content: center; color: #8a97a0; padding: 32px 0; font-size: .9rem; }
 .brk-empty svg { width: 18px; height: 18px; }
+/* Footnote under the tag slices explaining why they can total more than was spent (an expense counts under each tag). */
+.brk-note { display: flex; align-items: flex-start; gap: 6px; margin: 10px 2px 0; color: #8a97a0; font-size: .76rem; line-height: 1.45; }
+.brk-note svg { width: 13px; height: 13px; flex-shrink: 0; margin-top: 2px; }
+html.dark .brk-note { color: #8b96a4; }
 
 /* Expenses day view + date separators */
 .day-nav { display: flex; align-items: center; gap: 6px; }
@@ -1092,13 +1101,11 @@ html.dark .payoff-sim-head { color: #57d9a3; }
 html.dark .payoff-sim-foot { color: #a9b6ad; }
 html.dark .payoff-date { color: #e8eef0; }
 
-/* Payoff timeline: a track from now (left) to the baseline debt-free date (right), with a sliding finish flag. */
+/* Payoff timeline: one plain track from now (left) to the baseline debt-free date (right), with a sliding finish
+   flag. No coloured fill — the flag position alone conveys "how much sooner". */
 .payoff-line { position: relative; margin: 26px 4px 4px; }
-.payoff-line-track { position: relative; height: 8px; border-radius: 4px; background: #e3efe9; overflow: hidden; }
+.payoff-line-track { position: relative; height: 6px; border-radius: 3px; background: #e3efe9; }
 html.dark .payoff-line-track { background: #21362c; }
-/* Elapsed portion up to the flag = the payoff duration; the remainder (to the baseline date) is the time saved. */
-.payoff-line-fill { position: absolute; left: 0; top: 0; bottom: 0; background: linear-gradient(90deg, #2a9d5a, #13a06e); border-radius: 4px; transition: width .3s cubic-bezier(.4,0,.2,1); }
-.payoff-line-saved { position: absolute; top: 0; bottom: 0; right: 0; background: repeating-linear-gradient(45deg, rgba(19,160,110,.18) 0 5px, rgba(19,160,110,.06) 5px 10px); transition: left .3s cubic-bezier(.4,0,.2,1); }
 .payoff-flag { position: absolute; bottom: 100%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; margin-bottom: 3px; transition: left .3s cubic-bezier(.4,0,.2,1); white-space: nowrap; }
 .payoff-flag-lbl { font-size: .68rem; font-weight: 800; color: #0f7a54; background: #eafaf2; border: 1px solid #c5eede; border-radius: 6px; padding: 1px 6px; line-height: 1.4; }
 html.dark .payoff-flag-lbl { color: #7ce8bc; background: #14271f; border-color: #245040; }
@@ -1246,13 +1253,16 @@ input[type=date]::-webkit-calendar-picker-indicator:hover { opacity: 1; backgrou
 .modal-actions {
     order: -3; position: sticky; top: 0; z-index: 7; height: 52px; align-self: stretch;
     display: flex; justify-content: flex-end; align-items: center; gap: 8px;
-    margin: 0 -20px -52px; padding: 0 16px 0 0; background: none; border: none;
+    /* Bottom margin is -(height + the .modal flex gap of 9px). The extra -9 cancels the gap the flex layout would
+       otherwise insert between this zero-flow bar (order -3) and the header (order -2), so the header sits flush at
+       the modal top and the floating ✕/✓ co-centre with the title exactly as a .modal-head does. */
+    margin: 0 -20px -61px; padding: 0 16px 0 0; background: none; border: none;
     pointer-events: none;
 }
 .modal-actions button { pointer-events: auto; }
 .modal-actions button {
-    padding: 8px 13px; min-width: 44px; border: none; border-radius: 10px; background: #13a06e; color: #ffffff;
-    font-weight: 600; cursor: pointer; line-height: 1.2;
+    padding: 5px 9px; min-width: 34px; border: none; border-radius: 9px; background: #13a06e; color: #ffffff;
+    font-weight: 600; cursor: pointer; line-height: 1;
 }
 .modal-actions button:disabled { background: #c7c9d6; cursor: not-allowed; }
 .modal-actions button.ghost { background: #e4f6ee; color: #13a06e; }
@@ -1260,8 +1270,8 @@ input[type=date]::-webkit-calendar-picker-indicator:hover { opacity: 1; backgrou
 .modal-actions button.danger-btn { background: #ef4444; }
 /* Cancel/Close → ✕, primary (incl. delete-confirm) → ✓. Secondary destructive (.ghost.danger) keeps its text. */
 .modal-actions .ghost:not(.danger), .modal-actions button:not(.ghost) { font-size: 0; }
-.modal-actions .ghost:not(.danger)::before { content: "✕"; font-size: 1.15rem; }
-.modal-actions button:not(.ghost)::before { content: "✓"; font-size: 1.15rem; }
+.modal-actions .ghost:not(.danger)::before { content: "✕"; font-size: 1rem; }
+.modal-actions button:not(.ghost)::before { content: "✓"; font-size: 1rem; }
 
 @media (max-width: 720px) {
     .dash { padding: 12px; }
@@ -2147,6 +2157,11 @@ html.dark .budget-over-note { color: #e5cf8a; background: #33301f; border-color:
 .home-more-toggle:hover { border-color: #13a06e; }
 .home-more-chevron { color: #9aa0ad; font-size: .8rem; }
 .score-detail { text-align: center; }
+/* One panel gathering the whole health breakdown — verdict/needle, quick wins, savings rate and the trend charts —
+   under the single "Health score" header, rather than four separately-floating cards. The panel owns its own gap, so
+   the inner section headings drop their big top margins and read as rows of one card. */
+.score-panel { display: flex; flex-direction: column; gap: 14px; margin-top: 2px; }
+.score-panel > .insight-h { margin: 4px 0 0; }
 .home-collapse {
     display: block; width: 100%; margin-top: 8px; padding: 9px; background: none; border: none;
     font: inherit; font-size: .82rem; font-weight: 600; color: #6b7280; cursor: pointer;
