@@ -405,17 +405,42 @@ else
                 <span class="card-sub">@(ov.HasData ? N(ov.Verdict) : "")</span>
             </button>
 
+            @* A compact taste of the trends that live in full (with sparklines) inside the Health-score modal — up to
+               three, each a chip with its latest value + direction. Kept to one tight row so Home doesn't flood; tap
+               any to open the full breakdown. *@
+            @if (ov.MiniTrends.Count > 0)
+            {
+                <div class="home-trends">
+                    @foreach (var mt in ov.MiniTrends.Take(3))
+                    {
+                        var mtLbl = N(mt.Label);
+                        <button class="home-trend @(mt.Dir == DeltaDir.Up ? "up" : mt.Dir == DeltaDir.Down ? "down" : "flat")"
+                                @onclick="() => _modal = Modal.HealthScore" title="@N(mt.DeltaNote)">
+                            <span class="home-trend-lbl"><CatIcon Name="@CategoryIcons.Effective(mt.Icon, mtLbl)" /> @mtLbl</span>
+                            <span class="home-trend-cur">@N(mt.CurrentText) <span class="home-trend-arrow">@(mt.Dir == DeltaDir.Up ? "↑" : mt.Dir == DeltaDir.Down ? "↓" : "→")</span></span>
+                        </button>
+                    }
+                </div>
+            }
+
             @{
+                var homeTargets = HomeTargets();
                 // What actually needs attention (overspend, over-budget, health warnings), just under the score —
                 // the bell still holds the full list, including the gentler reminders.
-                var homeAlerts = notifications.Where(n => n.Urgent).ToList();
+                var homeAlerts = notifications.Where(n => n.Urgent).Take(3).ToList();
+                // When there's no "You're on track for" section below to fill Home, pull up a couple of the gentler
+                // (non-urgent) reminders here too, so the space stays useful instead of collapsing to just the score.
+                var homeExtra = homeTargets.Count == 0
+                    ? notifications.Where(n => !n.Urgent).Take(2).ToList()
+                    : new List<Notification>();
+                var homeShown = homeAlerts.Concat(homeExtra).ToList();
             }
-            @if (homeAlerts.Count > 0)
+            @if (homeShown.Count > 0)
             {
                 <section class="home-alerts">
-                    @foreach (var n in homeAlerts.Take(3))
+                    @foreach (var n in homeShown)
                     {
-                        <div class="home-alert">
+                        <div class="home-alert @(n.Urgent ? "" : "home-alert-soft")">
                             <span class="home-alert-ico">@IconOrEmoji(n.Icon)</span>
                             <div class="home-alert-body">
                                 <span class="home-alert-text">@n.Text</span>
@@ -426,7 +451,7 @@ else
                             </div>
                         </div>
                     }
-                    @if (notifications.Count > Math.Min(3, homeAlerts.Count))
+                    @if (notifications.Count > homeShown.Count)
                     {
                         <button class="home-alert-more" @onclick="() => _bellOpen = true">@string.Format(Loc["See all {0} in notifications"], notifications.Count) ›</button>
                     }
@@ -434,7 +459,6 @@ else
             }
 
             @{
-                var homeTargets = HomeTargets();
                 // Only on the current period. The runway is a from-today-forward projection: its income/spending come
                 // from an average of ALL closed periods and it walks forward from the viewed period's start, so on a
                 // past period it renders the same "good for 6 months" pasted onto history — which is what made it read
@@ -1239,9 +1263,18 @@ else
                             <button class="brk-back" @onclick="ClearBreakDrill"><Icon Name="chevron" Class="brk-back-chev" /> @Loc["All categories"]</button>
                             <span class="brk-crumb-cur"><CatIcon Name="@State.CategoryIcon(drillId)" /> @State.CategoryName(drillId)</span>
                             <span class="brk-split">
-                                <button type="button" class="chip @(_breakByTag ? "" : "on")" @onclick="() => _breakByTag = false">@Loc["Sub-categories"]</button>
-                                <button type="button" class="chip @(_breakByTag ? "on" : "")" @onclick="() => _breakByTag = true">@Loc["Tags"]</button>
+                                <button type="button" class="chip @(_breakByTag ? "" : "on")" @onclick="() => { _breakByTag = false; _breakExpanded.Clear(); }">@Loc["Sub-categories"]</button>
+                                <button type="button" class="chip @(_breakByTag ? "on" : "")" @onclick="() => { _breakByTag = true; _breakExpanded.Clear(); }">@Loc["Tags"]</button>
                             </span>
+                        </div>
+                    }
+                    else if (State.ActiveTags.Count > 0)
+                    {
+                        @* Slice the whole window by category (default) or by tag — the same split the drill offers, but
+                           across everything rather than inside one category. *@
+                        <div class="brk-split brk-split-base">
+                            <button type="button" class="chip @(_breakBaseByTag ? "" : "on")" @onclick="() => { _breakBaseByTag = false; _breakExpanded.Clear(); }"><Icon Name="chart" /> @Loc["Categories"]</button>
+                            <button type="button" class="chip @(_breakBaseByTag ? "on" : "")" @onclick="() => { _breakBaseByTag = true; _breakExpanded.Clear(); }"><Icon Name="tag" /> @Loc["Tags"]</button>
                         </div>
                     }
                     @* Income for the same window (member contributions, not budgets) so spend has context. Top level only —
@@ -1287,21 +1320,22 @@ else
                                     }
                                 }
                                 <text x="100" y="94" class="brk-donut-tot" text-anchor="middle">@Fmt(brkTotal)</text>
-                                <text x="100" y="112" class="brk-donut-sub" text-anchor="middle">@(brkSlices.Count == 1 ? brkSlices[0].Label : string.Format(_breakDrill is not null && _breakByTag ? Loc["{0} tags"] : Loc["{0} categories"], brkSlices.Count))</text>
+                                <text x="100" y="112" class="brk-donut-sub" text-anchor="middle">@(brkSlices.Count == 1 ? brkSlices[0].Label : string.Format(BreakByTag ? Loc["{0} tags"] : Loc["{0} categories"], brkSlices.Count))</text>
                             </svg>
                         </div>
                         <ul class="brk-list">
                             @foreach (var s in brkSlices)
                             {
                                 var pct = (double)(s.Amount / brkTotal) * 100.0;
-                                var canDrill = _breakDrill is null && s.Key != Guid.Empty && s.Key != OtherKey;
+                                // Drill (re-slice a category) only makes sense on a top-level *category* slice, never a tag.
+                                var canDrill = _breakDrill is null && !BreakByTag && s.Key != Guid.Empty && s.Key != OtherKey;
                                 var expanded = _breakExpanded.Contains(s.Key);
                                 <li class="brk-item @(expanded ? "open" : "")">
                                     @* Row body: tap to expand the expenses. The pie icon (top level) re-slices the chart. *@
                                     <div class="brk-item-head" @onclick="() => ToggleBreakExpand(s.Key)">
                                         <span class="brk-sw" style="background:@s.Color"></span>
                                         <span class="brk-item-name">
-                                            @if (_breakDrill is not null && _breakByTag)
+                                            @if (BreakByTag)
                                             {
                                                 @if (!string.IsNullOrEmpty(s.Icon)) { <span class="tag-emoji">@s.Icon</span> }
                                             }
@@ -1388,20 +1422,9 @@ else
                         var ringRamp = (!isInvestment && !isDebt && !ringDashed) ? "goal" : null;
                         var done = isDebt ? ctx.Bucket.IsDebtCleared : (g is not null && g.GoalReached);
                         var open = _expandedGoalId == bucketId;
-                        // When a debt row is open, its OWN progress bar previews the payoff simulation (no separate
-                        // timeline): dragging "extra /mo" pushes the fill past the paid-off point by the share of the
-                        // remaining payoff time the extra would erase. Animated via the .cbar-sim transition.
+                        // The row bar shows real progress only (paid-off % / saved %). The payoff *simulation* lives on a
+                        // dedicated timeline in the drawer below — filling a segment of this same bar was ambiguous.
                         var barShown = barPct;
-                        var debtSimActive = open && isDebt && !done && State.SavingBucketDebtInstallment(bucketId) > 0m;
-                        if (debtSimActive)
-                        {
-                            var _si = State.SavingBucketDebtInstallment(bucketId);
-                            var _sr = State.SavingBucketDebtRate(bucketId);
-                            var _sbM = FinApp.Forecasting.LoanForecast.PayOff(debtOwed, _sr, _si)?.Months ?? 0;
-                            var _sfM = FinApp.Forecasting.LoanForecast.PayOff(debtOwed, _sr, _si + _goalExtra)?.Months ?? 0;
-                            var _sSaved = _sbM > 0 && _sfM > 0 ? Math.Max(0, _sbM - _sfM) : 0;
-                            if (_sbM > 0) barShown = paidPct + (100.0 - paidPct) * ((double)_sSaved / _sbM);
-                        }
                     }
                     <div class="cat-row-head">
                         <button class="cat-row-hit" @onclick="() => ToggleGoalRow(bucketId)">
@@ -1421,7 +1444,7 @@ else
                                         else { <text>@Fmt(total)<span class="cat-row-nb"> · @Loc["saved"]</span></text> }
                                     </span>
                                 </span>
-                                <span class="cbar-track"><span class="cbar-grad @((hasBar ? "cbar-good" : "cbar-flat") + (debtSimActive ? " cbar-sim" : ""))" style="--pct:@barShown.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)%"></span></span>
+                                <span class="cbar-track"><span class="cbar-grad @(hasBar ? "cbar-good" : "cbar-flat")" style="--pct:@barShown.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)%"></span></span>
                             </span>
                         </button>
                         @* Actions on the right of the row. For an expenses fund the primary icon is "Add a cost" (a
@@ -1483,7 +1506,8 @@ else
                                 }
                                 if (!done && State.SavingBucketDebtInstallment(bucketId) > 0m)
                                 {
-                                    // Inline payoff projection: the "extra /mo" slider animates the row's OWN progress bar (above).
+                                    // Inline payoff projection: the "extra /mo" slider slides the finish flag along a
+                                    // today → debt-free timeline, so you can see the date move earlier as you pay more.
                                     var inst = State.SavingBucketDebtInstallment(bucketId);
                                     var rate = State.SavingBucketDebtRate(bucketId);
                                     var basePay = FinApp.Forecasting.LoanForecast.PayOff(debtOwed, rate, inst);
@@ -1492,22 +1516,46 @@ else
                                     var fastMonths = fastPay?.Months ?? 0;
                                     var monthsSaved = baseMonths > 0 && fastMonths > 0 ? Math.Max(0, baseMonths - fastMonths) : 0;
                                     var sliderMax = Math.Max(50m, Math.Ceiling(inst * 3m / 10m) * 10m);
+                                    var ci = System.Globalization.CultureInfo.InvariantCulture;
                                     <div class="payoff-sim">
                                         <div class="payoff-sim-head">
                                             <span><Icon Name="trending" /> @Loc["Pay extra on top"]</span>
                                             <span class="payoff-extra-val">+@Fmt(new Money(_goalExtra, State.Currency))/@Loc["mo"]</span>
                                         </div>
-                                        <input class="payoff-slider" type="range" min="0" max="@sliderMax.ToString(System.Globalization.CultureInfo.InvariantCulture)" step="10" @bind="_goalExtra" @bind:event="oninput" />
+                                        <input class="payoff-slider" type="range" min="0" max="@sliderMax.ToString(ci)" step="10" @bind="_goalExtra" @bind:event="oninput" />
+                                        @* Timeline: now → debt-free date. The flag sits where the payoff lands and slides left as
+                                           you add extra; the green tail to its right is the time cut off the baseline date. *@
+                                        @if (fastPay is not null && baseMonths > 0)
+                                        {
+                                            var flagPct = Math.Clamp((double)fastMonths / baseMonths * 100.0, 7, 100);
+                                            <div class="payoff-line">
+                                                <div class="payoff-flag" style="left:@flagPct.ToString("0.##", ci)%">
+                                                    <span class="payoff-flag-lbl">@PayoffDate(fastMonths)</span>
+                                                    <span class="payoff-flag-pin">🏁</span>
+                                                </div>
+                                                <div class="payoff-line-track">
+                                                    <span class="payoff-line-fill" style="width:@flagPct.ToString("0.##", ci)%"></span>
+                                                    <span class="payoff-line-saved" style="left:@flagPct.ToString("0.##", ci)%"></span>
+                                                </div>
+                                                <div class="payoff-line-ends">
+                                                    <span>@DateOnly.FromDateTime(DateTime.Today).ToString("MMM yyyy")</span>
+                                                    <span class="@(monthsSaved > 0 ? "payoff-end-cut" : "")">@PayoffDate(baseMonths)</span>
+                                                </div>
+                                            </div>
+                                        }
                                         <div class="payoff-sim-foot">
-                                            @if (fastPay is not null)
+                                            @if (fastPay is null)
                                             {
-                                                <span class="payoff-date">🏁 @Loc["Debt-free"] @PayoffDate(fastMonths)</span>
-                                                @if (monthsSaved > 0) { <span class="good-text">· @MonthsText(monthsSaved) @Loc["sooner"]</span> }
+                                                <span class="warn-text">@Loc["At this installment it never clears — it doesn’t cover the interest."]</span>
+                                            }
+                                            else if (monthsSaved > 0)
+                                            {
+                                                <span class="good-text">@MonthsText(monthsSaved) @Loc["sooner"]</span>
                                                 @if (basePay is { } bp && fastPay is { } fp && bp.TotalInterest > fp.TotalInterest) { <span class="good-text">· @Loc["save"] @Fmt(bp.TotalInterest - fp.TotalInterest)</span> }
                                             }
                                             else
                                             {
-                                                <span class="warn-text">@Loc["At this installment it never clears — it doesn’t cover the interest."]</span>
+                                                <span class="hint">@Loc["Drag to pay a little more each month and watch the finish move closer."]</span>
                                             }
                                         </div>
                                     </div>
@@ -1576,13 +1624,19 @@ else
                             }
                             else
                             {
-                                <div class="goal-facts">
-                                    @* The saved/goal figure lives on the row headline + progress bar, so don't repeat it here —
-                                       lead with the monthly set-aside and what's still to find. *@
-                                    @if (g is null && !isExpenses) { <span><strong>@Fmt(total)</strong> @Loc["saved"]</span> }
-                                    @if (State.BucketMonthlySetAside(bucketId) is { } setAside and > 0m) { <span>🗓️ <strong>@Fmt(setAside)</strong>/@Loc["mo"] @Loc["to stay covered"]</span> }
-                                    @if (isExpenses && State.BucketTargetShortfall(bucketId) is { } sf) { <span class="cost-short">@string.Format(Loc["{0} still to find"], Fmt(new Money(sf, State.Currency)))</span> }
-                                </div>
+                                // The saved/goal figure already leads the row headline ("€X · saved") + progress bar, so the
+                                // drawer never repeats it — it shows only what the row doesn't: the monthly set-aside and any
+                                // shortfall. Rendered only when there's something to say, so a plain no-goal fund shows no
+                                // empty strip.
+                                var gMonthly = State.BucketMonthlySetAside(bucketId);
+                                var gShort = isExpenses ? State.BucketTargetShortfall(bucketId) : null;
+                                if ((gMonthly is > 0m) || (gShort is not null))
+                                {
+                                    <div class="goal-facts">
+                                        @if (gMonthly is { } setAside and > 0m) { <span>🗓️ <strong>@Fmt(setAside)</strong>/@Loc["mo"] @Loc["to stay covered"]</span> }
+                                        @if (gShort is { } sf) { <span class="cost-short">@string.Format(Loc["{0} still to find"], Fmt(new Money(sf, State.Currency)))</span> }
+                                    </div>
+                                }
                                 if (isExpenses)
                                 {
                                     var costs = State.SavingBucketCosts(bucketId);
@@ -2266,12 +2320,19 @@ else
                     <label>@Loc["Date"] <input type="date" @bind="_expenseDate" min="@State.Period.From.ToString("yyyy-MM-dd")" max="@State.Period.To.ToString("yyyy-MM-dd")" /></label>
                     <label for="addexp-fund"><span class="lbl-row">@Loc["Fund"] <button type="button" class="lbl-add" title="@Loc["New fund"]" @onclick="ExpenseAddFund">+</button></span>
                         <select id="addexp-fund" @bind="_fundId">
-                            @foreach (var f in State.SelectableFunds)
+                            @foreach (var f in State.ExpensableFunds)
                             {
-                                <option value="@f.Id">@f.Name</option>
+                                @* @key keeps the option nodes stable across re-renders (e.g. after inline tag-create
+                                   reloads the snapshot) — without it the browser resets the <select> to the first
+                                   option and the chosen fund silently switches. *@
+                                <option @key="f.Id" value="@f.Id">@f.Name@(f.IsSynced ? " 🏦" : "")</option>
                             }
                         </select>
                     </label>
+                    @if (State.FundIsSynced(_fundId))
+                    {
+                        <small class="hint"><Icon Name="bank" /> @Loc["This is a bank-synced fund — logging here records the expense without changing the synced balance (the bank stays the source). If the same charge later imports, you can dismiss the duplicate."]</small>
+                    }
                     <label>@Loc["Note (optional)"] <input type="text" @bind="_note" /></label>
                     @tagPicker
                     <div class="modal-actions">
@@ -2348,9 +2409,9 @@ else
                     {
                         <label>@Loc["Fund"]
                             <select @bind="_fundId">
-                                @foreach (var f in State.SelectableFunds)
+                                @foreach (var f in State.ExpensableFunds)
                                 {
-                                    <option value="@f.Id">@f.Name</option>
+                                    <option @key="f.Id" value="@f.Id">@f.Name@(f.IsSynced ? " 🏦" : "")</option>
                                 }
                             </select>
                         </label>
@@ -3234,15 +3295,19 @@ else
                         }
 
                         <h4 class="insight-h">@Loc["Savings rate"]</h4>
-                        <section class="savings-rate-card">
+                        var rateW = Math.Clamp((double)(hs.SavingsRate ?? 0m) * 100, 0, 100);
+                        var goalW = Math.Clamp((double)hs.SavingsTarget * 100, 0, 100);
+                        // Colour the rate by where it lands against the account's own target, not a fixed amber: at or
+                        // above target reads as a win (green), most of the way there is fine (mint), well short warns.
+                        var rateVal = hs.SavingsRate ?? 0m;
+                        var rateStatus = rateVal >= hs.SavingsTarget ? "rate-good"
+                            : rateVal >= hs.SavingsTarget * 0.6m ? "rate-mid"
+                            : "rate-low";
+                        <section class="savings-rate-card @rateStatus">
                             <div class="savings-rate-head">
                                 <span class="savings-pct">@PctOrDash(hs.SavingsRate)</span>
                                 <span class="savings-target">@Loc["Target:"] <span>@PctText(hs.SavingsTarget)</span></span>
                             </div>
-                            @{
-                                var rateW = Math.Clamp((double)(hs.SavingsRate ?? 0m) * 100, 0, 100);
-                                var goalW = Math.Clamp((double)hs.SavingsTarget * 100, 0, 100);
-                            }
                             <div class="savings-track">
                                 <div class="savings-fill" style="width:@rateW%"></div>
                                 <div class="savings-goal-line" style="left:@goalW%"></div>
@@ -3975,21 +4040,29 @@ else
     private BreakRange _breakRange = BreakRange.ThisPeriod;
     private DateOnly _breakFrom = DateOnly.FromDateTime(DateTime.Today).AddMonths(-1);
     private DateOnly _breakTo = DateOnly.FromDateTime(DateTime.Today);
-    private Guid? _breakDrill;   // when set, the pie is scoped to this top-level category…
-    private bool _breakByTag;    // …split by its tags (true) or its sub-categories (false, the default).
+    private Guid? _breakDrill;    // when set, the pie is scoped to this top-level category…
+    private bool _breakByTag;     // …split by its tags (true) or its sub-categories (false, the default).
+    private bool _breakBaseByTag; // at the top level (no drill): slice everything by tag instead of by category.
+
+    // Whether the current view (top level or drilled) slices by tag rather than category.
+    private bool BreakByTag => _breakDrill is null ? _breakBaseByTag : _breakByTag;
 
     private (DateOnly From, DateOnly To) BreakWindow()
     {
         var today = DateOnly.FromDateTime(DateTime.Today);
+        // "This period" ends today, not on the period's last calendar day — future-dated rows in the open period
+        // shouldn't be summed into a "so far" view (and the income tiles would count money not yet in).
+        var periodTo = State.Period.To < today ? State.Period.To : today;
         return _breakRange switch
         {
-            BreakRange.ThisPeriod => (State.Period.From, State.Period.To),
+            BreakRange.ThisPeriod => (State.Period.From, periodTo),
             BreakRange.M3 => (today.AddMonths(-3), today),
             BreakRange.M6 => (today.AddMonths(-6), today),
             BreakRange.M12 => (today.AddMonths(-12), today),
-            BreakRange.All => (State.EarliestExpenseDate ?? today, today),
+            // Anchor on the earliest of any expense OR income so all-time income isn't undercounted (see EarliestActivityDate).
+            BreakRange.All => (State.EarliestActivityDate ?? today, today),
             BreakRange.Custom => (_breakFrom, _breakTo),
-            _ => (State.Period.From, State.Period.To),
+            _ => (State.Period.From, periodTo),
         };
     }
 
@@ -4016,16 +4089,15 @@ else
                 return expenses.Where(e => State.RootCategoryId(e.CategoryId) == od && !headKeys.Contains(e.CategoryId)).ToList();
             return expenses.Where(e => !headKeys.Contains(State.RootCategoryId(e.CategoryId))).ToList();
         }
-        if (_breakDrill is { } drill)
-        {
-            var inCat = expenses.Where(e => State.RootCategoryId(e.CategoryId) == drill);
-            if (_breakByTag)
-                return key == Guid.Empty
-                    ? inCat.Where(e => State.ExpenseTags(e).Count == 0).ToList()
-                    : inCat.Where(e => e.TagIds.Contains(key)).ToList();
-            return inCat.Where(e => e.CategoryId == key).ToList();
-        }
-        return expenses.Where(e => State.RootCategoryId(e.CategoryId) == key).ToList();
+        // Scope to the drilled category first (if any), then split by the active axis (tag or category).
+        var scope = _breakDrill is { } drill ? expenses.Where(e => State.RootCategoryId(e.CategoryId) == drill) : expenses;
+        if (BreakByTag)
+            return key == Guid.Empty
+                ? scope.Where(e => State.ExpenseTags(e).Count == 0).ToList()
+                : scope.Where(e => e.TagIds.Contains(key)).ToList();
+        if (_breakDrill is not null)
+            return scope.Where(e => e.CategoryId == key).ToList();   // sub-category (or parent-direct)
+        return expenses.Where(e => State.RootCategoryId(e.CategoryId) == key).ToList();   // top-level category
     }
 
     // A single pie/list entry: a stable key (category or tag id, or Guid.Empty for the "untagged/other" bucket),
@@ -4054,27 +4126,26 @@ else
         var expenses = State.ExpensesInRange(from, to);
         // Group key: drilling by tag → each tag id (an expense can appear under several tags); drilling by sub →
         // the expense's own category (sub or the parent itself); top level → the root category.
+        var byTag = BreakByTag;
         var groups = new Dictionary<Guid, decimal>();
-        string LabelFor(Guid k) => k == Guid.Empty ? Loc["Untagged"] : (_breakDrill is not null && _breakByTag ? State.TagName(k) : State.CategoryName(k));
-        string? IconFor(Guid k) => k == Guid.Empty ? null : (_breakDrill is not null && _breakByTag ? State.TagIcon(k) : State.CategoryStoredIcon(k));
+        string LabelFor(Guid k) => k == Guid.Empty ? (byTag ? Loc["Untagged"] : Loc["Uncategorised"]) : (byTag ? State.TagName(k) : State.CategoryName(k));
+        string? IconFor(Guid k) => k == Guid.Empty ? null : (byTag ? State.TagIcon(k) : State.CategoryStoredIcon(k));
 
         foreach (var e in expenses)
         {
             var amt = Math.Abs(e.Amount.Amount);
             if (amt == 0) continue;
-            if (_breakDrill is { } drill)
+            if (_breakDrill is { } drill && State.RootCategoryId(e.CategoryId) != drill) continue;   // only this category's expenses
+            if (byTag)
             {
-                if (State.RootCategoryId(e.CategoryId) != drill) continue;   // only this category's expenses
-                if (_breakByTag)
-                {
-                    var ids = State.ExpenseTags(e).Select(t => t.Id).ToList();
-                    if (ids.Count == 0) { groups[Guid.Empty] = groups.GetValueOrDefault(Guid.Empty) + amt; }
-                    else foreach (var id in ids) groups[id] = groups.GetValueOrDefault(id) + amt;
-                }
-                else
-                {
-                    groups[e.CategoryId] = groups.GetValueOrDefault(e.CategoryId) + amt;   // sub or parent-direct
-                }
+                // An expense counts under each of its tags (untagged → the Empty bucket).
+                var ids = State.ExpenseTags(e).Select(t => t.Id).ToList();
+                if (ids.Count == 0) { groups[Guid.Empty] = groups.GetValueOrDefault(Guid.Empty) + amt; }
+                else foreach (var id in ids) groups[id] = groups.GetValueOrDefault(id) + amt;
+            }
+            else if (_breakDrill is not null)
+            {
+                groups[e.CategoryId] = groups.GetValueOrDefault(e.CategoryId) + amt;   // sub or parent-direct
             }
             else
             {
@@ -4087,7 +4158,7 @@ else
         var slices = new List<BreakSlice>();
         // Roll a long tail into "Everything else" — but only at category levels (top / drill-by-sub), where each
         // expense maps to exactly one key so the bucket is well-defined. Skipped for tags (an expense has many).
-        var groupTail = ordered.Count > MaxSlices && !(_breakDrill is not null && _breakByTag);
+        var groupTail = ordered.Count > MaxSlices && !byTag;
         var head = groupTail ? ordered.Take(MaxSlices - 1).ToList() : ordered;
         for (var i = 0; i < head.Count; i++)
         {
@@ -6627,11 +6698,16 @@ else
     {
         var name = _newTagName?.Trim();
         if (string.IsNullOrWhiteSpace(name)) return;
+        // Creating a tag refetches the whole account snapshot (new Fund/Category instances), which resets the bound
+        // Category/Fund <select> back to their first option — the "dropdown switches when I add a tag" bug. Snapshot
+        // the modal's in-flight picks and restore them after, so an inline tag-create never disturbs the form.
+        var keepCat = _categoryId; var keepFund = _fundId;
         // If a tag by that name already exists (active or archived), just select it rather than erroring.
         var existing = State.AllTags.FirstOrDefault(t => string.Equals(t.Name, name, StringComparison.CurrentCultureIgnoreCase));
         var id = existing?.Id ?? await State.AddTag(name);
         if (id != Guid.Empty) _fTagIds.Add(id);
         _newTagName = null;
+        _categoryId = keepCat; _fundId = keepFund;
     });
 
     private async Task TagNewKey(KeyboardEventArgs e)

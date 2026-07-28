@@ -685,6 +685,21 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     public DateOnly? EarliestExpenseDate =>
         Account.Periods.SelectMany(p => p.Expenses).Select(e => (DateOnly?)e.Date).Min();
 
+    /// <summary>Earliest of any expense OR member contribution on record — the true start of the "all time" window.
+    /// Anchoring only on the first expense undercounted income when money came in before the first spend (so all-time
+    /// income didn't match a wider fixed window like 12 months); this captures both sides.</summary>
+    public DateOnly? EarliestActivityDate
+    {
+        get
+        {
+            var expenses = Account.Periods.SelectMany(p => p.Expenses).Select(e => (DateOnly?)e.Date);
+            var income = Account.Periods.SelectMany(p => p.Contributions)
+                .Where(c => c.MemberId != FinApp.Domain.Periods.Period.CarryoverSource)
+                .Select(c => (DateOnly?)c.Date);
+            return expenses.Concat(income).Min();
+        }
+    }
+
     /// <summary>Total income (member contributions, excluding carryover) across all periods in [from, to] — pairs with
     /// <see cref="ExpensesInRange"/> so the Breakdown view can show income for the same window.</summary>
     public decimal IncomeInRange(DateOnly from, DateOnly to) =>
@@ -906,9 +921,16 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     public bool HasSyncedFund => SyncedFundId != Guid.Empty;
     public string SyncedFundName => HasSyncedFund ? FundName(SyncedFundId) : "";
 
-    /// <summary>Funds the user may target manually (expenses/transfers/deposits) — synced funds are excluded;
+    /// <summary>Funds the user may target manually (transfers/deposits/income) — synced funds are excluded;
     /// they're driven only by the bank import flow.</summary>
     public IReadOnlyList<Fund> SelectableFunds => Account.RootFunds.Where(f => !f.IsSynced && !f.IsArchived).ToList();
+
+    /// <summary>Funds an expense may be logged against — like <see cref="SelectableFunds"/> but keeps synced funds in
+    /// the list (at the end). A synced fund's balance mirrors the real bank and isn't debited by a logged expense, so
+    /// a manual entry is safe: it records the spend for budgets/breakdown while the bank balance stays authoritative,
+    /// and the import de-dup handles the case where the same transaction later syncs in.</summary>
+    public IReadOnlyList<Fund> ExpensableFunds =>
+        Account.RootFunds.Where(f => !f.IsArchived).OrderBy(f => f.IsSynced ? 1 : 0).ToList();
 
     public Task AddExpense(Guid categoryId, decimal amount, Guid fundId, string? note, DateOnly date, bool onBehalfOfOtherAccount = false, IReadOnlyList<Guid>? tagIds = null) =>
         ExecuteOptimisticAsync(() =>

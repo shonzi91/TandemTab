@@ -116,6 +116,33 @@ html.dark .home-alert-text { color: #f5cf8a; }
 html.dark .home-alert-act { background: #b4841f; }
 html.dark .home-alert-act:hover { background: #caa03e; }
 html.dark .home-alert-more { color: #f5cf8a; }
+/* Non-urgent reminders pulled up only when there's no "on track for" section — calmer than the amber alerts. */
+.home-alert.home-alert-soft { background: #f4f6f9; border-color: #e2e8f0; }
+.home-alert.home-alert-soft .home-alert-text { color: #475569; font-weight: 600; }
+html.dark .home-alert.home-alert-soft { background: #161b2c; border-color: #2b3350; }
+html.dark .home-alert.home-alert-soft .home-alert-text { color: #aab0c0; }
+
+/* Compact mini-trend chips under the score card (full sparklines live in the Health-score modal). One tight row,
+   horizontally scrollable if they don't fit, so Home never floods. */
+.home-trends { display: flex; gap: 8px; margin: 0 0 14px; overflow-x: auto; padding-bottom: 2px; -webkit-overflow-scrolling: touch; }
+.home-trend {
+    flex: 1 1 0; min-width: 128px; display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+    background: #ffffff; border: 1px solid #e6ece9; border-radius: 12px; padding: 9px 11px; cursor: pointer;
+    font: inherit; text-align: left; transition: border-color .12s;
+}
+.home-trend:hover { border-color: #cbd5e1; }
+.home-trend-lbl { font-size: .68rem; font-weight: 700; letter-spacing: .02em; text-transform: uppercase; color: #6b7280; display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.home-trend-cur { font-size: .95rem; font-weight: 800; color: #111827; display: inline-flex; align-items: baseline; gap: 5px; }
+.home-trend-arrow { font-size: .82rem; font-weight: 700; }
+.home-trend.up .home-trend-cur, .home-trend.up .home-trend-arrow { color: #dc2626; }
+.home-trend.down .home-trend-cur, .home-trend.down .home-trend-arrow { color: #0e9e6d; }
+.home-trend.flat .home-trend-arrow { color: #9ca3af; }
+html.dark .home-trend { background: #161b2c; border-color: #293049; }
+html.dark .home-trend:hover { border-color: #3a4568; }
+html.dark .home-trend-lbl { color: #aab0c0; }
+html.dark .home-trend-cur { color: #eceff7; }
+html.dark .home-trend.up .home-trend-cur, html.dark .home-trend.up .home-trend-arrow { color: #ff9b8a; }
+html.dark .home-trend.down .home-trend-cur, html.dark .home-trend.down .home-trend-arrow { color: #5fe0b8; }
 
 /* Milestones collapsed to a single tappable line (full detail lives in the 🏆 modal). */
 .home-ms-line {
@@ -1052,8 +1079,8 @@ html.dark .goal-cost-edit:hover { background: #16241d; color: #57d9a3; }
 .goal-cost-del { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border: none; border-radius: 8px; background: none; color: #a0aab6; cursor: pointer; }
 .goal-cost-del:hover { background: #fef2f2; color: #dc2626; }
 html.dark .goal-cost-del:hover { background: #2a1616; color: #f87171; }
-/* Debt payoff simulator: slider + result. The animation lives on the row's own progress bar (.cbar-sim) — as
-   "extra /mo" rises the bar fills forward past the paid-off point. */
+/* Debt payoff simulator: slider + a today→debt-free timeline. Dragging "extra /mo" slides the 🏁 flag left along
+   the line (payoff lands sooner); the green tail to its right is the time cut off the baseline date. */
 .payoff-sim { background: #f3fbf7; border: 1px solid #d6f0e3; border-radius: 12px; padding: 12px; margin-bottom: 12px; }
 html.dark .payoff-sim { background: #14231d; border-color: #24463a; }
 .payoff-sim-head { display: flex; align-items: center; justify-content: space-between; font-size: .83rem; font-weight: 700; color: #0f7a54; margin-bottom: 8px; }
@@ -1064,8 +1091,22 @@ html.dark .payoff-sim-head { color: #57d9a3; }
 .payoff-date { font-weight: 700; color: #16202b; }
 html.dark .payoff-sim-foot { color: #a9b6ad; }
 html.dark .payoff-date { color: #e8eef0; }
-/* When a debt row is open, its progress bar previews the payoff simulation — animate the fill as the slider moves. */
-.cbar-grad.cbar-sim { transition: clip-path .45s cubic-bezier(.4, 0, .2, 1); }
+
+/* Payoff timeline: a track from now (left) to the baseline debt-free date (right), with a sliding finish flag. */
+.payoff-line { position: relative; margin: 26px 4px 4px; }
+.payoff-line-track { position: relative; height: 8px; border-radius: 4px; background: #e3efe9; overflow: hidden; }
+html.dark .payoff-line-track { background: #21362c; }
+/* Elapsed portion up to the flag = the payoff duration; the remainder (to the baseline date) is the time saved. */
+.payoff-line-fill { position: absolute; left: 0; top: 0; bottom: 0; background: linear-gradient(90deg, #2a9d5a, #13a06e); border-radius: 4px; transition: width .3s cubic-bezier(.4,0,.2,1); }
+.payoff-line-saved { position: absolute; top: 0; bottom: 0; right: 0; background: repeating-linear-gradient(45deg, rgba(19,160,110,.18) 0 5px, rgba(19,160,110,.06) 5px 10px); transition: left .3s cubic-bezier(.4,0,.2,1); }
+.payoff-flag { position: absolute; bottom: 100%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; margin-bottom: 3px; transition: left .3s cubic-bezier(.4,0,.2,1); white-space: nowrap; }
+.payoff-flag-lbl { font-size: .68rem; font-weight: 800; color: #0f7a54; background: #eafaf2; border: 1px solid #c5eede; border-radius: 6px; padding: 1px 6px; line-height: 1.4; }
+html.dark .payoff-flag-lbl { color: #7ce8bc; background: #14271f; border-color: #245040; }
+.payoff-flag-pin { font-size: .8rem; line-height: 1; margin-top: 1px; }
+.payoff-flag::after { content: ""; position: absolute; top: 100%; left: 50%; transform: translateX(-50%); width: 2px; height: 6px; background: #13a06e; }
+.payoff-line-ends { display: flex; justify-content: space-between; margin-top: 6px; font-size: .66rem; font-weight: 600; color: #8a94a0; }
+html.dark .payoff-line-ends { color: #7f8b98; }
+.payoff-end-cut { text-decoration: line-through; opacity: .7; }
 /* Row ⋯ (secondary actions) menu — reuses .row-menu; right-aligned under the ⋯ button. On phones the media rule
    turns it into a bottom sheet regardless. */
 .goal-more { position: relative; display: inline-flex; }
@@ -1393,6 +1434,22 @@ html.dark .bal-part-main ~ .bal-part { border-color: #2b3446; }
     margin-top: 14px; background: #fff7ed; border: 1px solid #fed7aa; color: #9a3412;
     border-radius: 10px; padding: 11px 13px; font-size: .78rem; line-height: 1.5;
 }
+/* Rate vs the account's own target drives the colour — reached target is a win, not a warning. The default
+   (amber) above stays as the "mid" look; good goes green, low goes coral. */
+.savings-rate-card.rate-good .savings-fill { background: linear-gradient(90deg, #2a9d5a, #13a06e); }
+.savings-rate-card.rate-mid .savings-fill  { background: linear-gradient(90deg, #eab308, #f59e0b); }
+.savings-rate-card.rate-low .savings-fill  { background: linear-gradient(90deg, #f97316, #ef4444); }
+.savings-rate-card.rate-good .savings-pct { color: #0e9e6d; }
+.savings-rate-card.rate-mid  .savings-pct { color: #b45309; }
+.savings-rate-card.rate-low  .savings-pct { color: #dc2626; }
+.savings-rate-card.rate-good .savings-critique { background: #ecfdf3; border-color: #a7f3cf; color: #0f6b47; }
+.savings-rate-card.rate-low  .savings-critique { background: #fef2f2; border-color: #fecaca; color: #b42318; }
+html.dark .savings-rate-card.rate-good .savings-critique { background: rgba(19,160,110,.12); border-color: rgba(19,160,110,.35); color: #7ce8bc; }
+html.dark .savings-rate-card.rate-mid  .savings-critique { background: rgba(245,158,11,.12); border-color: rgba(245,158,11,.32); color: #f4c66a; }
+html.dark .savings-rate-card.rate-low  .savings-critique { background: rgba(239,68,68,.12); border-color: rgba(239,68,68,.32); color: #f7a3a3; }
+html.dark .savings-rate-card.rate-good .savings-pct { color: #5fe0b8; }
+html.dark .savings-rate-card.rate-mid  .savings-pct { color: #f4c66a; }
+html.dark .savings-rate-card.rate-low  .savings-pct { color: #f7a3a3; }
 
 /* Trend */
 .trend-head { display: flex; justify-content: space-between; align-items: baseline; }
@@ -1462,6 +1519,10 @@ html.dark .bal-part-main ~ .bal-part { border-color: #2b3446; }
     flex-shrink: 0; margin-top: 1px;
 }
 .win-text { font-size: .85rem; color: #374151; line-height: 1.45; }
+/* The dark card surface for .win comes from app.css, but the scoped text/bullet colours don't invert there — on the
+   dark card the #374151 text was near-invisible. Lift both here (scoped, so these win the cascade). */
+html.dark .win-text { color: #d7dceb; }
+html.dark .win-bullet { background: rgba(19,160,110,.2); color: #5fe0b8; }
 
 /* Section sub-headers inside the Archived-items modal */
 .archived-h { margin: 14px 0 4px; font-size: .82rem; font-weight: 700; color: #6b7280; }
@@ -1909,10 +1970,12 @@ html.dark .proj-result.good-text { color: var(--tm-mint); }
 .info-wrap { position: relative; display: inline-flex; align-items: center; }
 .info-ico { border: none; background: none; cursor: pointer; color: #6366f1; font-size: .9rem; padding: 0 2px; line-height: 1; }
 .info-pop {
-    /* Right-anchored to the ⓘ (which always sits at the end of its heading/label), so the 240px bubble
-       extends left and stays inside the modal — .modal is overflow-y:auto, which also clips overflow-x,
-       so a left-anchored bubble was cut off at the modal's right edge ("hidden halfway"). */
-    position: absolute; top: 130%; right: 0; left: auto; z-index: 95; width: max-content; max-width: 240px;
+    /* Centered under the ⓘ, not right-anchored. .modal is overflow-y:auto, which also clips overflow-x, so a
+       bubble that extends to one side gets cut off at the modal edge (the reported "edges cut off"). Centering a
+       ≤240px bubble under an ⓘ that sits mid-heading keeps both edges inside the ~372px modal content box; the
+       vw clamp + wrapping keep it inside the viewport on phones. */
+    position: absolute; top: 130%; left: 50%; right: auto; transform: translateX(-50%);
+    z-index: 95; width: max-content; max-width: min(240px, 78vw); overflow-wrap: anywhere;
     background: #1f2430; color: #f3f4f6; font-size: .76rem; font-weight: 400; line-height: 1.35;
     padding: 7px 10px; border-radius: 8px; box-shadow: 0 6px 20px rgba(0,0,0,.22);
 }
