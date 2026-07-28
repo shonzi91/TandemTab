@@ -88,6 +88,8 @@ private fun App(vm: AppViewModel, onGoogle: () -> Unit) {
             onSelectAccount = vm::selectAccount,
             onSignOut = vm::signOut,
             onLoadSpending = vm::loadSpending,
+            onLoadGoals = vm::loadGoals,
+            onLoadWallets = vm::loadWallets,
         )
     }
 }

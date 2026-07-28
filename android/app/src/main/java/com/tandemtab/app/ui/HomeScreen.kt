@@ -76,6 +76,8 @@ fun HomeScreen(
     onSelectAccount: (String) -> Unit,
     onSignOut: () -> Unit,
     onLoadSpending: (Boolean) -> Unit,
+    onLoadGoals: (Boolean) -> Unit,
+    onLoadWallets: (Boolean) -> Unit,
 ) {
     val tandem = LocalTandemColors.current
     var dest by rememberSaveable { mutableStateOf(NavDest.Home) }
@@ -130,7 +132,12 @@ fun HomeScreen(
         snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
         LaunchedEffect(dest, state.selectedAccountId) {
-            if (dest == NavDest.Spending) onLoadSpending(false)
+            when (dest) {
+                NavDest.Spending -> onLoadSpending(false)
+                NavDest.Goals -> onLoadGoals(false)
+                NavDest.Wallets -> onLoadWallets(false)
+                NavDest.Home -> {}
+            }
         }
         Column(
             modifier = Modifier
@@ -139,13 +146,20 @@ fun HomeScreen(
                 .verticalScroll(rememberScrollState())
                 .padding(16.dp),
         ) {
-            if (dest == NavDest.Spending) {
-                SpendingScreen(spending = state.spending, onRetry = { onLoadSpending(true) })
-                return@Column
-            }
-            if (dest != NavDest.Home) {
-                Placeholder(dest.label)
-                return@Column
+            when (dest) {
+                NavDest.Spending -> {
+                    SpendingScreen(spending = state.spending, onRetry = { onLoadSpending(true) })
+                    return@Column
+                }
+                NavDest.Goals -> {
+                    GoalsScreen(goals = state.goals, onRetry = { onLoadGoals(true) })
+                    return@Column
+                }
+                NavDest.Wallets -> {
+                    WalletsScreen(wallets = state.wallets, onRetry = { onLoadWallets(true) })
+                    return@Column
+                }
+                NavDest.Home -> {}
             }
 
             if (state.accounts.size > 1) {
@@ -307,22 +321,6 @@ private fun AccountChip(name: String, selected: Boolean, onClick: () -> Unit) {
             .border(1.dp, if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline, RoundedCornerShape(999.dp)),
     ) {
         Text(name, color = fg, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-    }
-}
-
-@Composable
-private fun Placeholder(label: String) {
-    val tandem = LocalTandemColors.current
-    Box(
-        Modifier
-            .fillMaxWidth()
-            .height(320.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text(label, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
-            Text("Coming soon", color = tandem.muted)
-        }
     }
 }
 

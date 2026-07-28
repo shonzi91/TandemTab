@@ -1,0 +1,159 @@
+package com.tandemtab.app.ui
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.tandemtab.app.WalletsUi
+import com.tandemtab.app.data.FundRowDto
+import com.tandemtab.app.data.FundTransferRowDto
+import com.tandemtab.app.ui.theme.LocalTandemColors
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
+import java.util.Locale
+
+/**
+ * The Wallets tab: where the money lives — each fund with its balance, plus this period's transfers.
+ * Thin `WalletsViewDto` rendered directly (balances computed server-side, incl. synced funds).
+ */
+@Composable
+fun WalletsScreen(wallets: WalletsUi, onRetry: () -> Unit) {
+    val tandem = LocalTandemColors.current
+    val fmt = rememberWalletsMoney(wallets.currency)
+
+    when {
+        wallets.loading && wallets.funds.isEmpty() ->
+            Box(Modifier.fillMaxWidth().height(220.dp), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+            }
+
+        wallets.error != null ->
+            Column(Modifier.fillMaxWidth().padding(top = 40.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(wallets.error, color = MaterialTheme.colorScheme.error)
+                Spacer(Modifier.height(8.dp))
+                Text("Tap to retry", color = tandem.positive, modifier = Modifier.clickable(onClick = onRetry).padding(8.dp))
+            }
+
+        else -> {
+            TotalHeader(fmt(wallets.current))
+            Spacer(Modifier.height(14.dp))
+
+            if (wallets.funds.isEmpty()) {
+                Box(Modifier.fillMaxWidth().height(160.dp), contentAlignment = Alignment.Center) {
+                    Text("No funds yet.", color = tandem.muted)
+                }
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    wallets.funds.forEach { FundRow(it, fmt) }
+                }
+            }
+
+            if (wallets.transfers.isNotEmpty()) {
+                Spacer(Modifier.height(20.dp))
+                Text(
+                    "TRANSFERS THIS PERIOD",
+                    fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.8.sp,
+                    color = tandem.muted, modifier = Modifier.padding(start = 4.dp, bottom = 8.dp),
+                )
+                Column(
+                    Modifier.fillMaxWidth()
+                        .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(14.dp))
+                        .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(14.dp)),
+                ) {
+                    wallets.transfers.forEachIndexed { i, t ->
+                        TransferRow(t, fmt)
+                        if (i < wallets.transfers.lastIndex) {
+                            Box(Modifier.fillMaxWidth().height(1.dp).padding(horizontal = 14.dp).background(tandem.hairline))
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TotalHeader(total: String) {
+    val tandem = LocalTandemColors.current
+    Column(
+        Modifier.fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(16.dp))
+            .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(16.dp))
+            .padding(18.dp),
+    ) {
+        Text("TOTAL BALANCE", fontSize = 10.sp, letterSpacing = 1.3.sp, fontWeight = FontWeight.Bold, color = tandem.muted)
+        Spacer(Modifier.height(4.dp))
+        Text(total, fontSize = 26.sp, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.onBackground)
+    }
+}
+
+@Composable
+private fun FundRow(f: FundRowDto, fmt: (Double) -> String) {
+    val tandem = LocalTandemColors.current
+    Row(
+        Modifier.fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(14.dp))
+            .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(14.dp))
+            .padding(14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(f.name, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface, maxLines = 1)
+                if (f.synced) {
+                    Spacer(Modifier.width(6.dp))
+                    Text("🏦", fontSize = 13.sp) // 🏦 bank-synced marker
+                }
+            }
+            val sub = f.note?.takeIf { it.isNotBlank() } ?: if (f.synced) "Bank-synced" else null
+            if (sub != null) Text(sub, fontSize = 12.sp, color = tandem.muted, maxLines = 1)
+        }
+        Spacer(Modifier.width(8.dp))
+        Text(fmt(f.balance), fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+    }
+}
+
+@Composable
+private fun TransferRow(t: FundTransferRowDto, fmt: (Double) -> String) {
+    val tandem = LocalTandemColors.current
+    Row(
+        Modifier.fillMaxWidth().padding(14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text("${t.fromFundName} → ${t.toFundName}", fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface, maxLines = 1)
+            val sub = t.note?.takeIf { it.isNotBlank() } ?: formatTransferDate(t.date)
+            Text(sub, fontSize = 12.sp, color = tandem.muted, maxLines = 1)
+        }
+        Spacer(Modifier.width(8.dp))
+        Text(fmt(t.amount), fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+    }
+}
+
+private fun formatTransferDate(iso: String): String = runCatching {
+    LocalDate.parse(iso).format(DateTimeFormatter.ofPattern("d MMM", Locale.getDefault()))
+}.getOrDefault(iso)
+
+private fun rememberWalletsMoney(currencyCode: String): (Double) -> String {
+    val nf = java.text.NumberFormat.getCurrencyInstance(Locale.getDefault())
+    runCatching { nf.currency = java.util.Currency.getInstance(currencyCode) }
+    return { amount -> nf.format(amount) }
+}

@@ -147,6 +147,10 @@ class TandemTabApi(
 
     suspend fun spending(accountId: String): SpendingViewDto = authedGet("/accounts/$accountId/spending").body()
 
+    suspend fun savings(accountId: String): SavingsViewDto = authedGet("/accounts/$accountId/savings").body()
+
+    suspend fun wallets(accountId: String): WalletsViewDto = authedGet("/accounts/$accountId/wallets").body()
+
     suspend fun overview(accountId: String): AccountOverviewDto = authedGet("/accounts/$accountId/overview").body()
 
     /** Revoke the refresh token server-side (best-effort) and forget the session locally. */

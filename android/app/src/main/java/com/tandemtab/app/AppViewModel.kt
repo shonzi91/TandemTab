@@ -6,6 +6,9 @@ import androidx.lifecycle.viewModelScope
 import com.tandemtab.app.data.AccountOverviewDto
 import com.tandemtab.app.data.AccountSummaryDto
 import com.tandemtab.app.data.ExpenseDto
+import com.tandemtab.app.data.FundRowDto
+import com.tandemtab.app.data.FundTransferRowDto
+import com.tandemtab.app.data.SavingBucketDto
 import com.tandemtab.app.data.TandemTabApi
 import com.tandemtab.app.data.TokenStore
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -38,6 +41,8 @@ data class UiState(
     val selectedAccountId: String? = null,
     val overview: AccountOverviewDto? = null,
     val spending: SpendingUi = SpendingUi(),
+    val goals: GoalsUi = GoalsUi(),
+    val wallets: WalletsUi = WalletsUi(),
 ) {
     val selectedAccount: AccountSummaryDto?
         get() = accounts.firstOrNull { it.id == selectedAccountId }
@@ -51,6 +56,28 @@ data class SpendingUi(
     val currency: String = "",
     val spent: Double = 0.0,
     val expenses: List<ExpenseDto> = emptyList(),
+)
+
+/** Lazy-loaded state for the Goals tab (savings buckets: goals/debts/investments/sinking funds). */
+data class GoalsUi(
+    val loading: Boolean = false,
+    val loaded: Boolean = false,
+    val error: String? = null,
+    val currency: String = "",
+    val saved: Double = 0.0,
+    val savedRate: Double? = null,   // saved-this-period as a share of income (0..1), null if unknown
+    val buckets: List<SavingBucketDto> = emptyList(),
+)
+
+/** Lazy-loaded state for the Wallets tab (funds + this period's transfers). */
+data class WalletsUi(
+    val loading: Boolean = false,
+    val loaded: Boolean = false,
+    val error: String? = null,
+    val currency: String = "",
+    val current: Double = 0.0,
+    val funds: List<FundRowDto> = emptyList(),
+    val transfers: List<FundTransferRowDto> = emptyList(),
 )
 
 class AppViewModel(app: Application) : AndroidViewModel(app) {
@@ -220,7 +247,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun selectAccount(accountId: String) {
         if (accountId == _state.value.selectedAccountId) return
-        _state.update { it.copy(busy = true, selectedAccountId = accountId, overview = null, spending = SpendingUi()) }
+        _state.update {
+            it.copy(
+                busy = true, selectedAccountId = accountId, overview = null,
+                spending = SpendingUi(), goals = GoalsUi(), wallets = WalletsUi(),
+            )
+        }
         viewModelScope.launch {
             try {
                 val overview = api.overview(accountId)
@@ -245,6 +277,42 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 }
             } catch (e: Exception) {
                 _state.update { it.copy(spending = it.spending.copy(loading = false, error = e.message ?: "Couldn't load spending.")) }
+            }
+        }
+    }
+
+    /** Lazily load the Goals tab (savings buckets) the first time it's shown, or when forced. */
+    fun loadGoals(force: Boolean = false) {
+        val accountId = _state.value.selectedAccountId ?: return
+        val cur = _state.value.goals
+        if (!force && (cur.loaded || cur.loading)) return
+        _state.update { it.copy(goals = it.goals.copy(loading = true, error = null)) }
+        viewModelScope.launch {
+            try {
+                val v = api.savings(accountId)
+                _state.update {
+                    it.copy(goals = GoalsUi(loaded = true, currency = v.currency, saved = v.overview.saved, buckets = v.buckets))
+                }
+            } catch (e: Exception) {
+                _state.update { it.copy(goals = it.goals.copy(loading = false, error = e.message ?: "Couldn't load your goals.")) }
+            }
+        }
+    }
+
+    /** Lazily load the Wallets tab (funds + transfers) the first time it's shown, or when forced. */
+    fun loadWallets(force: Boolean = false) {
+        val accountId = _state.value.selectedAccountId ?: return
+        val cur = _state.value.wallets
+        if (!force && (cur.loaded || cur.loading)) return
+        _state.update { it.copy(wallets = it.wallets.copy(loading = true, error = null)) }
+        viewModelScope.launch {
+            try {
+                val v = api.wallets(accountId)
+                _state.update {
+                    it.copy(wallets = WalletsUi(loaded = true, currency = v.currency, current = v.overview.current, funds = v.funds, transfers = v.transfers))
+                }
+            } catch (e: Exception) {
+                _state.update { it.copy(wallets = it.wallets.copy(loading = false, error = e.message ?: "Couldn't load your wallets.")) }
             }
         }
     }

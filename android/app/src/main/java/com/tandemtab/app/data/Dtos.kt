@@ -122,3 +122,71 @@ data class SpendingViewDto(
     val categories: List<CategoryOptionDto> = emptyList(),
     val funds: List<FundOptionDto> = emptyList(),
 )
+
+// --- Goals / Savings (mirrors FinApp.Contracts.SavingsView) ------------------------------------------
+// Every figure resolved server-side; the client just renders. Kind is "goal"/"debt"/"investment"/"sinking".
+
+@Serializable
+data class SavingBucketDto(
+    val id: String,
+    val name: String,
+    val icon: String? = null,
+    val saved: Double,
+    val kind: String,
+    val archived: Boolean = false,
+    val goalTarget: Double? = null,
+    val goalProgress: Double? = null,     // 0..1
+    val debtBalance: Double? = null,       // owed today
+    val debtProgress: Double? = null,      // 0..1 paid off
+    val debtMonthsAhead: Int? = null,
+    val investmentProjected: Double? = null,
+    val monthlySetAside: Double? = null,
+    val targetShortfall: Double? = null,
+)
+
+@Serializable
+data class SavingsViewDto(
+    val version: Long = 0,
+    val currency: String = "",
+    val overview: AccountOverviewDto,
+    val availableToSave: Double = 0.0,
+    val maxAdditionalSavings: Double = 0.0,
+    val buckets: List<SavingBucketDto> = emptyList(),
+)
+
+// --- Wallets / Funds (mirrors FinApp.Contracts.WalletsView) ------------------------------------------
+
+@Serializable
+data class FundRowDto(
+    val id: String,
+    val name: String,
+    val icon: String? = null,
+    val note: String? = null,
+    val balance: Double,
+    val openingBalance: Double = 0.0,
+    val synced: Boolean = false,
+    val archived: Boolean = false,
+    val availableToTransferOut: Double = 0.0,
+)
+
+@Serializable
+data class FundTransferRowDto(
+    val id: String,
+    val fromFundId: String,
+    val fromFundName: String,
+    val toFundId: String,
+    val toFundName: String,
+    val amount: Double,
+    val date: String,
+    val note: String? = null,
+)
+
+@Serializable
+data class WalletsViewDto(
+    val version: Long = 0,
+    val currency: String = "",
+    val overview: AccountOverviewDto,
+    val funds: List<FundRowDto> = emptyList(),
+    val archivedFunds: List<FundRowDto> = emptyList(),
+    val transfers: List<FundTransferRowDto> = emptyList(),
+)
