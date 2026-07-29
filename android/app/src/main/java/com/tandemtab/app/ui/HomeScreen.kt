@@ -27,13 +27,10 @@ import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.automirrored.rounded.ReceiptLong
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FabPosition
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
@@ -125,30 +122,15 @@ fun HomeScreen(
                 ),
             )
         },
+        // Custom bottom bar with the add-FAB cradled in the centre (tabs split 2-and-2). Because the FAB lives
+        // inside the bar rather than floating in the content area, it never overlaps scrolling content.
         bottomBar = {
-            NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
-                NavDest.entries.forEach { d ->
-                    NavigationBarItem(
-                        selected = dest == d,
-                        onClick = { dest = d },
-                        icon = { Icon(d.icon, contentDescription = d.label) },
-                        label = { Text(d.label, fontSize = 11.sp) },
-                        colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = MaterialTheme.colorScheme.primary,
-                            selectedTextColor = MaterialTheme.colorScheme.primary,
-                            indicatorColor = tandem.savingsTileBg,
-                            unselectedIconColor = tandem.muted,
-                            unselectedTextColor = tandem.muted,
-                        ),
-                    )
-                }
-            }
+            TandemBottomBar(
+                current = dest,
+                onSelect = { dest = it },
+                onAdd = { onPrepareAdd(); showAddExpense = true },
+            )
         },
-        floatingActionButton = {
-            // One prominent centre action on every tab — opens the unified Expense/Income sheet.
-            AddFab(onClick = { onPrepareAdd(); showAddExpense = true })
-        },
-        floatingActionButtonPosition = FabPosition.Center,
         snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
         if (showAddExpense) {
@@ -172,8 +154,7 @@ fun HomeScreen(
                 .fillMaxSize()
                 .padding(padding)
                 .verticalScroll(rememberScrollState())
-                // Extra bottom room so the centre-docked FAB never covers the last rows.
-                .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 96.dp),
+                .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 24.dp),
         ) {
             when (dest) {
                 NavDest.Spending -> {
@@ -274,19 +255,60 @@ fun HomeScreen(
     }
 }
 
-/** A prominent, brand-gradient circular add button — the single centre action, docked over the nav bar. */
+/** The bottom bar: four tabs split 2-and-2 with the brand-gradient add-FAB cradled in the centre gap. The FAB
+ *  straddles the top edge of the bar, so it reads as a docked primary action and never covers content. */
 @Composable
-private fun AddFab(onClick: () -> Unit) {
+private fun TandemBottomBar(current: NavDest, onSelect: (NavDest) -> Unit, onAdd: () -> Unit) {
+    val barHeight = 70.dp
+    val fabSize = 60.dp
     Box(
         Modifier
-            .size(62.dp)
-            .shadow(10.dp, CircleShape, clip = false)
-            .clip(CircleShape)
-            .background(Brush.linearGradient(listOf(BrandGreen, BrandGreenDark)))
-            .clickable(onClick = onClick),
-        contentAlignment = Alignment.Center,
+            .fillMaxWidth()
+            .height(barHeight + 22.dp),   // extra top room for the FAB to rise above the bar
     ) {
-        Icon(Icons.Rounded.Add, contentDescription = "Add", tint = Color.White, modifier = Modifier.size(30.dp))
+        Surface(
+            modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(barHeight),
+            color = MaterialTheme.colorScheme.surface,
+            shadowElevation = 10.dp,
+        ) {
+            Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
+                BarItem(NavDest.Home, current, Modifier.weight(1f), onSelect)
+                BarItem(NavDest.Spending, current, Modifier.weight(1f), onSelect)
+                Spacer(Modifier.weight(1f))   // the cradle gap the FAB sits in
+                BarItem(NavDest.Goals, current, Modifier.weight(1f), onSelect)
+                BarItem(NavDest.Wallets, current, Modifier.weight(1f), onSelect)
+            }
+        }
+        Box(
+            Modifier
+                .align(Alignment.TopCenter)
+                .size(fabSize)
+                .shadow(10.dp, CircleShape, clip = false)
+                .clip(CircleShape)
+                .background(Brush.linearGradient(listOf(BrandGreen, BrandGreenDark)))
+                .clickable(onClick = onAdd),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(Icons.Rounded.Add, contentDescription = "Add", tint = Color.White, modifier = Modifier.size(30.dp))
+        }
+    }
+}
+
+@Composable
+private fun BarItem(dest: NavDest, current: NavDest, modifier: Modifier, onSelect: (NavDest) -> Unit) {
+    val tandem = LocalTandemColors.current
+    val selected = dest == current
+    val tint = if (selected) MaterialTheme.colorScheme.primary else tandem.muted
+    Column(
+        modifier
+            .fillMaxHeight()
+            .clickable(onClick = { onSelect(dest) }),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Icon(dest.icon, contentDescription = dest.label, tint = tint)
+        Spacer(Modifier.height(3.dp))
+        Text(dest.label, fontSize = 11.sp, color = tint, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal)
     }
 }
 
