@@ -345,17 +345,10 @@ else
                     </div>
                 </section>
             }
-            @* Home's two everyday moves: money out (Add expense) and money in (Add income), each with an "Edit last".
-               The reference figures they used to carry (spent/budgeted, income/saved) live in Spending / Wallets / Goals,
-               so the cards stay to just the actions. The Spent tile keeps its green→red spend-heat tint as a glanceable
-               cue. Everything below (health score, alerts, runway, targets) is unchanged. *@
+            @* Home's two everyday moves as plain buttons — no card frame (flattened). On mobile these hide and the
+               floating quick-add ＋ (.qfab, below) takes over. Reference figures live in Spending / Wallets / Goals. *@
             <section class="cards cards-2 action-cards">
-                @{
-                    // Spent tile shades along the same green→red heat ramp as the progress rings, by how close
-                    // total spending is to the total budget (far = green, at/over the cap = red).
-                    var _sh = SpendHeatHue();
-                }
-                <div class="card tile-spend action-card" style="background:hsl(@_sh 62% 50% / .12);border-color:hsl(@_sh 62% 50% / .34)">
+                <div class="tile-spend action-card">
                     @* Hovering the fast button reveals the most-used categories; clicking one opens Add-expense with
                        that category pre-selected. The button itself still opens the blank modal (and is the only path
                        on touch, where there's no hover). *@
@@ -385,7 +378,7 @@ else
                         </span>
                     </div>
                 </div>
-                <div class="card savings action-card">
+                <div class="savings action-card">
                     @if (State.IsPeriodOpen)
                     {
                         <span class="card-act-row">
@@ -1919,6 +1912,23 @@ else
         </div>
     </div>
 </div>
+
+@* Floating quick-add — mobile web only (CSS hides it on desktop, where the inline Home buttons stay). One ＋ that
+   expands to Add expense / Add income from any tab, mirroring the native app's FAB. Hidden while a modal is open. *@
+@if (_modal == Modal.None && State.IsPeriodOpen)
+{
+    <div class="qfab @(_fabOpen ? "open" : "")">
+        @if (_fabOpen)
+        {
+            <div class="qfab-backdrop" @onclick="() => _fabOpen = false"></div>
+            <div class="qfab-menu">
+                <button class="qfab-item" @onclick="FabAddIncome"><Icon Name="note" /> @Loc["Add income"]</button>
+                <button class="qfab-item" @onclick="FabAddExpense"><Icon Name="receipt" /> @Loc["Add expense"]</button>
+            </div>
+        }
+        <button class="qfab-main" title="@Loc["Add"]" @onclick="() => _fabOpen = !_fabOpen"><Icon Name="plus" /></button>
+    </div>
+}
 
 @if (_modal != Modal.None)
 {
@@ -6834,6 +6844,11 @@ else
         if (_dayView is { } d) OpenAddExpenseOn(d);
         else OpenAddExpenseTab();
     }
+
+    // Floating quick-add (mobile web): a single ＋ that expands to the two add flows.
+    private bool _fabOpen;
+    private void FabAddExpense() { _fabOpen = false; OpenAddExpenseTab(); }
+    private void FabAddIncome() { _fabOpen = false; OpenDeposit(); }
 
     // Multi-expense: a locally-staged list of expenses the user is building; the ✓ saves them all at once. Each draft
     // is a snapshot of the editor fields at the moment "Add another expense" was pressed.

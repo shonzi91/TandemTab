@@ -117,9 +117,10 @@ html.dark .home-alert-act { background: #b4841f; }
 html.dark .home-alert-act:hover { background: #caa03e; }
 html.dark .home-alert-more { color: #f5cf8a; }
 /* Non-urgent reminders pulled up only when there's no "on track for" section — calmer than the amber alerts. */
-.home-alert.home-alert-soft { background: #f4f6f9; border-color: #e2e8f0; }
+/* Non-urgent reminders are borderless rows — only real (urgent) alerts keep the amber box. */
+.home-alert.home-alert-soft { background: none; border-color: transparent; padding: 8px 2px; }
 .home-alert.home-alert-soft .home-alert-text { color: #475569; font-weight: 600; }
-html.dark .home-alert.home-alert-soft { background: #161b2c; border-color: #2b3350; }
+html.dark .home-alert.home-alert-soft { background: none; border-color: transparent; }
 html.dark .home-alert.home-alert-soft .home-alert-text { color: #aab0c0; }
 
 /* Health-score section on Home: the score card is the header, and the trend charts (savings rate, spending trend,
@@ -1700,7 +1701,7 @@ html.dark .bell-act { background: #1c3a2f; color: #57d9a3; }
 }
 
 /* Home "on track for" targets card — surfaces the debt-free / goal dates up front (read-only projections). */
-.targets-card { margin: 14px 0 0; padding: 0; }
+.targets-card { margin: 14px 0 0; padding: 0; background: none; border: none; }
 .targets-h { margin: 0 0 10px; font-size: .72rem; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: #6b7280; }
 /* Targets card: header separated from the list by a divider; list rows on a grid so dates line up in a column. */
 .targets-card > .targets-h { margin: 0; padding: 12px 16px 11px; border-bottom: 1px solid #eef2f0; }
@@ -1709,7 +1710,7 @@ html.dark .bell-act { background: #1c3a2f; color: #57d9a3; }
 /* Cash runway — its own panel, not a row inside the targets card: it's about the whole balance, while every line
    in that card is about one goal. Calm by default; amber only when the projection actually runs dry, so the
    warning means something when it appears. */
-.runway-card { margin: 14px 0 0; padding: 0; background: #f4faf7; }
+.runway-card { margin: 14px 0 0; padding: 0; background: #f4faf7; border: none; }
 .runway-card.runway-warn { background: #fff8ed; }
 .runway-row { display: flex; align-items: flex-start; gap: 10px; padding: 13px 16px; }
 .runway-ico { font-size: 1.15rem; line-height: 1.3; flex: 0 0 auto; display: inline-flex; align-items: center; color: #0f7a54; }
@@ -2218,7 +2219,8 @@ html.dark .realloc-effects li { color: #b7d8c9; }
     content: "›"; position: absolute; top: 10px; right: 13px;
     color: #13a06e; font-size: 1.35rem; font-weight: 800; line-height: 1;
 }
-.card-score:hover { border-color: #13a06e; box-shadow: 0 4px 12px rgba(19,160,110,.16); transform: translateY(-1px); }
+/* Softened: it stays the one framed "hero" on Home, but no lift/shadow on hover — just a gentle border cue. */
+.card-score:hover { border-color: #9fd9bf; }
 html.dark .card-score { background: #14211d; border-color: #24493a; }
 html.dark .card-score::after { color: #3fe0c5; }
 .card-score .card-value.score-ok { color: #0e9e6d; }
@@ -2228,7 +2230,33 @@ html.dark .card-score::after { color: #3fe0c5; }
 /* Action cards: the stat number and the button that changes it live together — money out (Spent → Add expense)
    and money in (Contributed → Contribute). The button is the prominent, easy-to-hit primary action. */
 /* The cards now hold just their action buttons (the figures moved to the detail tabs), centred in the tile. */
-.action-card { min-height: auto; justify-content: center; }
+/* Flattened: the buttons are the affordance, so the card frame around them is gone. */
+.action-card { min-height: auto; justify-content: center; background: none; border: none; box-shadow: none; padding: 0; }
+
+/* Floating quick-add (.qfab): mobile web only. Desktop keeps the inline Home Add buttons and hides this. A single ＋
+   expands upward into Add expense / Add income. Mirrors the native app's FAB. */
+.qfab { display: none; }
+.qfab-main {
+    width: 56px; height: 56px; border-radius: 50%; border: none; background: #13a06e; color: #fff; cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center; box-shadow: 0 6px 18px rgba(19,160,110,.42);
+}
+.qfab-main ::deep svg { width: 26px; height: 26px; transition: transform .2s; }   /* ::deep to reach the Icon child's svg */
+.qfab.open .qfab-main ::deep svg { transform: rotate(45deg); }   /* ＋ → ✕ */
+.qfab-backdrop { position: fixed; inset: 0; z-index: -1; }
+.qfab-menu { position: absolute; right: 2px; bottom: 66px; display: flex; flex-direction: column; gap: 10px; align-items: flex-end; }
+.qfab-item {
+    display: inline-flex; align-items: center; gap: 8px; padding: 11px 16px; border-radius: 999px; border: none;
+    background: #fff; color: #1f2430; font: inherit; font-weight: 700; font-size: .9rem; cursor: pointer; white-space: nowrap;
+    box-shadow: 0 4px 14px rgba(0,0,0,.18);
+}
+.qfab-item ::deep svg { width: 18px; height: 18px; color: #13a06e; }
+html.dark .qfab-item { background: #1c2431; color: #e8eaf0; }
+html.dark .qfab-item ::deep svg { color: #3fe0c5; }
+@media (max-width: 640px) {
+    /* The FAB takes over the two everyday Add actions on narrow screens; the inline Home buttons step aside. */
+    .qfab { display: block; position: fixed; right: 18px; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); z-index: 60; }
+    .action-cards { display: none; }
+}
 .action-card .quick-spend { position: relative; }
 .action-card .quick-spend .card-act { margin-top: 0; }
 /* Hover-reveal recent-category menu rising from the Add-expense fast button. */
