@@ -220,6 +220,22 @@ data class BudgetsViewDto(
     val categories: List<CategoryOptionDto> = emptyList(),
 )
 
+/** Set (upsert) a category's budget for the current period. Mirrors the server's SetBudgetRequest. */
+@Serializable
+data class SetBudgetRequest(
+    val amount: Double,
+    val thresholdPercent: Double = 80.0,
+    val notifyEvery: Boolean = false,
+)
+
+/** Returned by the budget PUT/DELETE: the new version + a freshly-computed budgets view to reconcile from. */
+@Serializable
+data class BudgetMutationDto(
+    val version: Long = 0,
+    val entityId: String? = null,
+    val view: BudgetsViewDto = BudgetsViewDto(),
+)
+
 // --- Add-expense write flow (mirrors FinApp.Contracts) ------------------------------------------------
 // POST /accounts/{id}/expenses. The member is the caller and FundSynced is derived server-side, so neither
 // travels in the request. `date` is an ISO yyyy-MM-dd string (maps to the server's DateOnly).

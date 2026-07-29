@@ -116,6 +116,8 @@ fun HomeScreen(
     onPrepareAdd: () -> Unit,
     onPrepareEditLast: () -> Unit,
     onBeginEditExpense: (com.tandemtab.app.data.ExpenseDto) -> Unit,
+    onSetBudget: (String, Double, () -> Unit) -> Unit,
+    onRemoveBudget: (String, () -> Unit) -> Unit,
     onClearEditing: () -> Unit,
     onAddExpenses: (List<com.tandemtab.app.data.AddExpenseRequest>, () -> Unit) -> Unit,
     onEditExpense: (String, com.tandemtab.app.data.AddExpenseRequest, () -> Unit) -> Unit,
@@ -220,7 +222,13 @@ fun HomeScreen(
                             onOpenRunway = { showRunway = true },
                             onOpenAccount = { onOpenSettings(); showAccount = true },
                         )
-                        NavDest.Spending -> SpendingScreen(spending = state.spending, onRetry = { onLoadSpending(true) }, onEdit = onBeginEditExpense)
+                        NavDest.Spending -> SpendingScreen(
+                            spending = state.spending,
+                            onRetry = { onLoadSpending(true) },
+                            onEdit = onBeginEditExpense,
+                            onSetBudget = onSetBudget,
+                            onRemoveBudget = onRemoveBudget,
+                        )
                         NavDest.Goals -> GoalsScreen(
                             goals = state.goals,
                             spending = state.spending,

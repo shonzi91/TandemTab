@@ -20,10 +20,19 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.BarChart
 import androidx.compose.material.icons.rounded.CalendarMonth
 import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -56,7 +65,13 @@ private enum class SpendView { Categories, ByDate }
  * expenses — mirroring the web) and a By-date ledger. Figures resolved server-side (/spending + /budgets).
  */
 @Composable
-fun SpendingScreen(spending: SpendingUi, onRetry: () -> Unit, onEdit: (ExpenseDto) -> Unit) {
+fun SpendingScreen(
+    spending: SpendingUi,
+    onRetry: () -> Unit,
+    onEdit: (ExpenseDto) -> Unit,
+    onSetBudget: (categoryId: String, amount: Double, onDone: () -> Unit) -> Unit,
+    onRemoveBudget: (categoryId: String, onDone: () -> Unit) -> Unit,
+) {
     val tandem = LocalTandemColors.current
     val fmt = rememberMoney(spending.currency)
     var view by remember { mutableStateOf(SpendView.Categories) }
@@ -78,7 +93,7 @@ fun SpendingScreen(spending: SpendingUi, onRetry: () -> Unit, onEdit: (ExpenseDt
             ViewToggle(view) { view = it }
             Spacer(Modifier.height(14.dp))
             when (view) {
-                SpendView.Categories -> CategoriesView(spending, fmt, onEdit)
+                SpendView.Categories -> CategoriesView(spending, fmt, onEdit, onSetBudget, onRemoveBudget)
                 SpendView.ByDate -> ByDateView(spending, fmt, onEdit)
             }
         }
@@ -116,11 +131,21 @@ private fun ViewToggle(view: SpendView, onSelect: (SpendView) -> Unit) {
 
 // --- Categories view --------------------------------------------------------------------------------
 
+// A category being budgeted in the inline sheet: which one, its label, and its current cap (null = none yet).
+private data class BudgetTarget(val categoryId: String, val name: String, val icon: String?, val current: Double?)
+
 @Composable
-private fun CategoriesView(spending: SpendingUi, fmt: (Double) -> String, onEdit: (ExpenseDto) -> Unit) {
+private fun CategoriesView(
+    spending: SpendingUi,
+    fmt: (Double) -> String,
+    onEdit: (ExpenseDto) -> Unit,
+    onSetBudget: (String, Double, () -> Unit) -> Unit,
+    onRemoveBudget: (String, () -> Unit) -> Unit,
+) {
     val tandem = LocalTandemColors.current
     val budgetedIds = remember(spending.budgets) { spending.budgets.map { it.categoryId }.toSet() }
     val catParent = remember(spending.categories) { spending.categories.associate { it.id to it.parentId } }
+    var budgeting by remember { mutableStateOf<BudgetTarget?>(null) }
 
     fun expensesFor(catId: String): List<ExpenseDto> =
         spending.expenses.filter { it.categoryId == catId || catParent[it.categoryId] == catId }
@@ -155,7 +180,10 @@ private fun CategoriesView(spending: SpendingUi, fmt: (Double) -> String, onEdit
 
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         spending.budgets.sortedByDescending { it.spent }.forEach { b ->
-            BudgetRow(b, fmt, expenses = { expensesFor(b.categoryId) }, onEdit = onEdit)
+            BudgetRow(
+                b, fmt, expenses = { expensesFor(b.categoryId) }, onEdit = onEdit,
+                onEditBudget = { budgeting = BudgetTarget(b.categoryId, b.name, b.icon, b.allocated) },
+            )
         }
     }
 
@@ -164,14 +192,83 @@ private fun CategoriesView(spending: SpendingUi, fmt: (Double) -> String, onEdit
         Text("OTHER SPENDING", fontSize = 10.sp, letterSpacing = 1.2.sp, fontWeight = FontWeight.Bold, color = tandem.muted, modifier = Modifier.padding(start = 4.dp, bottom = 8.dp))
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             unbudgeted.forEach { (id, nameIcon, spent) ->
-                UnbudgetedRow(nameIcon.first, nameIcon.second, spent, fmt, expenses = { expensesFor(id) }, onEdit = onEdit)
+                UnbudgetedRow(
+                    nameIcon.first, nameIcon.second, spent, fmt, expenses = { expensesFor(id) }, onEdit = onEdit,
+                    onSetBudget = { budgeting = BudgetTarget(id, nameIcon.first, nameIcon.second, null) },
+                )
+            }
+        }
+    }
+
+    budgeting?.let { target ->
+        BudgetSheet(
+            target = target,
+            currency = spending.currency,
+            saving = spending.saving,
+            onSave = { amount -> onSetBudget(target.categoryId, amount) { budgeting = null } },
+            onRemove = { onRemoveBudget(target.categoryId) { budgeting = null } },
+            onDismiss = { budgeting = null },
+        )
+    }
+}
+
+/** Inline budget editor: one amount field, Save (upsert) and — when a cap already exists — Remove. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun BudgetSheet(
+    target: BudgetTarget,
+    currency: String,
+    saving: Boolean,
+    onSave: (Double) -> Unit,
+    onRemove: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val tandem = LocalTandemColors.current
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    var amountText by remember(target.categoryId) { mutableStateOf(target.current?.let { trimAmount(it) } ?: "") }
+    val parsed = amountText.replace(',', '.').toDoubleOrNull()?.takeIf { it > 0 }
+
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState, containerColor = MaterialTheme.colorScheme.surface) {
+        Column(Modifier.fillMaxWidth().imePadding().padding(horizontal = 18.dp).padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (!target.icon.isNullOrBlank()) { Text(target.icon, fontSize = 20.sp); Spacer(Modifier.width(8.dp)) }
+                Text(
+                    if (target.current != null) "Edit budget · ${target.name}" else "Set budget · ${target.name}",
+                    fontSize = 18.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface,
+                )
+            }
+            OutlinedTextField(
+                value = amountText,
+                onValueChange = { amountText = it },
+                label = { Text("Monthly budget") },
+                prefix = { Text(currencySymbol(currency)) },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                if (target.current != null) {
+                    OutlinedButton(onClick = onRemove, enabled = !saving, modifier = Modifier.weight(1f)) {
+                        Text("Remove", color = tandem.spent)
+                    }
+                }
+                Button(onClick = { parsed?.let(onSave) }, enabled = !saving && parsed != null, modifier = Modifier.weight(1f)) {
+                    if (saving) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
+                    else Text(if (target.current != null) "Save" else "Set budget")
+                }
             }
         }
     }
 }
 
 @Composable
-private fun BudgetRow(b: BudgetRowDto, fmt: (Double) -> String, expenses: () -> List<ExpenseDto>, onEdit: (ExpenseDto) -> Unit) {
+private fun BudgetRow(
+    b: BudgetRowDto,
+    fmt: (Double) -> String,
+    expenses: () -> List<ExpenseDto>,
+    onEdit: (ExpenseDto) -> Unit,
+    onEditBudget: () -> Unit,
+) {
     val tandem = LocalTandemColors.current
     var open by remember { mutableStateOf(false) }
     val fraction = if (b.allocated > 0) (b.spent / b.allocated).toFloat().coerceIn(0f, 1f) else if (b.spent > 0) 1f else 0f
@@ -188,6 +285,10 @@ private fun BudgetRow(b: BudgetRowDto, fmt: (Double) -> String, expenses: () -> 
             if (!b.icon.isNullOrBlank()) { Text(b.icon, fontSize = 18.sp); Spacer(Modifier.width(8.dp)) }
             Text(b.name, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f), maxLines = 1)
             Text("${fmt(b.spent)} / ${fmt(b.allocated)}", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
+            Spacer(Modifier.width(6.dp))
+            Box(Modifier.size(30.dp).clip(RoundedCornerShape(8.dp)).clickable(onClick = onEditBudget), contentAlignment = Alignment.Center) {
+                Icon(TandemIcons.Pencil, contentDescription = "Edit budget", tint = tandem.muted, modifier = Modifier.size(17.dp))
+            }
         }
         SpendBar(fraction)
         Text(
@@ -199,7 +300,15 @@ private fun BudgetRow(b: BudgetRowDto, fmt: (Double) -> String, expenses: () -> 
 }
 
 @Composable
-private fun UnbudgetedRow(name: String, icon: String?, spent: Double, fmt: (Double) -> String, expenses: () -> List<ExpenseDto>, onEdit: (ExpenseDto) -> Unit) {
+private fun UnbudgetedRow(
+    name: String,
+    icon: String?,
+    spent: Double,
+    fmt: (Double) -> String,
+    expenses: () -> List<ExpenseDto>,
+    onEdit: (ExpenseDto) -> Unit,
+    onSetBudget: () -> Unit,
+) {
     val tandem = LocalTandemColors.current
     var open by remember { mutableStateOf(false) }
     Column(
@@ -215,7 +324,14 @@ private fun UnbudgetedRow(name: String, icon: String?, spent: Double, fmt: (Doub
             Text(name, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f), maxLines = 1)
             Text(fmt(spent), fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = tandem.spent)
         }
-        Text("No budget set", fontSize = 12.sp, color = tandem.muted)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("No budget set", fontSize = 12.sp, color = tandem.muted, modifier = Modifier.weight(1f))
+            Text(
+                "Set budget",
+                fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.clip(RoundedCornerShape(6.dp)).clickable(onClick = onSetBudget).padding(horizontal = 6.dp, vertical = 2.dp),
+            )
+        }
         ExpenseDrawer(open, expenses, fmt, onEdit)
     }
 }

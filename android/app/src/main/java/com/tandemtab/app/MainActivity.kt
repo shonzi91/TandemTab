@@ -106,6 +106,8 @@ private fun App(vm: AppViewModel, onGoogle: () -> Unit) {
             onPrepareAdd = vm::prepareAdd,
             onPrepareEditLast = vm::prepareEditLast,
             onBeginEditExpense = vm::beginEdit,
+            onSetBudget = vm::setBudget,
+            onRemoveBudget = vm::removeBudget,
             onClearEditing = vm::clearEditing,
             onAddExpenses = vm::addExpenses,
             onEditExpense = vm::editExpense,

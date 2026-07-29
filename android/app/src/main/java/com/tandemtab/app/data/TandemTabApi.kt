@@ -152,6 +152,14 @@ class TandemTabApi(
     /** Per-category budget coverage (allocated / spent / remaining) for the Spending → Categories view. */
     suspend fun budgets(accountId: String): BudgetsViewDto = authedGet("/accounts/$accountId/budgets").body()
 
+    /** Upsert a category's budget for the current period; returns a refreshed budgets view to reconcile from. */
+    suspend fun setBudget(accountId: String, categoryId: String, req: SetBudgetRequest): BudgetMutationDto =
+        authedPut("/accounts/$accountId/budgets/$categoryId", req).body()
+
+    /** Remove a category's budget for the current period; returns a refreshed budgets view. */
+    suspend fun removeBudget(accountId: String, categoryId: String): BudgetMutationDto =
+        authedDelete("/accounts/$accountId/budgets/$categoryId").body()
+
     suspend fun savings(accountId: String): SavingsViewDto = authedGet("/accounts/$accountId/savings").body()
 
     /** Earmark money into a savings bucket. Returns a refreshed Savings view to reconcile without a re-fetch. */

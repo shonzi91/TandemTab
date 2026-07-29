@@ -10,7 +10,9 @@ import com.tandemtab.app.data.AddDepositRequest
 import com.tandemtab.app.data.AddExpenseRequest
 import com.tandemtab.app.data.AddSavingDepositRequest
 import com.tandemtab.app.data.ChangePasswordRequest
+import com.tandemtab.app.data.BudgetMutationDto
 import com.tandemtab.app.data.BudgetRowDto
+import com.tandemtab.app.data.SetBudgetRequest
 import com.tandemtab.app.data.CategoryOptionDto
 import com.tandemtab.app.data.ExpenseDto
 import com.tandemtab.app.data.FundOptionDto
@@ -773,6 +775,47 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             }
         }
     }
+
+    // --- Budgets (inline set / remove on the Spending Categories view) ----------------------------------
+
+    /** Upsert a category's budget cap; reconciles the Spending view from the returned budgets snapshot. */
+    fun setBudget(categoryId: String, amount: Double, onDone: () -> Unit) {
+        val accountId = _state.value.selectedAccountId ?: return
+        _state.update { it.copy(spending = it.spending.copy(saving = true, saveError = null)) }
+        viewModelScope.launch {
+            try {
+                val mut = api.setBudget(accountId, categoryId, SetBudgetRequest(amount))
+                _state.update { applyBudgetView(it, mut) }
+                onDone()
+            } catch (e: Exception) {
+                _state.update { it.copy(spending = it.spending.copy(saving = false, saveError = e.message ?: "Couldn't save the budget.")) }
+            }
+        }
+    }
+
+    /** Remove a category's budget cap; reconciles from the returned budgets snapshot. */
+    fun removeBudget(categoryId: String, onDone: () -> Unit) {
+        val accountId = _state.value.selectedAccountId ?: return
+        _state.update { it.copy(spending = it.spending.copy(saving = true, saveError = null)) }
+        viewModelScope.launch {
+            try {
+                val mut = api.removeBudget(accountId, categoryId)
+                _state.update { applyBudgetView(it, mut) }
+                onDone()
+            } catch (e: Exception) {
+                _state.update { it.copy(spending = it.spending.copy(saving = false, saveError = e.message ?: "Couldn't remove the budget.")) }
+            }
+        }
+    }
+
+    private fun applyBudgetView(st: UiState, mut: BudgetMutationDto): UiState = st.copy(
+        spending = st.spending.copy(
+            saving = false, saveError = null,
+            budgets = mut.view.budgets,
+            totalBudgeted = mut.view.totalBudgeted,
+            totalSpent = mut.view.totalSpent,
+        ),
+    )
 
     // --- Profile & Account settings ---------------------------------------------------------------------
 
