@@ -241,18 +241,22 @@ private fun ExpenseDrawer(open: Boolean, expenses: () -> List<ExpenseDto>, fmt: 
     }
 }
 
-/** Pencil affordance on an expense row — opens the add sheet in edit mode. Hidden for auto-filed / from-savings
- *  rows, which aren't hand-editable expenses (matches the web, which only edits real manual entries). */
+/** Pencil affordance on an expense row — opens the add sheet in edit mode. Auto-filed / from-savings rows aren't
+ *  hand-editable (matches the web), so they render a blank slot of the same width — this keeps the pencils (and the
+ *  amounts to their left) lined up in one column across every row, editable or not. */
 @Composable
 private fun EditExpenseButton(e: ExpenseDto, onEdit: (ExpenseDto) -> Unit) {
-    if (e.autoFiled || e.fromSavings) return
     val tandem = LocalTandemColors.current
     Spacer(Modifier.width(6.dp))
-    Box(
-        Modifier.size(30.dp).clip(RoundedCornerShape(8.dp)).clickable { onEdit(e) },
-        contentAlignment = Alignment.Center,
-    ) {
-        Icon(Icons.Rounded.Edit, contentDescription = "Edit expense", tint = tandem.muted, modifier = Modifier.size(17.dp))
+    if (e.autoFiled || e.fromSavings) {
+        Spacer(Modifier.width(30.dp))   // reserve the column so nothing shifts
+    } else {
+        Box(
+            Modifier.size(30.dp).clip(RoundedCornerShape(8.dp)).clickable { onEdit(e) },
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(Icons.Rounded.Edit, contentDescription = "Edit expense", tint = tandem.muted, modifier = Modifier.size(17.dp))
+        }
     }
 }
 
