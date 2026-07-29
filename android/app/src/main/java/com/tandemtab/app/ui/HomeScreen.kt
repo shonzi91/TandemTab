@@ -96,6 +96,8 @@ private enum class NavDest(val label: String, val icon: ImageVector) {
 @Composable
 fun HomeScreen(
     state: UiState,
+    darkTheme: Boolean,
+    onToggleTheme: () -> Unit,
     onSelectAccount: (String) -> Unit,
     onSignOut: () -> Unit,
     onOpenSettings: () -> Unit,
@@ -112,6 +114,7 @@ fun HomeScreen(
     onSkipRecurring: (String) -> Unit,
     onPrepareAdd: () -> Unit,
     onPrepareEditLast: () -> Unit,
+    onBeginEditExpense: (com.tandemtab.app.data.ExpenseDto) -> Unit,
     onClearEditing: () -> Unit,
     onAddExpenses: (List<com.tandemtab.app.data.AddExpenseRequest>, () -> Unit) -> Unit,
     onEditExpense: (String, com.tandemtab.app.data.AddExpenseRequest, () -> Unit) -> Unit,
@@ -216,7 +219,7 @@ fun HomeScreen(
                             onOpenRunway = { showRunway = true },
                             onOpenAccount = { onOpenSettings(); showAccount = true },
                         )
-                        NavDest.Spending -> SpendingScreen(spending = state.spending, onRetry = { onLoadSpending(true) })
+                        NavDest.Spending -> SpendingScreen(spending = state.spending, onRetry = { onLoadSpending(true) }, onEdit = onBeginEditExpense)
                         NavDest.Goals -> GoalsScreen(
                             goals = state.goals,
                             spending = state.spending,
@@ -258,6 +261,8 @@ fun HomeScreen(
         if (showProfile) {
             ProfileSheet(
                 state = state,
+                darkTheme = darkTheme,
+                onToggleTheme = onToggleTheme,
                 onChangePassword = onChangePassword,
                 onSignOut = { showProfile = false; onSignOut() },
                 onDismiss = { showProfile = false },

@@ -30,7 +30,8 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         handleAuthDeepLink(intent)
         setContent {
-            TandemTabTheme {
+            val dark by vm.darkTheme.collectAsState()
+            TandemTabTheme(darkTheme = dark) {
                 Surface(modifier = Modifier.fillMaxSize()) {
                     App(vm = vm, onGoogle = ::startGoogleSignIn)
                 }
@@ -62,6 +63,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun App(vm: AppViewModel, onGoogle: () -> Unit) {
     val state by vm.state.collectAsState()
+    val dark by vm.darkTheme.collectAsState()
     when (state.screen) {
         Screen.Splash -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             CircularProgressIndicator()
@@ -85,6 +87,8 @@ private fun App(vm: AppViewModel, onGoogle: () -> Unit) {
         )
         Screen.Home -> HomeScreen(
             state = state,
+            darkTheme = dark,
+            onToggleTheme = vm::toggleTheme,
             onSelectAccount = vm::selectAccount,
             onSignOut = vm::signOut,
             onOpenSettings = vm::openSettings,
@@ -101,6 +105,7 @@ private fun App(vm: AppViewModel, onGoogle: () -> Unit) {
             onSkipRecurring = vm::skipRecurring,
             onPrepareAdd = vm::prepareAdd,
             onPrepareEditLast = vm::prepareEditLast,
+            onBeginEditExpense = vm::beginEdit,
             onClearEditing = vm::clearEditing,
             onAddExpenses = vm::addExpenses,
             onEditExpense = vm::editExpense,

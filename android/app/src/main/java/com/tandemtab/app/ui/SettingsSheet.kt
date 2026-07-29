@@ -62,6 +62,8 @@ import com.tandemtab.app.ui.theme.LocalTandemColors
 @Composable
 fun ProfileSheet(
     state: UiState,
+    darkTheme: Boolean,
+    onToggleTheme: () -> Unit,
     onChangePassword: (String, String) -> Unit,
     onSignOut: () -> Unit,
     onDismiss: () -> Unit,
@@ -122,6 +124,23 @@ fun ProfileSheet(
             ) {
                 if (settings.busy) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
                 else Text("Change password")
+            }
+        }
+
+        SectionDivider()
+
+        // Appearance — a manual light/dark switch, mirroring the web's sun/moon toggle in the profile menu.
+        SectionTitle("Appearance")
+        Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(if (darkTheme) "Dark theme" else "Light theme", color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f))
+            Box(
+                Modifier.size(44.dp).clip(CircleShape)
+                    .border(1.dp, MaterialTheme.colorScheme.outline, CircleShape)
+                    .background(tandem.hero)
+                    .clickable(onClick = onToggleTheme),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(if (darkTheme) "☀️" else "🌙", fontSize = 18.sp)
             }
         }
 

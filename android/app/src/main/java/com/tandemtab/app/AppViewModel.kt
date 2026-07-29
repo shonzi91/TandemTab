@@ -1,6 +1,7 @@
 package com.tandemtab.app
 
 import android.app.Application
+import android.content.Context
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.tandemtab.app.data.AccountOverviewDto
@@ -164,6 +165,19 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     private val _state = MutableStateFlow(UiState())
     val state: StateFlow<UiState> = _state.asStateFlow()
+
+    // Theme is a manual choice (not the system setting), persisted, defaulting to dark — mirroring the web,
+    // whose finappGetTheme() returns localStorage 'finapp-theme' or 'dark'. Read synchronously so the first
+    // frame paints the chosen theme with no light→dark flash.
+    private val uiPrefs = app.getSharedPreferences("tandem_ui", Context.MODE_PRIVATE)
+    private val _darkTheme = MutableStateFlow(uiPrefs.getBoolean("dark_theme", true))
+    val darkTheme: StateFlow<Boolean> = _darkTheme.asStateFlow()
+
+    fun toggleTheme() {
+        val next = !_darkTheme.value
+        uiPrefs.edit().putBoolean("dark_theme", next).apply()
+        _darkTheme.value = next
+    }
 
     init {
         // Discover which external providers to show (best-effort — button stays hidden if unreachable).
@@ -727,6 +741,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun clearEditing() = _state.update { it.copy(editingExpense = null) }
+
+    /** Begin editing a specific expense picked from a list row — raises the shared add sheet in edit mode.
+     *  Skips auto-filed / from-savings rows (they aren't hand-editable expenses). */
+    fun beginEdit(expense: ExpenseDto) {
+        if (expense.autoFiled || expense.fromSavings) return
+        _state.update { it.copy(editingExpense = expense) }
+    }
 
     /** Save an edit to an existing expense (the FAB's "Edit last"). Splices the updated row back into the Spending
      *  list and reflects the recomputed overview; [onDone] fires only on success so the sheet can close. */

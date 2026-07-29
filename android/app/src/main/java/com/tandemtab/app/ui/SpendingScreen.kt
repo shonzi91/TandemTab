@@ -13,11 +13,13 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.BarChart
 import androidx.compose.material.icons.rounded.CalendarMonth
+import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -30,6 +32,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
@@ -52,7 +55,7 @@ private enum class SpendView { Categories, ByDate }
  * expenses — mirroring the web) and a By-date ledger. Figures resolved server-side (/spending + /budgets).
  */
 @Composable
-fun SpendingScreen(spending: SpendingUi, onRetry: () -> Unit) {
+fun SpendingScreen(spending: SpendingUi, onRetry: () -> Unit, onEdit: (ExpenseDto) -> Unit) {
     val tandem = LocalTandemColors.current
     val fmt = rememberMoney(spending.currency)
     var view by remember { mutableStateOf(SpendView.Categories) }
@@ -74,8 +77,8 @@ fun SpendingScreen(spending: SpendingUi, onRetry: () -> Unit) {
             ViewToggle(view) { view = it }
             Spacer(Modifier.height(14.dp))
             when (view) {
-                SpendView.Categories -> CategoriesView(spending, fmt)
-                SpendView.ByDate -> ByDateView(spending, fmt)
+                SpendView.Categories -> CategoriesView(spending, fmt, onEdit)
+                SpendView.ByDate -> ByDateView(spending, fmt, onEdit)
             }
         }
     }
@@ -113,7 +116,7 @@ private fun ViewToggle(view: SpendView, onSelect: (SpendView) -> Unit) {
 // --- Categories view --------------------------------------------------------------------------------
 
 @Composable
-private fun CategoriesView(spending: SpendingUi, fmt: (Double) -> String) {
+private fun CategoriesView(spending: SpendingUi, fmt: (Double) -> String, onEdit: (ExpenseDto) -> Unit) {
     val tandem = LocalTandemColors.current
     val budgetedIds = remember(spending.budgets) { spending.budgets.map { it.categoryId }.toSet() }
     val catParent = remember(spending.categories) { spending.categories.associate { it.id to it.parentId } }
@@ -151,7 +154,7 @@ private fun CategoriesView(spending: SpendingUi, fmt: (Double) -> String) {
 
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         spending.budgets.sortedByDescending { it.spent }.forEach { b ->
-            BudgetRow(b, fmt, expenses = { expensesFor(b.categoryId) })
+            BudgetRow(b, fmt, expenses = { expensesFor(b.categoryId) }, onEdit = onEdit)
         }
     }
 
@@ -160,14 +163,14 @@ private fun CategoriesView(spending: SpendingUi, fmt: (Double) -> String) {
         Text("OTHER SPENDING", fontSize = 10.sp, letterSpacing = 1.2.sp, fontWeight = FontWeight.Bold, color = tandem.muted, modifier = Modifier.padding(start = 4.dp, bottom = 8.dp))
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             unbudgeted.forEach { (id, nameIcon, spent) ->
-                UnbudgetedRow(nameIcon.first, nameIcon.second, spent, fmt, expenses = { expensesFor(id) })
+                UnbudgetedRow(nameIcon.first, nameIcon.second, spent, fmt, expenses = { expensesFor(id) }, onEdit = onEdit)
             }
         }
     }
 }
 
 @Composable
-private fun BudgetRow(b: BudgetRowDto, fmt: (Double) -> String, expenses: () -> List<ExpenseDto>) {
+private fun BudgetRow(b: BudgetRowDto, fmt: (Double) -> String, expenses: () -> List<ExpenseDto>, onEdit: (ExpenseDto) -> Unit) {
     val tandem = LocalTandemColors.current
     var open by remember { mutableStateOf(false) }
     val fraction = if (b.allocated > 0) (b.spent / b.allocated).toFloat().coerceIn(0f, 1f) else if (b.spent > 0) 1f else 0f
@@ -190,12 +193,12 @@ private fun BudgetRow(b: BudgetRowDto, fmt: (Double) -> String, expenses: () -> 
             if (b.over) "${fmt(-b.remaining)} over budget" else "${fmt(b.remaining)} left",
             fontSize = 12.sp, color = if (b.over) tandem.spent else tandem.muted,
         )
-        ExpenseDrawer(open, expenses, fmt)
+        ExpenseDrawer(open, expenses, fmt, onEdit)
     }
 }
 
 @Composable
-private fun UnbudgetedRow(name: String, icon: String?, spent: Double, fmt: (Double) -> String, expenses: () -> List<ExpenseDto>) {
+private fun UnbudgetedRow(name: String, icon: String?, spent: Double, fmt: (Double) -> String, expenses: () -> List<ExpenseDto>, onEdit: (ExpenseDto) -> Unit) {
     val tandem = LocalTandemColors.current
     var open by remember { mutableStateOf(false) }
     Column(
@@ -212,12 +215,12 @@ private fun UnbudgetedRow(name: String, icon: String?, spent: Double, fmt: (Doub
             Text(fmt(spent), fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = tandem.spent)
         }
         Text("No budget set", fontSize = 12.sp, color = tandem.muted)
-        ExpenseDrawer(open, expenses, fmt)
+        ExpenseDrawer(open, expenses, fmt, onEdit)
     }
 }
 
 @Composable
-private fun ExpenseDrawer(open: Boolean, expenses: () -> List<ExpenseDto>, fmt: (Double) -> String) {
+private fun ExpenseDrawer(open: Boolean, expenses: () -> List<ExpenseDto>, fmt: (Double) -> String, onEdit: (ExpenseDto) -> Unit) {
     val tandem = LocalTandemColors.current
     AnimatedVisibility(open) {
         Column(Modifier.padding(top = 4.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -231,9 +234,25 @@ private fun ExpenseDrawer(open: Boolean, expenses: () -> List<ExpenseDto>, fmt: 
                         Text("${shortDate(e.date)} · ${e.fundName}", fontSize = 11.sp, color = tandem.muted, maxLines = 1)
                     }
                     Text(fmt(e.amount), fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = tandem.spent)
+                    EditExpenseButton(e, onEdit)
                 }
             }
         }
+    }
+}
+
+/** Pencil affordance on an expense row — opens the add sheet in edit mode. Hidden for auto-filed / from-savings
+ *  rows, which aren't hand-editable expenses (matches the web, which only edits real manual entries). */
+@Composable
+private fun EditExpenseButton(e: ExpenseDto, onEdit: (ExpenseDto) -> Unit) {
+    if (e.autoFiled || e.fromSavings) return
+    val tandem = LocalTandemColors.current
+    Spacer(Modifier.width(6.dp))
+    Box(
+        Modifier.size(30.dp).clip(RoundedCornerShape(8.dp)).clickable { onEdit(e) },
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(Icons.Rounded.Edit, contentDescription = "Edit expense", tint = tandem.muted, modifier = Modifier.size(17.dp))
     }
 }
 
@@ -282,7 +301,7 @@ private fun SummaryHeader(label: String, value: String, suffix: String, fraction
 // --- By-date view -----------------------------------------------------------------------------------
 
 @Composable
-private fun ByDateView(spending: SpendingUi, fmt: (Double) -> String) {
+private fun ByDateView(spending: SpendingUi, fmt: (Double) -> String, onEdit: (ExpenseDto) -> Unit) {
     val tandem = LocalTandemColors.current
     SpentHeader(fmt(spending.spent))
     Spacer(Modifier.height(16.dp))
@@ -301,7 +320,7 @@ private fun ByDateView(spending: SpendingUi, fmt: (Double) -> String) {
                 .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(14.dp)),
         ) {
             rows.forEachIndexed { i, e ->
-                ExpenseRow(e, fmt)
+                ExpenseRow(e, fmt, onEdit)
                 if (i < rows.lastIndex) {
                     Box(Modifier.fillMaxWidth().height(1.dp).padding(horizontal = 14.dp).background(tandem.hairline))
                 }
@@ -333,7 +352,7 @@ private fun DayHeader(iso: String) {
 }
 
 @Composable
-private fun ExpenseRow(e: ExpenseDto, fmt: (Double) -> String) {
+private fun ExpenseRow(e: ExpenseDto, fmt: (Double) -> String, onEdit: (ExpenseDto) -> Unit) {
     val tandem = LocalTandemColors.current
     Row(modifier = Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
         if (!e.categoryIcon.isNullOrBlank()) {
@@ -352,6 +371,7 @@ private fun ExpenseRow(e: ExpenseDto, fmt: (Double) -> String) {
                 Text(if (e.fromSavings) "from savings" else "auto", fontSize = 10.sp, color = tandem.muted)
             }
         }
+        EditExpenseButton(e, onEdit)
     }
 }
 
