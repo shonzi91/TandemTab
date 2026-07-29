@@ -123,6 +123,33 @@ data class SpendingViewDto(
     val funds: List<FundOptionDto> = emptyList(),
 )
 
+// --- Budgets (per-category coverage for the Spending → Categories view) -------------------------------
+
+@Serializable
+data class BudgetRowDto(
+    val categoryId: String,
+    val name: String,
+    val icon: String? = null,
+    val allocated: Double = 0.0,
+    val spent: Double = 0.0,
+    val remaining: Double = 0.0,
+    val alertThreshold: Double = 0.0,
+    val notifyEvery: Boolean = false,
+    val over: Boolean = false,
+    val essential: Boolean = false,
+    val maxBudget: Double = 0.0,
+)
+
+@Serializable
+data class BudgetsViewDto(
+    val version: Long = 0,
+    val currency: String = "",
+    val totalBudgeted: Double = 0.0,
+    val totalSpent: Double = 0.0,
+    val budgets: List<BudgetRowDto> = emptyList(),
+    val categories: List<CategoryOptionDto> = emptyList(),
+)
+
 // --- Add-expense write flow (mirrors FinApp.Contracts) ------------------------------------------------
 // POST /accounts/{id}/expenses. The member is the caller and FundSynced is derived server-side, so neither
 // travels in the request. `date` is an ISO yyyy-MM-dd string (maps to the server's DateOnly).

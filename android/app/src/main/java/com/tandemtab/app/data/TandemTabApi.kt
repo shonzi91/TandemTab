@@ -147,6 +147,9 @@ class TandemTabApi(
 
     suspend fun spending(accountId: String): SpendingViewDto = authedGet("/accounts/$accountId/spending").body()
 
+    /** Per-category budget coverage (allocated / spent / remaining) for the Spending → Categories view. */
+    suspend fun budgets(accountId: String): BudgetsViewDto = authedGet("/accounts/$accountId/budgets").body()
+
     suspend fun savings(accountId: String): SavingsViewDto = authedGet("/accounts/$accountId/savings").body()
 
     /** Earmark money into a savings bucket. Returns a refreshed Savings view to reconcile without a re-fetch. */

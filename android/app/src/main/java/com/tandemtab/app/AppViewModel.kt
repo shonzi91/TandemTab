@@ -8,6 +8,7 @@ import com.tandemtab.app.data.AccountSummaryDto
 import com.tandemtab.app.data.AddDepositRequest
 import com.tandemtab.app.data.AddExpenseRequest
 import com.tandemtab.app.data.AddSavingDepositRequest
+import com.tandemtab.app.data.BudgetRowDto
 import com.tandemtab.app.data.CategoryOptionDto
 import com.tandemtab.app.data.ExpenseDto
 import com.tandemtab.app.data.FundOptionDto
@@ -76,6 +77,10 @@ data class SpendingUi(
     val categories: List<CategoryOptionDto> = emptyList(),
     val funds: List<FundOptionDto> = emptyList(),
     val recent: List<RecentExpenseDto> = emptyList(),
+    // Per-category budget coverage for the Categories view (fetched alongside /spending).
+    val budgets: List<BudgetRowDto> = emptyList(),
+    val totalBudgeted: Double = 0.0,
+    val totalSpent: Double = 0.0,
     // Contribution (income source) categories for the add sheet's Income tab, from /income.
     val incomeCategories: List<CategoryOptionDto> = emptyList(),
     // Add sheet flight state (a batch expense save or an income deposit is in progress / its last error).
@@ -330,6 +335,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                         currency = v.currency, spent = v.overview.spent, expenses = v.expenses,
                         categories = v.categories, funds = v.funds,
                     ))
+                }
+                // Budget coverage rides alongside for the Categories view (best-effort — don't fail the tab on it).
+                runCatching { api.budgets(accountId) }.getOrNull()?.let { b ->
+                    _state.update { it.copy(spending = it.spending.copy(budgets = b.budgets, totalBudgeted = b.totalBudgeted, totalSpent = b.totalSpent)) }
                 }
             } catch (e: Exception) {
                 _state.update { it.copy(spending = it.spending.copy(loading = false, error = e.message ?: "Couldn't load spending.")) }
