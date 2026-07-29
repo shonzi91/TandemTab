@@ -27,7 +27,6 @@
                     </button>
                     <button class="user" title="@Loc["Profile settings"]" @onclick="OpenProfile">@Loc["Hello,"] @Auth.CurrentUser!.Username</button>
                 </span>
-                <button class="link" @onclick="SignOut">@Loc["Sign out"]</button>
             </span>
         </header>
     }
@@ -294,7 +293,10 @@
                 @* While a focused sub-flow is active it has its own Back — hide the profile's Close so there's one clear action. *@
                 @if (!InProfileSubflow)
                 {
+                    @* Sign out lives here now (moved off the top bar) — left-aligned so it reads as the account action,
+                       with Close on the right. *@
                     <div class="pm-actions">
+                        <button class="ghost danger" @onclick="SignOut">@Loc["Sign out"]</button>
                         <button class="ghost" @onclick="CloseProfile">@Loc["Close"]</button>
                     </div>
                 }

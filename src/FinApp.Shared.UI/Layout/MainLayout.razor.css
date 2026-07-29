@@ -179,6 +179,8 @@ html.dark .pm-privacy li { color: #c3cad4; }
 }
 .pm-actions button:disabled { background: #c7c9d6; cursor: not-allowed; }
 .pm-actions button.ghost { background: #e4f6ee; color: #13a06e; }
+/* Sign out sits at the left of the profile footer, styled as a muted destructive action (Close stays on the right). */
+.pm-actions button.ghost.danger { background: #fef2f2; color: #b91c1c; margin-right: auto; }
 
 .appbar-user .link {
     background: rgba(255, 255, 255, .15);

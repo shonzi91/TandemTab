@@ -738,17 +738,9 @@ html.dark .tag-filter-clear { color: #3fe0c5; }
 html.dark .brk-date { color: #8b96a4; }
 html.dark .brk-date input[type=date] { background: #171d26; border-color: #2c3644; color: #e8eef0; }
 
-/* One nav bar: breadcrumb (left, empty at top level) + the category/tag split (right, always the same spot). The
-   min-height reserves the row so drilling in/out never shifts the chart below. */
-.brk-nav { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; min-height: 34px; }
-.brk-nav-crumb { display: inline-flex; align-items: center; gap: 8px; min-width: 0; flex: 1 1 auto; }
-.brk-back { display: inline-flex; align-items: center; gap: 3px; border: none; background: none; cursor: pointer;
-    color: #0f7a54; font: inherit; font-size: .82rem; font-weight: 700; padding: 2px 4px; }
-.brk-back-chev { transform: rotate(90deg); width: 14px; height: 14px; }
-.brk-crumb-cur { display: inline-flex; align-items: center; gap: 5px; font-weight: 700; font-size: .88rem; min-width: 0; }
-.brk-crumb-cur svg { width: 16px; height: 16px; }
-.brk-split { display: flex; gap: 6px; margin-left: auto; flex: 0 0 auto; }
-html.dark .brk-back { color: #3fe0c5; }
+/* Grouping toggle (left) and the Income/Spent/of-income context (right) share one row; both wrap on narrow screens. */
+.brk-controls { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px 14px; }
+.brk-split { display: flex; gap: 6px; flex: 0 0 auto; }
 
 /* Income / spent context for the window (not budgets) + the resolved date range. */
 .brk-range-lbl { display: inline-flex; align-items: center; gap: 5px; color: #8a97a0; font-size: .78rem; font-weight: 600; }
@@ -786,16 +778,29 @@ html.dark .brk-item-head:hover { background: #191e27; }
 .brk-item-amt { font-weight: 700; white-space: nowrap; display: inline-flex; align-items: baseline; gap: 7px; }
 .brk-item-pct { font-size: .76rem; font-weight: 600; color: #8a97a0; min-width: 42px; text-align: right; }
 html.dark .brk-item-pct { color: #8b96a4; }
-.brk-pie-btn { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border: none; border-radius: 8px; background: none; color: #93a1ad; cursor: pointer; flex: none; }
-.brk-pie-btn:hover { background: #eef6f1; color: #0f7a54; }
-.brk-pie-btn svg { width: 17px; height: 17px; }
-html.dark .brk-pie-btn { color: #7f8b9a; }
-html.dark .brk-pie-btn:hover { background: #17251e; color: #3fe0c5; }
 .brk-item-chev { width: 16px; height: 16px; color: #b6c0cc; flex: none; transition: transform .15s; }
 .brk-item.open .brk-item-chev { transform: rotate(90deg); }
-/* Expand-in-place: the expenses behind a slice — a tidy card indented under the row, accented in the slice colour. */
+/* Expand-in-place: the expenses behind a slice — a tidy block indented under the row, accented in the slice colour.
+   A category slice can regroup its own expenses by sub-category/tag (the .brk-exp-group chips + per-group headers);
+   transfers and the other slices just list their rows. */
+.brk-exp { margin: 2px 6px 12px 30px; padding-left: 12px; border-left: 2px solid var(--accent, #dde6e1); }
+.brk-exp-group { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; padding: 4px 2px 6px; }
+.brk-exp-group-lbl { font-size: .66rem; font-weight: 700; letter-spacing: .4px; text-transform: uppercase; color: #8a97a0; margin-right: 2px; }
+.brk-exp-group .chip { border: 1px solid #e6ece9; background: #faf8f3; color: #5b6270; cursor: pointer; font-weight: 600; border-radius: 999px; padding: 3px 10px; font-size: .74rem; }
+.brk-exp-group .chip.on { background: #13a06e; border-color: #13a06e; color: #ffffff; }
+html.dark .brk-exp-group-lbl { color: #8b96a4; }
+html.dark .brk-exp-group .chip { background: #171d26; border-color: #2c3644; color: #c4ccd6; }
+html.dark .brk-exp-group .chip.on { background: #13a06e; border-color: #13a06e; color: #ffffff; }
+.brk-exp-grp-head { display: flex; align-items: center; gap: 7px; padding: 8px 6px 2px; }
+.brk-exp-grp-head svg { width: 15px; height: 15px; }
+.brk-exp-grp-name { font-size: .78rem; font-weight: 800; color: #384250; }
+.brk-exp-grp-tot { margin-left: auto; font-size: .78rem; font-weight: 800; color: #5b6470; }
+html.dark .brk-exp-grp-name { color: #d3dae2; }
+html.dark .brk-exp-grp-tot { color: #aab4c0; }
 .brk-exp-list { list-style: none; margin: 2px 6px 12px 30px; padding: 4px 4px 4px 12px; display: flex; flex-direction: column;
     border-left: 2px solid var(--accent, #dde6e1); }
+/* Nested inside .brk-exp (category regrouping) the wrapper already draws the accent rail + indent. */
+.brk-exp .brk-exp-list { margin: 0; padding: 2px 0; border-left: none; }
 .brk-exp-row { display: flex; align-items: center; gap: 11px; padding: 6px 8px; border-radius: 9px; }
 .brk-exp-row:hover { background: #f6faf8; }
 html.dark .brk-exp-row:hover { background: #191e27; }
