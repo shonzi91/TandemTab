@@ -149,9 +149,48 @@ class TandemTabApi(
 
     suspend fun savings(accountId: String): SavingsViewDto = authedGet("/accounts/$accountId/savings").body()
 
+    /** Earmark money into a savings bucket. Returns a refreshed Savings view to reconcile without a re-fetch. */
+    suspend fun allocateSaving(accountId: String, req: AddSavingDepositRequest): SavingsMutationDto =
+        authedPost("/accounts/$accountId/savings/deposits", req).body()
+
+    /** Draw a bucket down as a real expense (also lands in Spending). Returns version + the new expense id. */
+    suspend fun spendFromSavings(accountId: String, req: SpendFromSavingsRequest): MutationResultDto =
+        authedPost("/accounts/$accountId/savings/spend", req).body()
+
     suspend fun wallets(accountId: String): WalletsViewDto = authedGet("/accounts/$accountId/wallets").body()
 
+    suspend fun income(accountId: String): IncomeViewDto = authedGet("/accounts/$accountId/income").body()
+
+    /** Move money between two funds. Returns a refreshed Wallets view to reconcile without a re-fetch. */
+    suspend fun transferFunds(accountId: String, req: TransferFundsRequest): FundMutationDto =
+        authedPost("/accounts/$accountId/fund-transfers", req).body()
+
+    /** Record income into a fund (a deposit). Returns the recomputed overview. */
+    suspend fun addDeposit(accountId: String, req: AddDepositRequest): DepositMutationDto =
+        authedPost("/accounts/$accountId/deposits", req).body()
+
     suspend fun overview(accountId: String): AccountOverviewDto = authedGet("/accounts/$accountId/overview").body()
+
+    /** The Health/Insights read: score, savings rate, outgoings trend, signals, mini-trends, quick wins. */
+    suspend fun insights(accountId: String): InsightsDto = authedGet("/accounts/$accountId/insights").body()
+
+    /** Recurring bills / income expectations with their due state for the open period. */
+    suspend fun recurring(accountId: String): RecurringViewDto = authedGet("/accounts/$accountId/recurring").body()
+
+    /** Confirm a due bill/income (posts a real expense/income with the actual amount). Returns a refreshed view. */
+    suspend fun confirmRecurring(accountId: String, recurringId: String, req: ConfirmRecurringRequest): RecurringMutationDto =
+        authedPost("/accounts/$accountId/recurring/$recurringId/confirm", req).body()
+
+    /** Skip a due item for this period (marks it handled, posts nothing). Returns a refreshed view. */
+    suspend fun skipRecurring(accountId: String, recurringId: String): RecurringMutationDto =
+        authedPostEmpty("/accounts/$accountId/recurring/$recurringId/skip").body()
+
+    /** Recent manual-expense history the add-expense modal derives its "most-used" chips + default funds from. */
+    suspend fun expenseEntry(accountId: String): ExpenseEntryDto = authedGet("/accounts/$accountId/expense-entry").body()
+
+    /** Log a manual expense in the open period. Returns the new row + recomputed overview to reconcile without a re-fetch. */
+    suspend fun addExpense(accountId: String, req: AddExpenseRequest): ExpenseMutationDto =
+        authedPost("/accounts/$accountId/expenses", req).body()
 
     /** Revoke the refresh token server-side (best-effort) and forget the session locally. */
     suspend fun signOut() {
@@ -173,6 +212,34 @@ class TandemTabApi(
             resp = client.get(path) { header(HttpHeaders.Authorization, "Bearer ${requireToken()}") }
         }
         ensureOk(resp.status, resp.bodyAsText())
+        return resp
+    }
+
+    /** POST an authed endpoint with a JSON body, same stale/401 refresh handling as [authedGet]. */
+    private suspend inline fun <reified T> authedPost(path: String, body: T): HttpResponse {
+        ensureFreshToken()
+        var resp = client.post(path) {
+            header(HttpHeaders.Authorization, "Bearer ${requireToken()}")
+            setBody(body)
+        }
+        if (resp.status == HttpStatusCode.Unauthorized && tryRefresh()) {
+            resp = client.post(path) {
+                header(HttpHeaders.Authorization, "Bearer ${requireToken()}")
+                setBody(body)
+            }
+        }
+        ensureOk(resp.status, serverMessageOr(resp.bodyAsText(), "That didn't save. Please try again."))
+        return resp
+    }
+
+    /** POST an authed endpoint that takes no body (e.g. recurring skip), same refresh handling as [authedGet]. */
+    private suspend fun authedPostEmpty(path: String): HttpResponse {
+        ensureFreshToken()
+        var resp = client.post(path) { header(HttpHeaders.Authorization, "Bearer ${requireToken()}") }
+        if (resp.status == HttpStatusCode.Unauthorized && tryRefresh()) {
+            resp = client.post(path) { header(HttpHeaders.Authorization, "Bearer ${requireToken()}") }
+        }
+        ensureOk(resp.status, serverMessageOr(resp.bodyAsText(), "That didn't save. Please try again."))
         return resp
     }
 

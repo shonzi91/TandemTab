@@ -123,6 +123,49 @@ data class SpendingViewDto(
     val funds: List<FundOptionDto> = emptyList(),
 )
 
+// --- Add-expense write flow (mirrors FinApp.Contracts) ------------------------------------------------
+// POST /accounts/{id}/expenses. The member is the caller and FundSynced is derived server-side, so neither
+// travels in the request. `date` is an ISO yyyy-MM-dd string (maps to the server's DateOnly).
+
+@Serializable
+data class AddExpenseRequest(
+    val categoryId: String,
+    val amount: Double,
+    val fundId: String,
+    val date: String,
+    val note: String? = null,
+    val onBehalfOfOtherAccount: Boolean = false,
+    val tagIds: List<String>? = null,
+)
+
+/** What POST/PUT/DELETE /expenses returns: the new snapshot version, the row's id, the (added/edited) row for the
+ *  client to splice into its list, and the recomputed bank-adjusted overview — so a thin client reconciles with no
+ *  re-fetch. `expense` is null on a delete. */
+@Serializable
+data class ExpenseMutationDto(
+    val version: Long = 0,
+    val entityId: String? = null,
+    val expense: ExpenseDto? = null,
+    val overview: AccountOverviewDto,
+)
+
+/** One past manual expense the add-expense modal derives its "recent" chips + per-category default fund from
+ *  (GET /expense-entry — spans every period, newest-first). */
+@Serializable
+data class RecentExpenseDto(
+    val categoryId: String,
+    val fundId: String,
+    val amount: Double,
+    val note: String? = null,
+    val date: String,
+)
+
+@Serializable
+data class ExpenseEntryDto(
+    val version: Long = 0,
+    val recent: List<RecentExpenseDto> = emptyList(),
+)
+
 // --- Goals / Savings (mirrors FinApp.Contracts.SavingsView) ------------------------------------------
 // Every figure resolved server-side; the client just renders. Kind is "goal"/"debt"/"investment"/"sinking".
 
@@ -152,6 +195,41 @@ data class SavingsViewDto(
     val availableToSave: Double = 0.0,
     val maxAdditionalSavings: Double = 0.0,
     val buckets: List<SavingBucketDto> = emptyList(),
+)
+
+// --- Savings (Goals) write flows ---------------------------------------------------------------------
+
+/** Generic write result: new version + the affected entity id. */
+@Serializable
+data class MutationResultDto(val version: Long = 0, val entityId: String? = null)
+
+/** POST /accounts/{id}/savings/deposits — earmark money into a bucket ("Add to savings"). */
+@Serializable
+data class AddSavingDepositRequest(
+    val savingCategoryId: String,
+    val amount: Double,
+    val date: String,
+    val note: String? = null,
+)
+
+/** POST /accounts/{id}/savings/spend — draw a bucket down as a real expense. `fundId` empty = the server's
+ *  default spendable fund. */
+@Serializable
+data class SpendFromSavingsRequest(
+    val savingCategoryId: String,
+    val categoryId: String,
+    val amount: Double,
+    val date: String,
+    val fundId: String,
+    val note: String? = null,
+)
+
+/** What a savings money-movement returns: version, the row id, and a refreshed Savings view to reconcile. */
+@Serializable
+data class SavingsMutationDto(
+    val version: Long = 0,
+    val entityId: String? = null,
+    val view: SavingsViewDto,
 )
 
 // --- Wallets / Funds (mirrors FinApp.Contracts.WalletsView) ------------------------------------------
@@ -189,4 +267,167 @@ data class WalletsViewDto(
     val funds: List<FundRowDto> = emptyList(),
     val archivedFunds: List<FundRowDto> = emptyList(),
     val transfers: List<FundTransferRowDto> = emptyList(),
+)
+
+// --- Wallets write flows: move money between funds, record income into a fund --------------------------
+
+/** POST /accounts/{id}/fund-transfers. `date` is an ISO yyyy-MM-dd string (server DateOnly?). */
+@Serializable
+data class TransferFundsRequest(
+    val fromFundId: String,
+    val toFundId: String,
+    val amount: Double,
+    val date: String? = null,
+    val note: String? = null,
+)
+
+/** What a fund write (transfer / fund CRUD) returns: the new version, the affected entity id, and a fully
+ *  refreshed Wallets view so the client reconciles balances/transfers with no re-fetch. */
+@Serializable
+data class FundMutationDto(
+    val version: Long = 0,
+    val entityId: String? = null,
+    val view: WalletsViewDto,
+)
+
+/** POST /accounts/{id}/deposits — record income into a fund. `categoryId` empty = general income; deposits with
+ *  the same (member, category, fund) merge server-side. `date` is an ISO yyyy-MM-dd string. */
+@Serializable
+data class AddDepositRequest(
+    val categoryId: String,
+    val fundId: String,
+    val amount: Double,
+    val date: String,
+)
+
+/** What a deposit write returns: the new version, the (merged) deposit row id, and the recomputed overview
+ *  (income moves Contributed/Current/Free, not the fund/transfer lists — so re-fetch Wallets for balances). */
+@Serializable
+data class DepositMutationDto(
+    val version: Long = 0,
+    val entityId: String? = null,
+    val overview: AccountOverviewDto,
+)
+
+// --- Recurring (bills / income expectations) ---------------------------------------------------------
+
+@Serializable
+data class RecurringRowDto(
+    val id: String,
+    val name: String,
+    val icon: String? = null,
+    val kind: String,          // "expense" | "income"
+    val mode: String,          // "fixed" | "typical" | "reminder"
+    val expected: Double = 0.0,
+    val dayOfMonth: Int = 0,
+    val categoryName: String = "",
+    val fundName: String = "",
+    val active: Boolean = true,
+    val due: Boolean = false,
+    val upcoming: Boolean = false,
+    val daysUntilDue: Int = 0,
+    val hasKnownAmount: Boolean = true,
+)
+
+@Serializable
+data class RecurringViewDto(
+    val version: Long = 0,
+    val currency: String = "",
+    val billsDue: Double = 0.0,
+    val items: List<RecurringRowDto> = emptyList(),
+)
+
+/** What a recurring confirm/skip returns: version, the item id, and the refreshed Recurring view. */
+@Serializable
+data class RecurringMutationDto(
+    val version: Long = 0,
+    val entityId: String? = null,
+    val view: RecurringViewDto,
+)
+
+/** POST /accounts/{id}/recurring/{id}/confirm — post the bill/income with its actual amount. */
+@Serializable
+data class ConfirmRecurringRequest(val actualAmount: Double)
+
+// --- Income surface (for the Add-income contribution-category picker) ---------------------------------
+
+@Serializable
+data class IncomeViewDto(
+    val version: Long = 0,
+    val currency: String = "",
+    val overview: AccountOverviewDto,
+    val deposits: List<DepositRowDto> = emptyList(),
+    val categories: List<CategoryOptionDto> = emptyList(),
+    val funds: List<FundOptionDto> = emptyList(),
+)
+
+// --- Insights / Health (mirrors FinApp.Contracts InsightsDto) -----------------------------------------
+// Narrative is language-independent: each message is a stable `code` + `args` the client renders via
+// InsightNarrator. Amounts/percents are formatted client-side (args carry raw numbers).
+
+@Serializable
+data class InsightArgDto(val kind: String, val number: Double = 0.0, val text: String? = null)
+
+@Serializable
+data class InsightMessageDto(val code: String, val args: List<InsightArgDto> = emptyList())
+
+@Serializable
+data class InsightSignalDto(
+    val kind: String,          // "warn" | "good" | "info"
+    val title: InsightMessageDto,
+    val desc: InsightMessageDto,
+    val delta: InsightMessageDto,
+    val dir: String,           // "up" | "down" | "flat"
+)
+
+@Serializable
+data class InsightCategoryDto(val name: String, val icon: String? = null, val amount: Double, val barFraction: Double, val dir: String)
+
+@Serializable
+data class InsightTrendPointDto(val label: String, val outgoings: Double, val barFraction: Double, val isCurrent: Boolean = false)
+
+@Serializable
+data class InsightMiniTrendDto(
+    val label: InsightMessageDto,
+    val icon: String? = null,
+    val points: List<Double> = emptyList(),
+    val currentText: InsightMessageDto,
+    val deltaNote: InsightMessageDto,
+    val dir: String,
+)
+
+@Serializable
+data class InsightsDto(
+    val hasData: Boolean = false,
+    val score: Int = 0,
+    val scoreDelta: Int? = null,
+    val band: String = "average",             // "healthy" | "average" | "at_risk"
+    val savingsRate: Double? = null,           // 0..1
+    val savingsTarget: Double = 0.20,          // 0..1
+    val savingsShortfall: Double? = null,
+    val trendUp: Boolean = false,
+    val trendAverage: Double = 0.0,
+    val trendAvgFraction: Double = 0.0,
+    val verdict: InsightMessageDto = InsightMessageDto("verdict.average"),
+    val summary: List<InsightMessageDto> = emptyList(),
+    val savingsCritique: List<InsightMessageDto> = emptyList(),
+    val trendNote: InsightMessageDto = InsightMessageDto("trend.none"),
+    val signals: List<InsightSignalDto> = emptyList(),
+    val breakdown: List<InsightCategoryDto> = emptyList(),
+    val trend: List<InsightTrendPointDto> = emptyList(),
+    val miniTrends: List<InsightMiniTrendDto> = emptyList(),
+    val quickWins: List<InsightMessageDto> = emptyList(),
+)
+
+@Serializable
+data class DepositRowDto(
+    val id: String,
+    val memberName: String = "",
+    val categoryId: String,
+    val categoryName: String = "",
+    val categoryIcon: String? = null,
+    val fundId: String,
+    val fundName: String = "",
+    val amount: Double,
+    val date: String,
 )

@@ -90,6 +90,21 @@ private fun App(vm: AppViewModel, onGoogle: () -> Unit) {
             onLoadSpending = vm::loadSpending,
             onLoadGoals = vm::loadGoals,
             onLoadWallets = vm::loadWallets,
+            onLoadHealth = vm::loadHealth,
+            onLoadRecurring = vm::loadRecurring,
+            onConfirmRecurring = vm::confirmRecurring,
+            onSkipRecurring = vm::skipRecurring,
+            onPrepareAdd = vm::prepareAdd,
+            onAddExpenses = vm::addExpenses,
+            onAddIncomeQuick = vm::addIncomeFromAdd,
+            onPrepareTransfer = vm::prepareTransfer,
+            onPrepareAddIncome = vm::prepareAddIncome,
+            onTransfer = vm::transferFunds,
+            onAddIncome = vm::addIncome,
+            onPrepareAllocate = vm::prepareAllocateSaving,
+            onPrepareSpend = vm::prepareSpendFromSavings,
+            onAllocate = vm::allocateSaving,
+            onSpendFromSavings = vm::spendFromSavings,
         )
     }
 }

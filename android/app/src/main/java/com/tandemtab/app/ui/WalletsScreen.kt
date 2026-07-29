@@ -11,12 +11,22 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.SwapHoriz
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -32,12 +42,22 @@ import java.util.Locale
 
 /**
  * The Wallets tab: where the money lives — each fund with its balance, plus this period's transfers.
- * Thin `WalletsViewDto` rendered directly (balances computed server-side, incl. synced funds).
+ * Thin `WalletsViewDto` rendered directly (balances computed server-side, incl. synced funds). Non-synced
+ * funds surface Transfer + Add-income actions (S68), which open the write sheets.
  */
 @Composable
-fun WalletsScreen(wallets: WalletsUi, onRetry: () -> Unit) {
+fun WalletsScreen(
+    wallets: WalletsUi,
+    onRetry: () -> Unit,
+    onPrepareTransfer: () -> Unit,
+    onPrepareAddIncome: () -> Unit,
+    onTransfer: (fromFundId: String, toFundId: String, amount: Double, date: String, note: String?, onDone: () -> Unit) -> Unit,
+    onAddIncome: (fundId: String, categoryId: String, amount: Double, date: String, onDone: () -> Unit) -> Unit,
+) {
     val tandem = LocalTandemColors.current
     val fmt = rememberWalletsMoney(wallets.currency)
+    var transferFrom by remember { mutableStateOf<FundRowDto?>(null) }
+    var incomeTo by remember { mutableStateOf<FundRowDto?>(null) }
 
     when {
         wallets.loading && wallets.funds.isEmpty() ->
@@ -62,7 +82,13 @@ fun WalletsScreen(wallets: WalletsUi, onRetry: () -> Unit) {
                 }
             } else {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    wallets.funds.forEach { FundRow(it, fmt) }
+                    wallets.funds.forEach { f ->
+                        FundRow(
+                            f, fmt,
+                            onTransfer = { onPrepareTransfer(); transferFrom = f },
+                            onAddIncome = { onPrepareAddIncome(); incomeTo = f },
+                        )
+                    }
                 }
             }
 
@@ -88,6 +114,23 @@ fun WalletsScreen(wallets: WalletsUi, onRetry: () -> Unit) {
             }
         }
     }
+
+    transferFrom?.let { from ->
+        TransferSheet(
+            from = from,
+            wallets = wallets,
+            onDismiss = { transferFrom = null },
+            onSubmit = { to, amt, date, note, onDone -> onTransfer(from.id, to, amt, date, note, onDone) },
+        )
+    }
+    incomeTo?.let { to ->
+        AddIncomeSheet(
+            to = to,
+            wallets = wallets,
+            onDismiss = { incomeTo = null },
+            onSubmit = { cat, amt, date, onDone -> onAddIncome(to.id, cat, amt, date, onDone) },
+        )
+    }
 }
 
 @Composable
@@ -106,13 +149,13 @@ private fun TotalHeader(total: String) {
 }
 
 @Composable
-private fun FundRow(f: FundRowDto, fmt: (Double) -> String) {
+private fun FundRow(f: FundRowDto, fmt: (Double) -> String, onTransfer: () -> Unit, onAddIncome: () -> Unit) {
     val tandem = LocalTandemColors.current
     Row(
         Modifier.fillMaxWidth()
             .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(14.dp))
             .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(14.dp))
-            .padding(14.dp),
+            .padding(start = 14.dp, top = 6.dp, bottom = 6.dp, end = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f)) {
@@ -128,6 +171,16 @@ private fun FundRow(f: FundRowDto, fmt: (Double) -> String) {
         }
         Spacer(Modifier.width(8.dp))
         Text(fmt(f.balance), fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+        // The two common actions sit next to the balance — only for a non-synced fund (a synced fund is
+        // driven by its real bank balance, so manual moves don't apply).
+        if (!f.synced) {
+            IconButton(onClick = onTransfer, modifier = Modifier.size(38.dp)) {
+                Icon(Icons.Rounded.SwapHoriz, "Transfer", tint = tandem.muted)
+            }
+            IconButton(onClick = onAddIncome, modifier = Modifier.size(38.dp)) {
+                Icon(Icons.Rounded.Add, "Add income", tint = tandem.muted)
+            }
+        }
     }
 }
 

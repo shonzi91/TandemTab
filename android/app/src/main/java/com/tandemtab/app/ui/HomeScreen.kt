@@ -2,6 +2,7 @@ package com.tandemtab.app.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -26,7 +27,7 @@ import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.automirrored.rounded.ReceiptLong
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.FabPosition
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -44,18 +45,24 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import com.tandemtab.app.UiState
+import com.tandemtab.app.ui.theme.BrandGreen
+import com.tandemtab.app.ui.theme.BrandGreenDark
 import com.tandemtab.app.ui.theme.LocalTandemColors
-import kotlinx.coroutines.launch
 import java.text.NumberFormat
 import java.util.Currency
 import java.util.Locale
@@ -78,11 +85,28 @@ fun HomeScreen(
     onLoadSpending: (Boolean) -> Unit,
     onLoadGoals: (Boolean) -> Unit,
     onLoadWallets: (Boolean) -> Unit,
+    onLoadHealth: (Boolean) -> Unit,
+    onLoadRecurring: (Boolean) -> Unit,
+    onConfirmRecurring: (String, Double) -> Unit,
+    onSkipRecurring: (String) -> Unit,
+    onPrepareAdd: () -> Unit,
+    onAddExpenses: (List<com.tandemtab.app.data.AddExpenseRequest>, () -> Unit) -> Unit,
+    onAddIncomeQuick: (String, String, Double, String, () -> Unit) -> Unit,
+    onPrepareTransfer: () -> Unit,
+    onPrepareAddIncome: () -> Unit,
+    onTransfer: (String, String, Double, String, String?, () -> Unit) -> Unit,
+    onAddIncome: (String, String, Double, String, () -> Unit) -> Unit,
+    onPrepareAllocate: () -> Unit,
+    onPrepareSpend: () -> Unit,
+    onAllocate: (String, Double, String, String?, () -> Unit) -> Unit,
+    onSpendFromSavings: (String, String, String, Double, String, String?, () -> Unit) -> Unit,
 ) {
     val tandem = LocalTandemColors.current
     var dest by rememberSaveable { mutableStateOf(NavDest.Home) }
     val snackbar = remember { SnackbarHostState() }
-    val scope = rememberCoroutineScope()
+    var showAddExpense by remember { mutableStateOf(false) }
+    var showHealth by remember { mutableStateOf(false) }
+    var showRecurring by remember { mutableStateOf(false) }
 
     Scaffold(
         containerColor = tandem.canvas,
@@ -121,22 +145,26 @@ fun HomeScreen(
             }
         },
         floatingActionButton = {
-            if (dest == NavDest.Home || dest == NavDest.Spending) {
-                FloatingActionButton(
-                    onClick = { scope.launch { snackbar.showSnackbar("Add expense — coming soon") } },
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary,
-                ) { Icon(Icons.Rounded.Add, contentDescription = "Add") }
-            }
+            // One prominent centre action on every tab — opens the unified Expense/Income sheet.
+            AddFab(onClick = { onPrepareAdd(); showAddExpense = true })
         },
+        floatingActionButtonPosition = FabPosition.Center,
         snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
+        if (showAddExpense) {
+            AddSheet(
+                spending = state.spending,
+                onDismiss = { showAddExpense = false },
+                onSaveExpenses = onAddExpenses,
+                onAddIncome = onAddIncomeQuick,
+            )
+        }
         LaunchedEffect(dest, state.selectedAccountId) {
             when (dest) {
                 NavDest.Spending -> onLoadSpending(false)
                 NavDest.Goals -> onLoadGoals(false)
                 NavDest.Wallets -> onLoadWallets(false)
-                NavDest.Home -> {}
+                NavDest.Home -> { onLoadHealth(false); onLoadRecurring(false) }
             }
         }
         Column(
@@ -144,7 +172,8 @@ fun HomeScreen(
                 .fillMaxSize()
                 .padding(padding)
                 .verticalScroll(rememberScrollState())
-                .padding(16.dp),
+                // Extra bottom room so the centre-docked FAB never covers the last rows.
+                .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 96.dp),
         ) {
             when (dest) {
                 NavDest.Spending -> {
@@ -152,11 +181,26 @@ fun HomeScreen(
                     return@Column
                 }
                 NavDest.Goals -> {
-                    GoalsScreen(goals = state.goals, onRetry = { onLoadGoals(true) })
+                    GoalsScreen(
+                        goals = state.goals,
+                        spending = state.spending,
+                        onRetry = { onLoadGoals(true) },
+                        onPrepareAllocate = onPrepareAllocate,
+                        onPrepareSpend = onPrepareSpend,
+                        onAllocate = onAllocate,
+                        onSpend = onSpendFromSavings,
+                    )
                     return@Column
                 }
                 NavDest.Wallets -> {
-                    WalletsScreen(wallets = state.wallets, onRetry = { onLoadWallets(true) })
+                    WalletsScreen(
+                        wallets = state.wallets,
+                        onRetry = { onLoadWallets(true) },
+                        onPrepareTransfer = onPrepareTransfer,
+                        onPrepareAddIncome = onPrepareAddIncome,
+                        onTransfer = onTransfer,
+                        onAddIncome = onAddIncome,
+                    )
                     return@Column
                 }
                 NavDest.Home -> {}
@@ -208,9 +252,41 @@ fun HomeScreen(
                             Figure("Safe after bills", fmt(overview.safeAfterBills), tandem.positive),
                         ),
                     )
+                    Spacer(Modifier.height(14.dp))
+                    RecurringCard(recurring = state.recurring, onOpen = { showRecurring = true })
+                    Spacer(Modifier.height(14.dp))
+                    HealthCard(health = state.health, onOpen = { showHealth = true })
                 }
             }
         }
+
+        if (showHealth && state.health.data?.hasData == true) {
+            HealthSheet(health = state.health, onDismiss = { showHealth = false })
+        }
+        if (showRecurring) {
+            RecurringSheet(
+                recurring = state.recurring,
+                onConfirm = onConfirmRecurring,
+                onSkip = onSkipRecurring,
+                onDismiss = { showRecurring = false },
+            )
+        }
+    }
+}
+
+/** A prominent, brand-gradient circular add button — the single centre action, docked over the nav bar. */
+@Composable
+private fun AddFab(onClick: () -> Unit) {
+    Box(
+        Modifier
+            .size(62.dp)
+            .shadow(10.dp, CircleShape, clip = false)
+            .clip(CircleShape)
+            .background(Brush.linearGradient(listOf(BrandGreen, BrandGreenDark)))
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(Icons.Rounded.Add, contentDescription = "Add", tint = Color.White, modifier = Modifier.size(30.dp))
     }
 }
 

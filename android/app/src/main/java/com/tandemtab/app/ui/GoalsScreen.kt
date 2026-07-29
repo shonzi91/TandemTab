@@ -18,6 +18,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -29,6 +30,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.tandemtab.app.GoalsUi
+import com.tandemtab.app.SpendingUi
 import com.tandemtab.app.data.SavingBucketDto
 import com.tandemtab.app.ui.theme.LocalTandemColors
 import java.util.Locale
@@ -47,10 +49,20 @@ private enum class GoalFilter(val label: String, val kind: String?) {
 }
 
 @Composable
-fun GoalsScreen(goals: GoalsUi, onRetry: () -> Unit) {
+fun GoalsScreen(
+    goals: GoalsUi,
+    spending: SpendingUi,
+    onRetry: () -> Unit,
+    onPrepareAllocate: () -> Unit,
+    onPrepareSpend: () -> Unit,
+    onAllocate: (bucketId: String, amount: Double, date: String, note: String?, onDone: () -> Unit) -> Unit,
+    onSpend: (bucketId: String, categoryId: String, fundId: String, amount: Double, date: String, note: String?, onDone: () -> Unit) -> Unit,
+) {
     val tandem = LocalTandemColors.current
     val fmt = rememberGoalsMoney(goals.currency)
     var filter by remember { mutableStateOf(GoalFilter.All) }
+    var allocateBucket by remember { mutableStateOf<SavingBucketDto?>(null) }
+    var spendBucket by remember { mutableStateOf<SavingBucketDto?>(null) }
 
     when {
         goals.loading && goals.buckets.isEmpty() ->
@@ -88,10 +100,34 @@ fun GoalsScreen(goals: GoalsUi, onRetry: () -> Unit) {
                 }
             } else {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    shown.forEach { GoalRow(it, fmt) }
+                    shown.forEach { b ->
+                        GoalRow(
+                            b, fmt,
+                            onAllocate = { onPrepareAllocate(); allocateBucket = b },
+                            // Spend-from-savings applies to ordinary goal / sinking buckets that hold money;
+                            // debt buckets are disbursed and investments withdrawn (a later slice).
+                            canSpend = b.saved > 0 && b.kind != "debt" && b.kind != "investment",
+                            onSpend = { onPrepareSpend(); spendBucket = b },
+                        )
+                    }
                 }
             }
         }
+    }
+
+    allocateBucket?.let { b ->
+        AllocateSavingSheet(
+            bucket = b, goals = goals,
+            onDismiss = { allocateBucket = null },
+            onSubmit = { amt, date, note, onDone -> onAllocate(b.id, amt, date, note, onDone) },
+        )
+    }
+    spendBucket?.let { b ->
+        SpendFromSavingsSheet(
+            bucket = b, goals = goals, spending = spending,
+            onDismiss = { spendBucket = null },
+            onSubmit = { cat, fund, amt, date, note, onDone -> onSpend(b.id, cat, fund, amt, date, note, onDone) },
+        )
     }
 }
 
@@ -111,7 +147,7 @@ private fun SavedHeader(saved: String) {
 }
 
 @Composable
-private fun GoalRow(b: SavingBucketDto, fmt: (Double) -> String) {
+private fun GoalRow(b: SavingBucketDto, fmt: (Double) -> String, onAllocate: () -> Unit, canSpend: Boolean, onSpend: () -> Unit) {
     val tandem = LocalTandemColors.current
     // Kind-specific headline + progress. Bars read positive (progress toward a goal / down a debt), so green.
     val headline: String
@@ -167,6 +203,13 @@ private fun GoalRow(b: SavingBucketDto, fmt: (Double) -> String) {
         }
         if (subline != null) {
             Text(subline, fontSize = 12.sp, color = tandem.muted)
+        }
+        // Money-movement actions, right-aligned under the bar.
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+            if (canSpend) {
+                TextButton(onClick = onSpend) { Text("Spend", color = tandem.spent, fontSize = 13.sp, fontWeight = FontWeight.SemiBold) }
+            }
+            TextButton(onClick = onAllocate) { Text("+ Add", color = MaterialTheme.colorScheme.primary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold) }
         }
     }
 }
