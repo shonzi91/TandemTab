@@ -1,9 +1,30 @@
 # TandemTab (FinApp) — session handoff
 
-Last updated: 2026-07-29 (Session 66, live on `finapp-00251-vkh`). Read this + [README.md](README.md) + [TRANSFER.md](TRANSFER.md) + [docs/MOBILE.md](docs/MOBILE.md) + [docs/DOMAIN-REMOVAL.md](docs/DOMAIN-REMOVAL.md) + [android/README.md](android/README.md) + recent `git log` to catch up.
+Last updated: 2026-07-29 (Session 67, live on `finapp-00253-h7z`). Read this + [README.md](README.md) + [TRANSFER.md](TRANSFER.md) + [docs/MOBILE.md](docs/MOBILE.md) + [docs/DOMAIN-REMOVAL.md](docs/DOMAIN-REMOVAL.md) + [android/README.md](android/README.md) + recent `git log` to catch up.
 
 ## 🛣️ Roadmap / standing goals
 - **Migrate infra to Railway (both host + DB).** Move app hosting off Google **Cloud Run** and the database off **Neon** Postgres onto **Railway**. Not started — see the memory note; implications: port the existing Dockerfile, migrate Neon → Railway Postgres, re-wire the 5 secret env vars + bank allowlist, re-point `tandemtab.com` DNS, update TRANSFER.md + the deploy recipe.
+
+## Session 67 (2026-07-29) — **Breakdown reworked: three-way Categories/Tags/Funds grouping + in-slice regroup (dropped the chart drill); Sign out moved to the profile footer. 531 tests green; DEPLOYED `finapp-00253-h7z`.**
+Web-only (`FinApp.Shared.UI`, no `app.css` change → no cache-bust). Committed the in-flight uncommitted work from the prior session as `14bd5d9` → pushed → 3-step deploy. ⚠️ **Not browser-verified with real data** — the user chose to commit+deploy over an eyeball pass; it's compile+test-verified + served-bytes-verified only. Eyeball the new Funds axis + in-slice regrouping next session against a multi-fund / multi-sub / multi-tag account.
+
+### What changed (commit `14bd5d9`)
+1. **Breakdown grouping is now three-way (was two).** The top-level toggle offers **Categories / Tags / Funds** (new `BreakGroup` enum + `_breakBase`, replacing `_breakBaseByTag`). **Funds** groups spend by **which wallet the money left from** (`e.FundId`; `State.FundName`/`FundStoredIcon`/`FundIcon`). The Tags chip only appears when active tags exist. Toggle + the Income·Spent·%-of-income context now share one `.brk-controls` row (was two separate blocks).
+2. **Dropped the chart-level drill entirely.** Removed the per-row **pie-icon re-slice** (`brk-pie-btn`), the **breadcrumb nav** (`.brk-nav`/`.brk-back`/`.brk-crumb-cur`), and the `_breakDrill`/`_breakByTag` state + `DrillBreak`/`ClearBreakDrill`/`SetBreakByCategory`/`SetBreakByTag`. `BreakSlices`/`BreakSliceExpenses` simplified to the flat window (no drill scoping).
+3. **A category's sub/tag split now lives inside its expanded row.** Expanding a real top-level **category** slice shows a **"Group by: None / Sub-category / Tag"** chip strip (`_brkExpGroup` + `ExpGroup` enum + `BreakExpandGroups`), offering only the axes that apply to that category (`hasSubs`/`hasTags`); each group gets a header (icon · name · subtotal, largest first) over its expense rows. Tag/fund/"everything else"/transfers slices just list rows (no regroup). The per-expense row is now a shared `brkExpRow` `RenderFragment` reused by the flat + grouped lists.
+4. **Transfers-out emitted in every grouping.** The out-transfer slice (`TransfersKey`) is now added regardless of the active axis (transfers carry no category/tag/fund of their own) so the donut total stays consistent across all three toggles — was previously top-level-category-only.
+5. **Sign out moved off the top app bar.** Now lives in the **profile-modal footer** ([MainLayout.razor](src/FinApp.Shared.UI/Layout/MainLayout.razor)), left-aligned (`margin-right:auto`) as a muted-destructive `.pm-actions .ghost.danger` (red on `#fef2f2`), with **Close** on the right. Hidden while a profile sub-flow is active (that flow owns the footer).
+- Files: [Dashboard.razor](src/FinApp.Shared.UI/Pages/Dashboard.razor), [Dashboard.razor.css](src/FinApp.Shared.UI/Pages/Dashboard.razor.css), [MainLayout.razor](src/FinApp.Shared.UI/Layout/MainLayout.razor), [MainLayout.razor.css](src/FinApp.Shared.UI/Layout/MainLayout.razor.css), [Localizer.cs](src/FinApp.Shared.UI/Services/Localizer.cs) (`{0} funds`/`Funds`/`Group by`/`None`/`Sub-category`/`Tag`).
+
+### DEPLOYED — `finapp-00253-h7z` (live, 100% LATEST), verified both hosts
+531 green (243 domain + 244 server + 44 persistence) → `14bd5d9` → 3-step deploy (`builds submit` image digest `sha256:d53c0bd0…` 3m10s → `run deploy` from PowerShell → `update-traffic --to-latest`). **Served-bytes proof** (fingerprinted scoped bundle `…mk32l2efn7.bundle.scp.css`, BOTH run URL + tandemtab.com, identical 214,754 bytes): `brk-controls`×1 + `brk-exp-grp-head`×2 + `ghost.danger`×4 present, `brk-pie-btn` + `brk-nav` **absent**; root 200 both; `secretKeyRef`=5.
+
+### ⚠️ Carry-over / next
+- **Browser-verify the Breakdown rework with real data** (deferred this session): the **Funds** grouping, the in-slice **Group-by** chips (sub/tag) and per-group subtotals, transfers-in-every-grouping, and the moved **Sign out** button (light + dark) — all served but not eyeballed. Needs an account with ≥2 funds, sub-categories, and multi-tag expenses.
+- Dead string: `"Re-slice the chart"` in [Localizer.cs](src/FinApp.Shared.UI/Services/Localizer.cs) is now unused (the drill it labelled is gone) — harmless, prune when convenient.
+- Still open from S66: eyeball the **health-score single panel** + **breakdown multi-tag caption/transfers** against a 2nd closed period; the 🏦 synced-fund marker; long-title modal + dark spot-check.
+- **Deletable revisions:** `finapp-00251-vkh` and older (0% traffic).
+- Everything below is prior sessions.
 
 ## Session 66 (2026-07-29) — **Health-score single panel; modal headers aligned + smaller ✕/✓; Breakdown transfers-in-both + multi-tag caption; debt-payoff slider trimmed. 531 tests green; DEPLOYED `finapp-00251-vkh`.**
 Web-only (`FinApp.Shared.UI`, no `app.css` change → no cache-bust). Finished the in-flight uncommitted work from the prior session and two live refinements. Commit `36ecaf5` → 3-step deploy. Browser-verified the two header changes live (measured geometry); the health panel + breakdown changes are compile+test-verified (the throwaway account had no multi-period / multi-tag / transfer data to eyeball — carry-over).
