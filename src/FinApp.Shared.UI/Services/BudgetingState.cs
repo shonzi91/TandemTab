@@ -772,6 +772,28 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
             .ToList();
     }
 
+    /// <summary>The funds you log expenses against most often, most-used first (ties broken by most-recently-used),
+    /// restricted to funds you can still spend from. Powers the Add-expense quick-pick chips.</summary>
+    public IReadOnlyList<Guid> RecentFunds(int max = 4)
+    {
+        var live = ExpensableFunds.Select(f => f.Id).ToHashSet();
+        var stats = new Dictionary<Guid, (int Count, int FirstSeen)>();
+        var i = 0;
+        foreach (var e in ManualExpensesNewestFirst)
+        {
+            if (!live.Contains(e.FundId)) { i++; continue; }
+            if (stats.TryGetValue(e.FundId, out var v)) stats[e.FundId] = (v.Count + 1, v.FirstSeen);
+            else stats[e.FundId] = (1, i);
+            i++;
+        }
+        return stats
+            .OrderByDescending(kv => kv.Value.Count)
+            .ThenBy(kv => kv.Value.FirstSeen)
+            .Take(max)
+            .Select(kv => kv.Key)
+            .ToList();
+    }
+
     /// <summary>The category to pre-fill for an imported expense with this description: reuse the one from the most
     /// recent past expense whose note matches (same normalization the bank sync uses), so a merchant you've filed
     /// before auto-files again. Null when nothing matches — the review then leaves it on the default.</summary>

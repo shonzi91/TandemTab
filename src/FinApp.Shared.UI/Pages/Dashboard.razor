@@ -309,11 +309,12 @@ else
                 // own as the user completes them; the × persists a dismiss so it never nags. Body-data flag.
                 var obSteps = new (bool Done, string Icon, string Title, string Desc, Action Act)[]
                 {
+                    // Categories first: they're the foundation everything else (budgets, expenses) files into.
+                    (State.CategoryOptions.Any(c => c.Depth > 0), "tag", Loc["Add categories"], Loc["Organise your spending with your own categories and sub-categories."], OpenManageCats),
                     (State.TotalContributed.Amount > 0m, "note", Loc["Add your income"], Loc["Tell TandemTab what's coming in this month."], OpenDeposit),
                     (State.TotalBudgeted.Amount > 0m, "target", Loc["Set a budget"], Loc["Cap a category so you know what's safe to spend."], OpenAddBudget),
                     (State.AllExpenses.Count > 0, "receipt", Loc["Log an expense"], Loc["Record your first spend — or import a statement."], OpenAddOrImport),
                     (State.SavingBuckets.Any(b => !b.Bucket.IsArchived), "coins", Loc["Create a savings bucket"], Loc["Set money aside — with or without a goal or debt to pay off."], OpenAddBucket),
-                    (State.CategoryOptions.Any(c => c.Depth > 0), "tag", Loc["Add categories"], Loc["Organise your spending with your own categories and sub-categories."], OpenManageCats),
                     (State.OtherMembers.Any(), "users", Loc["Invite a partner"], Loc["Share the budget in real time — invite your partner or housemate."], OpenInvite),
                 };
                 var obDone = obSteps.Count(s => s.Done);
@@ -399,85 +400,33 @@ else
             </section>
 
             @{ var ovBand = ov.Band switch { HealthBand.Healthy => "score-ok", HealthBand.Average => "score-warn", _ => "score-bad" }; }
-            @* Health score + its trend charts as ONE Home section: the score card is the header, and the three chart
-               subsections (savings rate, spending trend, trends over time) sit inline below it. These graphics used to
-               live in the Health-score modal — they're on Home now so you see them without opening anything. Tapping the
-               header still opens the modal for the score detail + quick wins. *@
+            @* Health score + trends-over-time as ONE Home section: the score card is the header ("Health score &
+               trends") and the mini-trend sparklines sit inline below it. The detail graphics (savings rate + spending
+               trend) live in the Health-score modal now — tapping the header opens it for the score detail, quick wins,
+               savings rate and spending trend. *@
             <section class="home-health">
                 <button id="home-score" class="card card-score card-score-wide home-health-hd" @onclick="() => _modal = Modal.HealthScore" title="@Loc["Health score"]">
-                    <span class="card-label">@Loc["Health score"]</span>
+                    <span class="card-label">@Loc["Health score & trends"]</span>
                     <span class="card-value @ovBand">@(ov.HasData ? ov.Score.ToString() : "—")</span>
                     <span class="card-sub">@(ov.HasData ? N(ov.Verdict) : "")</span>
                 </button>
-                @if (ov.HasData)
+                @if (ov.HasData && ov.MiniTrends.Count > 0)
                 {
                     <div class="home-health-charts">
-                        <h4 class="insight-h">@Loc["Savings rate"]</h4>
-                        @{
-                            var ovRateW = Math.Clamp((double)(ov.SavingsRate ?? 0m) * 100, 0, 100);
-                            var ovGoalW = Math.Clamp((double)ov.SavingsTarget * 100, 0, 100);
-                            var ovRateVal = ov.SavingsRate ?? 0m;
-                            var ovRateStatus = ovRateVal >= ov.SavingsTarget ? "rate-good"
-                                : ovRateVal >= ov.SavingsTarget * 0.6m ? "rate-mid" : "rate-low";
-                        }
-                        <section class="savings-rate-card @ovRateStatus">
-                            <div class="savings-rate-head">
-                                <span class="savings-pct">@PctOrDash(ov.SavingsRate)</span>
-                                <span class="savings-target">@Loc["Target:"] <span>@PctText(ov.SavingsTarget)</span></span>
-                            </div>
-                            <div class="savings-track">
-                                <div class="savings-fill" style="width:@ovRateW%"></div>
-                                <div class="savings-goal-line" style="left:@ovGoalW%"></div>
-                            </div>
-                            <div class="savings-footer">
-                                <span>0%</span><span class="goal-label">@Loc["Goal"] @PctText(ov.SavingsTarget)</span><span>100%</span>
-                            </div>
-                            <div class="savings-critique"><Icon Name="bulb" /> @N(ov.SavingsCritique)</div>
-                        </section>
-
-                        @if (ov.Trend.Count > 1)
-                        {
-                            <h4 class="insight-h">@Loc["Spending trend"]</h4>
-                            <section class="trend-card">
-                                <div class="trend-head">
-                                    <span>@Loc["Outgoings"] · @Loc["avg"] @Fmt(ov.TrendAverage)</span>
-                                    <span class="trend-dir @(ov.TrendUp ? "up" : "down")">@(ov.TrendUp ? "↑" : "↓") @(ov.TrendUp ? Loc["above average"] : Loc["below average"])</span>
-                                </div>
-                                <div class="trend-plot">
-                                    <div class="trend-avg" style="bottom:@((Math.Clamp((double)ov.TrendAvgFraction, 0, 1) * 72).ToString(System.Globalization.CultureInfo.InvariantCulture))px"></div>
-                                    @foreach (var t in ov.Trend)
-                                    {
-                                        <div class="trend-bar @(t.IsCurrent ? "current" : "")" style="height:@(Math.Max(3.0, (double)t.BarFraction * 72).ToString(System.Globalization.CultureInfo.InvariantCulture))px" title="@t.Label: @Fmt(t.Outgoings)"></div>
-                                    }
-                                </div>
-                                <div class="trend-labels">
-                                    @foreach (var t in ov.Trend)
-                                    {
-                                        <span class="@(t.IsCurrent ? "cur" : "")">@t.Label</span>
-                                    }
-                                </div>
-                                <div class="trend-note">@N(ov.TrendNote)</div>
-                            </section>
-                        }
-
-                        @if (ov.MiniTrends.Count > 0)
-                        {
-                            <h4 class="insight-h">@Loc["Trends over time"]</h4>
-                            <section class="mini-trends">
-                                @foreach (var mt in ov.MiniTrends)
-                                {
-                                    var mtLabel = N(mt.Label);
-                                    <div class="mini-trend @(mt.Dir == DeltaDir.Up ? "up" : mt.Dir == DeltaDir.Down ? "down" : "flat")">
-                                        <div class="mt-head">
-                                            <span class="mt-label"><CatIcon Name="@CategoryIcons.Effective(mt.Icon, mtLabel)" /> @mtLabel</span>
-                                            <span class="mt-cur">@N(mt.CurrentText)</span>
-                                        </div>
-                                        @TrendSparkline(mt.Points)
-                                        <div class="mt-note">@N(mt.DeltaNote)</div>
+                        <section class="mini-trends">
+                            @foreach (var mt in ov.MiniTrends)
+                            {
+                                var mtLabel = N(mt.Label);
+                                <div class="mini-trend @(mt.Dir == DeltaDir.Up ? "up" : mt.Dir == DeltaDir.Down ? "down" : "flat")">
+                                    <div class="mt-head">
+                                        <span class="mt-label"><CatIcon Name="@CategoryIcons.Effective(mt.Icon, mtLabel)" /> @mtLabel</span>
+                                        <span class="mt-cur">@N(mt.CurrentText)</span>
                                     </div>
-                                }
-                            </section>
-                        }
+                                    @TrendSparkline(mt.Points)
+                                    <div class="mt-note">@N(mt.DeltaNote)</div>
+                                </div>
+                            }
+                        </section>
                     </div>
                 }
             </section>
@@ -788,6 +737,17 @@ else
                                     @if (synced) { <span class="fund-row-ico"><Icon Name="link" /></span> } else { <CatIcon Name="@State.FundIcon(fid)" /> } @f.Name
                                 </button>
                                 <span class="fund-row-amt" title="@(synced ? SyncedFundDisplay(fid).Title : "")">@Fmt(bal)</span>
+                                @* The two common actions — move money out, log money in — sit on the row next to the ⋯
+                                   (the menu keeps Movements / Edit / Archive). Only for a spendable, non-synced fund
+                                   in an open period, mirroring the old menu's conditions. *@
+                                @if (!synced && State.IsPeriodOpen)
+                                {
+                                    @if (CanTransfer)
+                                    {
+                                        <button class="exp-edit" title="@Loc["Transfer"]" @onclick="() => OpenTransferFromFund(fid)"><Icon Name="swap" /></button>
+                                    }
+                                    <button class="exp-edit" title="@Loc["Add income"]" @onclick="() => OpenDepositToFund(fid)"><Icon Name="plus" /></button>
+                                }
                                 <button class="fund-row-more" title="@Loc["Actions"]" @onclick="() => ToggleFundMenu(fid)">⋯</button>
                                 @if (_fundMenuId == fid) { @FundCircleMenu(fid) }
                             </div>
@@ -802,7 +762,7 @@ else
                 <section class="panel">
                     <div class="panel-head">
                         <h2><Icon Name="repeat" /> @Loc["Money moved"]</h2>
-                        <small class="hint">@Loc["Use a fund's ⋯ menu to move money."]</small>
+                        <small class="hint">@Loc["Use a fund's ⇄ button to move money."]</small>
                     </div>
                     @if (transfers.Any())
                     {
@@ -2446,13 +2406,46 @@ else
 
                 case Modal.AddExpense:
                     <h3>@Loc["Add expense"]</h3>
-                    @if (State.LastExpense is { } lastExp)
+                    @* Staged expenses: "+ Add another expense" parks the current entry here as a compact row and clears
+                       the editor for the next; the ✓ in the header saves them all at once. Tap a row to pull it back
+                       into the editor to fix it; 🗑 drops it. *@
+                    @if (_expenseDrafts.Count > 0)
+                    {
+                        <ul class="draft-list">
+                            @foreach (var d in _expenseDrafts)
+                            {
+                                var draft = d;
+                                <li class="draft-row">
+                                    <button type="button" class="draft-main" title="@Loc["Edit"]" @onclick="() => EditDraft(draft)">
+                                        <CatIcon Name="@State.CategoryIcon(draft.CategoryId)" />
+                                        <span class="draft-cat">@State.CategoryName(draft.CategoryId)</span>
+                                        <span class="draft-sub">@State.FundName(draft.FundId)@(string.IsNullOrEmpty(draft.Note) ? "" : " · " + draft.Note)</span>
+                                        <span class="draft-amt">@Fmt(draft.Amount)</span>
+                                    </button>
+                                    <button type="button" class="exp-edit" title="@Loc["Remove"]" @onclick="() => RemoveDraft(draft)"><Icon Name="trash" /></button>
+                                </li>
+                            }
+                            <li class="draft-total"><span>@string.Format(Loc["{0} to add"], _expenseDrafts.Count)</span><span class="draft-total-amt">@Fmt(_expenseDrafts.Sum(d => d.Amount))</span></li>
+                        </ul>
+                    }
+                    @if (State.LastExpense is { } lastExp && _expenseDrafts.Count == 0)
                     {
                         <button type="button" class="repeat-last" @onclick="RepeatLastExpense"><Icon Name="rotate" /> @Loc["Repeat last"]: <strong>@State.CategoryName(lastExp.CategoryId)</strong> · @Fmt(lastExp.Amount)</button>
                     }
-                    @* No "Recent" chips here: the most-used categories are already reachable from the Home
-                       Add-expense hover menu ("Quick add to"), which opens this modal pre-selected. *@
+                    var qpCats = State.RecentCategories(6);
                     <div class="modal-field"><span class="lbl-row">@Loc["Category"] <button type="button" class="lbl-add" title="@Loc["Add category"]" @onclick="ExpenseAddCategory">+</button></span>
+                        @* Most-used categories as one-tap chips right above the picker; the picker (type to search)
+                           covers everything else, so it scales when there are many categories. *@
+                        @if (qpCats.Count > 0)
+                        {
+                            <div class="qp-row">
+                                @foreach (var cid in qpCats)
+                                {
+                                    var qpCat = cid;
+                                    <button type="button" class="tag-chip @(_categoryId == qpCat ? "tag-chip-on" : "")" @onclick="() => OnExpenseCategoryPicked(qpCat)"><CatIcon Name="@State.CategoryIcon(qpCat)" /> @State.CategoryName(qpCat)</button>
+                                }
+                            </div>
+                        }
                         <CategoryPicker Value="_categoryId" ValueChanged="OnExpenseCategoryPicked" Options="State.CategoryOptions" />
                     </div>
                     <label>@Loc["Amount"] <input type="number" step="0.01" min="0" @bind="_amount" @bind:event="oninput" /></label>
@@ -2461,26 +2454,26 @@ else
                         <small class="hint warn-text">@Loc["Amount can't be negative — enter what you spent."]</small>
                     }
                     <label>@Loc["Date"] <input type="date" @bind="_expenseDate" min="@State.Period.From.ToString("yyyy-MM-dd")" max="@State.Period.To.ToString("yyyy-MM-dd")" /></label>
-                    <label for="addexp-fund"><span class="lbl-row">@Loc["Fund"] <button type="button" class="lbl-add" title="@Loc["New fund"]" @onclick="ExpenseAddFund">+</button></span>
-                        <select id="addexp-fund" @bind="_fundId">
+                    <div class="modal-field"><span class="lbl-row">@Loc["Fund"] <button type="button" class="lbl-add" title="@Loc["New fund"]" @onclick="ExpenseAddFund">+</button></span>
+                        @* Funds are few, so the whole list is chips — no dropdown. Selected one highlighted; 🏦 = synced. *@
+                        <div class="qp-row">
                             @foreach (var f in State.ExpensableFunds)
                             {
-                                @* @key keeps the option nodes stable across re-renders (e.g. after inline tag-create
-                                   reloads the snapshot) — without it the browser resets the <select> to the first
-                                   option and the chosen fund silently switches. *@
-                                <option @key="f.Id" value="@f.Id">@f.Name@(f.IsSynced ? " 🏦" : "")</option>
+                                var qpFund = f.Id;
+                                <button type="button" class="tag-chip @(_fundId == qpFund ? "tag-chip-on" : "")" @onclick="() => _fundId = qpFund"><CatIcon Name="@State.FundIcon(qpFund)" /> @f.Name@(f.IsSynced ? " 🏦" : "")</button>
                             }
-                        </select>
-                    </label>
+                        </div>
+                    </div>
                     @if (State.FundIsSynced(_fundId))
                     {
                         <small class="hint"><Icon Name="bank" /> @Loc["This is a bank-synced fund — logging here records the expense without changing the synced balance (the bank stays the source). If the same charge later imports, you can dismiss the duplicate."]</small>
                     }
                     <label>@Loc["Note (optional)"] <input type="text" @bind="_note" /></label>
                     @tagPicker
+                    <button type="button" class="add-another" @onclick="StageCurrentExpense" disabled="@(_amount <= 0)"><Icon Name="plus" /> @Loc["Add another expense"]</button>
                     <div class="modal-actions">
                         <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
-                        <button @onclick="AddExpenseFromModal" disabled="@(_amount <= 0)">@Loc["Add"]</button>
+                        <button @onclick="AddExpenseFromModal" disabled="@(_expenseDrafts.Count == 0 && _amount <= 0)">@Loc["Add"]</button>
                     </div>
                     break;
 
@@ -3440,8 +3433,55 @@ else
                             </div>
                         }
 
-                        @* The trend graphics (savings rate, spending trend, trends over time) now live inline on the Home
-                           tab under the Health-score header — this modal keeps the score detail + quick wins. *@
+                        @* The detail graphics — savings rate and the spending trend — live here in the modal; Home keeps
+                           the score header + trends-over-time sparklines so it stays light. *@
+                        <h4 class="insight-h">@Loc["Savings rate"]</h4>
+                        @{
+                            var hsRateW = Math.Clamp((double)(hs.SavingsRate ?? 0m) * 100, 0, 100);
+                            var hsGoalW = Math.Clamp((double)hs.SavingsTarget * 100, 0, 100);
+                            var hsRateVal = hs.SavingsRate ?? 0m;
+                            var hsRateStatus = hsRateVal >= hs.SavingsTarget ? "rate-good"
+                                : hsRateVal >= hs.SavingsTarget * 0.6m ? "rate-mid" : "rate-low";
+                        }
+                        <section class="savings-rate-card @hsRateStatus">
+                            <div class="savings-rate-head">
+                                <span class="savings-pct">@PctOrDash(hs.SavingsRate)</span>
+                                <span class="savings-target">@Loc["Target:"] <span>@PctText(hs.SavingsTarget)</span></span>
+                            </div>
+                            <div class="savings-track">
+                                <div class="savings-fill" style="width:@hsRateW%"></div>
+                                <div class="savings-goal-line" style="left:@hsGoalW%"></div>
+                            </div>
+                            <div class="savings-footer">
+                                <span>0%</span><span class="goal-label">@Loc["Goal"] @PctText(hs.SavingsTarget)</span><span>100%</span>
+                            </div>
+                            <div class="savings-critique"><Icon Name="bulb" /> @N(hs.SavingsCritique)</div>
+                        </section>
+
+                        @if (hs.Trend.Count > 1)
+                        {
+                            <h4 class="insight-h">@Loc["Spending trend"]</h4>
+                            <section class="trend-card">
+                                <div class="trend-head">
+                                    <span>@Loc["Outgoings"] · @Loc["avg"] @Fmt(hs.TrendAverage)</span>
+                                    <span class="trend-dir @(hs.TrendUp ? "up" : "down")">@(hs.TrendUp ? "↑" : "↓") @(hs.TrendUp ? Loc["above average"] : Loc["below average"])</span>
+                                </div>
+                                <div class="trend-plot">
+                                    <div class="trend-avg" style="bottom:@((Math.Clamp((double)hs.TrendAvgFraction, 0, 1) * 72).ToString(System.Globalization.CultureInfo.InvariantCulture))px"></div>
+                                    @foreach (var t in hs.Trend)
+                                    {
+                                        <div class="trend-bar @(t.IsCurrent ? "current" : "")" style="height:@(Math.Max(3.0, (double)t.BarFraction * 72).ToString(System.Globalization.CultureInfo.InvariantCulture))px" title="@t.Label: @Fmt(t.Outgoings)"></div>
+                                    }
+                                </div>
+                                <div class="trend-labels">
+                                    @foreach (var t in hs.Trend)
+                                    {
+                                        <span class="@(t.IsCurrent ? "cur" : "")">@t.Label</span>
+                                    }
+                                </div>
+                                <div class="trend-note">@N(hs.TrendNote)</div>
+                            </section>
+                        }
                         </section>
                     }
                     <div class="modal-actions">
@@ -4332,18 +4372,11 @@ else
         @<text>
             <div class="row-menu-backdrop" @onclick="() => _fundMenuId = Guid.Empty"></div>
             <div class="row-menu">
+                @* Transfer + Add income live on the fund row now (next to this ⋯) — the menu keeps the rarer actions. *@
                 <button @onclick="() => FundAct(() => OpenFundMovements(fid))"><Icon Name="list" /> @Loc["Movements"]</button>
                 <button @onclick="() => FundAct(() => OpenEditFund(fid))"><Icon Name="pencil" /> @Loc["Edit"]</button>
                 @if (!State.FundIsSynced(fid))
                 {
-                    @if (State.IsPeriodOpen)
-                    {
-                        @if (CanTransfer)
-                        {
-                            <button @onclick="() => FundAct(() => OpenTransferFromFund(fid))"><Icon Name="swap" /> @Loc["Transfer"]</button>
-                        }
-                        <button @onclick="() => FundAct(() => OpenDepositToFund(fid))"><Icon Name="plus" /> @Loc["Add income"]</button>
-                    }
                     <button class="danger" @onclick="() => FundAct(() => OpenArchiveFund(fid))"><Icon Name="archive" /> @Loc["Archive"]</button>
                 }
             </div>
@@ -6804,11 +6837,44 @@ else
         else OpenAddExpenseTab();
     }
 
-    private Task AddExpenseFromModal() => RunModal(async () =>
+    // Multi-expense: a locally-staged list of expenses the user is building; the ✓ saves them all at once. Each draft
+    // is a snapshot of the editor fields at the moment "Add another expense" was pressed.
+    private sealed record ExpenseDraft(Guid CategoryId, decimal Amount, Guid FundId, string? Note, DateOnly Date, List<Guid> TagIds);
+    private readonly List<ExpenseDraft> _expenseDrafts = new();
+
+    /// <summary>Park the current editor entry as a staged draft row, then clear the per-item fields (keeping
+    /// category/fund/date) so the next one is quick to enter.</summary>
+    private void StageCurrentExpense()
     {
         if (_amount <= 0) return;
-        await State.AddExpense(_categoryId, _amount, _fundId, _note, _expenseDate, tagIds: _fTagIds.ToList());
-        _dayView = ClampToPeriod(_expenseDate); // keep the Expenses tab on the day just used (feature 6)
+        _expenseDrafts.Add(new ExpenseDraft(_categoryId, _amount, _fundId, _note, _expenseDate, _fTagIds.ToList()));
+        _amount = 0; _note = null; _fTagIds.Clear(); _newTagName = null;
+    }
+
+    /// <summary>Pull a staged draft back into the editor to fix it (removing it from the list). If the editor already
+    /// holds a valid entry, stage that first so it isn't lost.</summary>
+    private void EditDraft(ExpenseDraft d)
+    {
+        if (_amount > 0) StageCurrentExpense();
+        _expenseDrafts.Remove(d);
+        _categoryId = d.CategoryId; _amount = d.Amount; _fundId = d.FundId; _note = d.Note; _expenseDate = d.Date;
+        _fTagIds.Clear(); foreach (var t in d.TagIds) _fTagIds.Add(t); _newTagName = null;
+    }
+
+    private void RemoveDraft(ExpenseDraft d) => _expenseDrafts.Remove(d);
+
+    /// <summary>Save everything: the staged drafts plus the in-progress editor entry (if it has an amount).</summary>
+    private Task AddExpenseFromModal() => RunModal(async () =>
+    {
+        if (_amount > 0) StageCurrentExpense();
+        if (_expenseDrafts.Count == 0) { CloseModal(); return; }
+        var lastDate = _expenseDate;
+        foreach (var d in _expenseDrafts)
+        {
+            await State.AddExpense(d.CategoryId, d.Amount, d.FundId, d.Note, d.Date, tagIds: d.TagIds);
+            lastDate = d.Date;
+        }
+        _dayView = ClampToPeriod(lastDate); // keep the Expenses tab on the day just used (feature 6)
         CloseModal();
     });
 
@@ -7361,7 +7427,7 @@ else
         await JS.InvokeVoidAsync("finappDownloadFile", fileName, Convert.ToBase64String(bytes),
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
     });
-    private void CloseModal() { _modal = Modal.None; _modalError = null; _modalBack.Clear(); _afterCreate = null; _iconOpen = false; }
+    private void CloseModal() { _modal = Modal.None; _modalError = null; _modalBack.Clear(); _afterCreate = null; _iconOpen = false; _expenseDrafts.Clear(); }
 
     // Account-actions cog menu.
     private bool _acctMenuOpen;

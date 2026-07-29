@@ -12,19 +12,32 @@
     @if (_open)
     {
         <div class="cat-picker-backdrop" @onclick="Close"></div>
-        <ul class="cat-picker-menu">
-            @foreach (var (cat, depth) in Options)
+        <div class="cat-picker-menu">
+            @* Type-to-search so the picker scales when there are many categories. Only shown once the list is long
+               enough to be worth filtering. *@
+            @if (Options.Count > 8)
             {
-                <li>
-                    <button type="button" class="cat-picker-opt @(cat.Id == Value ? "sel" : "")"
-                            style="@(depth > 0 ? $"padding-inline-start:{10 + depth * 16}px" : null)"
-                            @onclick="() => Pick(cat.Id)">
-                        <CatIcon Name="@CategoryIcons.Effective(cat.Icon, cat.Name)" />
-                        <span class="cat-picker-opt-lbl">@cat.Name</span>
-                    </button>
-                </li>
+                <input type="text" class="cat-picker-search" placeholder="@Loc["Search…"]"
+                       @bind="_filter" @bind:event="oninput" @onclick:stopPropagation="true" />
             }
-        </ul>
+            <ul class="cat-picker-opts">
+                @foreach (var (cat, depth) in Filtered)
+                {
+                    <li>
+                        <button type="button" class="cat-picker-opt @(cat.Id == Value ? "sel" : "")"
+                                style="@(depth > 0 && _filter.Length == 0 ? $"padding-inline-start:{10 + depth * 16}px" : null)"
+                                @onclick="() => Pick(cat.Id)">
+                            <CatIcon Name="@CategoryIcons.Effective(cat.Icon, cat.Name)" />
+                            <span class="cat-picker-opt-lbl">@cat.Name</span>
+                        </button>
+                    </li>
+                }
+                @if (Filtered.Count == 0)
+                {
+                    <li class="cat-picker-empty">@Loc["No matches"]</li>
+                }
+            </ul>
+        </div>
     }
 </div>
 
@@ -36,13 +49,20 @@
     [Parameter] public bool Disabled { get; set; }
 
     private bool _open;
+    private string _filter = "";
 
-    private void Toggle() { if (!Disabled) _open = !_open; }
-    private void Close() => _open = false;
+    // Options filtered by the search box (name contains the query, case-insensitive); empty query → the full list.
+    private IReadOnlyList<(Category Category, int Depth)> Filtered =>
+        _filter.Length == 0
+            ? Options
+            : Options.Where(o => o.Category.Name.Contains(_filter, StringComparison.CurrentCultureIgnoreCase)).ToList();
+
+    private void Toggle() { if (!Disabled) { _open = !_open; _filter = ""; } }
+    private void Close() { _open = false; _filter = ""; }
 
     private async Task Pick(Guid id)
     {
-        _open = false;
+        _open = false; _filter = "";
         if (id != Value) await ValueChanged.InvokeAsync(id);
     }
 

@@ -130,10 +130,19 @@ html.dark .cat-ic { color: var(--tm-mint); }
 .cat-picker.open .cat-picker-caret { transform: rotate(180deg); }
 .cat-picker-backdrop { position: fixed; inset: 0; z-index: 90; }
 .cat-picker-menu {
-    position: absolute; z-index: 91; top: calc(100% + 4px); left: 0; right: 0; margin: 0; padding: 4px; list-style: none;
-    max-height: 260px; overflow-y: auto; background: #fff; border: 1px solid #e6ece9; border-radius: 10px;
-    box-shadow: 0 8px 24px rgba(0,0,0,.16);
+    position: absolute; z-index: 91; top: calc(100% + 4px); left: 0; right: 0; margin: 0; padding: 4px;
+    display: flex; flex-direction: column; max-height: 280px; background: #fff; border: 1px solid #e6ece9;
+    border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,.16);
 }
+/* Type-to-search box pinned above the scrolling option list, so filtering large category lists stays quick. */
+.cat-picker-search {
+    flex: none; margin: 2px 2px 6px; padding: 8px 10px; border: 1px solid #dde6e1; border-radius: 8px;
+    font: inherit; font-size: .88rem; background: #f7faf8; color: #1f2430;
+}
+.cat-picker-search:focus { outline: none; border-color: #12b29a; box-shadow: 0 0 0 3px rgba(18,178,154,.16); }
+.cat-picker-opts { list-style: none; margin: 0; padding: 0; overflow-y: auto; }
+.cat-picker-empty { padding: 10px; text-align: center; color: #8a97a0; font-size: .86rem; }
+html.dark .cat-picker-search { background: #12151d; border-color: #313a4a; color: #e8eaf0; }
 .cat-picker-opt {
     display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; cursor: pointer;
     padding: 8px 10px; border: none; border-radius: 7px; background: none; font: inherit; font-size: .9rem; color: #374151;

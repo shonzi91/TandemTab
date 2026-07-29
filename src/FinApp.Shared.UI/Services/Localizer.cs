@@ -263,6 +263,10 @@ public sealed class Localizer(IJSRuntime js)
         // Overview tab
         ["Health score"] = "Оценка на здравето",
         ["Health score & trends"] = "Оценка на здравето и тенденции",
+        ["Add another expense"] = "Добави още разход",
+        ["{0} to add"] = "{0} за добавяне",
+        ["Search…"] = "Търси…",
+        ["No matches"] = "Няма съвпадения",
         ["How your score works: four equal parts (25 pts each) — how much you saved vs your target, how well you kept to budget, living within your income, and your spending vs your recent average."] =
             "Как се формира оценката: четири равни части (по 25 т.) — колко спестихте спрямо целта, колко се придържахте към бюджета, дали живеете според доходите си и разходите спрямо скорошната ви средна стойност.",
         ["Needs your attention"] = "Изисква внимание",
@@ -1156,7 +1160,7 @@ public sealed class Localizer(IJSRuntime js)
         ["Two-factor authentication is on."] = "Двуфакторното удостоверяване е включено.",
         ["Two-factor is on. Save these recovery codes somewhere safe — each works once if you lose your device."] = "Двуфакторното е включено. Запази тези кодове за възстановяване на сигурно място — всеки работи по веднъж, ако загубиш устройството си.",
         ["Under budget"] = "Под бюджета",
-        ["Use a fund's ⋯ menu to move money."] = "Използвай менюто ⋯ на фонд, за да местиш пари.",
+        ["Use a fund's ⇄ button to move money."] = "Използвай бутона ⇄ на фонд, за да местиш пари.",
         ["Used only to project growth — never changes budgets, savings or balances. Fund it with 💰; the projection grows your accumulated balance at this rate."] = "Използва се само за прогноза на растежа — никога не променя бюджети, спестявания или баланси. Захрани го с 💰; прогнозата увеличава натрупания ти баланс с този процент.",
         ["Uses the average you actually set aside each period, then counts how many periods until you reach the goal."] = "Използва средното, което реално заделяш всеки период, после отчита колко периода остават до целта.",
         ["Verification email sent. Check your inbox."] = "Изпратен е имейл за потвърждение. Провери пощата си.",

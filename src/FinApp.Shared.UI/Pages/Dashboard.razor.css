@@ -1247,7 +1247,11 @@ input[type=date]::-webkit-calendar-picker-indicator:hover { opacity: 1; backgrou
     background: #ffffff; border-bottom: 1px solid #e6ece9; border-radius: 16px 16px 0 0;
 }
 .modal-actions {
-    order: -3; position: sticky; top: 0; z-index: 7; height: 52px; align-self: stretch;
+    order: -3; position: sticky; top: 0; z-index: 7; align-self: stretch;
+    /* Must be a full 52px tall so the floating ✕/✓ centre on the 52px-min-height <h3>. `height` alone isn't enough —
+       as a flex item this bar shrinks to its (26px) button content, riding the glyphs high above the title; min-height
+       + no shrink pins it. */
+    height: 52px; min-height: 52px; flex-shrink: 0;
     display: flex; justify-content: flex-end; align-items: center; gap: 8px;
     /* Bottom margin is -(height + the .modal flex gap of 9px). The extra -9 cancels the gap the flex layout would
        otherwise insert between this zero-flow bar (order -3) and the header (order -2), so the header sits flush at
@@ -1922,6 +1926,35 @@ html.dark .ach-date, html.dark .ach-cell-date { color: #7c8a94; }
 .repeat-last:hover { background: #e3f6ec; border-color: #13a06e; }
 .repeat-last strong { font-weight: 800; }
 html.dark .repeat-last { background: #16241d; border-color: #2b4438; color: #57d9a3; }
+
+/* Add-expense quick-pick + fund chips (reuse the .tag-chip look): a wrapping chip row that sits under a field label. */
+.qp-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 2px 0 4px; }
+
+/* Multi-expense staged list: compact rows for the expenses queued to save, above the editor. */
+.draft-list { list-style: none; margin: 0 0 12px; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.draft-row { display: flex; align-items: center; gap: 6px; }
+.draft-main { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 8px; text-align: left; cursor: pointer;
+    padding: 8px 10px; border: 1px solid #e6ece9; border-radius: 10px; background: #f7faf8; font: inherit; }
+.draft-main:hover { border-color: #13a06e; background: #eef6f1; }
+.draft-main svg, .draft-main .cat-icon { flex: none; }
+.draft-cat { font-weight: 700; font-size: .88rem; color: #1f2430; flex: none; }
+.draft-sub { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #8a97a0; font-size: .8rem; }
+.draft-amt { flex: none; font-weight: 700; font-variant-numeric: tabular-nums; color: #1f2430; }
+.draft-total { display: flex; justify-content: space-between; padding: 4px 10px 0; font-size: .8rem; font-weight: 700; color: #6b7480; }
+.draft-total-amt { color: #0f7a54; }
+html.dark .draft-main { background: #171d26; border-color: #2c3644; }
+html.dark .draft-main:hover { border-color: #3fe0c5; background: #16241d; }
+html.dark .draft-cat, html.dark .draft-amt { color: #e8eaf0; }
+html.dark .draft-total-amt { color: #57d9a3; }
+
+/* "+ Add another expense" — a dashed full-width button under the editor that stages the current entry. */
+.add-another { display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; margin: 12px 0 2px;
+    padding: 9px 12px; border: 1px dashed #cdeadd; border-radius: 10px; background: #f3fbf7; color: #0f7a54;
+    font-size: .86rem; font-weight: 700; cursor: pointer; }
+.add-another:hover:not(:disabled) { background: #e3f6ec; border-color: #13a06e; }
+.add-another:disabled { opacity: .5; cursor: not-allowed; }
+.add-another svg { width: 15px; height: 15px; }
+html.dark .add-another { background: #16241d; border-color: #2b4438; color: #57d9a3; }
 
 /* Forecasts tab */
 .networth-value { font-size: 1.8rem; font-weight: 800; color: #13a06e; margin-top: 6px; }
