@@ -122,27 +122,14 @@ html.dark .home-alert-more { color: #f5cf8a; }
 html.dark .home-alert.home-alert-soft { background: #161b2c; border-color: #2b3350; }
 html.dark .home-alert.home-alert-soft .home-alert-text { color: #aab0c0; }
 
-/* Compact mini-trend chips under the score card (full sparklines live in the Health-score modal). One tight row,
-   horizontally scrollable if they don't fit, so Home never floods. */
-.home-trends { display: flex; gap: 8px; margin: 0 0 14px; overflow-x: auto; padding-bottom: 2px; -webkit-overflow-scrolling: touch; }
-.home-trend {
-    flex: 1 1 0; min-width: 128px; display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
-    background: #ffffff; border: 1px solid #e6ece9; border-radius: 12px; padding: 9px 11px; cursor: pointer;
-    font: inherit; text-align: left; transition: border-color .12s;
-}
-.home-trend:hover { border-color: #cbd5e1; }
-.home-trend-lbl { font-size: .68rem; font-weight: 700; letter-spacing: .02em; text-transform: uppercase; color: #6b7280; display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
-.home-trend-cur { font-size: .95rem; font-weight: 800; color: #111827; display: inline-flex; align-items: baseline; gap: 5px; }
-.home-trend-arrow { font-size: .82rem; font-weight: 700; }
-.home-trend.up .home-trend-cur, .home-trend.up .home-trend-arrow { color: #dc2626; }
-.home-trend.down .home-trend-cur, .home-trend.down .home-trend-arrow { color: #0e9e6d; }
-.home-trend.flat .home-trend-arrow { color: #9ca3af; }
-html.dark .home-trend { background: #161b2c; border-color: #293049; }
-html.dark .home-trend:hover { border-color: #3a4568; }
-html.dark .home-trend-lbl { color: #aab0c0; }
-html.dark .home-trend-cur { color: #eceff7; }
-html.dark .home-trend.up .home-trend-cur, html.dark .home-trend.up .home-trend-arrow { color: #ff9b8a; }
-html.dark .home-trend.down .home-trend-cur, html.dark .home-trend.down .home-trend-arrow { color: #5fe0b8; }
+/* Health-score section on Home: the score card is the header, and the trend charts (savings rate, spending trend,
+   trends over time) sit inline below it as one group — moved here from the Health-score modal so they're visible on
+   Home without opening anything. The chart cards keep their own styling; this just stacks them and tightens the
+   sub-headers so the score card + charts read as one section. */
+.home-health { display: flex; flex-direction: column; gap: 12px; margin: 0 0 18px; }
+.home-health-hd { margin-bottom: 0; }
+.home-health-charts { display: flex; flex-direction: column; gap: 12px; }
+.home-health-charts .insight-h { margin: 2px 0 0; }
 
 /* Milestones collapsed to a single tappable line (full detail lives in the 🏆 modal). */
 .home-ms-line {
@@ -1101,19 +1088,23 @@ html.dark .payoff-sim-head { color: #57d9a3; }
 html.dark .payoff-sim-foot { color: #a9b6ad; }
 html.dark .payoff-date { color: #e8eef0; }
 
-/* Payoff timeline: one plain track from now (left) to the baseline debt-free date (right), with a sliding finish
-   flag. No coloured fill — the flag position alone conveys "how much sooner". */
-.payoff-line { position: relative; margin: 26px 4px 4px; }
-.payoff-line-track { position: relative; height: 6px; border-radius: 3px; background: #e3efe9; }
-html.dark .payoff-line-track { background: #21362c; }
+/* The bucket progress bar doubles as the debt payoff timeline: when a debt row is open the 🏁 finish flag rides this
+   same bar and slides left as the drawer's "extra /mo" slider goes up — no separate track. The wrap is the flag's
+   positioning context; .cbar-wrap-flag reserves room above the bar for the flag's date label + pin. */
+.cbar-wrap { display: block; position: relative; margin-top: 6px; }
+.cbar-wrap .cbar-track { margin-top: 0; }
+.cbar-wrap-flag { margin-top: 30px; }
 .payoff-flag { position: absolute; bottom: 100%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; margin-bottom: 3px; transition: left .3s cubic-bezier(.4,0,.2,1); white-space: nowrap; }
 .payoff-flag-lbl { font-size: .68rem; font-weight: 800; color: #0f7a54; background: #eafaf2; border: 1px solid #c5eede; border-radius: 6px; padding: 1px 6px; line-height: 1.4; }
 html.dark .payoff-flag-lbl { color: #7ce8bc; background: #14271f; border-color: #245040; }
+/* At the far ends the pin stays put but the label slides inward so it doesn't overflow the bar (and, at 100%, sit
+   over the row's edit/⋯ icons). */
+.payoff-flag-end .payoff-flag-lbl { transform: translateX(-48%); }
+.payoff-flag-start .payoff-flag-lbl { transform: translateX(48%); }
 .payoff-flag-pin { font-size: .8rem; line-height: 1; margin-top: 1px; }
 .payoff-flag::after { content: ""; position: absolute; top: 100%; left: 50%; transform: translateX(-50%); width: 2px; height: 6px; background: #13a06e; }
-.payoff-line-ends { display: flex; justify-content: space-between; margin-top: 6px; font-size: .66rem; font-weight: 600; color: #8a94a0; }
-html.dark .payoff-line-ends { color: #7f8b98; }
-.payoff-end-cut { text-decoration: line-through; opacity: .7; }
+.payoff-foot-date { font-weight: 800; color: #0f7a54; }
+html.dark .payoff-foot-date { color: #7ce8bc; }
 /* Row ⋯ (secondary actions) menu — reuses .row-menu; right-aligned under the ⋯ button. On phones the media rule
    turns it into a bottom sheet regardless. */
 .goal-more { position: relative; display: inline-flex; }

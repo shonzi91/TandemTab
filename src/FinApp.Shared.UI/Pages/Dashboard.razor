@@ -399,29 +399,88 @@ else
             </section>
 
             @{ var ovBand = ov.Band switch { HealthBand.Healthy => "score-ok", HealthBand.Average => "score-warn", _ => "score-bad" }; }
-            <button id="home-score" class="card card-score card-score-wide" @onclick="() => _modal = Modal.HealthScore" title="@Loc["Health score & trends"]">
-                <span class="card-label">@Loc["Health score & trends"]</span>
-                <span class="card-value @ovBand">@(ov.HasData ? ov.Score.ToString() : "—")</span>
-                <span class="card-sub">@(ov.HasData ? N(ov.Verdict) : "")</span>
-            </button>
+            @* Health score + its trend charts as ONE Home section: the score card is the header, and the three chart
+               subsections (savings rate, spending trend, trends over time) sit inline below it. These graphics used to
+               live in the Health-score modal — they're on Home now so you see them without opening anything. Tapping the
+               header still opens the modal for the score detail + quick wins. *@
+            <section class="home-health">
+                <button id="home-score" class="card card-score card-score-wide home-health-hd" @onclick="() => _modal = Modal.HealthScore" title="@Loc["Health score"]">
+                    <span class="card-label">@Loc["Health score"]</span>
+                    <span class="card-value @ovBand">@(ov.HasData ? ov.Score.ToString() : "—")</span>
+                    <span class="card-sub">@(ov.HasData ? N(ov.Verdict) : "")</span>
+                </button>
+                @if (ov.HasData)
+                {
+                    <div class="home-health-charts">
+                        <h4 class="insight-h">@Loc["Savings rate"]</h4>
+                        @{
+                            var ovRateW = Math.Clamp((double)(ov.SavingsRate ?? 0m) * 100, 0, 100);
+                            var ovGoalW = Math.Clamp((double)ov.SavingsTarget * 100, 0, 100);
+                            var ovRateVal = ov.SavingsRate ?? 0m;
+                            var ovRateStatus = ovRateVal >= ov.SavingsTarget ? "rate-good"
+                                : ovRateVal >= ov.SavingsTarget * 0.6m ? "rate-mid" : "rate-low";
+                        }
+                        <section class="savings-rate-card @ovRateStatus">
+                            <div class="savings-rate-head">
+                                <span class="savings-pct">@PctOrDash(ov.SavingsRate)</span>
+                                <span class="savings-target">@Loc["Target:"] <span>@PctText(ov.SavingsTarget)</span></span>
+                            </div>
+                            <div class="savings-track">
+                                <div class="savings-fill" style="width:@ovRateW%"></div>
+                                <div class="savings-goal-line" style="left:@ovGoalW%"></div>
+                            </div>
+                            <div class="savings-footer">
+                                <span>0%</span><span class="goal-label">@Loc["Goal"] @PctText(ov.SavingsTarget)</span><span>100%</span>
+                            </div>
+                            <div class="savings-critique"><Icon Name="bulb" /> @N(ov.SavingsCritique)</div>
+                        </section>
 
-            @* A compact taste of the trends that live in full (with sparklines) inside the Health-score modal — up to
-               three, each a chip with its latest value + direction. Kept to one tight row so Home doesn't flood; tap
-               any to open the full breakdown. *@
-            @if (ov.MiniTrends.Count > 0)
-            {
-                <div class="home-trends">
-                    @foreach (var mt in ov.MiniTrends.Take(3))
-                    {
-                        var mtLbl = N(mt.Label);
-                        <button class="home-trend @(mt.Dir == DeltaDir.Up ? "up" : mt.Dir == DeltaDir.Down ? "down" : "flat")"
-                                @onclick="() => _modal = Modal.HealthScore" title="@N(mt.DeltaNote)">
-                            <span class="home-trend-lbl"><CatIcon Name="@CategoryIcons.Effective(mt.Icon, mtLbl)" /> @mtLbl</span>
-                            <span class="home-trend-cur">@N(mt.CurrentText) <span class="home-trend-arrow">@(mt.Dir == DeltaDir.Up ? "↑" : mt.Dir == DeltaDir.Down ? "↓" : "→")</span></span>
-                        </button>
-                    }
-                </div>
-            }
+                        @if (ov.Trend.Count > 1)
+                        {
+                            <h4 class="insight-h">@Loc["Spending trend"]</h4>
+                            <section class="trend-card">
+                                <div class="trend-head">
+                                    <span>@Loc["Outgoings"] · @Loc["avg"] @Fmt(ov.TrendAverage)</span>
+                                    <span class="trend-dir @(ov.TrendUp ? "up" : "down")">@(ov.TrendUp ? "↑" : "↓") @(ov.TrendUp ? Loc["above average"] : Loc["below average"])</span>
+                                </div>
+                                <div class="trend-plot">
+                                    <div class="trend-avg" style="bottom:@((Math.Clamp((double)ov.TrendAvgFraction, 0, 1) * 72).ToString(System.Globalization.CultureInfo.InvariantCulture))px"></div>
+                                    @foreach (var t in ov.Trend)
+                                    {
+                                        <div class="trend-bar @(t.IsCurrent ? "current" : "")" style="height:@(Math.Max(3.0, (double)t.BarFraction * 72).ToString(System.Globalization.CultureInfo.InvariantCulture))px" title="@t.Label: @Fmt(t.Outgoings)"></div>
+                                    }
+                                </div>
+                                <div class="trend-labels">
+                                    @foreach (var t in ov.Trend)
+                                    {
+                                        <span class="@(t.IsCurrent ? "cur" : "")">@t.Label</span>
+                                    }
+                                </div>
+                                <div class="trend-note">@N(ov.TrendNote)</div>
+                            </section>
+                        }
+
+                        @if (ov.MiniTrends.Count > 0)
+                        {
+                            <h4 class="insight-h">@Loc["Trends over time"]</h4>
+                            <section class="mini-trends">
+                                @foreach (var mt in ov.MiniTrends)
+                                {
+                                    var mtLabel = N(mt.Label);
+                                    <div class="mini-trend @(mt.Dir == DeltaDir.Up ? "up" : mt.Dir == DeltaDir.Down ? "down" : "flat")">
+                                        <div class="mt-head">
+                                            <span class="mt-label"><CatIcon Name="@CategoryIcons.Effective(mt.Icon, mtLabel)" /> @mtLabel</span>
+                                            <span class="mt-cur">@N(mt.CurrentText)</span>
+                                        </div>
+                                        @TrendSparkline(mt.Points)
+                                        <div class="mt-note">@N(mt.DeltaNote)</div>
+                                    </div>
+                                }
+                            </section>
+                        }
+                    </div>
+                }
+            </section>
 
             @{
                 var homeTargets = HomeTargets();
@@ -1251,11 +1310,15 @@ else
                     </div>
                     @{
                         var brkSlices = BreakSlices();
-                        var brkTotal = brkSlices.Sum(s => s.Amount);                                    // total outflow (expenses + transfers-out)
-                        var brkSpent = brkSlices.Where(s => s.Key != TransfersKey).Sum(s => s.Amount);  // expenses only, for the Spent tile
+                        var brkTotal = brkSlices.Sum(s => s.Amount);                                    // sum of the drawn slices (donut geometry)
                         var brkCi = System.Globalization.CultureInfo.InvariantCulture;
                         var (brkFrom, brkTo) = BreakWindow();
                         var brkIncome = State.IncomeInRange(brkFrom, brkTo);
+                        // "Spent" = all money out for the window: expenses + out-transfers. Computed from the raw rows,
+                        // NOT the slices, so it's identical in the category and tag views (the tag slices double-count
+                        // multi-tag expenses — using them here inflated the % of income in the tag view).
+                        var brkMoneyOut = State.ExpensesInRange(brkFrom, brkTo).Sum(e => Math.Abs(e.Amount.Amount))
+                            + State.ExternalTransfersInRange(brkFrom, brkTo).Sum(t => Math.Abs(t.Amount.Amount));
                         // In the tag view an expense counts under each of its tags, so when any expense in the window
                         // carries more than one tag the slices add up to more than was actually spent. Flag it so we
                         // can explain why the tag total sits above the category total for the same expenses.
@@ -1280,17 +1343,15 @@ else
                             </span>
                         </div>
                     }
-                    @* Income for the same window (member contributions, not budgets) so spend has context. Top level only —
-                       a drilled single category vs total income wouldn't be a meaningful ratio. *@
-                    @if (_breakDrill is null && (brkIncome > 0m || brkTotal > 0m))
+                    @* Income vs money-out for the window (member contributions, not budgets) so spend has context.
+                       Always shown at the top level — a drilled single category vs total income wouldn't be a meaningful
+                       ratio, so it's hidden only inside a drill. *@
+                    @if (_breakDrill is null)
                     {
                         <div class="brk-summary">
                             <span class="brk-sum"><span class="brk-sum-lbl">@Loc["Income"]</span><span class="brk-sum-val good-text">@Fmt(brkIncome)</span></span>
-                            <span class="brk-sum"><span class="brk-sum-lbl">@Loc["Spent"]</span><span class="brk-sum-val">@Fmt(brkSpent)</span></span>
-                            @if (brkIncome > 0m)
-                            {
-                                <span class="brk-sum"><span class="brk-sum-lbl">@Loc["of income"]</span><span class="brk-sum-val">@((brkSpent / brkIncome * 100).ToString("0.#", brkCi))%</span></span>
-                            }
+                            <span class="brk-sum"><span class="brk-sum-lbl">@Loc["Spent"]</span><span class="brk-sum-val">@Fmt(brkMoneyOut)</span></span>
+                            <span class="brk-sum"><span class="brk-sum-lbl">@Loc["of income"]</span><span class="brk-sum-val">@(brkIncome > 0m ? (brkMoneyOut / brkIncome * 100).ToString("0.#", brkCi) + "%" : "—")</span></span>
                         </div>
                     }
                     @if (brkSlices.Count == 0 || brkTotal <= 0m)
@@ -1451,9 +1512,34 @@ else
                         var ringRamp = (!isInvestment && !isDebt && !ringDashed) ? "goal" : null;
                         var done = isDebt ? ctx.Bucket.IsDebtCleared : (g is not null && g.GoalReached);
                         var open = _expandedGoalId == bucketId;
-                        // The row bar shows real progress only (paid-off % / saved %). The payoff *simulation* lives on a
-                        // dedicated timeline in the drawer below — filling a segment of this same bar was ambiguous.
                         var barShown = barPct;
+                        // Debt payoff sim — drives BOTH the 🏁 finish flag that slides along this row's own progress bar
+                        // and the drawer slider's foot text, so they stay in sync (the slider lives in the drawer, the
+                        // flag rides the bar above it — no separate timeline track). Only meaningful for an unpaid debt
+                        // with an installment; the flag renders only while the row is open (its slider is on screen).
+                        FinApp.Forecasting.LoanForecast.Payoff? payBase = null, payFast = null;
+                        decimal payInst = 0m, paySliderMax = 0m;
+                        int payBaseMonths = 0, payFastMonths = 0, payMonthsSaved = 0;
+                        double payFlagPct = 0; var showPayoff = false;
+                        if (isDebt && !done)
+                        {
+                            payInst = State.SavingBucketDebtInstallment(bucketId);
+                            if (payInst > 0m)
+                            {
+                                var payRate = State.SavingBucketDebtRate(bucketId);
+                                payBase = FinApp.Forecasting.LoanForecast.PayOff(debtOwed, payRate, payInst);
+                                payFast = FinApp.Forecasting.LoanForecast.PayOff(debtOwed, payRate, payInst + _goalExtra);
+                                payBaseMonths = payBase?.Months ?? 0;
+                                payFastMonths = payFast?.Months ?? 0;
+                                payMonthsSaved = payBaseMonths > 0 && payFastMonths > 0 ? Math.Max(0, payBaseMonths - payFastMonths) : 0;
+                                paySliderMax = Math.Max(50m, Math.Ceiling(payInst * 3m / 10m) * 10m);
+                                if (payFast is not null && payBaseMonths > 0)
+                                {
+                                    payFlagPct = Math.Clamp((double)payFastMonths / payBaseMonths * 100.0, 4, 100);
+                                    showPayoff = true;
+                                }
+                            }
+                        }
                     }
                     <div class="cat-row-head">
                         <button class="cat-row-hit" @onclick="() => ToggleGoalRow(bucketId)">
@@ -1473,7 +1559,23 @@ else
                                         else { <text>@Fmt(total)<span class="cat-row-nb"> · @Loc["saved"]</span></text> }
                                     </span>
                                 </span>
-                                <span class="cbar-track"><span class="cbar-grad @(hasBar ? "cbar-good" : "cbar-flat")" style="--pct:@barShown.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)%"></span></span>
+                                @* When a debt row is open, the payoff finish flag rides this same progress bar and slides
+                                   left as the drawer's "extra /mo" slider goes up — the bucket bar doubles as the payoff
+                                   timeline, so there's no second bar. *@
+                                <span class="cbar-wrap @(open && showPayoff ? "cbar-wrap-flag" : "")">
+                                    @if (open && showPayoff)
+                                    {
+                                        @* Near either end the centred date label would spill past the bar (over the row
+                                           actions on the right). Anchor it inward at the extremes — the pin still marks the
+                                           exact spot. *@
+                                        var flagEdge = payFlagPct >= 85 ? " payoff-flag-end" : payFlagPct <= 15 ? " payoff-flag-start" : "";
+                                        <span class="payoff-flag@(flagEdge)" style="left:@payFlagPct.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)%">
+                                            <span class="payoff-flag-lbl">@PayoffDate(payFastMonths)</span>
+                                            <span class="payoff-flag-pin">🏁</span>
+                                        </span>
+                                    }
+                                    <span class="cbar-track"><span class="cbar-grad @(hasBar ? "cbar-good" : "cbar-flat")" style="--pct:@barShown.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)%"></span></span>
+                                </span>
                             </span>
                         </button>
                         @* Actions on the right of the row. For an expenses fund the primary icon is "Add a cost" (a
@@ -1533,60 +1635,45 @@ else
                                         @DebtSparkline(State.SavingBucketDebtHistory(bucketId))
                                     </div>
                                 }
-                                if (!done && State.SavingBucketDebtInstallment(bucketId) > 0m)
+                                if (!done && payInst > 0m)
                                 {
-                                    // Inline payoff projection: the "extra /mo" slider slides the finish flag along a
-                                    // today → debt-free timeline, so you can see the date move earlier as you pay more.
-                                    var inst = State.SavingBucketDebtInstallment(bucketId);
-                                    var rate = State.SavingBucketDebtRate(bucketId);
-                                    var basePay = FinApp.Forecasting.LoanForecast.PayOff(debtOwed, rate, inst);
-                                    var fastPay = FinApp.Forecasting.LoanForecast.PayOff(debtOwed, rate, inst + _goalExtra);
-                                    var baseMonths = basePay?.Months ?? 0;
-                                    var fastMonths = fastPay?.Months ?? 0;
-                                    var monthsSaved = baseMonths > 0 && fastMonths > 0 ? Math.Max(0, baseMonths - fastMonths) : 0;
-                                    var sliderMax = Math.Max(50m, Math.Ceiling(inst * 3m / 10m) * 10m);
+                                    // Inline payoff projection. The "extra /mo" slider slides the 🏁 finish flag along the
+                                    // bucket's own progress bar in the row head above; this drawer holds the control plus
+                                    // the resulting debt-free date / how much sooner. (Sim values computed with the row.)
                                     var ci = System.Globalization.CultureInfo.InvariantCulture;
                                     <div class="payoff-sim">
                                         <div class="payoff-sim-head">
                                             <span><Icon Name="trending" /> @Loc["Pay extra on top"]</span>
                                             <span class="payoff-extra-val">+@Fmt(new Money(_goalExtra, State.Currency))/@Loc["mo"]</span>
                                         </div>
-                                        <input class="payoff-slider" type="range" min="0" max="@sliderMax.ToString(ci)" step="10" @bind="_goalExtra" @bind:event="oninput" />
-                                        @* Timeline: now → debt-free date. A single plain track with the 🏁 finish flag that
-                                           slides left as you add extra — no coloured fill, so nothing double-encodes the bar. *@
-                                        @if (fastPay is not null && baseMonths > 0)
-                                        {
-                                            var flagPct = Math.Clamp((double)fastMonths / baseMonths * 100.0, 4, 100);
-                                            <div class="payoff-line">
-                                                <div class="payoff-flag" style="left:@flagPct.ToString("0.##", ci)%">
-                                                    <span class="payoff-flag-lbl">@PayoffDate(fastMonths)</span>
-                                                    <span class="payoff-flag-pin">🏁</span>
-                                                </div>
-                                                <div class="payoff-line-track"></div>
-                                                <div class="payoff-line-ends">
-                                                    <span>@DateOnly.FromDateTime(DateTime.Today).ToString("MMM yyyy")</span>
-                                                    <span class="@(monthsSaved > 0 ? "payoff-end-cut" : "")">@PayoffDate(baseMonths)</span>
-                                                </div>
-                                            </div>
-                                        }
+                                        <input class="payoff-slider" type="range" min="0" max="@paySliderMax.ToString(ci)" step="10" @bind="_goalExtra" @bind:event="oninput" />
                                         <div class="payoff-sim-foot">
-                                            @if (fastPay is null)
+                                            @if (payFast is null)
                                             {
                                                 <span class="warn-text">@Loc["At this installment it never clears — it doesn’t cover the interest."]</span>
                                             }
-                                            else if (monthsSaved > 0)
-                                            {
-                                                <span class="good-text">@MonthsText(monthsSaved) @Loc["sooner"]</span>
-                                                @if (basePay is { } bp && fastPay is { } fp && bp.TotalInterest > fp.TotalInterest) { <span class="good-text">· @Loc["save"] @Fmt(bp.TotalInterest - fp.TotalInterest)</span> }
-                                            }
                                             else
                                             {
-                                                <span class="hint">@Loc["Drag to pay a little more each month and watch the finish move closer."]</span>
+                                                <span class="payoff-foot-date">🏁 @PayoffDate(payFastMonths)</span>
+                                                @if (payMonthsSaved > 0)
+                                                {
+                                                    <span class="good-text">· @MonthsText(payMonthsSaved) @Loc["sooner"]</span>
+                                                    @if (payBase is { } bp && payFast is { } fp && bp.TotalInterest > fp.TotalInterest) { <span class="good-text">· @Loc["save"] @Fmt(bp.TotalInterest - fp.TotalInterest)</span> }
+                                                }
+                                                else
+                                                {
+                                                    <span class="hint">· @Loc["Drag to pay a little more each month and watch the finish move closer."]</span>
+                                                }
                                             }
                                         </div>
                                     </div>
                                     // One-off: pay what's already set aside now — it lowers the balance, so the interest
                                     // you're charged each period drops. Show the two ways a bank typically applies it.
+                                    // (Reuse the row-level payoff sim values rather than recomputing.)
+                                    var inst = payInst;
+                                    var rate = State.SavingBucketDebtRate(bucketId);
+                                    var basePay = payBase;
+                                    var baseMonths = payBaseMonths;
                                     var setAside = total.Amount;
                                     var payNow = Math.Min(setAside, debtOwed);
                                     var intNow = FinApp.Forecasting.LoanForecast.MonthlyInterest(debtOwed, rate);
@@ -3323,77 +3410,8 @@ else
                             </div>
                         }
 
-                        <h4 class="insight-h">@Loc["Savings rate"]</h4>
-                        @* Wrapped in @{ } because the enclosing .score-panel markup element is open here, so bare C#
-                           statements would otherwise be parsed as literal text. *@
-                        @{
-                            var rateW = Math.Clamp((double)(hs.SavingsRate ?? 0m) * 100, 0, 100);
-                            var goalW = Math.Clamp((double)hs.SavingsTarget * 100, 0, 100);
-                            // Colour the rate by where it lands against the account's own target, not a fixed amber: at or
-                            // above target reads as a win (green), most of the way there is fine (mint), well short warns.
-                            var rateVal = hs.SavingsRate ?? 0m;
-                            var rateStatus = rateVal >= hs.SavingsTarget ? "rate-good"
-                                : rateVal >= hs.SavingsTarget * 0.6m ? "rate-mid"
-                                : "rate-low";
-                        }
-                        <section class="savings-rate-card @rateStatus">
-                            <div class="savings-rate-head">
-                                <span class="savings-pct">@PctOrDash(hs.SavingsRate)</span>
-                                <span class="savings-target">@Loc["Target:"] <span>@PctText(hs.SavingsTarget)</span></span>
-                            </div>
-                            <div class="savings-track">
-                                <div class="savings-fill" style="width:@rateW%"></div>
-                                <div class="savings-goal-line" style="left:@goalW%"></div>
-                            </div>
-                            <div class="savings-footer">
-                                <span>0%</span><span class="goal-label">@Loc["Goal"] @PctText(hs.SavingsTarget)</span><span>100%</span>
-                            </div>
-                            <div class="savings-critique"><Icon Name="bulb" /> @N(hs.SavingsCritique)</div>
-                        </section>
-
-                        @if (hs.Trend.Count > 1)
-                        {
-                            <h4 class="insight-h">@Loc["Spending trend"]</h4>
-                            <section class="trend-card">
-                                <div class="trend-head">
-                                    <span>@Loc["Outgoings"] · @Loc["avg"] @Fmt(hs.TrendAverage)</span>
-                                    <span class="trend-dir @(hs.TrendUp ? "up" : "down")">@(hs.TrendUp ? "↑" : "↓") @(hs.TrendUp ? Loc["above average"] : Loc["below average"])</span>
-                                </div>
-                                <div class="trend-plot">
-                                    <div class="trend-avg" style="bottom:@((Math.Clamp((double)hs.TrendAvgFraction, 0, 1) * 72).ToString(System.Globalization.CultureInfo.InvariantCulture))px"></div>
-                                    @foreach (var t in hs.Trend)
-                                    {
-                                        <div class="trend-bar @(t.IsCurrent ? "current" : "")" style="height:@(Math.Max(3.0, (double)t.BarFraction * 72).ToString(System.Globalization.CultureInfo.InvariantCulture))px" title="@t.Label: @Fmt(t.Outgoings)"></div>
-                                    }
-                                </div>
-                                <div class="trend-labels">
-                                    @foreach (var t in hs.Trend)
-                                    {
-                                        <span class="@(t.IsCurrent ? "cur" : "")">@t.Label</span>
-                                    }
-                                </div>
-                                <div class="trend-note">@N(hs.TrendNote)</div>
-                            </section>
-                        }
-
-                        @if (hs.MiniTrends.Count > 0)
-                        {
-                            <h4 class="insight-h">@Loc["Trends over time"]</h4>
-                            <section class="mini-trends">
-                                @foreach (var mt in hs.MiniTrends)
-                                {
-                                    var mtLabel = N(mt.Label);
-                                    <div class="mini-trend @(mt.Dir == DeltaDir.Up ? "up" : mt.Dir == DeltaDir.Down ? "down" : "flat")">
-                                        <div class="mt-head">
-                                            <span class="mt-label"><CatIcon Name="@CategoryIcons.Effective(mt.Icon, mtLabel)" /> @mtLabel</span>
-                                            <span class="mt-cur">@N(mt.CurrentText)</span>
-                                        </div>
-                                        @TrendSparkline(mt.Points)
-                                        <div class="mt-note">@N(mt.DeltaNote)</div>
-                                    </div>
-                                }
-                            </section>
-                        }
+                        @* The trend graphics (savings rate, spending trend, trends over time) now live inline on the Home
+                           tab under the Health-score header — this modal keeps the score detail + quick wins. *@
                         </section>
                     }
                     <div class="modal-actions">
