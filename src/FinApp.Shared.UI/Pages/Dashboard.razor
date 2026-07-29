@@ -737,18 +737,21 @@ else
                                     @if (synced) { <span class="fund-row-ico"><Icon Name="link" /></span> } else { <CatIcon Name="@State.FundIcon(fid)" /> } @f.Name
                                 </button>
                                 <span class="fund-row-amt" title="@(synced ? SyncedFundDisplay(fid).Title : "")">@Fmt(bal)</span>
-                                @* The two common actions — move money out, log money in — sit on the row next to the ⋯
-                                   (the menu keeps Movements / Edit / Archive). Only for a spendable, non-synced fund
-                                   in an open period, mirroring the old menu's conditions. *@
-                                @if (!synced && State.IsPeriodOpen)
-                                {
-                                    @if (CanTransfer)
+                                @* The two common actions — move money out, log money in — sit next to the ⋯ (the menu
+                                   keeps Movements / Edit / Archive). Only for a spendable, non-synced fund in an open
+                                   period. The cluster is a fixed width so every row's amount lines up in one column
+                                   whether or not it carries the action buttons (a synced fund has none). *@
+                                <span class="fund-row-acts">
+                                    @if (!synced && State.IsPeriodOpen)
                                     {
-                                        <button class="exp-edit" title="@Loc["Transfer"]" @onclick="() => OpenTransferFromFund(fid)"><Icon Name="swap" /></button>
+                                        @if (CanTransfer)
+                                        {
+                                            <button class="exp-edit" title="@Loc["Transfer"]" @onclick="() => OpenTransferFromFund(fid)"><Icon Name="swap" /></button>
+                                        }
+                                        <button class="exp-edit" title="@Loc["Add income"]" @onclick="() => OpenDepositToFund(fid)"><Icon Name="plus" /></button>
                                     }
-                                    <button class="exp-edit" title="@Loc["Add income"]" @onclick="() => OpenDepositToFund(fid)"><Icon Name="plus" /></button>
-                                }
-                                <button class="fund-row-more" title="@Loc["Actions"]" @onclick="() => ToggleFundMenu(fid)">⋯</button>
+                                    <button class="fund-row-more" title="@Loc["Actions"]" @onclick="() => ToggleFundMenu(fid)">⋯</button>
+                                </span>
                                 @if (_fundMenuId == fid) { @FundCircleMenu(fid) }
                             </div>
                         }
@@ -6804,15 +6807,10 @@ else
     private Guid DefaultFundForCategory(Guid categoryId) =>
         State.LastFundForCategory(categoryId) ?? State.SelectableFunds.FirstOrDefault()?.Id ?? Guid.Empty;
 
-    /// <summary>When the category changes in the add-expense modal, follow it to the fund last used for that category
-    /// (#11) — unless the user has already typed an amount, in which case leave their in-progress entry alone.</summary>
-    private void OnExpenseCategoryChanged()
-    {
-        if (_amount <= 0) _fundId = DefaultFundForCategory(_categoryId);
-    }
-
-    /// <summary>CategoryPicker (Add-expense) sets the id then runs the same follow-to-default-fund as the old select.</summary>
-    private void OnExpenseCategoryPicked(Guid id) { _categoryId = id; OnExpenseCategoryChanged(); }
+    /// <summary>Add-expense category pick: set the category only. The fund is chosen independently (its own chip row)
+    /// — switching category no longer moves the fund out from under you. The initial fund is still defaulted per
+    /// category when the modal first opens (see OpenAddExpense/DefaultFundForCategory).</summary>
+    private void OnExpenseCategoryPicked(Guid id) { _categoryId = id; }
 
     /// <summary>Prefill the add-expense modal from the most recent manual expense — the "repeat last" quick action (#11).</summary>
     private void RepeatLastExpense()

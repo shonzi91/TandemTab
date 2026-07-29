@@ -591,6 +591,8 @@ html.dark .fund-move-summary { border-bottom-color: #2a3550; }
    makes it reachable in testing and is right anyway, since a 560px-wide window is almost always a phone. */
 @media (pointer: coarse), (max-width: 560px) {
     .exp-edit { min-width: 44px; min-height: 44px; font-size: 1.05rem; }
+    /* Bigger tap targets → wider fund-row action cluster; keep the reserved column wide enough that amounts still line up. */
+    .fund-row-acts { min-width: 112px; }
     /* The floating ✕/✓ are trimmed small on desktop; on a touchscreen keep them a comfortable tap size. */
     .modal-actions button { min-width: 40px; min-height: 40px; }
     /* Adjacent destructive actions need room between them, not just size. */
@@ -991,6 +993,9 @@ html.dark .bydate-ctx { color: #94a3b8; }
 .fund-row-ico { font-size: 1.15rem; line-height: 1; }
 .fund-row-amt { margin-left: auto; font-weight: 700; font-size: .92rem; font-variant-numeric: tabular-nums; color: #1f2430; }
 .fund-row.over .fund-row-amt { color: #dc2626; }
+/* Fixed-width trailing cluster so amounts line up in one column across all rows regardless of how many action
+   buttons the row carries (synced funds have none); the ⋯ stays pinned to the right edge. */
+.fund-row-acts { flex: none; display: inline-flex; align-items: center; justify-content: flex-end; gap: 2px; min-width: 90px; }
 .fund-row-more { background: none; border: none; cursor: pointer; color: #9aa0ad; font-size: 1.2rem; line-height: 1; padding: 0 2px; flex: none; }
 .fund-row-more:hover { color: #13a06e; }
 .fund-row .row-menu { top: 100%; left: auto; right: 0; margin-left: 0; margin-top: 8px; min-width: 210px; }
