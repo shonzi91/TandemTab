@@ -37,6 +37,8 @@ import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.automirrored.rounded.ReceiptLong
 import androidx.compose.material.icons.automirrored.rounded.TrendingUp
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -118,6 +120,9 @@ fun HomeScreen(
     onBeginEditExpense: (com.tandemtab.app.data.ExpenseDto) -> Unit,
     onSetBudget: (String, Double, () -> Unit) -> Unit,
     onRemoveBudget: (String, () -> Unit) -> Unit,
+    onAddCategory: (String, String?, String?, () -> Unit) -> Unit,
+    onEditCategory: (String, String, String?, () -> Unit) -> Unit,
+    onArchiveCategory: (String, () -> Unit) -> Unit,
     onClearEditing: () -> Unit,
     onAddExpenses: (List<com.tandemtab.app.data.AddExpenseRequest>, () -> Unit) -> Unit,
     onEditExpense: (String, com.tandemtab.app.data.AddExpenseRequest, () -> Unit) -> Unit,
@@ -228,6 +233,9 @@ fun HomeScreen(
                             onEdit = onBeginEditExpense,
                             onSetBudget = onSetBudget,
                             onRemoveBudget = onRemoveBudget,
+                            onAddCategory = onAddCategory,
+                            onEditCategory = onEditCategory,
+                            onArchiveCategory = onArchiveCategory,
                         )
                         NavDest.Goals -> GoalsScreen(
                             goals = state.goals,
@@ -559,37 +567,54 @@ private fun monthsText(months: Int): String = when {
     else -> { val y = months / 12; val m = months % 12; "in ${y}y${if (m > 0) " ${m}m" else ""}" }
 }
 
-/** The body account header (mirroring web): the account switcher (pills for multi-account, else a name heading),
- *  the member avatars, and the current-period label — so the account name is shown once, not duplicated. */
+/** The body account header, collapsed to a single row: the account switcher (a dropdown when there's more than one
+ *  account, else a plain name), the current-period label, and the account-actions button. Member avatars/names moved
+ *  into the Account sheet — they're reference info, not something you act on from Home each session. */
 @Composable
 private fun AccountHeader(state: UiState, onSelectAccount: (String) -> Unit, onOpenAccount: () -> Unit) {
     val tandem = LocalTandemColors.current
     val account = state.selectedAccount
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            if (state.accounts.size > 1) {
-                Row(
-                    Modifier.weight(1f).horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    state.accounts.forEach { a ->
-                        AccountChip(a.name, a.id == state.selectedAccountId) { onSelectAccount(a.id) }
-                    }
-                }
-            } else if (account != null) {
-                Text(account.name, fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.onBackground, maxLines = 1, modifier = Modifier.weight(1f))
-            } else {
-                Spacer(Modifier.weight(1f))
-            }
-            // Account actions (rename / members / recurring / leave / delete), mirroring the web account menu.
-            IconButton(onClick = onOpenAccount) {
-                Icon(TandemIcons.Sliders, contentDescription = "Account actions", tint = tandem.muted)
-            }
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.weight(1f)) {
+            AccountSwitcher(state, onSelectAccount)
         }
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            MemberAvatars(account?.members ?: emptyList())
-            Spacer(Modifier.weight(1f))
-            state.periodLabel?.let { Text(it, fontSize = 13.sp, color = tandem.muted, fontWeight = FontWeight.Medium) }
+        state.periodLabel?.let {
+            Text(it, fontSize = 13.sp, color = tandem.muted, fontWeight = FontWeight.Medium)
+            Spacer(Modifier.width(4.dp))
+        }
+        // Account actions (rename / members / recurring / leave / delete), mirroring the web account menu.
+        IconButton(onClick = onOpenAccount) {
+            Icon(TandemIcons.Sliders, contentDescription = "Account actions", tint = tandem.muted)
+        }
+    }
+}
+
+/** The account name — a tap-to-switch dropdown when the user has more than one account, else a plain heading. */
+@Composable
+private fun AccountSwitcher(state: UiState, onSelectAccount: (String) -> Unit) {
+    val account = state.selectedAccount ?: return
+    if (state.accounts.size <= 1) {
+        Text(account.name, fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.onBackground, maxLines = 1)
+        return
+    }
+    var open by remember { mutableStateOf(false) }
+    Row(
+        Modifier.clip(RoundedCornerShape(10.dp)).clickable { open = true }.padding(vertical = 2.dp, horizontal = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(account.name, fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.onBackground, maxLines = 1)
+        Spacer(Modifier.width(4.dp))
+        Icon(TandemIcons.Chevron, contentDescription = "Switch account", tint = LocalTandemColors.current.muted, modifier = Modifier.size(18.dp).rotate(90f))
+    }
+    DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+        state.accounts.forEach { a ->
+            DropdownMenuItem(
+                text = { Text(a.name, fontWeight = if (a.id == state.selectedAccountId) FontWeight.Bold else FontWeight.Normal) },
+                onClick = { onSelectAccount(a.id); open = false },
+                leadingIcon = if (a.id == state.selectedAccountId) {
+                    { Icon(TandemIcons.Check, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp)) }
+                } else null,
+            )
         }
     }
 }

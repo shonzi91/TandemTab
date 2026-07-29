@@ -236,6 +236,27 @@ data class BudgetMutationDto(
     val view: BudgetsViewDto = BudgetsViewDto(),
 )
 
+// --- Category management (mirrors FinApp.Contracts) ---------------------------------------------------
+
+@Serializable
+data class CreateCategoryRequest(
+    val name: String,
+    val parentId: String? = null,
+    val icon: String? = null,
+    val essential: Boolean = false,
+)
+
+@Serializable
+data class EditCategoryRequest(
+    val name: String,
+    val icon: String? = null,
+    val essential: Boolean? = null,
+)
+
+/** Archive (hide) or restore a category/fund/bucket. Reversible; keeps history. */
+@Serializable
+data class SetArchivedRequest(val archived: Boolean)
+
 // --- Add-expense write flow (mirrors FinApp.Contracts) ------------------------------------------------
 // POST /accounts/{id}/expenses. The member is the caller and FundSynced is derived server-side, so neither
 // travels in the request. `date` is an ISO yyyy-MM-dd string (maps to the server's DateOnly).

@@ -71,10 +71,14 @@ fun SpendingScreen(
     onEdit: (ExpenseDto) -> Unit,
     onSetBudget: (categoryId: String, amount: Double, onDone: () -> Unit) -> Unit,
     onRemoveBudget: (categoryId: String, onDone: () -> Unit) -> Unit,
+    onAddCategory: (name: String, parentId: String?, icon: String?, onDone: () -> Unit) -> Unit,
+    onEditCategory: (id: String, name: String, icon: String?, onDone: () -> Unit) -> Unit,
+    onArchiveCategory: (id: String, onDone: () -> Unit) -> Unit,
 ) {
     val tandem = LocalTandemColors.current
     val fmt = rememberMoney(spending.currency)
     var view by remember { mutableStateOf(SpendView.Categories) }
+    var showManage by remember { mutableStateOf(false) }
 
     when {
         spending.loading && spending.expenses.isEmpty() && spending.budgets.isEmpty() ->
@@ -90,6 +94,18 @@ fun SpendingScreen(
             }
 
         else -> {
+            // Manage-categories entry (mirrors the web's Spending ⋯), right-aligned above the view toggle.
+            Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Spacer(Modifier.weight(1f))
+                Row(
+                    Modifier.clip(RoundedCornerShape(8.dp)).clickable { showManage = true }.padding(horizontal = 6.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(TandemIcons.Sliders, contentDescription = null, tint = tandem.muted, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Manage categories", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = tandem.muted)
+                }
+            }
             ViewToggle(view) { view = it }
             Spacer(Modifier.height(14.dp))
             when (view) {
@@ -97,6 +113,18 @@ fun SpendingScreen(
                 SpendView.ByDate -> ByDateView(spending, fmt, onEdit)
             }
         }
+    }
+
+    if (showManage) {
+        ManageCategoriesSheet(
+            categories = spending.categories,
+            saving = spending.saving,
+            saveError = spending.saveError,
+            onAdd = onAddCategory,
+            onEdit = onEditCategory,
+            onArchive = onArchiveCategory,
+            onDismiss = { showManage = false },
+        )
     }
 }
 

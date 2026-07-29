@@ -12,6 +12,8 @@ import com.tandemtab.app.data.AddSavingDepositRequest
 import com.tandemtab.app.data.ChangePasswordRequest
 import com.tandemtab.app.data.BudgetMutationDto
 import com.tandemtab.app.data.BudgetRowDto
+import com.tandemtab.app.data.CreateCategoryRequest
+import com.tandemtab.app.data.EditCategoryRequest
 import com.tandemtab.app.data.SetBudgetRequest
 import com.tandemtab.app.data.CategoryOptionDto
 import com.tandemtab.app.data.ExpenseDto
@@ -816,6 +818,39 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             totalSpent = mut.view.totalSpent,
         ),
     )
+
+    // --- Category management (add / edit / archive from the Spending "Manage categories" sheet) ---------
+
+    fun addCategory(name: String, parentId: String?, icon: String?, onDone: () -> Unit) =
+        categoryMutation(onDone) { acct -> api.createCategory(acct, CreateCategoryRequest(name.trim(), parentId, icon?.ifBlank { null })) }
+
+    fun editCategory(categoryId: String, name: String, icon: String?, onDone: () -> Unit) =
+        categoryMutation(onDone) { acct -> api.editCategory(acct, categoryId, EditCategoryRequest(name.trim(), icon?.ifBlank { null })) }
+
+    fun archiveCategory(categoryId: String, onDone: () -> Unit) =
+        categoryMutation(onDone) { acct -> api.archiveCategory(acct, categoryId, true) }
+
+    /** Fire a category mutation, then re-fetch /spending so the refreshed category list (and any spend re-bucketing)
+     *  shows immediately — the category endpoints return only a version, not a snapshot. */
+    private fun categoryMutation(onDone: () -> Unit, action: suspend (String) -> Any) {
+        val accountId = _state.value.selectedAccountId ?: return
+        _state.update { it.copy(spending = it.spending.copy(saving = true, saveError = null)) }
+        viewModelScope.launch {
+            try {
+                action(accountId)
+                val v = api.spending(accountId)
+                _state.update {
+                    it.copy(spending = it.spending.copy(
+                        saving = false, saveError = null,
+                        categories = v.categories, expenses = v.expenses, funds = v.funds,
+                    ))
+                }
+                onDone()
+            } catch (e: Exception) {
+                _state.update { it.copy(spending = it.spending.copy(saving = false, saveError = e.message ?: "Couldn't save the category.")) }
+            }
+        }
+    }
 
     // --- Profile & Account settings ---------------------------------------------------------------------
 

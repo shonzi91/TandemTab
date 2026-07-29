@@ -160,6 +160,18 @@ class TandemTabApi(
     suspend fun removeBudget(accountId: String, categoryId: String): BudgetMutationDto =
         authedDelete("/accounts/$accountId/budgets/$categoryId").body()
 
+    /** Add a spend category (optionally nested under a parent). Re-fetch /spending after to refresh the list. */
+    suspend fun createCategory(accountId: String, req: CreateCategoryRequest): MutationResultDto =
+        authedPost("/accounts/$accountId/categories", req).body()
+
+    /** Edit a spend category's name and icon (a null icon clears it). */
+    suspend fun editCategory(accountId: String, categoryId: String, req: EditCategoryRequest): MutationResultDto =
+        authedPut("/accounts/$accountId/categories/$categoryId", req).body()
+
+    /** Archive (hide) or restore a spend category. */
+    suspend fun archiveCategory(accountId: String, categoryId: String, archived: Boolean): MutationResultDto =
+        authedPut("/accounts/$accountId/categories/$categoryId/archived", SetArchivedRequest(archived)).body()
+
     suspend fun savings(accountId: String): SavingsViewDto = authedGet("/accounts/$accountId/savings").body()
 
     /** Earmark money into a savings bucket. Returns a refreshed Savings view to reconcile without a re-fetch. */
