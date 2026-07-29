@@ -53,6 +53,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.tandemtab.app.UiState
 import com.tandemtab.app.ui.theme.LocalTandemColors
+import com.tandemtab.app.ui.theme.TandemIcons
 
 // ── Profile (personal) ──────────────────────────────────────────────────────────────────────────────
 
@@ -212,14 +213,14 @@ fun AccountSheet(
         }
 
         // Actions.
-        ActionRow("Recurring bills & income", Icons.Rounded.Repeat, tint = MaterialTheme.colorScheme.onSurface) { onOpenRecurring() }
+        ActionRow("Recurring bills & income", TandemIcons.Repeat, tint = MaterialTheme.colorScheme.onSurface) { onOpenRecurring() }
 
         settings.error?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 13.sp, modifier = Modifier.padding(top = 8.dp)) }
 
         if (!isOwner) {
-            ActionRow("Leave account", Icons.AutoMirrored.Rounded.Logout, tint = MaterialTheme.colorScheme.error) { confirm = "leave" }
+            ActionRow("Leave account", TandemIcons.Logout, tint = MaterialTheme.colorScheme.error) { confirm = "leave" }
         } else {
-            ActionRow("Delete account", Icons.Rounded.DeleteForever, tint = MaterialTheme.colorScheme.error) { confirm = "delete" }
+            ActionRow("Delete account", TandemIcons.Trash, tint = MaterialTheme.colorScheme.error) { confirm = "delete" }
         }
 
         if (confirm != null) {

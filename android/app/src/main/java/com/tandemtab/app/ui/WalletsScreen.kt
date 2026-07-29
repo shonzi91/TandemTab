@@ -36,6 +36,7 @@ import com.tandemtab.app.WalletsUi
 import com.tandemtab.app.data.FundRowDto
 import com.tandemtab.app.data.FundTransferRowDto
 import com.tandemtab.app.ui.theme.LocalTandemColors
+import com.tandemtab.app.ui.theme.TandemIcons
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -175,10 +176,10 @@ private fun FundRow(f: FundRowDto, fmt: (Double) -> String, onTransfer: () -> Un
         // driven by its real bank balance, so manual moves don't apply).
         if (!f.synced) {
             IconButton(onClick = onTransfer, modifier = Modifier.size(38.dp)) {
-                Icon(Icons.Rounded.SwapHoriz, "Transfer", tint = tandem.muted)
+                Icon(TandemIcons.Swap, "Transfer", tint = tandem.muted)
             }
             IconButton(onClick = onAddIncome, modifier = Modifier.size(38.dp)) {
-                Icon(Icons.Rounded.Add, "Add income", tint = tandem.muted)
+                Icon(TandemIcons.Plus, "Add income", tint = tandem.muted)
             }
         }
     }

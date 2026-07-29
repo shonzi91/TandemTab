@@ -44,6 +44,7 @@ import com.tandemtab.app.SpendingUi
 import com.tandemtab.app.data.BudgetRowDto
 import com.tandemtab.app.data.ExpenseDto
 import com.tandemtab.app.ui.theme.LocalTandemColors
+import com.tandemtab.app.ui.theme.TandemIcons
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -90,8 +91,8 @@ private data class SpendTab(val view: SpendView, val label: String, val icon: Im
 private fun ViewToggle(view: SpendView, onSelect: (SpendView) -> Unit) {
     val tandem = LocalTandemColors.current
     val tabs = listOf(
-        SpendTab(SpendView.Categories, "Categories", Icons.Rounded.BarChart),
-        SpendTab(SpendView.ByDate, "By date", Icons.Rounded.CalendarMonth),
+        SpendTab(SpendView.Categories, "Categories", TandemIcons.Chart),
+        SpendTab(SpendView.ByDate, "By date", TandemIcons.Calendar),
     )
     Row(Modifier.fillMaxWidth().background(tandem.segmentTrack, RoundedCornerShape(12.dp)).padding(3.dp)) {
         tabs.forEach { tab ->
@@ -255,7 +256,7 @@ private fun EditExpenseButton(e: ExpenseDto, onEdit: (ExpenseDto) -> Unit) {
             Modifier.size(30.dp).clip(RoundedCornerShape(8.dp)).clickable { onEdit(e) },
             contentAlignment = Alignment.Center,
         ) {
-            Icon(Icons.Rounded.Edit, contentDescription = "Edit expense", tint = tandem.muted, modifier = Modifier.size(17.dp))
+            Icon(TandemIcons.Pencil, contentDescription = "Edit expense", tint = tandem.muted, modifier = Modifier.size(17.dp))
         }
     }
 }

@@ -49,6 +49,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -59,6 +60,7 @@ import com.tandemtab.app.data.CategoryOptionDto
 import com.tandemtab.app.data.ExpenseDto
 import com.tandemtab.app.data.FundOptionDto
 import com.tandemtab.app.ui.theme.LocalTandemColors
+import com.tandemtab.app.ui.theme.TandemIcons
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneOffset
@@ -357,7 +359,7 @@ fun AddSheet(
                         Spacer(Modifier.height(14.dp))
                         // "+ Add another expense" — parks the current row.
                         TextButton(onClick = { stageCurrent() }, modifier = Modifier.fillMaxWidth()) {
-                            Icon(Icons.Rounded.Add, null, tint = MaterialTheme.colorScheme.primary)
+                            Icon(TandemIcons.Plus, null, tint = MaterialTheme.colorScheme.primary)
                             Spacer(Modifier.width(6.dp))
                             Text("Add another expense", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
                         }
@@ -427,9 +429,11 @@ private fun CategorySelector(selected: CategoryOptionDto?, expanded: Boolean, on
             color = if (selected == null) LocalTandemColors.current.muted else MaterialTheme.colorScheme.onSurface,
             fontWeight = FontWeight.SemiBold,
         )
+        // The web line-chevron points right; rotate it down (collapsed) / up (expanded).
         Icon(
-            if (expanded) Icons.Rounded.KeyboardArrowUp else Icons.Rounded.KeyboardArrowDown,
+            TandemIcons.Chevron,
             null, tint = LocalTandemColors.current.muted,
+            modifier = Modifier.size(18.dp).rotate(if (expanded) -90f else 90f),
         )
     }
 }
@@ -478,7 +482,7 @@ private fun StagedRow(category: String, icon: String?, fund: String, amount: Str
             maxLines = 1,
         )
         Text(amount, fontWeight = FontWeight.Bold, color = tandem.spent, fontSize = 13.sp)
-        IconButton(onClick = onRemove) { Icon(Icons.Rounded.Delete, "Remove", tint = tandem.muted) }
+        IconButton(onClick = onRemove) { Icon(TandemIcons.Trash, "Remove", tint = tandem.muted) }
     }
 }
 

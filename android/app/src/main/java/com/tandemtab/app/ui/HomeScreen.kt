@@ -76,6 +76,7 @@ import com.tandemtab.app.data.TargetDto
 import com.tandemtab.app.ui.theme.BrandGreen
 import com.tandemtab.app.ui.theme.BrandGreenDark
 import com.tandemtab.app.ui.theme.LocalTandemColors
+import com.tandemtab.app.ui.theme.TandemIcons
 import kotlinx.coroutines.launch
 import java.text.NumberFormat
 import java.time.LocalDate
@@ -86,10 +87,10 @@ import java.util.Locale
 // Mirrors the thick prod Dashboard's 4 tabs (Dashboard.razor: Overview/Budgets/Savings/Account),
 // in the same order and labels.
 private enum class NavDest(val label: String, val icon: ImageVector) {
-    Home("Home", Icons.Rounded.Home),
-    Spending("Spending", Icons.AutoMirrored.Rounded.ReceiptLong),
-    Goals("Goals", Icons.Rounded.Flag),
-    Wallets("Wallets", Icons.Rounded.AccountBalanceWallet),
+    Home("Home", TandemIcons.House),
+    Spending("Spending", TandemIcons.Receipt),
+    Goals("Goals", TandemIcons.Flag),
+    Wallets("Wallets", TandemIcons.Wallet),
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -162,7 +163,7 @@ fun HomeScreen(
                 },
                 actions = {
                     IconButton(onClick = { onOpenSettings(); showProfile = true }) {
-                        Icon(Icons.Rounded.Person, contentDescription = "Profile", tint = tandem.muted)
+                        Icon(TandemIcons.User, contentDescription = "Profile", tint = tandem.muted)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -358,7 +359,7 @@ private fun TandemBottomBar(current: NavDest, onSelect: (NavDest) -> Unit, onAdd
                 .clickable(onClick = onAdd),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(Icons.Rounded.Add, contentDescription = "Add", tint = Color.White, modifier = Modifier.size(30.dp))
+            Icon(TandemIcons.Plus, contentDescription = "Add", tint = Color.White, modifier = Modifier.size(30.dp))
         }
     }
 }
@@ -509,7 +510,7 @@ private fun TargetsCard(targets: List<TargetDto>, fmt: (Double) -> String) {
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.AutoMirrored.Rounded.TrendingUp, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+            Icon(TandemIcons.Trending, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(8.dp))
             Text("You're on track for", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface, fontSize = 15.sp)
         }
@@ -574,7 +575,7 @@ private fun AccountHeader(state: UiState, onSelectAccount: (String) -> Unit, onO
             }
             // Account actions (rename / members / recurring / leave / delete), mirroring the web account menu.
             IconButton(onClick = onOpenAccount) {
-                Icon(Icons.Rounded.Tune, contentDescription = "Account actions", tint = tandem.muted)
+                Icon(TandemIcons.Sliders, contentDescription = "Account actions", tint = tandem.muted)
             }
         }
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {

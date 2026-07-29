@@ -42,6 +42,7 @@ import com.tandemtab.app.data.InsightMiniTrendDto
 import com.tandemtab.app.data.InsightSignalDto
 import com.tandemtab.app.data.InsightsDto
 import com.tandemtab.app.ui.theme.LocalTandemColors
+import com.tandemtab.app.ui.theme.TandemIcons
 import com.tandemtab.app.ui.theme.TandemColors
 
 private fun bandColor(band: String, tandem: TandemColors): Color = when (band) {
@@ -142,7 +143,7 @@ fun HealthSheet(health: HealthUi, onDismiss: () -> Unit) {
         ) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text("Health score", modifier = Modifier.weight(1f), fontSize = 18.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
-                IconButton(onClick = onDismiss) { Icon(Icons.Rounded.Close, "Close", tint = tandem.muted) }
+                IconButton(onClick = onDismiss) { Icon(TandemIcons.Close, "Close", tint = tandem.muted) }
             }
 
             // Score panel.

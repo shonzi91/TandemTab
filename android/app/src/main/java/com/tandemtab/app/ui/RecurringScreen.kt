@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.sp
 import com.tandemtab.app.RecurringUi
 import com.tandemtab.app.data.RecurringRowDto
 import com.tandemtab.app.ui.theme.LocalTandemColors
+import com.tandemtab.app.ui.theme.TandemIcons
 
 /** Sort: due first, then upcoming, then the rest; paused (inactive) sink to the bottom. */
 private fun ordered(items: List<RecurringRowDto>): List<RecurringRowDto> =
@@ -100,7 +101,7 @@ fun RecurringSheet(
         ) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text("Bills & income", modifier = Modifier.weight(1f), fontSize = 18.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
-                IconButton(onClick = onDismiss) { Icon(Icons.Rounded.Close, "Close", tint = tandem.muted) }
+                IconButton(onClick = onDismiss) { Icon(TandemIcons.Close, "Close", tint = tandem.muted) }
             }
             if (recurring.billsDue > 0) {
                 Text("${money(recurring.billsDue)} in bills still expected this period.", color = tandem.muted, fontSize = 13.sp)
