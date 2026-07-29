@@ -1,6 +1,7 @@
 package com.tandemtab.app.ui
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -14,9 +15,14 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.BarChart
+import androidx.compose.material.icons.rounded.CalendarMonth
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -24,6 +30,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -71,20 +81,30 @@ fun SpendingScreen(spending: SpendingUi, onRetry: () -> Unit) {
     }
 }
 
+private data class SpendTab(val view: SpendView, val label: String, val icon: ImageVector)
+
 @Composable
 private fun ViewToggle(view: SpendView, onSelect: (SpendView) -> Unit) {
     val tandem = LocalTandemColors.current
+    val tabs = listOf(
+        SpendTab(SpendView.Categories, "Categories", Icons.Rounded.BarChart),
+        SpendTab(SpendView.ByDate, "By date", Icons.Rounded.CalendarMonth),
+    )
     Row(Modifier.fillMaxWidth().background(tandem.segmentTrack, RoundedCornerShape(12.dp)).padding(3.dp)) {
-        listOf(SpendView.Categories to "Categories", SpendView.ByDate to "By date").forEach { (v, label) ->
-            val selected = view == v
-            Box(
+        tabs.forEach { tab ->
+            val selected = view == tab.view
+            val fg = if (selected) MaterialTheme.colorScheme.primary else tandem.muted
+            Row(
                 Modifier.weight(1f)
                     .background(if (selected) MaterialTheme.colorScheme.surface else androidx.compose.ui.graphics.Color.Transparent, RoundedCornerShape(9.dp))
-                    .clickable { onSelect(v) }
+                    .clickable { onSelect(tab.view) }
                     .padding(vertical = 9.dp),
-                contentAlignment = Alignment.Center,
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(label, color = if (selected) MaterialTheme.colorScheme.primary else tandem.muted, fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold, fontSize = 14.sp)
+                Icon(tab.icon, contentDescription = null, tint = fg, modifier = Modifier.height(18.dp).width(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text(tab.label, color = fg, fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold, fontSize = 14.sp)
             }
         }
     }
@@ -151,7 +171,6 @@ private fun BudgetRow(b: BudgetRowDto, fmt: (Double) -> String, expenses: () -> 
     val tandem = LocalTandemColors.current
     var open by remember { mutableStateOf(false) }
     val fraction = if (b.allocated > 0) (b.spent / b.allocated).toFloat().coerceIn(0f, 1f) else if (b.spent > 0) 1f else 0f
-    val barColor = if (b.over) tandem.spent else tandem.positive
 
     Column(
         Modifier.fillMaxWidth()
@@ -166,7 +185,7 @@ private fun BudgetRow(b: BudgetRowDto, fmt: (Double) -> String, expenses: () -> 
             Text(b.name, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f), maxLines = 1)
             Text("${fmt(b.spent)} / ${fmt(b.allocated)}", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
         }
-        SpendBar(fraction, barColor)
+        SpendBar(fraction)
         Text(
             if (b.over) "${fmt(-b.remaining)} over budget" else "${fmt(b.remaining)} left",
             fontSize = 12.sp, color = if (b.over) tandem.spent else tandem.muted,
@@ -218,11 +237,25 @@ private fun ExpenseDrawer(open: Boolean, expenses: () -> List<ExpenseDto>, fmt: 
     }
 }
 
+// The web budget-bar gradient (.cbar-grad): a single mint→amber→coral ramp spanning the FULL track, revealed as the
+// bar fills — so the colour at the fill's leading edge encodes how close to (or over) budget the category is.
+private val budgetStops = arrayOf(
+    0.0f to Color(0xFF2FB99A), 0.68f to Color(0xFF2FB99A),
+    0.88f to Color(0xFFFFAB73), 1.0f to Color(0xFFFF7A59),
+)
+
 @Composable
-private fun SpendBar(fraction: Float, color: androidx.compose.ui.graphics.Color) {
+private fun SpendBar(fraction: Float) {
     val tandem = LocalTandemColors.current
-    Box(Modifier.fillMaxWidth().height(8.dp).background(tandem.segmentTrack, RoundedCornerShape(4.dp))) {
-        Box(Modifier.fillMaxWidth(fraction).height(8.dp).background(color, RoundedCornerShape(4.dp)))
+    val f = fraction.coerceIn(0f, 1f)
+    Canvas(Modifier.fillMaxWidth().height(8.dp)) {
+        val w = size.width; val h = size.height; val r = CornerRadius(h / 2f, h / 2f)
+        drawRoundRect(color = tandem.segmentTrack, cornerRadius = r)
+        if (f > 0f) {
+            // endX = full track width anchors the gradient to the whole bar; the fill reveals only its left portion.
+            val brush = Brush.horizontalGradient(colorStops = budgetStops, startX = 0f, endX = w)
+            drawRoundRect(brush = brush, size = Size(w * f, h), cornerRadius = r)
+        }
     }
 }
 
@@ -242,7 +275,7 @@ private fun SummaryHeader(label: String, value: String, suffix: String, fraction
             Text(value, fontSize = 26.sp, fontWeight = FontWeight.ExtraBold, color = tandem.spent)
             Text(suffix, fontSize = 14.sp, color = tandem.muted, modifier = Modifier.padding(bottom = 3.dp))
         }
-        SpendBar(fraction.coerceIn(0f, 1f), if (over) tandem.spent else tandem.positive)
+        SpendBar(fraction.coerceIn(0f, 1f))
     }
 }
 

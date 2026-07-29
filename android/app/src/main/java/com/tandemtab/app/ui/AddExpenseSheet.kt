@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -55,6 +56,7 @@ import androidx.compose.ui.unit.sp
 import com.tandemtab.app.SpendingUi
 import com.tandemtab.app.data.AddExpenseRequest
 import com.tandemtab.app.data.CategoryOptionDto
+import com.tandemtab.app.data.ExpenseDto
 import com.tandemtab.app.data.FundOptionDto
 import com.tandemtab.app.ui.theme.LocalTandemColors
 import java.time.Instant
@@ -84,20 +86,28 @@ private enum class AddMode { Expense, Income }
 @Composable
 fun AddSheet(
     spending: SpendingUi,
+    startWithIncome: Boolean = false,
+    editing: ExpenseDto? = null,
+    onEditLast: (() -> Unit)? = null,
     onDismiss: () -> Unit,
     onSaveExpenses: (List<AddExpenseRequest>, onDone: () -> Unit) -> Unit,
+    onEditExpense: (String, AddExpenseRequest, onDone: () -> Unit) -> Unit,
     onAddIncome: (fundId: String, categoryId: String, amount: Double, date: String, onDone: () -> Unit) -> Unit,
 ) {
     val tandem = LocalTandemColors.current
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val fmt = sheetMoney(spending.currency)
+    val editingMode = editing != null
 
     val cats = spending.categories
     val funds = spending.funds
     val catById = remember(cats) { cats.associateBy { it.id } }
     val fundById = remember(funds) { funds.associateBy { it.id } }
 
-    var mode by remember { mutableStateOf(AddMode.Expense) }
+    // Editing always means an expense; otherwise honour the requested start tab.
+    var mode by remember(editing, startWithIncome) {
+        mutableStateOf(if (editing == null && startWithIncome) AddMode.Income else AddMode.Expense)
+    }
     // Income editor state.
     var incAmountText by remember { mutableStateOf("") }
     var incSource by remember { mutableStateOf(GENERAL_INCOME) }
@@ -116,12 +126,13 @@ fun AddSheet(
 
     val today = remember { LocalDate.now().toString() }
 
-    // Editor state (keyed to `loaded` so it initialises once the pickers arrive, then stays put).
-    var categoryId by remember(spending.loaded) { mutableStateOf(cats.firstOrNull()?.id) }
-    var fundId by remember(spending.loaded) { mutableStateOf(defaultFundFor(cats.firstOrNull()?.id)) }
-    var amountText by remember { mutableStateOf("") }
-    var note by remember { mutableStateOf("") }
-    var date by remember(spending.loaded) { mutableStateOf(today) }
+    // Editor state — pre-filled from the row being edited, else keyed to `loaded` so it initialises once the
+    // pickers arrive and then stays put.
+    var categoryId by remember(spending.loaded, editing) { mutableStateOf(editing?.categoryId ?: cats.firstOrNull()?.id) }
+    var fundId by remember(spending.loaded, editing) { mutableStateOf(editing?.fundId ?: defaultFundFor(cats.firstOrNull()?.id)) }
+    var amountText by remember(editing) { mutableStateOf(editing?.let { trimAmount(it.amount) } ?: "") }
+    var note by remember(editing) { mutableStateOf(editing?.note ?: "") }
+    var date by remember(spending.loaded, editing) { mutableStateOf(editing?.date ?: today) }
     var staged by remember { mutableStateOf(listOf<ExpenseDraft>()) }
     var catExpanded by remember { mutableStateOf(false) }
     var catSearch by remember { mutableStateOf("") }
@@ -146,55 +157,75 @@ fun AddSheet(
         return true
     }
 
+    val title = when {
+        editingMode -> "Edit expense"
+        mode == AddMode.Expense -> "Add expense"
+        else -> "Add income"
+    }
+    val canSave = !spending.saving && when {
+        editingMode -> currentValid
+        mode == AddMode.Expense -> pendingCount > 0
+        else -> incParsed != null && incFundId != null
+    }
+    fun doSave() {
+        when {
+            editingMode -> {
+                val d = currentDraft() ?: run { hint = "Enter an amount, category and fund."; return }
+                onEditExpense(editing!!.id, AddExpenseRequest(d.categoryId, d.amount, d.fundId, d.date, d.note.ifBlank { null })) { onDismiss() }
+            }
+            mode == AddMode.Expense -> {
+                val batch = buildList {
+                    addAll(staged)
+                    currentDraft()?.let { add(it) }
+                }.map { AddExpenseRequest(it.categoryId, it.amount, it.fundId, it.date, it.note.ifBlank { null }) }
+                if (batch.isEmpty()) { hint = "Enter an amount."; return }
+                onSaveExpenses(batch) { staged = emptyList(); amountText = ""; note = ""; onDismiss() }
+            }
+            else -> {
+                val f = incFundId; val amt = incParsed
+                if (amt == null || f == null) { hint = "Enter an amount and pick a fund."; return }
+                onAddIncome(f, incSource, amt, date) { incAmountText = ""; onDismiss() }
+            }
+        }
+    }
+
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
         containerColor = MaterialTheme.colorScheme.surface,
     ) {
+      Box(Modifier.fillMaxWidth().fillMaxHeight()) {
         Column(
             Modifier
                 .fillMaxWidth()
                 .imePadding()
                 .padding(horizontal = 18.dp)
                 .verticalScroll(rememberScrollState())
-                .padding(bottom = 24.dp),
+                .padding(bottom = 92.dp),   // clear the floating button bar
         ) {
-            // Header: title + ✕ / ✓, mirroring the web floating modal header. ✓ saves per the active mode.
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onDismiss) { Icon(Icons.Rounded.Close, "Cancel", tint = tandem.muted) }
+            Row(Modifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    if (mode == AddMode.Expense) "Add expense" else "Add income",
+                    title,
                     modifier = Modifier.weight(1f),
-                    fontSize = 18.sp,
+                    fontSize = 19.sp,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface,
                 )
-                val canSave = !spending.saving && (if (mode == AddMode.Expense) pendingCount > 0 else incParsed != null && incFundId != null)
-                IconButton(
-                    onClick = {
-                        if (mode == AddMode.Expense) {
-                            val batch = buildList {
-                                addAll(staged)
-                                currentDraft()?.let { add(it) }
-                            }.map { AddExpenseRequest(it.categoryId, it.amount, it.fundId, it.date, it.note.ifBlank { null }) }
-                            if (batch.isEmpty()) { hint = "Enter an amount."; return@IconButton }
-                            onSaveExpenses(batch) { staged = emptyList(); amountText = ""; note = ""; onDismiss() }
-                        } else {
-                            val f = incFundId; val amt = incParsed
-                            if (amt == null || f == null) { hint = "Enter an amount and pick a fund."; return@IconButton }
-                            onAddIncome(f, incSource, amt, date) { incAmountText = ""; onDismiss() }
-                        }
-                    },
-                    enabled = canSave,
-                ) {
-                    if (spending.saving) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.primary)
-                    else Icon(Icons.Rounded.Check, "Save", tint = if (canSave) MaterialTheme.colorScheme.primary else tandem.muted)
+                // "Edit last" pulls the most recent expense into this sheet in edit mode (via the VM).
+                if (!editingMode && mode == AddMode.Expense && onEditLast != null) {
+                    Text(
+                        "Edit last ›",
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 14.sp,
+                        modifier = Modifier.clickable { onEditLast() }.padding(start = 8.dp),
+                    )
                 }
             }
 
-            // Expense / Income segment.
-            Spacer(Modifier.height(6.dp))
-            Segment(mode) { mode = it; hint = null }
+            // Expense / Income segment (hidden when editing an existing row).
+            Spacer(Modifier.height(10.dp))
+            if (!editingMode) Segment(mode) { mode = it; hint = null }
 
             if (mode == AddMode.Income) {
                 IncomeEditor(
@@ -321,51 +352,62 @@ fun AddSheet(
                         Text(it, color = MaterialTheme.colorScheme.error, fontSize = 13.sp)
                     }
 
-                    Spacer(Modifier.height(14.dp))
-                    // "+ Add another expense" — parks the current row.
-                    TextButton(onClick = { stageCurrent() }, modifier = Modifier.fillMaxWidth()) {
-                        Icon(Icons.Rounded.Add, null, tint = MaterialTheme.colorScheme.primary)
-                        Spacer(Modifier.width(6.dp))
-                        Text("Add another expense", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
-                    }
+                    // Multi-add (stage more rows, batch total) — only when adding, not when editing one row.
+                    if (!editingMode) {
+                        Spacer(Modifier.height(14.dp))
+                        // "+ Add another expense" — parks the current row.
+                        TextButton(onClick = { stageCurrent() }, modifier = Modifier.fillMaxWidth()) {
+                            Icon(Icons.Rounded.Add, null, tint = MaterialTheme.colorScheme.primary)
+                            Spacer(Modifier.width(6.dp))
+                            Text("Add another expense", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
+                        }
 
-                    // Staged rows.
-                    if (staged.isNotEmpty()) {
-                        Spacer(Modifier.height(6.dp))
-                        staged.forEachIndexed { i, d ->
-                            StagedRow(
-                                category = catById[d.categoryId]?.name ?: "—",
-                                icon = catById[d.categoryId]?.icon,
-                                fund = fundById[d.fundId]?.name ?: "—",
-                                amount = fmt(d.amount),
-                                onEdit = {
-                                    // Park any valid in-progress row first, then pull the tapped one back into the editor.
-                                    val cur = currentDraft()
-                                    val base = if (cur != null) staged + cur else staged
-                                    staged = base.filterIndexed { idx, _ -> idx != i }
-                                    categoryId = d.categoryId; fundId = d.fundId
-                                    amountText = trimAmount(d.amount); note = d.note; date = d.date
-                                },
-                                onRemove = { staged = staged.filterIndexed { idx, _ -> idx != i } },
+                        // Staged rows.
+                        if (staged.isNotEmpty()) {
+                            Spacer(Modifier.height(6.dp))
+                            staged.forEachIndexed { i, d ->
+                                StagedRow(
+                                    category = catById[d.categoryId]?.name ?: "—",
+                                    icon = catById[d.categoryId]?.icon,
+                                    fund = fundById[d.fundId]?.name ?: "—",
+                                    amount = fmt(d.amount),
+                                    onEdit = {
+                                        // Park any valid in-progress row first, then pull the tapped one back into the editor.
+                                        val cur = currentDraft()
+                                        val base = if (cur != null) staged + cur else staged
+                                        staged = base.filterIndexed { idx, _ -> idx != i }
+                                        categoryId = d.categoryId; fundId = d.fundId
+                                        amountText = trimAmount(d.amount); note = d.note; date = d.date
+                                    },
+                                    onRemove = { staged = staged.filterIndexed { idx, _ -> idx != i } },
+                                )
+                            }
+                        }
+
+                        // Batch footer.
+                        if (pendingCount > 0) {
+                            Spacer(Modifier.height(12.dp))
+                            Text(
+                                "$pendingCount to add · ${fmt(pendingTotal)}",
+                                fontWeight = FontWeight.Bold,
+                                color = tandem.muted,
+                                modifier = Modifier.fillMaxWidth(),
                             )
                         }
-                    }
-
-                    // Batch footer.
-                    if (pendingCount > 0) {
-                        Spacer(Modifier.height(12.dp))
-                        Text(
-                            "$pendingCount to add · ${fmt(pendingTotal)}",
-                            fontWeight = FontWeight.Bold,
-                            color = tandem.muted,
-                            modifier = Modifier.fillMaxWidth(),
-                        )
                     }
                 }
             }
         }
+        SheetActionBar(
+            saving = spending.saving,
+            canSave = canSave,
+            onDismiss = onDismiss,
+            onSave = { doSave() },
+            modifier = Modifier.align(Alignment.BottomCenter),
+            saveLabel = if (editingMode) "Save changes" else "Save",
+        )
+      }
     }
-
 }
 
 @Composable

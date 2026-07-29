@@ -6,9 +6,11 @@ import io.ktor.client.call.body
 import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.plugins.defaultRequest
+import io.ktor.client.request.delete
 import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.post
+import io.ktor.client.request.put
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
@@ -174,8 +176,21 @@ class TandemTabApi(
 
     suspend fun overview(accountId: String): AccountOverviewDto = authedGet("/accounts/$accountId/overview").body()
 
+    /** The account's periods (oldest→newest) + the current index — used for the top-bar period label. */
+    suspend fun periods(accountId: String): PeriodsViewDto = authedGet("/accounts/$accountId/periods").body()
+
     /** The Health/Insights read: score, savings rate, outgoings trend, signals, mini-trends, quick wins. */
     suspend fun insights(accountId: String): InsightsDto = authedGet("/accounts/$accountId/insights").body()
+
+    /** The Home cash runway ("At this rate…"). Server returns 204 when there's no trustworthy basis → null. */
+    suspend fun runway(accountId: String): RunwayDto? {
+        val resp = authedGet("/accounts/$accountId/runway")
+        if (resp.status == HttpStatusCode.NoContent) return null
+        return resp.body()
+    }
+
+    /** The Home "on track for" targets (debt-free date + each savings goal's projected month). */
+    suspend fun targets(accountId: String): TargetsDto = authedGet("/accounts/$accountId/targets").body()
 
     /** Recurring bills / income expectations with their due state for the open period. */
     suspend fun recurring(accountId: String): RecurringViewDto = authedGet("/accounts/$accountId/recurring").body()
@@ -194,6 +209,34 @@ class TandemTabApi(
     /** Log a manual expense in the open period. Returns the new row + recomputed overview to reconcile without a re-fetch. */
     suspend fun addExpense(accountId: String, req: AddExpenseRequest): ExpenseMutationDto =
         authedPost("/accounts/$accountId/expenses", req).body()
+
+    /** Edit an existing expense (used by the FAB's "Edit last"). Reuses the add-expense body shape; returns the edited
+     *  row + recomputed overview so the client reconciles without a re-fetch. */
+    suspend fun editExpense(accountId: String, expenseId: String, req: AddExpenseRequest): ExpenseMutationDto =
+        authedPut("/accounts/$accountId/expenses/$expenseId", req).body()
+
+    /** The signed-in user (identity for the profile sheet). */
+    suspend fun me(): UserDto = authedGet("/me").body()
+
+    /** Change the signed-in user's password. Returns 204 on success. */
+    suspend fun changePassword(req: ChangePasswordRequest) {
+        authedPost("/auth/password", req)
+    }
+
+    /** Rename an account. Returns 204 on success. */
+    suspend fun renameAccount(accountId: String, name: String) {
+        authedPut("/accounts/$accountId/name", RenameAccountRequest(name))
+    }
+
+    /** Leave a shared account (non-owner). Owner-leave would need a new-owner id, which the UI doesn't offer. */
+    suspend fun leaveAccount(accountId: String) {
+        authedPost("/accounts/$accountId/leave", LeaveAccountRequest())
+    }
+
+    /** Delete the account (owner only; soft-delete with a 30-day grace server-side). Returns 204. */
+    suspend fun deleteAccount(accountId: String) {
+        authedDelete("/accounts/$accountId")
+    }
 
     /** Revoke the refresh token server-side (best-effort) and forget the session locally. */
     suspend fun signOut() {
@@ -232,6 +275,34 @@ class TandemTabApi(
             }
         }
         ensureOk(resp.status, serverMessageOr(resp.bodyAsText(), "That didn't save. Please try again."))
+        return resp
+    }
+
+    /** PUT an authed endpoint with a JSON body, same stale/401 refresh handling as [authedPost]. */
+    private suspend inline fun <reified T> authedPut(path: String, body: T): HttpResponse {
+        ensureFreshToken()
+        var resp = client.put(path) {
+            header(HttpHeaders.Authorization, "Bearer ${requireToken()}")
+            setBody(body)
+        }
+        if (resp.status == HttpStatusCode.Unauthorized && tryRefresh()) {
+            resp = client.put(path) {
+                header(HttpHeaders.Authorization, "Bearer ${requireToken()}")
+                setBody(body)
+            }
+        }
+        ensureOk(resp.status, serverMessageOr(resp.bodyAsText(), "That didn't save. Please try again."))
+        return resp
+    }
+
+    /** DELETE an authed endpoint, same stale/401 refresh handling as [authedGet]. */
+    private suspend fun authedDelete(path: String): HttpResponse {
+        ensureFreshToken()
+        var resp = client.delete(path) { header(HttpHeaders.Authorization, "Bearer ${requireToken()}") }
+        if (resp.status == HttpStatusCode.Unauthorized && tryRefresh()) {
+            resp = client.delete(path) { header(HttpHeaders.Authorization, "Bearer ${requireToken()}") }
+        }
+        ensureOk(resp.status, serverMessageOr(resp.bodyAsText(), "That didn't work. Please try again."))
         return resp
     }
 

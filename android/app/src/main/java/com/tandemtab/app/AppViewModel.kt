@@ -8,6 +8,7 @@ import com.tandemtab.app.data.AccountSummaryDto
 import com.tandemtab.app.data.AddDepositRequest
 import com.tandemtab.app.data.AddExpenseRequest
 import com.tandemtab.app.data.AddSavingDepositRequest
+import com.tandemtab.app.data.ChangePasswordRequest
 import com.tandemtab.app.data.BudgetRowDto
 import com.tandemtab.app.data.CategoryOptionDto
 import com.tandemtab.app.data.ExpenseDto
@@ -16,6 +17,7 @@ import com.tandemtab.app.data.FundRowDto
 import com.tandemtab.app.data.FundTransferRowDto
 import com.tandemtab.app.data.ConfirmRecurringRequest
 import com.tandemtab.app.data.InsightsDto
+import com.tandemtab.app.data.PeriodsViewDto
 import com.tandemtab.app.data.RecurringRowDto
 import com.tandemtab.app.data.RecurringViewDto
 import com.tandemtab.app.data.SavingsViewDto
@@ -23,7 +25,9 @@ import com.tandemtab.app.data.SpendFromSavingsRequest
 import com.tandemtab.app.data.TransferFundsRequest
 import com.tandemtab.app.data.WalletsViewDto
 import com.tandemtab.app.data.RecentExpenseDto
+import com.tandemtab.app.data.RunwayDto
 import com.tandemtab.app.data.SavingBucketDto
+import com.tandemtab.app.data.TargetDto
 import com.tandemtab.app.data.TandemTabApi
 import com.tandemtab.app.data.TokenStore
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -49,17 +53,27 @@ data class UiState(
     val resetLinkSent: Boolean = false,
     val googleEnabled: Boolean = false,
     val username: String = "",
+    val email: String = "",
+    // External sign-in provider ("google"/"facebook") for the current user, or null for a local password account.
+    val provider: String? = null,
     // Outstanding 2FA challenge ticket (from login/exchange), consumed on the TwoFactor screen.
     val twoFactorTicket: String? = null,
     // Home data
     val accounts: List<AccountSummaryDto> = emptyList(),
     val selectedAccountId: String? = null,
     val overview: AccountOverviewDto? = null,
+    val periodLabel: String? = null,
+    // Home forecast (server-computed): the runway card + the "on track for" targets.
+    val runway: RunwayDto? = null,
+    val targets: List<TargetDto> = emptyList(),
     val spending: SpendingUi = SpendingUi(),
     val goals: GoalsUi = GoalsUi(),
     val wallets: WalletsUi = WalletsUi(),
     val health: HealthUi = HealthUi(),
     val recurring: RecurringUi = RecurringUi(),
+    val settings: SettingsUi = SettingsUi(),
+    // The expense the FAB's "Edit last" is currently editing (null = the add sheet is in add mode / closed).
+    val editingExpense: ExpenseDto? = null,
 ) {
     val selectedAccount: AccountSummaryDto?
         get() = accounts.firstOrNull { it.id == selectedAccountId }
@@ -120,6 +134,13 @@ data class HealthUi(
     val error: String? = null,
     val currency: String = "",
     val data: InsightsDto? = null,
+)
+
+/** State for the Profile & Account settings sheet (change-password / rename write-flight + result). */
+data class SettingsUi(
+    val busy: Boolean = false,
+    val error: String? = null,
+    val passwordChanged: Boolean = false,
 )
 
 /** Lazy-loaded state for the Wallets tab (funds + this period's transfers). Also carries the contribution-category
@@ -297,16 +318,49 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     overview = overview,
                 )
             }
+            selected?.let { loadPeriodLabel(it.id); loadForecast(it.id) }
+            // Identity for the profile sheet (best-effort — the sheet still works from the stored username).
+            runCatching { api.me() }.getOrNull()?.let { me ->
+                _state.update { it.copy(username = me.username.ifBlank { it.username }, email = me.email, provider = me.provider) }
+            }
         } catch (e: Exception) {
             _state.update { it.copy(busy = false, error = e.message ?: "Couldn't load your accounts.") }
         }
+    }
+
+    /** Best-effort: fetch the current period's date range and format it for the top-bar label. */
+    private suspend fun loadPeriodLabel(accountId: String) {
+        val p = runCatching { api.periods(accountId) }.getOrNull() ?: return
+        _state.update { it.copy(periodLabel = formatPeriod(p)) }
+    }
+
+    /** Best-effort: fetch the Home forecast (runway + "on track for" targets), both server-computed. */
+    private suspend fun loadForecast(accountId: String) {
+        runCatching { api.runway(accountId) }.onSuccess { r -> _state.update { it.copy(runway = r) } }
+        runCatching { api.targets(accountId) }.getOrNull()?.let { t -> _state.update { it.copy(targets = t.targets) } }
+    }
+
+    /** "July 2026" for a whole-month period, else a "d MMM – d MMM" range. Null if there's no period. */
+    private fun formatPeriod(p: PeriodsViewDto): String? {
+        val cur = p.periods.getOrNull(p.currentIndex) ?: p.periods.lastOrNull() ?: return null
+        return runCatching {
+            val from = java.time.LocalDate.parse(cur.from)
+            val to = java.time.LocalDate.parse(cur.to)
+            if (from.month == to.month && from.year == to.year) {
+                from.format(java.time.format.DateTimeFormatter.ofPattern("LLLL yyyy", java.util.Locale.getDefault()))
+            } else {
+                val f = java.time.format.DateTimeFormatter.ofPattern("d MMM", java.util.Locale.getDefault())
+                "${from.format(f)} – ${to.format(f)}"
+            }
+        }.getOrNull()
     }
 
     fun selectAccount(accountId: String) {
         if (accountId == _state.value.selectedAccountId) return
         _state.update {
             it.copy(
-                busy = true, selectedAccountId = accountId, overview = null,
+                busy = true, selectedAccountId = accountId, overview = null, periodLabel = null,
+                runway = null, targets = emptyList(),
                 spending = SpendingUi(), goals = GoalsUi(), wallets = WalletsUi(), health = HealthUi(), recurring = RecurringUi(),
             )
         }
@@ -314,6 +368,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             try {
                 val overview = api.overview(accountId)
                 _state.update { it.copy(busy = false, overview = overview) }
+                loadPeriodLabel(accountId)
+                loadForecast(accountId)
             } catch (e: Exception) {
                 _state.update { it.copy(busy = false, error = e.message ?: "Couldn't load that account.") }
             }
@@ -638,6 +694,140 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 }
             } catch (e: Exception) {
                 _state.update { it.copy(recurring = it.recurring.copy(busyId = null, actionError = e.message ?: "That didn't go through.")) }
+            }
+        }
+    }
+
+    // --- FAB "Edit last": reopen the most recent manual expense in the add sheet, save via PUT ------------
+
+    /** Open the add sheet on the most recent manual (user-entered) expense. Loads Spending first if needed, then
+     *  sets [UiState.editingExpense] which the UI watches to show the sheet in edit mode. No-op (leaves editing null)
+     *  when there's nothing manual to edit — the UI surfaces that. */
+    fun prepareEditLast() {
+        val accountId = _state.value.selectedAccountId ?: return
+        _state.update { it.copy(spending = it.spending.copy(saveError = null)) }
+        viewModelScope.launch {
+            if (!_state.value.spending.loaded) {
+                runCatching { api.spending(accountId) }.getOrNull()?.let { v ->
+                    _state.update {
+                        it.copy(spending = it.spending.copy(
+                            loading = false, loaded = true, error = null, currency = v.currency,
+                            spent = v.overview.spent, expenses = v.expenses, categories = v.categories, funds = v.funds,
+                        ))
+                    }
+                }
+                // The add sheet also wants the most-used chips / default funds.
+                runCatching { api.expenseEntry(accountId) }.getOrNull()
+                    ?.let { entry -> _state.update { it.copy(spending = it.spending.copy(recent = entry.recent)) } }
+            }
+            val last = _state.value.spending.expenses.firstOrNull { !it.autoFiled && !it.fromSavings }
+                ?: _state.value.spending.expenses.firstOrNull()
+            _state.update { it.copy(editingExpense = last) }
+        }
+    }
+
+    fun clearEditing() = _state.update { it.copy(editingExpense = null) }
+
+    /** Save an edit to an existing expense (the FAB's "Edit last"). Splices the updated row back into the Spending
+     *  list and reflects the recomputed overview; [onDone] fires only on success so the sheet can close. */
+    fun editExpense(expenseId: String, req: AddExpenseRequest, onDone: () -> Unit) {
+        val accountId = _state.value.selectedAccountId ?: return
+        _state.update { it.copy(spending = it.spending.copy(saving = true, saveError = null)) }
+        viewModelScope.launch {
+            try {
+                val mut = api.editExpense(accountId, expenseId, req)
+                _state.update { st ->
+                    val updated = mut.expense
+                    val list = if (updated != null) st.spending.expenses.map { if (it.id == expenseId) updated else it }
+                               else st.spending.expenses
+                    st.copy(
+                        overview = mut.overview,
+                        editingExpense = null,
+                        spending = st.spending.copy(saving = false, saveError = null, expenses = list, spent = mut.overview.spent),
+                    )
+                }
+                onDone()
+            } catch (e: Exception) {
+                _state.update { it.copy(spending = it.spending.copy(saving = false, saveError = e.message ?: "Couldn't save the change.")) }
+            }
+        }
+    }
+
+    // --- Profile & Account settings ---------------------------------------------------------------------
+
+    /** Clear stale settings state before opening the profile sheet, and refresh identity best-effort. */
+    fun openSettings() {
+        _state.update { it.copy(settings = SettingsUi()) }
+        viewModelScope.launch {
+            runCatching { api.me() }.getOrNull()?.let { me ->
+                _state.update { it.copy(username = me.username.ifBlank { it.username }, email = me.email, provider = me.provider) }
+            }
+        }
+    }
+
+    fun changePassword(current: String, new: String) {
+        if (current.isBlank() || new.length < 8) {
+            _state.update { it.copy(settings = it.settings.copy(error = "Enter your current password and a new one (8+ characters).")) }
+            return
+        }
+        _state.update { it.copy(settings = it.settings.copy(busy = true, error = null, passwordChanged = false)) }
+        viewModelScope.launch {
+            try {
+                api.changePassword(ChangePasswordRequest(current, new))
+                _state.update { it.copy(settings = it.settings.copy(busy = false, passwordChanged = true)) }
+            } catch (e: Exception) {
+                _state.update { it.copy(settings = it.settings.copy(busy = false, error = e.message ?: "Couldn't change your password.")) }
+            }
+        }
+    }
+
+    /** Rename the selected account. Updates the local accounts list on success so the header reflects it at once. */
+    fun renameAccount(name: String, onDone: () -> Unit) {
+        val accountId = _state.value.selectedAccountId ?: return
+        val trimmed = name.trim()
+        if (trimmed.isBlank()) {
+            _state.update { it.copy(settings = it.settings.copy(error = "Enter a name for the account.")) }
+            return
+        }
+        _state.update { it.copy(settings = it.settings.copy(busy = true, error = null)) }
+        viewModelScope.launch {
+            try {
+                api.renameAccount(accountId, trimmed)
+                _state.update { st ->
+                    st.copy(
+                        settings = st.settings.copy(busy = false),
+                        accounts = st.accounts.map { if (it.id == accountId) it.copy(name = trimmed) else it },
+                    )
+                }
+                onDone()
+            } catch (e: Exception) {
+                _state.update { it.copy(settings = it.settings.copy(busy = false, error = e.message ?: "Couldn't rename the account.")) }
+            }
+        }
+    }
+
+    /** Leave a shared account (non-owner) or delete it (owner). Both drop the account, so reload Home afterwards —
+     *  which re-selects another account, or lands on the empty state if it was the last one. [onDone] fires on success. */
+    fun leaveAccount(onDone: () -> Unit) = accountRemoval(onDone) { api.leaveAccount(it) }
+    fun deleteAccount(onDone: () -> Unit) = accountRemoval(onDone) { api.deleteAccount(it) }
+
+    private fun accountRemoval(onDone: () -> Unit, action: suspend (String) -> Unit) {
+        val accountId = _state.value.selectedAccountId ?: return
+        _state.update { it.copy(settings = it.settings.copy(busy = true, error = null)) }
+        viewModelScope.launch {
+            try {
+                action(accountId)
+                _state.update {
+                    it.copy(
+                        settings = it.settings.copy(busy = false),
+                        selectedAccountId = null, overview = null, periodLabel = null, runway = null, targets = emptyList(),
+                        spending = SpendingUi(), goals = GoalsUi(), wallets = WalletsUi(), health = HealthUi(), recurring = RecurringUi(),
+                    )
+                }
+                onDone()
+                loadHome()
+            } catch (e: Exception) {
+                _state.update { it.copy(settings = it.settings.copy(busy = false, error = e.message ?: "That didn't work.")) }
             }
         }
     }

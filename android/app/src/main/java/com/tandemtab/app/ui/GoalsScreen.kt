@@ -3,17 +3,17 @@ package com.tandemtab.app.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -48,6 +48,7 @@ private enum class GoalFilter(val label: String, val kind: String?) {
     Expenses("Expenses", "sinking"),
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun GoalsScreen(
     goals: GoalsUi,
@@ -82,9 +83,11 @@ fun GoalsScreen(
             SavedHeader(fmt(goals.saved))
             Spacer(Modifier.height(14.dp))
 
-            Row(
-                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+            // Wrap onto multiple lines rather than scrolling off-screen.
+            FlowRow(
+                Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 GoalFilter.entries.forEach { f ->
                     val count = if (f.kind == null) active.size else active.count { it.kind == f.kind }

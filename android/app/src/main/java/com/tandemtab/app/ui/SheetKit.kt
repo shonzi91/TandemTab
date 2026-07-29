@@ -3,13 +3,16 @@ package com.tandemtab.app.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -19,6 +22,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
@@ -27,6 +31,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.SheetState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -142,7 +147,8 @@ internal fun sheetMoney(currencyCode: String): (Double) -> String {
     return { amount -> nf.format(amount) }
 }
 
-/** Shared chrome for the small write sheets: a header (title + ✕ / ✓ with a save spinner) over a scrollable body. */
+/** Shared chrome for the write sheets: a full-screen sheet with a title, a scrollable body, and Cancel / Save as
+ *  floating buttons pinned to the bottom (swipe-down still dismisses). */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun SheetScaffold(
@@ -154,36 +160,64 @@ internal fun SheetScaffold(
     sheetState: SheetState,
     body: @Composable () -> Unit,
 ) {
-    val tandem = LocalTandemColors.current
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
         containerColor = MaterialTheme.colorScheme.surface,
     ) {
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .imePadding()
-                .padding(horizontal = 18.dp)
-                .verticalScroll(rememberScrollState())
-                .padding(bottom = 24.dp),
-        ) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onDismiss) { Icon(Icons.Rounded.Close, "Cancel", tint = tandem.muted) }
+        Box(Modifier.fillMaxWidth().fillMaxHeight()) {
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .imePadding()
+                    .padding(horizontal = 18.dp)
+                    .verticalScroll(rememberScrollState())
+                    .padding(bottom = 92.dp),   // clear the floating button bar
+            ) {
                 Text(
                     title,
-                    modifier = Modifier.weight(1f),
-                    fontSize = 17.sp,
+                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 4.dp),
+                    fontSize = 19.sp,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface,
                 )
-                IconButton(onClick = onSave, enabled = canSave) {
-                    if (saving) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.primary)
-                    else Icon(Icons.Rounded.Check, "Save", tint = if (canSave) MaterialTheme.colorScheme.primary else tandem.muted)
-                }
+                Spacer(Modifier.height(8.dp))
+                body()
             }
-            Spacer(Modifier.height(8.dp))
-            body()
+            SheetActionBar(
+                saving = saving,
+                canSave = canSave,
+                onDismiss = onDismiss,
+                onSave = onSave,
+                modifier = Modifier.align(Alignment.BottomCenter),
+            )
+        }
+    }
+}
+
+/** The floating Cancel / Save bar pinned to the bottom of a full-screen sheet. */
+@Composable
+internal fun SheetActionBar(
+    saving: Boolean,
+    canSave: Boolean,
+    onDismiss: () -> Unit,
+    onSave: () -> Unit,
+    modifier: Modifier = Modifier,
+    saveLabel: String = "Save",
+) {
+    Row(
+        modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surface)
+            .navigationBarsPadding()
+            .imePadding()
+            .padding(horizontal = 18.dp, vertical = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        OutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f)) { Text("Cancel") }
+        Button(onClick = onSave, enabled = canSave, modifier = Modifier.weight(1f)) {
+            if (saving) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
+            else Text(saveLabel)
         }
     }
 }

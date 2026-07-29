@@ -123,6 +123,76 @@ data class SpendingViewDto(
     val funds: List<FundOptionDto> = emptyList(),
 )
 
+/** The signed-in user (GET /me). `provider` is "google"/"facebook" for external sign-in (no local password), else
+ *  null. Other fields (avatar/2FA/verification) are ignored by the client. Server sends "id"; we don't need it. */
+@Serializable
+data class UserDto(
+    val username: String = "",
+    val email: String = "",
+    val provider: String? = null,
+)
+
+/** POST /auth/password — change the signed-in user's password. */
+@Serializable
+data class ChangePasswordRequest(val currentPassword: String, val newPassword: String)
+
+/** PUT /accounts/{id}/name — rename an account (returns 204). */
+@Serializable
+data class RenameAccountRequest(val name: String)
+
+/** POST /accounts/{id}/leave — leave a shared account. `newOwnerUserId` is required only when the owner leaves. */
+@Serializable
+data class LeaveAccountRequest(val newOwnerUserId: String? = null)
+
+// --- Periods (for the current-period label in the top bar) --------------------------------------------
+
+@Serializable
+data class PeriodRowDto(
+    val index: Int,
+    val from: String,   // ISO yyyy-MM-dd
+    val to: String,
+    val isOpen: Boolean = false,
+    val isLatest: Boolean = false,
+)
+
+@Serializable
+data class PeriodsViewDto(
+    val currency: String = "",
+    val currentIndex: Int = -1,
+    val periods: List<PeriodRowDto> = emptyList(),
+)
+
+// --- Forecast: runway ("At this rate…") + targets ("You're on track for") -----------------------------
+
+/** The Home runway (GET /accounts/{id}/runway; 204 → null). Everything the client needs to caption the card. */
+@Serializable
+data class RunwayDto(
+    val currency: String = "",
+    val months: Int = 0,
+    val firstShortfallMonth: String? = null,   // ISO yyyy-MM-dd, or null when the balance never runs short in-window
+    val monthlyIncome: Double = 0.0,
+    val monthlySpending: Double = 0.0,
+    val basedOnRecurring: Boolean = false,
+    val completedPeriodCount: Int = 0,
+    val hasUnknownAmounts: Boolean = false,
+    val openingBalance: Double = 0.0,
+    val fromMonth: String = "",
+    val monthlyCommitted: Double = 0.0,
+)
+
+/** One Home "on track for" target. kind = "debt-free" (name empty; client supplies the label + flag) or "goal". */
+@Serializable
+data class TargetDto(
+    val kind: String,
+    val name: String = "",
+    val icon: String? = null,
+    val months: Int = 0,
+    val reached: Boolean = false,
+)
+
+@Serializable
+data class TargetsDto(val targets: List<TargetDto> = emptyList())
+
 // --- Budgets (per-category coverage for the Spending → Categories view) -------------------------------
 
 @Serializable
