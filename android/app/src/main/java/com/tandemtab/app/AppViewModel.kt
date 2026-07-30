@@ -9,6 +9,10 @@ import com.tandemtab.app.data.AccountSummaryDto
 import com.tandemtab.app.data.AddDepositRequest
 import com.tandemtab.app.data.AddExpenseRequest
 import com.tandemtab.app.data.AddSavingDepositRequest
+import com.tandemtab.app.data.BankSyncStatusDto
+import com.tandemtab.app.data.PendingBankTransactionDto
+import com.tandemtab.app.data.RecordConsentRequest
+import com.tandemtab.app.data.StartBankLinkRequest
 import com.tandemtab.app.data.ChangePasswordRequest
 import com.tandemtab.app.data.BudgetMutationDto
 import com.tandemtab.app.data.BudgetRowDto
@@ -63,6 +67,10 @@ data class UiState(
     val email: String = "",
     // External sign-in provider ("google"/"facebook") for the current user, or null for a local password account.
     val provider: String? = null,
+    // Profile: data-URL avatar (provider-sourced for external logins), email-verified + 2FA-enabled flags.
+    val avatar: String? = null,
+    val emailVerified: Boolean = false,
+    val twoFactorEnabled: Boolean = false,
     // Outstanding 2FA challenge ticket (from login/exchange), consumed on the TwoFactor screen.
     val twoFactorTicket: String? = null,
     // Home data
@@ -83,6 +91,8 @@ data class UiState(
     val health: HealthUi = HealthUi(),
     val recurring: RecurringUi = RecurringUi(),
     val settings: SettingsUi = SettingsUi(),
+    val twoFactor: TwoFactorUi = TwoFactorUi(),
+    val bank: BankUi = BankUi(),
     // The expense the FAB's "Edit last" is currently editing (null = the add sheet is in add mode / closed).
     val editingExpense: ExpenseDto? = null,
     // The deposit the income tab's "Edit last" is currently editing.
@@ -147,6 +157,37 @@ data class HealthUi(
     val error: String? = null,
     val currency: String = "",
     val data: InsightsDto? = null,
+)
+
+/** Lazy-loaded state for the Bank (External accounts) sheet. `enabled` gates the whole feature (allowlist +
+ *  verified email, resolved server-side) — when false the Wallets entry point stays hidden. `linkUrl` is a
+ *  one-shot the UI consumes to open the bank's consent page in a browser. `handlingId` is the pending row mid
+ *  confirm/dismiss. */
+data class BankUi(
+    val loading: Boolean = false,
+    val loaded: Boolean = false,
+    val enabled: Boolean = false,
+    val connected: Boolean = false,
+    val institutionName: String? = null,
+    val institutionLogo: String? = null,
+    val balance: Double? = null,
+    val balanceCurrency: String? = null,
+    val lastSyncedAt: String? = null,
+    val pending: List<PendingBankTransactionDto> = emptyList(),
+    val busy: Boolean = false,
+    val error: String? = null,
+    val linkUrl: String? = null,
+    val handlingId: String? = null,
+)
+
+/** State for the Two-factor enrollment flow in the profile. `setup` holds the QR/secret while enrolling;
+ *  `recoveryCodes` holds the one-time codes shown right after a successful confirm. */
+data class TwoFactorUi(
+    val busy: Boolean = false,
+    val error: String? = null,
+    val setup: com.tandemtab.app.data.TwoFactorSetupDto? = null,   // non-null while enrolling (show the QR + code field)
+    val recoveryCodes: List<String>? = null,                        // non-null right after confirm (show once)
+    val disabling: Boolean = false,                                 // the "enter a code to turn off" panel is open
 )
 
 /** State for the Profile & Account settings sheet (change-password / rename write-flight + result). */
@@ -347,7 +388,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             selected?.let { loadPeriodLabel(it.id); loadForecast(it.id) }
             // Identity for the profile sheet (best-effort — the sheet still works from the stored username).
             runCatching { api.me() }.getOrNull()?.let { me ->
-                _state.update { it.copy(username = me.username.ifBlank { it.username }, email = me.email, provider = me.provider) }
+                _state.update { it.copy(
+                    username = me.username.ifBlank { it.username }, email = me.email, provider = me.provider,
+                    avatar = me.avatar, emailVerified = me.emailVerified, twoFactorEnabled = me.twoFactorEnabled,
+                ) }
             }
         } catch (e: Exception) {
             _state.update { it.copy(busy = false, error = e.message ?: "Couldn't load your accounts.") }
@@ -413,6 +457,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 busy = true, selectedAccountId = accountId, overview = null, periodLabel = null,
                 runway = null, targets = emptyList(),
                 spending = SpendingUi(), goals = GoalsUi(), wallets = WalletsUi(), health = HealthUi(), recurring = RecurringUi(),
+                bank = BankUi(),
             )
         }
         viewModelScope.launch {
@@ -966,10 +1011,87 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Clear stale settings state before opening the profile sheet, and refresh identity best-effort. */
     fun openSettings() {
-        _state.update { it.copy(settings = SettingsUi()) }
+        _state.update { it.copy(settings = SettingsUi(), twoFactor = TwoFactorUi()) }
         viewModelScope.launch {
             runCatching { api.me() }.getOrNull()?.let { me ->
-                _state.update { it.copy(username = me.username.ifBlank { it.username }, email = me.email, provider = me.provider) }
+                _state.update { it.copy(
+                    username = me.username.ifBlank { it.username }, email = me.email, provider = me.provider,
+                    avatar = me.avatar, emailVerified = me.emailVerified, twoFactorEnabled = me.twoFactorEnabled,
+                ) }
+            }
+        }
+    }
+
+    // --- Two-factor authentication ----------------------------------------------------------------------
+
+    /** Begin enrollment: fetch the secret + QR and open the confirm panel. */
+    fun beginTwoFactor() {
+        _state.update { it.copy(twoFactor = it.twoFactor.copy(busy = true, error = null, recoveryCodes = null)) }
+        viewModelScope.launch {
+            try {
+                val setup = api.setupTwoFactor()
+                _state.update { it.copy(twoFactor = it.twoFactor.copy(busy = false, setup = setup)) }
+            } catch (e: Exception) {
+                _state.update { it.copy(twoFactor = it.twoFactor.copy(busy = false, error = e.message ?: "Couldn't start two-factor setup.")) }
+            }
+        }
+    }
+
+    /** Confirm enrollment with a live code; on success show the one-time recovery codes and mark 2FA on. */
+    fun confirmTwoFactor(code: String) {
+        _state.update { it.copy(twoFactor = it.twoFactor.copy(busy = true, error = null)) }
+        viewModelScope.launch {
+            try {
+                val codes = api.confirmTwoFactor(code)
+                _state.update { it.copy(twoFactorEnabled = true, twoFactor = it.twoFactor.copy(busy = false, setup = null, recoveryCodes = codes.recoveryCodes)) }
+            } catch (e: Exception) {
+                _state.update { it.copy(twoFactor = it.twoFactor.copy(busy = false, error = e.message ?: "That code didn't match. Try again.")) }
+            }
+        }
+    }
+
+    /** Turn 2FA off with a current code. */
+    fun disableTwoFactor(code: String) {
+        _state.update { it.copy(twoFactor = it.twoFactor.copy(busy = true, error = null)) }
+        viewModelScope.launch {
+            try {
+                api.disableTwoFactor(code)
+                _state.update { it.copy(twoFactorEnabled = false, twoFactor = TwoFactorUi()) }
+            } catch (e: Exception) {
+                _state.update { it.copy(twoFactor = it.twoFactor.copy(busy = false, error = e.message ?: "That code didn't match. Try again.")) }
+            }
+        }
+    }
+
+    /** Open/close the "enter a code to turn off" panel; clear enrollment/recovery state. */
+    fun setTwoFactorDisabling(on: Boolean) = _state.update { it.copy(twoFactor = it.twoFactor.copy(disabling = on, error = null)) }
+    fun cancelTwoFactorSetup() = _state.update { it.copy(twoFactor = TwoFactorUi()) }
+    fun dismissRecoveryCodes() = _state.update { it.copy(twoFactor = it.twoFactor.copy(recoveryCodes = null)) }
+
+    // --- Email verification + avatar --------------------------------------------------------------------
+
+    /** Resend the email-verification link (local accounts). */
+    fun resendVerification() {
+        _state.update { it.copy(settings = it.settings.copy(busy = true, error = null)) }
+        viewModelScope.launch {
+            try {
+                api.resendVerification()
+                _state.update { it.copy(settings = it.settings.copy(busy = false)) }
+            } catch (e: Exception) {
+                _state.update { it.copy(settings = it.settings.copy(busy = false, error = e.message ?: "Couldn't send the email.")) }
+            }
+        }
+    }
+
+    /** Upload a new avatar (data URL from the image picker), reflecting it locally on success. */
+    fun uploadAvatar(dataUrl: String) {
+        _state.update { it.copy(settings = it.settings.copy(busy = true, error = null)) }
+        viewModelScope.launch {
+            try {
+                api.setAvatar(dataUrl)
+                _state.update { it.copy(avatar = dataUrl, settings = it.settings.copy(busy = false)) }
+            } catch (e: Exception) {
+                _state.update { it.copy(settings = it.settings.copy(busy = false, error = e.message ?: "Couldn't update your photo.")) }
             }
         }
     }
@@ -1040,6 +1162,172 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             }
         }
     }
+
+    // --- Bank sync (External accounts) ------------------------------------------------------------------
+
+    private fun bankFrom(s: BankSyncStatusDto, pending: List<PendingBankTransactionDto>, loaded: Boolean = true) = BankUi(
+        loaded = loaded, enabled = s.enabled, connected = s.connected,
+        institutionName = s.institutionName, institutionLogo = s.institutionLogo,
+        balance = s.balance, balanceCurrency = s.balanceCurrency, lastSyncedAt = s.lastSyncedAt,
+        pending = pending,
+    )
+
+    /** Lazily load the Bank sheet: the connection status (gates the whole feature) and, when connected, the
+     *  pending imports. Also warms the /spending pickers the confirm flow reuses. Best-effort — a failed status
+     *  read leaves the feature hidden (enabled=false). */
+    fun loadBank(force: Boolean = false) {
+        val accountId = _state.value.selectedAccountId ?: return
+        val cur = _state.value.bank
+        if (!force && (cur.loaded || cur.loading)) return
+        _state.update { it.copy(bank = it.bank.copy(loading = true, error = null)) }
+        loadSpending(false)
+        viewModelScope.launch {
+            val status = runCatching { api.bankStatus(accountId) }.getOrDefault(BankSyncStatusDto(enabled = false))
+            val pending = if (status.enabled && status.connected)
+                runCatching { api.bankPending(accountId) }.getOrDefault(emptyList()) else emptyList()
+            // The income picker is needed to file credits (money-in) as income.
+            if (_state.value.spending.incomeCategories.isEmpty()) {
+                runCatching { api.income(accountId) }.getOrNull()
+                    ?.let { inc -> _state.update { it.copy(spending = it.spending.copy(incomeCategories = inc.categories)) } }
+            }
+            _state.update { it.copy(bank = bankFrom(status, pending)) }
+        }
+    }
+
+    /** Begin linking: record bank-link consent, auto-pick the account's Revolut institution, ask the server for
+     *  the consent URL (native → the callback deep-links back), and stash it for the UI to open in a browser. */
+    fun connectBank() {
+        val accountId = _state.value.selectedAccountId ?: return
+        _state.update { it.copy(bank = it.bank.copy(busy = true, error = null)) }
+        viewModelScope.launch {
+            try {
+                api.recordConsent(RecordConsentRequest("bank_link", accountId, true))
+                val bank = api.bankInstitutions(accountId).firstOrNull()
+                    ?: throw com.tandemtab.app.data.ApiException(404, "No Revolut connection is available for your country yet.")
+                val resp = api.startBankLink(accountId, StartBankLinkRequest(bank.name, bank.country, bank.logo, native = true))
+                _state.update { it.copy(bank = it.bank.copy(busy = false, linkUrl = resp.linkUrl)) }
+            } catch (e: Exception) {
+                _state.update { it.copy(bank = it.bank.copy(busy = false, error = e.message ?: "Couldn't start the bank link.")) }
+            }
+        }
+    }
+
+    /** The UI consumes the one-shot link URL (opens it in a browser), then clears it. */
+    fun clearBankLinkUrl() = _state.update { it.copy(bank = it.bank.copy(linkUrl = null)) }
+
+    /** The com.tandemtab.app://bank/callback deep link fired after the user consented at their bank. On success
+     *  refresh the connection, run a first sync, and load the pending imports; on error surface it. */
+    fun onBankDeepLink(linked: Boolean) {
+        val accountId = _state.value.selectedAccountId ?: return
+        if (!linked) {
+            _state.update { it.copy(bank = it.bank.copy(busy = false, error = "The bank link was cancelled or failed.")) }
+            return
+        }
+        _state.update { it.copy(bank = it.bank.copy(busy = true, error = null)) }
+        viewModelScope.launch {
+            runCatching { api.syncBank(accountId) }
+            val status = runCatching { api.bankStatus(accountId) }.getOrDefault(BankSyncStatusDto(enabled = false))
+            val pending = runCatching { api.bankPending(accountId) }.getOrDefault(emptyList())
+            _state.update { it.copy(bank = bankFrom(status, pending).copy(busy = false)) }
+        }
+    }
+
+    /** Pull new transactions from the bank and refresh the pending list. */
+    fun syncBank() {
+        val accountId = _state.value.selectedAccountId ?: return
+        _state.update { it.copy(bank = it.bank.copy(busy = true, error = null)) }
+        viewModelScope.launch {
+            try {
+                api.syncBank(accountId)
+                val status = runCatching { api.bankStatus(accountId) }.getOrNull()
+                val pending = api.bankPending(accountId)
+                _state.update {
+                    it.copy(bank = it.bank.copy(
+                        busy = false, pending = pending,
+                        lastSyncedAt = status?.lastSyncedAt ?: it.bank.lastSyncedAt,
+                        balance = status?.balance ?: it.bank.balance,
+                    ))
+                }
+            } catch (e: Exception) {
+                _state.update { it.copy(bank = it.bank.copy(busy = false, error = e.message ?: "Couldn't sync your bank.")) }
+            }
+        }
+    }
+
+    /** Turn a pending debit into a real expense (category + fund), then ack it so a later sync won't resurface it. */
+    fun confirmPendingExpense(externalId: String, categoryId: String, fundId: String, amount: Double, date: String, note: String?, onDone: () -> Unit) {
+        val accountId = _state.value.selectedAccountId ?: return
+        _state.update { it.copy(bank = it.bank.copy(handlingId = externalId, error = null)) }
+        viewModelScope.launch {
+            try {
+                val mut = api.addExpense(accountId, AddExpenseRequest(categoryId, kotlin.math.abs(amount), fundId, date, note?.ifBlank { null }))
+                api.ackBank(accountId, externalId, confirmed = true)
+                _state.update {
+                    it.copy(
+                        overview = mut.overview,
+                        bank = it.bank.copy(handlingId = null, pending = it.bank.pending.filterNot { p -> p.externalId == externalId }),
+                        spending = it.spending.copy(loaded = false),   // a new expense landed → re-fetch Spending
+                    )
+                }
+                onDone()
+            } catch (e: Exception) {
+                _state.update { it.copy(bank = it.bank.copy(handlingId = null, error = e.message ?: "Couldn't file that transaction.")) }
+            }
+        }
+    }
+
+    /** Turn a pending credit into income (source category + fund), then ack it. */
+    fun confirmPendingIncome(externalId: String, categoryId: String, fundId: String, amount: Double, date: String, onDone: () -> Unit) {
+        val accountId = _state.value.selectedAccountId ?: return
+        _state.update { it.copy(bank = it.bank.copy(handlingId = externalId, error = null)) }
+        viewModelScope.launch {
+            try {
+                val mut = api.addDeposit(accountId, AddDepositRequest(categoryId, fundId, kotlin.math.abs(amount), date))
+                api.ackBank(accountId, externalId, confirmed = true)
+                _state.update {
+                    it.copy(
+                        overview = mut.overview,
+                        bank = it.bank.copy(handlingId = null, pending = it.bank.pending.filterNot { p -> p.externalId == externalId }),
+                        wallets = it.wallets.copy(loaded = false),   // fund balances moved → re-fetch Wallets
+                    )
+                }
+                onDone()
+            } catch (e: Exception) {
+                _state.update { it.copy(bank = it.bank.copy(handlingId = null, error = e.message ?: "Couldn't file that transaction.")) }
+            }
+        }
+    }
+
+    /** Dismiss a pending transaction (posts nothing, marks it handled so a later sync won't resurface it). */
+    fun dismissPending(externalId: String) {
+        val accountId = _state.value.selectedAccountId ?: return
+        _state.update { it.copy(bank = it.bank.copy(handlingId = externalId, error = null)) }
+        viewModelScope.launch {
+            try {
+                api.ackBank(accountId, externalId, confirmed = false)
+                _state.update { it.copy(bank = it.bank.copy(handlingId = null, pending = it.bank.pending.filterNot { p -> p.externalId == externalId })) }
+            } catch (e: Exception) {
+                _state.update { it.copy(bank = it.bank.copy(handlingId = null, error = e.message ?: "Couldn't dismiss that transaction.")) }
+            }
+        }
+    }
+
+    /** Drop the bank connection (keeps already-handled rows). Resets the sheet to the not-connected state. */
+    fun disconnectBank(onDone: () -> Unit = {}) {
+        val accountId = _state.value.selectedAccountId ?: return
+        _state.update { it.copy(bank = it.bank.copy(busy = true, error = null)) }
+        viewModelScope.launch {
+            try {
+                api.disconnectBank(accountId)
+                _state.update { it.copy(bank = it.bank.copy(busy = false, connected = false, institutionName = null, institutionLogo = null, balance = null, lastSyncedAt = null, pending = emptyList())) }
+                onDone()
+            } catch (e: Exception) {
+                _state.update { it.copy(bank = it.bank.copy(busy = false, error = e.message ?: "Couldn't disconnect.")) }
+            }
+        }
+    }
+
+    fun clearBankError() = _state.update { it.copy(bank = it.bank.copy(error = null)) }
 
     fun refresh() {
         _state.update { it.copy(busy = true, error = null) }

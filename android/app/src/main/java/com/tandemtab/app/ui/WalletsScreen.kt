@@ -54,6 +54,10 @@ fun WalletsScreen(
     onPrepareAddIncome: () -> Unit,
     onTransfer: (fromFundId: String, toFundId: String, amount: Double, date: String, note: String?, onDone: () -> Unit) -> Unit,
     onAddIncome: (fundId: String, categoryId: String, amount: Double, date: String, onDone: () -> Unit) -> Unit,
+    bankEnabled: Boolean = false,
+    bankConnected: Boolean = false,
+    bankReviewCount: Int = 0,
+    onOpenBank: () -> Unit = {},
 ) {
     val tandem = LocalTandemColors.current
     val fmt = rememberWalletsMoney(wallets.currency)
@@ -91,6 +95,12 @@ fun WalletsScreen(
                         )
                     }
                 }
+            }
+
+            // External accounts (bank connection) — only when the feature is available for this account.
+            if (bankEnabled) {
+                Spacer(Modifier.height(12.dp))
+                BankEntryRow(connected = bankConnected, reviewCount = bankReviewCount, onClick = onOpenBank)
             }
 
             if (wallets.transfers.isNotEmpty()) {
@@ -182,6 +192,38 @@ private fun FundRow(f: FundRowDto, fmt: (Double) -> String, onTransfer: () -> Un
                 Icon(TandemIcons.Plus, "Add income", tint = tandem.muted)
             }
         }
+    }
+}
+
+/** The "External accounts" row that opens the Bank sheet. Shows a review badge when imports are pending. */
+@Composable
+private fun BankEntryRow(connected: Boolean, reviewCount: Int, onClick: () -> Unit) {
+    val tandem = LocalTandemColors.current
+    Row(
+        Modifier.fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(14.dp))
+            .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(14.dp))
+            .clickable(onClick = onClick)
+            .padding(14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(TandemIcons.Bank, contentDescription = null, tint = tandem.catAccent, modifier = Modifier.size(20.dp))
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text("External accounts", fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
+            Text(
+                if (connected) "Sync transactions from your bank" else "Link your bank to import transactions",
+                fontSize = 12.sp, color = tandem.muted,
+            )
+        }
+        if (reviewCount > 0) {
+            Box(
+                Modifier.size(24.dp).background(tandem.positive, RoundedCornerShape(999.dp)),
+                contentAlignment = Alignment.Center,
+            ) { Text("$reviewCount", color = androidx.compose.ui.graphics.Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+            Spacer(Modifier.width(8.dp))
+        }
+        Icon(TandemIcons.Chevron, contentDescription = null, tint = tandem.muted, modifier = Modifier.size(16.dp))
     }
 }
 

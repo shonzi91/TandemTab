@@ -27,6 +27,13 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="com.tandemtab.app" android:host="auth" />
             </intent-filter>
+            <!-- Bank-link callback: the server redirects here after Open Banking consent (?bank=linked|error). -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="com.tandemtab.app" android:host="bank" />
+            </intent-filter>
         </activity>
     </application>
 

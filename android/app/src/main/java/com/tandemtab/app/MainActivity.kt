@@ -46,14 +46,17 @@ class MainActivity : ComponentActivity() {
         handleAuthDeepLink(intent)
     }
 
-    /** com.tandemtab.app://auth/callback?authCode=… (or ?error=…) after external sign-in. */
+    /** com.tandemtab.app://{auth|bank}/callback deep links: external sign-in result, or the bank-consent outcome. */
     private fun handleAuthDeepLink(intent: Intent?) {
         val data: Uri = intent?.data ?: return
         if (data.scheme != "com.tandemtab.app") return
-        vm.onExternalAuthResult(
-            authCode = data.getQueryParameter("authCode"),
-            error = data.getQueryParameter("error") != null,
-        )
+        when (data.host) {
+            "bank" -> vm.onBankDeepLink(linked = data.getQueryParameter("bank") == "linked")
+            else -> vm.onExternalAuthResult(
+                authCode = data.getQueryParameter("authCode"),
+                error = data.getQueryParameter("error") != null,
+            )
+        }
     }
 
     private fun startGoogleSignIn() {
@@ -95,12 +98,28 @@ private fun App(vm: AppViewModel, onGoogle: () -> Unit) {
             onSignOut = vm::signOut,
             onOpenSettings = vm::openSettings,
             onChangePassword = vm::changePassword,
+            onResendVerification = vm::resendVerification,
+            onUploadAvatar = vm::uploadAvatar,
+            onBeginTwoFactor = vm::beginTwoFactor,
+            onConfirmTwoFactor = vm::confirmTwoFactor,
+            onDisableTwoFactor = vm::disableTwoFactor,
+            onSetTwoFactorDisabling = vm::setTwoFactorDisabling,
+            onCancelTwoFactorSetup = vm::cancelTwoFactorSetup,
+            onDismissRecoveryCodes = vm::dismissRecoveryCodes,
             onRenameAccount = vm::renameAccount,
             onLeaveAccount = vm::leaveAccount,
             onDeleteAccount = vm::deleteAccount,
             onLoadSpending = vm::loadSpending,
             onLoadGoals = vm::loadGoals,
             onLoadWallets = vm::loadWallets,
+            onLoadBank = vm::loadBank,
+            onConnectBank = vm::connectBank,
+            onSyncBank = vm::syncBank,
+            onDisconnectBank = { vm.disconnectBank() },
+            onConfirmBankExpense = vm::confirmPendingExpense,
+            onConfirmBankIncome = vm::confirmPendingIncome,
+            onDismissBankPending = vm::dismissPending,
+            onBankLinkUrlHandled = vm::clearBankLinkUrl,
             onLoadHealth = vm::loadHealth,
             onLoadRecurring = vm::loadRecurring,
             onConfirmRecurring = vm::confirmRecurring,

@@ -1,5 +1,8 @@
 package com.tandemtab.app.ui
 
+import android.content.Intent
+import android.net.Uri
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
@@ -111,12 +114,28 @@ fun HomeScreen(
     onSignOut: () -> Unit,
     onOpenSettings: () -> Unit,
     onChangePassword: (String, String) -> Unit,
+    onResendVerification: () -> Unit,
+    onUploadAvatar: (String) -> Unit,
+    onBeginTwoFactor: () -> Unit,
+    onConfirmTwoFactor: (String) -> Unit,
+    onDisableTwoFactor: (String) -> Unit,
+    onSetTwoFactorDisabling: (Boolean) -> Unit,
+    onCancelTwoFactorSetup: () -> Unit,
+    onDismissRecoveryCodes: () -> Unit,
     onRenameAccount: (String, () -> Unit) -> Unit,
     onLeaveAccount: (() -> Unit) -> Unit,
     onDeleteAccount: (() -> Unit) -> Unit,
     onLoadSpending: (Boolean) -> Unit,
     onLoadGoals: (Boolean) -> Unit,
     onLoadWallets: (Boolean) -> Unit,
+    onLoadBank: (Boolean) -> Unit,
+    onConnectBank: () -> Unit,
+    onSyncBank: () -> Unit,
+    onDisconnectBank: () -> Unit,
+    onConfirmBankExpense: (String, String, String, Double, String, String?, () -> Unit) -> Unit,
+    onConfirmBankIncome: (String, String, String, Double, String, () -> Unit) -> Unit,
+    onDismissBankPending: (String) -> Unit,
+    onBankLinkUrlHandled: () -> Unit,
     onLoadHealth: (Boolean) -> Unit,
     onLoadRecurring: (Boolean) -> Unit,
     onConfirmRecurring: (String, Double) -> Unit,
@@ -158,6 +177,7 @@ fun HomeScreen(
     var showRecurring by remember { mutableStateOf(false) }
     var showProfile by remember { mutableStateOf(false) }
     var showAccount by remember { mutableStateOf(false) }
+    var showBank by remember { mutableStateOf(false) }
 
     // "Edit last" flows through the ViewModel: prepareEditLast loads + picks the last expense into state.editingExpense,
     // which we watch here to raise the add sheet in edit mode.
@@ -217,7 +237,7 @@ fun HomeScreen(
             when (dest) {
                 NavDest.Spending -> onLoadSpending(false)
                 NavDest.Goals -> onLoadGoals(false)
-                NavDest.Wallets -> onLoadWallets(false)
+                NavDest.Wallets -> { onLoadWallets(false); onLoadBank(false) }
                 NavDest.Home -> { onLoadHealth(false); onLoadRecurring(false); onLoadGoals(false) }
             }
         }
@@ -265,6 +285,10 @@ fun HomeScreen(
                             onPrepareAddIncome = onPrepareAddIncome,
                             onTransfer = onTransfer,
                             onAddIncome = onAddIncome,
+                            bankEnabled = state.bank.enabled,
+                            bankConnected = state.bank.connected,
+                            bankReviewCount = state.bank.pending.size,
+                            onOpenBank = { onLoadBank(false); showBank = true },
                         )
                     }
                 }
@@ -293,6 +317,14 @@ fun HomeScreen(
                 darkTheme = darkTheme,
                 onToggleTheme = onToggleTheme,
                 onChangePassword = onChangePassword,
+                onResendVerification = onResendVerification,
+                onUploadAvatar = onUploadAvatar,
+                onBeginTwoFactor = onBeginTwoFactor,
+                onConfirmTwoFactor = onConfirmTwoFactor,
+                onDisableTwoFactor = onDisableTwoFactor,
+                onSetTwoFactorDisabling = onSetTwoFactorDisabling,
+                onCancelTwoFactorSetup = onCancelTwoFactorSetup,
+                onDismissRecoveryCodes = onDismissRecoveryCodes,
                 onSignOut = { showProfile = false; onSignOut() },
                 onDismiss = { showProfile = false },
             )
@@ -306,6 +338,28 @@ fun HomeScreen(
                 onDelete = { onDeleteAccount { showAccount = false } },
                 onDismiss = { showAccount = false },
             )
+        }
+        if (showBank) {
+            BankSheet(
+                bank = state.bank,
+                spending = state.spending,
+                onConnect = onConnectBank,
+                onSync = onSyncBank,
+                onDisconnect = onDisconnectBank,
+                onConfirmExpense = onConfirmBankExpense,
+                onConfirmIncome = onConfirmBankIncome,
+                onDismissPending = onDismissBankPending,
+                onDismiss = { showBank = false },
+            )
+        }
+        // The bank-link URL is a one-shot: open the bank's consent page in a browser, then clear it. The result
+        // returns via the com.tandemtab.app://bank/callback deep link (handled by the ViewModel).
+        val ctx = LocalContext.current
+        LaunchedEffect(state.bank.linkUrl) {
+            state.bank.linkUrl?.let { url ->
+                runCatching { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+                onBankLinkUrlHandled()
+            }
         }
     }
 }

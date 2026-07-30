@@ -130,7 +130,26 @@ data class UserDto(
     val username: String = "",
     val email: String = "",
     val provider: String? = null,
+    val avatar: String? = null,               // data-URL profile picture (provider-sourced for external logins)
+    val emailVerified: Boolean = false,
+    val twoFactorEnabled: Boolean = false,
 )
+
+/** POST /auth/2fa/setup — begins enrollment. `qrImage` is a data-URL PNG of the otpauth URI to scan. */
+@Serializable
+data class TwoFactorSetupDto(val secret: String = "", val otpauthUri: String = "", val qrImage: String = "")
+
+/** POST /auth/2fa/confirm or /disable — the 6-digit TOTP (or a recovery code). */
+@Serializable
+data class TwoFactorCodeRequest(val code: String)
+
+/** POST /auth/2fa/confirm result — one-time recovery codes, shown once. */
+@Serializable
+data class TwoFactorRecoveryDto(val recoveryCodes: List<String> = emptyList())
+
+/** PUT /me/avatar — set (or clear, with null) the profile picture as a data URL. */
+@Serializable
+data class SetAvatarRequest(val dataUrl: String?)
 
 /** POST /auth/password — change the signed-in user's password. */
 @Serializable
@@ -269,7 +288,8 @@ data class AddExpenseRequest(
     val date: String,
     val note: String? = null,
     val onBehalfOfOtherAccount: Boolean = false,
-    val tagIds: List<String>? = null,
+    // One tag per expense (the Android add sheet doesn't expose a tag picker yet, so this stays null).
+    val tagId: String? = null,
 )
 
 /** What POST/PUT/DELETE /expenses returns: the new snapshot version, the row's id, the (added/edited) row for the
@@ -552,6 +572,61 @@ data class InsightsDto(
     val miniTrends: List<InsightMiniTrendDto> = emptyList(),
     val quickWins: List<InsightMessageDto> = emptyList(),
 )
+
+// --- Bank sync (Open Banking via Enable Banking) ------------------------------------------------------
+// Allowlist- and email-verification-gated server-side. The status read reports Enabled=false to anyone who
+// can't use it, so the client hides all bank UI. Turning a pending transaction into an expense/income posts
+// through the normal write endpoints, then acks the row so a later sync won't resurface it.
+
+/** GET /accounts/{id}/bank/status — whether the feature is available + this account's connection (if any). */
+@Serializable
+data class BankSyncStatusDto(
+    val enabled: Boolean = false,
+    val connected: Boolean = false,
+    val institutionName: String? = null,
+    val consentExpiresAt: String? = null,
+    val lastSyncedAt: String? = null,
+    val fundId: String? = null,
+    val balance: Double? = null,
+    val balanceCurrency: String? = null,
+    val accountRef: String? = null,
+    val institutionLogo: String? = null,
+)
+
+/** GET /accounts/{id}/bank/institutions — a bank the aggregator knows about (name + country + logo URL). */
+@Serializable
+data class BankInstitutionDto(val name: String, val country: String, val logo: String? = null)
+
+/** POST /accounts/{id}/bank/link. `native = true` routes the bank's callback back through the app deep link. */
+@Serializable
+data class StartBankLinkRequest(
+    val institutionName: String,
+    val country: String,
+    val logo: String? = null,
+    val native: Boolean = true,
+)
+
+/** The URL to open in a browser to complete the bank's consent flow. */
+@Serializable
+data class StartBankLinkResponse(val linkUrl: String)
+
+/** One fetched bank transaction not yet turned into (or dismissed from becoming) a FinApp entry. A negative
+ *  amount is a debit (spend → expense); a positive amount is a credit (money in → income). */
+@Serializable
+data class PendingBankTransactionDto(
+    val externalId: String,
+    val amount: Double,
+    val date: String,
+    val description: String,
+)
+
+/** POST /accounts/{id}/bank/ack — mark a staged transaction handled (turned into an entry) or dismissed. */
+@Serializable
+data class BankTransactionAck(val externalId: String, val confirmed: Boolean)
+
+/** POST /consent — record the caller's consent for a scope (bank_link before linking a bank). */
+@Serializable
+data class RecordConsentRequest(val scope: String, val accountId: String?, val granted: Boolean)
 
 @Serializable
 data class DepositRowDto(

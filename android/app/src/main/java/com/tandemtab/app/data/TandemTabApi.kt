@@ -243,12 +243,83 @@ class TandemTabApi(
     suspend fun deleteExpense(accountId: String, expenseId: String): ExpenseMutationDto =
         authedDelete("/accounts/$accountId/expenses/$expenseId").body()
 
+    // --- Bank sync (Open Banking) -------------------------------------------
+
+    /** Whether bank sync is available to this user + this account's connection. Enabled=false → hide all bank UI.
+     *  The endpoint requires a verified email server-side; on a non-2xx (unverified / not allowlisted) treat the
+     *  feature as unavailable rather than surfacing an error. */
+    suspend fun bankStatus(accountId: String): BankSyncStatusDto {
+        ensureFreshToken()
+        var resp = client.get("/accounts/$accountId/bank/status") { header(HttpHeaders.Authorization, "Bearer ${requireToken()}") }
+        if (resp.status == HttpStatusCode.Unauthorized && tryRefresh()) {
+            resp = client.get("/accounts/$accountId/bank/status") { header(HttpHeaders.Authorization, "Bearer ${requireToken()}") }
+        }
+        return if (resp.status.value in 200..299) resp.body() else BankSyncStatusDto(enabled = false)
+    }
+
+    /** Banks the aggregator lists for the account's country (filtered to Revolut server-side). */
+    suspend fun bankInstitutions(accountId: String, country: String? = null): List<BankInstitutionDto> =
+        authedGet("/accounts/$accountId/bank/institutions${if (country == null) "" else "?country=$country"}").body()
+
+    /** Record consent for a scope (bank_link is required before /bank/link). */
+    suspend fun recordConsent(req: RecordConsentRequest) {
+        authedPost("/consent", req)
+    }
+
+    /** Begin linking: returns the bank's consent URL to open in a browser. `native=true` sends the outcome back
+     *  through the com.tandemtab.app://bank/callback deep link. */
+    suspend fun startBankLink(accountId: String, req: StartBankLinkRequest): StartBankLinkResponse =
+        authedPost("/accounts/$accountId/bank/link", req).body()
+
+    /** Pull booked transactions and stage new ones (returns 204). */
+    suspend fun syncBank(accountId: String) {
+        authedPostEmpty("/accounts/$accountId/bank/sync")
+    }
+
+    /** Transactions fetched but not yet turned into (or dismissed from becoming) a FinApp entry. */
+    suspend fun bankPending(accountId: String): List<PendingBankTransactionDto> =
+        authedGet("/accounts/$accountId/bank/pending").body()
+
+    /** Mark a staged transaction handled (confirmed=true, turned into an entry) or dismissed (false). */
+    suspend fun ackBank(accountId: String, externalId: String, confirmed: Boolean) {
+        authedPost("/accounts/$accountId/bank/ack", BankTransactionAck(externalId, confirmed))
+    }
+
+    /** Drop the bank connection so the account can be linked afresh (keeps already-handled rows). Returns 204. */
+    suspend fun disconnectBank(accountId: String) {
+        authedDelete("/accounts/$accountId/bank/connection")
+    }
+
     /** The signed-in user (identity for the profile sheet). */
     suspend fun me(): UserDto = authedGet("/me").body()
 
     /** Change the signed-in user's password. Returns 204 on success. */
     suspend fun changePassword(req: ChangePasswordRequest) {
         authedPost("/auth/password", req)
+    }
+
+    // --- Two-factor authentication ------------------------------------------
+
+    /** Begin 2FA enrollment: returns the shared secret + a QR data-URL to scan into an authenticator app. */
+    suspend fun setupTwoFactor(): TwoFactorSetupDto = authedPostEmpty("/auth/2fa/setup").body()
+
+    /** Confirm enrollment with a live code; returns the one-time recovery codes (shown once). */
+    suspend fun confirmTwoFactor(code: String): TwoFactorRecoveryDto =
+        authedPost("/auth/2fa/confirm", TwoFactorCodeRequest(code.trim())).body()
+
+    /** Turn 2FA off (requires a current code to prove possession of the second factor). Returns 204. */
+    suspend fun disableTwoFactor(code: String) {
+        authedPost("/auth/2fa/disable", TwoFactorCodeRequest(code.trim()))
+    }
+
+    /** Resend the email-verification link to the signed-in user's address. Returns 204. */
+    suspend fun resendVerification() {
+        authedPostEmpty("/auth/resend-verification")
+    }
+
+    /** Set (or clear, with null) the signed-in user's avatar as a data URL. Returns 204. */
+    suspend fun setAvatar(dataUrl: String?) {
+        authedPut("/me/avatar", SetAvatarRequest(dataUrl))
     }
 
     /** Rename an account. Returns 204 on success. */
