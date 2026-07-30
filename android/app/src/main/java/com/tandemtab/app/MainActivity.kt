@@ -90,6 +90,7 @@ private fun App(vm: AppViewModel, onGoogle: () -> Unit) {
             darkTheme = dark,
             onToggleTheme = vm::toggleTheme,
             onSelectAccount = vm::selectAccount,
+            onSelectPeriod = vm::selectPeriod,
             onSignOut = vm::signOut,
             onOpenSettings = vm::openSettings,
             onChangePassword = vm::changePassword,

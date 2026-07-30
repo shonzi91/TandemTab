@@ -22,6 +22,7 @@ import com.tandemtab.app.data.FundRowDto
 import com.tandemtab.app.data.FundTransferRowDto
 import com.tandemtab.app.data.ConfirmRecurringRequest
 import com.tandemtab.app.data.InsightsDto
+import com.tandemtab.app.data.PeriodRowDto
 import com.tandemtab.app.data.PeriodsViewDto
 import com.tandemtab.app.data.RecurringRowDto
 import com.tandemtab.app.data.RecurringViewDto
@@ -68,6 +69,10 @@ data class UiState(
     val selectedAccountId: String? = null,
     val overview: AccountOverviewDto? = null,
     val periodLabel: String? = null,
+    // Period navigation: the account's periods, its open/current index, and which one is being viewed (null = current).
+    val periods: List<PeriodRowDto> = emptyList(),
+    val currentPeriodIndex: Int = -1,
+    val selectedPeriod: Int? = null,
     // Home forecast (server-computed): the runway card + the "on track for" targets.
     val runway: RunwayDto? = null,
     val targets: List<TargetDto> = emptyList(),
@@ -325,7 +330,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         try {
             val accounts = api.listAccounts()
             val selected = accounts.firstOrNull()
-            val overview = selected?.let { api.overview(it.id) }
+            val overview = selected?.let { api.overview(it.id, _state.value.selectedPeriod) }
             _state.update {
                 it.copy(
                     screen = Screen.Home,
@@ -346,10 +351,36 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /** Best-effort: fetch the current period's date range and format it for the top-bar label. */
+    /** Best-effort: fetch the account's periods; store them + the current index and label the viewed period. */
     private suspend fun loadPeriodLabel(accountId: String) {
         val p = runCatching { api.periods(accountId) }.getOrNull() ?: return
-        _state.update { it.copy(periodLabel = formatPeriod(p)) }
+        _state.update { st ->
+            val shown = st.selectedPeriod ?: p.currentIndex
+            val row = p.periods.getOrNull(shown) ?: p.periods.getOrNull(p.currentIndex) ?: p.periods.lastOrNull()
+            st.copy(periods = p.periods, currentPeriodIndex = p.currentIndex, periodLabel = row?.let { formatPeriod(it) })
+        }
+    }
+
+    /** Switch the viewed period (null / the current index → back to the open period). Re-fetches every view. */
+    fun selectPeriod(index: Int?) {
+        val cur = _state.value.currentPeriodIndex
+        val normalized = if (index == null || index == cur) null else index
+        if (normalized == _state.value.selectedPeriod) return
+        val accountId = _state.value.selectedAccountId ?: return
+        _state.update { st ->
+            val row = st.periods.getOrNull(normalized ?: st.currentPeriodIndex)
+            st.copy(
+                selectedPeriod = normalized,
+                periodLabel = row?.let { formatPeriod(it) } ?: st.periodLabel,
+                overview = null, busy = true,
+                spending = SpendingUi(), goals = GoalsUi(), wallets = WalletsUi(), recurring = RecurringUi(),
+            )
+        }
+        viewModelScope.launch {
+            runCatching { api.overview(accountId, normalized) }.getOrNull()?.let { ov -> _state.update { it.copy(overview = ov, busy = false) } }
+            loadForecast(accountId)
+            loadSpending(force = true); loadGoals(force = true); loadWallets(force = true); loadRecurring(force = true); loadHealth(force = true)
+        }
     }
 
     /** Best-effort: fetch the Home forecast (runway + "on track for" targets), both server-computed. */
@@ -358,9 +389,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         runCatching { api.targets(accountId) }.getOrNull()?.let { t -> _state.update { it.copy(targets = t.targets) } }
     }
 
-    /** "July 2026" for a whole-month period, else a "d MMM – d MMM" range. Null if there's no period. */
-    private fun formatPeriod(p: PeriodsViewDto): String? {
-        val cur = p.periods.getOrNull(p.currentIndex) ?: p.periods.lastOrNull() ?: return null
+    /** "July 2026" for a whole-month period, else a "d MMM – d MMM" range. Null if unparseable. */
+    private fun formatPeriod(cur: PeriodRowDto): String? {
         return runCatching {
             val from = java.time.LocalDate.parse(cur.from)
             val to = java.time.LocalDate.parse(cur.to)
@@ -400,9 +430,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val cur = _state.value.spending
         if (!force && (cur.loaded || cur.loading)) return
         _state.update { it.copy(spending = it.spending.copy(loading = true, error = null)) }
+        val period = _state.value.selectedPeriod
         viewModelScope.launch {
             try {
-                val v = api.spending(accountId)
+                val v = api.spending(accountId, period)
                 _state.update {
                     it.copy(spending = it.spending.copy(
                         loading = false, loaded = true, error = null,
@@ -411,7 +442,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     ))
                 }
                 // Budget coverage rides alongside for the Categories view (best-effort — don't fail the tab on it).
-                runCatching { api.budgets(accountId) }.getOrNull()?.let { b ->
+                runCatching { api.budgets(accountId, period) }.getOrNull()?.let { b ->
                     _state.update { it.copy(spending = it.spending.copy(budgets = b.budgets, totalBudgeted = b.totalBudgeted, totalSpent = b.totalSpent)) }
                 }
             } catch (e: Exception) {
@@ -511,7 +542,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         _state.update { it.copy(goals = it.goals.copy(loading = true, error = null)) }
         viewModelScope.launch {
             try {
-                _state.update { it.copy(goals = goalsFrom(api.savings(accountId))) }
+                _state.update { it.copy(goals = goalsFrom(api.savings(accountId, _state.value.selectedPeriod))) }
             } catch (e: Exception) {
                 _state.update { it.copy(goals = it.goals.copy(loading = false, error = e.message ?: "Couldn't load your goals.")) }
             }
@@ -578,7 +609,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         _state.update { it.copy(wallets = it.wallets.copy(loading = true, error = null)) }
         viewModelScope.launch {
             try {
-                val v = api.wallets(accountId)
+                val v = api.wallets(accountId, _state.value.selectedPeriod)
                 _state.update { it.copy(wallets = walletsFrom(v, it.wallets.incomeCategories)) }
             } catch (e: Exception) {
                 _state.update { it.copy(wallets = it.wallets.copy(loading = false, error = e.message ?: "Couldn't load your wallets.")) }
@@ -673,7 +704,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         _state.update { it.copy(recurring = it.recurring.copy(loading = true, error = null)) }
         viewModelScope.launch {
             try {
-                val v = api.recurring(accountId)
+                val v = api.recurring(accountId, _state.value.selectedPeriod)
                 _state.update { it.copy(recurring = recurringFrom(v)) }
             } catch (e: Exception) {
                 _state.update { it.copy(recurring = it.recurring.copy(loading = false, error = e.message ?: "Couldn't load your bills.")) }

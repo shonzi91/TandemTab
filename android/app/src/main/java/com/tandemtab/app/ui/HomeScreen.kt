@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
@@ -72,6 +73,7 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import com.tandemtab.app.UiState
+import com.tandemtab.app.data.AccountSummaryDto
 import com.tandemtab.app.data.MemberDto
 import com.tandemtab.app.data.RunwayDto
 import com.tandemtab.app.data.TargetDto
@@ -102,6 +104,7 @@ fun HomeScreen(
     darkTheme: Boolean,
     onToggleTheme: () -> Unit,
     onSelectAccount: (String) -> Unit,
+    onSelectPeriod: (Int?) -> Unit,
     onSignOut: () -> Unit,
     onOpenSettings: () -> Unit,
     onChangePassword: (String, String) -> Unit,
@@ -156,28 +159,23 @@ fun HomeScreen(
     Scaffold(
         containerColor = tandem.canvas,
         topBar = {
-            TopAppBar(
-                title = {
-                    // Brand, mirroring the web app-bar (logo + "TandemTab"). The account name lives in the body header.
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        TandemLogo(size = 26.dp)
-                        Spacer(Modifier.width(8.dp))
-                        Row {
-                            Text("Tandem", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
-                            Text("Tab", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-                        }
-                    }
-                },
-                actions = {
-                    IconButton(onClick = { onOpenSettings(); showProfile = true }) {
-                        Icon(TandemIcons.User, contentDescription = "Profile", tint = tandem.muted)
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = tandem.canvas,
-                    titleContentColor = MaterialTheme.colorScheme.onBackground,
-                ),
-            )
+            // Compact one-row header (no logo): account switcher · period · account-actions · profile.
+            Row(
+                Modifier.fillMaxWidth().background(tandem.canvas).statusBarsPadding().padding(start = 14.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                // Keep the brand mark (icon only, no wordmark) to anchor the compact header.
+                TandemLogo(size = 24.dp)
+                Spacer(Modifier.width(10.dp))
+                Box(Modifier.weight(1f)) { AccountSwitcher(state, onSelectAccount) }
+                PeriodSwitcher(state, onSelectPeriod)
+                IconButton(onClick = { onOpenSettings(); showAccount = true }) {
+                    Icon(TandemIcons.Sliders, contentDescription = "Account", tint = tandem.muted)
+                }
+                IconButton(onClick = { onOpenSettings(); showProfile = true }) {
+                    Icon(TandemIcons.User, contentDescription = "Profile", tint = tandem.muted)
+                }
+            }
         },
         // Custom bottom bar with the add-FAB cradled in the centre (tabs split 2-and-2). The FAB opens a speed-dial.
         bottomBar = {
@@ -221,11 +219,10 @@ fun HomeScreen(
                 ) {
                     when (NavDest.entries[page]) {
                         NavDest.Home -> HomePage(
-                            state, onSelectAccount,
+                            state,
                             onOpenRecurring = { showRecurring = true },
                             onOpenHealth = { showHealth = true },
                             onOpenRunway = { showRunway = true },
-                            onOpenAccount = { onOpenSettings(); showAccount = true },
                         )
                         NavDest.Spending -> SpendingScreen(
                             spending = state.spending,
@@ -298,20 +295,16 @@ fun HomeScreen(
     }
 }
 
-/** The Home tab body: account header, the balance hero, then the health / bills / targets / runway cards. */
+/** The Home tab body: the balance hero, then the health / bills / targets / runway cards. The account switcher +
+ *  period + actions now live in the top header row. */
 @Composable
 private fun HomePage(
     state: UiState,
-    onSelectAccount: (String) -> Unit,
     onOpenRecurring: () -> Unit,
     onOpenHealth: () -> Unit,
     onOpenRunway: () -> Unit,
-    onOpenAccount: () -> Unit,
 ) {
     val tandem = LocalTandemColors.current
-    AccountHeader(state, onSelectAccount, onOpenAccount)
-    Spacer(Modifier.height(14.dp))
-
     val overview = state.overview
     when {
         state.busy && overview == null -> Box(
@@ -571,31 +564,13 @@ private fun monthsText(months: Int): String = when {
 /** The body account header, collapsed to a single row: the account switcher (a dropdown when there's more than one
  *  account, else a plain name), the current-period label, and the account-actions button. Member avatars/names moved
  *  into the Account sheet — they're reference info, not something you act on from Home each session. */
-@Composable
-private fun AccountHeader(state: UiState, onSelectAccount: (String) -> Unit, onOpenAccount: () -> Unit) {
-    val tandem = LocalTandemColors.current
-    val account = state.selectedAccount
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.weight(1f)) {
-            AccountSwitcher(state, onSelectAccount)
-        }
-        state.periodLabel?.let {
-            Text(it, fontSize = 13.sp, color = tandem.muted, fontWeight = FontWeight.Medium)
-            Spacer(Modifier.width(4.dp))
-        }
-        // Account actions (rename / members / recurring / leave / delete), mirroring the web account menu.
-        IconButton(onClick = onOpenAccount) {
-            Icon(TandemIcons.Sliders, contentDescription = "Account actions", tint = tandem.muted)
-        }
-    }
-}
-
-/** The account name — a tap-to-switch dropdown when the user has more than one account, else a plain heading. */
+/** The account name — a tap-to-switch dropdown when the user has more than one account, else a plain heading. Each
+ *  dropdown row leads with the account's avatar (its members stacked, or a coloured initial). */
 @Composable
 private fun AccountSwitcher(state: UiState, onSelectAccount: (String) -> Unit) {
     val account = state.selectedAccount ?: return
     if (state.accounts.size <= 1) {
-        Text(account.name, fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.onBackground, maxLines = 1)
+        Text(account.name, fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.onBackground, maxLines = 1)
         return
     }
     var open by remember { mutableStateOf(false) }
@@ -603,22 +578,84 @@ private fun AccountSwitcher(state: UiState, onSelectAccount: (String) -> Unit) {
         Modifier.clip(RoundedCornerShape(10.dp)).clickable { open = true }.padding(vertical = 2.dp, horizontal = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(account.name, fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.onBackground, maxLines = 1)
+        Text(account.name, fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.onBackground, maxLines = 1)
         Spacer(Modifier.width(4.dp))
         Icon(TandemIcons.Chevron, contentDescription = "Switch account", tint = LocalTandemColors.current.muted, modifier = Modifier.size(18.dp).rotate(90f))
     }
     DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-        state.accounts.forEach { a ->
+        state.accounts.forEachIndexed { i, a ->
+            val selected = a.id == state.selectedAccountId
             DropdownMenuItem(
-                text = { Text(a.name, fontWeight = if (a.id == state.selectedAccountId) FontWeight.Bold else FontWeight.Normal) },
+                text = { Text(a.name, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal, color = MaterialTheme.colorScheme.onSurface) },
                 onClick = { onSelectAccount(a.id); open = false },
-                leadingIcon = if (a.id == state.selectedAccountId) {
+                leadingIcon = { AccountAvatar(a, i) },
+                trailingIcon = if (selected) {
                     { Icon(TandemIcons.Check, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp)) }
                 } else null,
             )
         }
     }
 }
+
+/** A small avatar for an account row: the members' initials stacked (up to 3), or a colour-coded account initial. */
+@Composable
+private fun AccountAvatar(account: AccountSummaryDto, index: Int) {
+    val members = account.members
+    if (members.isEmpty()) {
+        AvatarCircle(initialOf(account.name), avatarPalette[index % avatarPalette.size])
+        return
+    }
+    val shown = members.take(3)
+    Row(horizontalArrangement = Arrangement.spacedBy((-8).dp)) {
+        for (i in shown.indices) {
+            AvatarCircle(initialOf(shown[i].displayName), avatarPalette[i % avatarPalette.size])
+        }
+    }
+}
+
+/** The viewed-period chip: the month/range label; tapping opens a menu of every period (newest first) to switch to. */
+@Composable
+private fun PeriodSwitcher(state: UiState, onSelectPeriod: (Int?) -> Unit) {
+    val tandem = LocalTandemColors.current
+    val label = state.periodLabel ?: return
+    var open by remember { mutableStateOf(false) }
+    val viewing = state.selectedPeriod ?: state.currentPeriodIndex
+    Row(
+        Modifier.clip(RoundedCornerShape(999.dp)).clickable(enabled = state.periods.isNotEmpty()) { open = true }
+            .padding(horizontal = 8.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(label, fontSize = 13.sp, color = tandem.muted, fontWeight = FontWeight.Medium, maxLines = 1)
+        if (state.periods.size > 1) {
+            Spacer(Modifier.width(2.dp))
+            Icon(TandemIcons.Chevron, null, tint = tandem.muted, modifier = Modifier.size(14.dp).rotate(90f))
+        }
+    }
+    DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+        state.periods.sortedByDescending { it.index }.forEach { p ->
+            val isCurrent = p.index == state.currentPeriodIndex
+            DropdownMenuItem(
+                text = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(periodRowLabel(p.from, p.to), color = MaterialTheme.colorScheme.onSurface, fontWeight = if (p.index == viewing) FontWeight.Bold else FontWeight.Normal)
+                        if (isCurrent) { Spacer(Modifier.width(6.dp)); Text("current", fontSize = 11.sp, color = tandem.positive) }
+                    }
+                },
+                onClick = { onSelectPeriod(if (isCurrent) null else p.index); open = false },
+                trailingIcon = if (p.index == viewing) {
+                    { Icon(TandemIcons.Check, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp)) }
+                } else null,
+            )
+        }
+    }
+}
+
+private fun periodRowLabel(fromIso: String, toIso: String): String = runCatching {
+    val from = LocalDate.parse(fromIso); val to = LocalDate.parse(toIso)
+    if (from.month == to.month && from.year == to.year)
+        from.format(DateTimeFormatter.ofPattern("LLLL yyyy", Locale.getDefault()))
+    else "${from.format(DateTimeFormatter.ofPattern("d MMM", Locale.getDefault()))} – ${to.format(DateTimeFormatter.ofPattern("d MMM", Locale.getDefault()))}"
+}.getOrDefault("$fromIso – $toIso")
 
 private val avatarPalette = listOf(
     Color(0xFF13A06E), Color(0xFF3B82F6), Color(0xFFF59E0B), Color(0xFF8B5CF6), Color(0xFFEF4444),

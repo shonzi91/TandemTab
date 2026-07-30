@@ -147,10 +147,10 @@ class TandemTabApi(
 
     suspend fun listAccounts(): List<AccountSummaryDto> = authedGet("/accounts").body()
 
-    suspend fun spending(accountId: String): SpendingViewDto = authedGet("/accounts/$accountId/spending").body()
+    suspend fun spending(accountId: String, period: Int? = null): SpendingViewDto = authedGet("/accounts/$accountId/spending${periodQ(period)}").body()
 
     /** Per-category budget coverage (allocated / spent / remaining) for the Spending → Categories view. */
-    suspend fun budgets(accountId: String): BudgetsViewDto = authedGet("/accounts/$accountId/budgets").body()
+    suspend fun budgets(accountId: String, period: Int? = null): BudgetsViewDto = authedGet("/accounts/$accountId/budgets${periodQ(period)}").body()
 
     /** Upsert a category's budget for the current period; returns a refreshed budgets view to reconcile from. */
     suspend fun setBudget(accountId: String, categoryId: String, req: SetBudgetRequest): BudgetMutationDto =
@@ -172,7 +172,7 @@ class TandemTabApi(
     suspend fun archiveCategory(accountId: String, categoryId: String, archived: Boolean): MutationResultDto =
         authedPut("/accounts/$accountId/categories/$categoryId/archived", SetArchivedRequest(archived)).body()
 
-    suspend fun savings(accountId: String): SavingsViewDto = authedGet("/accounts/$accountId/savings").body()
+    suspend fun savings(accountId: String, period: Int? = null): SavingsViewDto = authedGet("/accounts/$accountId/savings${periodQ(period)}").body()
 
     /** Earmark money into a savings bucket. Returns a refreshed Savings view to reconcile without a re-fetch. */
     suspend fun allocateSaving(accountId: String, req: AddSavingDepositRequest): SavingsMutationDto =
@@ -182,7 +182,7 @@ class TandemTabApi(
     suspend fun spendFromSavings(accountId: String, req: SpendFromSavingsRequest): MutationResultDto =
         authedPost("/accounts/$accountId/savings/spend", req).body()
 
-    suspend fun wallets(accountId: String): WalletsViewDto = authedGet("/accounts/$accountId/wallets").body()
+    suspend fun wallets(accountId: String, period: Int? = null): WalletsViewDto = authedGet("/accounts/$accountId/wallets${periodQ(period)}").body()
 
     suspend fun income(accountId: String): IncomeViewDto = authedGet("/accounts/$accountId/income").body()
 
@@ -194,7 +194,7 @@ class TandemTabApi(
     suspend fun addDeposit(accountId: String, req: AddDepositRequest): DepositMutationDto =
         authedPost("/accounts/$accountId/deposits", req).body()
 
-    suspend fun overview(accountId: String): AccountOverviewDto = authedGet("/accounts/$accountId/overview").body()
+    suspend fun overview(accountId: String, period: Int? = null): AccountOverviewDto = authedGet("/accounts/$accountId/overview${periodQ(period)}").body()
 
     /** The account's periods (oldest→newest) + the current index — used for the top-bar period label. */
     suspend fun periods(accountId: String): PeriodsViewDto = authedGet("/accounts/$accountId/periods").body()
@@ -213,7 +213,7 @@ class TandemTabApi(
     suspend fun targets(accountId: String): TargetsDto = authedGet("/accounts/$accountId/targets").body()
 
     /** Recurring bills / income expectations with their due state for the open period. */
-    suspend fun recurring(accountId: String): RecurringViewDto = authedGet("/accounts/$accountId/recurring").body()
+    suspend fun recurring(accountId: String, period: Int? = null): RecurringViewDto = authedGet("/accounts/$accountId/recurring${periodQ(period)}").body()
 
     /** Confirm a due bill/income (posts a real expense/income with the actual amount). Returns a refreshed view. */
     suspend fun confirmRecurring(accountId: String, recurringId: String, req: ConfirmRecurringRequest): RecurringMutationDto =
@@ -271,6 +271,9 @@ class TandemTabApi(
     // --- session plumbing ---------------------------------------------------
 
     /** GET an authed endpoint, refreshing the token first if it's stale and once more if it 401s. */
+    /** `?period=N` query for the period-scoped GET reads, or empty for the current period. */
+    private fun periodQ(period: Int?): String = if (period == null) "" else "?period=$period"
+
     private suspend fun authedGet(path: String): HttpResponse {
         ensureFreshToken()
         var resp = client.get(path) { header(HttpHeaders.Authorization, "Bearer ${requireToken()}") }
