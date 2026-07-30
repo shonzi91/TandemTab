@@ -1,0 +1,120 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>TandemTab — Beta Findings</title></head><body>
+<h1>TandemTab &mdash; Beta Findings</h1>
+<p><em>A single pack covering the beta test pass: automated test coverage, defects, UX backlog, monetization plan, and feature ideas. Grounded in a full walkthrough of the app as a daily user (log expenses, budgets, goals &amp; debt payoff, see where money goes, reminders, privacy, household sharing).</em></p>
+
+<table border="1" cellpadding="6" cellspacing="0">
+<tr><td><strong>Application</strong></td><td>TandemTab (https://tandemtab.com)</td></tr>
+<tr><td><strong>Build type</strong></td><td>Blazor WebAssembly single-page app</td></tr>
+<tr><td><strong>Date</strong></td><td>30 July 2026</td></tr>
+<tr><td><strong>Contents</strong></td><td>1) Executive summary &middot; 2) Test coverage &middot; 3) Bugs &middot; 4) UX backlog &middot; 5) Monetization &middot; 6) Feature backlog</td></tr>
+</table>
+
+<h2>1. Executive summary</h2>
+<p>TandemTab is further along than "beta" usually implies. The <strong>intelligence layer is its strength</strong> — actionable insight cards, a health score, rich Breakdown analytics, and an Avalanche/Snowball debt planner — and the <strong>privacy posture is a genuine differentiator</strong> (on-device import, encrypted, never sold, export any time, 2FA, delete with grace period).</p>
+<p>The work ahead is mostly <strong>surfacing and de-duplicating</strong> what's already built, plus two real defects to fix. Headlines:</p>
+<ul>
+<li><strong>2 confirmed defects</strong>, both unhandled client-side errors — one user-visible (sign-out).</li>
+<li><strong>UX</strong>: the app's own smarts are often stronger than the surface presenting them (buried Breakdown, overstaying onboarding, duplicated nudges, an ambiguous money tile).</li>
+<li><strong>Monetization</strong>: a clean freemium split exists — keep solo/current-month free; gate <em>together + history + intelligence</em>. Launch price low (~&euro;29.99/yr) for an unproven brand and raise later.</li>
+<li><strong>Features</strong>: the highest-leverage additions are small refinements on existing assets, not new subsystems.</li>
+</ul>
+<p>A 48-case automated suite now guards the core flows and is green.</p>
+
+<h2>2. Test coverage</h2>
+<p>A Playwright + TypeScript end-to-end suite drives the app through accessible roles/text (the app ships no test IDs). <strong>48 cases, all passing.</strong></p>
+<p>Covered: landing page, authentication (sign in / sign up / sign out / invalid credentials), privacy &amp; terms pages, dashboard navigation, feature discoverability, reminders &amp; achievements, and the write flows — <strong>log income, log expense, set budget, goals &amp; debt payoff, wallets/funds, statement import (CSV &rarr; map &rarr; preview &rarr; file), recurring bills, and partner invites</strong> — plus the profile security &amp; privacy panel.</p>
+<p>The sign-out test asserts only that the session UI is torn down, so it does not mask the sign-out defect below.</p>
+
+<h2>3. Bugs</h2>
+<h3>BUG-1 — Sign out raises an unhandled error and stalls &middot; Critical</h3>
+<p><strong>Repro:</strong> Sign in &rarr; Profile settings &rarr; Sign out.<br>
+<strong>Expected:</strong> Session ends and the app returns to the signed-out landing / login.<br>
+<strong>Actual:</strong> The authenticated UI tears down, then the Blazor "An unhandled error has occurred. Reload" bar appears and the app stalls on <em>Loading&hellip;</em> with the profile overlay still on top. Recovery requires a manual browser reload. In one run, a reload immediately after sign-out returned to the dashboard, suggesting the session may not be fully cleared — verify server-side.<br>
+<strong>Impact:</strong> Sign-out is trust-critical for a finance app.</p>
+<h3>BUG-2 — Persistent "An unhandled error has occurred" bar &middot; High</h3>
+<p><strong>Observed:</strong> The Blazor global error UI is present from the initial landing-page load, indicating unhandled exceptions during ordinary flows (not only sign-out).<br>
+<strong>Recommendation:</strong> Capture/log the exception(s), guard the failing lifecycle/render paths, and treat any appearance of the global error bar as a release blocker.</p>
+<h3>Lower-severity</h3>
+<ul>
+<li><strong>Money overview isn't on Home</strong> (income/spend live on other tabs).</li>
+<li><strong>Next-period creation is hard to discover</strong> (hidden under Period options &rarr; Start next month); recurring reminders depend on periods existing.</li>
+<li><strong>Accessibility:</strong> control accessible names are icon glyphs / title-only (modal buttons announce "&#10003;Add" / "&#10005;Cancel"; Notifications announces "3").</li>
+</ul>
+
+<h2>4. UX backlog</h2>
+<p>Priority: P1 = high impact on daily use &middot; P2 = meaningful &middot; P3 = polish. Effort: S/M/L.</p>
+<table border="1" cellpadding="6" cellspacing="0">
+<tr><th>#</th><th>Priority</th><th>Area</th><th>Item</th><th>Effort</th></tr>
+<tr><td>1</td><td>P1</td><td>Home / header</td><td>Replace ambiguous "Current" tile; lead with "Safe to spend"</td><td>S</td></tr>
+<tr><td>2</td><td>P1</td><td>Home</td><td>Put a real money summary on Home (in / out / safe to spend)</td><td>M</td></tr>
+<tr><td>3</td><td>P1</td><td>Home / onboarding</td><td>Retire the setup checklist once the user is clearly active</td><td>S</td></tr>
+<tr><td>4</td><td>P2</td><td>Reminders</td><td>Stop duplicating Home insight cards in the notification bell</td><td>S</td></tr>
+<tr><td>5</td><td>P2</td><td>Reminders</td><td>Separate time-based "Due" reminders from "Suggestions"</td><td>M</td></tr>
+<tr><td>6</td><td>P2</td><td>Spending</td><td>Promote "Breakdown" (the real "where money goes" view)</td><td>M</td></tr>
+<tr><td>7</td><td>P2</td><td>Goals</td><td>Show APR / interest rate on each debt row</td><td>S</td></tr>
+<tr><td>8</td><td>P2</td><td>Wallets</td><td>De-emphasize or hide zero-balance funds</td><td>S</td></tr>
+<tr><td>9</td><td>P2</td><td>Periods</td><td>Make "start next month" easier to discover</td><td>S</td></tr>
+<tr><td>10</td><td>P3</td><td>Goals</td><td>Sort / pin a "focus" debt in long goal lists</td><td>M</td></tr>
+<tr><td>11</td><td>P3</td><td>Accessibility</td><td>Fix control accessible names (icon glyphs, title-only labels)</td><td>M</td></tr>
+<tr><td>12</td><td>P3</td><td>Spending</td><td>Simplify the three sub-tabs (list vs chart)</td><td>S</td></tr>
+</table>
+<p><strong>Money-tile fix (item 1) in one line:</strong> <code>Current &middot; Free &middot; Saved</code> &rarr; <code>Safe to spend &middot; Spent &middot; Saved</code> — Current and Free say the same thing today; swapping Current for Spent adds the "where did it go" signal and removes the overlap.</p>
+<p><strong>Already strong — keep:</strong> the insight cards, Avalanche/Snowball debt planner, Breakdown analytics, the privacy posture, and health score / achievements.</p>
+
+<h2>5. Monetization plan</h2>
+<p><strong>Model:</strong> Freemium &rarr; Pro. Because the business doesn't monetize data, make that the pitch: <em>"We sell software, not your data."</em></p>
+<p><strong>Keep free:</strong> solo, present-focused budgeting — logging, budgets, basic goals, 1 account, current + ~3 months, export to Excel, 2FA. <strong>Gate behind Pro:</strong> <em>together + history + intelligence.</em></p>
+<table border="1" cellpadding="6" cellspacing="0">
+<tr><th>Capability</th><th>Free</th><th>Pro</th></tr>
+<tr><td>Log expenses/income, budgets, basic goals, export, 2FA</td><td>Yes</td><td>Yes</td></tr>
+<tr><td><strong>Shared / household accounts</strong> (real-time sync)</td><td>&mdash;</td><td>Yes (hero)</td></tr>
+<tr><td><strong>Statement import</strong></td><td>~1/mo or ~50 rows</td><td>Unlimited</td></tr>
+<tr><td><strong>Debt payoff planner</strong> (Avalanche/Snowball)</td><td>1 debt / view</td><td>Full</td></tr>
+<tr><td><strong>Advanced insights &amp; Breakdown</strong> (multi-period)</td><td>Current period</td><td>Full</td></tr>
+<tr><td>Full history, unlimited accounts/funds/recurring</td><td>Small caps</td><td>Yes</td></tr>
+</table>
+<p><strong>Packaging:</strong> two tiers. <strong>One Pro subscription covers the whole household</strong> (sharing <em>is</em> the premium feature). Built-in upgrade triggers: <em>invite a partner</em>, <em>import a statement</em>, <em>see my full payoff plan</em>.</p>
+<p><strong>Pricing (launch low, raise later — grandfather early users):</strong></p>
+<table border="1" cellpadding="6" cellspacing="0">
+<tr><th>Plan</th><th>Price</th><th>Notes</th></tr>
+<tr><td><strong>Annual (hero)</strong></td><td><strong>&euro;29.99 / yr</strong> (~&euro;2.50/mo)</td><td>Keep under the &euro;30 threshold</td></tr>
+<tr><td>Monthly</td><td>&euro;3.99 / mo</td><td>Priced to nudge toward annual</td></tr>
+<tr><td>Beta-tester offer</td><td>&euro;19 first year / lifetime lock</td><td>Reward the beta cohort</td></tr>
+<tr><td>Lifetime (optional)</td><td>~&euro;79 one-time</td><td>Converts subscription-averse users</td></tr>
+</table>
+<p><strong>Why not &euro;4.99/mo:</strong> budgeting audiences are free-anchored, an unknown brand can't command incumbent prices, and the household model keeps unit economics healthy at a low per-sub price — and it's easier to raise than lower. <strong>14-day card-optional trial; bill annual-first.</strong></p>
+<p><strong>Do NOT paywall:</strong> export (trust promise), 2FA (security), basic logging (funnel), the <em>first</em> statement import (let people feel the magic once).</p>
+<p><strong>Engineering to enforce:</strong> billing + entitlement (L), shared-account = Pro gate (M), import limits (M), history window (M), planner gate (S), Free caps (S), trial + paywall UI (M).</p>
+
+<h2>6. Feature backlog</h2>
+<p>Simple, high-leverage additions that build on existing assets. Excludes what's already shipped (round-up variants, payoff-projection slider, due-date reminders, most-used categories). Guardrail: every item is <strong>opt-in or invisible-until-useful</strong>.</p>
+<table border="1" cellpadding="6" cellspacing="0">
+<tr><th>#</th><th>Theme</th><th>Feature</th><th>Effort</th></tr>
+<tr><td>F1</td><td>Effortless logging</td><td>Category-first quick add (amount-only, recent-amount hints)</td><td>S</td></tr>
+<tr><td>F2</td><td>Effortless logging</td><td>Auto-categorize by tag (bind a tag &rarr; category)</td><td>S–M</td></tr>
+<tr><td>F3</td><td>Clarity</td><td>"Left to spend today" daily allowance</td><td>S</td></tr>
+<tr><td>F4</td><td>Saving</td><td>Round-ups into a savings bucket</td><td>M</td></tr>
+<tr><td>F5</td><td>Household</td><td>Settle-up for shared accounts</td><td>M</td></tr>
+<tr><td>F6</td><td>Household</td><td>Shared-goal celebration</td><td>S</td></tr>
+<tr><td>F7</td><td>Re-engagement</td><td>Weekly "your week in money" recap</td><td>S–M</td></tr>
+</table>
+<ul>
+<li><strong>F1</strong> — a category chip opens the sheet with category/fund/date pre-filled and the keypad up on Amount; recent amounts shown as tappable hints (never pre-filled, since amounts vary). Two taps.</li>
+<li><strong>F2</strong> — bind a tag to a category so tagging auto-files it; compounds F1 by inferring the category up front.</li>
+<li><strong>F3</strong> — remaining Free &divide; days left in period &rarr; one daily target that answers "can I buy this?"</li>
+<li><strong>F4</strong> — optional round-ups sweep into a savings goal; powers the "set aside &euro;X" nudge already shown.</li>
+<li><strong>F5</strong> — native "who paid what / you owe &euro;X" for households; strengthens the paid wedge, replaces a second app.</li>
+<li><strong>F6</strong> — celebrate shared-goal milestones for both members; reuses achievements.</li>
+<li><strong>F7</strong> — one weekly recap card over Breakdown data; re-engages without daily nagging.</li>
+</ul>
+
+<h2>Suggested sequencing</h2>
+<ol>
+<li><strong>Fix the two defects</strong> (BUG-1, BUG-2) — release blockers.</li>
+<li><strong>P1 UX</strong> — money summary + "Safe to spend" tile, retire onboarding.</li>
+<li><strong>F1–F3</strong> (logging + clarity) — cheapest wins for daily habit.</li>
+<li><strong>Monetization plumbing</strong> — billing/entitlement + the household gate, priced at &euro;29.99/yr.</li>
+<li><strong>F5 settle-up + P2 UX</strong> (promote Breakdown, split Due/Suggestions, hide &euro;0 funds).</li>
+</ol>
+</body></html>

@@ -1,0 +1,70 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>TandemTab — Feature Backlog</title></head><body>
+<h1>TandemTab &mdash; Feature Backlog</h1>
+<p><em>Simple, high-leverage feature ideas that build on what's already in the app, chosen to add appeal without adding a new mental model. Excludes ideas already shipped (round-ups variants already in place, payoff-projection slider, due-date reminders, most-used categories).</em></p>
+
+<table border="1" cellpadding="6" cellspacing="0">
+<tr><td><strong>Application</strong></td><td>TandemTab (https://tandemtab.com)</td></tr>
+<tr><td><strong>Theme</strong></td><td>Lock the constants, spotlight what changes &middot; opt-in / invisible-until-useful</td></tr>
+<tr><td><strong>Date</strong></td><td>30 July 2026</td></tr>
+<tr><td><strong>Effort key</strong></td><td>S = small &middot; M = medium &middot; L = large</td></tr>
+</table>
+
+<h2>Summary</h2>
+<table border="1" cellpadding="6" cellspacing="0">
+<tr><th>#</th><th>Theme</th><th>Feature</th><th>Effort</th></tr>
+<tr><td>F1</td><td>Effortless logging</td><td>Category-first quick add (amount-only)</td><td>S</td></tr>
+<tr><td>F2</td><td>Effortless logging</td><td>Auto-categorize by tag (bind a tag &rarr; category)</td><td>S–M</td></tr>
+<tr><td>F3</td><td>Clarity</td><td>"Left to spend today" daily allowance</td><td>S</td></tr>
+<tr><td>F4</td><td>Saving</td><td>Round-ups into a savings bucket</td><td>M</td></tr>
+<tr><td>F5</td><td>Household</td><td>Settle-up for shared accounts</td><td>M</td></tr>
+<tr><td>F6</td><td>Household</td><td>Shared-goal celebration</td><td>S</td></tr>
+<tr><td>F7</td><td>Re-engagement</td><td>Weekly "your week in money" recap</td><td>S–M</td></tr>
+</table>
+
+<h2>F1 — Category-first quick add (amount-only)</h2>
+<p><strong>What:</strong> Tapping a most-used category chip opens the expense sheet with category, fund, and today's date pre-filled and the numeric keypad already up, cursor in Amount. The user types the amount and confirms — two taps.</p>
+<p><strong>Why it works:</strong> Amounts vary every time, but category/fund/date don't — so remove the constants and spotlight the one number that actually changes. Logging effort is the top reason budgeting apps get abandoned.</p>
+<p><strong>Keeps it simple:</strong> No new screen; it's a faster entry into the sheet that already exists.</p>
+<p><strong>Booster:</strong> Show 2–3 tappable <em>recent amounts</em> for that category above the keypad (hints, never pre-filled, so they can't be wrong).</p>
+<p><strong>Effort: S.</strong></p>
+
+<h2>F2 — Auto-categorize by tag</h2>
+<p><strong>What:</strong> Let a tag be bound to a category, so applying that tag (or having it remembered for a merchant/note) auto-files the category. e.g. tag <code>lidl</code> &rarr; Food, tag <code>metro</code> &rarr; Transport.</p>
+<p><strong>Why it works:</strong> Reuses the tagging users already do; categorization stops being a separate manual step. Compounds F1 — the category can be inferred before the user even picks a chip.</p>
+<p><strong>Keeps it simple:</strong> Builds on the existing tags feature; the binding is a one-time, optional setup per tag.</p>
+<p><strong>Effort: S–M.</strong></p>
+
+<h2>F3 — "Left to spend today"</h2>
+<p><strong>What:</strong> A single daily-allowance number = remaining Free &divide; days left in the period.</p>
+<p><strong>Why it works:</strong> Answers the real daily question — "can I buy this right now?" — better than any balance tile, and turns a period budget into a concrete daily target.</p>
+<p><strong>Keeps it simple:</strong> One line of math over data you already have; one number on Home.</p>
+<p><strong>Effort: S.</strong></p>
+
+<h2>F4 — Round-ups into a savings bucket</h2>
+<p><strong>What:</strong> Optional toggle: round each expense up to the nearest &euro;1/&euro;5 and sweep the difference into a chosen savings goal.</p>
+<p><strong>Why it works:</strong> Painless, automatic saving that directly powers the "set aside &euro;X to hit your 20%" nudge already shown. Small amounts, real momentum.</p>
+<p><strong>Keeps it simple:</strong> One switch; reuses existing funds and goals. Off by default.</p>
+<p><strong>Effort: M.</strong></p>
+
+<h2>F5 — Settle-up for shared accounts</h2>
+<p><strong>What:</strong> For shared/household accounts, a lightweight "who paid what" view and a "you owe &euro;X / they owe &euro;X" settle-up summary.</p>
+<p><strong>Why it works:</strong> Couples and roommates want this and currently reach for a second app (Splitwise). Offering it natively strengthens the paid household wedge and increases invites.</p>
+<p><strong>Keeps it simple:</strong> A read-out over contributions/funds already tracked — no new ledger concept.</p>
+<p><strong>Effort: M.</strong></p>
+
+<h2>F6 — Shared-goal celebration</h2>
+<p><strong>What:</strong> When a shared savings or debt goal hits a milestone, both members get a small celebratory moment.</p>
+<p><strong>Why it works:</strong> Cheap emotion that makes the household feel like a team; drives retention and word-of-mouth among couples.</p>
+<p><strong>Keeps it simple:</strong> Reuses the existing achievements/milestones mechanic.</p>
+<p><strong>Effort: S.</strong></p>
+
+<h2>F7 — Weekly "your week in money" recap</h2>
+<p><strong>What:</strong> Once a week, a single card/notification: spent this week, top category, vs last week, progress toward a goal.</p>
+<p><strong>Why it works:</strong> Gentle re-engagement that brings people back without daily nagging; celebrates progress and surfaces drift early.</p>
+<p><strong>Keeps it simple:</strong> Pure read-out over the existing Breakdown data; strictly weekly so it never becomes noise. Privacy-friendly (on-device).</p>
+<p><strong>Effort: S–M.</strong></p>
+
+<h2>Design guardrail (applies to all)</h2>
+<p>Keep every one <strong>opt-in or invisible-until-useful</strong> — round-ups off by default, amount hints never pre-filled, recap weekly not daily, tag bindings optional. The apps that lose their simplicity do it by turning helpful nudges into noise.</p>
+</body></html>

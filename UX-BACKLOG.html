@@ -1,0 +1,81 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>TandemTab — UX Backlog</title></head><body>
+<h1>TandemTab &mdash; UX Backlog</h1>
+<p><em>Prioritized UX improvements from a daily-user walkthrough of every tab. Separate from functional defects (see the Bug Report).</em></p>
+
+<table border="1" cellpadding="6" cellspacing="0">
+<tr><td><strong>Application</strong></td><td>TandemTab (https://tandemtab.com)</td></tr>
+<tr><td><strong>Perspective</strong></td><td>Daily user: log expenses, budgets, goals &amp; debt payoff, see where money goes, reminders, privacy</td></tr>
+<tr><td><strong>Date</strong></td><td>30 July 2026</td></tr>
+<tr><td><strong>Priority key</strong></td><td>P1 = high impact on daily use · P2 = meaningful · P3 = polish</td></tr>
+<tr><td><strong>Effort key</strong></td><td>S = small · M = medium · L = large</td></tr>
+</table>
+
+<h2>Priority summary</h2>
+<table border="1" cellpadding="6" cellspacing="0">
+<tr><th>#</th><th>Priority</th><th>Area</th><th>Item</th><th>Effort</th></tr>
+<tr><td>1</td><td>P1</td><td>Home / header</td><td>Replace ambiguous "Current" tile; lead with "Safe to spend"</td><td>S</td></tr>
+<tr><td>2</td><td>P1</td><td>Home</td><td>Put a real money summary on Home (in / out / safe to spend)</td><td>M</td></tr>
+<tr><td>3</td><td>P1</td><td>Home / onboarding</td><td>Retire the setup checklist once the user is clearly active</td><td>S</td></tr>
+<tr><td>4</td><td>P2</td><td>Reminders</td><td>Stop duplicating Home insight cards in the notification bell</td><td>S</td></tr>
+<tr><td>5</td><td>P2</td><td>Reminders</td><td>Separate time-based "Due" reminders from "Suggestions"</td><td>M</td></tr>
+<tr><td>6</td><td>P2</td><td>Spending</td><td>Promote "Breakdown" (the real "where money goes" view)</td><td>M</td></tr>
+<tr><td>7</td><td>P2</td><td>Goals</td><td>Show APR / interest rate on each debt row</td><td>S</td></tr>
+<tr><td>8</td><td>P2</td><td>Wallets</td><td>De-emphasize or hide zero-balance funds</td><td>S</td></tr>
+<tr><td>9</td><td>P2</td><td>Periods</td><td>Make "start next month" easier to discover</td><td>S</td></tr>
+<tr><td>10</td><td>P3</td><td>Goals</td><td>Sort / pin a "focus" debt in long goal lists</td><td>M</td></tr>
+<tr><td>11</td><td>P3</td><td>Accessibility</td><td>Fix control accessible names (icon glyphs, title-only labels)</td><td>M</td></tr>
+<tr><td>12</td><td>P3</td><td>Spending</td><td>Simplify the three sub-tabs (list vs chart)</td><td>S</td></tr>
+</table>
+
+<h2>P1 &mdash; high impact on daily use</h2>
+
+<h3>1. Replace the "Current" money tile</h3>
+<p>The header shows <strong>Current &middot; Free &middot; Saved</strong>, but Current and Free express the same idea and are often identical (both &euro;136.50 in testing), teaching users to ignore one. Lead with <strong>Safe to spend</strong> (today's Free) as the hero number and replace Current with <strong>Spent this period</strong> &mdash; the "where did it go" signal. Result: Safe to spend &middot; Spent &middot; Saved.</p>
+
+<h3>2. Give Home a real money summary</h3>
+<p>Home currently shows nudges and a health score, but the actual in/out numbers live on other tabs (income under Wallets, spend under Spending). A daily user's first screen should answer "how am I doing?" at a glance. Add the summary from item 1 to Home.</p>
+
+<h3>3. Retire onboarding once the user is active</h3>
+<p>The "Let's get you set up &mdash; 4 of 6 done" checklist still headlines Home after the account has income, expenses, budgets, and goals. Collapse it into a small "finish setup" link (or dismiss it) once the user is demonstrably active, so it stops occupying prime real estate.</p>
+
+<h2>P2 &mdash; meaningful improvements</h2>
+
+<h3>4. Don't duplicate Home insights in the bell</h3>
+<p>The notification bell repeats the exact insight cards already shown on Home ("Adjust budgets", "Move to savings", "No savings set aside"). Two copies dilute both. Show each nudge once, in one place.</p>
+
+<h3>5. Separate "Due" from "Suggestions"</h3>
+<p>The bell mixes financial <em>suggestions</em> (nudges) with what will become time-based <em>bill reminders</em>. When recurring bills start surfacing "due soon," must-do reminders risk getting buried under nice-to-do nudges. Split them into two clearly labeled groups.</p>
+
+<h3>6. Promote the "Breakdown" view</h3>
+<p>Spending &rarr; Breakdown is the genuine "where does my money go" view &mdash; income vs spent, <strong>% of income</strong>, by category or fund, across configurable time ranges. It's two taps deep and easy to miss. Surface a mini version on Home and/or promote it above "By date."</p>
+
+<h3>7. Show interest rate on debt rows</h3>
+<p>Debt goals list "&euro;500 &middot; owed" but no APR, yet the Avalanche strategy sorts precisely by interest rate. Showing each debt's rate in the row makes the recommended payoff order legible and trustworthy.</p>
+
+<h3>8. De-emphasize zero-balance funds</h3>
+<p>Empty funds render as full-size cards with equal visual weight (noise grows as funds accumulate). Add a "hide &euro;0 funds" toggle or collapse zero-balance funds into a small group.</p>
+
+<h3>9. Make next-period creation discoverable</h3>
+<p>With one period, the prev/next steppers are disabled with no affordance, and creating the next month is hidden under <em>Period options &rarr; Start next month</em>. Since recurring-bill reminders depend on periods existing, make this action more visible.</p>
+
+<h2>P3 &mdash; polish</h2>
+
+<h3>10. Sort / pin a focus debt</h3>
+<p>Long goal lists become a scroll. Let users sort or pin a "focus" debt so the one they're attacking stays on top, complementing the payoff plan.</p>
+
+<h3>11. Fix control accessible names</h3>
+<p>Header controls label themselves via <code>title</code> while their accessible name is an icon/number (e.g. Notifications announces "3"), and modal buttons announce "&#10003;Add" / "&#10005;Cancel" (the decorative glyph is read). Add explicit <code>aria-label</code>s and mark decorative glyphs <code>aria-hidden</code> &mdash; important for a finance app.</p>
+
+<h3>12. Simplify Spending sub-tabs</h3>
+<p>Categories / By date / Breakdown are really "list vs chart" plus a category grouping. Consider collapsing to fewer, clearer options.</p>
+
+<h2>What's already strong (keep)</h2>
+<ul>
+<li>The insight cards ("budgets plan &euro;1,176.50 but only &euro;136.50 is free", "set aside &euro;32 to hit 20%") &mdash; specific and actionable.</li>
+<li>Goals: Avalanche / Snowball payoff strategies and the "the stack never clears &mdash; minimums don't cover interest" warning.</li>
+<li>Breakdown analytics (income vs spent, % of income, by category/fund, time ranges).</li>
+<li>Privacy posture: on-device import, encrypted, never sold, export to Excel, 2FA, delete with grace period.</li>
+<li>Health score and achievements for daily motivation.</li>
+</ul>
+</body></html>
