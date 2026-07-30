@@ -30,6 +30,7 @@ import com.tandemtab.app.data.SavingsViewDto
 import com.tandemtab.app.data.SpendFromSavingsRequest
 import com.tandemtab.app.data.TransferFundsRequest
 import com.tandemtab.app.data.WalletsViewDto
+import com.tandemtab.app.data.DepositRowDto
 import com.tandemtab.app.data.RecentExpenseDto
 import com.tandemtab.app.data.RunwayDto
 import com.tandemtab.app.data.SavingBucketDto
@@ -84,6 +85,8 @@ data class UiState(
     val settings: SettingsUi = SettingsUi(),
     // The expense the FAB's "Edit last" is currently editing (null = the add sheet is in add mode / closed).
     val editingExpense: ExpenseDto? = null,
+    // The deposit the income tab's "Edit last" is currently editing.
+    val editingDeposit: DepositRowDto? = null,
 ) {
     val selectedAccount: AccountSummaryDto?
         get() = accounts.firstOrNull { it.id == selectedAccountId }
@@ -776,6 +779,40 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun clearEditing() = _state.update { it.copy(editingExpense = null) }
+
+    /** Load the caller's most recent deposit into the income editor (the income tab's "Edit last"). */
+    fun prepareEditLastIncome() {
+        val accountId = _state.value.selectedAccountId ?: return
+        _state.update { it.copy(spending = it.spending.copy(saveError = null)) }
+        viewModelScope.launch {
+            val income = runCatching { api.income(accountId) }.getOrNull() ?: return@launch
+            val last = income.deposits.maxByOrNull { it.date }
+            _state.update { it.copy(editingDeposit = last) }
+        }
+    }
+
+    fun clearEditingIncome() = _state.update { it.copy(editingDeposit = null) }
+
+    /** Save an edit to an existing deposit; reflects the recomputed overview and invalidates the Wallets cache. */
+    fun editDeposit(depositId: String, fundId: String, categoryId: String, amount: Double, date: String, onDone: () -> Unit) {
+        val accountId = _state.value.selectedAccountId ?: return
+        _state.update { it.copy(spending = it.spending.copy(saving = true, saveError = null)) }
+        viewModelScope.launch {
+            try {
+                val mut = api.editDeposit(accountId, depositId, AddDepositRequest(categoryId, fundId, amount, date))
+                _state.update {
+                    it.copy(
+                        overview = mut.overview, editingDeposit = null,
+                        spending = it.spending.copy(saving = false),
+                        wallets = it.wallets.copy(loaded = false),
+                    )
+                }
+                onDone()
+            } catch (e: Exception) {
+                _state.update { it.copy(spending = it.spending.copy(saving = false, saveError = e.message ?: "Couldn't save the change.")) }
+            }
+        }
+    }
 
     /** Delete an expense (swipe action). Splices it out of the Spending list and reflects the recomputed overview. */
     fun deleteExpense(expenseId: String, onDone: () -> Unit = {}) {

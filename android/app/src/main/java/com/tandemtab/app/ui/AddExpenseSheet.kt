@@ -59,6 +59,7 @@ import androidx.compose.ui.unit.sp
 import com.tandemtab.app.SpendingUi
 import com.tandemtab.app.data.AddExpenseRequest
 import com.tandemtab.app.data.CategoryOptionDto
+import com.tandemtab.app.data.DepositRowDto
 import com.tandemtab.app.data.ExpenseDto
 import com.tandemtab.app.data.FundOptionDto
 import com.tandemtab.app.ui.theme.LocalTandemColors
@@ -92,31 +93,39 @@ fun AddSheet(
     spending: SpendingUi,
     startWithIncome: Boolean = false,
     editing: ExpenseDto? = null,
+    editingDeposit: DepositRowDto? = null,
     onEditLast: (() -> Unit)? = null,
+    onEditLastIncome: (() -> Unit)? = null,
     onDismiss: () -> Unit,
     onSaveExpenses: (List<AddExpenseRequest>, onDone: () -> Unit) -> Unit,
     onEditExpense: (String, AddExpenseRequest, onDone: () -> Unit) -> Unit,
     onAddIncome: (fundId: String, categoryId: String, amount: Double, date: String, onDone: () -> Unit) -> Unit,
+    onEditDeposit: (depositId: String, fundId: String, categoryId: String, amount: Double, date: String, onDone: () -> Unit) -> Unit,
     onAddCategory: (name: String, parentId: String?, icon: String?, onDone: (String?) -> Unit) -> Unit,
 ) {
     val tandem = LocalTandemColors.current
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val fmt = sheetMoney(spending.currency)
     val editingMode = editing != null
+    val incomeEdit = editingDeposit != null
 
     val cats = spending.categories
     val funds = spending.funds
     val catById = remember(cats) { cats.associateBy { it.id } }
     val fundById = remember(funds) { funds.associateBy { it.id } }
 
-    // Editing always means an expense; otherwise honour the requested start tab.
-    var mode by remember(editing, startWithIncome) {
-        mutableStateOf(if (editing == null && startWithIncome) AddMode.Income else AddMode.Expense)
+    // Editing an expense forces Expense; editing a deposit forces Income; otherwise honour the requested start tab.
+    var mode by remember(editing, editingDeposit, startWithIncome) {
+        mutableStateOf(when {
+            editingDeposit != null -> AddMode.Income
+            editing == null && startWithIncome -> AddMode.Income
+            else -> AddMode.Expense
+        })
     }
-    // Income editor state.
-    var incAmountText by remember { mutableStateOf("") }
-    var incSource by remember { mutableStateOf(GENERAL_INCOME) }
-    var incFundId by remember(spending.loaded) { mutableStateOf(funds.firstOrNull { !it.synced }?.id ?: funds.firstOrNull()?.id) }
+    // Income editor state (pre-filled when editing a deposit).
+    var incAmountText by remember(editingDeposit) { mutableStateOf(editingDeposit?.let { trimAmount(it.amount) } ?: "") }
+    var incSource by remember(editingDeposit) { mutableStateOf(editingDeposit?.categoryId ?: GENERAL_INCOME) }
+    var incFundId by remember(spending.loaded, editingDeposit) { mutableStateOf(editingDeposit?.fundId ?: funds.firstOrNull { !it.synced }?.id ?: funds.firstOrNull()?.id) }
     val incParsed = incAmountText.replace(',', '.').toDoubleOrNull()?.takeIf { it > 0 }
 
     // Most-used categories (distinct, newest-first from the recent history), capped — the chips above the picker.
@@ -137,7 +146,7 @@ fun AddSheet(
     var fundId by remember(spending.loaded, editing) { mutableStateOf(editing?.fundId ?: defaultFundFor(cats.firstOrNull()?.id)) }
     var amountText by remember(editing) { mutableStateOf(editing?.let { trimAmount(it.amount) } ?: "") }
     var note by remember(editing) { mutableStateOf(editing?.note ?: "") }
-    var date by remember(spending.loaded, editing) { mutableStateOf(editing?.date ?: today) }
+    var date by remember(spending.loaded, editing, editingDeposit) { mutableStateOf(editing?.date ?: editingDeposit?.date ?: today) }
     var staged by remember { mutableStateOf(listOf<ExpenseDraft>()) }
     var catExpanded by remember { mutableStateOf(false) }
     var catSearch by remember { mutableStateOf("") }
@@ -191,7 +200,8 @@ fun AddSheet(
             else -> {
                 val f = incFundId; val amt = incParsed
                 if (amt == null || f == null) { hint = "Enter an amount and pick a fund."; return }
-                onAddIncome(f, incSource, amt, date) { incAmountText = ""; onDismiss() }
+                if (incomeEdit) onEditDeposit(editingDeposit!!.id, f, incSource, amt, date) { onDismiss() }
+                else onAddIncome(f, incSource, amt, date) { incAmountText = ""; onDismiss() }
             }
         }
     }
@@ -213,16 +223,17 @@ fun AddSheet(
             // No "Add expense/income" title — the segment below already says which. When editing (no segment), keep
             // a short title so the mode is clear.
             Spacer(Modifier.height(4.dp))
-            if (editingMode) {
-                Text("Edit expense", fontSize = 19.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+            if (editingMode || incomeEdit) {
+                Text(if (incomeEdit) "Edit income" else "Edit expense", fontSize = 19.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
             } else {
-                // Expense / Income segment, with a "recall last" icon button on the right (expense mode only).
+                // Expense / Income segment, with a "recall last" icon button on the right (recalls the last of that kind).
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Box(Modifier.weight(1f)) { Segment(mode) { mode = it; hint = null } }
-                    if (mode == AddMode.Expense && onEditLast != null) {
+                    val recall = if (mode == AddMode.Expense) onEditLast else onEditLastIncome
+                    if (recall != null) {
                         Spacer(Modifier.width(8.dp))
-                        IconButton(onClick = onEditLast) {
-                            Icon(TandemIcons.Rotate, contentDescription = "Edit last expense", tint = MaterialTheme.colorScheme.primary)
+                        IconButton(onClick = recall) {
+                            Icon(TandemIcons.Rotate, contentDescription = "Edit last", tint = MaterialTheme.colorScheme.primary)
                         }
                     }
                 }

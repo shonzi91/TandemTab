@@ -2,7 +2,9 @@ package com.tandemtab.app.ui
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -26,6 +28,8 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -483,11 +487,12 @@ private fun ByDateView(spending: SpendingUi, fmt: (Double) -> String, onEdit: (E
                 .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(14.dp)),
         ) {
             rows.forEachIndexed { i, e ->
-                // Swipe right → edit, swipe left → delete (auto-filed / from-savings rows aren't hand-editable).
+                // Long-press → an Edit / Delete menu (auto-filed / from-savings rows aren't hand-editable). Long-press
+                // is used instead of swipe so it doesn't fight the tab-pager's horizontal swipe.
                 if (e.autoFiled || e.fromSavings) {
                     ExpenseRow(e, fmt, onEdit)
                 } else {
-                    SwipeableExpenseRow(e, onEdit = onEdit, onDelete = onDelete) {
+                    LongPressExpenseRow(e, onEdit = onEdit, onDelete = onDelete) {
                         ExpenseRow(e, fmt, onEdit)
                     }
                 }
@@ -500,23 +505,29 @@ private fun ByDateView(spending: SpendingUi, fmt: (Double) -> String, onEdit: (E
     }
 }
 
-/** Wraps an expense row with swipe actions: swipe right reveals Edit, swipe left reveals Delete. The row snaps back
- *  after firing (delete removes it from the list, so it vanishes). */
-@OptIn(ExperimentalMaterial3Api::class)
+/** Long-press an expense row to reveal an Edit / Delete menu (delete asks to confirm). Long-press — not swipe — so the
+ *  gesture doesn't collide with the tab pager's horizontal swipe. */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun SwipeableExpenseRow(e: ExpenseDto, onEdit: (ExpenseDto) -> Unit, onDelete: (ExpenseDto) -> Unit, content: @Composable () -> Unit) {
+private fun LongPressExpenseRow(e: ExpenseDto, onEdit: (ExpenseDto) -> Unit, onDelete: (ExpenseDto) -> Unit, content: @Composable () -> Unit) {
     val tandem = LocalTandemColors.current
+    var menuOpen by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
-    val state = rememberSwipeToDismissBoxState(
-        confirmValueChange = { target ->
-            when (target) {
-                SwipeToDismissBoxValue.StartToEnd -> { onEdit(e); false }
-                // Never delete straight from a swipe — always confirm first.
-                SwipeToDismissBoxValue.EndToStart -> { confirmDelete = true; false }
-                else -> false
-            }
-        },
-    )
+    Box {
+        Box(Modifier.combinedClickable(onClick = {}, onLongClick = { menuOpen = true })) { content() }
+        DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+            DropdownMenuItem(
+                text = { Text("Edit") },
+                onClick = { menuOpen = false; onEdit(e) },
+                leadingIcon = { Icon(TandemIcons.Pencil, null, tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(18.dp)) },
+            )
+            DropdownMenuItem(
+                text = { Text("Delete", color = tandem.spent) },
+                onClick = { menuOpen = false; confirmDelete = true },
+                leadingIcon = { Icon(TandemIcons.Trash, null, tint = tandem.spent, modifier = Modifier.size(18.dp)) },
+            )
+        }
+    }
     if (confirmDelete) {
         AlertDialog(
             onDismissRequest = { confirmDelete = false },
@@ -526,22 +537,6 @@ private fun SwipeableExpenseRow(e: ExpenseDto, onEdit: (ExpenseDto) -> Unit, onD
             dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancel") } },
         )
     }
-    SwipeToDismissBox(
-        state = state,
-        backgroundContent = {
-            val toEnd = state.dismissDirection == SwipeToDismissBoxValue.StartToEnd
-            val bg = if (toEnd) MaterialTheme.colorScheme.primary.copy(alpha = 0.18f) else tandem.spent.copy(alpha = 0.18f)
-            Row(
-                Modifier.fillMaxSize().background(bg).padding(horizontal = 22.dp),
-                horizontalArrangement = if (toEnd) Arrangement.Start else Arrangement.End,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                if (toEnd) Icon(TandemIcons.Pencil, "Edit", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp))
-                else Icon(TandemIcons.Trash, "Delete", tint = tandem.spent, modifier = Modifier.size(22.dp))
-            }
-        },
-        content = { Box(Modifier.background(MaterialTheme.colorScheme.surface)) { content() } },
-    )
 }
 
 @Composable

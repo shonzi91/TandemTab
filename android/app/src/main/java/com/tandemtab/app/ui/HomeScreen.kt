@@ -123,6 +123,9 @@ fun HomeScreen(
     onSkipRecurring: (String) -> Unit,
     onPrepareAdd: () -> Unit,
     onPrepareEditLast: () -> Unit,
+    onPrepareEditLastIncome: () -> Unit,
+    onEditDeposit: (String, String, String, Double, String, () -> Unit) -> Unit,
+    onClearEditingIncome: () -> Unit,
     onBeginEditExpense: (com.tandemtab.app.data.ExpenseDto) -> Unit,
     onDeleteExpense: (com.tandemtab.app.data.ExpenseDto) -> Unit,
     onSetBudget: (String, Double, () -> Unit) -> Unit,
@@ -194,15 +197,19 @@ fun HomeScreen(
     ) { padding ->
         // The add / edit sheet. The FAB opens it in add mode; the in-sheet "Edit last" pulls in the last expense
         // (via the VM's editingExpense), which switches this same sheet into edit mode.
-        if (showAddExpense || editing != null) {
+        val editingIncome = state.editingDeposit
+        if (showAddExpense || editing != null || editingIncome != null) {
             AddSheet(
                 spending = state.spending,
                 editing = editing,
+                editingDeposit = editingIncome,
                 onEditLast = onPrepareEditLast,
-                onDismiss = { showAddExpense = false; if (editing != null) onClearEditing() },
+                onEditLastIncome = onPrepareEditLastIncome,
+                onDismiss = { showAddExpense = false; if (editing != null) onClearEditing(); if (editingIncome != null) onClearEditingIncome() },
                 onSaveExpenses = onAddExpenses,
                 onEditExpense = onEditExpense,
                 onAddIncome = onAddIncomeQuick,
+                onEditDeposit = onEditDeposit,
                 onAddCategory = onAddCategory,
             )
         }

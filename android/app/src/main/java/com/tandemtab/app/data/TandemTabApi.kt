@@ -194,6 +194,10 @@ class TandemTabApi(
     suspend fun addDeposit(accountId: String, req: AddDepositRequest): DepositMutationDto =
         authedPost("/accounts/$accountId/deposits", req).body()
 
+    /** Edit an existing deposit (the income "edit last"). Reuses the add-deposit body; returns the recomputed overview. */
+    suspend fun editDeposit(accountId: String, depositId: String, req: AddDepositRequest): DepositMutationDto =
+        authedPut("/accounts/$accountId/deposits/$depositId", req).body()
+
     suspend fun overview(accountId: String, period: Int? = null): AccountOverviewDto = authedGet("/accounts/$accountId/overview${periodQ(period)}").body()
 
     /** The account's periods (oldest→newest) + the current index — used for the top-bar period label. */
