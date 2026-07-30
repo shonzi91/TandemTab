@@ -73,7 +73,9 @@ public sealed class Expense : Entity
     /// mint a new entry. Ids of tags that were later hard-removed simply stop resolving; callers ignore them.</summary>
     public IReadOnlyList<Guid> TagIds => _tagIds;
 
-    /// <summary>Replace this expense's tag set (deduped, empties dropped). Pass an empty sequence to clear all tags.</summary>
+    /// <summary>Replace this expense's tag set (deduped, empties dropped). Pass an empty sequence to clear all tags.
+    /// One tag per expense is the model now (<see cref="TagId"/>/<see cref="SetTag"/>); this stays as the storage
+    /// primitive the snapshot serializer round-trips, and legacy multi-tag snapshots are collapsed to one on load.</summary>
     public void SetTags(IEnumerable<Guid>? tagIds)
     {
         _tagIds.Clear();
@@ -81,6 +83,13 @@ public sealed class Expense : Entity
         foreach (var t in tagIds.Distinct())
             if (t != Guid.Empty) _tagIds.Add(t);
     }
+
+    /// <summary>This expense's single tag, or null. One tag per expense — the canonical accessor over the legacy
+    /// <see cref="TagIds"/> list (which is kept only for snapshot back-compat and never holds more than one now).</summary>
+    public Guid? TagId => _tagIds.Count > 0 ? _tagIds[0] : null;
+
+    /// <summary>Set (or clear, with null / <see cref="Guid.Empty"/>) this expense's single tag.</summary>
+    public void SetTag(Guid? tagId) => SetTags(tagId is { } t && t != Guid.Empty ? new[] { t } : null);
 
     public Expense(
         Guid categoryId,

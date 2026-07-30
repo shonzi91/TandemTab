@@ -877,8 +877,8 @@ else
                    never yanks the switch upward. *@
                 <div class="spending-head budget-controls">
                     <span class="plan-toggle bview-toggle" role="group">
-                        <button type="button" class="chip @(_spendView == SpendView.Categories ? "on" : "")" @onclick="() => _spendView = SpendView.Categories"><Icon Name="chart" /> @Loc["Categories"]</button>
                         <button type="button" class="chip @(_spendView == SpendView.ByDate ? "on" : "")" @onclick="() => _spendView = SpendView.ByDate"><Icon Name="list" /> @Loc["By date"]</button>
+                        <button type="button" class="chip @(_spendView == SpendView.Categories ? "on" : "")" @onclick="SwitchToByBudgets"><Icon Name="chart" /> @Loc["By budgets"]</button>
                         <button type="button" class="chip @(_spendView == SpendView.Breakdown ? "on" : "")" @onclick="() => _spendView = SpendView.Breakdown"><Icon Name="pie" /> @Loc["Breakdown"]</button>
                     </span>
                     @if (_spendView == SpendView.Categories)
@@ -902,7 +902,16 @@ else
                         }
                     </span>
                 </div>
-                @if (barScale > 0m && _spendView != SpendView.Breakdown)
+                @* By-date is a plain ledger now: no budget ring/bar, just what's been spent this period. The
+                   budget-vs-spent header belongs to the "By budgets" view. *@
+                @if (_spendView == SpendView.ByDate)
+                {
+                    <div class="bydate-spent">
+                        <span class="bds-lbl">@Loc["Spent this period"]</span>
+                        <span class="bds-amt">@Fmt(State.TotalSpent)</span>
+                    </div>
+                }
+                @if (barScale > 0m && _spendView == SpendView.Categories)
                 {
                     var totHasBudget = State.TotalBudgeted.Amount > 0m;
                     var totPct = totHasBudget ? Math.Clamp((double)(State.TotalSpent.Amount / State.TotalBudgeted.Amount) * 100, 0, 100) : 0;
@@ -930,14 +939,16 @@ else
                     </div>
                 }
                 @* Only meaningful while the period is open — you can't trim or top up a closed period. *@
-                @if (State.IsPeriodOpen && overPlanned.Amount > 0m && _spendView != SpendView.Breakdown)
+                @if (State.IsPeriodOpen && overPlanned.Amount > 0m && _spendView == SpendView.Categories)
                 {
                     <p class="budget-over-note"><Icon Name="bulb" /> @string.Format(Loc["Your remaining budgets ({0}) are {1} more than you have left ({2}) — budgets are plans, not commitments, so trim one or top up when you can."], Fmt(_bnRemaining), Fmt(overPlanned), Fmt(_bnFree))</p>
                 }
                 @{
                     var filterTags = State.ActiveTags;
                 }
-                @if (filterTags.Count > 0 && _spendView != SpendView.Breakdown)
+                @* Tag filtering lives on the By-date ledger only: on By budgets it narrowed the drawer lists but left
+                   the bars/totals whole (a confusing half-state), and Breakdown already offers tags as a grouping. *@
+                @if (filterTags.Count > 0 && _spendView == SpendView.ByDate)
                 {
                     @* Tag filter: narrows every expense list below to the chosen tags (the bars/totals stay whole). *@
                     <div class="tag-filter">
@@ -1229,7 +1240,7 @@ else
                 {
                     @foreach (var grp in shown.GroupBy(e => e.Date).OrderByDescending(g => g.Key))
                     {
-                        <button class="date-sep" @onclick="() => GoToDay(grp.Key)">@grp.Key.ToString("dddd, dd MMM yyyy")</button>
+                        <button class="date-sep" @onclick="() => GoToDay(grp.Key)">@DateSepLabel(grp.Key)</button>
                         <ul class="list list-even">@foreach (var e in grp) { @row(e) }</ul>
                     }
                 }
@@ -1275,10 +1286,8 @@ else
                         // multi-tag expenses — using them here inflated the % of income in the tag view).
                         var brkMoneyOut = State.ExpensesInRange(brkFrom, brkTo).Sum(e => Math.Abs(e.Amount.Amount))
                             + State.ExternalTransfersInRange(brkFrom, brkTo).Sum(t => Math.Abs(t.Amount.Amount));
-                        // In the tag view an expense counts under each of its tags, so when any expense in the window
-                        // carries more than one tag the slices add up to more than was actually spent. Flag it so we
-                        // can explain why the tag total sits above the category total for the same expenses.
-                        var brkTagOverlap = BreakByTag && State.ExpensesInRange(brkFrom, brkTo).Any(e => State.ExpenseTags(e).Count > 1);
+                        // One expense per tag now (one tag per expense), so tag slices sum to the real spend — no
+                        // double-count caveat needed.
                         // One expense row, reused by the flat list and the grouped-by-sub/tag lists in an expanded slice.
                         RenderFragment<FinApp.Domain.Budgeting.Expense> brkExpRow = e =>
                         @<li class="brk-exp-row">
@@ -1452,10 +1461,6 @@ else
                                 </li>
                             }
                         </ul>
-                        @if (brkTagOverlap)
-                        {
-                            <p class="brk-note"><Icon Name="tag" /> @Loc["Expenses with more than one tag are counted under each, so the tags here can add up to more than you actually spent."]</p>
-                        }
                     }
                 </div>
                 }
@@ -1940,19 +1945,19 @@ else
                 <div class="modal-error">@_modalError</div>
             }
             @{
-                // Shared tag selector for the add/edit-expense modals: toggle chips for existing tags + an inline
-                // "new tag" input that creates and auto-selects. Tags are flat cross-cutting labels (sit alongside
-                // sub-categories). Selection lives in _fTagIds; the save handlers pass it to State.Add/EditExpense.
+                // Shared tag selector for the add/edit-expense modals: single-select chips for existing tags (one tag
+                // per expense — picking another replaces it, tapping the selected one clears it) + an inline "new tag"
+                // input that creates and selects. Selection lives in _fTagId; the save handlers pass it to Add/EditExpense.
                 RenderFragment tagPicker =
                 @<div class="modal-field">
-                    <span class="lbl-row">@Loc["Tags (optional)"]</span>
+                    <span class="lbl-row">@Loc["Tag (optional)"]</span>
                     @if (State.ActiveTags.Count > 0)
                     {
                         <div class="tag-pick">
                             @foreach (var t in State.ActiveTags)
                             {
                                 var tid = t.Id;
-                                var on = _fTagIds.Contains(tid);
+                                var on = _fTagId == tid;
                                 <button type="button" class="tag-chip @(on ? "tag-chip-on" : "")" @onclick="() => ToggleTagSel(tid)">
                                     @if (!string.IsNullOrEmpty(t.Icon)) { <span class="tag-emoji">@t.Icon</span> }@t.Name
                                 </button>
@@ -4167,7 +4172,27 @@ else
     // Spending panel view. Categories = the ring/bar budget list; ByDate = the same expenses flat, organised by date;
     // Breakdown = a budget-free, multi-period pie of where the money actually went (drill into subcategories/tags).
     private enum SpendView { Categories, ByDate, Breakdown }
-    private SpendView _spendView = SpendView.Categories;
+    // Default to the plain date ledger — the first thing people look for is "what did I spend, recently"; the
+    // budget-vs-spent breakdown lives one tap away under "By budgets".
+    private SpendView _spendView = SpendView.ByDate;
+
+    // Switching to By budgets drops any active tag filter — the filter UI only lives on By date now, so a lingering
+    // selection would silently narrow the budget drawers with no visible way to clear it.
+    private void SwitchToByBudgets()
+    {
+        _spendTagFilter.Clear();
+        _spendView = SpendView.Categories;
+    }
+
+    // Date-group heading in the By-date ledger: the two most recent days read as Today / Yesterday, older days
+    // keep the full weekday-date so there's no ambiguity scrolling back.
+    private string DateSepLabel(DateOnly d)
+    {
+        var today = DateOnly.FromDateTime(DateTime.Today);
+        if (d == today) return Loc["Today"];
+        if (d == today.AddDays(-1)) return Loc["Yesterday"];
+        return d.ToString("dddd, dd MMM yyyy");
+    }
 
     // --- Breakdown (spending pie) view --------------------------------------------------------------
     // Adjustable window; defaults to the current period. Longer windows aggregate expenses across all periods.
@@ -4512,8 +4537,8 @@ else
     private decimal _amount;
     private Guid _fundId;
     private string? _note;
-    // Tag selection for the current add/edit-expense modal + the inline "new tag" input.
-    private readonly HashSet<Guid> _fTagIds = new();
+    // The single tag for the current add/edit-expense modal (one tag per expense) + the inline "new tag" input.
+    private Guid? _fTagId;
     private string? _newTagName;
 
     // Bank sync (Open Banking) — its own tab. Null status = feature off / unreachable (tab hidden).
@@ -6808,7 +6833,7 @@ else
     private void OpenAddExpense(Guid categoryId)
     {
         _categoryId = categoryId; _amount = 0; _note = null;
-        _fTagIds.Clear(); _newTagName = null;
+        _fTagId = null; _newTagName = null;
         _expenseDate = _dayView ?? DateOnly.FromDateTime(DateTime.Today);
         _fundId = DefaultFundForCategory(categoryId); _modal = Modal.AddExpense;
     }
@@ -6829,7 +6854,7 @@ else
         _categoryId = e.CategoryId;
         _amount = e.Amount.Amount;
         _note = e.Note;
-        _fTagIds.Clear(); foreach (var t in State.ExpenseTags(e)) _fTagIds.Add(t.Id); _newTagName = null;
+        _fTagId = e.TagId; _newTagName = null;
         _expenseDate = _dayView ?? ClampToPeriod(DateOnly.FromDateTime(DateTime.Today));
         _fundId = State.SelectableFunds.Any(f => f.Id == e.FundId) ? e.FundId : DefaultFundForCategory(e.CategoryId);
         _modal = Modal.AddExpense;
@@ -6852,7 +6877,7 @@ else
 
     // Multi-expense: a locally-staged list of expenses the user is building; the ✓ saves them all at once. Each draft
     // is a snapshot of the editor fields at the moment "Add another expense" was pressed.
-    private sealed record ExpenseDraft(Guid CategoryId, decimal Amount, Guid FundId, string? Note, DateOnly Date, List<Guid> TagIds);
+    private sealed record ExpenseDraft(Guid CategoryId, decimal Amount, Guid FundId, string? Note, DateOnly Date, Guid? TagId);
     private readonly List<ExpenseDraft> _expenseDrafts = new();
 
     /// <summary>Park the current editor entry as a staged draft row, then clear the per-item fields (keeping
@@ -6860,8 +6885,8 @@ else
     private void StageCurrentExpense()
     {
         if (_amount <= 0) return;
-        _expenseDrafts.Add(new ExpenseDraft(_categoryId, _amount, _fundId, _note, _expenseDate, _fTagIds.ToList()));
-        _amount = 0; _note = null; _fTagIds.Clear(); _newTagName = null;
+        _expenseDrafts.Add(new ExpenseDraft(_categoryId, _amount, _fundId, _note, _expenseDate, _fTagId));
+        _amount = 0; _note = null; _fTagId = null; _newTagName = null;
     }
 
     /// <summary>Pull a staged draft back into the editor to fix it (removing it from the list). If the editor already
@@ -6871,7 +6896,7 @@ else
         if (_amount > 0) StageCurrentExpense();
         _expenseDrafts.Remove(d);
         _categoryId = d.CategoryId; _amount = d.Amount; _fundId = d.FundId; _note = d.Note; _expenseDate = d.Date;
-        _fTagIds.Clear(); foreach (var t in d.TagIds) _fTagIds.Add(t); _newTagName = null;
+        _fTagId = d.TagId; _newTagName = null;
     }
 
     private void RemoveDraft(ExpenseDraft d) => _expenseDrafts.Remove(d);
@@ -6884,15 +6909,16 @@ else
         var lastDate = _expenseDate;
         foreach (var d in _expenseDrafts)
         {
-            await State.AddExpense(d.CategoryId, d.Amount, d.FundId, d.Note, d.Date, tagIds: d.TagIds);
+            await State.AddExpense(d.CategoryId, d.Amount, d.FundId, d.Note, d.Date, tagId: d.TagId);
             lastDate = d.Date;
         }
         _dayView = ClampToPeriod(lastDate); // keep the Expenses tab on the day just used (feature 6)
         CloseModal();
     });
 
-    // --- Tags: selection + inline create inside the expense modals ---
-    private void ToggleTagSel(Guid tagId) { if (!_fTagIds.Remove(tagId)) _fTagIds.Add(tagId); }
+    // --- Tags: single-select + inline create inside the expense modals ---
+    // One tag per expense: picking the selected tag clears it, picking another replaces it.
+    private void ToggleTagSel(Guid tagId) { _fTagId = _fTagId == tagId ? null : tagId; }
 
     /// <summary>Create the tag typed in the modal's "new tag" box and select it (so it's attached on save).</summary>
     private Task AddTagFromModal() => RunModal(async () =>
@@ -6906,7 +6932,7 @@ else
         // If a tag by that name already exists (active or archived), just select it rather than erroring.
         var existing = State.AllTags.FirstOrDefault(t => string.Equals(t.Name, name, StringComparison.CurrentCultureIgnoreCase));
         var id = existing?.Id ?? await State.AddTag(name);
-        if (id != Guid.Empty) _fTagIds.Add(id);
+        if (id != Guid.Empty) _fTagId = id;
         _newTagName = null;
         _categoryId = keepCat; _fundId = keepFund;
     });
@@ -6979,14 +7005,14 @@ else
         if (State.FindExpense(expenseId) is not { } e) return;
         _editExpenseId = expenseId;
         _categoryId = e.CategoryId; _amount = e.Amount.Amount; _fundId = e.FundId; _note = e.Note; _expenseDate = e.Date;
-        _fTagIds.Clear(); foreach (var t in State.ExpenseTags(e)) _fTagIds.Add(t.Id); _newTagName = null;
+        _fTagId = e.TagId; _newTagName = null;
         _modal = Modal.EditExpense;
     }
 
     private Task SaveEditExpense() => RunModal(async () =>
     {
         if (_amount <= 0) return;
-        await State.EditExpense(_editExpenseId, _categoryId, _amount, _fundId, _note, _expenseDate, tagIds: _fTagIds.ToList());
+        await State.EditExpense(_editExpenseId, _categoryId, _amount, _fundId, _note, _expenseDate, tagId: _fTagId);
         CloseModal();
     });
 

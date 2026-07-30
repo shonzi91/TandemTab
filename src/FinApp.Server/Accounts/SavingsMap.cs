@@ -48,6 +48,7 @@ public static class SavingsMap
                  investmentProjected = null, monthlySetAside = null, targetShortfall = null;
         int? debtMonthsAhead = null;
         SavingBucketForecastDto? forecast = null;
+        IReadOnlyList<PlannedCostDto>? costs = null;
         var pace = report.AverageDepositPace(account, b.Id)?.Amount;
 
         switch (kind)
@@ -79,13 +80,29 @@ public static class SavingsMap
                 monthlySetAside = setAside > 0m ? setAside : null;
                 var shortfall = b.TargetShortfall(saved);
                 targetShortfall = shortfall > 0m ? shortfall : null;
+                // The "expenses to cover" breakdown — soonest-due targets first, then the recurring costs. Mirrors
+                // how the web renders the sinking-fund cost list under the expanded bucket.
+                costs = b.Costs
+                    .OrderBy(c => c.IsTarget ? 0 : 1)
+                    .ThenBy(c => c.DueDate ?? DateOnly.MaxValue)
+                    .Select(c => new PlannedCostDto(c.Label, c.Amount, CadenceString(c.Cadence), c.DueDate))
+                    .ToList();
                 break;
         }
 
         return new SavingBucketDto(b.Id, b.Name, b.Icon, saved, kind, b.IsArchived,
             goalTarget, goalProgress, debtBalance, debtProgress, debtMonthsAhead,
-            investmentProjected, monthlySetAside, targetShortfall, forecast);
+            investmentProjected, monthlySetAside, targetShortfall, forecast, costs);
     }
+
+    // Domain cadence → the canonical wire string the write side (SavingBucketConfig.Cadence) round-trips.
+    private static string CadenceString(CostCadence cadence) => cadence switch
+    {
+        CostCadence.Monthly => "monthly",
+        CostCadence.Quarterly => "quarterly",
+        CostCadence.Yearly => "yearly",
+        _ => "one-off",
+    };
 
     // Whole months a debt is paid off ahead of its contractual installment, at the demonstrated pace. Mirrors
     // BudgetingState.SavingBucketMonthsAhead. Null when there's no meaningful speed-up.

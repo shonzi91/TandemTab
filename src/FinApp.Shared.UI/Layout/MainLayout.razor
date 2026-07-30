@@ -111,22 +111,27 @@
                             <span>@Initial</span>
                         }
                     </span>
-                    <button class="ghost" @onclick="PickAvatar" disabled="@_avatarBusy">@Loc["Upload"]</button>
-                    @if (Auth.CurrentUser?.Avatar is not null)
+                    @* External (Google/Facebook) logins get their picture from the provider — no upload/remove here. *@
+                    @if (!Auth.CurrentUser!.IsExternal)
                     {
-                        <button class="ghost danger" @onclick="RemoveAvatar" disabled="@_avatarBusy">@Loc["Remove"]</button>
+                        <button class="ghost" @onclick="PickAvatar" disabled="@_avatarBusy">@Loc["Upload"]</button>
+                        @if (Auth.CurrentUser?.Avatar is not null)
+                        {
+                            <button class="ghost danger" @onclick="RemoveAvatar" disabled="@_avatarBusy">@Loc["Remove"]</button>
+                        }
+                    }
+                    else
+                    {
+                        <span class="pm-hint">@string.Format(Loc["From your {0} account"], ProviderName)</span>
                     }
                 </div>
                 @if (_avatarError is not null)
                 {
                     <div class="pm-msg pm-error">@_avatarError</div>
                 }
-                @if (Auth.CurrentUser!.IsExternal)
-                {
-                    <h4>@Loc["Sign-in"]</h4>
-                    <p class="pm-hint">@string.Format(Loc["You sign in with {0} — there's no password to manage."], ProviderName)</p>
-                }
-                else
+                @* External (Google/Facebook) sign-ins have no password — show nothing here rather than a
+                   "nothing to manage" note that only takes up space. Two-factor below still applies to them. *@
+                @if (!Auth.CurrentUser!.IsExternal)
                 {
                     <details class="pm-section">
                         <summary>@Loc["Change password"]</summary>

@@ -119,7 +119,24 @@ public static class AccountSnapshotSerializer
             item.SetCreatedOn(r.CreatedOn);
             account.AddRecurring(item);
         }
+        CollapseMultiTags(account);
         return account;
+    }
+
+    // One tag per expense: collapse any legacy multi-tag expense to its most-used tag across the whole account
+    // (ties → the first tag it lists). Runs on every load so old snapshots read as single-tag; the reduction
+    // persists the next time the account is saved.
+    private static void CollapseMultiTags(Account account)
+    {
+        var freq = new Dictionary<Guid, int>();
+        foreach (var period in account.Periods)
+            foreach (var expense in period.Expenses)
+                foreach (var tag in expense.TagIds)
+                    freq[tag] = freq.GetValueOrDefault(tag) + 1;
+        foreach (var period in account.Periods)
+            foreach (var expense in period.Expenses)
+                if (expense.TagIds.Count > 1)
+                    expense.SetTag(expense.TagIds.OrderByDescending(t => freq.GetValueOrDefault(t)).First());
     }
 
     // --- domain -> node ---------------------------------------------------

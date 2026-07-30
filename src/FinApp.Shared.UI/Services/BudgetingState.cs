@@ -961,15 +961,15 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     public IReadOnlyList<Fund> ExpensableFunds =>
         Account.RootFunds.Where(f => !f.IsArchived).OrderBy(f => f.IsSynced ? 1 : 0).ToList();
 
-    public Task AddExpense(Guid categoryId, decimal amount, Guid fundId, string? note, DateOnly date, bool onBehalfOfOtherAccount = false, IReadOnlyList<Guid>? tagIds = null) =>
+    public Task AddExpense(Guid categoryId, decimal amount, Guid fundId, string? note, DateOnly date, bool onBehalfOfOtherAccount = false, Guid? tagId = null) =>
         ExecuteOptimisticAsync(() =>
         {
             var expense = new Expense(categoryId, Money(amount), date, CurrentMemberId, fundId, note, onBehalfOfOtherAccount: onBehalfOfOtherAccount);
             expense.SetFundSynced(FundIsSynced(fundId));
-            if (tagIds is { Count: > 0 }) expense.SetTags(tagIds);
+            expense.SetTag(tagId);
             Period.AddExpense(expense);
         },
-        id => api.AddExpenseAsync(id, new AddExpenseRequest(categoryId, amount, fundId, date, note, onBehalfOfOtherAccount, tagIds)),
+        id => api.AddExpenseAsync(id, new AddExpenseRequest(categoryId, amount, fundId, date, note, onBehalfOfOtherAccount, tagId)),
         refetchAfter: true);
 
     // Bank-confirm flows only — bank provenance (externalId + auto-filed badge) isn't in the command API yet.
@@ -984,7 +984,7 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
         return SaveAsync();
     }
 
-    public async Task EditExpense(Guid expenseId, Guid categoryId, decimal amount, Guid fundId, string? note, DateOnly date, IReadOnlyList<Guid>? tagIds = null)
+    public async Task EditExpense(Guid expenseId, Guid categoryId, decimal amount, Guid fundId, string? note, DateOnly date, Guid? tagId = null)
     {
         var before = Period.Expenses.FirstOrDefault(e => e.Id == expenseId);
         await ExecuteOptimisticAsync(() =>
@@ -992,9 +992,9 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
             var edited = Period.EditExpense(expenseId, categoryId, Money(amount), fundId, note, date);
             edited.SetFundSynced(FundIsSynced(fundId));
             edited.SetBankLink(before?.BankExternalId, autoFiled: false);   // keep provenance, clear the auto-filed badge
-            if (tagIds is not null) edited.SetTags(tagIds);   // null leaves the carried-over tags (EditExpense re-applies them)
+            edited.SetTag(tagId);   // the edit UI always sends the desired tag (null clears it)
         },
-        id => api.EditExpenseAsync(id, expenseId, new EditExpenseRequest(categoryId, amount, fundId, date, note, tagIds)),
+        id => api.EditExpenseAsync(id, expenseId, new EditExpenseRequest(categoryId, amount, fundId, date, note, tagId)),
         refetchAfter: true);   // EditExpense is append-only (mints a new id) — reconcile to adopt the server's
         // Editing a settlement-destination expense mirrors the new amount back to the source expense.
         if (before is { IsSettlementDestination: true, SettlementId: { } sid, SettledFromAccountId: { } sourceAccount })

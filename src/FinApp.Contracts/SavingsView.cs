@@ -16,7 +16,8 @@ namespace FinApp.Contracts;
 /// </list>
 /// <see cref="Saved"/> (the accumulated earmark) and <see cref="Icon"/> (raw stored icon) apply to every kind.
 /// <see cref="Forecast"/> carries the raw inputs the interactive what-if modals re-project from — null for kinds
-/// with no projection (sinking).</summary>
+/// with no projection (sinking). <see cref="Costs"/> lists a sinking fund's planned costs to cover (the
+/// "expenses to cover" breakdown) — null/empty for every other kind.</summary>
 public record SavingBucketDto(
     Guid Id,
     string Name,
@@ -32,7 +33,8 @@ public record SavingBucketDto(
     decimal? InvestmentProjected,
     decimal? MonthlySetAside,
     decimal? TargetShortfall,
-    SavingBucketForecastDto? Forecast = null);
+    SavingBucketForecastDto? Forecast = null,
+    IReadOnlyList<PlannedCostDto>? Costs = null);
 
 /// <summary>The raw knobs an interactive projection modal drags — supplied so the thin client can re-run the pure
 /// forecast math (<c>FinApp.Forecasting</c>: <c>InvestmentForecast</c>/<c>LoanForecast</c>) locally with zero

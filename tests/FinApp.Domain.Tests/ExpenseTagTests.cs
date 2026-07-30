@@ -54,7 +54,39 @@ public class ExpenseTagTests
     }
 
     [Fact]
-    public void Expense_tags_survive_a_snapshot_round_trip()
+    public void SetTag_keeps_one_tag_and_null_clears_it()
+    {
+        var expense = new Expense(Guid.NewGuid(), M(10), new DateOnly(2026, 1, 5), Guid.NewGuid(), Guid.NewGuid());
+        var trip = Guid.NewGuid();
+
+        expense.SetTag(trip);
+        Assert.Equal(trip, expense.TagId);
+
+        expense.SetTag(null);
+        Assert.Null(expense.TagId);
+    }
+
+    [Fact]
+    public void Expense_tag_survives_a_snapshot_round_trip()
+    {
+        var account = new Account("Personal", Eur);
+        var food = account.AddCategory("Food");
+        var fund = Guid.NewGuid();
+        var member = Guid.NewGuid();
+        var trip = account.AddTag("Trip");
+
+        var period = account.StartPeriod(new DateOnly(2026, 1, 1), new DateOnly(2026, 1, 31));
+        var expense = period.AddExpense(new Expense(food.Id, M(20), new DateOnly(2026, 1, 5), member, fund));
+        expense.SetTag(trip.Id);
+
+        var restored = AccountSnapshotSerializer.Deserialize(AccountSnapshotSerializer.Serialize(account));
+
+        var rExpense = Assert.Single(restored.Periods[0].Expenses);
+        Assert.Equal(trip.Id, rExpense.TagId);
+    }
+
+    [Fact]
+    public void A_legacy_multi_tag_expense_collapses_to_its_most_used_tag_on_load()
     {
         var account = new Account("Personal", Eur);
         var food = account.AddCategory("Food");
@@ -64,17 +96,21 @@ public class ExpenseTagTests
         var work = account.AddTag("Work");
 
         var period = account.StartPeriod(new DateOnly(2026, 1, 1), new DateOnly(2026, 1, 31));
-        var expense = period.AddExpense(new Expense(food.Id, M(20), new DateOnly(2026, 1, 5), member, fund));
-        expense.SetTags([trip.Id, work.Id]);
+        // One expense carries BOTH tags (legacy multi-tag); a second carries only Work, making Work the most-used.
+        var multi = period.AddExpense(new Expense(food.Id, M(20), new DateOnly(2026, 1, 5), member, fund));
+        multi.SetTags([trip.Id, work.Id]);
+        var workOnly = period.AddExpense(new Expense(food.Id, M(5), new DateOnly(2026, 1, 6), member, fund));
+        workOnly.SetTag(work.Id);
 
         var restored = AccountSnapshotSerializer.Deserialize(AccountSnapshotSerializer.Serialize(account));
 
-        var rExpense = Assert.Single(restored.Periods[0].Expenses);
-        Assert.Equal([trip.Id, work.Id], rExpense.TagIds);
+        // The multi-tag expense collapses to Work (used twice) rather than Trip (once).
+        var rMulti = restored.Periods[0].Expenses.Single(e => e.Amount.Amount == 20m);
+        Assert.Equal(work.Id, rMulti.TagId);
     }
 
     [Fact]
-    public void An_untagged_expense_round_trips_with_no_tags()
+    public void An_untagged_expense_round_trips_with_no_tag()
     {
         var account = new Account("Personal", Eur);
         var food = account.AddCategory("Food");
@@ -83,6 +119,6 @@ public class ExpenseTagTests
 
         var restored = AccountSnapshotSerializer.Deserialize(AccountSnapshotSerializer.Serialize(account));
 
-        Assert.Empty(restored.Periods[0].Expenses[0].TagIds);
+        Assert.Null(restored.Periods[0].Expenses[0].TagId);
     }
 }

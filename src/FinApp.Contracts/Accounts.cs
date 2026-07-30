@@ -55,12 +55,12 @@ public record BootstrapAccountRequest(DateOnly? Today = null);
 /// "synced" flag is derived from the fund itself, so neither is in the request. Bank-import and on-behalf settlement
 /// provenance are handled by their own flows, not here. Mirrors <c>BudgetingState.AddExpense</c>.
 /// </summary>
-public record AddExpenseRequest(Guid CategoryId, decimal Amount, Guid FundId, DateOnly Date, string? Note = null, bool OnBehalfOfOtherAccount = false, IReadOnlyList<Guid>? TagIds = null);
+public record AddExpenseRequest(Guid CategoryId, decimal Amount, Guid FundId, DateOnly Date, string? Note = null, bool OnBehalfOfOtherAccount = false, Guid? TagId = null);
 
 /// <summary>Replace an existing expense's category/amount/fund/note/date (an append-only edit — see
-/// <c>Period.EditExpense</c>). The expense id travels in the route. <see cref="TagIds"/> replaces the whole tag set
-/// (null leaves it unchanged from the pre-edit expense). Mirrors <c>BudgetingState.EditExpense</c>.</summary>
-public record EditExpenseRequest(Guid CategoryId, decimal Amount, Guid FundId, DateOnly Date, string? Note = null, IReadOnlyList<Guid>? TagIds = null);
+/// <c>Period.EditExpense</c>). The expense id travels in the route. <see cref="TagId"/> sets the expense's single
+/// tag (null clears it). One tag per expense. Mirrors <c>BudgetingState.EditExpense</c>.</summary>
+public record EditExpenseRequest(Guid CategoryId, decimal Amount, Guid FundId, DateOnly Date, string? Note = null, Guid? TagId = null);
 
 /// <summary>
 /// Record income (a deposit) for the caller in the open period, computed server-side. The member is the caller and

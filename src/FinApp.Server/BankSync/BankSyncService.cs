@@ -138,7 +138,10 @@ public sealed class BankSyncService(FinAppDbContext db, EnableBankingClient eb, 
     {
         await EnsureContributorAsync(userId, accountId, ct);
         await EnsureBankAllowedAsync(userId, ct);
-        var state = accountId.ToString("N");   // echoed back to the callback so we can find this account again
+        // Echoed back verbatim to the callback so we can find this account again. A ".n" suffix marks a native
+        // (mobile app) start so the callback bounces the outcome through the app's deep link — the app makes this
+        // call over the API, so a cookie (like the OAuth flow uses) wouldn't reach the callback's browser.
+        var state = accountId.ToString("N") + (req.Native ? ".n" : "");
         var link = await eb.StartAuthAsync(req.InstitutionName, req.Country, callbackUrl, state, ct);
         await UpsertConnectionAsync(accountId, providerRef: "", institution: req.InstitutionName, institutionName: req.InstitutionName,
             accountRef: null, status: "Pending", consentExpiresAt: null, lastSyncedAt: null, ct);

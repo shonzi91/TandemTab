@@ -79,7 +79,7 @@ public class TagApiTests : IClassFixture<FinAppServerFactory>
     }
 
     [Fact]
-    public async Task Adding_an_expense_with_tag_ids_attaches_them()
+    public async Task Adding_an_expense_with_a_tag_attaches_it()
     {
         var (client, auth) = await _factory.RegisterAndAuthAsync("tag_expense");
         var account = await CreateAccount(client, "Tags");
@@ -87,19 +87,19 @@ public class TagApiTests : IClassFixture<FinAppServerFactory>
         var trip = await IdOf(await client.PostAsJsonAsync($"/accounts/{account.Id}/tags", new CreateTagRequest("Trip")));
 
         var addResp = await client.PostAsJsonAsync($"/accounts/{account.Id}/expenses",
-            new AddExpenseRequest(food, 20m, bank, When, TagIds: [trip]));
+            new AddExpenseRequest(food, 20m, bank, When, TagId: trip));
         addResp.EnsureSuccessStatusCode();
         var expenseId = (await addResp.Content.ReadFromJsonAsync<ExpenseMutationDto>())!.EntityId;
 
         var expense = (await LoadAsync(client, account.Id)).Periods[0].Expenses.Single();
-        Assert.Equal([trip], expense.TagIds);
+        Assert.Equal(trip, expense.TagId);
 
-        // Editing with a new tag set replaces it; a bogus id is filtered out server-side.
+        // Editing with a different tag replaces it; a bogus id is filtered out server-side (clears the tag).
         var work = await IdOf(await client.PostAsJsonAsync($"/accounts/{account.Id}/tags", new CreateTagRequest("Work")));
         (await client.PutAsJsonAsync($"/accounts/{account.Id}/expenses/{expenseId}",
-            new EditExpenseRequest(food, 22m, bank, When, TagIds: [work, Guid.NewGuid()]))).EnsureSuccessStatusCode();
+            new EditExpenseRequest(food, 22m, bank, When, TagId: work))).EnsureSuccessStatusCode();
 
         var edited = (await LoadAsync(client, account.Id)).Periods[0].Expenses.Single();
-        Assert.Equal([work], edited.TagIds);
+        Assert.Equal(work, edited.TagId);
     }
 }

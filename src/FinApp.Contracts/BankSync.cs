@@ -20,8 +20,11 @@ public record SelectBankAccountRequest(string Ref);
 /// <summary>A bank the aggregator knows about (Enable Banking identifies an ASPSP by name + country). <see cref="Logo"/> is a URL.</summary>
 public record BankInstitutionDto(string Name, string Country, string? Logo = null);
 
-/// <summary>Start linking an account to a bank. The server builds the consent return URL itself (like OAuth).</summary>
-public record StartBankLinkRequest(string InstitutionName, string Country, string? Logo = null);
+/// <summary>Start linking an account to a bank. The server builds the consent return URL itself (like OAuth).
+/// <see cref="Native"/> = the request came from the native mobile app, so the bank callback should bounce the
+/// outcome back through the <c>com.tandemtab.app://bank/callback</c> deep link instead of the web SPA. Web
+/// callers leave it false. (Mirrors the <c>?native=1</c> flag on the Google sign-in flow.)</summary>
+public record StartBankLinkRequest(string InstitutionName, string Country, string? Logo = null, bool Native = false);
 
 /// <summary>Where to send the browser to complete the bank's consent flow.</summary>
 public record StartBankLinkResponse(string LinkUrl);

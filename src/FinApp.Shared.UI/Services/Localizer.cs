@@ -913,6 +913,7 @@ public sealed class Localizer(IJSRuntime js)
         ["{0} sub"] = "{0} подкатегории",
         ["View all {0} expenses"] = "Виж всички {0} разхода",
         ["By date"] = "По дата",
+        ["By budgets"] = "По бюджети",
         ["Newest first"] = "Най-новите първо",
         ["Edit last"] = "Редактирай последното",
         ["Edit the last expense you logged"] = "Редактирай последния въведен разход",

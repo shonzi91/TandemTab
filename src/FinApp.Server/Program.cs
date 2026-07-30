@@ -847,7 +847,7 @@ accounts.MapPost("/{id:guid}/expenses", async (Guid id, AddExpenseRequest req, C
         var expense = new Expense(req.CategoryId, new Money(req.Amount, account.Currency), req.Date, userId, req.FundId, req.Note,
             onBehalfOfOtherAccount: req.OnBehalfOfOtherAccount);
         expense.SetFundSynced(fund.IsSynced);   // synced funds aren't debited — the real bank balance handles it
-        if (req.TagIds is { Count: > 0 }) expense.SetTags(req.TagIds.Where(t => account.FindTag(t) is not null));
+        if (req.TagId is { } addTag && account.FindTag(addTag) is not null) expense.SetTag(addTag);
         period.AddExpense(expense);
         // The delta a thin client reconciles from (the thick client reads only Version/EntityId — a superset).
         return (expense.Id, SpendingMap.ToDto(account, expense), SpendingMap.Overview(account, period, bank.Balance, bank.BalanceCurrency));
@@ -869,7 +869,8 @@ accounts.MapPut("/{id:guid}/expenses/{expenseId:guid}", async (Guid id, Guid exp
         var edited = period.EditExpense(expenseId, req.CategoryId, new Money(req.Amount, account.Currency), req.FundId, req.Note, req.Date);
         edited.SetFundSynced(fund.IsSynced);            // recompute at edit time (moving to/from a synced fund)
         edited.SetBankLink(before?.BankExternalId, autoFiled: false);   // keep provenance, clear the auto-filed badge
-        if (req.TagIds is not null) edited.SetTags(req.TagIds.Where(t => account.FindTag(t) is not null));   // null leaves the carried-over tags
+        // The edit UI always sends the desired tag, so this is authoritative: a valid id sets it, null clears it.
+        edited.SetTag(req.TagId is { } editTag && account.FindTag(editTag) is not null ? editTag : null);
 
         // Edit is append-only (a new id), so the delta carries the NEW row for the client to swap in.
         return (edited.Id, SpendingMap.ToDto(account, edited), SpendingMap.Overview(account, period, bank.Balance, bank.BalanceCurrency));
@@ -1888,14 +1889,22 @@ accounts.MapDelete("/{id:guid}/bank/mappings", async (Guid id, string descriptio
     return Results.NoContent();
 });
 
-// Public: the bank redirects here (with ?code=<auth code>&state=<accountId>) after the user consents. No auth —
-// the code is exchanged with Enable Banking server-side to prove real consent — then we bounce to the SPA.
+// Public: the bank redirects here (with ?code=<auth code>&state=<accountId>[.n]) after the user consents. No
+// auth — the code is exchanged with Enable Banking server-side to prove real consent — then we bounce back. A
+// ".n" state suffix means the flow began in the native app, so the outcome routes through its deep link.
 app.MapGet("/bank/callback", async (string? code, string? state, BankSyncService svc, CancellationToken ct) =>
 {
-    if (!string.IsNullOrEmpty(code) && Guid.TryParseExact(state, "N", out var accountId)
+    // Split the optional ".n" native marker off the account-id part of the state.
+    var native = state?.EndsWith(".n", StringComparison.Ordinal) == true;
+    var accountPart = native ? state![..^2] : state;
+    string Done(string result) => native
+        ? $"com.tandemtab.app://bank/callback?bank={result}"
+        : $"/?bank={result}";
+
+    if (!string.IsNullOrEmpty(code) && Guid.TryParseExact(accountPart, "N", out var accountId)
         && await svc.CompleteLinkAsync(accountId, code, ct))
-        return Results.Redirect("/?bank=linked");
-    return Results.Redirect("/?bank=error");
+        return Results.Redirect(Done("linked"));
+    return Results.Redirect(Done("error"));
 });
 
 // --- Excel export (one sheet per period) ---------------------------------

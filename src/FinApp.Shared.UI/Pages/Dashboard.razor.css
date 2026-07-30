@@ -846,6 +846,18 @@ html.dark .brk-note { color: #8b96a4; }
 /* "All expenses" section header: a tinted summary banner above the category cards. A status ring + title + totals
    on one line, then a full-width progress bar spanning the whole section — unlike category rows, whose bar is
    indented past the ring — so it reads as the header the cards sit under, not another peer row. */
+/* By-date ledger header: just "Spent this period" + the total — no budget ring/bar (that's the By-budgets view). */
+.bydate-spent {
+    display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
+    margin: 0 0 14px; padding: 10px 14px; border-radius: 12px;
+    background: #f2f7f4; border: 0.5px solid #e2ebe6;
+}
+html.dark .bydate-spent { background: rgba(63,224,197,.10); border-color: rgba(63,224,197,.30); }
+.bds-lbl { font-size: .82rem; font-weight: 600; letter-spacing: .02em; color: #5a6b62; }
+html.dark .bds-lbl { color: #9fb0a8; }
+.bds-amt { font-size: 1.15rem; font-weight: 800; color: #16241d; }
+html.dark .bds-amt { color: #e8eaf0; }
+
 .budget-header {
     margin: 0 0 14px; padding: 12px 14px 14px; border-radius: 12px;
     background: #f2f7f4; border: 0.5px solid #e2ebe6;
