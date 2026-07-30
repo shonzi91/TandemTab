@@ -1,5 +1,6 @@
 package com.tandemtab.app.ui
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -13,9 +14,11 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -26,7 +29,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.text.font.FontWeight
+import com.tandemtab.app.ui.theme.TandemIcons
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.tandemtab.app.GoalsUi
@@ -152,6 +158,7 @@ private fun SavedHeader(saved: String) {
 @Composable
 private fun GoalRow(b: SavingBucketDto, fmt: (Double) -> String, onAllocate: () -> Unit, canSpend: Boolean, onSpend: () -> Unit) {
     val tandem = LocalTandemColors.current
+    var expanded by remember(b.id) { mutableStateOf(false) }
     // Kind-specific headline + progress. Bars read positive (progress toward a goal / down a debt), so green.
     val headline: String
     val subline: String?
@@ -185,6 +192,7 @@ private fun GoalRow(b: SavingBucketDto, fmt: (Double) -> String, onAllocate: () 
             subline = null
         }
     }
+    val details = bucketDetails(b, fmt)
 
     Column(
         Modifier.fillMaxWidth()
@@ -193,27 +201,88 @@ private fun GoalRow(b: SavingBucketDto, fmt: (Double) -> String, onAllocate: () 
             .padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            if (!b.icon.isNullOrBlank()) {
-                Text(b.icon, fontSize = 18.sp)
-                Spacer(Modifier.width(8.dp))
-            }
+        // Header row is tap-to-expand (when there's extra detail to show).
+        Row(
+            Modifier.fillMaxWidth().let { if (details.isNotEmpty()) it.clickable { expanded = !expanded } else it },
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            CatIcon(b.icon, b.name)
+            Spacer(Modifier.width(8.dp))
             Text(b.name, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f), maxLines = 1)
             Text(headline, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface, fontSize = 13.sp)
-        }
-        if (progress != null) {
-            ProgressBar(progress.coerceIn(0f, 1f))
-        }
-        if (subline != null) {
-            Text(subline, fontSize = 12.sp, color = tandem.muted)
-        }
-        // Money-movement actions, right-aligned under the bar.
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-            if (canSpend) {
-                TextButton(onClick = onSpend) { Text("Spend", color = tandem.spent, fontSize = 13.sp, fontWeight = FontWeight.SemiBold) }
+            if (details.isNotEmpty()) {
+                Spacer(Modifier.width(6.dp))
+                Icon(TandemIcons.Chevron, null, tint = tandem.muted, modifier = Modifier.size(16.dp).rotate(if (expanded) -90f else 90f))
             }
-            TextButton(onClick = onAllocate) { Text("+ Add", color = MaterialTheme.colorScheme.primary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold) }
         }
+        if (progress != null) ProgressBar(progress.coerceIn(0f, 1f))
+        if (subline != null) Text(subline, fontSize = 12.sp, color = tandem.muted)
+
+        // Expanded per-kind breakdown (debt payoff, goal shortfall, investment projection, sinking cover).
+        AnimatedVisibility(expanded) {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(top = 2.dp)) {
+                Box(Modifier.fillMaxWidth().height(1.dp).background(tandem.hairline))
+                details.forEach { (label, value) ->
+                    Row(Modifier.fillMaxWidth().padding(top = 4.dp)) {
+                        Text(label, fontSize = 12.sp, color = tandem.muted, modifier = Modifier.weight(1f))
+                        Text(value, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
+                    }
+                }
+            }
+        }
+
+        // Money-movement actions as fancier icon pills, right-aligned.
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
+            if (canSpend) {
+                ActionPill(TandemIcons.Minus, "Spend", tandem.spent, onSpend)
+                Spacer(Modifier.width(8.dp))
+            }
+            ActionPill(TandemIcons.Plus, "Add", MaterialTheme.colorScheme.primary, onAllocate)
+        }
+    }
+}
+
+/** The kind-specific figures shown when a bucket row is expanded (only the ones the server actually provided). */
+private fun bucketDetails(b: SavingBucketDto, fmt: (Double) -> String): List<Pair<String, String>> = buildList {
+    when (b.kind) {
+        "debt" -> {
+            add("Owed today" to fmt(b.debtBalance ?: 0.0))
+            b.debtProgress?.let { add("Paid off" to "${(it * 100).toInt()}%") }
+            b.debtMonthsAhead?.takeIf { it > 0 }?.let { add("Ahead of schedule" to "$it mo") }
+            b.monthlySetAside?.takeIf { it > 0 }?.let { add("Paying" to "${fmt(it)}/mo") }
+        }
+        "investment" -> {
+            add("Invested" to fmt(b.saved))
+            b.investmentProjected?.let { add("Projected" to "≈ ${fmt(it)}") }
+            b.monthlySetAside?.takeIf { it > 0 }?.let { add("Contributing" to "${fmt(it)}/mo") }
+        }
+        "sinking" -> {
+            add("Saved" to fmt(b.saved))
+            b.goalTarget?.let { add("Target" to fmt(it)) }
+            b.monthlySetAside?.takeIf { it > 0 }?.let { add("Set aside" to "${fmt(it)}/mo") }
+            b.targetShortfall?.takeIf { it > 0 }?.let { add("Still to find" to fmt(it)) }
+        }
+        else -> {
+            add("Saved" to fmt(b.saved))
+            b.goalTarget?.let { add("Target" to fmt(it)) }
+            b.goalProgress?.let { add("Progress" to "${(it * 100).toInt()}%") }
+            b.targetShortfall?.takeIf { it > 0 }?.let { add("Still to save" to fmt(it)) }
+            b.monthlySetAside?.takeIf { it > 0 }?.let { add("Set aside" to "${fmt(it)}/mo") }
+        }
+    }
+}
+
+/** A small rounded action button: a tinted icon + label (Add / Spend), fancier than a plain text button. */
+@Composable
+private fun ActionPill(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, color: androidx.compose.ui.graphics.Color, onClick: () -> Unit) {
+    Row(
+        Modifier.clip(RoundedCornerShape(999.dp)).background(color.copy(alpha = 0.12f))
+            .clickable(onClick = onClick).padding(horizontal = 12.dp, vertical = 7.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(5.dp),
+    ) {
+        Icon(icon, null, tint = color, modifier = Modifier.size(16.dp))
+        Text(label, color = color, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
     }
 }
 

@@ -53,6 +53,7 @@ object TandemIcons {
     // --- actions ------------------------------------------------------------------------------------
 
     val Plus = icon("M12 5v14M5 12h14")
+    val Minus = icon("M5 12h14")
     val Close = icon("M18 6L6 18M6 6l12 12")
     val Check = icon("M20 6L9 17l-5-5")
     val Pencil = icon("M17 3a2.83 2.83 0 0 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z M15 5l4 4")
