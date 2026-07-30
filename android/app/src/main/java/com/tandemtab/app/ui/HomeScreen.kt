@@ -288,6 +288,8 @@ fun HomeScreen(
                             bankEnabled = state.bank.enabled,
                             bankConnected = state.bank.connected,
                             bankReviewCount = state.bank.pending.size,
+                            syncedBalance = state.bank.balance,
+                            syncedBalanceCurrency = state.bank.balanceCurrency,
                             onOpenBank = { onLoadBank(false); showBank = true },
                         )
                     }

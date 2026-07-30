@@ -57,6 +57,10 @@ fun WalletsScreen(
     bankEnabled: Boolean = false,
     bankConnected: Boolean = false,
     bankReviewCount: Int = 0,
+    // The live bank balance of the synced fund (from the bank connection) — shown on the synced row instead of the
+    // app-internal balance (which is 0, since a synced fund isn't debited: the real bank balance is the source).
+    syncedBalance: Double? = null,
+    syncedBalanceCurrency: String? = null,
     onOpenBank: () -> Unit = {},
 ) {
     val tandem = LocalTandemColors.current
@@ -86,10 +90,17 @@ fun WalletsScreen(
                     Text("No funds yet.", color = tandem.muted)
                 }
             } else {
+                val bankFmt = remember(syncedBalanceCurrency, wallets.currency) {
+                    rememberWalletsMoney(syncedBalanceCurrency ?: wallets.currency)
+                }
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     wallets.funds.forEach { f ->
+                        // A synced fund shows its live bank balance (once loaded), not the app-internal 0.
+                        val liveBalance = if (f.synced) syncedBalance else null
                         FundRow(
                             f, fmt,
+                            liveBalance = liveBalance,
+                            liveFmt = bankFmt,
                             onTransfer = { onPrepareTransfer(); transferFrom = f },
                             onAddIncome = { onPrepareAddIncome(); incomeTo = f },
                         )
@@ -160,7 +171,14 @@ private fun TotalHeader(total: String) {
 }
 
 @Composable
-private fun FundRow(f: FundRowDto, fmt: (Double) -> String, onTransfer: () -> Unit, onAddIncome: () -> Unit) {
+private fun FundRow(
+    f: FundRowDto,
+    fmt: (Double) -> String,
+    onTransfer: () -> Unit,
+    onAddIncome: () -> Unit,
+    liveBalance: Double? = null,
+    liveFmt: (Double) -> String = fmt,
+) {
     val tandem = LocalTandemColors.current
     Row(
         Modifier.fillMaxWidth()
@@ -177,11 +195,12 @@ private fun FundRow(f: FundRowDto, fmt: (Double) -> String, onTransfer: () -> Un
                     Text("🏦", fontSize = 13.sp) // 🏦 bank-synced marker
                 }
             }
-            val sub = f.note?.takeIf { it.isNotBlank() } ?: if (f.synced) "Bank-synced" else null
+            val sub = f.note?.takeIf { it.isNotBlank() } ?: if (f.synced) (if (liveBalance != null) "Live bank balance" else "Bank-synced") else null
             if (sub != null) Text(sub, fontSize = 12.sp, color = tandem.muted, maxLines = 1)
         }
         Spacer(Modifier.width(8.dp))
-        Text(fmt(f.balance), fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+        // Synced funds show the live bank balance once it's loaded; everything else shows the app balance.
+        Text(if (liveBalance != null) liveFmt(liveBalance) else fmt(f.balance), fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
         // The two common actions sit next to the balance — only for a non-synced fund (a synced fund is
         // driven by its real bank balance, so manual moves don't apply).
         if (!f.synced) {
