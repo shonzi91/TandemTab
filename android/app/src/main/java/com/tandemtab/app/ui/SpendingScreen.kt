@@ -120,7 +120,7 @@ fun SpendingScreen(
             ViewToggle(view) { view = it }
             Spacer(Modifier.height(14.dp))
             when (view) {
-                SpendView.Categories -> CategoriesView(spending, fmt, onEdit, onSetBudget, onRemoveBudget)
+                SpendView.Categories -> CategoriesView(spending, fmt, onEdit, onDelete, onSetBudget, onRemoveBudget)
                 SpendView.ByDate -> ByDateView(spending, fmt, onEdit, onDelete)
             }
         }
@@ -178,6 +178,7 @@ private fun CategoriesView(
     spending: SpendingUi,
     fmt: (Double) -> String,
     onEdit: (ExpenseDto) -> Unit,
+    onDelete: (ExpenseDto) -> Unit,
     onSetBudget: (String, Double, () -> Unit) -> Unit,
     onRemoveBudget: (String, () -> Unit) -> Unit,
 ) {
@@ -214,7 +215,7 @@ private fun CategoriesView(
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         spending.budgets.sortedByDescending { it.spent }.forEach { b ->
             BudgetRow(
-                b, fmt, expenses = { expensesFor(b.categoryId) }, onEdit = onEdit,
+                b, fmt, expenses = { expensesFor(b.categoryId) }, onEdit = onEdit, onDelete = onDelete,
                 onEditBudget = { budgeting = BudgetTarget(b.categoryId, b.name, b.icon, b.allocated) },
             )
         }
@@ -226,7 +227,7 @@ private fun CategoriesView(
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             unbudgeted.forEach { (id, nameIcon, spent) ->
                 UnbudgetedRow(
-                    nameIcon.first, nameIcon.second, spent, fmt, expenses = { expensesFor(id) }, onEdit = onEdit,
+                    nameIcon.first, nameIcon.second, spent, fmt, expenses = { expensesFor(id) }, onEdit = onEdit, onDelete = onDelete,
                     onSetBudget = { budgeting = BudgetTarget(id, nameIcon.first, nameIcon.second, null) },
                 )
             }
@@ -300,6 +301,7 @@ private fun BudgetRow(
     fmt: (Double) -> String,
     expenses: () -> List<ExpenseDto>,
     onEdit: (ExpenseDto) -> Unit,
+    onDelete: (ExpenseDto) -> Unit,
     onEditBudget: () -> Unit,
 ) {
     val tandem = LocalTandemColors.current
@@ -328,7 +330,7 @@ private fun BudgetRow(
             if (b.over) "${fmt(-b.remaining)} over budget" else "${fmt(b.remaining)} left",
             fontSize = 12.sp, color = if (b.over) tandem.spent else tandem.muted,
         )
-        ExpenseDrawer(open, expenses, fmt, onEdit)
+        ExpenseDrawer(open, expenses, fmt, onEdit, onDelete)
     }
 }
 
@@ -340,6 +342,7 @@ private fun UnbudgetedRow(
     fmt: (Double) -> String,
     expenses: () -> List<ExpenseDto>,
     onEdit: (ExpenseDto) -> Unit,
+    onDelete: (ExpenseDto) -> Unit,
     onSetBudget: () -> Unit,
 ) {
     val tandem = LocalTandemColors.current
@@ -365,12 +368,12 @@ private fun UnbudgetedRow(
                 modifier = Modifier.clip(RoundedCornerShape(6.dp)).clickable(onClick = onSetBudget).padding(horizontal = 6.dp, vertical = 2.dp),
             )
         }
-        ExpenseDrawer(open, expenses, fmt, onEdit)
+        ExpenseDrawer(open, expenses, fmt, onEdit, onDelete)
     }
 }
 
 @Composable
-private fun ExpenseDrawer(open: Boolean, expenses: () -> List<ExpenseDto>, fmt: (Double) -> String, onEdit: (ExpenseDto) -> Unit) {
+private fun ExpenseDrawer(open: Boolean, expenses: () -> List<ExpenseDto>, fmt: (Double) -> String, onEdit: (ExpenseDto) -> Unit, onDelete: (ExpenseDto) -> Unit) {
     val tandem = LocalTandemColors.current
     AnimatedVisibility(open) {
         Column(Modifier.padding(top = 4.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -384,22 +387,23 @@ private fun ExpenseDrawer(open: Boolean, expenses: () -> List<ExpenseDto>, fmt: 
                         Text("${shortDate(e.date)} · ${e.fundName}", fontSize = 11.sp, color = tandem.muted, maxLines = 1)
                     }
                     Text(fmt(e.amount), fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = tandem.spent)
-                    EditExpenseButton(e, onEdit)
+                    EditExpenseButton(e, onEdit, onDelete)
                 }
             }
         }
     }
 }
 
-/** Pencil affordance on an expense row — opens the add sheet in edit mode. Auto-filed / from-savings rows aren't
- *  hand-editable (matches the web), so they render a blank slot of the same width — this keeps the pencils (and the
- *  amounts to their left) lined up in one column across every row, editable or not. */
+/** Inline edit + delete actions on an expense row. Auto-filed / from-savings rows aren't hand-editable (matches the
+ *  web), so they reserve the same-width blank slot — keeping the icons (and amounts to their left) lined up across
+ *  every row. Delete always asks to confirm. */
 @Composable
-private fun EditExpenseButton(e: ExpenseDto, onEdit: (ExpenseDto) -> Unit) {
+private fun EditExpenseButton(e: ExpenseDto, onEdit: (ExpenseDto) -> Unit, onDelete: (ExpenseDto) -> Unit) {
     val tandem = LocalTandemColors.current
+    var confirmDelete by remember { mutableStateOf(false) }
     Spacer(Modifier.width(6.dp))
     if (e.autoFiled || e.fromSavings) {
-        Spacer(Modifier.width(30.dp))   // reserve the column so nothing shifts
+        Spacer(Modifier.width(66.dp))   // reserve pencil + trash width so nothing shifts
     } else {
         Box(
             Modifier.size(30.dp).clip(RoundedCornerShape(8.dp)).clickable { onEdit(e) },
@@ -407,6 +411,22 @@ private fun EditExpenseButton(e: ExpenseDto, onEdit: (ExpenseDto) -> Unit) {
         ) {
             Icon(TandemIcons.Pencil, contentDescription = "Edit expense", tint = tandem.muted, modifier = Modifier.size(17.dp))
         }
+        Spacer(Modifier.width(6.dp))
+        Box(
+            Modifier.size(30.dp).clip(RoundedCornerShape(8.dp)).clickable { confirmDelete = true },
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(TandemIcons.Trash, contentDescription = "Delete expense", tint = tandem.spent, modifier = Modifier.size(17.dp))
+        }
+    }
+    if (confirmDelete) {
+        AlertDialog(
+            onDismissRequest = { confirmDelete = false },
+            title = { Text("Delete expense?") },
+            text = { Text("This removes “${e.note?.takeIf { it.isNotBlank() } ?: e.categoryName}” from this period.") },
+            confirmButton = { TextButton(onClick = { confirmDelete = false; onDelete(e) }) { Text("Delete", color = tandem.spent) } },
+            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancel") } },
+        )
     }
 }
 
@@ -487,55 +507,13 @@ private fun ByDateView(spending: SpendingUi, fmt: (Double) -> String, onEdit: (E
                 .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(14.dp)),
         ) {
             rows.forEachIndexed { i, e ->
-                // Long-press → an Edit / Delete menu (auto-filed / from-savings rows aren't hand-editable). Long-press
-                // is used instead of swipe so it doesn't fight the tab-pager's horizontal swipe.
-                if (e.autoFiled || e.fromSavings) {
-                    ExpenseRow(e, fmt, onEdit)
-                } else {
-                    LongPressExpenseRow(e, onEdit = onEdit, onDelete = onDelete) {
-                        ExpenseRow(e, fmt, onEdit)
-                    }
-                }
+                ExpenseRow(e, fmt, onEdit, onDelete)
                 if (i < rows.lastIndex) {
                     Box(Modifier.fillMaxWidth().height(1.dp).padding(horizontal = 14.dp).background(tandem.hairline))
                 }
             }
         }
         Spacer(Modifier.height(14.dp))
-    }
-}
-
-/** Long-press an expense row to reveal an Edit / Delete menu (delete asks to confirm). Long-press — not swipe — so the
- *  gesture doesn't collide with the tab pager's horizontal swipe. */
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-private fun LongPressExpenseRow(e: ExpenseDto, onEdit: (ExpenseDto) -> Unit, onDelete: (ExpenseDto) -> Unit, content: @Composable () -> Unit) {
-    val tandem = LocalTandemColors.current
-    var menuOpen by remember { mutableStateOf(false) }
-    var confirmDelete by remember { mutableStateOf(false) }
-    Box {
-        Box(Modifier.combinedClickable(onClick = {}, onLongClick = { menuOpen = true })) { content() }
-        DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-            DropdownMenuItem(
-                text = { Text("Edit") },
-                onClick = { menuOpen = false; onEdit(e) },
-                leadingIcon = { Icon(TandemIcons.Pencil, null, tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(18.dp)) },
-            )
-            DropdownMenuItem(
-                text = { Text("Delete", color = tandem.spent) },
-                onClick = { menuOpen = false; confirmDelete = true },
-                leadingIcon = { Icon(TandemIcons.Trash, null, tint = tandem.spent, modifier = Modifier.size(18.dp)) },
-            )
-        }
-    }
-    if (confirmDelete) {
-        AlertDialog(
-            onDismissRequest = { confirmDelete = false },
-            title = { Text("Delete expense?") },
-            text = { Text("This removes “${e.note?.takeIf { it.isNotBlank() } ?: e.categoryName}” from this period.") },
-            confirmButton = { TextButton(onClick = { confirmDelete = false; onDelete(e) }) { Text("Delete", color = tandem.spent) } },
-            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancel") } },
-        )
     }
 }
 
@@ -561,7 +539,7 @@ private fun DayHeader(iso: String) {
 }
 
 @Composable
-private fun ExpenseRow(e: ExpenseDto, fmt: (Double) -> String, onEdit: (ExpenseDto) -> Unit) {
+private fun ExpenseRow(e: ExpenseDto, fmt: (Double) -> String, onEdit: (ExpenseDto) -> Unit, onDelete: (ExpenseDto) -> Unit) {
     val tandem = LocalTandemColors.current
     Row(modifier = Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
         CatIcon(e.categoryIcon, e.categoryName)
@@ -578,7 +556,7 @@ private fun ExpenseRow(e: ExpenseDto, fmt: (Double) -> String, onEdit: (ExpenseD
                 Text(if (e.fromSavings) "from savings" else "auto", fontSize = 10.sp, color = tandem.muted)
             }
         }
-        EditExpenseButton(e, onEdit)
+        EditExpenseButton(e, onEdit, onDelete)
     }
 }
 
