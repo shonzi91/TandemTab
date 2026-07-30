@@ -77,7 +77,7 @@ fun SpendingScreen(
 ) {
     val tandem = LocalTandemColors.current
     val fmt = rememberMoney(spending.currency)
-    var view by remember { mutableStateOf(SpendView.Categories) }
+    var view by remember { mutableStateOf(SpendView.ByDate) }
     var showManage by remember { mutableStateOf(false) }
 
     when {
@@ -134,8 +134,8 @@ private data class SpendTab(val view: SpendView, val label: String, val icon: Im
 private fun ViewToggle(view: SpendView, onSelect: (SpendView) -> Unit) {
     val tandem = LocalTandemColors.current
     val tabs = listOf(
-        SpendTab(SpendView.Categories, "Categories", TandemIcons.Chart),
         SpendTab(SpendView.ByDate, "By date", TandemIcons.Calendar),
+        SpendTab(SpendView.Categories, "Categories", TandemIcons.Chart),
     )
     Row(Modifier.fillMaxWidth().background(tandem.segmentTrack, RoundedCornerShape(12.dp)).padding(3.dp)) {
         tabs.forEach { tab ->
@@ -189,15 +189,9 @@ private fun CategoriesView(
             .sortedByDescending { it.third }
     }
 
-    // Budget coverage summary.
-    if (spending.budgets.isNotEmpty()) {
-        SummaryHeader("BUDGET USED", fmt(spending.totalSpent), " of ${fmt(spending.totalBudgeted)}",
-            fraction = if (spending.totalBudgeted > 0) (spending.totalSpent / spending.totalBudgeted).toFloat() else 0f)
-        Spacer(Modifier.height(14.dp))
-    } else {
-        SpentHeader(fmt(spending.spent))
-        Spacer(Modifier.height(14.dp))
-    }
+    // Budget coverage summary (shared with the By-date view).
+    SpendingSummary(spending, fmt)
+    Spacer(Modifier.height(14.dp))
 
     if (spending.budgets.isEmpty() && unbudgeted.isEmpty()) {
         Box(Modifier.fillMaxWidth().height(140.dp), contentAlignment = Alignment.Center) {
@@ -427,6 +421,19 @@ private fun SpendBar(fraction: Float) {
     }
 }
 
+/** The period summary card shown atop both Spending views: budget-used-with-progress when budgets exist, else spent. */
+@Composable
+private fun SpendingSummary(spending: SpendingUi, fmt: (Double) -> String) {
+    if (spending.budgets.isNotEmpty()) {
+        SummaryHeader(
+            "BUDGET USED", fmt(spending.totalSpent), " of ${fmt(spending.totalBudgeted)}",
+            fraction = if (spending.totalBudgeted > 0) (spending.totalSpent / spending.totalBudgeted).toFloat() else 0f,
+        )
+    } else {
+        SpentHeader(fmt(spending.spent))
+    }
+}
+
 @Composable
 private fun SummaryHeader(label: String, value: String, suffix: String, fraction: Float) {
     val tandem = LocalTandemColors.current
@@ -452,7 +459,8 @@ private fun SummaryHeader(label: String, value: String, suffix: String, fraction
 @Composable
 private fun ByDateView(spending: SpendingUi, fmt: (Double) -> String, onEdit: (ExpenseDto) -> Unit) {
     val tandem = LocalTandemColors.current
-    SpentHeader(fmt(spending.spent))
+    // Keep the same budget-used progress summary as the Categories view (falls back to "spent" with no budgets).
+    SpendingSummary(spending, fmt)
     Spacer(Modifier.height(16.dp))
     if (spending.expenses.isEmpty()) {
         Box(Modifier.fillMaxWidth().height(160.dp), contentAlignment = Alignment.Center) {
