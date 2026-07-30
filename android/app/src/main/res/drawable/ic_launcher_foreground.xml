@@ -3,11 +3,30 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- Two offset "tab" rounded rectangles — a simple tandem mark. -->
-    <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M34,38 h30 a6,6 0 0 1 6,6 v20 a6,6 0 0 1 -6,6 h-30 a6,6 0 0 1 -6,-6 v-20 a6,6 0 0 1 6,-6 z" />
-    <path
-        android:fillColor="#B8F0E2"
-        android:pathData="M46,50 h30 a6,6 0 0 1 6,6 v20 a6,6 0 0 1 -6,6 h-30 a6,6 0 0 1 -6,-6 v-20 a6,6 0 0 1 6,-6 z" />
+    <!-- The TandemTab mark (two heads + two stems under a shared beam), reproduced from TandemLogo (viewBox 0 0 64
+         64) and scaled/centred into the adaptive-icon safe zone. White mark on the brand-green background. -->
+    <group
+        android:scaleX="1.15"
+        android:scaleY="1.15"
+        android:translateX="17"
+        android:translateY="20">
+        <!-- shared beam -->
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M16,22 h32 a4,4 0 0 1 0,8 h-32 a4,4 0 0 1 0,-8 z" />
+        <!-- two stems -->
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M20,31 a4,4 0 0 1 8,0 v17 a4,4 0 0 1 -8,0 v-17 z" />
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M36,31 a4,4 0 0 1 8,0 v17 a4,4 0 0 1 -8,0 v-17 z" />
+        <!-- two heads -->
+        <path
+            android:fillColor="#B8F0E2"
+            android:pathData="M18,14 a6,6 0 1 0 12,0 a6,6 0 1 0 -12,0 z" />
+        <path
+            android:fillColor="#B8F0E2"
+            android:pathData="M34,14 a6,6 0 1 0 12,0 a6,6 0 1 0 -12,0 z" />
+    </group>
 </vector>

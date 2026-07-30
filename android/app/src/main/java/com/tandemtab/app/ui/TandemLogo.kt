@@ -1,8 +1,17 @@
 package com.tandemtab.app.ui
 
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
@@ -38,4 +47,20 @@ fun TandemLogo(size: Dp = 44.dp, modifier: Modifier = Modifier) {
         drawCircle(head, radius = 6f * s, center = p(24f, 14f))
         drawCircle(head, radius = 6f * s, center = p(40f, 14f))
     }
+}
+
+/** The brand-mark loading indicator: the TandemTab logo gently breathing (scale + fade), used in place of a plain
+ *  spinner on the splash and full-screen loading states. */
+@Composable
+fun LogoLoader(size: Dp = 56.dp, modifier: Modifier = Modifier) {
+    val t = rememberInfiniteTransition(label = "logo-loader")
+    val scale by t.animateFloat(
+        initialValue = 0.86f, targetValue = 1.08f,
+        animationSpec = infiniteRepeatable(tween(780, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "scale",
+    )
+    val alpha by t.animateFloat(
+        initialValue = 0.5f, targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(780, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "alpha",
+    )
+    TandemLogo(size = size, modifier = modifier.scale(scale).alpha(alpha))
 }

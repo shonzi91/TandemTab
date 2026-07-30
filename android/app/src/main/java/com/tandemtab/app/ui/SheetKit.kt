@@ -46,7 +46,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.draw.clip
 import com.tandemtab.app.ui.theme.LocalTandemColors
+import com.tandemtab.app.ui.theme.TandemIcons
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneOffset
@@ -73,6 +75,19 @@ internal fun FieldLabel(text: String) {
 }
 
 /** A pill toggle used across the sheets (category / fund / bucket pickers). */
+/** A subtle round "open" affordance (a chevron chip) used on tappable cards in place of a "Details" text label. */
+@Composable
+internal fun OpenChip() {
+    val tandem = LocalTandemColors.current
+    Box(
+        Modifier.size(28.dp).clip(RoundedCornerShape(999.dp))
+            .background(tandem.savingsTileBg).border(1.dp, tandem.savingsTileBorder, RoundedCornerShape(999.dp)),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(TandemIcons.Chevron, contentDescription = "Open", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(14.dp))
+    }
+}
+
 @Composable
 internal fun PickChip(label: String, icon: String?, selected: Boolean, catName: String? = null, onClick: () -> Unit) {
     val bg = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface

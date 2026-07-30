@@ -777,6 +777,30 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun clearEditing() = _state.update { it.copy(editingExpense = null) }
 
+    /** Delete an expense (swipe action). Splices it out of the Spending list and reflects the recomputed overview. */
+    fun deleteExpense(expenseId: String, onDone: () -> Unit = {}) {
+        val accountId = _state.value.selectedAccountId ?: return
+        _state.update { it.copy(spending = it.spending.copy(saving = true, saveError = null)) }
+        viewModelScope.launch {
+            try {
+                val mut = api.deleteExpense(accountId, expenseId)
+                _state.update { st ->
+                    st.copy(
+                        overview = mut.overview ?: st.overview,
+                        spending = st.spending.copy(
+                            saving = false, saveError = null,
+                            expenses = st.spending.expenses.filterNot { it.id == expenseId },
+                            spent = mut.overview?.spent ?: st.spending.spent,
+                        ),
+                    )
+                }
+                onDone()
+            } catch (e: Exception) {
+                _state.update { it.copy(spending = it.spending.copy(saving = false, saveError = e.message ?: "Couldn't delete the expense.")) }
+            }
+        }
+    }
+
     /** Begin editing a specific expense picked from a list row — raises the shared add sheet in edit mode.
      *  Skips auto-filed / from-savings rows (they aren't hand-editable expenses). */
     fun beginEdit(expense: ExpenseDto) {

@@ -92,7 +92,7 @@ fun HealthCard(health: HealthUi, onOpen: () -> Unit) {
                         fontSize = 10.sp, letterSpacing = 1.2.sp, fontWeight = FontWeight.Bold,
                         color = tandem.muted, modifier = Modifier.weight(1f),
                     )
-                    Text("Details ›", color = MaterialTheme.colorScheme.primary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                    OpenChip()
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("${d.score}", fontSize = 40.sp, fontWeight = FontWeight.ExtraBold, color = accent)

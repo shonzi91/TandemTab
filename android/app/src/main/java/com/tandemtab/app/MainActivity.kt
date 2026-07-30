@@ -17,6 +17,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import com.tandemtab.app.ui.HomeScreen
+import com.tandemtab.app.ui.LogoLoader
 import com.tandemtab.app.ui.LoginScreen
 import com.tandemtab.app.ui.TwoFactorScreen
 import com.tandemtab.app.ui.theme.TandemTabTheme
@@ -66,7 +67,7 @@ private fun App(vm: AppViewModel, onGoogle: () -> Unit) {
     val dark by vm.darkTheme.collectAsState()
     when (state.screen) {
         Screen.Splash -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            CircularProgressIndicator()
+            LogoLoader()
         }
         Screen.Login -> LoginScreen(
             busy = state.busy,
@@ -107,6 +108,7 @@ private fun App(vm: AppViewModel, onGoogle: () -> Unit) {
             onPrepareAdd = vm::prepareAdd,
             onPrepareEditLast = vm::prepareEditLast,
             onBeginEditExpense = vm::beginEdit,
+            onDeleteExpense = { vm.deleteExpense(it.id) },
             onSetBudget = vm::setBudget,
             onRemoveBudget = vm::removeBudget,
             onAddCategory = vm::addCategory,

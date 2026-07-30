@@ -235,6 +235,10 @@ class TandemTabApi(
     suspend fun editExpense(accountId: String, expenseId: String, req: AddExpenseRequest): ExpenseMutationDto =
         authedPut("/accounts/$accountId/expenses/$expenseId", req).body()
 
+    /** Delete an expense from the open period; returns the recomputed overview to reconcile. */
+    suspend fun deleteExpense(accountId: String, expenseId: String): ExpenseMutationDto =
+        authedDelete("/accounts/$accountId/expenses/$expenseId").body()
+
     /** The signed-in user (identity for the profile sheet). */
     suspend fun me(): UserDto = authedGet("/me").body()
 

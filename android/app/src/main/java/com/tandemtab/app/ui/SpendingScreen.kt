@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -22,6 +23,7 @@ import androidx.compose.material.icons.rounded.CalendarMonth
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -30,7 +32,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -69,6 +75,7 @@ fun SpendingScreen(
     spending: SpendingUi,
     onRetry: () -> Unit,
     onEdit: (ExpenseDto) -> Unit,
+    onDelete: (ExpenseDto) -> Unit,
     onSetBudget: (categoryId: String, amount: Double, onDone: () -> Unit) -> Unit,
     onRemoveBudget: (categoryId: String, onDone: () -> Unit) -> Unit,
     onAddCategory: (name: String, parentId: String?, icon: String?, onDone: () -> Unit) -> Unit,
@@ -110,7 +117,7 @@ fun SpendingScreen(
             Spacer(Modifier.height(14.dp))
             when (view) {
                 SpendView.Categories -> CategoriesView(spending, fmt, onEdit, onSetBudget, onRemoveBudget)
-                SpendView.ByDate -> ByDateView(spending, fmt, onEdit)
+                SpendView.ByDate -> ByDateView(spending, fmt, onEdit, onDelete)
             }
         }
     }
@@ -457,7 +464,7 @@ private fun SummaryHeader(label: String, value: String, suffix: String, fraction
 // --- By-date view -----------------------------------------------------------------------------------
 
 @Composable
-private fun ByDateView(spending: SpendingUi, fmt: (Double) -> String, onEdit: (ExpenseDto) -> Unit) {
+private fun ByDateView(spending: SpendingUi, fmt: (Double) -> String, onEdit: (ExpenseDto) -> Unit, onDelete: (ExpenseDto) -> Unit) {
     val tandem = LocalTandemColors.current
     // By date is a ledger — its summary is "spent this period"; the budget-used progress lives in the Categories view.
     SpentHeader(fmt(spending.spent))
@@ -472,12 +479,18 @@ private fun ByDateView(spending: SpendingUi, fmt: (Double) -> String, onEdit: (E
     byDay.forEach { (day, rows) ->
         DayHeader(day)
         Column(
-            Modifier.fillMaxWidth()
-                .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(14.dp))
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp))
                 .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(14.dp)),
         ) {
             rows.forEachIndexed { i, e ->
-                ExpenseRow(e, fmt, onEdit)
+                // Swipe right → edit, swipe left → delete (auto-filed / from-savings rows aren't hand-editable).
+                if (e.autoFiled || e.fromSavings) {
+                    ExpenseRow(e, fmt, onEdit)
+                } else {
+                    SwipeableExpenseRow(e, onEdit = onEdit, onDelete = onDelete) {
+                        ExpenseRow(e, fmt, onEdit)
+                    }
+                }
                 if (i < rows.lastIndex) {
                     Box(Modifier.fillMaxWidth().height(1.dp).padding(horizontal = 14.dp).background(tandem.hairline))
                 }
@@ -485,6 +498,50 @@ private fun ByDateView(spending: SpendingUi, fmt: (Double) -> String, onEdit: (E
         }
         Spacer(Modifier.height(14.dp))
     }
+}
+
+/** Wraps an expense row with swipe actions: swipe right reveals Edit, swipe left reveals Delete. The row snaps back
+ *  after firing (delete removes it from the list, so it vanishes). */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SwipeableExpenseRow(e: ExpenseDto, onEdit: (ExpenseDto) -> Unit, onDelete: (ExpenseDto) -> Unit, content: @Composable () -> Unit) {
+    val tandem = LocalTandemColors.current
+    var confirmDelete by remember { mutableStateOf(false) }
+    val state = rememberSwipeToDismissBoxState(
+        confirmValueChange = { target ->
+            when (target) {
+                SwipeToDismissBoxValue.StartToEnd -> { onEdit(e); false }
+                // Never delete straight from a swipe — always confirm first.
+                SwipeToDismissBoxValue.EndToStart -> { confirmDelete = true; false }
+                else -> false
+            }
+        },
+    )
+    if (confirmDelete) {
+        AlertDialog(
+            onDismissRequest = { confirmDelete = false },
+            title = { Text("Delete expense?") },
+            text = { Text("This removes “${e.note?.takeIf { it.isNotBlank() } ?: e.categoryName}” from this period.") },
+            confirmButton = { TextButton(onClick = { confirmDelete = false; onDelete(e) }) { Text("Delete", color = tandem.spent) } },
+            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancel") } },
+        )
+    }
+    SwipeToDismissBox(
+        state = state,
+        backgroundContent = {
+            val toEnd = state.dismissDirection == SwipeToDismissBoxValue.StartToEnd
+            val bg = if (toEnd) MaterialTheme.colorScheme.primary.copy(alpha = 0.18f) else tandem.spent.copy(alpha = 0.18f)
+            Row(
+                Modifier.fillMaxSize().background(bg).padding(horizontal = 22.dp),
+                horizontalArrangement = if (toEnd) Arrangement.Start else Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (toEnd) Icon(TandemIcons.Pencil, "Edit", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp))
+                else Icon(TandemIcons.Trash, "Delete", tint = tandem.spent, modifier = Modifier.size(22.dp))
+            }
+        },
+        content = { Box(Modifier.background(MaterialTheme.colorScheme.surface)) { content() } },
+    )
 }
 
 @Composable

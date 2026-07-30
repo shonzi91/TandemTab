@@ -124,6 +124,7 @@ fun HomeScreen(
     onPrepareAdd: () -> Unit,
     onPrepareEditLast: () -> Unit,
     onBeginEditExpense: (com.tandemtab.app.data.ExpenseDto) -> Unit,
+    onDeleteExpense: (com.tandemtab.app.data.ExpenseDto) -> Unit,
     onSetBudget: (String, Double, () -> Unit) -> Unit,
     onRemoveBudget: (String, () -> Unit) -> Unit,
     onAddCategory: (String, String?, String?, () -> Unit) -> Unit,
@@ -233,6 +234,7 @@ fun HomeScreen(
                             spending = state.spending,
                             onRetry = { onLoadSpending(true) },
                             onEdit = onBeginEditExpense,
+                            onDelete = onDeleteExpense,
                             onSetBudget = onSetBudget,
                             onRemoveBudget = onRemoveBudget,
                             onAddCategory = onAddCategory,
@@ -316,7 +318,7 @@ private fun HomePage(
         state.busy && overview == null -> Box(
             Modifier.fillMaxWidth().height(200.dp),
             contentAlignment = Alignment.Center,
-        ) { CircularProgressIndicator(color = MaterialTheme.colorScheme.primary) }
+        ) { LogoLoader() }
 
         overview == null -> Text("No overview to show.", color = tandem.muted)
 
@@ -503,7 +505,7 @@ private fun RunwayCard(runway: RunwayDto?, fmt: (Double) -> String, onOpen: () -
             Text(if (warn) "⚠️" else "🛡️", fontSize = 16.sp)
             Spacer(Modifier.width(8.dp))
             Text(headline, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface, fontSize = 14.sp, modifier = Modifier.weight(1f))
-            Text("Details ›", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+            OpenChip()
         }
         Text(
             "${fmt(rw.monthlyIncome)} in · ${fmt(rw.monthlySpending)} out each month" +
@@ -543,10 +545,10 @@ private fun TargetsCard(targets: List<TargetDto>, fmt: (Double) -> String) {
                 if (t.reached) {
                     Text("reached 🎉", color = tandem.positive, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                 } else {
-                    Column(horizontalAlignment = Alignment.End) {
-                        Text(payoffDate(t.months), fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface, fontSize = 13.sp)
-                        Text(monthsText(t.months), color = tandem.muted, fontSize = 11.sp)
-                    }
+                    // One line: the green target month/year, then the muted "in Xy Ym".
+                    Text(payoffDate(t.months), fontWeight = FontWeight.Bold, color = tandem.positive, fontSize = 13.sp, maxLines = 1)
+                    Spacer(Modifier.width(6.dp))
+                    Text(monthsText(t.months), color = tandem.muted, fontSize = 12.sp, maxLines = 1)
                 }
             }
         }
