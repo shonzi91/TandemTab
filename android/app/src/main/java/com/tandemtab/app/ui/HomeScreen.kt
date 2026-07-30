@@ -127,7 +127,7 @@ fun HomeScreen(
     onDeleteExpense: (com.tandemtab.app.data.ExpenseDto) -> Unit,
     onSetBudget: (String, Double, () -> Unit) -> Unit,
     onRemoveBudget: (String, () -> Unit) -> Unit,
-    onAddCategory: (String, String?, String?, () -> Unit) -> Unit,
+    onAddCategory: (String, String?, String?, (String?) -> Unit) -> Unit,
     onEditCategory: (String, String, String?, () -> Unit) -> Unit,
     onArchiveCategory: (String, () -> Unit) -> Unit,
     onClearEditing: () -> Unit,
@@ -203,6 +203,7 @@ fun HomeScreen(
                 onSaveExpenses = onAddExpenses,
                 onEditExpense = onEditExpense,
                 onAddIncome = onAddIncomeQuick,
+                onAddCategory = onAddCategory,
             )
         }
         LaunchedEffect(pagerState.currentPage, state.selectedAccountId) {

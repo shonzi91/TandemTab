@@ -31,6 +31,7 @@ import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.KeyboardArrowUp
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DatePicker
+import androidx.compose.material3.Button
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -95,6 +96,7 @@ fun AddSheet(
     onSaveExpenses: (List<AddExpenseRequest>, onDone: () -> Unit) -> Unit,
     onEditExpense: (String, AddExpenseRequest, onDone: () -> Unit) -> Unit,
     onAddIncome: (fundId: String, categoryId: String, amount: Double, date: String, onDone: () -> Unit) -> Unit,
+    onAddCategory: (name: String, parentId: String?, icon: String?, onDone: (String?) -> Unit) -> Unit,
 ) {
     val tandem = LocalTandemColors.current
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -138,6 +140,8 @@ fun AddSheet(
     var staged by remember { mutableStateOf(listOf<ExpenseDraft>()) }
     var catExpanded by remember { mutableStateOf(false) }
     var catSearch by remember { mutableStateOf("") }
+    var newCatName by remember { mutableStateOf("") }   // inline "new category" name (empty = the +New row is collapsed)
+    var creatingCat by remember { mutableStateOf(false) }
     var hint by remember { mutableStateOf<String?>(null) }
 
     val parsed = amountText.replace(',', '.').toDoubleOrNull()?.takeIf { it > 0 }
@@ -315,6 +319,40 @@ fun AddSheet(
                                 }
                             }
                             if (filtered.isEmpty()) Text("No matches", color = tandem.muted, modifier = Modifier.padding(14.dp))
+
+                            // Can't find one? Create it inline (name only; the icon is guessed, editable later in Manage).
+                            if (creatingCat) {
+                                Row(
+                                    Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    OutlinedTextField(
+                                        value = newCatName, onValueChange = { newCatName = it },
+                                        placeholder = { Text("New category name") }, singleLine = true,
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                    Button(
+                                        onClick = {
+                                            val nm = newCatName.trim()
+                                            if (nm.isNotBlank()) onAddCategory(nm, null, null) { newId ->
+                                                if (newId != null) categoryId = newId
+                                                creatingCat = false; newCatName = ""; catExpanded = false; catSearch = ""
+                                            }
+                                        },
+                                        enabled = !spending.saving && newCatName.isNotBlank(),
+                                    ) { Text("Add") }
+                                }
+                            } else {
+                                Row(
+                                    Modifier.fillMaxWidth().clickable { creatingCat = true }.padding(horizontal = 14.dp, vertical = 12.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Icon(TandemIcons.Plus, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                                    Spacer(Modifier.width(8.dp))
+                                    Text("New category", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
+                                }
+                            }
                         }
                     }
                     Spacer(Modifier.height(14.dp))

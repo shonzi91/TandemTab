@@ -876,8 +876,26 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     // --- Category management (add / edit / archive from the Spending "Manage categories" sheet) ---------
 
-    fun addCategory(name: String, parentId: String?, icon: String?, onDone: () -> Unit) =
-        categoryMutation(onDone) { acct -> api.createCategory(acct, CreateCategoryRequest(name.trim(), parentId, icon?.ifBlank { null })) }
+    /** Create a category, then re-fetch /spending; passes the new category's id to [onDone] so a picker can select it. */
+    fun addCategory(name: String, parentId: String?, icon: String?, onDone: (String?) -> Unit = {}) {
+        val accountId = _state.value.selectedAccountId ?: return
+        _state.update { it.copy(spending = it.spending.copy(saving = true, saveError = null)) }
+        viewModelScope.launch {
+            try {
+                val mut = api.createCategory(accountId, CreateCategoryRequest(name.trim(), parentId, icon?.ifBlank { null }))
+                val v = api.spending(accountId)
+                _state.update {
+                    it.copy(spending = it.spending.copy(
+                        saving = false, saveError = null,
+                        categories = v.categories, expenses = v.expenses, funds = v.funds,
+                    ))
+                }
+                onDone(mut.entityId)
+            } catch (e: Exception) {
+                _state.update { it.copy(spending = it.spending.copy(saving = false, saveError = e.message ?: "Couldn't save the category.")) }
+            }
+        }
+    }
 
     fun editCategory(categoryId: String, name: String, icon: String?, onDone: () -> Unit) =
         categoryMutation(onDone) { acct -> api.editCategory(acct, categoryId, EditCategoryRequest(name.trim(), icon?.ifBlank { null })) }

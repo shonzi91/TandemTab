@@ -62,7 +62,7 @@ fun ManageCategoriesSheet(
     categories: List<CategoryOptionDto>,
     saving: Boolean,
     saveError: String?,
-    onAdd: (name: String, parentId: String?, icon: String?, onDone: () -> Unit) -> Unit,
+    onAdd: (name: String, parentId: String?, icon: String?, onDone: (String?) -> Unit) -> Unit,
     onEdit: (id: String, name: String, icon: String?, onDone: () -> Unit) -> Unit,
     onArchive: (id: String, onDone: () -> Unit) -> Unit,
     onDismiss: () -> Unit,

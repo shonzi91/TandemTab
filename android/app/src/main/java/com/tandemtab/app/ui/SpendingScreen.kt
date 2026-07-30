@@ -78,7 +78,7 @@ fun SpendingScreen(
     onDelete: (ExpenseDto) -> Unit,
     onSetBudget: (categoryId: String, amount: Double, onDone: () -> Unit) -> Unit,
     onRemoveBudget: (categoryId: String, onDone: () -> Unit) -> Unit,
-    onAddCategory: (name: String, parentId: String?, icon: String?, onDone: () -> Unit) -> Unit,
+    onAddCategory: (name: String, parentId: String?, icon: String?, onDone: (String?) -> Unit) -> Unit,
     onEditCategory: (id: String, name: String, icon: String?, onDone: () -> Unit) -> Unit,
     onArchiveCategory: (id: String, onDone: () -> Unit) -> Unit,
 ) {
