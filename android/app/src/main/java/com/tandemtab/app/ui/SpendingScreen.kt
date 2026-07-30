@@ -135,7 +135,7 @@ private fun ViewToggle(view: SpendView, onSelect: (SpendView) -> Unit) {
     val tandem = LocalTandemColors.current
     val tabs = listOf(
         SpendTab(SpendView.ByDate, "By date", TandemIcons.Calendar),
-        SpendTab(SpendView.Categories, "Categories", TandemIcons.Chart),
+        SpendTab(SpendView.Categories, "By budgets", TandemIcons.Chart),
     )
     Row(Modifier.fillMaxWidth().background(tandem.segmentTrack, RoundedCornerShape(12.dp)).padding(3.dp)) {
         tabs.forEach { tab ->
@@ -459,8 +459,8 @@ private fun SummaryHeader(label: String, value: String, suffix: String, fraction
 @Composable
 private fun ByDateView(spending: SpendingUi, fmt: (Double) -> String, onEdit: (ExpenseDto) -> Unit) {
     val tandem = LocalTandemColors.current
-    // Keep the same budget-used progress summary as the Categories view (falls back to "spent" with no budgets).
-    SpendingSummary(spending, fmt)
+    // By date is a ledger — its summary is "spent this period"; the budget-used progress lives in the Categories view.
+    SpentHeader(fmt(spending.spent))
     Spacer(Modifier.height(16.dp))
     if (spending.expenses.isEmpty()) {
         Box(Modifier.fillMaxWidth().height(160.dp), contentAlignment = Alignment.Center) {

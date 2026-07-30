@@ -61,6 +61,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
@@ -79,6 +81,7 @@ import com.tandemtab.app.data.RunwayDto
 import com.tandemtab.app.data.TargetDto
 import com.tandemtab.app.ui.theme.BrandGreen
 import com.tandemtab.app.ui.theme.BrandGreenDark
+import com.tandemtab.app.ui.theme.Mint
 import com.tandemtab.app.ui.theme.LocalTandemColors
 import com.tandemtab.app.ui.theme.TandemIcons
 import kotlinx.coroutines.launch
@@ -157,11 +160,12 @@ fun HomeScreen(
     val editing = state.editingExpense
 
     Scaffold(
-        containerColor = tandem.canvas,
+        modifier = Modifier.fillMaxSize().tandemCanvas(darkTheme, tandem.canvas),
+        containerColor = Color.Transparent,
         topBar = {
             // Compact one-row header (no logo): account switcher · period · account-actions · profile.
             Row(
-                Modifier.fillMaxWidth().background(tandem.canvas).statusBarsPadding().padding(start = 14.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
+                Modifier.fillMaxWidth().statusBarsPadding().padding(start = 14.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 // Keep the brand mark (icon only, no wordmark) to anchor the compact header.
@@ -220,6 +224,7 @@ fun HomeScreen(
                     when (NavDest.entries[page]) {
                         NavDest.Home -> HomePage(
                             state,
+                            darkTheme = darkTheme,
                             onOpenRecurring = { showRecurring = true },
                             onOpenHealth = { showHealth = true },
                             onOpenRunway = { showRunway = true },
@@ -300,6 +305,7 @@ fun HomeScreen(
 @Composable
 private fun HomePage(
     state: UiState,
+    darkTheme: Boolean,
     onOpenRecurring: () -> Unit,
     onOpenHealth: () -> Unit,
     onOpenRunway: () -> Unit,
@@ -321,6 +327,7 @@ private fun HomePage(
                 current = fmt(overview.current),
                 free = fmt(overview.free),
                 saved = fmt(overview.saved),
+                dark = darkTheme,
             )
             Spacer(Modifier.height(14.dp))
             // Order per the design: health score on top, then bills, then "on track for", and finally the runway.
@@ -392,16 +399,18 @@ private fun BarItem(dest: NavDest, current: NavDest, modifier: Modifier, onSelec
 }
 
 @Composable
-private fun BalanceHero(current: String, free: String, saved: String) {
+private fun BalanceHero(current: String, free: String, saved: String, dark: Boolean) {
     val tandem = LocalTandemColors.current
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(IntrinsicSize.Min)
-            .background(tandem.hero, RoundedCornerShape(18.dp))
-            .border(1.dp, tandem.hairline, RoundedCornerShape(18.dp))
-            .padding(vertical = 14.dp),
-    ) {
+    val shape = RoundedCornerShape(18.dp)
+    // In dark, the web's mint "glass" hero: an opaque base (so the glow doesn't bleed through), a mint tint on top,
+    // a mint border, and a soft mint glow underneath. Light keeps the flat hero card.
+    val borderColor = if (dark) Color(0x3D3FE0C5) else tandem.hairline
+    var heroMod = Modifier.fillMaxWidth().height(IntrinsicSize.Min)
+    if (dark) heroMod = heroMod.shadow(16.dp, shape, ambientColor = Mint, spotColor = Mint)
+    heroMod = heroMod.clip(shape).background(tandem.hero)
+    if (dark) heroMod = heroMod.background(Brush.linearGradient(listOf(Color(0x293FE0C5), Color(0x0A3FE0C5))))
+    heroMod = heroMod.border(1.dp, borderColor, shape).padding(vertical = 14.dp)
+    Row(modifier = heroMod) {
         HeroPart("Available", current, main = true, valueColor = MaterialTheme.colorScheme.onBackground, weight = 1.4f)
         HeroDivider()
         HeroPart("Free", free, valueColor = tandem.positive)
@@ -720,4 +729,20 @@ private fun rememberCurrency(currencyCode: String): (Double) -> String {
     val nf = NumberFormat.getCurrencyInstance(Locale.getDefault())
     runCatching { nf.currency = Currency.getInstance(currencyCode) }
     return { amount -> nf.format(amount) }
+}
+
+/** The app canvas: a flat base in light; in dark, the web's two corner glows (mint top-left, coral top-right) over
+ *  the deep base, mirroring the dark body's layered radial gradients. */
+private fun Modifier.tandemCanvas(dark: Boolean, base: Color): Modifier = drawBehind {
+    drawRect(base)
+    if (dark) {
+        drawRect(Brush.radialGradient(
+            colors = listOf(Color(0x1C3FE0C5), Color(0x003FE0C5)),
+            center = Offset(0f, 0f), radius = size.width * 0.95f,
+        ))
+        drawRect(Brush.radialGradient(
+            colors = listOf(Color(0x21FF7A66), Color(0x00FF7A66)),
+            center = Offset(size.width, -size.height * 0.04f), radius = size.width,
+        ))
+    }
 }
