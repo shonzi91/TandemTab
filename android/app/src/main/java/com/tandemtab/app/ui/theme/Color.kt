@@ -56,6 +56,7 @@ data class TandemColors(
     val alertBg: Color,
     val alertBorder: Color,
     val segmentTrack: Color,
+    val catAccent: Color,   // category line-icon colour (web .cat-ic): brand green in light, mint in dark
 )
 
 val LightTandemColors = TandemColors(
@@ -72,6 +73,7 @@ val LightTandemColors = TandemColors(
     alertBg = LightAlertBg,
     alertBorder = LightAlertBorder,
     segmentTrack = Color(0xFFF1F3F6),
+    catAccent = BrandGreen,
 )
 
 val DarkTandemColors = TandemColors(
@@ -88,6 +90,7 @@ val DarkTandemColors = TandemColors(
     alertBg = Color(0xFF2A2417),
     alertBorder = Color(0xFF4A3D22),
     segmentTrack = Color(0xFF0E1220),
+    catAccent = Mint,
 )
 
 val LocalTandemColors = staticCompositionLocalOf { LightTandemColors }

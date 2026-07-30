@@ -1,8 +1,11 @@
 package com.tandemtab.app.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -121,7 +124,7 @@ private fun CategoryManageRow(icon: String?, name: String, indent: Boolean, onEd
             .padding(start = if (indent) 20.dp else 0.dp).padding(vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        if (!icon.isNullOrBlank()) { Text(icon, fontSize = 18.sp); Spacer(Modifier.width(10.dp)) }
+        CatIcon(icon, name); Spacer(Modifier.width(10.dp))
         Text(name, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f), maxLines = 1, fontWeight = if (indent) FontWeight.Normal else FontWeight.Medium)
         Icon(TandemIcons.Pencil, contentDescription = "Edit ${name}", tint = tandem.muted, modifier = Modifier.size(17.dp))
     }
@@ -140,23 +143,21 @@ private fun CategoryEditor(
 ) {
     val tandem = LocalTandemColors.current
     var name by remember(draft) { mutableStateOf(draft.name) }
-    var icon by remember(draft) { mutableStateOf(draft.icon) }
+    // The editor works in icon *names* now (matching the migrated data); null = "Auto" (guessed from the name).
+    var iconName by remember(draft) { mutableStateOf(draft.icon.takeIf { it.isNotBlank() }?.let { CategoryIcons.effective(it, draft.name) }) }
     var parentId by remember(draft) { mutableStateOf(draft.parentId) }
     var parentMenu by remember { mutableStateOf(false) }
     val isNew = draft.id == null
 
     Text(if (isNew) "New category" else "Edit category", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.padding(top = 4.dp, bottom = 4.dp))
 
-    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        OutlinedTextField(
-            value = icon, onValueChange = { icon = it.take(2) },
-            label = { Text("Emoji") }, singleLine = true, modifier = Modifier.width(96.dp),
-        )
-        OutlinedTextField(
-            value = name, onValueChange = { name = it },
-            label = { Text("Name") }, singleLine = true, modifier = Modifier.weight(1f),
-        )
-    }
+    OutlinedTextField(
+        value = name, onValueChange = { name = it },
+        label = { Text("Name") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+    )
+    Spacer(Modifier.height(2.dp))
+    Text("ICON", fontSize = 10.sp, letterSpacing = 1.1.sp, fontWeight = FontWeight.Bold, color = tandem.muted)
+    IconPalette(selected = iconName, name = name, onPick = { iconName = it })
 
     // Parent — only when creating (the edit endpoint doesn't move a category).
     if (isNew && parents.isNotEmpty()) {
@@ -181,7 +182,7 @@ private fun CategoryEditor(
     Spacer(Modifier.height(6.dp))
     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         OutlinedButton(onClick = onCancel, enabled = !saving, modifier = Modifier.weight(1f)) { Text("Cancel") }
-        Button(onClick = { onSave(name, parentId, icon) }, enabled = !saving && name.isNotBlank(), modifier = Modifier.weight(1f)) {
+        Button(onClick = { onSave(name, parentId, iconName) }, enabled = !saving && name.isNotBlank(), modifier = Modifier.weight(1f)) {
             if (saving) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
             else Text(if (isNew) "Add" else "Save")
         }
@@ -190,5 +191,36 @@ private fun CategoryEditor(
         TextButton(onClick = onArchive, enabled = !saving, modifier = Modifier.fillMaxWidth()) {
             Text("Archive category", color = tandem.spent)
         }
+    }
+}
+
+/** A wrapping grid of the line-icon palette (plus an "Auto" chip that guesses from the name). Selected = highlighted. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun IconPalette(selected: String?, name: String, onPick: (String?) -> Unit) {
+    val tandem = LocalTandemColors.current
+    val autoName = CategoryIcons.guess(name)
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        // "Auto" — no stored icon; the app guesses from the name.
+        IconChip(selectedState = selected == null, iconName = autoName, dimmed = true) { onPick(null) }
+        CategoryIcons.palette.forEach { ic ->
+            IconChip(selectedState = selected == ic, iconName = ic, dimmed = false) { onPick(ic) }
+        }
+    }
+}
+
+@Composable
+private fun IconChip(selectedState: Boolean, iconName: String, dimmed: Boolean, onClick: () -> Unit) {
+    val tandem = LocalTandemColors.current
+    val border = if (selectedState) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
+    Box(
+        Modifier.size(44.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .background(if (selectedState) tandem.savingsTileBg else androidx.compose.ui.graphics.Color.Transparent)
+            .border(1.dp, border, RoundedCornerShape(10.dp))
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(TandemIcons.forCategory(iconName), contentDescription = null, tint = if (dimmed) tandem.muted else tandem.catAccent, modifier = Modifier.size(20.dp))
     }
 }

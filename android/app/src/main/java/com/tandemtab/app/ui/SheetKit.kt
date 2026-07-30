@@ -74,7 +74,7 @@ internal fun FieldLabel(text: String) {
 
 /** A pill toggle used across the sheets (category / fund / bucket pickers). */
 @Composable
-internal fun PickChip(label: String, icon: String?, selected: Boolean, onClick: () -> Unit) {
+internal fun PickChip(label: String, icon: String?, selected: Boolean, catName: String? = null, onClick: () -> Unit) {
     val bg = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface
     val fg = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
     val border = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
@@ -86,7 +86,9 @@ internal fun PickChip(label: String, icon: String?, selected: Boolean, onClick: 
             .padding(horizontal = 14.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        if (!icon.isNullOrBlank()) { Text(icon, fontSize = 14.sp); Spacer(Modifier.width(6.dp)) }
+        // A category chip shows the resolved line-icon (tinted to match the chip state); other chips keep raw glyphs.
+        if (catName != null) { CatIcon(icon, catName, size = 15.dp, tint = if (selected) fg else LocalTandemColors.current.catAccent); Spacer(Modifier.width(6.dp)) }
+        else if (!icon.isNullOrBlank()) { Text(icon, fontSize = 14.sp); Spacer(Modifier.width(6.dp)) }
         Text(label, color = fg, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
     }
 }

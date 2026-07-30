@@ -532,10 +532,11 @@ private fun TargetsCard(targets: List<TargetDto>, fmt: (Double) -> String) {
         }
         targets.forEach { t ->
             // Debt-free is a synthetic target: the server sends an empty name, the client supplies the label + flag.
-            val icon = if (t.kind == "debt-free") "🏁" else t.icon
             val name = if (t.kind == "debt-free") "Debt-free" else t.name
             Row(verticalAlignment = Alignment.CenterVertically) {
-                if (!icon.isNullOrBlank()) { Text(icon, fontSize = 16.sp); Spacer(Modifier.width(8.dp)) }
+                if (t.kind == "debt-free") Icon(TandemIcons.Flag, null, tint = tandem.catAccent, modifier = Modifier.size(18.dp))
+                else CatIcon(t.icon, t.name)
+                Spacer(Modifier.width(8.dp))
                 Text(name, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f), maxLines = 1)
                 if (t.reached) {
                     Text("reached 🎉", color = tandem.positive, fontWeight = FontWeight.Bold, fontSize = 13.sp)

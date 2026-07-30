@@ -310,7 +310,7 @@ private fun BudgetRow(
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            if (!b.icon.isNullOrBlank()) { Text(b.icon, fontSize = 18.sp); Spacer(Modifier.width(8.dp)) }
+            CatIcon(b.icon, b.name); Spacer(Modifier.width(8.dp))
             Text(b.name, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f), maxLines = 1)
             Text("${fmt(b.spent)} / ${fmt(b.allocated)}", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
             Spacer(Modifier.width(6.dp))
@@ -348,7 +348,7 @@ private fun UnbudgetedRow(
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            if (!icon.isNullOrBlank()) { Text(icon, fontSize = 18.sp); Spacer(Modifier.width(8.dp)) }
+            CatIcon(icon, name); Spacer(Modifier.width(8.dp))
             Text(name, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f), maxLines = 1)
             Text(fmt(spent), fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = tandem.spent)
         }
@@ -504,10 +504,8 @@ private fun DayHeader(iso: String) {
 private fun ExpenseRow(e: ExpenseDto, fmt: (Double) -> String, onEdit: (ExpenseDto) -> Unit) {
     val tandem = LocalTandemColors.current
     Row(modifier = Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-        if (!e.categoryIcon.isNullOrBlank()) {
-            Text(e.categoryIcon, fontSize = 18.sp)
-            Spacer(Modifier.width(10.dp))
-        }
+        CatIcon(e.categoryIcon, e.categoryName)
+        Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
             Text(e.categoryName, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface, maxLines = 1)
             val sub = e.note?.takeIf { it.isNotBlank() } ?: e.fundName

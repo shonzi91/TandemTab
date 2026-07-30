@@ -277,6 +277,7 @@ fun AddSheet(
                                 PickChip(
                                     label = c.name,
                                     icon = c.icon,
+                                    catName = c.name,
                                     selected = categoryId == id,
                                     onClick = { categoryId = id; catExpanded = false },
                                 )
@@ -422,7 +423,7 @@ private fun CategorySelector(selected: CategoryOptionDto?, expanded: Boolean, on
             .padding(14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        if (!selected?.icon.isNullOrBlank()) { Text(selected!!.icon!!, fontSize = 16.sp); Spacer(Modifier.width(8.dp)) }
+        if (selected != null) { CatIcon(selected.icon, selected.name, 16.dp); Spacer(Modifier.width(8.dp)) }
         Text(
             selected?.name ?: "Choose a category",
             modifier = Modifier.weight(1f),
@@ -451,7 +452,7 @@ private fun CategoryOptionRow(c: CategoryOptionDto, selected: Boolean, onClick: 
     ) {
         // Indent sub-categories a touch so the hierarchy reads.
         if (c.parentId != null) Spacer(Modifier.width(16.dp))
-        if (!c.icon.isNullOrBlank()) { Text(c.icon, fontSize = 15.sp); Spacer(Modifier.width(8.dp)) }
+        CatIcon(c.icon, c.name, 16.dp); Spacer(Modifier.width(8.dp))
         Text(
             c.name,
             color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
@@ -473,7 +474,7 @@ private fun StagedRow(category: String, icon: String?, fund: String, amount: Str
             .padding(start = 14.dp, top = 8.dp, bottom = 8.dp, end = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        if (!icon.isNullOrBlank()) { Text(icon, fontSize = 15.sp); Spacer(Modifier.width(8.dp)) }
+        CatIcon(icon, category, 15.dp); Spacer(Modifier.width(8.dp))
         Text(
             "$category · $fund",
             modifier = Modifier.weight(1f),
@@ -550,7 +551,7 @@ private fun IncomeEditor(
     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         PickChip(label = "General income", icon = null, selected = source == GENERAL_INCOME) { onSource(GENERAL_INCOME) }
         spending.incomeCategories.forEach { c ->
-            PickChip(label = c.name, icon = c.icon, selected = source == c.id) { onSource(c.id) }
+            PickChip(label = c.name, icon = c.icon, catName = c.name, selected = source == c.id) { onSource(c.id) }
         }
     }
     Spacer(Modifier.height(14.dp))
