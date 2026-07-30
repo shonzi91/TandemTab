@@ -78,6 +78,8 @@ object TandemIcons {
     val Tag = icon(stroke = "M20.6 13.4L13.4 20.6a2 2 0 0 1-2.8 0l-6.2-6.2a2 2 0 0 1-.6-1.4V5a1 1 0 0 1 1-1h7a2 2 0 0 1 1.4.6l6.4 6.4a2 2 0 0 1 0 2.4z", fill = "M8 7a1 1 0 1 0 0 2 1 1 0 0 0 0-2z")
     val Note = icon("M4 6.5h16v11H4zM4 11h16M8 15h3")
     val Info = icon("M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 11v5M12 7.5h.01")
+    // "recall / undo-history" circular arrow — used for the add sheet's "edit last" affordance (web i-rotate)
+    val Rotate = icon("M21 12a9 9 0 1 1-3-6.7L21 8M21 3v5h-5")
 
     // --- category-domain icons (the web CategoryIcons palette + guesser) -----------------------------
     // Names match CategoryIcons.Palette; resolve a category's stored icon/name to one via [forCategory].

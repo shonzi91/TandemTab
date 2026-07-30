@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -209,29 +210,24 @@ fun AddSheet(
                 .verticalScroll(rememberScrollState())
                 .padding(bottom = 92.dp),   // clear the floating button bar
         ) {
-            Row(Modifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    title,
-                    modifier = Modifier.weight(1f),
-                    fontSize = 19.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface,
-                )
-                // "Edit last" pulls the most recent expense into this sheet in edit mode (via the VM).
-                if (!editingMode && mode == AddMode.Expense && onEditLast != null) {
-                    Text(
-                        "Edit last ›",
-                        color = MaterialTheme.colorScheme.primary,
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 14.sp,
-                        modifier = Modifier.clickable { onEditLast() }.padding(start = 8.dp),
-                    )
+            // No "Add expense/income" title — the segment below already says which. When editing (no segment), keep
+            // a short title so the mode is clear.
+            Spacer(Modifier.height(4.dp))
+            if (editingMode) {
+                Text("Edit expense", fontSize = 19.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+            } else {
+                // Expense / Income segment, with a "recall last" icon button on the right (expense mode only).
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.weight(1f)) { Segment(mode) { mode = it; hint = null } }
+                    if (mode == AddMode.Expense && onEditLast != null) {
+                        Spacer(Modifier.width(8.dp))
+                        IconButton(onClick = onEditLast) {
+                            Icon(TandemIcons.Rotate, contentDescription = "Edit last expense", tint = MaterialTheme.colorScheme.primary)
+                        }
+                    }
                 }
             }
-
-            // Expense / Income segment (hidden when editing an existing row).
             Spacer(Modifier.height(10.dp))
-            if (!editingMode) Segment(mode) { mode = it; hint = null }
 
             if (mode == AddMode.Income) {
                 IncomeEditor(
@@ -275,7 +271,7 @@ fun AddSheet(
                     // Category — most-used chips + a searchable picker.
                     FieldLabel("Category")
                     if (recentCats.isNotEmpty()) {
-                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             recentCats.forEach { id ->
                                 val c = catById[id] ?: return@forEach
                                 PickChip(
@@ -359,7 +355,7 @@ fun AddSheet(
 
                     // Fund chips.
                     FieldLabel("Fund")
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         funds.forEach { f ->
                             PickChip(
                                 label = if (f.synced) "🏦 ${f.name}" else f.name,
@@ -586,7 +582,7 @@ private fun IncomeEditor(
     Spacer(Modifier.height(14.dp))
 
     FieldLabel("Source")
-    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         PickChip(label = "General income", icon = null, selected = source == GENERAL_INCOME) { onSource(GENERAL_INCOME) }
         spending.incomeCategories.forEach { c ->
             PickChip(label = c.name, icon = c.icon, catName = c.name, selected = source == c.id) { onSource(c.id) }
@@ -595,7 +591,7 @@ private fun IncomeEditor(
     Spacer(Modifier.height(14.dp))
 
     FieldLabel("Into fund")
-    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         funds.forEach { f ->
             PickChip(label = if (f.synced) "🏦 ${f.name}" else f.name, icon = null, selected = fundId == f.id) { onFund(f.id) }
         }
