@@ -902,13 +902,53 @@ else
                         }
                     </span>
                 </div>
-                @* By-date is a plain ledger now: no budget ring/bar, just what's been spent this period. The
-                   budget-vs-spent header belongs to the "By budgets" view. *@
+                @* By-date controls on one row: what's been spent this period (amount coloured by budget status),
+                   the tag filter, and the list/calendar toggle. No budget ring/bar (that's the By budgets view),
+                   no "Newest first" label. *@
                 @if (_spendView == SpendView.ByDate)
                 {
-                    <div class="bydate-spent">
-                        <span class="bds-lbl">@Loc["Spent this period"]</span>
-                        <span class="bds-amt">@Fmt(State.TotalSpent)</span>
+                    var filterTags = State.ActiveTags;
+                    var spentPct = State.TotalBudgeted.Amount > 0m ? Math.Clamp((double)(State.TotalSpent.Amount / State.TotalBudgeted.Amount) * 100, 0, 100) : -1d;
+                    var spentColour = spentPct >= 0 ? SpendBarColorAt(spentPct) : null;
+                    <div class="bydate-bar">
+                        <span class="bds-inline">
+                            <span class="bds-lbl">@Loc["Spent this period"]</span>
+                            <span class="bds-amt" style="@(spentColour is { } c ? $"color:{c}" : "")">@Fmt(State.TotalSpent)</span>
+                        </span>
+                        @if (filterTags.Count > 0)
+                        {
+                            <span class="bydate-tags">
+                                <Icon Name="tag" Class="bydate-tag-ico" />
+                                @foreach (var t in filterTags)
+                                {
+                                    var tid = t.Id;
+                                    var on = _spendTagFilter.Contains(tid);
+                                    <button type="button" class="tag-chip @(on ? "tag-chip-on" : "")" @onclick="() => ToggleSpendTag(tid)">@if (!string.IsNullOrEmpty(t.Icon)) { <span class="tag-emoji">@t.Icon</span> }@t.Name</button>
+                                }
+                                @if (_spendTagFilter.Count > 0)
+                                {
+                                    <button type="button" class="tag-filter-clear" @onclick="() => _spendTagFilter.Clear()">@Loc["Clear"]</button>
+                                }
+                            </span>
+                        }
+                        <span class="bydate-nav">
+                            @if (_calendar)
+                            {
+                                <span class="bydate-ctx">@State.Period.From.ToString("MMMM yyyy")</span>
+                            }
+                            else if (_dayView is { } dv)
+                            {
+                                <span class="day-nav">
+                                    <button class="exp-edit" title="@Loc["Previous day"]" @onclick="PrevDay" disabled="@(dv <= State.Period.From)">◀</button>
+                                    <input type="date" @bind:get="dv" @bind:set="GoToDay" min="@State.Period.From.ToString("yyyy-MM-dd")" max="@State.Period.To.ToString("yyyy-MM-dd")" />
+                                    <button class="exp-edit" title="@Loc["Next day"]" @onclick="NextDay" disabled="@(dv >= State.Period.To)">▶</button>
+                                </span>
+                            }
+                            <span class="view-toggle">
+                                <button class="view-btn @(_calendar ? "" : "active")" title="@Loc["List"]" @onclick="ShowDayList"><Icon Name="list" /></button>
+                                <button class="view-btn @(_calendar ? "active" : "")" title="@Loc["Calendar"]" @onclick="ShowCalendarView"><Icon Name="calendar" /></button>
+                            </span>
+                        </span>
                     </div>
                 }
                 @if (barScale > 0m && _spendView == SpendView.Categories)
@@ -942,28 +982,6 @@ else
                 @if (State.IsPeriodOpen && overPlanned.Amount > 0m && _spendView == SpendView.Categories)
                 {
                     <p class="budget-over-note"><Icon Name="bulb" /> @string.Format(Loc["Your remaining budgets ({0}) are {1} more than you have left ({2}) — budgets are plans, not commitments, so trim one or top up when you can."], Fmt(_bnRemaining), Fmt(overPlanned), Fmt(_bnFree))</p>
-                }
-                @{
-                    var filterTags = State.ActiveTags;
-                }
-                @* Tag filtering lives on the By-date ledger only: on By budgets it narrowed the drawer lists but left
-                   the bars/totals whole (a confusing half-state), and Breakdown already offers tags as a grouping. *@
-                @if (filterTags.Count > 0 && _spendView == SpendView.ByDate)
-                {
-                    @* Tag filter: narrows every expense list below to the chosen tags (the bars/totals stay whole). *@
-                    <div class="tag-filter">
-                        <span class="tag-filter-lbl"><Icon Name="tag" /> @Loc["Filter by tag"]</span>
-                        @foreach (var t in filterTags)
-                        {
-                            var tid = t.Id;
-                            var on = _spendTagFilter.Contains(tid);
-                            <button type="button" class="tag-chip @(on ? "tag-chip-on" : "")" @onclick="() => ToggleSpendTag(tid)">@if (!string.IsNullOrEmpty(t.Icon)) { <span class="tag-emoji">@t.Icon</span> }@t.Name</button>
-                        }
-                        @if (_spendTagFilter.Count > 0)
-                        {
-                            <button type="button" class="tag-filter-clear" @onclick="() => _spendTagFilter.Clear()">@Loc["Clear"]</button>
-                        }
-                    </div>
                 }
                 @{
                     // One shared expense-row template for both Spending views: the "By date" ledger (title = category)
@@ -1158,30 +1176,7 @@ else
                 }
                 else if (_spendView == SpendView.ByDate)
                 {
-                @* Same expenses, organised by date instead of by category — folded in here as a toggle so the ledger
-                   isn't shown twice. Day-nav / calendar sub-view lives on the right; Add-expense is in the head above. *@
-                <div class="bydate-head">
-                    @if (_calendar)
-                    {
-                        <span class="bydate-ctx">@State.Period.From.ToString("MMMM yyyy")</span>
-                    }
-                    else if (_dayView is { } dv)
-                    {
-                        <span class="day-nav">
-                            <button class="exp-edit" title="@Loc["Previous day"]" @onclick="PrevDay" disabled="@(dv <= State.Period.From)">◀</button>
-                            <input type="date" @bind:get="dv" @bind:set="GoToDay" min="@State.Period.From.ToString("yyyy-MM-dd")" max="@State.Period.To.ToString("yyyy-MM-dd")" />
-                            <button class="exp-edit" title="@Loc["Next day"]" @onclick="NextDay" disabled="@(dv >= State.Period.To)">▶</button>
-                        </span>
-                    }
-                    else
-                    {
-                        <span class="bydate-ctx">@Loc["Newest first"]</span>
-                    }
-                    <span class="view-toggle">
-                        <button class="view-btn @(_calendar ? "" : "active")" title="@Loc["List"]" @onclick="ShowDayList"><Icon Name="list" /></button>
-                        <button class="view-btn @(_calendar ? "active" : "")" title="@Loc["Calendar"]" @onclick="ShowCalendarView"><Icon Name="calendar" /></button>
-                    </span>
-                </div>
+                @* The date/tag/spent controls now live in the consolidated .bydate-bar above the ledger. *@
                 <div class="bydate-body">
                 @{
                     // Shared row template (defined above) — title = category in this "By date" ledger.
