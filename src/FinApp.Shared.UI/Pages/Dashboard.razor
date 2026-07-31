@@ -478,8 +478,10 @@ else
                     var runway = State.IsLatestPeriod ? State.ProjectCashFlow(_balCur) : null;
                 }
                 @* Urgent "needs attention" strip, attached directly under the score so "how am I doing" reads as one
-                   block. The gentler bills-due + suggestions live in the bell, not duplicated here (UX backlog #4). *@
-                @if (homeAlerts.Count > 0 || bellCount > 0)
+                   block. The gentler bills-due + suggestions stay in the bell (its badge signals them) — no Home link
+                   for them, and never duplicated here (UX backlog #4). When several alerts of a kind exist (e.g. many
+                   over-budget categories) the shown one carries a ↻ to cycle the rest. *@
+                @if (homeAlerts.Count > 0)
                 {
                     <div class="home-alerts">
                         @foreach (var n in homeAlerts)
@@ -493,11 +495,13 @@ else
                                         <button class="home-alert-act" @onclick="@(() => act())">@al</button>
                                     }
                                 </div>
+                                @* When this alert is one of several of its kind (e.g. several over-budget categories), a
+                                   ↻ cycles to the next — so the others aren't stuck behind the single shown tip. *@
+                                @if (n.Rotate is { } rot)
+                                {
+                                    <button class="home-alert-rot" title="@Loc["Show the next one"]" @onclick="rot"><Icon Name="rotate" /></button>
+                                }
                             </div>
-                        }
-                        @if (bellCount > 0)
-                        {
-                            <button class="home-alert-more" @onclick="() => _bellOpen = true">@string.Format(bellCount == 1 ? Loc["{0} reminder in notifications"] : Loc["{0} reminders in notifications"], bellCount) ›</button>
                         }
                     </div>
                 }

@@ -756,6 +756,7 @@ public sealed class Localizer(IJSRuntime js)
         ["Notifications"] = "Известия",
         ["You're all caught up."] = "Всичко е прегледано.",
         ["See all {0} in notifications"] = "Виж всички {0} в известията",
+        ["Show the next one"] = "Покажи следващото",
         ["{0} reminder in notifications"] = "{0} напомняне в известията",
         ["{0} reminders in notifications"] = "{0} напомняния в известията",
         ["Due"] = "Предстоящи",
