@@ -2313,11 +2313,12 @@ html.dark .card-score::after { color: #3fe0c5; }
 /* The cards now hold just their action buttons (the figures moved to the detail tabs), centred in the tile. */
 /* Flattened: the buttons are the affordance, so the card frame around them is gone. */
 .action-card { min-height: auto; justify-content: center; background: none; border: none; box-shadow: none; padding: 0; }
-/* Slimmed to a compact left-aligned pill row (was a full-width 2-up grid of big buttons) so it reclaims the height
-   the two big Add buttons used to take on Home (UX reorg). Mobile still hides these for the FAB (media query below). */
+/* Slimmed rather than shrunk: the two buttons still span the row (50/50), but with less padding/height than the old
+   big cards — reclaiming vertical space without leaving an awkward empty gap on the right (UX reorg). Mobile still
+   hides these for the FAB (media query below). */
 .action-cards { display: flex; gap: 8px; margin-bottom: 14px; }
-.action-cards .action-card { flex: 0 0 auto; }
-.action-cards .card-act { padding: 8px 16px; font-size: .88rem; border-radius: 10px; }
+.action-cards .action-card { flex: 1 1 0; min-width: 0; }
+.action-cards .card-act { padding: 9px 16px; font-size: .88rem; border-radius: 10px; }
 
 /* Floating quick-add (.qfab): mobile web only. Desktop keeps the inline Home Add buttons and hides this. A single ＋
    expands upward into Add expense / Add income. Mirrors the native app's FAB. */
