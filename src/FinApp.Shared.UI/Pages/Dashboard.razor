@@ -869,12 +869,18 @@ else
                 @* View switch + add action + the ⋯ tools — the fixed anchor at the top of the panel. The summary
                    header and the content below swap per view, so switching to Breakdown (which has no budget header)
                    never yanks the switch upward. *@
-                <div class="spending-head budget-controls">
-                    <span class="plan-toggle bview-toggle" role="group">
-                        <button type="button" class="chip @(_spendView == SpendView.ByDate ? "on" : "")" @onclick="() => _spendView = SpendView.ByDate"><Icon Name="list" /> @Loc["By date"]</button>
-                        <button type="button" class="chip @(_spendView == SpendView.Categories ? "on" : "")" @onclick="SwitchToByBudgets"><Icon Name="chart" /> @Loc["By budgets"]</button>
-                        <button type="button" class="chip @(_spendView == SpendView.Breakdown ? "on" : "")" @onclick="() => _spendView = SpendView.Breakdown"><Icon Name="pie" /> @Loc["Breakdown"]</button>
-                    </span>
+                @* Summary on top, styled like the Goals tab's "Saved this period" header; the view switches sit
+                   below it (mirroring goal-summary → goal-filters). *@
+                <div class="goal-summary spend-summary">
+                    @if (_spendView == SpendView.ByDate)
+                    {
+                        var spentPct = State.TotalBudgeted.Amount > 0m ? Math.Clamp((double)(State.TotalSpent.Amount / State.TotalBudgeted.Amount) * 100, 0, 100) : -1d;
+                        var spentColour = spentPct >= 0 ? SpendBarColorAt(spentPct) : null;
+                        <div class="goal-stat">
+                            <span class="goal-stat-k">@Loc["Spent this period"]</span>
+                            <span class="goal-stat-v goal-stat-v-period" style="@(spentColour is { } c ? $"color:{c}" : "")">@Fmt(State.TotalSpent)</span>
+                        </div>
+                    }
                     @if (_spendView == SpendView.Categories)
                     {
                         <button class="fund-add" @onclick="OpenAddBudget"><Icon Name="plus" /> @Loc["Add budget"]</button>
@@ -896,19 +902,16 @@ else
                         }
                     </span>
                 </div>
-                @* By-date controls on one row: what's been spent this period (amount coloured by budget status),
-                   the tag filter, and the list/calendar toggle. No budget ring/bar (that's the By budgets view),
-                   no "Newest first" label. *@
-                @if (_spendView == SpendView.ByDate)
-                {
-                    var filterTags = State.ActiveTags;
-                    var spentPct = State.TotalBudgeted.Amount > 0m ? Math.Clamp((double)(State.TotalSpent.Amount / State.TotalBudgeted.Amount) * 100, 0, 100) : -1d;
-                    var spentColour = spentPct >= 0 ? SpendBarColorAt(spentPct) : null;
-                    <div class="bydate-bar">
-                        <span class="bds-inline">
-                            <span class="bds-lbl">@Loc["Spent this period"]</span>
-                            <span class="bds-amt" style="@(spentColour is { } c ? $"color:{c}" : "")">@Fmt(State.TotalSpent)</span>
-                        </span>
+                @* View switches below the summary. On By date the day-nav + tag filter + list/calendar toggle
+                   ride the right end of this row. *@
+                <div class="spend-switches">
+                    <span class="plan-toggle bview-toggle" role="group">
+                        <button type="button" class="chip @(_spendView == SpendView.ByDate ? "on" : "")" @onclick="() => _spendView = SpendView.ByDate"><Icon Name="list" /> @Loc["By date"]</button>
+                        <button type="button" class="chip @(_spendView == SpendView.Categories ? "on" : "")" @onclick="SwitchToByBudgets"><Icon Name="chart" /> @Loc["By budgets"]</button>
+                        <button type="button" class="chip @(_spendView == SpendView.Breakdown ? "on" : "")" @onclick="() => _spendView = SpendView.Breakdown"><Icon Name="pie" /> @Loc["Breakdown"]</button>
+                    </span>
+                    @if (_spendView == SpendView.ByDate)
+                    {
                         <span class="bydate-nav">
                             @if (_calendar)
                             {
@@ -923,7 +926,7 @@ else
                                 </span>
                             }
                             @* Tag filter collapses behind an icon so the chips don't crowd the row; a dot marks an active filter. *@
-                            @if (filterTags.Count > 0)
+                            @if (State.ActiveTags.Count > 0)
                             {
                                 <button type="button" class="view-btn @(_tagFilterOpen ? "active" : "")" title="@Loc["Filter by tag"]" @onclick="() => _tagFilterOpen = !_tagFilterOpen">
                                     <Icon Name="tag" />@if (_spendTagFilter.Count > 0) { <span class="filter-dot"></span> }
@@ -934,22 +937,22 @@ else
                                 <button class="view-btn @(_calendar ? "active" : "")" title="@Loc["Calendar"]" @onclick="ShowCalendarView"><Icon Name="calendar" /></button>
                             </span>
                         </span>
-                    </div>
-                    @if (_tagFilterOpen && filterTags.Count > 0)
-                    {
-                        <div class="tag-chips-row">
-                            @foreach (var t in filterTags)
-                            {
-                                var tid = t.Id;
-                                var on = _spendTagFilter.Contains(tid);
-                                <button type="button" class="tag-chip @(on ? "tag-chip-on" : "")" @onclick="() => ToggleSpendTag(tid)">@if (!string.IsNullOrEmpty(t.Icon)) { <span class="tag-emoji">@t.Icon</span> }@t.Name</button>
-                            }
-                            @if (_spendTagFilter.Count > 0)
-                            {
-                                <button type="button" class="tag-filter-clear" @onclick="() => _spendTagFilter.Clear()">@Loc["Clear"]</button>
-                            }
-                        </div>
                     }
+                </div>
+                @if (_spendView == SpendView.ByDate && _tagFilterOpen && State.ActiveTags.Count > 0)
+                {
+                    <div class="tag-chips-row">
+                        @foreach (var t in State.ActiveTags)
+                        {
+                            var tid = t.Id;
+                            var on = _spendTagFilter.Contains(tid);
+                            <button type="button" class="tag-chip @(on ? "tag-chip-on" : "")" @onclick="() => ToggleSpendTag(tid)">@if (!string.IsNullOrEmpty(t.Icon)) { <span class="tag-emoji">@t.Icon</span> }@t.Name</button>
+                        }
+                        @if (_spendTagFilter.Count > 0)
+                        {
+                            <button type="button" class="tag-filter-clear" @onclick="() => _spendTagFilter.Clear()">@Loc["Clear"]</button>
+                        }
+                    </div>
                 }
                 @if (barScale > 0m && _spendView == SpendView.Categories)
                 {
@@ -2443,11 +2446,10 @@ else
                     }
                     @if (State.LastExpense is { } lastExp && _expenseDrafts.Count == 0)
                     {
-                        @* Repeat = log a fresh copy; Edit = change that same last entry. Both reference the last expense. *@
+                        @* Repeat = log a fresh copy; Edit = change that same last entry. Each button names the last entry. *@
                         <div class="last-actions">
-                            <button type="button" class="repeat-last" @onclick="RepeatLastExpense"><Icon Name="rotate" /> @Loc["Repeat last"]</button>
-                            <button type="button" class="repeat-last" @onclick="() => OpenEditExpense(lastExp.Id)"><Icon Name="pencil" /> @Loc["Edit last"]</button>
-                            <span class="last-ref">@State.CategoryName(lastExp.CategoryId) · @Fmt(lastExp.Amount)</span>
+                            <button type="button" class="repeat-last" @onclick="RepeatLastExpense"><Icon Name="rotate" /> @Loc["Repeat last"]: <strong>@State.CategoryName(lastExp.CategoryId)</strong> · @Fmt(lastExp.Amount)</button>
+                            <button type="button" class="repeat-last" @onclick="() => OpenEditExpense(lastExp.Id)"><Icon Name="pencil" /> @Loc["Edit last"]: <strong>@State.CategoryName(lastExp.CategoryId)</strong> · @Fmt(lastExp.Amount)</button>
                         </div>
                     }
                     var qpCats = State.RecentCategories(6);
@@ -2899,8 +2901,7 @@ else
                     @if (State.LastContribution is { } lastInc && State.CanHandleContribution(lastInc))
                     {
                         <div class="last-actions">
-                            <button type="button" class="repeat-last" @onclick="() => OpenEditDeposit(lastInc.Id)"><Icon Name="pencil" /> @Loc["Edit last"]</button>
-                            <span class="last-ref">@State.ContributionCategoryName(lastInc.CategoryId) · @Fmt(lastInc.Paid)</span>
+                            <button type="button" class="repeat-last" @onclick="() => OpenEditDeposit(lastInc.Id)"><Icon Name="pencil" /> @Loc["Edit last"]: <strong>@State.ContributionCategoryName(lastInc.CategoryId)</strong> · @Fmt(lastInc.Paid)</button>
                         </div>
                     }
                     <label for="dep-cat"><span class="lbl-row">@Loc["Category"] <button type="button" class="lbl-add" title="@Loc["New contribution category"]" @onclick="DepositAddCategory">+</button></span>

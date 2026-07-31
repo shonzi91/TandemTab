@@ -846,15 +846,10 @@ html.dark .brk-note { color: #8b96a4; }
 /* "All expenses" section header: a tinted summary banner above the category cards. A status ring + title + totals
    on one line, then a full-width progress bar spanning the whole section — unlike category rows, whose bar is
    indented past the ring — so it reads as the header the cards sit under, not another peer row. */
-/* By-date controls on one row: "Spent this period" (status-coloured) · tag filter · list/calendar toggle.
-   Wraps on narrow screens so nothing overflows. No budget ring/bar (that's the By-budgets view). */
-.bydate-bar { display: flex; align-items: center; gap: 10px 14px; flex-wrap: wrap; margin: 0 0 14px; }
-.bds-inline { display: flex; align-items: baseline; gap: 8px; flex: none; }
-.bds-lbl { font-size: .82rem; font-weight: 600; letter-spacing: .02em; color: #5a6b62; }
-html.dark .bds-lbl { color: #9fb0a8; }
-.bds-amt { font-size: 1.15rem; font-weight: 800; color: #16241d; }   /* inline style overrides colour when budgeted */
-html.dark .bds-amt { color: #e8eaf0; }
-.bydate-nav { display: flex; align-items: center; gap: 8px; margin-left: auto; flex: none; }
+/* The view switches sit on their own row below the summary (mirrors goal-filters under goal-summary). On By date
+   the day-nav + tag filter + list/calendar toggle ride the right end. */
+.spend-switches { display: flex; align-items: center; gap: 8px 12px; flex-wrap: wrap; margin: 0 0 14px; }
+.bydate-nav { display: flex; align-items: center; gap: 6px; margin-left: auto; flex: none; }
 /* The tag filter lives behind the tag icon in .bydate-nav; a small dot marks an active filter. */
 .bydate-nav .view-btn { position: relative; }
 .filter-dot { position: absolute; top: 3px; right: 3px; width: 6px; height: 6px; border-radius: 50%; background: #2fb99a; }
@@ -1947,11 +1942,9 @@ html.dark .ach-date, html.dark .ach-cell-date { color: #7c8a94; }
 .repeat-last:hover { background: #e3f6ec; border-color: #13a06e; }
 .repeat-last strong { font-weight: 800; }
 html.dark .repeat-last { background: #16241d; border-color: #2b4438; color: #57d9a3; }
-/* Repeat-last / Edit-last sit inline on one row with a light reference to the last entry. */
+/* Repeat-last / Edit-last sit inline on one row; each button names the last entry (category · amount). */
 .last-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 0 0 10px; }
 .last-actions .repeat-last { display: inline-flex; align-items: center; gap: 6px; width: auto; margin: 0; }
-.last-ref { font-size: .82rem; color: #5a6b62; }
-html.dark .last-ref { color: #9fb0a8; }
 
 /* Add-expense quick-pick + fund chips (reuse the .tag-chip look): a wrapping chip row that sits under a field label. */
 .qp-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 2px 0 4px; }
