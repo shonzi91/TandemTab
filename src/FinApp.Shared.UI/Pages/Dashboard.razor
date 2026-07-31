@@ -44,6 +44,12 @@ else
         // header, visible on every tab) and the Home overview below.
         var ov = CurrentReport();
         var notifications = HomeNotifications(ov);
+        // Split for the two surfaces (UX backlog #4/#5): the urgent "needs attention" items show inline on Home; the
+        // bell holds everything else, grouped into time-based "Due" reminders and financial "Suggestions". No item
+        // appears in both places, so the bell no longer echoes the Home cards.
+        var bellDue = notifications.Where(n => n.Due).ToList();
+        var bellSuggest = notifications.Where(n => !n.Due && !n.Urgent).ToList();
+        var bellCount = bellDue.Count + bellSuggest.Count;
     }
     <header class="dash-head">
         <div class="hdr-top">
@@ -138,36 +144,47 @@ else
             <span class="hdr-icons">
                 <span class="acct-notify">
                     <button class="link bell" title="@Loc["Notifications"]" @onclick="() => _bellOpen = !_bellOpen">
-                        <Icon Name="bell" />@if (notifications.Count > 0) { <span class="bell-badge">@notifications.Count</span> }
+                        <Icon Name="bell" />@if (bellCount > 0) { <span class="bell-badge">@bellCount</span> }
                     </button>
                     @if (_bellOpen)
                     {
+                        @* One bell row — reused by the Due and Suggestions groups. *@
+                        RenderFragment<Notification> bellRow = n =>
+                        @<div class="bell-item @(n.Urgent ? "urgent" : "")">
+                            <span class="bell-ico">@IconOrEmoji(n.Icon)</span>
+                            <div class="bell-body">
+                                <div class="bell-text">@n.Text</div>
+                                @if (n.Desc is { } d) { <div class="bell-desc">@d</div> }
+                                @if (n is { ActionLabel: { } al, Act: { } act })
+                                {
+                                    <button class="bell-act" @onclick="@(() => { act(); _bellOpen = false; })">@al</button>
+                                }
+                            </div>
+                            <span class="bell-item-ops">
+                                @if (n.Rotate is { } rot) { <button class="tip-x" title="@Loc["Another idea"]" @onclick="rot"><Icon Name="rotate" /></button> }
+                                @if (n.Dismiss is { } dis) { <button class="tip-x" title="@Loc["Dismiss for this period"]" @onclick="dis">×</button> }
+                            </span>
+                        </div>;
                         <div class="acct-menu-backdrop" @onclick="() => _bellOpen = false"></div>
                         <div class="bell-menu">
                             <div class="bell-head"><Icon Name="bell" /> @Loc["Notifications"]</div>
-                            @if (notifications.Count == 0)
+                            @if (bellCount == 0)
                             {
                                 <div class="bell-empty">@Loc["You're all caught up."] ✅</div>
                             }
                             else
                             {
-                                @foreach (var n in notifications)
+                                @* Two labelled groups (#5): time-based "Due" reminders first (bills/recurring), then the
+                                   financial "Suggestions". A group's header only shows when it has items. *@
+                                @if (bellDue.Count > 0)
                                 {
-                                    <div class="bell-item @(n.Urgent ? "urgent" : "")">
-                                        <span class="bell-ico">@IconOrEmoji(n.Icon)</span>
-                                        <div class="bell-body">
-                                            <div class="bell-text">@n.Text</div>
-                                            @if (n.Desc is { } d) { <div class="bell-desc">@d</div> }
-                                            @if (n is { ActionLabel: { } al, Act: { } act })
-                                            {
-                                                <button class="bell-act" @onclick="@(() => { act(); _bellOpen = false; })">@al</button>
-                                            }
-                                        </div>
-                                        <span class="bell-item-ops">
-                                            @if (n.Rotate is { } rot) { <button class="tip-x" title="@Loc["Another idea"]" @onclick="rot"><Icon Name="rotate" /></button> }
-                                            @if (n.Dismiss is { } dis) { <button class="tip-x" title="@Loc["Dismiss for this period"]" @onclick="dis">×</button> }
-                                        </span>
-                                    </div>
+                                    <div class="bell-group-h">@Loc["Due"]</div>
+                                    @foreach (var n in bellDue) { @bellRow(n) }
+                                }
+                                @if (bellSuggest.Count > 0)
+                                {
+                                    <div class="bell-group-h">@Loc["Suggestions"]</div>
+                                    @foreach (var n in bellSuggest) { @bellRow(n) }
                                 }
                             }
                         </div>
@@ -345,32 +362,59 @@ else
                     (State.OtherMembers.Any(), "users", Loc["Invite a partner"], Loc["Share the budget in real time — invite your partner or housemate."], OpenInvite),
                 };
                 var obDone = obSteps.Count(s => s.Done);
+                // "Active" = the two unmistakable in-use signals are both done: income added AND an expense logged.
+                // Past that the full checklist stops headlining Home — it collapses to a small "finish setup" link that
+                // expands on click (UX backlog #3). Before that (a fresh account) it shows in full.
+                var obActive = obSteps[1].Done && obSteps[3].Done;
             }
             @if (!State.Account.OnboardingDismissed && obDone < obSteps.Length)
             {
-                <section class="panel onboard-card">
-                    <div class="onboard-head">
-                        <div>
-                            <h2 class="onboard-h">👋 @Loc["Welcome! Let's get you set up"]</h2>
-                            <p class="onboard-sub">@string.Format(Loc["{0} of {1} done — takes a couple of minutes."], obDone, obSteps.Length)</p>
-                        </div>
+                @if (obActive && !_setupOpen)
+                {
+                    <div class="panel onboard-mini">
+                        <button type="button" class="onboard-mini-link" @onclick="() => _setupOpen = true">
+                            <span class="onboard-mini-ico"><Icon Name="check" /></span>
+                            <span>@string.Format(Loc["Finish setup — {0} of {1} done"], obDone, obSteps.Length)</span>
+                            <span class="onboard-go">›</span>
+                        </button>
                         <button class="onboard-x" title="@Loc["Dismiss"]" @onclick="() => State.DismissOnboarding()">×</button>
                     </div>
-                    <div class="onboard-prog"><div class="onboard-prog-fill" style="width:@(obDone * 100 / obSteps.Length)%"></div></div>
-                    <div class="onboard-steps">
-                        @foreach (var s in obSteps)
-                        {
-                            <button class="onboard-step @(s.Done ? "done" : "")" @onclick="@(() => s.Act())" disabled="@s.Done">
-                                <span class="onboard-check">@if (s.Done) { <Icon Name="check" /> } else { <Icon Name="@s.Icon" /> }</span>
-                                <span class="onboard-body">
-                                    <span class="onboard-title">@s.Title</span>
-                                    <span class="onboard-desc">@s.Desc</span>
-                                </span>
-                                @if (!s.Done) { <span class="onboard-go">›</span> }
-                            </button>
-                        }
-                    </div>
-                </section>
+                }
+                else
+                {
+                    <section class="panel onboard-card">
+                        <div class="onboard-head">
+                            <div>
+                                <h2 class="onboard-h">👋 @Loc["Welcome! Let's get you set up"]</h2>
+                                <p class="onboard-sub">@string.Format(Loc["{0} of {1} done — takes a couple of minutes."], obDone, obSteps.Length)</p>
+                            </div>
+                            @* Once active, the header control collapses back to the mini link (dismiss stays on that link);
+                               on a fresh account it dismisses outright. *@
+                            @if (obActive)
+                            {
+                                <button class="onboard-x" title="@Loc["Collapse"]" @onclick="() => _setupOpen = false">▾</button>
+                            }
+                            else
+                            {
+                                <button class="onboard-x" title="@Loc["Dismiss"]" @onclick="() => State.DismissOnboarding()">×</button>
+                            }
+                        </div>
+                        <div class="onboard-prog"><div class="onboard-prog-fill" style="width:@(obDone * 100 / obSteps.Length)%"></div></div>
+                        <div class="onboard-steps">
+                            @foreach (var s in obSteps)
+                            {
+                                <button class="onboard-step @(s.Done ? "done" : "")" @onclick="@(() => s.Act())" disabled="@s.Done">
+                                    <span class="onboard-check">@if (s.Done) { <Icon Name="check" /> } else { <Icon Name="@s.Icon" /> }</span>
+                                    <span class="onboard-body">
+                                        <span class="onboard-title">@s.Title</span>
+                                        <span class="onboard-desc">@s.Desc</span>
+                                    </span>
+                                    @if (!s.Done) { <span class="onboard-go">›</span> }
+                                </button>
+                            }
+                        </div>
+                    </section>
+                }
             }
             @* Home's two everyday moves as plain buttons — no card frame (flattened). On mobile these hide and the
                floating quick-add ＋ (.qfab, below) takes over. Reference figures live in Spending / Wallets / Goals. *@
@@ -414,45 +458,59 @@ else
             </section>
 
             @{ var ovBand = ov.Band switch { HealthBand.Healthy => "score-ok", HealthBand.Average => "score-warn", _ => "score-bad" }; }
-            @* Health score + trends-over-time as ONE Home section: the score card is the header ("Health score &
-               trends") and the mini-trend sparklines sit inline below it. The detail graphics (savings rate + spending
-               trend) live in the Health-score modal now — tapping the header opens it for the score detail, quick wins,
-               savings rate and spending trend. *@
+            @* Just the score header on Home now — a tap opens the modal for the detail (verdict, quick wins, savings
+               rate, spending trend, and the per-category trends-over-time sparklines that used to sit here). Moving the
+               sparklines into the modal keeps the landing screen light (UX reorg). The urgent "needs attention" strip
+               is attached directly below (see home-alerts), so the whole "how am I doing" block reads as one. *@
             <section class="home-health">
                 <button id="home-score" class="card card-score card-score-wide home-health-hd" @onclick="() => _modal = Modal.HealthScore" title="@Loc["Health score"]">
                     <span class="card-label">@Loc["Health score & trends"]</span>
                     <span class="card-value @ovBand">@(ov.HasData ? ov.Score.ToString() : "—")</span>
                     <span class="card-sub">@(ov.HasData ? N(ov.Verdict) : "")</span>
                 </button>
-                @if (ov.HasData && ov.MiniTrends.Count > 0)
+                @{
+                    // Everything the lower Home blocks need, computed once. The urgent "needs attention" items sit
+                    // attached under the score (Move 3); the money-glance row + targets read from the rest.
+                    var homeTargets = HomeTargets();
+                    var homeAlerts = notifications.Where(n => n.Urgent).ToList();
+                    var homeSlices = HomePeriodSlices();
+                    var homeSpendTotal = homeSlices.Sum(s => s.Amount);
+                    var runway = State.IsLatestPeriod ? State.ProjectCashFlow(_balCur) : null;
+                }
+                @* Urgent "needs attention" strip, attached directly under the score so "how am I doing" reads as one
+                   block. The gentler bills-due + suggestions live in the bell, not duplicated here (UX backlog #4). *@
+                @if (homeAlerts.Count > 0 || bellCount > 0)
                 {
-                    <div class="home-health-charts">
-                        <section class="mini-trends">
-                            @foreach (var mt in ov.MiniTrends)
-                            {
-                                var mtLabel = N(mt.Label);
-                                <div class="mini-trend @(mt.Dir == DeltaDir.Up ? "up" : mt.Dir == DeltaDir.Down ? "down" : "flat")">
-                                    <div class="mt-head">
-                                        <span class="mt-label"><CatIcon Name="@CategoryIcons.Effective(mt.Icon, mtLabel)" /> @mtLabel</span>
-                                        <span class="mt-cur">@N(mt.CurrentText)</span>
-                                    </div>
-                                    @TrendSparkline(mt.Points)
-                                    <div class="mt-note">@N(mt.DeltaNote)</div>
+                    <div class="home-alerts">
+                        @foreach (var n in homeAlerts)
+                        {
+                            <div class="home-alert">
+                                <span class="home-alert-ico">@IconOrEmoji(n.Icon)</span>
+                                <div class="home-alert-body">
+                                    <span class="home-alert-text">@n.Text</span>
+                                    @if (n is { ActionLabel: { } al, Act: { } act })
+                                    {
+                                        <button class="home-alert-act" @onclick="@(() => act())">@al</button>
+                                    }
                                 </div>
-                            }
-                        </section>
+                            </div>
+                        }
+                        @if (bellCount > 0)
+                        {
+                            <button class="home-alert-more" @onclick="() => _bellOpen = true">@string.Format(bellCount == 1 ? Loc["{0} reminder in notifications"] : Loc["{0} reminders in notifications"], bellCount) ›</button>
+                        }
                     </div>
                 }
             </section>
 
-            @* Home mini-breakdown (UX backlog #6): a compact "where your money went" donut over this period, promoting
-               the full Breakdown view — tap anywhere on the card to jump into it. Hidden until there's spend to show. *@
-            @{
-                var homeSlices = HomePeriodSlices();
-                var homeSpendTotal = homeSlices.Sum(s => s.Amount);
-            }
-            @if (homeSpendTotal > 0m)
+            @* Money-glance row (Move 1): "where your money went" + "at this rate" side by side — half the row each on
+               desktop, stacking on mobile. When the runway's "show the math" opens it breaks to full width.
+               The donut (UX backlog #6) promotes the full Breakdown; tap it to jump in. Hidden until there's spend. *@
+            @if (homeSpendTotal > 0m || runway is not null)
             {
+                <div class="home-glance">
+                @if (homeSpendTotal > 0m)
+                {
                 <section class="panel home-brk-card">
                     <button class="home-brk-hit" @onclick="OpenBreakdown">
                         <span class="home-brk-donut-wrap">
@@ -492,56 +550,10 @@ else
                         </span>
                     </button>
                 </section>
-            }
-
-            @{
-                var homeTargets = HomeTargets();
-                // What actually needs attention (overspend, over-budget, health warnings), just under the score —
-                // the bell still holds the full list, including the gentler reminders.
-                var homeAlerts = notifications.Where(n => n.Urgent).Take(3).ToList();
-                // When there's no "You're on track for" section below to fill Home, pull up a couple of the gentler
-                // (non-urgent) reminders here too, so the space stays useful instead of collapsing to just the score.
-                var homeExtra = homeTargets.Count == 0
-                    ? notifications.Where(n => !n.Urgent).Take(2).ToList()
-                    : new List<Notification>();
-                var homeShown = homeAlerts.Concat(homeExtra).ToList();
-            }
-            @if (homeShown.Count > 0)
-            {
-                <section class="home-alerts">
-                    @foreach (var n in homeShown)
-                    {
-                        <div class="home-alert @(n.Urgent ? "" : "home-alert-soft")">
-                            <span class="home-alert-ico">@IconOrEmoji(n.Icon)</span>
-                            <div class="home-alert-body">
-                                <span class="home-alert-text">@n.Text</span>
-                                @if (n is { ActionLabel: { } al, Act: { } act })
-                                {
-                                    <button class="home-alert-act" @onclick="@(() => act())">@al</button>
-                                }
-                            </div>
-                        </div>
-                    }
-                    @if (notifications.Count > homeShown.Count)
-                    {
-                        <button class="home-alert-more" @onclick="() => _bellOpen = true">@string.Format(Loc["See all {0} in notifications"], notifications.Count) ›</button>
-                    }
-                </section>
-            }
-
-            @{
-                // Only on the current period. The runway is a from-today-forward projection: its income/spending come
-                // from an average of ALL closed periods and it walks forward from the viewed period's start, so on a
-                // past period it renders the same "good for 6 months" pasted onto history — which is what made it read
-                // as "every old period shows today's numbers". A forecast belongs on the month you're actually in.
-                var runway = State.IsLatestPeriod ? State.ProjectCashFlow(_balCur) : null;
-            }
-            @* The runway stands alone rather than sitting under "You're on track for". They answer different
-               questions — this one is about your whole balance, the targets below are each about one goal — and
-               putting them under a heading that only fits the targets is what made the card hard to read. *@
-            @if (runway is { } rw)
-            {
-                <section class="panel runway-card @(rw.FirstShortfallMonth is null ? "" : "runway-warn")">
+                }
+                @if (runway is { } rw)
+                {
+                <section class="panel runway-card @(rw.FirstShortfallMonth is null ? "" : "runway-warn") @(_runwayOpen ? "runway-open" : "")">
                     <div class="runway-row">
                         <span class="runway-ico"><Icon Name="@(rw.FirstShortfallMonth is null ? "shield" : "alert")" /></span>
                         @* "At this rate" up front, and the basis always named. The old headline ("You're good for
@@ -662,6 +674,8 @@ else
                         </div>
                     }
                 </section>
+                }
+                </div>
             }
             @if (homeTargets.Count > 0)
             {
@@ -1000,12 +1014,10 @@ else
                     </span>
                 </div>
                 @* By date's own controls drop to a slim row of their own (the view switch lives up on the summary row).
-                   List/calendar toggle + the day-nav/date sit on the LEFT; the period-spend total is pinned RIGHT — where
-                   the nav cluster used to be — so the total has a stable home that doesn't crowd the fixed view switch. *@
+                   List/calendar toggle + the day-nav/date + the tag filter all sit on this row; opening the tag filter
+                   reveals its chips INLINE on the same row (they wrap to a second line only when there are many). *@
                 @if (_spendView == SpendView.ByDate)
                 {
-                    var spentPct = State.TotalBudgeted.Amount > 0m ? Math.Clamp((double)(State.TotalSpent.Amount / State.TotalBudgeted.Amount) * 100, 0, 100) : -1d;
-                    var spentColour = spentPct >= 0 ? SpendBarColorAt(spentPct) : null;
                     <div class="spend-switches spend-switches-bydate">
                         <span class="bydate-nav">
                             <span class="view-toggle">
@@ -1024,33 +1036,28 @@ else
                                     <button class="exp-edit" title="@Loc["Next day"]" @onclick="NextDay" disabled="@(dv >= State.Period.To)">▶</button>
                                 </span>
                             }
-                            @* Tag filter collapses behind an icon so the chips don't crowd the row; a dot marks an active filter. *@
+                            @* Tag filter collapses behind an icon; a dot marks an active filter. When open, the chips
+                               reveal on this same row (starting right after the icon), wrapping if there are many. *@
                             @if (State.ActiveTags.Count > 0)
                             {
                                 <button type="button" class="view-btn @(_tagFilterOpen ? "active" : "")" title="@Loc["Filter by tag"]" @onclick="() => _tagFilterOpen = !_tagFilterOpen">
                                     <Icon Name="tag" />@if (_spendTagFilter.Count > 0) { <span class="filter-dot"></span> }
                                 </button>
+                                @if (_tagFilterOpen)
+                                {
+                                    @foreach (var t in State.ActiveTags)
+                                    {
+                                        var tid = t.Id;
+                                        var on = _spendTagFilter.Contains(tid);
+                                        <button type="button" class="tag-chip @(on ? "tag-chip-on" : "")" @onclick="() => ToggleSpendTag(tid)">@if (!string.IsNullOrEmpty(t.Icon)) { <span class="tag-emoji">@t.Icon</span> }@t.Name</button>
+                                    }
+                                    @if (_spendTagFilter.Count > 0)
+                                    {
+                                        <button type="button" class="tag-filter-clear" @onclick="() => _spendTagFilter.Clear()">@Loc["Clear"]</button>
+                                    }
+                                }
                             }
                         </span>
-                        <div class="goal-stat spend-bydate-stat">
-                            <span class="goal-stat-k">@Loc["Spent this period"]</span>
-                            <span class="goal-stat-v goal-stat-v-period" style="@(spentColour is { } _sc ? $"color:{_sc}" : "")">@Fmt(State.TotalSpent)</span>
-                        </div>
-                    </div>
-                }
-                @if (_spendView == SpendView.ByDate && _tagFilterOpen && State.ActiveTags.Count > 0)
-                {
-                    <div class="tag-chips-row">
-                        @foreach (var t in State.ActiveTags)
-                        {
-                            var tid = t.Id;
-                            var on = _spendTagFilter.Contains(tid);
-                            <button type="button" class="tag-chip @(on ? "tag-chip-on" : "")" @onclick="() => ToggleSpendTag(tid)">@if (!string.IsNullOrEmpty(t.Icon)) { <span class="tag-emoji">@t.Icon</span> }@t.Name</button>
-                        }
-                        @if (_spendTagFilter.Count > 0)
-                        {
-                            <button type="button" class="tag-filter-clear" @onclick="() => _spendTagFilter.Clear()">@Loc["Clear"]</button>
-                        }
                     </div>
                 }
                 @if (barScale > 0m && _spendView == SpendView.Categories)
@@ -2545,10 +2552,12 @@ else
                     }
                     @if (State.LastExpense is { } lastExp && _expenseDrafts.Count == 0)
                     {
-                        @* Repeat = log a fresh copy; Edit = change that same last entry. Each button names the last entry. *@
+                        @* Repeat = log a fresh copy; Edit = change that same last entry. Kept on ONE row: the "last"
+                           word is dropped (icon + short verb carry it, full label in the tooltip) and the category·amount
+                           context truncates so two buttons always fit the row. *@
                         <div class="last-actions">
-                            <button type="button" class="repeat-last" @onclick="RepeatLastExpense"><Icon Name="rotate" /> @Loc["Repeat last"]: <strong>@State.CategoryName(lastExp.CategoryId)</strong> · @Fmt(lastExp.Amount)</button>
-                            <button type="button" class="repeat-last" @onclick="() => OpenEditExpense(lastExp.Id)"><Icon Name="pencil" /> @Loc["Edit last"]: <strong>@State.CategoryName(lastExp.CategoryId)</strong> · @Fmt(lastExp.Amount)</button>
+                            <button type="button" class="repeat-last" title="@Loc["Repeat last"]" @onclick="RepeatLastExpense"><Icon Name="rotate" /> <span class="last-act-verb">@Loc["Repeat"]</span> <span class="last-act-ctx"><strong>@State.CategoryName(lastExp.CategoryId)</strong> · @Fmt(lastExp.Amount)</span></button>
+                            <button type="button" class="repeat-last" title="@Loc["Edit last"]" @onclick="() => OpenEditExpense(lastExp.Id)"><Icon Name="pencil" /> <span class="last-act-verb">@Loc["Edit"]</span> <span class="last-act-ctx"><strong>@State.CategoryName(lastExp.CategoryId)</strong> · @Fmt(lastExp.Amount)</span></button>
                         </div>
                     }
                     var qpCats = State.RecentCategories(6);
@@ -3000,7 +3009,7 @@ else
                     @if (State.LastContribution is { } lastInc && State.CanHandleContribution(lastInc))
                     {
                         <div class="last-actions">
-                            <button type="button" class="repeat-last" @onclick="() => OpenEditDeposit(lastInc.Id)"><Icon Name="pencil" /> @Loc["Edit last"]: <strong>@State.ContributionCategoryName(lastInc.CategoryId)</strong> · @Fmt(lastInc.Paid)</button>
+                            <button type="button" class="repeat-last" title="@Loc["Edit last"]" @onclick="() => OpenEditDeposit(lastInc.Id)"><Icon Name="pencil" /> <span class="last-act-verb">@Loc["Edit"]</span> <span class="last-act-ctx"><strong>@State.ContributionCategoryName(lastInc.CategoryId)</strong> · @Fmt(lastInc.Paid)</span></button>
                         </div>
                     }
                     <label for="dep-cat"><span class="lbl-row">@Loc["Category"] <button type="button" class="lbl-add" title="@Loc["New contribution category"]" @onclick="DepositAddCategory">+</button></span>
@@ -3569,13 +3578,15 @@ else
                                 : hsRateVal >= hs.SavingsTarget * 0.6m ? "rate-mid" : "rate-low";
                         }
                         <section class="savings-rate-card @hsRateStatus">
-                            <div class="savings-rate-head">
-                                <span class="savings-pct">@PctOrDash(hs.SavingsRate)</span>
-                                <span class="savings-target">@Loc["Target:"] <span>@PctText(hs.SavingsTarget)</span></span>
-                            </div>
-                            <div class="savings-track">
-                                <div class="savings-fill" style="width:@hsRateW%"></div>
-                                <div class="savings-goal-line" style="left:@hsGoalW%"></div>
+                            @* The reached rate rides the scale itself (a bubble above the fill); the target already shows
+                               as the goal line on the bar + the "Goal X%" footer, so the old header row (which repeated
+                               reached % + Target %) is gone. *@
+                            <div class="savings-scale">
+                                <div class="savings-track">
+                                    <div class="savings-fill" style="width:@hsRateW%"></div>
+                                    <div class="savings-goal-line" style="left:@hsGoalW%"></div>
+                                </div>
+                                <span class="savings-pct" style="left:@(Math.Clamp(hsRateW, 6, 94).ToString(System.Globalization.CultureInfo.InvariantCulture))%">@PctOrDash(hs.SavingsRate)</span>
                             </div>
                             <div class="savings-footer">
                                 <span>0%</span><span class="goal-label">@Loc["Goal"] @PctText(hs.SavingsTarget)</span><span>100%</span>
@@ -3605,6 +3616,27 @@ else
                                     }
                                 </div>
                                 <div class="trend-note">@N(hs.TrendNote)</div>
+                            </section>
+                        }
+
+                        @* Per-category trends-over-time sparklines — they used to sit on Home; moved here to keep the
+                           landing screen light (UX reorg), reachable by tapping the score. *@
+                        @if (hs.MiniTrends.Count > 0)
+                        {
+                            <h4 class="insight-h">@Loc["Trends over time"]</h4>
+                            <section class="mini-trends">
+                                @foreach (var mt in hs.MiniTrends)
+                                {
+                                    var mtLabel = N(mt.Label);
+                                    <div class="mini-trend @(mt.Dir == DeltaDir.Up ? "up" : mt.Dir == DeltaDir.Down ? "down" : "flat")">
+                                        <div class="mt-head">
+                                            <span class="mt-label"><CatIcon Name="@CategoryIcons.Effective(mt.Icon, mtLabel)" /> @mtLabel</span>
+                                            <span class="mt-cur">@N(mt.CurrentText)</span>
+                                        </div>
+                                        @TrendSparkline(mt.Points)
+                                        <div class="mt-note">@N(mt.DeltaNote)</div>
+                                    </div>
+                                }
                             </section>
                         }
                         </section>
@@ -4719,6 +4751,7 @@ else
     private DateOnly? _dayView;   // when set, the Expenses tab focuses a single day
     private bool _calendar;       // Expenses tab: month-grid view instead of the list
 
+    private bool _setupOpen;      // Home onboarding: an active user expanded the collapsed "finish setup" link (UX #3)
     private bool _runwayOpen;     // Home runway: "show the math" breakdown + what-if slider expanded
     private int _whatIfPct;       // what-if slider: % change to monthly spending (−50..+50, 0 = the plain runway)
     private decimal _whatIfEarnAmt; // "Additional income" slider: extra €/month (seeded from investment earnings)
@@ -6265,8 +6298,11 @@ else
 
     // --- Notifications bell — aggregates the transient Home prompts into one dropdown by the account controls -----
     private bool _bellOpen;
+    // Urgent = a "needs attention" item (overspend / over-budget / health warning). These show inline on Home and are
+    // NOT repeated in the bell (UX backlog #4 — each item lives in one place). Due = a time-based bill/recurring
+    // reminder (due now, upcoming, or just auto-posted); the bell splits Due from the rest as "Suggestions" (#5).
     private sealed record Notification(string Icon, string Text, string? Desc, string? ActionLabel, Action? Act,
-        Action? Rotate, Action? Dismiss, bool Urgent);
+        Action? Rotate, Action? Dismiss, bool Urgent, bool Due = false);
 
     // Notification/reminder rows carry a mixed "icon" stream: mostly our chrome icon names (rendered as <Icon>), but
     // a few are user data — a bucket's or recurring item's own emoji — which have no sprite symbol and must render as
@@ -6310,7 +6346,7 @@ else
             var notice = ap;
             list.Add(new Notification("check", string.Format(Loc["{0} ({1}) was posted automatically."], ap.Name, Fmt(ap.Amount)), null,
                 Loc["Review"], () => { _autoPostedNotices.Remove(notice); if (ap.Kind == RecurringKind.Income) _tab = Tab.Account; else ShowExpensesTab(); },
-                null, () => _autoPostedNotices.Remove(notice), false));
+                null, () => _autoPostedNotices.Remove(notice), false, Due: true));
         }
 
         foreach (var r in HomeReminders(ov))
@@ -6324,7 +6360,7 @@ else
                 ? string.Format(Loc["{0} is due — enter the amount."], due.Name)
                 : string.Format(Loc["{0} is due (about {1}) — confirm it."], due.Name, Fmt(due.ExpectedAmount));
             list.Add(new Notification(due.Icon ?? (due.Kind == RecurringKind.Income ? "note" : "repeat"), text, null,
-                Loc["Confirm"], () => OpenConfirmRecurring(id), null, () => SkipRecurringFromBell(id), false));
+                Loc["Confirm"], () => OpenConfirmRecurring(id), null, () => SkipRecurringFromBell(id), false, Due: true));
         }
 
         // Recurring items coming up soon (not due yet) — a gentle heads-up so nothing sneaks up on you. Deliberately
@@ -6338,7 +6374,7 @@ else
             var text = soon.HasKnownAmount
                 ? string.Format(Loc["{0} (about {1}) is due {2}."], soon.Name, Fmt(soon.ExpectedAmount), whenText)
                 : string.Format(Loc["{0} is due {1}."], soon.Name, whenText);
-            list.Add(new Notification("calendar", text, null, null, null, null, () => SkipRecurringFromBell(id), false));
+            list.Add(new Notification("calendar", text, null, null, null, null, () => SkipRecurringFromBell(id), false, Due: true));
         }
 
         // "Move it" reallocates for real (trims the budget + sets aside toward the debt), so the whole tip is gated

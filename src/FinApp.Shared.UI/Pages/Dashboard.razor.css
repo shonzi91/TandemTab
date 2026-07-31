@@ -79,6 +79,15 @@ html.dark .file-drop-sub { color: #a9b6ad; }
 .onboard-step.done .onboard-title { text-decoration: line-through; text-decoration-color: #9bb3a8; }
 .onboard-desc { font-size: .76rem; color: #6b7d72; line-height: 1.3; }
 .onboard-go { margin-left: auto; color: #13a06e; font-weight: 800; font-size: 1.1rem; }
+/* Collapsed "finish setup" link for active users (UX backlog #3) — one slim row, not the full checklist card. */
+.onboard-mini { display: flex; align-items: center; gap: 8px; margin: 0 0 14px; padding: 8px 12px; }
+.onboard-mini-link { flex: 1; min-width: 0; display: inline-flex; align-items: center; gap: 8px; background: none; border: none; padding: 2px 0; text-align: left; cursor: pointer; font-size: .88rem; font-weight: 700; color: #0e6f4c; }
+.onboard-mini-link:hover { color: #13a06e; }
+.onboard-mini-ico { display: inline-flex; width: 20px; height: 20px; align-items: center; justify-content: center; border-radius: 50%; background: #d9f0e5; color: #0e6f4c; }
+.onboard-mini-ico svg { width: 13px; height: 13px; }
+html.dark .onboard-mini-link { color: #7ee3b4; }
+html.dark .onboard-mini-link:hover { color: #9ff0c9; }
+html.dark .onboard-mini-ico { background: #1c3a2c; color: #7ee3b4; }
 @media (max-width: 560px) { .onboard-steps { grid-template-columns: 1fr; } }
 html.dark .onboard-card { background: linear-gradient(135deg, #14251d, #10201a); border-color: #24493a; }
 html.dark .onboard-h { color: #7ee3b4; }
@@ -127,10 +136,17 @@ html.dark .home-alert.home-alert-soft .home-alert-text { color: #aab0c0; }
    trends over time) sit inline below it as one group — moved here from the Health-score modal so they're visible on
    Home without opening anything. The chart cards keep their own styling; this just stacks them and tightens the
    sub-headers so the score card + charts read as one section. */
-.home-health { display: flex; flex-direction: column; gap: 12px; margin: 0 0 18px; }
+.home-health { display: flex; flex-direction: column; gap: 12px; margin: 0 0 14px; }
 .home-health-hd { margin-bottom: 0; }
 .home-health-charts { display: flex; flex-direction: column; gap: 12px; }
 .home-health-charts .insight-h { margin: 2px 0 0; }
+/* The urgent alerts strip is attached inside the health block, so it drops its own bottom margin (the flex gap spaces it). */
+.home-health .home-alerts { margin: 0; }
+/* Money-glance row: the "where your money went" donut + the "at this rate" runway, side by side on desktop, stacking
+   on mobile. When the runway's math is open it takes the full width (its sliders/breakdown need the room). */
+.home-glance { display: flex; flex-wrap: wrap; gap: 14px; margin: 0 0 14px; align-items: stretch; }
+.home-glance > .panel { flex: 1 1 300px; min-width: 0; margin: 0; }
+.home-glance > .runway-card.runway-open { flex-basis: 100%; }
 
 /* Milestones collapsed to a single tappable line (full detail lives in the 🏆 modal). */
 .home-ms-line {
@@ -887,15 +903,13 @@ html.dark .brk-note { color: #8b96a4; }
    the list/calendar toggle + day-nav sit LEFT and the period-spend total is pinned to the right end. */
 .spend-switches { display: flex; align-items: center; gap: 8px 12px; flex-wrap: wrap; margin: 0 0 14px; }
 .bydate-nav { display: flex; align-items: center; gap: 6px; margin-left: auto; flex: none; }
-/* On the By-date row the nav leads on the left; the spent-total pill takes the right end instead. */
-.spend-switches-bydate .bydate-nav { margin-left: 0; }
-.spend-bydate-stat { margin-left: auto; padding: 5px 12px; }
-.spend-bydate-stat .goal-stat-v { font-size: 1.02rem; }
+/* The By-date controls row: nav leads on the left and spans the row so the tag chips can reveal inline and wrap. */
+.spend-switches-bydate .bydate-nav { margin-left: 0; flex: 1 1 auto; flex-wrap: wrap; row-gap: 6px; }
 /* The tag filter lives behind the tag icon in .bydate-nav; a small dot marks an active filter. */
 .bydate-nav .view-btn { position: relative; }
 .filter-dot { position: absolute; top: 3px; right: 3px; width: 6px; height: 6px; border-radius: 50%; background: #2fb99a; }
-/* The revealed tag chips get their own line below the bar so they never crowd the summary row. */
-.tag-chips-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: -6px 0 14px; }
+/* The tag chips now reveal inline within .bydate-nav (same row as the filter icon), so they need no separate row. */
+.spend-switches-bydate .tag-chip { margin: 0; }
 
 .budget-header {
     margin: 0 0 14px; padding: 12px 14px 14px; border-radius: 12px;
@@ -1490,11 +1504,11 @@ html.dark .bal-part:nth-child(2n), html.dark .bal-part:nth-child(n+3) { border-c
 .bd-arrow.down { color: #0e9e6d; }
 
 /* Savings rate */
-.savings-rate-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 14px; }
-.savings-pct { font-size: 1.9rem; font-weight: 700; color: #0e9e6d; }
-.savings-target { font-size: .72rem; color: #6b7280; }
-.savings-target span { color: #b45309; font-weight: 700; }
-.savings-track { height: 8px; background: #eef1f4; border-radius: 4px; position: relative; overflow: hidden; margin-bottom: 8px; }
+/* The reached rate sits ON the scale (a bubble above the fill's leading edge); target = goal line + footer label.
+   .savings-scale reserves the space above the track for the bubble. */
+.savings-scale { position: relative; padding-top: 24px; margin-bottom: 8px; }
+.savings-pct { position: absolute; top: 0; transform: translateX(-50%); font-size: 1rem; font-weight: 800; color: #0e9e6d; white-space: nowrap; }
+.savings-track { height: 8px; background: #eef1f4; border-radius: 4px; position: relative; overflow: hidden; }
 .savings-fill { height: 100%; border-radius: 4px; background: linear-gradient(90deg, #2a9d5a, #13a06e); transition: width 1.1s cubic-bezier(.4,0,.2,1); }
 .savings-goal-line { position: absolute; top: 0; bottom: 0; width: 2px; background: #b45309; }
 .savings-footer { display: flex; justify-content: space-between; }
@@ -1714,6 +1728,11 @@ html.dark .review-badge { background: #e08a2e; color: #2a1a04; }
     padding: 8px; max-height: 70vh; overflow-y: auto;
 }
 .bell-head { font-size: .72rem; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: #6b7280; padding: 4px 6px 8px; }
+/* Group label ("Due" / "Suggestions") separating the two notification streams (#5). Sits above its rows; the first
+   row under it drops its top border so the header reads as attached to the group. */
+.bell-group-h { font-size: .66rem; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: #0f7a54; padding: 10px 6px 3px; }
+.bell-group-h:first-of-type { padding-top: 4px; }
+.bell-group-h + .bell-item { border-top: none; }
 .bell-empty { padding: 10px 6px; color: #8a97a0; font-size: .85rem; }
 .bell-item { display: flex; gap: 8px; align-items: flex-start; padding: 9px 6px; border-top: 1px solid #eef2f0; }
 .bell-item.urgent .bell-text { color: #c0392b; font-weight: 600; }
@@ -1726,6 +1745,7 @@ html.dark .review-badge { background: #e08a2e; color: #2a1a04; }
 .bell-item-ops { display: inline-flex; gap: 2px; flex: 0 0 auto; }
 html.dark .bell-menu { background: #232a33; border-color: #384250; }
 html.dark .bell-head { color: #9aa4b2; }
+html.dark .bell-group-h { color: #57d9a3; }
 html.dark .bell-item { border-top-color: #313a45; }
 html.dark .bell-text { color: #dfe6ea; }
 html.dark .bell-desc { color: #a9b6ad; }
@@ -1986,9 +2006,13 @@ html.dark .ach-date, html.dark .ach-cell-date { color: #7c8a94; }
 .repeat-last:hover { background: #e3f6ec; border-color: #13a06e; }
 .repeat-last strong { font-weight: 800; }
 html.dark .repeat-last { background: #16241d; border-color: #2b4438; color: #57d9a3; }
-/* Repeat-last / Edit-last sit inline on one row; each button names the last entry (category · amount). */
-.last-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 0 0 10px; }
-.last-actions .repeat-last { display: inline-flex; align-items: center; gap: 6px; width: auto; margin: 0; }
+/* Repeat-last / Edit-last stay on ONE row (no wrap): each button is an equal flex column and its category·amount
+   context truncates rather than pushing the second button to a new line. */
+.last-actions { display: flex; align-items: stretch; gap: 8px; flex-wrap: nowrap; margin: 0 0 10px; }
+.last-actions .repeat-last { flex: 1 1 0; min-width: 0; display: inline-flex; align-items: center; gap: 6px; width: auto; margin: 0; white-space: nowrap; }
+.last-actions .repeat-last svg { flex: none; }
+.last-act-verb { flex: none; font-weight: 700; }
+.last-act-ctx { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* Add-expense quick-pick + fund chips (reuse the .tag-chip look): a wrapping chip row that sits under a field label. */
 .qp-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 2px 0 4px; }
@@ -2289,6 +2313,11 @@ html.dark .card-score::after { color: #3fe0c5; }
 /* The cards now hold just their action buttons (the figures moved to the detail tabs), centred in the tile. */
 /* Flattened: the buttons are the affordance, so the card frame around them is gone. */
 .action-card { min-height: auto; justify-content: center; background: none; border: none; box-shadow: none; padding: 0; }
+/* Slimmed to a compact left-aligned pill row (was a full-width 2-up grid of big buttons) so it reclaims the height
+   the two big Add buttons used to take on Home (UX reorg). Mobile still hides these for the FAB (media query below). */
+.action-cards { display: flex; gap: 8px; margin-bottom: 14px; }
+.action-cards .action-card { flex: 0 0 auto; }
+.action-cards .card-act { padding: 8px 16px; font-size: .88rem; border-radius: 10px; }
 
 /* Floating quick-add (.qfab): mobile web only. Desktop keeps the inline Home Add buttons and hides this. A single ＋
    expands upward into Add expense / Add income. Mirrors the native app's FAB. */
