@@ -854,15 +854,12 @@ html.dark .brk-note { color: #8b96a4; }
 html.dark .bds-lbl { color: #9fb0a8; }
 .bds-amt { font-size: 1.15rem; font-weight: 800; color: #16241d; }   /* inline style overrides colour when budgeted */
 html.dark .bds-amt { color: #e8eaf0; }
-/* Tag filter sits in the middle and takes the slack; the nav (day-nav + view toggle) is pushed to the right. */
-.bydate-tags { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; flex: 1 1 auto; min-width: 0; }
-.bydate-tag-ico { width: 15px; height: 15px; color: #5a6b62; flex: none; }
-html.dark .bydate-tag-ico { color: #9fb0a8; }
 .bydate-nav { display: flex; align-items: center; gap: 8px; margin-left: auto; flex: none; }
-/* Narrow screens: the spent figure keeps the left, the nav keeps the right, tags wrap onto their own line. */
-@media (max-width: 560px) {
-    .bydate-tags { order: 3; flex-basis: 100%; }
-}
+/* The tag filter lives behind the tag icon in .bydate-nav; a small dot marks an active filter. */
+.bydate-nav .view-btn { position: relative; }
+.filter-dot { position: absolute; top: 3px; right: 3px; width: 6px; height: 6px; border-radius: 50%; background: #2fb99a; }
+/* The revealed tag chips get their own line below the bar so they never crowd the summary row. */
+.tag-chips-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: -6px 0 14px; }
 
 .budget-header {
     margin: 0 0 14px; padding: 12px 14px 14px; border-radius: 12px;
@@ -1950,6 +1947,11 @@ html.dark .ach-date, html.dark .ach-cell-date { color: #7c8a94; }
 .repeat-last:hover { background: #e3f6ec; border-color: #13a06e; }
 .repeat-last strong { font-weight: 800; }
 html.dark .repeat-last { background: #16241d; border-color: #2b4438; color: #57d9a3; }
+/* Repeat-last / Edit-last sit inline on one row with a light reference to the last entry. */
+.last-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 0 0 10px; }
+.last-actions .repeat-last { display: inline-flex; align-items: center; gap: 6px; width: auto; margin: 0; }
+.last-ref { font-size: .82rem; color: #5a6b62; }
+html.dark .last-ref { color: #9fb0a8; }
 
 /* Add-expense quick-pick + fund chips (reuse the .tag-chip look): a wrapping chip row that sits under a field label. */
 .qp-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 2px 0 4px; }

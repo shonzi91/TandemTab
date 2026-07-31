@@ -371,10 +371,7 @@ else
                                     </div>
                                 }
                             </span>
-                            @if (State.IsPeriodOpen && State.LastExpense is { } lastEx)
-                            {
-                                <button class="card-act-edit" title="@Loc["Edit the last expense you logged"]" @onclick="() => OpenEditExpense(lastEx.Id)"><Icon Name="pencil" /> @Loc["Edit last"]</button>
-                            }
+                            @* "Edit last" now lives inside the Add-expense modal (next to Repeat last). *@
                         </span>
                     </div>
                 </div>
@@ -383,10 +380,7 @@ else
                     {
                         <span class="card-act-row">
                             <button class="card-act card-act-income" @onclick="OpenDeposit"><Icon Name="note" /> @Loc["Add income"]</button>
-                            @if (State.LastContribution is { } lastInc && State.CanHandleContribution(lastInc))
-                            {
-                                <button class="card-act-edit" title="@Loc["Edit the last income you logged"]" @onclick="() => OpenEditDeposit(lastInc.Id)"><Icon Name="pencil" /> @Loc["Edit last"]</button>
-                            }
+                            @* "Edit last" now lives inside the Add-income modal. *@
                         </span>
                     }
                 </div>
@@ -915,22 +909,6 @@ else
                             <span class="bds-lbl">@Loc["Spent this period"]</span>
                             <span class="bds-amt" style="@(spentColour is { } c ? $"color:{c}" : "")">@Fmt(State.TotalSpent)</span>
                         </span>
-                        @if (filterTags.Count > 0)
-                        {
-                            <span class="bydate-tags">
-                                <Icon Name="tag" Class="bydate-tag-ico" />
-                                @foreach (var t in filterTags)
-                                {
-                                    var tid = t.Id;
-                                    var on = _spendTagFilter.Contains(tid);
-                                    <button type="button" class="tag-chip @(on ? "tag-chip-on" : "")" @onclick="() => ToggleSpendTag(tid)">@if (!string.IsNullOrEmpty(t.Icon)) { <span class="tag-emoji">@t.Icon</span> }@t.Name</button>
-                                }
-                                @if (_spendTagFilter.Count > 0)
-                                {
-                                    <button type="button" class="tag-filter-clear" @onclick="() => _spendTagFilter.Clear()">@Loc["Clear"]</button>
-                                }
-                            </span>
-                        }
                         <span class="bydate-nav">
                             @if (_calendar)
                             {
@@ -944,12 +922,34 @@ else
                                     <button class="exp-edit" title="@Loc["Next day"]" @onclick="NextDay" disabled="@(dv >= State.Period.To)">▶</button>
                                 </span>
                             }
+                            @* Tag filter collapses behind an icon so the chips don't crowd the row; a dot marks an active filter. *@
+                            @if (filterTags.Count > 0)
+                            {
+                                <button type="button" class="view-btn @(_tagFilterOpen ? "active" : "")" title="@Loc["Filter by tag"]" @onclick="() => _tagFilterOpen = !_tagFilterOpen">
+                                    <Icon Name="tag" />@if (_spendTagFilter.Count > 0) { <span class="filter-dot"></span> }
+                                </button>
+                            }
                             <span class="view-toggle">
                                 <button class="view-btn @(_calendar ? "" : "active")" title="@Loc["List"]" @onclick="ShowDayList"><Icon Name="list" /></button>
                                 <button class="view-btn @(_calendar ? "active" : "")" title="@Loc["Calendar"]" @onclick="ShowCalendarView"><Icon Name="calendar" /></button>
                             </span>
                         </span>
                     </div>
+                    @if (_tagFilterOpen && filterTags.Count > 0)
+                    {
+                        <div class="tag-chips-row">
+                            @foreach (var t in filterTags)
+                            {
+                                var tid = t.Id;
+                                var on = _spendTagFilter.Contains(tid);
+                                <button type="button" class="tag-chip @(on ? "tag-chip-on" : "")" @onclick="() => ToggleSpendTag(tid)">@if (!string.IsNullOrEmpty(t.Icon)) { <span class="tag-emoji">@t.Icon</span> }@t.Name</button>
+                            }
+                            @if (_spendTagFilter.Count > 0)
+                            {
+                                <button type="button" class="tag-filter-clear" @onclick="() => _spendTagFilter.Clear()">@Loc["Clear"]</button>
+                            }
+                        </div>
+                    }
                 }
                 @if (barScale > 0m && _spendView == SpendView.Categories)
                 {
@@ -2443,7 +2443,12 @@ else
                     }
                     @if (State.LastExpense is { } lastExp && _expenseDrafts.Count == 0)
                     {
-                        <button type="button" class="repeat-last" @onclick="RepeatLastExpense"><Icon Name="rotate" /> @Loc["Repeat last"]: <strong>@State.CategoryName(lastExp.CategoryId)</strong> · @Fmt(lastExp.Amount)</button>
+                        @* Repeat = log a fresh copy; Edit = change that same last entry. Both reference the last expense. *@
+                        <div class="last-actions">
+                            <button type="button" class="repeat-last" @onclick="RepeatLastExpense"><Icon Name="rotate" /> @Loc["Repeat last"]</button>
+                            <button type="button" class="repeat-last" @onclick="() => OpenEditExpense(lastExp.Id)"><Icon Name="pencil" /> @Loc["Edit last"]</button>
+                            <span class="last-ref">@State.CategoryName(lastExp.CategoryId) · @Fmt(lastExp.Amount)</span>
+                        </div>
                     }
                     var qpCats = State.RecentCategories(6);
                     <div class="modal-field"><span class="lbl-row">@Loc["Category"] <button type="button" class="lbl-add" title="@Loc["Add category"]" @onclick="ExpenseAddCategory">+</button></span>
@@ -2891,6 +2896,13 @@ else
 
                 case Modal.Deposit:
                     <h3>@Loc["Add income"]</h3>
+                    @if (State.LastContribution is { } lastInc && State.CanHandleContribution(lastInc))
+                    {
+                        <div class="last-actions">
+                            <button type="button" class="repeat-last" @onclick="() => OpenEditDeposit(lastInc.Id)"><Icon Name="pencil" /> @Loc["Edit last"]</button>
+                            <span class="last-ref">@State.ContributionCategoryName(lastInc.CategoryId) · @Fmt(lastInc.Paid)</span>
+                        </div>
+                    }
                     <label for="dep-cat"><span class="lbl-row">@Loc["Category"] <button type="button" class="lbl-add" title="@Loc["New contribution category"]" @onclick="DepositAddCategory">+</button></span>
                         <select id="dep-cat" @bind="_depCategoryId">
                             @foreach (var cc in State.ContributionCategories)
@@ -4387,6 +4399,7 @@ else
     // category/sub drawer) narrows to expenses carrying at least one of the chosen tags. Bars/totals stay unfiltered —
     // this is a "find the tagged expenses" filter, not a re-budgeting view.
     private readonly HashSet<Guid> _spendTagFilter = new();
+    private bool _tagFilterOpen;   // By-date: the tag chips are collapsed behind a filter icon until opened
     private void ToggleSpendTag(Guid id) { if (!_spendTagFilter.Remove(id)) _spendTagFilter.Add(id); }
     private bool ExpenseMatchesTagFilter(FinApp.Domain.Budgeting.Expense e) =>
         _spendTagFilter.Count == 0 || e.TagIds.Any(_spendTagFilter.Contains);
