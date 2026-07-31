@@ -657,6 +657,19 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     public Money MaxAdditionalSavings => Period.MaxAdditionalSavingsAfter(PriorSaved);
     public Money AvailableToSave => Period.AvailableToSaveAfter(PriorSaved);
 
+    // "Money in" for the savings rate (domain-owned in SavingsReportService). Fresh income alone is the wrong
+    // denominator: setting aside *carried-over* cash, divided by this period's income, over-states the rate (it can
+    // even exceed 100%). So the rate is measured against everything you had to work with — fresh income + free carry-in.
+    /// <summary>Money that actually arrived this period (member deposits/income), excluding carried-over balance.</summary>
+    public Money FreshInThisPeriod => Period.ContributionsPaidTotal;
+    /// <summary>Free cash carried in from before (opening balance minus what's already earmarked for savings).</summary>
+    public Money CarriedInThisPeriod => MoneyInThisPeriod - FreshInThisPeriod;
+    /// <summary>All the money you had to work with this period = fresh income + free carry-in. Denominator for the rate.</summary>
+    public Money MoneyInThisPeriod => _savings.MoneyIn(Account, Period);
+    /// <summary>Saved this period as a fraction of money-in (null when nothing came in). Naturally bounded to ~0–100%,
+    /// since you can't set aside more than came in — unlike the old "% of income", which carry-over could inflate.</summary>
+    public decimal? PeriodMoneyInRate => _savings.PeriodMoneyInRate(Account, Period);
+
     /// <summary>Unallocated cash this period (closing − all savings). Negative = over-allocated. Advisory only.</summary>
     public Money FreeToAllocate => Period.FreeToAllocateAfter(PriorSaved);
     public bool IsOverAllocated => Period.FreeToAllocateAfter(PriorSaved).IsNegative;

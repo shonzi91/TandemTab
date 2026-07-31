@@ -37,6 +37,31 @@ public sealed class SavingsReportService
         return savedForRate.RatioOf(period.ContributionsPaidTotal);
     }
 
+    /// <summary>The money you had to work with this period = fresh income (paid contributions) + free cash carried in.
+    /// The carry-in is the opening balance minus what was already earmarked for savings before this period (that
+    /// isn't fresh to re-allocate), floored at zero. Used as the savings-rate denominator so that setting aside
+    /// carried-over cash isn't measured against this period's income alone.</summary>
+    public Money MoneyIn(Account account, Period period)
+    {
+        ArgumentNullException.ThrowIfNull(account);
+        ArgumentNullException.ThrowIfNull(period);
+        var priorSaved = AccumulatedTotal(account) - period.SavingsNetTotal;   // savings held from before, still earmarked
+        var carriedFree = period.InitialTotal - priorSaved;
+        if (carriedFree.IsNegative) carriedFree -= carriedFree;                 // deficit carried in adds no spendable money
+        return period.ContributionsPaidTotal + carriedFree;
+    }
+
+    /// <summary>Net set aside this period as a fraction of <see cref="MoneyIn"/> (null when nothing came in). Preferred
+    /// over <see cref="PeriodSavingsRate"/> for display: unlike "% of income", carried-over cash saved this period
+    /// can't inflate it past ~100%, because you can't set aside more than came in.</summary>
+    public decimal? PeriodMoneyInRate(Account account, Period period)
+    {
+        ArgumentNullException.ThrowIfNull(account);
+        ArgumentNullException.ThrowIfNull(period);
+        var saved = period.SavingsNetTotal - period.SavingsDisbursedTotal;
+        return saved.RatioOf(MoneyIn(account, period));
+    }
+
     /// <summary>
     /// Per-bucket report: balance accumulated across all periods plus the movement in <paramref name="period"/>.
     /// The accumulated balance includes any pre-existing <see cref="SavingCategory.InitialAmount"/>; the

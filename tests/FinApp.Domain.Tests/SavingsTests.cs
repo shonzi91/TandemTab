@@ -34,6 +34,47 @@ public class SavingsTests
     }
 
     [Fact]
+    public void Money_in_rate_counts_carried_over_cash_so_it_does_not_inflate_like_percent_of_income()
+    {
+        var account = new Account("Family", Eur);
+        var member = account.AddMember(Guid.NewGuid(), "Stoyan");
+        var pot = account.AddSavingCategory("Rainy day");
+        var svc = new SavingsReportService();
+        var fund = Guid.NewGuid();
+
+        var p = account.StartPeriod(new DateOnly(2026, 1, 1), new DateOnly(2026, 1, 31));
+        p.SetInitialBalance(fund, M(500));                                  // €500 carried over from before, still free
+        p.Deposit(member.UserId, M(1000));                                 // €1,000 fresh income this period
+        p.AllocateToSavings(pot.Id, M(500), new DateOnly(2026, 1, 15));    // set aside exactly the carried-over €500
+
+        // Old "% of income" over-states: €500 / €1,000 = 50%, though none of the €500 came from this period's income.
+        Assert.Equal(0.5m, svc.PeriodSavingsRate(p));
+
+        // Money-in = €1,000 fresh + €500 carried over = €1,500 → €500 / €1,500 ≈ 33%.
+        Assert.Equal(M(1500), svc.MoneyIn(account, p));
+        Assert.Equal(0.333m, Math.Round(svc.PeriodMoneyInRate(account, p)!.Value, 3));
+    }
+
+    [Fact]
+    public void Money_in_rate_stays_at_or_below_100_percent_when_saving_exceeds_thin_income()
+    {
+        var account = new Account("Family", Eur);
+        var member = account.AddMember(Guid.NewGuid(), "Stoyan");
+        var pot = account.AddSavingCategory("Rainy day");
+        var svc = new SavingsReportService();
+        var fund = Guid.NewGuid();
+
+        var p = account.StartPeriod(new DateOnly(2026, 1, 1), new DateOnly(2026, 1, 31));
+        p.SetInitialBalance(fund, M(500));                                  // big carry-over
+        p.Deposit(member.UserId, M(200));                                  // thin income
+        p.AllocateToSavings(pot.Id, M(500), new DateOnly(2026, 1, 15));
+
+        Assert.Equal(2.5m, svc.PeriodSavingsRate(p));                       // old: €500 / €200 = 250% (nonsense)
+        Assert.True(svc.PeriodMoneyInRate(account, p)!.Value <= 1m);        // new: €500 / €700 ≈ 71%, bounded
+        Assert.Equal(0.714m, Math.Round(svc.PeriodMoneyInRate(account, p)!.Value, 3));
+    }
+
+    [Fact]
     public void Average_deposit_pace_is_per_active_period_and_ignores_empty_periods()
     {
         var account = new Account("Family", Eur);

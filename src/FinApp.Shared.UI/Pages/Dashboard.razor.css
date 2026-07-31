@@ -209,11 +209,14 @@ html.dark .acct-drop-people { border-top-color: #2b3350; }
     background: #f4f7f6; border: 1px solid #e3e9ee; border-radius: 18px; padding: 12px 6px;
 }
 .hdr-hero.hero-solo { display: inline-flex; }
-.bal-part { display: flex; flex-direction: column; justify-content: center; gap: 3px; padding: 2px 22px; flex: 1; min-width: 0; }
+.bal-part { display: flex; flex-direction: column; justify-content: center; gap: 3px; padding: 2px 16px; flex: 1; min-width: 0; }
 .bal-part + .bal-part { border-left: 1px solid #e3e9ee; }
 .bal-part .bal-label { font-size: .61rem; text-transform: uppercase; letter-spacing: .13em; color: #6b7280; font-weight: 700; }
 .bal-part strong { font-size: 1.4rem; font-weight: 800; letter-spacing: -.02em; color: #16202b; }
-.bal-part-main strong { font-size: 2rem; }
+/* The hero (Safe to spend) gets extra growth so its larger figure has room — otherwise, with four columns, a wide
+   number spills across the divider into "Saved" (min-width:0 can't rescue a non-wrapping number). */
+.bal-part-main { flex: 1.4; }
+.bal-part-main strong { font-size: 1.85rem; }
 .bal-part .bal-free-v { color: #0f7a54; }
 .bal-part .bal-alloc-v { color: #6b7280; }
 /* What budgets still claim, under "free" — context, so it stays quiet next to the figure it qualifies.
@@ -744,6 +747,18 @@ html.dark .brk-date input[type=date] { background: #171d26; border-color: #2c364
 /* Grouping toggle (left) and the Income/Spent/of-income context (right) share one row; both wrap on narrow screens. */
 .brk-controls { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px 14px; }
 .brk-split { display: flex; gap: 6px; flex: 0 0 auto; }
+/* Group-by chips ride the right end of the ranges row (merged from their old standalone row). */
+.brk-split-end { margin-left: auto; }
+/* Editable window: the date range doubles as the custom-window editor — no separate "Custom" button. */
+/* Full-width flex row (overrides .brk-range-lbl's inline-flex) so the group-by axis can pin to the right end. */
+.brk-range-edit { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; }
+.brk-range-edit .brk-date-in { padding: 4px 8px; border: 1px solid #dde6e1; border-radius: 999px; font: inherit; font-size: .78rem; color: inherit; }
+.brk-date-dash { color: #9aa0ad; }
+html.dark .brk-range-edit .brk-date-in { background: #171d26; border-color: #2c3644; color: #e8eef0; }
+/* Income · Spent · % summary relocated into the top summary row on Breakdown — a touch tighter than the old block. */
+.brk-head-sum { flex-wrap: nowrap; }
+.brk-head-sum .brk-sum { min-width: 0; padding: 5px 11px; }
+.brk-head-sum .brk-sum-val { font-size: .95rem; }
 
 /* Income / spent context for the window (not budgets) + the resolved date range. */
 .brk-range-lbl { display: inline-flex; align-items: center; gap: 5px; color: #8a97a0; font-size: .78rem; font-weight: 600; }
@@ -755,6 +770,28 @@ html.dark .brk-range-lbl { color: #8b96a4; }
 .brk-sum-val { font-size: 1.02rem; font-weight: 800; }
 html.dark .brk-sum { background: #171d26; border-color: #262f3c; }
 html.dark .brk-sum-lbl { color: #8b96a4; }
+
+/* Home mini-breakdown card — a tappable "where your money went" donut + top-category legend that deep-links to the
+   full Breakdown view (UX backlog #6). */
+.home-brk-hit { display: flex; align-items: center; gap: 18px; width: 100%; background: none; border: none; padding: 0;
+    cursor: pointer; text-align: left; }
+.home-brk-donut-wrap { flex: none; }
+.home-brk-donut { width: 108px; height: 108px; }
+.home-brk-total { font-size: 17px; font-weight: 800; fill: #1f2430; }
+.home-brk-sub { font-size: 9px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; fill: #9aa0ad; }
+.home-brk-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 5px; }
+.home-brk-title { font-size: .84rem; font-weight: 800; color: #1f2430; }
+.home-brk-legend { display: flex; flex-direction: column; gap: 3px; }
+.home-brk-leg { display: flex; align-items: center; gap: 8px; font-size: .82rem; }
+.home-brk-dot { width: 9px; height: 9px; border-radius: 3px; flex: none; }
+.home-brk-leg-name { flex: 1; min-width: 0; color: #3a424e; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.home-brk-leg-amt { font-weight: 700; color: #1f2430; flex: none; }
+.home-brk-cta { margin-top: 3px; font-size: .8rem; font-weight: 700; color: #13a06e; }
+.home-brk-hit:hover .home-brk-cta { text-decoration: underline; }
+html.dark .home-brk-total { fill: #e8eaf0; }
+html.dark .home-brk-title, html.dark .home-brk-leg-amt { color: #e8eaf0; }
+html.dark .home-brk-leg-name { color: #b7c0cc; }
+html.dark .home-brk-cta { color: var(--tm-mint); }
 
 .brk-chart { display: flex; justify-content: center; padding: 6px 0; }
 .brk-donut { width: min(240px, 68vw); height: auto; }
@@ -847,9 +884,13 @@ html.dark .brk-note { color: #8b96a4; }
    on one line, then a full-width progress bar spanning the whole section — unlike category rows, whose bar is
    indented past the ring — so it reads as the header the cards sit under, not another peer row. */
 /* The view switches sit on their own row below the summary (mirrors goal-filters under goal-summary). On By date
-   the day-nav + tag filter + list/calendar toggle ride the right end. */
+   the list/calendar toggle + day-nav sit LEFT and the period-spend total is pinned to the right end. */
 .spend-switches { display: flex; align-items: center; gap: 8px 12px; flex-wrap: wrap; margin: 0 0 14px; }
 .bydate-nav { display: flex; align-items: center; gap: 6px; margin-left: auto; flex: none; }
+/* On the By-date row the nav leads on the left; the spent-total pill takes the right end instead. */
+.spend-switches-bydate .bydate-nav { margin-left: 0; }
+.spend-bydate-stat { margin-left: auto; padding: 5px 12px; }
+.spend-bydate-stat .goal-stat-v { font-size: 1.02rem; }
 /* The tag filter lives behind the tag icon in .bydate-nav; a small dot marks an active filter. */
 .bydate-nav .view-btn { position: relative; }
 .filter-dot { position: absolute; top: 3px; right: 3px; width: 6px; height: 6px; border-radius: 50%; background: #2fb99a; }
@@ -988,6 +1029,7 @@ html.dark .bydate-ctx { color: #94a3b8; }
 .fund-panel { display: flex; gap: 26px; align-items: center; flex-wrap: wrap; padding-top: 6px; }
 .fund-donut { width: 168px; height: 168px; flex: none; }
 .fund-donut-track { stroke: #edf1ee; }
+.fund-donut-cap { font-size: 8.5px; font-weight: 700; fill: #9aa0ad; text-transform: uppercase; letter-spacing: .12em; }
 .fund-donut-total { font-size: 21px; font-weight: 700; fill: #1f2430; }
 .fund-donut-sub { font-size: 11px; fill: #9aa0ad; }
 .fund-legend { flex: 1; min-width: 240px; display: flex; flex-direction: column; gap: 2px; }
@@ -1016,11 +1058,17 @@ html.dark .bydate-ctx { color: #94a3b8; }
     color: #13a06e; cursor: pointer; font-size: .84rem; font-weight: 600; padding: 6px 13px;
 }
 .fund-add:hover { border-color: #13a06e; background: #f0fbf6; }
+/* Collapsed "+ N empty funds" reveal — a quiet text link, not a boxed button, so empty funds stay out of the way. */
+.fund-empty-toggle { align-self: flex-start; margin-top: 4px; background: none; border: none; cursor: pointer;
+    color: #9aa0ad; font-size: .8rem; font-weight: 600; padding: 3px 2px; }
+.fund-empty-toggle:hover { color: #13a06e; }
+html.dark .fund-empty-toggle:hover { color: var(--tm-mint); }
 /* When it's a standalone "+ Add …" button in a modal body (not a section head), give it room from the list below. */
 .modal > .fund-add { margin: 2px 0 12px; }
 html.dark .fund-donut-track { stroke: #232a37; }
 html.dark .fund-donut-total { fill: #e8eaf0; }
 html.dark .fund-donut-sub { fill: #8a94a6; }
+html.dark .fund-donut-cap { fill: #8a94a6; }
 html.dark .fund-row:hover { background: #181c25; }
 html.dark .fund-row-name, html.dark .fund-row-amt { color: #e8eaf0; }
 html.dark .fund-add { border-color: #2b3648; }
@@ -1324,28 +1372,24 @@ input[type=date]::-webkit-calendar-picker-indicator:hover { opacity: 1; backgrou
     .row-note { max-width: 40vw; }
 }
 
-/* Balance hero on phones: three equal columns don't fit.
-   At 375px each .bal-part got ~112px, of which 44px is padding — leaving 68px for figures that need 100–165px.
-   The numbers overflowed their column (Current by ~96px) and, with nothing clipping them, spilled straight across
-   the divider into the next column: the "current/free/saved overlap".
-   So Current — the biggest figure and the one you actually read — takes a full row of its own, and Free/Saved
-   share the row beneath it. Padding shrinks to match the narrower box. */
-@media (max-width: 560px) {
+/* Balance hero on phones + narrow tablets: four equal columns don't fit (each figure needs 100–165px but only gets
+   ~90px), and a non-wrapping number spills across the divider into the next column — the old "overlap". Below 768px
+   the four tiles become a 2×2 grid: Safe-to-spend | Saved on top, Spent | Income beneath. Each tile is half-width so
+   its figure has room, and the dividers are redrawn to match (a cross between the four cells). */
+@media (max-width: 768px) {
     .hdr-hero { flex-wrap: wrap; padding: 10px 4px; }
-    .bal-part { padding: 6px 12px; min-width: 0; }
-    .bal-part-main { flex: 1 1 100%; }
-    /* The divider follows the layout: a rule across the top of the second row, and a side border only between
-       Free and Saved, which are the two actually sitting side by side. Both get the same top treatment or they
-       start at different heights and their labels stop lining up. */
+    .bal-part, .bal-part-main { flex: 1 1 42%; padding: 8px 14px; min-width: 0; box-sizing: border-box; }
+    /* Reset the desktop left-borders, then draw the 2×2 cross: a left border on the right column (2nd & 4th tiles),
+       a top border on the second row (3rd & 4th tiles). */
     .bal-part + .bal-part { border-left: none; }
-    .bal-part-main ~ .bal-part { border-top: 1px solid #e3e9ee; padding-top: 10px; margin-top: 8px; }
-    .bal-part-main ~ .bal-part + .bal-part { border-left: 1px solid #e3e9ee; }
-    .bal-part-main strong { font-size: 1.75rem; }
-    .bal-part strong { font-size: 1.15rem; }
+    .bal-part:nth-child(2n) { border-left: 1px solid #e3e9ee; }
+    .bal-part:nth-child(n+3) { border-top: 1px solid #e3e9ee; padding-top: 12px; margin-top: 2px; }
+    .bal-part-main strong { font-size: 1.7rem; }
+    .bal-part strong { font-size: 1.2rem; }
     /* Long figures shrink rather than escape the box — the overlap can't come back. */
     .bal-part strong, .bal-part .bal-sub { min-width: 0; overflow-wrap: anywhere; }
 }
-html.dark .bal-part-main ~ .bal-part { border-color: #2b3446; }
+html.dark .bal-part:nth-child(2n), html.dark .bal-part:nth-child(n+3) { border-color: #2b3446; }
 
 @media (max-width: 430px) {
     .cards, .cards.cards-2 { grid-template-columns: 1fr; }

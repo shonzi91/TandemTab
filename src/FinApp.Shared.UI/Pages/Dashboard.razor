@@ -215,28 +215,30 @@ else
         @{
             var _balCur = State.DisplayClosingBalance(_bankStatus?.Balance, _bankStatus?.BalanceCurrency);
             var _balFree = State.DisplayFreeToAllocate(_bankStatus?.Balance, _bankStatus?.BalanceCurrency);
-            // Current − free reduces to the savings earmark (free = current − savings − priorSaved). Budgets are
-            // deliberately NOT in it: only savings reserve cash (Period.FreeToAllocateAfter).
-            var _balAlloc = _balCur - _balFree;
             // Known bills still expected out this period (recurring, not yet posted). Unlike budgets these are real,
             // near-certain outflows, so "free once they're paid" is an honest look-ahead — the number that answers
             // "what can I actually spend without shorting a bill I already know is coming". Can go negative.
             var _billsDue = State.BillsDueThisPeriod;
             var _safeAfterBills = _balFree - _billsDue;
+            // The hero is a real money summary — and it's the only header the Home tab shows, so it doubles as Home's
+            // "how am I doing" glance (UX backlog #1/#2): what's safe to spend now, what was set aside this period
+            // (with its savings rate), what's gone out, and what came in. The running TOTAL balance moved down to the
+            // Wallets donut; the all-time saved TOTAL moved to the Goals header — each lives where you'd go looking.
+            var _spent = State.TotalSpent;
+            var _savedPeriod = State.SavingsThisPeriod;
+            // Rate is of "money in" (fresh income + free carry-over), not income alone — otherwise setting aside
+            // carried-over cash over-states it. Tooltip breaks the denominator down so the figure is legible.
+            var _savedRate = State.PeriodMoneyInRate;
+            var _moneyInTip = string.Format(Loc["Money in this period: {0} came in, plus {1} carried over from before."], Fmt(State.FreshInThisPeriod), Fmt(State.CarriedInThisPeriod));
         }
         <div class="hdr-hero @(State.IsPeriodOpen ? "" : "hero-solo")">
-            <div class="bal-part bal-part-main">
-                <span class="bal-label">@Loc[State.IsPeriodOpen ? "Current" : "Closed on"]@if (LiveBalancePending) { <span class="bal-refreshing" title="@Loc["Updating live balance…"]"></span> }</span>
-                <strong>@Fmt(_balCur)</strong>
-            </div>
             @if (State.IsPeriodOpen)
             {
-                <div class="bal-part">
-                    <span class="bal-label">@Loc["Free"]</span>
+                <div class="bal-part bal-part-main">
+                    <span class="bal-label">@Loc["Safe to spend"]@if (LiveBalancePending) { <span class="bal-refreshing" title="@Loc["Updating live balance…"]"></span> }</span>
                     <strong class="@(State.IsOverAllocated ? "warn-text" : "bal-free-v")" title="@Loc["Not set aside for savings. Budgets are plans, so they don't reserve this."]">@Fmt(_balFree)</strong>
-                    @* One context line at most: the bills still due this period, which "free" doesn't yet subtract.
-                       The old "planned" line was dropped — when budgets outrun free cash the urgent Home alert
-                       ("budgets still plan €X but only €Y is free") already says it, so the header no longer repeats it. *@
+                    @* One context line at most: the bills still due this period, which "safe to spend" doesn't yet
+                       subtract. When budgets outrun free cash the urgent Home alert already says so — not repeated here. *@
                     @if (_billsDue.Amount > 0m)
                     {
                         <small class="bal-sub @(_safeAfterBills.IsNegative ? "warn-text" : "")" title="@string.Format(Loc["{0} in known bills is still expected this period — this is what stays free once they are paid."], Fmt(_billsDue))">@Fmt(_safeAfterBills) @Loc["after bills"]</small>
@@ -244,7 +246,32 @@ else
                 </div>
                 <div class="bal-part">
                     <span class="bal-label">@Loc["Saved"]</span>
-                    <strong class="bal-alloc-v" title="@Loc["Set aside for savings — reserved, not spent. Budgets aren't counted here."]">@Fmt(_balAlloc)</strong>
+                    <strong class="bal-alloc-v" title="@Loc["Set aside for savings this period — reserved, not spent."]">@Fmt(_savedPeriod)</strong>
+                    @if (_savedRate is { } _sr && _sr > 0m)
+                    {
+                        <small class="bal-sub" title="@_moneyInTip">@(Math.Round(_sr * 100m).ToString("0", System.Globalization.CultureInfo.InvariantCulture))% @Loc["of money in"]</small>
+                    }
+                </div>
+                <div class="bal-part">
+                    <span class="bal-label">@Loc["Spent"]</span>
+                    <strong title="@Loc["Total spent this period."]">@Fmt(_spent)</strong>
+                </div>
+                <div class="bal-part">
+                    @* Was "Income" — now "Money in" (fresh income + free carry-over) so it matches the denominator the
+                       Saved rate is "% of". When nothing carried over it's just this period's income. *@
+                    <span class="bal-label">@Loc["Money in"]</span>
+                    <strong title="@_moneyInTip">@Fmt(State.MoneyInThisPeriod)</strong>
+                    @if (State.CarriedInThisPeriod.Amount > 0m)
+                    {
+                        <small class="bal-sub" title="@_moneyInTip">+@Fmt(State.CarriedInThisPeriod) @Loc["carried"]</small>
+                    }
+                </div>
+            }
+            else
+            {
+                <div class="bal-part bal-part-main">
+                    <span class="bal-label">@Loc["Closed on"]@if (LiveBalancePending) { <span class="bal-refreshing" title="@Loc["Updating live balance…"]"></span> }</span>
+                    <strong>@Fmt(_balCur)</strong>
                 </div>
             }
         </div>
@@ -417,6 +444,55 @@ else
                     </div>
                 }
             </section>
+
+            @* Home mini-breakdown (UX backlog #6): a compact "where your money went" donut over this period, promoting
+               the full Breakdown view — tap anywhere on the card to jump into it. Hidden until there's spend to show. *@
+            @{
+                var homeSlices = HomePeriodSlices();
+                var homeSpendTotal = homeSlices.Sum(s => s.Amount);
+            }
+            @if (homeSpendTotal > 0m)
+            {
+                <section class="panel home-brk-card">
+                    <button class="home-brk-hit" @onclick="OpenBreakdown">
+                        <span class="home-brk-donut-wrap">
+                            <svg class="home-brk-donut" viewBox="0 0 120 120" role="img" aria-label="@Loc["Where your money went"]">
+                                @if (homeSlices.Count == 1)
+                                {
+                                    <circle cx="60" cy="60" r="47" fill="none" stroke="@homeSlices[0].Color" stroke-width="18" />
+                                }
+                                else
+                                {
+                                    double hacc = 0;
+                                    @foreach (var s in homeSlices)
+                                    {
+                                        var sweep = (double)(s.Amount / homeSpendTotal) * 100.0;
+                                        var d = DonutArc(hacc, sweep, 60, 60, 56, 38);
+                                        <path d="@d" fill="@s.Color"><title>@s.Label</title></path>
+                                        hacc += sweep;
+                                    }
+                                }
+                                <text x="60" y="59" text-anchor="middle" class="home-brk-total">@Fmt(State.Money(homeSpendTotal))</text>
+                                <text x="60" y="73" text-anchor="middle" class="home-brk-sub">@Loc["spent"]</text>
+                            </svg>
+                        </span>
+                        <span class="home-brk-body">
+                            <span class="home-brk-title">@Loc["Where your money went"]</span>
+                            <span class="home-brk-legend">
+                                @foreach (var s in homeSlices.Take(4))
+                                {
+                                    <span class="home-brk-leg">
+                                        <span class="home-brk-dot" style="background:@s.Color"></span>
+                                        <span class="home-brk-leg-name">@s.Label</span>
+                                        <span class="home-brk-leg-amt">@Fmt(State.Money(s.Amount))</span>
+                                    </span>
+                                }
+                            </span>
+                            <span class="home-brk-cta">@Loc["See full breakdown"] ›</span>
+                        </span>
+                    </button>
+                </section>
+            }
 
             @{
                 var homeTargets = HomeTargets();
@@ -706,13 +782,24 @@ else
                                 }
                             }
                         </g>
-                        <text x="90" y="86" text-anchor="middle" class="fund-donut-total">@Fmt(State.DisplayClosingBalance(_bankStatus?.Balance, _bankStatus?.BalanceCurrency))</text>
-                        <text x="90" y="104" text-anchor="middle" class="fund-donut-sub">@string.Format(Loc["across {0} funds"], funds.Count)</text>
+                        @* The running total balance — it used to headline the top account bar; now the Wallets donut is
+                           its home (UX backlog: total moved out of the header), so it's labelled explicitly here. *@
+                        <text x="90" y="76" text-anchor="middle" class="fund-donut-cap">@Loc["Total balance"]</text>
+                        <text x="90" y="96" text-anchor="middle" class="fund-donut-total">@Fmt(State.DisplayClosingBalance(_bankStatus?.Balance, _bankStatus?.BalanceCurrency))</text>
+                        <text x="90" y="112" text-anchor="middle" class="fund-donut-sub">@string.Format(Loc["across {0} funds"], funds.Count)</text>
                     </svg>
+                    @{
+                        // A fund is "empty" (collapsible) when it holds ~nothing and isn't a synced/overdrawn one —
+                        // those two always stay visible. If every fund is empty there's nothing to hide, so show all.
+                        bool IsEmptyFund(Guid id) => !State.FundIsSynced(id) && _fundBals[id].Amount >= 0m && _fundBals[id].Amount < 1m;
+                        var emptyFunds = funds.Where(f => IsEmptyFund(f.Id)).ToList();
+                        var collapseEmpty = emptyFunds.Count > 0 && emptyFunds.Count < funds.Count && !_showEmptyFunds;
+                    }
                     <div class="fund-legend">
                         @foreach (var f in funds)
                         {
                             var fid = f.Id;
+                            if (collapseEmpty && IsEmptyFund(fid)) { continue; }
                             var synced = State.FundIsSynced(fid);
                             var bal = _fundBals[fid];
                             var note = State.FundNote(fid);
@@ -741,6 +828,14 @@ else
                                 </span>
                                 @if (_fundMenuId == fid) { @FundCircleMenu(fid) }
                             </div>
+                        }
+                        @if (emptyFunds.Count > 0 && emptyFunds.Count < funds.Count)
+                        {
+                            <button type="button" class="fund-empty-toggle" @onclick="() => _showEmptyFunds = !_showEmptyFunds">
+                                @(_showEmptyFunds
+                                    ? Loc["Hide empty funds"]
+                                    : string.Format(emptyFunds.Count == 1 ? Loc["+ {0} empty fund"] : Loc["+ {0} empty funds"], emptyFunds.Count))
+                            </button>
                         }
                     </div>
                 </div>
@@ -872,22 +967,24 @@ else
                 @* Summary on top, styled like the Goals tab's "Saved this period" header; the view switches sit
                    below it (mirroring goal-summary → goal-filters). *@
                 <div class="goal-summary spend-summary">
-                    @if (_spendView == SpendView.ByDate)
+                    @* The view switch leads this row on EVERY view (no per-view stat ahead of it) so it stays fixed in
+                       place as you switch tabs; the add-action + ⋯ stay pinned to its right. The By-date period-spend
+                       total moved down onto the By-date controls row. *@
+                    <span class="plan-toggle bview-toggle spend-view-toggle" role="group">
+                        <button type="button" class="chip @(_spendView == SpendView.ByDate ? "on" : "")" @onclick="() => _spendView = SpendView.ByDate"><Icon Name="list" /> @Loc["By date"]</button>
+                        <button type="button" class="chip @(_spendView == SpendView.Categories ? "on" : "")" @onclick="SwitchToByBudgets"><Icon Name="chart" /> @Loc["By budgets"]</button>
+                        <button type="button" class="chip @(_spendView == SpendView.Breakdown ? "on" : "")" @onclick="() => _spendView = SpendView.Breakdown"><Icon Name="pie" /> @Loc["Breakdown"]</button>
+                    </span>
+                    @if (State.IsPeriodOpen)
                     {
-                        var spentPct = State.TotalBudgeted.Amount > 0m ? Math.Clamp((double)(State.TotalSpent.Amount / State.TotalBudgeted.Amount) * 100, 0, 100) : -1d;
-                        var spentColour = spentPct >= 0 ? SpendBarColorAt(spentPct) : null;
-                        <div class="goal-stat">
-                            <span class="goal-stat-k">@Loc["Spent this period"]</span>
-                            <span class="goal-stat-v goal-stat-v-period" style="@(spentColour is { } c ? $"color:{c}" : "")">@Fmt(State.TotalSpent)</span>
-                        </div>
-                    }
-                    @if (_spendView == SpendView.Categories)
-                    {
-                        <button class="fund-add" @onclick="OpenAddBudget"><Icon Name="plus" /> @Loc["Add budget"]</button>
-                    }
-                    else if (_spendView == SpendView.ByDate && State.IsPeriodOpen)
-                    {
-                        <button class="fund-add" @onclick="AddExpenseFromHeader"><Icon Name="receipt" /> @Loc["Add expense"]</button>
+                        @if (_spendView == SpendView.Categories)
+                        {
+                            <button class="fund-add" @onclick="OpenAddBudget"><Icon Name="plus" /> @Loc["Add budget"]</button>
+                        }
+                        else
+                        {
+                            <button class="fund-add" @onclick="AddExpenseFromHeader"><Icon Name="receipt" /> @Loc["Add expense"]</button>
+                        }
                     }
                     <span class="acct-menu spend-menu">
                         <button class="link" title="@Loc["More"]" @onclick="() => _spendMenuOpen = !_spendMenuOpen"><Icon Name="dots" /></button>
@@ -902,17 +999,19 @@ else
                         }
                     </span>
                 </div>
-                @* View switches below the summary. On By date the day-nav + tag filter + list/calendar toggle
-                   ride the right end of this row. *@
-                <div class="spend-switches">
-                    <span class="plan-toggle bview-toggle" role="group">
-                        <button type="button" class="chip @(_spendView == SpendView.ByDate ? "on" : "")" @onclick="() => _spendView = SpendView.ByDate"><Icon Name="list" /> @Loc["By date"]</button>
-                        <button type="button" class="chip @(_spendView == SpendView.Categories ? "on" : "")" @onclick="SwitchToByBudgets"><Icon Name="chart" /> @Loc["By budgets"]</button>
-                        <button type="button" class="chip @(_spendView == SpendView.Breakdown ? "on" : "")" @onclick="() => _spendView = SpendView.Breakdown"><Icon Name="pie" /> @Loc["Breakdown"]</button>
-                    </span>
-                    @if (_spendView == SpendView.ByDate)
-                    {
+                @* By date's own controls drop to a slim row of their own (the view switch lives up on the summary row).
+                   List/calendar toggle + the day-nav/date sit on the LEFT; the period-spend total is pinned RIGHT — where
+                   the nav cluster used to be — so the total has a stable home that doesn't crowd the fixed view switch. *@
+                @if (_spendView == SpendView.ByDate)
+                {
+                    var spentPct = State.TotalBudgeted.Amount > 0m ? Math.Clamp((double)(State.TotalSpent.Amount / State.TotalBudgeted.Amount) * 100, 0, 100) : -1d;
+                    var spentColour = spentPct >= 0 ? SpendBarColorAt(spentPct) : null;
+                    <div class="spend-switches spend-switches-bydate">
                         <span class="bydate-nav">
+                            <span class="view-toggle">
+                                <button class="view-btn @(_calendar ? "" : "active")" title="@Loc["List"]" @onclick="ShowDayList"><Icon Name="list" /></button>
+                                <button class="view-btn @(_calendar ? "active" : "")" title="@Loc["Calendar"]" @onclick="ShowCalendarView"><Icon Name="calendar" /></button>
+                            </span>
                             @if (_calendar)
                             {
                                 <span class="bydate-ctx">@State.Period.From.ToString("MMMM yyyy")</span>
@@ -932,13 +1031,13 @@ else
                                     <Icon Name="tag" />@if (_spendTagFilter.Count > 0) { <span class="filter-dot"></span> }
                                 </button>
                             }
-                            <span class="view-toggle">
-                                <button class="view-btn @(_calendar ? "" : "active")" title="@Loc["List"]" @onclick="ShowDayList"><Icon Name="list" /></button>
-                                <button class="view-btn @(_calendar ? "active" : "")" title="@Loc["Calendar"]" @onclick="ShowCalendarView"><Icon Name="calendar" /></button>
-                            </span>
                         </span>
-                    }
-                </div>
+                        <div class="goal-stat spend-bydate-stat">
+                            <span class="goal-stat-k">@Loc["Spent this period"]</span>
+                            <span class="goal-stat-v goal-stat-v-period" style="@(spentColour is { } _sc ? $"color:{_sc}" : "")">@Fmt(State.TotalSpent)</span>
+                        </div>
+                    </div>
+                }
                 @if (_spendView == SpendView.ByDate && _tagFilterOpen && State.ActiveTags.Count > 0)
                 {
                     <div class="tag-chips-row">
@@ -1251,6 +1350,8 @@ else
                 <div class="brk">
                     <div class="brk-ranges" role="group">
                         @{
+                            // No "Custom" chip — the editable date row below IS the custom window; typing a date switches
+                            // to it. These presets are just quick-fills for those dates.
                             (BreakRange R, string L)[] ranges = new[]
                             {
                                 (BreakRange.ThisPeriod, Loc["This period"]),
@@ -1258,19 +1359,11 @@ else
                                 (BreakRange.M6, Loc["6 months"]),
                                 (BreakRange.M12, Loc["12 months"]),
                                 (BreakRange.All, Loc["All time"]),
-                                (BreakRange.Custom, Loc["Custom"]),
                             };
                         }
                         @foreach (var (r, l) in ranges)
                         {
                             <button type="button" class="chip @(_breakRange == r ? "on" : "")" @onclick="() => SetBreakRange(r)">@l</button>
-                        }
-                        @* Custom date inputs sit right after the chips (same flex row) so they fill the space beside the
-                           Custom button and wrap to the next line only when there isn't room. *@
-                        @if (_breakRange == BreakRange.Custom)
-                        {
-                            <label class="brk-date">@Loc["From"] <input type="date" @bind="_breakFrom" max="@_breakTo.ToString("yyyy-MM-dd")" /></label>
-                            <label class="brk-date">@Loc["To"] <input type="date" @bind="_breakTo" min="@_breakFrom.ToString("yyyy-MM-dd")" /></label>
                         }
                     </div>
                     @{
@@ -1279,13 +1372,10 @@ else
                         var brkCi = System.Globalization.CultureInfo.InvariantCulture;
                         var (brkFrom, brkTo) = BreakWindow();
                         var brkIncome = State.IncomeInRange(brkFrom, brkTo);
-                        // "Spent" = all money out for the window: expenses + out-transfers. Computed from the raw rows,
-                        // NOT the slices, so it's identical in the category and tag views (the tag slices double-count
-                        // multi-tag expenses — using them here inflated the % of income in the tag view).
+                        // "Spent" = all money out for the window: expenses + out-transfers. From the raw rows, not the
+                        // slices, so it's identical across the category/tag/fund toggles.
                         var brkMoneyOut = State.ExpensesInRange(brkFrom, brkTo).Sum(e => Math.Abs(e.Amount.Amount))
                             + State.ExternalTransfersInRange(brkFrom, brkTo).Sum(t => Math.Abs(t.Amount.Amount));
-                        // One expense per tag now (one tag per expense), so tag slices sum to the real spend — no
-                        // double-count caveat needed.
                         // One expense row, reused by the flat list and the grouped-by-sub/tag lists in an expanded slice.
                         RenderFragment<FinApp.Domain.Budgeting.Expense> brkExpRow = e =>
                         @<li class="brk-exp-row">
@@ -1297,12 +1387,15 @@ else
                             <span class="brk-exp-amt">@Fmt(e.Amount)</span>
                         </li>;
                     }
-                    <div class="brk-range-lbl"><Icon Name="calendar" /> @brkFrom.ToString("dd MMM yyyy") – @brkTo.ToString("dd MMM yyyy")</div>
-                    @* Grouping toggle (Categories / Tags-if-any / Funds) and the Income · Spent · of-income context share
-                       one row. Income/money-out is member contributions vs all money out (expenses + out-transfers),
-                       independent of which toggle is active. *@
-                    <div class="brk-controls">
-                        <span class="brk-split">
+                    @* The window is editable directly: the presets above quick-fill these two dates, and typing in either
+                       one makes it a custom window — so there's no separate "Custom" button and no duplicate date set.
+                       The group-by axis (Categories / Tags / Funds) shares this row, pinned to its right end. *@
+                    <div class="brk-range-lbl brk-range-edit">
+                        <Icon Name="calendar" />
+                        <input type="date" class="brk-date-in" @bind:get="brkFrom" @bind:set="BreakSetFrom" max="@brkTo.ToString("yyyy-MM-dd")" />
+                        <span class="brk-date-dash">–</span>
+                        <input type="date" class="brk-date-in" @bind:get="brkTo" @bind:set="BreakSetTo" min="@brkFrom.ToString("yyyy-MM-dd")" />
+                        <span class="brk-split brk-split-end">
                             <button type="button" class="chip @(_breakBase == BreakGroup.Category ? "on" : "")" @onclick="() => SetBreakBase(BreakGroup.Category)">@Loc["Categories"]</button>
                             @if (State.ActiveTags.Count > 0)
                             {
@@ -1310,11 +1403,12 @@ else
                             }
                             <button type="button" class="chip @(_breakBase == BreakGroup.Fund ? "on" : "")" @onclick="() => SetBreakBase(BreakGroup.Fund)">@Loc["Funds"]</button>
                         </span>
-                        <div class="brk-summary">
-                            <span class="brk-sum"><span class="brk-sum-lbl">@Loc["Income"]</span><span class="brk-sum-val good-text">@Fmt(brkIncome)</span></span>
-                            <span class="brk-sum"><span class="brk-sum-lbl">@Loc["Spent"]</span><span class="brk-sum-val">@Fmt(brkMoneyOut)</span></span>
-                            <span class="brk-sum"><span class="brk-sum-lbl">@Loc["of income"]</span><span class="brk-sum-val">@(brkIncome > 0m ? (brkMoneyOut / brkIncome * 100).ToString("0.#", brkCi) + "%" : "—")</span></span>
-                        </div>
+                    </div>
+                    @* Income · Spent · % of income for the window (independent of the group-by axis). *@
+                    <div class="brk-summary">
+                        <span class="brk-sum"><span class="brk-sum-lbl">@Loc["Income"]</span><span class="brk-sum-val good-text">@Fmt(brkIncome)</span></span>
+                        <span class="brk-sum"><span class="brk-sum-lbl">@Loc["Spent"]</span><span class="brk-sum-val">@Fmt(brkMoneyOut)</span></span>
+                        <span class="brk-sum"><span class="brk-sum-lbl">@Loc["of income"]</span><span class="brk-sum-val">@(brkIncome > 0m ? (brkMoneyOut / brkIncome * 100).ToString("0.#", brkCi) + "%" : "—")</span></span>
                     </div>
                     @if (brkSlices.Count == 0 || brkTotal <= 0m)
                     {
@@ -1542,7 +1636,7 @@ else
                                     <span class="cat-row-name">@ctx.Bucket.Name@if (done) { <span class="goal-done-badge" title="@(isDebt ? Loc["Paid off"] : Loc["Goal reached"])">🎉</span> }</span>
                                     <span class="cat-row-amt">
                                         @if (done) { <span class="good-text">@(isDebt ? Loc["Paid off"] : Loc["Goal reached"])</span> }
-                                        else if (isDebt) { <text>@Fmt(debtOwed)<span class="cat-row-nb"> · @Loc["owed"]</span></text> }
+                                        else if (isDebt) { var _apr = State.SavingBucketDebtRate(bucketId); <text>@Fmt(debtOwed)<span class="cat-row-nb"> · @Loc["owed"]@if (_apr > 0m) { <text> · @_apr.ToString("0.##")% @Loc["APR"]</text> }</span></text> }
                                         else if (isInvestment) { <text>@Fmt(total)<span class="cat-row-nb"> · @Loc["invested"]</span></text> }
                                         else if (g is not null) { <text>@Fmt(total) / @Fmt(g.Goal!.Value)</text> }
                                         else { <text>@Fmt(total)<span class="cat-row-nb"> · @Loc["saved"]</span></text> }
@@ -1797,13 +1891,18 @@ else
                 var goalTotal = debtBuckets.Count + plainBuckets.Count + investmentBuckets.Count + expenseBuckets.Count;
             }
             <section class="panel">
-                @* Small saved-summary header: what went into savings this period (with its savings rate) + Add goal.
-                   Total saved is already in the account balance bar up top, so it isn't repeated here. *@
+                @* Saved-summary header: the running TOTAL set aside across all buckets (this figure used to live in the
+                   header hero, which now shows only this period's contribution + rate). The "+X this period" tag keeps
+                   the period contribution visible here too. *@
+                @{
+                    var _savedTotal = State.DisplayClosingBalance(_bankStatus?.Balance, _bankStatus?.BalanceCurrency)
+                                    - State.DisplayFreeToAllocate(_bankStatus?.Balance, _bankStatus?.BalanceCurrency);
+                }
                 <div class="goal-summary">
                     <div class="goal-stat">
-                        <span class="goal-stat-k">@Loc["Saved this period"]</span>
-                        <span class="goal-stat-v goal-stat-v-period">@Fmt(State.SavingsThisPeriod)</span>
-                        @if (State.PeriodSavingsRate is { } prate && prate > 0m) { <span class="goal-stat-pct">(@(Math.Round(prate * 100m).ToString("0", System.Globalization.CultureInfo.InvariantCulture))% @Loc["of income"])</span> }
+                        <span class="goal-stat-k">@Loc["Total saved"]</span>
+                        <span class="goal-stat-v">@Fmt(_savedTotal)</span>
+                        @if (State.SavingsThisPeriod.Amount > 0m) { <span class="goal-stat-pct" title="@string.Format(Loc["Money in this period: {0} came in, plus {1} carried over from before."], Fmt(State.FreshInThisPeriod), Fmt(State.CarriedInThisPeriod))">(+@Fmt(State.SavingsThisPeriod) @Loc["this period"]@if (State.PeriodMoneyInRate is { } prate && prate > 0m) { <text> · @(Math.Round(prate * 100m).ToString("0", System.Globalization.CultureInfo.InvariantCulture))% @Loc["of money in"]</text>})</span> }
                     </div>
                     <button class="fund-add" @onclick="AddGoalForFilter"><Icon Name="plus" /> @Loc["Add goal"]</button>
                 </div>
@@ -4243,6 +4342,11 @@ else
 
     private void SetBreakRange(BreakRange r) { _breakRange = r; _breakExpanded.Clear(); }
 
+    // Editing either date directly defines a custom window. We seed from the currently-shown window so the untouched
+    // end stays put, then flip to Custom (which reads _breakFrom/_breakTo).
+    private void BreakSetFrom(DateOnly d) { var (_, to) = BreakWindow(); _breakFrom = d; _breakTo = to; _breakRange = BreakRange.Custom; _breakExpanded.Clear(); }
+    private void BreakSetTo(DateOnly d) { var (from, _) = BreakWindow(); _breakFrom = from; _breakTo = d; _breakRange = BreakRange.Custom; _breakExpanded.Clear(); }
+
     // A tapped row expands in place to list its own expenses (several can be open at once).
     private readonly HashSet<Guid> _breakExpanded = new();
     private void ToggleBreakExpand(Guid key) { if (!_breakExpanded.Remove(key)) _breakExpanded.Add(key); }
@@ -4381,6 +4485,43 @@ else
         return slices;
     }
 
+    // The Home mini-donut: this period's spend by top-level category, top 4 + "Everything else" + transfers-out.
+    // Computed independently of the Breakdown tab's window/axis so Home always shows the current period by category,
+    // whatever the user last left the Breakdown filters on. Tapping the card deep-links into the full Breakdown.
+    private List<BreakSlice> HomePeriodSlices()
+    {
+        var from = State.Period.From; var to = State.Period.To;
+        var groups = new Dictionary<Guid, decimal>();
+        foreach (var e in State.ExpensesInRange(from, to))
+        {
+            var amt = Math.Abs(e.Amount.Amount);
+            if (amt == 0) continue;
+            var root = State.RootCategoryId(e.CategoryId);
+            groups[root] = groups.GetValueOrDefault(root) + amt;
+        }
+        var ordered = groups.OrderByDescending(kv => kv.Value).ToList();
+        var slices = new List<BreakSlice>();
+        var groupTail = ordered.Count > 5;                     // top 4 + one "everything else" once it'd be the 6th
+        var head = groupTail ? ordered.Take(4).ToList() : ordered;
+        for (var i = 0; i < head.Count; i++)
+            slices.Add(new BreakSlice(head[i].Key, State.CategoryName(head[i].Key), State.CategoryStoredIcon(head[i].Key), head[i].Value, SliceColor(i)));
+        if (groupTail)
+            slices.Add(new BreakSlice(OtherKey, Loc["Everything else"], null, ordered.Skip(4).Sum(kv => kv.Value), OtherColor));
+        var xfer = State.ExternalTransfersInRange(from, to).Sum(t => Math.Abs(t.Amount.Amount));
+        if (xfer > 0m) slices.Add(new BreakSlice(TransfersKey, Loc["Transfers out"], null, xfer, TransfersColor));
+        return slices;
+    }
+
+    // Deep-link from the Home mini-donut into the full Breakdown view, pinned to this period × categories.
+    private void OpenBreakdown()
+    {
+        _tab = Tab.Budgets;
+        _spendView = SpendView.Breakdown;
+        _breakRange = BreakRange.ThisPeriod;
+        _breakBase = BreakGroup.Category;
+        _breakExpanded.Clear();
+    }
+
     // SVG donut: turn the slices into arc <path> d-strings over a 0–100 sweep. Returns (Slice, PathD) pairs.
     private static string DonutArc(double startPct, double sweepPct, double cx, double cy, double rOuter, double rInner)
     {
@@ -4412,6 +4553,9 @@ else
     private static readonly string[] FundPalette = { "#1d9e75", "#5dcaa5", "#0f6e56", "#37b6a0", "#8fd9c4", "#2a8f6b" };
 
     private Guid _fundMenuId;
+    // Empty (near-zero, non-synced) funds are collapsed behind a small "+ N empty funds" link so the legend stays
+    // legible as funds accumulate; overdrawn and synced funds always show. Toggled open per session.
+    private bool _showEmptyFunds;
     private void ToggleFundMenu(Guid id) => _fundMenuId = _fundMenuId == id ? Guid.Empty : id;
     private void FundAct(Action a) { _fundMenuId = Guid.Empty; a(); }
 
