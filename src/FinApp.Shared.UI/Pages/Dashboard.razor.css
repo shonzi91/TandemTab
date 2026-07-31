@@ -143,10 +143,9 @@ html.dark .home-alert.home-alert-soft .home-alert-text { color: #aab0c0; }
 /* The urgent alerts strip is attached inside the health block, so it drops its own bottom margin (the flex gap spaces it). */
 .home-health .home-alerts { margin: 0; }
 /* Money-glance row: the "where your money went" donut + the "at this rate" runway, side by side on desktop, stacking
-   on mobile. When the runway's math is open it takes the full width (its sliders/breakdown need the room). */
+   on mobile. ("Show the math" opens a modal now, so the runway card never expands inline.) */
 .home-glance { display: flex; flex-wrap: wrap; gap: 14px; margin: 0 0 14px; align-items: stretch; }
 .home-glance > .panel { flex: 1 1 300px; min-width: 0; margin: 0; }
-.home-glance > .runway-card.runway-open { flex-basis: 100%; }
 
 /* Milestones collapsed to a single tappable line (full detail lives in the 🏆 modal). */
 .home-ms-line {
@@ -1811,6 +1810,8 @@ html.dark .runway-sub { color: #9aa4b2; }
 .runway-caret { transition: transform .15s; font-size: .8rem; }
 .runway-caret.open { transform: rotate(180deg); }
 .runway-detail { padding: 0 16px 14px 40px; display: flex; flex-direction: column; gap: 12px; }
+/* In the "Show the math" modal the detail is the whole body — drop the card's icon-aligned indent. */
+.modal .runway-detail { padding: 0; }
 .runway-math { display: grid; grid-template-columns: 1fr auto; gap: 3px 16px; font-size: .8rem; color: #4b5563; max-width: 300px; }
 .runway-math .rm-num { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; color: #1f2430; }
 .runway-math .rm-num.credit { color: #0e8a5d; }

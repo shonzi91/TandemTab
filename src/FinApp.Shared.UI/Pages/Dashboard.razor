@@ -553,7 +553,7 @@ else
                 }
                 @if (runway is { } rw)
                 {
-                <section class="panel runway-card @(rw.FirstShortfallMonth is null ? "" : "runway-warn") @(_runwayOpen ? "runway-open" : "")">
+                <section class="panel runway-card @(rw.FirstShortfallMonth is null ? "" : "runway-warn")">
                     <div class="runway-row">
                         <span class="runway-ico"><Icon Name="@(rw.FirstShortfallMonth is null ? "shield" : "alert")" /></span>
                         @* "At this rate" up front, and the basis always named. The old headline ("You're good for
@@ -593,86 +593,13 @@ else
                                 @basisNote · @string.Format(Loc["{0} in, {1} out a month"],
                                     Fmt(rw.Months[0].Income), Fmt(rw.Months[0].Spending))@(rw.HasUnknownAmounts ? " · " + Loc["some bills have no amount yet"] : "")
                             </span>
-                            @* "Show the math" — the anti-black-box move: no AI, so we can show exactly how the number
-                               is built and let you nudge the inputs. Off by default to keep Home calm. *@
-                            <button type="button" class="runway-toggle" @onclick="ToggleRunwayMath">
-                                @(_runwayOpen ? Loc["Hide the math"] : Loc["Show the math"]) <span class="runway-caret @(_runwayOpen ? "open" : "")">▾</span>
+                            @* "Show the math" — the anti-black-box move: no AI, so we can show exactly how the number is
+                               built and let you nudge the inputs. Opens a modal (an inline expand shifted the whole page). *@
+                            <button type="button" class="runway-toggle" @onclick="OpenRunwayMath">
+                                @Loc["Show the math"] <span class="runway-caret">›</span>
                             </button>
                         </span>
                     </div>
-                    @if (_runwayOpen)
-                    {
-                        var inBase = rw.Months[0].Income;
-                        var outBase = rw.Months[0].Spending;
-                        var canEarn = State.HasEarningInvestment;
-                        var invEarn = State.InvestmentMonthlyEarnings;
-                        // The sliders are live inputs, not a side note: they nudge the money-in / money-out shown in the
-                        // math below and re-run the whole projection, so "show the math" is an editable forecast. Extra
-                        // income of +X/month moves the balance exactly like spending −X/month, so both feed one combined
-                        // delta. The Additional-income slider is an absolute €/month (seeded from investment earnings).
-                        var spendDelta = decimal.Round(outBase * _whatIfPct / 100m, 2);
-                        var earnDelta = canEarn ? Math.Max(0m, _whatIfEarnAmt) : 0m;
-                        var earnMax = Math.Max(500m, Math.Ceiling(inBase / 100m) * 100m);
-                        var inM = Math.Max(0m, inBase + earnDelta);
-                        var outM = Math.Max(0m, outBase + spendDelta);
-                        var scenario = _whatIfPct != 0 || (canEarn && earnDelta != 0m);
-                        var proj = scenario ? State.ProjectCashFlow(_balCur, spendDelta - earnDelta) : rw;
-                        // Where the baseline money-in comes from — the answer to "why doesn't this match what I've put in
-                        // this month?": it's a rate, drawn from history or your declared recurring income, not this
-                        // period's contributions.
-                        var inSrc = rw.Basis == CashFlowBasis.Recurring
-                            ? Loc["your recurring income"]
-                            : State.CompletedPeriodCount <= 1
-                                ? Loc["average of your last month"]
-                                : string.Format(Loc["average of your last {0} months"], State.CompletedPeriodCount);
-                        <div class="runway-detail">
-                            <div class="runway-math">
-                                <span>@Loc["Starting balance"]</span><span class="rm-num">@Fmt(_balCur)</span>
-                                <span>@Loc["Money in / month"]<span class="rm-src">@inSrc@(canEarn && earnDelta > 0m ? $" · +{Fmt(State.Money(earnDelta))}" : "")</span></span><span class="rm-num credit">+ @Fmt(State.Money(inM))</span>
-                                <span>@Loc["Money out / month"]@if (_whatIfPct != 0) { <span class="rm-src">@(_whatIfPct > 0 ? "+" : "")@(_whatIfPct)%</span> }</span><span class="rm-num debit">− @Fmt(State.Money(outM))</span>
-                                <span class="rm-net">@Loc["Net / month"]</span><span class="rm-num rm-net @(inM - outM < 0 ? "debit" : "credit")">@(inM - outM < 0 ? "− " : "+ ")@Fmt(State.Money(Math.Abs(inM - outM)))</span>
-                            </div>
-                            <p class="runway-basis">@Loc["Each month adds the money in and takes the money out; the runway is how long your balance stays above zero. No AI, no guesswork — just this arithmetic on your own numbers."]</p>
-
-                            @* What-if: the sliders drive the math above and the outcome below, live. Earning is only
-                               offered when an investment is already growing the money (so it reads as modelling that,
-                               not as "you should earn more"). *@
-                            <div class="whatif-row">
-                                <div class="whatif">
-                                    <label class="whatif-label">@Loc["What if I spent differently?"]</label>
-                                    <input type="range" class="whatif-slider" min="-50" max="50" step="5" @bind:event="oninput" @bind="_whatIfPct" />
-                                </div>
-                                @if (canEarn)
-                                {
-                                    <div class="whatif">
-                                        <label class="whatif-label">@Loc["Additional income"] <span class="whatif-val">+@Fmt(State.Money(earnDelta))/@Loc["mo"]</span></label>
-                                        <input type="range" class="whatif-slider" min="0" max="@earnMax.ToString(System.Globalization.CultureInfo.InvariantCulture)" step="25" @bind:event="oninput" @bind="_whatIfEarnAmt" />
-                                        @if (invEarn > 0m)
-                                        {
-                                            <span class="whatif-sub">@string.Format(Loc["≈ {0}/mo from your investments"], Fmt(State.Money(invEarn)))</span>
-                                        }
-                                    </div>
-                                }
-                            </div>
-                            <div class="whatif-out">
-                                @if (!scenario)
-                                {
-                                    <span class="whatif-hint">@(canEarn ? Loc["Slide to model spending or earning and see the runway change."] : Loc["Slide to spend less or more and see the runway change."])</span>
-                                }
-                                else if (proj is { } wi)
-                                {
-                                    @if (wi.FirstShortfallMonth is { } wsm)
-                                    {
-                                        <span class="whatif-bad">@string.Format(Loc["Runs short in {0}"], wsm.ToString("MMM yyyy"))</span>
-                                    }
-                                    else
-                                    {
-                                        <span class="whatif-good">@string.Format(Loc["Balance holds ~{0} months, ending near {1}"], wi.Months.Count, Fmt(wi.Months[^1].Closing))</span>
-                                    }
-                                }
-                            </div>
-                        </div>
-                    }
                 </section>
                 }
                 </div>
@@ -3646,6 +3573,89 @@ else
                     </div>
                     break;
 
+                case Modal.RunwayMath:
+                {
+                    // "Show the math" now lives in a modal (an inline expand shifted the whole page). Same content as
+                    // before: the arithmetic behind the runway + the live what-if sliders, recomputed from the forecast.
+                    var rmRw = State.IsLatestPeriod ? State.ProjectCashFlow(_balCur) : null;
+                    if (rmRw is { } rw)
+                    {
+                        var mathTitle = rw.FirstShortfallMonth is { } msm
+                            ? string.Format(Loc["At this rate, money runs short in {0}"], msm.ToString("MMM yyyy"))
+                            : rw.Months[0].Income - rw.Months[0].Spending >= 0
+                                ? Loc["At this rate, your balance keeps growing"]
+                                : string.Format(Loc["At this rate, your balance lasts beyond {0} months"], rw.Months.Count);
+                        var inBase = rw.Months[0].Income;
+                        var outBase = rw.Months[0].Spending;
+                        var canEarn = State.HasEarningInvestment;
+                        var invEarn = State.InvestmentMonthlyEarnings;
+                        // The sliders are live inputs: they nudge the money-in / money-out shown below and re-run the
+                        // whole projection. Extra income of +X/month moves the balance exactly like spending −X/month.
+                        var spendDelta = decimal.Round(outBase * _whatIfPct / 100m, 2);
+                        var earnDelta = canEarn ? Math.Max(0m, _whatIfEarnAmt) : 0m;
+                        var earnMax = Math.Max(500m, Math.Ceiling(inBase / 100m) * 100m);
+                        var inM = Math.Max(0m, inBase + earnDelta);
+                        var outM = Math.Max(0m, outBase + spendDelta);
+                        var scenario = _whatIfPct != 0 || (canEarn && earnDelta != 0m);
+                        var proj = scenario ? State.ProjectCashFlow(_balCur, spendDelta - earnDelta) : rw;
+                        var inSrc = rw.Basis == CashFlowBasis.Recurring
+                            ? Loc["your recurring income"]
+                            : State.CompletedPeriodCount <= 1
+                                ? Loc["average of your last month"]
+                                : string.Format(Loc["average of your last {0} months"], State.CompletedPeriodCount);
+                        <h3><Icon Name="@(rw.FirstShortfallMonth is null ? "shield" : "alert")" /> @mathTitle</h3>
+                        <div class="runway-detail">
+                                <div class="runway-math">
+                                    <span>@Loc["Starting balance"]</span><span class="rm-num">@Fmt(_balCur)</span>
+                                    <span>@Loc["Money in / month"]<span class="rm-src">@inSrc@(canEarn && earnDelta > 0m ? $" · +{Fmt(State.Money(earnDelta))}" : "")</span></span><span class="rm-num credit">+ @Fmt(State.Money(inM))</span>
+                                    <span>@Loc["Money out / month"]@if (_whatIfPct != 0) { <span class="rm-src">@(_whatIfPct > 0 ? "+" : "")@(_whatIfPct)%</span> }</span><span class="rm-num debit">− @Fmt(State.Money(outM))</span>
+                                    <span class="rm-net">@Loc["Net / month"]</span><span class="rm-num rm-net @(inM - outM < 0 ? "debit" : "credit")">@(inM - outM < 0 ? "− " : "+ ")@Fmt(State.Money(Math.Abs(inM - outM)))</span>
+                                </div>
+                                <p class="runway-basis">@Loc["Each month adds the money in and takes the money out; the runway is how long your balance stays above zero. No AI, no guesswork — just this arithmetic on your own numbers."]</p>
+                                <div class="whatif-row">
+                                    <div class="whatif">
+                                        <label class="whatif-label">@Loc["What if I spent differently?"]</label>
+                                        <input type="range" class="whatif-slider" min="-50" max="50" step="5" @bind:event="oninput" @bind="_whatIfPct" />
+                                    </div>
+                                    @if (canEarn)
+                                    {
+                                        <div class="whatif">
+                                            <label class="whatif-label">@Loc["Additional income"] <span class="whatif-val">+@Fmt(State.Money(earnDelta))/@Loc["mo"]</span></label>
+                                            <input type="range" class="whatif-slider" min="0" max="@earnMax.ToString(System.Globalization.CultureInfo.InvariantCulture)" step="25" @bind:event="oninput" @bind="_whatIfEarnAmt" />
+                                            @if (invEarn > 0m)
+                                            {
+                                                <span class="whatif-sub">@string.Format(Loc["≈ {0}/mo from your investments"], Fmt(State.Money(invEarn)))</span>
+                                            }
+                                        </div>
+                                    }
+                                </div>
+                                <div class="whatif-out">
+                                    @if (!scenario)
+                                    {
+                                        <span class="whatif-hint">@(canEarn ? Loc["Slide to model spending or earning and see the runway change."] : Loc["Slide to spend less or more and see the runway change."])</span>
+                                    }
+                                    else if (proj is { } wi)
+                                    {
+                                        @if (wi.FirstShortfallMonth is { } wsm)
+                                        {
+                                            <span class="whatif-bad">@string.Format(Loc["Runs short in {0}"], wsm.ToString("MMM yyyy"))</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="whatif-good">@string.Format(Loc["Balance holds ~{0} months, ending near {1}"], wi.Months.Count, Fmt(wi.Months[^1].Closing))</span>
+                                        }
+                                    }
+                                </div>
+                            </div>
+                    }
+                    else
+                    {
+                        <p class="hint">@Loc["No forecast to show yet."]</p>
+                    }
+                    <div class="modal-actions"><button class="ghost" @onclick="Back">@Loc["Close"]</button></div>
+                    break;
+                }
+
                 case Modal.PayoffProjection:
                     var pjBal = State.SavingBucketDebtBalance(_projBucketId);
                     var pjRate = State.SavingBucketDebtRate(_projBucketId);
@@ -4258,7 +4268,7 @@ else
 }
 
 @code {
-    private enum Modal { None, PickAccount, BankReview, BankConsent, AddCat, AddBudget, DisburseSaving, PayoffProjection, GoalProjection, InvestmentProjection, BankTransfer, ExternalAccounts, HealthScore, EditCat, DeleteCat, CategoryDetail, AddAccount, EditAccount, DeleteAccount, RemoveMember, LeaveAccount, AddExpense, NextPeriod, RemovePeriod, EditExpense, DeleteExpense, SettleExpense, AddBucket, EditBucket, DeleteBucket, EditCost, AddFund, EditFund, DeleteFund, Invite, Transfer, Deposit, EditDeposit, DeleteDeposit, ManageCats, ManageContribCats, ContribCat, DeleteContribCat, AddSaving, BudgetSaving, SpendSaving, EditSavingDeposit, DeleteSavingDeposit, EditTransfer, DeleteTransfer, EditPeriod, EditSavingMovement, DeleteSavingMovement, DeleteExternalTransfer, Achievements, Reallocate, Recurring, RecurringEdit, RecurringConfirm, Import, AddOrImport, ArchiveFund, FundMovements, Archived, ManageTags, EditTag }
+    private enum Modal { None, PickAccount, BankReview, BankConsent, AddCat, AddBudget, DisburseSaving, PayoffProjection, GoalProjection, InvestmentProjection, BankTransfer, ExternalAccounts, HealthScore, RunwayMath, EditCat, DeleteCat, CategoryDetail, AddAccount, EditAccount, DeleteAccount, RemoveMember, LeaveAccount, AddExpense, NextPeriod, RemovePeriod, EditExpense, DeleteExpense, SettleExpense, AddBucket, EditBucket, DeleteBucket, EditCost, AddFund, EditFund, DeleteFund, Invite, Transfer, Deposit, EditDeposit, DeleteDeposit, ManageCats, ManageContribCats, ContribCat, DeleteContribCat, AddSaving, BudgetSaving, SpendSaving, EditSavingDeposit, DeleteSavingDeposit, EditTransfer, DeleteTransfer, EditPeriod, EditSavingMovement, DeleteSavingMovement, DeleteExternalTransfer, Achievements, Reallocate, Recurring, RecurringEdit, RecurringConfirm, Import, AddOrImport, ArchiveFund, FundMovements, Archived, ManageTags, EditTag }
     private enum Tab { Overview, Account, Budgets, Savings }
 
     /// <summary>Which kind of goal the Goals grid is showing. Defaults to All so the filter narrows on request
@@ -4752,17 +4762,17 @@ else
     private bool _calendar;       // Expenses tab: month-grid view instead of the list
 
     private bool _setupOpen;      // Home onboarding: an active user expanded the collapsed "finish setup" link (UX #3)
-    private bool _runwayOpen;     // Home runway: "show the math" breakdown + what-if slider expanded
     private int _whatIfPct;       // what-if slider: % change to monthly spending (−50..+50, 0 = the plain runway)
     private decimal _whatIfEarnAmt; // "Additional income" slider: extra €/month (seeded from investment earnings)
 
-    // Runway "show the math": on open, reset the spend slider and seed the Additional-income slider with whatever the
-    // member's investments currently throw off, so their investment income is on the slider by default.
-    private void ToggleRunwayMath()
+    // Runway "show the math" opens in a modal (an inline expand shifted the whole page). On open, reset the spend slider
+    // and seed the Additional-income slider with whatever the member's investments currently throw off.
+    private void OpenRunwayMath()
     {
-        _runwayOpen = !_runwayOpen;
+        _whatIfPct = 0;
         // Seed snapped to the slider's €25 step so the thumb lands exactly on its label (the caption keeps the exact figure).
-        if (_runwayOpen) { _whatIfPct = 0; _whatIfEarnAmt = Math.Round(State.InvestmentMonthlyEarnings / 25m) * 25m; }
+        _whatIfEarnAmt = Math.Round(State.InvestmentMonthlyEarnings / 25m) * 25m;
+        _modal = Modal.RunwayMath;
     }
 
     // Settle-expense modal (feature 1)

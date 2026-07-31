@@ -776,6 +776,7 @@ public sealed class Localizer(IJSRuntime js)
         // Runway "show the math" + what-if slider
         ["Show the math"] = "Покажи изчислението",
         ["Hide the math"] = "Скрий изчислението",
+        ["No forecast to show yet."] = "Още няма прогноза за показване.",
         ["Starting balance"] = "Начален баланс",
         ["Money in / month"] = "Приход / месец",
         ["Money out / month"] = "Разход / месец",
