@@ -125,10 +125,8 @@ else
                                 <span class="period-pop-range">@State.Period.From.ToString("dd MMM") – @State.Period.To.ToString("dd MMM yyyy")</span>
                             </div>
                             <button @onclick="@(() => { _periodMenuOpen = false; OpenEditPeriod(); })"><Icon Name="pencil" /> @Loc["Edit period dates"]</button>
-                            @if (State.IsLatestPeriod)
-                            {
-                                <button disabled="@(!State.CanStartNextPeriod)" title="@(State.CanStartNextPeriod ? "" : Loc["You can start next month once this period's end date has passed."])" @onclick="@(() => { _periodMenuOpen = false; OpenNextPeriod(); })"><Icon Name="arrow-right" /> @Loc["Start next month"]</button>
-                            }
+                            @* "Start next month" is no longer here — once the period's end date passes, the Home
+                               period-ended prompt offers it automatically (so this menu item was redundant). *@
                             @if (State.IsLatestPeriod && State.PeriodCount > 1)
                             {
                                 <button class="danger" @onclick="@(() => { _periodMenuOpen = false; OpenRemovePeriod(); })"><Icon Name="trash" /> @Loc["Remove this period"]</button>
@@ -153,9 +151,9 @@ else
                         @<div class="bell-item @(n.Urgent ? "urgent" : "")">
                             <span class="bell-ico">@IconOrEmoji(n.Icon)</span>
                             <div class="bell-body">
-                                <div class="bell-text">@n.Text</div>
+                                @if (n.Rich is { } rich) { <div class="bell-text">@rich</div> } else { <div class="bell-text">@n.Text</div> }
                                 @if (n.Desc is { } d) { <div class="bell-desc">@d</div> }
-                                @if (n is { ActionLabel: { } al, Act: { } act })
+                                @if (n is { Rich: null, ActionLabel: { } al, Act: { } act })
                                 {
                                     <button class="bell-act" @onclick="@(() => { act(); _bellOpen = false; })">@al</button>
                                 }
@@ -295,7 +293,14 @@ else
                 <div class="bal-part bal-part-main">
                     <span class="bal-label">@Loc["Closed with"]</span>
                     <strong class="bal-free-v" title="@Loc["What this period closed with — carried into the next."]">@Fmt(State.ClosingBalance)</strong>
-                    <small class="bal-sub">@State.Period.To.ToString("dd MMM yyyy")</small>
+                    @if (State.NextPeriod is { } _np)
+                    {
+                        <small class="bal-sub" title="@Loc["Free cash handed to the next period."]">→ @Fmt(State.CarriedInto(_np)) @string.Format(Loc["carried to {0}"], _np.From.ToString("MMM"))</small>
+                    }
+                    else
+                    {
+                        <small class="bal-sub">@State.Period.To.ToString("dd MMM yyyy")</small>
+                    }
                 </div>
                 <div class="bal-part">
                     <span class="bal-label">@Loc["Saved"]</span>
@@ -536,10 +541,17 @@ else
                             <div class="home-alert">
                                 <span class="home-alert-ico">@IconOrEmoji(n.Icon)</span>
                                 <div class="home-alert-body">
-                                    <span class="home-alert-text">@n.Text</span>
-                                    @if (n is { ActionLabel: { } al, Act: { } act })
+                                    @if (n.Rich is { } rich)
                                     {
-                                        <button class="home-alert-act" @onclick="@(() => act())">@al</button>
+                                        <span class="home-alert-text">@rich</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="home-alert-text">@n.Text</span>
+                                        @if (n is { ActionLabel: { } al, Act: { } act })
+                                        {
+                                            <button class="home-alert-act" @onclick="@(() => act())">@al</button>
+                                        }
                                     }
                                 </div>
                                 @* When this alert is one of several of its kind (e.g. several over-budget categories), a
@@ -776,9 +788,11 @@ else
                         </g>
                         @* The running total balance — it used to headline the top account bar; now the Wallets donut is
                            its home (UX backlog: total moved out of the header), so it's labelled explicitly here. *@
-                        <text x="90" y="76" text-anchor="middle" class="fund-donut-cap">@Loc["Total balance"]</text>
-                        <text x="90" y="96" text-anchor="middle" class="fund-donut-total">@Fmt(State.DisplayClosingBalance(_bankStatus?.Balance, _bankStatus?.BalanceCurrency))</text>
-                        <text x="90" y="112" text-anchor="middle" class="fund-donut-sub">@string.Format(Loc["across {0} funds"], funds.Count)</text>
+                        @* On a closed/past period this is a final figure, not the live balance — label it "Closed with"
+                           (matching the hero) and use the ledger closing (no bank-adjust — the live balance is now). *@
+                        <text x="90" y="76" text-anchor="middle" class="fund-donut-cap">@(State.IsPeriodOpen ? Loc["Total balance"] : Loc["Closed with"])</text>
+                        <text x="90" y="96" text-anchor="middle" class="fund-donut-total">@Fmt(State.IsPeriodOpen ? State.DisplayClosingBalance(_bankStatus?.Balance, _bankStatus?.BalanceCurrency) : State.ClosingBalance)</text>
+                        <text x="90" y="112" text-anchor="middle" class="fund-donut-sub">@(State.IsPeriodOpen ? string.Format(Loc["across {0} funds"], funds.Count) : State.Period.To.ToString("dd MMM yyyy"))</text>
                     </svg>
                     @{
                         // A fund is "empty" (collapsible) when it holds ~nothing and isn't a synced/overdrawn one —
@@ -1446,6 +1460,10 @@ else
                                             {
                                                 <Icon Name="swap" />
                                             }
+                                            else if (s.Key == SavedKey)
+                                            {
+                                                <Icon Name="target" />
+                                            }
                                             else if (BreakByFund)
                                             {
                                                 <CatIcon Name="@State.FundIcon(s.Key)" />
@@ -1463,17 +1481,20 @@ else
                                         <span class="brk-item-amt">@Fmt(s.Amount)<span class="brk-item-pct">@pct.ToString("0.#", brkCi)%</span></span>
                                         <Icon Name="chevron" Class="brk-item-chev" />
                                     </div>
-                                    @if (expanded && s.Key == TransfersKey)
+                                    @if (expanded && (s.Key == TransfersKey || s.Key == SavedKey))
                                     {
                                         var (xFrom, xTo) = BreakWindow();
-                                        var xfers = State.AccountTransfersInRange(xFrom, xTo);
+                                        // Both slices list external-transfer rows; the source + the note-less fallback title
+                                        // differ (a plain transfer vs. a disbursement of set-aside money toward a goal).
+                                        var isSaved = s.Key == SavedKey;
+                                        var xfers = isSaved ? State.DisbursementsInRange(xFrom, xTo) : State.AccountTransfersInRange(xFrom, xTo);
                                         <ul class="brk-exp-list" style="--accent:@s.Color">
                                             @foreach (var t in xfers)
                                             {
                                                 <li class="brk-exp-row">
                                                     <span class="brk-exp-date"><span class="brk-exp-d">@t.Date.ToString("dd")</span><span class="brk-exp-m">@t.Date.ToString("MMM")</span></span>
                                                     <span class="brk-exp-main">
-                                                        <span class="brk-exp-title">@(string.IsNullOrEmpty(t.Note) ? Loc["Transfer to another account"] : t.Note)</span>
+                                                        <span class="brk-exp-title">@(string.IsNullOrEmpty(t.Note) ? (isSaved ? Loc["Saved toward a goal"] : Loc["Transfer to another account"]) : t.Note)</span>
                                                         <span class="brk-exp-sub">@State.FundName(t.FundId)</span>
                                                     </span>
                                                     <span class="brk-exp-amt">@Fmt(t.Amount)</span>
@@ -4521,6 +4542,11 @@ else
     // sentinel + a distinct slate colour). Skipped in tag/drill views — transfers carry no category or tag.
     private static readonly Guid TransfersKey = new("00000000-0000-0000-0000-0000000000fd");
     private const string TransfersColor = "#7c8a99";
+    // Savings disbursements (set-aside money deployed toward a goal/debt) get their OWN slice — positively framed, not
+    // lumped with spending or plain transfers. Distinct sentinel + a positive green so it reads as "money you put to
+    // work", not an outflow you should feel bad about. Excluded from "Spent"; see DisbursementsInRange.
+    private static readonly Guid SavedKey = new("00000000-0000-0000-0000-0000000000fc");
+    private const string SavedColor = "#2f9e44";
 
     // Build the slices for the current window + drill state, largest first. Amounts use the absolute expense value.
     private List<BreakSlice> BreakSlices()
@@ -4579,6 +4605,10 @@ else
         // (transfers carry no category/tag/… of their own), so the donut total stays consistent across the toggles.
         var xfer = State.AccountTransfersInRange(from, to).Sum(t => Math.Abs(t.Amount.Amount));
         if (xfer > 0m) slices.Add(new BreakSlice(TransfersKey, Loc["Transfers out"], null, xfer, TransfersColor));
+        // Savings disbursements are shown as a positive "Saved toward goals" slice — money put to work, not spent
+        // (kept out of "Spent"; see brkMoneyOut). Last so it reads as the rewarding coda to the outflow story.
+        var saved = State.DisbursementsInRange(from, to).Sum(t => Math.Abs(t.Amount.Amount));
+        if (saved > 0m) slices.Add(new BreakSlice(SavedKey, Loc["Saved toward goals"], null, saved, SavedColor));
         return slices;
     }
 
@@ -4606,6 +4636,8 @@ else
             slices.Add(new BreakSlice(OtherKey, Loc["Everything else"], null, ordered.Skip(4).Sum(kv => kv.Value), OtherColor));
         var xfer = State.AccountTransfersInRange(from, to).Sum(t => Math.Abs(t.Amount.Amount));
         if (xfer > 0m) slices.Add(new BreakSlice(TransfersKey, Loc["Transfers out"], null, xfer, TransfersColor));
+        var saved = State.DisbursementsInRange(from, to).Sum(t => Math.Abs(t.Amount.Amount));
+        if (saved > 0m) slices.Add(new BreakSlice(SavedKey, Loc["Saved toward goals"], null, saved, SavedColor));
         return slices;
     }
 
@@ -6367,7 +6399,28 @@ else
     // NOT repeated in the bell (UX backlog #4 — each item lives in one place). Due = a time-based bill/recurring
     // reminder (due now, upcoming, or just auto-posted); the bell splits Due from the rest as "Suggestions" (#5).
     private sealed record Notification(string Icon, string Text, string? Desc, string? ActionLabel, Action? Act,
-        Action? Rotate, Action? Dismiss, bool Urgent, bool Due = false);
+        Action? Rotate, Action? Dismiss, bool Urgent, bool Due = false, RenderFragment? Rich = null);
+
+    /// <summary>The "budgets plan more than is free" alert body: the sentence with "trim a budget" and "add income" as
+    /// inline action links (they run ShowExpensesTab / OpenDeposit), rather than a repeated trailing button. Built in
+    /// code because notifications are data; kept i18n-friendly by localizing each phrase separately.</summary>
+    private RenderFragment BudgetOverBody(Money planLeft, Money planFree) => builder =>
+    {
+        var i = 0;
+        builder.AddContent(i++, string.Format(Loc["Your budgets still plan {0} but only {1} is free —"], Fmt(planLeft), Fmt(planFree)) + " ");
+        builder.OpenElement(i++, "button");
+        builder.AddAttribute(i++, "class", "alert-inline-link");
+        builder.AddAttribute(i++, "onclick", EventCallback.Factory.Create(this, ShowExpensesTab));
+        builder.AddContent(i++, Loc["trim a budget"]);
+        builder.CloseElement();
+        builder.AddContent(i++, " " + Loc["or"] + " ");
+        builder.OpenElement(i++, "button");
+        builder.AddAttribute(i++, "class", "alert-inline-link");
+        builder.AddAttribute(i++, "onclick", EventCallback.Factory.Create(this, OpenDeposit));
+        builder.AddContent(i++, Loc["add income"]);
+        builder.CloseElement();
+        builder.AddContent(i++, ".");
+    };
 
     // Notification/reminder rows carry a mixed "icon" stream: mostly our chrome icon names (rendered as <Icon>), but
     // a few are user data — a bucket's or recurring item's own emoji — which have no sprite symbol and must render as
@@ -6419,6 +6472,17 @@ else
             list.Add(new Notification("check", string.Format(Loc["{0} ({1}) was posted automatically."], ap.Name, Fmt(ap.Amount)), null,
                 Loc["Review"], () => { _autoPostedNotices.Remove(notice); if (ap.Kind == RecurringKind.Income) _tab = Tab.Account; else ShowExpensesTab(); },
                 null, () => _autoPostedNotices.Remove(notice), false, Due: true));
+        }
+
+        // Budgets plan to spend more than there is free cash to cover. Budgets are advisory, so nothing is broken yet,
+        // but the plan can't all be funded. Urgent → surfaces on Home. Its two fixes ("trim a budget" / "add income")
+        // are inline action links inside the sentence rather than a trailing button (see BudgetOverBody).
+        if (State.IsPeriodOpen)
+        {
+            var planFree = State.DisplayFreeToAllocate(_bankStatus?.Balance, _bankStatus?.BalanceCurrency);
+            var planLeft = State.TotalBudgeted - State.TotalSpent;
+            if (planLeft.Amount > 0m && planLeft.Amount > planFree.Amount)
+                list.Add(new Notification("calculator", "", null, null, null, null, null, true, Rich: BudgetOverBody(planLeft, planFree)));
         }
 
         foreach (var r in HomeReminders(ov))
@@ -6496,18 +6560,8 @@ else
             list.Add(new HomeReminder("import", Loc["No income added this period yet — log it so your plan reflects real money."],
                 Loc["Add income"], OpenDeposit, false));
 
-        // Budgets plan to spend more than there is free cash to cover. Budgets are advisory, so nothing is broken
-        // yet — but the plan can't all be funded, and until now this only whispered as an amber sub-line in the
-        // header. Reserving money into a bucket is a common way to land here, and from the Spending tab the cause
-        // isn't visible. Urgent, so it surfaces on Home rather than waiting in the bell: a plan that outruns the
-        // money is the same family as a deficit, not a tip.
-        var planFree = State.DisplayFreeToAllocate(_bankStatus?.Balance, _bankStatus?.BalanceCurrency);
-        var planLeft = State.TotalBudgeted - State.TotalSpent;
-        if (planLeft.Amount > 0m && planLeft.Amount > planFree.Amount)
-            list.Add(new HomeReminder("calculator",
-                string.Format(Loc["Your budgets still plan {0} but only {1} is free — trim a budget or add income."],
-                    Fmt(planLeft), Fmt(planFree)),
-                Loc["Adjust budgets"], ShowExpensesTab, true));
+        // (The "budgets plan more than is free" alert moved to HomeNotifications so its "trim a budget" / "add income"
+        // can be inline action links inside the sentence — see BudgetOverBody.)
 
         // The budget closest to its cap but not yet over (≥80%). Over-budget cases are handled separately by the
         // rotating, non-essential OverBudgetTip, so we don't double up here.

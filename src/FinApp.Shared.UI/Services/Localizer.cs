@@ -512,6 +512,8 @@ public sealed class Localizer(IJSRuntime js)
         ["Untagged"] = "Без етикет",
         ["Everything else"] = "Всичко останало",
         ["Transfers out"] = "Преводи навън",
+        ["Saved toward goals"] = "Заделено за цели",
+        ["Saved toward a goal"] = "Заделено за цел",
         ["Expenses with more than one tag are counted under each, so the tags here can add up to more than you actually spent."] = "Разходи с повече от един етикет се броят под всеки от тях, затова етикетите тук може да съберат повече от реално похарченото.",
         ["Income"] = "Приходи",
         ["Spent"] = "Похарчено",
@@ -894,6 +896,8 @@ public sealed class Localizer(IJSRuntime js)
         ["This period ended {0}."] = "Този период приключи на {0}.",
         ["Start next month to carry your balance forward and keep tracking."] = "Започни следващия месец, за да прехвърлиш баланса си напред и да продължиш проследяването.",
         ["Closed with"] = "Приключи с",
+        ["carried to {0}"] = "прехвърлени към {0}",
+        ["Free cash handed to the next period."] = "Свободни средства, прехвърлени към следващия период.",
         ["What this period closed with — carried into the next."] = "С колко приключи този период — прехвърля се в следващия.",
         ["Edit expense"] = "Редактирай разход",
         ["Remove this expense?"] = "Премахване на този разход?",
@@ -1294,8 +1298,10 @@ public sealed class Localizer(IJSRuntime js)
         ["Reserve for upcoming costs"] = "Заредѝ за предстоящи разходи",
         ["Reserved for upcoming costs"] = "Заделено за предстоящи разходи",
         // Expenses fund — the fourth bucket kind (a sinking fund for irregular costs).
-        ["Your budgets still plan {0} but only {1} is free — trim a budget or add income."] =
-            "Бюджетите ти още планират {0}, а свободни са само {1} — намали бюджет или добави приход.",
+        ["Your budgets still plan {0} but only {1} is free —"] =
+            "Бюджетите ти още планират {0}, а свободни са само {1} —",
+        ["trim a budget"] = "намали бюджет",
+        ["add income"] = "добави приход",
         ["Adjust budgets"] = "Коригирай бюджетите",
         ["Expenses fund"] = "Фонд за разходи",
         ["Expenses"] = "Разходи",

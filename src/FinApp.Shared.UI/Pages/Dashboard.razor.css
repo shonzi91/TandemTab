@@ -133,6 +133,15 @@ html.dark .onboard-desc { color: #a9b6ad; }
     padding: 3px 10px; border-radius: 999px; cursor: pointer; white-space: nowrap;
 }
 .home-alert-act:hover { background: #855107; }
+/* Inline action link inside an alert sentence (e.g. "…free — trim a budget or add income."). Reads as a link, not a
+   button chip: underlined, weight-700, in the alert's accent colour, no padding/background so it flows with the text. */
+.alert-inline-link {
+    border: none; background: none; padding: 0; font: inherit; font-weight: 700; cursor: pointer;
+    color: #a16207; text-decoration: underline; text-underline-offset: 2px;
+}
+.alert-inline-link:hover { color: #855107; }
+html.dark .alert-inline-link { color: #f0c069; }
+html.dark .alert-inline-link:hover { color: #ffd98a; }
 /* ↻ to cycle when several alerts of a kind exist (e.g. multiple over-budget categories) — pinned to the row's right. */
 .home-alert-rot {
     flex: 0 0 auto; align-self: center; margin-left: auto; border: none; background: none; cursor: pointer;

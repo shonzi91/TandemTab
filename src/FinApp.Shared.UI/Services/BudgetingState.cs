@@ -671,6 +671,13 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     public Money CarriedInThisPeriod => MoneyInThisPeriod - FreshInThisPeriod;
     /// <summary>All the money you had to work with this period = fresh income + free carry-in. Denominator for the rate.</summary>
     public Money MoneyInThisPeriod => _savings.MoneyIn(Account, Period);
+
+    /// <summary>The period after the selected one, if any — so a closed period can show what it handed forward.</summary>
+    public Period? NextPeriod => _selectedIndex + 1 < Account.Periods.Count ? Account.Periods[_selectedIndex + 1] : null;
+    /// <summary>Free cash carried INTO <paramref name="p"/> from the period before it (its money-in minus its own fresh
+    /// income) — includes synced-fund carry, so it matches the "+X carried" that period displays. Used to show what a
+    /// just-closed period carried to the next.</summary>
+    public Money CarriedInto(Period p) => _savings.MoneyIn(Account, p) - p.ContributionsPaidTotal;
     /// <summary>Saved this period as a fraction of money-in (null when nothing came in). Naturally bounded to ~0–100%,
     /// since you can't set aside more than came in — unlike the old "% of income", which carry-over could inflate.</summary>
     public decimal? PeriodMoneyInRate => _savings.PeriodMoneyInRate(Account, Period);
@@ -707,6 +714,16 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     /// this so it agrees with the Home "Spent" tile (<see cref="TotalMoneyOut"/>), which also excludes disbursements.</summary>
     public IReadOnlyList<ExternalTransfer> AccountTransfersInRange(DateOnly from, DateOnly to) =>
         Account.Periods.SelectMany(p => p.AccountTransfersOut)
+            .Where(t => t.Date >= from && t.Date <= to)
+            .OrderByDescending(t => t.Date).ToList();
+
+    /// <summary>Savings disbursements in [from, to] — the money-out leg of a bucket payout (set-aside money deployed
+    /// toward a goal/debt). The complement of <see cref="AccountTransfersInRange"/> within all external transfers
+    /// (<c>ExternalTransfers</c> minus <c>AccountTransfersOut</c>, same instances → reference set-difference). Deploying
+    /// set-aside money is an achievement, not spending, so it's kept out of the "Spent" total and gets its own positive
+    /// "Saved toward goals" Breakdown slice.</summary>
+    public IReadOnlyList<ExternalTransfer> DisbursementsInRange(DateOnly from, DateOnly to) =>
+        Account.Periods.SelectMany(p => p.ExternalTransfers.Except(p.AccountTransfersOut))
             .Where(t => t.Date >= from && t.Date <= to)
             .OrderByDescending(t => t.Date).ToList();
 
