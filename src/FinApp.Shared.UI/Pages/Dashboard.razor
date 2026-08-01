@@ -241,7 +241,10 @@ else
             // "how am I doing" glance (UX backlog #1/#2): what's safe to spend now, what was set aside this period
             // (with its savings rate), what's gone out, and what came in. The running TOTAL balance moved down to the
             // Wallets donut; the all-time saved TOTAL moved to the Goals header — each lives where you'd go looking.
-            var _spent = State.TotalSpent;
+            // "Spent" here means all money out (expenses + account-to-account transfers), matching the Breakdown's
+            // "Spent" — a transfer to another account is money gone, so it belongs on the hero. Budget bars/health
+            // keep using TotalSpent (expenses only). Savings disbursements are excluded (a bucket payout isn't spend).
+            var _spent = State.TotalMoneyOut;
             var _savedPeriod = State.SavingsThisPeriod;
             // Rate is of "money in" (fresh income + free carry-over), not income alone — otherwise setting aside
             // carried-over cash over-states it. Tooltip breaks the denominator down so the figure is legible.
@@ -271,7 +274,7 @@ else
                 </div>
                 <div class="bal-part">
                     <span class="bal-label">@Loc["Spent"]</span>
-                    <strong title="@Loc["Total spent this period."]">@Fmt(_spent)</strong>
+                    <strong title="@Loc["All money out this period — spending plus account transfers."]">@Fmt(_spent)</strong>
                 </div>
                 <div class="bal-part">
                     @* Was "Income" — now "Money in" (fresh income + free carry-over) so it matches the denominator the
@@ -6347,9 +6350,16 @@ else
     {
         var list = new List<Notification>();
 
+        // The deficit ("overspent into savings") is pure ledger math (Period.Deficit off ExpectedClosingBalance) and
+        // knows nothing about the bank. But "Safe to spend" is bank-adjusted, so when a synced fund's live balance is
+        // higher than the ledger (untracked income / unimported transactions) the two contradict: a green safe-to-spend
+        // beside an "off balance" alarm. Only a real deficit — one the bank-adjusted free cash can't cover either —
+        // should raise the alarm, so gate both deficit signals on the same figure the headline shows.
+        var displayFreeOk = !State.DisplayFreeToAllocate(_bankStatus?.Balance, _bankStatus?.BalanceCurrency).IsNegative;
+
         // Overspent into the savings earmark — the single most urgent state, so it leads and shows inline on Home
         // (it used to sit only on the Wallets tab, out of sight of the tab you land on).
-        if (State.Deficit.Amount > 0m)
+        if (State.Deficit.Amount > 0m && !displayFreeOk)
             list.Add(new Notification("scale", Loc["Off balance — overspent by"] + " " + Fmt(State.Deficit) + ".",
                 Loc["Expenses ate into your savings earmark. This will need to be covered next period (from a savings bucket or fresh contributions)."],
                 null, null, null, null, true));
@@ -6413,7 +6423,13 @@ else
 
         if (ov.HasData)
             foreach (var s in ov.Signals.Where(s => s.Kind == SignalKind.Warn))
-                list.Add(new Notification("alert", N(s.Title), N(s.Desc), null, null, null, null, true));
+            {
+                // Same gate as the "Off balance" alert above: the ledger-based deficit signals ("Spending dipped into
+                // savings" / "outran your income") are suppressed when the bank-adjusted free cash actually covers it,
+                // so they don't contradict a green "Safe to spend".
+                if (!displayFreeOk || (s.Title.Code != InsightCodes.SigDeficitSavingsTitle && s.Title.Code != InsightCodes.SigDeficitIncomeTitle))
+                    list.Add(new Notification("alert", N(s.Title), N(s.Desc), null, null, null, null, true));
+            }
         return list;
     }
 

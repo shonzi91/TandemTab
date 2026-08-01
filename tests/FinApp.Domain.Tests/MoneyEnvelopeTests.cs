@@ -190,6 +190,22 @@ public class MoneyEnvelopeTests
     }
 
     [Fact]
+    public void Account_transfers_out_total_counts_transfers_but_not_savings_disbursements()
+    {
+        // The Home "Spent" tile adds account transfers on top of expenses, but a savings disbursement (a bucket payout)
+        // is a savings deployment, not spending — so it must be excluded even though both are external transfers.
+        var period = PeriodWith(opening: 1000, contributed: 0, out var account, out var fund, out _);
+        var bucket = account.AddSavingCategory("Reserve");
+        period.AllocateToSavings(bucket.Id, M(200), new DateOnly(2026, 1, 3));
+
+        period.TransferOut(fund, M(300), new DateOnly(2026, 1, 5), Guid.NewGuid(), "to Shared");   // plain account transfer
+        period.DisburseSaving(bucket.Id, fund, M(200), new DateOnly(2026, 1, 6), "paid the loan");  // savings payout
+
+        Assert.Equal(M(500), period.ExternalOutTotal);            // both legs are external transfers
+        Assert.Equal(M(300), period.AccountTransfersOutTotal);    // ...but the disbursement is excluded
+    }
+
+    [Fact]
     public void Transfer_out_cannot_exceed_the_source_fund_balance()
     {
         // Bank holds 200; Cash holds 500. You can't send 300 out of Bank even though the account holds 700.

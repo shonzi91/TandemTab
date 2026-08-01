@@ -428,6 +428,7 @@ public sealed class Localizer(IJSRuntime js)
         ["Saved"] = "Спестено",
         ["Total balance"] = "Общ баланс",
         ["Total spent this period."] = "Общо похарчено този период.",
+        ["All money out this period — spending plus account transfers."] = "Всички изходящи пари този период — разходи плюс преводи между сметки.",
         ["Total income this period."] = "Общо приходи този период.",
         ["Money in"] = "Постъпления",
         ["Where your money went"] = "Къде отидоха парите",

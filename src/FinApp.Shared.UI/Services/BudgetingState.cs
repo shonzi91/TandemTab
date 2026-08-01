@@ -631,6 +631,11 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     public Money TotalBudgeted => Period.BudgetedTotal;
     public Money TotalSpent => Period.ExpensesTotal;
 
+    /// <summary>All money that left the account this period for the Home "Spent" tile: expenses plus plain
+    /// account-to-account transfers (excludes savings disbursements). <see cref="TotalSpent"/> stays expenses-only
+    /// for budget contexts — a transfer isn't budget spend.</summary>
+    public Money TotalMoneyOut => Period.ExpensesTotal + Period.AccountTransfersOutTotal;
+
     /// <summary>New member deposits this period (the contributed pool).</summary>
     public Money TotalContributed => Period.ContributionsPaidTotal;
 
