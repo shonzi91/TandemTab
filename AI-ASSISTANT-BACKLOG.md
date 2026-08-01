@@ -112,6 +112,25 @@ record PendingAction(string Summary, Func<Task> Apply, Func<Task>? Undo, IReadOn
 - **Phase 4 — on-device.** Swap parse onto Tier A (Apple FM / Gemini Nano), Tier B (ONNX) fallback.
 - **Phase 5 — voice.** STT in (Whisper-class / OS), TTS out (OS voices). A whole second subsystem — weakest exactly on the tokens expense logging needs (numbers, currencies, merchant names), so last.
 
+## MCP protocol — where it fits (and where it doesn't)
+
+**For the on-device mobile assistant: not needed.** MCP (Model Context Protocol) is a standard client/server way to hand an LLM a menu of tools + data sources — great when the model and the tools live in **separate processes/machines** and you want interoperability. In v1 the model runs *inside the app* calling *our own* `BudgetingState` methods *in-process*; wrapping that in a protocol adds a transport + a running server for zero benefit. Use the plain in-process `IAssistant` + resolver instead. MCP here would be architectural cosplay.
+
+**Where MCP *would* earn its place in TandemTab (separate directions, later):**
+- **A) TandemTab as an MCP *server*** — expose `log_expense` / `budget_status` / `move_money` behind the user's auth so the user's *own* Claude/ChatGPT can act on their budget. Lower effort than building our own assistant, but it's **cloud, data leaves the phone** → cuts against the on-device privacy story. A different product; worth its own evaluation.
+- **B) TandemTab as an MCP *client*** — if we later ingest external sources (bank feed, receipts inbox, prices API), consuming them as MCP servers saves bespoke integrations each time.
+
+## Understanding, correction & "learning"
+
+- **Misunderstanding is a *when*, not an *if* — the design absorbs it.** Parse errors (wrong amount/category) are caught by the **confirm chip** (user fixes €50→€15 before commit); resolution errors (which wallet? unknown category) are caught by **disambiguation** (picker, never guess). A misread becomes a one-tap correction, not a bad record — the core reason constrained+confirm beats free-form.
+- **The model does *not* learn (and shouldn't).** On-device models are frozen; no on-phone fine-tuning. The *system* gets smarter cheaply and privately via a **per-user resolver memory**: remember that this user's "lunch"→Food, "the joint account"→a specific fund, "rent"→€1,200. Every confirm-chip correction is a **locally-stored** labeled example → pre-resolve it right next time. It's a growing local dictionary of *this user's* vocabulary (rides on the existing tags feature), not ML. Memory, not intelligence — the robust, private version.
+
+## Multi-language
+
+- **Understand freely, speak from templates.** Extraction is forgiving — the model mostly needs to find the amount + a noun, and the resolver matches against the user's *own* category names (e.g. "20 лв за обяд" → match "обяд" → Food). So **input can be any language** day one.
+- **But generate insight/confirmation text from our own localized `Localizer` strings, not the model** — the app already has full Bulgarian. The assistant *understands* many languages but *speaks* in vetted, translated strings → no hallucinated grammar, no advice-drift, consistent with the app.
+- **Tier caveat:** OS models (Apple FM / Gemini Nano) and small bundled models are English-strongest; other-language *nuance* is weaker (Bulgarian: usable for extraction, shaky for free-form phrasing) — which is exactly why output stays on our localization rails. Voice (Phase 5) inherits the split: STT multilingual-ish, TTS via OS locale voices.
+
 ## Open questions / risks
 
 - Device fragmentation: how much reach do we need before Tier B (bundled model, big app) is worth it vs Tier-A-only + graceful fallback?
