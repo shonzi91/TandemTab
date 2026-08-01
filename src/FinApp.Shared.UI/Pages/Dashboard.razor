@@ -251,7 +251,7 @@ else
             var _savedRate = State.PeriodMoneyInRate;
             var _moneyInTip = string.Format(Loc["Money in this period: {0} came in, plus {1} carried over from before."], Fmt(State.FreshInThisPeriod), Fmt(State.CarriedInThisPeriod));
         }
-        <div class="hdr-hero @(State.IsPeriodOpen ? "" : "hero-solo")">
+        <div class="hdr-hero">
             @if (State.IsPeriodOpen)
             {
                 <div class="bal-part bal-part-main">
@@ -289,9 +289,33 @@ else
             }
             else
             {
+                @* A closed/past period shows the same shape of cards as an open one, but in its FINAL state: what it
+                   closed with, and what came in / went out / was set aside that period. Ledger figures only — no
+                   bank-adjust (the live balance reflects now, not this closed period) and no "still due" sub-lines. *@
                 <div class="bal-part bal-part-main">
-                    <span class="bal-label">@Loc["Closed on"]@if (LiveBalancePending) { <span class="bal-refreshing" title="@Loc["Updating live balance…"]"></span> }</span>
-                    <strong>@Fmt(_balCur)</strong>
+                    <span class="bal-label">@Loc["Closed with"]</span>
+                    <strong class="bal-free-v" title="@Loc["What this period closed with — carried into the next."]">@Fmt(State.ClosingBalance)</strong>
+                    <small class="bal-sub">@State.Period.To.ToString("dd MMM yyyy")</small>
+                </div>
+                <div class="bal-part">
+                    <span class="bal-label">@Loc["Saved"]</span>
+                    <strong class="bal-alloc-v" title="@Loc["Set aside for savings this period — reserved, not spent."]">@Fmt(_savedPeriod)</strong>
+                    @if (_savedRate is { } _sr && _sr > 0m)
+                    {
+                        <small class="bal-sub" title="@_moneyInTip">@(Math.Round(_sr * 100m).ToString("0", System.Globalization.CultureInfo.InvariantCulture))% @Loc["of money in"]</small>
+                    }
+                </div>
+                <div class="bal-part">
+                    <span class="bal-label">@Loc["Spent"]</span>
+                    <strong title="@Loc["All money out this period — spending plus account transfers."]">@Fmt(_spent)</strong>
+                </div>
+                <div class="bal-part">
+                    <span class="bal-label">@Loc["Money in"]</span>
+                    <strong title="@_moneyInTip">@Fmt(State.MoneyInThisPeriod)</strong>
+                    @if (State.CarriedInThisPeriod.Amount > 0m)
+                    {
+                        <small class="bal-sub" title="@_moneyInTip">+@Fmt(State.CarriedInThisPeriod) @Loc["carried"]</small>
+                    }
                 </div>
             }
         </div>
@@ -370,7 +394,27 @@ else
                 // expands on click (UX backlog #3). Before that (a fresh account) it shows in full.
                 var obActive = obSteps[1].Done && obSteps[3].Done;
             }
-            @if (!State.Account.OnboardingDismissed && obDone < obSteps.Length)
+            @* The current period's end date has passed — prompt to roll into the next month (carrying the balance
+               forward). Only on the latest period (viewing a past one shouldn't nag), and only once it's genuinely
+               ended (CanStartNextPeriod = CurrentPeriod.To < today). *@
+            @if (State.IsLatestPeriod && State.CanStartNextPeriod)
+            {
+                <section class="panel period-ended">
+                    <div class="period-ended-main">
+                        <span class="period-ended-ico"><Icon Name="calendar" /></span>
+                        <span class="period-ended-txt">
+                            <strong>@string.Format(Loc["This period ended {0}."], State.Period.To.ToString("dd MMM"))</strong>
+                            <span class="period-ended-sub">@Loc["Start next month to carry your balance forward and keep tracking."]</span>
+                        </span>
+                    </div>
+                    <button class="period-ended-btn" @onclick="OpenNextPeriod"><Icon Name="arrow-right" /> @Loc["Start next month"]</button>
+                </section>
+            }
+            @* Onboarding only headlines the FIRST period. A returning user who starts a second period shouldn't be
+               re-onboarded just because this fresh period has no income logged yet (the "Add your income" step reads
+               THIS period's contributions, which reset each period). Once there's a previous period, they've clearly
+               used the app — the checklist retires. *@
+            @if (!State.Account.OnboardingDismissed && obDone < obSteps.Length && State.PeriodCount <= 1)
             {
                 @if (obActive && !_setupOpen)
                 {
@@ -1312,11 +1356,15 @@ else
                         var brkTotal = brkSlices.Sum(s => s.Amount);                                    // sum of the drawn slices (donut geometry)
                         var brkCi = System.Globalization.CultureInfo.InvariantCulture;
                         var (brkFrom, brkTo) = BreakWindow();
-                        var brkIncome = State.IncomeInRange(brkFrom, brkTo);
-                        // "Spent" = all money out for the window: expenses + out-transfers. From the raw rows, not the
+                        // Income for the window. For the current period, include the carried-in money so it matches the
+                        // hero's "Money in" (fresh income + free carry-over) — IncomeInRange alone is fresh income only.
+                        var brkIncome = State.IncomeInRange(brkFrom, brkTo)
+                            + (_breakRange == BreakRange.ThisPeriod ? State.CarriedInThisPeriod.Amount : 0m);
+                        // "Spent" = all money out for the window: expenses + account transfers. Disbursements (savings
+                        // payouts) are excluded so this agrees with the Home "Spent" tile. From the raw rows, not the
                         // slices, so it's identical across the category/tag/fund toggles.
                         var brkMoneyOut = State.ExpensesInRange(brkFrom, brkTo).Sum(e => Math.Abs(e.Amount.Amount))
-                            + State.ExternalTransfersInRange(brkFrom, brkTo).Sum(t => Math.Abs(t.Amount.Amount));
+                            + State.AccountTransfersInRange(brkFrom, brkTo).Sum(t => Math.Abs(t.Amount.Amount));
                         // One expense row, reused by the flat list and the grouped-by-sub/tag lists in an expanded slice.
                         RenderFragment<FinApp.Domain.Budgeting.Expense> brkExpRow = e =>
                         @<li class="brk-exp-row">
@@ -1418,7 +1466,7 @@ else
                                     @if (expanded && s.Key == TransfersKey)
                                     {
                                         var (xFrom, xTo) = BreakWindow();
-                                        var xfers = State.ExternalTransfersInRange(xFrom, xTo);
+                                        var xfers = State.AccountTransfersInRange(xFrom, xTo);
                                         <ul class="brk-exp-list" style="--accent:@s.Color">
                                             @foreach (var t in xfers)
                                             {
@@ -4529,7 +4577,7 @@ else
         }
         // Money transferred out to other accounts is outflow too — its own standalone slice in every grouping
         // (transfers carry no category/tag/… of their own), so the donut total stays consistent across the toggles.
-        var xfer = State.ExternalTransfersInRange(from, to).Sum(t => Math.Abs(t.Amount.Amount));
+        var xfer = State.AccountTransfersInRange(from, to).Sum(t => Math.Abs(t.Amount.Amount));
         if (xfer > 0m) slices.Add(new BreakSlice(TransfersKey, Loc["Transfers out"], null, xfer, TransfersColor));
         return slices;
     }
@@ -4556,7 +4604,7 @@ else
             slices.Add(new BreakSlice(head[i].Key, State.CategoryName(head[i].Key), State.CategoryStoredIcon(head[i].Key), head[i].Value, SliceColor(i)));
         if (groupTail)
             slices.Add(new BreakSlice(OtherKey, Loc["Everything else"], null, ordered.Skip(4).Sum(kv => kv.Value), OtherColor));
-        var xfer = State.ExternalTransfersInRange(from, to).Sum(t => Math.Abs(t.Amount.Amount));
+        var xfer = State.AccountTransfersInRange(from, to).Sum(t => Math.Abs(t.Amount.Amount));
         if (xfer > 0m) slices.Add(new BreakSlice(TransfersKey, Loc["Transfers out"], null, xfer, TransfersColor));
         return slices;
     }

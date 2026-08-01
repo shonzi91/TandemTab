@@ -91,6 +91,23 @@ html.dark .onboard-mini-ico { background: #1c3a2c; color: #7ee3b4; }
 @media (max-width: 560px) { .onboard-steps { grid-template-columns: 1fr; } }
 html.dark .onboard-card { background: linear-gradient(135deg, #14251d, #10201a); border-color: #24493a; }
 html.dark .onboard-h { color: #7ee3b4; }
+
+/* Period-ended prompt (roll into next month) */
+.period-ended { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 0 0 14px; padding: 12px 14px; background: linear-gradient(135deg, #eef9f3, #e9f7f0); border: 1px solid #d6f0e3; }
+.period-ended-main { display: flex; align-items: center; gap: 10px; flex: 1 1 260px; min-width: 0; }
+.period-ended-ico { display: inline-flex; width: 32px; height: 32px; flex: none; align-items: center; justify-content: center; border-radius: 50%; background: #d9f0e5; color: #0e6f4c; }
+.period-ended-ico svg { width: 17px; height: 17px; }
+.period-ended-txt { display: flex; flex-direction: column; min-width: 0; }
+.period-ended-txt strong { font-size: .92rem; color: #0e6f4c; }
+.period-ended-sub { font-size: .82rem; color: #4a6a5c; }
+.period-ended-btn { flex: none; display: inline-flex; align-items: center; gap: 6px; padding: 9px 14px; border: none; border-radius: 8px; background: #13a06e; color: #fff; font-weight: 700; font-size: .88rem; cursor: pointer; }
+.period-ended-btn:hover { background: #0e8a5e; }
+.period-ended-btn svg { width: 15px; height: 15px; }
+html.dark .period-ended { background: linear-gradient(135deg, #14251d, #10201a); border-color: #24493a; }
+html.dark .period-ended-ico { background: #1c3a2c; color: #7ee3b4; }
+html.dark .period-ended-txt strong { color: #7ee3b4; }
+html.dark .period-ended-sub { color: #8fb3a4; }
+@media (max-width: 560px) { .period-ended-btn { flex: 1 1 100%; justify-content: center; } }
 html.dark .onboard-sub { color: #9fb8ad; }
 html.dark .onboard-x { color: #8fa89d; }
 html.dark .onboard-x:hover { background: rgba(255,255,255,.08); color: #7ee3b4; }
@@ -227,7 +244,6 @@ html.dark .acct-drop-people { border-top-color: #2b3350; }
     display: flex; align-items: stretch; line-height: 1.1;
     background: #f4f7f6; border: 1px solid #e3e9ee; border-radius: 18px; padding: 12px 6px;
 }
-.hdr-hero.hero-solo { display: inline-flex; }
 .bal-part { display: flex; flex-direction: column; justify-content: center; gap: 3px; padding: 2px 16px; flex: 1; min-width: 0; }
 .bal-part + .bal-part { border-left: 1px solid #e3e9ee; }
 .bal-part .bal-label { font-size: .61rem; text-transform: uppercase; letter-spacing: .13em; color: #6b7280; font-weight: 700; }

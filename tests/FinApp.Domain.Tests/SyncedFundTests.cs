@@ -156,6 +156,23 @@ public class SyncedFundTests
         Assert.Equal(M(960), p.FundBalance(bank));   // the historical expense still counts
     }
 
+    // #6 — a synced fund's carried-over closing is stored informative-only (kept out of InitialTotal), but it IS real
+    // money that carried in, so it must count toward "money in" (and thus carry-over + the savings-rate denominator).
+    [Fact]
+    public void Synced_fund_informative_opening_counts_toward_money_in()
+    {
+        var a = Acc(out var p);
+        var bank = a.FundId("Bank");
+        var cash = a.FundId("Cash");
+        FundOf(a, "Bank").SetSynced(true);
+        p.SetInitialBalance(bank, M(144), informative: true);   // as StartNextPeriod stores a synced fund's opening
+        p.Deposit(Guid.NewGuid(), M(1000), fundId: cash, date: new DateOnly(2026, 1, 2));   // fresh income
+
+        var report = new FinApp.Domain.Services.SavingsReportService();
+        Assert.Equal(M(0), p.InitialTotal);                 // informative opening is excluded from the ledger total
+        Assert.Equal(M(1144), report.MoneyIn(a, p));        // 1000 fresh income + 144 carried in the synced fund
+    }
+
     // --- Audit: cross-account & account-wide combos (no duplicate increase/decrease) ----------------------
 
     // Cross-account send from an UNSYNCED fund: the fund drops and so does the account's closing balance.

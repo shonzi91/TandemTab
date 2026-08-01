@@ -230,11 +230,16 @@ public sealed class Period : Entity
     /// <summary>Total money sent out to other accounts this period (reduces the closing balance).</summary>
     public Money ExternalOutTotal => Sum(_externalTransfers.Select(t => t.Amount));
 
+    /// <summary>Plain account-to-account transfers this period — every external transfer that is NOT a savings
+    /// disbursement. This is the "money out" set the Home "Spent" tile and the Breakdown count as spending (a bucket
+    /// payout is a savings deployment, not spending, so it's excluded here).</summary>
+    public IEnumerable<ExternalTransfer> AccountTransfersOut =>
+        _externalTransfers.Where(t => !IsDisbursementTransfer(t.Id));
+
     /// <summary>Money sent out this period as plain account-to-account transfers only — i.e. <see cref="ExternalOutTotal"/>
     /// minus savings <b>disbursements</b> (a bucket payout is a savings deployment, not spending). This is the outflow
     /// the Home "Spent" tile adds on top of expenses, so it lines up with what actually left your account.</summary>
-    public Money AccountTransfersOutTotal =>
-        Sum(_externalTransfers.Where(t => !IsDisbursementTransfer(t.Id)).Select(t => t.Amount));
+    public Money AccountTransfersOutTotal => Sum(AccountTransfersOut.Select(t => t.Amount));
 
     /// <summary>True when an external transfer is the money-out leg of a savings disbursement (paired with a
     /// disbursement drawdown), rather than a plain account-to-account transfer.</summary>

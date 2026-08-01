@@ -198,6 +198,11 @@ public sealed class FinAppDbContext(DbContextOptions<FinAppDbContext> options) :
             p.Ignore(x => x.LengthInDays);
 
             p.Ignore(x => x.ExternalOutTotal);
+            // Computed views over ExternalTransfers (spending = expenses + account transfers, excl. disbursements) —
+            // body/derived data, not relational columns/navigations. AccountTransfersOut returns entities, so without
+            // this Ignore EF treats it as a second ExternalTransfers navigation and flags a pending model change.
+            p.Ignore(x => x.AccountTransfersOut);
+            p.Ignore(x => x.AccountTransfersOutTotal);
 
             OwnedList(p, x => x.InitialBalances);
             OwnedList(p, x => x.Contributions);

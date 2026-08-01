@@ -702,6 +702,14 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
             .Where(t => t.Date >= from && t.Date <= to)
             .OrderByDescending(t => t.Date).ToList();
 
+    /// <summary>Account-to-account transfers in [from, to] — like <see cref="ExternalTransfersInRange"/> but WITHOUT
+    /// savings disbursements (a bucket payout isn't spending). The Breakdown's "money out" / "Transfers out" slice uses
+    /// this so it agrees with the Home "Spent" tile (<see cref="TotalMoneyOut"/>), which also excludes disbursements.</summary>
+    public IReadOnlyList<ExternalTransfer> AccountTransfersInRange(DateOnly from, DateOnly to) =>
+        Account.Periods.SelectMany(p => p.AccountTransfersOut)
+            .Where(t => t.Date >= from && t.Date <= to)
+            .OrderByDescending(t => t.Date).ToList();
+
     /// <summary>The top-level category an expense rolls up to (a sub-category's parent, else the category itself).
     /// Categories are capped at one level deep, so parent-or-self is enough.</summary>
     public Guid RootCategoryId(Guid categoryId) => Account.FindCategory(categoryId)?.ParentId ?? categoryId;
@@ -2189,9 +2197,11 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     /// <summary>Remove the latest period and make the previous one active again.</summary>
     public async Task RemoveLatestPeriod()
     {
-        await ExecuteOptimisticAsync(() => Account.RemoveLatestPeriod(),
+        // Fix _selectedIndex INSIDE the optimistic apply: ExecuteOptimisticAsync repaints immediately after the
+        // mutation, and if we were viewing the (now-removed) latest period the stale index would point past the end
+        // and Period => Periods[_selectedIndex] would throw during that repaint. Clamp before the render, not after.
+        await ExecuteOptimisticAsync(() => { Account.RemoveLatestPeriod(); _selectedIndex = Account.Periods.Count - 1; },
             id => api.RemoveLatestPeriodAsync(id), refetchAfter: false);
-        _selectedIndex = Account.Periods.Count - 1;
         RaiseChanged();
     }
 

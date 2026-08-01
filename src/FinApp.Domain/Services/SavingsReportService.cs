@@ -48,7 +48,15 @@ public sealed class SavingsReportService
         var priorSaved = AccumulatedTotal(account) - period.SavingsNetTotal;   // savings held from before, still earmarked
         var carriedFree = period.InitialTotal - priorSaved;
         if (carriedFree.IsNegative) carriedFree -= carriedFree;                 // deficit carried in adds no spendable money
-        return period.ContributionsPaidTotal + carriedFree;
+        // A synced (bank) fund's opening is stored informative-only (kept out of InitialTotal so the ledger holds it
+        // at 0), so its real carried-over balance was invisible to "money in". Add it back — a bank fund's closing IS
+        // spendable money that carried into this period — so carry-over and the savings-rate denominator reflect it.
+        // Only synced ROOT funds count; an informative SUB-fund balance is merely a breakdown of a parent already in.
+        var syncedCarry = Money.Zero(period.Currency);
+        foreach (var b in period.InitialBalances)
+            if (b.Informative && account.FindFund(b.FundId) is { IsRoot: true, IsSynced: true })
+                syncedCarry += b.Amount;
+        return period.ContributionsPaidTotal + carriedFree + syncedCarry;
     }
 
     /// <summary>Net set aside this period as a fraction of <see cref="MoneyIn"/> (null when nothing came in). Preferred
