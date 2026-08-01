@@ -542,6 +542,16 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     /// <summary>Physical money expected to carry into the next period.</summary>
     public Money ClosingBalance => Period.ExpectedClosingBalance;
 
+    /// <summary>The period's closing total the way the Wallets per-fund rows show it: each synced fund's captured
+    /// closing balance (its carried-in opening is stored <i>informative</i>, so the ledger holds it at 0 and it's
+    /// absent from <see cref="ClosingBalance"/>) plus every other fund's ledger balance. On a CLOSED period this equals
+    /// the sum of the fund rows — so the "Closed with" headline and the Wallets donut agree with them, where the plain
+    /// <see cref="ClosingBalance"/> understated by synced funds' carry-in. Open periods use
+    /// <see cref="DisplayClosingBalance"/> (live bank-adjust) instead.</summary>
+    public Money ClosedFundTotal =>
+        Money(RootFunds.Sum(f =>
+            (FundIsSynced(f.Id) ? (SyncedFundClosingBalance(f.Id) ?? FundBalance(f.Id)) : FundBalance(f.Id)).Amount));
+
     /// <summary>The account total (and free-to-allocate) for display, with the synced fund's ledger position swapped
     /// for its <b>live</b> bank balance so the header reflects real external money (incl. transactions not yet
     /// imported). Display-only: allocation caps keep using the conservative ledger figures. No-op without a synced

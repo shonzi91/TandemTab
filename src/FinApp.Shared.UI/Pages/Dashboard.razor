@@ -292,7 +292,7 @@ else
                    bank-adjust (the live balance reflects now, not this closed period) and no "still due" sub-lines. *@
                 <div class="bal-part bal-part-main">
                     <span class="bal-label">@Loc["Closed with"]</span>
-                    <strong class="bal-free-v" title="@Loc["What this period closed with — carried into the next."]">@Fmt(State.ClosingBalance)</strong>
+                    <strong class="bal-free-v" title="@Loc["What this period closed with — carried into the next."]">@Fmt(State.ClosedFundTotal)</strong>
                     @if (State.NextPeriod is { } _np)
                     {
                         <small class="bal-sub" title="@Loc["Free cash handed to the next period."]">→ @Fmt(State.CarriedInto(_np)) @string.Format(Loc["carried to {0}"], _np.From.ToString("MMM"))</small>
@@ -791,7 +791,7 @@ else
                         @* On a closed/past period this is a final figure, not the live balance — label it "Closed with"
                            (matching the hero) and use the ledger closing (no bank-adjust — the live balance is now). *@
                         <text x="90" y="76" text-anchor="middle" class="fund-donut-cap">@(State.IsPeriodOpen ? Loc["Total balance"] : Loc["Closed with"])</text>
-                        <text x="90" y="96" text-anchor="middle" class="fund-donut-total">@Fmt(State.IsPeriodOpen ? State.DisplayClosingBalance(_bankStatus?.Balance, _bankStatus?.BalanceCurrency) : State.ClosingBalance)</text>
+                        <text x="90" y="96" text-anchor="middle" class="fund-donut-total">@Fmt(State.IsPeriodOpen ? State.DisplayClosingBalance(_bankStatus?.Balance, _bankStatus?.BalanceCurrency) : State.ClosedFundTotal)</text>
                         <text x="90" y="112" text-anchor="middle" class="fund-donut-sub">@(State.IsPeriodOpen ? string.Format(Loc["across {0} funds"], funds.Count) : State.Period.To.ToString("dd MMM yyyy"))</text>
                     </svg>
                     @{
