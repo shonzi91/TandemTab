@@ -1668,7 +1668,7 @@ else
                                     <span class="cat-row-name">@ctx.Bucket.Name@if (done) { <span class="goal-done-badge" title="@(isDebt ? Loc["Paid off"] : Loc["Goal reached"])">🎉</span> }</span>
                                     <span class="cat-row-amt">
                                         @if (done) { <span class="good-text">@(isDebt ? Loc["Paid off"] : Loc["Goal reached"])</span> }
-                                        else if (isDebt) { <text>@Fmt(debtOwed)<span class="cat-row-nb"> / @Fmt(debtOrig) @Loc["left"]</span></text> }
+                                        else if (isDebt) { var _apr = State.SavingBucketDebtRate(bucketId); <text>@Fmt(debtOwed)<span class="cat-row-nb"> / @Fmt(debtOrig) @Loc["left"]@if (_apr > 0m) { <text> · @_apr.ToString("0.##")% APR</text> }</span></text> }
                                         else if (isInvestment) { <text>@Fmt(total)<span class="cat-row-nb"> · @Loc["invested"]</span></text> }
                                         else if (g is not null) { <text>@Fmt(total) / @Fmt(g.Goal!.Value)</text> }
                                         else { <text>@Fmt(total)<span class="cat-row-nb"> · @Loc["saved"]</span></text> }
@@ -1686,7 +1686,7 @@ else
                                         var flagEdge = payFlagPct >= 85 ? " payoff-flag-end" : payFlagPct <= 15 ? " payoff-flag-start" : "";
                                         <span class="payoff-flag@(flagEdge)" style="left:@payFlagPct.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)%">
                                             <span class="payoff-flag-lbl">@PayoffDate(payFastMonths)</span>
-                                            <span class="payoff-flag-pin">🏁</span>
+                                            <span class="payoff-flag-pin"><Icon Name="flag" /></span>
                                         </span>
                                     }
                                     <span class="cbar-track"><span class="cbar-grad @(hasBar ? "cbar-good" : "cbar-flat")" style="--pct:@barShown.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)%"></span></span>
@@ -1740,22 +1740,25 @@ else
                                 var _remInt = State.SavingBucketDebtRemainingInterest(bucketId);
                                 var _intEst = State.SavingBucketDebtPaidInterestEstimated(bucketId);
                                 var _dueDay = State.SavingBucketDebtInstallmentDay(bucketId);
+                                @* APR lives in the row header now; set-aside shows in the one-off header — so the facts
+                                   here stay the non-duplicated detail: the installment (+due day) and the interest split. *@
                                 <div class="goal-facts">
-                                    <span><strong>@State.SavingBucketDebtRate(bucketId)%</strong> APR</span>
                                     <span><strong>@Fmt(State.SavingBucketDebtInstallment(bucketId))</strong>/@Loc["mo"]@if (_dueDay is { } _dd) { <span class="cat-row-nb"> · @string.Format(Loc["due on the {0}"], _dd)</span> }</span>
                                     <span title="@(_intEst ? Loc["Estimated from the loan’s terms — add its start date to base it on the real timeline."] : Loc["Reconstructed from the loan’s schedule since it started."])"><strong>@(_intEst ? "≈" : "")@Fmt(_paidInt)</strong> @Loc["interest paid"]</span>
                                     @if (_remInt > 0m)
                                     {
                                         <span title="@Loc["Interest still to pay if you keep to the installment."]"><strong>@Fmt(_remInt)</strong> @Loc["interest left"]</span>
                                     }
-                                    <span><strong>@Fmt(total)</strong> @Loc["set aside"]</span>
                                 </div>
-                                var dProg = State.SavingBucketDebtProgress(bucketId);
-                                if (dProg is { } pr && debtPaid > 0m)
+                                @* "Paid off X of Y (Z%)" is the header's "remaining / initial" inverted — dropped as
+                                   redundant. The shrinking-balance sparkline (progress over time) is kept, with a short
+                                   caption so the line isn't a mystery; only shown when there's real history to plot. *@
+                                var _debtHist = State.SavingBucketDebtHistory(bucketId);
+                                if (_debtHist.Count >= 2)
                                 {
                                     <div class="debt-progress">
-                                        <span class="debt-prog-txt">@string.Format(Loc["Paid off {0} of {1} ({2}%)"], Fmt(debtPaid), Fmt(debtOrig), (int)Math.Round((double)pr * 100))</span>
-                                        @DebtSparkline(State.SavingBucketDebtHistory(bucketId))
+                                        <span class="debt-prog-cap">@Loc["Balance over time"]</span>
+                                        @DebtSparkline(_debtHist)
                                     </div>
                                 }
                                 if (!done && payInst > 0m)
@@ -1777,7 +1780,7 @@ else
                                             }
                                             else
                                             {
-                                                <span class="payoff-foot-date">🏁 @PayoffDate(payFastMonths)</span>
+                                                <span class="payoff-foot-date"><Icon Name="flag" /> @PayoffDate(payFastMonths)</span>
                                                 @if (payMonthsSaved > 0)
                                                 {
                                                     <span class="good-text">· @MonthsText(payMonthsSaved) @Loc["sooner"]</span>
@@ -1820,7 +1823,7 @@ else
                                                         {
                                                             var _shNew = decimal.Round(inst * sh.Months - afterBal, 2);
                                                             <tr>
-                                                                <td>⏱️ @Loc["Shorter term"]</td>
+                                                                <td>@Loc["Shorter term"]</td>
                                                                 <td>@Fmt(inst)</td>
                                                                 <td>@PayoffDate(sh.Months)@if (basePay is { } bl && bl.Months > sh.Months) { <span class="good-text">@string.Format(Loc[" ({0} sooner)"], MonthsText(bl.Months - sh.Months))</span> }</td>
                                                                 <td>@Fmt(_shNew)</td>
@@ -1831,7 +1834,7 @@ else
                                                         {
                                                             var _lwNew = decimal.Round(lw * baseMonths - afterBal, 2);
                                                             <tr>
-                                                                <td>💶 @Loc["Lower installment"]</td>
+                                                                <td>@Loc["Lower installment"]</td>
                                                                 <td>@Fmt(lw) <span class="good-text">(−@Fmt(Math.Max(0m, inst - lw)))</span></td>
                                                                 <td>@PayoffDate(baseMonths) <span class="ring-muted">@Loc["(unchanged)"]</span></td>
                                                                 <td>@Fmt(_lwNew)</td>
@@ -1855,7 +1858,7 @@ else
                                 </div>
                                 if (invBase is { Months: > 0 } b0)
                                 {
-                                    <p class="goal-proj">🏁 @string.Format(Loc["~{0} in {1} ({2} growth)"], Fmt(b0.FutureValue), MonthsText(b0.Months), Fmt(b0.Growth))</p>
+                                    <p class="goal-proj"><Icon Name="flag" /> @string.Format(Loc["~{0} in {1} ({2} growth)"], Fmt(b0.FutureValue), MonthsText(b0.Months), Fmt(b0.Growth))</p>
                                 }
                                 else
                                 {
@@ -1904,7 +1907,7 @@ else
                                         ? (int)Math.Ceiling((double)((gga - total.Amount) / gpp.Amount)) : null;
                                     if (gPeriods is { } gper)
                                     {
-                                        <p class="goal-proj">🏁 @string.Format(Loc["Reach your goal in {0} (~{1})"], MonthsText(gper), PayoffDate(gper))</p>
+                                        <p class="goal-proj"><Icon Name="flag" /> @string.Format(Loc["Reach your goal in {0} (~{1})"], MonthsText(gper), PayoffDate(gper))</p>
                                     }
                                     else if (gPace is null || gPace.Value.Amount <= 0m)
                                     {
@@ -1980,21 +1983,21 @@ else
                     <div class="plan-controls">
                         <label>@Loc["Extra /mo across all debts"] <input type="number" step="10" min="0" @bind="_planExtra" @bind:event="oninput" /></label>
                         <div class="plan-toggle" role="group">
-                            <button type="button" class="chip @(_planStrategy == FinApp.Forecasting.LoanForecast.Strategy.Avalanche ? "on" : "")" @onclick="() => _planStrategy = FinApp.Forecasting.LoanForecast.Strategy.Avalanche" title="@Loc["Highest interest rate first — cheapest overall."]">🏔️ @Loc["Avalanche"]</button>
-                            <button type="button" class="chip @(_planStrategy == FinApp.Forecasting.LoanForecast.Strategy.Snowball ? "on" : "")" @onclick="() => _planStrategy = FinApp.Forecasting.LoanForecast.Strategy.Snowball" title="@Loc["Smallest balance first — quickest wins."]">⛄ @Loc["Snowball"]</button>
+                            <button type="button" class="chip @(_planStrategy == FinApp.Forecasting.LoanForecast.Strategy.Avalanche ? "on" : "")" @onclick="() => _planStrategy = FinApp.Forecasting.LoanForecast.Strategy.Avalanche" title="@Loc["Highest interest rate first — cheapest overall."]">@Loc["Avalanche"]</button>
+                            <button type="button" class="chip @(_planStrategy == FinApp.Forecasting.LoanForecast.Strategy.Snowball ? "on" : "")" @onclick="() => _planStrategy = FinApp.Forecasting.LoanForecast.Strategy.Snowball" title="@Loc["Smallest balance first — quickest wins."]">@Loc["Snowball"]</button>
                             @infoTip(("plan-strat", Loc["Avalanche pays the highest-rate debt first (least interest overall). Snowball pays the smallest balance first (a quicker first win)."]))
                         </div>
                     </div>
-                    <p class="hint plan-strat-note">@(_planStrategy == FinApp.Forecasting.LoanForecast.Strategy.Avalanche ? Loc["🏔️ Attacking the highest-rate debt first — least interest overall."] : Loc["⛄ Attacking the smallest balance first — a quicker first win."])</p>
+                    <p class="hint plan-strat-note">@(_planStrategy == FinApp.Forecasting.LoanForecast.Strategy.Avalanche ? Loc["Attacking the highest-rate debt first — least interest overall."] : Loc["Attacking the smallest balance first — a quicker first win."])</p>
                     @if (DebtPlan is { } plan)
                     {
                         <div class="plan-summary">
-                            <span class="plan-big">🏁 @Loc["Debt-free"] @PayoffDate(plan.Months)</span>
+                            <span class="plan-big"><Icon Name="flag" /> @Loc["Debt-free"] @PayoffDate(plan.Months)</span>
                             <span class="spending-sub">@string.Format(Loc["{0} · total interest {1}"], MonthsText(plan.Months), Fmt(plan.TotalInterest))</span>
                         </div>
                         @if (_planExtra > 0 && DebtBaseline is { } baseNoExtra && (baseNoExtra.Months > plan.Months || baseNoExtra.TotalInterest > plan.TotalInterest))
                         {
-                            <p class="hint good-text">➡️ @string.Format(Loc["That extra clears you {0} sooner and saves {1} in interest."], MonthsText(baseNoExtra.Months - plan.Months), Fmt(Math.Max(0m, baseNoExtra.TotalInterest - plan.TotalInterest)))</p>
+                            <p class="hint good-text"><Icon Name="check" /> @string.Format(Loc["That extra clears you {0} sooner and saves {1} in interest."], MonthsText(baseNoExtra.Months - plan.Months), Fmt(Math.Max(0m, baseNoExtra.TotalInterest - plan.TotalInterest)))</p>
                         }
                         <ol class="plan-order">
                             @for (var oi = 0; oi < plan.Order.Count; oi++)
@@ -2019,7 +2022,7 @@ else
                         {
                             <li>
                                 <span class="row-main row-stack">
-                                    <span class="row-title">💰 <span class="row-title-txt">@State.SavingBucketName(d.SavingCategoryId)</span></span>
+                                    <span class="row-title"><Icon Name="coins" /> <span class="row-title-txt">@State.SavingBucketName(d.SavingCategoryId)</span></span>
                                     <span class="row-sub"><span>@d.Date.ToString("dd MMM")</span></span>
                                 </span>
                                 <span class="amt credit">@Fmt(d.Amount)</span>
@@ -3852,7 +3855,7 @@ else
                                     @if (pjShorter is { } shorter)
                                     {
                                         <tr>
-                                            <td>⏱️ @Loc["Shorter term"]</td>
+                                            <td>@Loc["Shorter term"]</td>
                                             <td>@Fmt(pjInst)</td>
                                             <td>@PayoffDate(shorter.Months)
                                                 @if (pjAtInst is { } baseline && baseline.Months > shorter.Months)
@@ -3866,7 +3869,7 @@ else
                                     @if (pjLowerInst is { } lower && pjKeepMonths > 0)
                                     {
                                         <tr>
-                                            <td>💶 @Loc["Lower installment"]</td>
+                                            <td>@Loc["Lower installment"]</td>
                                             <td>@Fmt(lower) <span class="good-text">(−@Fmt(Math.Max(0m, pjInst - lower)))</span></td>
                                             <td>@PayoffDate(pjKeepMonths) <span class="ring-muted">@Loc["(unchanged)"]</span></td>
                                             <td>@Fmt(decimal.Round(lower * pjKeepMonths - pjAfterBal, 2))</td>
@@ -3884,7 +3887,7 @@ else
                     <p class="hint pm-hint">@string.Format(Loc["{0} installment + {1} extra = {2}/mo"], Fmt(pjInst), Fmt(pjExtra), Fmt(pjTotal))@(pjPace is { } pc && pc.Amount > 0m ? string.Format(pjPlanned ? Loc[" · your plan {0}/period"] : Loc[" · your pace ~{0}/period"], Fmt(pc)) : "")</p>
                     @if (pjAtTotal is { } ap)
                     {
-                        <p class="proj-result">🏁 @string.Format(Loc["Clear in {0} (~{1}) · interest {2}"], MonthsText(ap.Months), PayoffDate(ap.Months), Fmt(ap.TotalInterest))</p>
+                        <p class="proj-result"><Icon Name="flag" /> @string.Format(Loc["Clear in {0} (~{1}) · interest {2}"], MonthsText(ap.Months), PayoffDate(ap.Months), Fmt(ap.TotalInterest))</p>
                         @if (pjAtInst is { } bi && (bi.Months > ap.Months || bi.TotalInterest > ap.TotalInterest))
                         {
                             <p class="proj-result good-text">➡️ @string.Format(Loc["{0} sooner · {1} less interest than the installment alone"], MonthsText(bi.Months - ap.Months), Fmt(Math.Max(0m, bi.TotalInterest - ap.TotalInterest)))</p>
@@ -3918,7 +3921,7 @@ else
                         <p class="hint">@string.Format(gpPlanned ? Loc["You plan to set aside {0}/period."] : Loc["You set aside about {0}/period."], Fmt(gpace))</p>
                         @if (gpPeriods is { } gper)
                         {
-                            <p class="proj-result">🏁 @string.Format(Loc["Reach your goal in {0} (~{1})"], MonthsText(gper), PayoffDate(gper))</p>
+                            <p class="proj-result"><Icon Name="flag" /> @string.Format(Loc["Reach your goal in {0} (~{1})"], MonthsText(gper), PayoffDate(gper))</p>
                         }
                         else if (gpGoal is not null)
                         {
@@ -3957,7 +3960,7 @@ else
                     <h4 class="detail-sub">@Loc["Just what's invested now"] @infoTip(("iv-base", Loc["Grows only your current balance at the expected return over the horizon — no further contributions."]))</h4>
                     @if (ivBase is { Months: > 0 } b0)
                     {
-                        <p class="proj-result">🏁 @string.Format(Loc["~{0} in {1} ({2} growth)"], Fmt(b0.FutureValue), MonthsText(b0.Months), Fmt(b0.Growth))</p>
+                        <p class="proj-result"><Icon Name="flag" /> @string.Format(Loc["~{0} in {1} ({2} growth)"], Fmt(b0.FutureValue), MonthsText(b0.Months), Fmt(b0.Growth))</p>
                     }
                     else
                     {
@@ -3974,7 +3977,7 @@ else
                     }
                     @if (ivWith is { Months: > 0 } bw)
                     {
-                        <p class="proj-result">🏁 @string.Format(Loc["~{0} in {1} — {2} your contributions, {3} growth"], Fmt(bw.FutureValue), MonthsText(bw.Months), Fmt(bw.Contributed), Fmt(bw.Growth))</p>
+                        <p class="proj-result"><Icon Name="flag" /> @string.Format(Loc["~{0} in {1} — {2} your contributions, {3} growth"], Fmt(bw.FutureValue), MonthsText(bw.Months), Fmt(bw.Contributed), Fmt(bw.Growth))</p>
                         @if (ivBase is { } b1 && bw.FutureValue > b1.FutureValue)
                         {
                             <p class="proj-result good-text">➡️ @string.Format(Loc["{0} more than leaving it alone."], Fmt(bw.FutureValue - b1.FutureValue))</p>

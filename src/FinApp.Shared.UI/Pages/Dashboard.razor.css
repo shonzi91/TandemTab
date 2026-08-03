@@ -1138,6 +1138,8 @@ html.dark .ms-bar-desc { color: #8a94a6; }
 /* Progress-over-time (#7): "paid off X of Y" + shrinking-balance sparkline + months-ahead */
 .debt-progress { margin-top: 4px; display: flex; flex-direction: column; align-items: center; gap: 2px; color: #6366f1; }
 .debt-prog-txt { font-size: .66rem; font-weight: 700; color: #4f46e5; }
+.debt-prog-cap { font-size: .6rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: #9096a4; }
+html.dark .debt-prog-cap { color: #7b8194; }
 .debt-spark { width: 108px; height: 22px; display: block; color: #6366f1; opacity: .9; }
 .debt-ahead { font-size: .64rem; font-weight: 700; margin-top: 1px; text-align: center; }
 
@@ -1215,7 +1217,7 @@ html.dark .payoff-flag-lbl { color: #7ce8bc; background: #14271f; border-color: 
    over the row's edit/⋯ icons). */
 .payoff-flag-end .payoff-flag-lbl { transform: translateX(-48%); }
 .payoff-flag-start .payoff-flag-lbl { transform: translateX(48%); }
-.payoff-flag-pin { font-size: .8rem; line-height: 1; margin-top: 1px; }
+.payoff-flag-pin { font-size: .8rem; line-height: 1; margin-top: 1px; color: #13a06e; display: flex; }
 .payoff-flag::after { content: ""; position: absolute; top: 100%; left: 50%; transform: translateX(-50%); width: 2px; height: 6px; background: #13a06e; }
 .payoff-foot-date { font-weight: 800; color: #0f7a54; }
 html.dark .payoff-foot-date { color: #7ce8bc; }

@@ -656,6 +656,7 @@ public sealed class Localizer(IJSRuntime js)
         ["left"] = "остават",
         ["due on the {0}"] = "на {0}-о число",
         ["interest paid"] = "платена лихва",
+        ["Balance over time"] = "Баланс във времето",
         ["interest left"] = "остатъчна лихва",
         ["Reconstructed from the loan’s schedule since it started."] = "Изчислено по погасителния план на заема от началото му.",
         ["Estimated from the loan’s terms — add its start date to base it on the real timeline."] = "Приблизително по условията на заема — добавете началната му дата, за да се изчисли по реалния период.",
@@ -723,10 +724,10 @@ public sealed class Localizer(IJSRuntime js)
         ["Saved this period"] = "Спестено този период",
         ["Costs to cover"] = "Разходи за покриване",
         ["More actions"] = "Още действия",
-        ["🏔️ Attacking the highest-rate debt first — least interest overall."] =
-            "🏔️ Първо най-скъпия дълг — най-малко лихва общо.",
-        ["⛄ Attacking the smallest balance first — a quicker first win."] =
-            "⛄ Първо най-малкия дълг — по-бърза първа победа.",
+        ["Attacking the highest-rate debt first — least interest overall."] =
+            "Първо най-скъпия дълг — най-малко лихва общо.",
+        ["Attacking the smallest balance first — a quicker first win."] =
+            "Първо най-малкия дълг — по-бърза първа победа.",
         ["Essential spend (rent, groceries, health…)"] = "Основен разход (наем, храна, здраве…)",
         ["Essential budgets are never suggested for redirecting toward a debt."] =
             "Основните бюджети никога не се предлагат за пренасочване към дълг.",
