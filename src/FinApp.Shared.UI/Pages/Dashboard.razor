@@ -1645,7 +1645,12 @@ else
                                 paySliderMax = Math.Max(50m, Math.Ceiling(payInst * 3m / 10m) * 10m);
                                 if (payFast is not null && payBaseMonths > 0)
                                 {
-                                    payFlagPct = Math.Clamp((double)payFastMonths / payBaseMonths * 100.0, 4, 100);
+                                    // Place the finish flag within the REMAINING part of the bar — between what's already
+                                    // paid off (the fill) and 100% — so it can never sit left of the current progress (you
+                                    // can't finish before where you already are). At the base installment it's at the far
+                                    // end; extra payments slide it back toward the fill as the remaining journey shrinks.
+                                    var payTimeRatio = (double)payFastMonths / payBaseMonths;   // 1 at base pace, → 0 with more extra
+                                    payFlagPct = Math.Clamp(paidPct + (100.0 - paidPct) * payTimeRatio, paidPct, 100.0);
                                     showPayoff = true;
                                 }
                             }
