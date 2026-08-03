@@ -1364,11 +1364,13 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     public async Task<Guid> AddSavingBucket(string name, decimal? goalAmount, decimal thresholdPercent, bool notifyOnMilestone, decimal initialAmount, string? icon = null,
         bool isDebt = false, decimal debtBalance = 0m, decimal debtRate = 0m, decimal debtInstallment = 0m, decimal? plannedContribution = null,
         bool isInvestment = false, decimal invRate = 0m, decimal invTermYears = 0m, int invCompounds = 12,
-        Guid? fundId = null, IEnumerable<PlannedCost>? costs = null, bool isExpensesFund = false)
+        Guid? fundId = null, IEnumerable<PlannedCost>? costs = null, bool isExpensesFund = false,
+        decimal? debtOriginalBalance = null, int? debtInstallmentDay = null, DateOnly? debtStartDate = null)
     {
         var req = BuildBucketRequest(name, goalAmount, thresholdPercent, notifyOnMilestone, initialAmount, icon,
             isDebt, debtBalance, debtRate, debtInstallment, plannedContribution,
-            isInvestment, invRate, invTermYears, invCompounds, fundId, costs, isExpensesFund);
+            isInvestment, invRate, invTermYears, invCompounds, fundId, costs, isExpensesFund,
+            debtOriginalBalance, debtInstallmentDay, debtStartDate);
         var result = await ExecuteAsync(id => api.AddSavingBucketAsync(id, req));
         return result.EntityId ?? Guid.Empty;
     }
@@ -1376,23 +1378,28 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     public Task SaveSavingBucket(Guid savingCategoryId, string name, decimal? goalAmount, decimal thresholdPercent, bool notifyOnMilestone, decimal initialAmount, string? icon = null,
         bool isDebt = false, decimal debtBalance = 0m, decimal debtRate = 0m, decimal debtInstallment = 0m, decimal? plannedContribution = null,
         bool isInvestment = false, decimal invRate = 0m, decimal invTermYears = 0m, int invCompounds = 12,
-        Guid? fundId = null, IEnumerable<PlannedCost>? costs = null, bool isExpensesFund = false)
+        Guid? fundId = null, IEnumerable<PlannedCost>? costs = null, bool isExpensesFund = false,
+        decimal? debtOriginalBalance = null, int? debtInstallmentDay = null, DateOnly? debtStartDate = null)
     {
         var req = BuildBucketRequest(name, goalAmount, thresholdPercent, notifyOnMilestone, initialAmount, icon,
             isDebt, debtBalance, debtRate, debtInstallment, plannedContribution,
-            isInvestment, invRate, invTermYears, invCompounds, fundId, costs, isExpensesFund);
+            isInvestment, invRate, invTermYears, invCompounds, fundId, costs, isExpensesFund,
+            debtOriginalBalance, debtInstallmentDay, debtStartDate);
         return ExecuteAsync(id => api.SaveSavingBucketAsync(id, savingCategoryId, req));
     }
 
     private static SaveSavingBucketRequest BuildBucketRequest(string name, decimal? goalAmount, decimal thresholdPercent, bool notifyOnMilestone, decimal initialAmount, string? icon,
         bool isDebt, decimal debtBalance, decimal debtRate, decimal debtInstallment, decimal? plannedContribution,
         bool isInvestment, decimal invRate, decimal invTermYears, int invCompounds,
-        Guid? fundId, IEnumerable<PlannedCost>? costs, bool isExpensesFund) =>
+        Guid? fundId, IEnumerable<PlannedCost>? costs, bool isExpensesFund,
+        decimal? debtOriginalBalance = null, int? debtInstallmentDay = null, DateOnly? debtStartDate = null) =>
         new(name, icon, goalAmount, thresholdPercent, notifyOnMilestone, initialAmount,
-            isDebt, debtBalance, debtRate, debtInstallment, plannedContribution,
-            isInvestment, invRate, invTermYears, invCompounds, fundId,
-            costs?.Select(c => new PlannedCostDto(c.Label, c.Amount, CadenceString(c.Cadence), c.DueDate)).ToList(),
-            isExpensesFund);
+            isDebt, debtBalance, debtRate, debtInstallment,
+            DebtOriginalBalance: debtOriginalBalance, DebtInstallmentDay: debtInstallmentDay, DebtStartDate: debtStartDate,
+            PlannedContribution: plannedContribution,
+            IsInvestment: isInvestment, InvRate: invRate, InvTermYears: invTermYears, InvCompounds: invCompounds, FundId: fundId,
+            Costs: costs?.Select(c => new PlannedCostDto(c.Label, c.Amount, CadenceString(c.Cadence), c.DueDate)).ToList(),
+            IsExpensesFund: isExpensesFund);
 
     private static string CadenceString(CostCadence cadence) => cadence switch
     {
@@ -1536,6 +1543,18 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     public decimal SavingBucketDebtInstallment(Guid id) => FindSavingBucket(id)?.DebtInstallment ?? 0m;
     /// <summary>The date the debt's balance was last known true, or null when it isn't on a schedule.</summary>
     public DateOnly? SavingBucketDebtAsOf(Guid id) => FindSavingBucket(id)?.DebtBalanceAsOf;
+
+    // --- R1 informative debt: interest read-outs + due-day + origination date ---
+    /// <summary>Interest paid to date on a debt bucket — exact when its origination date is known, else estimated.</summary>
+    public decimal SavingBucketDebtPaidInterest(Guid id) => FindSavingBucket(id)?.PaidInterestSoFar(Today()) ?? 0m;
+    /// <summary>Interest still to pay from today until the debt clears at its current installment (0 when it never clears).</summary>
+    public decimal SavingBucketDebtRemainingInterest(Guid id) => FindSavingBucket(id)?.RemainingInterest(Today()) ?? 0m;
+    /// <summary>Whether the paid-interest figure is an estimate (no origination date recorded) — the UI labels it.</summary>
+    public bool SavingBucketDebtPaidInterestEstimated(Guid id) => FindSavingBucket(id)?.DebtPaidInterestIsEstimate ?? false;
+    /// <summary>The installment due-day (1–31), or null when unknown.</summary>
+    public int? SavingBucketDebtInstallmentDay(Guid id) => FindSavingBucket(id)?.DebtInstallmentDay;
+    /// <summary>The loan's origination date, or null when unrecorded (paid-interest is then estimated).</summary>
+    public DateOnly? SavingBucketDebtStartDate(Guid id) => FindSavingBucket(id)?.DebtStartDate;
 
     // --- Progress over time (#7): the original owed vs what's left, and how much has been cleared ---
     /// <summary>Debt buckets: the balance owed when the debt was first set up (the "€Y" in "paid off €X of €Y").</summary>

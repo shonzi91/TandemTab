@@ -12,22 +12,28 @@
 
 ## Priority summary
 
-| # | Priority | Area | Item | Effort |
-|---|----------|------|------|--------|
-| 1 | **P1** | Home / header | Replace ambiguous "Current" tile; lead with "Safe to spend" | S |
-| 2 | **P1** | Home | Put a real money summary on Home (in / out / safe to spend) | M |
-| 3 | **P1** | Home / onboarding | Retire the setup checklist once the user is clearly active | S |
-| 4 | **P2** | Reminders | Stop duplicating Home insight cards in the notification bell | S |
-| 5 | **P2** | Reminders | Separate time-based "Due" reminders from "Suggestions" | M |
-| 6 | **P2** | Spending | Promote "Breakdown" (the real "where money goes" view) | M |
-| 7 | **P2** | Goals | Show APR / interest rate on each debt row | S |
-| 8 | **P2** | Wallets | De-emphasize or hide zero-balance funds | S |
-| 9 | **P2** | Periods | Make "start next month" easier to discover | S |
-| 10 | **P3** | Goals | Sort / pin a "focus" debt in long goal lists | M |
-| 11 | **P3** | Accessibility | Fix control accessible names (icon glyphs, title-only labels) | M |
-| 12 | **P3** | Spending | Simplify the three sub-tabs (list vs chart) | S |
+| # | Priority | Area | Item | Effort | Status |
+|---|----------|------|------|--------|--------|
+| 1 | **P1** | Home / header | Replace ambiguous "Current" tile; lead with "Safe to spend" | S | ✅ S74 |
+| 2 | **P1** | Home | Put a real money summary on Home (in / out / safe to spend) | M | ✅ S74 |
+| 3 | **P1** | Home / onboarding | Retire the setup checklist once the user is clearly active | S | ✅ S75 / S79 |
+| 4 | **P2** | Reminders | Stop duplicating Home insight cards in the notification bell | S | ✅ S75 |
+| 5 | **P2** | Reminders | Separate time-based "Due" reminders from "Suggestions" | M | ✅ S75 |
+| 6 | **P2** | Spending | Promote "Breakdown" (the real "where money goes" view) | M | ✅ S74 |
+| 7 | **P2** | Goals | Show APR / interest rate on each debt row | S | ✅ S74 |
+| 8 | **P2** | Wallets | De-emphasize or hide zero-balance funds | S | ✅ S74 |
+| 9 | **P2** | Periods | Make "start next month" easier to discover | S | ✅ S79 |
+| 10 | **P3** | Goals | Sort / pin a "focus" debt in long goal lists | M | ⬜ open (defer — few users have long lists) |
+| 11 | **P3** | Accessibility | Fix control accessible names (icon glyphs, title-only labels) | M | 🔨 in progress |
+| 12 | **P3** | Spending | Simplify the three sub-tabs (list vs chart) | S | ✅ closed — stale (superseded by S73–S75 Spending rework) |
 
 ---
+
+> **Status (updated Aug 2026):** all of P1 (#1–3) and P2 (#4–9) shipped across Sessions 74–79.
+> Of P3, **#12 is closed as stale** (the three-view "list vs chart" premise no longer holds after the
+> S73–S75 Spending rework — By date / By budgets / Breakdown now each answer a distinct question).
+> **#11 (accessibility) is in progress; #10 (pin focus debt) is deferred** until users actually
+> accumulate long goal lists. Detail sections below are kept for the record.
 
 ## P1 — high impact on daily use
 
@@ -68,8 +74,8 @@ Long goal lists become a scroll. Let users sort or pin a "focus" debt so the one
 ### 11. Fix control accessible names
 Header controls label themselves via `title` while their accessible name is an icon/number (e.g. Notifications announces "3"), and modal buttons announce "✓Add" / "✕Cancel" (the decorative glyph is read). Add explicit `aria-label`s and mark decorative glyphs `aria-hidden` — important for a finance app.
 
-### 12. Simplify Spending sub-tabs
-Categories / By date / Breakdown are really "list vs chart" plus a category grouping. Consider collapsing to fewer, clearer options.
+### 12. Simplify Spending sub-tabs — ✅ CLOSED (stale, Aug 2026)
+Original premise: Categories / By date / Breakdown are really "list vs chart" plus a category grouping. **No longer true** after the S73–S75 rework: **By date** is a chronological ledger, **By budgets** is a budget-adherence view (bars vs caps), and **Breakdown** is a budget-free, multi-period analytical pie over an adjustable window. Each answers a distinct question, and the view switch now leads every view so it no longer jumps on tab change. Nothing left to collapse — closed without further work.
 
 ---
 

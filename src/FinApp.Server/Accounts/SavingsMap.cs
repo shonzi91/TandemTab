@@ -45,8 +45,10 @@ public static class SavingsMap
         var kind = b.IsDebt ? "debt" : b.IsInvestment ? "investment" : b.IsExpensesFund ? "sinking" : "goal";
 
         decimal? goalTarget = null, goalProgress = null, debtBalance = null, debtProgress = null,
-                 investmentProjected = null, monthlySetAside = null, targetShortfall = null;
-        int? debtMonthsAhead = null;
+                 investmentProjected = null, monthlySetAside = null, targetShortfall = null,
+                 debtPaidInterest = null, debtRemainingInterest = null;
+        int? debtMonthsAhead = null, debtInstallmentDay = null;
+        var debtPaidInterestEstimated = false;
         SavingBucketForecastDto? forecast = null;
         IReadOnlyList<PlannedCostDto>? costs = null;
         var pace = report.AverageDepositPace(account, b.Id)?.Amount;
@@ -63,9 +65,19 @@ public static class SavingsMap
                 debtBalance = b.DebtBalanceOn(today);
                 debtProgress = b.DebtProgressRatioOn(today);
                 debtMonthsAhead = DebtMonthsAhead(account, report, b);
+                // R1 read-outs: interest paid to date + interest still to pay from today (null when there's no
+                // schedule to compute them from), the due-day, and whether paid-interest is an estimate.
+                if (b.DebtInstallment > 0m)
+                {
+                    debtPaidInterest = b.PaidInterestSoFar(today);
+                    debtRemainingInterest = b.RemainingInterest(today);
+                }
+                debtInstallmentDay = b.DebtInstallmentDay;
+                debtPaidInterestEstimated = b.DebtPaidInterestIsEstimate;
                 forecast = new SavingBucketForecastDto(pace, b.PlannedContribution,
                     null, null, null,
-                    b.DebtBalance, b.DebtOriginalBalance, b.DebtAnnualRatePercent, b.DebtInstallment, b.DebtBalanceAsOf);
+                    b.DebtBalance, b.DebtOriginalBalance, b.DebtAnnualRatePercent, b.DebtInstallment, b.DebtBalanceAsOf,
+                    b.DebtStartDate);
                 break;
             case "investment":
                 investmentProjected = InvestmentForecast
@@ -92,7 +104,8 @@ public static class SavingsMap
 
         return new SavingBucketDto(b.Id, b.Name, b.Icon, saved, kind, b.IsArchived,
             goalTarget, goalProgress, debtBalance, debtProgress, debtMonthsAhead,
-            investmentProjected, monthlySetAside, targetShortfall, forecast, costs);
+            investmentProjected, monthlySetAside, targetShortfall, forecast, costs,
+            debtPaidInterest, debtRemainingInterest, debtInstallmentDay, debtPaidInterestEstimated);
     }
 
     // Domain cadence → the canonical wire string the write side (SavingBucketConfig.Cadence) round-trips.

@@ -34,7 +34,13 @@ public record SavingBucketDto(
     decimal? MonthlySetAside,
     decimal? TargetShortfall,
     SavingBucketForecastDto? Forecast = null,
-    IReadOnlyList<PlannedCostDto>? Costs = null);
+    IReadOnlyList<PlannedCostDto>? Costs = null,
+    // R1 informative debt (debt buckets only): interest paid to date and interest still to pay from today, the
+    // installment due-day, and whether paid-interest is an estimate (no origination date recorded).
+    decimal? DebtPaidInterest = null,
+    decimal? DebtRemainingInterest = null,
+    int? DebtInstallmentDay = null,
+    bool DebtPaidInterestEstimated = false);
 
 /// <summary>The raw knobs an interactive projection modal drags — supplied so the thin client can re-run the pure
 /// forecast math (<c>FinApp.Forecasting</c>: <c>InvestmentForecast</c>/<c>LoanForecast</c>) locally with zero
@@ -58,7 +64,9 @@ public record SavingBucketForecastDto(
     decimal? DebtOriginalBalance,
     decimal? DebtRatePercent,
     decimal? DebtInstallment,
-    DateOnly? DebtBalanceAsOf);
+    DateOnly? DebtBalanceAsOf,
+    // R1: the loan's origination date (edit-form prefill), if recorded — null means paid-interest is estimated.
+    DateOnly? DebtStartDate = null);
 
 /// <summary>One manual "Add to savings" deposit this period (editable/removable), the bucket name resolved.</summary>
 public record SavingDepositRowDto(Guid Id, Guid BucketId, string BucketName, decimal Amount, DateOnly Date, string? Note);

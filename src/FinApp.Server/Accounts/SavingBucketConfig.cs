@@ -22,7 +22,12 @@ public static class SavingBucketConfig
         // is cleared; the ordinary branch clears debt/investment and (re)sets the goal.
         if (req.IsDebt)
         {
-            account.ConfigureSavingDebt(bucketId, req.DebtBalance, req.DebtRate, req.DebtInstallment, balanceAsOf: today);
+            account.ConfigureSavingDebt(bucketId, req.DebtBalance, req.DebtRate, req.DebtInstallment,
+                originalBalance: req.DebtOriginalBalance, balanceAsOf: today,
+                installmentDay: req.DebtInstallmentDay, startDate: req.DebtStartDate);
+            // Set explicitly (not keep-on-null) so the edit form can CLEAR the due-day / origination date.
+            account.SetSavingDebtInstallmentDay(bucketId, req.DebtInstallmentDay);
+            account.SetSavingDebtStartDate(bucketId, req.DebtStartDate);
             account.ConfigureSavingGoal(bucketId, null);
         }
         else if (req.IsInvestment)

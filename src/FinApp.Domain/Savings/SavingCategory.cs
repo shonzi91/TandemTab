@@ -70,6 +70,17 @@ public sealed class SavingCategory : Entity
     /// Captured automatically on first <see cref="ConfigureDebt"/>; never drops below the current balance. Body data.</summary>
     public decimal DebtOriginalBalance { get; private set; }
 
+    /// <summary>Debt buckets only: the day of the month (1–31) the installment falls due. Informational + drives R2
+    /// recurring due dates; the balance walk stays anchored on <see cref="DebtBalanceAsOf"/> (not this day). Null when
+    /// unknown. Body data (snapshot, not EF).</summary>
+    public int? DebtInstallmentDay { get; private set; }
+
+    /// <summary>Debt buckets only: the loan's origination date, if known. When set, "interest paid so far" is exact
+    /// (<see cref="PaidInterestSoFar"/> knows how many installments have really been made); when null it is estimated
+    /// by amortizing the original balance down to the current one (assumes on-schedule payments) and flagged via
+    /// <see cref="DebtPaidInterestIsEstimate"/>. Body data (snapshot, not EF).</summary>
+    public DateOnly? DebtStartDate { get; private set; }
+
     /// <summary>Optional user-set target amount to add to this bucket each period ("€300/mo"). When set it is used
     /// instead of the app inferring a pace from deposit history, giving stable goal/payoff dates. Null → infer from
     /// history. Applies to both common and debt buckets. Projection metadata only — never touches the money model. Body data.</summary>
@@ -150,6 +161,42 @@ public sealed class SavingCategory : Entity
         ? Math.Clamp(DebtPaidOff / DebtOriginalBalance, 0m, 1m)
         : null;
 
+    /// <summary>Debt buckets: the interest still to pay from <paramref name="asOf"/> until the loan clears at its
+    /// current installment — the "€X interest left" read-out under the progress bar. Zero when there's no schedule
+    /// (no installment) or the payment can't clear it (no finite total to promise).</summary>
+    public decimal RemainingInterest(DateOnly asOf) =>
+        IsDebt && DebtInstallment > 0m
+            ? FinApp.Forecasting.LoanForecast.PayOff(DebtBalanceOn(asOf), DebtAnnualRatePercent, DebtInstallment)?.TotalInterest ?? 0m
+            : 0m;
+
+    /// <summary>Debt buckets: the interest paid to date, <b>reconstructed from the loan's own amortization schedule</b>
+    /// (original balance at its APR paying the installment, over the months elapsed) — so principal cleared and interest
+    /// accrued always cohere. It is an <b>estimate</b> in every case (we don't hold the real payment history — see
+    /// <see cref="DebtPaidInterestIsEstimate"/>); a known <see cref="DebtStartDate"/> only makes the elapsed timeline
+    /// exact. Deliberately does <i>not</i> subtract a typed current balance from total-paid — mixing an independently
+    /// entered balance with a separately counted month total produces a nonsensical figure. Never negative.</summary>
+    public decimal PaidInterestSoFar(DateOnly asOf)
+    {
+        if (!IsDebt || DebtInstallment <= 0m || DebtOriginalBalance <= 0m) return 0m;
+        return FinApp.Forecasting.LoanForecast.InterestAccrued(
+            DebtOriginalBalance, DebtAnnualRatePercent, DebtInstallment, DebtMonthsElapsed(asOf));
+    }
+
+    /// <summary>Whether <see cref="PaidInterestSoFar"/> rests on an inferred timeline (no <see cref="DebtStartDate"/>) —
+    /// the UI flags this rougher case. The figure is a schedule reconstruction either way; a start date just pins the
+    /// number of installments made.</summary>
+    public bool DebtPaidInterestIsEstimate => IsDebt && DebtStartDate is null;
+
+    /// <summary>How many installments have been made by <paramref name="asOf"/>. Exact from <see cref="DebtStartDate"/>
+    /// when set; otherwise inferred by amortizing the original balance down to what's owed today (assumes on-schedule
+    /// payments).</summary>
+    private int DebtMonthsElapsed(DateOnly asOf)
+    {
+        if (DebtStartDate is { } start) return MonthsBetween(start, asOf);
+        return FinApp.Forecasting.LoanForecast.MonthsToReach(
+            DebtOriginalBalance, DebtAnnualRatePercent, DebtInstallment, DebtBalanceOn(asOf));
+    }
+
     /// <summary>Archived buckets (a paid-off debt or a reached goal) are hidden from the main lists but keep their
     /// history. Body data (snapshot, not EF).</summary>
     public bool IsArchived { get; private set; }
@@ -217,12 +264,13 @@ public sealed class SavingCategory : Entity
     /// <see cref="DebtBalanceAsOf"/>). Null keeps any existing anchor, which is what snapshot round-tripping wants;
     /// callers stating a fresh balance should pass the day they're stating it for.</param>
     public void ConfigureDebt(decimal balance, decimal annualRatePercent, decimal installment, decimal? originalBalance = null,
-                              DateOnly? balanceAsOf = null)
+                              DateOnly? balanceAsOf = null, int? installmentDay = null, DateOnly? startDate = null)
     {
         if (balance < 0m) throw new ArgumentException("Debt balance cannot be negative.", nameof(balance));
         if (annualRatePercent < 0m) throw new ArgumentException("Interest rate cannot be negative.", nameof(annualRatePercent));
         if (installment < 0m) throw new ArgumentException("Installment cannot be negative.", nameof(installment));
         if (originalBalance is < 0m) throw new ArgumentException("Original balance cannot be negative.", nameof(originalBalance));
+        if (installmentDay is { } d && (d < 1 || d > 31)) throw new ArgumentOutOfRangeException(nameof(installmentDay), "Installment day must be 1–31.");
         Kind = SavingKind.Debt;
         DebtBalance = balance;
         // A stated balance is only true on the day it's stated, so it re-anchors the schedule. Null leaves the anchor
@@ -234,11 +282,27 @@ public sealed class SavingCategory : Entity
         if (DebtOriginalBalance < balance) DebtOriginalBalance = balance;
         DebtAnnualRatePercent = annualRatePercent;
         DebtInstallment = installment;
+        // Due-day and origination date are keep-on-null (so the serializer round-trips them separately without a
+        // fresh edit clearing them); an explicit value updates them.
+        if (installmentDay is { } day) DebtInstallmentDay = day;
+        if (startDate is { } sd) DebtStartDate = sd;
         ClearInvestmentFields();
     }
 
     /// <summary>Restore the schedule anchor verbatim (snapshot round-trip only — see <see cref="DebtBalanceAsOf"/>).</summary>
     public void SetDebtBalanceAsOf(DateOnly? asOf) => DebtBalanceAsOf = asOf;
+
+    /// <summary>Set or clear the installment due-day (1–31). Used by the edit form (to change/clear it) and the
+    /// snapshot round-trip. Null clears it.</summary>
+    public void SetDebtInstallmentDay(int? day)
+    {
+        if (day is { } d && (d < 1 || d > 31)) throw new ArgumentOutOfRangeException(nameof(day), "Installment day must be 1–31.");
+        DebtInstallmentDay = day;
+    }
+
+    /// <summary>Set or clear the loan origination date. Used by the edit form (to change/clear it) and the snapshot
+    /// round-trip. Null clears it (paid-interest reverts to the estimate).</summary>
+    public void SetDebtStartDate(DateOnly? startDate) => DebtStartDate = startDate;
 
     /// <summary>Mark this bucket as an investment envelope with its (projection-only) growth figures.</summary>
     public void ConfigureInvestment(decimal annualRatePercent, decimal termYears, int compoundsPerYear)
@@ -291,6 +355,8 @@ public sealed class SavingCategory : Entity
         DebtInstallment = 0m;
         DebtOriginalBalance = 0m;
         DebtBalanceAsOf = null;   // no schedule left to anchor
+        DebtInstallmentDay = null;
+        DebtStartDate = null;
     }
 
     private void ClearInvestmentFields()

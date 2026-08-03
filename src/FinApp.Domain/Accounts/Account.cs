@@ -324,9 +324,18 @@ public sealed class Account : Entity
     /// <summary>Mark a savings bucket as a debt-payoff envelope with its (projection-only) loan figures. The original
     /// balance (for progress %) is captured the first time; pass <paramref name="originalBalance"/> to set it explicitly.</summary>
     public void ConfigureSavingDebt(Guid savingCategoryId, decimal balance, decimal annualRatePercent, decimal installment,
-                                    decimal? originalBalance = null, DateOnly? balanceAsOf = null) =>
+                                    decimal? originalBalance = null, DateOnly? balanceAsOf = null,
+                                    int? installmentDay = null, DateOnly? startDate = null) =>
         (FindSavingCategory(savingCategoryId) ?? throw new InvalidOperationException("Saving category not found."))
-            .ConfigureDebt(balance, annualRatePercent, installment, originalBalance, balanceAsOf);
+            .ConfigureDebt(balance, annualRatePercent, installment, originalBalance, balanceAsOf, installmentDay, startDate);
+
+    /// <summary>Set or clear a debt bucket's installment due-day (1–31) — informational + drives recurring due dates.</summary>
+    public void SetSavingDebtInstallmentDay(Guid savingCategoryId, int? day) =>
+        (FindSavingCategory(savingCategoryId) ?? throw new InvalidOperationException("Saving category not found.")).SetDebtInstallmentDay(day);
+
+    /// <summary>Set or clear a debt bucket's origination date — makes "interest paid so far" exact rather than estimated.</summary>
+    public void SetSavingDebtStartDate(Guid savingCategoryId, DateOnly? startDate) =>
+        (FindSavingCategory(savingCategoryId) ?? throw new InvalidOperationException("Saving category not found.")).SetDebtStartDate(startDate);
 
     /// <summary>Set or clear a savings bucket's planned per-period contribution (null/zero → infer pace from history).</summary>
     public void SetSavingPlannedContribution(Guid savingCategoryId, decimal? amount) =>

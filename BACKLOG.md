@@ -71,10 +71,16 @@ commit noted.
     the Dashboard + `BudgetingState`; covered by `ReallocationAndCapTests` (5).
 
 ## P4 — Next up (added Session 31, from a competitor-gap review)
-15. **Predictive cash-flow runway (3–6 months out)** — the one genuine gap a competitive review turned up,
-    and the highest-value un-built idea on the list. The app reads the past well and projects a *single*
-    debt/goal/investment, but nothing answers **"what do the next few months look like?"**. Every input
-    already exists; nothing renders them:
+15. ~~**Predictive cash-flow runway (3–6 months out)**~~ **✅ DONE.** Built as
+    `Domain/Forecasting/CashFlowForecast.Project(...)` — a pure, month-stepped projector that walks up to
+    6 months from the current closing balance, applies due recurring income/bills + the sinking-fund
+    set-aside, and names the first month the balance goes negative (`CashFlowMonth`/`CashFlowProjection`,
+    with a `CashFlowBasis` for demonstrated-vs-typical). Covered by `CashFlowForecastTests`. Surfaced on
+    Home as the **"At this rate" runway card** (gated to the latest period via `State.IsLatestPeriod`) with
+    a **"Show the math" modal** (`Modal.RunwayMath`, S76) whose what-if sliders recompute client-side
+    (the forecast is `decimal`/`Guid`/`string`-pure, no `Money`/`Period` — see `docs/DOMAIN-REMOVAL.md`).
+    *Was: the one genuine gap a competitive review turned up. Every input already existed; now they render.*
+    Original rationale kept below for the record:
     - `Domain/Recurring/RecurringItem` already models bills + income as **forward-looking expectations**
       (`DayOfMonth`, per-period due tracking, `DueDateWithin`/`IsUpcoming`). `RecurringAmountMode.Typical`
       even self-tunes toward the actual via `LearnFromActual` — recurring amounts are already predictions.

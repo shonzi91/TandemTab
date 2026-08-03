@@ -78,6 +78,51 @@ public static class LoanForecast
     }
 
     /// <summary>
+    /// How many scheduled installments bring <paramref name="from"/> down to <paramref name="target"/> — the inverse
+    /// of <see cref="BalanceAfter"/>. Used to <b>estimate</b> how long a loan has been running (original → current
+    /// balance) when no origination date was recorded, so "interest paid so far" can be reconstructed on the
+    /// assumption payments were on schedule. Returns 0 when already at/below the target, or when the installment
+    /// can't cover the interest (the balance isn't amortizing, so there's no honest month count to give).
+    /// </summary>
+    public static int MonthsToReach(decimal from, decimal annualRatePercent, decimal installment, decimal target)
+    {
+        if (from <= target || installment <= 0m) return 0;
+        var monthlyRate = annualRatePercent / 100m / 12m;
+        var remaining = from;
+        for (var m = 1; m <= MaxMonths; m++)
+        {
+            var next = remaining + (remaining * monthlyRate) - installment;
+            if (next >= remaining) return 0;      // not amortizing — payment ≤ interest
+            remaining = next;
+            if (remaining <= target) return m;
+        }
+        return MaxMonths;
+    }
+
+    /// <summary>
+    /// The interest portion accrued over <paramref name="months"/> scheduled installments from <paramref name="balance"/>
+    /// — the sum of each month's interest as the balance amortizes. This is the <b>self-consistent</b> way to reconstruct
+    /// "interest paid so far": principal cleared + interest accrued always equals what was paid, because both come from
+    /// the same walk. Never mix a typed principal figure with a separately-counted number of months — that double-counts
+    /// or collapses the interest. Interest stops accruing once the loan clears (a short over-long month count is safe).
+    /// </summary>
+    public static decimal InterestAccrued(decimal balance, decimal annualRatePercent, decimal installment, int months)
+    {
+        if (balance <= 0m || months <= 0 || installment <= 0m) return 0m;
+        var monthlyRate = annualRatePercent / 100m / 12m;
+        var remaining = balance;
+        var interest = 0m;
+        for (var m = 0; m < Math.Min(months, MaxMonths); m++)
+        {
+            var monthInterest = remaining * monthlyRate;
+            interest += monthInterest;
+            remaining = remaining + monthInterest - installment;
+            if (remaining <= 0m) break;   // cleared — no more interest accrues
+        }
+        return decimal.Round(interest, 2);
+    }
+
+    /// <summary>
     /// The level monthly payment that clears <paramref name="balance"/> in exactly <paramref name="months"/> at
     /// <paramref name="annualRatePercent"/> APR — the standard annuity payment. This is the other half of
     /// <see cref="PayOff"/>: that one fixes the payment and solves for the term, this one fixes the term and solves

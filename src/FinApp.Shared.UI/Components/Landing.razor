@@ -97,7 +97,7 @@
 {
     <div class="lp-auth-backdrop" @onclick="CloseAuth">
         <div class="lp-auth-modal" @onclick:stopPropagation="true">
-            <button class="lp-auth-x" title="@Loc["Close"]" @onclick="CloseAuth">×</button>
+            <button class="lp-auth-x" title="@Loc["Close"]" aria-label="@Loc["Close"]" @onclick="CloseAuth"><span aria-hidden="true">×</span></button>
             <AuthPanel ResetToken="@_resetToken" />
         </div>
     </div>

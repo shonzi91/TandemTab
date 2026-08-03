@@ -25,7 +25,7 @@ else if (!State.HasAccounts)
         <InvitationsPanel />
         @if (_error is not null)
         {
-            <div class="alert warn-bg"><span>@_error</span><button class="alert-x" title="@Loc["Dismiss"]" @onclick="() => _error = null">×</button></div>
+            <div class="alert warn-bg"><span>@_error</span><button class="alert-x" title="@Loc["Dismiss"]" aria-label="@Loc["Dismiss"]" @onclick="() => _error = null"><span aria-hidden="true">×</span></button></div>
         }
         <div class="firstrun-form">
             <label>@Loc["Account name"] <input type="text" placeholder="Personal" @bind="_fName" /></label>
@@ -98,7 +98,7 @@ else
                                     else if (mid == State.CurrentOwnerId) { <span class="person-tag">@Loc["owner"]</span> }
                                     @if (State.IsOwnerOfCurrent && mid != State.MyUserId)
                                     {
-                                        <button class="person-x" title="@Loc["Remove from account"]" @onclick="() => OpenRemoveMember(mid, m.DisplayName)">×</button>
+                                        <button class="person-x" title="@Loc["Remove from account"]" aria-label="@Loc["Remove from account"]" @onclick="() => OpenRemoveMember(mid, m.DisplayName)"><span aria-hidden="true">×</span></button>
                                     }
                                 </div>
                             }
@@ -111,7 +111,7 @@ else
             @* Period navigation sits in the top row on desktop (dates/edit/remove/start-next + Active label folded
                behind one compact chip); on mobile it wraps to its own row below so the header doesn't crowd. *@
             <div class="period-nav">
-                <button class="nav @(State.CanGoPrev ? "" : "nav-hidden")" title="@Loc["Previous period"]" @onclick="State.GoPrev" disabled="@(!State.CanGoPrev)">‹</button>
+                <button class="nav @(State.CanGoPrev ? "" : "nav-hidden")" title="@Loc["Previous period"]" aria-label="@Loc["Previous period"]" @onclick="State.GoPrev" disabled="@(!State.CanGoPrev)"><span aria-hidden="true">‹</span></button>
                 <span class="period-menu">
                     <button class="period-chip" title="@Loc["Period options"]" @onclick="() => _periodMenuOpen = !_periodMenuOpen">
                         <span class="period-chip-label">@State.Period.From.ToString("MMM yyyy")</span>
@@ -134,15 +134,15 @@ else
                         </div>
                     }
                 </span>
-                <button class="nav @(State.CanGoNext ? "" : "nav-hidden")" title="@Loc["Next period"]" @onclick="State.GoNext" disabled="@(!State.CanGoNext)">›</button>
+                <button class="nav @(State.CanGoNext ? "" : "nav-hidden")" title="@Loc["Next period"]" aria-label="@Loc["Next period"]" @onclick="State.GoNext" disabled="@(!State.CanGoNext)"><span aria-hidden="true">›</span></button>
             </div>
 
             @* Header utility icons, left→right: notifications · achievements · settings (settings last).
                Import / Recurring / External accounts moved to the labelled action row below the balance. *@
             <span class="hdr-icons">
                 <span class="acct-notify">
-                    <button class="link bell" title="@Loc["Notifications"]" @onclick="() => _bellOpen = !_bellOpen">
-                        <Icon Name="bell" />@if (bellCount > 0) { <span class="bell-badge">@bellCount</span> }
+                    <button class="link bell" title="@Loc["Notifications"]" aria-label="@(bellCount > 0 ? $"{Loc["Notifications"]} ({bellCount})" : Loc["Notifications"])" @onclick="() => _bellOpen = !_bellOpen">
+                        <Icon Name="bell" />@if (bellCount > 0) { <span class="bell-badge" aria-hidden="true">@bellCount</span> }
                     </button>
                     @if (_bellOpen)
                     {
@@ -160,7 +160,7 @@ else
                             </div>
                             <span class="bell-item-ops">
                                 @if (n.Rotate is { } rot) { <button class="tip-x" title="@Loc["Another idea"]" @onclick="rot"><Icon Name="rotate" /></button> }
-                                @if (n.Dismiss is { } dis) { <button class="tip-x" title="@Loc["Dismiss for this period"]" @onclick="dis">×</button> }
+                                @if (n.Dismiss is { } dis) { <button class="tip-x" title="@Loc["Dismiss for this period"]" aria-label="@Loc["Dismiss for this period"]" @onclick="dis"><span aria-hidden="true">×</span></button> }
                             </span>
                         </div>;
                         <div class="acct-menu-backdrop" @onclick="() => _bellOpen = false"></div>
@@ -195,8 +195,8 @@ else
                 }
                 @if (_reviewCount > 0)
                 {
-                    <button class="link bell hdr-review" title="@string.Format(Loc["{0} bank transactions to review"], _reviewCount)" @onclick="OpenBankReview">
-                        <Icon Name="bank" /><span class="review-badge">@_reviewCount</span>
+                    <button class="link bell hdr-review" title="@string.Format(Loc["{0} bank transactions to review"], _reviewCount)" aria-label="@string.Format(Loc["{0} bank transactions to review"], _reviewCount)" @onclick="OpenBankReview">
+                        <Icon Name="bank" /><span class="review-badge" aria-hidden="true">@_reviewCount</span>
                     </button>
                 }
                 <button class="link hdr-trophy" title="@Loc["Achievements"]" @onclick="() => _modal = Modal.Achievements"><Icon Name="trophy" /></button>
@@ -235,6 +235,15 @@ else
             // "what can I actually spend without shorting a bill I already know is coming". Can go negative.
             var _billsDue = State.BillsDueThisPeriod;
             var _safeAfterBills = _balFree - _billsDue;
+            // F3 "Left to spend today": the after-bills headroom spread over the days still left in the period —
+            // the concrete "can I buy this right now?" number. Numerator is _safeAfterBills (already nets out known
+            // upcoming bills), so it can't over-promise before a rent/bill lands. Only on the open latest period,
+            // only when there's positive headroom and at least a day to go.
+            var _todayD = DateOnly.FromDateTime(DateTime.Today);
+            var _daysLeft = State.Period.To.DayNumber - _todayD.DayNumber + 1;
+            decimal? _perDay = State.IsLatestPeriod && _daysLeft >= 1 && _safeAfterBills.Amount > 0m
+                ? decimal.Round(_safeAfterBills.Amount / _daysLeft, 2)
+                : null;
             // The hero is a real money summary — and it's the only header the Home tab shows, so it doubles as Home's
             // "how am I doing" glance (UX backlog #1/#2): what's safe to spend now, what was set aside this period
             // (with its savings rate), what's gone out, and what came in. The running TOTAL balance moved down to the
@@ -260,6 +269,10 @@ else
                     @if (_billsDue.Amount > 0m)
                     {
                         <small class="bal-sub @(_safeAfterBills.IsNegative ? "warn-text" : "")" title="@string.Format(Loc["{0} in known bills is still expected this period — this is what stays free once they are paid."], Fmt(_billsDue))">@Fmt(_safeAfterBills) @Loc["after bills"]</small>
+                    }
+                    @if (_perDay is { } _pd)
+                    {
+                        <small class="bal-sub bal-daily" title="@string.Format(Loc["About {0} a day for the {1} days left this period, after known bills."], Fmt(_pd), _daysLeft)">@string.Format(Loc["{0} a day left"], Fmt(_pd))</small>
                     }
                 </div>
                 <div class="bal-part">
@@ -334,7 +347,7 @@ else
 
     @if (_error is not null)
     {
-        <div class="alert warn-bg"><strong>@Loc["Couldn’t do that."]</strong> <span>@_error</span><button class="alert-x" title="@Loc["Dismiss"]" @onclick="() => _error = null">×</button></div>
+        <div class="alert warn-bg"><strong>@Loc["Couldn’t do that."]</strong> <span>@_error</span><button class="alert-x" title="@Loc["Dismiss"]" aria-label="@Loc["Dismiss"]" @onclick="() => _error = null"><span aria-hidden="true">×</span></button></div>
     }
 
     <nav class="tabs">
@@ -429,7 +442,7 @@ else
                             <span>@string.Format(Loc["Finish setup — {0} of {1} done"], obDone, obSteps.Length)</span>
                             <span class="onboard-go">›</span>
                         </button>
-                        <button class="onboard-x" title="@Loc["Dismiss"]" @onclick="() => State.DismissOnboarding()">×</button>
+                        <button class="onboard-x" title="@Loc["Dismiss"]" aria-label="@Loc["Dismiss"]" @onclick="() => State.DismissOnboarding()"><span aria-hidden="true">×</span></button>
                     </div>
                 }
                 else
@@ -448,7 +461,7 @@ else
                             }
                             else
                             {
-                                <button class="onboard-x" title="@Loc["Dismiss"]" @onclick="() => State.DismissOnboarding()">×</button>
+                                <button class="onboard-x" title="@Loc["Dismiss"]" aria-label="@Loc["Dismiss"]" @onclick="() => State.DismissOnboarding()"><span aria-hidden="true">×</span></button>
                             }
                         </div>
                         <div class="onboard-prog"><div class="onboard-prog-fill" style="width:@(obDone * 100 / obSteps.Length)%"></div></div>
@@ -686,6 +699,10 @@ else
                                     <span class="target-when">
                                         <strong class="target-date">@PayoffDate(t.Months)</strong>
                                         <span class="target-mo">@MonthsText(t.Months)</span>
+                                        @if (t.InterestSaved > 0m)
+                                        {
+                                            <span class="target-mo good-text" title="@Loc["Interest you save versus paying only the installments, if you keep this pace."]">· @string.Format(Loc["save {0} interest"], Fmt(t.InterestSaved))</span>
+                                        }
                                     </span>
                                 }
                             </div>
@@ -1646,7 +1663,7 @@ else
                                     <span class="cat-row-name">@ctx.Bucket.Name@if (done) { <span class="goal-done-badge" title="@(isDebt ? Loc["Paid off"] : Loc["Goal reached"])">🎉</span> }</span>
                                     <span class="cat-row-amt">
                                         @if (done) { <span class="good-text">@(isDebt ? Loc["Paid off"] : Loc["Goal reached"])</span> }
-                                        else if (isDebt) { var _apr = State.SavingBucketDebtRate(bucketId); <text>@Fmt(debtOwed)<span class="cat-row-nb"> · @Loc["owed"]@if (_apr > 0m) { <text> · @_apr.ToString("0.##")% @Loc["APR"]</text> }</span></text> }
+                                        else if (isDebt) { <text>@Fmt(debtOwed)<span class="cat-row-nb"> / @Fmt(debtOrig) @Loc["left"]</span></text> }
                                         else if (isInvestment) { <text>@Fmt(total)<span class="cat-row-nb"> · @Loc["invested"]</span></text> }
                                         else if (g is not null) { <text>@Fmt(total) / @Fmt(g.Goal!.Value)</text> }
                                         else { <text>@Fmt(total)<span class="cat-row-nb"> · @Loc["saved"]</span></text> }
@@ -1714,10 +1731,18 @@ else
                             @* --- Type-specific detail + inline projection (the projection modals moved in here) --- *@
                             @if (isDebt)
                             {
+                                var _paidInt = State.SavingBucketDebtPaidInterest(bucketId);
+                                var _remInt = State.SavingBucketDebtRemainingInterest(bucketId);
+                                var _intEst = State.SavingBucketDebtPaidInterestEstimated(bucketId);
+                                var _dueDay = State.SavingBucketDebtInstallmentDay(bucketId);
                                 <div class="goal-facts">
-                                    <span><strong>@Fmt(debtOwed)</strong> @Loc["owed"]</span>
                                     <span><strong>@State.SavingBucketDebtRate(bucketId)%</strong> APR</span>
-                                    <span><strong>@Fmt(State.SavingBucketDebtInstallment(bucketId))</strong>/@Loc["mo"]</span>
+                                    <span><strong>@Fmt(State.SavingBucketDebtInstallment(bucketId))</strong>/@Loc["mo"]@if (_dueDay is { } _dd) { <span class="cat-row-nb"> · @string.Format(Loc["due on the {0}"], _dd)</span> }</span>
+                                    <span title="@(_intEst ? Loc["Estimated from the loan’s terms — add its start date to base it on the real timeline."] : Loc["Reconstructed from the loan’s schedule since it started."])"><strong>@(_intEst ? "≈" : "")@Fmt(_paidInt)</strong> @Loc["interest paid"]</span>
+                                    @if (_remInt > 0m)
+                                    {
+                                        <span title="@Loc["Interest still to pay if you keep to the installment."]"><strong>@Fmt(_remInt)</strong> @Loc["interest left"]</span>
+                                    }
                                     <span><strong>@Fmt(total)</strong> @Loc["set aside"]</span>
                                 </div>
                                 var dProg = State.SavingBucketDebtProgress(bucketId);
@@ -1783,25 +1808,29 @@ else
                                             <div class="payoff-opts-scroll">
                                                 <table class="payoff-opts">
                                                     <thead>
-                                                        <tr><th>@Loc["Their offer"]</th><th>@Loc["Per month"]</th><th>@Loc["Ends"]</th><th>@Loc["Total interest"]</th></tr>
+                                                        <tr><th>@Loc["Their offer"]</th><th>@Loc["Per month"]</th><th>@Loc["Ends"]</th><th>@Loc["New interest"]</th><th>@Loc["Saved interest"]</th></tr>
                                                     </thead>
                                                     <tbody>
                                                         @if (shorter is { } sh)
                                                         {
+                                                            var _shNew = decimal.Round(inst * sh.Months - afterBal, 2);
                                                             <tr>
                                                                 <td>⏱️ @Loc["Shorter term"]</td>
                                                                 <td>@Fmt(inst)</td>
                                                                 <td>@PayoffDate(sh.Months)@if (basePay is { } bl && bl.Months > sh.Months) { <span class="good-text">@string.Format(Loc[" ({0} sooner)"], MonthsText(bl.Months - sh.Months))</span> }</td>
-                                                                <td>@Fmt(decimal.Round(inst * sh.Months - afterBal, 2))</td>
+                                                                <td>@Fmt(_shNew)</td>
+                                                                <td>@if (basePay is { } _sb && _sb.TotalInterest > _shNew) { <span class="good-text">@Fmt(_sb.TotalInterest - _shNew)</span> } else { <text>—</text> }</td>
                                                             </tr>
                                                         }
                                                         @if (lowerInst is { } lw && baseMonths > 0)
                                                         {
+                                                            var _lwNew = decimal.Round(lw * baseMonths - afterBal, 2);
                                                             <tr>
                                                                 <td>💶 @Loc["Lower installment"]</td>
                                                                 <td>@Fmt(lw) <span class="good-text">(−@Fmt(Math.Max(0m, inst - lw)))</span></td>
                                                                 <td>@PayoffDate(baseMonths) <span class="ring-muted">@Loc["(unchanged)"]</span></td>
-                                                                <td>@Fmt(decimal.Round(lw * baseMonths - afterBal, 2))</td>
+                                                                <td>@Fmt(_lwNew)</td>
+                                                                <td>@if (basePay is { } _lb && _lb.TotalInterest > _lwNew) { <span class="good-text">@Fmt(_lb.TotalInterest - _lwNew)</span> } else { <text>—</text> }</td>
                                                             </tr>
                                                         }
                                                     </tbody>
@@ -2792,9 +2821,29 @@ else
                     }
                     @if (_bucketKind == SavingKind.Debt)
                     {
-                        <label>@Loc["Balance owed"] <input type="number" step="0.01" min="0" @bind="_debtBalance" /></label>
+                        @* Two ways to state the balance: what's owed now, or the original principal + how much of it you've
+                           already cleared (the app derives what's owed). The latter gives an honest progress baseline. *@
+                        <div class="plan-toggle" role="group">
+                            <button type="button" class="chip @(!_debtEnterInitial ? "on" : "")" @onclick="() => _debtEnterInitial = false">@Loc["What's owed now"]</button>
+                            <button type="button" class="chip @(_debtEnterInitial ? "on" : "")" @onclick="() => _debtEnterInitial = true">@Loc["Original + already paid"]</button>
+                        </div>
+                        @if (!_debtEnterInitial)
+                        {
+                            <label>@Loc["Balance owed"] <input type="number" step="0.01" min="0" @bind="_debtBalance" /></label>
+                        }
+                        else
+                        {
+                            <label>@Loc["Original principal"] <input type="number" step="0.01" min="0" @bind="_debtOriginal" /></label>
+                            <label>@Loc["Already paid off (principal)"] <input type="number" step="0.01" min="0" @bind="_debtPaidPrincipal" /></label>
+                            <small class="hint">@string.Format(Loc["Owed now: {0}"], Fmt(new Money(Math.Max(0m, _debtOriginal - _debtPaidPrincipal), State.Currency)))</small>
+                        }
                         <label>@Loc["Interest rate (% APR)"] <input type="number" step="0.1" min="0" @bind="_debtRate" /></label>
                         <label>@Loc["Monthly installment"] <input type="number" step="0.01" min="0" @bind="_debtInstallment" /></label>
+                        <div class="field-row">
+                            <label>@Loc["Installment due day"] <input type="number" step="1" min="1" max="31" placeholder="—" @bind="_debtDay" /></label>
+                            <label>@Loc["Loan start date"] <input type="date" @bind="_debtStart" /></label>
+                        </div>
+                        <small class="hint">@Loc["The start date bases “interest paid so far” on the real timeline — otherwise we infer it from the balance."]</small>
                         <small class="hint">@Loc["Used only to project your payoff — never changes budgets, savings or balances. Set money aside with 💰, then pay the bank with 🎯."]</small>
                     }
                     else if (_bucketKind == SavingKind.Investment)
@@ -3414,7 +3463,7 @@ else
                         {
                             <div class="alert warn-bg">
                                 <span>@Loc["We strongly recommend turning on two-factor authentication (Profile → Two-factor) — this account is connected to real financial data."]</span>
-                                <button class="alert-x" title="@Loc["Dismiss"]" @onclick="() => _2faRecDismissed = true">×</button>
+                                <button class="alert-x" title="@Loc["Dismiss"]" aria-label="@Loc["Dismiss"]" @onclick="() => _2faRecDismissed = true"><span aria-hidden="true">×</span></button>
                             </div>
                         }
                         <p class="pm-who">@State.Account.Name</p>
@@ -3453,7 +3502,7 @@ else
                         }
                         @if (_bankError is not null)
                         {
-                            <div class="alert warn-bg"><span>@_bankError</span><button class="alert-x" title="@Loc["Dismiss"]" @onclick="() => _bankError = null">×</button></div>
+                            <div class="alert warn-bg"><span>@_bankError</span><button class="alert-x" title="@Loc["Dismiss"]" aria-label="@Loc["Dismiss"]" @onclick="() => _bankError = null"><span aria-hidden="true">×</span></button></div>
                         }
                     }
                     else
@@ -4973,6 +5022,11 @@ else
     private decimal _initialSavings;
     private SavingKind _bucketKind;
     private decimal _debtBalance, _debtRate, _debtInstallment;
+    // R1 informative debt: the "original + already paid" input mode, and the optional due-day / origination date.
+    private bool _debtEnterInitial;
+    private decimal _debtOriginal, _debtPaidPrincipal;
+    private int? _debtDay;
+    private DateOnly? _debtStart;
     private decimal _invRate, _invTermYears;
     private int _invCompounds = 12;
     private Guid? _bucketFundId;                       // Plans: the fund this bucket is earmarked in (defaults the disburse fund)
@@ -6315,6 +6369,25 @@ else
         return months;
     }
 
+    /// <summary>Total interest the current pace saves across every debt bucket — each debt's installment-only interest
+    /// less its interest at installment + the pace you actually set aside (<see cref="LoanForecast.SimulateExtra"/>).
+    /// Zero when no extra is being paid, so the "on track for Debt-free" line only claims a saving when there is one.</summary>
+    private decimal DebtInterestSavedAtPace()
+    {
+        var debts = State.SavingBuckets
+            .Where(x => x.Bucket.IsDebt && !x.Bucket.IsArchived && x.Bucket.DebtBalance > 0m)
+            .Select(x => x.Bucket).ToList();
+        var saved = 0m;
+        foreach (var d in debts)
+        {
+            var pace = State.EffectiveSavingPace(d.Id)?.Amount ?? 0m;
+            if (pace <= 0m) continue;
+            if (FinApp.Forecasting.LoanForecast.SimulateExtra(d.DebtBalance, d.DebtAnnualRatePercent, d.DebtInstallment, pace) is { } sim)
+                saved += sim.InterestSaved;
+        }
+        return decimal.Round(saved, 2);
+    }
+
     private void OpenPayoffProjection(Guid bucketId)
     {
         _projBucketId = bucketId;
@@ -6366,8 +6439,10 @@ else
     }
     private static string PayoffDate(int months) => DateTime.Today.AddMonths(months).ToString("MMM yyyy");
 
-    /// <summary>One line on the Home "on track for" card: an emoji, a name, and either a projected month or "reached".</summary>
-    private readonly record struct HomeTarget(string Icon, string Name, int Months, bool Reached);
+    /// <summary>One line on the Home "on track for" card: an emoji, a name, and either a projected month or "reached".
+    /// <paramref name="InterestSaved"/> (debt-free only) is the interest keeping the current pace saves vs paying just
+    /// the installments — 0 when there's no extra pace or it can't be figured.</summary>
+    private readonly record struct HomeTarget(string Icon, string Name, int Months, bool Reached, decimal InterestSaved = 0m);
 
     /// <summary>Read-only "when will it happen" summary for the Home card: the all-debts debt-free date (paying just
     /// the installments — the honest baseline) plus each savings goal's date at its current pace. Reuses the same
@@ -6379,7 +6454,7 @@ else
         // aside — the same "installment + extra on top" math as the payoff modal, so the two agree. You're debt-free
         // when the last one clears, hence the latest month wins.
         if (DebtFreeMonthsAtPace() is { } dfMonths)
-            list.Add(new HomeTarget("flag", Loc["Debt-free"], dfMonths, false));
+            list.Add(new HomeTarget("flag", Loc["Debt-free"], dfMonths, false, DebtInterestSavedAtPace()));
         // Each ordinary savings goal, dated at the pace the user actually sets aside (mirrors the goal-projection modal).
         foreach (var x in State.SavingBuckets.Where(b => !b.Bucket.IsDebt && !b.Bucket.IsArchived && b.Bucket.HasGoal))
         {
@@ -7364,6 +7439,7 @@ else
     {
         _modalBucketId = Guid.Empty; _fName = null; _fIcon = null; _goalAmount = 0; _fThreshold = 80; _fNotify = false; _initialSavings = 0;
         _bucketKind = kind; _debtBalance = 0; _debtRate = 0; _debtInstallment = 0;
+        _debtEnterInitial = false; _debtOriginal = 0; _debtPaidPrincipal = 0; _debtDay = null; _debtStart = null;
         _invRate = 0; _invTermYears = 0; _invCompounds = 12;
         _bucketFundId = null;
         _costRows = new();
@@ -7384,6 +7460,12 @@ else
         _debtBalance = b?.DebtBalance ?? 0;
         _debtRate = b?.DebtAnnualRatePercent ?? 0;
         _debtInstallment = b?.DebtInstallment ?? 0;
+        // Default to the "what's owed now" input, but pre-fill the original/paid pair so switching to it is sensible.
+        _debtEnterInitial = false;
+        _debtOriginal = b?.DebtOriginalBalance ?? 0;
+        _debtPaidPrincipal = Math.Max(0m, (b?.DebtOriginalBalance ?? 0) - (b?.DebtBalance ?? 0));
+        _debtDay = b?.DebtInstallmentDay;
+        _debtStart = b?.DebtStartDate;
         _invRate = b?.InvestmentAnnualRatePercent ?? 0;
         _invTermYears = b?.InvestmentTermYears ?? 0;
         _invCompounds = b?.InvestmentCompoundsPerYear ?? 12;
@@ -7438,10 +7520,16 @@ else
         // Only an expenses fund carries a cost list; the other kinds clear it rather than keeping an orphaned
         // list alive behind a form that no longer shows it.
         var costs = isExpenses ? ValidCostRows() : [];
+        // Debt input mode: "original + already paid" derives what's owed and sends the original as the baseline; the
+        // plain mode sends what's owed and lets the original default to it. Due-day/start-date only apply to a debt.
+        var debtBal = isDebt && _debtEnterInitial ? Math.Max(0m, _debtOriginal - _debtPaidPrincipal) : _debtBalance;
+        decimal? debtOrig = isDebt && _debtEnterInitial ? _debtOriginal : null;
+        int? debtDay = isDebt ? _debtDay : null;
+        DateOnly? debtStart = isDebt ? _debtStart : null;
         if (_modal == Modal.AddBucket)
-            await State.AddSavingBucket(_fName!, goal, _fThreshold, _fNotify, _initialSavings, _fIcon, isDebt, _debtBalance, _debtRate, _debtInstallment, planned, isInv, _invRate, _invTermYears, _invCompounds, _bucketFundId, costs, isExpenses);
+            await State.AddSavingBucket(_fName!, goal, _fThreshold, _fNotify, _initialSavings, _fIcon, isDebt, debtBal, _debtRate, _debtInstallment, planned, isInv, _invRate, _invTermYears, _invCompounds, _bucketFundId, costs, isExpenses, debtOrig, debtDay, debtStart);
         else
-            await State.SaveSavingBucket(_modalBucketId, _fName!, goal, _fThreshold, _fNotify, _initialSavings, _fIcon, isDebt, _debtBalance, _debtRate, _debtInstallment, planned, isInv, _invRate, _invTermYears, _invCompounds, _bucketFundId, costs, isExpenses);
+            await State.SaveSavingBucket(_modalBucketId, _fName!, goal, _fThreshold, _fNotify, _initialSavings, _fIcon, isDebt, debtBal, _debtRate, _debtInstallment, planned, isInv, _invRate, _invTermYears, _invCompounds, _bucketFundId, costs, isExpenses, debtOrig, debtDay, debtStart);
         CloseModal();
     });
 

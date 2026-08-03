@@ -231,6 +231,24 @@ public class SnapshotSerializerTests
     }
 
     [Fact]
+    public void Debt_installment_day_and_start_date_round_trip()
+    {
+        var account = new Account("Home", "EUR");
+        account.AssignOwner(Guid.NewGuid(), "Me");
+        var car = account.AddSavingCategory("Car loan");
+        var started = new DateOnly(2024, 3, 10);
+        account.ConfigureSavingDebt(car.Id, balance: 12_000m, annualRatePercent: 6.5m, installment: 300m,
+            balanceAsOf: new DateOnly(2026, 1, 5), installmentDay: 10, startDate: started);
+
+        var copy = AccountSnapshotSerializer.Deserialize(AccountSnapshotSerializer.Serialize(account));
+        var copied = copy.SavingCategories.Single(s => s.Name == "Car loan");
+
+        Assert.Equal(10, copied.DebtInstallmentDay);
+        Assert.Equal(started, copied.DebtStartDate);
+        Assert.False(copied.DebtPaidInterestIsEstimate);   // start date survived → paid-interest stays exact
+    }
+
+    [Fact]
     public void Debt_bucket_kind_and_figures_round_trip()
     {
         var account = new Account("Home", "EUR");

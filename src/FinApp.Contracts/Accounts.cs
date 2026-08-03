@@ -115,6 +115,12 @@ public record SaveSavingBucketRequest(
     decimal DebtBalance = 0m,
     decimal DebtRate = 0m,
     decimal DebtInstallment = 0m,
+    // R1 informative debt. DebtOriginalBalance lets the client send the "initial + already-paid principal" input mode
+    // (original ≥ current); null/0 keeps the current default (original defaults to the current balance). DebtInstallmentDay
+    // (1–31) and DebtStartDate are optional — the latter makes "interest paid so far" exact instead of estimated.
+    decimal? DebtOriginalBalance = null,
+    int? DebtInstallmentDay = null,
+    DateOnly? DebtStartDate = null,
     decimal? PlannedContribution = null,
     bool IsInvestment = false,
     decimal InvRate = 0m,
