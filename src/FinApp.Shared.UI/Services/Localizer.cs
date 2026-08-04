@@ -714,6 +714,12 @@ public sealed class Localizer(IJSRuntime js)
         ["Didn’t sign up? That’s useful to know too — what put you off?"] = "Не се регистрирахте? И това е полезно — какво ви отказа?",
         ["We’re in beta and reading everything. Bugs, confusion, missing things — all welcome."] =
             "В бета сме и четем всичко. Грешки, неясноти, липсващи неща — всичко е добре дошло.",
+        ["Questions, or a privacy request?"] = "Въпроси или заявка за поверителност?",
+        // OPEN-BETA B4 — the beta data promise (landing + sign-up)
+        ["In free beta — your account and everything in it carries through to launch."] =
+            "В безплатна бета — акаунтът ви и всичко в него се запазва до пускането.",
+        ["Free while we’re in beta — and your account and everything in it carries through to launch."] =
+            "Безплатно, докато сме в бета — а акаунтът ви и всичко в него се запазва до пускането.",
 
         ["This is a loan installment for"] = "Това е вноска по заем за",
         ["Not a loan payment"] = "Не е плащане по заем",

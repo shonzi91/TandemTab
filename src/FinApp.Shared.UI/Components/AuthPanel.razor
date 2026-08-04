@@ -92,6 +92,8 @@
             @(_busy ? Loc["Creating…"] : Loc["Create account"])
         </button>
         <small class="hint">@Loc["Password must be at least 8 characters."]</small>
+        @* OPEN-BETA B4 — the promise, where a new user is deciding to commit their data. *@
+        <small class="hint auth-beta">@Loc["Free while we’re in beta — and your account and everything in it carries through to launch."]</small>
     }
 
     @if (_twoFactorTicket is null && _resetToken is null && !_forgotMode && _providers is { Google: true } or { Facebook: true })

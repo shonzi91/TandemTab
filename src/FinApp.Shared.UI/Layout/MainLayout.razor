@@ -277,6 +277,8 @@
                                 <button class="ghost" @onclick="DownloadData" disabled="@_exportBusy">📊 @Loc["Export this account (Excel)"]</button>
                             </div>
                         }
+                        @* A real person to reach — the same address the privacy policy names as the GDPR/data contact. *@
+                        <p class="pm-hint">✉️ @Loc["Questions, or a privacy request?"] <a href="mailto:admin@tandemtab.com">admin@tandemtab.com</a></p>
                     </details>
                 }
                 @if (!_2faDisabling && _2faSetup is null && _2faRecoveryCodes is null)

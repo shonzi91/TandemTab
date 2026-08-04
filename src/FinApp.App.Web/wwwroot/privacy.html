@@ -25,7 +25,7 @@
         <header><span class="logo">TT</span> <strong>TandemTab</strong>
             <span class="lang"><strong>EN</strong> · <a href="/privacy.bg.html">BG</a></span></header>
         <h1>Privacy Policy</h1>
-        <p class="updated">Last updated: 11 July 2026</p>
+        <p class="updated">Last updated: 5 August 2026</p>
 
         <p>TandemTab ("we", "us") is a personal budgeting app that helps you track spending, budgets and savings.
         All the data in the app is what you choose to enter or <strong>import yourself</strong> — for example from a
@@ -46,6 +46,14 @@
             <li><strong>Files you import</strong> — if you import a bank statement file, we process the transactions it
             contains (dates, amounts, descriptions) to create budgeting entries you review. Importing is optional and
             entirely under your control; the file is processed to build those entries and isn't stored separately.</li>
+            <li><strong>Diagnostic / error reports</strong> — if the app hits an error we record a technical report
+            (the error message and code location, the app version and browser type, and your account id if you are
+            signed in) so we can find and fix it. These reports are <strong>automatically stripped of financial
+            details</strong> — amounts, names and the like are redacted before the report leaves your device — and
+            they are used only to keep the app working. This is diagnostic information, not your budgeting data.</li>
+            <li><strong>Feedback you send</strong> — if you use a feedback form, we store your rating and comment so
+            we can act on it. A comment is only ever shown publicly if you tick the box asking us to; otherwise it
+            stays private to us.</li>
         </ul>
 
         <!-- Open Banking / bank-connection integration — commented out (not currently offered), kept for possible future use:
@@ -96,7 +104,8 @@
         <strong>encrypted at rest</strong> using managed encryption keys (Google Cloud KMS). Access credentials are
         held server-side and protected. We keep your data for as long as your account exists. If you leave or delete an
         account it is archived and permanently deleted after 30 days. You can delete your data at any time by removing
-        your accounts.</p>
+        your accounts. Diagnostic / error reports live in our server logs and are kept only for a short period
+        (typically up to 30 days) before rolling off automatically.</p>
 
         <h2>Your rights</h2>
         <p>Under the GDPR you may request access to, correction or deletion of your data, restrict or object to

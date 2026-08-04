@@ -89,6 +89,7 @@ builder.Services.AddScoped<AvatarService>();
 builder.Services.AddScoped<ExternalIdentityService>();
 builder.Services.AddScoped<ConsentService>();
 builder.Services.AddScoped<FeedbackService>();
+builder.Services.AddScoped<SignupService>();
 builder.Services.AddScoped<ExternalAuthService>();
 builder.Services.AddHttpClient();
 builder.Services.AddScoped<AccountService>();
@@ -197,7 +198,16 @@ var app = builder.Build();
 
 // Behind Cloud Run's TLS-terminating proxy the request reads as http; honour X-Forwarded-Proto so
 // Request.Scheme is https (needed so the OAuth redirect_uri we build matches what providers expect).
-var forwarded = new ForwardedHeadersOptions { ForwardedHeaders = ForwardedHeaders.XForwardedProto | ForwardedHeaders.XForwardedHost };
+// XForwardedFor is honoured too so Connection.RemoteIpAddress is the real client IP rather than the
+// front-end proxy — that's what makes the per-IP rate limits (auth/invite/clienterrors/feedback) actually
+// per-client on Cloud Run instead of a single shared bucket keyed on the proxy. ForwardLimit=1 takes only
+// the entry the trusted front end appended, so a client-supplied X-Forwarded-For can't spoof the key; if the
+// header shape ever differs the key just falls back to the proxy address (the prior behaviour) — never worse.
+var forwarded = new ForwardedHeadersOptions
+{
+    ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto | ForwardedHeaders.XForwardedHost,
+    ForwardLimit = 1,
+};
 forwarded.KnownNetworks.Clear();
 forwarded.KnownProxies.Clear();
 app.UseForwardedHeaders(forwarded);
@@ -219,6 +229,7 @@ using (var scope = app.Services.CreateScope())
     // Consent audit log (login / bank-link / bank-sync grants + withdrawals).
     await scope.ServiceProvider.GetRequiredService<ConsentService>().EnsureSchemaAsync();
     await scope.ServiceProvider.GetRequiredService<FeedbackService>().EnsureSchemaAsync();
+    await scope.ServiceProvider.GetRequiredService<SignupService>().EnsureSchemaAsync();
     // Refresh-token store (rotation + reuse detection) — same idempotent-create pattern.
     await scope.ServiceProvider.GetRequiredService<RefreshTokenService>().EnsureSchemaAsync();
     // One-time auth codes for external sign-in (keeps session tokens out of the redirect URL).
@@ -497,8 +508,9 @@ app.MapPost("/client-errors", (ClientErrorReport report, ILoggerFactory logs, Cl
     var clean = ErrorScrubber.Clean(report);
     if (clean.Message.Length == 0) return Results.NoContent();   // nothing to say; don't log an empty row
 
-    // Named so it can be isolated in Cloud Logging:
-    //   gcloud logging read 'jsonPayload.logger="FinApp.ClientError"' --limit 50
+    // Named so it can be isolated in Cloud Logging. We log via the default text console, so the entry lands in
+    // textPayload (not jsonPayload) — match on the substring:
+    //   gcloud logging read 'textPayload:"FinApp.ClientError"' --limit 50 --freshness=1d
     logs.CreateLogger("FinApp.ClientError").LogError(
         "Client error [{Kind}] at {Where}: {ClientMessage} | app={AppVersion} ua={UserAgent} user={UserId}\n{ClientStack}",
         clean.Kind, clean.Where ?? "?", clean.Message, clean.AppVersion ?? "?", clean.UserAgent ?? "?",
@@ -530,7 +542,7 @@ app.MapPost("/feedback", async (FeedbackRequest req, FeedbackService feedback, I
     await feedback.RecordAsync(userId, rating, comment, req.PublicConsent,
         req.Source, req.AppVersion, req.UserAgent, ct);
 
-    //   gcloud logging read 'jsonPayload.logger="FinApp.Feedback"' --limit 50
+    //   gcloud logging read 'textPayload:"FinApp.Feedback"' --limit 50 --freshness=7d  (text console → textPayload)
     logs.CreateLogger("FinApp.Feedback").LogInformation(
         "Feedback {Rating}/5 from {Source} (user={UserId}, public={PublicConsent}): {Comment}",
         rating?.ToString() ?? "-", req.Source, userId?.ToString() ?? "anon", req.PublicConsent, comment ?? "");

@@ -12,7 +12,7 @@ public sealed class AuthService(
     FinAppDbContext db, IPasswordHasher hasher, JwtTokenService tokens,
     RefreshTokenService refreshTokens, AuthCodeService authCodes,
     EmailVerificationService emailVerification, IEmailSender email, TwoFactorService twoFactor,
-    SessionPolicy sessionPolicy, PasswordResetService passwordReset)
+    SessionPolicy sessionPolicy, PasswordResetService passwordReset, SignupService signups)
 {
     private const int MinPasswordLength = 8;
 
@@ -163,6 +163,7 @@ public sealed class AuthService(
 
         db.Users.Add(user);
         await db.SaveChangesAsync(ct);
+        await signups.RecordAsync(user.Id, SignupService.BetaCohort, ct);   // OPEN-BETA B4 — capture who joined, when
         return await IssueAsync(user, ct);
     }
 
@@ -225,6 +226,7 @@ public sealed class AuthService(
             user = new User(username, email, hasher.Hash(randomSecret));
             db.Users.Add(user);
             await db.SaveChangesAsync(ct);
+            await signups.RecordAsync(user.Id, SignupService.BetaCohort, ct);   // OPEN-BETA B4 — external sign-ups too
         }
         // The provider already confirmed this address, so treat it as verified.
         await emailVerification.MarkVerifiedAsync(user.Id, user.Email, ct);

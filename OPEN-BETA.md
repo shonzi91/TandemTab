@@ -49,9 +49,10 @@ the deploy recipe already queries it. Sentry stays an upgrade path if volume eve
   MutationObserver on `#blazor-error-ui` (the JS path matters precisely when .NET is the thing that broke).
 - Never throws, never blocks a render, de-dupes, capped per session.
 
-**Read them with:**
+**Read them with** (the app logs via the default text console, so entries land in `textPayload`, not
+`jsonPayload` — match on the substring):
 ```
-gcloud logging read 'jsonPayload.logger="FinApp.ClientError"' --limit 50 --freshness=1d
+gcloud logging read 'textPayload:"FinApp.ClientError"' --limit 50 --freshness=1d
 ```
 
 ⚠️ **Still open:** nothing *alerts* — you have to go and look. A scheduled query or a log-based alert on
@@ -99,33 +100,52 @@ everything that isn't a crash.
 - A send failure surfaces an error and **keeps what they typed** — losing something someone took the time to
   write is a bad way to treat them.
 
-**Read them with:**
+**Read them with** (`textPayload`, not `jsonPayload` — see the B1 note; feedback is also stored in the
+`Feedback` table, queryable directly):
 ```
-gcloud logging read 'jsonPayload.logger="FinApp.Feedback"' --limit 50 --freshness=7d
+gcloud logging read 'textPayload:"FinApp.Feedback"' --limit 50 --freshness=7d
 ```
 
-⬜ **Still open — a support address.** There is no support mailbox configured anywhere in the app, and inventing
-`support@tandemtab.com` before it exists would be worse than nothing: a tester writes to it and it bounces.
-**Decide the address, create the mailbox, then surface it** (profile modal + the legal pages, which
-[B3](#b3--a-real-read-of-the-legal-pages--s--ideally-a-lawyers-glance) needs anyway for the GDPR contact — do
-both at once).
+✅ **Done — a support address.** `admin@tandemtab.com` is a real, active mailbox (confirmed 2026-08-05). It was
+already the GDPR/data contact in `privacy.html`/`terms.html`; it's now also surfaced in the **profile modal**
+("Your data & privacy" → "Questions, or a privacy request? admin@tandemtab.com"). No `support@` was invented.
 
-### B3 — A real read of the legal pages · **S** (+ ideally a lawyer's glance) · ⬜
-`privacy.html` / `terms.html` (and the `.bg` variants) exist and the privacy posture is a genuine strength —
-but before opening to the public, confirm they actually name:
-- the **data controller** (who, and a real contact address),
-- a **retention period** and what deletion does (the grace-period delete already exists — say so),
-- a **GDPR contact / rights route** (access, export, erasure — export and delete are both built, so this is
-  mostly documenting what's true),
-- what the **bank-sync** integration shares and with whom, if a beta tester can reach it at all
-  (currently gated to 2 allow-listed emails, so probably not — confirm).
+### B3 — A real read of the legal pages · **S** (+ ideally a lawyer's glance) · ✅ **DONE (2026-08-05)** — lawyer's glance still advisable
+`privacy.html` / `terms.html` (and the `.bg` variants) were read in full against the checklist. They already
+name, and were confirmed to name:
+- the **data controller** — TandemTab Company, Sofia, Bulgaria, contact `admin@tandemtab.com`. ✓
+- a **retention period + what deletion does** — 30-day archive then permanent delete, stated plainly. ✓
+- a **GDPR contact / rights route** — access, correction, erasure, restriction, portability, withdraw consent,
+  plus the CPDP complaint route, all via `admin@tandemtab.com`. Export + delete are both built. ✓
+- **bank-sync** — the Open Banking sections are commented out (not offered); import-only is described, and the
+  feature is allow-list-gated to 2 emails so a beta tester can't reach it. ✓
 
-**Why it's a blocker:** you will be collecting financial data from EU residents on a public sign-up. This is the
-one item on the list that is about other people's rights rather than product quality, and the one worth having
-someone qualified glance at rather than shipping on our own judgement.
+**Gap found and fixed:** the policy was last updated 11 July, *before* B1 (error reporting) and B2 (feedback)
+added two new processing activities. Both are now disclosed under "What we collect" (error reports —
+scrubbed of financial detail; feedback — stored, only shown publicly on opt-in), with a retention line for
+diagnostic logs. Date bumped to 5 August 2026, EN + BG.
 
-### B4 — State what "beta" promises about their data, and stamp the cohort · **S** · ⬜
-Decide, then put it on the landing page and the sign-up screen in one sentence each:
+**Still advisable (not a blocker):** a qualified lawyer's glance. The pages ship on our own judgement for now;
+this is the one area about other people's legal rights, so a professional review remains worth doing.
+
+### B4 — State what "beta" promises about their data, and stamp the cohort · **S** · ✅ **DONE (2026-08-05)**
+**Shipped this session (defaults chosen when the owner didn't pick — flagged for review):**
+- **The promise, on the landing hero + the sign-up screen:** *"In free beta — your account and everything in
+  it carries through to launch."* (sign-up: *"Free while we're in beta — and your account and everything in it
+  carries through to launch."*). EN + BG. **Two deliberate default choices** the owner can still change: (1)
+  committed that **data survives to launch** (the obvious intent for a budgeting app; strongest trust signal —
+  soften if a reset is possible); (2) said **"free while in beta" with NO future-pricing promise** — no
+  grandfather commitment, sidestepping the unresolved €29.99/$39.99 until [MONETIZATION.md](MONETIZATION.md) is
+  settled. Backup wording was left out (no claim we can't back).
+- **★ The cohort stamp — built (the non-backfillable part).** `SignupService` writes one row to a `UserSignups`
+  table (`UserId`, `JoinedAt`, `Cohort="beta"`) at account creation, on **both** the password and external
+  (Google/Facebook) paths. Kept **off** the EF-mapped `User` entity on purpose — a side table needs no EF
+  migration (SQLite) or raw ALTER on the live Postgres `Users` table (`EnsureCreated` won't evolve it), matching
+  how every other per-user concern is stored. `JoinedAt` also answers P2's "sign-ups over time". Confirmed there
+  was **no** existing creation timestamp anywhere (`Entity` has only `Id`), so this is genuinely the first record
+  of who joined when. +1 server test.
+
+Original decision list (kept — the owner may want to revisit the wording):
 - **Will accounts and data survive to launch?** (If yes, say it. If you might reset, say *that* — loudly.)
 - **Is it backed up?** What happens if a migration goes wrong?
 - **Will it stay free for people who join now?** (Ties into [MONETIZATION.md](MONETIZATION.md)'s
