@@ -38,13 +38,21 @@ The sign-out test asserts only that the session UI is torn down, so it does not 
 
 ## 3. Bugs
 
-### BUG-1 — Sign out raises an unhandled error and stalls · Critical
+### BUG-1 — Sign out raises an unhandled error and stalls · Critical — ✅ FIXED (Session 82, 2026-08-04)
 **Repro:** Sign in → Profile settings → Sign out.
 **Expected:** Session ends and the app returns to the signed-out landing / login.
 **Actual:** The authenticated UI tears down, then the Blazor "An unhandled error has occurred. Reload" bar appears and the app stalls on *Loading…* with the profile overlay still on top. Recovery requires a manual browser reload. In one run, a reload immediately after sign-out returned to the dashboard, suggesting the session may not be fully cleared — verify server-side.
 **Impact:** Sign-out is trust-critical for a finance app.
+**Root cause + fix (S82):** sign-out lives in the profile modal's footer, so the modal was open when it fired;
+`SignOut()` never closed it and `Auth.SignOutAsync()` nulls `CurrentUser`, which every line of that modal body
+dereferences → the re-render threw. Now the modal is closed first, and the block is guarded on `CurrentUser`.
+**Correction to this report:** the session *was* fully cleared — `SignOutAsync` revokes the refresh token
+server-side and clears local storage before the throw; a reload after the crash correctly showed the landing page.
 
-### BUG-2 — Persistent "An unhandled error has occurred" bar · High
+### BUG-2 — Persistent "An unhandled error has occurred" bar · High — ⚠️ COULD NOT REPRODUCE (Session 82)
+**Re-tested 2026-08-04:** zero console errors on a fresh landing-page load and through register → account
+creation → dashboard; `#blazor-error-ui` stayed `display:none`. Every appearance observed this session traced to
+BUG-1 above. Treat as stale/duplicate unless it resurfaces with a concrete repro.
 **Observed:** The Blazor global error UI is present from the initial landing-page load, indicating unhandled exceptions during ordinary flows (not only sign-out).
 **Recommendation:** Capture/log the exception(s), guard the failing lifecycle/render paths, and treat any appearance of the global error bar as a release blocker.
 
