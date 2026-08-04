@@ -28,6 +28,9 @@ public static class SavingBucketConfig
             // Set explicitly (not keep-on-null) so the edit form can CLEAR the due-day / origination date.
             account.SetSavingDebtInstallmentDay(bucketId, req.DebtInstallmentDay);
             account.SetSavingDebtStartDate(bucketId, req.DebtStartDate);
+            // After ConfigureSavingDebt, which has just re-anchored the stated balance to today — so the snapshot
+            // this takes on a mode change is today's stated figure, and flipping the switch moves no money.
+            account.SetSavingDebtPaymentDriven(bucketId, req.DebtPaymentDriven, today);
             account.ConfigureSavingGoal(bucketId, null);
         }
         else if (req.IsInvestment)

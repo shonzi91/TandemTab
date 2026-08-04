@@ -128,7 +128,35 @@ public record SaveSavingBucketRequest(
     int InvCompounds = 12,
     Guid? FundId = null,
     IReadOnlyList<PlannedCostDto>? Costs = null,
-    bool IsExpensesFund = false);
+    bool IsExpensesFund = false,
+    // R2: drive this debt's balance from logged installments instead of walking its schedule. Applied through
+    // SavingCategory.SetPaymentDriven, which snapshots today's balance on the way in or out, so flipping it never
+    // moves the figure — it only changes what moves it from here on.
+    bool DebtPaymentDriven = false);
+
+/// <summary>One non-loan line riding along on an installment (insurance, tax, a fee), with its own category and
+/// optional tag so it lands in the right budget and its own Breakdown slice. Sent as a list — see
+/// <see cref="LogInstallmentRequest"/>.</summary>
+public record InstallmentExtraDto(decimal Amount, Guid CategoryId, Guid? TagId = null, string? Note = null);
+
+/// <summary>
+/// Log a loan installment against a debt bucket as its constituent parts: an interest row, a principal row, and one
+/// row per <see cref="Additional"/> line, all sharing an installment-group id so they show, edit and remove as one
+/// payment. <see cref="Total"/> is what actually left the account; what remains after the additional lines is split
+/// by the loan's own schedule. The member is the caller and the fund's "synced" flag is derived from the fund.
+/// Mirrors <c>Period.LogInstallment</c>.
+/// </summary>
+public record LogInstallmentRequest(
+    Guid BucketId,
+    decimal Total,
+    Guid FundId,
+    DateOnly Date,
+    Guid PrincipalCategoryId,
+    Guid InterestCategoryId,
+    IReadOnlyList<InstallmentExtraDto>? Additional = null,
+    Guid? PrincipalTagId = null,
+    Guid? InterestTagId = null,
+    string? Note = null);
 
 /// <summary>Archive (hide) or restore a resource that supports it (e.g. a savings bucket). Reversible; keeps history.</summary>
 public record SetArchivedRequest(bool Archived);
@@ -185,12 +213,15 @@ public record EditTagRequest(string Name, string? Icon = null);
 /// the server date so it can't fall due before it existed. Mirrors <c>BudgetingState.AddRecurring</c>.
 /// </summary>
 public record AddRecurringRequest(string Name, string Kind, string Mode, decimal Expected, int DayOfMonth,
-    Guid CategoryId, Guid FundId, string? Icon = null, bool AutoPost = false);
+    Guid CategoryId, Guid FundId, string? Icon = null, bool AutoPost = false,
+    // R2: link an expense item to a debt bucket so posting it logs a split installment rather than a lump expense.
+    Guid? LinkedDebtBucketId = null);
 
 /// <summary>Edit a recurring item (its kind can't change). Fields as in <see cref="AddRecurringRequest"/>. Mirrors
 /// <c>BudgetingState.UpdateRecurring</c>.</summary>
 public record UpdateRecurringRequest(string Name, string Mode, decimal Expected, int DayOfMonth,
-    Guid CategoryId, Guid FundId, string? Icon = null, bool AutoPost = false);
+    Guid CategoryId, Guid FundId, string? Icon = null, bool AutoPost = false,
+    Guid? LinkedDebtBucketId = null);
 
 /// <summary>Pause or resume a recurring item (a paused item never falls due).</summary>
 public record SetActiveRequest(bool Active);

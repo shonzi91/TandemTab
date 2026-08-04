@@ -23,7 +23,12 @@ public record ExpenseDto(
     bool FromSavings,
     bool OnBehalfOfOtherAccount,
     bool IsSettlementSource,
-    bool IsSettlementDestination);
+    bool IsSettlementDestination,
+    // R2 installment split: rows sharing an InstallmentGroupId are one logged loan payment. Part is
+    // "principal"/"interest"/"additional"; DebtBucketId names the loan. All null on an ordinary expense.
+    Guid? InstallmentGroupId = null,
+    string? InstallmentPart = null,
+    Guid? DebtBucketId = null);
 
 /// <summary>A spend category as a picker option — id, label, stored icon, and parent for indentation. No money.</summary>
 public record CategoryOptionDto(Guid Id, string Name, string? Icon, Guid? ParentId);
@@ -50,6 +55,11 @@ public record SpendingViewDto(
 /// client to reconcile its cache with no re-fetch. A structural superset of <see cref="MutationResultDto"/> (same
 /// <c>Version</c>/<c>EntityId</c> lead), so a caller that only wants those two deserializes it unchanged.</summary>
 public record ExpenseMutationDto(long Version, Guid? EntityId, ExpenseDto? Expense, AccountOverviewDto Overview);
+
+/// <summary>The delta a logged-installment mutation returns: the shared <see cref="GroupId"/>, every row it posted
+/// (principal, interest and any additional lines — so the client can splice them all into its ledger from one
+/// response), and the recomputed bank-adjusted <see cref="Overview"/>. <see cref="Rows"/> is empty on a removal.</summary>
+public record InstallmentMutationDto(long Version, Guid GroupId, IReadOnlyList<ExpenseDto> Rows, AccountOverviewDto Overview);
 
 /// <summary>The delta an income (deposit) mutation returns: new <see cref="Version"/>, the deposit row's id, and the
 /// recomputed bank-adjusted <see cref="Overview"/> (deposits move Contributed/Current/Free, not the expense list).

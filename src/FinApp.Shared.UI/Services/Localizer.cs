@@ -676,6 +676,38 @@ public sealed class Localizer(IJSRuntime js)
             "Началната дата изчислява „платената лихва досега“ по реалния период — иначе я преценяваме по остатъка.",
         ["Used only to project your payoff — never changes budgets, savings or balances. Set money aside with 💰, then pay the bank with 🎯."] =
             "Служи само за прогноза на погасяването — не променя бюджети, спестявания или салда. Заделяте пари с 💰, после плащате на банката с 🎯.",
+        // R2 installment split
+        ["I log each installment here"] = "Отбелязвам всяка вноска тук",
+        ["Then the balance drops only when you log a payment — and each payment is split into interest, principal and any extras. Otherwise we carry it forward on the loan’s own schedule."] =
+            "Тогава остатъкът намалява само когато отбележите плащане — и всяко плащане се разделя на лихва, главница и допълнителни пера. Иначе го изчисляваме по погасителния план на заема.",
+        ["Log installment"] = "Отбележи вноска",
+        ["Amount paid"] = "Платена сума",
+        ["Budget category for the loan"] = "Бюджетна категория за заема",
+        ["Anything else in this payment?"] = "Друго в това плащане?",
+        ["Add a line (insurance, tax…)"] = "Добави перо (застраховка, данък…)",
+        ["No tag"] = "Без етикет",
+        ["Interest"] = "Лихва",
+        ["Principal"] = "Главница",
+        ["Other lines"] = "Други пера",
+        ["Those lines add up to more than the payment."] = "Тези пера надвишават плащането.",
+        ["This payment doesn’t cover the interest, so it clears no principal."] = "Това плащане не покрива лихвата, така че не погасява главница.",
+        ["Posts one row per part so each lands in its own budget and Breakdown slice. The whole payment is money out, counted once."] =
+            "Записва по един ред за всяка част, за да попадне всяка в своя бюджет и дял в Разбивката. Цялото плащане е изходящ разход, отчетен веднъж.",
+        ["Log it"] = "Отбележи",
+        ["Loan principal"] = "Главница по заем",
+        ["Loan interest"] = "Лихва по заем",
+        ["Installment"] = "Вноска",
+        ["Remove this installment?"] = "Да премахна ли тази вноска?",
+        ["All {0} rows of this payment will be removed."] = "Всички {0} реда на това плащане ще бъдат премахнати.",
+        ["Part of one loan installment — editing or removing it affects the whole payment."] =
+            "Част от една вноска по заем — редактирането или премахването ѝ засяга цялото плащане.",
+        ["This is a loan installment for"] = "Това е вноска по заем за",
+        ["Not a loan payment"] = "Не е плащане по заем",
+        ["Each payment will be split into interest and principal rows against that loan, instead of one lump expense."] =
+            "Всяко плащане ще се раздели на редове за лихва и главница по този заем, вместо един общ разход.",
+        ["That loan still follows its own schedule. To have logged payments drive its balance instead, turn on “I log each installment here” when you edit it."] =
+            "Този заем още следва собствения си погасителен план. За да определят отбелязаните плащания остатъка му, включете „Отбелязвам всяка вноска тук“ при редакцията му.",
+
         ["Debts"] = "Дългове",
         ["Add a debt"] = "Добави дълг",
         ["Add debt"] = "Добави дълг",

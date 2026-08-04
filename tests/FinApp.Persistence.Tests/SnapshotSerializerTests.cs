@@ -249,6 +249,81 @@ public class SnapshotSerializerTests
     }
 
     [Fact]
+    public void An_installment_split_round_trips_with_its_group_parts_and_loan_link()
+    {
+        // The three rows are only one payment because they share a group id — lose that on save and the ledger holds
+        // three unexplained expenses that can no longer be edited or removed together.
+        var account = new Account("Home", "EUR");
+        account.AssignOwner(Guid.NewGuid(), "Me");
+        account.AddDefaultFunds();
+        var fund = account.FundId("Bank");
+        var loanCat = account.AddCategory("Loan").Id;
+        var insCat = account.AddCategory("Insurance").Id;
+        var loan = account.AddSavingCategory("Car loan");
+        account.ConfigureSavingDebt(loan.Id, 20_000m, 6m, 400m, balanceAsOf: new DateOnly(2026, 1, 1));
+        account.SetSavingDebtPaymentDriven(loan.Id, true, new DateOnly(2026, 1, 1));
+        var period = account.StartPeriod(new DateOnly(2026, 1, 1), new DateOnly(2026, 1, 31));
+        var bucket = account.FindSavingCategory(loan.Id)!;
+        var rows = period.LogInstallment(bucket, new Money(460m, "EUR"), new DateOnly(2026, 1, 15), Guid.NewGuid(), fund,
+            loanCat, loanCat, additional: [new InstallmentExtra(new Money(60m, "EUR"), insCat)]);
+        var groupId = rows[0].InstallmentGroupId!.Value;
+
+        var copy = AccountSnapshotSerializer.Deserialize(AccountSnapshotSerializer.Serialize(account));
+        var copiedRows = copy.Periods.Single().InstallmentGroup(groupId).ToList();
+
+        Assert.Equal(3, copiedRows.Count);
+        Assert.All(copiedRows, r => Assert.Equal(loan.Id, r.DebtBucketId));
+        Assert.Equal(new Money(100m, "EUR"), copiedRows.Single(r => r.Part == InstallmentPart.Interest).Amount);
+        Assert.Equal(new Money(300m, "EUR"), copiedRows.Single(r => r.Part == InstallmentPart.Principal).Amount);
+        Assert.Equal(new Money(60m, "EUR"), copiedRows.Single(r => r.Part == InstallmentPart.Additional).Amount);
+        // And the payment-driven flag survives — restored verbatim, so loading doesn't re-date the loan.
+        var copiedLoan = copy.SavingCategories.Single(s => s.Name == "Car loan");
+        Assert.True(copiedLoan.DebtPaymentDriven);
+        Assert.Equal(19_700m, copiedLoan.DebtBalanceOn(new DateOnly(2026, 6, 15)));
+    }
+
+    [Fact]
+    public void A_recurring_bills_debt_link_round_trips()
+    {
+        // Lose it on save and next month's bill quietly goes back to posting one lump expense.
+        var account = new Account("Home", "EUR");
+        account.AssignOwner(Guid.NewGuid(), "Me");
+        account.AddDefaultFunds();
+        var category = account.AddCategory("Loan").Id;
+        var loan = account.AddSavingCategory("Car loan");
+        account.ConfigureSavingDebt(loan.Id, 20_000m, 6m, 400m, balanceAsOf: new DateOnly(2026, 1, 1));
+        var bill = new FinApp.Domain.Recurring.RecurringItem("Car loan", FinApp.Domain.Recurring.RecurringKind.Expense,
+            FinApp.Domain.Recurring.RecurringAmountMode.Fixed, 400m, 15, category, account.FundId("Bank"));
+        bill.SetLinkedDebtBucket(loan.Id);
+        account.AddRecurring(bill);
+
+        var copied = AccountSnapshotSerializer.Deserialize(AccountSnapshotSerializer.Serialize(account)).RecurringItems.Single();
+
+        Assert.Equal(loan.Id, copied.LinkedDebtBucketId);
+        Assert.True(copied.IsLoanInstallment);
+    }
+
+    [Fact]
+    public void An_ordinary_expense_round_trips_with_no_installment_fields()
+    {
+        // Legacy snapshots carry no installment fields at all; they must load as plain expenses, not empty groups.
+        var account = new Account("Home", "EUR");
+        account.AssignOwner(Guid.NewGuid(), "Me");
+        account.AddDefaultFunds();
+        var category = account.AddCategory("Food").Id;
+        var period = account.StartPeriod(new DateOnly(2026, 1, 1), new DateOnly(2026, 1, 31));
+        period.AddExpense(new Expense(category, new Money(12m, "EUR"), new DateOnly(2026, 1, 6), Guid.NewGuid(), account.FundId("Bank")));
+
+        var copied = AccountSnapshotSerializer.Deserialize(AccountSnapshotSerializer.Serialize(account))
+            .Periods.Single().Expenses.Single();
+
+        Assert.Null(copied.InstallmentGroupId);
+        Assert.Null(copied.Part);
+        Assert.Null(copied.DebtBucketId);
+        Assert.False(copied.IsInstallmentPart);
+    }
+
+    [Fact]
     public void Debt_bucket_kind_and_figures_round_trip()
     {
         var account = new Account("Home", "EUR");

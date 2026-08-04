@@ -893,6 +893,59 @@ accounts.MapDelete("/{id:guid}/expenses/{expenseId:guid}", async (Guid id, Guid 
     return Results.Ok(new ExpenseMutationDto(version, expenseId, null, overview));
 });
 
+// Loan installments (R2). One payment posts several linked expense rows — principal, interest, and any additional
+// lines — sharing an installment-group id, so "what did I actually pay in interest?" is a Breakdown slice rather than
+// a calculation. The split comes from the loan's own schedule; the typed total and extra lines are ground truth.
+accounts.MapPost("/{id:guid}/installments", async (Guid id, LogInstallmentRequest req, ClaimsPrincipal user, SnapshotService svc, BankSyncService bankSvc, SyncNotifier notifier, CancellationToken ct) =>
+{
+    var userId = user.UserId();
+    var bank = await bankSvc.GetStatusAsync(userId, id, ct);
+    var (version, delta) = await svc.MutateAsync(userId, id, account =>
+    {
+        var period = account.CurrentPeriod ?? throw new InvalidOperationException("There's no open period to log an installment in.");
+        var bucket = account.FindSavingCategory(req.BucketId) ?? throw new InvalidOperationException("That savings bucket doesn't exist in this account.");
+        var fund = account.FindFund(req.FundId) ?? throw new InvalidOperationException("That fund doesn't exist in this account.");
+        foreach (var categoryId in new[] { req.PrincipalCategoryId, req.InterestCategoryId }
+                     .Concat((req.Additional ?? []).Select(x => x.CategoryId)))
+            if (account.FindCategory(categoryId) is null)
+                throw new InvalidOperationException("That category doesn't exist in this account.");
+
+        var extras = (req.Additional ?? []).Select(x =>
+            new InstallmentExtra(new Money(x.Amount, account.Currency), x.CategoryId,
+                x.TagId is { } t && account.FindTag(t) is not null ? t : null, x.Note)).ToList();
+
+        var rows = period.LogInstallment(bucket, new Money(req.Total, account.Currency), req.Date, userId, req.FundId,
+            req.PrincipalCategoryId, req.InterestCategoryId, extras,
+            principalTagId: req.PrincipalTagId is { } pt && account.FindTag(pt) is not null ? pt : null,
+            interestTagId: req.InterestTagId is { } it && account.FindTag(it) is not null ? it : null,
+            note: req.Note,
+            fundSynced: fund.IsSynced);
+
+        var groupId = rows[0].InstallmentGroupId!.Value;
+        return (groupId, rows.Select(r => SpendingMap.ToDto(account, r)).ToList(),
+            SpendingMap.Overview(account, period, bank.Balance, bank.BalanceCurrency));
+    }, ct);
+    await notifier.AccountChangedAsync(id, userId, version);
+    return Results.Ok(new InstallmentMutationDto(version, delta.groupId, delta.Item2, delta.Item3));
+});
+
+// Removing an installment removes every row of it — a half-installment (interest kept, principal gone) would be
+// worse than either keeping or dropping the whole thing.
+accounts.MapDelete("/{id:guid}/installments/{groupId:guid}", async (Guid id, Guid groupId, ClaimsPrincipal user, SnapshotService svc, BankSyncService bankSvc, SyncNotifier notifier, CancellationToken ct) =>
+{
+    var userId = user.UserId();
+    var bank = await bankSvc.GetStatusAsync(userId, id, ct);
+    var (version, overview) = await svc.MutateAsync(userId, id, account =>
+    {
+        var period = account.CurrentPeriod ?? throw new InvalidOperationException("There's no open period.");
+        var bucketId = period.InstallmentGroup(groupId).FirstOrDefault()?.DebtBucketId;
+        period.RemoveInstallmentGroup(groupId, bucketId is { } bid ? account.FindSavingCategory(bid) : null);
+        return SpendingMap.Overview(account, period, bank.Balance, bank.BalanceCurrency);
+    }, ct);
+    await notifier.AccountChangedAsync(id, userId, version);
+    return Results.Ok(new InstallmentMutationDto(version, groupId, [], overview));
+});
+
 // Income (deposits). A deposit's category is a *contribution* category (or empty = general income); deposits with the
 // same (member, category, fund) merge. Edits/removes are the caller's own only (403 otherwise) — deposits are per-member.
 accounts.MapPost("/{id:guid}/deposits", async (Guid id, AddDepositRequest req, ClaimsPrincipal user, SnapshotService svc, BankSyncService bankSvc, SyncNotifier notifier, CancellationToken ct) =>
@@ -1647,6 +1700,8 @@ accounts.MapPost("/{id:guid}/recurring", async (Guid id, AddRecurringRequest req
         var item = new RecurringItem(req.Name, kind, RecurringMap.Mode(req.Mode), req.Expected, req.DayOfMonth,
             req.CategoryId, req.FundId, req.Icon, req.AutoPost);
         item.SetCreatedOn(today);   // can't fall due before it existed
+        RecurringMap.ValidateDebtLink(account, req.LinkedDebtBucketId);
+        item.SetLinkedDebtBucket(req.LinkedDebtBucketId);
         account.AddRecurring(item);
         return item.Id;
     }, ct);
@@ -1662,6 +1717,8 @@ accounts.MapPut("/{id:guid}/recurring/{recurringId:guid}", async (Guid id, Guid 
         var item = account.FindRecurring(recurringId) ?? throw new InvalidOperationException("That recurring item doesn't exist in this account.");
         RecurringMap.ValidateRefs(account, item.Kind, req.CategoryId, req.FundId);   // kind can't change on edit
         item.Update(req.Name, RecurringMap.Mode(req.Mode), req.Expected, req.DayOfMonth, req.CategoryId, req.FundId, req.Icon, req.AutoPost);
+        RecurringMap.ValidateDebtLink(account, req.LinkedDebtBucketId);
+        item.SetLinkedDebtBucket(req.LinkedDebtBucketId);   // authoritative: null unlinks
         return null;
     }, ct);
     await notifier.AccountChangedAsync(id, userId, version);
@@ -1701,7 +1758,7 @@ accounts.MapPost("/{id:guid}/recurring/{recurringId:guid}/confirm", async (Guid 
         var period = account.CurrentPeriod ?? throw new InvalidOperationException("There's no open period.");
         var item = account.FindRecurring(recurringId) ?? throw new InvalidOperationException("That recurring item doesn't exist in this account.");
         if (req.ActualAmount > 0m) item.LearnFromActual(req.ActualAmount);   // tune a "typical" estimate toward reality
-        period.PostRecurring(item, req.ActualAmount, userId, account.FindFund(item.FundId)?.IsSynced ?? false);
+        RecurringMap.Post(account, period, item, req.ActualAmount, userId);
         return RecurringView.Of(account, 0);
     }, ct);
     await notifier.AccountChangedAsync(id, userId, version);

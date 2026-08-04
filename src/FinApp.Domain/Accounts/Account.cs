@@ -230,6 +230,36 @@ public sealed class Account : Entity
         return tag;
     }
 
+    /// <summary>
+    /// The pair of tags a logged installment files its principal and interest rows under, creating them if needed.
+    /// <para>
+    /// Resolution order matters: <b>whatever this loan's previous rows already used</b> wins, then a tag matching the
+    /// supplied name, and only then a fresh one. That first step is what keeps the web (which passes localized names)
+    /// and the server's auto-post (which can't know the user's language) filing into the <i>same</i> tag — otherwise a
+    /// loan would slowly split into "Loan interest" and "Лихва по заем" and the Breakdown slice would lie.
+    /// </para>
+    /// </summary>
+    public (Guid Principal, Guid Interest) EnsureInstallmentTags(Guid debtBucketId, string principalName, string interestName)
+    {
+        var rows = _periods.SelectMany(p => p.Expenses).Where(e => e.DebtBucketId == debtBucketId).ToList();
+
+        Guid Resolve(InstallmentPart part, string name)
+        {
+            var used = rows.Where(e => e.Part == part).OrderByDescending(e => e.Date)
+                .Select(e => e.TagId).FirstOrDefault(t => t is { } id && FindTag(id) is not null);
+            if (used is { } existing) return existing;
+            var byName = _tags.FirstOrDefault(t => NameEquals(t.Name, name));
+            if (byName is not null)
+            {
+                byName.SetArchived(false);   // it's about to be used again; a hidden tag would vanish from Breakdown
+                return byName.Id;
+            }
+            return AddTag(name).Id;
+        }
+
+        return (Resolve(InstallmentPart.Principal, principalName), Resolve(InstallmentPart.Interest, interestName));
+    }
+
     public void RenameTag(Guid tagId, string name)
     {
         var tag = FindTag(tagId) ?? throw new InvalidOperationException("Tag not found.");
@@ -336,6 +366,11 @@ public sealed class Account : Entity
     /// <summary>Set or clear a debt bucket's origination date — makes "interest paid so far" exact rather than estimated.</summary>
     public void SetSavingDebtStartDate(Guid savingCategoryId, DateOnly? startDate) =>
         (FindSavingCategory(savingCategoryId) ?? throw new InvalidOperationException("Saving category not found.")).SetDebtStartDate(startDate);
+
+    /// <summary>Switch a debt bucket between schedule-driven and payment-driven balances, snapshotting what's owed on
+    /// <paramref name="today"/> across the change (see <c>SavingCategory.SetPaymentDriven</c>).</summary>
+    public void SetSavingDebtPaymentDriven(Guid savingCategoryId, bool paymentDriven, DateOnly today) =>
+        (FindSavingCategory(savingCategoryId) ?? throw new InvalidOperationException("Saving category not found.")).SetPaymentDriven(paymentDriven, today);
 
     /// <summary>Set or clear a savings bucket's planned per-period contribution (null/zero → infer pace from history).</summary>
     public void SetSavingPlannedContribution(Guid savingCategoryId, decimal? amount) =>

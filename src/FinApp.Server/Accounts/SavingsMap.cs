@@ -105,7 +105,8 @@ public static class SavingsMap
         return new SavingBucketDto(b.Id, b.Name, b.Icon, saved, kind, b.IsArchived,
             goalTarget, goalProgress, debtBalance, debtProgress, debtMonthsAhead,
             investmentProjected, monthlySetAside, targetShortfall, forecast, costs,
-            debtPaidInterest, debtRemainingInterest, debtInstallmentDay, debtPaidInterestEstimated);
+            debtPaidInterest, debtRemainingInterest, debtInstallmentDay, debtPaidInterestEstimated,
+            b.DebtPaymentDriven);
     }
 
     // Domain cadence → the canonical wire string the write side (SavingBucketConfig.Cadence) round-trips.

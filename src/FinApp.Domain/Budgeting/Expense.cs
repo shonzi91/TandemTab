@@ -3,6 +3,24 @@ using FinApp.Domain.Periods;
 
 namespace FinApp.Domain.Budgeting;
 
+/// <summary>Which slice of a loan installment an expense represents. A logged installment posts one
+/// <see cref="Principal"/> row, one <see cref="Interest"/> row, and any number of <see cref="Additional"/> rows
+/// (insurance, taxes — each with its own category/tag), all sharing an <see cref="Expense.InstallmentGroupId"/>.
+/// <para>
+/// Separate records rather than one split expense: <see cref="Expense"/> is immutable and single-valued, and every
+/// aggregation in the app (budgets, the Breakdown's per-key sums) counts one amount per entry — so linked records
+/// make "show me what I actually paid in interest" work with no aggregation changes at all.
+/// </para></summary>
+public enum InstallmentPart { Principal = 0, Interest = 1, Additional = 2 }
+
+/// <summary>One non-loan line riding along on an installment — insurance, a tax, a servicing fee — with its own
+/// category and tag so it lands in the right budget and its own Breakdown slice.
+/// <para>
+/// A <b>list</b> rather than one lumped "additional" amount because real installments carry several distinct
+/// charges, and collapsing them would throw away exactly the split the user logs them for.
+/// </para></summary>
+public sealed record InstallmentExtra(Common.Money Amount, Guid CategoryId, Guid? TagId = null, string? Note = null);
+
 /// <summary>
 /// An immutable ledger entry: money spent in a category, from a fund, by a member, on a date.
 /// Append-only — corrections are made by adding a reversing entry, which keeps multi-user
@@ -64,6 +82,31 @@ public sealed class Expense : Entity
     {
         BankExternalId = string.IsNullOrWhiteSpace(externalId) ? null : externalId.Trim();
         AutoFiled = autoFiled;
+    }
+
+    /// <summary>Set on every row of a logged loan installment: the shared id tying the principal, interest and any
+    /// additional rows together so they can be shown, edited and removed as one payment. Null on ordinary expenses.</summary>
+    public Guid? InstallmentGroupId { get; private set; }
+
+    /// <summary>Which slice of the installment this row is (see <see cref="InstallmentPart"/>). Null on ordinary expenses.</summary>
+    public InstallmentPart? Part { get; private set; }
+
+    /// <summary>The debt bucket this installment was paid against. Null on ordinary expenses. Note this is a
+    /// <b>savings-bucket</b> link, not a savings drawdown — an installment is paid from income, so unlike
+    /// <see cref="SourceSavingCategoryId"/> it draws nothing down; it only says which loan the money serviced.</summary>
+    public Guid? DebtBucketId { get; private set; }
+
+    /// <summary>True when this expense is one row of a logged installment.</summary>
+    public bool IsInstallmentPart => InstallmentGroupId is not null;
+
+    /// <summary>Mark this expense as one row of a logged installment (or clear it with nulls). A setter rather than
+    /// constructor arguments because these are snapshot body data, not relational columns — and EF cannot bind an
+    /// ignored property to a constructor parameter, so the ledger fields it *does* map must stay the whole ctor.</summary>
+    public void SetInstallmentLink(Guid? groupId, InstallmentPart? part, Guid? debtBucketId)
+    {
+        InstallmentGroupId = groupId;
+        Part = part;
+        DebtBucketId = debtBucketId;
     }
 
     private readonly List<Guid> _tagIds = [];

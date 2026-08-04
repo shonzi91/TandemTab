@@ -1132,6 +1132,12 @@ else
                                     <span class="settle-tag" title="@Loc["Settled from another account"]">↩ @Loc["from"] @State.AccountName(ctx.E.SettledFromAccountId!.Value)</span>
                                 }
                                 @if (ctx.E.AutoFiled) { <span class="row-note" title="@AutoFiledTitle(ctx.E)"><Icon Name="bank" Class="ic-s" /></span> }
+                                @if (ctx.E.IsInstallmentPart)
+                                {
+                                    @* Names the payment this row belongs to, so three rows on one date read as one
+                                       installment rather than three unexplained expenses. *@
+                                    <span class="inst-tag" title="@Loc["Part of one loan installment — editing or removing it affects the whole payment."]">@InstallmentPartLabel(ctx.E)</span>
+                                }
                                 @foreach (var t in State.ExpenseTags(ctx.E))
                                 {
                                     <span class="exp-tag">@if (!string.IsNullOrEmpty(t.Icon)) { <span class="tag-emoji">@t.Icon</span> }@t.Name</span>
@@ -1717,6 +1723,12 @@ else
                                             @if (isExpenses)
                                             {
                                                 <button @onclick="() => GoalMore(() => OpenAddSaving(bucketId))"><Icon Name="coins" /> @Loc["Add to savings"]</button>
+                                            }
+                                            @if (isDebt)
+                                            {
+                                                @* Distinct from "Make a payment" (which deploys the set-aside bucket): this logs
+                                                   the contractual installment you paid from income, split into its parts. *@
+                                                <button @onclick="() => GoalMore(() => OpenLogInstallment(bucketId))"><Icon Name="note" /> @Loc["Log installment"]</button>
                                             }
                                             <button @onclick="() => GoalMore(() => OpenDisburseSaving(bucketId))"><Icon Name="target" /> @(isDebt ? Loc["Make a payment"] : isInvestment ? Loc["Withdraw"] : Loc["Apply to a goal"])</button>
                                             <button @onclick="() => GoalMore(() => OpenBudgetSaving(bucketId))"><Icon Name="arrow-right" /> @Loc["Budget savings"]</button>
@@ -2756,6 +2768,15 @@ else
                     </div>
                     break;
 
+                case Modal.DeleteInstallment:
+                    <h3>@Loc["Remove this installment?"]</h3>
+                    <p class="hint">@string.Format(Loc["All {0} rows of this payment will be removed."], _instDeleteCount)</p>
+                    <div class="modal-actions">
+                        <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
+                        <button class="danger-btn" @onclick="RemoveInstallmentFromModal">@Loc["Remove"]</button>
+                    </div>
+                    break;
+
                 case Modal.SettleExpense:
                     <h3>@Loc["Settle onto another account"]</h3>
                     @if (State.FindExpense(_settleExpenseId) is { } se)
@@ -2852,6 +2873,8 @@ else
                             <label>@Loc["Loan start date"] <input type="date" @bind="_debtStart" /></label>
                         </div>
                         <small class="hint">@Loc["The start date bases “interest paid so far” on the real timeline — otherwise we infer it from the balance."]</small>
+                        <label class="check"><input type="checkbox" @bind="_debtPayDriven" /> @Loc["I log each installment here"]</label>
+                        <small class="hint">@Loc["Then the balance drops only when you log a payment — and each payment is split into interest, principal and any extras. Otherwise we carry it forward on the loan’s own schedule."]</small>
                         <small class="hint">@Loc["Used only to project your payoff — never changes budgets, savings or balances. Set money aside with 💰, then pay the bank with 🎯."]</small>
                     }
                     else if (_bucketKind == SavingKind.Investment)
@@ -3265,6 +3288,10 @@ else
                                     <span class="row-main">
                                         <span class="cat-ico">@IconOrEmoji(r.Icon ?? (r.Kind == RecurringKind.Income ? "note" : "repeat"))</span> @r.Name
                                         <span class="row-note">· @amountText · @Loc["day"] @r.DayOfMonth@(r.AutoPost ? " · ⚡" + @Loc["auto"] : "")@(r.Active ? "" : " · " + @Loc["paused"])</span>
+                                        @if (r.LinkedDebtBucketId is { } rdebt)
+                                        {
+                                            <span class="inst-tag" title="@Loc["Each payment will be split into interest and principal rows against that loan, instead of one lump expense."]">🧾 @State.SavingBucketName(rdebt)</span>
+                                        }
                                     </span>
                                     <span class="row-actions">
                                         <button class="exp-edit" title="@Loc["Edit"]" @onclick="() => OpenEditRecurring(rid)"><Icon Name="pencil" /></button>
@@ -3319,6 +3346,29 @@ else
                     @if (_recMode == RecurringAmountMode.Fixed)
                     {
                         <label class="check"><input type="checkbox" @bind="_recAutoPost" /> @Loc["Post automatically when due (don't ask me)"]</label>
+                    }
+                    @* A bill can service a loan. Only offered for expenses, and only when there's a debt to point at. *@
+                    @if (_recKind == RecurringKind.Expense && State.LinkableDebts.Count > 0)
+                    {
+                        <label>@Loc["This is a loan installment for"]
+                            <select @bind="_recDebtId">
+                                <option value="@Guid.Empty">@Loc["Not a loan payment"]</option>
+                                @foreach (var d in State.LinkableDebts)
+                                {
+                                    <option value="@d.Id">@d.Name</option>
+                                }
+                            </select>
+                        </label>
+                        @if (_recDebtId != Guid.Empty)
+                        {
+                            <small class="hint">@Loc["Each payment will be split into interest and principal rows against that loan, instead of one lump expense."]</small>
+                            @if (!State.SavingBucketDebtPaymentDriven(_recDebtId))
+                            {
+                                @* Not flipped automatically: it changes how the balance is derived, which is the
+                                   user's call, not a side effect of linking a bill. *@
+                                <small class="hint">@Loc["That loan still follows its own schedule. To have logged payments drive its balance instead, turn on “I log each installment here” when you edit it."]</small>
+                            }
+                        }
                     }
                     <div class="modal-actions">
                         <button class="ghost" @onclick="() => _modal = Modal.Recurring">@Loc["Cancel"]</button>
@@ -3585,6 +3635,86 @@ else
                     <div class="modal-actions">
                         <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
                         <button @onclick="DisburseSavingFromModal" disabled="@(_disburseAmount <= 0 || _disburseAmount > disBucketBal.Amount || _disburseFundId == Guid.Empty)"><Icon Name="target" /> @Loc["Apply"]</button>
+                    </div>
+                    break;
+
+                case Modal.LogInstallment:
+                    @* One payment, several linked rows. The split is shown live and computed by the same code that
+                       posts it (State.InstallmentSplit), so what you see here is what lands in the ledger. *@
+                    var _instExtras = _instRows.Where(r => r.Amount > 0m).Sum(r => r.Amount);
+                    var (_instInt, _instPrin, _) = State.InstallmentSplit(_instBucketId, _instTotal, _instExtras, _instDate);
+                    var _instOver = _instExtras > _instTotal;
+                    <h3><Icon Name="note" /> @Loc["Log installment"] — @State.SavingBucketName(_instBucketId)</h3>
+                    <label>@Loc["Amount paid"] <input type="number" step="0.01" min="0" @bind="_instTotal" @bind:event="oninput" /></label>
+                    <div class="field-row">
+                        <label>@Loc["Date"] <input type="date" @bind="_instDate" /></label>
+                        <label>@Loc["Paid from"]
+                            <select @bind="_instFundId">
+                                @foreach (var f in State.ExpensableFunds)
+                                {
+                                    <option value="@f.Id">@f.Name@(State.FundIsSynced(f.Id) ? Loc[" (synced)"] : "")</option>
+                                }
+                            </select>
+                        </label>
+                    </div>
+                    @* The interest and principal rows share one category — they're the same budget line ("Loan"); it's
+                       the auto-applied tags that split them apart in the Breakdown. *@
+                    <label>@Loc["Budget category for the loan"]
+                        <select @bind="_instCategoryId">
+                            @foreach (var (c, depth) in State.CategoryOptions)
+                            {
+                                <option value="@c.Id">@(new string('—', depth))@(depth > 0 ? " " : "")@c.Name</option>
+                            }
+                        </select>
+                    </label>
+
+                    @* Extras first: they come off the top, and the loan split is whatever's left. *@
+                    <h4>@Loc["Anything else in this payment?"]</h4>
+                    @for (var i = 0; i < _instRows.Count; i++)
+                    {
+                        var row = _instRows[i];
+                        var idx = i;
+                        <div class="inst-extra-row">
+                            <input type="number" step="0.01" min="0" placeholder="0.00" aria-label="@Loc["Amount"]" @bind="row.Amount" @bind:event="oninput" />
+                            <select aria-label="@Loc["Category"]" @bind="row.CategoryId">
+                                @foreach (var (c, depth) in State.CategoryOptions)
+                                {
+                                    <option value="@c.Id">@(new string('—', depth))@(depth > 0 ? " " : "")@c.Name</option>
+                                }
+                            </select>
+                            <select aria-label="@Loc["Tag"]" @bind="row.TagId">
+                                <option value="@Guid.Empty">@Loc["No tag"]</option>
+                                @foreach (var t in State.ActiveTags)
+                                {
+                                    <option value="@t.Id">@t.Name</option>
+                                }
+                            </select>
+                            <button class="row-ico danger" title="@Loc["Remove"]" aria-label="@Loc["Remove"]" @onclick="() => _instRows.RemoveAt(idx)"><Icon Name="trash" /></button>
+                        </div>
+                    }
+                    <button class="add-another" @onclick="AddInstallmentRow"><Icon Name="plus" /> @Loc["Add a line (insurance, tax…)"]</button>
+
+                    @* The split read-out — the whole point of the feature. *@
+                    <div class="inst-split">
+                        <div class="inst-split-row"><span>@Loc["Interest"]</span><strong>@Fmt(new Money(_instInt, State.Currency))</strong></div>
+                        <div class="inst-split-row"><span>@Loc["Principal"]</span><strong>@Fmt(new Money(_instPrin, State.Currency))</strong></div>
+                        @if (_instExtras > 0m)
+                        {
+                            <div class="inst-split-row"><span>@Loc["Other lines"]</span><strong>@Fmt(new Money(_instExtras, State.Currency))</strong></div>
+                        }
+                    </div>
+                    @if (_instOver)
+                    {
+                        <small class="hint warn-text">@Loc["Those lines add up to more than the payment."]</small>
+                    }
+                    else if (_instPrin <= 0m && _instTotal > 0m)
+                    {
+                        <small class="hint warn-text">@Loc["This payment doesn’t cover the interest, so it clears no principal."]</small>
+                    }
+                    <small class="hint">@Loc["Posts one row per part so each lands in its own budget and Breakdown slice. The whole payment is money out, counted once."]</small>
+                    <div class="modal-actions">
+                        <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
+                        <button @onclick="LogInstallmentFromModal" disabled="@(_instTotal <= 0m || _instOver || _instFundId == Guid.Empty || _instCategoryId == Guid.Empty || _instRows.Any(r => r.Amount > 0m && r.CategoryId == Guid.Empty))"><Icon Name="note" /> @Loc["Log it"]</button>
                     </div>
                     break;
 
@@ -4401,7 +4531,7 @@ else
 }
 
 @code {
-    private enum Modal { None, PickAccount, BankReview, BankConsent, AddCat, AddBudget, DisburseSaving, PayoffProjection, GoalProjection, InvestmentProjection, BankTransfer, ExternalAccounts, HealthScore, RunwayMath, EditCat, DeleteCat, CategoryDetail, AddAccount, EditAccount, DeleteAccount, RemoveMember, LeaveAccount, AddExpense, NextPeriod, RemovePeriod, EditExpense, DeleteExpense, SettleExpense, AddBucket, EditBucket, DeleteBucket, EditCost, AddFund, EditFund, DeleteFund, Invite, Transfer, Deposit, EditDeposit, DeleteDeposit, ManageCats, ManageContribCats, ContribCat, DeleteContribCat, AddSaving, BudgetSaving, SpendSaving, EditSavingDeposit, DeleteSavingDeposit, EditTransfer, DeleteTransfer, EditPeriod, EditSavingMovement, DeleteSavingMovement, DeleteExternalTransfer, Achievements, Reallocate, Recurring, RecurringEdit, RecurringConfirm, Import, AddOrImport, ArchiveFund, FundMovements, Archived, ManageTags, EditTag }
+    private enum Modal { None, PickAccount, BankReview, BankConsent, AddCat, AddBudget, DisburseSaving, PayoffProjection, GoalProjection, InvestmentProjection, BankTransfer, ExternalAccounts, HealthScore, RunwayMath, EditCat, DeleteCat, CategoryDetail, AddAccount, EditAccount, DeleteAccount, RemoveMember, LeaveAccount, AddExpense, NextPeriod, RemovePeriod, EditExpense, DeleteExpense, SettleExpense, AddBucket, EditBucket, DeleteBucket, EditCost, AddFund, EditFund, DeleteFund, Invite, Transfer, Deposit, EditDeposit, DeleteDeposit, ManageCats, ManageContribCats, ContribCat, DeleteContribCat, AddSaving, BudgetSaving, SpendSaving, EditSavingDeposit, DeleteSavingDeposit, EditTransfer, DeleteTransfer, EditPeriod, EditSavingMovement, DeleteSavingMovement, DeleteExternalTransfer, Achievements, Reallocate, Recurring, RecurringEdit, RecurringConfirm, Import, AddOrImport, ArchiveFund, FundMovements, Archived, ManageTags, EditTag, LogInstallment, DeleteInstallment }
     private enum Tab { Overview, Account, Budgets, Savings }
 
     /// <summary>Which kind of goal the Goals grid is showing. Defaults to All so the filter narrows on request
@@ -5035,6 +5165,7 @@ else
     private decimal _debtOriginal, _debtPaidPrincipal;
     private int? _debtDay;
     private DateOnly? _debtStart;
+    private bool _debtPayDriven;
     private decimal _invRate, _invTermYears;
     private int _invCompounds = 12;
     private Guid? _bucketFundId;                       // Plans: the fund this bucket is earmarked in (defaults the disburse fund)
@@ -6342,6 +6473,60 @@ else
         CloseModal();
     });
 
+    // --- Log installment (R2): one payment posted as principal + interest + N extra lines --------------
+    private Guid _instBucketId, _instFundId, _instCategoryId;
+    private decimal _instTotal;
+    private DateOnly _instDate;
+    private List<InstRow> _instRows = new();
+
+    /// <summary>An editable "anything else in this payment" line. Mutable because it's half-typed while you fill it in;
+    /// <see cref="InstallmentExtra"/> (the domain input) is immutable and built from these on save.</summary>
+    private sealed class InstRow
+    {
+        public decimal Amount { get; set; }
+        public Guid CategoryId { get; set; }
+        public Guid TagId { get; set; }
+    }
+
+    private void OpenLogInstallment(Guid bucketId)
+    {
+        _instBucketId = bucketId;
+        // Prefill the contractual installment — the common case is paying exactly it, so the user types nothing.
+        _instTotal = State.SavingBucketDebtInstallment(bucketId);
+        _instDate = DateOnly.FromDateTime(DateTime.Today);
+        // The fund the bucket is earmarked in is where its money is understood to live; else the first spendable one.
+        _instFundId = State.SavingBucketFundId(bucketId) ?? State.ExpensableFunds.FirstOrDefault()?.Id ?? Guid.Empty;
+        // Default to the category this loan's rows already use, so a repeat payment needs no picking at all.
+        _instCategoryId = State.LastInstallmentCategory(bucketId)
+            ?? State.CategoryOptions.Select(o => (Guid?)o.Category.Id).FirstOrDefault() ?? Guid.Empty;
+        _instRows = new();
+        _goalMoreId = Guid.Empty;
+        _modal = Modal.LogInstallment;
+    }
+
+    private void AddInstallmentRow() =>
+        _instRows.Add(new InstRow { CategoryId = State.CategoryOptions.Select(o => o.Category.Id).FirstOrDefault() });
+
+    private Task LogInstallmentFromModal() => RunModal(async () =>
+    {
+        var extras = _instRows.Where(r => r.Amount > 0m && r.CategoryId != Guid.Empty)
+            .Select(r => new InstallmentExtra(State.Money(r.Amount), r.CategoryId, r.TagId == Guid.Empty ? null : r.TagId))
+            .ToList();
+        if (_instTotal <= 0m || _instFundId == Guid.Empty || extras.Sum(e => e.Amount.Amount) > _instTotal) return;
+
+        // Principal and interest get their own auto-created tags the first time, so Breakdown-by-tag splits a loan
+        // into "what I owed" vs "what it cost me" with no setup asked of the user.
+        if (_instCategoryId == Guid.Empty) return;
+        var principalTag = await State.EnsureTag(Loc["Loan principal"]);
+        var interestTag = await State.EnsureTag(Loc["Loan interest"]);
+
+        await State.LogInstallment(_instBucketId, _instTotal, _instFundId, _instDate,
+            principalCategoryId: _instCategoryId, interestCategoryId: _instCategoryId, additional: extras,
+            principalTagId: principalTag, interestTagId: interestTag,
+            note: State.SavingBucketName(_instBucketId));
+        CloseModal();
+    });
+
     // --- Debt/goal forecasting (all read-only projections; nothing here touches the money model) ---
     private Guid _projBucketId;                 // bucket the payoff/goal-date modal is showing
     private string? _openTip;                   // which info-tip caption is expanded (null = none)
@@ -6852,6 +7037,7 @@ else
     private int _recDay = 1;
     private Guid _recCategoryId, _recFundId;
     private bool _recAutoPost;
+    private Guid _recDebtId;   // the loan this bill services (Guid.Empty = an ordinary bill)
     private Guid _recConfirmId;
     private decimal _recConfirmAmount;
     // Recurring items auto-posted this session — shown once in the bell so the money move isn't silent.
@@ -6862,7 +7048,7 @@ else
     private void OpenAddRecurring()
     {
         _recEditId = Guid.Empty; _recName = ""; _recIcon = null; _recKind = RecurringKind.Expense;
-        _recMode = RecurringAmountMode.Fixed; _recAmount = 0; _recDay = 1; _recAutoPost = false;
+        _recMode = RecurringAmountMode.Fixed; _recAmount = 0; _recDay = 1; _recAutoPost = false; _recDebtId = Guid.Empty;
         _recFundId = State.SelectableFunds.FirstOrDefault()?.Id ?? State.RootFunds.FirstOrDefault()?.Id ?? Guid.Empty;
         ResetRecurringCategory();
         _modal = Modal.RecurringEdit;
@@ -6873,6 +7059,7 @@ else
         if (State.RecurringItems.FirstOrDefault(r => r.Id == id) is not { } r) return;
         _recEditId = r.Id; _recName = r.Name; _recIcon = r.Icon; _recKind = r.Kind; _recMode = r.AmountMode;
         _recAmount = r.ExpectedAmount; _recDay = r.DayOfMonth; _recCategoryId = r.CategoryId; _recFundId = r.FundId; _recAutoPost = r.AutoPost;
+        _recDebtId = r.LinkedDebtBucketId ?? Guid.Empty;
         _modal = Modal.RecurringEdit;
     }
 
@@ -6886,10 +7073,12 @@ else
     private Task SaveRecurring() => RunModal(async () =>
     {
         if (string.IsNullOrWhiteSpace(_recName) || _recCategoryId == Guid.Empty || _recFundId == Guid.Empty) return;
+        // Only an expense can service a loan; switching the kind to income drops any stale link rather than sending it.
+        Guid? debtId = _recKind == RecurringKind.Expense && _recDebtId != Guid.Empty ? _recDebtId : null;
         if (_recEditId == Guid.Empty)
-            await State.AddRecurring(_recName, _recKind, _recMode, _recAmount, _recDay, _recCategoryId, _recFundId, _recIcon, _recAutoPost);
+            await State.AddRecurring(_recName, _recKind, _recMode, _recAmount, _recDay, _recCategoryId, _recFundId, _recIcon, _recAutoPost, debtId);
         else
-            await State.UpdateRecurring(_recEditId, _recName, _recMode, _recAmount, _recDay, _recCategoryId, _recFundId, _recIcon, _recAutoPost);
+            await State.UpdateRecurring(_recEditId, _recName, _recMode, _recAmount, _recDay, _recCategoryId, _recFundId, _recIcon, _recAutoPost, debtId);
         _modal = Modal.Recurring;
     });
 
@@ -6907,7 +7096,7 @@ else
     private Task DoConfirmRecurring() => RunModal(async () =>
     {
         if (_recConfirmAmount <= 0m) return;
-        await State.ConfirmRecurring(_recConfirmId, _recConfirmAmount);
+        await State.ConfirmRecurring(_recConfirmId, _recConfirmAmount, Loc["Loan principal"], Loc["Loan interest"]);
         CloseModal();
     });
 
@@ -7420,7 +7609,43 @@ else
         CloseModal();
     });
 
-    private void OpenDeleteExpense(Guid expenseId) { _editExpenseId = expenseId; _modal = Modal.DeleteExpense; }
+    /// <summary>Label for one row of a logged installment: which part it is, and which loan it serviced.</summary>
+    private string InstallmentPartLabel(FinApp.Domain.Budgeting.Expense e)
+    {
+        var loan = e.DebtBucketId is { } b ? State.SavingBucketName(b) : Loc["Installment"];
+        // An extra line already says what it is in its own category ("Insurance"), so naming the part again would
+        // just be noise — it only needs to say which payment it rode in on.
+        return e.Part switch
+        {
+            FinApp.Domain.Budgeting.InstallmentPart.Principal => $"🧾 {loan} · {Loc["Principal"]}",
+            FinApp.Domain.Budgeting.InstallmentPart.Interest => $"🧾 {loan} · {Loc["Interest"]}",
+            _ => $"🧾 {loan}",
+        };
+    }
+
+    private void OpenDeleteExpense(Guid expenseId)
+    {
+        // An installment row is never removed alone — dropping the principal but keeping the interest would leave a
+        // payment that reconciles to nothing. The confirm says how many rows go with it.
+        var expense = State.Period.Expenses.FirstOrDefault(e => e.Id == expenseId);
+        if (expense?.InstallmentGroupId is { } groupId)
+        {
+            _instDeleteGroupId = groupId;
+            _instDeleteCount = State.Period.InstallmentGroup(groupId).Count();
+            _modal = Modal.DeleteInstallment;
+            return;
+        }
+        _editExpenseId = expenseId; _modal = Modal.DeleteExpense;
+    }
+
+    private Guid _instDeleteGroupId;
+    private int _instDeleteCount;
+
+    private Task RemoveInstallmentFromModal() => RunModal(async () =>
+    {
+        await State.RemoveInstallment(_instDeleteGroupId);
+        CloseModal();
+    });
 
     private Task ConfirmDeleteExpense() => RunModal(async () =>
     {
@@ -7447,7 +7672,7 @@ else
     {
         _modalBucketId = Guid.Empty; _fName = null; _fIcon = null; _goalAmount = 0; _fThreshold = 80; _fNotify = false; _initialSavings = 0;
         _bucketKind = kind; _debtBalance = 0; _debtRate = 0; _debtInstallment = 0;
-        _debtEnterInitial = false; _debtOriginal = 0; _debtPaidPrincipal = 0; _debtDay = null; _debtStart = null;
+        _debtEnterInitial = false; _debtOriginal = 0; _debtPaidPrincipal = 0; _debtDay = null; _debtStart = null; _debtPayDriven = false;
         _invRate = 0; _invTermYears = 0; _invCompounds = 12;
         _bucketFundId = null;
         _costRows = new();
@@ -7474,6 +7699,7 @@ else
         _debtPaidPrincipal = Math.Max(0m, (b?.DebtOriginalBalance ?? 0) - (b?.DebtBalance ?? 0));
         _debtDay = b?.DebtInstallmentDay;
         _debtStart = b?.DebtStartDate;
+        _debtPayDriven = b?.DebtPaymentDriven ?? false;
         _invRate = b?.InvestmentAnnualRatePercent ?? 0;
         _invTermYears = b?.InvestmentTermYears ?? 0;
         _invCompounds = b?.InvestmentCompoundsPerYear ?? 12;
@@ -7534,10 +7760,11 @@ else
         decimal? debtOrig = isDebt && _debtEnterInitial ? _debtOriginal : null;
         int? debtDay = isDebt ? _debtDay : null;
         DateOnly? debtStart = isDebt ? _debtStart : null;
+        var debtPayDriven = isDebt && _debtPayDriven;
         if (_modal == Modal.AddBucket)
-            await State.AddSavingBucket(_fName!, goal, _fThreshold, _fNotify, _initialSavings, _fIcon, isDebt, debtBal, _debtRate, _debtInstallment, planned, isInv, _invRate, _invTermYears, _invCompounds, _bucketFundId, costs, isExpenses, debtOrig, debtDay, debtStart);
+            await State.AddSavingBucket(_fName!, goal, _fThreshold, _fNotify, _initialSavings, _fIcon, isDebt, debtBal, _debtRate, _debtInstallment, planned, isInv, _invRate, _invTermYears, _invCompounds, _bucketFundId, costs, isExpenses, debtOrig, debtDay, debtStart, debtPayDriven);
         else
-            await State.SaveSavingBucket(_modalBucketId, _fName!, goal, _fThreshold, _fNotify, _initialSavings, _fIcon, isDebt, debtBal, _debtRate, _debtInstallment, planned, isInv, _invRate, _invTermYears, _invCompounds, _bucketFundId, costs, isExpenses, debtOrig, debtDay, debtStart);
+            await State.SaveSavingBucket(_modalBucketId, _fName!, goal, _fThreshold, _fNotify, _initialSavings, _fIcon, isDebt, debtBal, _debtRate, _debtInstallment, planned, isInv, _invRate, _invTermYears, _invCompounds, _bucketFundId, costs, isExpenses, debtOrig, debtDay, debtStart, debtPayDriven);
         CloseModal();
     });
 

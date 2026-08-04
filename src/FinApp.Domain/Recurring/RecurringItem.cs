@@ -113,6 +113,25 @@ public sealed class RecurringItem : Entity
     /// <summary>Set the creation date (restore path — the serializer replays the stored value verbatim).</summary>
     public void SetCreatedOn(DateOnly? createdOn) => CreatedOn = createdOn;
 
+    /// <summary>
+    /// The debt bucket this bill services, when it's a loan installment rather than an ordinary expense. Set, and
+    /// posting it splits the payment into interest / principal rows against that loan instead of booking one lump
+    /// expense — so the monthly bill you'd already set up becomes the thing that tracks the debt.
+    /// <para>
+    /// Only meaningful on a <see cref="RecurringKind.Expense"/>; income has no loan to service. Null on every item
+    /// created before this existed, which is exactly the old behaviour. Body data (snapshot, not EF).
+    /// </para>
+    /// </summary>
+    public Guid? LinkedDebtBucketId { get; private set; }
+
+    /// <summary>Link this bill to a debt bucket (or unlink with null / <see cref="Guid.Empty"/>). Ignored for income —
+    /// there is no installment to split.</summary>
+    public void SetLinkedDebtBucket(Guid? bucketId) =>
+        LinkedDebtBucketId = Kind == RecurringKind.Expense && bucketId is { } b && b != Guid.Empty ? b : null;
+
+    /// <summary>True when posting this item should log an installment rather than a plain expense.</summary>
+    public bool IsLoanInstallment => LinkedDebtBucketId is not null;
+
     /// <summary>Due (and not yet handled) within period [from, to] as of <paramref name="today"/> — i.e. its day has
     /// arrived, it hasn't been posted or skipped this period, and the due date isn't earlier than
     /// <see cref="CreatedOn"/>.</summary>

@@ -35,14 +35,14 @@ public static class AccountSnapshotSerializer
             account.Members.Select(m => new MemberNode(m.Id, m.UserId, m.DisplayName)).ToList(),
             account.Funds.Select(f => new FundNode(f.Id, f.Name, f.ParentId, f.Note, f.Icon, f.IsSynced, f.IsArchived)).ToList(),
             account.Categories.Select(c => new CategoryNode(c.Id, c.Name, c.ParentId, c.Icon, c.IsEssential, c.IsArchived)).ToList(),
-            account.SavingCategories.Select(s => new SavingCategoryNode(s.Id, s.Name, s.ParentId, s.GoalAmount, s.AlertThreshold, s.NotifyOnMilestone, s.InitialAmount, s.Icon, s.Kind, s.DebtBalance, s.DebtAnnualRatePercent, s.DebtInstallment, s.IsArchived, s.DebtOriginalBalance, s.PlannedContribution, s.InvestmentAnnualRatePercent, s.InvestmentTermYears, s.InvestmentCompoundsPerYear, s.FundId, s.Costs.Count == 0 ? null : s.Costs.ToList(), s.DebtBalanceAsOf, s.DebtInstallmentDay, s.DebtStartDate)).ToList(),
+            account.SavingCategories.Select(s => new SavingCategoryNode(s.Id, s.Name, s.ParentId, s.GoalAmount, s.AlertThreshold, s.NotifyOnMilestone, s.InitialAmount, s.Icon, s.Kind, s.DebtBalance, s.DebtAnnualRatePercent, s.DebtInstallment, s.IsArchived, s.DebtOriginalBalance, s.PlannedContribution, s.InvestmentAnnualRatePercent, s.InvestmentTermYears, s.InvestmentCompoundsPerYear, s.FundId, s.Costs.Count == 0 ? null : s.Costs.ToList(), s.DebtBalanceAsOf, s.DebtInstallmentDay, s.DebtStartDate, s.DebtPaymentDriven)).ToList(),
             account.Periods.Select(ToNode).ToList(),
             account.ContributionCategories.Select(c => new ContributionCategoryNode(c.Id, c.Name, c.Icon)).ToList(),
             account.SavingsRateTarget,
             account.AchievementsAnchor,
             account.AchievementLog.Count == 0 ? null : new Dictionary<string, DateOnly>(account.AchievementLog),
             account.RecurringItems.Count == 0 ? null : account.RecurringItems.Select(r => new RecurringItemNode(
-                r.Id, r.Name, r.Kind, r.AmountMode, r.ExpectedAmount, r.DayOfMonth, r.CategoryId, r.FundId, r.Active, r.Icon, r.LastHandledPeriodFrom, r.AutoPost, r.CreatedOn)).ToList(),
+                r.Id, r.Name, r.Kind, r.AmountMode, r.ExpectedAmount, r.DayOfMonth, r.CategoryId, r.FundId, r.Active, r.Icon, r.LastHandledPeriodFrom, r.AutoPost, r.CreatedOn, r.LinkedDebtBucketId)).ToList(),
             account.OnboardingDismissed,
             account.Tags.Count == 0 ? null : account.Tags.Select(t => new TagNode(t.Id, t.Name, t.Icon, t.IsArchived)).ToList());
         return JsonSerializer.Serialize(node, Json);
@@ -117,6 +117,7 @@ public static class AccountSnapshotSerializer
             // Restored verbatim, including null: a legacy item has no creation date, and stamping today's would
             // suppress it for a period it should genuinely fire in.
             item.SetCreatedOn(r.CreatedOn);
+            item.SetLinkedDebtBucket(r.LinkedDebtBucketId);
             account.AddRecurring(item);
         }
         CollapseMultiTags(account);
@@ -146,7 +147,7 @@ public static class AccountSnapshotSerializer
         p.InitialBalances.Select(b => new InitialBalanceNode(b.Id, b.FundId, b.Amount.Amount, b.Informative)).ToList(),
         p.Contributions.Select(c => new ContributionNode(c.Id, c.MemberId, c.Paid.Amount, c.CategoryId, c.FundId, c.Date, c.FundSynced)).ToList(),
         p.Budgets.Select(b => new BudgetNode(b.Id, b.CategoryId, b.Allocated.Amount, b.AlertThreshold, b.NotifyOnEveryExpense)).ToList(),
-        p.Expenses.Select(e => new ExpenseNode(e.Id, e.CategoryId, e.Amount.Amount, e.Date, e.MemberId, e.FundId, e.Note, e.SourceSavingCategoryId, e.OnBehalfOfOtherAccount, e.SettlementId, e.SettledToAccountId, e.SettledFromAccountId, e.SettledAmount, e.FundSynced, e.BankExternalId, e.AutoFiled, e.TagIds.Count == 0 ? null : e.TagIds.ToList())).ToList(),
+        p.Expenses.Select(e => new ExpenseNode(e.Id, e.CategoryId, e.Amount.Amount, e.Date, e.MemberId, e.FundId, e.Note, e.SourceSavingCategoryId, e.OnBehalfOfOtherAccount, e.SettlementId, e.SettledToAccountId, e.SettledFromAccountId, e.SettledAmount, e.FundSynced, e.BankExternalId, e.AutoFiled, e.TagIds.Count == 0 ? null : e.TagIds.ToList(), e.InstallmentGroupId, e.Part, e.DebtBucketId)).ToList(),
         p.SavingAllocations.Select(a => new SavingAllocationNode(a.Id, a.SavingCategoryId, a.Amount.Amount, a.Date, a.Note, a.SourceExpenseId, a.BudgetCategoryId, a.TransferPairId, a.SourceExternalTransferId)).ToList(),
         p.FundTransfers.Select(t => new FundTransferNode(t.Id, t.FromFundId, t.ToFundId, t.Amount.Amount, t.Date, t.Note, t.FromSynced, t.ToSynced, t.BankExternalId, t.AutoFiled)).ToList(),
         p.ExternalTransfers.Select(t => new ExternalTransferNode(t.Id, t.FundId, t.Amount.Amount, t.Date, t.ToAccountId, t.Note, t.FundSynced)).ToList());
@@ -169,6 +170,9 @@ public static class AccountSnapshotSerializer
             s.SetDebtBalanceAsOf(n.DebtBalanceAsOf);
             s.SetDebtInstallmentDay(n.DebtInstallmentDay);
             s.SetDebtStartDate(n.DebtStartDate);
+            // Restored verbatim, not via SetPaymentDriven: that method re-snapshots and re-anchors the balance, which
+            // is right for a user flipping the mode and wrong for merely loading the account.
+            s.RestorePaymentDriven(n.DebtPaymentDriven);
         }
         if (n.Kind == SavingKind.Investment) s.ConfigureInvestment(n.InvestmentAnnualRatePercent, n.InvestmentTermYears, n.InvestmentCompoundsPerYear);
         if (n.PlannedContribution is { } pc) s.SetPlannedContribution(pc);
@@ -209,6 +213,7 @@ public static class AccountSnapshotSerializer
         SetField(p, "_expenses", n.Expenses.Select(e =>
         {
             var expense = Build(new Expense(e.CategoryId, M(e.Amount), e.Date, e.MemberId, e.FundId, e.Note, e.SourceSavingCategoryId, e.OnBehalfOfOtherAccount, e.SettlementId, e.SettledToAccountId, e.SettledFromAccountId, e.SettledAmount), e.Id);
+            expense.SetInstallmentLink(e.InstallmentGroupId, e.Part, e.DebtBucketId);
             expense.SetFundSynced(e.FundSynced);
             expense.SetBankLink(e.BankExternalId, e.AutoFiled);
             if (e.TagIds is { Count: > 0 }) expense.SetTags(e.TagIds);
@@ -277,7 +282,9 @@ public static class AccountSnapshotSerializer
 
     private record RecurringItemNode(Guid Id, string Name, RecurringKind Kind, RecurringAmountMode AmountMode,
         decimal ExpectedAmount, int DayOfMonth, Guid CategoryId, Guid FundId, bool Active, string? Icon, DateOnly? LastHandledPeriodFrom,
-        bool AutoPost = false, DateOnly? CreatedOn = null);
+        bool AutoPost = false, DateOnly? CreatedOn = null,
+        // R2: the debt bucket this bill services, when it's a loan installment. Null on every pre-R2 item.
+        Guid? LinkedDebtBucketId = null);
 
     private record MemberNode(Guid Id, Guid UserId, string DisplayName);
     private record ContributionCategoryNode(Guid Id, string Name, string? Icon = null);
@@ -292,7 +299,9 @@ public static class AccountSnapshotSerializer
         // Null on legacy nodes → the bucket keeps its stored balance as-is, exactly as before the schedule existed.
         DateOnly? DebtBalanceAsOf = null,
         // R1 informative-debt fields; null on nodes written before they existed.
-        int? DebtInstallmentDay = null, DateOnly? DebtStartDate = null);
+        int? DebtInstallmentDay = null, DateOnly? DebtStartDate = null,
+        // R2: false on legacy nodes → every existing debt stays schedule-driven, which is what it has always been.
+        bool DebtPaymentDriven = false);
 
     private record PeriodNode(Guid Id, string Currency, DateOnly From, DateOnly To, PeriodStatus Status, decimal CarriedIn,
         List<InitialBalanceNode> InitialBalances, List<ContributionNode> Contributions, List<BudgetNode> Budgets,
@@ -306,7 +315,9 @@ public static class AccountSnapshotSerializer
     private record ExpenseNode(Guid Id, Guid CategoryId, decimal Amount, DateOnly Date, Guid MemberId, Guid FundId, string? Note, Guid? SourceSavingCategoryId, bool OnBehalfOfOtherAccount = false,
         Guid? SettlementId = null, Guid? SettledToAccountId = null, Guid? SettledFromAccountId = null, decimal SettledAmount = 0m, bool FundSynced = false, string? BankExternalId = null, bool AutoFiled = false,
         // Null on legacy nodes (pre-tags) → the expense simply has no tags.
-        IReadOnlyList<Guid>? TagIds = null);
+        IReadOnlyList<Guid>? TagIds = null,
+        // R2 installment-split fields; null on every node written before them, i.e. every ordinary expense.
+        Guid? InstallmentGroupId = null, InstallmentPart? Part = null, Guid? DebtBucketId = null);
     private record SavingAllocationNode(Guid Id, Guid SavingCategoryId, decimal Amount, DateOnly Date, string? Note, Guid? SourceExpenseId, Guid? BudgetCategoryId = null, Guid? TransferPairId = null, Guid? SourceExternalTransferId = null);
     private record FundTransferNode(Guid Id, Guid FromFundId, Guid ToFundId, decimal Amount, DateOnly Date, string? Note, bool FromSynced = false, bool ToSynced = false, string? BankExternalId = null, bool AutoFiled = false);
     private record ExternalTransferNode(Guid Id, Guid FundId, decimal Amount, DateOnly Date, Guid? ToAccountId, string? Note, bool FundSynced = false);

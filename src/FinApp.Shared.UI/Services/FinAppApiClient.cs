@@ -145,6 +145,12 @@ public sealed class FinAppApiClient(HttpClient http)
     public Task<MutationResultDto> RemoveExpenseAsync(Guid id, Guid expenseId, CancellationToken ct = default) =>
         SendAsync<MutationResultDto>(HttpMethod.Delete, $"/accounts/{id}/expenses/{expenseId}", null, ct);
 
+    // Loan installments — one payment posting several linked rows (principal / interest / additional lines).
+    public Task<MutationResultDto> LogInstallmentAsync(Guid id, LogInstallmentRequest req, CancellationToken ct = default) =>
+        SendAsync<MutationResultDto>(HttpMethod.Post, $"/accounts/{id}/installments", req, ct);
+    public Task<MutationResultDto> RemoveInstallmentAsync(Guid id, Guid groupId, CancellationToken ct = default) =>
+        SendAsync<MutationResultDto>(HttpMethod.Delete, $"/accounts/{id}/installments/{groupId}", null, ct);
+
     // Deposits (income)
     public Task<MutationResultDto> AddDepositAsync(Guid id, AddDepositRequest req, CancellationToken ct = default) =>
         SendAsync<MutationResultDto>(HttpMethod.Post, $"/accounts/{id}/deposits", req, ct);

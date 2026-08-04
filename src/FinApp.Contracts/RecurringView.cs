@@ -21,7 +21,10 @@ public record RecurringRowDto(
     bool Due,
     bool Upcoming,
     int DaysUntilDue,
-    bool HasKnownAmount);
+    bool HasKnownAmount,
+    // R2: set when this bill services a loan — posting it splits into interest/principal rows against that debt.
+    Guid? LinkedDebtBucketId = null,
+    string? LinkedDebtName = null);
 
 /// <summary>The Recurring surface in one read: the known bills still expected this period (<see cref="BillsDue"/>) and
 /// every recurring item with its due state.</summary>

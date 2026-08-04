@@ -167,6 +167,7 @@ public sealed class FinAppDbContext(DbContextOptions<FinAppDbContext> options) :
             c.Ignore(x => x.DebtBalanceAsOf);
             c.Ignore(x => x.DebtInstallmentDay);   // body data — informative-debt field rides in the snapshot
             c.Ignore(x => x.DebtStartDate);        // body data — loan origination rides in the snapshot
+            c.Ignore(x => x.DebtPaymentDriven);    // body data — the payment-driven switch rides in the snapshot
             c.Ignore(x => x.DebtPaidInterestIsEstimate);  // computed view over DebtStartDate
             c.Ignore(x => x.DebtPaidOff);
             c.Ignore(x => x.DebtProgressRatio);
@@ -298,6 +299,10 @@ public sealed class FinAppDbContext(DbContextOptions<FinAppDbContext> options) :
             e.Ignore(x => x.FundSynced);       // body data — synced-fund marker rides in the snapshot
             e.Ignore(x => x.BankExternalId);   // body data — bank provenance rides in the snapshot
             e.Ignore(x => x.AutoFiled);        // body data — auto-filed marker rides in the snapshot
+            e.Ignore(x => x.InstallmentGroupId);  // body data — the installment split rides in the snapshot
+            e.Ignore(x => x.Part);
+            e.Ignore(x => x.DebtBucketId);
+            e.Ignore(x => x.IsInstallmentPart);   // computed from InstallmentGroupId
         });
 
         b.Entity<SavingAllocation>(s =>

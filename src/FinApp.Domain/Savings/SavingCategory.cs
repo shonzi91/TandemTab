@@ -75,6 +75,20 @@ public sealed class SavingCategory : Entity
     /// unknown. Body data (snapshot, not EF).</summary>
     public int? DebtInstallmentDay { get; private set; }
 
+    /// <summary>
+    /// Debt buckets only: whether this loan's balance is driven by <b>logged payments</b> rather than by its
+    /// schedule. Off (the default) = schedule-driven: the app carries <see cref="DebtBalance"/> forward over the
+    /// installments due since <see cref="DebtBalanceAsOf"/>, which is right when the installment is paid from an
+    /// account this snapshot can't see. On = the balance only moves when an installment is actually logged here.
+    /// <para>
+    /// Turning it on is a promise to keep logging: an unlogged month no longer advances the loan, so the balance
+    /// goes stale rather than wrong-in-the-other-direction. That's the trade the user makes when they link the
+    /// bucket to the payments they record. See <see cref="SetPaymentDriven"/> for the hand-over.
+    /// </para>
+    /// Body data (snapshot, not EF).
+    /// </summary>
+    public bool DebtPaymentDriven { get; private set; }
+
     /// <summary>Debt buckets only: the loan's origination date, if known. When set, "interest paid so far" is exact
     /// (<see cref="PaidInterestSoFar"/> knows how many installments have really been made); when null it is estimated
     /// by amortizing the original balance down to the current one (assumes on-schedule payments) and flagged via
@@ -127,6 +141,11 @@ public sealed class SavingCategory : Entity
     /// </summary>
     public decimal DebtBalanceOn(DateOnly asOf)
     {
+        // Payment-driven: the balance is whatever the logged payments have left it at, so there is no schedule to
+        // walk. Walking one here would double-advance the loan — the installments have already come off as real
+        // recorded payments. This single gate is why the mode switch propagates everywhere for free: every debt
+        // figure in the app (owed, paid-off, progress, projections) reads through this method.
+        if (DebtPaymentDriven) return DebtBalance;
         if (!IsDebt || DebtBalanceAsOf is not { } anchor || DebtInstallment <= 0m) return DebtBalance;
         var months = MonthsBetween(anchor, asOf);
         if (months <= 0) return DebtBalance;
@@ -304,6 +323,33 @@ public sealed class SavingCategory : Entity
     /// round-trip. Null clears it (paid-interest reverts to the estimate).</summary>
     public void SetDebtStartDate(DateOnly? startDate) => DebtStartDate = startDate;
 
+    /// <summary>
+    /// Switch this debt between schedule-driven and payment-driven (see <see cref="DebtPaymentDriven"/>), handing the
+    /// balance over cleanly in both directions: <b>whatever is owed today under the outgoing mode is snapshotted as
+    /// the new stored balance, anchored to today</b>.
+    /// <para>
+    /// Both directions need this. Turning payment-driving <i>on</i> without snapshotting would freeze a balance last
+    /// true at a stale anchor, silently reversing months of accrued repayment. Turning it <i>off</i> without
+    /// re-anchoring would hand the schedule an old anchor date and make it re-walk installments the logged payments
+    /// already accounted for. Re-anchoring to today is honest in both: today's figure is the one we know.
+    /// </para>
+    /// No-op for a non-debt bucket, or when the mode isn't actually changing (so a save that merely re-states the
+    /// current mode can't quietly re-date the loan).
+    /// </summary>
+    public void SetPaymentDriven(bool paymentDriven, DateOnly today)
+    {
+        if (!IsDebt || paymentDriven == DebtPaymentDriven) return;
+        var owedToday = DebtBalanceOn(today);   // read under the OUTGOING mode — the gate flips the answer
+        DebtPaymentDriven = paymentDriven;
+        DebtBalance = owedToday;
+        DebtBalanceAsOf = today;
+    }
+
+    /// <summary>Restore the payment-driven flag verbatim (snapshot round-trip only). Unlike
+    /// <see cref="SetPaymentDriven"/> this deliberately does <b>not</b> snapshot or re-anchor the balance — loading an
+    /// account must reproduce it exactly, not re-date the loan to whenever it happened to be read.</summary>
+    public void RestorePaymentDriven(bool paymentDriven) => DebtPaymentDriven = paymentDriven;
+
     /// <summary>Mark this bucket as an investment envelope with its (projection-only) growth figures.</summary>
     public void ConfigureInvestment(decimal annualRatePercent, decimal termYears, int compoundsPerYear)
     {
@@ -357,6 +403,7 @@ public sealed class SavingCategory : Entity
         DebtBalanceAsOf = null;   // no schedule left to anchor
         DebtInstallmentDay = null;
         DebtStartDate = null;
+        DebtPaymentDriven = false;
     }
 
     private void ClearInvestmentFields()
@@ -416,9 +463,10 @@ public sealed class SavingCategory : Entity
     }
 
     /// <summary>
-    /// Record an <b>extra</b> payment against a debt bucket — money paid on top of the schedule, so the whole amount
-    /// comes off the principal (unlike a contractual installment, most of which is interest; the schedule handles
-    /// those, see <see cref="DebtBalanceOn"/>). No-op for a common bucket.
+    /// Take <paramref name="amount"/> off the principal. Two callers, one rule — <b>pass principal, never a gross
+    /// payment</b>: an over-payment on a schedule-driven debt is all principal by definition, and a logged installment
+    /// on a payment-driven debt passes only its principal slice (its interest slice serviced the interest, so it
+    /// clears no debt). No-op for a common bucket.
     /// <para>
     /// Catches the balance up to <paramref name="asOf"/> before subtracting, then re-anchors there: the payment is a
     /// fresh statement of what's owed, and dating it keeps the schedule walking from a point that was actually true.
@@ -431,6 +479,17 @@ public sealed class SavingCategory : Entity
         var current = on is { } d ? DebtBalanceOn(d) : DebtBalance;
         DebtBalance = Math.Max(0m, current - amount);
         if (on is { } anchor) DebtBalanceAsOf = anchor;
+    }
+
+    /// <summary>Undo a <see cref="RecordDebtPayment"/> — put <paramref name="amount"/> of principal back on the loan
+    /// (a logged installment was removed). Only meaningful while the debt is <see cref="DebtPaymentDriven"/>; the
+    /// caller checks that, because on a schedule-driven debt the balance is derived, not stored, and adding to it
+    /// would invent debt.</summary>
+    public void ReverseDebtPayment(decimal amount, DateOnly? asOf = null)
+    {
+        if (!IsDebt || amount <= 0m) return;
+        DebtBalance += amount;
+        if (asOf is { } anchor && (DebtBalanceAsOf is null || anchor > DebtBalanceAsOf)) DebtBalanceAsOf = anchor;
     }
 
     /// <summary>Hide/show this bucket in the main lists (its history is kept regardless).</summary>

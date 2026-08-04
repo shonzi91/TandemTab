@@ -1121,21 +1121,26 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
             .Where(r => r.Kind == RecurringKind.Expense && r.HasKnownAmount && r.IsPending(Period.From, Period.To))
             .Sum(r => r.ExpectedAmount));
 
-    public Task AddRecurring(string name, RecurringKind kind, RecurringAmountMode mode, decimal expected, int dayOfMonth, Guid categoryId, Guid fundId, string? icon, bool autoPost = false) =>
+    public Task AddRecurring(string name, RecurringKind kind, RecurringAmountMode mode, decimal expected, int dayOfMonth, Guid categoryId, Guid fundId, string? icon, bool autoPost = false, Guid? linkedDebtBucketId = null) =>
         ExecuteOptimisticAsync(() =>
         {
             var item = new RecurringItem(name, kind, mode, expected, dayOfMonth, categoryId, fundId, icon, autoPost);
             item.SetCreatedOn(Today());
+            item.SetLinkedDebtBucket(linkedDebtBucketId);
             Account.AddRecurring(item);
         },
         id => api.AddRecurringAsync(id, new AddRecurringRequest(name, RecurringKindString(kind), RecurringModeString(mode),
-            expected, dayOfMonth, categoryId, fundId, icon, autoPost)),
+            expected, dayOfMonth, categoryId, fundId, icon, autoPost, linkedDebtBucketId)),
         refetchAfter: true);
 
-    public Task UpdateRecurring(Guid id, string name, RecurringAmountMode mode, decimal expected, int dayOfMonth, Guid categoryId, Guid fundId, string? icon, bool autoPost = false) =>
-        ExecuteOptimisticAsync(() => Account.FindRecurring(id)?.Update(name, mode, expected, dayOfMonth, categoryId, fundId, icon, autoPost),
+    public Task UpdateRecurring(Guid id, string name, RecurringAmountMode mode, decimal expected, int dayOfMonth, Guid categoryId, Guid fundId, string? icon, bool autoPost = false, Guid? linkedDebtBucketId = null) =>
+        ExecuteOptimisticAsync(() =>
+        {
+            Account.FindRecurring(id)?.Update(name, mode, expected, dayOfMonth, categoryId, fundId, icon, autoPost);
+            Account.FindRecurring(id)?.SetLinkedDebtBucket(linkedDebtBucketId);   // authoritative: null unlinks
+        },
             acct => api.UpdateRecurringAsync(acct, id, new UpdateRecurringRequest(name, RecurringModeString(mode),
-                expected, dayOfMonth, categoryId, fundId, icon, autoPost)),
+                expected, dayOfMonth, categoryId, fundId, icon, autoPost, linkedDebtBucketId)),
             refetchAfter: true);
 
     public Task RemoveRecurring(Guid id) =>
@@ -1154,18 +1159,45 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
 
     /// <summary>Confirm a due recurring item with the <b>real</b> amount: posts a normal expense/contribution, nudges a
     /// Typical estimate toward the actual, and marks it handled for this period — all in a single save.</summary>
-    public Task ConfirmRecurring(Guid id, decimal actualAmount)
+    /// <param name="principalTagName">Localized fallback names for the split tags when the bill is debt-linked. The
+    /// caller supplies them because only the UI knows the language; existing tags on the loan still win.</param>
+    public Task ConfirmRecurring(Guid id, decimal actualAmount,
+        string principalTagName = "Loan principal", string interestTagName = "Loan interest")
     {
         if (Account.FindRecurring(id) is null) return Task.CompletedTask;
         return ExecuteOptimisticAsync(() =>
         {
             var item = Account.FindRecurring(id)!;
             if (actualAmount > 0m) item.LearnFromActual(actualAmount);
-            Period.PostRecurring(item, actualAmount, CurrentMemberId, FundIsSynced(item.FundId));
+            PostRecurringItem(item, actualAmount, principalTagName, interestTagName);
         },
         acct => api.ConfirmRecurringAsync(acct, id, actualAmount),
         refetchAfter: true);   // posts a real expense/income (mints an id) — reconcile
     }
+
+    /// <summary>
+    /// Post a due recurring item locally, routing a debt-linked bill through the installment split. Mirrors the
+    /// server's <c>RecurringMap.Post</c> — both confirm and auto-post go through here so the optimistic render and
+    /// the authoritative server result can't disagree about what a linked bill produces.
+    /// </summary>
+    private void PostRecurringItem(RecurringItem item, decimal amount, string principalTagName, string interestTagName)
+    {
+        var debt = item.LinkedDebtBucketId is { } bucketId ? FindSavingBucket(bucketId) : null;
+        if (debt is not { IsDebt: true })
+        {
+            Period.PostRecurring(item, amount, CurrentMemberId, FundIsSynced(item.FundId));
+            return;
+        }
+        // EnsureInstallmentTags prefers the tags this loan's earlier rows already carry, so the web and the server's
+        // auto-post converge on one pair rather than creating a second set per language.
+        var (principalTag, interestTag) = Account.EnsureInstallmentTags(debt.Id, principalTagName, interestTagName);
+        Period.PostRecurring(item, amount, CurrentMemberId, FundIsSynced(item.FundId), debt, principalTag, interestTag);
+    }
+
+    /// <summary>Debt buckets a recurring bill can be linked to (active, non-archived) — the "this is a loan
+    /// installment for…" picker.</summary>
+    public IReadOnlyList<SavingCategory> LinkableDebts =>
+        Account.SavingCategories.Where(s => s.IsDebt && !s.IsArchived).OrderBy(s => s.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
 
     // --- Statement file import (CSV/OFX/QIF → real expenses & income) ------
 
@@ -1365,12 +1397,13 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
         bool isDebt = false, decimal debtBalance = 0m, decimal debtRate = 0m, decimal debtInstallment = 0m, decimal? plannedContribution = null,
         bool isInvestment = false, decimal invRate = 0m, decimal invTermYears = 0m, int invCompounds = 12,
         Guid? fundId = null, IEnumerable<PlannedCost>? costs = null, bool isExpensesFund = false,
-        decimal? debtOriginalBalance = null, int? debtInstallmentDay = null, DateOnly? debtStartDate = null)
+        decimal? debtOriginalBalance = null, int? debtInstallmentDay = null, DateOnly? debtStartDate = null,
+        bool debtPaymentDriven = false)
     {
         var req = BuildBucketRequest(name, goalAmount, thresholdPercent, notifyOnMilestone, initialAmount, icon,
             isDebt, debtBalance, debtRate, debtInstallment, plannedContribution,
             isInvestment, invRate, invTermYears, invCompounds, fundId, costs, isExpensesFund,
-            debtOriginalBalance, debtInstallmentDay, debtStartDate);
+            debtOriginalBalance, debtInstallmentDay, debtStartDate, debtPaymentDriven);
         var result = await ExecuteAsync(id => api.AddSavingBucketAsync(id, req));
         return result.EntityId ?? Guid.Empty;
     }
@@ -1379,12 +1412,13 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
         bool isDebt = false, decimal debtBalance = 0m, decimal debtRate = 0m, decimal debtInstallment = 0m, decimal? plannedContribution = null,
         bool isInvestment = false, decimal invRate = 0m, decimal invTermYears = 0m, int invCompounds = 12,
         Guid? fundId = null, IEnumerable<PlannedCost>? costs = null, bool isExpensesFund = false,
-        decimal? debtOriginalBalance = null, int? debtInstallmentDay = null, DateOnly? debtStartDate = null)
+        decimal? debtOriginalBalance = null, int? debtInstallmentDay = null, DateOnly? debtStartDate = null,
+        bool debtPaymentDriven = false)
     {
         var req = BuildBucketRequest(name, goalAmount, thresholdPercent, notifyOnMilestone, initialAmount, icon,
             isDebt, debtBalance, debtRate, debtInstallment, plannedContribution,
             isInvestment, invRate, invTermYears, invCompounds, fundId, costs, isExpensesFund,
-            debtOriginalBalance, debtInstallmentDay, debtStartDate);
+            debtOriginalBalance, debtInstallmentDay, debtStartDate, debtPaymentDriven);
         return ExecuteAsync(id => api.SaveSavingBucketAsync(id, savingCategoryId, req));
     }
 
@@ -1392,14 +1426,16 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
         bool isDebt, decimal debtBalance, decimal debtRate, decimal debtInstallment, decimal? plannedContribution,
         bool isInvestment, decimal invRate, decimal invTermYears, int invCompounds,
         Guid? fundId, IEnumerable<PlannedCost>? costs, bool isExpensesFund,
-        decimal? debtOriginalBalance = null, int? debtInstallmentDay = null, DateOnly? debtStartDate = null) =>
+        decimal? debtOriginalBalance = null, int? debtInstallmentDay = null, DateOnly? debtStartDate = null,
+        bool debtPaymentDriven = false) =>
         new(name, icon, goalAmount, thresholdPercent, notifyOnMilestone, initialAmount,
             isDebt, debtBalance, debtRate, debtInstallment,
             DebtOriginalBalance: debtOriginalBalance, DebtInstallmentDay: debtInstallmentDay, DebtStartDate: debtStartDate,
             PlannedContribution: plannedContribution,
             IsInvestment: isInvestment, InvRate: invRate, InvTermYears: invTermYears, InvCompounds: invCompounds, FundId: fundId,
             Costs: costs?.Select(c => new PlannedCostDto(c.Label, c.Amount, CadenceString(c.Cadence), c.DueDate)).ToList(),
-            IsExpensesFund: isExpensesFund);
+            IsExpensesFund: isExpensesFund,
+            DebtPaymentDriven: debtPaymentDriven);
 
     private static string CadenceString(CostCadence cadence) => cadence switch
     {
@@ -1555,6 +1591,72 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     public int? SavingBucketDebtInstallmentDay(Guid id) => FindSavingBucket(id)?.DebtInstallmentDay;
     /// <summary>The loan's origination date, or null when unrecorded (paid-interest is then estimated).</summary>
     public DateOnly? SavingBucketDebtStartDate(Guid id) => FindSavingBucket(id)?.DebtStartDate;
+
+    // --- R2 installment split: payment-driven balances + logging a payment ---
+
+    /// <summary>Whether this debt's balance moves only when an installment is logged here (rather than being walked
+    /// forward over its schedule). Drives the "Log installment" action and the row's "you're tracking payments" note.</summary>
+    public bool SavingBucketDebtPaymentDriven(Guid id) => FindSavingBucket(id)?.DebtPaymentDriven ?? false;
+
+    /// <summary>How a payment of <paramref name="total"/> against this debt splits today: what the extra lines take,
+    /// then interest on what's owed, then principal. Pure preview — computed exactly as
+    /// <c>Period.LogInstallment</c> will compute it, so the modal can't promise a split the post won't produce.</summary>
+    public (decimal Interest, decimal Principal, decimal Extras) InstallmentSplit(Guid bucketId, decimal total, decimal extrasTotal, DateOnly? on = null)
+    {
+        var bucket = FindSavingBucket(bucketId);
+        if (bucket is null || !bucket.IsDebt) return (0m, 0m, extrasTotal);
+        var date = on ?? Today();
+        var servicing = Math.Max(0m, total - extrasTotal);
+        var interest = Math.Min(servicing,
+            FinApp.Forecasting.LoanForecast.MonthlyInterest(bucket.DebtBalanceOn(date), bucket.DebtAnnualRatePercent));
+        return (interest, servicing - interest, extrasTotal);
+    }
+
+    /// <summary>Log a loan installment: posts the principal, interest and any additional rows as one linked group, and
+    /// (payment-driven buckets only) takes the principal off the balance. Refetches — the post mints several ids and,
+    /// on a payment-driven bucket, moves the debt figure every other panel reads.</summary>
+    public Task LogInstallment(Guid bucketId, decimal total, Guid fundId, DateOnly date,
+        Guid principalCategoryId, Guid interestCategoryId, IReadOnlyList<InstallmentExtra>? additional = null,
+        Guid? principalTagId = null, Guid? interestTagId = null, string? note = null)
+    {
+        var bucket = FindSavingBucket(bucketId) ?? throw new InvalidOperationException("Savings bucket not found.");
+        return ExecuteOptimisticAsync(
+            () => Period.LogInstallment(bucket, Money(total), date, CurrentMemberId, fundId,
+                principalCategoryId, interestCategoryId, additional, principalTagId, interestTagId, note,
+                FundIsSynced(fundId)),
+            id => api.LogInstallmentAsync(id, new LogInstallmentRequest(bucketId, total, fundId, date,
+                principalCategoryId, interestCategoryId,
+                additional?.Select(x => new InstallmentExtraDto(x.Amount.Amount, x.CategoryId, x.TagId, x.Note)).ToList(),
+                principalTagId, interestTagId, note)),
+            refetchAfter: true);
+    }
+
+    /// <summary>Remove a whole logged installment (every row of it), restoring the balance on a payment-driven bucket.</summary>
+    public Task RemoveInstallment(Guid groupId)
+    {
+        var bucketId = Period.InstallmentGroup(groupId).FirstOrDefault()?.DebtBucketId;
+        var bucket = bucketId is { } bid ? FindSavingBucket(bid) : null;
+        return ExecuteOptimisticAsync(() => Period.RemoveInstallmentGroup(groupId, bucket),
+            id => api.RemoveInstallmentAsync(id, groupId), refetchAfter: true);
+    }
+
+    /// <summary>The budget category this loan's installment rows were last filed under, across every period — so a
+    /// repeat payment defaults to what the user already chose. Null when the loan has never been logged here.</summary>
+    public Guid? LastInstallmentCategory(Guid bucketId) =>
+        Account.Periods.SelectMany(p => p.Expenses)
+            .Where(e => e.DebtBucketId == bucketId && e.Part != FinApp.Domain.Budgeting.InstallmentPart.Additional)
+            .OrderByDescending(e => e.Date)
+            .Select(e => (Guid?)e.CategoryId)
+            .FirstOrDefault();
+
+    /// <summary>This period's logged installments, newest first: the group id, the debt it serviced, the date, and the
+    /// rows that make it up (so the ledger can show one payment rather than three unexplained expenses).</summary>
+    public IReadOnlyList<(Guid GroupId, Guid? BucketId, DateOnly Date, IReadOnlyList<Expense> Rows)> InstallmentGroups() =>
+        Period.Expenses.Where(e => e.InstallmentGroupId is not null)
+            .GroupBy(e => e.InstallmentGroupId!.Value)
+            .Select(g => (GroupId: g.Key, BucketId: g.First().DebtBucketId, Date: g.First().Date, Rows: (IReadOnlyList<Expense>)g.ToList()))
+            .OrderByDescending(g => g.Date)
+            .ToList();
 
     // --- Progress over time (#7): the original owed vs what's left, and how much has been cleared ---
     /// <summary>Debt buckets: the balance owed when the debt was first set up (the "€Y" in "paid off €X of €Y").</summary>
@@ -2204,6 +2306,17 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
             id => api.CreateTagAsync(id, new CreateTagRequest(name, icon)), refetchAfter: true);
         return result.EntityId ?? Guid.Empty;
     }
+    /// <summary>The id of the tag called <paramref name="name"/>, creating it if there isn't one (case-insensitive, and
+    /// an archived match is restored rather than duplicated). Lets a flow that needs a specific tag — the installment
+    /// split's "Loan principal"/"Loan interest" — get one without making the user set it up first.</summary>
+    public async Task<Guid> EnsureTag(string name)
+    {
+        var existing = Account.Tags.FirstOrDefault(t => string.Equals(t.Name, name, StringComparison.CurrentCultureIgnoreCase));
+        if (existing is null) return await AddTag(name);
+        if (existing.IsArchived) await RestoreTag(existing.Id);
+        return existing.Id;
+    }
+
     public Task SaveTag(Guid tagId, string name, string? icon) =>
         ExecuteOptimisticAsync(() => { Account.RenameTag(tagId, name); Account.SetTagIcon(tagId, icon); },
             id => api.EditTagAsync(id, tagId, new EditTagRequest(name, icon)), refetchAfter: true);

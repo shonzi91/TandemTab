@@ -57,7 +57,16 @@ public static class SpendingMap
         e.IsFromSavings,
         e.OnBehalfOfOtherAccount,
         e.IsSettlementSource,
-        e.IsSettlementDestination);
+        e.IsSettlementDestination,
+        e.InstallmentGroupId,
+        e.Part switch
+        {
+            InstallmentPart.Principal => "principal",
+            InstallmentPart.Interest => "interest",
+            InstallmentPart.Additional => "additional",
+            _ => null,
+        },
+        e.DebtBucketId);
 
     /// <summary>The full Spending surface for <paramref name="viewPeriod"/> (the current period when null; empty
     /// currency-only view when the account has no period).</summary>

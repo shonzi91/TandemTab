@@ -40,7 +40,10 @@ public record SavingBucketDto(
     decimal? DebtPaidInterest = null,
     decimal? DebtRemainingInterest = null,
     int? DebtInstallmentDay = null,
-    bool DebtPaidInterestEstimated = false);
+    bool DebtPaidInterestEstimated = false,
+    // R2: true when this debt's balance moves only as installments are logged here (rather than being walked
+    // forward over its schedule) — the row offers "Log installment" and stops advancing on its own.
+    bool DebtPaymentDriven = false);
 
 /// <summary>The raw knobs an interactive projection modal drags — supplied so the thin client can re-run the pure
 /// forecast math (<c>FinApp.Forecasting</c>: <c>InvestmentForecast</c>/<c>LoanForecast</c>) locally with zero

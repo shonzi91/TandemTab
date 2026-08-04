@@ -31,7 +31,9 @@ public static class RecurringView
             open && r.IsDue(period.From, period.To, today),
             open && r.IsUpcoming(period.From, period.To, today, 5),
             open ? r.DaysUntilDue(period.From, period.To, today) : 0,
-            r.HasKnownAmount)).ToList();
+            r.HasKnownAmount,
+            r.LinkedDebtBucketId,
+            r.LinkedDebtBucketId is { } lb ? account.FindSavingCategory(lb)?.Name : null)).ToList();
 
         // Known bills still expected (unhandled) this period — the same rule as BudgetingState.BillsDueThisPeriod.
         var billsDue = open

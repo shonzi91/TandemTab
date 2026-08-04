@@ -392,6 +392,9 @@ public sealed class Period : Entity
                 settledToAccountId: old.SettledToAccountId,
                 settledFromAccountId: old.SettledFromAccountId,
                 settledAmount: old.SettledAmount));
+        // An installment row keeps its group on edit — an edit mints a new id, and dropping the link would strand
+        // the row's siblings and leave a half-installment that can't be removed as one.
+        edited.SetInstallmentLink(old.InstallmentGroupId, old.Part, old.DebtBucketId);
         edited.SetTags(old.TagIds);   // tags survive an edit (edit mints a new id, so re-apply them)
         return edited;
     }
@@ -403,7 +406,8 @@ public sealed class Period : Entity
     /// nothing (a skip) but still marks the item handled. Single source of truth for confirm + auto-post, on both
     /// the web client and the server-side confirm endpoint, so the posting can't drift.
     /// </summary>
-    public void PostRecurring(RecurringItem item, decimal amount, Guid memberId, bool fundSynced)
+    public void PostRecurring(RecurringItem item, decimal amount, Guid memberId, bool fundSynced,
+        SavingCategory? linkedDebt = null, Guid? principalTagId = null, Guid? interestTagId = null)
     {
         ArgumentNullException.ThrowIfNull(item);
         if (amount > 0m)
@@ -411,6 +415,18 @@ public sealed class Period : Entity
             var date = item.DueDateWithin(From, To);
             if (item.Kind == RecurringKind.Expense)
             {
+                // A bill linked to a debt posts as a split installment instead of one lump expense — same money out,
+                // but the interest is finally visible. Falls back to a plain expense if the bucket has gone (deleted
+                // or no longer a debt): losing the split is better than losing the payment.
+                if (item.IsLoanInstallment && linkedDebt is { IsDebt: true })
+                {
+                    LogInstallment(linkedDebt, new Money(amount, Currency), date, memberId, item.FundId,
+                        item.CategoryId, item.CategoryId, additional: null,
+                        principalTagId: principalTagId, interestTagId: interestTagId,
+                        note: item.Name, fundSynced: fundSynced);
+                    item.MarkHandled(From);
+                    return;
+                }
                 var expense = new Expense(item.CategoryId, new Money(amount, Currency), date, memberId, item.FundId, item.Name);
                 expense.SetFundSynced(fundSynced);
                 AddExpense(expense);
@@ -422,6 +438,128 @@ public sealed class Period : Entity
             }
         }
         item.MarkHandled(From);
+    }
+
+    /// <summary>
+    /// Log a loan installment as its constituent parts: an interest row, a principal row, and one row per
+    /// <paramref name="additional"/> line (insurance, tax…), all sharing a fresh <c>InstallmentGroupId</c> and
+    /// pointing at <paramref name="bucket"/>. Returns the rows created, newest-first order not guaranteed.
+    /// <para>
+    /// <b>What splits what.</b> The typed <paramref name="total"/> and the typed additional lines are ground truth —
+    /// they're what actually left the account, so the ledger reconciles to them exactly. Only what's left after the
+    /// additional lines (the loan servicing) is split by the schedule: interest is this month's interest on what's
+    /// owed, principal is the rest. The contractual installment is deliberately <i>not</i> used to derive the extras;
+    /// a month where the user paid something different must still book what they really paid.
+    /// </para>
+    /// <para>
+    /// <b>No double-count.</b> These are ordinary expenses in a cash-flow app: the money genuinely left, once. The
+    /// split is pure categorization — it does not draw down savings (unlike <see cref="ConvertSavingToExpense"/>) and
+    /// the interest row is not "extra" spending, it's the part of the payment that bought nothing.
+    /// </para>
+    /// <para>
+    /// The debt balance moves only for a <see cref="SavingCategory.DebtPaymentDriven"/> bucket, and only by the
+    /// <b>principal</b>. A schedule-driven bucket is walked forward by <see cref="SavingCategory.DebtBalanceOn"/>
+    /// already — advancing it here too would count the month twice.
+    /// </para>
+    /// </summary>
+    public IReadOnlyList<Expense> LogInstallment(
+        SavingCategory bucket,
+        Money total,
+        DateOnly date,
+        Guid memberId,
+        Guid fundId,
+        Guid principalCategoryId,
+        Guid interestCategoryId,
+        IEnumerable<InstallmentExtra>? additional = null,
+        Guid? principalTagId = null,
+        Guid? interestTagId = null,
+        string? note = null,
+        bool fundSynced = false)
+    {
+        ArgumentNullException.ThrowIfNull(bucket);
+        EnsureCurrency(total);
+        EnsureOpen();
+        if (!bucket.IsDebt)
+            throw new InvalidOperationException("Only a debt bucket can take a loan installment.");
+        if (total.IsNegative || total.IsZero)
+            throw new ArgumentException("An installment must be a positive amount.", nameof(total));
+
+        var extras = (additional ?? []).Where(x => !x.Amount.IsZero).ToList();
+        foreach (var extra in extras)
+        {
+            EnsureCurrency(extra.Amount);
+            if (extra.Amount.IsNegative)
+                throw new ArgumentException("An installment line cannot be negative.", nameof(additional));
+        }
+
+        var extrasTotal = Sum(extras.Select(x => x.Amount));
+        if (extrasTotal > total)
+            throw new InvalidOperationException(
+                $"The extra lines come to {extrasTotal}, which is more than the {total} payment.");
+
+        // What serviced the loan itself, split by the schedule. Interest can't exceed what was actually paid toward
+        // the loan — an under-payment books all of it as interest and clears no principal, which is the truth.
+        var servicing = total - extrasTotal;
+        var interestDue = new Money(
+            FinApp.Forecasting.LoanForecast.MonthlyInterest(bucket.DebtBalanceOn(date), bucket.DebtAnnualRatePercent),
+            Currency);
+        var interest = interestDue > servicing ? servicing : interestDue;
+        var principal = servicing - interest;
+
+        var groupId = Guid.NewGuid();
+        var rows = new List<Expense>();
+
+        // Zero-amount rows are skipped, not posted: a 0% loan has no interest row to show, and a €0 ledger entry is
+        // clutter the user would have to scroll past every month.
+        if (!principal.IsZero)
+            rows.Add(PostInstallmentRow(principalCategoryId, principal, date, memberId, fundId, note,
+                groupId, InstallmentPart.Principal, bucket.Id, principalTagId, fundSynced));
+        if (!interest.IsZero)
+            rows.Add(PostInstallmentRow(interestCategoryId, interest, date, memberId, fundId, note,
+                groupId, InstallmentPart.Interest, bucket.Id, interestTagId, fundSynced));
+        foreach (var extra in extras)
+            rows.Add(PostInstallmentRow(extra.CategoryId, extra.Amount, date, memberId, fundId, extra.Note ?? note,
+                groupId, InstallmentPart.Additional, bucket.Id, extra.TagId, fundSynced));
+
+        if (bucket.DebtPaymentDriven)
+            bucket.RecordDebtPayment(principal.Amount, date);
+
+        return rows;
+    }
+
+    private Expense PostInstallmentRow(Guid categoryId, Money amount, DateOnly date, Guid memberId, Guid fundId,
+        string? note, Guid groupId, InstallmentPart part, Guid bucketId, Guid? tagId, bool fundSynced)
+    {
+        var expense = new Expense(categoryId, amount, date, memberId, fundId, note);
+        expense.SetInstallmentLink(groupId, part, bucketId);
+        expense.SetFundSynced(fundSynced);
+        expense.SetTag(tagId);
+        _expenses.Add(expense);
+        return expense;
+    }
+
+    /// <summary>The rows of one logged installment, in posting order.</summary>
+    public IEnumerable<Expense> InstallmentGroup(Guid groupId) =>
+        _expenses.Where(e => e.InstallmentGroupId == groupId);
+
+    /// <summary>
+    /// Remove a whole logged installment — every row of it, so the ledger can never be left holding an orphaned
+    /// interest line. Restores the debt balance by the principal removed, but <b>only while the bucket is still
+    /// payment-driven</b>: if it has since been switched back, the schedule owns the balance and re-anchored it on
+    /// the switch, so adding principal back would corrupt a figure that's already correct.
+    /// </summary>
+    public void RemoveInstallmentGroup(Guid groupId, SavingCategory? bucket = null)
+    {
+        EnsureOpen();
+        var rows = _expenses.Where(e => e.InstallmentGroupId == groupId).ToList();
+        if (rows.Count == 0)
+            throw new InvalidOperationException("Installment not found in this period.");
+
+        var principal = Sum(rows.Where(e => e.Part == InstallmentPart.Principal).Select(e => e.Amount));
+        foreach (var row in rows) RemoveExpense(row.Id);
+
+        if (bucket is { DebtPaymentDriven: true } && !principal.IsZero)
+            bucket.ReverseDebtPayment(principal.Amount, rows[0].Date);
     }
 
     /// <summary>
@@ -446,6 +584,7 @@ public sealed class Period : Entity
             settlementId: settled ? settlementId : null,
             settledToAccountId: settled ? toAccountId : null,
             settledAmount: settled ? settledAmount.Amount : 0m);
+        updated.SetInstallmentLink(old.InstallmentGroupId, old.Part, old.DebtBucketId);
         _expenses.Add(updated);
         return updated;
     }

@@ -2078,6 +2078,24 @@ html.dark .draft-total-amt { color: #57d9a3; }
 .add-another svg { width: 15px; height: 15px; }
 html.dark .add-another { background: #16241d; border-color: #2b4438; color: #57d9a3; }
 
+/* Log-installment modal (R2). One "anything else in this payment" line: amount, category, tag, remove. */
+.inst-extra-row { display: flex; align-items: center; gap: 6px; margin-top: 6px; }
+.inst-extra-row input[type="number"] { flex: 0 0 84px; min-width: 0; }
+.inst-extra-row select { flex: 1 1 0; min-width: 0; }
+.inst-extra-row .row-ico { flex: 0 0 auto; }
+/* The split read-out — the answer the modal exists to give, so it reads as a panel rather than more form. */
+.inst-split { margin-top: 12px; padding: 10px 12px; border: 1px solid #e6ece9; border-radius: 10px; background: #f8fbfa; }
+.inst-split-row { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 3px 0;
+    font-size: .88rem; color: #55635d; }
+.inst-split-row strong { color: #16211d; font-variant-numeric: tabular-nums; }
+html.dark .inst-split { border-color: #2b3a34; background: #16201c; }
+html.dark .inst-split-row { color: #9fb3aa; }
+html.dark .inst-split-row strong { color: #e8f2ee; }
+/* Ledger badge marking a row as part of one logged installment. */
+.inst-tag { display: inline-flex; align-items: center; gap: 3px; padding: 1px 6px; border-radius: 999px;
+    background: #eef4f1; color: #55635d; font-size: .74rem; font-weight: 600; }
+html.dark .inst-tag { background: #23302b; color: #9fb3aa; }
+
 /* Forecasts tab */
 .networth-value { font-size: 1.8rem; font-weight: 800; color: #13a06e; margin-top: 6px; }
 .networth-value.warn-text { color: #c0392b; }
