@@ -6,7 +6,7 @@ after Debt R2 shipped and BUG-1 was fixed.*
 | | |
 |---|---|
 | **Application** | TandemTab (https://tandemtab.com) |
-| **Live revision** | `finapp-00267-jvn` (2026-08-04) |
+| **Live revision** | `finapp-00270-z5t` (2026-08-05) — B1–B4 all shipped |
 | **Scope of this doc** | Open **public** beta — an unrestricted sign-up link, not a handful of invited friends |
 | **Effort key** | S = hours · M = a day · L = multi-day |
 
@@ -18,6 +18,11 @@ are all enhancements to a product that already does its job. What's missing is t
 when it *doesn't* do its job for someone who isn't you.
 
 **Sequence:** B1 → B2 → B3 → B4 → the verification hour → open the door.
+
+> **Status (2026-08-05): B1, B2, B3 and B4 are all ✅ done and live** (`finapp-00270-z5t`). What remains before
+> the door: **the verification hour** (below) and **the intake decision** (staged invites vs a public link —
+> the Capacity section argues for staged). A lawyer's glance at the legal pages stays advisable but is not a
+> hard gate.
 
 Ideas that arrive after this was written go to
 [After the door opens](#after-the-door-opens--parked-by-default) — see [the scope
