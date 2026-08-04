@@ -88,6 +88,7 @@ builder.Services.AddScoped<AuthService>();
 builder.Services.AddScoped<AvatarService>();
 builder.Services.AddScoped<ExternalIdentityService>();
 builder.Services.AddScoped<ConsentService>();
+builder.Services.AddScoped<FeedbackService>();
 builder.Services.AddScoped<ExternalAuthService>();
 builder.Services.AddHttpClient();
 builder.Services.AddScoped<AccountService>();
@@ -217,6 +218,7 @@ using (var scope = app.Services.CreateScope())
     await scope.ServiceProvider.GetRequiredService<ExternalIdentityService>().EnsureSchemaAsync();
     // Consent audit log (login / bank-link / bank-sync grants + withdrawals).
     await scope.ServiceProvider.GetRequiredService<ConsentService>().EnsureSchemaAsync();
+    await scope.ServiceProvider.GetRequiredService<FeedbackService>().EnsureSchemaAsync();
     // Refresh-token store (rotation + reuse detection) — same idempotent-create pattern.
     await scope.ServiceProvider.GetRequiredService<RefreshTokenService>().EnsureSchemaAsync();
     // One-time auth codes for external sign-in (keeps session tokens out of the redirect URL).
@@ -503,6 +505,35 @@ app.MapPost("/client-errors", (ClientErrorReport report, ILoggerFactory logs, Cl
         // The user id correlates repeat failures without naming anyone; it's absent on an anonymous crash.
         user?.Identity?.IsAuthenticated == true ? user.UserId().ToString() : "anon",
         clean.Stack ?? "");
+
+    return Results.NoContent();
+}).AllowAnonymous().RequireRateLimiting("clienterrors");
+
+// --- User feedback (OPEN-BETA B2) ----------------------------------------------------------------------------
+// B1 catches crashes; this catches everything that isn't a crash — confusing, slow, didn't trust it. Testers who
+// can't report don't report, they churn.
+//
+// ANONYMOUS on purpose, and not only for convenience: the landing page is where someone who looked at the
+// product and decided NOT to sign up can tell us why, which is feedback we can get no other way.
+//
+// Stored, not just logged (unlike client errors): we want to come back to it, and a review can only be quoted
+// publicly if that person ticked the box for that review, which needs a persisted consent flag. Also logged, so
+// it shows up beside the errors in Cloud Logging where we're already looking.
+app.MapPost("/feedback", async (FeedbackRequest req, FeedbackService feedback, ILoggerFactory logs,
+        ClaimsPrincipal? user, CancellationToken ct) =>
+{
+    var rating = req.Rating is { } r && r is >= 1 and <= 5 ? r : (int?)null;
+    var comment = string.IsNullOrWhiteSpace(req.Comment) ? null : req.Comment.Trim();
+    if (rating is null && comment is null) return Results.NoContent();   // nothing said; don't store an empty row
+
+    var userId = user?.Identity?.IsAuthenticated == true ? user.UserId() : (Guid?)null;
+    await feedback.RecordAsync(userId, rating, comment, req.PublicConsent,
+        req.Source, req.AppVersion, req.UserAgent, ct);
+
+    //   gcloud logging read 'jsonPayload.logger="FinApp.Feedback"' --limit 50
+    logs.CreateLogger("FinApp.Feedback").LogInformation(
+        "Feedback {Rating}/5 from {Source} (user={UserId}, public={PublicConsent}): {Comment}",
+        rating?.ToString() ?? "-", req.Source, userId?.ToString() ?? "anon", req.PublicConsent, comment ?? "");
 
     return Results.NoContent();
 }).AllowAnonymous().RequireRateLimiting("clienterrors");

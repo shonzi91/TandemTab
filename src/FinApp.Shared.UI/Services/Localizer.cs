@@ -701,6 +701,20 @@ public sealed class Localizer(IJSRuntime js)
         ["All {0} rows of this payment will be removed."] = "Всички {0} реда на това плащане ще бъдат премахнати.",
         ["Part of one loan installment — editing or removing it affects the whole payment."] =
             "Част от една вноска по заем — редактирането или премахването ѝ засяга цялото плащане.",
+        // OPEN-BETA B2 — feedback
+        ["Send feedback"] = "Изпрати обратна връзка",
+        ["Sending…"] = "Изпраща се…",
+        ["Rating"] = "Оценка",
+        ["{0} of 5"] = "{0} от 5",
+        ["What worked, what didn't, what's missing?"] = "Кое работи, кое не и какво липсва?",
+        ["You may show this on the site"] = "Може да покажете това в сайта",
+        ["Thank you — that genuinely helps."] = "Благодарим — това наистина помага.",
+        ["Couldn’t send that — check your connection and try again."] = "Изпращането не успя — проверете връзката и опитайте отново.",
+        ["We’re in beta — tell us what you think"] = "В бета сме — споделете какво мислите",
+        ["Didn’t sign up? That’s useful to know too — what put you off?"] = "Не се регистрирахте? И това е полезно — какво ви отказа?",
+        ["We’re in beta and reading everything. Bugs, confusion, missing things — all welcome."] =
+            "В бета сме и четем всичко. Грешки, неясноти, липсващи неща — всичко е добре дошло.",
+
         ["This is a loan installment for"] = "Това е вноска по заем за",
         ["Not a loan payment"] = "Не е плащане по заем",
         ["Each payment will be split into interest and principal rows against that loan, instead of one lump expense."] =

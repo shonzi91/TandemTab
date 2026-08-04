@@ -1,0 +1,72 @@
+@inject FinAppApiClient Api
+@inject Localizer Loc
+
+@* Feedback intake (OPEN-BETA B2). One component, two homes: the landing page (where someone who decided NOT to
+   sign up can say why — feedback obtainable no other way) and the profile modal. Works signed-out. *@
+
+<div class="fb">
+    @if (_sent)
+    {
+        <p class="fb-thanks"><Icon Name="check" /> @Loc["Thank you — that genuinely helps."]</p>
+    }
+    else
+    {
+        <div class="fb-stars" role="radiogroup" aria-label="@Loc["Rating"]">
+            @for (var i = 1; i <= 5; i++)
+            {
+                var star = i;
+                <button type="button" class="fb-star @(_rating >= star ? "on" : "")"
+                        role="radio" aria-checked="@(_rating == star ? "true" : "false")"
+                        aria-label="@string.Format(Loc["{0} of 5"], star)"
+                        @onclick="() => _rating = star">
+                    <span aria-hidden="true">@(_rating >= star ? "★" : "☆")</span>
+                </button>
+            }
+        </div>
+        <textarea class="fb-text" rows="3" placeholder="@Loc["What worked, what didn't, what's missing?"]"
+                  maxlength="4000" @bind="_comment" @bind:event="oninput"></textarea>
+
+        @* Opt-in, unticked, per submission — a review is never quotable unless it was ticked for that review. *@
+        <label class="check fb-consent">
+            <input type="checkbox" @bind="_publicConsent" />
+            @Loc["You may show this on the site"]
+        </label>
+
+        @if (_error is not null)
+        {
+            <div class="fb-error">@_error</div>
+        }
+        <button class="fb-send" @onclick="Send" disabled="@(_busy || (_rating is null && string.IsNullOrWhiteSpace(_comment)))">
+            @(_busy ? Loc["Sending…"] : Loc["Send feedback"])
+        </button>
+    }
+</div>
+
+@code {
+    /// <summary>"landing" or "app" — recorded so we can tell a prospect's reaction from a user's.</summary>
+    [Parameter] public string Source { get; set; } = "app";
+
+    private int? _rating;
+    private string? _comment;
+    private bool _publicConsent, _busy, _sent;
+    private string? _error;
+
+    private async Task Send()
+    {
+        if (_busy) return;
+        _busy = true; _error = null;
+        try
+        {
+            await Api.SendFeedbackAsync(new FeedbackRequest(_rating, _comment, _publicConsent, Source,
+                ClientErrorReporter.AppVersion));
+            _sent = true;
+        }
+        catch
+        {
+            // Losing feedback to a network blip is a bad way to treat someone who took the time — so say so and
+            // leave what they typed exactly where it is, rather than clearing the form.
+            _error = Loc["Couldn’t send that — check your connection and try again."];
+        }
+        finally { _busy = false; }
+    }
+}

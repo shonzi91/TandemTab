@@ -74,17 +74,41 @@ beta better; this one is the difference between a beta that produces information
 (never the financial data — see the privacy stance in [BACKLOG.md](BACKLOG.md) #17).
 </details>
 
-**Sequence note:** B1 is done, so **B2 is next.**
+**Sequence note:** B1 and B2 are done. **B3 (legal read) is next** — and it should be done together with B2's
+open sub-item, since both need the same decision: a real support/GDPR contact address.
 
-### B2 — A way to tell you something · **S** · ⬜
-A feedback route from **both** the landing page (before sign-up) and the profile modal (after) — a star rating
-plus a free-text comment, posted to an endpoint. Store rating + text + account id + a `PublicConsent` flag (see
-[P1](#p1--landing-page-feedback--public-reviews--collection-see-b2--display-m)). Plus a support address visible
-somewhere that isn't the footer of a legal page.
+### B2 — A way to tell you something · **S** · ✅ **DONE (Session 82, 2026-08-04)** — one sub-item open
+**Why:** testers who can't report don't report, they churn. This is the only channel through which the
+*subjective* problems (confusing, slow, didn't trust it) will ever reach you. B1 catches crashes; B2 catches
+everything that isn't a crash.
 
-**Why:** testers who can't report don't report, they churn. This is the cheapest item on the list and it is the
-only channel through which the *subjective* problems (confusing, slow, didn't trust it) will ever reach you.
-B1 catches crashes; B2 catches everything that isn't a crash.
+**What's there:**
+- One `<FeedbackForm>` component (stars + comment + per-submission publish consent) in **two homes**: the
+  **landing page**, collapsed so it never competes with the CTA, and the **profile modal**.
+- `POST /feedback` — **anonymous allowed**, and not merely for convenience: the landing page is where someone
+  who looked and decided *not to sign up* can say why, which is feedback obtainable no other way. Shares the
+  client-error rate-limit bucket.
+- **Stored** in a `Feedback` table (migration-free `CREATE TABLE IF NOT EXISTS`, same pattern as
+  `ConsentService`) **and** logged to `FinApp.Feedback`, so it shows up beside the errors where you're already
+  looking. Stored rather than only logged because a log has retention limits and no consent flag — and
+  [P1](#p1--landing-page-feedback--public-reviews--collection-see-b2--display-m) will need both.
+- **`PublicConsent` defaults to false at every layer.** A review is never quotable unless that box was ticked
+  for that review.
+- **Comments are deliberately never scrubbed** (unlike error messages): this is text someone wrote on purpose
+  for us to read. Redacting *"I can't see my €500 budget"* would destroy the report.
+- A send failure surfaces an error and **keeps what they typed** — losing something someone took the time to
+  write is a bad way to treat them.
+
+**Read them with:**
+```
+gcloud logging read 'jsonPayload.logger="FinApp.Feedback"' --limit 50 --freshness=7d
+```
+
+⬜ **Still open — a support address.** There is no support mailbox configured anywhere in the app, and inventing
+`support@tandemtab.com` before it exists would be worse than nothing: a tester writes to it and it bounces.
+**Decide the address, create the mailbox, then surface it** (profile modal + the legal pages, which
+[B3](#b3--a-real-read-of-the-legal-pages--s--ideally-a-lawyers-glance) needs anyway for the GDPR contact — do
+both at once).
 
 ### B3 — A real read of the legal pages · **S** (+ ideally a lawyer's glance) · ⬜
 `privacy.html` / `terms.html` (and the `.bg` variants) exist and the privacy posture is a genuine strength —

@@ -253,6 +253,14 @@
                 }
                 @if (!InProfileSubflow)
                 {
+                    @* Feedback (OPEN-BETA B2). Testers who can't report don't report — they churn. Collapsed so it
+                       sits quietly until wanted; the error reporter covers crashes, this covers everything else. *@
+                    <details class="pm-section">
+                        <summary>@Loc["Send feedback"]</summary>
+                        <p class="pm-hint">@Loc["We’re in beta and reading everything. Bugs, confusion, missing things — all welcome."]</p>
+                        <FeedbackForm Source="app" />
+                    </details>
+
                     @* Privacy as a visible feature, not just a landing-page line: state plainly what we do and don't
                        do, and back the "you can always leave with your data" claim with a real one-tap export. *@
                     <details class="pm-section">

@@ -150,6 +150,12 @@ public sealed class FinAppApiClient(HttpClient http)
     public Task ReportClientErrorAsync(ClientErrorReport report, CancellationToken ct = default) =>
         SendAsync(HttpMethod.Post, "/client-errors", report, ct);
 
+    /// <summary>Send user feedback (OPEN-BETA B2). Works signed-out — the landing page is where someone who chose
+    /// not to sign up can tell us why. Unlike the error reporter, failures surface: losing what someone took the
+    /// time to write is worth an error message.</summary>
+    public Task SendFeedbackAsync(FeedbackRequest request, CancellationToken ct = default) =>
+        SendAsync(HttpMethod.Post, "/feedback", request, ct);
+
     // Loan installments — one payment posting several linked rows (principal / interest / additional lines).
     public Task<MutationResultDto> LogInstallmentAsync(Guid id, LogInstallmentRequest req, CancellationToken ct = default) =>
         SendAsync<MutationResultDto>(HttpMethod.Post, $"/accounts/{id}/installments", req, ct);

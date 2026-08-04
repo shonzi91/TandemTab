@@ -146,3 +146,20 @@ html.dark .lp-auth-backdrop { background: rgba(0,0,0,.6); }
 html.dark .lp-logo-sm, html.dark .lp-logo { background: linear-gradient(135deg, #14251d, #163024); border-color: #24493a; }
 html.dark .lp-theme-toggle { background: #181c25; border-color: #262d3d; }
 html.dark .lp-theme-toggle:hover { border-color: #2f7d5c; background: #14251d; }
+
+/* ---- Beta feedback (OPEN-BETA B2) ---- */
+/* Collapsed by default so it never competes with the CTA above it; expands in place when someone opts in. */
+.lp-feedback { margin: 26px auto 8px; max-width: 560px; text-align: center; }
+.lp-feedback-open { display: inline-flex; align-items: center; gap: 7px; padding: 9px 16px; border-radius: 999px;
+    border: 1px dashed #cdd7e2; background: none; color: #5c6b7a; font-size: .88rem; font-weight: 600; cursor: pointer; }
+.lp-feedback-open:hover { border-color: #13a06e; color: #0f7a54; }
+.lp-feedback-open svg { width: 15px; height: 15px; }
+.lp-feedback-card { text-align: left; padding: 18px 20px; border: 1px solid #e6ece9; border-radius: 14px; background: #fff; }
+.lp-feedback-card h4 { margin: 0 0 4px; font-size: 1rem; color: #16211d; }
+.lp-feedback-sub { margin: 0 0 12px; font-size: .86rem; color: #5c6b7a; }
+
+html.dark .lp-feedback-open { border-color: #2b3a34; color: #9fb3aa; }
+html.dark .lp-feedback-open:hover { border-color: #2f7d5c; color: #57d9a3; }
+html.dark .lp-feedback-card { background: #181c25; border-color: #262d3d; }
+html.dark .lp-feedback-card h4 { color: #eef1f6; }
+html.dark .lp-feedback-sub { color: #a9b2c0; }

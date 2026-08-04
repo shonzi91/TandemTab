@@ -91,6 +91,25 @@
         <button class="lp-cta lp-cta-glow" @onclick="OpenAuth">@Loc["Try it free"]</button>
     </section>
 
+    @* Feedback from the landing page reaches people who looked and decided NOT to sign up — the one group we
+       can hear from no other way. Collapsed by default so it doesn't compete with the CTA above it. *@
+    <section class="lp-feedback">
+        @if (!_feedbackOpen)
+        {
+            <button class="lp-feedback-open" @onclick="() => _feedbackOpen = true">
+                <Icon Name="note" /> @Loc["We’re in beta — tell us what you think"]
+            </button>
+        }
+        else
+        {
+            <div class="lp-feedback-card">
+                <h4>@Loc["We’re in beta — tell us what you think"]</h4>
+                <p class="lp-feedback-sub">@Loc["Didn’t sign up? That’s useful to know too — what put you off?"]</p>
+                <FeedbackForm Source="landing" />
+            </div>
+        }
+    </section>
+
 </div>
 
 @if (_showAuth)
@@ -105,6 +124,7 @@
 
 @code {
     private bool _showAuth;
+    private bool _feedbackOpen;
     private string? _resetToken;   // from a ?resetToken=… reset link → open the auth overlay on the reset form
     // Dark is the app-wide default (see index.html), so start assuming dark and correct from storage on first render.
     private bool _dark = true;

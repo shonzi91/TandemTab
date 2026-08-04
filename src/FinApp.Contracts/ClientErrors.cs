@@ -22,6 +22,24 @@ public record ClientErrorReport(
     string? UserAgent = null);
 
 /// <summary>
+/// One piece of user feedback (OPEN-BETA B2) — a star rating, a comment, or both.
+/// </summary>
+/// <param name="Rating">1–5 stars, or null for a comment with no rating.</param>
+/// <param name="Comment">Free text. <b>Deliberately never scrubbed</b> — unlike an exception message (which can
+/// leak values the user never chose to send), this is text they wrote on purpose for us to read. Redacting
+/// "I can't see my €500 budget" would destroy the report.</param>
+/// <param name="PublicConsent">Whether they agreed this specific review may be shown publicly. Default false —
+/// a review is never quotable unless the box was ticked for that review (OPEN-BETA P1).</param>
+/// <param name="Source">Where it came from: "landing" (not signed up) or "app".</param>
+public record FeedbackRequest(
+    int? Rating = null,
+    string? Comment = null,
+    bool PublicConsent = false,
+    string Source = "app",
+    string? AppVersion = null,
+    string? UserAgent = null);
+
+/// <summary>
 /// Strips anything that could be a user's real data out of an error message before it is logged.
 /// <para>
 /// <b>Why this exists at all.</b> The obvious assumption — "an exception message is developer text, it's safe" —
