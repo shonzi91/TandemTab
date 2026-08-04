@@ -6,6 +6,7 @@
 @inject Localizer Loc
 @inject IJSRuntime JS
 @inject NavigationManager Nav
+@inject ClientErrorReporter Errors
 
 @if (_busy)
 {
@@ -5294,6 +5295,10 @@ else
     // (see StampAchievementsAsync), so it converges and doesn't loop.
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        // Tell the error reporter where the user is, so a crash report says which tab and modal were open
+        // instead of just "the dashboard". Set on every render because it's the cheap way to always be current.
+        Errors.Where = _modal == Modal.None ? _tab.ToString() : $"{_tab}/{_modal}";
+
         // Fire-and-forget: only bank-connected accounts reach the provider (and only once every BankSyncFreshFor),
         // so this is a no-op for everyone else. Mutually exclusive with HandleBankReturnAsync — SyncOnOpenAsync
         // bails out when the URL carries a bank= return, which is the only case that flow runs.

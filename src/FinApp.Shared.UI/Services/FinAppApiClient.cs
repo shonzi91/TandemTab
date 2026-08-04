@@ -145,6 +145,11 @@ public sealed class FinAppApiClient(HttpClient http)
     public Task<MutationResultDto> RemoveExpenseAsync(Guid id, Guid expenseId, CancellationToken ct = default) =>
         SendAsync<MutationResultDto>(HttpMethod.Delete, $"/accounts/{id}/expenses/{expenseId}", null, ct);
 
+    /// <summary>Report a client-side failure (OPEN-BETA B1). Anonymous-friendly — a crash can happen before
+    /// sign-in — and the caller swallows failures, so this must not be relied on for anything but diagnostics.</summary>
+    public Task ReportClientErrorAsync(ClientErrorReport report, CancellationToken ct = default) =>
+        SendAsync(HttpMethod.Post, "/client-errors", report, ct);
+
     // Loan installments — one payment posting several linked rows (principal / interest / additional lines).
     public Task<MutationResultDto> LogInstallmentAsync(Guid id, LogInstallmentRequest req, CancellationToken ct = default) =>
         SendAsync<MutationResultDto>(HttpMethod.Post, $"/accounts/{id}/installments", req, ct);

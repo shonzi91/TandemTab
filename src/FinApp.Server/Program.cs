@@ -182,6 +182,14 @@ builder.Services.AddRateLimiter(options =>
             context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
             _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions { PermitLimit = 15, Window = TimeSpan.FromMinutes(1) })
         : System.Threading.RateLimiting.RateLimitPartition.GetNoLimiter("dev"));
+    // Client error reports are anonymous by necessity (a crash can happen before sign-in), so they need their own
+    // cap: generous enough that a genuinely broken page still gets through, tight enough that the endpoint can't
+    // be used to flood our logs. Own bucket so a crash storm can't lock anyone out of signing in.
+    options.AddPolicy("clienterrors", context => throttleAuth
+        ? System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
+            context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions { PermitLimit = 30, Window = TimeSpan.FromMinutes(1) })
+        : System.Threading.RateLimiting.RateLimitPartition.GetNoLimiter("dev"));
 });
 
 var app = builder.Build();
@@ -470,6 +478,34 @@ app.MapPost("/consent", async (RecordConsentRequest req, ClaimsPrincipal user, C
     await consent.RecordAsync(user.UserId(), req.AccountId, req.Scope, req.Granted, ct);
     return Results.NoContent();
 }).RequireAuthorization();
+
+// --- Client error reports (OPEN-BETA B1) ---------------------------------------------------------------------
+// The client has no other way to tell us it broke: a WASM exception goes to that user's console and nowhere else.
+// BUG-1 (sign-out crashing the app) sat unnoticed for five days for exactly this reason.
+//
+// Deliberately ANONYMOUS: a crash can happen on the landing page, during registration, or *because* auth is
+// broken — the reports we most need are the ones a signed-in-only endpoint would drop. The cost of that is an
+// open write path, so it's rate-limited on its own bucket and every field is re-scrubbed here regardless of what
+// the client claims to have done.
+//
+// Logged, not stored: it goes to ILogger as structured fields and lands in Cloud Logging, which we already query
+// when verifying deploys. No table, no migration, no third-party processor to declare in the privacy policy.
+app.MapPost("/client-errors", (ClientErrorReport report, ILoggerFactory logs, ClaimsPrincipal? user) =>
+{
+    var clean = ErrorScrubber.Clean(report);
+    if (clean.Message.Length == 0) return Results.NoContent();   // nothing to say; don't log an empty row
+
+    // Named so it can be isolated in Cloud Logging:
+    //   gcloud logging read 'jsonPayload.logger="FinApp.ClientError"' --limit 50
+    logs.CreateLogger("FinApp.ClientError").LogError(
+        "Client error [{Kind}] at {Where}: {ClientMessage} | app={AppVersion} ua={UserAgent} user={UserId}\n{ClientStack}",
+        clean.Kind, clean.Where ?? "?", clean.Message, clean.AppVersion ?? "?", clean.UserAgent ?? "?",
+        // The user id correlates repeat failures without naming anyone; it's absent on an anonymous crash.
+        user?.Identity?.IsAuthenticated == true ? user.UserId().ToString() : "anon",
+        clean.Stack ?? "");
+
+    return Results.NoContent();
+}).AllowAnonymous().RequireRateLimiting("clienterrors");
 
 app.MapGet("/me", async (ClaimsPrincipal user, AvatarService avatars, ExternalIdentityService identities,
         EmailVerificationService emailVerification, TwoFactorService twoFactor, AccountDeletionService deletions, CancellationToken ct) =>

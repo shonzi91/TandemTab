@@ -27,7 +27,38 @@ freeze](#definition-of-done--and-the-scope-freeze) for the one test that promote
 
 ## Blockers
 
-### B1 — Client-side error reporting · **M** · ⬜
+### B1 — Client-side error reporting · **M** · ✅ **DONE (Session 82, 2026-08-04)**
+Built **in-house** rather than wiring Sentry, deliberately: a third-party error collector is a new sub-processor
+to declare in the privacy policy (i.e. it lands straight in [B3](#b3--a-real-read-of-the-legal-pages--s--ideally-a-lawyers-glance)),
+needs a DSN secret in a **public repo**, and means arbitrary exception context leaving the device — for an app
+whose pitch is *"we sell software, not your data"* that's a poor trade for a UI. Cloud Logging already exists and
+the deploy recipe already queries it. Sentry stays an upgrade path if volume ever demands grouping/alerting.
+
+**What's there:**
+- `POST /client-errors` — **anonymous** (a crash can happen pre-login, during registration, or *because* auth
+  broke; a signed-in-only endpoint would drop the reports we most need), on its own rate-limit bucket, logged as
+  structured fields to `FinApp.ClientError`. No table, no migration, no third party.
+- **`ErrorScrubber`** (`FinApp.Contracts`) runs on **both** sides — client-side so raw values never leave the
+  device, server-side so a stale client or forged POST can't write them into the logs. Redacts money amounts,
+  domain-quoted user names, emails and long digit runs; keeps stack frames and the shape of the message.
+  ⚠️ **This is not paranoia:** domain guards quote real values back at the user (*"That fund only holds
+  €1,234.56…"*, *"A tag named “Mortgage” already exists."*), so an unscrubbed error pipeline would quietly
+  become a channel for exactly the data the product promises never to move.
+- **Four capture hooks:** an `ILoggerProvider` forwarding Error/Critical (this is the one that catches unhandled
+  Blazor render exceptions — literally BUG-1's signature), plus JS `window.onerror`, `unhandledrejection`, and a
+  MutationObserver on `#blazor-error-ui` (the JS path matters precisely when .NET is the thing that broke).
+- Never throws, never blocks a render, de-dupes, capped per session.
+
+**Read them with:**
+```
+gcloud logging read 'jsonPayload.logger="FinApp.ClientError"' --limit 50 --freshness=1d
+```
+
+⚠️ **Still open:** nothing *alerts* — you have to go and look. A scheduled query or a log-based alert on
+`FinApp.ClientError` is the natural follow-up and is cheap; without it this is a pull, not a push.
+
+<details><summary>Original rationale (kept for the record)</summary>
+
 Wire the Blazor WASM client to an error reporting service (Sentry or equivalent): unhandled exceptions, the
 global error UI being shown at all, and failed API calls.
 
@@ -41,6 +72,9 @@ beta better; this one is the difference between a beta that produces information
 
 **Minimum useful version:** capture unhandled exceptions + any render of `#blazor-error-ui`, with the account id
 (never the financial data — see the privacy stance in [BACKLOG.md](BACKLOG.md) #17).
+</details>
+
+**Sequence note:** B1 is done, so **B2 is next.**
 
 ### B2 — A way to tell you something · **S** · ⬜
 A feedback route from **both** the landing page (before sign-up) and the profile modal (after) — a star rating

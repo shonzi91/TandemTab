@@ -128,6 +128,60 @@
             setTimeout(() => URL.revokeObjectURL(url), 1000);
         };
     </script>
+    <!--
+        Client error reporting, JS side (OPEN-BETA B1). The .NET reporter covers exceptions inside the app; this
+        covers the cases it structurally cannot: a failure before/while the WASM runtime boots, a plain JS error,
+        an unhandled promise rejection, and the global error bar appearing at all. When Blazor is the thing that
+        broke, .NET-side reporting is exactly what you can't rely on — so this path is deliberately dependency-free
+        and posts straight to the API with fetch.
+        Scrubbing still happens server-side (ErrorScrubber runs on every report regardless of sender), so a raw
+        browser message can't put user data in our logs.
+    -->
+    <script>
+        (function () {
+            var sent = 0, seen = {};
+            function report(kind, message, stack) {
+                try {
+                    if (sent >= 10 || !message) return;          // a loop must not become a flood
+                    var key = kind + '|' + message;
+                    if (seen[key]) return;                        // one bug, one report
+                    seen[key] = true; sent++;
+                    fetch('/client-errors', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            kind: kind,
+                            message: String(message).slice(0, 800),
+                            stack: stack ? String(stack).slice(0, 4000) : null,
+                            where: location.pathname,
+                            appVersion: 'js',
+                            userAgent: navigator.userAgent
+                        }),
+                        keepalive: true                           // still sends if the page is being torn down
+                    }).catch(function () { });
+                } catch (e) { /* a reporter that throws is worse than one that stays quiet */ }
+            }
+
+            window.addEventListener('error', function (e) {
+                report('js', e.message, e.error && e.error.stack);
+            });
+            window.addEventListener('unhandledrejection', function (e) {
+                var r = e.reason;
+                report('js', r && r.message ? r.message : String(r), r && r.stack);
+            });
+
+            // The global error bar becoming visible is itself the signal: it means something went unhandled even
+            // if we never saw the exception. BUG-2 in BETA-FINDINGS was reported purely as "this bar is showing".
+            document.addEventListener('DOMContentLoaded', function () {
+                var bar = document.getElementById('blazor-error-ui');
+                if (!bar || !window.MutationObserver) return;
+                new MutationObserver(function () {
+                    if (bar.style.display && bar.style.display !== 'none')
+                        report('errorui', 'The global error bar was shown', null);
+                }).observe(bar, { attributes: true, attributeFilter: ['style'] });
+            });
+        })();
+    </script>
     <script src="_framework/blazor.webassembly.js"></script>
 
 </body>

@@ -22,5 +22,17 @@ builder.Services.AddScoped<Localizer>();
 builder.Services.AddScoped<AuthState>();
 builder.Services.AddScoped<SyncClient>();
 builder.Services.AddScoped<BudgetingState>();
+builder.Services.AddScoped<ClientErrorReporter>();
 
-await builder.Build().RunAsync();
+// Error reporting (OPEN-BETA B1). An unhandled Blazor render exception surfaces as a Critical log from
+// WebAssemblyRenderer — exactly what BUG-1 produced — so forwarding Error/Critical logs catches that whole class
+// of failure. The provider resolves the reporter lazily because logging is configured before the container is
+// built; anything logged before then simply has nowhere to go yet, which is fine.
+IServiceProvider? services = null;
+builder.Logging.AddProvider(new ClientErrorLoggerProvider(() =>
+    services?.GetService(typeof(ClientErrorReporter)) as ClientErrorReporter));
+
+var host = builder.Build();
+services = host.Services;
+
+await host.RunAsync();
