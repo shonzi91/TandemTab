@@ -91,8 +91,9 @@ row above. **⚠️ This section predates that move and is due a refresh.**)
 4. SignalR sync server + E2E encryption + offline catch-up
 5. Notifications (local reminders + push)
 6. Blazor WebAssembly / PWA client
-7. Phone targets — **native Android (Kotlin) first, then native iOS (Swift); no MAUI**. See
-   [docs/MOBILE.md](docs/MOBILE.md); gated on the server-side-domain decision recorded there.
+7. Phone targets — **native Android (Kotlin); no MAUI. iOS is on hold (2026-08-04)** — the product is
+   web + Android at feature parity, and iOS is revisited only once that pairing runs well and there's real
+   demand. See [docs/MOBILE.md](docs/MOBILE.md).
 8. **Require accepting the Terms + Privacy Policy at registration** (record consent + version/timestamp
    server-side; block sign-up until the box is ticked). Pages live at `/terms.html` + `/privacy.html`
    (EN + `*.bg.html`); a link already sits in the sign-in and app footers.

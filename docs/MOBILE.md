@@ -14,7 +14,55 @@ A working Kotlin/Compose app lives in [../android/](../android/) — built, boot
 the **live prod API** (login → error path). Web-thinning (Path B Phase 2/3) is now decoupled from native and continues
 in parallel. See the Session-55 HANDOFF entry.
 
+**★ Decision (2026-08-04, Session 82): iOS is ON HOLD. The target is web + Android at feature parity.**
+Ship those two as one product; revisit iOS only once that pairing is running well. Rationale and the bill this
+comes with are below.
+
 This doc is the single source of truth for the mobile plan. Update it as decisions firm up.
+
+---
+
+## The two-platform decision (2026-08-04)
+
+**What changed:** iOS moves from "next after Android" to **on hold, indefinitely**. Web and Android are the
+product; iOS is a migration to consider later, on evidence.
+
+**Why it costs nothing today.** iOS was already blocked on Mac / cloud-Mac access (see the tooling gate below),
+so nothing was in flight to stop. What the decision actually buys is the removal of a *planning* tax: every
+design call no longer has to be triple-checked against a SwiftUI implementation that doesn't exist, and
+`IAssistant`-style per-platform abstractions (see [../AI-ASSISTANT-BACKLOG.md](../AI-ASSISTANT-BACKLOG.md))
+stop needing a third arm speculatively designed in.
+
+**⚠️ Why "same features basically" is the expensive half of this decision.** Parity is a *goal that has to be
+maintained*, and right now it does not hold — Android is roughly **13 sessions behind web**:
+
+| Web session | Not on Android |
+|---|---|
+| S70 | Home flatten, mobile quick-add FAB |
+| S74 | Home money hero, money-in savings rate, Home breakdown donut, empty-fund collapse, Goals APR, Spending/Breakdown reworks |
+| S75 | Onboarding collapse, bell Due/Suggestions grouping, one-line last-actions, By-date tag chips, Home reorg, savings-rate scale |
+| S76–S77 | Runway "show the math" modal, rotating over-budget alerts |
+| S78–S79 | Spent-includes-transfers, bank-adjusted deficit gating, seven period-lifecycle fixes |
+| S80 | "Saved toward goals" Breakdown slice |
+| S81 | **Debt R1** (informative debt), F3 "left to spend today", a11y #11 |
+| S82 | **Debt R2** (installment split + hybrid balance, recurring-bill link) |
+
+Plus three standing gaps: **Breakdown** is blocked on the `[BACKEND] GET /breakdown` endpoint; **i18n (en/bg)**
+is deferred and is its own session; and the Android **write paths are wired but never click-fired** against a
+real account.
+
+That is weeks, not days. Two honest consequences:
+
+1. **The parity gap grows every time web ships.** S70 → S82 is exactly what unattended drift looks like. If
+   parity is now a stated goal, it needs a rule — either *freeze web feature work while Android catches up*, or
+   *accept a known lag and say so out loud*. Doing neither is how you get here again.
+2. **This does not change the open-beta plan.** [../OPEN-BETA.md](../OPEN-BETA.md) already says ship the beta
+   **web-only**; a 13-sessions-stale Android app is a worse first impression than no Android app. Android
+   parity is a post-beta track, and beta feedback should inform which parts of it matter most.
+
+**Revisit iOS when:** web + Android are at parity and stable, there's evidence of demand from real users, and
+Mac access exists. Not before — the Kotlin work is the reusable proof that the thin API can back a native
+client, and a second native client is only worth starting once the first one is finished.
 
 ---
 
@@ -49,7 +97,8 @@ Native starts **only** once the ratified gate below is met. The API itself is no
 - ✅ **Android SDK/JDK installed (Session 55).** Android Studio 2026.1.2 + JBR 21 were already present (the "not installed"
   note was stale); SDK (platform/build-tools 35, platform-tools, emulator, android-35 system image) + Gradle 8.10.2 added.
   Build/run recipe in the Session-55 HANDOFF + saved to agent memory.
-- ◻ **iOS blocked on Mac / cloud-Mac access** — Android is not.
+- ⏸️ **iOS ON HOLD (2026-08-04)** — was blocked on Mac / cloud-Mac access anyway; now a deliberate hold, not
+  just a gate. See "The two-platform decision" at the top. Android is not blocked.
 
 ---
 

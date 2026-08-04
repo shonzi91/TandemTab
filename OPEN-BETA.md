@@ -170,7 +170,8 @@ Recorded so they don't get re-litigated at the door.
 | Item | Why it can wait |
 |---|---|
 | **Billing / monetization** | The standing decision ([docs/BILLING.md](docs/BILLING.md)) is *monetize after mobile + push*. A free beta is correct; charging for a beta would be worse than not. ⚠️ [MONETIZATION.md](MONETIZATION.md) (€29.99/yr) and [docs/BILLING.md](docs/BILLING.md) ($39.99/yr) still disagree on price — reconcile before any pricing is ever shown, not before beta. |
-| **Android** | It's a real thin client but has **none** of S70–S82 (Home hero, Home donut, bell grouping, Debt R1/R2, F3, a11y). Ship the beta **web-only**; a stale mobile app is a worse first impression than no mobile app. |
+| **Android** | It's a real thin client but is **~13 sessions behind web** (none of S70, S74–S82: Home hero/donut, bell grouping, period-lifecycle fixes, Debt R1/R2, F3, a11y). Ship the beta **web-only**; a stale mobile app is a worse first impression than no mobile app. Android parity is a post-beta track and beta feedback should steer which parts of it matter — see [docs/MOBILE.md](docs/MOBILE.md). |
+| **iOS** | **On hold (2026-08-04).** The product is web + Android; iOS is revisited only once that pairing is stable and there's real demand. |
 | **The feature backlog** | F1/F2/F4–F7, UX #10, projections D1–D8, the on-device AI assistant. Every one is an enhancement, none is a gap. |
 | **Web-thinning (Path B Phase 2/3)** | Pure refactor, invisible to users. It also lost its forcing function when native Android started ahead of the gate — worth asking whether it's still worth doing at all, separately from beta. |
 | **The `Investment` bucket-kind audit** | [BACKLOG.md](BACKLOG.md) #16 explicitly says decide on real usage data. A beta is how you *get* that data — this is an argument for opening, not for waiting. |
