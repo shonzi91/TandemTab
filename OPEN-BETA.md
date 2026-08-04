@@ -269,9 +269,12 @@ Three things that are built and believed-correct but never seen working with rea
   Needs a period containing a real bucket disbursement. Log one and look at it.
 - ⬜ **Period lifecycle end-to-end** — start next period, close one, remove the latest, switch accounts.
   S79–S81 landed seven separate fixes here and each was verified in isolation, not as a sequence.
-- ⬜ **A fresh-account walk-through as a stranger would do it** — register → accept terms → create account →
-  onboarding checklist → first income → first expense → first budget → first goal. Watch for anything that
-  assumes prior state.
+- ✅ **A fresh-account walk-through as a stranger would do it** (done 2026-08-05, local throwaway): register →
+  accept terms → create account → onboarding → first income (€3,000) → first expense (€50 Food). Clean the
+  whole way — consent gate, starter categories/funds pre-seeded, hero + F3 day-left + health score + the
+  "where your money went" donut all update, onboarding collapses to the slim "Finish setup" link after
+  income+expense. No errors, nothing assumes prior state. **Not yet exercised in this walk:** first *budget*
+  and first *goal* (the other two onboarding steps) — low risk but unconfirmed.
 
 ---
 
