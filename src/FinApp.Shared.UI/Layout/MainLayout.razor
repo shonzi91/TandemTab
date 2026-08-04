@@ -86,7 +86,9 @@
         </footer>
     }
 
-    @if (_profileOpen)
+    @* Guarded on CurrentUser as well as the flag: every line of this modal dereferences the signed-in user, so
+       any path that clears it while the modal is open would take the whole layout down with a NullReference. *@
+    @if (_profileOpen && Auth.CurrentUser is not null)
     {
         <div class="pm-backdrop">
             <div class="pm">
@@ -570,6 +572,10 @@
 
     private async Task SignOut()
     {
+        // Close the profile modal FIRST. Sign-out is reached from its footer, so the modal is open when the
+        // user leaves — and signing out clears Auth.CurrentUser, which the modal body dereferences on every
+        // line. Leaving it open meant the post-sign-out re-render threw and the app stalled on "Loading…".
+        _profileOpen = false;
         await State.ResetAsync();
         await Auth.SignOutAsync();
     }
