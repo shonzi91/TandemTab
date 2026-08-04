@@ -201,6 +201,12 @@ Emulator-verified (windowed `tandemtab_test`, API 35) against the **real prod Fa
 - Everything below is prior sessions.
 
 ## 🛣️ Roadmap / standing goals
+- **[BETA] Open-beta readiness — see [OPEN-BETA.md](OPEN-BETA.md) (written 2026-08-04).** Four blockers, none of
+  them features: **B1 client-side error reporting** (the big one — BUG-1 sat unnoticed for 5 days because an
+  exception in the WASM client goes nowhere but the user's console), **B2 an in-app feedback route**, **B3 a real
+  read of the legal pages** (EU financial data on a public sign-up), **B4 stating what "beta" promises about
+  their data**. Plus a "verification hour" of built-but-never-eyeballed things. Explicitly **not** blockers:
+  billing, Android, the whole feature backlog, web-thinning.
 - **[DEBT] Informative debt (R1) + installment split with hybrid balance (R2).** Planned 2026-08-01 with the user (assessment + plan, no code written yet). Two requests, two phases; P1 is shippable on its own.
 
   **Locked design decisions.** (a) R1 is *presentation + input over existing math* — `SavingCategory` already stores original balance, current balance anchored to `DebtBalanceAsOf`, APR, installment, and a real amortization schedule (`LoanForecast.BalanceAfter/PayOff/PaymentFor/MonthlyInterest`); only two interest read-outs are new. (b) R2 posts **2–3 linked expense records, not one split expense** — because `Expense` is immutable/single-valued and `BreakSlices()` sums one amount per key, so linked records make Breakdown-by-tag "just work" with zero aggregation changes. (c) **Hybrid balance source (user's ask):** a **linked** bucket is *payment-driven (v2)* — balance moves only when you log an installment, principal portion comes off via `RecordDebtPayment`, and `DebtBalanceOn` **skips the schedule walk**; an **unlinked** bucket stays *schedule-driven (v1)*, current behavior. On flipping to linked, **snapshot the current schedule-walked balance** into `DebtBalance` + set `DebtBalanceAsOf = today` so the frozen balance starts from today's truth, not a stale anchor. (d) Cross-account stays out of scope — the 3 split records live in the account the money left; the "other account for early payoff" remains a separate savings bucket + disburse (existing `SettlementId` is the hook if ever wanted).

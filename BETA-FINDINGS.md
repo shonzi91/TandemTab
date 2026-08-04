@@ -146,6 +146,13 @@ Simple, high-leverage additions that build on existing assets. Excludes what's a
 
 ---
 
+## Before an OPEN beta
+
+This report covers product quality. The separate question of what must exist before *strangers* can sign up —
+error reporting, a feedback route, the legal pages, and a stated data promise — is in
+**[OPEN-BETA.md](OPEN-BETA.md)**. BUG-1 below is the argument for its first item: it sat in a Critical row here
+for five days because an exception in the client goes nowhere but the user's own console.
+
 ## Suggested sequencing
 
 1. **Fix the two defects** (BUG-1, BUG-2) — release blockers.
