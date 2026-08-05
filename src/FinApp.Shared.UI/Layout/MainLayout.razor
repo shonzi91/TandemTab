@@ -709,7 +709,9 @@
 
     /// <summary>Whether to wear the Pro mark. Requires monetization to be ON — "unlimited" (the beta state) is
     /// everyone, and a badge everyone has is not a badge.</summary>
-    private bool IsPro => Auth.CurrentUser is { MonetizationEnabled: true, Plan: "pro" };
+    // The Pro tag + logo crown. Server-computed (ProBadge): during beta it follows the lifetime-cohort so the
+    // first-N wear the crown while everyone stays ungated; when monetization is live it's a strict Pro plan.
+    private bool IsPro => Auth.CurrentUser?.ProBadge == true;
 
     // The server sends stable feature KEYS and the client owns the wording, so one catalogue localizes into both
     // languages without the server knowing a locale. An unknown key falls back to itself rather than throwing —

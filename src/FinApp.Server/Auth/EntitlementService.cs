@@ -23,21 +23,29 @@ public sealed class EntitlementService(
 {
     /// <summary>Everything <c>/me</c> and <c>/plans</c> need about an account's plan, resolved with the fewest
     /// reads. <see cref="GrandfatheredBeta"/> is true only when a beta-cohort account actually lands on Pro — so a
-    /// tester pinned to Free doesn't get told "Pro is on us" over a Free plan.</summary>
-    public sealed record Entitlement(string Plan, bool MonetizationLive, bool GrandfatheredBeta);
+    /// tester pinned to Free doesn't get told "Pro is on us" over a Free plan. <see cref="IsBetaCohort"/> carries
+    /// the raw cohort so the Pro badge can follow it during beta (see <see cref="ShowsProBadge"/>).</summary>
+    public sealed record Entitlement(string Plan, bool MonetizationLive, bool GrandfatheredBeta, bool IsBetaCohort);
 
     public async Task<Entitlement> ResolveAsync(Guid userId, CancellationToken ct = default)
     {
         var pinned = await overrides.GetAsync(userId, ct);
         var live = monetization.Enabled || pinned is not null;
-        if (!live)
-            return new Entitlement("unlimited", false, false);   // flag off, no override → no gating (beta default)
-
         var isBeta = await signups.IsBetaCohortAsync(userId, ct);
+        if (!live)
+            // Beta: nobody is gated (plan stays "unlimited"), but the badge follows the cohort — the first N
+            // lifetime members wear the crown while everyone else stays ungated. See ShowsProBadge.
+            return new Entitlement("unlimited", false, false, isBeta);
+
         var subscribed = await subscriptions.IsActiveAsync(userId, ct);
         var plan = pinned ?? monetization.PlanFor(isBeta, subscribed);
-        return new Entitlement(plan, true, isBeta && plan == "pro");
+        return new Entitlement(plan, true, isBeta && plan == "pro", isBeta);
     }
+
+    /// <summary>Whether to show the Pro tag + logo crown. When monetization is live it's a strict Pro plan (a
+    /// tester pinned to Free wears no crown); during beta (flag off) it follows the cohort, so the first-N lifetime
+    /// members are badged Pro while everyone stays functionally unlimited.</summary>
+    public static bool ShowsProBadge(Entitlement e) => e.MonetizationLive ? e.Plan == "pro" : e.IsBetaCohort;
 
     /// <summary>The account's effective plan string alone. Convenience over <see cref="ResolveAsync"/>.</summary>
     public async Task<string> ResolvePlanAsync(Guid userId, CancellationToken ct = default) =>

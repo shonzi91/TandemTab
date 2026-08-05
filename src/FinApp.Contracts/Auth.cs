@@ -43,7 +43,7 @@ public record TwoFactorRecoveryDto(string[] RecoveryCodes);
 /// password users; <see cref="IsExternal"/> is the convenience flag used to hide the password-change UI.</summary>
 public record UserDto(Guid Id, string Username, string Email, string? Avatar = null, string? Provider = null,
     bool EmailVerified = false, bool TwoFactorEnabled = false, DateTimeOffset? PendingDeletionAt = null,
-    bool IsAdmin = false, bool MonetizationEnabled = false, string Plan = "unlimited")
+    bool IsAdmin = false, bool MonetizationEnabled = false, string Plan = "unlimited", bool ProBadge = false)
 {
     public bool IsExternal => !string.IsNullOrEmpty(Provider);
 

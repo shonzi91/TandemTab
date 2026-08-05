@@ -37,14 +37,13 @@
                 <span class="lp-beta-pill">@Loc["Free beta"]</span>
                 @Loc["Your account and everything in it carries through to launch."]
                 @* The cap is a LIFETIME-PRO allowance, not a door: the first N members are grandfathered to Pro for
-                   good; after that people still join, on Free. Stated as a gift, not scarcity pressure. Only
-                   rendered once the count is known, so the line never flashes a wrong number. *@
-                @if (_beta is { Capped: true } bc)
+                   good; after that people still join, on Free. Stated as a gift, not scarcity pressure. Shown only
+                   while seats remain — once the allowance is full the line disappears entirely (the beta promise
+                   above still stands). Only rendered once the count is known, so it never flashes a wrong number. *@
+                @if (_beta is { Capped: true, Full: false } bc)
                 {
                     <span class="lp-beta-seats">
-                        @(bc.Full
-                            ? string.Format(Loc["The first {0} lifetime-Pro spots are taken — you can still join free while we're in beta."], bc.Cap)
-                            : string.Format(Loc["🎁 The first {0} members get TandemTab Pro free — for life. {1} spots left."], bc.Cap, bc.Remaining))
+                        @string.Format(Loc["🎁 The first {0} members get TandemTab Pro free — for life. {1} spots left."], bc.Cap, bc.Remaining)
                     </span>
                 }
             </p>

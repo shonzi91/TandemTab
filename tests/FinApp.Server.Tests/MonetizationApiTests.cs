@@ -22,6 +22,8 @@ public class MonetizationApiTests : IClassFixture<FinAppServerFactory>
         Assert.NotNull(me);
         Assert.False(me!.MonetizationEnabled);
         Assert.Equal("unlimited", me.Plan);
+        // Beta-cohort members wear the Pro tag + crown during beta (they're grandfathered) while staying ungated.
+        Assert.True(me.ProBadge);
 
         var plans = await client.GetFromJsonAsync<PlansDto>("/plans");
         Assert.NotNull(plans);

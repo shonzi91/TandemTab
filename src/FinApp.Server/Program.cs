@@ -595,7 +595,10 @@ app.MapGet("/me", async (ClaimsPrincipal user, AvatarService avatars, ExternalId
         PendingDeletionAt: await deletions.ScheduledAtAsync(user.UserId(), ct),
         IsAdmin: adminPolicy.IsAdmin(user.Email()),
         MonetizationEnabled: ent.MonetizationLive,
-        Plan: ent.Plan));
+        Plan: ent.Plan,
+        // The Pro tag + logo crown. During beta (flag off) it follows the cohort so the first-N lifetime members
+        // are badged Pro while everyone stays ungated; when monetization is live it's a strict Pro plan.
+        ProBadge: EntitlementService.ShowsProBadge(ent)));
 }).RequireAuthorization();
 
 // The Plans screen's data (OPEN-BETA P4). Only meaningful when the flag is on; while off it reports Enabled=false

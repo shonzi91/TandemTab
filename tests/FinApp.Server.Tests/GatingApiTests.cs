@@ -42,6 +42,7 @@ public class GatingApiTests : IClassFixture<GatingServerFactory>
         var me = await client.GetFromJsonAsync<UserDto>("/me");
         Assert.True(me!.MonetizationEnabled);
         Assert.Equal("free", me.Plan);
+        Assert.False(me.ProBadge);   // no crown while testing Free, even though this account is beta-cohort
 
         // The 1st account is within the Free allowance…
         var first = await client.PostAsJsonAsync("/accounts", new CreateAccountRequest("Main", "EUR"));
@@ -65,6 +66,9 @@ public class GatingApiTests : IClassFixture<GatingServerFactory>
 
         // Pin Pro — the same gated actions now pass (a 2nd account is created; import no longer 402s).
         (await client.PostAsJsonAsync("/admin/plan-override", new PlanOverrideRequest("pro"))).EnsureSuccessStatusCode();
+        var mePro = await client.GetFromJsonAsync<UserDto>("/me");
+        Assert.Equal("pro", mePro!.Plan);
+        Assert.True(mePro.ProBadge);   // crown on for Pro
         (await client.PostAsJsonAsync("/accounts", new CreateAccountRequest("Second", "EUR"))).EnsureSuccessStatusCode();
         var importPro = await client.PostAsJsonAsync($"/accounts/{acct.Id}/import",
             new ImportTransactionsRequest(Array.Empty<ImportRowDto>()));

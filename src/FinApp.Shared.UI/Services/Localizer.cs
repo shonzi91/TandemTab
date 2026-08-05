@@ -500,8 +500,6 @@ public sealed class Localizer(IJSRuntime js)
         ["We sell software, not your data."] = "Продаваме софтуер, не данните ти.",
         ["🎁 The first {0} members get TandemTab Pro free — for life. {1} spots left."] =
             "🎁 Първите {0} потребители получават TandemTab Про безплатно — завинаги. Остават {1} места.",
-        ["The first {0} lifetime-Pro spots are taken — you can still join free while we're in beta."] =
-            "Първите {0} места с Про завинаги са заети — още можеш да се присъединиш безплатно, докато сме в бета.",
         ["Thanks — we've got your message. Anything else? Write to us at admin@tandemtab.com."] =
             "Благодарим — получихме съобщението ти. Друго? Пиши ни на admin@tandemtab.com.",
         ["For anything about your data — a copy, a correction, deletion — write to the same address."] =
