@@ -156,6 +156,10 @@ public sealed class FinAppApiClient(HttpClient http)
     public Task SendFeedbackAsync(FeedbackRequest request, CancellationToken ct = default) =>
         SendAsync(HttpMethod.Post, "/feedback", request, ct);
 
+    /// <summary>Owner-only usage metrics (OPEN-BETA P2). 403 for non-admins — the gate is server-side.</summary>
+    public Task<AdminMetricsDto> GetAdminMetricsAsync(CancellationToken ct = default) =>
+        SendAsync<AdminMetricsDto>(HttpMethod.Get, "/admin/metrics", null, ct);
+
     // Loan installments — one payment posting several linked rows (principal / interest / additional lines).
     public Task<MutationResultDto> LogInstallmentAsync(Guid id, LogInstallmentRequest req, CancellationToken ct = default) =>
         SendAsync<MutationResultDto>(HttpMethod.Post, $"/accounts/{id}/installments", req, ct);

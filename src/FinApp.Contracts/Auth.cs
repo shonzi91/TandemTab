@@ -42,7 +42,8 @@ public record TwoFactorRecoveryDto(string[] RecoveryCodes);
 /// <see cref="Provider"/> names the external sign-in provider (e.g. "google") when the user signed up that way — null for
 /// password users; <see cref="IsExternal"/> is the convenience flag used to hide the password-change UI.</summary>
 public record UserDto(Guid Id, string Username, string Email, string? Avatar = null, string? Provider = null,
-    bool EmailVerified = false, bool TwoFactorEnabled = false, DateTimeOffset? PendingDeletionAt = null)
+    bool EmailVerified = false, bool TwoFactorEnabled = false, DateTimeOffset? PendingDeletionAt = null,
+    bool IsAdmin = false)
 {
     public bool IsExternal => !string.IsNullOrEmpty(Provider);
 

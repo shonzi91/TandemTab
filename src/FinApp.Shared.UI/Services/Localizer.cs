@@ -442,6 +442,15 @@ public sealed class Localizer(IJSRuntime js)
         ["Come back after a couple of months — trends need a few periods of history to show."] =
             "Върнете се след няколко месеца — тенденциите се нуждаят от няколко периода история.",
         ["Show or hide this line"] = "Покажи или скрий тази линия",
+        // P2 — owner-only usage metrics
+        ["Admin — usage"] = "Админ — употреба",
+        ["Users"] = "Потребители",
+        ["Accounts"] = "Сметки",
+        ["Beta cohort"] = "Бета кохорта",
+        ["New (7d / 30d)"] = "Нови (7д / 30д)",
+        ["Active (7d / 30d)"] = "Активни (7д / 30д)",
+        ["Sign-ups, last 30 days"] = "Регистрации, последните 30 дни",
+        ["Couldn’t load usage metrics."] = "Метриките не се заредиха.",
         ["carried"] = "пренесени",
         ["of money in"] = "от постъпленията",
         ["Money in this period: {0} came in, plus {1} carried over from before."] = "Постъпления този период: {0} нови, плюс {1} пренесени от преди.",

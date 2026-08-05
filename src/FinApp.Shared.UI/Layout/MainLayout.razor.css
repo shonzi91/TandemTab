@@ -148,6 +148,16 @@ html.dark .pm-theme-toggle:hover { border-color: #2f7d5c; background: #14251d; }
 .pm-privacy { list-style: none; margin: 6px 0 4px; padding: 0; display: flex; flex-direction: column; gap: 7px; }
 .pm-privacy li { display: flex; gap: 8px; font-size: .8rem; line-height: 1.4; color: #4b5563; }
 html.dark .pm-privacy li { color: #c3cad4; }
+/* P2 — owner-only usage metrics: a compact stat grid + a small sign-ups sparkline. */
+.pm-admin-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin: 8px 0 6px; }
+.pm-admin-grid > div { display: flex; flex-direction: column; gap: 1px; padding: 8px 10px; border-radius: 9px;
+    background: rgba(19,160,110,.08); }
+.pm-admin-n { font-size: 1.05rem; font-weight: 800; color: #0e7c55; }
+.pm-admin-l { font-size: .68rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: #9ca3af; }
+.pm-admin-spark { display: flex; align-items: flex-end; gap: 2px; height: 28px; margin: 8px 0 2px; }
+.pm-admin-bar { flex: 1 1 0; min-width: 2px; background: #13a06e; border-radius: 2px 2px 0 0; }
+html.dark .pm-admin-grid > div { background: rgba(19,160,110,.14); }
+html.dark .pm-admin-n { color: #2ee59d; }
 /* White quiet-zone around the QR so it scans reliably on any theme. */
 .pm-2fa-qr { display: block; margin: 8px 0; padding: 8px; background: #ffffff; border-radius: 8px; }
 .pm-avatar-row { display: flex; align-items: center; gap: 12px; }

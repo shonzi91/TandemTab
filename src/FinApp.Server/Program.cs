@@ -90,6 +90,8 @@ builder.Services.AddScoped<ExternalIdentityService>();
 builder.Services.AddScoped<ConsentService>();
 builder.Services.AddScoped<FeedbackService>();
 builder.Services.AddScoped<SignupService>();
+builder.Services.AddSingleton<AdminPolicy>();          // owner allowlist (fails closed) for the P2 metrics
+builder.Services.AddScoped<AdminMetricsService>();
 builder.Services.AddScoped<ExternalAuthService>();
 builder.Services.AddHttpClient();
 builder.Services.AddScoped<AccountService>();
@@ -551,12 +553,23 @@ app.MapPost("/feedback", async (FeedbackRequest req, FeedbackService feedback, I
 }).AllowAnonymous().RequireRateLimiting("clienterrors");
 
 app.MapGet("/me", async (ClaimsPrincipal user, AvatarService avatars, ExternalIdentityService identities,
-        EmailVerificationService emailVerification, TwoFactorService twoFactor, AccountDeletionService deletions, CancellationToken ct) =>
+        EmailVerificationService emailVerification, TwoFactorService twoFactor, AccountDeletionService deletions,
+        AdminPolicy adminPolicy, CancellationToken ct) =>
         Results.Ok(new UserDto(user.UserId(), user.Username(), user.Email(),
             await avatars.GetAsync(user.UserId(), ct), await identities.GetProviderAsync(user.UserId(), ct),
             EmailVerified: await emailVerification.IsVerifiedAsync(user.UserId(), user.Email(), ct),
             TwoFactorEnabled: await twoFactor.IsEnabledAsync(user.UserId(), ct),
-            PendingDeletionAt: await deletions.ScheduledAtAsync(user.UserId(), ct))))
+            PendingDeletionAt: await deletions.ScheduledAtAsync(user.UserId(), ct),
+            IsAdmin: adminPolicy.IsAdmin(user.Email()))))
+    .RequireAuthorization();
+
+// Owner-only usage metrics (OPEN-BETA P2). Server-side authorization — an endpoint that enumerates users is the
+// highest-value target in the app, so the role check lives here, not behind a hidden route. Returns counts and
+// timestamps only; never any other person's financial data.
+app.MapGet("/admin/metrics", async (ClaimsPrincipal user, AdminPolicy adminPolicy, AdminMetricsService metrics, CancellationToken ct) =>
+    adminPolicy.IsAdmin(user.Email())
+        ? Results.Ok(await metrics.BuildAsync(ct))
+        : Results.Forbid())
     .RequireAuthorization();
 
 // Delete the signed-in user's whole account (soft delete: 30-day grace, then purged). 2FA-gated when enabled;

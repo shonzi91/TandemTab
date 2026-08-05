@@ -280,6 +280,45 @@
                         @* A real person to reach — the same address the privacy policy names as the GDPR/data contact. *@
                         <p class="pm-hint">✉️ @Loc["Questions, or a privacy request?"] <a href="mailto:admin@tandemtab.com">admin@tandemtab.com</a></p>
                     </details>
+
+                    @* Owner-only usage metrics (OPEN-BETA P2). Shown only when the signed-in email is on the admin
+                       allowlist; the server re-checks, so this is a convenience, not the gate. Counts + timestamps
+                       only — never anyone's financial data. Loaded lazily when the section is opened. *@
+                    @if (Auth.CurrentUser?.IsAdmin == true)
+                    {
+                        <details class="pm-section" @ontoggle="LoadAdminMetrics">
+                            <summary>@Loc["Admin — usage"]</summary>
+                            @if (_adminMetrics is { } m)
+                            {
+                                <div class="pm-admin-grid">
+                                    <div><span class="pm-admin-n">@m.TotalUsers</span><span class="pm-admin-l">@Loc["Users"]</span></div>
+                                    <div><span class="pm-admin-n">@m.TotalAccounts</span><span class="pm-admin-l">@Loc["Accounts"]</span></div>
+                                    <div><span class="pm-admin-n">@m.BetaCohort</span><span class="pm-admin-l">@Loc["Beta cohort"]</span></div>
+                                    <div><span class="pm-admin-n">@m.NewUsers7d / @m.NewUsers30d</span><span class="pm-admin-l">@Loc["New (7d / 30d)"]</span></div>
+                                    <div><span class="pm-admin-n">@m.Active7d / @m.Active30d</span><span class="pm-admin-l">@Loc["Active (7d / 30d)"]</span></div>
+                                </div>
+                                @if (m.SignupsByDay.Count > 0)
+                                {
+                                    var maxc = m.SignupsByDay.Max(d => d.Count);
+                                    <div class="pm-admin-spark" role="img" aria-label="@Loc["Sign-ups, last 30 days"]">
+                                        @foreach (var d in m.SignupsByDay)
+                                        {
+                                            <span class="pm-admin-bar" style="height:@(Math.Max(2, (int)((double)d.Count / Math.Max(1, maxc) * 26)))px" title="@d.Day: @d.Count"></span>
+                                        }
+                                    </div>
+                                    <p class="pm-hint">@Loc["Sign-ups, last 30 days"]</p>
+                                }
+                            }
+                            else if (_adminBusy)
+                            {
+                                <p class="pm-hint">@Loc["Loading…"]</p>
+                            }
+                            else if (_adminError)
+                            {
+                                <p class="pm-hint">@Loc["Couldn’t load usage metrics."]</p>
+                            }
+                        </details>
+                    }
                 }
                 @if (!_2faDisabling && _2faSetup is null && _2faRecoveryCodes is null)
                 {
@@ -383,6 +422,19 @@
         }
         catch { /* keep the panel quiet — the account-menu export is the primary path if this ever fails */ }
         finally { _exportBusy = false; StateHasChanged(); }
+    }
+
+    // Owner-only usage metrics (P2). Loaded lazily when the admin section is expanded; the server re-checks the
+    // allowlist, so a non-admin who forced this call just gets a 403 (handled as _adminError).
+    private AdminMetricsDto? _adminMetrics;
+    private bool _adminBusy, _adminError;
+    private async Task LoadAdminMetrics()
+    {
+        if (_adminMetrics is not null || _adminBusy) return;
+        _adminBusy = true; _adminError = false; StateHasChanged();
+        try { _adminMetrics = await Api.GetAdminMetricsAsync(); }
+        catch { _adminError = true; }
+        finally { _adminBusy = false; StateHasChanged(); }
     }
 
     /// <summary>Schedule the signed-in user's account for deletion; on success /me flips to pending and the app shows the grace gate.</summary>
