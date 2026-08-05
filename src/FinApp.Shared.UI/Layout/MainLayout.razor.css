@@ -310,8 +310,37 @@ html.dark .pm-cycle button.on strong { color: #2ee59d; }
     background: #f6f7f9;
     border-top: 1px solid #e6ece9;
 }
+.app-legal { flex-wrap: wrap; }
 .app-legal a { color: #6b7280; text-decoration: none; }
 .app-legal a:hover { color: #13a06e; text-decoration: underline; }
+
+/* In-app beta feedback, sitting above the legal line. Collapsed to a single dashed pill so it reads as an
+   invitation rather than a form demanding attention; expands in place. The whole block disappears for good once
+   something has been sent (see MainLayout.MarkFeedbackDone). */
+.app-fb { flex: 0 0 auto; display: flex; justify-content: center; padding: 14px 12px 2px; }
+.app-fb-open {
+    display: inline-flex; align-items: center; gap: 7px; padding: 8px 15px; border-radius: 999px;
+    border: 1px dashed #cdd7e2; background: none; color: #5c6b7a;
+    font: inherit; font-size: .84rem; font-weight: 600; cursor: pointer;
+}
+.app-fb-open:hover { border-color: #13a06e; color: #0f7a54; }
+.app-fb-open ::deep svg { width: 15px; height: 15px; }
+.app-fb-card {
+    width: min(460px, 100%); text-align: left; padding: 14px 16px;
+    border: 1px solid #e6ece9; border-radius: 14px; background: #fff;
+    box-shadow: 0 4px 18px rgba(16,32,26,.06);
+}
+.app-fb-head { display: flex; align-items: flex-start; gap: 10px; }
+.app-fb-head h4 { margin: 0 0 8px; font-size: .95rem; color: #16211d; flex: 1; }
+.app-fb-x {
+    flex: none; border: none; background: none; cursor: pointer;
+    font-size: 1.2rem; line-height: 1; color: #9ca3af; padding: 0 2px;
+}
+.app-fb-x:hover { color: #4b5563; }
+html.dark .app-fb-open { border-color: #2b3a34; color: #9fb3aa; }
+html.dark .app-fb-open:hover { border-color: #2f7d5c; color: #57d9a3; }
+html.dark .app-fb-card { background: #181c25; border-color: #262d3d; box-shadow: none; }
+html.dark .app-fb-head h4 { color: #eef1f6; }
 
 /* Consent gate (accept terms at login) */
 .consent-gate { display: grid; place-items: center; min-height: 60vh; padding: 24px; }

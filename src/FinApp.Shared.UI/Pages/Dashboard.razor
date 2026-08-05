@@ -2292,21 +2292,6 @@ else
             }
             @switch (_modal)
             {
-                case Modal.PickAccount:
-                    <h3>@Loc["Which account?"]</h3>
-                    <p class="hint">@Loc["Pick the account you want to work in. You can switch anytime from the top bar."]</p>
-                    <div class="acct-pick-list">
-                        @foreach (var a in State.Accounts)
-                        {
-                            var accId = a.Id;
-                            <button class="acct-pick-btn" @onclick="() => PickAccountOnEntry(accId)">
-                                <span class="acct-pick-name">🏦 @a.Name</span>
-                                <span class="acct-pick-cur">@a.Currency ›</span>
-                            </button>
-                        }
-                    </div>
-                    break;
-
                 case Modal.BankReview:
                     var reviewDebits = BankDebits();
                     var reviewCredits = BankCredits();
@@ -4677,7 +4662,7 @@ else
 }
 
 @code {
-    private enum Modal { None, PickAccount, BankReview, BankConsent, AddCat, AddBudget, DisburseSaving, PayoffProjection, GoalProjection, InvestmentProjection, BankTransfer, ExternalAccounts, HealthScore, RunwayMath, EditCat, DeleteCat, CategoryDetail, AddAccount, EditAccount, DeleteAccount, RemoveMember, LeaveAccount, AddExpense, NextPeriod, RemovePeriod, EditExpense, DeleteExpense, SettleExpense, AddBucket, EditBucket, DeleteBucket, EditCost, AddFund, EditFund, DeleteFund, Invite, Transfer, Deposit, EditDeposit, DeleteDeposit, ManageCats, ManageContribCats, ContribCat, DeleteContribCat, AddSaving, BudgetSaving, SpendSaving, EditSavingDeposit, DeleteSavingDeposit, EditTransfer, DeleteTransfer, EditPeriod, EditSavingMovement, DeleteSavingMovement, DeleteExternalTransfer, Achievements, Reallocate, Recurring, RecurringEdit, RecurringConfirm, Import, AddOrImport, ArchiveFund, FundMovements, Archived, ManageTags, EditTag, LogInstallment, DeleteInstallment }
+    private enum Modal { None, BankReview, BankConsent, AddCat, AddBudget, DisburseSaving, PayoffProjection, GoalProjection, InvestmentProjection, BankTransfer, ExternalAccounts, HealthScore, RunwayMath, EditCat, DeleteCat, CategoryDetail, AddAccount, EditAccount, DeleteAccount, RemoveMember, LeaveAccount, AddExpense, NextPeriod, RemovePeriod, EditExpense, DeleteExpense, SettleExpense, AddBucket, EditBucket, DeleteBucket, EditCost, AddFund, EditFund, DeleteFund, Invite, Transfer, Deposit, EditDeposit, DeleteDeposit, ManageCats, ManageContribCats, ContribCat, DeleteContribCat, AddSaving, BudgetSaving, SpendSaving, EditSavingDeposit, DeleteSavingDeposit, EditTransfer, DeleteTransfer, EditPeriod, EditSavingMovement, DeleteSavingMovement, DeleteExternalTransfer, Achievements, Reallocate, Recurring, RecurringEdit, RecurringConfirm, Import, AddOrImport, ArchiveFund, FundMovements, Archived, ManageTags, EditTag, LogInstallment, DeleteInstallment }
     private enum Tab { Overview, Account, Budgets, Savings }
 
     /// <summary>Which kind of goal the Goals grid is showing. Defaults to All so the filter narrows on request
@@ -5299,8 +5284,6 @@ else
     private Guid _bankAccountId;        // which account _bankStatus/_bankPending belong to (bank is per-account)
     private bool _bankBusy;
     private string? _bankError;
-    // On-entry flow: account picker (when >1 account) then the bank-review modal.
-    private bool _entryAccountPicked;
     // Bank security gating: email-verification resend + one-time 2FA nudge + the shared-account acknowledgment.
     private bool _resendBusy, _resendOk, _2faRecDismissed;
     private bool _bankSharedAck, _bankSharedAckKnown;   // has this member acknowledged seeing a shared account's real bank data
@@ -5529,14 +5512,11 @@ else
         await State.InitializeAsync();
         ResetPickers();
 
-        // Ask which account to work in immediately — decided here (right after the account list loads), before any
-        // bank round-trips, so the picker paints on the first render. It used to be set at the tail of the
-        // fire-and-forget bank load, which meant it only appeared once some later event forced a re-render — the
-        // "the picker shows up on my first click" bug. Skipped on an OAuth bank-return, where a specific account's
-        // consent flow owns the screen (that rare path still falls back to MaybePromptOnEntryAsync).
-        if (State.Accounts.Count > 1 && !_entryAccountPicked
-            && !new Uri(Nav.Uri).Query.Contains("bank=", StringComparison.Ordinal))
-            _modal = Modal.PickAccount;
+        // No "which account?" prompt on entry any more. BudgetingState.InitializeAsync already restores the
+        // last-open account from local storage, so the modal was asking a question that had just been answered —
+        // and answering it identically cost a click on every single load. Landing straight in the remembered
+        // account is both fewer clicks than the picker and less to read; switching stays where it always was, in
+        // the top-bar account dropdown.
 
         // The bank status (live balance + pending rows) is fetched OFF the critical path: it's several server
         // round-trips and, for a synced account, the live provider balance — awaiting it here blocked the whole
@@ -5623,8 +5603,7 @@ else
     [JSInvokable]
     public void OnBrowserBack()
     {
-        if (_modal == Modal.PickAccount) { /* mandatory choice — swallow Back; the render re-arms the trap */ }
-        else if (_modal != Modal.None) Back();
+        if (_modal != Modal.None) Back();
         else if (_tab != Tab.Overview) _tab = Tab.Overview;
         StateHasChanged();
     }
@@ -5665,34 +5644,12 @@ else
         catch { /* offline / rate-limited — leave staged rows as-is; the manual 🔄 Refresh still works */ }
     }
 
-    /// <summary>On entry: if there's more than one account, ask which to work in; then (or for a single account)
-    /// auto-open the bank-review modal when there are unreviewed imports.</summary>
+    /// <summary>On entry: auto-open the bank-review modal when there are unreviewed imports. (There is no longer
+    /// an account prompt in front of this — the last-open account is restored from storage, so entry goes
+    /// straight to the account the user was last in, whatever the account count.)</summary>
     private async Task MaybePromptOnEntryAsync()
     {
         if (_modal != Modal.None) return;   // don't override a modal opened by e.g. the bank-consent return
-        if (State.Accounts.Count > 1 && !_entryAccountPicked)
-        {
-            _modal = Modal.PickAccount;
-            return;   // the review check runs once they've picked (PickAccountOnEntry)
-        }
-        await MaybeOpenBankReviewAsync(bypassDismiss: true);   // fresh app load: always surface pending imports
-    }
-
-    private async Task PickAccountOnEntry(Guid accountId)
-    {
-        _entryAccountPicked = true;
-        // Close the picker at once, before any loading — the account's data streams in behind it, each segment
-        // repainting as its call returns (SwitchAccount → RaiseChanged, then the bank fills its own strip). This
-        // is what makes picking feel instant instead of holding a blocking modal over the whole screen.
-        CloseModal();
-        await InvokeAsync(StateHasChanged);
-
-        if (accountId != State.CurrentAccountId)
-        {
-            await State.SwitchAccount(accountId);   // structure load; RaiseChanged repaints the segments
-            await LoadBankAsync();                   // bank status/pending for the picked account
-        }
-        await SyncOnOpenAsync();   // fetch fresh transactions for the picked account (throttled)
         await MaybeOpenBankReviewAsync(bypassDismiss: true);   // fresh app load: always surface pending imports
     }
 

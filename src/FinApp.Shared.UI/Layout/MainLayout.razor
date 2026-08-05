@@ -84,7 +84,36 @@
 
     @if (_restored)
     {
+        @* In-app footer. Feedback used to be reachable only by opening the profile modal and scrolling to it —
+           effectively invisible, which is a poor way to run a beta whose whole point is hearing from people. It
+           sits here in the open instead, and RETIRES for good once someone has sent something: continuing to ask
+           a person who already answered is nagging, not listening. The "sent" flag is local to the device
+           (localStorage) — deliberately not a server round-trip on every load for a cosmetic prompt. *@
+        @if (Auth.IsAuthenticated && !_feedbackDone)
+        {
+            <div class="app-fb">
+                @if (!_feedbackOpen)
+                {
+                    <button class="app-fb-open" @onclick="() => _feedbackOpen = true">
+                        <Icon Name="note" /> @Loc["We’re in beta — tell us what you think"]
+                    </button>
+                }
+                else
+                {
+                    <div class="app-fb-card">
+                        <div class="app-fb-head">
+                            <h4>@Loc["We’re in beta — tell us what you think"]</h4>
+                            <button class="app-fb-x" title="@Loc["Close"]" aria-label="@Loc["Close"]"
+                                    @onclick="() => _feedbackOpen = false"><span aria-hidden="true">×</span></button>
+                        </div>
+                        <FeedbackForm Source="app" OnSent="MarkFeedbackDone" />
+                    </div>
+                }
+            </div>
+        }
         <footer class="app-legal">
+            <a href="mailto:admin@tandemtab.com">admin@tandemtab.com</a>
+            <span>·</span>
             <a href="@PrivacyUrl" target="_blank" rel="noopener">@Loc["Privacy"]</a>
             <span>·</span>
             <a href="@TermsUrl" target="_blank" rel="noopener">@Loc["Terms"]</a>
@@ -295,13 +324,9 @@
                 }
                 @if (!InProfileSubflow)
                 {
-                    @* Feedback (OPEN-BETA B2). Testers who can't report don't report — they churn. Collapsed so it
-                       sits quietly until wanted; the error reporter covers crashes, this covers everything else. *@
-                    <details class="pm-section">
-                        <summary>@Loc["Send feedback"]</summary>
-                        <p class="pm-hint">@Loc["We’re in beta and reading everything. Bugs, confusion, missing things — all welcome."]</p>
-                        <FeedbackForm Source="app" />
-                    </details>
+                    @* Feedback moved OUT of here to the app footer. Buried behind "open the profile modal, then
+                       expand a collapsed section", almost nobody was going to find it — which defeats the point
+                       of B2 in a beta. It lives in the open now and retires once given. *@
 
                     @* Privacy as a visible feature, not just a landing-page line: state plainly what we do and don't
                        do, and back the "you can always leave with your data" claim with a real one-tap export. *@
@@ -311,14 +336,12 @@
                             <li>🔒 @Loc["Your data is encrypted and stored per account."]</li>
                             <li>🚫 @Loc["We never sell your data, and never feed your raw data to any AI."]</li>
                             <li>📄 @Loc["Statement import runs on your device — a file you choose, not a bank login we hold."]</li>
-                            <li>📤 @Loc["You can export any account to a spreadsheet at any time."]</li>
+                            @* The export BUTTON used to sit here too, running the identical
+                               State.ExportCurrentAccountAsync() as the account ⋯ menu's "Export to Excel" — two
+                               controls, one action, in two places. Kept as a statement of the promise (which is
+                               what this privacy section is for) and points at the one place that does it. *@
+                            <li>📤 @Loc["You can export any account to a spreadsheet at any time — from the account menu (⋯) → Export to Excel."]</li>
                         </ul>
-                        @if (State.CurrentAccountId != Guid.Empty)
-                        {
-                            <div class="pm-actions">
-                                <button class="ghost" @onclick="DownloadData" disabled="@_exportBusy">📊 @Loc["Export this account (Excel)"]</button>
-                            </div>
-                        }
                         @* A real person to reach — the same address the privacy policy names as the GDPR/data contact. *@
                         <p class="pm-hint">✉️ @Loc["Questions, or a privacy request?"] <a href="mailto:admin@tandemtab.com">admin@tandemtab.com</a></p>
                     </details>
@@ -508,21 +531,25 @@
     }
     private void CloseProfile() => _profileOpen = false;
 
-    private bool _exportBusy;
-    /// <summary>One-tap data export from the privacy panel — the same current-account Excel export offered in the
-    /// account menu, surfaced here so "you can always leave with your data" is a button, not just a promise.</summary>
-    private async Task DownloadData()
+    // In-app feedback prompt in the footer. Once sent, it never comes back on this device.
+    private const string FeedbackDoneKey = "finapp-feedback-sent";
+    private bool _feedbackOpen, _feedbackDone;
+
+    private async Task MarkFeedbackDone()
     {
-        if (_exportBusy) return;
-        _exportBusy = true; StateHasChanged();
-        try
-        {
-            var (bytes, fileName) = await State.ExportCurrentAccountAsync();
-            await JS.InvokeVoidAsync("finappDownloadFile", fileName, Convert.ToBase64String(bytes),
-                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-        }
-        catch { /* keep the panel quiet — the account-menu export is the primary path if this ever fails */ }
-        finally { _exportBusy = false; StateHasChanged(); }
+        // Let the "Thank you" state show before the whole block disappears — retiring it the instant the request
+        // returns would read as the form vanishing on submit rather than as an acknowledgement.
+        try { await JS.InvokeVoidAsync("localStorage.setItem", FeedbackDoneKey, "1"); } catch { /* storage off */ }
+        await Task.Delay(2200);
+        _feedbackDone = true;
+        _feedbackOpen = false;
+        StateHasChanged();
+    }
+
+    private async Task LoadFeedbackDoneAsync()
+    {
+        try { _feedbackDone = await JS.InvokeAsync<string?>("localStorage.getItem", FeedbackDoneKey) == "1"; }
+        catch { /* storage unavailable — showing the prompt is the safe default */ }
     }
 
     // Owner-only usage metrics (P2). Loaded lazily when the admin section is expanded; the server re-checks the
@@ -752,6 +779,7 @@
         }
         _restored = true;
         try { _dark = (await JS.InvokeAsync<string>("finappGetTheme")) == "dark"; } catch { /* host without the helper */ }
+        await LoadFeedbackDoneAsync();
         await LoadLoginConsentAsync();
     }
 

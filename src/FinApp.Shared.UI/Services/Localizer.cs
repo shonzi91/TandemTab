@@ -960,6 +960,8 @@ public sealed class Localizer(IJSRuntime js)
             "Никога не продаваме данните ти и никога не подаваме суровите ти данни към изкуствен интелект.",
         ["Statement import runs on your device — a file you choose, not a bank login we hold."] =
             "Импортът на извлечения се извършва на твоето устройство — файл, който ти избираш, а не банков достъп, който пазим.",
+        ["You can export any account to a spreadsheet at any time — from the account menu (⋯) → Export to Excel."] =
+            "Можеш да експортираш всяка сметка в таблица по всяко време — от менюто на сметката (⋯) → Експорт към Excel.",
         ["You can export any account to a spreadsheet at any time."] = "Можеш да експортираш всяка сметка в електронна таблица по всяко време.",
         ["Export this account (Excel)"] = "Експортирай тази сметка (Excel)",
         ["Your remaining budgets ({0}) are {1} more than you have left ({2}) — budgets are plans, not commitments, so trim one or top up when you can."] =

@@ -46,6 +46,10 @@
     /// <summary>"landing" or "app" — recorded so we can tell a prospect's reaction from a user's.</summary>
     [Parameter] public string Source { get; set; } = "app";
 
+    /// <summary>Raised once a submission succeeds, so a host can retire its whole prompt. Someone who has already
+    /// told us what they think should not keep being asked — the in-app footer uses this to stop asking for good.</summary>
+    [Parameter] public EventCallback OnSent { get; set; }
+
     private int? _rating;
     private string? _comment;
     private bool _publicConsent, _busy, _sent;
@@ -60,6 +64,7 @@
             await Api.SendFeedbackAsync(new FeedbackRequest(_rating, _comment, _publicConsent, Source,
                 ClientErrorReporter.AppVersion));
             _sent = true;
+            if (OnSent.HasDelegate) await OnSent.InvokeAsync();
         }
         catch
         {

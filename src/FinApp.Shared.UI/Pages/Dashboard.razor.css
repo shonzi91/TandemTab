@@ -2390,18 +2390,8 @@ html.dark .spend-menu > .link:hover { background: #1b2230; color: var(--tm-mint)
 /* Goals: kind is a filter over one grid, not a section each. */
 .goal-filters { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 0 0 14px; }
 .goal-filters .chip-n { opacity: .6; font-variant-numeric: tabular-nums; margin-left: 3px; }
-/* Account picker on entry — a clean vertical list, not side-by-side buttons */
-.acct-pick-list { display: flex; flex-direction: column; gap: 10px; margin-top: 4px; }
-.acct-pick-btn {
-    display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; text-align: left;
-    padding: 14px 16px; border-radius: 12px; border: 1px solid #e6ece9; background: #ffffff;
-    color: #1f2430; font-weight: 700; font-size: .95rem; cursor: pointer; transition: background .15s, border-color .15s;
-}
-.acct-pick-btn:hover { background: #f2fbf6; border-color: #13a06e; }
-.acct-pick-cur { color: #6b7280; font-weight: 600; font-size: .85rem; }
-html.dark .acct-pick-btn { background: #1e2330; border-color: #2c3142; color: #e8eaf0; }
-html.dark .acct-pick-btn:hover { border-color: #3a8f6c; }
-html.dark .acct-pick-cur { color: #9aa4b2; }
+/* (The on-entry account picker was removed — the last-open account is restored from storage instead, so the
+   modal only ever re-asked a question already answered. Switching lives in the top-bar dropdown, .acct-drop.) */
 
 /* Fancy "Import statement" pill next to the budgets title */
 .import-btn {
