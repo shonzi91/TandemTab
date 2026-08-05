@@ -93,6 +93,14 @@ builder.Services.AddScoped<SignupService>();
 builder.Services.AddSingleton<AdminPolicy>();          // owner allowlist (fails closed) for the P2 metrics
 builder.Services.AddScoped<AdminMetricsService>();
 builder.Services.AddSingleton<MonetizationService>();  // P4 rails: off by default, config flag flips it on
+builder.Services.AddScoped<SubscriptionService>();     // who is on a paid plan — our record, not the provider's
+builder.Services.AddSingleton<PaymentOptions>();
+// The payment seam. Sandbox is the only implementation today and the default; adding a real one is a single
+// registration change here plus a class implementing IPaymentProvider (see PaymentProvider.cs).
+builder.Services.AddSingleton<IPaymentProvider>(sp => sp.GetRequiredService<PaymentOptions>().Provider switch
+{
+    _ => new SandboxPaymentProvider(),
+});
 builder.Services.AddScoped<ExternalAuthService>();
 builder.Services.AddHttpClient();
 builder.Services.AddScoped<AccountService>();
@@ -233,6 +241,7 @@ using (var scope = app.Services.CreateScope())
     await scope.ServiceProvider.GetRequiredService<ConsentService>().EnsureSchemaAsync();
     await scope.ServiceProvider.GetRequiredService<FeedbackService>().EnsureSchemaAsync();
     await scope.ServiceProvider.GetRequiredService<SignupService>().EnsureSchemaAsync();
+    await scope.ServiceProvider.GetRequiredService<SubscriptionService>().EnsureSchemaAsync();
     // Refresh-token store (rotation + reuse detection) — same idempotent-create pattern.
     await scope.ServiceProvider.GetRequiredService<RefreshTokenService>().EnsureSchemaAsync();
     // One-time auth codes for external sign-in (keeps session tokens out of the redirect URL).
@@ -555,11 +564,15 @@ app.MapPost("/feedback", async (FeedbackRequest req, FeedbackService feedback, I
 
 app.MapGet("/me", async (ClaimsPrincipal user, AvatarService avatars, ExternalIdentityService identities,
         EmailVerificationService emailVerification, TwoFactorService twoFactor, AccountDeletionService deletions,
-        AdminPolicy adminPolicy, MonetizationService monetization, SignupService signups, CancellationToken ct) =>
+        AdminPolicy adminPolicy, MonetizationService monetization, SignupService signups,
+        SubscriptionService subscriptions, CancellationToken ct) =>
 {
-    // "unlimited" (no gating) while monetization is off; when on, beta-cohort accounts are grandfathered to Pro.
+    // "unlimited" (no gating) while monetization is off; when on, beta-cohort accounts are grandfathered to Pro
+    // and paying subscribers are Pro. The subscription lookup is skipped entirely while the flag is off — no
+    // reason to query a table whose answer can't change the outcome.
     var plan = monetization.Enabled
-        ? monetization.PlanFor(await signups.IsBetaCohortAsync(user.UserId(), ct))
+        ? monetization.PlanFor(await signups.IsBetaCohortAsync(user.UserId(), ct),
+                               await subscriptions.IsActiveAsync(user.UserId(), ct))
         : "unlimited";
     return Results.Ok(new UserDto(user.UserId(), user.Username(), user.Email(),
         await avatars.GetAsync(user.UserId(), ct), await identities.GetProviderAsync(user.UserId(), ct),
@@ -573,11 +586,57 @@ app.MapGet("/me", async (ClaimsPrincipal user, AvatarService avatars, ExternalId
 
 // The Plans screen's data (OPEN-BETA P4). Only meaningful when the flag is on; while off it reports Enabled=false
 // and "unlimited", so the client shows no plan UI at all. Prices are config values, never hard-coded.
-app.MapGet("/plans", async (ClaimsPrincipal user, MonetizationService monetization, SignupService signups, CancellationToken ct) =>
+app.MapGet("/plans", async (ClaimsPrincipal user, MonetizationService monetization, SignupService signups,
+        SubscriptionService subscriptions, PaymentOptions payments, CancellationToken ct) =>
 {
     var isBeta = monetization.Enabled && await signups.IsBetaCohortAsync(user.UserId(), ct);
-    return Results.Ok(new PlansDto(monetization.Enabled, monetization.PlanFor(isBeta), isBeta,
-        monetization.Currency, monetization.AnnualPrice, monetization.MonthlyPrice));
+    var subscribed = monetization.Enabled && await subscriptions.IsActiveAsync(user.UserId(), ct);
+    return Results.Ok(new PlansDto(monetization.Enabled, monetization.PlanFor(isBeta, subscribed), isBeta,
+        monetization.Currency, monetization.AnnualPrice, monetization.MonthlyPrice,
+        MonetizationService.Catalogue, payments.Provider, payments.Sandbox));
+}).RequireAuthorization();
+
+// The public pricing shown on the landing page, BEFORE anyone signs in — the plan choice moved there so the
+// price is visible while deciding, not discovered after registering. Anonymous by design and deliberately narrow:
+// prices and the tier table only, no per-user plan (there is no user yet). Returns Enabled=false during beta, and
+// the landing page renders no pricing at all in that case.
+app.MapGet("/plans/public", (MonetizationService monetization) =>
+    Results.Ok(new PlansDto(monetization.Enabled, "free", false, monetization.Currency,
+        monetization.AnnualPrice, monetization.MonthlyPrice, MonetizationService.Catalogue, "", true)))
+    .AllowAnonymous();
+
+// Consented AND moderator-approved reviews for the landing carousel (OPEN-BETA P1). Both gates are enforced in
+// the query — see FeedbackService.PublicReviewsAsync for why consent alone would be unsafe on an endpoint whose
+// write side is anonymous.
+app.MapGet("/reviews/public", async (FeedbackService feedback, CancellationToken ct) =>
+    Results.Ok((await feedback.PublicReviewsAsync(12, ct))
+        .Select(r => new PublicReviewDto(r.Rating, r.Comment, r.At)).ToList()))
+    .AllowAnonymous();
+
+// Start an upgrade (OPEN-BETA P4 / payment-provider prep). Gated on the SAME flag as everything else: while
+// monetization is off this 404s, so the payment rails cannot be reached during beta even by a hand-crafted
+// request. That single dependency is what makes "it kicks in when the flag lifts" true with no second switch.
+app.MapPost("/billing/checkout", async (CheckoutRequest req, ClaimsPrincipal user, HttpContext http,
+        MonetizationService monetization, IPaymentProvider payments, CancellationToken ct) =>
+{
+    if (!monetization.Enabled) return Results.NotFound();
+    var origin = $"{http.Request.Scheme}://{http.Request.Host}";
+    return Results.Ok(await payments.CreateCheckoutAsync(user.UserId(), req.Interval, origin, ct));
+}).RequireAuthorization();
+
+// Completes a SANDBOX checkout — the stand-in for a provider webhook. Refuses to run unless the active provider
+// actually is the sandbox, so this can never become a free-Pro button once a real provider is configured.
+app.MapPost("/billing/sandbox/complete", async (CheckoutRequest req, ClaimsPrincipal user,
+        MonetizationService monetization, IPaymentProvider payments, SubscriptionService subscriptions,
+        ILoggerFactory logs, CancellationToken ct) =>
+{
+    if (!monetization.Enabled || !payments.IsSandbox) return Results.NotFound();
+    var expires = MonetizationService.ExpiryFor(req.Interval, DateTimeOffset.UtcNow);
+    await subscriptions.ActivateAsync(user.UserId(), req.Interval.ToString(), payments.Name, null, true, expires, ct);
+    logs.CreateLogger("FinApp.Billing").LogInformation(
+        "Sandbox subscription activated for {UserId} ({Interval}, expires {Expires:o})",
+        user.UserId(), req.Interval, expires);
+    return Results.NoContent();
 }).RequireAuthorization();
 
 // Owner-only usage metrics (OPEN-BETA P2). Server-side authorization — an endpoint that enumerates users is the

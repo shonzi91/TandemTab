@@ -7,6 +7,7 @@
 @inject IJSRuntime JS
 @inject NavigationManager Nav
 @inject ClientErrorReporter Errors
+@inject PlanGate Gate
 
 @if (_busy)
 {
@@ -253,6 +254,10 @@ else
             // "Spent" — a transfer to another account is money gone, so it belongs on the hero. Budget bars/health
             // keep using TotalSpent (expenses only). Savings disbursements are excluded (a bucket payout isn't spend).
             var _spent = State.TotalMoneyOut;
+            // The transfer half of "Spent", broken out below the figure the way "Money in" breaks out carry-over —
+            // otherwise a big transfer to another account reads as a spending blow-out. Sub-line only when non-zero.
+            var _transfersOut = State.TransfersOutThisPeriod;
+            var _transfersTip = string.Format(Loc["Of this, {0} was moved to another account rather than spent."], Fmt(_transfersOut));
             var _savedPeriod = State.SavingsThisPeriod;
             // Rate is of "money in" (fresh income + free carry-over), not income alone — otherwise setting aside
             // carried-over cash over-states it. Tooltip breaks the denominator down so the figure is legible.
@@ -287,6 +292,10 @@ else
                 <div class="bal-part">
                     <span class="bal-label">@Loc["Spent"]</span>
                     <strong title="@Loc["All money out this period — spending plus account transfers."]">@Fmt(_spent)</strong>
+                    @if (_transfersOut.Amount > 0m)
+                    {
+                        <small class="bal-sub" title="@_transfersTip">+@Fmt(_transfersOut) @Loc["transferred"]</small>
+                    }
                 </div>
                 <div class="bal-part">
                     @* Was "Income" — now "Money in" (fresh income + free carry-over) so it matches the denominator the
@@ -327,6 +336,10 @@ else
                 <div class="bal-part">
                     <span class="bal-label">@Loc["Spent"]</span>
                     <strong title="@Loc["All money out this period — spending plus account transfers."]">@Fmt(_spent)</strong>
+                    @if (_transfersOut.Amount > 0m)
+                    {
+                        <small class="bal-sub" title="@_transfersTip">+@Fmt(_transfersOut) @Loc["transferred"]</small>
+                    }
                 </div>
                 <div class="bal-part">
                     <span class="bal-label">@Loc["Money in"]</span>
@@ -1624,35 +1637,85 @@ else
                     }
                     else
                     {
-                        decimal trMax = 0m;
-                        for (var si = 0; si < trDefs.Length; si++)
-                            if (!_trendHidden.Contains(si))
-                                foreach (var r in trRows) trMax = Math.Max(trMax, trDefs[si].Val(r));
+                        var trSc = TrendScaleFor(trRows, trDefs);
                         var trStride = Math.Max(1, (trRows.Count + 5) / 6);   // cap x-axis labels at ~6 to avoid crowding
+                        var trHalf = trRows.Count <= 1 ? 0.0 : (TrX1 - TrX0) / (trRows.Count - 1) / 2.0;
                         <div class="trend-chart-wrap">
+                        <div class="trend-plot-area">
                             <svg class="trend-chart" viewBox="0 0 340 152" role="img" aria-label="@Loc["Money over time"]">
-                                <line x1="34" y1="138" x2="312" y2="138" class="trend-axis" />
+                                @* Value scale: a gridline per tick, so a point's height means something without hovering
+                                   it. Ticks are "nice" round numbers spanning the VISIBLE series only, so hiding a big
+                                   line (Balance) rescales the axis to the smaller flow lines. The tick TEXT is HTML
+                                   overlaid below, not <text> — Razor reserves that tag name and won't take attributes
+                                   on it; the x-axis labels already work this way. *@
+                                @foreach (var tv in trSc.Ticks)
+                                {
+                                    var gy = TrendXY(trRows, 0, tv, trSc).Y;
+                                    <line x1="@TrX0.ToString("0.#", trCi)" y1="@gy.ToString("0.#", trCi)" x2="@TrX1.ToString("0.#", trCi)" y2="@gy.ToString("0.#", trCi)" class="@(tv == 0m ? "trend-axis" : "trend-grid")" />
+                                }
+                                @if (_trendHover is { } th && th >= 0 && th < trRows.Count)
+                                {
+                                    var hx = TrendXY(trRows, th, 0m, trSc).X;
+                                    <line x1="@hx.ToString("0.#", trCi)" y1="@TrY0.ToString("0.#", trCi)" x2="@hx.ToString("0.#", trCi)" y2="@TrY1.ToString("0.#", trCi)" class="trend-guide" />
+                                }
                                 @for (var si = 0; si < trDefs.Length; si++)
                                 {
                                     @if (!_trendHidden.Contains(si))
                                     {
-                                        var pts = TrendPoints(trRows, trDefs[si].Val, trMax);
+                                        var pts = TrendPoints(trRows, trDefs[si].Val, trSc);
                                         <polyline points="@pts" fill="none" stroke="@trDefs[si].Color" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" />
                                         @for (var i = 0; i < trRows.Count; i++)
                                         {
-                                            var (cx, cy) = TrendXY(trRows, i, trDefs[si].Val(trRows[i]), trMax);
-                                            <circle cx="@cx.ToString("0.#", trCi)" cy="@cy.ToString("0.#", trCi)" r="2.4" fill="@trDefs[si].Color"><title>@trRows[i].Label · @trDefs[si].Label @Fmt(State.Money(trDefs[si].Val(trRows[i])))</title></circle>
+                                            var (cx, cy) = TrendXY(trRows, i, trDefs[si].Val(trRows[i]), trSc);
+                                            <circle cx="@cx.ToString("0.#", trCi)" cy="@cy.ToString("0.#", trCi)" r="@(_trendHover == i ? "4" : "2.4")" fill="@trDefs[si].Color" class="trend-pt" />
                                         }
                                     }
                                 }
+                                @* Full-height hit columns, one per period. Hovering the 2.4px points themselves is a
+                                   losing game on touch and fiddly with a mouse; a column reads every visible series at
+                                   that month at once, which is the question being asked ("what happened in May?"). *@
+                                @for (var i = 0; i < trRows.Count; i++)
+                                {
+                                    var hi = i;
+                                    var hcx = TrendXY(trRows, i, 0m, trSc).X;
+                                    var hw = trHalf <= 0 ? (TrX1 - TrX0) : trHalf * 2;
+                                    <rect x="@((hcx - hw / 2).ToString("0.#", trCi))" y="@TrY0.ToString("0.#", trCi)" width="@hw.ToString("0.#", trCi)" height="@((TrY1 - TrY0).ToString("0.#", trCi))"
+                                          class="trend-hit" @onmouseover="() => _trendHover = hi" @onmouseout="() => _trendHover = null" @onclick="() => _trendHover = _trendHover == hi ? null : hi" />
+                                }
                             </svg>
+                            <div class="trend-ylabels" aria-hidden="true">
+                                @foreach (var tv in trSc.Ticks)
+                                {
+                                    var ly = TrendXY(trRows, 0, tv, trSc).Y / 152.0 * 100.0;
+                                    <span class="trend-ylbl" style="top:@ly.ToString("0.##", trCi)%">@TrendTick(tv)</span>
+                                }
+                            </div>
+                        </div>
+                            @if (_trendHover is { } tp && tp >= 0 && tp < trRows.Count)
+                            {
+                                var tipX = TrendXY(trRows, tp, 0m, trSc).X / 340.0 * 100.0;
+                                <div class="trend-tip @(tipX > 60 ? "left" : "")" style="left:@tipX.ToString("0.#", trCi)%">
+                                    <span class="trend-tip-h">@trRows[tp].Label</span>
+                                    @for (var si = 0; si < trDefs.Length; si++)
+                                    {
+                                        @if (!_trendHidden.Contains(si))
+                                        {
+                                            <span class="trend-tip-row">
+                                                <span class="trend-leg-dot" style="background:@trDefs[si].Color"></span>
+                                                <span class="trend-tip-n">@trDefs[si].Label</span>
+                                                <span class="trend-tip-v">@Fmt(State.Money(trDefs[si].Val(trRows[tp])))</span>
+                                            </span>
+                                        }
+                                    }
+                                </div>
+                            }
                             <div class="trend-xaxis">
                                 @for (var i = 0; i < trRows.Count; i++)
                                 {
                                     @if (i % trStride == 0 || i == trRows.Count - 1)
                                     {
-                                        var lx = TrendXY(trRows, i, 0m, trMax).X / 340.0 * 100.0;
-                                        <span class="trend-xlbl" style="left:@lx.ToString("0.#", trCi)%">@trRows[i].Label</span>
+                                        var lx = TrendXY(trRows, i, 0m, trSc).X / 340.0 * 100.0;
+                                        <span class="trend-xlbl @(_trendHover == i ? "on" : "")" style="left:@lx.ToString("0.#", trCi)%">@trRows[i].Label</span>
                                     }
                                 }
                             </div>
@@ -4931,25 +4994,79 @@ else
     private readonly HashSet<int> _trendHidden = new();
     private void ToggleTrendSeries(int i) { if (!_trendHidden.Remove(i)) _trendHidden.Add(i); }
 
-    // Plot area inside the 340×168 viewBox (leaves a left gutter + a bottom strip for month labels).
-    private const double TrX0 = 34, TrX1 = 312, TrY0 = 12, TrY1 = 138;
+    // The period column the pointer is over (index into TrendRows). Drives the guide line, the enlarged points and
+    // the value tooltip. Click toggles it too, so the numbers are reachable on touch where there is no hover.
+    private int? _trendHover;
 
-    // (x, y) of point i for a given value, scaled to [0, max]. A single point sits centred.
-    private (double X, double Y) TrendXY(IReadOnlyList<TrendRow> rows, int i, decimal value, decimal max)
+    // Plot area inside the 340×152 viewBox (leaves a left gutter for the value scale + a bottom strip for months).
+    private const double TrX0 = 40, TrX1 = 312, TrY0 = 12, TrY1 = 132;
+
+    /// <summary>The Y axis: the value range the visible series occupy, snapped out to round tick numbers.</summary>
+    private sealed record TrendScale(decimal Min, decimal Max, decimal[] Ticks);
+
+    /// <summary>Builds the value axis from the VISIBLE series only, so hiding Balance rescales to the flow lines.
+    /// Always includes zero (money charts that float off the baseline exaggerate small movements), and handles a
+    /// negative minimum — a balance can go under, and the old zero-anchored scale drew that off the bottom edge.</summary>
+    private TrendScale TrendScaleFor(IReadOnlyList<TrendRow> rows, (string Label, string Color, Func<TrendRow, decimal> Val)[] defs)
+    {
+        decimal lo = 0m, hi = 0m;
+        for (var si = 0; si < defs.Length; si++)
+        {
+            if (_trendHidden.Contains(si)) continue;
+            foreach (var r in rows)
+            {
+                var v = defs[si].Val(r);
+                if (v < lo) lo = v;
+                if (v > hi) hi = v;
+            }
+        }
+        if (hi <= lo) hi = lo + 1m;                       // everything hidden, or a dead-flat zero series
+        var step = TrendNiceStep((hi - lo) / 4m);
+        var nlo = Math.Floor(lo / step) * step;
+        var nhi = Math.Ceiling(hi / step) * step;
+        var ticks = new List<decimal>();
+        for (var t = nlo; t <= nhi + step / 2m; t += step) ticks.Add(t);
+        return new TrendScale(nlo, nhi, ticks.ToArray());
+    }
+
+    // Rounds a raw step up to the next 1 / 2 / 2.5 / 5 × 10ⁿ so axis labels read as round money, not 1,237.4.
+    private static decimal TrendNiceStep(decimal raw)
+    {
+        if (raw <= 0m) return 1m;
+        var mag = (decimal)Math.Pow(10, Math.Floor(Math.Log10((double)raw)));
+        var norm = raw / mag;
+        var mult = norm <= 1m ? 1m : norm <= 2m ? 2m : norm <= 2.5m ? 2.5m : norm <= 5m ? 5m : 10m;
+        return mult * mag;
+    }
+
+    // Axis tick text. Compact (1.2k / 3M) because the gutter is ~36 viewBox units wide; the tooltip and the legend
+    // carry the exact formatted amount, so nothing is lost to the abbreviation.
+    private static string TrendTick(decimal v)
+    {
+        var ci = System.Globalization.CultureInfo.InvariantCulture;
+        var a = Math.Abs(v);
+        if (a >= 1_000_000m) return (v / 1_000_000m).ToString("0.#", ci) + "M";
+        if (a >= 1_000m) return (v / 1_000m).ToString("0.#", ci) + "k";
+        return v.ToString("0.##", ci);
+    }
+
+    // (x, y) of point i for a given value on the supplied scale. A single point sits centred.
+    private (double X, double Y) TrendXY(IReadOnlyList<TrendRow> rows, int i, decimal value, TrendScale sc)
     {
         var x = rows.Count <= 1 ? (TrX0 + TrX1) / 2 : TrX0 + (TrX1 - TrX0) * i / (rows.Count - 1);
-        var y = max <= 0m ? TrY1 : TrY1 - (TrY1 - TrY0) * (double)(value / max);
+        var span = sc.Max - sc.Min;
+        var y = span <= 0m ? TrY1 : TrY1 - (TrY1 - TrY0) * (double)((value - sc.Min) / span);
         return (x, y);
     }
 
     // "x,y x,y …" points string for one series' polyline.
-    private string TrendPoints(IReadOnlyList<TrendRow> rows, Func<TrendRow, decimal> val, decimal max)
+    private string TrendPoints(IReadOnlyList<TrendRow> rows, Func<TrendRow, decimal> val, TrendScale sc)
     {
         var ci = System.Globalization.CultureInfo.InvariantCulture;
         var sb = new System.Text.StringBuilder();
         for (var i = 0; i < rows.Count; i++)
         {
-            var (x, y) = TrendXY(rows, i, val(rows[i]), max);
+            var (x, y) = TrendXY(rows, i, val(rows[i]), sc);
             if (i > 0) sb.Append(' ');
             sb.Append(x.ToString("0.#", ci)).Append(',').Append(y.ToString("0.#", ci));
         }
@@ -8269,7 +8386,14 @@ else
     private void OpenAddAccount() { _fName = null; _fCurrency = State.Currency; _fSavingsTarget = 20; _modal = Modal.AddAccount; }
     private void OpenEditAccount() { _fName = State.Account.Name; _fSavingsTarget = (int)decimal.Round(State.SavingsRateTarget * 100m); _modal = Modal.EditAccount; }
     private void OpenDeleteAccount() => _modal = Modal.DeleteAccount;
-    private void OpenInvite() { _inviteUsername = null; _inviteMessage = null; _modal = Modal.Invite; }
+    // Sharing is the hero Pro feature and, per MONETIZATION.md, the intended upgrade moment — so the gate sits on
+    // the invite, not on a pricing page. Inert until the monetization flag lifts (PlanGate.Allows passes
+    // "unlimited", which is every account during beta), so this line changes nothing today.
+    private void OpenInvite()
+    {
+        if (!Gate.Require(PlanFeatures.Share)) return;
+        _inviteUsername = null; _inviteMessage = null; _modal = Modal.Invite;
+    }
 
     private Task ExportAccount() => Run(async () =>
     {

@@ -164,6 +164,22 @@ public sealed class FinAppApiClient(HttpClient http)
     public Task<PlansDto> GetPlansAsync(CancellationToken ct = default) =>
         SendAsync<PlansDto>(HttpMethod.Get, "/plans", null, ct);
 
+    /// <summary>Pricing for the landing page — anonymous, since it has to render before anyone has an account.</summary>
+    public Task<PlansDto> GetPublicPlansAsync(CancellationToken ct = default) =>
+        SendAsync<PlansDto>(HttpMethod.Get, "/plans/public", null, ct);
+
+    /// <summary>Consented + approved reviews for the landing carousel (OPEN-BETA P1).</summary>
+    public Task<List<PublicReviewDto>> GetPublicReviewsAsync(CancellationToken ct = default) =>
+        SendAsync<List<PublicReviewDto>>(HttpMethod.Get, "/reviews/public", null, ct);
+
+    /// <summary>Begin an upgrade. 404s while monetization is off — the rails are unreachable during beta.</summary>
+    public Task<CheckoutSessionDto> StartCheckoutAsync(BillingInterval interval, CancellationToken ct = default) =>
+        SendAsync<CheckoutSessionDto>(HttpMethod.Post, "/billing/checkout", new CheckoutRequest(interval), ct);
+
+    /// <summary>Complete a sandbox checkout (stands in for the provider webhook until one is wired).</summary>
+    public Task CompleteSandboxCheckoutAsync(BillingInterval interval, CancellationToken ct = default) =>
+        SendAsync(HttpMethod.Post, "/billing/sandbox/complete", new CheckoutRequest(interval), ct);
+
     // Loan installments — one payment posting several linked rows (principal / interest / additional lines).
     public Task<MutationResultDto> LogInstallmentAsync(Guid id, LogInstallmentRequest req, CancellationToken ct = default) =>
         SendAsync<MutationResultDto>(HttpMethod.Post, $"/accounts/{id}/installments", req, ct);

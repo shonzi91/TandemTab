@@ -1,6 +1,7 @@
 @inject Localizer Loc
 @inject AuthState Auth
 @inject IJSRuntime JS
+@inject FinAppApiClient Api
 @implements IDisposable
 
 @* Logged-out marketing landing. The sign-in card (<AuthPanel/>) opens as an overlay from the CTA — the auth
@@ -27,7 +28,10 @@
             </ul>
             <button class="lp-cta lp-cta-glow" @onclick="OpenAuth">@Loc["Try it free"]</button>
             @* OPEN-BETA B4 — say plainly what beta means for their data (they don't forgive losing it). *@
-            <p class="lp-cta-note">@Loc["In free beta — your account and everything in it carries through to launch."]</p>
+            @* The beta promise is the single biggest objection-remover on this page ("will I lose my data when
+               this stops being free?"), so it is a badge rather than grey small print. Temporary by nature — it
+               comes out when beta ends — which is exactly why it is one self-contained element to delete. *@
+            <p class="lp-cta-note"><span class="lp-beta-pill">@Loc["Free beta"]</span>@Loc["Your account and everything in it carries through to launch."]</p>
         </div>
     </section>
 
@@ -88,29 +92,140 @@
         </div>
     </section>
 
-    <section class="lp-closing">
-        <h3>@Loc["Ready to take control of your money — together?"]</h3>
-        <button class="lp-cta lp-cta-glow" @onclick="OpenAuth">@Loc["Try it free"]</button>
-    </section>
-
-    @* Feedback from the landing page reaches people who looked and decided NOT to sign up — the one group we
-       can hear from no other way. Collapsed by default so it doesn't compete with the CTA above it. *@
-    <section class="lp-feedback">
-        @if (!_feedbackOpen)
-        {
-            <button class="lp-feedback-open" @onclick="() => _feedbackOpen = true">
-                <Icon Name="note" /> @Loc["We’re in beta — tell us what you think"]
-            </button>
-        }
-        else
-        {
-            <div class="lp-feedback-card">
-                <h4>@Loc["We’re in beta — tell us what you think"]</h4>
-                <p class="lp-feedback-sub">@Loc["Didn’t sign up? That’s useful to know too — what put you off?"]</p>
-                <FeedbackForm Source="landing" />
+    @* Reviews people explicitly agreed to have shown, AND that a human approved (both gates are enforced in the
+       query — /feedback's write side is anonymous, so consent alone would let anyone put text on this page).
+       Rendered only when there is something to show: an empty or one-item "carousel" of testimonials looks worse
+       than no testimonials, and during beta this list is legitimately empty. *@
+    @if (_reviews.Count > 0)
+    {
+        <section class="lp-reviews">
+            <h3 class="lp-sec-h">@Loc["What people are saying"]</h3>
+            <div class="lp-carousel">
+                <div class="lp-quote" @key="_reviewIx">
+                    @if (_reviews[_reviewIx].Rating is { } stars)
+                    {
+                        <div class="lp-stars" aria-label="@string.Format(Loc["{0} out of 5"], stars)">
+                            @for (var s = 0; s < 5; s++) { <span aria-hidden="true">@(s < stars ? "★" : "☆")</span> }
+                        </div>
+                    }
+                    <blockquote>@_reviews[_reviewIx].Comment</blockquote>
+                </div>
+                @if (_reviews.Count > 1)
+                {
+                    <div class="lp-carousel-nav">
+                        <button type="button" class="lp-car-arrow" aria-label="@Loc["Previous"]"
+                                @onclick="() => ShowReview(_reviewIx - 1)"><span aria-hidden="true">‹</span></button>
+                        <span class="lp-dots">
+                            @for (var d = 0; d < _reviews.Count; d++)
+                            {
+                                var di = d;
+                                <button type="button" class="lp-dot @(di == _reviewIx ? "on" : "")"
+                                        aria-label="@string.Format(Loc["Review {0}"], di + 1)"
+                                        @onclick="() => ShowReview(di)"></button>
+                            }
+                        </span>
+                        <button type="button" class="lp-car-arrow" aria-label="@Loc["Next"]"
+                                @onclick="() => ShowReview(_reviewIx + 1)"><span aria-hidden="true">›</span></button>
+                    </div>
+                }
             </div>
-        }
-    </section>
+        </section>
+    }
+
+    @* Pricing lives here, before sign-up, so the cost is visible while deciding rather than discovered after.
+       Renders ONLY when monetization is switched on — during beta the app is free and a price list would be a
+       lie. Inside the app there is no pricing page at all; the ask happens at the gate (see PlanGate). *@
+    @if (_plans is { Enabled: true } pp)
+    {
+        <section class="lp-pricing">
+            @* Carries the closing CTA's headline: when pricing renders it IS the end of the page, and a separate
+               "Ready to take control…" block below would repeat both the question and the button. *@
+            <h3 class="lp-sec-h">@Loc["Ready to take control of your money — together?"]</h3>
+            <div class="lp-price-row">
+                <div class="lp-price-card">
+                    <h4>@Loc["Free"]</h4>
+                    <p class="lp-price-n">@pp.Currency 0<span>/@Loc["yr"]</span></p>
+                    <p class="lp-price-alt">@Loc["No card, no expiry."]</p>
+                    <ul>
+                        @foreach (var f in pp.Features.Where(f => f.InFree))
+                        {
+                            <li>@FeatureLabel(f.Key)</li>
+                        }
+                    </ul>
+                    <button class="lp-cta" @onclick="OpenAuth">@Loc["Try it free"]</button>
+                </div>
+                <div class="lp-price-card lp-price-pro">
+                    <h4>👑 @Loc["Pro"]</h4>
+                    <p class="lp-price-n">@pp.Currency @pp.AnnualPrice<span>/@Loc["yr"]</span></p>
+                    <p class="lp-price-alt">@string.Format(Loc["or {0} {1} monthly"], pp.Currency, pp.MonthlyPrice)</p>
+                    <ul>
+                        <li>@Loc["Everything in Free, plus:"]</li>
+                        @foreach (var f in pp.Features.Where(f => !f.InFree))
+                        {
+                            <li>@FeatureLabel(f.Key)</li>
+                        }
+                    </ul>
+                    <p class="lp-price-note">@Loc["One subscription covers everyone on a shared account."]</p>
+                    <button class="lp-cta lp-cta-glow" @onclick="OpenAuth">@Loc["Get started"]</button>
+                </div>
+            </div>
+        </section>
+    }
+
+    @* Only when there is no pricing section — that one carries the same headline and its own CTAs, so showing
+       both would ask the question twice. During beta (flag off) pricing never renders and this is the closer. *@
+    @if (_plans is not { Enabled: true })
+    {
+        <section class="lp-closing">
+            <h3>@Loc["Ready to take control of your money — together?"]</h3>
+            <button class="lp-cta lp-cta-glow" @onclick="OpenAuth">@Loc["Try it free"]</button>
+        </section>
+    }
+
+    @* Footer: the contact surface. The feedback form moved in here (it was a floating section above) so that
+       everything for "how do I reach you" — write to us, email, legal — sits in the one place people look for it.
+       Feedback from the landing page reaches those who looked and decided NOT to sign up: the one group we can
+       hear from no other way. Collapsed by default so it never competes with the CTA. *@
+    <footer class="lp-footer">
+        <div class="lp-foot-grid">
+            <div class="lp-foot-col lp-foot-brand">
+                <span class="lp-brand-sm"><span class="lp-logo-sm"><TandemLogo /></span><span class="brand-word">Tandem<span class="brand-tab">Tab</span></span></span>
+                <p class="lp-foot-tag">@Loc["Track together, save together."]</p>
+                <p class="lp-foot-tag">@Loc["We sell software, not your data."]</p>
+            </div>
+
+            <div class="lp-foot-col">
+                <h5>@Loc["Contact"]</h5>
+                @* One real, monitored mailbox — the same address the privacy policy names as the GDPR contact.
+                   No invented support@ alias that nobody reads. *@
+                <p><a href="mailto:admin@tandemtab.com">admin@tandemtab.com</a></p>
+                <p class="lp-foot-muted">@Loc["TandemTab Company · Sofia, Bulgaria"]</p>
+                <p class="lp-foot-muted">@Loc["We usually reply within a couple of days."]</p>
+            </div>
+
+            <div class="lp-foot-col">
+                <h5>@Loc["Legal"]</h5>
+                <p><a href="@PrivacyUrl" target="_blank" rel="noopener">@Loc["Privacy"]</a></p>
+                <p><a href="@TermsUrl" target="_blank" rel="noopener">@Loc["Terms"]</a></p>
+            </div>
+
+            <div class="lp-foot-col lp-foot-feedback">
+                <h5>@Loc["Send us a message"]</h5>
+                @if (!_feedbackOpen)
+                {
+                    <p class="lp-foot-muted">@Loc["Didn’t sign up? That’s useful to know too — what put you off?"]</p>
+                    <button class="lp-feedback-open" @onclick="() => _feedbackOpen = true">
+                        <Icon Name="note" /> @Loc["We’re in beta — tell us what you think"]
+                    </button>
+                }
+                else
+                {
+                    <FeedbackForm Source="landing" />
+                }
+            </div>
+        </div>
+        <p class="lp-foot-copy">© @DateTime.UtcNow.Year TandemTab</p>
+    </footer>
 
 </div>
 
@@ -127,6 +242,38 @@
 @code {
     private bool _showAuth;
     private bool _feedbackOpen;
+
+    private string PrivacyUrl => Loc.Culture == "bg" ? "/privacy.bg.html" : "/privacy.html";
+    private string TermsUrl => Loc.Culture == "bg" ? "/terms.bg.html" : "/terms.html";
+
+    // Public reviews (P1) and public pricing (P4). Both are anonymous endpoints — this page renders before anyone
+    // has an account — and both fail silently: a landing page must still render if either call fails, so an
+    // outage costs a testimonial strip, never the sign-up button.
+    private List<PublicReviewDto> _reviews = new();
+    private int _reviewIx;
+    private PlansDto? _plans;
+
+    private void ShowReview(int i)
+    {
+        if (_reviews.Count == 0) return;
+        _reviewIx = ((i % _reviews.Count) + _reviews.Count) % _reviews.Count;   // wraps both ways
+    }
+
+    // Mirrors MainLayout's map: the server sends stable keys, the client owns the wording in each language.
+    private string FeatureLabel(string key) => key switch
+    {
+        PlanFeatures.Budgets  => Loc["Budgets, categories and tags"],
+        PlanFeatures.Goals    => Loc["Savings goals"],
+        PlanFeatures.Export   => Loc["Export to Excel"],
+        PlanFeatures.Security => Loc["Two-factor security"],
+        PlanFeatures.Share    => Loc["Share with your household"],
+        PlanFeatures.Import   => Loc["Unlimited statement imports"],
+        PlanFeatures.Debt     => Loc["Debt payoff planner"],
+        PlanFeatures.Insights => Loc["Trends and advanced insights"],
+        PlanFeatures.History  => Loc["Full history"],
+        PlanFeatures.Caps     => Loc["Unlimited accounts and funds"],
+        _ => key,
+    };
     private string? _resetToken;   // from a ?resetToken=… reset link → open the auth overlay on the reset form
     // Dark is the app-wide default (see index.html), so start assuming dark and correct from storage on first render.
     private bool _dark = true;
@@ -154,6 +301,20 @@
             if (!string.IsNullOrEmpty(token)) { _resetToken = token; _showAuth = true; changed = true; }
         }
         catch { /* host without the helper — no reset link to honour */ }
+        // Fetched after first render, not in OnInitialized: neither is needed to paint the hero or the CTA, and
+        // blocking the landing page's first paint on two network calls would be a poor trade for a quote strip.
+        try
+        {
+            var reviews = await Api.GetPublicReviewsAsync();
+            if (reviews.Count > 0) { _reviews = reviews; changed = true; }
+        }
+        catch { /* no testimonials is a fine state — the section simply doesn't render */ }
+        try
+        {
+            var plans = await Api.GetPublicPlansAsync();
+            if (plans.Enabled) { _plans = plans; changed = true; }
+        }
+        catch { /* no pricing section; during beta it wouldn't render anyway */ }
         if (changed) StateHasChanged();
     }
 

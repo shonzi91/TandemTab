@@ -5,13 +5,18 @@
 @inject Localizer Loc
 @inject FinAppApiClient Api
 @inject IJSRuntime JS
+@inject NavigationManager Nav
+@inject PlanGate Gate
 
 <IconSprite />
 <div class="app-shell">
     @if (Auth.IsAuthenticated)
     {
         <header class="app-bar">
-            <span class="brand"><span class="brand-logo"><TandemLogo /></span><span class="brand-word">Tandem<span class="brand-tab">Tab</span></span></span>
+            @* The Pro mark only appears once monetization is live AND the account is actually Pro — during beta
+               the flag is off and every account reads "unlimited", which deliberately does NOT earn a crown.
+               Badging everyone would make the mark meaningless the day it starts meaning something. *@
+            <span class="brand"><span class="brand-logo"><TandemLogo Pro="@IsPro" /></span><span class="brand-word">Tandem<span class="brand-tab">Tab</span></span>@if (IsPro) { <span class="brand-pro" title="@Loc["You’re on Pro"]">@Loc["Pro"]</span> }</span>
             <span class="appbar-user">
                 <LanguagePicker />
                 <span class="appbar-id">
@@ -84,6 +89,43 @@
             <span>·</span>
             <a href="@TermsUrl" target="_blank" rel="noopener">@Loc["Terms"]</a>
         </footer>
+    }
+
+    @* The upgrade prompt (P4). Raised BY A GATE, never shown on arrival — see PlanGate for why the ask belongs at
+       the moment someone reaches for the feature. Names the specific blocked capability so it reads as an
+       explanation of what just happened, not an ad. *@
+    @if (_gateBlocked is { } gk)
+    {
+        @* Uses the profile modal's own shell (.pm-backdrop/.pm) rather than Dashboard's .modal — those base styles
+           are scoped to Dashboard.razor.css and simply do not reach this component, so a .modal here would render
+           as an unstyled block. *@
+        <div class="pm-backdrop" @onclick="() => _gateBlocked = null">
+            <div class="pm" @onclick:stopPropagation="true">
+                <h3><span class="upg-crown" aria-hidden="true">👑</span> @Loc["That one’s part of Pro"]</h3>
+                <p class="upg-feat">@FeatureLabel(gk)</p>
+                <p class="pm-hint">@Loc["Everything you already use stays free. Pro adds sharing, unlimited imports, the payoff planner and your full history."]</p>
+                @if (Gate.Plans is { } gp)
+                {
+                    <div class="pm-cycle" role="group" aria-label="@Loc["Billing period"]">
+                        <button type="button" class="@(_cycle == BillingInterval.Annual ? "on" : "")" @onclick="() => _cycle = BillingInterval.Annual">
+                            @Loc["Yearly"] <strong>@gp.Currency @gp.AnnualPrice</strong>
+                        </button>
+                        <button type="button" class="@(_cycle == BillingInterval.Monthly ? "on" : "")" @onclick="() => _cycle = BillingInterval.Monthly">
+                            @Loc["Monthly"] <strong>@gp.Currency @gp.MonthlyPrice</strong>
+                        </button>
+                    </div>
+                    @if (gp.PaymentSandbox)
+                    {
+                        <p class="pm-hint">@Loc["Test mode — no card is charged and no real payment is taken."]</p>
+                    }
+                }
+                @if (_checkoutMsg is { } gm) { <p class="pm-hint">@gm</p> }
+                <div class="pm-actions">
+                    <button class="ghost" @onclick="() => _gateBlocked = null">@Loc["Not now"]</button>
+                    <button disabled="@_checkoutBusy" @onclick="StartUpgrade">@Loc["Upgrade to Pro"]</button>
+                </div>
+            </div>
+        </div>
     }
 
     @* Guarded on CurrentUser as well as the flag: every line of this modal dereferences the signed-in user, so
@@ -291,33 +333,47 @@
                             <p class="pm-hint">@string.Format(Loc["You’re on the {0} plan."], PlanLabel(Auth.CurrentUser!.Plan))</p>
                             @if (_plans is { } pl)
                             {
-                                <div class="pm-plans">
-                                    <div class="pm-plan @(pl.CurrentPlan == "free" ? "current" : "")">
-                                        <h5>@Loc["Free"]</h5>
-                                        <ul>
-                                            <li>@Loc["Solo budgeting"]</li>
-                                            <li>@Loc["One debt, recent history"]</li>
-                                            <li>@Loc["Your first statement import"]</li>
-                                        </ul>
-                                    </div>
-                                    <div class="pm-plan pm-plan-pro @(pl.CurrentPlan is "pro" or "unlimited" ? "current" : "")">
-                                        <h5>@Loc["Pro"] <span class="pm-plan-price">@pl.Currency @pl.AnnualPrice/@Loc["yr"]</span></h5>
-                                        <ul>
-                                            <li>@Loc["Everything in Free, plus:"]</li>
-                                            <li>@Loc["Share with your household — one subscription covers everyone"]</li>
-                                            <li>@Loc["Unlimited imports and full history"]</li>
-                                            <li>@Loc["Full analytics, trends and debt planner"]</li>
-                                        </ul>
-                                        @if (pl.IsBetaCohort)
+                                @* What you HAVE, not just what you'd get. A plan screen that only lists the locked
+                                   things reads as a nag; listing the included ones first makes the free tier feel
+                                   like a product (which it is) and makes the locked rows legible as the delta. *@
+                                <ul class="pm-feats">
+                                    @foreach (var f in pl.Features)
+                                    {
+                                        var has = pl.CurrentPlan is "pro" or "unlimited" ? f.InPro : f.InFree;
+                                        <li class="pm-feat @(has ? "on" : "off")">
+                                            <span class="pm-feat-m" aria-hidden="true">@(has ? "✓" : "🔒")</span>
+                                            <span>@FeatureLabel(f.Key)</span>
+                                            @if (!has) { <span class="pm-feat-tag">@Loc["Pro"]</span> }
+                                        </li>
+                                    }
+                                </ul>
+                                @if (pl.IsBetaCohort)
+                                {
+                                    <p class="pm-hint">🎉 @Loc["You joined during beta — Pro is on us."]</p>
+                                }
+                                else if (pl.CurrentPlan == "free")
+                                {
+                                    <div class="pm-upsell">
+                                        <div class="pm-cycle" role="group" aria-label="@Loc["Billing period"]">
+                                            <button type="button" class="@(_cycle == BillingInterval.Annual ? "on" : "")"
+                                                    @onclick="() => _cycle = BillingInterval.Annual">
+                                                @Loc["Yearly"] <strong>@pl.Currency @pl.AnnualPrice</strong>
+                                            </button>
+                                            <button type="button" class="@(_cycle == BillingInterval.Monthly ? "on" : "")"
+                                                    @onclick="() => _cycle = BillingInterval.Monthly">
+                                                @Loc["Monthly"] <strong>@pl.Currency @pl.MonthlyPrice</strong>
+                                            </button>
+                                        </div>
+                                        <button class="primary" disabled="@_checkoutBusy" @onclick="StartUpgrade">@Loc["Upgrade to Pro"]</button>
+                                        @if (pl.PaymentSandbox)
                                         {
-                                            <p class="pm-hint">🎉 @Loc["You joined during beta — Pro is on us."]</p>
+                                            @* Said plainly rather than hidden: a checkout button that quietly does
+                                               nothing real is worse than one that admits it. *@
+                                            <p class="pm-hint">@Loc["Test mode — no card is charged and no real payment is taken."]</p>
                                         }
-                                        else if (pl.CurrentPlan == "free")
-                                        {
-                                            <button class="ghost" disabled>@Loc["Upgrade (coming soon)"]</button>
-                                        }
+                                        @if (_checkoutMsg is { } cm) { <p class="pm-hint">@cm</p> }
                                     </div>
-                                </div>
+                                }
                             }
                             else if (_plansBusy)
                             {
@@ -495,6 +551,77 @@
     }
     private string PlanLabel(string plan) => plan switch { "pro" => Loc["Pro"], "free" => Loc["Free"], _ => Loc["Unlimited"] };
 
+    /// <summary>Whether to wear the Pro mark. Requires monetization to be ON — "unlimited" (the beta state) is
+    /// everyone, and a badge everyone has is not a badge.</summary>
+    private bool IsPro => Auth.CurrentUser is { MonetizationEnabled: true, Plan: "pro" };
+
+    // The server sends stable feature KEYS and the client owns the wording, so one catalogue localizes into both
+    // languages without the server knowing a locale. An unknown key falls back to itself rather than throwing —
+    // a server that ships a new feature before the client learns its name degrades to an ugly row, not a crash.
+    private string FeatureLabel(string key) => key switch
+    {
+        PlanFeatures.Budgets  => Loc["Budgets, categories and tags"],
+        PlanFeatures.Goals    => Loc["Savings goals"],
+        PlanFeatures.Export   => Loc["Export to Excel"],
+        PlanFeatures.Security => Loc["Two-factor security"],
+        PlanFeatures.Share    => Loc["Share with your household"],
+        PlanFeatures.Import   => Loc["Unlimited statement imports"],
+        PlanFeatures.Debt     => Loc["Debt payoff planner"],
+        PlanFeatures.Insights => Loc["Trends and advanced insights"],
+        PlanFeatures.History  => Loc["Full history"],
+        PlanFeatures.Caps     => Loc["Unlimited accounts and funds"],
+        _ => key,
+    };
+
+    // The feature key a gate just refused, or null. Set only by PlanGate.Blocked.
+    private string? _gateBlocked;
+    private void OnPlanBlocked(string featureKey)
+    {
+        _gateBlocked = featureKey;
+        _checkoutMsg = null;
+        // The tier table is what prices the prompt; fetch it now rather than on app start, since during beta
+        // (flag off) no gate ever fires and the request would be pure waste.
+        _ = LoadGatePlansAsync();
+        StateHasChanged();
+    }
+    private async Task LoadGatePlansAsync()
+    {
+        await Gate.EnsureLoadedAsync();
+        StateHasChanged();
+    }
+
+    // Upgrade. The billing period is a client-side choice until checkout starts; the server decides the expiry
+    // from the interval it is sent, so the price shown and the term granted can't drift apart.
+    private BillingInterval _cycle = BillingInterval.Annual;
+    private bool _checkoutBusy;
+    private string? _checkoutMsg;
+    private async Task StartUpgrade()
+    {
+        _checkoutBusy = true; _checkoutMsg = null; StateHasChanged();
+        try
+        {
+            var session = await Api.StartCheckoutAsync(_cycle);
+            if (session.Sandbox)
+            {
+                // Sandbox stands in for the hosted-checkout round trip: complete it in place, then re-read /me so
+                // the plan (and the Pro badge) reflect the new entitlement immediately.
+                await Api.CompleteSandboxCheckoutAsync(_cycle);
+                _plans = null;
+                Gate.Invalidate();
+                await Auth.RefreshUserAsync();
+                await LoadPlans();
+                _gateBlocked = null;          // whatever they were reaching for is now unlocked — get out of the way
+                _checkoutMsg = Loc["You’re on Pro. (Test mode — nothing was charged.)"];
+            }
+            else
+            {
+                Nav.NavigateTo(session.RedirectUrl, forceLoad: true);
+            }
+        }
+        catch { _checkoutMsg = Loc["Couldn’t start the upgrade. Try again in a moment."]; }
+        finally { _checkoutBusy = false; StateHasChanged(); }
+    }
+
     /// <summary>Schedule the signed-in user's account for deletion; on success /me flips to pending and the app shows the grace gate.</summary>
     private async Task DeleteAccount()
     {
@@ -605,6 +732,7 @@
     {
         Auth.Changed += OnChanged;
         Loc.Changed += OnChanged;
+        Gate.Blocked += OnPlanBlocked;
         await Loc.InitializeAsync();
         // An external (Google/Facebook) sign-in redirects back with a one-time code in the query string,
         // which we exchange (over POST) for real session tokens — keeping tokens out of the URL.
@@ -627,7 +755,16 @@
         await LoadLoginConsentAsync();
     }
 
-    private void OnChanged() { _ = LoadLoginConsentAsync(); InvokeAsync(StateHasChanged); }
+    private void OnChanged()
+    {
+        _ = LoadLoginConsentAsync();
+        // Warm the tier table as soon as we know who is signed in. PlanGate fails OPEN when the catalogue is
+        // missing (a spurious paywall is far worse than a briefly missing one) — which means a gate reached
+        // before the first load would silently pass and the paywall would never fire at all. Loading it here,
+        // once, is what makes the gates real. No-ops entirely while monetization is off, which is all of beta.
+        _ = Gate.EnsureLoadedAsync();
+        InvokeAsync(StateHasChanged);
+    }
 
     // --- Consent (accept the terms once at login) -------------------------
     private bool? _loginConsent;   // null = unknown/not-signed-in, true/false = active?
@@ -704,5 +841,6 @@
     {
         Auth.Changed -= OnChanged;
         Loc.Changed -= OnChanged;
+        Gate.Blocked -= OnPlanBlocked;
     }
 }

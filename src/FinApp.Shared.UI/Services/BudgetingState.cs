@@ -646,6 +646,11 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     /// for budget contexts — a transfer isn't budget spend.</summary>
     public Money TotalMoneyOut => Period.ExpensesTotal + Period.AccountTransfersOutTotal;
 
+    /// <summary>The transfer half of <see cref="TotalMoneyOut"/> on its own, so the hero "Spent" card can break
+    /// its own total down ("+X transfers") the way "Money in" breaks out carry-over. Without this the tile silently
+    /// mixes two very different kinds of money-out and reads as overspending.</summary>
+    public Money TransfersOutThisPeriod => Period.AccountTransfersOutTotal;
+
     /// <summary>New member deposits this period (the contributed pool).</summary>
     public Money TotalContributed => Period.ContributionsPaidTotal;
 

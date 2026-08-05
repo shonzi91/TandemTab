@@ -64,7 +64,20 @@
     50%      { box-shadow: 0 8px 26px rgba(19, 160, 110, .40), 0 0 0 12px rgba(19, 160, 110, 0); }
 }
 @media (prefers-reduced-motion: reduce) { .lp-cta-glow { animation: none; } }
-.lp-cta-note { margin: 12px 0 0; font-size: .85rem; color: #8a97a0; }
+/* The beta promise, promoted out of grey small print into a tinted callout — it answers "will I lose my data
+   when this stops being free?", which is the last thing between reading and signing up. Whole block is
+   self-contained so removing it at launch is a single delete. */
+.lp-cta-note {
+    display: inline-flex; align-items: center; flex-wrap: wrap; gap: 8px;
+    margin: 14px 0 0; padding: 8px 14px 8px 8px; border-radius: 999px;
+    font-size: .88rem; font-weight: 600; color: #0e5f42;
+    background: rgba(19,160,110,.09); border: 1px solid rgba(19,160,110,.28);
+}
+.lp-beta-pill {
+    flex: none; padding: 3px 10px; border-radius: 999px;
+    background: #13a06e; color: #fff;
+    font-size: .7rem; font-weight: 800; letter-spacing: .06em; text-transform: uppercase;
+}
 .lp-link { background: none; border: none; padding: 0; cursor: pointer; font: inherit; color: #13a06e; font-weight: 700; text-decoration: underline; }
 .lp-link:hover { color: #0e7c55; }
 
@@ -132,7 +145,8 @@ html.dark .lp-feat ::deep .lp-feat-ico { color: #3fe0c5; }
 html.dark .lp { color: #e8eaf0; }
 html.dark .lp-headline, html.dark .lp-sec-h, html.dark .lp-feat h4, html.dark .lp-step h4 { color: #eef1f6; }
 html.dark .lp-sub, html.dark .lp-feat p, html.dark .lp-step p { color: #a9b2c0; }
-html.dark .lp-cta-note { color: #7c8a94; }
+html.dark .lp-cta-note { color: #7ee3b4; background: rgba(19,160,110,.14); border-color: rgba(46,229,157,.34); }
+html.dark .lp-beta-pill { background: #2ee59d; color: #08301f; }
 html.dark .lp-feat { background: #181c25; border-color: #262d3d; box-shadow: none; }
 html.dark .lp-step-n { background: #14251d; color: #57d9a3; border-color: #24493a; }
 html.dark .lp-closing { background: linear-gradient(135deg, #14251d, #16302408); border-color: #24493a; }
@@ -163,3 +177,89 @@ html.dark .lp-feedback-open:hover { border-color: #2f7d5c; color: #57d9a3; }
 html.dark .lp-feedback-card { background: #181c25; border-color: #262d3d; }
 html.dark .lp-feedback-card h4 { color: #eef1f6; }
 html.dark .lp-feedback-sub { color: #a9b2c0; }
+
+/* ---- Public reviews carousel (OPEN-BETA P1) ---- */
+/* One quote at a time rather than a wall: with a handful of beta reviews a grid looks sparse, and a single
+   large quote reads as a statement instead of a sample. Arrows + dots appear only when there's more than one. */
+.lp-reviews { margin: 40px auto 8px; max-width: 720px; }
+.lp-carousel { text-align: center; }
+.lp-quote {
+    background: #fff; border: 1px solid #e6ece9; border-radius: 16px; padding: 26px 28px;
+    box-shadow: 0 6px 24px rgba(16,32,26,.06); min-height: 96px;
+    display: flex; flex-direction: column; gap: 10px; align-items: center; justify-content: center;
+}
+.lp-stars { color: #f6c945; font-size: 1rem; letter-spacing: 2px; }
+.lp-quote blockquote {
+    margin: 0; font-size: 1.05rem; line-height: 1.55; color: #24313c; font-style: italic; max-width: 52ch;
+}
+.lp-carousel-nav { display: flex; align-items: center; justify-content: center; gap: 12px; margin-top: 14px; }
+.lp-car-arrow {
+    width: 30px; height: 30px; border-radius: 50%; border: 1px solid #cdd7e2; background: none;
+    color: #5c6b7a; font-size: 1.1rem; line-height: 1; cursor: pointer; flex: none;
+}
+.lp-car-arrow:hover { border-color: #13a06e; color: #0f7a54; }
+.lp-dots { display: inline-flex; gap: 6px; align-items: center; }
+.lp-dot { width: 7px; height: 7px; padding: 0; border-radius: 50%; border: none; background: #cdd7e2; cursor: pointer; }
+.lp-dot.on { background: #13a06e; width: 18px; border-radius: 999px; }
+html.dark .lp-quote { background: #181c25; border-color: #262d3d; box-shadow: none; }
+html.dark .lp-quote blockquote { color: #dfe5ec; }
+html.dark .lp-car-arrow { border-color: #2b3a34; color: #9fb3aa; }
+html.dark .lp-dot { background: #2b3a34; }
+html.dark .lp-dot.on { background: #2ee59d; }
+
+/* ---- Public pricing (OPEN-BETA P4) ---- */
+/* Only rendered when monetization is switched on — during beta the app is free and a price list would be a lie. */
+.lp-pricing { margin: 44px auto 8px; max-width: 820px; }
+.lp-price-row { display: flex; flex-wrap: wrap; gap: 16px; justify-content: center; }
+.lp-price-card {
+    flex: 1 1 280px; max-width: 380px; background: #fff; border: 1px solid #e6ece9; border-radius: 16px;
+    padding: 22px 24px; display: flex; flex-direction: column; gap: 8px;
+}
+.lp-price-card h4 { margin: 0; font-size: 1.1rem; color: #16211d; }
+.lp-price-n { margin: 0; font-size: 1.9rem; font-weight: 800; color: #0e5f42; letter-spacing: -.5px; }
+.lp-price-n span { font-size: .9rem; font-weight: 600; color: #5c6b7a; }
+.lp-price-alt { margin: -4px 0 0; font-size: .84rem; color: #5c6b7a; }
+.lp-price-card ul { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.lp-price-card li { font-size: .88rem; line-height: 1.4; color: #3c4a56; }
+.lp-price-card li::before { content: "\2713  "; color: #13a06e; font-weight: 800; }
+.lp-price-note { margin: 6px 0 0; font-size: .8rem; color: #5c6b7a; }
+.lp-price-card .lp-cta { margin-top: auto; align-self: stretch; }
+.lp-price-pro { border-color: #13a06e; box-shadow: 0 8px 28px rgba(19,160,110,.12); }
+html.dark .lp-price-card { background: #181c25; border-color: #262d3d; }
+html.dark .lp-price-card h4 { color: #eef1f6; }
+html.dark .lp-price-n { color: #7ee3b4; }
+html.dark .lp-price-card li { color: #c3cad4; }
+html.dark .lp-price-alt, html.dark .lp-price-note, html.dark .lp-price-n span { color: #a9b2c0; }
+html.dark .lp-price-pro { border-color: #13a06e; box-shadow: none; }
+
+/* ---- Footer ---- */
+/* The contact surface: everything for "how do I reach you" in one place, including the feedback form (which
+   previously floated in its own section above). */
+.lp-footer { margin-top: 48px; padding: 32px 0 20px; border-top: 1px solid #e6ece9; }
+.lp-foot-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 26px 24px; align-items: start;
+}
+.lp-foot-col h5 {
+    margin: 0 0 10px; font-size: .78rem; font-weight: 800; text-transform: uppercase;
+    letter-spacing: .07em; color: #5c6b7a;
+}
+.lp-foot-col p { margin: 0 0 6px; font-size: .88rem; color: #3c4a56; }
+.lp-foot-col a { color: #0f7a54; text-decoration: none; font-weight: 600; }
+.lp-foot-col a:hover { text-decoration: underline; }
+.lp-foot-muted { color: #7a8792; font-size: .82rem; }
+.lp-foot-tag { margin: 8px 0 0; font-size: .84rem; color: #5c6b7a; }
+.lp-foot-feedback { min-width: 0; }
+.lp-foot-copy { margin: 26px 0 0; text-align: center; font-size: .78rem; color: #98a4ae; }
+html.dark .lp-footer { border-top-color: #262d3d; }
+html.dark .lp-foot-col h5 { color: #8f9dab; }
+html.dark .lp-foot-col p { color: #c3cad4; }
+html.dark .lp-foot-col a { color: #57d9a3; }
+html.dark .lp-foot-muted, html.dark .lp-foot-tag { color: #8f9dab; }
+html.dark .lp-foot-copy { color: #6f7c88; }
+
+/* Narrow screens: the columns stack so the feedback form is never squeezed into a 190px gutter. */
+@media (max-width: 640px) {
+    .lp-foot-grid { grid-template-columns: 1fr; gap: 22px; }
+    .lp-quote { padding: 20px 18px; }
+    .lp-quote blockquote { font-size: .96rem; }
+}

@@ -133,15 +133,24 @@ html.dark .onboard-desc { color: #a9b6ad; }
     padding: 3px 10px; border-radius: 999px; cursor: pointer; white-space: nowrap;
 }
 .home-alert-act:hover { background: #855107; }
-/* Inline action link inside an alert sentence (e.g. "…free — trim a budget or add income."). Reads as a link, not a
-   button chip: underlined, weight-700, in the alert's accent colour, no padding/background so it flows with the text. */
+/* Inline action inside an alert sentence (e.g. "…free — trim a budget or add income."). Was a bare underlined
+   bold word, which read as damage to the sentence rather than an affordance — two of them in one line looked
+   like stray links. Now a soft tinted chip: it sits ON the sentence baseline (inline-flex + vertical-align) so
+   the line still reads as prose, but the tint and border make it obviously pressable. No underline — the chip
+   shape carries that job. Keeps the alert's amber accent so it belongs to the strip it lives in. */
 .alert-inline-link {
-    border: none; background: none; padding: 0; font: inherit; font-weight: 700; cursor: pointer;
-    color: #a16207; text-decoration: underline; text-underline-offset: 2px;
+    display: inline-flex; align-items: center; vertical-align: baseline;
+    border: 1px solid #e8c98a; background: #fdf3dd; color: #8a5a09;
+    padding: 1px 9px; border-radius: 999px; margin: 0 1px;
+    font: inherit; font-size: .82rem; font-weight: 700; line-height: 1.5;
+    cursor: pointer; text-decoration: none; white-space: nowrap;
+    transition: background .12s ease, border-color .12s ease, color .12s ease;
 }
-.alert-inline-link:hover { color: #855107; }
-html.dark .alert-inline-link { color: #f0c069; }
-html.dark .alert-inline-link:hover { color: #ffd98a; }
+.alert-inline-link:hover { background: #a16207; border-color: #a16207; color: #fff; }
+.alert-inline-link:focus-visible { outline: 2px solid #a16207; outline-offset: 2px; }
+html.dark .alert-inline-link { background: rgba(240,192,105,.14); border-color: rgba(240,192,105,.38); color: #f0c069; }
+html.dark .alert-inline-link:hover { background: #f0c069; border-color: #f0c069; color: #2a2000; }
+html.dark .alert-inline-link:focus-visible { outline-color: #f0c069; }
 /* ↻ to cycle when several alerts of a kind exist (e.g. multiple over-budget categories) — pinned to the row's right. */
 .home-alert-rot {
     flex: 0 0 auto; align-self: center; margin-left: auto; border: none; background: none; cursor: pointer;
@@ -843,11 +852,39 @@ html.dark .home-brk-cta { color: var(--tm-mint); }
 /* P3 — Trends (money over time): a multi-series line chart + a toggleable legend (tap a series to hide it and
    rescale the axis to the rest, so a large "balance" line can be dropped to read the smaller flows). */
 .trend-view { padding: 4px 0 8px; }
-.trend-chart-wrap { width: 100%; overflow-x: hidden; }
+.trend-chart-wrap { width: 100%; overflow-x: hidden; position: relative; }
 .trend-chart { width: 100%; height: auto; display: block; }
-.trend-axis { stroke: #e6e2d8; stroke-width: 1; }
+.trend-axis { stroke: #d8d2c4; stroke-width: 1; }
+/* Value gridlines behind the series — dashed and faint so they inform without competing with the lines. */
+.trend-grid { stroke: #ece8de; stroke-width: 1; stroke-dasharray: 3 4; }
+/* The value-tick text, overlaid on the SVG (Razor won't let us use <text>). The overlay box matches the SVG
+   exactly, so a tick's `top` can be its plotted Y as a straight percentage of the 152-unit viewBox height. */
+.trend-plot-area { position: relative; }
+.trend-ylabels { position: absolute; inset: 0; pointer-events: none; }
+.trend-ylbl {
+    position: absolute; left: 0; width: 10.5%; text-align: right; transform: translateY(-50%);
+    font-size: 9px; line-height: 1; color: #9aa0ad; font-weight: 700; white-space: nowrap;
+}
+/* Vertical guide at the hovered column, plus its invisible hit target. */
+.trend-guide { stroke: #b7c0cc; stroke-width: 1; stroke-dasharray: 2 3; }
+.trend-hit { fill: transparent; cursor: pointer; }
+.trend-pt { transition: r .1s ease; }
 .trend-xaxis { position: relative; height: 15px; margin-top: 1px; }
 .trend-xlbl { position: absolute; transform: translateX(-50%); font-size: 10px; color: #9aa0ad; font-weight: 600; white-space: nowrap; }
+.trend-xlbl.on { color: #13a06e; }
+/* Hover read-out: every visible series' value for the hovered month, anchored to that column and flipped to the
+   left once past ~60% so it can't run off the right edge of the card. */
+.trend-tip {
+    position: absolute; top: 4px; transform: translateX(6px); z-index: 3; pointer-events: none;
+    background: #fff; border: 1px solid #e6e2d8; border-radius: 10px; padding: 7px 9px;
+    box-shadow: 0 6px 18px rgba(18,24,33,.12); min-width: 116px;
+    display: flex; flex-direction: column; gap: 3px;
+}
+.trend-tip.left { transform: translateX(-100%) translateX(-6px); }
+.trend-tip-h { font-size: .7rem; font-weight: 800; color: #6b7280; text-transform: uppercase; letter-spacing: .04em; }
+.trend-tip-row { display: flex; align-items: center; gap: 6px; font-size: .78rem; white-space: nowrap; }
+.trend-tip-n { color: #6b7280; }
+.trend-tip-v { margin-left: auto; font-weight: 800; }
 .trend-legend { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
 .trend-leg { display: inline-flex; align-items: center; gap: 7px; background: none; border: 1px solid #e6e2d8;
     border-radius: 999px; padding: 5px 11px; cursor: pointer; font-size: .82rem; color: inherit; }
@@ -858,8 +895,14 @@ html.dark .home-brk-cta { color: var(--tm-mint); }
 .trend-leg-name { font-weight: 600; }
 .trend-leg-val { font-weight: 800; }
 .trend-spark-h { margin-top: 20px; }
-html.dark .trend-axis { stroke: rgba(255,255,255,.14); }
+html.dark .trend-axis { stroke: rgba(255,255,255,.22); }
+html.dark .trend-grid { stroke: rgba(255,255,255,.09); }
+html.dark .trend-ylbl { color: #7c8a94; }
+html.dark .trend-guide { stroke: rgba(255,255,255,.28); }
 html.dark .trend-xlbl { color: #7c8a94; }
+html.dark .trend-xlbl.on { color: #34d399; }
+html.dark .trend-tip { background: #1d2530; border-color: rgba(255,255,255,.16); box-shadow: 0 6px 18px rgba(0,0,0,.45); }
+html.dark .trend-tip-h, html.dark .trend-tip-n { color: #9aa8b4; }
 html.dark .trend-leg { border-color: rgba(255,255,255,.16); }
 html.dark .trend-leg:hover { border-color: rgba(255,255,255,.3); }
 
@@ -2230,7 +2273,11 @@ html.dark .proj-result.good-text { color: var(--tm-mint); }
 html.dark .rule-chip { background: #1e2330; border-color: #2c3142; color: #7c8a94; }
 html.dark .rule-chip.on { background: #14352a; border-color: #2bbd86; color: #6fe0b4; }
 
-.bank-tx { display: block; padding: 10px 0; border-top: 1px solid #eef0f3; }
+/* `.list li` sets display:flex, and `.list li` out-specifies a bare `.bank-tx`, so this row was silently a FLEX
+   CONTAINER whose children were shrink-to-fit flex items — every row ended up a different width depending on its
+   own text, which is the root of the ragged review table. Qualified here so block actually wins. */
+.list li.bank-tx { display: block; width: 100%; }
+.bank-tx { padding: 10px 0; border-top: 1px solid #eef0f3; }
 .vendor-badge { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; color: #ffffff; font-size: .72rem; font-weight: 700; flex: 0 0 auto; margin-right: 6px; vertical-align: middle; }
 .bank-tx-top { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
 /* The description is the one thing you need in order to categorise a transaction, and bank descriptions are long
@@ -2256,17 +2303,56 @@ html.dark .rule-chip.on { background: #14352a; border-color: #2bbd86; color: #6f
 html.dark .pin-rule-actions .chip { background: #1e2330; border-color: #2c3142; color: #cfd6e4; }
 html.dark .pin-rule-actions .chip.on { background: var(--tm-mint); border-color: var(--tm-mint); color: #0f1322; }
 html.dark .pin-rule-edit { background: #14271f; border-color: #1c3d38; }
-/* Controls row: date · pickers (grow) · icon actions (fixed, right-aligned).
-   Wraps so it never clips — in the narrow review modal and on phones the pickers
-   drop to the next line instead of overflowing the row. */
-.bank-tx-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
-.bank-tx-date { flex: 0 0 auto; color: #9ca3af; font-size: .8rem; width: 48px; }
-.bank-tx-row .bank-sel { flex: 1 1 150px; min-width: 0; }
-.bank-tx-fund { flex: 1 1 120px; min-width: 0; color: #0e7a54; font-size: .85rem; font-weight: 600; overflow-wrap: anywhere; }
+/* Controls row: date · category · fund · icon actions.
+   GRID, not wrapping flex. With flex-wrap every row broke at a different point depending on how long its own
+   select labels were, so nothing lined up vertically down the list — the pickers formed a ragged edge and the
+   ✓/✕ buttons sat at a different x on every row, which is the misalignment this fixes. Fixed column tracks mean
+   row N's category picker starts exactly where row N+1's does, whatever is in them. The fund track is allowed to
+   be empty (a credit without a synced fund) and the actions still hold their column. */
+.bank-tx-row {
+    display: grid; grid-template-columns: 52px minmax(0, 1fr) minmax(0, 1fr) auto;
+    align-items: center; gap: 8px; margin-top: 8px;
+}
+.bank-tx-date { color: #9ca3af; font-size: .8rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.bank-tx-row .bank-sel { min-width: 0; width: 100%; }
+.bank-tx-fund { min-width: 0; color: #0e7a54; font-size: .85rem; font-weight: 600; overflow-wrap: anywhere; }
+
+/* The pickers themselves. The native control renders differently on every OS and, in the review modal, sat as a
+   grey system widget among otherwise rounded controls. Custom chevron (inline data-URI so nothing is fetched),
+   matching radius/border, and real focus + hover states. `appearance:none` also kills the OS arrow that would
+   otherwise double up with ours. */
+.bank-sel {
+    appearance: none; -webkit-appearance: none; -moz-appearance: none;
+    padding: 7px 30px 7px 11px; border: 1px solid #e3e6ec; border-radius: 9px;
+    background-color: #fff; color: #26313d; font: inherit; font-size: .86rem; line-height: 1.2;
+    cursor: pointer; text-overflow: ellipsis;
+    background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5 6 6.5 11 1.5' fill='none' stroke='%238b96a5' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 10px center; background-size: 11px 7px;
+    transition: border-color .12s ease, box-shadow .12s ease;
+}
+.bank-sel:hover { border-color: #cfd4dd; }
+.bank-sel:focus-visible { outline: none; border-color: #13a06e; box-shadow: 0 0 0 3px rgba(19,160,110,.16); }
+.bank-sel:disabled { opacity: .55; cursor: not-allowed; }
+html.dark .bank-sel {
+    background-color: #1e2330; border-color: #2c3142; color: #dfe5ec;
+    background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5 6 6.5 11 1.5' fill='none' stroke='%237c8a94' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+html.dark .bank-sel:hover { border-color: #3b4256; }
+html.dark .bank-sel:focus-visible { border-color: var(--tm-mint); box-shadow: 0 0 0 3px rgba(63,224,197,.18); }
+
+/* Phones and the narrow review modal: the four tracks don't fit, so stack them. Date sits with the actions on
+   one line (both are small and fixed), and each picker takes the full width — far easier to hit than a 150px
+   select, and the rows stay aligned because every row now has the same shape. */
+@media (max-width: 560px) {
+    .bank-tx-row { grid-template-columns: 1fr auto; row-gap: 7px; }
+    .bank-tx-row .bank-sel, .bank-tx-fund { grid-column: 1 / -1; }
+    .bank-tx-date { grid-column: 1; }
+    .bank-tx-icons { grid-column: 2; grid-row: 1; }
+}
 .fund-synced { font-size: .78rem; margin-left: 4px; opacity: .75; }
 .bank-logo-img { height: 16px; width: auto; max-width: 40px; vertical-align: middle; border-radius: 3px; object-fit: contain; margin-right: 2px; }
 .fund-logo { height: 22px; width: 22px; object-fit: contain; border-radius: 5px; background: #ffffff; padding: 1px; vertical-align: middle; }
-.bank-tx-icons { flex: 0 0 auto; display: inline-flex; gap: 6px; margin-left: auto; }
+.bank-tx-icons { display: inline-flex; gap: 6px; justify-self: end; }
 .icon-btn { width: 30px; height: 30px; border-radius: 8px; border: 1px solid #e3e6ec; background: #ffffff; cursor: pointer; font-size: .95rem; line-height: 1; display: inline-grid; place-items: center; padding: 0; }
 .icon-btn:hover { border-color: #cfd4dd; }
 .icon-btn:disabled { opacity: .5; cursor: not-allowed; }

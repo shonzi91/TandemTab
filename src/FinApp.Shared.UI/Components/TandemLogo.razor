@@ -1,7 +1,7 @@
 @* Brand mark: two stems under a shared beam (the tandem pair / two T's). Colours come from CSS custom
    properties so the mark tracks the theme — the dark app is mint, light keeps the original green. The
    inline defaults mean a host that sets neither still renders the original green. *@
-<svg class="tandem-logo" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="TandemTab">
+<svg class="tandem-logo @(Pro ? "is-pro" : "")" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="@(Pro ? "TandemTab Pro" : "TandemTab")">
     <defs>
         <linearGradient id="tandem-grad" x1="6" y1="6" x2="58" y2="58" gradientUnits="userSpaceOnUse">
             <stop stop-color="var(--tt-logo-1, #34d399)" />
@@ -16,4 +16,20 @@
     <!-- two heads -->
     <circle cx="24" cy="14" r="6" fill="var(--tt-logo-1, #34d399)" />
     <circle cx="40" cy="14" r="6" fill="var(--tt-logo-1, #34d399)" />
+    @if (Pro)
+    {
+        @* Pro flourish: a small gold crown worn at a tilt by the left head. Deliberately perched rather than
+           centred — a symmetrical crown over both heads reads as a logo change, whereas a jaunty one reads as a
+           decoration on the same mark, which is what a plan badge should be. *@
+        <g transform="rotate(-20 24 9.5) translate(17 2.5)">
+            <path d="M0 7 L0 1.6 L3.5 4.4 L7 0 L10.5 4.4 L14 1.6 L14 7 Z" fill="#f6c945" />
+            <rect x="-0.4" y="6.6" width="14.8" height="2.4" rx="1.2" fill="#e0a92c" />
+        </g>
+    }
 </svg>
+
+@code {
+    /// <summary>Renders the Pro flourish. Purely decorative — entitlement is decided server-side, so a client
+    /// that set this by hand would gain a crown and nothing else.</summary>
+    [Parameter] public bool Pro { get; set; }
+}

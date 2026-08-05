@@ -20,14 +20,66 @@ public sealed class FeedbackService(FinAppDbContext db)
     /// free write-anything channel.</summary>
     public const int MaxCommentLength = 4000;
 
-    public Task EnsureSchemaAsync(CancellationToken ct = default) =>
-        db.Database.ExecuteSqlRawAsync(
+    public async Task EnsureSchemaAsync(CancellationToken ct = default)
+    {
+        await db.Database.ExecuteSqlRawAsync(
             "CREATE TABLE IF NOT EXISTS \"Feedback\" (" +
             "\"Id\" text PRIMARY KEY, \"UserId\" text NULL, \"Rating\" integer NULL, \"Comment\" text NULL, " +
             // Consent to show this publicly, captured at submission time. Default 0 — a review is never
             // publishable unless the person ticked the box for that specific review (OPEN-BETA P1).
             "\"PublicConsent\" text NOT NULL, \"Source\" text NOT NULL, " +
             "\"AppVersion\" text NULL, \"UserAgent\" text NULL, \"At\" text NOT NULL)", ct);
+
+        // Added after the table shipped, so it arrives as an ALTER on the existing (live Postgres) table rather
+        // than in the CREATE above.
+        // ⚠️ Deliberately NOT "ADD COLUMN IF NOT EXISTS": Postgres accepts that, **SQLite does not** — and SQLite
+        // is what dev and the MAUI client run on, so the IF NOT EXISTS form threw there, the catch swallowed it,
+        // and the column was silently never created. Every read then failed instead of filtering, which looks
+        // exactly like "no approved reviews" and would have hidden the carousel forever. A plain ALTER works on
+        // both engines; on a rerun it throws "duplicate column", which is the one thing the catch should absorb.
+        try
+        {
+            await db.Database.ExecuteSqlRawAsync(
+                "ALTER TABLE \"Feedback\" ADD COLUMN \"Approved\" text NOT NULL DEFAULT '0'", ct);
+        }
+        catch { /* already present — the only expected failure here */ }
+    }
+
+    /// <summary>
+    /// Reviews cleared for the landing page. <b>Two independent gates, both required:</b> the author ticked
+    /// "you may show this" (<c>PublicConsent</c>) <em>and</em> a human approved it (<c>Approved</c>).
+    /// <para>Consent alone is not enough and this is the whole point of the second column: <c>/feedback</c> is an
+    /// <b>anonymous, unauthenticated</b> endpoint, so anyone on the internet can POST a five-star review with
+    /// consent set — publishing on consent alone would put a stranger's text, unreviewed, on the marketing page
+    /// of a product about trust. Approval defaults to 0, so the carousel is empty until someone deliberately
+    /// promotes a row.</para>
+    /// </summary>
+    public async Task<IReadOnlyList<(int? Rating, string Comment, string At)>> PublicReviewsAsync(
+        int limit = 12, CancellationToken ct = default)
+    {
+        var conn = db.Database.GetDbConnection();
+        var opened = await OpenAsync(conn, ct);
+        try
+        {
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText =
+                "SELECT \"Rating\", \"Comment\", \"At\" FROM \"Feedback\" " +
+                "WHERE \"PublicConsent\" = '1' AND \"Approved\" = '1' AND \"Comment\" IS NOT NULL " +
+                "ORDER BY \"At\" DESC";
+            var list = new List<(int?, string, string)>();
+            await using var r = await cmd.ExecuteReaderAsync(ct);
+            while (await r.ReadAsync(ct) && list.Count < limit)
+            {
+                var rating = await r.IsDBNullAsync(0, ct) ? (int?)null : Convert.ToInt32(r.GetValue(0), CultureInfo.InvariantCulture);
+                var comment = r.GetString(1);
+                if (string.IsNullOrWhiteSpace(comment)) continue;
+                list.Add((rating, comment, r.GetString(2)));
+            }
+            return list;
+        }
+        catch { return Array.Empty<(int?, string, string)>(); }
+        finally { if (opened) await conn.CloseAsync(); }
+    }
 
     /// <summary>Record one piece of feedback. <paramref name="userId"/> is null when it came from the landing
     /// page (someone who hasn't signed up — often the most useful feedback there is).</summary>

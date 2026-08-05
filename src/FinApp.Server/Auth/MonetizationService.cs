@@ -1,3 +1,5 @@
+using FinApp.Contracts;
+
 namespace FinApp.Server.Auth;
 
 /// <summary>
@@ -24,8 +26,41 @@ public sealed class MonetizationService
         MonthlyPrice = config["Monetization:MonthlyPrice"] ?? "3.99";
     }
 
+    /// <summary>
+    /// Where the paywall line falls, straight from MONETIZATION.md's Free-vs-Pro table. The free tier is a
+    /// working product on purpose — solo, present-focused budgeting stays complete so people stay long enough to
+    /// invite someone, which is the actual upgrade moment. Security and export are never gated.
+    /// </summary>
+    public static readonly IReadOnlyList<PlanFeatureDto> Catalogue = new[]
+    {
+        new PlanFeatureDto(PlanFeatures.Budgets,  InFree: true,  InPro: true),
+        new PlanFeatureDto(PlanFeatures.Goals,    InFree: true,  InPro: true),
+        new PlanFeatureDto(PlanFeatures.Export,   InFree: true,  InPro: true),
+        new PlanFeatureDto(PlanFeatures.Security, InFree: true,  InPro: true),
+        new PlanFeatureDto(PlanFeatures.Share,    InFree: false, InPro: true),
+        new PlanFeatureDto(PlanFeatures.Import,   InFree: false, InPro: true),
+        new PlanFeatureDto(PlanFeatures.Debt,     InFree: false, InPro: true),
+        new PlanFeatureDto(PlanFeatures.Insights, InFree: false, InPro: true),
+        new PlanFeatureDto(PlanFeatures.History,  InFree: false, InPro: true),
+        new PlanFeatureDto(PlanFeatures.Caps,     InFree: false, InPro: true),
+    };
+
     /// <summary>The plan an account is on. While the flag is off everyone is "unlimited" (no gating). When on,
-    /// beta-cohort accounts are grandfathered to "pro" (the beta-tester promise) and everyone else is "free".</summary>
-    public string PlanFor(bool isBetaCohort) =>
-        !Enabled ? "unlimited" : isBetaCohort ? "pro" : "free";
+    /// beta-cohort accounts are grandfathered to "pro" (the beta-tester promise) and paying subscribers are "pro";
+    /// everyone else is "free".</summary>
+    public string PlanFor(bool isBetaCohort, bool hasSubscription = false) =>
+        !Enabled ? "unlimited" : (isBetaCohort || hasSubscription) ? "pro" : "free";
+
+    /// <summary>Whether a plan may use a given feature key. "unlimited" (flag off) passes everything, which is
+    /// what keeps the gates inert during beta — a gate added today changes nothing until the flag flips.</summary>
+    public static bool Allows(string plan, string featureKey)
+    {
+        if (plan is "unlimited" or "pro") return true;
+        var f = Catalogue.FirstOrDefault(x => x.Key == featureKey);
+        return f is null || f.InFree;      // unknown key = not a gate; fail open rather than lock people out
+    }
+
+    /// <summary>How long a paid interval runs. Kept here so the sandbox and a future real provider agree.</summary>
+    public static DateTimeOffset ExpiryFor(BillingInterval interval, DateTimeOffset from) =>
+        interval == BillingInterval.Monthly ? from.AddMonths(1) : from.AddYears(1);
 }
