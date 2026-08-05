@@ -6,7 +6,7 @@ after Debt R2 shipped and BUG-1 was fixed.*
 | | |
 |---|---|
 | **Application** | TandemTab (https://tandemtab.com) |
-| **Live revision** | `finapp-00274-9mt` (2026-08-05) — B1–B4 + P1/P2/P3/P4 shipped; free beta **capped at 30 seats** |
+| **Live revision** | `finapp-00275-h87` (2026-08-05) — B1–B4 + P1/P2/P3/P4 shipped; **lifetime-Pro allowance of 100**, real Free/Pro gating (post-cap users gated during beta) |
 | **Scope of this doc** | Open **public** beta — an unrestricted sign-up link, not a handful of invited friends |
 | **Effort key** | S = hours · M = a day · L = multi-day |
 
