@@ -19,11 +19,13 @@ when it *doesn't* do its job for someone who isn't you.
 
 **Sequence:** B1 → B2 → B3 → B4 → the verification hour → open the door.
 
-> **Status (2026-08-05): B1–B4 ✅ done and live** (`finapp-00270-z5t`), and **the verification hour is ✅ done**
-> (all three checks below passed — one low-severity mini-donut finding noted, not a gate). What remains before
-> the door is really just **the intake decision** (staged invites vs a public link — the Capacity section
-> argues for staged) and then opening it. A lawyer's glance at the legal pages stays advisable but is not a
-> hard gate.
+> **Status (2026-08-05): B1–B4 ✅ done and live** (`finapp-00270-z5t`), the **verification hour is ✅ done** (one
+> low-severity mini-donut finding, since **fixed**), and — beyond the original scope — the owner pulled three of
+> the four parked features into the beta: **P3 (Trends chart), P2 (admin dashboard), and P4 (monetization rails,
+> flag OFF)** are all ✅ built + browser-verified (committed, **not yet deployed**). P1 (public reviews display)
+> stays parked. What remains before the door is really just **the intake decision** (staged invites vs a public
+> link — the Capacity section argues for staged) and then opening it. A lawyer's glance at the legal pages stays
+> advisable but is not a hard gate.
 
 Ideas that arrive after this was written go to
 [After the door opens](#after-the-door-opens--parked-by-default) — see [the scope
@@ -191,7 +193,14 @@ Two different features fused into one request; they should ship at different tim
   (3) **beta-era ratings will be low** and you can't reset them — consider collecting from the start but only
   displaying ratings given after launch.
 
-### P2 — Owner-only admin dashboard (users + activity) · **M–L** · ⬜
+### P2 — Owner-only admin dashboard (users + activity) · **M–L** · ✅ **DONE (2026-08-05)** — pulled into beta
+Shipped an owner-only "Admin — usage" panel in the profile modal: total users, total accounts, beta-cohort size
+(from B4's `UserSignups`), new sign-ups 7d/30d, active users 7d/30d (proxied by recent refresh-token issuance),
+and a 30-day sign-ups sparkline. **Metrics only — counts + timestamps, never any account's financial data**
+(no snapshot is ever decrypted). Authorization is **server-side and fails closed**: `AdminPolicy` is an email
+allowlist (`Admin:Emails` env var); an empty list means nobody is an admin. `GET /admin/metrics` re-checks it
+(403 otherwise); `/me` exposes `IsAdmin` only so the client hides the panel. Browser-verified + 2 gate tests.
+
 Real value: it's how you learn whether anyone is actually using this. Two hard constraints.
 
 - **Metrics, not surveillance.** Sign-ups over time, last-active, counts (accounts / periods / expenses logged),
@@ -205,7 +214,12 @@ Real value: it's how you learn whether anyone is actually using this. Two hard c
   come back" is one query against the DB you already have. That gets ~80% of the value for ~2% of the work,
   and it tells you what the dashboard should show before you build it.
 
-### P3 — Money-over-time chart (income / expenses / saved / balance) · **M** · ⬜
+### P3 — Money-over-time chart (income / expenses / saved / balance) · **M** · ✅ **DONE (2026-08-05)** — pulled into beta
+Shipped as a 4th **"Trends"** Spending sub-tab (exactly the recommendation below): a multi-series line chart of
+income / spent / saved / balance across the periods in the shared Breakdown window (3 / 6 / 12 months / all time),
+with a tap-to-hide legend that rescales the axis. It **absorbed** the per-category trend sparklines out of the
+Health-score modal (BACKLOG #16 — trends now live in one place). Empty state under two periods. Browser-verified.
+
 One chart, four series, over: current period · 3 · 6 · 12 months · all time · custom range.
 
 **Where it goes — recommendation: a fourth Spending sub-tab, "Trends"**, beside By date / By budgets /
@@ -228,7 +242,17 @@ Breakdown.
   ("come back after a couple of months") and it is the single strongest argument for shipping it *after* beta
   users have accumulated some history rather than before.
 
-### P4 — Monetization behind a flag · **M** · ⬜
+### P4 — Monetization behind a flag · **M** · ✅ **RAILS DONE (2026-08-05)** — flag OFF for beta
+Shipped the **rails, not the billing**, exactly as this item asked. `Monetization:Enabled` (env var, **default
+off, and off during beta**) gates everything: while off there is no plan UI and every account is "unlimited".
+Flip it on to test — a "Your plan" panel (Free vs Pro cards, price from config) appears; beta-cohort accounts
+are **grandfathered to Pro** (keyed off B4's `UserSignups`). `/me` carries `Plan`+`MonetizationEnabled`; new
+`GET /plans`. Prices are config-driven — the hero is **€29.99/yr per MONETIZATION.md**; ⚠️ **docs/BILLING.md's
+$39.99 is the stale one and still needs reconciling to this.** Browser-verified with the flag on; the flag-off
+default ("unlimited", no UI) is test-pinned. **Deliberately not built:** enforcement at the individual gate
+points (shared accounts, import limits, history window, debt planner, Free caps) — the "at leisure" half; the
+non-backfillable cohort stamp already shipped in [B4](#b4--state-what-beta-promises-about-their-data-and-stamp-the-cohort--s-).
+
 Build the **rails** now, flip the **switch** later — which is exactly what [docs/BILLING.md](docs/BILLING.md)
 already recommends ("build the rails early; they're cheap and migration-independent").
 
