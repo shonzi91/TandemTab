@@ -6,7 +6,7 @@ after Debt R2 shipped and BUG-1 was fixed.*
 | | |
 |---|---|
 | **Application** | TandemTab (https://tandemtab.com) |
-| **Live revision** | `finapp-00273-595` (2026-08-05) — B1–B4 + P1/P2/P3/P4 all shipped |
+| **Live revision** | `finapp-00274-9mt` (2026-08-05) — B1–B4 + P1/P2/P3/P4 shipped; free beta **capped at 30 seats** |
 | **Scope of this doc** | Open **public** beta — an unrestricted sign-up link, not a handful of invited friends |
 | **Effort key** | S = hours · M = a day · L = multi-day |
 
@@ -182,6 +182,22 @@ timestamps happen to exist, or breaking the promise. Everything else about billi
 (see [P4 below](#p4--monetization-behind-a-flag--m)); this cannot. It is one column and one write.
 
 ---
+
+## The intake decision — now answered: a capped public link
+
+**Resolved 2026-08-05 (Session 86).** The Capacity section below argued for staged invites; what shipped is the
+middle path — **a public sign-up link with a hard cap of 30 seats**. Anyone can come, the door closes by itself,
+and no one has to hand-manage an invite list. `Beta__Cap` / `Beta__CountFrom` / `Beta__TestEmailPatterns` are
+Cloud Run env vars, so raising the cap or opening it fully is a revision update, not a deploy.
+
+- Counted **from 2026-08-05**, so existing users don't consume the allowance.
+- **Our own test accounts never take a seat** — an address matching `Beta__TestEmailPatterns`
+  (`+test;@test.local;@example.com`) is stamped cohort `test` at registration. Use
+  `you+test1@gmail.com`-style addresses for anything you create yourself.
+- When it fills, registration returns a clear message pointing at `admin@tandemtab.com` rather than a generic error.
+- The landing page shows the remaining count, so nobody discovers the cap only after typing their details.
+
+**Opening the door is still an explicit owner action** — the cap makes it safe, it doesn't make it automatic.
 
 ## ⬜ TODO before the door opens — rewrite the landing page
 
