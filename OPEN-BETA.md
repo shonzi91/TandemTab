@@ -6,7 +6,7 @@ after Debt R2 shipped and BUG-1 was fixed.*
 | | |
 |---|---|
 | **Application** | TandemTab (https://tandemtab.com) |
-| **Live revision** | `finapp-00276-b8g` (2026-08-05) — B1–B4 + P1/P2/P3/P4 shipped; **lifetime-Pro allowance of 100**, real Free/Pro gating (post-cap users gated during beta), Pro crowns + plan comparison |
+| **Live revision** | `finapp-00277-p5t` (2026-08-05) — B1–B4 + P1/P2/P3/P4 shipped; **lifetime-Pro allowance of 100**, real Free/Pro gating (post-cap users gated during beta), Pro crowns + plan comparison; **R1 feature backlog cleared** |
 | **Scope of this doc** | Open **public** beta — an unrestricted sign-up link, not a handful of invited friends |
 | **Effort key** | S = hours · M = a day · L = multi-day |
 
@@ -230,8 +230,8 @@ against a moving feature set is work that gets redone. R4 lands before R7 for th
 
 | # | Phase | Ends when | Size |
 |---|-------|-----------|------|
-| **R1** | Clear the feature backlog | The feature set is declared **frozen** | L |
-| **R2** | Android catch-up + theme verification | Android at web parity; light/dark swept on **both** surfaces | L |
+| **R1** | Clear the feature backlog | The feature set is declared **frozen** | L · ✅ **done 2026-08-05** |
+| **R2** | Android catch-up + theme verification | Android at web parity; light/dark swept on **both** surfaces | L · web half ✅ |
 | **R3** | AI assistant | See the scoping note — the whole of it is not one phase | L+ |
 | **R4** | Railway migration (hosting **and** DB) | Serving from Railway, Neon + Cloud Run retired | M–L |
 | **R5** | Landing, terms, privacy + Pro-split final verification | The page describes the real product; the paywall is settled | M |
@@ -254,6 +254,15 @@ against a moving feature set is work that gets redone. R4 lands before R7 for th
 - **Exit: an explicit "feature set frozen" line.** If this phase trails off instead of ending, R5 has no ground
   to stand on.
 
+> **✅ R1 DONE (Session 89, live in `finapp-00277-p5t`).** F1/F2/F4/F6/F7 built; **F3 was already shipped** and
+> merely never ticked; **F5 dropped by the owner** — shared accounts pool income, so there is no per-person balance
+> to settle. UX #10 and BACKLOG #16 stay deferred by their own terms (both need real usage data).
+> **⚠️ The feature set is NOT frozen yet** — R3's assistant is still to come, and R2 may surface parity gaps. The
+> freeze line is declared **when R3 lands**, and only then does R5 have stable ground. See
+> [FEATURE-BACKLOG.md](FEATURE-BACKLOG.md) for what each item actually became.
+> **Verification debt closed:** none. The S88 chart animations and F6's shared-account "together" line are both
+> still **unseen with real data** and carry forward.
+
 ### R2 — Android catch-up + theme verification
 - Android's last commit is **2026-07-30**; the web has had **S74–S88** since. That's a diff-driven catch-up
   against the web's session log, not a rewrite. Debt R2's grouped *edit* is still unbuilt there.
@@ -261,6 +270,15 @@ against a moving feature set is work that gets redone. R4 lands before R7 for th
 - **Sweep light/dark on the web too, not just Android.** S88 shipped a dark-theme crown colour that silently
   never applied (a leading `::deep` compiles to a selector nothing matches). The web half is the cheaper half
   and has already produced one real bug.
+  - **✅ The web half is done (Session 89).** Dark went from 8 sub-4.5:1 findings to 3, and those 3 are
+    white-on-brand-green / the avatar palette, identical in light. Three colours had **never been given a dark
+    value** — the widest was every chip-picker label in every modal. The recurring shape (a light rule listing
+    several selectors whose `html.dark` counterpart covers only some of them) now has a detector:
+    **[tools/pairscan.js](tools/pairscan.js)** — run it after adding themed CSS.
+  - ⚠️ **Light theme is not "broken" but is faint by design:** 32 sub-4.5:1 findings, all the app's own palette —
+    brand green `#13a06e` at 3.34:1, secondary greys at 2.4–3.0:1 on white. Deliberately **not** changed here:
+    that is the product's visual language and belongs to **[UX-BACKLOG #11](UX-BACKLOG.md)** (accessibility), not
+    to a theme sweep. Decide it there.
 - iOS stays **ON HOLD**.
 
 ### R3 — AI assistant — ⚠️ scope this before starting

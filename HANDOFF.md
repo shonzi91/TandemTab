@@ -1,6 +1,112 @@
 # TandemTab (FinApp) — session handoff
 
-Last updated: 2026-08-05 (Session 88 — **DEPLOYED as `finapp-00276-b8g`.** Crowned every Pro feature with a new sprite icon + `ProLock` component; the gate prompt now shows **both plans side by side with the yearly discount**; gated the three planners (what-if, pay-extra, one-off) header-only; fixed the `.pm` modal headers to the already-solved `.modal` pattern and moved Close into the header as an ✕; added **chart entrance animations + a rolling donut total**; and added an **admin cohort-correction** panel. **Three real bugs fixed: pre-B4 users were being treated as post-cap Free (no crown, genuinely gated), "Upgrade to Pro" 404'd for a pinned tester, and a leading `::deep` in scoped CSS silently never matched.** 300 server tests green. Prior context below is Session 87.)
+Last updated: 2026-08-05 (Session 89 — **DEPLOYED as `finapp-00277-p5t`.** Set the **seven-phase road to promotion** (R1–R7) in OPEN-BETA, then **cleared R1: the feature backlog** — F1 quick-add keypad + amount hints, F2 tag→category binding, F4 round-ups, F6 goal celebration, F7 weekly recap. F3 turned out to be **already shipped and never ticked**; **F5 was dropped by the owner** (shared accounts pool income, so there is nothing to settle). Then two owner-reported bugs — **income deposits were merging into one row**, and the rollover reconcile step **rendered its three-way choice as ✕ ✕ ✓**, which is how an unwanted Adjustment entry got written. Finally a **light/dark sweep** that found three colours never given a dark value, the widest being every chip-picker label in every modal. **319 domain + 48 persistence + 305 server green.** Prior context below is Session 88.)
+
+## Session 89 (2026-08-05) — **R1 feature backlog cleared, two reported bugs, theme sweep. Commits `19443cb`, `4b58ee0`, `c87a83d`, `5785ad4`. Live: `finapp-00277-p5t`.**
+
+### The plan (owner's call this session)
+**Seven phases before the app gets promoted**, recorded in [OPEN-BETA.md](OPEN-BETA.md) as R1–R7: clear the feature
+backlog → Android catch-up + theme verification → AI assistant → **Railway migration** → landing/legal/Pro-split
+verification → SEO → promote. Two notes carried into that doc: **R1 is what freezes the feature set** (R5's landing
+rewrite and paywall pass are explicitly "do this last" work), and **R4 before R7 is the one ordering that matters** —
+promotion *is* the traffic spike, and Neon's connection ceiling is the only live production risk.
+⚠️ **R3 conflates two different assistants**: the on-device one is mobile-first and would land Android-only while iOS
+is on hold; BACKLOG #17's narrate-don't-compute layer works on the web today. Build the cheap cross-surface layer
+first. ⚠️ **Technical SEO is landing-page work** and belongs inside R5's rewrite, not a later phase editing the same
+file twice.
+
+### R1 — feature backlog cleared (`4b58ee0`)
+- **F1 quick add.** The category chips already existed; the gap was the **keypad**. Amount takes focus when the
+  category was a deliberate choice (chip / budget row / category detail) and carries `inputmode="decimal"`. Opening
+  the *blank* modal deliberately does **not** steal focus — the keypad would cover the picker the user still needs.
+  Recent-amount hints require an amount used **twice** (a one-off €13.47 is history, not a habit).
+- **F2 tag → category.** `Tag.CategoryId` as snapshot body data + a "Files into" picker, shown on the manage-tags row.
+  **A default at entry time, never a rule over stored rows**: it fires only while *adding*, so tagging an existing
+  expense can't re-file it (and move spend between budgets) as a side effect of labelling it. The swap is announced.
+- **★ F4 round-ups.** Step 0/1/5 + a destination bucket, set beside the savings target — no new section for one
+  switch. **The sweep lives in `RoundUpService` because BOTH the client (optimistic) and the server run it**; drift
+  would mean the client paints a savings row the server never wrote and the next refetch takes the money back. It's
+  an **earmark, not a second expense**. ⚠️ **A sweep with no cash behind it is skipped** — allocations may normally
+  exceed available cash (advisory), but raising the "overspent into savings" alarm over 40 cents nobody chose to move
+  is the feature working against the user.
+- **★ F6 goal celebration.** Per-bucket milestones only (the trailing id must parse as a Guid, so `debt_half_all`
+  isn't mistaken for one). **"Have I seen this" is tracked per DEVICE, not on the account** — the achievement log is
+  shared, so driving the moment off "newly stamped" would hand it to whichever member opened the app first and
+  silently rob the other, which is the opposite of the feature.
+- **★ F7 weekly recap.** Covers the **last completed** Mon–Sun week: a recap of a week still running changes every
+  time you open it and compares three days against seven, reading as a spending collapse every Tuesday. Weeks are
+  walked across the whole account because a calendar week routinely straddles two periods. No comparison line without
+  a prior week; no card at all for an empty week; dismissal is per device and per week.
+- **F3 was already built** (commit `2f35a6a`, the `.bal-daily` line under *Safe to spend*) and simply never ticked.
+- **F5 dropped (owner):** shared accounts are two contributors paying into one pool, so there is no per-person
+  balance and a "you owe €X" summary would invent a debt the ledger doesn't model. Reasoning kept in the doc.
+- **Two real bugs found while verifying:** the celebration seen-set was only written when something was *unseen*, so
+  a brand-new account never got a marker and still looked like a first run when its first milestone landed —
+  **swallowing the one celebration the feature exists for**; and `.week-recap-fig small` (0,1,1) out-specified
+  `.warn-text` (0,1,0), rendering the vs-last-week line grey.
+
+### Two owner-reported bugs (`c87a83d`)
+1. **★ Income deposits were merging.** `Period.Deposit` looked for a row with the same (member, category, fund),
+   **ignoring the date**, and added onto it. Two salary payments in a month became ONE row holding the total under
+   the date of the *first*, so the ledger stopped saying when money arrived and an edit/delete acted on the merged
+   sum rather than the entry picked. Deposit now always appends. Two tests that asserted the merge were rewritten.
+2. **★ The rollover reconcile step showed ✕ ✕ ✓.** `.modal-actions` is a floating header bar that collapses buttons
+   to icons (ghost → ✕, primary → ✓) — right for the two-way "cancel or confirm" shape, **wrong for a genuine
+   three-way choice**. Both reported symptoms are this one defect: the unexplained *"adjustment expense in the
+   previous period"* was not a stray write, it is what "Log as adjustment" does by design, reached because the button
+   couldn't be read. Rows offering a real choice now opt out with **`modal-actions-labelled`** and keep their words.
+
+### Theme sweep (`5785ad4`)
+Runtime contrast check over every surface in both themes (walk each visible text node, composite the effective
+background, compute the WCAG ratio). **Dark went from 8 failures to 3**, and those 3 are white-on-brand-green and the
+generated avatar palette — identical in light, so not theme regressions. Fixed:
+- **★ `.modal .modal-field`** — the widest. The light rule sets the pair in one declaration
+  (`.modal label, .modal .modal-field { … }`) but **only `label` was ever given a dark value**, so every chip-picker
+  label in **every modal** sat at ~3.5:1.
+- **`.app-legal-link`** — same shape; only the anchor half of the pair got darkened.
+- **`.warn-text` + `.score-*`** — the amber had a dark value in exactly **two** specific uses and none on the base
+  rule, so every other warning was a white-ground amber on near-black. Net worth stays red rather than inheriting it.
+- ⚠️ The first two are one repeatable defect shape, so **[tools/pairscan.js](tools/pairscan.js)** now detects it: run
+  against the pre-fix tree it independently finds both; against the fixed tree, zero. Re-run when adding themed CSS.
+- **`app.css` bumped to `?v=40`** (editing it without that leaves returning users on stale CSS).
+- **NOT changed, reported instead:** light theme has 32 sub-4.5:1 findings that are **the app's own palette, not
+  breakage** — brand green `#13a06e` at 3.34:1, secondary greys at 2.4–3.0:1 on white. Making those AA would change
+  the product's visual language; that's the owner's call and belongs to **UX-BACKLOG #11**, not a theme sweep.
+
+### Verification
+- **319 domain (+32) + 48 persistence + 305 server (+5) green.**
+- ⚠️ `Account.RoundUp*` needed `p.Ignore()` in `FinAppDbContext` or the persistence/server suites fail **en masse** on
+  `PendingModelChangesWarning` (255 failures) — the standing trap for any new prop on an EF-mapped domain entity.
+- **Browser-verified on a local throwaway, both themes:** recap figures match the seeded week exactly (27 Jul–2 Aug,
+  €80.50, "€50.50 more than the week before", top category Food €58.00); amount hints offer the twice-used €12.50 and
+  exclude the once-used €7.90; tapping a bound tag flips the category with a stated reason; a €12.40 expense writes
+  **exactly one** €0.60 round-up allocation (proving client and server agree rather than double-sweeping); the
+  celebration fires once and stays dismissed; three deposits in one category stay three rows and deleting one leaves
+  the others; the reconcile row shows all three labels while an ordinary modal keeps its ✕/✓ header.
+- **DEPLOYED `finapp-00277-p5t`** (`builds submit` `5785ad4` digest `sha256:08da5ff98209f80e…` 4m40s → `run deploy
+  --image` → `update-traffic --to-latest` → "100% LATEST"). **Served-bytes:** scoped bundle
+  `FinApp.Shared.UI.7qjk9o0h67.bundle.scp.css`, **identical fingerprint and byte count (283,874 B) on the run URL AND
+  tandemtab.com**, carrying `week-recap`×27, `celebrate-`×30, `modal-actions-labelled`×8, `amt-hint`×3, `tag-filed`×3,
+  `html.dark .warn-text`×1, `html.dark .score-warn`×1. `app.css?v=40` (24,012 B) on both with
+  `html.dark .modal .modal-field` and `html.dark .app-legal-link` present. Probes on both hosts: `/plans/public` 200
+  `enabled:false`, `/reviews/public` 200, `/beta/capacity` `cap:100, taken:0`, `/admin/metrics` 401 anon,
+  `POST /admin/cohort` 401 anon. `secretKeyRef`=5; `Admin__Emails`/`Beta__Cap`/`Beta__TestEmailPatterns` set;
+  `Monetization__Enabled` still **unset (off)**. **Only WARNINGs on the revision are my own probe 401s** — no app errors.
+  - Note: `GET /admin/cohort` returns **200 text/html** — that's the SPA fallback serving index.html for an unmatched
+    GET, not the endpoint. The real `POST` 401s. Don't read that 200 as an open admin route.
+
+### ⚠️ Carry-over
+- **F6's "You and X got here together" line has never rendered with a real second member** — the throwaway was
+  single-member, so the condition (a member count) is untested in the flesh. Same standing gap as S88's chart
+  animations, which are still **unseen with real data**.
+- **Neon connection ceiling** remains the only item that can bite in production, and R4 (Railway) is the fix.
+- ⚠️ **`.modal-actions` collapses `.danger-btn` to a ✓ too** — the category delete/archive modal shows **Archive and
+  Delete as two ✓ buttons**, distinguished only by colour and a small glyph. Less severe than the reconcile row (they
+  differ visibly) so it was left alone rather than silently restyling a destructive dialog, but it is the same defect
+  and worth a decision.
+- Everything from Session 88's carry-over still stands.
+
+## Session 88 (2026-08-05) — original entry ( **DEPLOYED as `finapp-00276-b8g`.** Crowned every Pro feature with a new sprite icon + `ProLock` component; the gate prompt now shows **both plans side by side with the yearly discount**; gated the three planners (what-if, pay-extra, one-off) header-only; fixed the `.pm` modal headers to the already-solved `.modal` pattern and moved Close into the header as an ✕; added **chart entrance animations + a rolling donut total**; and added an **admin cohort-correction** panel. **Three real bugs fixed: pre-B4 users were being treated as post-cap Free (no crown, genuinely gated), "Upgrade to Pro" 404'd for a pinned tester, and a leading `::deep` in scoped CSS silently never matched.** 300 server tests green. Prior context below is Session 87.)
 
 ## Session 88 (2026-08-05) — **Pro crowns, plan comparison, planner gates, modal fixes, chart animation, cohort admin. Commits `376fdb5`, `6bd46bc`. Live: `finapp-00276-b8g`.**
 
