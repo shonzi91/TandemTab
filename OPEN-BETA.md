@@ -234,7 +234,7 @@ against a moving feature set is work that gets redone. R4 lands before R7 for th
 | **R2** | Android catch-up + theme verification | Android at web parity; light/dark swept on **both** surfaces | L · web half ✅ |
 | **R3** | AI assistant | See the scoping note — the whole of it is not one phase | L+ |
 | **R4** | Railway migration (hosting **and** DB) | Serving from Railway, Neon + Cloud Run retired | M–L |
-| **R5** | Landing, terms, privacy + Pro-split final verification | The page describes the real product; the paywall is settled | M |
+| **R5** | Landing, terms, privacy + Pro-split final verification **+ billing go-live** | The page describes the real product; the paywall is settled **and can actually take money** | M–L |
 | **R6** | SEO | Indexed, measurable, bilingual | S–M |
 | **R7** | Promote | The door is open | — |
 
@@ -309,11 +309,15 @@ call makes "never fed to AI" a lie, and that claim is the reason to exist.
   R5), not a footnote.
 
 ### R5 — Landing, terms, privacy + Pro split — final verification
-The two ⬜ TODOs already written below **are** this phase: the landing rewrite and the Free/Pro re-validation.
-Added here:
+The ⬜ TODOs written below **are** this phase: the landing rewrite, the Free/Pro re-validation, and **billing
+go-live**. Added here:
+- **★ Real payment integration + the Pro trial** — see the ⬜ TODO below. This is the phase for it: it needs the
+  frozen split (you cannot price what is still moving) and it needs R4 done first (webhook URL, secrets and the
+  `Subscriptions` table all move hosts in R4; wiring a provider before that is the same work twice).
 - **Legal re-read.** B3 was read on 2026-08-05 and was already found stale once — the policy predated the two
-  processing activities B1/B2 had just added. R3 (an assistant) and R4 (a new sub-processor / possible region
-  change) each oblige another pass. A lawyer's glance stays advisable.
+  processing activities B1/B2 had just added. R3 (an assistant), R4 (a new sub-processor / possible region
+  change) and **the payment provider (a new sub-processor holding billing data)** each oblige another pass. A
+  lawyer's glance stays advisable.
 - **Fold technical SEO in here** — see R6.
 
 ### R6 — SEO
@@ -327,6 +331,11 @@ Added here:
 - **Preconditions:** R4 done (capacity), R5 done (the page is honest and the paywall is settled), and the
   **intake decision** made — staged invites vs a public link. That decision is still the last open owner call;
   [Capacity](#capacity) argues for staged.
+- ⚠️ **Do not promote while checkout is dead.** Today the first 100 sign-ups get lifetime Pro and **everyone
+  after them is a genuinely gated Free account** told *"Pro isn't on sale yet."* Promotion is the traffic spike;
+  the spike is what fills the 100 and then keeps going. Opening the door without billing means the users past
+  the cap meet walls with **no way to pay** — the one arrival state where the product looks worse than it is and
+  no revenue is possible. Either billing is live (R5) or the cap is raised so nobody is gated. Not neither.
 - ⚠️ **Before promoting, make error reporting a push, not a pull.** B1 notes it plainly: nothing *alerts* on
   `FinApp.ClientError` — you have to go and look. A log-based alert is cheap. Without it, the first you hear of
   a crash on a stranger's device is a review.
@@ -371,6 +380,40 @@ is in the right place. Open questions to settle in that pass:
   back-navigation** past that window is not. Confirm the exact Free horizon and gate navigation to match.
 - **Price**: ✅ **resolved 2026-08-05 — €29.99/yr (+ €3.99/mo)**, the config default the app already serves.
   `docs/BILLING.md`'s superseded 3-tier `$39.99` table is annotated as such; MONETIZATION.md is authoritative.
+
+## ⬜ TODO before the door opens (R5) — billing go-live: a real payment provider + the Pro trial
+
+**The rails are built and the engine is a stub.** P4 shipped everything except the part that moves money:
+`IPaymentProvider` is the seam, `SandboxPaymentProvider` walks the whole flow (checkout → return → subscription
+row → plan flips to Pro), `SubscriptionService` owns entitlement, and every gate already honours it. What does
+not exist is a provider that charges a card. **Recorded here so it is impossible to forget**; the design detail
+lives in [MONETIZATION.md → Billing go-live](MONETIZATION.md#billing-go-live--the-real-provider-and-the-trial).
+
+- **Why R5 and not earlier:** the provider needs a **stable public webhook URL and a secret store**, both of
+  which R4 moves to a different host, and it needs a **frozen Free/Pro split**, which is the other half of this
+  same phase. Doing it before R4 is the integration twice; doing it before the split is settled is pricing a
+  moving target.
+- **Why not later (i.e. not after R7):** see the R7 precondition above — post-cap users are already gated with
+  no purchase path.
+- ⚠️ **Provider is an open decision, and "Stripe" is the default answer, not the researched one.** Selling a
+  digital subscription to EU consumers means **VAT at the buyer's rate in their country**. With Stripe *you* are
+  the merchant of record and that compliance is yours (Stripe Tax computes it; it doesn't file it). A
+  merchant-of-record — **Paddle / Lemon Squeezy** — takes that on for a higher cut. For a one-person business in
+  Bulgaria selling across the EU, that trade deserves an hour of real thought before any code. The
+  `IPaymentProvider` seam makes it a self-contained choice either way, which is exactly what it was built for.
+- **⚠️ The repo is public.** The secret key and the **webhook signing secret** are env vars on the host, never
+  files here — same rule as `Admin__Emails`. A leaked signing secret means forged "they paid" webhooks.
+- **Sandbox must survive.** Keep `SandboxPaymentProvider` selectable via `Payments__Provider` after the real one
+  lands: it is how the flow gets tested without a live charge, and every row it writes is already `Sandbox = 1`.
+- **New: the Pro trial.** MONETIZATION.md promises one and **nothing in the code models it** — `Subscriptions`
+  has no trial concept and `IsActiveAsync` only matches `Status = 'active'`. It is a small change to the right
+  place (a row with `Provider = null` and a status the entitlement check accepts), and it must be **granted once
+  per account, never deleted on expiry** — delete the row and the trial is infinitely repeatable.
+- ⬜ **Owner call: trial length + card or no card.** The two docs disagree (MONETIZATION.md says 14 days
+  card-optional; docs/BILLING.md says 45 days cardless). Recommendation and reasoning in MONETIZATION.md.
+- **Exit:** a real card completes a real purchase on the live host, the webhook flips the plan without the
+  browser being involved, cancel/expiry degrade as designed, VAT handling is decided and correct, the privacy
+  policy names the provider, and the sandbox path still works.
 
 ## After the door opens — parked by default
 
