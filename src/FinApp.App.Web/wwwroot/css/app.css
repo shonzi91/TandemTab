@@ -300,7 +300,10 @@ html.dark .warn-text { color: #f0a85a; }
 html.dark .pm-theme-row { color: #e8eaf0; }
 html.dark .switch-track { background: #3a4256; }   /* off-state track; .switch.on stays mint */
 html.dark .app-legal { background: #0f1117; border-top-color: #262d3d; }
-html.dark .app-legal a { color: #aab0c0; }
+/* `.app-legal-link` (the Contact button) shares the light rule with `a` — `.app-legal a, .app-legal-link { … }` —
+   but only the anchor was given a dark value, so Contact stayed #6b7280 on #0f1117. Third instance of the same
+   mistake in this sweep: a two-selector light rule whose dark counterpart was written for one of the pair. */
+html.dark .app-legal a, html.dark .app-legal-link { color: #aab0c0; }
 html.dark .icon-btn { background: #1e2330; border-color: #2c3142; color: #e8eaf0; }
 html.dark .icon-btn.ok, html.dark .icon-btn.pin.on { background: #12332c; border-color: #1c3d38; color: #3fe0c5; }
 html.dark .bank-tx { border-top-color: #262d3d; }
@@ -325,6 +328,11 @@ html.dark .cal-add:hover { background: #12332c; }
    (worst was .icon-label at #374151 — near-black on near-black). */
 html.dark .icon-label,
 html.dark .modal label,
+/* ⚠️ `.modal .modal-field` is the twin of `.modal label` — the scoped light rule sets BOTH in one declaration
+   (`.modal label, .modal .modal-field { … color: #6b7280 }`) but only `label` was ever given a dark value. Every
+   field whose control isn't a native input (the chip pickers: Category, Fund, Tag, Round-ups, Files into…) kept
+   the light grey on the dark modal, at ~3.5:1. Fix the pair, not the one that was noticed. */
+html.dark .modal .modal-field,
 html.dark .form label, html.dark .dates-form label, html.dark .firstrun-form label,
 html.dark .loan-figs, html.dark .loan-sim label, html.dark .plan-controls label,
 html.dark .acct-sync-note { color: #aab0c0; }

@@ -441,6 +441,14 @@ html.dark .bal-alloc { color: #5f8c79; }
 @media (min-width: 721px) { .tab { flex: 1 1 0; text-align: center; } }
 
 .warn-text { color: #b45309; }
+/* ⚠️ The amber had a dark counterpart in exactly TWO places (.bal-free.warn-text and the week-recap line) and none
+   on the base rule — so every other warning in the app rendered #b45309 (a dark amber meant for white) on a
+   near-black ground, at about 3.3:1. Same shape as the S88 crown: the dark value was written where someone
+   happened to look, not where the colour is defined. */
+html.dark .warn-text { color: #f0b26b; }
+/* Negative net worth stays RED on dark rather than inheriting the amber above — it is a different signal, and the
+   base dark rule (0,2,1) would otherwise out-specify the light .networth-value.warn-text (0,2,0). */
+html.dark .networth-value.warn-text { color: #ef6f6f; }
 
 .big-add {
     width: 100%; padding: 14px; margin-bottom: 16px; border: none; border-radius: 14px;
@@ -1611,6 +1619,11 @@ html.dark .bal-part:nth-child(2n), html.dark .bal-part:nth-child(n+3) { border-c
 .score-ok { color: #0e9e6d; }
 .score-warn { color: #b45309; }
 .score-bad { color: #dc2626; }
+/* The health verdict is a headline figure, so its three states each need a dark value — the amber and red were
+   picked for a white card and sat at ~3.3:1 and ~4:1 on the dark one. */
+html.dark .score-ok { color: #57d9a3; }
+html.dark .score-warn { color: #f0b26b; }
+html.dark .score-bad { color: #ef6f6f; }
 .score-line { font-size: .82rem; color: #6b7280; text-align: center; line-height: 1.5; max-width: 300px; margin: 0 auto; }
 .score-bar-wrap { margin-top: 18px; }
 .score-bar-track {
@@ -2537,6 +2550,11 @@ html.dark .card-score::after { color: #3fe0c5; }
 .card-score .card-value.score-ok { color: #0e9e6d; }
 .card-score .card-value.score-warn { color: #b45309; }
 .card-score .card-value.score-bad { color: #dc2626; }
+/* Restated at this specificity (0,3,0) — the base html.dark .score-* rules are only (0,2,1) and would lose here,
+   leaving the Home score card showing the light-theme colours on its dark surface. */
+html.dark .card-score .card-value.score-ok { color: #57d9a3; }
+html.dark .card-score .card-value.score-warn { color: #f0b26b; }
+html.dark .card-score .card-value.score-bad { color: #ef6f6f; }
 
 /* Action cards: the stat number and the button that changes it live together — money out (Spent → Add expense)
    and money in (Contributed → Contribute). The button is the prominent, easy-to-hit primary action. */
