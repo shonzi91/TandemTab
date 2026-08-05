@@ -6,7 +6,7 @@ after Debt R2 shipped and BUG-1 was fixed.*
 | | |
 |---|---|
 | **Application** | TandemTab (https://tandemtab.com) |
-| **Live revision** | `finapp-00275-h87` (2026-08-05) — B1–B4 + P1/P2/P3/P4 shipped; **lifetime-Pro allowance of 100**, real Free/Pro gating (post-cap users gated during beta) |
+| **Live revision** | `finapp-00276-b8g` (2026-08-05) — B1–B4 + P1/P2/P3/P4 shipped; **lifetime-Pro allowance of 100**, real Free/Pro gating (post-cap users gated during beta), Pro crowns + plan comparison |
 | **Scope of this doc** | Open **public** beta — an unrestricted sign-up link, not a handful of invited friends |
 | **Effort key** | S = hours · M = a day · L = multi-day |
 
@@ -201,10 +201,21 @@ env vars, so changing the allowance is a revision update, not a deploy.
   which stay off during beta. So flipping `Monetization__Enabled` later turns on *selling*, not *gating*.
 - **Registration never blocks.** The cohort is decided at write time from the seat count, so the boundary can't be
   forgotten by a later read. Existing pre-cap users don't consume the allowance and stay `unlimited`.
-- **Our own test accounts never take a lifetime seat** — an address matching `Beta__TestEmailPatterns` is stamped
-  cohort `test` and lands on Free (the natural way to see the gated experience).
-- The landing page frames it as a gift — *"the first 100 get Pro free for life, N spots left"* — and the line
-  **disappears entirely once the allowance is full**, rather than turning into a "sold out" message.
+- **Accounts predating the cohort stamp count as beta.** Stamping only began in Session 83 (B4), so earlier
+  accounts have no row at all. A missing row therefore *means* beta — requiring an explicit `beta` stamp had the
+  effect of demoting the earliest members to a gated Free, which is the opposite of the intent (fixed Session 88).
+- **Our own test accounts never take a lifetime seat** — an address matching `Beta__TestEmailPatterns` (live:
+  `+test;@test.local;@example.com`) is stamped cohort `test` and lands on Free (the natural way to see the gated
+  experience). **Register test accounts as `you+test1@gmail.com`** — Gmail delivers aliases to the same inbox, so
+  email verification still works.
+  - ⚠️ **A Google/Facebook test sign-in cannot use an alias** (the provider supplies the real address), so it will
+    land in the lifetime cohort. Fix it afterwards in **Admin console → Admin — cohort**, which re-classifies any
+    account by email (`beta` / `free` / `test`). That panel is also the way to reclassify accounts created before
+    the patterns existed, and it's worth deciding whether the owner's own personal accounts should be `test` so
+    the tester metrics aren't self-inflated.
+- The landing page **no longer advertises the remaining count** — a live "N spots left" reads as scarcity pressure
+  however it's worded, and it dates the page the moment the allowance fills. The allowance still works; it just
+  isn't a marketing device.
 
 **Opening the door is still an explicit owner action** — the lifetime allowance makes it safe, not automatic.
 
