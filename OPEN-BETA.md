@@ -19,9 +19,10 @@ when it *doesn't* do its job for someone who isn't you.
 
 **Sequence:** B1 → B2 → B3 → B4 → the verification hour → open the door.
 
-> **Status (2026-08-05): B1, B2, B3 and B4 are all ✅ done and live** (`finapp-00270-z5t`). What remains before
-> the door: **the verification hour** (below) and **the intake decision** (staged invites vs a public link —
-> the Capacity section argues for staged). A lawyer's glance at the legal pages stays advisable but is not a
+> **Status (2026-08-05): B1–B4 ✅ done and live** (`finapp-00270-z5t`), and **the verification hour is ✅ done**
+> (all three checks below passed — one low-severity mini-donut finding noted, not a gate). What remains before
+> the door is really just **the intake decision** (staged invites vs a public link — the Capacity section
+> argues for staged) and then opening it. A lawyer's glance at the legal pages stays advisable but is not a
 > hard gate.
 
 Ideas that arrive after this was written go to
@@ -265,10 +266,20 @@ Recorded so they don't get re-litigated at the door.
 
 Three things that are built and believed-correct but never seen working with real data. All cheap.
 
-- ⬜ **The S80 "Saved toward goals" Breakdown slice** — shipped, served-bytes verified, **never eyeballed**.
-  Needs a period containing a real bucket disbursement. Log one and look at it.
-- ⬜ **Period lifecycle end-to-end** — start next period, close one, remove the latest, switch accounts.
-  S79–S81 landed seven separate fixes here and each was verified in isolation, not as a sequence.
+- ✅ **The S80 "Saved toward goals" Breakdown slice** (done 2026-08-05). Created a Holiday bucket (€500), applied
+  €200 to the goal ("Apply to a goal" = the disbursement), and the Breakdown donut showed **Food €50 (20%) +
+  "Saved toward goals" €200 (80%)** with the target icon, a **€250 donut total that exceeds the €50 Spent**
+  exactly as designed (slice included in the donut, excluded from Spent). Hero Spent stayed €50. Works.
+- ✅ **Period lifecycle end-to-end** (done 2026-08-05, as a sequence): edited the period end into the past →
+  **"period ended — start next month" banner** (S79 #1); **started next month** → new period, correct carry
+  (€2,450 free carried, €300 stays earmarked), no crash; **removed the latest period** → **no crash** (S79 #3
+  fix holds), confirm dialog present, clean drop-back; **switched accounts** (created a 2nd, round-tripped) →
+  no crash, state preserved. All console-error-free.
+  - ⚠️ **One finding to check:** right after "Start next month", the new period's hero correctly read **Spent
+    €0**, but the Home **"Where your money went" mini-donut still showed €250** (the *previous* period's Food +
+    Saved). The mini-breakdown looks like it isn't re-scoping to the newly-active period immediately after a
+    roll-over. Low severity (display-only, self-corrects), but worth a look — the hero and the donut should
+    agree on which period they describe.
 - ✅ **A fresh-account walk-through as a stranger would do it** (done 2026-08-05, local throwaway): register →
   accept terms → create account → onboarding → first income (€3,000) → first expense (€50 Food). Clean the
   whole way — consent gate, starter categories/funds pre-seeded, hero + F3 day-left + health score + the
