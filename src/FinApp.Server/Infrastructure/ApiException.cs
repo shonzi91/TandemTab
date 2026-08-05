@@ -12,6 +12,14 @@ public sealed class ForbiddenException(string message) : ApiException(StatusCode
 public sealed class NotFoundException(string message) : ApiException(StatusCodes.Status404NotFound, message);
 public sealed class ConflictException(string message) : ApiException(StatusCodes.Status409Conflict, message);
 
+/// <summary>A Pro-only capability was reached on a Free plan (OPEN-BETA P4). Maps to HTTP 402 and carries the
+/// blocked <see cref="FeatureKey"/> so the client can raise the same upgrade prompt a local gate would.</summary>
+public sealed class PaymentRequiredException(string featureKey, string message)
+    : ApiException(StatusCodes.Status402PaymentRequired, message)
+{
+    public string FeatureKey { get; } = featureKey;
+}
+
 public static class ExceptionMessageExtensions
 {
     /// <summary><see cref="ArgumentException"/>.Message appends " (Parameter 'name')" — a raw parameter-name leak

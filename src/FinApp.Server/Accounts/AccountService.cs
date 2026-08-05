@@ -24,6 +24,18 @@ public sealed class AccountService(FinAppDbContext db, ArchivedAccountsService a
         return accounts.Where(a => !archived.Contains(a.Id)).Select(a => ToSummary(a, userId)).ToList();
     }
 
+    /// <summary>How many non-archived accounts this user <b>owns</b> (not merely belongs to — a shared account they
+    /// were invited into is someone else's). Used to enforce the Free tier's "1 account" cap on create (OPEN-BETA P4).</summary>
+    public async Task<int> OwnedCountAsync(Guid userId, CancellationToken ct = default)
+    {
+        var accounts = await db.Accounts
+            .Include(a => a.Members)
+            .Where(a => a.Members.Any(m => m.UserId == userId))
+            .ToListAsync(ct);
+        var archived = await archives.ArchivedIdsAsync(ct);
+        return accounts.Count(a => !archived.Contains(a.Id) && a.IsOwner(userId));
+    }
+
     /// <summary>Archived accounts the user is (still) a member of, with when each was archived + the purge deadline.</summary>
     public async Task<List<ArchivedAccountDto>> ListArchivedForUserAsync(Guid userId, CancellationToken ct = default)
     {

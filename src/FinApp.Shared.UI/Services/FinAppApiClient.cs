@@ -8,9 +8,18 @@ using FinApp.Contracts;
 namespace FinApp.Shared.UI.Services;
 
 /// <summary>A friendly error from the API carrying the server's message and HTTP status.</summary>
-public sealed class ApiException(HttpStatusCode status, string message) : Exception(message)
+public class ApiException(HttpStatusCode status, string message) : Exception(message)
 {
     public HttpStatusCode Status { get; } = status;
+}
+
+/// <summary>A 402 from a Pro-gated endpoint (OPEN-BETA P4), carrying the blocked feature key. The server-side
+/// backstop for the paywall; a properly-gated client raises the prompt before the call, so this is the fallback
+/// path when a gate was skipped. Still an <see cref="ApiException"/>, so existing catch sites keep working.</summary>
+public sealed class PaymentRequiredApiException(string feature, string message)
+    : ApiException(HttpStatusCode.PaymentRequired, message)
+{
+    public string Feature { get; } = feature;
 }
 
 /// <summary>
@@ -30,6 +39,10 @@ public sealed class FinAppApiClient(HttpClient http)
     /// request is worth retrying. Lets an expired access token be renewed transparently, mid-session.
     /// </summary>
     public Func<string?, Task<bool>>? OnUnauthorized { get; set; }
+
+    /// <summary>Raised when any call comes back 402 (a Pro feature reached on a Free plan), with the blocked
+    /// feature key. MainLayout wires this to the upgrade prompt so a server refusal looks identical to a local gate.</summary>
+    public event Action<string>? PaymentRequired;
 
     // --- Auth -------------------------------------------------------------
     public Task<AuthResponse> RegisterAsync(RegisterRequest req, CancellationToken ct = default) =>
@@ -527,20 +540,30 @@ public sealed class FinAppApiClient(HttpClient http)
         return content;
     }
 
-    private static async Task EnsureSuccessAsync(HttpResponseMessage response, CancellationToken ct)
+    private async Task EnsureSuccessAsync(HttpResponseMessage response, CancellationToken ct)
     {
         if (response.IsSuccessStatusCode) return;
 
         var message = response.ReasonPhrase ?? "Request failed.";
+        string? feature = null;
         try
         {
             var error = await response.Content.ReadFromJsonAsync<ErrorBody>(Json, ct);
             if (!string.IsNullOrWhiteSpace(error?.Error)) message = error!.Error;
+            feature = error?.Feature;
         }
         catch { /* non-JSON error body — keep the reason phrase */ }
+
+        // A Pro-gated 402 raises the upgrade prompt (same UX as a local gate) and throws a typed exception so the
+        // caller aborts cleanly. Falls back to the plain path if the server didn't name a feature.
+        if (response.StatusCode == HttpStatusCode.PaymentRequired && !string.IsNullOrWhiteSpace(feature))
+        {
+            PaymentRequired?.Invoke(feature!);
+            throw new PaymentRequiredApiException(feature!, message);
+        }
 
         throw new ApiException(response.StatusCode, message);
     }
 
-    private record ErrorBody(string Error);
+    private record ErrorBody(string Error, string? Feature);
 }

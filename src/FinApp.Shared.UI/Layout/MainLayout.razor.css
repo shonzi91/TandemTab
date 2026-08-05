@@ -75,6 +75,15 @@ html.dark .brand-tab { background: var(--tm-mint); color: #0f1322; }
 .avatar:hover { border-color: #ffffff; }
 .avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
 
+/* Admin console opener — a subtle icon button beside the avatar, shown only to admins. */
+.appbar-admin {
+    width: 32px; height: 32px; border-radius: 8px; padding: 0; border: 2px solid rgba(255,255,255,.35);
+    background: rgba(255,255,255,.14); color: #ffffff; cursor: pointer; flex-shrink: 0;
+    display: inline-flex; align-items: center; justify-content: center;
+}
+.appbar-admin:hover { border-color: #ffffff; background: rgba(255,255,255,.24); }
+.appbar-admin ::deep svg { width: 17px; height: 17px; }
+
 .appbar-user .user {
     font-size: .9rem; opacity: .95; color: #ffffff; background: none; border: none;
     cursor: pointer; padding: 6px 4px; font-weight: 500;
@@ -223,6 +232,15 @@ html.dark .pm-cycle button { border-color: rgba(255,255,255,.14); color: #9aa8b4
 html.dark .pm-cycle button strong { color: #e8eaf0; }
 html.dark .pm-cycle button.on { border-color: #13a06e; background: rgba(19,160,110,.14); color: #2ee59d; }
 html.dark .pm-cycle button.on strong { color: #2ee59d; }
+/* "Exit test mode" — a quiet text link under the Free/Pro toggle, not a third segment. */
+.pm-exit-test {
+    display: inline-block; margin-top: 8px; padding: 0; background: none; border: none;
+    color: #6b7280; font-size: .82rem; font-weight: 600; text-decoration: underline; cursor: pointer;
+}
+.pm-exit-test:hover { color: #13a06e; }
+.pm-exit-test:disabled { opacity: .5; cursor: not-allowed; }
+html.dark .pm-exit-test { color: #9aa8b4; }
+html.dark .pm-exit-test:hover { color: #2ee59d; }
 /* White quiet-zone around the QR so it scans reliably on any theme. */
 .pm-2fa-qr { display: block; margin: 8px 0; padding: 8px; background: #ffffff; border-radius: 8px; }
 .pm-avatar-row { display: flex; align-items: center; gap: 12px; }

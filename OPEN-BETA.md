@@ -183,21 +183,24 @@ timestamps happen to exist, or breaking the promise. Everything else about billi
 
 ---
 
-## The intake decision — now answered: a capped public link
+## The intake decision — now answered: an open link with a lifetime-Pro allowance
 
-**Resolved 2026-08-05 (Session 86).** The Capacity section below argued for staged invites; what shipped is the
-middle path — **a public sign-up link with a hard cap of 30 seats**. Anyone can come, the door closes by itself,
-and no one has to hand-manage an invite list. `Beta__Cap` / `Beta__CountFrom` / `Beta__TestEmailPatterns` are
-Cloud Run env vars, so raising the cap or opening it fully is a revision update, not a deploy.
+**Resolved 2026-08-05 (Session 86), revised Session 87.** The Capacity section below argued for staged invites.
+What shipped is an **open public sign-up link that never turns anyone away** — the `Beta__Cap` (30) is now a
+**lifetime-Pro allowance, not a door**. `Beta__Cap` / `Beta__CountFrom` / `Beta__TestEmailPatterns` are Cloud Run
+env vars, so changing the allowance is a revision update, not a deploy.
 
-- Counted **from 2026-08-05**, so existing users don't consume the allowance.
-- **Our own test accounts never take a seat** — an address matching `Beta__TestEmailPatterns`
-  (`+test;@test.local;@example.com`) is stamped cohort `test` at registration. Use
-  `you+test1@gmail.com`-style addresses for anything you create yourself.
-- When it fills, registration returns a clear message pointing at `admin@tandemtab.com` rather than a generic error.
-- The landing page shows the remaining count, so nobody discovers the cap only after typing their details.
+- The **first 30** real sign-ups (from `Beta__CountFrom` = 2026-08-05) are stamped cohort `beta` and are
+  **grandfathered to Pro for life**. Everyone after joins on cohort `free` — still welcome, just on the Free tier.
+- **Registration never blocks.** The cohort is decided at write time from the seat count, so the boundary can't be
+  forgotten by a later read. Existing pre-cap users don't consume the allowance.
+- **Our own test accounts never take a lifetime seat** — an address matching `Beta__TestEmailPatterns`
+  (`+test;@test.local;@example.com`) is stamped cohort `test`. Use `you+test1@gmail.com`-style addresses for
+  anything you create yourself; they land on Free (the natural way to see the Free tier).
+- The landing page frames it as a gift — *"the first 30 get Pro free for life, N spots left"* — not a countdown to
+  a closed door.
 
-**Opening the door is still an explicit owner action** — the cap makes it safe, it doesn't make it automatic.
+**Opening the door is still an explicit owner action** — the lifetime allowance makes it safe, not automatic.
 
 ## ⬜ TODO before the door opens — rewrite the landing page
 
@@ -214,6 +217,31 @@ mentions them).
 Check at the same time: the hero ticks, the feature grid, the "how it works" steps, the Pro tier's bullet list
 (it is generated from the feature catalogue, so it stays honest by itself), and the beta seat count copy — that
 last one comes out entirely when the beta ends.
+
+## ⬜ TODO before the door opens — re-validate the Free/Pro split + gating
+
+**Same discipline as the landing page: the paywall line predates half the product.** The Free-vs-Pro catalogue
+(`MonetizationService.Catalogue`) and MONETIZATION.md's table were written before Trends, the payoff planner,
+installment splitting, the health score and achievements existed. Session 87 wired **real gating** — client gates
+at every Pro entry point plus a server-side 402 backstop (`EntitlementService`) on the actions that have an
+endpoint (invite/share, import, and the 2nd-account cap). But the *split itself* deserves one more deliberate pass
+once the feature set is frozen, exactly like the landing rewrite.
+
+**Walk every gate as a Free user** (pin Free in the admin console) and decide, feature by feature, whether the line
+is in the right place. Open questions to settle in that pass:
+
+- **Numeric caps still need decided numbers.** "Small caps" on funds and recurring items (MONETIZATION.md) were
+  left unenforced on purpose — enforcing them means inventing a number (5 funds? 3 recurring?), and a limit that
+  later changes is worse than none. The **account cap is enforced** (Free = 1, server + client); funds/recurring
+  are not. Decide the numbers, then enforce them the same way.
+- **Achievements depth** has a MONETIZATION line ("Basic vs Full") but **no catalogue key** — either add one and
+  gate it, or drop it from the table so the two agree.
+- **Debt metering**: the payoff *planner* is gated (`debt`), but "1 debt on Free" (allowing one debt bucket,
+  gating the 2nd) isn't enforced server-side yet. Confirm whether view-only-1-debt is the intended Free line.
+- **History window**: the Breakdown/Trends range beyond ~3 months is client-gated (`history`); **period
+  back-navigation** past that window is not. Confirm the exact Free horizon and gate navigation to match.
+- **Price**: still **€29.99/yr (MONETIZATION.md) vs $39.99 (docs/BILLING.md)** — reconcile before any number is
+  ever shown (harmless while `Monetization:Enabled` is off).
 
 ## After the door opens — parked by default
 

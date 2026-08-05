@@ -96,6 +96,7 @@ builder.Services.AddSingleton<MonetizationService>();  // P4 rails: off by defau
 builder.Services.AddScoped<SubscriptionService>();     // who is on a paid plan — our record, not the provider's
 builder.Services.AddSingleton<BetaPolicy>();           // free-beta seat cap + which addresses are ours
 builder.Services.AddScoped<PlanOverrideService>();     // admin-only per-account plan pin, for testing the upgrade
+builder.Services.AddScoped<EntitlementService>();      // single source of truth for plan resolution + server-side gating
 builder.Services.AddSingleton<PaymentOptions>();
 // The payment seam. Sandbox is the only implementation today and the default; adding a real one is a single
 // registration change here plus a class implementing IPaymentProvider (see PaymentProvider.cs).
@@ -308,7 +309,12 @@ app.Use(async (context, next) =>
         if (!context.Response.HasStarted)
         {
             context.Response.StatusCode = ex.StatusCode;
-            await context.Response.WriteAsJsonAsync(new { error = ex.Message });
+            // A 402 also names the blocked feature so the client can raise the matching upgrade prompt — identical
+            // UX whether the gate fired locally or the server refused.
+            if (ex is PaymentRequiredException pr)
+                await context.Response.WriteAsJsonAsync(new { error = ex.Message, feature = pr.FeatureKey });
+            else
+                await context.Response.WriteAsJsonAsync(new { error = ex.Message });
         }
     }
     catch (Exception ex)
@@ -577,43 +583,30 @@ app.MapPost("/feedback", async (FeedbackRequest req, FeedbackService feedback, I
 
 app.MapGet("/me", async (ClaimsPrincipal user, AvatarService avatars, ExternalIdentityService identities,
         EmailVerificationService emailVerification, TwoFactorService twoFactor, AccountDeletionService deletions,
-        AdminPolicy adminPolicy, MonetizationService monetization, SignupService signups,
-        SubscriptionService subscriptions, PlanOverrideService overrides, CancellationToken ct) =>
+        AdminPolicy adminPolicy, EntitlementService entitlements, CancellationToken ct) =>
 {
-    // An admin plan override wins over everything, and implies monetization is live FOR THIS ACCOUNT ONLY — the
-    // plan surface doesn't exist while the flag is off, so pinning a plan without that would still show nothing.
-    var pinned = await overrides.GetAsync(user.UserId(), ct);
-    // "unlimited" (no gating) while monetization is off; when on, beta-cohort accounts are grandfathered to Pro
-    // and paying subscribers are Pro. The subscription lookup is skipped entirely while the flag is off — no
-    // reason to query a table whose answer can't change the outcome.
-    var plan = pinned ?? (monetization.Enabled
-        ? monetization.PlanFor(await signups.IsBetaCohortAsync(user.UserId(), ct),
-                               await subscriptions.IsActiveAsync(user.UserId(), ct))
-        : "unlimited");
+    // Plan resolution (override → flag → cohort/subscription) lives in one place now, so /me, /plans and every
+    // gated endpoint can't drift. A pinned override implies monetization is live FOR THIS ACCOUNT ONLY.
+    var ent = await entitlements.ResolveAsync(user.UserId(), ct);
     return Results.Ok(new UserDto(user.UserId(), user.Username(), user.Email(),
         await avatars.GetAsync(user.UserId(), ct), await identities.GetProviderAsync(user.UserId(), ct),
         EmailVerified: await emailVerification.IsVerifiedAsync(user.UserId(), user.Email(), ct),
         TwoFactorEnabled: await twoFactor.IsEnabledAsync(user.UserId(), ct),
         PendingDeletionAt: await deletions.ScheduledAtAsync(user.UserId(), ct),
         IsAdmin: adminPolicy.IsAdmin(user.Email()),
-        MonetizationEnabled: monetization.Enabled || pinned is not null,
-        Plan: plan));
+        MonetizationEnabled: ent.MonetizationLive,
+        Plan: ent.Plan));
 }).RequireAuthorization();
 
 // The Plans screen's data (OPEN-BETA P4). Only meaningful when the flag is on; while off it reports Enabled=false
 // and "unlimited", so the client shows no plan UI at all. Prices are config values, never hard-coded.
-app.MapGet("/plans", async (ClaimsPrincipal user, MonetizationService monetization, SignupService signups,
-        SubscriptionService subscriptions, PaymentOptions payments, PlanOverrideService overrides,
-        CancellationToken ct) =>
+app.MapGet("/plans", async (ClaimsPrincipal user, MonetizationService monetization,
+        EntitlementService entitlements, PaymentOptions payments, CancellationToken ct) =>
 {
-    var pinned = await overrides.GetAsync(user.UserId(), ct);
-    var live = monetization.Enabled || pinned is not null;
-    var isBeta = live && await signups.IsBetaCohortAsync(user.UserId(), ct);
-    var subscribed = live && await subscriptions.IsActiveAsync(user.UserId(), ct);
-    var plan = pinned ?? monetization.PlanFor(isBeta, subscribed);
-    // Reported as NOT beta-cohort while pinned to free — otherwise the profile would say "Pro is on us" over a
-    // Free plan, which is the one combination that makes the test override useless for seeing the upsell.
-    return Results.Ok(new PlansDto(live, plan, isBeta && plan == "pro",
+    // Same resolver as /me. GrandfatheredBeta is already "beta-cohort AND actually on Pro", so a tester pinned to
+    // Free never sees "Pro is on us" over a Free plan.
+    var ent = await entitlements.ResolveAsync(user.UserId(), ct);
+    return Results.Ok(new PlansDto(ent.MonetizationLive, ent.Plan, ent.GrandfatheredBeta,
         monetization.Currency, monetization.AnnualPrice, monetization.MonthlyPrice,
         MonetizationService.Catalogue, payments.Provider, payments.Sandbox));
 }).RequireAuthorization();
@@ -735,8 +728,15 @@ var accounts = app.MapGroup("/accounts").RequireAuthorization();
 accounts.MapGet("", async (ClaimsPrincipal user, AccountService svc, CancellationToken ct) =>
     Results.Ok(await svc.ListForUserAsync(user.UserId(), ct)));
 
-accounts.MapPost("", async (CreateAccountRequest req, ClaimsPrincipal user, AccountService svc, CancellationToken ct) =>
-    Results.Ok(await svc.CreateAsync(user.UserId(), user.Username(), req, ct)));
+accounts.MapPost("", async (CreateAccountRequest req, ClaimsPrincipal user, AccountService svc,
+        EntitlementService entitlements, CancellationToken ct) =>
+{
+    // Free = 1 account (MONETIZATION.md). The 2nd+ needs the "caps" entitlement; inert for unlimited/pro, so this
+    // changes nothing until monetization is live for the account.
+    if (await svc.OwnedCountAsync(user.UserId(), ct) >= 1)
+        await entitlements.RequireAsync(user.UserId(), PlanFeatures.Caps, ct);
+    return Results.Ok(await svc.CreateAsync(user.UserId(), user.Username(), req, ct));
+});
 
 accounts.MapPut("/{id:guid}/name", async (Guid id, RenameAccountRequest req, ClaimsPrincipal user, AccountService svc, SyncNotifier notifier, CancellationToken ct) =>
 {
@@ -1242,9 +1242,11 @@ accounts.MapDelete("/{id:guid}/deposits/{depositId:guid}", async (Guid id, Guid 
 // both attribute to the row's fund and inherit its synced flag. Zero-amount / empty-ref rows are skipped (as the web
 // does); a row naming a missing category/fund fails the whole batch (400). The review-step dedupe/in-period gating is
 // the caller's (those are reads). Mirrors BudgetingState.ImportTransactions.
-accounts.MapPost("/{id:guid}/import", async (Guid id, ImportTransactionsRequest req, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
+accounts.MapPost("/{id:guid}/import", async (Guid id, ImportTransactionsRequest req, ClaimsPrincipal user, SnapshotService svc, EntitlementService entitlements, SyncNotifier notifier, CancellationToken ct) =>
 {
     var userId = user.UserId();
+    // Statement import is Pro (MONETIZATION.md's second built-in upgrade moment). Inert while unlimited/pro.
+    await entitlements.RequireAsync(userId, PlanFeatures.Import, ct);
     var (version, result) = await svc.MutateAsync(userId, id, account =>
     {
         var period = account.CurrentPeriod ?? throw new InvalidOperationException("There's no open period to import into.");
@@ -2201,8 +2203,11 @@ accounts.MapGet("/{id:guid}/export", async (Guid id, ClaimsPrincipal user, Accou
 });
 
 // --- Invitations ---------------------------------------------------------
-accounts.MapPost("/{id:guid}/invitations", async (Guid id, CreateInvitationRequest req, ClaimsPrincipal user, InvitationService svc, SyncNotifier notifier, CancellationToken ct) =>
+accounts.MapPost("/{id:guid}/invitations", async (Guid id, CreateInvitationRequest req, ClaimsPrincipal user, InvitationService svc, EntitlementService entitlements, SyncNotifier notifier, CancellationToken ct) =>
 {
+    // Sharing a household is the hero Pro feature and MONETIZATION.md's primary upgrade moment. Gate the invite
+    // itself; inert while unlimited/pro. (Accept stays open — one Pro on the owner covers everyone on the account.)
+    await entitlements.RequireAsync(user.UserId(), PlanFeatures.Share, ct);
     var created = await svc.CreateAsync(user.UserId(), id, req.Username, ct);
     await notifier.InvitationReceivedAsync(created.InviteeUserId, created.InvitationId, created.AccountId, created.AccountName, created.InviterUsername);
     return Results.Ok();

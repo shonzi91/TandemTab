@@ -21,13 +21,18 @@ namespace FinApp.Server.Auth;
 /// </summary>
 public sealed class SignupService(FinAppDbContext db)
 {
-    /// <summary>The cohort stamped on everyone who registers before public launch. Post-launch this becomes a
-    /// config value (or is simply derived from <c>JoinedAt</c> against the launch date); the point right now is
-    /// that the fact is captured at the source rather than inferred later.</summary>
+    /// <summary>The cohort stamped on the <b>first N</b> real sign-ups (the lifetime-Pro allowance — see
+    /// <see cref="BetaPolicy"/>). These are the accounts grandfathered to Pro for good; the fact is captured at the
+    /// source rather than inferred later, because it's the one thing that can't be backfilled.</summary>
     public const string BetaCohort = "beta";
 
+    /// <summary>Cohort for real sign-ups that arrive <b>after</b> the lifetime-Pro allowance is full. They still
+    /// join — registration never blocks — but on the Free tier, so they are <em>not</em> grandfathered. Kept
+    /// distinct from <see cref="BetaCohort"/> so a later read can tell a lifetime member from a plain free one.</summary>
+    public const string FreeCohort = "free";
+
     /// <summary>Cohort for accounts we create ourselves to test with. They are stamped separately so they neither
-    /// consume a capped beta seat nor inflate "how many real testers do we have" — and, usefully, they are NOT
+    /// consume a lifetime seat nor inflate "how many real testers do we have" — and, usefully, they are NOT
     /// grandfathered to Pro, so a test account is the natural way to see the Free tier.</summary>
     public const string TestCohort = "test";
 

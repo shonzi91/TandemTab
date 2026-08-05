@@ -52,9 +52,17 @@ public sealed class BetaPolicy
         email is not null && _testPatterns.Length > 0 &&
         _testPatterns.Any(p => email.Contains(p, StringComparison.OrdinalIgnoreCase));
 
-    /// <summary>The cohort to stamp on a new account.</summary>
-    public string CohortFor(string? email) =>
-        IsTestEmail(email) ? SignupService.TestCohort : SignupService.BetaCohort;
+    /// <summary>
+    /// The cohort to stamp on a new account, given how many lifetime-Pro seats are already taken.
+    /// <para>Our own addresses are always <see cref="SignupService.TestCohort"/>. Otherwise the first
+    /// <see cref="Cap"/> real sign-ups get <see cref="SignupService.BetaCohort"/> (grandfathered to Pro for life);
+    /// everyone after joins on <see cref="SignupService.FreeCohort"/>. Registration is never refused — the cap
+    /// decides <em>which tier</em> you land on, not <em>whether</em> you may join.</para>
+    /// </summary>
+    public string CohortFor(string? email, int seatsTaken) =>
+        IsTestEmail(email) ? SignupService.TestCohort
+        : IsFull(seatsTaken) ? SignupService.FreeCohort
+        : SignupService.BetaCohort;
 
     public int Remaining(int taken) => Enabled ? Math.Max(0, Cap - taken) : int.MaxValue;
     public bool IsFull(int taken) => Enabled && taken >= Cap;

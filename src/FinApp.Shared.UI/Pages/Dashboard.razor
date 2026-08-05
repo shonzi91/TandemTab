@@ -542,7 +542,7 @@ else
                sparklines into the modal keeps the landing screen light (UX reorg). The urgent "needs attention" strip
                is attached directly below (see home-alerts), so the whole "how am I doing" block reads as one. *@
             <section class="home-health">
-                <button id="home-score" class="card card-score card-score-wide home-health-hd" @onclick="() => _modal = Modal.HealthScore" title="@Loc["Health score"]">
+                <button id="home-score" class="card card-score card-score-wide home-health-hd" @onclick="OpenHealthScore" title="@Loc["Health score"]">
                     <span class="card-label">@Loc["Health score & trends"]</span>
                     <span class="card-value @ovBand">@(ov.HasData ? ov.Score.ToString() : "—")</span>
                     <span class="card-sub">@(ov.HasData ? N(ov.Verdict) : "")</span>
@@ -4777,7 +4777,13 @@ else
         };
     }
 
-    private void SetBreakRange(BreakRange r) { _breakRange = r; _breakExpanded.Clear(); }
+    private void SetBreakRange(BreakRange r)
+    {
+        // Free = current + ~3 months (MONETIZATION.md). Deeper windows are the Pro "history" entitlement (P4).
+        if ((r is BreakRange.M6 or BreakRange.M12 or BreakRange.All or BreakRange.Custom)
+            && !Gate.Require(PlanFeatures.History)) return;
+        _breakRange = r; _breakExpanded.Clear();
+    }
 
     // Editing either date directly defines a custom window. We seed from the currently-shown window so the untouched
     // end stays put, then flip to Custom (which reads _breakFrom/_breakTo).
@@ -4935,8 +4941,16 @@ else
     // multi-period window when arriving from it — the range chips then re-narrow as the user wishes.
     private void ShowTrends()
     {
+        if (!Gate.Require(PlanFeatures.Insights)) return;   // Pro: multi-period intelligence (P4)
         _spendView = SpendView.Trends;
         if (_breakRange == BreakRange.ThisPeriod) SetBreakRange(BreakRange.M6);
+    }
+
+    // Pro: the health score + trends drill-in (P4). Its own opener so the gate lives in one place.
+    private void OpenHealthScore()
+    {
+        if (!Gate.Require(PlanFeatures.Insights)) return;
+        _modal = Modal.HealthScore;
     }
 
     // --- Trends (P3): money over time across periods -------------------------------------------------
@@ -6824,6 +6838,7 @@ else
 
     private void OpenPayoffProjection(Guid bucketId)
     {
+        if (!Gate.Require(PlanFeatures.Debt)) return;   // Pro: the full debt payoff planner (P4)
         _projBucketId = bucketId;
         _openTip = null;
         _payoffExtra = State.EffectiveSavingPace(bucketId)?.Amount ?? 0m;   // load with your planned/inferred pace on top
@@ -7383,6 +7398,7 @@ else
 
     private async Task OpenImport()
     {
+        if (!Gate.Require(PlanFeatures.Import)) return;   // Pro: statement import (P4)
         _importStep = ImportStep.Upload;
         _importError = null;
         _importSkipped = 0;
@@ -8340,7 +8356,12 @@ else
 
     private void OpenDelete(Guid categoryId) { _modalCatId = categoryId; _modal = Modal.DeleteCat; }
     private void OpenCategoryDetail(Guid categoryId) { _modalCatId = categoryId; _modal = Modal.CategoryDetail; }
-    private void OpenAddAccount() { _fName = null; _fCurrency = State.Currency; _fSavingsTarget = 20; _modal = Modal.AddAccount; }
+    private void OpenAddAccount()
+    {
+        // Free = 1 account (P4). Gate the 2nd+; the server enforces the same rule as a 402 backstop.
+        if (State.Accounts.Count(a => a.IsOwner) >= 1 && !Gate.Require(PlanFeatures.Caps)) return;
+        _fName = null; _fCurrency = State.Currency; _fSavingsTarget = 20; _modal = Modal.AddAccount;
+    }
     private void OpenEditAccount() { _fName = State.Account.Name; _fSavingsTarget = (int)decimal.Round(State.SavingsRateTarget * 100m); _modal = Modal.EditAccount; }
     private void OpenDeleteAccount() => _modal = Modal.DeleteAccount;
     // Sharing is the hero Pro feature and, per MONETIZATION.md, the intended upgrade moment — so the gate sits on

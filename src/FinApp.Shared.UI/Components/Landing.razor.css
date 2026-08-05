@@ -68,8 +68,9 @@
    when this stops being free?", which is the last thing between reading and signing up. Whole block is
    self-contained so removing it at launch is a single delete. */
 .lp-cta-note {
-    display: inline-flex; align-items: center; flex-wrap: wrap; gap: 8px;
-    margin: 14px 0 0; padding: 8px 14px 8px 8px; border-radius: 999px;
+    display: inline-flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 8px;
+    align-self: center; text-align: center;
+    margin: 14px auto 0; padding: 8px 14px 8px 8px; border-radius: 999px;
     font-size: .88rem; font-weight: 600; color: #0e5f42;
     background: rgba(19,160,110,.09); border: 1px solid rgba(19,160,110,.28);
 }

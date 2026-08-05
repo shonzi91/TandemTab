@@ -19,6 +19,12 @@
             <span class="brand"><span class="brand-logo"><TandemLogo Pro="@IsPro" /></span><span class="brand-word">Tandem<span class="brand-tab">Tab</span></span>@if (IsPro) { <span class="brand-pro" title="@Loc["You’re on Pro"]">@Loc["Pro"]</span> }</span>
             <span class="appbar-user">
                 <LanguagePicker />
+                @* Admin lives in its own door, not buried in profile settings. Only rendered for an admin; the
+                   server re-checks the allowlist on every admin endpoint, so this button is convenience, not the gate. *@
+                @if (Auth.CurrentUser?.IsAdmin == true)
+                {
+                    <button class="appbar-admin" title="@Loc["Admin console"]" aria-label="@Loc["Admin console"]" @onclick="OpenAdmin"><Icon Name="shield" /></button>
+                }
                 <span class="appbar-id">
                     <button class="avatar" title="@Loc["Profile settings"]" @onclick="OpenProfile">
                         @if (Auth.CurrentUser?.Avatar is { } pic)
@@ -167,6 +173,102 @@
                 <div class="pm-actions">
                     <button class="ghost" @onclick="() => _gateBlocked = null">@Loc["Not now"]</button>
                     <button disabled="@_checkoutBusy" @onclick="StartUpgrade">@Loc["Upgrade to Pro"]</button>
+                </div>
+            </div>
+        </div>
+    }
+
+    @* Admin console — its own door, reached from the shield in the top bar (OPEN-BETA P2 metrics + P4 plan test +
+       review moderation). Guarded on IsAdmin here for convenience; every admin endpoint re-checks the allowlist
+       server-side, so a forced open just meets 403s. Guarded on CurrentUser too — the body dereferences it. *@
+    @if (_adminOpen && Auth.CurrentUser is { IsAdmin: true })
+    {
+        <div class="pm-backdrop" @onclick="CloseAdmin">
+            <div class="pm" @onclick:stopPropagation="true">
+                <h3>@Loc["Admin console"]</h3>
+
+                @* Usage metrics. Counts + timestamps only — never anyone's financial data (no snapshot is decrypted). *@
+                <details class="pm-section" @ontoggle="LoadAdminMetrics">
+                    <summary>@Loc["Admin — usage"]</summary>
+                    @if (_adminMetrics is { } m)
+                    {
+                        <div class="pm-admin-grid">
+                            <div><span class="pm-admin-n">@m.TotalUsers</span><span class="pm-admin-l">@Loc["Users"]</span></div>
+                            <div><span class="pm-admin-n">@m.TotalAccounts</span><span class="pm-admin-l">@Loc["Accounts"]</span></div>
+                            <div><span class="pm-admin-n">@m.BetaCohort</span><span class="pm-admin-l">@Loc["Beta cohort"]</span></div>
+                            <div><span class="pm-admin-n">@m.NewUsers7d / @m.NewUsers30d</span><span class="pm-admin-l">@Loc["New (7d / 30d)"]</span></div>
+                            <div><span class="pm-admin-n">@m.Active7d / @m.Active30d</span><span class="pm-admin-l">@Loc["Active (7d / 30d)"]</span></div>
+                        </div>
+                        @if (m.SignupsByDay.Count > 0)
+                        {
+                            var maxc = m.SignupsByDay.Max(d => d.Count);
+                            <div class="pm-admin-spark" role="img" aria-label="@Loc["Sign-ups, last 30 days"]">
+                                @foreach (var d in m.SignupsByDay)
+                                {
+                                    <span class="pm-admin-bar" style="height:@(Math.Max(2, (int)((double)d.Count / Math.Max(1, maxc) * 26)))px" title="@d.Day: @d.Count"></span>
+                                }
+                            </div>
+                            <p class="pm-hint">@Loc["Sign-ups, last 30 days"]</p>
+                        }
+                    }
+                    else if (_adminBusy) { <p class="pm-hint">@Loc["Loading…"]</p> }
+                    else if (_adminError) { <p class="pm-hint">@Loc["Couldn’t load usage metrics."]</p> }
+                </details>
+
+                @* Plan test. Pins THIS account to Free or Pro so the upgrade journey can be walked on demand — the
+                   thing you need over and over while wiring a real payment provider. Pinning turns the plan surface
+                   on for this account alone; the global Monetization flag stays off and no other user is affected. *@
+                <details class="pm-section">
+                    <summary>@Loc["Admin — test a plan"]</summary>
+                    <p class="pm-hint">@Loc["View the app as a Free or Pro member. Only your account is affected — everyone else stays as they are."]</p>
+                    <div class="pm-cycle" role="group" aria-label="@Loc["Test plan"]">
+                        <button type="button" class="@(Auth.CurrentUser is { MonetizationEnabled: true, Plan: "free" } ? "on" : "")"
+                                disabled="@_overrideBusy" @onclick="@(() => SetPlanOverride("free"))">
+                            @Loc["Free"]
+                        </button>
+                        <button type="button" class="@(Auth.CurrentUser is { MonetizationEnabled: true, Plan: "pro" } ? "on" : "")"
+                                disabled="@_overrideBusy" @onclick="@(() => SetPlanOverride("pro"))">
+                            @Loc["Pro"]
+                        </button>
+                    </div>
+                    <p class="pm-hint">@Loc["“Free” shows the locked features, the landing pricing and the upgrade prompt when you touch a Pro feature. “Pro” shows the crown."]</p>
+                    @if (Auth.CurrentUser?.MonetizationEnabled == true)
+                    {
+                        <button type="button" class="pm-exit-test" disabled="@_overrideBusy" @onclick="() => SetPlanOverride(null)">@Loc["Exit test mode"]</button>
+                    }
+                </details>
+
+                @* Review moderation — the second of the two gates a review must pass (the first is the author's
+                   own consent). Approve one and it appears in the landing carousel. *@
+                <details class="pm-section" @ontoggle="LoadAdminFeedback">
+                    <summary>@Loc["Admin — reviews"]</summary>
+                    <p class="pm-hint">@Loc["People who agreed their words may be shown. Approve one and it appears in the landing carousel."]</p>
+                    @if (_adminFeedback is { Count: > 0 } fb)
+                    {
+                        <ul class="pm-revs">
+                            @foreach (var r in fb)
+                            {
+                                var rid = r.Id;
+                                <li class="pm-rev @(r.Approved ? "on" : "")">
+                                    <div class="pm-rev-top">
+                                        <span class="pm-rev-stars">@(r.Rating is { } st ? new string('★', st) + new string('☆', 5 - st) : "—")</span>
+                                        <span class="pm-rev-src">@r.Source</span>
+                                    </div>
+                                    <p class="pm-rev-txt">@(string.IsNullOrWhiteSpace(r.Comment) ? Loc["(rating only — nothing to quote)"] : r.Comment)</p>
+                                    <button class="pm-rev-btn @(r.Approved ? "on" : "")" disabled="@_revBusy"
+                                            @onclick="() => ToggleApproval(rid, !r.Approved)">
+                                        @(r.Approved ? Loc["Shown publicly — hide"] : Loc["Approve for the site"])
+                                    </button>
+                                </li>
+                            }
+                        </ul>
+                    }
+                    else if (_adminFeedbackBusy) { <p class="pm-hint">@Loc["Loading…"]</p> }
+                    else if (_adminFeedback is not null) { <p class="pm-hint">@Loc["Nothing to review yet — only feedback where the person ticked “you may show this” appears here."]</p> }
+                </details>
+
+                <div class="pm-actions">
+                    <button class="ghost" @onclick="CloseAdmin">@Loc["Close"]</button>
                 </div>
             </div>
         </div>
@@ -420,104 +522,8 @@
                         </details>
                     }
 
-                    @* Owner-only usage metrics (OPEN-BETA P2). Shown only when the signed-in email is on the admin
-                       allowlist; the server re-checks, so this is a convenience, not the gate. Counts + timestamps
-                       only — never anyone's financial data. Loaded lazily when the section is opened. *@
-                    @if (Auth.CurrentUser?.IsAdmin == true)
-                    {
-                        <details class="pm-section" @ontoggle="LoadAdminMetrics">
-                            <summary>@Loc["Admin — usage"]</summary>
-                            @if (_adminMetrics is { } m)
-                            {
-                                <div class="pm-admin-grid">
-                                    <div><span class="pm-admin-n">@m.TotalUsers</span><span class="pm-admin-l">@Loc["Users"]</span></div>
-                                    <div><span class="pm-admin-n">@m.TotalAccounts</span><span class="pm-admin-l">@Loc["Accounts"]</span></div>
-                                    <div><span class="pm-admin-n">@m.BetaCohort</span><span class="pm-admin-l">@Loc["Beta cohort"]</span></div>
-                                    <div><span class="pm-admin-n">@m.NewUsers7d / @m.NewUsers30d</span><span class="pm-admin-l">@Loc["New (7d / 30d)"]</span></div>
-                                    <div><span class="pm-admin-n">@m.Active7d / @m.Active30d</span><span class="pm-admin-l">@Loc["Active (7d / 30d)"]</span></div>
-                                </div>
-                                @if (m.SignupsByDay.Count > 0)
-                                {
-                                    var maxc = m.SignupsByDay.Max(d => d.Count);
-                                    <div class="pm-admin-spark" role="img" aria-label="@Loc["Sign-ups, last 30 days"]">
-                                        @foreach (var d in m.SignupsByDay)
-                                        {
-                                            <span class="pm-admin-bar" style="height:@(Math.Max(2, (int)((double)d.Count / Math.Max(1, maxc) * 26)))px" title="@d.Day: @d.Count"></span>
-                                        }
-                                    </div>
-                                    <p class="pm-hint">@Loc["Sign-ups, last 30 days"]</p>
-                                }
-                            }
-                            else if (_adminBusy)
-                            {
-                                <p class="pm-hint">@Loc["Loading…"]</p>
-                            }
-                            else if (_adminError)
-                            {
-                                <p class="pm-hint">@Loc["Couldn’t load usage metrics."]</p>
-                            }
-                        </details>
-
-                        @* Owner-only test switch. Pins THIS account to a plan so the Free → upgrade → Pro journey
-                           can be walked on demand — the thing you need over and over while wiring a real payment
-                           provider. Pinning also turns the plan surface on for this account alone; the global
-                           Monetization flag stays off and no other user is affected. *@
-                        <details class="pm-section">
-                            <summary>@Loc["Admin — test a plan"]</summary>
-                            <p class="pm-hint">@Loc["Pin your own account to a plan to walk the upgrade flow. Only you are affected — everyone else stays as they are."]</p>
-                            <div class="pm-cycle" role="group" aria-label="@Loc["Test plan"]">
-                                <button type="button" class="@(Auth.CurrentUser?.MonetizationEnabled != true ? "on" : "")"
-                                        disabled="@_overrideBusy" @onclick="() => SetPlanOverride(null)">
-                                    @Loc["Off"] <strong>@Loc["Normal"]</strong>
-                                </button>
-                                <button type="button" class="@(Auth.CurrentUser is { MonetizationEnabled: true, Plan: "free" } ? "on" : "")"
-                                        disabled="@_overrideBusy" @onclick="@(() => SetPlanOverride("free"))">
-                                    @Loc["As"] <strong>@Loc["Free"]</strong>
-                                </button>
-                                <button type="button" class="@(Auth.CurrentUser is { MonetizationEnabled: true, Plan: "pro" } ? "on" : "")"
-                                        disabled="@_overrideBusy" @onclick="@(() => SetPlanOverride("pro"))">
-                                    @Loc["As"] <strong>@Loc["Pro"]</strong>
-                                </button>
-                            </div>
-                            <p class="pm-hint">@Loc["“Free” shows the locked features, the landing pricing and the upgrade prompt when you touch a Pro feature. “Pro” shows the crown."]</p>
-                        </details>
-
-                        @* Review moderation. The approval gate shipped without a door: Approved defaults to 0 and
-                           nothing could set it, so the landing carousel could never fill. This is that door — the
-                           second of the two gates a review must pass (the first is the author's own consent). *@
-                        <details class="pm-section" @ontoggle="LoadAdminFeedback">
-                            <summary>@Loc["Admin — reviews"]</summary>
-                            <p class="pm-hint">@Loc["People who agreed their words may be shown. Approve one and it appears in the landing carousel."]</p>
-                            @if (_adminFeedback is { Count: > 0 } fb)
-                            {
-                                <ul class="pm-revs">
-                                    @foreach (var r in fb)
-                                    {
-                                        var rid = r.Id;
-                                        <li class="pm-rev @(r.Approved ? "on" : "")">
-                                            <div class="pm-rev-top">
-                                                <span class="pm-rev-stars">@(r.Rating is { } st ? new string('★', st) + new string('☆', 5 - st) : "—")</span>
-                                                <span class="pm-rev-src">@r.Source</span>
-                                            </div>
-                                            <p class="pm-rev-txt">@(string.IsNullOrWhiteSpace(r.Comment) ? Loc["(rating only — nothing to quote)"] : r.Comment)</p>
-                                            <button class="pm-rev-btn @(r.Approved ? "on" : "")" disabled="@_revBusy"
-                                                    @onclick="() => ToggleApproval(rid, !r.Approved)">
-                                                @(r.Approved ? Loc["Shown publicly — hide"] : Loc["Approve for the site"])
-                                            </button>
-                                        </li>
-                                    }
-                                </ul>
-                            }
-                            else if (_adminFeedbackBusy)
-                            {
-                                <p class="pm-hint">@Loc["Loading…"]</p>
-                            }
-                            else if (_adminFeedback is not null)
-                            {
-                                <p class="pm-hint">@Loc["Nothing to review yet — only feedback where the person ticked “you may show this” appears here."]</p>
-                            }
-                        </details>
-                    }
+                    @* Admin functions used to live here; they now have their own door — the shield in the top bar
+                       (see the admin modal below). Kept out of profile settings so the two concerns don't tangle. *@
                 }
                 @if (!_2faDisabling && _2faSetup is null && _2faRecoveryCodes is null)
                 {
@@ -605,6 +611,12 @@
         StateHasChanged();
     }
     private void CloseProfile() => _profileOpen = false;
+
+    // Admin console — its own modal, opened from the top-bar shield (admins only). Warm the usage metrics on open
+    // so the panel isn't empty; the load guards against a repeat, so the details' @ontoggle can't double-fetch.
+    private bool _adminOpen;
+    private void OpenAdmin() { _adminOpen = true; _ = LoadAdminMetrics(); }
+    private void CloseAdmin() => _adminOpen = false;
 
     // In-app feedback prompt in the footer. Once sent, it never comes back on this device.
     private const string FeedbackDoneKey = "finapp-feedback-sent";
@@ -733,6 +745,8 @@
         await Gate.EnsureLoadedAsync();
         StateHasChanged();
     }
+    // Server-side 402 backstop: it can fire off the render thread, so marshal onto it before touching state.
+    private void OnServerBlocked(string featureKey) => _ = InvokeAsync(() => OnPlanBlocked(featureKey));
 
     // Upgrade. The billing period is a client-side choice until checkout starts; the server decides the expiry
     // from the interval it is sent, so the price shown and the term granted can't drift apart.
@@ -877,6 +891,7 @@
         Auth.Changed += OnChanged;
         Loc.Changed += OnChanged;
         Gate.Blocked += OnPlanBlocked;
+        Api.PaymentRequired += OnServerBlocked;   // a 402 from the server-side gate raises the same prompt
         await Loc.InitializeAsync();
         // An external (Google/Facebook) sign-in redirects back with a one-time code in the query string,
         // which we exchange (over POST) for real session tokens — keeping tokens out of the URL.
@@ -987,5 +1002,6 @@
         Auth.Changed -= OnChanged;
         Loc.Changed -= OnChanged;
         Gate.Blocked -= OnPlanBlocked;
+        Api.PaymentRequired -= OnServerBlocked;
     }
 }

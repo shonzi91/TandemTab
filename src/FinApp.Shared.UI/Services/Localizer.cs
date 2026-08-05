@@ -498,21 +498,21 @@ public sealed class Localizer(IJSRuntime js)
         ["Your account and everything in it carries through to launch."] =
             "Профилът ти и всичко в него се запазва до официалния старт.",
         ["We sell software, not your data."] = "Продаваме софтуер, не данните ти.",
-        ["{0} of {1} free spots left."] = "Остават {0} от {1} безплатни места.",
-        ["All spots are taken right now — write to us and we'll save you one."] =
-            "В момента местата са запълнени — пиши ни и ще ти запазим едно.",
+        ["🎁 The first {0} members get TandemTab Pro free — for life. {1} spots left."] =
+            "🎁 Първите {0} потребители получават TandemTab Про безплатно — завинаги. Остават {1} места.",
+        ["The first {0} lifetime-Pro spots are taken — you can still join free while we're in beta."] =
+            "Първите {0} места с Про завинаги са заети — още можеш да се присъединиш безплатно, докато сме в бета.",
         ["Thanks — we've got your message. Anything else? Write to us at admin@tandemtab.com."] =
             "Благодарим — получихме съобщението ти. Друго? Пиши ни на admin@tandemtab.com.",
         ["For anything about your data — a copy, a correction, deletion — write to the same address."] =
             "За всичко относно данните ти — копие, корекция, изтриване — пиши на същия адрес.",
-        // Admin: plan-override test switch + review moderation
+        // Admin: console + plan-override test switch + review moderation
+        ["Admin console"] = "Админ конзола",
         ["Admin — test a plan"] = "Админ — тест на план",
-        ["Pin your own account to a plan to walk the upgrade flow. Only you are affected — everyone else stays as they are."] =
-            "Закачи собствения си профил към план, за да минеш през надграждането. Засяга само теб — за всички останали нищо не се променя.",
+        ["View the app as a Free or Pro member. Only your account is affected — everyone else stays as they are."] =
+            "Виж приложението като Безплатен или Про потребител. Засяга само твоя профил — за всички останали нищо не се променя.",
         ["Test plan"] = "Тестов план",
-        ["Off"] = "Изкл.",
-        ["Normal"] = "Нормално",
-        ["As"] = "Като",
+        ["Exit test mode"] = "Изход от тестов режим",
         ["“Free” shows the locked features, the landing pricing and the upgrade prompt when you touch a Pro feature. “Pro” shows the crown."] =
             "„Безплатен“ показва заключените функции, цените на началната страница и подканата за надграждане при досег с Про функция. „Про“ показва короната.",
         ["Admin — reviews"] = "Админ — отзиви",

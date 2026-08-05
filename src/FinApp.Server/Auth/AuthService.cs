@@ -152,16 +152,10 @@ public sealed class AuthService(
         if (await db.Users.AnyAsync(u => u.Email == email, ct))
             throw new ConflictException("That email is already registered.");
 
-        // Beta capacity. Checked AFTER the cheap validity checks so a full beta never masks a plain typo, and
-        // BEFORE the user row is written so a refused sign-up leaves nothing behind. Our own test addresses skip
-        // the cap entirely — see BetaPolicy.
-        var isTestAccount = beta.IsTestEmail(email);
-        if (!isTestAccount && beta.Enabled
-            && beta.IsFull(await signups.BetaSeatsTakenAsync(beta.CountFrom, ct)))
-        {
-            throw new ConflictException(
-                "The free beta is full right now. Write to admin@tandemtab.com and we'll save you a spot in the next round.");
-        }
+        // Beta capacity is a LIFETIME-PRO ALLOWANCE, not a door: registration never blocks. The first Beta:Cap
+        // real sign-ups are grandfathered to Pro for life; everyone after joins on Free (see BetaPolicy.CohortFor).
+        // Seats are read once here and reused for the cohort stamp below.
+        var seatsTaken = beta.Enabled ? await signups.BetaSeatsTakenAsync(beta.CountFrom, ct) : 0;
 
         User user;
         try
@@ -175,9 +169,9 @@ public sealed class AuthService(
 
         db.Users.Add(user);
         await db.SaveChangesAsync(ct);
-        // Stamped as "test" for our own addresses so they never occupy a capped seat (and, usefully, aren't
-        // grandfathered to Pro — a test account is how you see the Free tier).
-        await signups.RecordAsync(user.Id, beta.CohortFor(email), ct);   // OPEN-BETA B4 — capture who joined, when
+        // Cohort decided at write time from the seat count: "test" for our own addresses, "beta" (lifetime Pro)
+        // for the first Cap, "free" thereafter. Deciding it here means no later read can forget the boundary.
+        await signups.RecordAsync(user.Id, beta.CohortFor(email, seatsTaken), ct);   // OPEN-BETA B4
         return await IssueAsync(user, ct);
     }
 
@@ -236,21 +230,16 @@ public sealed class AuthService(
             while (await db.Users.AnyAsync(u => u.Username.ToLower() == username.ToLower(), ct))
                 username = $"{baseName}{++n}";
 
-            // The cap applies to the OAuth path too — otherwise "sign in with Google" would be an open side door
-            // around it. Existing users fall outside this branch entirely, so a full beta never locks out
-            // somebody who already has an account.
-            if (!beta.IsTestEmail(email) && beta.Enabled
-                && beta.IsFull(await signups.BetaSeatsTakenAsync(beta.CountFrom, ct)))
-            {
-                throw new ConflictException(
-                    "The free beta is full right now. Write to admin@tandemtab.com and we'll save you a spot in the next round.");
-            }
+            // The lifetime-Pro allowance covers the OAuth path too, so "sign in with Google" grandfathers the same
+            // first Cap and no more. Existing users fall outside this branch entirely. Registration never blocks
+            // here either — the seat count only decides the tier the new account lands on.
+            var seatsTaken = beta.Enabled ? await signups.BetaSeatsTakenAsync(beta.CountFrom, ct) : 0;
 
             var randomSecret = Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N");
             user = new User(username, email, hasher.Hash(randomSecret));
             db.Users.Add(user);
             await db.SaveChangesAsync(ct);
-            await signups.RecordAsync(user.Id, beta.CohortFor(email), ct);   // OPEN-BETA B4 — external sign-ups too
+            await signups.RecordAsync(user.Id, beta.CohortFor(email, seatsTaken), ct);   // OPEN-BETA B4 — external too
         }
         // The provider already confirmed this address, so treat it as verified.
         await emailVerification.MarkVerifiedAsync(user.Id, user.Email, ct);
