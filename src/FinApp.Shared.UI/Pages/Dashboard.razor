@@ -4803,11 +4803,17 @@ else
     // The Home mini-donut: this period's spend by top-level category, top 4 + "Everything else" + transfers-out.
     // Computed independently of the Breakdown tab's window/axis so Home always shows the current period by category,
     // whatever the user last left the Breakdown filters on. Tapping the card deep-links into the full Breakdown.
+    //
+    // Scoped by period MEMBERSHIP (the period's own collections), NOT a [From,To] date window — deliberately, so it
+    // sums exactly the expenses the hero "Spent" tile does (Period.ExpensesTotal). A date window flattened across all
+    // periods (as ExpensesInRange does) disagrees with the hero whenever a transaction's date falls outside its own
+    // period's dates: right after "Start next month" the new period is empty (hero Spent €0) but a transaction dated
+    // into its window but owned by the previous period would still show here — hero and donut then contradict on the
+    // same screen. Membership keeps them in lockstep.
     private List<BreakSlice> HomePeriodSlices()
     {
-        var from = State.Period.From; var to = State.Period.To;
         var groups = new Dictionary<Guid, decimal>();
-        foreach (var e in State.ExpensesInRange(from, to))
+        foreach (var e in State.Period.Expenses)
         {
             var amt = Math.Abs(e.Amount.Amount);
             if (amt == 0) continue;
@@ -4822,9 +4828,9 @@ else
             slices.Add(new BreakSlice(head[i].Key, State.CategoryName(head[i].Key), State.CategoryStoredIcon(head[i].Key), head[i].Value, SliceColor(i)));
         if (groupTail)
             slices.Add(new BreakSlice(OtherKey, Loc["Everything else"], null, ordered.Skip(4).Sum(kv => kv.Value), OtherColor));
-        var xfer = State.AccountTransfersInRange(from, to).Sum(t => Math.Abs(t.Amount.Amount));
+        var xfer = State.Period.AccountTransfersOut.Sum(t => Math.Abs(t.Amount.Amount));
         if (xfer > 0m) slices.Add(new BreakSlice(TransfersKey, Loc["Transfers out"], null, xfer, TransfersColor));
-        var saved = State.DisbursementsInRange(from, to).Sum(t => Math.Abs(t.Amount.Amount));
+        var saved = State.Period.ExternalTransfers.Except(State.Period.AccountTransfersOut).Sum(t => Math.Abs(t.Amount.Amount));
         if (saved > 0m) slices.Add(new BreakSlice(SavedKey, Loc["Saved toward goals"], null, saved, SavedColor));
         return slices;
     }
