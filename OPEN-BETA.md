@@ -35,9 +35,10 @@ when it *doesn't* do its job for someone who isn't you.
 > **is** now set (the owner's address, held only as a Cloud Run env var — this repo is public). Anyone hunting
 > for the plan/pricing surfaces on tandemtab.com will not find them; that is the flag being off, not a failure.
 >
-> **What remains before the door is the intake decision alone** (staged invites vs a public link — the Capacity
-> section argues for staged) and then opening it. A lawyer's glance at the legal pages stays advisable but is not
-> a hard gate.
+> **Update (Session 89): the owner set a seven-phase plan before promotion** — see
+> [The road to promotion](#the-road-to-promotion--the-ordered-plan-set-2026-08-05-session-89). The beta itself
+> was never blocked on any of it; the *promotion* of the app now is. The intake decision (staged invites vs a
+> public link) remains the last owner call, and a lawyer's glance at the legal pages stays advisable.
 
 Ideas that arrive after this was written go to
 [After the door opens](#after-the-door-opens--parked-by-default) — see [the scope
@@ -219,7 +220,100 @@ env vars, so changing the allowance is a revision update, not a deploy.
 
 **Opening the door is still an explicit owner action** — the lifetime allowance makes it safe, not automatic.
 
-## ⬜ TODO before the door opens — rewrite the landing page
+## The road to promotion — the ordered plan (set 2026-08-05, Session 89)
+
+**Owner's sequence.** Seven phases, in this order, ending with actually promoting the app. The ordering is
+deliberate and mostly self-justifying: **R1 freezes the feature set**, which is the precondition every later
+phase leans on — R5's landing rewrite and paywall pass are explicitly "do this LAST" work, and doing them
+against a moving feature set is work that gets redone. R4 lands before R7 for the one reason that matters:
+**promotion is the traffic spike, and R4 is what makes the database survive one.**
+
+| # | Phase | Ends when | Size |
+|---|-------|-----------|------|
+| **R1** | Clear the feature backlog | The feature set is declared **frozen** | L |
+| **R2** | Android catch-up + theme verification | Android at web parity; light/dark swept on **both** surfaces | L |
+| **R3** | AI assistant | See the scoping note — the whole of it is not one phase | L+ |
+| **R4** | Railway migration (hosting **and** DB) | Serving from Railway, Neon + Cloud Run retired | M–L |
+| **R5** | Landing, terms, privacy + Pro-split final verification | The page describes the real product; the paywall is settled | M |
+| **R6** | SEO | Indexed, measurable, bilingual | S–M |
+| **R7** | Promote | The door is open | — |
+
+### R1 — Clear the feature backlog
+- **[FEATURE-BACKLOG.md](FEATURE-BACKLOG.md) F1–F7**: quick add (S), tag→category (S–M), left-to-spend-today (S),
+  round-ups (M), settle-up (M), shared-goal celebration (S), weekly recap (S–M).
+- **[UX-BACKLOG.md](UX-BACKLOG.md) #11 accessibility** is 🔨 in progress and the one item here with a compliance
+  edge — a finance app whose bell announces "3" is a real defect, not polish. **#10 (pin a focus debt)** is
+  deferred by design until users have long lists; clearing it means *writing the decision down*, not building it.
+- **[BACKLOG.md](BACKLOG.md) #16's open sub-item** (audit the `Investment` saving kind) says in its own text to
+  decide on **real usage data, not a hunch** — so it cannot be cleared before there are users. Stop counting it.
+- **Close the verification debt in the same pass:** the S88 chart animations, the S85 Trends axis/hover and the
+  Spent transfers sub-line have **never been seen with real data** — all three are build-clean and eyeballed by
+  nobody.
+- ⚠️ **Guardrail:** FEATURE-BACKLOG's own rule — every item opt-in or invisible-until-useful — plus the standing
+  preference for a property/rollup over a new section. **F3 and F7 are the two that will want a new Home panel.**
+- **Exit: an explicit "feature set frozen" line.** If this phase trails off instead of ending, R5 has no ground
+  to stand on.
+
+### R2 — Android catch-up + theme verification
+- Android's last commit is **2026-07-30**; the web has had **S74–S88** since. That's a diff-driven catch-up
+  against the web's session log, not a rewrite. Debt R2's grouped *edit* is still unbuilt there.
+- Mirror the web's section layouts, cards and colours; differ only in **nav (bottom bar)** and **floating buttons**.
+- **Sweep light/dark on the web too, not just Android.** S88 shipped a dark-theme crown colour that silently
+  never applied (a leading `::deep` compiles to a selector nothing matches). The web half is the cheaper half
+  and has already produced one real bug.
+- iOS stays **ON HOLD**.
+
+### R3 — AI assistant — ⚠️ scope this before starting
+**Two different assistants are specced in this repo, and only one of them is a pre-promotion-sized job.**
+- **[AI-ASSISTANT-BACKLOG.md](AI-ASSISTANT-BACKLOG.md)** — on-device, **mobile-first**, constrained typed
+  actions. Tier A means a Swift impl *and* a Kotlin impl; iOS is on hold, so it would land **Android-only** —
+  i.e. the largest item on this roadmap, delivered to the smaller of the two surfaces, right after R2 spends a
+  phase getting that surface back to parity.
+- **[BACKLOG.md](BACKLOG.md) #17 "narrate, don't compute"** — navigation, explainers, and narrating numbers the
+  deterministic engine already computed. Always-on, safe by construction (the model emits no figures, so it
+  cannot invent one), and it **works on the web**, which is the primary product.
+
+**Recommended split:** ship #17's narrate/navigate layer first (cheap, cross-surface, nothing to defend), then
+the **action schema + name→entity resolver + confirm/undo chip** — the backlog's own estimate is that this is
+**80% of the work and the LLM is 20%**, and a deterministic parser handles "12 eur lunch" with no model at all.
+Leave the on-device LLM itself for last, or for after promotion. **Red line, non-negotiable:** any
+capture/categorisation using ML runs **strictly on-device with zero raw-data egress** — one convenient cloud
+call makes "never fed to AI" a lie, and that claim is the reason to exist.
+
+### R4 — Railway migration (hosting **and** database)
+- Cloud Run → Railway **and** Neon → Railway Postgres, per the standing plan.
+- **This is the phase that retires the only live production risk:** a traffic spike fans Cloud Run instances out
+  into **Neon's connection ceiling**. Promotion *is* that spike. If R4 slips, the mitigation (pooled connection
+  string + a `max-instances` cap) becomes mandatory before R7 rather than optional.
+- Side benefit: it ends the recurring Windows `gcloud` shim pain (spaced `CLOUDSDK_PYTHON`, `^|^` delimiters).
+- **Exit:** served-bytes + endpoint probes green on the new host, DNS cut over, old revisions retired.
+- ⚠️ **Railway is a new sub-processor** and the DB may change region — that is a **privacy-policy edit** (feeds
+  R5), not a footnote.
+
+### R5 — Landing, terms, privacy + Pro split — final verification
+The two ⬜ TODOs already written below **are** this phase: the landing rewrite and the Free/Pro re-validation.
+Added here:
+- **Legal re-read.** B3 was read on 2026-08-05 and was already found stale once — the policy predated the two
+  processing activities B1/B2 had just added. R3 (an assistant) and R4 (a new sub-processor / possible region
+  change) each oblige another pass. A lawyer's glance stays advisable.
+- **Fold technical SEO in here** — see R6.
+
+### R6 — SEO
+- ⚠️ **The technical half of SEO is landing-page work**: title/meta/OG, structured data, heading order, image
+  alt text, LCP/CLS, `sitemap.xml`, `robots.txt`, canonical, and **`hreflang` for EN/BG**. Doing it as a phase
+  *after* the rewrite means editing the same page twice. **Do it inside R5's rewrite**, and keep R6 for what
+  genuinely can't happen earlier: content pages, off-page, Search Console + analytics.
+- The **bilingual EN/BG** surface is a cheap, real asset here — most competitors in this niche ship English only.
+
+### R7 — Promote
+- **Preconditions:** R4 done (capacity), R5 done (the page is honest and the paywall is settled), and the
+  **intake decision** made — staged invites vs a public link. That decision is still the last open owner call;
+  [Capacity](#capacity) argues for staged.
+- ⚠️ **Before promoting, make error reporting a push, not a pull.** B1 notes it plainly: nothing *alerts* on
+  `FinApp.ClientError` — you have to go and look. A log-based alert is cheap. Without it, the first you hear of
+  a crash on a stranger's device is a review.
+
+## ⬜ TODO before the door opens (R5) — rewrite the landing page
 
 **The landing page currently undersells the product, and deliberately so: it was written before Debt R1/R2, the
 Trends chart, the payoff planner, installment splitting, the health score and the achievements existed.** Its six
@@ -235,7 +329,7 @@ Check at the same time: the hero ticks, the feature grid, the "how it works" ste
 (it is generated from the feature catalogue, so it stays honest by itself), and the beta seat count copy — that
 last one comes out entirely when the beta ends.
 
-## ⬜ TODO before the door opens — re-validate the Free/Pro split + gating
+## ⬜ TODO before the door opens (R5) — re-validate the Free/Pro split + gating
 
 **Same discipline as the landing page: the paywall line predates half the product.** The Free-vs-Pro catalogue
 (`MonetizationService.Catalogue`) and MONETIZATION.md's table were written before Trends, the payoff planner,
