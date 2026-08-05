@@ -6,7 +6,7 @@ after Debt R2 shipped and BUG-1 was fixed.*
 | | |
 |---|---|
 | **Application** | TandemTab (https://tandemtab.com) |
-| **Live revision** | `finapp-00270-z5t` (2026-08-05) — B1–B4 all shipped |
+| **Live revision** | `finapp-00271-4hw` (2026-08-05) — B1–B4 + P2/P3/P4 all shipped |
 | **Scope of this doc** | Open **public** beta — an unrestricted sign-up link, not a handful of invited friends |
 | **Effort key** | S = hours · M = a day · L = multi-day |
 
@@ -19,13 +19,20 @@ when it *doesn't* do its job for someone who isn't you.
 
 **Sequence:** B1 → B2 → B3 → B4 → the verification hour → open the door.
 
-> **Status (2026-08-05): B1–B4 ✅ done and live** (`finapp-00270-z5t`), the **verification hour is ✅ done** (one
-> low-severity mini-donut finding, since **fixed**), and — beyond the original scope — the owner pulled three of
-> the four parked features into the beta: **P3 (Trends chart), P2 (admin dashboard), and P4 (monetization rails,
-> flag OFF)** are all ✅ built + browser-verified (committed, **not yet deployed**). P1 (public reviews display)
-> stays parked. What remains before the door is really just **the intake decision** (staged invites vs a public
-> link — the Capacity section argues for staged) and then opening it. A lawyer's glance at the legal pages stays
-> advisable but is not a hard gate.
+> **Status (2026-08-05): everything on this list is ✅ done and LIVE on `finapp-00271-4hw`.** B1–B4 shipped, the
+> **verification hour is done** (its one low-severity mini-donut finding is fixed and deployed), and — beyond the
+> original scope — the owner pulled three of the four parked features into the beta: **P3 (Trends chart), P2
+> (admin dashboard), and P4 (monetization rails, flag OFF)**, all built, browser-verified, and now deployed. P1
+> (public reviews display) stays parked.
+>
+> **⚠️ Two of those three need a Cloud Run env var before they appear at all** — the code is live but dormant:
+> `Admin__Emails` (P2 — fails closed, so with no list *nobody* is an admin and the panel renders for no one) and
+> `Monetization__Enabled` (P4 — off, so there is no plan UI and every account reads "unlimited"). Neither is set
+> on the service today. That is the intended beta posture; setting them is a deliberate act, not a fix.
+>
+> **What remains before the door is the intake decision alone** (staged invites vs a public link — the Capacity
+> section argues for staged) and then opening it. A lawyer's glance at the legal pages stays advisable but is not
+> a hard gate.
 
 Ideas that arrive after this was written go to
 [After the door opens](#after-the-door-opens--parked-by-default) — see [the scope
