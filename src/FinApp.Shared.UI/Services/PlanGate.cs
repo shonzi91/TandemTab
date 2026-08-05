@@ -37,11 +37,12 @@ public sealed class PlanGate(AuthState auth, FinAppApiClient api)
 
     public bool MonetizationOn => auth.CurrentUser?.MonetizationEnabled == true;
 
-    /// <summary>Whether the current plan includes <paramref name="featureKey"/>. Fails OPEN in every uncertain
-    /// case: monetization off, plan unknown, catalogue not loaded, or a key the server never sent.</summary>
+    /// <summary>Whether the current plan includes <paramref name="featureKey"/>. Keyed on the PLAN, not the global
+    /// flag — a post-cap beta user resolves to "free" and is gated even while billing is off. Fails OPEN in every
+    /// uncertain case: plan unknown, catalogue not loaded, or a key the server never sent (a spurious paywall is
+    /// worse than a missing one — the server-side 402 is the backstop).</summary>
     public bool Allows(string featureKey)
     {
-        if (!MonetizationOn) return true;
         var plan = auth.CurrentUser?.Plan ?? "unlimited";
         if (plan is "pro" or "unlimited") return true;
         var f = _plans?.Features.FirstOrDefault(x => x.Key == featureKey);
@@ -57,11 +58,13 @@ public sealed class PlanGate(AuthState auth, FinAppApiClient api)
         return false;
     }
 
-    /// <summary>Load the tier table once, lazily. Only worth doing when monetization is on; while it's off every
-    /// gate short-circuits before ever needing the catalogue.</summary>
+    /// <summary>Load the tier table once, lazily. Needed whenever a gate can actually fire — i.e. the plan is
+    /// "free" (a post-cap beta user, gated even with billing off) or monetization is live. A "pro"/"unlimited"
+    /// plan never gates, so it never needs the catalogue.</summary>
     public async Task EnsureLoadedAsync(CancellationToken ct = default)
     {
-        if (_plans is not null || _loading || !MonetizationOn) return;
+        if (_plans is not null || _loading) return;
+        if (auth.CurrentUser?.Plan is not "free" && !MonetizationOn) return;
         _loading = true;
         try { _plans = await api.GetPlansAsync(ct); }
         catch { /* stays null → Allows fails open */ }

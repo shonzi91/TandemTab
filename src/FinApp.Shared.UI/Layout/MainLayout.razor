@@ -154,7 +154,9 @@
                 <h3><span class="upg-crown" aria-hidden="true">👑</span> @Loc["That one’s part of Pro"]</h3>
                 <p class="upg-feat">@FeatureLabel(gk)</p>
                 <p class="pm-hint">@Loc["Everything you already use stays free. Pro adds sharing, unlimited imports, the payoff planner and your full history."]</p>
-                @if (Gate.Plans is { } gp)
+                @* During beta (billing off) there is no checkout to offer — the first 100 members got Pro free and
+                   the rest preview the Free experience. Only once monetization is live does the prompt sell. *@
+                @if (Gate.MonetizationOn && Gate.Plans is { } gp)
                 {
                     <div class="pm-cycle" role="group" aria-label="@Loc["Billing period"]">
                         <button type="button" class="@(_cycle == BillingInterval.Annual ? "on" : "")" @onclick="() => _cycle = BillingInterval.Annual">
@@ -169,10 +171,21 @@
                         <p class="pm-hint">@Loc["Test mode — no card is charged and no real payment is taken."]</p>
                     }
                 }
+                else
+                {
+                    <p class="pm-hint">@Loc["Pro isn’t on sale yet — it’s coming after our beta, and this feature unlocks then."]</p>
+                }
                 @if (_checkoutMsg is { } gm) { <p class="pm-hint">@gm</p> }
                 <div class="pm-actions">
-                    <button class="ghost" @onclick="() => _gateBlocked = null">@Loc["Not now"]</button>
-                    <button disabled="@_checkoutBusy" @onclick="StartUpgrade">@Loc["Upgrade to Pro"]</button>
+                    @if (Gate.MonetizationOn)
+                    {
+                        <button class="ghost" @onclick="() => _gateBlocked = null">@Loc["Not now"]</button>
+                        <button disabled="@_checkoutBusy" @onclick="StartUpgrade">@Loc["Upgrade to Pro"]</button>
+                    }
+                    else
+                    {
+                        <button class="ghost" @onclick="() => _gateBlocked = null">@Loc["Got it"]</button>
+                    }
                 </div>
             </div>
         </div>

@@ -485,6 +485,8 @@ public sealed class Localizer(IJSRuntime js)
         ["Not now"] = "Не сега",
         ["You’re on Pro"] = "Ти си на Про",
         ["That one’s part of Pro"] = "Това е част от Про",
+        ["Pro isn’t on sale yet — it’s coming after our beta, and this feature unlocks then."] =
+            "Про още не се продава — идва след бетата и тогава тази функция се отключва.",
         ["Everything you already use stays free. Pro adds sharing, unlimited imports, the payoff planner and your full history."] =
             "Всичко, което вече ползваш, остава безплатно. Про добавя споделяне, неограничени импорти, планера за дългове и пълната ти история.",
         ["Test mode — no card is charged and no real payment is taken."] =

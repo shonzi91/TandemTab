@@ -186,19 +186,25 @@ timestamps happen to exist, or breaking the promise. Everything else about billi
 ## The intake decision — now answered: an open link with a lifetime-Pro allowance
 
 **Resolved 2026-08-05 (Session 86), revised Session 87.** The Capacity section below argued for staged invites.
-What shipped is an **open public sign-up link that never turns anyone away** — the `Beta__Cap` (30) is now a
+What shipped is an **open public sign-up link that never turns anyone away** — the `Beta__Cap` (**100**) is a
 **lifetime-Pro allowance, not a door**. `Beta__Cap` / `Beta__CountFrom` / `Beta__TestEmailPatterns` are Cloud Run
 env vars, so changing the allowance is a revision update, not a deploy.
 
-- The **first 30** real sign-ups (from `Beta__CountFrom` = 2026-08-05) are stamped cohort `beta` and are
-  **grandfathered to Pro for life**. Everyone after joins on cohort `free` — still welcome, just on the Free tier.
+- The **first 100** real sign-ups (from `Beta__CountFrom` = 2026-08-05) are stamped cohort `beta`, are
+  **grandfathered to Pro for life**, wear the **Pro tag + crown** during beta, and are **ungated** (unlimited).
+- **Everyone after the cap joins on cohort `free`** — still welcome, and during beta they get the **real Free
+  experience**: Pro features are gated with an upgrade prompt (billing is off, so the prompt says Pro is coming
+  after beta). This is deliberate — it lets post-cap members see what Free looks like, and it's how the paywall is
+  exercised before monetization is ever switched on.
+- **The gates key on the resolved PLAN, not the global monetization flag.** `unlimited`/`pro` pass everything;
+  `free` is gated. The flag now only governs the billing *surfaces* (checkout, public pricing, the plan panel),
+  which stay off during beta. So flipping `Monetization__Enabled` later turns on *selling*, not *gating*.
 - **Registration never blocks.** The cohort is decided at write time from the seat count, so the boundary can't be
-  forgotten by a later read. Existing pre-cap users don't consume the allowance.
-- **Our own test accounts never take a lifetime seat** — an address matching `Beta__TestEmailPatterns`
-  (`+test;@test.local;@example.com`) is stamped cohort `test`. Use `you+test1@gmail.com`-style addresses for
-  anything you create yourself; they land on Free (the natural way to see the Free tier).
-- The landing page frames it as a gift — *"the first 30 get Pro free for life, N spots left"* — not a countdown to
-  a closed door.
+  forgotten by a later read. Existing pre-cap users don't consume the allowance and stay `unlimited`.
+- **Our own test accounts never take a lifetime seat** — an address matching `Beta__TestEmailPatterns` is stamped
+  cohort `test` and lands on Free (the natural way to see the gated experience).
+- The landing page frames it as a gift — *"the first 100 get Pro free for life, N spots left"* — and the line
+  **disappears entirely once the allowance is full**, rather than turning into a "sold out" message.
 
 **Opening the door is still an explicit owner action** — the lifetime allowance makes it safe, not automatic.
 

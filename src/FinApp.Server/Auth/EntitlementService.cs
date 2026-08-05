@@ -33,9 +33,10 @@ public sealed class EntitlementService(
         var live = monetization.Enabled || pinned is not null;
         var isBeta = await signups.IsBetaCohortAsync(userId, ct);
         if (!live)
-            // Beta: nobody is gated (plan stays "unlimited"), but the badge follows the cohort — the first N
-            // lifetime members wear the crown while everyone else stays ungated. See ShowsProBadge.
-            return new Entitlement("unlimited", false, false, isBeta);
+            // Beta: the lifetime cohort (first N) is "unlimited" — ungated, crowned. Everyone after the cap is
+            // "free" and gets the real Free experience (gates fire), even though billing/checkout stays off. So
+            // gating follows the PLAN, not the global flag; the flag only governs the billing surfaces.
+            return new Entitlement(isBeta ? "unlimited" : "free", false, false, isBeta);
 
         var subscribed = await subscriptions.IsActiveAsync(userId, ct);
         var plan = pinned ?? monetization.PlanFor(isBeta, subscribed);
@@ -53,9 +54,10 @@ public sealed class EntitlementService(
 
     /// <summary>
     /// Refuse a gated action when the account's plan doesn't include it — the server-side half of the paywall.
-    /// A no-op for <c>"unlimited"</c>/<c>"pro"</c> and for unknown keys (fail open — a spurious 402 is worse than a
-    /// missing one). The client gate gives the friendlier prompt first; this is the backstop a tampered or stale
-    /// client can't skip. Throws <see cref="PaymentRequiredException"/> (HTTP 402) carrying the blocked key.
+    /// Keyed on the resolved PLAN, not the global flag: a <c>"free"</c> plan is gated whether that's a post-cap
+    /// beta user or a real Free subscriber after launch, while <c>"unlimited"</c>/<c>"pro"</c> (and unknown keys)
+    /// pass. The client gate gives the friendlier prompt first; this is the backstop a tampered or stale client
+    /// can't skip. Throws <see cref="PaymentRequiredException"/> (HTTP 402) carrying the blocked key.
     /// </summary>
     public async Task RequireAsync(Guid userId, string featureKey, CancellationToken ct = default)
     {

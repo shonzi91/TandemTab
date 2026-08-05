@@ -32,7 +32,7 @@ public sealed class BetaPolicy
 
     public BetaPolicy(IConfiguration config)
     {
-        Cap = config.GetValue("Beta:Cap", 30);
+        Cap = config.GetValue("Beta:Cap", 100);
         CountFrom = DateTimeOffset.TryParse(config["Beta:CountFrom"], CultureInfo.InvariantCulture,
             DateTimeStyles.RoundtripKind, out var from)
             ? from
