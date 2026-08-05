@@ -840,6 +840,29 @@ html.dark .home-brk-title, html.dark .home-brk-leg-amt { color: #e8eaf0; }
 html.dark .home-brk-leg-name { color: #b7c0cc; }
 html.dark .home-brk-cta { color: var(--tm-mint); }
 
+/* P3 — Trends (money over time): a multi-series line chart + a toggleable legend (tap a series to hide it and
+   rescale the axis to the rest, so a large "balance" line can be dropped to read the smaller flows). */
+.trend-view { padding: 4px 0 8px; }
+.trend-chart-wrap { width: 100%; overflow-x: hidden; }
+.trend-chart { width: 100%; height: auto; display: block; }
+.trend-axis { stroke: #e6e2d8; stroke-width: 1; }
+.trend-xaxis { position: relative; height: 15px; margin-top: 1px; }
+.trend-xlbl { position: absolute; transform: translateX(-50%); font-size: 10px; color: #9aa0ad; font-weight: 600; white-space: nowrap; }
+.trend-legend { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.trend-leg { display: inline-flex; align-items: center; gap: 7px; background: none; border: 1px solid #e6e2d8;
+    border-radius: 999px; padding: 5px 11px; cursor: pointer; font-size: .82rem; color: inherit; }
+.trend-leg:hover { border-color: #c9c3b5; }
+.trend-leg.off { opacity: .45; }
+.trend-leg-dot { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+.trend-leg.off .trend-leg-dot { background: #b7c0cc !important; }
+.trend-leg-name { font-weight: 600; }
+.trend-leg-val { font-weight: 800; }
+.trend-spark-h { margin-top: 20px; }
+html.dark .trend-axis { stroke: rgba(255,255,255,.14); }
+html.dark .trend-xlbl { color: #7c8a94; }
+html.dark .trend-leg { border-color: rgba(255,255,255,.16); }
+html.dark .trend-leg:hover { border-color: rgba(255,255,255,.3); }
+
 .brk-chart { display: flex; justify-content: center; padding: 6px 0; }
 .brk-donut { width: min(240px, 68vw); height: auto; }
 .brk-donut path { stroke: var(--tt-donut-gap, #ffffff); stroke-width: 2; }

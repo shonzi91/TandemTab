@@ -435,6 +435,13 @@ public sealed class Localizer(IJSRuntime js)
         ["Money in"] = "Постъпления",
         ["Where your money went"] = "Къде отидоха парите",
         ["See full breakdown"] = "Виж пълната разбивка",
+        // P3 — Trends (money over time)
+        ["Trends"] = "Тенденции",
+        ["Balance"] = "Баланс",
+        ["Money over time"] = "Парите във времето",
+        ["Come back after a couple of months — trends need a few periods of history to show."] =
+            "Върнете се след няколко месеца — тенденциите се нуждаят от няколко периода история.",
+        ["Show or hide this line"] = "Покажи или скрий тази линия",
         ["carried"] = "пренесени",
         ["of money in"] = "от постъпленията",
         ["Money in this period: {0} came in, plus {1} carried over from before."] = "Постъпления този период: {0} нови, плюс {1} пренесени от преди.",

@@ -998,6 +998,7 @@ else
                         <button type="button" class="chip @(_spendView == SpendView.ByDate ? "on" : "")" @onclick="() => _spendView = SpendView.ByDate"><Icon Name="list" /> @Loc["By date"]</button>
                         <button type="button" class="chip @(_spendView == SpendView.Categories ? "on" : "")" @onclick="SwitchToByBudgets"><Icon Name="chart" /> @Loc["By budgets"]</button>
                         <button type="button" class="chip @(_spendView == SpendView.Breakdown ? "on" : "")" @onclick="() => _spendView = SpendView.Breakdown"><Icon Name="pie" /> @Loc["Breakdown"]</button>
+                        <button type="button" class="chip @(_spendView == SpendView.Trends ? "on" : "")" @onclick="ShowTrends"><Icon Name="pulse" /> @Loc["Trends"]</button>
                     </span>
                     @if (State.IsPeriodOpen)
                     {
@@ -1366,7 +1367,7 @@ else
                 }
                 </div>
                 }
-                else
+                else if (_spendView == SpendView.Breakdown)
                 {
                 @* Breakdown: a budget-free pie of where the money actually went, over an adjustable window. Tap a
                    category slice/row to re-slice it by sub-category (or tags). *@
@@ -1587,6 +1588,105 @@ else
                                 </li>
                             }
                         </ul>
+                    }
+                </div>
+                }
+                else if (_spendView == SpendView.Trends)
+                {
+                @* Trends: money over time (income / spent / saved / balance) across periods, over the shared window.
+                   Answers "how is it moving?" — the question By date / By budgets / Breakdown don't. Reuses the
+                   Breakdown range window; also the new home of the per-category trend sparklines (moved out of the
+                   Health modal so trends live in one place — BACKLOG #16). *@
+                <div class="trend-view">
+                    <div class="brk-ranges" role="group">
+                        @{
+                            (BreakRange R, string L)[] tranges = new[]
+                            {
+                                (BreakRange.M3, Loc["3 months"]),
+                                (BreakRange.M6, Loc["6 months"]),
+                                (BreakRange.M12, Loc["12 months"]),
+                                (BreakRange.All, Loc["All time"]),
+                            };
+                        }
+                        @foreach (var (r, l) in tranges)
+                        {
+                            <button type="button" class="chip @(_breakRange == r ? "on" : "")" @onclick="() => SetBreakRange(r)">@l</button>
+                        }
+                    </div>
+                    @{
+                        var trRows = TrendRows();
+                        var trDefs = TrendSeriesDefs();
+                        var trCi = System.Globalization.CultureInfo.InvariantCulture;
+                    }
+                    @if (trRows.Count < 2)
+                    {
+                        <p class="brk-empty"><Icon Name="pulse" /> @Loc["Come back after a couple of months — trends need a few periods of history to show."]</p>
+                    }
+                    else
+                    {
+                        decimal trMax = 0m;
+                        for (var si = 0; si < trDefs.Length; si++)
+                            if (!_trendHidden.Contains(si))
+                                foreach (var r in trRows) trMax = Math.Max(trMax, trDefs[si].Val(r));
+                        var trStride = Math.Max(1, (trRows.Count + 5) / 6);   // cap x-axis labels at ~6 to avoid crowding
+                        <div class="trend-chart-wrap">
+                            <svg class="trend-chart" viewBox="0 0 340 152" role="img" aria-label="@Loc["Money over time"]">
+                                <line x1="34" y1="138" x2="312" y2="138" class="trend-axis" />
+                                @for (var si = 0; si < trDefs.Length; si++)
+                                {
+                                    @if (!_trendHidden.Contains(si))
+                                    {
+                                        var pts = TrendPoints(trRows, trDefs[si].Val, trMax);
+                                        <polyline points="@pts" fill="none" stroke="@trDefs[si].Color" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" />
+                                        @for (var i = 0; i < trRows.Count; i++)
+                                        {
+                                            var (cx, cy) = TrendXY(trRows, i, trDefs[si].Val(trRows[i]), trMax);
+                                            <circle cx="@cx.ToString("0.#", trCi)" cy="@cy.ToString("0.#", trCi)" r="2.4" fill="@trDefs[si].Color"><title>@trRows[i].Label · @trDefs[si].Label @Fmt(State.Money(trDefs[si].Val(trRows[i])))</title></circle>
+                                        }
+                                    }
+                                }
+                            </svg>
+                            <div class="trend-xaxis">
+                                @for (var i = 0; i < trRows.Count; i++)
+                                {
+                                    @if (i % trStride == 0 || i == trRows.Count - 1)
+                                    {
+                                        var lx = TrendXY(trRows, i, 0m, trMax).X / 340.0 * 100.0;
+                                        <span class="trend-xlbl" style="left:@lx.ToString("0.#", trCi)%">@trRows[i].Label</span>
+                                    }
+                                }
+                            </div>
+                        </div>
+                        <div class="trend-legend">
+                            @for (var si = 0; si < trDefs.Length; si++)
+                            {
+                                var idx = si;
+                                <button type="button" class="trend-leg @(_trendHidden.Contains(idx) ? "off" : "")" @onclick="() => ToggleTrendSeries(idx)" title="@Loc["Show or hide this line"]">
+                                    <span class="trend-leg-dot" style="background:@trDefs[idx].Color"></span>
+                                    <span class="trend-leg-name">@trDefs[idx].Label</span>
+                                    <span class="trend-leg-val">@Fmt(State.Money(trDefs[idx].Val(trRows[^1])))</span>
+                                </button>
+                            }
+                        </div>
+                    }
+                    @{ var trReport = CurrentReport(); }
+                    @if (trReport.MiniTrends.Count > 0)
+                    {
+                        <h4 class="insight-h trend-spark-h">@Loc["Trends over time"]</h4>
+                        <section class="mini-trends">
+                            @foreach (var mt in trReport.MiniTrends)
+                            {
+                                var mtLabel = N(mt.Label);
+                                <div class="mini-trend @(mt.Dir == DeltaDir.Up ? "up" : mt.Dir == DeltaDir.Down ? "down" : "flat")">
+                                    <div class="mt-head">
+                                        <span class="mt-label"><CatIcon Name="@CategoryIcons.Effective(mt.Icon, mtLabel)" /> @mtLabel</span>
+                                        <span class="mt-cur">@N(mt.CurrentText)</span>
+                                    </div>
+                                    @TrendSparkline(mt.Points)
+                                    <div class="mt-note">@N(mt.DeltaNote)</div>
+                                </div>
+                            }
+                        </section>
                     }
                 </div>
                 }
@@ -3810,26 +3910,8 @@ else
                             </section>
                         }
 
-                        @* Per-category trends-over-time sparklines — they used to sit on Home; moved here to keep the
-                           landing screen light (UX reorg), reachable by tapping the score. *@
-                        @if (hs.MiniTrends.Count > 0)
-                        {
-                            <h4 class="insight-h">@Loc["Trends over time"]</h4>
-                            <section class="mini-trends">
-                                @foreach (var mt in hs.MiniTrends)
-                                {
-                                    var mtLabel = N(mt.Label);
-                                    <div class="mini-trend @(mt.Dir == DeltaDir.Up ? "up" : mt.Dir == DeltaDir.Down ? "down" : "flat")">
-                                        <div class="mt-head">
-                                            <span class="mt-label"><CatIcon Name="@CategoryIcons.Effective(mt.Icon, mtLabel)" /> @mtLabel</span>
-                                            <span class="mt-cur">@N(mt.CurrentText)</span>
-                                        </div>
-                                        @TrendSparkline(mt.Points)
-                                        <div class="mt-note">@N(mt.DeltaNote)</div>
-                                    </div>
-                                }
-                            </section>
-                        }
+                        @* The per-category trends-over-time sparklines moved to the Spending → Trends tab, so trends
+                           live in one place (BACKLOG #16). The score modal stays focused on this period's verdict. *@
                         </section>
                     }
                     <div class="modal-actions">
@@ -4583,8 +4665,9 @@ else
     };
 
     // Spending panel view. Categories = the ring/bar budget list; ByDate = the same expenses flat, organised by date;
-    // Breakdown = a budget-free, multi-period pie of where the money actually went (drill into subcategories/tags).
-    private enum SpendView { Categories, ByDate, Breakdown }
+    // Breakdown = a budget-free, multi-period pie of where the money actually went (drill into subcategories/tags);
+    // Trends = money over time (income/spent/saved/balance) across periods — answers "how it's moving" (P3).
+    private enum SpendView { Categories, ByDate, Breakdown, Trends }
     // Default to the plain date ledger — the first thing people look for is "what did I spend, recently"; the
     // budget-vs-spent breakdown lives one tap away under "By budgets".
     private SpendView _spendView = SpendView.ByDate;
@@ -4798,6 +4881,79 @@ else
         var saved = State.DisbursementsInRange(from, to).Sum(t => Math.Abs(t.Amount.Amount));
         if (saved > 0m) slices.Add(new BreakSlice(SavedKey, Loc["Saved toward goals"], null, saved, SavedColor));
         return slices;
+    }
+
+    // Open the Trends view. A single-period ("This period") window is a 1-point chart, so default Trends to a
+    // multi-period window when arriving from it — the range chips then re-narrow as the user wishes.
+    private void ShowTrends()
+    {
+        _spendView = SpendView.Trends;
+        if (_breakRange == BreakRange.ThisPeriod) SetBreakRange(BreakRange.M6);
+    }
+
+    // --- Trends (P3): money over time across periods -------------------------------------------------
+    // One row per period in the shared Breakdown window, each carrying the four series the chart plots. Income /
+    // spent / saved use the period's own totals (so they match the hero); balance is the ledger closing.
+    private sealed record TrendRow(string Label, decimal Income, decimal Expenses, decimal Saved, decimal Balance);
+
+    private List<TrendRow> TrendRows()
+    {
+        var (from, to) = BreakWindow();
+        var ci = System.Globalization.CultureInfo.InvariantCulture;
+        var rows = new List<TrendRow>();
+        foreach (var p in State.Account.Periods)
+        {
+            // "All time" = every period regardless of activity dates; the month ranges include periods that
+            // overlap the window. (All can't lean on the window because it anchors on the earliest activity date,
+            // which may sit inside a later period if dates were edited.)
+            if (_breakRange != BreakRange.All && (p.To < from || p.From > to)) continue;
+            rows.Add(new TrendRow(
+                p.From.ToString("MMM", ci),
+                decimal.Round(p.ContributionsPaidTotal.Amount, 2),
+                decimal.Round(p.ExpensesTotal.Amount, 2),
+                decimal.Round(Math.Max(0m, p.SavingsNetTotal.Amount), 2),
+                decimal.Round(p.ExpectedClosingBalance.Amount, 2)));
+        }
+        return rows;
+    }
+
+    // Series definitions: label, line colour, and the value selector. Order fixes the legend + hide-toggle indices.
+    private (string Label, string Color, Func<TrendRow, decimal> Val)[] TrendSeriesDefs() => new[]
+    {
+        (Loc["Money in"], "#13a06e", (Func<TrendRow, decimal>)(r => r.Income)),
+        (Loc["Spent"],    "#ff7a59", (Func<TrendRow, decimal>)(r => r.Expenses)),
+        (Loc["Saved"],    "#2f9e44", (Func<TrendRow, decimal>)(r => r.Saved)),
+        (Loc["Balance"],  "#4da6ff", (Func<TrendRow, decimal>)(r => r.Balance)),
+    };
+
+    // Series the user has toggled off in the legend (indices into TrendSeriesDefs). Hiding a series rescales the
+    // Y axis to the visible ones, so a big "balance" line can be dropped to read the smaller flow lines.
+    private readonly HashSet<int> _trendHidden = new();
+    private void ToggleTrendSeries(int i) { if (!_trendHidden.Remove(i)) _trendHidden.Add(i); }
+
+    // Plot area inside the 340×168 viewBox (leaves a left gutter + a bottom strip for month labels).
+    private const double TrX0 = 34, TrX1 = 312, TrY0 = 12, TrY1 = 138;
+
+    // (x, y) of point i for a given value, scaled to [0, max]. A single point sits centred.
+    private (double X, double Y) TrendXY(IReadOnlyList<TrendRow> rows, int i, decimal value, decimal max)
+    {
+        var x = rows.Count <= 1 ? (TrX0 + TrX1) / 2 : TrX0 + (TrX1 - TrX0) * i / (rows.Count - 1);
+        var y = max <= 0m ? TrY1 : TrY1 - (TrY1 - TrY0) * (double)(value / max);
+        return (x, y);
+    }
+
+    // "x,y x,y …" points string for one series' polyline.
+    private string TrendPoints(IReadOnlyList<TrendRow> rows, Func<TrendRow, decimal> val, decimal max)
+    {
+        var ci = System.Globalization.CultureInfo.InvariantCulture;
+        var sb = new System.Text.StringBuilder();
+        for (var i = 0; i < rows.Count; i++)
+        {
+            var (x, y) = TrendXY(rows, i, val(rows[i]), max);
+            if (i > 0) sb.Append(' ');
+            sb.Append(x.ToString("0.#", ci)).Append(',').Append(y.ToString("0.#", ci));
+        }
+        return sb.ToString();
     }
 
     // The Home mini-donut: this period's spend by top-level category, top 4 + "Everything else" + transfers-out.
