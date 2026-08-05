@@ -6,7 +6,7 @@ after Debt R2 shipped and BUG-1 was fixed.*
 | | |
 |---|---|
 | **Application** | TandemTab (https://tandemtab.com) |
-| **Live revision** | `finapp-00271-4hw` (2026-08-05) — B1–B4 + P2/P3/P4 all shipped |
+| **Live revision** | `finapp-00273-595` (2026-08-05) — B1–B4 + P1/P2/P3/P4 all shipped |
 | **Scope of this doc** | Open **public** beta — an unrestricted sign-up link, not a handful of invited friends |
 | **Effort key** | S = hours · M = a day · L = multi-day |
 
@@ -25,10 +25,15 @@ when it *doesn't* do its job for someone who isn't you.
 > (admin dashboard), and P4 (monetization rails, flag OFF)**, all built, browser-verified, and now deployed. P1
 > (public reviews display) stays parked.
 >
-> **⚠️ Two of those three need a Cloud Run env var before they appear at all** — the code is live but dormant:
-> `Admin__Emails` (P2 — fails closed, so with no list *nobody* is an admin and the panel renders for no one) and
-> `Monetization__Enabled` (P4 — off, so there is no plan UI and every account reads "unlimited"). Neither is set
-> on the service today. That is the intended beta posture; setting them is a deliberate act, not a fix.
+> **Update (Session 85):** **P1 (public reviews) is now built and live too** — a landing carousel behind *two*
+> gates, author consent **and** moderator approval, because `/feedback`'s write side is anonymous and consent
+> alone would let a stranger put text on the marketing page. It renders nothing until a row is deliberately
+> approved (`UPDATE "Feedback" SET "Approved"='1' WHERE …`), so it is currently empty by design.
+>
+> **⚠️ P4 is live but dormant, and that is intended:** `Monetization__Enabled` is **not set**, so there is no
+> plan UI, no pricing on the landing page, no gates, and every account reads "unlimited". `Admin__Emails`
+> **is** now set (the owner's address, held only as a Cloud Run env var — this repo is public). Anyone hunting
+> for the plan/pricing surfaces on tandemtab.com will not find them; that is the flag being off, not a failure.
 >
 > **What remains before the door is the intake decision alone** (staged invites vs a public link — the Capacity
 > section argues for staged) and then opening it. A lawyer's glance at the legal pages stays advisable but is not
