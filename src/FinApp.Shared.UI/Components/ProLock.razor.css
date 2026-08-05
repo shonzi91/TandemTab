@@ -1,0 +1,46 @@
+/* The crown that marks something the current plan doesn't include.
+
+   Gold rather than the app's green: green everywhere else means "good, done, yours", and a lock wearing it would
+   read as a tick at a glance. Gold is the one colour already reserved for Pro (the brand badge and the crown on
+   the logo), so the mark is recognisable before the label is read. */
+
+.pro-lock {
+    display: inline-flex; align-items: center; gap: 5px; vertical-align: middle;
+    border: none; background: none; padding: 0; margin: 0 0 0 4px;
+    font: inherit; line-height: 1; cursor: pointer;
+}
+/* Sprite icon (i-crown), so it inherits currentColor and the app's stroke weight like every other glyph.
+   ::deep because it's rendered by <Icon>, a child component — a plain scoped selector wouldn't reach it.
+   ⚠️ The ::deep must follow an element that actually CARRIES the scope attribute (.pro-lock, this component's
+   own root). A leading `::deep` compiles the scope onto whatever precedes it — `html.dark ::deep .x` becomes
+   `html.dark[b-…] .x`, which matches nothing, so the dark rule silently never applied. */
+.pro-lock ::deep .pro-lock-crown {
+    flex: none; width: 1em; height: 1em; color: #c99700;
+    position: relative; top: -.5px;
+}
+html.dark .pro-lock ::deep .pro-lock-crown { color: #f6c945; }
+
+/* Inert variant, inside a control whose own click already gates — no pointer affordance of its own, since the
+   whole control is the target. */
+.pro-lock-static { cursor: inherit; }
+
+/* Bar variant: stands in for content that has been withheld, so unlike the inline chip it needs to look like a
+   surface, not a glyph. Dashed rather than solid — it reads as "something belongs here" instead of as a filled
+   promotional block sitting inside the user's own data. */
+.pro-lock-bar {
+    display: flex; width: 100%; margin: 6px 0 0;
+    align-items: center; gap: 8px;
+    padding: 9px 12px; border-radius: 10px;
+    border: 1px dashed rgba(246, 201, 69, .55);
+    background: rgba(246, 201, 69, .08);
+    color: #8a6206; text-align: left;
+    transition: background .12s ease, border-color .12s ease;
+}
+.pro-lock-bar:hover { background: rgba(246, 201, 69, .16); border-color: rgba(246, 201, 69, .85); }
+.pro-lock-bar:focus-visible { outline: 2px solid #f6c945; outline-offset: 2px; }
+.pro-lock-bar ::deep .pro-lock-crown { width: 17px; height: 17px; top: 0; color: inherit; }
+.pro-lock-txt { flex: 1; min-width: 0; font-size: .8rem; font-weight: 700; }
+.pro-lock-go { flex: none; font-size: 1rem; opacity: .7; }
+
+html.dark .pro-lock-bar { color: #f6c945; background: rgba(246, 201, 69, .10); border-color: rgba(246, 201, 69, .38); }
+html.dark .pro-lock-bar:hover { background: rgba(246, 201, 69, .18); border-color: rgba(246, 201, 69, .6); }

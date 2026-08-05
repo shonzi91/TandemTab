@@ -88,7 +88,7 @@ else
                         <div class="acct-drop-people">
                             <div class="acct-drop-sec-head">
                                 <span>@Loc["People"]</span>
-                                <button class="link" @onclick="@(() => { _acctDropOpen = false; OpenInvite(); })"><Icon Name="plus" /> @Loc["Invite"]</button>
+                                <button class="link" @onclick="@(() => { _acctDropOpen = false; OpenInvite(); })"><Icon Name="plus" /> @Loc["Invite"] <ProLock Feature="@PlanFeatures.Share" Static="true" /></button>
                             </div>
                             @foreach (var m in State.RealUsers)
                             {
@@ -105,7 +105,9 @@ else
                                 </div>
                             }
                         </div>
-                        <button class="acct-drop-add" @onclick="@(() => { _acctDropOpen = false; OpenAddAccount(); })"><Icon Name="plus" /> @Loc["Add a new account"]</button>
+                        @* The Free cap is one OWNED account, so the crown only appears once that's used up —
+                           a first account is free for everyone and must not look locked. *@
+                        <button class="acct-drop-add" @onclick="@(() => { _acctDropOpen = false; OpenAddAccount(); })"><Icon Name="plus" /> @Loc["Add a new account"] @if (State.Accounts.Count(a => a.IsOwner) >= 1) { <ProLock Feature="@PlanFeatures.Caps" Static="true" /> }</button>
                     </div>
                 }
             </div>
@@ -543,7 +545,7 @@ else
                is attached directly below (see home-alerts), so the whole "how am I doing" block reads as one. *@
             <section class="home-health">
                 <button id="home-score" class="card card-score card-score-wide home-health-hd" @onclick="OpenHealthScore" title="@Loc["Health score"]">
-                    <span class="card-label">@Loc["Health score & trends"]</span>
+                    <span class="card-label">@Loc["Health score & trends"] <ProLock Feature="@PlanFeatures.Insights" Static="true" /></span>
                     <span class="card-value @ovBand">@(ov.HasData ? ov.Score.ToString() : "—")</span>
                     <span class="card-sub">@(ov.HasData ? N(ov.Verdict) : "")</span>
                 </button>
@@ -1011,7 +1013,7 @@ else
                         <button type="button" class="chip @(_spendView == SpendView.ByDate ? "on" : "")" @onclick="() => _spendView = SpendView.ByDate"><Icon Name="list" /> @Loc["By date"]</button>
                         <button type="button" class="chip @(_spendView == SpendView.Categories ? "on" : "")" @onclick="SwitchToByBudgets"><Icon Name="chart" /> @Loc["By budgets"]</button>
                         <button type="button" class="chip @(_spendView == SpendView.Breakdown ? "on" : "")" @onclick="() => _spendView = SpendView.Breakdown"><Icon Name="pie" /> @Loc["Breakdown"]</button>
-                        <button type="button" class="chip @(_spendView == SpendView.Trends ? "on" : "")" @onclick="ShowTrends"><Icon Name="pulse" /> @Loc["Trends"]</button>
+                        <button type="button" class="chip @(_spendView == SpendView.Trends ? "on" : "")" @onclick="ShowTrends"><Icon Name="pulse" /> @Loc["Trends"] <ProLock Feature="@PlanFeatures.Insights" Static="true" /></button>
                     </span>
                     @if (State.IsPeriodOpen)
                     {
@@ -1030,7 +1032,7 @@ else
                         {
                             <div class="acct-menu-backdrop" @onclick="() => _spendMenuOpen = false"></div>
                             <div class="acct-menu-pop">
-                                <button @onclick="async () => { _spendMenuOpen = false; await OpenImport(); }"><Icon Name="import" /> @Loc["Import statement"]</button>
+                                <button @onclick="async () => { _spendMenuOpen = false; await OpenImport(); }"><Icon Name="import" /> @Loc["Import statement"] <ProLock Feature="@PlanFeatures.Import" Static="true" /></button>
                                 <button @onclick="() => { _spendMenuOpen = false; OpenManageCats(); }"><Icon Name="tag" /> @Loc["Manage categories"]</button>
                                 <button @onclick="() => { _spendMenuOpen = false; OpenManageTags(); }"><Icon Name="tag" /> @Loc["Manage tags"]</button>
                             </div>
@@ -1400,7 +1402,9 @@ else
                         }
                         @foreach (var (r, l) in ranges)
                         {
-                            <button type="button" class="chip @(_breakRange == r ? "on" : "")" @onclick="() => SetBreakRange(r)">@l</button>
+                            @* Crown only on the windows Free can't reach (6m/12m/All) — the gate in SetBreakRange
+                               uses the same list, so the marks and the enforcement stay in step. *@
+                            <button type="button" class="chip @(_breakRange == r ? "on" : "")" @onclick="() => SetBreakRange(r)">@l@if (r is BreakRange.M6 or BreakRange.M12 or BreakRange.All) { <ProLock Feature="@PlanFeatures.History" Static="true" /> }</button>
                         }
                     </div>
                     @{
@@ -1458,7 +1462,10 @@ else
                     else
                     {
                         <div class="brk-chart">
-                            <svg class="brk-donut" viewBox="0 0 200 200" role="img" aria-label="@Loc["Spending breakdown"]">
+                            @* @key on the window/axis so Blazor builds a FRESH svg whenever the data set changes —
+                               that's what replays the slice entrance animation. Without it Blazor patches the
+                               existing paths in place and the CSS animation, already finished, never re-runs. *@
+                            <svg class="brk-donut" @key="(_breakRange, _breakBase, brkSlices.Count)" viewBox="0 0 200 200" role="img" aria-label="@Loc["Spending breakdown"]">
                                 @if (brkSlices.Count == 1)
                                 {
                                     <circle cx="100" cy="100" r="73" fill="none" stroke="@brkSlices[0].Color" stroke-width="34"><title>@brkSlices[0].Label · 100%</title></circle>
@@ -1480,7 +1487,9 @@ else
                                         <path class="brk-slice" d="@d" fill="@s.Color" transform="translate(@tx.ToString("0.##", brkCi) @ty.ToString("0.##", brkCi))"><title>@s.Label · @sweep.ToString("0.#", brkCi)%</title></path>
                                     }
                                 }
-                                <text x="100" y="94" class="brk-donut-tot" text-anchor="middle">@Fmt(brkTotal)</text>
+                                @* Counts to the new figure when the window or axis changes, so the centre number
+                                   settles with the slices instead of snapping while they animate. *@
+                                <text x="100" y="94" class="brk-donut-tot" text-anchor="middle"><Rolling Value="@brkTotal" Format="@(v => Fmt(State.Money(v)))" /></text>
                                 <text x="100" y="112" class="brk-donut-sub" text-anchor="middle">@(brkSlices.Count == 1 ? brkSlices[0].Label : string.Format(BreakByFund ? Loc["{0} funds"] : BreakByTag ? Loc["{0} tags"] : Loc["{0} categories"], brkSlices.Count))</text>
                             </svg>
                         </div>
@@ -1623,7 +1632,9 @@ else
                         }
                         @foreach (var (r, l) in tranges)
                         {
-                            <button type="button" class="chip @(_breakRange == r ? "on" : "")" @onclick="() => SetBreakRange(r)">@l</button>
+                            @* Crown only on the windows Free can't reach (6m/12m/All) — the gate in SetBreakRange
+                               uses the same list, so the marks and the enforcement stay in step. *@
+                            <button type="button" class="chip @(_breakRange == r ? "on" : "")" @onclick="() => SetBreakRange(r)">@l@if (r is BreakRange.M6 or BreakRange.M12 or BreakRange.All) { <ProLock Feature="@PlanFeatures.History" Static="true" /> }</button>
                         }
                     </div>
                     @{
@@ -1642,7 +1653,7 @@ else
                         var trHalf = trRows.Count <= 1 ? 0.0 : (TrX1 - TrX0) / (trRows.Count - 1) / 2.0;
                         <div class="trend-chart-wrap">
                         <div class="trend-plot-area">
-                            <svg class="trend-chart" viewBox="0 0 340 152" role="img" aria-label="@Loc["Money over time"]">
+                            <svg class="trend-chart" @key="(_breakRange, trRows.Count)" viewBox="0 0 340 152" role="img" aria-label="@Loc["Money over time"]">
                                 @* Value scale: a gridline per tick, so a point's height means something without hovering
                                    it. Ticks are "nice" round numbers spanning the VISIBLE series only, so hiding a big
                                    line (Balance) rescales the axis to the smaller flow lines. The tick TEXT is HTML
@@ -1663,7 +1674,10 @@ else
                                     @if (!_trendHidden.Contains(si))
                                     {
                                         var pts = TrendPoints(trRows, trDefs[si].Val, trSc);
-                                        <polyline points="@pts" fill="none" stroke="@trDefs[si].Color" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" />
+                                        @* pathLength="1" normalises the line's length to 1 unit, so a dash of "1"
+                                           covers it exactly whatever its real geometry — that's what lets the
+                                           draw-on animation be pure CSS with no measuring in JS. *@
+                                        <polyline class="trend-line" pathLength="1" points="@pts" fill="none" stroke="@trDefs[si].Color" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" />
                                         @for (var i = 0; i < trRows.Count; i++)
                                         {
                                             var (cx, cy) = TrendXY(trRows, i, trDefs[si].Val(trRows[i]), trSc);
@@ -1943,31 +1957,43 @@ else
                                     // bucket's own progress bar in the row head above; this drawer holds the control plus
                                     // the resulting debt-free date / how much sooner. (Sim values computed with the row.)
                                     var ci = System.Globalization.CultureInfo.InvariantCulture;
+                                    @* Pro: the payoff planner. Header kept on Free so the capability is visible and
+                                       honestly labelled; the slider and its projected date are what's withheld. *@
                                     <div class="payoff-sim">
                                         <div class="payoff-sim-head">
-                                            <span><Icon Name="trending" /> @Loc["Pay extra on top"]</span>
-                                            <span class="payoff-extra-val">+@Fmt(new Money(_goalExtra, State.Currency))/@Loc["mo"]</span>
-                                        </div>
-                                        <input class="payoff-slider" type="range" min="0" max="@paySliderMax.ToString(ci)" step="10" @bind="_goalExtra" @bind:event="oninput" />
-                                        <div class="payoff-sim-foot">
-                                            @if (payFast is null)
+                                            <span><Icon Name="trending" /> @Loc["Pay extra on top"] <ProLock Feature="@PlanFeatures.Debt" /></span>
+                                            @if (Gate.Allows(PlanFeatures.Debt))
                                             {
-                                                <span class="warn-text">@Loc["At this installment it never clears — it doesn’t cover the interest."]</span>
+                                                <span class="payoff-extra-val">+@Fmt(new Money(_goalExtra, State.Currency))/@Loc["mo"]</span>
                                             }
-                                            else
-                                            {
-                                                <span class="payoff-foot-date"><Icon Name="flag" /> @PayoffDate(payFastMonths)</span>
-                                                @if (payMonthsSaved > 0)
+                                        </div>
+                                        @if (Gate.Allows(PlanFeatures.Debt))
+                                        {
+                                            <input class="payoff-slider" type="range" min="0" max="@paySliderMax.ToString(ci)" step="10" @bind="_goalExtra" @bind:event="oninput" />
+                                            <div class="payoff-sim-foot">
+                                                @if (payFast is null)
                                                 {
-                                                    <span class="good-text">· @MonthsText(payMonthsSaved) @Loc["sooner"]</span>
-                                                    @if (payBase is { } bp && payFast is { } fp && bp.TotalInterest > fp.TotalInterest) { <span class="good-text">· @Loc["save"] @Fmt(bp.TotalInterest - fp.TotalInterest)</span> }
+                                                    <span class="warn-text">@Loc["At this installment it never clears — it doesn’t cover the interest."]</span>
                                                 }
                                                 else
                                                 {
-                                                    <span class="hint">· @Loc["Drag to pay a little more each month and watch the finish move closer."]</span>
+                                                    <span class="payoff-foot-date"><Icon Name="flag" /> @PayoffDate(payFastMonths)</span>
+                                                    @if (payMonthsSaved > 0)
+                                                    {
+                                                        <span class="good-text">· @MonthsText(payMonthsSaved) @Loc["sooner"]</span>
+                                                        @if (payBase is { } bp && payFast is { } fp && bp.TotalInterest > fp.TotalInterest) { <span class="good-text">· @Loc["save"] @Fmt(bp.TotalInterest - fp.TotalInterest)</span> }
+                                                    }
+                                                    else
+                                                    {
+                                                        <span class="hint">· @Loc["Drag to pay a little more each month and watch the finish move closer."]</span>
+                                                    }
                                                 }
-                                            }
-                                        </div>
+                                            </div>
+                                        }
+                                        else
+                                        {
+                                            <ProLock Feature="@PlanFeatures.Debt" Bar="true" Label="@Loc["See how paying more clears it sooner — with Pro"]" />
+                                        }
                                     </div>
                                     // One-off: pay what's already set aside now — it lowers the balance, so the interest
                                     // you're charged each period drops. Show the two ways a bank typically applies it.
@@ -1984,9 +2010,17 @@ else
                                         var afterBal = debtOwed - payNow;
                                         var shorter = FinApp.Forecasting.LoanForecast.PayOff(afterBal, rate, inst);
                                         var lowerInst = baseMonths > 0 ? FinApp.Forecasting.LoanForecast.PaymentFor(afterBal, rate, baseMonths) : (decimal?)null;
+                                        @* Pro: the one-off comparison. Header (and the tooltip explaining what a
+                                           lump payment does) stays on Free — the modelling of the bank's two
+                                           offers is the part that's withheld. *@
                                         <h4 class="detail-sub"><Icon Name="note" /> @string.Format(Loc["One-off — pay your {0} set aside now"], Fmt(payNow))
-                                            @infoTip(("pp-partial", Loc["A payment lowers the balance right away, so the interest you're charged each period drops from then on. This is a single payment out of what you've already set aside — not a new monthly commitment."]))</h4>
-                                        if (shorter is not null || lowerInst is not null)
+                                            @infoTip(("pp-partial", Loc["A payment lowers the balance right away, so the interest you're charged each period drops from then on. This is a single payment out of what you've already set aside — not a new monthly commitment."]))
+                                            <ProLock Feature="@PlanFeatures.Debt" /></h4>
+                                        if (!Gate.Allows(PlanFeatures.Debt))
+                                        {
+                                            <ProLock Feature="@PlanFeatures.Debt" Bar="true" Label="@Loc["Compare what your bank might offer — with Pro"]" />
+                                        }
+                                        else if (shorter is not null || lowerInst is not null)
                                         {
                                             <p class="hint pm-hint">@Loc["Your bank may offer a choice like:"]</p>
                                             <div class="payoff-opts-scroll">
@@ -3545,7 +3579,7 @@ else
                     <h3><Icon Name="plus" /> @Loc["Add a transaction"]</h3>
                     <p class="hint">@Loc["Record a single entry, or import many at once from a bank statement (expenses and income)."]</p>
                     <button class="qa-choice" @onclick="OpenAddExpenseTab"><Icon Name="receipt" /> <span><strong>@Loc["Log an expense"]</strong><small>@Loc["Enter one spend by hand."]</small></span></button>
-                    <button class="qa-choice" @onclick="OpenImport"><Icon Name="import" /> <span><strong>@Loc["Import statement"]</strong><small>@Loc["Bring in many from a bank file."]</small></span></button>
+                    <button class="qa-choice" @onclick="OpenImport"><Icon Name="import" /> <span><strong>@Loc["Import statement"] <ProLock Feature="@PlanFeatures.Import" Static="true" /></strong><small>@Loc["Bring in many from a bank file."]</small></span></button>
                     <div class="modal-actions">
                         <button class="ghost" @onclick="Back">@Loc["Close"]</button>
                     </div>
@@ -4006,6 +4040,12 @@ else
                                     <span class="rm-net">@Loc["Net / month"]</span><span class="rm-num rm-net @(inM - outM < 0 ? "debit" : "credit")">@(inM - outM < 0 ? "− " : "+ ")@Fmt(State.Money(Math.Abs(inM - outM)))</span>
                                 </div>
                                 <p class="runway-basis">@Loc["Each month adds the money in and takes the money out; the runway is how long your balance stays above zero. No AI, no guesswork — just this arithmetic on your own numbers."]</p>
+                                @* Pro: modelling a different future is the "intelligence" half of the paywall line.
+                                   The HEADER stays visible on Free — you can see the tool exists and what it does,
+                                   which is the honest version of a paywall; only the controls and their output are
+                                   withheld. Same shape at the two debt planners below. *@
+                                @if (Gate.Allows(PlanFeatures.Insights))
+                                {
                                 <div class="whatif-row">
                                     <div class="whatif">
                                         <label class="whatif-label">@Loc["What if I spent differently?"]</label>
@@ -4023,23 +4063,38 @@ else
                                         </div>
                                     }
                                 </div>
-                                <div class="whatif-out">
-                                    @if (!scenario)
-                                    {
-                                        <span class="whatif-hint">@(canEarn ? Loc["Slide to model spending or earning and see the runway change."] : Loc["Slide to spend less or more and see the runway change."])</span>
-                                    }
-                                    else if (proj is { } wi)
-                                    {
-                                        @if (wi.FirstShortfallMonth is { } wsm)
+                                }
+                                else
+                                {
+                                    <div class="whatif-row">
+                                        <div class="whatif">
+                                            <label class="whatif-label">@Loc["What if I spent differently?"] <ProLock Feature="@PlanFeatures.Insights" /></label>
+                                            <ProLock Feature="@PlanFeatures.Insights" Bar="true" Label="@Loc["Model spending and earning changes with Pro"]" />
+                                        </div>
+                                    </div>
+                                }
+                                @* Suppressed on Free along with the sliders — "Slide to spend less or more" beside
+                                   no slider would be an instruction you can't follow. *@
+                                @if (Gate.Allows(PlanFeatures.Insights))
+                                {
+                                    <div class="whatif-out">
+                                        @if (!scenario)
                                         {
-                                            <span class="whatif-bad">@string.Format(Loc["Runs short in {0}"], wsm.ToString("MMM yyyy"))</span>
+                                            <span class="whatif-hint">@(canEarn ? Loc["Slide to model spending or earning and see the runway change."] : Loc["Slide to spend less or more and see the runway change."])</span>
                                         }
-                                        else
+                                        else if (proj is { } wi)
                                         {
-                                            <span class="whatif-good">@string.Format(Loc["Balance holds ~{0} months, ending near {1}"], wi.Months.Count, Fmt(wi.Months[^1].Closing))</span>
+                                            @if (wi.FirstShortfallMonth is { } wsm)
+                                            {
+                                                <span class="whatif-bad">@string.Format(Loc["Runs short in {0}"], wsm.ToString("MMM yyyy"))</span>
+                                            }
+                                            else
+                                            {
+                                                <span class="whatif-good">@string.Format(Loc["Balance holds ~{0} months, ending near {1}"], wi.Months.Count, Fmt(wi.Months[^1].Closing))</span>
+                                            }
                                         }
-                                    }
-                                </div>
+                                    </div>
+                                }
                             </div>
                     }
                     else
@@ -5523,6 +5578,10 @@ else
     {
         State.Changed += OnChanged;
         Loc.Changed += OnLocChanged;
+        // Also repaint when the signed-in user changes. The plan lives on Auth.CurrentUser and every Pro crown is
+        // derived from it, so without this an upgrade left the crowns on screen until something else forced a
+        // render — the app said "Pro" in the top bar while still marking features as locked.
+        Auth.Changed += OnLocChanged;
         await State.InitializeAsync();
         ResetPickers();
 
@@ -8607,5 +8666,5 @@ else
     // (it outlives the page when you navigate away mid-call).
     private bool _disposed;
 
-    public void Dispose() { _disposed = true; State.Changed -= OnChanged; Loc.Changed -= OnLocChanged; _backRef?.Dispose(); }
+    public void Dispose() { _disposed = true; State.Changed -= OnChanged; Loc.Changed -= OnLocChanged; Auth.Changed -= OnLocChanged; _backRef?.Dispose(); }
 }

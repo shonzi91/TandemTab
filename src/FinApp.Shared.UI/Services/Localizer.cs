@@ -523,6 +523,15 @@ public sealed class Localizer(IJSRuntime js)
         ["Shown publicly — hide"] = "Показва се публично — скрий",
         ["Nothing to review yet — only feedback where the person ticked “you may show this” appears here."] =
             "Още няма какво да се преглежда — тук се появява само обратна връзка, при която човекът е отметнал „може да го показвате“.",
+        // Pro crowns + the plan comparison prompt
+        ["Part of Pro — see what’s included"] = "Част от Про — виж какво включва",
+        ["Part of Pro"] = "Част от Про",
+        ["Model spending and earning changes with Pro"] = "Моделирай промени в харченето и приходите с Про",
+        ["See how paying more clears it sooner — with Pro"] = "Виж как по-голяма вноска приключва по-рано — с Про",
+        ["Compare what your bank might offer — with Pro"] = "Сравни какво може да предложи банката ти — с Про",
+        ["save {0}%"] = "спести {0}%",
+        ["{0} {1} a year less than monthly"] = "{0} {1} по-малко на година спрямо месечно",
+        ["{0} {1} billed over a year"] = "{0} {1} за година",
         ["What people are saying"] = "Какво казват хората",
         ["{0} out of 5"] = "{0} от 5",
         ["Previous"] = "Назад",

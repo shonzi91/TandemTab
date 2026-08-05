@@ -1,0 +1,57 @@
+@inject PlanGate Gate
+@inject Localizer Loc
+
+@* A crown marking something the current plan doesn't include, and the way into the plan comparison.
+
+   Renders NOTHING unless the feature is actually out of reach — so a Pro (or beta-cohort "unlimited") account
+   never sees a crown anywhere, and the app doesn't nag people who already have everything. That also means these
+   can be scattered liberally at Pro entry points without turning the UI into an advert for most users.
+
+   Clicking goes through PlanGate.Require, the same call the real gates use: it re-checks entitlement and raises
+   the single upgrade prompt. No separate "show the modal" path exists, so the crown can never disagree with the
+   gate it decorates. *@
+
+@if (!Gate.Allows(Feature))
+{
+    @if (Static)
+    {
+        @* For use INSIDE an existing clickable element whose own handler already gates (the Trends chip, Import,
+           Add account…). A <button> nested in a <button> is invalid HTML and browsers recover from it by
+           splitting the markup, so the crown has to be inert there — the host's click raises the prompt. *@
+        <span class="pro-lock pro-lock-static" title="@Loc["Part of Pro — see what’s included"]">
+            <Icon Name="crown" Class="pro-lock-crown" />
+        </span>
+    }
+    else
+    {
+        <button type="button"
+                class="pro-lock @(Bar ? "pro-lock-bar" : "")"
+                title="@Loc["Part of Pro — see what’s included"]"
+                aria-label="@Loc["Part of Pro — see what’s included"]"
+                @onclick="Open" @onclick:stopPropagation="true">
+            <Icon Name="crown" Class="pro-lock-crown" />
+            @if (Bar)
+            {
+                <span class="pro-lock-txt">@(Label ?? Loc["Part of Pro"])</span>
+                <span class="pro-lock-go" aria-hidden="true">›</span>
+            }
+        </button>
+    }
+}
+
+@code {
+    /// <summary>A <see cref="FinApp.Contracts.PlanFeatures"/> key.</summary>
+    [Parameter, EditorRequired] public string Feature { get; set; } = "";
+
+    /// <summary>Full-width bar (standing in for content that has been withheld) rather than an inline chip
+    /// (marking a control that is still visible).</summary>
+    [Parameter] public bool Bar { get; set; }
+
+    /// <summary>Overrides the bar's wording. Ignored for the inline chip, which is crown-only.</summary>
+    [Parameter] public string? Label { get; set; }
+
+    /// <summary>Render an inert span instead of a button, for placing inside a control that already gates.</summary>
+    [Parameter] public bool Static { get; set; }
+
+    private void Open() => Gate.Require(Feature);
+}

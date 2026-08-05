@@ -96,15 +96,33 @@ html.dark .brand-tab { background: var(--tm-mint); color: #0f1322; }
     display: flex; align-items: center; justify-content: center; z-index: 60;
 }
 .pm {
-    background: #ffffff; color: #1f2430; border-radius: 16px; padding: 18px 20px;
+    /* No TOP padding — the sticky header supplies its own. The old `padding: 18px 20px` with a `-18px` top margin
+       on the header was the same bug already fixed on Dashboard's .modal: inside an `overflow-y: auto` box a
+       negative top margin doesn't reliably reach the edge, so the header floated with a sliver of modal above it
+       and its rounded corners didn't meet the modal's. Flush header + zero top padding is the fixed pattern. */
+    background: #ffffff; color: #1f2430; border-radius: 16px; padding: 0 20px 18px;
     width: min(380px, 92vw); max-height: 90vh; overflow-y: auto;
     box-shadow: 0 20px 60px rgba(0,0,0,.25); display: flex; flex-direction: column; gap: 9px;
 }
-/* Sticky header so it stays pinned while the settings scroll (item #4). */
+/* Sticky header, flush to the modal's top and side edges, with room on the right for the ✕. */
 .pm h3 {
-    position: sticky; top: 0; z-index: 6; margin: -18px -20px 4px; padding: 15px 20px 11px;
+    position: sticky; top: 0; z-index: 6; margin: 0 -20px 4px;
+    padding: 14px 52px 13px 20px; min-height: 52px; box-sizing: border-box;
+    display: flex; align-items: center; gap: 10px;
     background: #ffffff; border-bottom: 1px solid #e6ece9; border-radius: 16px 16px 0 0; font-size: 1.05rem;
 }
+/* Close, in the header where it belongs — a modal you dismiss shouldn't make you scroll to the bottom to do it. */
+/* Absolutely positioned INSIDE the h3 — `position: sticky` is a positioned element, so the header is the
+   containing block and the ✕ travels with it instead of scrolling away with the body. */
+.pm h3 .pm-x {
+    position: absolute; top: 50%; right: 12px; transform: translateY(-50%);
+    width: 32px; height: 32px; border-radius: 9px; border: none; background: none;
+    font-size: 1.35rem; line-height: 1; color: #9ca3af; cursor: pointer;
+    display: inline-grid; place-items: center; padding: 0;
+}
+.pm h3 .pm-x:hover { background: #f1f3f6; color: #4b5563; }
+html.dark .pm h3 .pm-x { color: #7c8a94; }
+html.dark .pm h3 .pm-x:hover { background: rgba(255,255,255,.08); color: #dfe5ec; }
 /* Section labels double as dividers for a cleaner, scannable layout. */
 .pm h4 {
     margin: 14px 0 2px; padding-top: 12px; border-top: 1px solid #eef2f0;
@@ -210,12 +228,59 @@ html.dark .pm-feat.off { color: #7c8a94; }
 html.dark .pm-feat-tag { background: rgba(246,201,69,.16); color: #f6c945; }
 
 /* The gate prompt. Deliberately warm rather than alarming — it is explaining a boundary, not reporting an error. */
-.upg-crown { font-size: 1rem; }
-.upg-feat {
-    margin: 0; font-size: .92rem; font-weight: 700; color: #0e7c55;
-    background: rgba(19,160,110,.08); border-radius: 9px; padding: 8px 11px;
+/* Header row of the upgrade prompt. The crown gets a fixed-size round badge so the title centres against a
+   predictable box rather than against an emoji's own (font-dependent) metrics — inline it rode high and left the
+   heading looking off inside the sticky header. */
+.upg-h { display: flex; align-items: center; gap: 10px; }
+.upg-h .upg-crown {
+    flex: none; width: 30px; height: 30px; border-radius: 50%;
+    display: inline-grid; place-items: center; line-height: 1;
+    background: linear-gradient(135deg, #ffe28a, #f6c945);
+    box-shadow: 0 1px 4px rgba(0,0,0,.18);
+    color: #6b4c05;   /* the sprite icon inherits currentColor */
 }
-html.dark .upg-feat { color: #2ee59d; background: rgba(19,160,110,.14); }
+/* ::deep must follow a scope-carrying element (see the same note in ProLock.razor.css). */
+.upg-h .upg-crown ::deep .ic { width: 17px; height: 17px; }
+.upg-col ::deep .upg-h5-crown { width: 15px; height: 15px; color: #c99700; vertical-align: -2px; }
+.upg-col ::deep .upg-tick-crown { width: 13px; height: 13px; color: #c99700; margin-top: 2px; flex: none; }
+html.dark .upg-col ::deep .upg-h5-crown,
+html.dark .upg-col ::deep .upg-tick-crown { color: #f6c945; }
+/* (.upg-feat — the green bar naming the blocked feature — was removed. The Pro column already highlights that
+   row, so the banner was a duplicate that read as a stray highlight.) */
+
+/* The two plans side by side, so the ask is answerable ("what am I missing?") without leaving the prompt.
+   Wider shell than the stock .pm for the pair; stacks on narrow screens. */
+.pm-upg { width: min(560px, 94vw); }
+.upg-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 10px 0 4px; }
+.upg-col { border: 1px solid #e6e2d8; border-radius: 12px; padding: 11px 12px; min-width: 0; }
+.upg-col h5 { margin: 0 0 6px; font-size: .9rem; }
+.upg-col ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 5px; }
+.upg-col li { display: flex; gap: 6px; align-items: flex-start; font-size: .76rem; line-height: 1.35; color: #4b5563; }
+.upg-tick { flex: none; font-size: .72rem; line-height: 1.5; }
+.upg-col .upg-tick { color: #13a06e; font-weight: 800; }
+.upg-price { margin: 0 0 8px; font-size: 1.15rem; font-weight: 800; color: #111827; letter-spacing: -.3px; }
+.upg-price span { font-size: .72rem; font-weight: 600; color: #6b7280; }
+.upg-plus { margin: 0 0 6px; font-size: .72rem; font-weight: 700; color: #6b7280; }
+.upg-col-pro { border-color: #13a06e; background: rgba(19,160,110,.06); }
+/* The feature they just hit — so "why am I seeing this?" is answered without reading the table. */
+.upg-this { font-weight: 800; color: #0e7c55 !important; }
+html.dark .upg-col { border-color: rgba(255,255,255,.14); }
+html.dark .upg-col li { color: #c3cad4; }
+html.dark .upg-price { color: #e8eaf0; }
+html.dark .upg-price span, html.dark .upg-plus { color: #9aa8b4; }
+html.dark .upg-col-pro { background: rgba(19,160,110,.12); border-color: #13a06e; }
+html.dark .upg-this { color: #2ee59d !important; }
+@media (max-width: 460px) { .upg-cols { grid-template-columns: 1fr; } }
+
+/* Billing-period cards: the yearly saving is the whole reason to offer a choice, so it's stated twice — as a
+   percentage badge on the label and as the absolute amount underneath. */
+.pm-cycle-h { display: flex; align-items: center; gap: 6px; }
+.pm-cycle-save {
+    font-size: .6rem; font-weight: 800; text-transform: uppercase; letter-spacing: .05em;
+    padding: 1px 6px; border-radius: 999px; background: #13a06e; color: #fff;
+}
+.pm-cycle-sub { font-size: .64rem; color: #9aa0ad; font-weight: 600; }
+html.dark .pm-cycle-sub { color: #7c8a94; }
 
 /* Upgrade block: the billing-period choice, then the action. Yearly first because it is the headline price. */
 .pm-upsell { margin-top: 10px; display: flex; flex-direction: column; gap: 8px; }

@@ -36,16 +36,10 @@
             <p class="lp-cta-note">
                 <span class="lp-beta-pill">@Loc["Free beta"]</span>
                 @Loc["Your account and everything in it carries through to launch."]
-                @* The cap is a LIFETIME-PRO allowance, not a door: the first N members are grandfathered to Pro for
-                   good; after that people still join, on Free. Stated as a gift, not scarcity pressure. Shown only
-                   while seats remain — once the allowance is full the line disappears entirely (the beta promise
-                   above still stands). Only rendered once the count is known, so it never flashes a wrong number. *@
-                @if (_beta is { Capped: true, Full: false } bc)
-                {
-                    <span class="lp-beta-seats">
-                        @string.Format(Loc["🎁 The first {0} members get TandemTab Pro free — for life. {1} spots left."], bc.Cap, bc.Remaining)
-                    </span>
-                }
+                @* The lifetime-Pro allowance is deliberately NOT advertised here any more. A live "N spots left"
+                   counter is scarcity pressure whichever way it's worded, it invites people to watch a number
+                   rather than read the product, and it dates the page the moment the allowance fills. The cap
+                   still exists and still works — it just isn't a marketing device. *@
             </p>
         </div>
     </section>
@@ -272,7 +266,6 @@
     private List<PublicReviewDto> _reviews = new();
     private int _reviewIx;
     private PlansDto? _plans;
-    private BetaCapacityDto? _beta;
     private bool _contactOpen;
 
     // Shares the key the signed-in footer uses, so telling us what you think once — from either side of the
@@ -350,12 +343,8 @@
             if (plans.Enabled) { _plans = plans; changed = true; }
         }
         catch { /* no pricing section; during beta it wouldn't render anyway */ }
-        try
-        {
-            _beta = await Api.GetBetaCapacityAsync();
-            changed = true;
-        }
-        catch { /* no seat line — better silent than a wrong number next to a promise */ }
+        // (No /beta/capacity call any more — the seat counter came off the page, so fetching it on every landing
+        // view would be a request whose answer nothing renders. The endpoint stays for the admin console.)
         try
         {
             if (await JS.InvokeAsync<string?>("localStorage.getItem", FeedbackDoneKey) == "1")

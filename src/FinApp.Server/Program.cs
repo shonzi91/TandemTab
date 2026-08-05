@@ -670,13 +670,16 @@ app.MapGet("/reviews/public", async (FeedbackService feedback, CancellationToken
         .Select(r => new PublicReviewDto(r.Rating, r.Comment, r.At)).ToList()))
     .AllowAnonymous();
 
-// Start an upgrade (OPEN-BETA P4 / payment-provider prep). Gated on the SAME flag as everything else: while
-// monetization is off this 404s, so the payment rails cannot be reached during beta even by a hand-crafted
-// request. That single dependency is what makes "it kicks in when the flag lifts" true with no second switch.
+// Start an upgrade (OPEN-BETA P4 / payment-provider prep).
+// Gated on the CALLER'S resolved entitlement, not the raw global flag — the same value /me reports as
+// MonetizationEnabled. That matters because an admin plan pin deliberately makes monetization live for that one
+// account: checking the flag here instead meant the client showed "Upgrade to Pro" (it trusts /me) and the
+// endpoint then 404'd, so the test switch could never actually rehearse a checkout. Ordinary accounts during beta
+// still resolve to MonetizationLive=false, so the rails stay unreachable for them.
 app.MapPost("/billing/checkout", async (CheckoutRequest req, ClaimsPrincipal user, HttpContext http,
-        MonetizationService monetization, IPaymentProvider payments, CancellationToken ct) =>
+        EntitlementService entitlements, IPaymentProvider payments, CancellationToken ct) =>
 {
-    if (!monetization.Enabled) return Results.NotFound();
+    if (!(await entitlements.ResolveAsync(user.UserId(), ct)).MonetizationLive) return Results.NotFound();
     var origin = $"{http.Request.Scheme}://{http.Request.Host}";
     return Results.Ok(await payments.CreateCheckoutAsync(user.UserId(), req.Interval, origin, ct));
 }).RequireAuthorization();
@@ -684,12 +687,21 @@ app.MapPost("/billing/checkout", async (CheckoutRequest req, ClaimsPrincipal use
 // Completes a SANDBOX checkout — the stand-in for a provider webhook. Refuses to run unless the active provider
 // actually is the sandbox, so this can never become a free-Pro button once a real provider is configured.
 app.MapPost("/billing/sandbox/complete", async (CheckoutRequest req, ClaimsPrincipal user,
-        MonetizationService monetization, IPaymentProvider payments, SubscriptionService subscriptions,
-        ILoggerFactory logs, CancellationToken ct) =>
+        EntitlementService entitlements, IPaymentProvider payments, SubscriptionService subscriptions,
+        PlanOverrideService overrides, ILoggerFactory logs, CancellationToken ct) =>
 {
-    if (!monetization.Enabled || !payments.IsSandbox) return Results.NotFound();
+    if (!(await entitlements.ResolveAsync(user.UserId(), ct)).MonetizationLive || !payments.IsSandbox)
+        return Results.NotFound();
     var expires = MonetizationService.ExpiryFor(req.Interval, DateTimeOffset.UtcNow);
     await subscriptions.ActivateAsync(user.UserId(), req.Interval.ToString(), payments.Name, null, true, expires, ct);
+    // Land the tester on Pro, the state a real upgrade produces.
+    // Two things force this rather than simply clearing the pin. A pin outranks the subscription in
+    // EntitlementService, so leaving it as "free" would make a completed upgrade change nothing on screen. But
+    // CLEARING it is no better while the global flag is off: resolution then short-circuits before it ever looks
+    // at subscriptions, and the account falls back to its cohort default ("unlimited" for a beta member, "free"
+    // for everyone else) — so the purchase would still be invisible. Pinning "pro" is the only way a completed
+    // sandbox purchase is reflected pre-launch. "Exit test mode" in the admin console clears it.
+    await overrides.SetAsync(user.UserId(), "pro", ct);
     logs.CreateLogger("FinApp.Billing").LogInformation(
         "Sandbox subscription activated for {UserId} ({Interval}, expires {Expires:o})",
         user.UserId(), req.Interval, expires);

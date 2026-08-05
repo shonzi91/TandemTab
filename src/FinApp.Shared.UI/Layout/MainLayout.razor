@@ -132,11 +132,10 @@
     {
         <div class="pm-backdrop" @onclick="() => _contactOpen = false">
             <div class="pm" @onclick:stopPropagation="true">
-                <h3>@Loc["Contact"]</h3>
+                <h3>@Loc["Contact"]
+                    <button class="pm-x" title="@Loc["Close"]" aria-label="@Loc["Close"]" @onclick="() => _contactOpen = false"><span aria-hidden="true">×</span></button>
+                </h3>
                 <ContactCard />
-                <div class="pm-actions">
-                    <button class="ghost" @onclick="() => _contactOpen = false">@Loc["Close"]</button>
-                </div>
             </div>
         </div>
     }
@@ -150,23 +149,76 @@
            are scoped to Dashboard.razor.css and simply do not reach this component, so a .modal here would render
            as an unstyled block. *@
         <div class="pm-backdrop" @onclick="() => _gateBlocked = null">
-            <div class="pm" @onclick:stopPropagation="true">
-                <h3><span class="upg-crown" aria-hidden="true">👑</span> @Loc["That one’s part of Pro"]</h3>
-                <p class="upg-feat">@FeatureLabel(gk)</p>
-                <p class="pm-hint">@Loc["Everything you already use stays free. Pro adds sharing, unlimited imports, the payoff planner and your full history."]</p>
+            <div class="pm pm-upg" @onclick:stopPropagation="true">
+                @* The crown sits in its own round badge rather than inline in the heading text: an emoji has its
+                   own baseline and optical size, so inline it rode high and pushed the title off-centre inside
+                   the sticky header. A fixed-size badge + flex centring makes the row align regardless of how the
+                   emoji font renders. *@
+                <h3 class="upg-h"><span class="upg-crown"><Icon Name="crown" /></span><span>@Loc["That one’s part of Pro"]</span></h3>
+                @* No banner naming the blocked feature: it's already picked out in the Pro column below, and a
+                   second green bar restating it read as a stray highlight rather than an answer. *@
+
+                @* Both plans side by side, built from the SERVER's catalogue rather than a hand-written list —
+                   so what the prompt promises and what the gates actually enforce can never drift apart. The
+                   blocked feature is highlighted in the Pro column so the answer to "why am I seeing this?" is
+                   visible without reading the whole table. *@
+                @if (Gate.Plans is { } gp)
+                {
+                    <div class="upg-cols">
+                        <div class="upg-col">
+                            <h5>@Loc["Free"]</h5>
+                            @if (Gate.MonetizationOn) { <p class="upg-price">@gp.Currency 0</p> }
+                            <ul>
+                                @foreach (var f in gp.Features.Where(f => f.InFree))
+                                {
+                                    <li><span class="upg-tick" aria-hidden="true">✓</span>@FeatureLabel(f.Key)</li>
+                                }
+                            </ul>
+                        </div>
+                        <div class="upg-col upg-col-pro">
+                            <h5><Icon Name="crown" Class="upg-h5-crown" /> @Loc["Pro"]</h5>
+                            @if (Gate.MonetizationOn)
+                            {
+                                <p class="upg-price">
+                                    @gp.Currency @(_cycle == BillingInterval.Annual ? gp.AnnualPrice : gp.MonthlyPrice)<span>/@(_cycle == BillingInterval.Annual ? Loc["yr"] : Loc["mo"])</span>
+                                </p>
+                            }
+                            <p class="upg-plus">@Loc["Everything in Free, plus:"]</p>
+                            <ul>
+                                @foreach (var f in gp.Features.Where(f => !f.InFree))
+                                {
+                                    <li class="@(f.Key == gk ? "upg-this" : "")">
+                                        <Icon Name="crown" Class="upg-tick upg-tick-crown" />@FeatureLabel(f.Key)
+                                    </li>
+                                }
+                            </ul>
+                        </div>
+                    </div>
+                }
+
                 @* During beta (billing off) there is no checkout to offer — the first 100 members got Pro free and
                    the rest preview the Free experience. Only once monetization is live does the prompt sell. *@
-                @if (Gate.MonetizationOn && Gate.Plans is { } gp)
+                @if (Gate.MonetizationOn && Gate.Plans is { } gp2)
                 {
                     <div class="pm-cycle" role="group" aria-label="@Loc["Billing period"]">
                         <button type="button" class="@(_cycle == BillingInterval.Annual ? "on" : "")" @onclick="() => _cycle = BillingInterval.Annual">
-                            @Loc["Yearly"] <strong>@gp.Currency @gp.AnnualPrice</strong>
+                            <span class="pm-cycle-h">
+                                @Loc["Yearly"]
+                                @* The saving is computed from the two configured prices, never hard-coded — change
+                                   either price in config and this follows. Hidden entirely if yearly isn't actually
+                                   cheaper, so it can't ever advertise a discount that doesn't exist. *@
+                                @if (YearlySaving(gp2) is { } ys) { <span class="pm-cycle-save">@string.Format(Loc["save {0}%"], ys.Pct)</span> }
+                            </span>
+                            <strong>@gp2.Currency @gp2.AnnualPrice</strong>
+                            @if (YearlySaving(gp2) is { } ys2) { <span class="pm-cycle-sub">@string.Format(Loc["{0} {1} a year less than monthly"], gp2.Currency, ys2.Save)</span> }
                         </button>
                         <button type="button" class="@(_cycle == BillingInterval.Monthly ? "on" : "")" @onclick="() => _cycle = BillingInterval.Monthly">
-                            @Loc["Monthly"] <strong>@gp.Currency @gp.MonthlyPrice</strong>
+                            <span class="pm-cycle-h">@Loc["Monthly"]</span>
+                            <strong>@gp2.Currency @gp2.MonthlyPrice</strong>
+                            <span class="pm-cycle-sub">@string.Format(Loc["{0} {1} billed over a year"], gp2.Currency, YearlyTotal(gp2))</span>
                         </button>
                     </div>
-                    @if (gp.PaymentSandbox)
+                    @if (gp2.PaymentSandbox)
                     {
                         <p class="pm-hint">@Loc["Test mode — no card is charged and no real payment is taken."]</p>
                     }
@@ -198,7 +250,9 @@
     {
         <div class="pm-backdrop" @onclick="CloseAdmin">
             <div class="pm" @onclick:stopPropagation="true">
-                <h3>@Loc["Admin console"]</h3>
+                <h3>@Loc["Admin console"]
+                    <button class="pm-x" title="@Loc["Close"]" aria-label="@Loc["Close"]" @onclick="CloseAdmin"><span aria-hidden="true">×</span></button>
+                </h3>
 
                 @* Usage metrics. Counts + timestamps only — never anyone's financial data (no snapshot is decrypted). *@
                 <details class="pm-section" @ontoggle="LoadAdminMetrics">
@@ -279,10 +333,6 @@
                     else if (_adminFeedbackBusy) { <p class="pm-hint">@Loc["Loading…"]</p> }
                     else if (_adminFeedback is not null) { <p class="pm-hint">@Loc["Nothing to review yet — only feedback where the person ticked “you may show this” appears here."]</p> }
                 </details>
-
-                <div class="pm-actions">
-                    <button class="ghost" @onclick="CloseAdmin">@Loc["Close"]</button>
-                </div>
             </div>
         </div>
     }
@@ -293,7 +343,9 @@
     {
         <div class="pm-backdrop">
             <div class="pm">
-                <h3>@Loc["Profile settings"]</h3>
+                <h3>@Loc["Profile settings"]
+                    <button class="pm-x" title="@Loc["Close"]" aria-label="@Loc["Close"]" @onclick="CloseProfile"><span aria-hidden="true">×</span></button>
+                </h3>
                 <p class="pm-who">@Auth.CurrentUser!.Username@(SameUsernameAndEmail ? "" : $" · {Auth.CurrentUser!.Email}")</p>
                 @if (!InProfileSubflow)
                 {
@@ -567,11 +619,10 @@
                 @* While a focused sub-flow is active it has its own Back — hide the profile's Close so there's one clear action. *@
                 @if (!InProfileSubflow)
                 {
-                    @* Sign out lives here now (moved off the top bar) — left-aligned so it reads as the account action,
-                       with Close on the right. *@
+                    @* Sign out lives here (moved off the top bar). Close moved up to the header ✕, so this row now
+                       carries only the account action — nothing to confuse it with. *@
                     <div class="pm-actions">
                         <button class="ghost danger" @onclick="SignOut">@Loc["Sign out"]</button>
-                        <button class="ghost" @onclick="CloseProfile">@Loc["Close"]</button>
                     </div>
                 }
             </div>
@@ -746,6 +797,30 @@
 
     // The feature key a gate just refused, or null. Set only by PlanGate.Blocked.
     private string? _gateBlocked;
+
+    /// <summary>What a year on the yearly plan saves against paying monthly, as an absolute amount and a
+    /// percentage. Returns null when either price is unparseable or yearly isn't actually cheaper — so a
+    /// misconfigured price can never produce a fake discount.</summary>
+    private static (string Save, int Pct)? YearlySaving(PlansDto p)
+    {
+        var ci = System.Globalization.CultureInfo.InvariantCulture;
+        if (!decimal.TryParse(p.AnnualPrice, System.Globalization.NumberStyles.Any, ci, out var annual)) return null;
+        if (!decimal.TryParse(p.MonthlyPrice, System.Globalization.NumberStyles.Any, ci, out var monthly)) return null;
+        var full = monthly * 12m;
+        if (full <= annual || full <= 0m) return null;
+        var save = full - annual;
+        return (save.ToString("0.##", ci), (int)Math.Round(save / full * 100m));
+    }
+
+    /// <summary>What twelve months at the monthly price actually costs — the number the yearly saving is against.</summary>
+    private static string YearlyTotal(PlansDto p)
+    {
+        var ci = System.Globalization.CultureInfo.InvariantCulture;
+        return decimal.TryParse(p.MonthlyPrice, System.Globalization.NumberStyles.Any, ci, out var m)
+            ? (m * 12m).ToString("0.##", ci)
+            : p.MonthlyPrice;
+    }
+
     private void OnPlanBlocked(string featureKey)
     {
         _gateBlocked = featureKey;

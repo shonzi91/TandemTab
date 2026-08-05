@@ -73,10 +73,20 @@ public sealed class SignupService(FinAppDbContext db)
         try
         {
             await using var cmd = conn.CreateCommand();
-            cmd.CommandText = "SELECT COUNT(*) FROM \"UserSignups\" WHERE \"UserId\" = @uid AND \"Cohort\" = 'beta'";
+            cmd.CommandText = "SELECT \"Cohort\" FROM \"UserSignups\" WHERE \"UserId\" = @uid";
             AddParam(cmd, "@uid", userId.ToString());
-            return Convert.ToInt32(await cmd.ExecuteScalarAsync(ct), CultureInfo.InvariantCulture) > 0;
+            var cohort = await cmd.ExecuteScalarAsync(ct) as string;
+
+            // ⚠️ NO ROW MEANS BETA, deliberately — this is not a fallback, it's the correct answer.
+            // Stamping signups only began in Session 83 (OPEN-BETA B4), so every account created before that has
+            // no row at all. Requiring an explicit Cohort='beta' therefore told the entitlement resolver that the
+            // *earliest* members — the people this allowance exists to reward — were post-cap Free users: no
+            // crown, and fully gated during a beta that is supposed to be unrestricted.
+            // Only an EXPLICIT non-beta cohort excludes an account: "free" (stamped once the lifetime allowance
+            // was full) or "test" (our own addresses, which must stay ungrandfathered so Free can be tested).
+            return cohort is null || string.Equals(cohort, BetaCohort, StringComparison.Ordinal);
         }
+        catch { return true; }   // a lookup failure must not silently demote a member mid-beta
         finally { if (opened) await conn.CloseAsync(); }
     }
 

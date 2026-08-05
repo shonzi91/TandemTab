@@ -11,11 +11,14 @@ namespace FinApp.Server.Tests;
 public sealed class GatingServerFactory : FinAppServerFactory
 {
     public const string AdminEmail = "gate.admin@example.com";
+    /// <summary>A second admin address: tests share this host, so each one that needs to pin a plan needs its own
+    /// account, and an email can only be registered once.</summary>
+    public const string AdminEmail2 = "gate.admin2@example.com";
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         base.ConfigureWebHost(builder);
-        builder.UseSetting("Admin:Emails", AdminEmail);   // overrides the base's empty allowlist
+        builder.UseSetting("Admin:Emails", $"{AdminEmail},{AdminEmail2}");   // overrides the base's empty allowlist
     }
 }
 
@@ -73,5 +76,37 @@ public class GatingApiTests : IClassFixture<GatingServerFactory>
         var importPro = await client.PostAsJsonAsync($"/accounts/{acct.Id}/import",
             new ImportTransactionsRequest(Array.Empty<ImportRowDto>()));
         Assert.NotEqual(HttpStatusCode.PaymentRequired, importPro.StatusCode);
+    }
+
+    /// <summary>
+    /// A pinned account can actually complete a checkout. This is a regression test for a real defect: the
+    /// billing endpoints checked the raw global <c>Monetization:Enabled</c> flag while <c>/me</c> reported
+    /// monetization live for a pinned account — so the client (which trusts <c>/me</c>) showed "Upgrade to Pro"
+    /// and the endpoint answered 404. The test switch could show the button but never exercise the flow it exists
+    /// to rehearse. Both now resolve through <see cref="FinApp.Server.Auth.EntitlementService"/>.
+    /// </summary>
+    [Fact]
+    public async Task A_pinned_account_can_walk_the_whole_sandbox_checkout()
+    {
+        var (client, _) = await _factory.RegisterAndAuthAsync("gatebuyer", GatingServerFactory.AdminEmail2);
+
+        (await client.PostAsJsonAsync("/admin/plan-override", new PlanOverrideRequest("free"))).EnsureSuccessStatusCode();
+        Assert.Equal("free", (await client.GetFromJsonAsync<UserDto>("/me"))!.Plan);
+
+        // Checkout must be REACHABLE (this is what 404'd before), and hand back a sandbox session.
+        var checkout = await client.PostAsJsonAsync("/billing/checkout", new CheckoutRequest(BillingInterval.Annual));
+        checkout.EnsureSuccessStatusCode();
+        var session = (await checkout.Content.ReadFromJsonAsync<CheckoutSessionDto>())!;
+        Assert.True(session.Sandbox);
+        Assert.NotEmpty(session.SessionId);
+
+        // Completing it lands on Pro. Note the pin is moved to "pro" rather than cleared: while the global flag is
+        // off, plan resolution short-circuits before it consults subscriptions, so a cleared pin would drop the
+        // account back to its cohort default and the purchase would be invisible.
+        (await client.PostAsJsonAsync("/billing/sandbox/complete", new CheckoutRequest(BillingInterval.Annual)))
+            .EnsureSuccessStatusCode();
+        var after = await client.GetFromJsonAsync<UserDto>("/me");
+        Assert.Equal("pro", after!.Plan);
+        Assert.True(after.ProBadge);
     }
 }

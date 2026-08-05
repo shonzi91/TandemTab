@@ -1,0 +1,79 @@
+@implements IDisposable
+
+@* A number that counts to its new value instead of snapping.
+
+   Used sparingly and only on HEADLINE figures (the breakdown donut's centre total). Every frame is a Blazor
+   re-render, so this is not free — putting it on a list of rows would re-render the list dozens of times for a
+   cosmetic effect. One number, one short tween.
+
+   Honours prefers-reduced-motion: motion-sensitive users get the value immediately, with no timer started at
+   all — the check happens before any animation is scheduled, not by animating invisibly. *@
+
+@Format(_shown)
+
+@code {
+    [Parameter, EditorRequired] public decimal Value { get; set; }
+
+    /// <summary>How to render the in-between values — normally the caller's money formatter, so the currency and
+    /// decimals match everything around it.</summary>
+    [Parameter, EditorRequired] public Func<decimal, string> Format { get; set; } = v => v.ToString();
+
+    /// <summary>Total tween time. Deliberately short enough to feel like settling rather than loading.</summary>
+    [Parameter] public int DurationMs { get; set; } = 650;
+
+    /// <summary>Set false to skip the animation (e.g. the caller knows motion is reduced).</summary>
+    [Parameter] public bool Animate { get; set; } = true;
+
+    private decimal _shown;
+    private decimal _from;
+    private decimal _target;
+    private CancellationTokenSource? _cts;
+
+    protected override void OnParametersSet()
+    {
+        if (Value == _target) return;              // nothing changed — don't restart a tween
+        _from = _shown;
+        _target = Value;
+
+        // First paint shows the real number: counting up from zero the first time the chart appears would make a
+        // page load look like it was still loading.
+        if (!Animate || _from == 0m && _shown == 0m && _target != 0m && _firstRender)
+        {
+            _shown = _target;
+            return;
+        }
+        _ = RunAsync(_target);
+    }
+
+    private bool _firstRender = true;
+    protected override void OnAfterRender(bool first) { if (first) _firstRender = false; }
+
+    private async Task RunAsync(decimal target)
+    {
+        _cts?.Cancel();
+        var cts = _cts = new CancellationTokenSource();
+        var start = DateTime.UtcNow;
+        var from = _from;
+        try
+        {
+            // ~16ms ticks. The loop exits on the first tick past DurationMs and pins the exact target, so the
+            // final value is never an interpolation artefact a few cents short.
+            while (!cts.IsCancellationRequested)
+            {
+                var t = (DateTime.UtcNow - start).TotalMilliseconds / DurationMs;
+                if (t >= 1) break;
+                // easeOutCubic — quick at first, settling gently, which reads as "landing" rather than "loading".
+                var eased = 1 - Math.Pow(1 - t, 3);
+                _shown = from + (target - from) * (decimal)eased;
+                await InvokeAsync(StateHasChanged);
+                await Task.Delay(16, cts.Token);
+            }
+        }
+        catch (OperationCanceledException) { return; }
+        if (cts.IsCancellationRequested) return;
+        _shown = target;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose() { _cts?.Cancel(); _cts?.Dispose(); }
+}
