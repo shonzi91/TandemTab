@@ -595,6 +595,51 @@ else
                 }
             </section>
 
+            @* F7 "your week in money" — the last COMPLETED week, at most once a week, dismissed for good with a tap.
+               Deliberately not a permanent Home section: it is absent six days out of seven, which is the only reason
+               a recap can sit above the fold without becoming another panel to scroll past. Nothing here is computed
+               that the Breakdown doesn't already show — it's a read-out, so it can re-engage without making a claim. *@
+            @if (WeekRecapToShow() is { } recap)
+            {
+                var recapDown = recap.Change.IsNegative;
+                <section class="week-recap">
+                    <div class="week-recap-head">
+                        <span class="week-recap-title"><Icon Name="calendar" /> @Loc["Your week in money"]</span>
+                        <span class="week-recap-dates">@recap.From.ToString("d MMM") – @recap.To.ToString("d MMM")</span>
+                        <button class="week-recap-x" title="@Loc["Dismiss"]" aria-label="@Loc["Dismiss"]" @onclick="DismissWeekRecap"><Icon Name="x" /></button>
+                    </div>
+                    <div class="week-recap-body">
+                        <div class="week-recap-fig">
+                            <span class="week-recap-lbl">@Loc["Spent"]</span>
+                            <strong>@Fmt(recap.Spent)</strong>
+                            @* Only against a week that actually had spending — "100% less than last week" for a first
+                               week of use is noise wearing the costume of an insight. *@
+                            @if (recap.HasComparison)
+                            {
+                                <small class="@(recapDown ? "good-text" : "warn-text")">
+                                    @string.Format(recapDown ? Loc["{0} less than the week before"] : Loc["{0} more than the week before"], Fmt(Math.Abs(recap.Change.Amount)))
+                                </small>
+                            }
+                        </div>
+                        @if (recap.TopCategoryId is { } topCat)
+                        {
+                            <div class="week-recap-fig">
+                                <span class="week-recap-lbl">@Loc["Most of it"]</span>
+                                <strong><CatIcon Name="@State.CategoryIcon(topCat)" /> @State.CategoryName(topCat)</strong>
+                                <small>@Fmt(recap.TopCategorySpent)</small>
+                            </div>
+                        }
+                        @if (recap.Saved.Amount > 0m)
+                        {
+                            <div class="week-recap-fig">
+                                <span class="week-recap-lbl">@Loc["Set aside"]</span>
+                                <strong class="good-text">@Fmt(recap.Saved)</strong>
+                            </div>
+                        }
+                    </div>
+                </section>
+            }
+
             @* Money-glance row (Move 1): "where your money went" + "at this rate" side by side — half the row each on
                desktop, stacking on mobile. When the runway's "show the math" opens it breaks to full width.
                The donut (UX backlog #6) promotes the full Breakdown; tap it to jump in. Hidden until there's spend. *@
@@ -2289,6 +2334,13 @@ else
     </div>
 }
 
+@* F6: the goal-milestone moment. Sits above the FAB and below the modal layer — it should never cover a form the
+   user is mid-way through, and CheckCelebrationsAsync only fires from the render loop, not from a save handler. *@
+<GoalCelebration Item="_celebrating"
+                 Together="@(State.IsReady && State.HasAccounts && State.RealUsers.Count > 1)"
+                 Others="@(State.IsReady && State.HasAccounts ? OtherMemberNames() : null)"
+                 OnDismiss="DismissCelebration" />
+
 @if (_modal != Modal.None)
 {
     <div class="modal-backdrop">
@@ -2322,6 +2374,12 @@ else
                         <input type="text" class="tag-new-in" placeholder="@Loc["New tag…"]" maxlength="30" @bind="_newTagName" @bind:event="oninput" @onkeydown="TagNewKey" />
                         <button type="button" class="lbl-add" title="@Loc["Add tag"]" disabled="@string.IsNullOrWhiteSpace(_newTagName)" @onclick="AddTagFromModal">+</button>
                     </div>
+                    @* F2: say it out loud when a tag moved the category — the category chips above do update, but a
+                       silent change to where money is filed is exactly the kind of "helpful" nobody asked for. *@
+                    @if (_tagFiledTo is { } filed)
+                    {
+                        <small class="hint tag-filed"><Icon Name="check" /> @string.Format(Loc["Filed under {0} — change it above if that's not right."], State.CategoryName(filed))</small>
+                    }
                 </div>;
             }
             @switch (_modal)
@@ -2621,6 +2679,46 @@ else
                     <label>@Loc["Name"] <input type="text" @bind="_fName" /></label>
                     @SavingsTargetField
                     <p class="hint">@Loc["Your monthly savings goal — drives the Insights score."] @Loc["Currency"] (@State.Currency) @Loc["can't be changed once an account exists."]</p>
+                    @* F4 round-ups. Lives here with the savings target rather than in a section of its own — it's one
+                       account-level switch about saving, and a whole panel for a toggle is how a settings screen rots. *@
+                    var ruBuckets = State.SavingBuckets.Where(b => !b.Bucket.IsArchived).ToList();
+                    <div class="modal-field">
+                        <span class="lbl-row">@Loc["Round up spending"]</span>
+                        @if (ruBuckets.Count == 0)
+                        {
+                            <small class="hint">@Loc["Create a savings bucket first — round-ups need somewhere to go."]</small>
+                        }
+                        else
+                        {
+                            <div class="qp-row">
+                                @foreach (var (step, label) in new (decimal, string)[] { (0m, Loc["Off"]), (1m, Fmt(1m)), (5m, Fmt(5m)) })
+                                {
+                                    var ruStep = step;
+                                    <button type="button" class="tag-chip @(_fRoundUpTo == ruStep ? "tag-chip-on" : "")" @onclick="() => _fRoundUpTo = ruStep">@label</button>
+                                }
+                            </div>
+                            @if (_fRoundUpTo > 0m)
+                            {
+                                <label>@Loc["Into"]
+                                    <select @bind="_fRoundUpBucketId">
+                                        @foreach (var (bucket, _) in ruBuckets)
+                                        {
+                                            <option value="@bucket.Id">@bucket.Name</option>
+                                        }
+                                    </select>
+                                </label>
+                                <small class="hint">@string.Format(Loc["Every expense rounds up to the next {0}, and the difference is set aside. A {1} coffee saves {2}."], Fmt(_fRoundUpTo), Fmt(RoundUpExample), Fmt(_fRoundUpTo - decimal.Remainder(RoundUpExample, _fRoundUpTo)))</small>
+                            }
+                            else
+                            {
+                                <small class="hint">@Loc["Off. Turn this on to round each expense up and quietly save the change."]</small>
+                            }
+                            @if (State.RoundUpsSweptTotal.Amount > 0m)
+                            {
+                                <small class="hint"><Icon Name="check" /> @string.Format(Loc["{0} saved this way so far."], Fmt(State.RoundUpsSweptTotal))</small>
+                            }
+                        }
+                    </div>
                     <div class="modal-actions">
                         <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
                         <button @onclick="SaveEditAccount" disabled="@(string.IsNullOrWhiteSpace(_fName))">@Loc["Save"]</button>
@@ -2811,10 +2909,25 @@ else
                         }
                         <CategoryPicker Value="_categoryId" ValueChanged="OnExpenseCategoryPicked" Options="State.CategoryOptions" />
                     </div>
-                    <label>@Loc["Amount"] <input type="number" step="0.01" min="0" @bind="_amount" @bind:event="oninput" /></label>
+                    @* F1: inputmode="decimal" so a phone raises the numeric keypad rather than the full keyboard, and
+                       @ref so the cursor can land here when the category was already chosen (see OpenAddExpense). *@
+                    <label>@Loc["Amount"] <input type="number" inputmode="decimal" step="0.01" min="0" @ref="_amountInput" @bind="_amount" @bind:event="oninput" /></label>
                     @if (_amount < 0)
                     {
                         <small class="hint warn-text">@Loc["Amount can't be negative — enter what you spent."]</small>
+                    }
+                    @* Recent amounts for this category as tappable hints. Never pre-filled — the amount is the one
+                       field that really changes each time, so a wrong default here writes a wrong ledger entry. *@
+                    var amtHints = State.RecentAmountsForCategory(_categoryId);
+                    @if (amtHints.Count > 0 && _expenseDrafts.Count == 0)
+                    {
+                        <div class="qp-row amt-hints">
+                            @foreach (var h in amtHints)
+                            {
+                                var hint = h;
+                                <button type="button" class="tag-chip amt-hint @(_amount == hint ? "tag-chip-on" : "")" @onclick="() => UseAmountHint(hint)">@Fmt(hint)</button>
+                            }
+                        </div>
                     }
                     <label>@Loc["Date"] <input type="date" @bind="_expenseDate" min="@State.Period.From.ToString("yyyy-MM-dd")" max="@State.Period.To.ToString("yyyy-MM-dd")" /></label>
                     <div class="modal-field"><span class="lbl-row">@Loc["Fund"] <button type="button" class="lbl-add" title="@Loc["New fund"]" @onclick="ExpenseAddFund">+</button></span>
@@ -3383,10 +3496,13 @@ else
                             {
                                 var tid = t.Id;
                                 var archived = t.IsArchived;
+                                var tagCat = State.TagCategory(tid);
                                 <li>
-                                    <span class="row-main"><span class="exp-tag @(archived ? "exp-tag-off" : "")">@t.Name</span>@if (archived) { <span class="row-note"> · @Loc["archived"]</span> }</span>
+                                    @* The F2 binding is shown on the row, not just inside the edit modal — a tag that
+                                       silently changes the category on pick has to be visible from the list that owns it. *@
+                                    <span class="row-main"><span class="exp-tag @(archived ? "exp-tag-off" : "")">@t.Name</span>@if (tagCat is { } tc) { <span class="row-note"> · <Icon Name="arrow-right" /> @State.CategoryName(tc)</span> }@if (archived) { <span class="row-note"> · @Loc["archived"]</span> }</span>
                                     <span class="row-actions">
-                                        <button class="exp-edit" title="@Loc["Rename"]" @onclick="() => OpenEditTag(tid)"><Icon Name="pencil" /></button>
+                                        <button class="exp-edit" title="@Loc["Edit"]" @onclick="() => OpenEditTag(tid)"><Icon Name="pencil" /></button>
                                         <button class="exp-edit" title="@(archived ? Loc["Restore"] : Loc["Archive"])" @onclick="() => (archived ? State.RestoreTag(tid) : State.ArchiveTag(tid))"><Icon Name="@(archived ? "rotate" : "archive")" /></button>
                                         <button class="exp-edit" title="@Loc["Remove"]" @onclick="() => State.RemoveTag(tid)"><Icon Name="trash" /></button>
                                     </span>
@@ -3397,8 +3513,20 @@ else
                     break;
 
                 case Modal.EditTag:
-                    <h3>@Loc["Rename tag"]</h3>
+                    <h3>@Loc["Edit tag"]</h3>
                     <label>@Loc["Name"] <input type="text" maxlength="30" @bind="_editTagName" @bind:event="oninput" @onkeydown="EditTagKey" /></label>
+                    @* F2: bind the tag to a category so applying it files the expense automatically. Optional and
+                       off by default — a tag with no binding behaves exactly as it always has. *@
+                    <label>@Loc["Files into"]
+                        <select @bind="_editTagCatId">
+                            <option value="@Guid.Empty">@Loc["— no category —"]</option>
+                            @foreach (var (c, depth) in State.CategoryOptions)
+                            {
+                                <option value="@c.Id">@(new string(' ', depth * 3))@c.Name</option>
+                            }
+                        </select>
+                    </label>
+                    <small class="hint">@Loc["Picking this tag on a new expense will select that category for you. Expenses you already logged keep the category they have."]</small>
                     <div class="modal-actions">
                         <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
                         <button @onclick="SaveEditTag" disabled="@string.IsNullOrWhiteSpace(_editTagName)">@Loc["Save"]</button>
@@ -5325,6 +5453,125 @@ else
     private IReadOnlyList<Achievement>? _achCache;
     private (Guid acct, long rev, string culture)? _achKey;
 
+    // --- F7: weekly recap -------------------------------------------------------------------------------
+    // The Monday of the last week whose recap has been dismissed on THIS device. Stored per account in localStorage
+    // rather than on the account, for the same reason as the celebration seen-set: "have I read this" is a fact about
+    // a person, and one member dismissing the recap must not clear it out from under the other.
+    private DateOnly? _recapDismissed;
+    private Guid _recapDismissedFor;
+    private bool _recapLoaded;
+    private string RecapKey() => $"finapp_weekrecap_{State.CurrentAccountId}";
+
+    /// <summary>The recap to render, or null: nothing to report, already dismissed for this week, or not loaded yet.
+    /// <b>Strictly weekly</b> — the covered week is the last completed one, so this is the same card all week and
+    /// dismissing it retires it until next Monday.</summary>
+    private WeeklyRecap? WeekRecapToShow()
+    {
+        if (!_recapLoaded || !State.IsReady || !State.HasAccounts) return null;
+        if (State.WeeklyRecap() is not { IsEmpty: false } recap) return null;
+        return _recapDismissed == recap.From ? null : recap;
+    }
+
+    /// <summary>Read this account's last-dismissed week once. Until it lands the card stays hidden, so it can't flash
+    /// on screen and then vanish when storage says it was already dismissed.</summary>
+    private async Task LoadRecapDismissalAsync()
+    {
+        if (!State.IsReady || !State.HasAccounts) return;
+        if (_recapLoaded && _recapDismissedFor == State.CurrentAccountId) return;
+        string? stored = null;
+        try { stored = await JS.InvokeAsync<string?>("localStorage.getItem", RecapKey()); } catch { /* no storage */ }
+        _recapDismissed = DateOnly.TryParse(stored, System.Globalization.CultureInfo.InvariantCulture, out var d) ? d : null;
+        _recapDismissedFor = State.CurrentAccountId;
+        _recapLoaded = true;
+        StateHasChanged();
+    }
+
+    private async Task DismissWeekRecap()
+    {
+        if (State.WeeklyRecap() is not { } recap) return;
+        _recapDismissed = recap.From;
+        try { await JS.InvokeVoidAsync("localStorage.setItem", RecapKey(), recap.From.ToString("yyyy-MM-dd")); }
+        catch { /* no storage — it'll be back next load, which is the harmless direction */ }
+    }
+
+    // --- F6: shared-goal celebration ------------------------------------------------------------------
+    // Which per-bucket milestones THIS DEVICE has already shown. Kept in localStorage, not in the account: the
+    // achievement log is shared, so whoever opens the app first would otherwise consume the moment for everyone.
+    private Achievement? _celebrating;
+    private HashSet<string>? _celebrated;      // null until loaded for the current account
+    private Guid _celebratedFor;               // which account _celebrated belongs to
+    private string CelebrationsKey() => $"finapp_celebrated_{State.CurrentAccountId}";
+    // Achievement keys are goal_{guid} / debt_{tier}_{guid}, so a comma can never appear inside one.
+    private const char CelebratedSep = ',';
+
+    /// <summary>
+    /// Queue the next unseen bucket milestone for its moment. On the <b>first</b> run for an account the whole
+    /// current set is marked seen and nothing is shown — an established account would otherwise open into a stack of
+    /// celebrations for goals reached months ago, which is confusing rather than pleasant.
+    /// </summary>
+    private async Task CheckCelebrationsAsync()
+    {
+        if (!State.IsReady || !State.HasAccounts || _celebrating is not null) return;
+
+        if (_celebrated is null || _celebratedFor != State.CurrentAccountId)
+        {
+            string? stored = null;
+            try { stored = await JS.InvokeAsync<string?>("localStorage.getItem", CelebrationsKey()); } catch { /* no storage */ }
+            _celebrated = string.IsNullOrEmpty(stored)
+                ? new HashSet<string>(StringComparer.Ordinal)
+                : stored.Split(CelebratedSep, StringSplitOptions.RemoveEmptyEntries).ToHashSet(StringComparer.Ordinal);
+            _celebratedFor = State.CurrentAccountId;
+
+            // ⚠️ First run for this account: adopt whatever is already earned as "seen" and write the marker
+            // IMMEDIATELY — even when the set is empty. An established account must not open into a stack of
+            // celebrations for goals reached months ago; but the marker has to exist from the very first load, or a
+            // brand-new account (nothing earned, so nothing written) would still look like a first run when its first
+            // milestone finally lands — and swallow the one celebration the feature exists for.
+            if (stored is null)
+            {
+                foreach (var a in BudgetingState.BucketMilestones(CurrentAchievements())) _celebrated.Add(a.Key);
+                await SaveCelebratedAsync();
+                return;
+            }
+        }
+
+        var unseen = BudgetingState.BucketMilestones(CurrentAchievements())
+            .Where(a => !_celebrated.Contains(a.Key)).ToList();
+        if (unseen.Count == 0) return;
+
+        foreach (var a in unseen) _celebrated.Add(a.Key);
+        await SaveCelebratedAsync();
+
+        // One at a time. Reaching two milestones between renders is rare, and stacking them would turn a moment
+        // into a queue to dismiss; the rest are already recorded in the Achievements modal.
+        _celebrating = unseen[0];
+        StateHasChanged();
+    }
+
+    /// <summary>Persist the seen-set. An empty set is still written — the marker's <i>presence</i> is what says
+    /// "this account has been seen before", so it must be stored even before anything has been earned.</summary>
+    private async Task SaveCelebratedAsync()
+    {
+        try { await JS.InvokeVoidAsync("localStorage.setItem", CelebrationsKey(), string.Join(CelebratedSep, _celebrated!)); }
+        catch { /* no storage — the moment may show again, which is the harmless direction */ }
+    }
+
+    private void DismissCelebration() => _celebrating = null;
+
+    /// <summary>Just the other members' names, for the "You and {0} got here together" line. Not <see cref="MembersLine"/>,
+    /// which formats the whole membership ("you &amp; Maria") and would read as "You and you & Maria".</summary>
+    private string OtherMemberNames()
+    {
+        var others = State.RealUsers.Where(m => m.UserId != State.MyUserId).Select(m => m.DisplayName).ToList();
+        return others.Count switch
+        {
+            0 => "",
+            1 => others[0],
+            2 => string.Format(Loc["{0} and {1}"], others[0], others[1]),
+            _ => string.Join(", ", others.Take(others.Count - 1)) + " " + string.Format(Loc["and {0}"], others[^1]),
+        };
+    }
+
     private IReadOnlyList<Achievement> CurrentAchievements()
     {
         var key = (State.CurrentAccountId, State.Revision, System.Globalization.CultureInfo.CurrentUICulture.Name);
@@ -5557,6 +5804,11 @@ else
     private readonly HashSet<Guid> _dismissedPace = new();   // pace reminders dismissed this period (bucket ids)
     private string? _fCurrency = "EUR";
     private int _fSavingsTarget = 20;
+    // F4: the edit-account modal's in-flight round-up settings (committed by SaveEditAccount).
+    private decimal _fRoundUpTo;
+    private Guid _fRoundUpBucketId;
+    /// <summary>A concrete amount for the round-up explainer, so the saving is shown rather than described.</summary>
+    private const decimal RoundUpExample = 2.40m;
     private string? _fIcon;
     private bool _iconOpen;   // add/edit modals: whether the icon palette (next to the Name field) is expanded
 
@@ -5643,10 +5895,14 @@ else
             try { await JS.InvokeVoidAsync("finappBack.init", _backRef); } catch { /* host without the shim */ }
         }
         await SyncBackDepthAsync();
+        await FocusAmountIfRequestedAsync();
 
         if (State.IsReady && State.HasAccounts)
         {
             await State.StampAchievementsAsync(_achievements, Fmt, Loc.T);
+            // F6: after the stamp, so a milestone earned by this very render is already in the catalogue.
+            await CheckCelebrationsAsync();
+            await LoadRecapDismissalAsync();   // F7
             // Auto-post any due Fixed items opted into it. Converges (items are marked handled synchronously), so this
             // runs at most once per due item; the returned notice surfaces the move in the bell (never silent).
             var posted = await State.AutoPostDueRecurringAsync();
@@ -6632,12 +6888,21 @@ else
     });
     private async Task ManageTagKey(KeyboardEventArgs e) { if (e.Key is "Enter" && !string.IsNullOrWhiteSpace(_manageTagName)) await AddTagFromManage(); }
 
-    private void OpenEditTag(Guid tagId) { _editTagId = tagId; _editTagName = State.TagName(tagId); _modalBack.Push(OpenManageTags); _modal = Modal.EditTag; }
+    // F2: the category this tag files into while the edit modal is open. Guid.Empty = "no category" (the <select>
+    // needs a real value for its "—" option; the state layer takes null).
+    private Guid _editTagCatId;
+
+    private void OpenEditTag(Guid tagId)
+    {
+        _editTagId = tagId; _editTagName = State.TagName(tagId);
+        _editTagCatId = State.TagCategory(tagId) ?? Guid.Empty;
+        _modalBack.Push(OpenManageTags); _modal = Modal.EditTag;
+    }
     private Task SaveEditTag() => RunModal(async () =>
     {
         var name = _editTagName?.Trim();
         if (string.IsNullOrWhiteSpace(name)) return;
-        await State.SaveTag(_editTagId, name, State.TagIcon(_editTagId));
+        await State.SaveTag(_editTagId, name, State.TagIcon(_editTagId), _editTagCatId == Guid.Empty ? null : _editTagCatId);
         Back();
     });
     private async Task EditTagKey(KeyboardEventArgs e) { if (e.Key is "Enter" && !string.IsNullOrWhiteSpace(_editTagName)) await SaveEditTag(); }
@@ -7739,13 +8004,37 @@ else
         CloseModal();
     });
 
-    private void OpenAddExpense(Guid categoryId)
+    /// <summary>Open Add-expense for a category. When <paramref name="focusAmount"/> (F1: the category was a deliberate
+    /// choice — a quick-add chip, a budget row, a category detail) the Amount field takes focus, so category/fund/date
+    /// are all settled and the one number that actually changes is the only thing left to type. Callers that open the
+    /// modal <i>without</i> a real category choice pass false: stealing focus there would raise the mobile keypad over
+    /// the category picker the user still has to use.</summary>
+    private void OpenAddExpense(Guid categoryId, bool focusAmount = true)
     {
         _categoryId = categoryId; _amount = 0; _note = null;
-        _fTagId = null; _newTagName = null;
+        _fTagId = null; _newTagName = null; _tagFiledTo = null;
         _expenseDate = _dayView ?? DateOnly.FromDateTime(DateTime.Today);
         _fundId = DefaultFundForCategory(categoryId); _modal = Modal.AddExpense;
+        _focusAmount = focusAmount;
     }
+
+    // F1: set when the modal should open with the cursor already in Amount; consumed once by OnAfterRenderAsync.
+    private bool _focusAmount;
+    private ElementReference _amountInput;
+
+    /// <summary>Put the cursor in the Amount field once, after the modal that owns it has rendered. Guarded on the
+    /// modal being open because the <see cref="ElementReference"/> only exists while it is; the try/catch covers the
+    /// render-timing case where the element is not attached yet (a missed focus must never break the modal).</summary>
+    private async Task FocusAmountIfRequestedAsync()
+    {
+        if (!_focusAmount || _modal != Modal.AddExpense) return;
+        _focusAmount = false;
+        try { await _amountInput.FocusAsync(); } catch { /* not attached — no focus, no harm */ }
+    }
+
+    /// <summary>Apply a recent-amount hint chip (F1's booster). A tap, never a pre-fill — see
+    /// <c>BudgetingState.RecentAmountsForCategory</c> for why the amount is the one field that must not be guessed.</summary>
+    private void UseAmountHint(decimal amount) => _amount = amount;
 
     /// <summary>Fund to pre-select for a category: the one last used for it (#11), falling back to the first selectable.</summary>
     private Guid DefaultFundForCategory(Guid categoryId) =>
@@ -7763,14 +8052,14 @@ else
         _categoryId = e.CategoryId;
         _amount = e.Amount.Amount;
         _note = e.Note;
-        _fTagId = e.TagId; _newTagName = null;
+        _fTagId = e.TagId; _newTagName = null; _tagFiledTo = null;
         _expenseDate = _dayView ?? ClampToPeriod(DateOnly.FromDateTime(DateTime.Today));
         _fundId = State.SelectableFunds.Any(f => f.Id == e.FundId) ? e.FundId : DefaultFundForCategory(e.CategoryId);
         _modal = Modal.AddExpense;
     }
 
     /// <summary>Open the add-expense popup from the Expenses tab (no category pre-selected — pick it in the modal).</summary>
-    private void OpenAddExpenseTab() => OpenAddExpense(State.AllCategories.FirstOrDefault()?.Id ?? Guid.Empty);
+    private void OpenAddExpenseTab() => OpenAddExpense(State.AllCategories.FirstOrDefault()?.Id ?? Guid.Empty, focusAmount: false);
 
     /// <summary>Add-expense from the Spending view header — pre-dated to the focused day when one is open.</summary>
     private void AddExpenseFromHeader()
@@ -7795,7 +8084,7 @@ else
     {
         if (_amount <= 0) return;
         _expenseDrafts.Add(new ExpenseDraft(_categoryId, _amount, _fundId, _note, _expenseDate, _fTagId));
-        _amount = 0; _note = null; _fTagId = null; _newTagName = null;
+        _amount = 0; _note = null; _fTagId = null; _newTagName = null; _tagFiledTo = null;
     }
 
     /// <summary>Pull a staged draft back into the editor to fix it (removing it from the list). If the editor already
@@ -7805,7 +8094,7 @@ else
         if (_amount > 0) StageCurrentExpense();
         _expenseDrafts.Remove(d);
         _categoryId = d.CategoryId; _amount = d.Amount; _fundId = d.FundId; _note = d.Note; _expenseDate = d.Date;
-        _fTagId = d.TagId; _newTagName = null;
+        _fTagId = d.TagId; _newTagName = null; _tagFiledTo = null;
     }
 
     private void RemoveDraft(ExpenseDraft d) => _expenseDrafts.Remove(d);
@@ -7827,7 +8116,28 @@ else
 
     // --- Tags: single-select + inline create inside the expense modals ---
     // One tag per expense: picking the selected tag clears it, picking another replaces it.
-    private void ToggleTagSel(Guid tagId) { _fTagId = _fTagId == tagId ? null : tagId; }
+    private void ToggleTagSel(Guid tagId)
+    {
+        var clearing = _fTagId == tagId;
+        _fTagId = clearing ? null : tagId;
+        _tagFiledTo = null;
+        // Clearing a tag never un-files: the category stands on its own once chosen.
+        if (!clearing) ApplyTagBinding(tagId);
+    }
+
+    /// <summary>F2: a bound tag files the expense for you. Only while <b>adding</b> — on an edit the row already has a
+    /// category the user chose, and re-filing it off the back of a tap meant for tagging would rewrite a stored entry
+    /// (moving spend between budgets) as a side effect of labelling it.</summary>
+    private void ApplyTagBinding(Guid tagId)
+    {
+        if (_modal != Modal.AddExpense) return;
+        if (State.TagCategory(tagId) is not { } cat || cat == _categoryId) return;
+        _categoryId = cat;
+        _tagFiledTo = cat;   // so the swap is announced, not silent
+    }
+
+    // F2: set when picking a tag just changed the category, so the modal can say so. Cleared on the next tag action.
+    private Guid? _tagFiledTo;
 
     /// <summary>Create the tag typed in the modal's "new tag" box and select it (so it's attached on save).</summary>
     private Task AddTagFromModal() => RunModal(async () =>
@@ -7844,6 +8154,10 @@ else
         if (id != Guid.Empty) _fTagId = id;
         _newTagName = null;
         _categoryId = keepCat; _fundId = keepFund;
+        // Restore first, then let F2 have its say: a brand-new tag is unbound (no-op), but typing the name of an
+        // existing bound tag selects that tag, and it should file exactly as tapping its chip would.
+        _tagFiledTo = null;
+        if (id != Guid.Empty) ApplyTagBinding(id);
     });
 
     private async Task TagNewKey(KeyboardEventArgs e)
@@ -7914,7 +8228,7 @@ else
         if (State.FindExpense(expenseId) is not { } e) return;
         _editExpenseId = expenseId;
         _categoryId = e.CategoryId; _amount = e.Amount.Amount; _fundId = e.FundId; _note = e.Note; _expenseDate = e.Date;
-        _fTagId = e.TagId; _newTagName = null;
+        _fTagId = e.TagId; _newTagName = null; _tagFiledTo = null;
         _modal = Modal.EditExpense;
     }
 
@@ -8421,7 +8735,17 @@ else
         if (State.Accounts.Count(a => a.IsOwner) >= 1 && !Gate.Require(PlanFeatures.Caps)) return;
         _fName = null; _fCurrency = State.Currency; _fSavingsTarget = 20; _modal = Modal.AddAccount;
     }
-    private void OpenEditAccount() { _fName = State.Account.Name; _fSavingsTarget = (int)decimal.Round(State.SavingsRateTarget * 100m); _modal = Modal.EditAccount; }
+    private void OpenEditAccount()
+    {
+        _fName = State.Account.Name;
+        _fSavingsTarget = (int)decimal.Round(State.SavingsRateTarget * 100m);
+        _fRoundUpTo = State.RoundUpTo;
+        // Default the destination to the first bucket so switching the step on is one tap, not two.
+        _fRoundUpBucketId = State.RoundUpBucketId
+            ?? State.SavingBuckets.FirstOrDefault(b => !b.Bucket.IsArchived).Bucket?.Id
+            ?? Guid.Empty;
+        _modal = Modal.EditAccount;
+    }
     private void OpenDeleteAccount() => _modal = Modal.DeleteAccount;
     // Sharing is the hero Pro feature and, per MONETIZATION.md, the intended upgrade moment — so the gate sits on
     // the invite, not on a pricing page. Inert until the monetization flag lifts (PlanGate.Allows passes
@@ -8513,6 +8837,9 @@ else
         var target = Math.Clamp(_fSavingsTarget, 0, 100) / 100m;
         if (target != State.SavingsRateTarget)
             await State.SetSavingsRateTarget(target);
+        // F4: only write when something actually changed — this is a whole-snapshot push, not a field update.
+        if (_fRoundUpTo != State.RoundUpTo || (_fRoundUpTo > 0m && _fRoundUpBucketId != State.RoundUpBucketId))
+            await State.ConfigureRoundUps(_fRoundUpTo, _fRoundUpTo > 0m ? _fRoundUpBucketId : null);
         CloseModal();
     });
 

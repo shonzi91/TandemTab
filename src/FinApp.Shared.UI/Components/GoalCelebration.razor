@@ -1,0 +1,50 @@
+@inject Localizer Loc
+
+@* F6 — the moment a savings or debt goal hits a milestone.
+
+   Shown once per person, not once per account. The achievement log lives in the shared account snapshot, so the
+   first member's client stamps it and the second pulls it down already-logged; driving this off "newly stamped"
+   would hand the moment to whoever happened to open the app first and silently rob everyone else. The caller keeps
+   a per-device seen-set instead (see Dashboard.CelebrationsKey).
+
+   One at a time, dismissed by a tap anywhere. It celebrates and gets out of the way — no actions, no upsell, no
+   "share this": the point is a second of pleasure, and anything else turns it into an interruption. *@
+
+@if (Item is { } a)
+{
+    <div class="celebrate-back" @onclick="Dismiss">
+        <div class="celebrate" role="status" @onclick:stopPropagation="true">
+            <div class="celebrate-burst" aria-hidden="true">
+                @for (var i = 0; i < 9; i++)
+                {
+                    <span class="celebrate-bit celebrate-bit-@i"></span>
+                }
+            </div>
+            <div class="celebrate-medal">@a.Icon</div>
+            <h4 class="celebrate-title">@a.Title</h4>
+            <p class="celebrate-desc">@a.Desc</p>
+            @if (Together)
+            {
+                @* Only when the account really is shared. A solo user told they did it "together" would rightly
+                   read the whole feature as boilerplate. *@
+                <p class="celebrate-together">@string.Format(Loc["You and {0} got here together."], Others)</p>
+            }
+            <button type="button" class="celebrate-ok" @onclick="Dismiss">@Loc["Nice!"]</button>
+        </div>
+    </div>
+}
+
+@code {
+    /// <summary>The milestone to celebrate, or null for nothing on screen.</summary>
+    [Parameter] public Achievement? Item { get; set; }
+
+    /// <summary>True when this account has more than one member, which is what makes it a <i>shared</i> goal.</summary>
+    [Parameter] public bool Together { get; set; }
+
+    /// <summary>The other members' names, already formatted for the sentence (e.g. "Maria" or "Maria and Ivan").</summary>
+    [Parameter] public string? Others { get; set; }
+
+    [Parameter] public EventCallback OnDismiss { get; set; }
+
+    private Task Dismiss() => OnDismiss.InvokeAsync();
+}

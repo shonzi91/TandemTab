@@ -1,0 +1,74 @@
+/* F6 goal celebration. Deliberately short and single-shot: one entrance, no loop, no bounce — a moment, not an
+   animation that has to be waited out. Everything is disabled under prefers-reduced-motion, where the card simply
+   appears. */
+
+.celebrate-back {
+    position: fixed; inset: 0; z-index: 90;
+    display: flex; align-items: center; justify-content: center; padding: 20px;
+    background: rgba(16, 24, 32, .45);
+    animation: celebrate-fade .18s ease-out both;
+}
+
+.celebrate {
+    position: relative;
+    width: min(340px, 100%);
+    padding: 26px 22px 20px;
+    border-radius: 18px;
+    background: #fff;
+    box-shadow: 0 18px 48px rgba(16, 24, 32, .28);
+    text-align: center;
+    animation: celebrate-pop .32s cubic-bezier(.2, .8, .3, 1) both;
+}
+
+.celebrate-medal { font-size: 2.6rem; line-height: 1; margin-bottom: 10px; }
+.celebrate-title { margin: 0 0 6px; font-size: 1.06rem; font-weight: 800; color: #1f2430; }
+.celebrate-desc { margin: 0; font-size: .86rem; line-height: 1.45; color: #6b7480; }
+.celebrate-together { margin: 10px 0 0; font-size: .84rem; font-weight: 700; color: #0f7a54; }
+
+.celebrate-ok {
+    margin-top: 18px; padding: 9px 26px; border: none; border-radius: 999px;
+    background: #13a06e; color: #fff; font: inherit; font-size: .88rem; font-weight: 700; cursor: pointer;
+}
+.celebrate-ok:hover { background: #0f8c5f; }
+
+/* Confetti: nine bits fanned out from behind the medal. Pure CSS — a canvas library for one second of colour would
+   be a dependency (and a bundle) out of all proportion to the payoff. */
+.celebrate-burst { position: absolute; inset: 0; overflow: hidden; border-radius: 18px; pointer-events: none; }
+.celebrate-bit {
+    position: absolute; top: 34px; left: 50%;
+    width: 7px; height: 11px; border-radius: 2px; opacity: 0;
+    animation: celebrate-bit .9s ease-out both;
+}
+.celebrate-bit-0 { background: #13a06e; --dx: -108px; --dr: -140deg; animation-delay: .02s; }
+.celebrate-bit-1 { background: #f5a524; --dx: -78px;  --dr: 120deg;  animation-delay: .06s; }
+.celebrate-bit-2 { background: #3fa9f5; --dx: -46px;  --dr: -80deg;  animation-delay: .00s; }
+.celebrate-bit-3 { background: #ef6f6f; --dx: -18px;  --dr: 160deg;  animation-delay: .09s; }
+.celebrate-bit-4 { background: #13a06e; --dx: 12px;   --dr: -120deg; animation-delay: .04s; }
+.celebrate-bit-5 { background: #9b6ef3; --dx: 44px;   --dr: 100deg;  animation-delay: .08s; }
+.celebrate-bit-6 { background: #f5a524; --dx: 76px;   --dr: -160deg; animation-delay: .01s; }
+.celebrate-bit-7 { background: #3fa9f5; --dx: 104px;  --dr: 140deg;  animation-delay: .07s; }
+.celebrate-bit-8 { background: #ef6f6f; --dx: 132px;  --dr: -100deg; animation-delay: .05s; }
+
+@keyframes celebrate-fade { from { opacity: 0; } to { opacity: 1; } }
+
+@keyframes celebrate-pop {
+    from { opacity: 0; transform: scale(.9) translateY(10px); }
+    to   { opacity: 1; transform: none; }
+}
+
+@keyframes celebrate-bit {
+    0%   { opacity: 0; transform: translate(0, 0) rotate(0); }
+    12%  { opacity: 1; }
+    100% { opacity: 0; transform: translate(var(--dx), 190px) rotate(var(--dr)); }
+}
+
+html.dark .celebrate { background: #171d26; box-shadow: 0 18px 48px rgba(0, 0, 0, .55); }
+html.dark .celebrate-title { color: #e8eef0; }
+html.dark .celebrate-desc { color: #8b96a4; }
+html.dark .celebrate-together { color: #57d9a3; }
+html.dark .celebrate-ok { background: #13a06e; }
+
+@media (prefers-reduced-motion: reduce) {
+    .celebrate-back, .celebrate { animation: none; }
+    .celebrate-burst { display: none; }
+}

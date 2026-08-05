@@ -110,4 +110,61 @@ public class TagAdminTests
         var restored = AccountSnapshotSerializer.Deserialize(AccountSnapshotSerializer.Serialize(account));
         Assert.Empty(restored.Tags);
     }
+
+    // --- F2: tag → category binding -------------------------------------------------------------
+
+    [Fact]
+    public void A_tag_is_unbound_until_a_category_is_set_and_can_be_cleared_again()
+    {
+        var account = new Account("Personal", Eur);
+        var food = account.AddCategory("Food");
+        var lidl = account.AddTag("lidl");
+
+        Assert.Null(lidl.CategoryId);
+
+        account.SetTagCategory(lidl.Id, food.Id);
+        Assert.Equal(food.Id, lidl.CategoryId);
+
+        account.SetTagCategory(lidl.Id, null);
+        Assert.Null(lidl.CategoryId);
+    }
+
+    [Fact]
+    public void Binding_a_tag_to_a_category_that_is_not_in_this_account_is_rejected()
+    {
+        var account = new Account("Personal", Eur);
+        var tag = account.AddTag("lidl");
+        var foreignCategory = new Account("Other", Eur).AddCategory("Food");
+
+        Assert.Throws<InvalidOperationException>(() => account.SetTagCategory(tag.Id, foreignCategory.Id));
+        Assert.Null(tag.CategoryId);
+    }
+
+    [Fact]
+    public void Removing_the_bound_category_clears_the_binding_rather_than_leaving_it_dangling()
+    {
+        var account = new Account("Personal", Eur);
+        var food = account.AddCategory("Food");
+        var lidl = account.AddTag("lidl");
+        account.SetTagCategory(lidl.Id, food.Id);
+
+        account.RemoveCategory(food.Id);   // allowed: nothing references it
+
+        Assert.Null(lidl.CategoryId);
+    }
+
+    [Fact]
+    public void A_tag_binding_survives_a_snapshot_round_trip_and_legacy_tags_restore_unbound()
+    {
+        var account = new Account("Personal", Eur);
+        var food = account.AddCategory("Food");
+        var lidl = account.AddTag("lidl");
+        var work = account.AddTag("Work");
+        account.SetTagCategory(lidl.Id, food.Id);
+
+        var restored = AccountSnapshotSerializer.Deserialize(AccountSnapshotSerializer.Serialize(account));
+
+        Assert.Equal(food.Id, restored.FindTag(lidl.Id)!.CategoryId);
+        Assert.Null(restored.FindTag(work.Id)!.CategoryId);
+    }
 }

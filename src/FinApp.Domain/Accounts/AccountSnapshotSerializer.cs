@@ -44,7 +44,8 @@ public static class AccountSnapshotSerializer
             account.RecurringItems.Count == 0 ? null : account.RecurringItems.Select(r => new RecurringItemNode(
                 r.Id, r.Name, r.Kind, r.AmountMode, r.ExpectedAmount, r.DayOfMonth, r.CategoryId, r.FundId, r.Active, r.Icon, r.LastHandledPeriodFrom, r.AutoPost, r.CreatedOn, r.LinkedDebtBucketId)).ToList(),
             account.OnboardingDismissed,
-            account.Tags.Count == 0 ? null : account.Tags.Select(t => new TagNode(t.Id, t.Name, t.Icon, t.IsArchived)).ToList());
+            account.Tags.Count == 0 ? null : account.Tags.Select(t => new TagNode(t.Id, t.Name, t.Icon, t.IsArchived, t.CategoryId)).ToList(),
+            account.RoundUpTo, account.RoundUpBucketId);
         return JsonSerializer.Serialize(node, Json);
     }
 
@@ -93,6 +94,10 @@ public static class AccountSnapshotSerializer
             var tag = Build(new Tag(t.Name), t.Id);
             tag.SetIcon(t.Icon);
             if (t.IsArchived) tag.SetArchived(true);
+            // Restored on the tag directly rather than through Account.SetTagCategory: categories are restored
+            // separately and their order relative to tags isn't guaranteed, so a validating call could reject a
+            // binding that is in fact sound. Removal already clears bindings, so a stale id can't arise here.
+            tag.SetCategory(t.CategoryId);
             return tag;
         }).ToList());
         SetField(account, "_savingCategories", node.SavingCategories.Select(ToEntity).ToList());
@@ -109,6 +114,10 @@ public static class AccountSnapshotSerializer
         if (node.AchievementLog is { } log)
             foreach (var (key, on) in log) account.RecordAchievement(key, on);
         if (node.OnboardingDismissed) account.DismissOnboarding();
+        // F4: restored after the savings buckets, which ConfigureRoundUps validates against. Guarded rather than
+        // trusted — a snapshot whose target bucket has gone must load with round-ups off, not fail to load at all.
+        if (node.RoundUpTo > 0m && node.RoundUpBucketId is { } ruBucket && account.FindSavingCategory(ruBucket) is not null)
+            account.ConfigureRoundUps(node.RoundUpTo, ruBucket);
         foreach (var r in node.Recurring ?? [])
         {
             var item = Build(new RecurringItem(r.Name, r.Kind, r.AmountMode, r.ExpectedAmount, r.DayOfMonth, r.CategoryId, r.FundId, r.Icon, r.AutoPost), r.Id);
@@ -278,7 +287,9 @@ public static class AccountSnapshotSerializer
         Dictionary<string, DateOnly>? AchievementLog = null,
         List<RecurringItemNode>? Recurring = null,
         bool OnboardingDismissed = false,
-        List<TagNode>? Tags = null);
+        List<TagNode>? Tags = null,
+        // F4: zero on every node written before round-ups existed → off, which is also the default for a new account.
+        decimal RoundUpTo = 0m, Guid? RoundUpBucketId = null);
 
     private record RecurringItemNode(Guid Id, string Name, RecurringKind Kind, RecurringAmountMode AmountMode,
         decimal ExpectedAmount, int DayOfMonth, Guid CategoryId, Guid FundId, bool Active, string? Icon, DateOnly? LastHandledPeriodFrom,
@@ -290,7 +301,9 @@ public static class AccountSnapshotSerializer
     private record ContributionCategoryNode(Guid Id, string Name, string? Icon = null);
     private record FundNode(Guid Id, string Name, Guid? ParentId, string? Note = null, string? Icon = null, bool IsSynced = false, bool IsArchived = false);
     private record CategoryNode(Guid Id, string Name, Guid? ParentId, string? Icon = null, bool IsEssential = false, bool IsArchived = false);
-    private record TagNode(Guid Id, string Name, string? Icon = null, bool IsArchived = false);
+    // F2: CategoryId is null on every node written before the binding existed — i.e. the tag files nothing, which is
+    // exactly what an unbound tag means, so legacy snapshots need no back-fill.
+    private record TagNode(Guid Id, string Name, string? Icon = null, bool IsArchived = false, Guid? CategoryId = null);
     private record SavingCategoryNode(Guid Id, string Name, Guid? ParentId, decimal? GoalAmount, decimal AlertThreshold, bool NotifyOnMilestone, decimal InitialAmount, string? Icon = null,
         SavingKind Kind = SavingKind.Common, decimal DebtBalance = 0m, decimal DebtAnnualRatePercent = 0m, decimal DebtInstallment = 0m, bool IsArchived = false,
         decimal DebtOriginalBalance = 0m, decimal? PlannedContribution = null,

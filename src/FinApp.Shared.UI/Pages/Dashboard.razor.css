@@ -120,6 +120,36 @@ html.dark .onboard-desc { color: #a9b6ad; }
 
 /* Home "needs attention" strip: the urgent notifications, inline, above everything else on Home. Amber, so it
    reads as attention without the alarm of a red error banner. */
+/* F7 "your week in money". Neutral card, not an alert — nothing here needs acting on, and amber would make a
+   read-out look like a problem. Sits between the score block and the money-glance row. */
+.week-recap {
+    margin: 0 0 14px; padding: 12px 14px;
+    border: 1px solid #e6ece9; border-radius: 12px; background: #fbfdfc;
+}
+.week-recap-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.week-recap-title { display: inline-flex; align-items: center; gap: 6px; font-size: .84rem; font-weight: 800; color: #1f2430; }
+.week-recap-title svg { width: 15px; height: 15px; }
+.week-recap-dates { flex: 1 1 auto; font-size: .76rem; color: #8a97a0; }
+.week-recap-x { flex: none; border: none; background: none; color: #8a97a0; cursor: pointer; padding: 2px; line-height: 0; }
+.week-recap-x svg { width: 15px; height: 15px; }
+.week-recap-x:hover { color: #1f2430; }
+.week-recap-body { display: flex; flex-wrap: wrap; gap: 10px 26px; }
+.week-recap-fig { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.week-recap-lbl { font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; color: #8a97a0; }
+.week-recap-fig strong { display: inline-flex; align-items: center; gap: 5px; font-size: 1rem; font-weight: 800; color: #1f2430; font-variant-numeric: tabular-nums; }
+.week-recap-fig small { font-size: .76rem; color: #8a97a0; }
+/* ⚠️ Element-qualified selectors out-specify a bare utility class: `.week-recap-fig small` is (0,1,1) and
+   `.warn-text` is (0,1,0), so the rule above silently won and the comparison line rendered grey. Re-state the two
+   modifiers at matching specificity rather than weakening the default. (Same trap as `.list li` in S85.) */
+.week-recap-fig small.warn-text { color: #b45309; }
+.week-recap-fig small.good-text { color: #13a06e; }
+html.dark .week-recap { background: #141a22; border-color: #2c3644; }
+html.dark .week-recap-title, html.dark .week-recap-fig strong { color: #e8eef0; }
+html.dark .week-recap-dates, html.dark .week-recap-lbl, html.dark .week-recap-fig small, html.dark .week-recap-x { color: #8b96a4; }
+html.dark .week-recap-fig small.warn-text { color: #f0b048; }
+html.dark .week-recap-fig small.good-text { color: #57d9a3; }
+html.dark .week-recap-x:hover { color: #e8eef0; }
+
 .home-alerts { display: flex; flex-direction: column; gap: 8px; margin: 0 0 14px; }
 .home-alert {
     display: flex; align-items: flex-start; gap: 10px;
@@ -765,6 +795,11 @@ html.dark .exp-tag { background: #222a37; color: #a9b6ad; }
 .tag-chip-on { background: #e4f6ee; border-color: #13a06e; color: #0f7a54; }
 html.dark .tag-chip { background: #171d26; border-color: #2c3644; color: #cdd4de; }
 html.dark .tag-chip-on { background: #16261f; border-color: #3fe0c5; color: #57d9a3; }
+/* F2: confirmation that picking a tag moved the category. Green (something happened correctly), not amber — this is
+   the feature working, not a warning. */
+.tag-filed { display: flex; align-items: center; gap: 5px; margin-top: 6px; color: #0f7a54; font-weight: 600; }
+.tag-filed svg { width: 13px; height: 13px; flex: none; }
+html.dark .tag-filed { color: #57d9a3; }
 .tag-new-row { display: flex; align-items: center; gap: 6px; }
 .tag-new-in { flex: 1; min-width: 0; padding: 7px 10px; border: 1px solid #dde6e1; border-radius: 9px; font: inherit; font-size: .84rem; }
 html.dark .tag-new-in { background: #171d26; border-color: #2c3644; color: #e8eef0; }
@@ -2131,6 +2166,12 @@ html.dark .repeat-last { background: #16241d; border-color: #2b4438; color: #57d
 
 /* Add-expense quick-pick + fund chips (reuse the .tag-chip look): a wrapping chip row that sits under a field label. */
 .qp-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 2px 0 4px; }
+
+/* F1 recent-amount hints: tappable shortcuts under the Amount field. Deliberately quieter than the category/fund
+   chips (lighter weight, tabular figures) — these are suggestions, not the selection they sit beside. */
+.amt-hints { margin: -2px 0 8px; }
+.amt-hint { font-variant-numeric: tabular-nums; font-weight: 600; color: #6b7480; }
+html.dark .amt-hint { color: #8b96a4; }
 
 /* Multi-expense staged list: compact rows for the expenses queued to save, above the editor. */
 .draft-list { list-style: none; margin: 0 0 12px; padding: 0; display: flex; flex-direction: column; gap: 4px; }

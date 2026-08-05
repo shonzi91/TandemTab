@@ -48,6 +48,57 @@ public sealed class Account : Entity
     public bool OnboardingDismissed { get; private set; }
     public void DismissOnboarding() => OnboardingDismissed = true;
 
+    /// <summary>
+    /// F4 round-ups: the step each logged expense is rounded up to before the difference is set aside — 1 or 5 in the
+    /// account currency. <b>Zero means off, which is the default</b>: an automatic money movement nobody switched on
+    /// would be indistinguishable from a bug.
+    /// </summary>
+    public decimal RoundUpTo { get; private set; }
+
+    /// <summary>The savings bucket F4 round-ups sweep into. Null (with <see cref="RoundUpTo"/> zero) when off.</summary>
+    public Guid? RoundUpBucketId { get; private set; }
+
+    /// <summary>True when round-ups are configured and pointing at a bucket that still exists and is not archived.
+    /// Checked at sweep time as well as here — a bucket can be archived long after the switch was flipped.</summary>
+    public bool RoundUpsOn =>
+        RoundUpTo > 0m && RoundUpBucketId is { } id && FindSavingCategory(id) is { IsArchived: false };
+
+    /// <summary>
+    /// Turn round-ups on (a step of 1 or 5 plus the destination bucket) or off (a step of 0). The step is restricted
+    /// rather than free-form on purpose: an arbitrary step turns a "spare change" habit into a second, invisible
+    /// budgeting lever, and every value would have to be explained on the ledger line it produces.
+    /// </summary>
+    public void ConfigureRoundUps(decimal roundUpTo, Guid? bucketId)
+    {
+        if (roundUpTo is not (0m or 1m or 5m))
+            throw new ArgumentOutOfRangeException(nameof(roundUpTo), "Round-ups step to 1 or 5, or 0 to turn them off.");
+        if (roundUpTo > 0m)
+        {
+            if (bucketId is not { } id || FindSavingCategory(id) is null)
+                throw new InvalidOperationException("Choose a savings bucket for round-ups to go into.");
+            RoundUpTo = roundUpTo;
+            RoundUpBucketId = id;
+        }
+        else
+        {
+            RoundUpTo = 0m;
+            RoundUpBucketId = null;
+        }
+    }
+
+    /// <summary>
+    /// What an expense of <paramref name="amount"/> would sweep into savings — the distance up to the next multiple of
+    /// <see cref="RoundUpTo"/>, or zero when round-ups are off, the amount is not positive, or it already lands exactly
+    /// on the step. Pure, so the UI can preview the figure without performing the sweep.
+    /// </summary>
+    public decimal RoundUpFor(decimal amount)
+    {
+        if (!RoundUpsOn || amount <= 0m) return 0m;
+        var step = RoundUpTo;
+        var rounded = Math.Ceiling(amount / step) * step;
+        return decimal.Round(rounded - amount, 2, MidpointRounding.AwayFromZero);
+    }
+
     /// <summary>The user who created this account. Owner-only actions (rename, delete) check this; everything
     /// inside the account may be changed by any contributor. <see cref="Guid.Empty"/> for accounts
     /// created without a signed-in user (e.g. unit tests).
@@ -276,6 +327,17 @@ public sealed class Account : Entity
     public void SetTagArchived(Guid tagId, bool archived) =>
         (FindTag(tagId) ?? throw new InvalidOperationException("Tag not found.")).SetArchived(archived);
 
+    /// <summary>Bind a tag to the category it files into (F2), or clear the binding with null. The category must exist
+    /// in this account — a binding pointing at nothing would silently do nothing at entry time, which reads as the
+    /// feature being broken rather than as a bad reference.</summary>
+    public void SetTagCategory(Guid tagId, Guid? categoryId)
+    {
+        var tag = FindTag(tagId) ?? throw new InvalidOperationException("Tag not found.");
+        if (categoryId is { } id && id != Guid.Empty && FindCategory(id) is null)
+            throw new InvalidOperationException("Category does not exist in this account.");
+        tag.SetCategory(categoryId);
+    }
+
     /// <summary>Remove a tag outright. Unlike archiving this drops it for good; callers that want to keep the
     /// tag on historical expenses should archive instead. (Expense→tag references are pruned in <c>SetExpenseTags</c>
     /// time; a hard remove here simply deletes the definition.)</summary>
@@ -331,6 +393,10 @@ public sealed class Account : Entity
             throw new InvalidOperationException($"Cannot remove category: {blocker}.");
         var category = FindCategory(categoryId)
             ?? throw new InvalidOperationException("Category not found.");
+        // Drop any F2 tag→category bindings that pointed here. Removal is only allowed when nothing references the
+        // category, so leaving a dangling binding would make the tag quietly stop filing with no way to see why.
+        foreach (var tag in _tags.Where(t => t.CategoryId == categoryId))
+            tag.SetCategory(null);
         _categories.Remove(category);
     }
 
@@ -434,6 +500,9 @@ public sealed class Account : Entity
             throw new InvalidOperationException($"Cannot remove saving bucket: {blocker}.");
         var category = FindSavingCategory(savingCategoryId)
             ?? throw new InvalidOperationException("Saving category not found.");
+        // Round-ups pointing here have nowhere to go once it's gone; switch them off rather than leave a setting that
+        // reads as "on" while quietly sweeping nothing.
+        if (RoundUpBucketId == savingCategoryId) ConfigureRoundUps(0m, null);
         _savingCategories.Remove(category);
     }
 

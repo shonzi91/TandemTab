@@ -27,6 +27,8 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
 {
     private readonly BudgetCoverageService _coverage = new();
     private readonly SavingsReportService _savings = new();
+    private readonly RoundUpService _roundUps = new();
+    private readonly WeeklyRecapService _recap = new();
 
     // Remembers the last account the user was on, so a reload lands back where they left off (not always the first).
     private const string LastAccountKey = "finapp-last-account";
@@ -172,6 +174,35 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     public Task SetSavingsRateTarget(decimal target)
     {
         Account.SetSavingsRateTarget(target);
+        return SaveAsync();
+    }
+
+    /// <summary>F7 — "your week in money" for the last completed week, or null when there's nothing to report.</summary>
+    public WeeklyRecap? WeeklyRecap() => _recap.Build(Account, Today());
+
+    // --- F4 round-ups -----------------------------------------------------
+
+    /// <summary>The round-up step (0 = off, 1 or 5) and the bucket the change goes into.</summary>
+    public decimal RoundUpTo => Account.RoundUpTo;
+    public Guid? RoundUpBucketId => Account.RoundUpBucketId;
+    public bool RoundUpsOn => Account.RoundUpsOn;
+
+    /// <summary>What an expense of this amount would set aside — for previewing the figure without spending.</summary>
+    public decimal RoundUpFor(decimal amount) => Account.RoundUpFor(amount);
+
+    /// <summary>Everything round-ups have set aside across the account's whole history — the line that makes the
+    /// feature worth having switched on. Identified by the sweep's note, which nothing else writes.</summary>
+    public Money RoundUpsSweptTotal =>
+        Money(Account.Periods
+            .SelectMany(p => p.SavingAllocations)
+            .Where(a => a.Note == RoundUpService.SweepNote)
+            .Sum(a => a.Amount.Amount));
+
+    /// <summary>Turn round-ups on (step 1 or 5 + a destination bucket) or off (step 0), and persist.</summary>
+    // TODO(cutover): needs a command endpoint (account settings) — still local-mutate + whole-snapshot push.
+    public Task ConfigureRoundUps(decimal roundUpTo, Guid? bucketId)
+    {
+        Account.ConfigureRoundUps(roundUpTo, bucketId);
         return SaveAsync();
     }
 
@@ -338,6 +369,24 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
         if (changed) await SaveAsync();
         return changed;
     }
+
+    /// <summary>
+    /// Every milestone tied to a specific savings or debt bucket that is currently earned (F6). Deliberately <b>not</b>
+    /// "newly stamped": the achievement log lives in the shared account snapshot, so once one member's client records a
+    /// milestone the other member pulls it down already-logged and would never see it as new. Whether <i>you</i> have
+    /// been shown the moment is a fact about you, not about the account, so the caller tracks that per device.
+    /// </summary>
+    public static IReadOnlyList<Achievement> BucketMilestones(IReadOnlyList<Achievement> all) =>
+        all.Where(a => a.Earned && IsBucketMilestone(a.Key)).ToList();
+
+    /// <summary>Per-bucket milestone keys (<c>goal_{id}</c>, <c>debt_{tier}_{id}</c>) — the ones that belong to one
+    /// goal a household is working on together, as opposed to the general catalogue medals.
+    /// <para>The trailing id must parse as a Guid rather than the prefix being enough: <c>debt_half_all</c> is a
+    /// catalogue medal about <i>all</i> debt and shares the <c>debt_</c> prefix, so a prefix test would celebrate it
+    /// as though it belonged to one bucket.</para></summary>
+    private static bool IsBucketMilestone(string key) =>
+        (key.StartsWith("goal_", StringComparison.Ordinal) || key.StartsWith("debt_", StringComparison.Ordinal))
+        && Guid.TryParse(key[(key.LastIndexOf('_') + 1)..], out _);
 
     /// <summary>Ensure the loaded aggregate reflects server-authoritative header data (name + members).</summary>
     private static void ReconcileHeader(Account account, AccountSummaryDto summary)
@@ -830,6 +879,39 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
             .ToList();
     }
 
+    /// <summary>
+    /// Amounts recently spent in a category — most-used first, recency breaking ties — as one-tap <b>hints</b> for
+    /// the Add-expense amount field (F1's booster).
+    /// <para>
+    /// Deliberately hints and never a pre-fill: an amount is the one field that genuinely changes every time, so a
+    /// wrong default here is a wrong <i>ledger entry</i>, not a wrong guess the user notices. Distinct values only,
+    /// and a value must have been used at least twice to qualify — a one-off €13.47 is history, not a habit, and
+    /// offering it as a shortcut is noise.
+    /// </para>
+    /// </summary>
+    public IReadOnlyList<decimal> RecentAmountsForCategory(Guid categoryId, int max = 3)
+    {
+        if (categoryId == Guid.Empty) return [];
+        var stats = new Dictionary<decimal, (int Count, int FirstSeen)>();
+        var i = 0;
+        foreach (var e in ManualExpensesNewestFirst)
+        {
+            if (e.CategoryId != categoryId) continue;
+            var amount = e.Amount.Amount;
+            if (amount <= 0m) { i++; continue; }
+            if (stats.TryGetValue(amount, out var v)) stats[amount] = (v.Count + 1, v.FirstSeen);
+            else stats[amount] = (1, i);
+            i++;
+        }
+        return stats
+            .Where(kv => kv.Value.Count >= 2)          // twice = a habit; once = history
+            .OrderByDescending(kv => kv.Value.Count)
+            .ThenBy(kv => kv.Value.FirstSeen)
+            .Take(max)
+            .Select(kv => kv.Key)
+            .ToList();
+    }
+
     /// <summary>The funds you log expenses against most often, most-used first (ties broken by most-recently-used),
     /// restricted to funds you can still spend from. Powers the Add-expense quick-pick chips.</summary>
     public IReadOnlyList<Guid> RecentFunds(int max = 4)
@@ -1026,6 +1108,9 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
             expense.SetFundSynced(FundIsSynced(fundId));
             expense.SetTag(tagId);
             Period.AddExpense(expense);
+            // F4: sweep the change into savings. The server runs the identical service on its side of this request,
+            // so the optimistic paint matches what the refetch brings back.
+            _roundUps.Sweep(Account, Period, expense.Amount, expense.Date);
         },
         id => api.AddExpenseAsync(id, new AddExpenseRequest(categoryId, amount, fundId, date, note, onBehalfOfOtherAccount, tagId)),
         refetchAfter: true);
@@ -2322,9 +2407,15 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
         return existing.Id;
     }
 
-    public Task SaveTag(Guid tagId, string name, string? icon) =>
-        ExecuteOptimisticAsync(() => { Account.RenameTag(tagId, name); Account.SetTagIcon(tagId, icon); },
-            id => api.EditTagAsync(id, tagId, new EditTagRequest(name, icon)), refetchAfter: true);
+    /// <summary>The category this tag files new expenses into (F2), or null when it carries no filing opinion.
+    /// Resolves to null for a category that no longer exists, so a stale binding reads as "unbound" rather than
+    /// pre-selecting something the pickers can't show.</summary>
+    public Guid? TagCategory(Guid tagId) =>
+        Account.FindTag(tagId)?.CategoryId is { } cid && Account.FindCategory(cid) is not null ? cid : null;
+
+    public Task SaveTag(Guid tagId, string name, string? icon, Guid? categoryId = null) =>
+        ExecuteOptimisticAsync(() => { Account.RenameTag(tagId, name); Account.SetTagIcon(tagId, icon); Account.SetTagCategory(tagId, categoryId); },
+            id => api.EditTagAsync(id, tagId, new EditTagRequest(name, icon, categoryId)), refetchAfter: true);
     public Task ArchiveTag(Guid tagId) =>
         ExecuteOptimisticAsync(() => Account.SetTagArchived(tagId, true),
             id => api.SetTagArchivedAsync(id, tagId, true), refetchAfter: true);

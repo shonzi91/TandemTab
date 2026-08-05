@@ -19,6 +19,23 @@ public sealed class Tag : Entity
     /// A tag is archived (not hard-deleted) when it's still referenced, so tagged expenses are never orphaned.</summary>
     public bool IsArchived { get; private set; }
 
+    /// <summary>
+    /// Optional category this tag files into (F2): applying the tag on a new expense pre-selects this category, so
+    /// categorizing stops being a separate manual step for the labels a user already applies (tag <c>lidl</c> → Food).
+    /// Null means the tag carries no filing opinion, which is what every tag is until deliberately bound.
+    /// <para>
+    /// A <b>default at entry time</b>, never a rule applied to stored rows: past expenses keep the category they were
+    /// filed under, so binding a tag can't silently re-write history or move money between budgets after the fact.
+    /// </para>
+    /// Body data — travels in the account snapshot, not the relational header.
+    /// </summary>
+    public Guid? CategoryId { get; private set; }
+
+    /// <summary>Bind this tag to a category (or clear the binding with null / <see cref="Guid.Empty"/>).
+    /// Validated by <c>Account.SetTagCategory</c>, which owns the category tree.</summary>
+    public void SetCategory(Guid? categoryId) =>
+        CategoryId = categoryId is { } id && id != Guid.Empty ? id : null;
+
     public Tag(string name)
     {
         if (string.IsNullOrWhiteSpace(name))

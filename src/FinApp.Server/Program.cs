@@ -1120,6 +1120,9 @@ accounts.MapPost("/{id:guid}/expenses", async (Guid id, AddExpenseRequest req, C
         expense.SetFundSynced(fund.IsSynced);   // synced funds aren't debited — the real bank balance handles it
         if (req.TagId is { } addTag && account.FindTag(addTag) is not null) expense.SetTag(addTag);
         period.AddExpense(expense);
+        // F4 round-ups. Same service the web client runs in its optimistic apply, so the two can't produce different
+        // savings rows — the config lives on the aggregate, so nothing about it needs to travel in the request.
+        new RoundUpService().Sweep(account, period, expense.Amount, expense.Date);
         // The delta a thin client reconciles from (the thick client reads only Version/EntityId — a superset).
         return (expense.Id, SpendingMap.ToDto(account, expense), SpendingMap.Overview(account, period, bank.Balance, bank.BalanceCurrency));
     }, ct);
@@ -1766,6 +1769,7 @@ accounts.MapPut("/{id:guid}/tags/{tagId:guid}", async (Guid id, Guid tagId, Edit
     {
         account.RenameTag(tagId, req.Name);   // throws if missing / duplicate name
         account.SetTagIcon(tagId, req.Icon);
+        account.SetTagCategory(tagId, req.CategoryId);   // F2; throws if the category isn't in this account
         return null;
     }, ct);
     await notifier.AccountChangedAsync(id, userId, version);

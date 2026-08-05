@@ -200,8 +200,11 @@ public record EditContributionCategoryRequest(string Name, string? Icon = null);
 /// name. Mirrors <c>BudgetingState.AddTag</c>.</summary>
 public record CreateTagRequest(string Name, string? Icon = null);
 
-/// <summary>Rename a tag and set its icon (a null icon clears it). Mirrors <c>BudgetingState.SaveTag</c>.</summary>
-public record EditTagRequest(string Name, string? Icon = null);
+/// <summary>Rename a tag, set its icon (a null icon clears it) and bind the category it files into (F2 — a null
+/// <see cref="CategoryId"/> clears the binding). A full replace, like every other edit request here: the caller sends
+/// the tag's whole intended state, so an omitted field means "no longer set", not "leave alone".
+/// Mirrors <c>BudgetingState.SaveTag</c>.</summary>
+public record EditTagRequest(string Name, string? Icon = null, Guid? CategoryId = null);
 
 // --- Recurring items (bills / income expectations) ----------------------------------------------------------
 
