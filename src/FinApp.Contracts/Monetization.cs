@@ -48,6 +48,21 @@ public sealed record CheckoutSessionDto(string SessionId, string RedirectUrl, st
 /// <summary>A public, consented, moderator-approved review shown on the landing page (OPEN-BETA P1).</summary>
 public sealed record PublicReviewDto(int? Rating, string Comment, string At);
 
+/// <summary>Free-beta capacity, shown on the landing page before anyone signs up. Anonymous — it has to render
+/// for a stranger deciding whether to bother. <see cref="Remaining"/> is null when no cap is configured.</summary>
+public sealed record BetaCapacityDto(bool Capped, int Cap, int Taken, int? Remaining, bool Full);
+
+/// <summary>Admin-only: pin one account to a plan so the upgrade journey can be walked on demand. Plan is
+/// "free", "pro", or null to clear.</summary>
+public sealed record PlanOverrideRequest(string? Plan);
+
+/// <summary>Admin-only view of a piece of feedback, for moderating what may appear on the landing page.</summary>
+public sealed record AdminFeedbackDto(string Id, int? Rating, string? Comment, bool PublicConsent,
+    bool Approved, string Source, string At);
+
+/// <summary>Admin-only: approve or un-approve a review for public display.</summary>
+public sealed record ApproveReviewRequest(bool Approved);
+
 /// <summary>The known feature keys, shared so the client's label map and the server's catalogue can't drift.</summary>
 public static class PlanFeatures
 {

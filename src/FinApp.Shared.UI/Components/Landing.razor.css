@@ -232,34 +232,56 @@ html.dark .lp-price-card li { color: #c3cad4; }
 html.dark .lp-price-alt, html.dark .lp-price-note, html.dark .lp-price-n span { color: #a9b2c0; }
 html.dark .lp-price-pro { border-color: #13a06e; box-shadow: none; }
 
+/* ---- "Send us a message" ---- */
+/* The one thing in the lower page that ASKS something of the reader, so it gets the whole section to itself.
+   The form is open by default now rather than hidden behind a pill — a collapsed prompt at the bottom of a long
+   page is a prompt nobody opens. Contact details and legal moved out (a modal and the thin link line). */
+.lp-say { margin: 48px auto 8px; max-width: 560px; text-align: center; }
+.lp-say-sub { margin: -14px 0 20px; font-size: .92rem; color: #5c6b7a; }
+.lp-say-card {
+    text-align: left; padding: 20px 22px; border: 1px solid #e6ece9; border-radius: 16px; background: #fff;
+    box-shadow: 0 6px 24px rgba(16,32,26,.06);
+}
+html.dark .lp-say-sub { color: #a9b2c0; }
+html.dark .lp-say-card { background: #181c25; border-color: #262d3d; box-shadow: none; }
+
 /* ---- Footer ---- */
-/* The contact surface: everything for "how do I reach you" in one place, including the feedback form (which
-   previously floated in its own section above). */
-.lp-footer { margin-top: 48px; padding: 32px 0 20px; border-top: 1px solid #e6ece9; }
-.lp-foot-grid {
-    display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 26px 24px; align-items: start;
+/* A thin identity + links line. Reference material only: the things people go looking for deliberately, rather
+   than anything competing with the section above. */
+.lp-footer {
+    margin-top: 44px; padding: 26px 0 20px; border-top: 1px solid #e6ece9;
+    display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center;
 }
-.lp-foot-col h5 {
-    margin: 0 0 10px; font-size: .78rem; font-weight: 800; text-transform: uppercase;
-    letter-spacing: .07em; color: #5c6b7a;
+.lp-foot-tag { margin: 0; font-size: .84rem; color: #5c6b7a; }
+.lp-foot-links { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px; margin-top: 6px; font-size: .86rem; }
+.lp-foot-links > span { color: #c2cbd4; }
+.lp-foot-links a, .lp-foot-link {
+    color: #0f7a54; text-decoration: none; font-weight: 600; font-size: .86rem;
+    border: none; background: none; padding: 0; cursor: pointer; font-family: inherit;
 }
-.lp-foot-col p { margin: 0 0 6px; font-size: .88rem; color: #3c4a56; }
-.lp-foot-col a { color: #0f7a54; text-decoration: none; font-weight: 600; }
-.lp-foot-col a:hover { text-decoration: underline; }
-.lp-foot-muted { color: #7a8792; font-size: .82rem; }
-.lp-foot-tag { margin: 8px 0 0; font-size: .84rem; color: #5c6b7a; }
-.lp-foot-feedback { min-width: 0; }
-.lp-foot-copy { margin: 26px 0 0; text-align: center; font-size: .78rem; color: #98a4ae; }
+.lp-foot-links a:hover, .lp-foot-link:hover { text-decoration: underline; }
+.lp-foot-copy { margin: 10px 0 0; font-size: .78rem; color: #98a4ae; }
 html.dark .lp-footer { border-top-color: #262d3d; }
-html.dark .lp-foot-col h5 { color: #8f9dab; }
-html.dark .lp-foot-col p { color: #c3cad4; }
-html.dark .lp-foot-col a { color: #57d9a3; }
-html.dark .lp-foot-muted, html.dark .lp-foot-tag { color: #8f9dab; }
+html.dark .lp-foot-tag { color: #8f9dab; }
+html.dark .lp-foot-links a, html.dark .lp-foot-link { color: #57d9a3; }
+html.dark .lp-foot-links > span { color: #3a4552; }
 html.dark .lp-foot-copy { color: #6f7c88; }
 
-/* Narrow screens: the columns stack so the feedback form is never squeezed into a 190px gutter. */
+/* Contact modal — same overlay as the auth one, smaller card. */
+.lp-contact-modal {
+    position: relative; background: #fff; border-radius: 18px; padding: 24px 26px;
+    width: min(400px, 92vw); box-shadow: 0 20px 60px rgba(0,0,0,.25);
+}
+.lp-contact-modal h3 { margin: 0 0 12px; font-size: 1.15rem; color: #16211d; }
+html.dark .lp-contact-modal { background: #181c25; color: #e8eaf0; }
+html.dark .lp-contact-modal h3 { color: #eef1f6; }
+
+/* Remaining free-beta seats, on its own line under the promise. Stated as a fact; the pill above already
+   carries the emphasis, so this stays quiet rather than turning into a countdown banner. */
+.lp-beta-seats { display: block; width: 100%; margin-top: 2px; font-size: .82rem; font-weight: 700; opacity: .9; }
+
 @media (max-width: 640px) {
-    .lp-foot-grid { grid-template-columns: 1fr; gap: 22px; }
     .lp-quote { padding: 20px 18px; }
     .lp-quote blockquote { font-size: .96rem; }
+    .lp-say-card { padding: 16px 15px; }
 }

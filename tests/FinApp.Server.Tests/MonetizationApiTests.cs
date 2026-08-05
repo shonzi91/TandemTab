@@ -83,6 +83,51 @@ public class MonetizationApiTests : IClassFixture<FinAppServerFactory>
         Assert.DoesNotContain(reviews!, r => r.Comment.Contains("buy my thing"));
     }
 
+    /// <summary>
+    /// The free-beta cap is advertised anonymously, because the person who most needs to know whether there is
+    /// room is someone who has not signed up yet.
+    /// </summary>
+    [Fact]
+    public async Task Beta_capacity_is_public()
+    {
+        var anon = _factory.CreateClient();
+
+        var cap = await anon.GetFromJsonAsync<BetaCapacityDto>("/beta/capacity");
+        Assert.NotNull(cap);
+        Assert.True(cap!.Cap > 0);
+        Assert.True(cap.Taken >= 0);
+        Assert.Equal(cap.Cap - cap.Taken <= 0, cap.Full);
+    }
+
+    /// <summary>
+    /// The admin-only plan pin. A non-admin must not be able to hand themselves Pro — the whole override exists
+    /// so the owner can rehearse the upgrade, and it would be a free-Pro button if the gate were client-side.
+    /// </summary>
+    [Fact]
+    public async Task Plan_override_is_refused_for_a_non_admin()
+    {
+        var (client, _) = await _factory.RegisterAndAuthAsync("plan_notadmin");
+
+        var res = await client.PostAsJsonAsync("/admin/plan-override", new PlanOverrideRequest("pro"));
+        Assert.Equal(System.Net.HttpStatusCode.Forbidden, res.StatusCode);
+
+        var me = await client.GetFromJsonAsync<UserDto>("/me");
+        Assert.Equal("unlimited", me!.Plan);      // unchanged — nothing was granted
+    }
+
+    /// <summary>Review moderation is admin-only in both directions: reading the queue exposes what people wrote,
+    /// and approving publishes it to the landing page.</summary>
+    [Fact]
+    public async Task Review_moderation_is_admin_only()
+    {
+        var (client, _) = await _factory.RegisterAndAuthAsync("plan_notmod");
+
+        Assert.Equal(System.Net.HttpStatusCode.Forbidden,
+            (await client.GetAsync("/admin/feedback")).StatusCode);
+        Assert.Equal(System.Net.HttpStatusCode.Forbidden,
+            (await client.PostAsJsonAsync($"/admin/feedback/{Guid.NewGuid()}/approve", new ApproveReviewRequest(true))).StatusCode);
+    }
+
     /// <summary>The gate helper itself: "unlimited" (the beta state) passes everything, Free passes only the
     /// free-tier capabilities, and an unknown key fails open rather than locking someone out.</summary>
     [Theory]

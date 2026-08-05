@@ -172,6 +172,22 @@ public sealed class FinAppApiClient(HttpClient http)
     public Task<List<PublicReviewDto>> GetPublicReviewsAsync(CancellationToken ct = default) =>
         SendAsync<List<PublicReviewDto>>(HttpMethod.Get, "/reviews/public", null, ct);
 
+    /// <summary>How many free-beta seats are left. Anonymous — the landing page shows it before sign-up.</summary>
+    public Task<BetaCapacityDto> GetBetaCapacityAsync(CancellationToken ct = default) =>
+        SendAsync<BetaCapacityDto>(HttpMethod.Get, "/beta/capacity", null, ct);
+
+    /// <summary>Admin-only: pin your own account to "free"/"pro", or null to clear. For testing the upgrade.</summary>
+    public Task SetPlanOverrideAsync(string? plan, CancellationToken ct = default) =>
+        SendAsync(HttpMethod.Post, "/admin/plan-override", new PlanOverrideRequest(plan), ct);
+
+    /// <summary>Admin-only: the review moderation queue (everything with public consent).</summary>
+    public Task<List<AdminFeedbackDto>> GetAdminFeedbackAsync(CancellationToken ct = default) =>
+        SendAsync<List<AdminFeedbackDto>>(HttpMethod.Get, "/admin/feedback", null, ct);
+
+    /// <summary>Admin-only: approve or un-approve a review for the landing carousel.</summary>
+    public Task ApproveReviewAsync(string id, bool approved, CancellationToken ct = default) =>
+        SendAsync(HttpMethod.Post, $"/admin/feedback/{id}/approve", new ApproveReviewRequest(approved), ct);
+
     /// <summary>Begin an upgrade. 404s while monetization is off — the rails are unreachable during beta.</summary>
     public Task<CheckoutSessionDto> StartCheckoutAsync(BillingInterval interval, CancellationToken ct = default) =>
         SendAsync<CheckoutSessionDto>(HttpMethod.Post, "/billing/checkout", new CheckoutRequest(interval), ct);

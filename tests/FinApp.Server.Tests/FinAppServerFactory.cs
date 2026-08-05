@@ -35,6 +35,12 @@ public class FinAppServerFactory : WebApplicationFactory<Program>
         // off-by-default behaviour (admin fails closed; monetization is "unlimited"), so pin them off here.
         builder.UseSetting("Admin:Emails", "");
         builder.UseSetting("Monetization:Enabled", "false");
+        // The free-beta seat cap is REAL and would apply to the suite: nearly every test registers a user, and
+        // the production default of 30 is well under the number this suite creates. Left alone, the suite would
+        // start failing with "the free beta is full" the moment it grew past the cap — a confusing failure with
+        // nothing to do with the test that happened to trip it. Raised, not disabled, so /beta/capacity still
+        // reports a configured cap and the endpoint's shape stays under test.
+        builder.UseSetting("Beta:Cap", "100000");
     }
 
     /// <summary>Register a new user and return a client with its bearer token attached.</summary>

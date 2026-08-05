@@ -1,0 +1,14 @@
+@inject Localizer Loc
+
+@* The contact details, in one place, used by both the landing footer and the signed-in app footer. Shared as a
+   component rather than duplicated so the address, company line and reply expectation can never drift apart
+   between logged-out and logged-in — which is exactly the sort of thing that does drift. *@
+
+<div class="cc">
+    @* One real, monitored mailbox — the same address the privacy policy names as the GDPR/data contact.
+       Deliberately no invented support@ alias that nobody reads. *@
+    <a class="cc-mail" href="mailto:admin@tandemtab.com">admin@tandemtab.com</a>
+    <p class="cc-line">@Loc["TandemTab Company · Sofia, Bulgaria"]</p>
+    <p class="cc-line">@Loc["We usually reply within a couple of days."]</p>
+    <p class="cc-line cc-muted">@Loc["For anything about your data — a copy, a correction, deletion — write to the same address."]</p>
+</div>

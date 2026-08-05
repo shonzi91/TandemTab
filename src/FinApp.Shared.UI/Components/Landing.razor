@@ -24,14 +24,29 @@
             <ul class="lp-ticks">
                 <li>@Loc["Free to start"]</li>
                 <li>@Loc["Great solo, better together"]</li>
-                <li>@Loc["Encrypted — never sold or shared"]</li>
+                @* Was "Encrypted — never sold or shared". Same promise, but stated as the business model rather
+                   than a security feature: "we sell software, not your data" says why it will stay true. *@
+                <li>@Loc["We sell software, not your data."]</li>
             </ul>
             <button class="lp-cta lp-cta-glow" @onclick="OpenAuth">@Loc["Try it free"]</button>
             @* OPEN-BETA B4 — say plainly what beta means for their data (they don't forgive losing it). *@
             @* The beta promise is the single biggest objection-remover on this page ("will I lose my data when
                this stops being free?"), so it is a badge rather than grey small print. Temporary by nature — it
                comes out when beta ends — which is exactly why it is one self-contained element to delete. *@
-            <p class="lp-cta-note"><span class="lp-beta-pill">@Loc["Free beta"]</span>@Loc["Your account and everything in it carries through to launch."]</p>
+            <p class="lp-cta-note">
+                <span class="lp-beta-pill">@Loc["Free beta"]</span>
+                @Loc["Your account and everything in it carries through to launch."]
+                @* Scarcity stated as a fact, not a tactic — the beta is capped so every report actually gets read.
+                   Only rendered once the count is known, so the line never flashes a wrong number. *@
+                @if (_beta is { Capped: true } bc)
+                {
+                    <span class="lp-beta-seats">
+                        @(bc.Full
+                            ? Loc["All spots are taken right now — write to us and we'll save you one."]
+                            : string.Format(Loc["{0} of {1} free spots left."], bc.Remaining, bc.Cap))
+                    </span>
+                }
+            </p>
         </div>
     </section>
 
@@ -186,48 +201,53 @@
        everything for "how do I reach you" — write to us, email, legal — sits in the one place people look for it.
        Feedback from the landing page reaches those who looked and decided NOT to sign up: the one group we can
        hear from no other way. Collapsed by default so it never competes with the CTA. *@
+    @* The lower section is now ONE thing — "tell us what you think" — because it is the only thing here that
+       asks something of the reader. Contact details and legal links were columns competing with it; they are
+       reference material, so they moved to the thin link line below (legal) and a modal (contact). *@
+    <section class="lp-say">
+        <h3 class="lp-sec-h">@Loc["Send us a message"]</h3>
+        @if (_feedbackDone)
+        {
+            @* Retired once sent, same as the in-app prompt. Not a security control — the endpoint is anonymous
+               and this is only a device flag — but it removes the standing invitation to keep submitting, which
+               is what made it easy to file the same opinion twenty times. The real limits are the per-IP cap on
+               /feedback and the fact that nothing reaches this page without an explicit approval. *@
+            <p class="lp-say-sub">@Loc["Thanks — we've got your message. Anything else? Write to us at admin@tandemtab.com."]</p>
+        }
+        else
+        {
+            <p class="lp-say-sub">@Loc["Didn’t sign up? That’s useful to know too — what put you off?"]</p>
+            <div class="lp-say-card">
+                <FeedbackForm Source="landing" OnSent="MarkFeedbackSent" />
+            </div>
+        }
+    </section>
+
     <footer class="lp-footer">
-        <div class="lp-foot-grid">
-            <div class="lp-foot-col lp-foot-brand">
-                <span class="lp-brand-sm"><span class="lp-logo-sm"><TandemLogo /></span><span class="brand-word">Tandem<span class="brand-tab">Tab</span></span></span>
-                <p class="lp-foot-tag">@Loc["Track together, save together."]</p>
-                <p class="lp-foot-tag">@Loc["We sell software, not your data."]</p>
-            </div>
-
-            <div class="lp-foot-col">
-                <h5>@Loc["Contact"]</h5>
-                @* One real, monitored mailbox — the same address the privacy policy names as the GDPR contact.
-                   No invented support@ alias that nobody reads. *@
-                <p><a href="mailto:admin@tandemtab.com">admin@tandemtab.com</a></p>
-                <p class="lp-foot-muted">@Loc["TandemTab Company · Sofia, Bulgaria"]</p>
-                <p class="lp-foot-muted">@Loc["We usually reply within a couple of days."]</p>
-            </div>
-
-            <div class="lp-foot-col">
-                <h5>@Loc["Legal"]</h5>
-                <p><a href="@PrivacyUrl" target="_blank" rel="noopener">@Loc["Privacy"]</a></p>
-                <p><a href="@TermsUrl" target="_blank" rel="noopener">@Loc["Terms"]</a></p>
-            </div>
-
-            <div class="lp-foot-col lp-foot-feedback">
-                <h5>@Loc["Send us a message"]</h5>
-                @if (!_feedbackOpen)
-                {
-                    <p class="lp-foot-muted">@Loc["Didn’t sign up? That’s useful to know too — what put you off?"]</p>
-                    <button class="lp-feedback-open" @onclick="() => _feedbackOpen = true">
-                        <Icon Name="note" /> @Loc["We’re in beta — tell us what you think"]
-                    </button>
-                }
-                else
-                {
-                    <FeedbackForm Source="landing" />
-                }
-            </div>
+        <span class="lp-brand-sm"><span class="lp-logo-sm"><TandemLogo /></span><span class="brand-word">Tandem<span class="brand-tab">Tab</span></span></span>
+        <p class="lp-foot-tag">@Loc["Track together, save together."]</p>
+        <div class="lp-foot-links">
+            <button class="lp-foot-link" @onclick="() => _contactOpen = true">@Loc["Contact"]</button>
+            <span>·</span>
+            <a href="@PrivacyUrl" target="_blank" rel="noopener">@Loc["Privacy"]</a>
+            <span>·</span>
+            <a href="@TermsUrl" target="_blank" rel="noopener">@Loc["Terms"]</a>
         </div>
         <p class="lp-foot-copy">© @DateTime.UtcNow.Year TandemTab</p>
     </footer>
 
 </div>
+
+@if (_contactOpen)
+{
+    <div class="lp-auth-backdrop" @onclick="() => _contactOpen = false">
+        <div class="lp-contact-modal" @onclick:stopPropagation="true">
+            <button class="lp-auth-x" title="@Loc["Close"]" aria-label="@Loc["Close"]" @onclick="() => _contactOpen = false"><span aria-hidden="true">×</span></button>
+            <h3>@Loc["Contact"]</h3>
+            <ContactCard />
+        </div>
+    </div>
+}
 
 @if (_showAuth)
 {
@@ -252,6 +272,21 @@
     private List<PublicReviewDto> _reviews = new();
     private int _reviewIx;
     private PlansDto? _plans;
+    private BetaCapacityDto? _beta;
+    private bool _contactOpen;
+
+    // Shares the key the signed-in footer uses, so telling us what you think once — from either side of the
+    // sign-in line — retires both prompts on this device.
+    private const string FeedbackDoneKey = "finapp-feedback-sent";
+    private bool _feedbackDone;
+
+    private async Task MarkFeedbackSent()
+    {
+        try { await JS.InvokeVoidAsync("localStorage.setItem", FeedbackDoneKey, "1"); } catch { /* storage off */ }
+        await Task.Delay(2200);   // let the "Thank you" land before the form is replaced
+        _feedbackDone = true;
+        StateHasChanged();
+    }
 
     private void ShowReview(int i)
     {
@@ -315,6 +350,18 @@
             if (plans.Enabled) { _plans = plans; changed = true; }
         }
         catch { /* no pricing section; during beta it wouldn't render anyway */ }
+        try
+        {
+            _beta = await Api.GetBetaCapacityAsync();
+            changed = true;
+        }
+        catch { /* no seat line — better silent than a wrong number next to a promise */ }
+        try
+        {
+            if (await JS.InvokeAsync<string?>("localStorage.getItem", FeedbackDoneKey) == "1")
+            { _feedbackDone = true; changed = true; }
+        }
+        catch { /* storage unavailable — showing the form is the safe default */ }
         if (changed) StateHasChanged();
     }
 

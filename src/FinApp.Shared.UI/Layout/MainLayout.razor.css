@@ -311,8 +311,39 @@ html.dark .pm-cycle button.on strong { color: #2ee59d; }
     border-top: 1px solid #e6ece9;
 }
 .app-legal { flex-wrap: wrap; }
-.app-legal a { color: #6b7280; text-decoration: none; }
-.app-legal a:hover { color: #13a06e; text-decoration: underline; }
+.app-legal a, .app-legal-link { color: #6b7280; text-decoration: none; }
+.app-legal a:hover, .app-legal-link:hover { color: #13a06e; text-decoration: underline; }
+.app-legal-link { border: none; background: none; padding: 0; font: inherit; font-size: .78rem; cursor: pointer; }
+
+/* Shared contact card (ContactCard.razor), shown in a modal from both footers. */
+::deep .cc { display: flex; flex-direction: column; gap: 4px; }
+::deep .cc-mail { font-size: 1rem; font-weight: 700; color: #0f7a54; text-decoration: none; }
+::deep .cc-mail:hover { text-decoration: underline; }
+::deep .cc-line { margin: 0; font-size: .86rem; color: #4b5563; }
+::deep .cc-muted { color: #7a8792; font-size: .8rem; margin-top: 4px; }
+html.dark ::deep .cc-mail { color: #57d9a3; }
+html.dark ::deep .cc-line { color: #c3cad4; }
+html.dark ::deep .cc-muted { color: #8f9dab; }
+
+/* Admin review moderation queue. */
+.pm-revs { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.pm-rev { border: 1px solid #e6e2d8; border-radius: 11px; padding: 9px 11px; }
+.pm-rev.on { border-color: #13a06e; background: rgba(19,160,110,.06); }
+.pm-rev-top { display: flex; align-items: baseline; gap: 8px; }
+.pm-rev-stars { color: #f6c945; font-size: .82rem; letter-spacing: 1px; }
+.pm-rev-src { margin-left: auto; font-size: .68rem; text-transform: uppercase; letter-spacing: .05em; color: #9aa0ad; }
+.pm-rev-txt { margin: 5px 0 8px; font-size: .82rem; line-height: 1.4; color: #374151; }
+.pm-rev-btn {
+    border: 1px solid #cdd7e2; background: none; border-radius: 999px; padding: 3px 11px;
+    font: inherit; font-size: .74rem; font-weight: 700; color: #5c6b7a; cursor: pointer;
+}
+.pm-rev-btn:hover { border-color: #13a06e; color: #0f7a54; }
+.pm-rev-btn.on { background: #13a06e; border-color: #13a06e; color: #fff; }
+html.dark .pm-rev { border-color: rgba(255,255,255,.14); }
+html.dark .pm-rev.on { border-color: #13a06e; background: rgba(19,160,110,.12); }
+html.dark .pm-rev-txt { color: #c3cad4; }
+html.dark .pm-rev-btn { border-color: rgba(255,255,255,.18); color: #9aa8b4; }
+html.dark .pm-rev-btn.on { background: var(--tm-mint); border-color: var(--tm-mint); color: #0f1322; }
 
 /* In-app beta feedback, sitting above the legal line. Collapsed to a single dashed pill so it reads as an
    invitation rather than a form demanding attention; expands in place. The whole block disappears for good once

@@ -133,24 +133,11 @@ html.dark .onboard-desc { color: #a9b6ad; }
     padding: 3px 10px; border-radius: 999px; cursor: pointer; white-space: nowrap;
 }
 .home-alert-act:hover { background: #855107; }
-/* Inline action inside an alert sentence (e.g. "…free — trim a budget or add income."). Was a bare underlined
-   bold word, which read as damage to the sentence rather than an affordance — two of them in one line looked
-   like stray links. Now a soft tinted chip: it sits ON the sentence baseline (inline-flex + vertical-align) so
-   the line still reads as prose, but the tint and border make it obviously pressable. No underline — the chip
-   shape carries that job. Keeps the alert's amber accent so it belongs to the strip it lives in. */
-.alert-inline-link {
-    display: inline-flex; align-items: center; vertical-align: baseline;
-    border: 1px solid #e8c98a; background: #fdf3dd; color: #8a5a09;
-    padding: 1px 9px; border-radius: 999px; margin: 0 1px;
-    font: inherit; font-size: .82rem; font-weight: 700; line-height: 1.5;
-    cursor: pointer; text-decoration: none; white-space: nowrap;
-    transition: background .12s ease, border-color .12s ease, color .12s ease;
-}
-.alert-inline-link:hover { background: #a16207; border-color: #a16207; color: #fff; }
-.alert-inline-link:focus-visible { outline: 2px solid #a16207; outline-offset: 2px; }
-html.dark .alert-inline-link { background: rgba(240,192,105,.14); border-color: rgba(240,192,105,.38); color: #f0c069; }
-html.dark .alert-inline-link:hover { background: #f0c069; border-color: #f0c069; color: #2a2000; }
-html.dark .alert-inline-link:focus-visible { outline-color: #f0c069; }
+/* .alert-inline-link lives in the GLOBAL app.css, not here — deliberately.
+   Those buttons are built in C# with RenderTreeBuilder (see BudgetOverBody), and Blazor stamps its scope
+   attribute onto MARKUP elements only. A builder-created element carries no `b-…` attribute, so a scoped
+   `.alert-inline-link[b-…]` rule can never match it and the button falls back to browser default chrome.
+   Anything styling builder-generated elements has to be global. */
 /* ↻ to cycle when several alerts of a kind exist (e.g. multiple over-budget categories) — pinned to the row's right. */
 .home-alert-rot {
     flex: 0 0 auto; align-self: center; margin-left: auto; border: none; background: none; cursor: pointer;

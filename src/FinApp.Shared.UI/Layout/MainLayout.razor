@@ -112,12 +112,27 @@
             </div>
         }
         <footer class="app-legal">
-            <a href="mailto:admin@tandemtab.com">admin@tandemtab.com</a>
+            @* A labelled "Contact" opening the shared card, rather than a bare mailto: — the same shape as the
+               landing footer, so reaching a human looks identical signed in or out. *@
+            <button class="app-legal-link" @onclick="() => _contactOpen = true">@Loc["Contact"]</button>
             <span>·</span>
             <a href="@PrivacyUrl" target="_blank" rel="noopener">@Loc["Privacy"]</a>
             <span>·</span>
             <a href="@TermsUrl" target="_blank" rel="noopener">@Loc["Terms"]</a>
         </footer>
+    }
+
+    @if (_contactOpen)
+    {
+        <div class="pm-backdrop" @onclick="() => _contactOpen = false">
+            <div class="pm" @onclick:stopPropagation="true">
+                <h3>@Loc["Contact"]</h3>
+                <ContactCard />
+                <div class="pm-actions">
+                    <button class="ghost" @onclick="() => _contactOpen = false">@Loc["Close"]</button>
+                </div>
+            </div>
+        </div>
     }
 
     @* The upgrade prompt (P4). Raised BY A GATE, never shown on arrival — see PlanGate for why the ask belongs at
@@ -442,6 +457,66 @@
                                 <p class="pm-hint">@Loc["Couldn’t load usage metrics."]</p>
                             }
                         </details>
+
+                        @* Owner-only test switch. Pins THIS account to a plan so the Free → upgrade → Pro journey
+                           can be walked on demand — the thing you need over and over while wiring a real payment
+                           provider. Pinning also turns the plan surface on for this account alone; the global
+                           Monetization flag stays off and no other user is affected. *@
+                        <details class="pm-section">
+                            <summary>@Loc["Admin — test a plan"]</summary>
+                            <p class="pm-hint">@Loc["Pin your own account to a plan to walk the upgrade flow. Only you are affected — everyone else stays as they are."]</p>
+                            <div class="pm-cycle" role="group" aria-label="@Loc["Test plan"]">
+                                <button type="button" class="@(Auth.CurrentUser?.MonetizationEnabled != true ? "on" : "")"
+                                        disabled="@_overrideBusy" @onclick="() => SetPlanOverride(null)">
+                                    @Loc["Off"] <strong>@Loc["Normal"]</strong>
+                                </button>
+                                <button type="button" class="@(Auth.CurrentUser is { MonetizationEnabled: true, Plan: "free" } ? "on" : "")"
+                                        disabled="@_overrideBusy" @onclick="@(() => SetPlanOverride("free"))">
+                                    @Loc["As"] <strong>@Loc["Free"]</strong>
+                                </button>
+                                <button type="button" class="@(Auth.CurrentUser is { MonetizationEnabled: true, Plan: "pro" } ? "on" : "")"
+                                        disabled="@_overrideBusy" @onclick="@(() => SetPlanOverride("pro"))">
+                                    @Loc["As"] <strong>@Loc["Pro"]</strong>
+                                </button>
+                            </div>
+                            <p class="pm-hint">@Loc["“Free” shows the locked features, the landing pricing and the upgrade prompt when you touch a Pro feature. “Pro” shows the crown."]</p>
+                        </details>
+
+                        @* Review moderation. The approval gate shipped without a door: Approved defaults to 0 and
+                           nothing could set it, so the landing carousel could never fill. This is that door — the
+                           second of the two gates a review must pass (the first is the author's own consent). *@
+                        <details class="pm-section" @ontoggle="LoadAdminFeedback">
+                            <summary>@Loc["Admin — reviews"]</summary>
+                            <p class="pm-hint">@Loc["People who agreed their words may be shown. Approve one and it appears in the landing carousel."]</p>
+                            @if (_adminFeedback is { Count: > 0 } fb)
+                            {
+                                <ul class="pm-revs">
+                                    @foreach (var r in fb)
+                                    {
+                                        var rid = r.Id;
+                                        <li class="pm-rev @(r.Approved ? "on" : "")">
+                                            <div class="pm-rev-top">
+                                                <span class="pm-rev-stars">@(r.Rating is { } st ? new string('★', st) + new string('☆', 5 - st) : "—")</span>
+                                                <span class="pm-rev-src">@r.Source</span>
+                                            </div>
+                                            <p class="pm-rev-txt">@(string.IsNullOrWhiteSpace(r.Comment) ? Loc["(rating only — nothing to quote)"] : r.Comment)</p>
+                                            <button class="pm-rev-btn @(r.Approved ? "on" : "")" disabled="@_revBusy"
+                                                    @onclick="() => ToggleApproval(rid, !r.Approved)">
+                                                @(r.Approved ? Loc["Shown publicly — hide"] : Loc["Approve for the site"])
+                                            </button>
+                                        </li>
+                                    }
+                                </ul>
+                            }
+                            else if (_adminFeedbackBusy)
+                            {
+                                <p class="pm-hint">@Loc["Loading…"]</p>
+                            }
+                            else if (_adminFeedback is not null)
+                            {
+                                <p class="pm-hint">@Loc["Nothing to review yet — only feedback where the person ticked “you may show this” appears here."]</p>
+                            }
+                        </details>
                     }
                 }
                 @if (!_2faDisabling && _2faSetup is null && _2faRecoveryCodes is null)
@@ -533,7 +608,7 @@
 
     // In-app feedback prompt in the footer. Once sent, it never comes back on this device.
     private const string FeedbackDoneKey = "finapp-feedback-sent";
-    private bool _feedbackOpen, _feedbackDone;
+    private bool _feedbackOpen, _feedbackDone, _contactOpen;
 
     private async Task MarkFeedbackDone()
     {
@@ -563,6 +638,48 @@
         try { _adminMetrics = await Api.GetAdminMetricsAsync(); }
         catch { _adminError = true; }
         finally { _adminBusy = false; StateHasChanged(); }
+    }
+
+    // Admin test switch: pin this account to a plan (or clear). Re-reads /me and drops the cached tiers so the
+    // whole surface — feature list, upsell, crown, gates — reflects the new plan immediately.
+    private bool _overrideBusy;
+    private async Task SetPlanOverride(string? plan)
+    {
+        _overrideBusy = true; StateHasChanged();
+        try
+        {
+            await Api.SetPlanOverrideAsync(plan);
+            _plans = null;
+            Gate.Invalidate();
+            await Auth.RefreshUserAsync();
+            await LoadPlans();
+        }
+        catch { /* leave the buttons as they were; /me is still the truth */ }
+        finally { _overrideBusy = false; StateHasChanged(); }
+    }
+
+    // Admin review moderation.
+    private List<AdminFeedbackDto>? _adminFeedback;
+    private bool _adminFeedbackBusy, _revBusy;
+    private async Task LoadAdminFeedback()
+    {
+        if (_adminFeedback is not null || _adminFeedbackBusy) return;
+        _adminFeedbackBusy = true; StateHasChanged();
+        try { _adminFeedback = await Api.GetAdminFeedbackAsync(); }
+        catch { _adminFeedback = new(); }
+        finally { _adminFeedbackBusy = false; StateHasChanged(); }
+    }
+    private async Task ToggleApproval(string id, bool approved)
+    {
+        _revBusy = true; StateHasChanged();
+        try
+        {
+            await Api.ApproveReviewAsync(id, approved);
+            _adminFeedback = null;
+            await LoadAdminFeedback();
+        }
+        catch { /* the list stays as it was */ }
+        finally { _revBusy = false; StateHasChanged(); }
     }
 
     // Plans (P4). Loaded lazily when the section is opened; only reachable when monetization is switched on.

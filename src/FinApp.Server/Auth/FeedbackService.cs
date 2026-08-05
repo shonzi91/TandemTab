@@ -109,6 +109,54 @@ public sealed class FeedbackService(FinAppDbContext db)
         finally { if (opened) await conn.CloseAsync(); }
     }
 
+    /// <summary>Everything with public consent, approved or not — the admin moderation queue. Without this the
+    /// approval gate had no door: the column existed and defaulted to 0, so the carousel could never fill.</summary>
+    public async Task<IReadOnlyList<(string Id, int? Rating, string? Comment, bool Consent, bool Approved, string Source, string At)>>
+        ModerationQueueAsync(int limit = 50, CancellationToken ct = default)
+    {
+        var conn = db.Database.GetDbConnection();
+        var opened = await OpenAsync(conn, ct);
+        try
+        {
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText =
+                "SELECT \"Id\", \"Rating\", \"Comment\", \"PublicConsent\", \"Approved\", \"Source\", \"At\" " +
+                "FROM \"Feedback\" WHERE \"PublicConsent\" = '1' ORDER BY \"At\" DESC";
+            var list = new List<(string, int?, string?, bool, bool, string, string)>();
+            await using var r = await cmd.ExecuteReaderAsync(ct);
+            while (await r.ReadAsync(ct) && list.Count < limit)
+            {
+                list.Add((
+                    r.GetString(0),
+                    await r.IsDBNullAsync(1, ct) ? null : Convert.ToInt32(r.GetValue(1), CultureInfo.InvariantCulture),
+                    await r.IsDBNullAsync(2, ct) ? null : r.GetString(2),
+                    r.GetString(3) == "1",
+                    r.GetString(4) == "1",
+                    r.GetString(5),
+                    r.GetString(6)));
+            }
+            return list;
+        }
+        catch { return Array.Empty<(string, int?, string?, bool, bool, string, string)>(); }
+        finally { if (opened) await conn.CloseAsync(); }
+    }
+
+    /// <summary>Approve (or un-approve) one review for public display.</summary>
+    public async Task SetApprovedAsync(string id, bool approved, CancellationToken ct = default)
+    {
+        var conn = db.Database.GetDbConnection();
+        var opened = await OpenAsync(conn, ct);
+        try
+        {
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText = "UPDATE \"Feedback\" SET \"Approved\" = @a WHERE \"Id\" = @id";
+            AddParam(cmd, "@a", approved ? "1" : "0");
+            AddParam(cmd, "@id", id);
+            await cmd.ExecuteNonQueryAsync(ct);
+        }
+        finally { if (opened) await conn.CloseAsync(); }
+    }
+
     /// <summary>How many pieces of feedback exist (used by the tests; the real read path is SQL for now — see
     /// OPEN-BETA P2, which argues for a query before a dashboard).</summary>
     public async Task<int> CountAsync(CancellationToken ct = default)

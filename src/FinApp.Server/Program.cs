@@ -94,6 +94,8 @@ builder.Services.AddSingleton<AdminPolicy>();          // owner allowlist (fails
 builder.Services.AddScoped<AdminMetricsService>();
 builder.Services.AddSingleton<MonetizationService>();  // P4 rails: off by default, config flag flips it on
 builder.Services.AddScoped<SubscriptionService>();     // who is on a paid plan — our record, not the provider's
+builder.Services.AddSingleton<BetaPolicy>();           // free-beta seat cap + which addresses are ours
+builder.Services.AddScoped<PlanOverrideService>();     // admin-only per-account plan pin, for testing the upgrade
 builder.Services.AddSingleton<PaymentOptions>();
 // The payment seam. Sandbox is the only implementation today and the default; adding a real one is a single
 // registration change here plus a class implementing IPaymentProvider (see PaymentProvider.cs).
@@ -203,6 +205,16 @@ builder.Services.AddRateLimiter(options =>
             context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
             _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions { PermitLimit = 30, Window = TimeSpan.FromMinutes(1) })
         : System.Threading.RateLimiting.RateLimitPartition.GetNoLimiter("dev"));
+    // Feedback is anonymous and unauthenticated, so one person can sit and submit indefinitely. It used to share
+    // the client-errors bucket (30/min), which is right for a crash storm and absurd for opinions — that allows
+    // ~1,800 rows an hour from one address. Nothing they write can reach the landing page without an explicit
+    // approval, so the risk is a flooded moderation queue rather than public spam; a tight own bucket keeps that
+    // impractical while leaving genuine use (send it once, maybe fix a typo and resend) entirely unaffected.
+    options.AddPolicy("feedback", context => throttleAuth
+        ? System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
+            context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions { PermitLimit = 5, Window = TimeSpan.FromHours(1) })
+        : System.Threading.RateLimiting.RateLimitPartition.GetNoLimiter("dev"));
 });
 
 var app = builder.Build();
@@ -242,6 +254,7 @@ using (var scope = app.Services.CreateScope())
     await scope.ServiceProvider.GetRequiredService<FeedbackService>().EnsureSchemaAsync();
     await scope.ServiceProvider.GetRequiredService<SignupService>().EnsureSchemaAsync();
     await scope.ServiceProvider.GetRequiredService<SubscriptionService>().EnsureSchemaAsync();
+    await scope.ServiceProvider.GetRequiredService<PlanOverrideService>().EnsureSchemaAsync();
     // Refresh-token store (rotation + reuse detection) — same idempotent-create pattern.
     await scope.ServiceProvider.GetRequiredService<RefreshTokenService>().EnsureSchemaAsync();
     // One-time auth codes for external sign-in (keeps session tokens out of the redirect URL).
@@ -560,40 +573,88 @@ app.MapPost("/feedback", async (FeedbackRequest req, FeedbackService feedback, I
         rating?.ToString() ?? "-", req.Source, userId?.ToString() ?? "anon", req.PublicConsent, comment ?? "");
 
     return Results.NoContent();
-}).AllowAnonymous().RequireRateLimiting("clienterrors");
+}).AllowAnonymous().RequireRateLimiting("feedback");
 
 app.MapGet("/me", async (ClaimsPrincipal user, AvatarService avatars, ExternalIdentityService identities,
         EmailVerificationService emailVerification, TwoFactorService twoFactor, AccountDeletionService deletions,
         AdminPolicy adminPolicy, MonetizationService monetization, SignupService signups,
-        SubscriptionService subscriptions, CancellationToken ct) =>
+        SubscriptionService subscriptions, PlanOverrideService overrides, CancellationToken ct) =>
 {
+    // An admin plan override wins over everything, and implies monetization is live FOR THIS ACCOUNT ONLY — the
+    // plan surface doesn't exist while the flag is off, so pinning a plan without that would still show nothing.
+    var pinned = await overrides.GetAsync(user.UserId(), ct);
     // "unlimited" (no gating) while monetization is off; when on, beta-cohort accounts are grandfathered to Pro
     // and paying subscribers are Pro. The subscription lookup is skipped entirely while the flag is off — no
     // reason to query a table whose answer can't change the outcome.
-    var plan = monetization.Enabled
+    var plan = pinned ?? (monetization.Enabled
         ? monetization.PlanFor(await signups.IsBetaCohortAsync(user.UserId(), ct),
                                await subscriptions.IsActiveAsync(user.UserId(), ct))
-        : "unlimited";
+        : "unlimited");
     return Results.Ok(new UserDto(user.UserId(), user.Username(), user.Email(),
         await avatars.GetAsync(user.UserId(), ct), await identities.GetProviderAsync(user.UserId(), ct),
         EmailVerified: await emailVerification.IsVerifiedAsync(user.UserId(), user.Email(), ct),
         TwoFactorEnabled: await twoFactor.IsEnabledAsync(user.UserId(), ct),
         PendingDeletionAt: await deletions.ScheduledAtAsync(user.UserId(), ct),
         IsAdmin: adminPolicy.IsAdmin(user.Email()),
-        MonetizationEnabled: monetization.Enabled,
+        MonetizationEnabled: monetization.Enabled || pinned is not null,
         Plan: plan));
 }).RequireAuthorization();
 
 // The Plans screen's data (OPEN-BETA P4). Only meaningful when the flag is on; while off it reports Enabled=false
 // and "unlimited", so the client shows no plan UI at all. Prices are config values, never hard-coded.
 app.MapGet("/plans", async (ClaimsPrincipal user, MonetizationService monetization, SignupService signups,
-        SubscriptionService subscriptions, PaymentOptions payments, CancellationToken ct) =>
+        SubscriptionService subscriptions, PaymentOptions payments, PlanOverrideService overrides,
+        CancellationToken ct) =>
 {
-    var isBeta = monetization.Enabled && await signups.IsBetaCohortAsync(user.UserId(), ct);
-    var subscribed = monetization.Enabled && await subscriptions.IsActiveAsync(user.UserId(), ct);
-    return Results.Ok(new PlansDto(monetization.Enabled, monetization.PlanFor(isBeta, subscribed), isBeta,
+    var pinned = await overrides.GetAsync(user.UserId(), ct);
+    var live = monetization.Enabled || pinned is not null;
+    var isBeta = live && await signups.IsBetaCohortAsync(user.UserId(), ct);
+    var subscribed = live && await subscriptions.IsActiveAsync(user.UserId(), ct);
+    var plan = pinned ?? monetization.PlanFor(isBeta, subscribed);
+    // Reported as NOT beta-cohort while pinned to free — otherwise the profile would say "Pro is on us" over a
+    // Free plan, which is the one combination that makes the test override useless for seeing the upsell.
+    return Results.Ok(new PlansDto(live, plan, isBeta && plan == "pro",
         monetization.Currency, monetization.AnnualPrice, monetization.MonthlyPrice,
         MonetizationService.Catalogue, payments.Provider, payments.Sandbox));
+}).RequireAuthorization();
+
+// Free-beta capacity for the landing page. Anonymous: a stranger deciding whether to sign up is exactly who
+// needs to see how many seats are left.
+app.MapGet("/beta/capacity", async (BetaPolicy beta, SignupService signups, CancellationToken ct) =>
+{
+    var taken = beta.Enabled ? await signups.BetaSeatsTakenAsync(beta.CountFrom, ct) : 0;
+    return Results.Ok(new BetaCapacityDto(beta.Enabled, beta.Cap, taken,
+        beta.Enabled ? beta.Remaining(taken) : null, beta.IsFull(taken)));
+}).AllowAnonymous();
+
+// Admin-only: pin the CALLING admin's own account to a plan, so the Free → upgrade → Pro journey can be walked
+// on demand while wiring a payment provider. Deliberately self-only — an endpoint that could re-plan an
+// arbitrary user is a far bigger blast radius than this needs, and the owner only ever wants to test on
+// themselves. Clearing it returns the account to the normal rules.
+app.MapPost("/admin/plan-override", async (PlanOverrideRequest req, ClaimsPrincipal user,
+        AdminPolicy adminPolicy, PlanOverrideService overrides, CancellationToken ct) =>
+{
+    if (!adminPolicy.IsAdmin(user.Email())) return Results.Forbid();
+    await overrides.SetAsync(user.UserId(), req.Plan, ct);
+    return Results.NoContent();
+}).RequireAuthorization();
+
+// Admin-only review moderation. The approval gate shipped without a door — the column defaulted to 0 and
+// nothing could ever set it, so the landing carousel could never fill. This is that door.
+app.MapGet("/admin/feedback", async (ClaimsPrincipal user, AdminPolicy adminPolicy, FeedbackService feedback,
+        CancellationToken ct) =>
+    adminPolicy.IsAdmin(user.Email())
+        ? Results.Ok((await feedback.ModerationQueueAsync(50, ct))
+            .Select(f => new AdminFeedbackDto(f.Id, f.Rating, f.Comment, f.Consent, f.Approved, f.Source, f.At)).ToList())
+        : Results.Forbid())
+    .RequireAuthorization();
+
+app.MapPost("/admin/feedback/{id}/approve", async (string id, ApproveReviewRequest req, ClaimsPrincipal user,
+        AdminPolicy adminPolicy, FeedbackService feedback, CancellationToken ct) =>
+{
+    if (!adminPolicy.IsAdmin(user.Email())) return Results.Forbid();
+    await feedback.SetApprovedAsync(id, req.Approved, ct);
+    return Results.NoContent();
 }).RequireAuthorization();
 
 // The public pricing shown on the landing page, BEFORE anyone signs in — the plan choice moved there so the

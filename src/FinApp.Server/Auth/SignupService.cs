@@ -26,6 +26,11 @@ public sealed class SignupService(FinAppDbContext db)
     /// that the fact is captured at the source rather than inferred later.</summary>
     public const string BetaCohort = "beta";
 
+    /// <summary>Cohort for accounts we create ourselves to test with. They are stamped separately so they neither
+    /// consume a capped beta seat nor inflate "how many real testers do we have" — and, usefully, they are NOT
+    /// grandfathered to Pro, so a test account is the natural way to see the Free tier.</summary>
+    public const string TestCohort = "test";
+
     public Task EnsureSchemaAsync(CancellationToken ct = default) =>
         db.Database.ExecuteSqlRawAsync(
             "CREATE TABLE IF NOT EXISTS \"UserSignups\" (" +
@@ -67,6 +72,31 @@ public sealed class SignupService(FinAppDbContext db)
             AddParam(cmd, "@uid", userId.ToString());
             return Convert.ToInt32(await cmd.ExecuteScalarAsync(ct), CultureInfo.InvariantCulture) > 0;
         }
+        finally { if (opened) await conn.CloseAsync(); }
+    }
+
+    /// <summary>
+    /// How many real beta seats have been taken since <paramref name="countFrom"/>. Counts <c>Cohort='beta'</c>
+    /// only, so accounts stamped <see cref="TestCohort"/> never consume a seat.
+    /// <para><b>Counted from a date, not from zero</b> — the cap was introduced mid-beta ("30 users from now
+    /// on"), and making people who already signed up retroactively consume the new allowance would close the
+    /// door before anyone could walk through it.</para>
+    /// </summary>
+    public async Task<int> BetaSeatsTakenAsync(DateTimeOffset countFrom, CancellationToken ct = default)
+    {
+        var conn = db.Database.GetDbConnection();
+        var opened = await OpenAsync(conn, ct);
+        try
+        {
+            await using var cmd = conn.CreateCommand();
+            // JoinedAt is an ISO-8601 round-trip string, which sorts lexicographically in the same order as
+            // chronologically, so a plain string comparison is a correct date filter on both engines.
+            cmd.CommandText =
+                "SELECT COUNT(*) FROM \"UserSignups\" WHERE \"Cohort\" = 'beta' AND \"JoinedAt\" >= @from";
+            AddParam(cmd, "@from", countFrom.ToString("O", CultureInfo.InvariantCulture));
+            return Convert.ToInt32(await cmd.ExecuteScalarAsync(ct), CultureInfo.InvariantCulture);
+        }
+        catch { return 0; }   // never let a counting failure block sign-ups
         finally { if (opened) await conn.CloseAsync(); }
     }
 

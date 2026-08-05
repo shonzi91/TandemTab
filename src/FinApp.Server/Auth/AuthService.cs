@@ -12,7 +12,8 @@ public sealed class AuthService(
     FinAppDbContext db, IPasswordHasher hasher, JwtTokenService tokens,
     RefreshTokenService refreshTokens, AuthCodeService authCodes,
     EmailVerificationService emailVerification, IEmailSender email, TwoFactorService twoFactor,
-    SessionPolicy sessionPolicy, PasswordResetService passwordReset, SignupService signups)
+    SessionPolicy sessionPolicy, PasswordResetService passwordReset, SignupService signups,
+    BetaPolicy beta)
 {
     private const int MinPasswordLength = 8;
 
@@ -151,6 +152,17 @@ public sealed class AuthService(
         if (await db.Users.AnyAsync(u => u.Email == email, ct))
             throw new ConflictException("That email is already registered.");
 
+        // Beta capacity. Checked AFTER the cheap validity checks so a full beta never masks a plain typo, and
+        // BEFORE the user row is written so a refused sign-up leaves nothing behind. Our own test addresses skip
+        // the cap entirely — see BetaPolicy.
+        var isTestAccount = beta.IsTestEmail(email);
+        if (!isTestAccount && beta.Enabled
+            && beta.IsFull(await signups.BetaSeatsTakenAsync(beta.CountFrom, ct)))
+        {
+            throw new ConflictException(
+                "The free beta is full right now. Write to admin@tandemtab.com and we'll save you a spot in the next round.");
+        }
+
         User user;
         try
         {
@@ -163,7 +175,9 @@ public sealed class AuthService(
 
         db.Users.Add(user);
         await db.SaveChangesAsync(ct);
-        await signups.RecordAsync(user.Id, SignupService.BetaCohort, ct);   // OPEN-BETA B4 — capture who joined, when
+        // Stamped as "test" for our own addresses so they never occupy a capped seat (and, usefully, aren't
+        // grandfathered to Pro — a test account is how you see the Free tier).
+        await signups.RecordAsync(user.Id, beta.CohortFor(email), ct);   // OPEN-BETA B4 — capture who joined, when
         return await IssueAsync(user, ct);
     }
 
@@ -222,11 +236,21 @@ public sealed class AuthService(
             while (await db.Users.AnyAsync(u => u.Username.ToLower() == username.ToLower(), ct))
                 username = $"{baseName}{++n}";
 
+            // The cap applies to the OAuth path too — otherwise "sign in with Google" would be an open side door
+            // around it. Existing users fall outside this branch entirely, so a full beta never locks out
+            // somebody who already has an account.
+            if (!beta.IsTestEmail(email) && beta.Enabled
+                && beta.IsFull(await signups.BetaSeatsTakenAsync(beta.CountFrom, ct)))
+            {
+                throw new ConflictException(
+                    "The free beta is full right now. Write to admin@tandemtab.com and we'll save you a spot in the next round.");
+            }
+
             var randomSecret = Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N");
             user = new User(username, email, hasher.Hash(randomSecret));
             db.Users.Add(user);
             await db.SaveChangesAsync(ct);
-            await signups.RecordAsync(user.Id, SignupService.BetaCohort, ct);   // OPEN-BETA B4 — external sign-ups too
+            await signups.RecordAsync(user.Id, beta.CohortFor(email), ct);   // OPEN-BETA B4 — external sign-ups too
         }
         // The provider already confirmed this address, so treat it as verified.
         await emailVerification.MarkVerifiedAsync(user.Id, user.Email, ct);

@@ -497,6 +497,32 @@ public sealed class Localizer(IJSRuntime js)
         ["Free beta"] = "Безплатна бета",
         ["Your account and everything in it carries through to launch."] =
             "Профилът ти и всичко в него се запазва до официалния старт.",
+        ["We sell software, not your data."] = "Продаваме софтуер, не данните ти.",
+        ["{0} of {1} free spots left."] = "Остават {0} от {1} безплатни места.",
+        ["All spots are taken right now — write to us and we'll save you one."] =
+            "В момента местата са запълнени — пиши ни и ще ти запазим едно.",
+        ["Thanks — we've got your message. Anything else? Write to us at admin@tandemtab.com."] =
+            "Благодарим — получихме съобщението ти. Друго? Пиши ни на admin@tandemtab.com.",
+        ["For anything about your data — a copy, a correction, deletion — write to the same address."] =
+            "За всичко относно данните ти — копие, корекция, изтриване — пиши на същия адрес.",
+        // Admin: plan-override test switch + review moderation
+        ["Admin — test a plan"] = "Админ — тест на план",
+        ["Pin your own account to a plan to walk the upgrade flow. Only you are affected — everyone else stays as they are."] =
+            "Закачи собствения си профил към план, за да минеш през надграждането. Засяга само теб — за всички останали нищо не се променя.",
+        ["Test plan"] = "Тестов план",
+        ["Off"] = "Изкл.",
+        ["Normal"] = "Нормално",
+        ["As"] = "Като",
+        ["“Free” shows the locked features, the landing pricing and the upgrade prompt when you touch a Pro feature. “Pro” shows the crown."] =
+            "„Безплатен“ показва заключените функции, цените на началната страница и подканата за надграждане при досег с Про функция. „Про“ показва короната.",
+        ["Admin — reviews"] = "Админ — отзиви",
+        ["People who agreed their words may be shown. Approve one and it appears in the landing carousel."] =
+            "Хора, които се съгласиха думите им да бъдат показвани. Одобри отзив и той се появява на началната страница.",
+        ["(rating only — nothing to quote)"] = "(само оценка — няма какво да се цитира)",
+        ["Approve for the site"] = "Одобри за сайта",
+        ["Shown publicly — hide"] = "Показва се публично — скрий",
+        ["Nothing to review yet — only feedback where the person ticked “you may show this” appears here."] =
+            "Още няма какво да се преглежда — тук се появява само обратна връзка, при която човекът е отметнал „може да го показвате“.",
         ["What people are saying"] = "Какво казват хората",
         ["{0} out of 5"] = "{0} от 5",
         ["Previous"] = "Назад",

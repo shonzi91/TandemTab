@@ -183,6 +183,22 @@ timestamps happen to exist, or breaking the promise. Everything else about billi
 
 ---
 
+## ⬜ TODO before the door opens — rewrite the landing page
+
+**The landing page currently undersells the product, and deliberately so: it was written before Debt R1/R2, the
+Trends chart, the payoff planner, installment splitting, the health score and the achievements existed.** Its six
+feature tiles and three "how it works" steps describe an early version of TandemTab.
+
+**Do this LAST, once the beta feature set is frozen** — every rewrite before then is work that gets redone. When
+the last beta feature lands, go through the app screen by screen and make the page *maximally informational*:
+what it actually does now, with real screenshots rather than prose, and the debt/goal projections given the
+prominence they've earned (they are the most distinctive thing in the product and the landing page barely
+mentions them).
+
+Check at the same time: the hero ticks, the feature grid, the "how it works" steps, the Pro tier's bullet list
+(it is generated from the feature catalogue, so it stays honest by itself), and the beta seat count copy — that
+last one comes out entirely when the beta ends.
+
 ## After the door opens — parked by default
 
 **Scope rule: anything that arrives after this doc was written goes here, not above, unless it makes the beta
