@@ -14,11 +14,14 @@ public sealed class GatingServerFactory : FinAppServerFactory
     /// <summary>A second admin address: tests share this host, so each one that needs to pin a plan needs its own
     /// account, and an email can only be registered once.</summary>
     public const string AdminEmail2 = "gate.admin2@example.com";
+    public const string AdminEmail3 = "gate.admin3@example.com";
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         base.ConfigureWebHost(builder);
-        builder.UseSetting("Admin:Emails", $"{AdminEmail},{AdminEmail2}");   // overrides the base's empty allowlist
+        // One address per test that needs to act as an admin — the host (and its user table) is shared across
+        // the class, so re-using an address 409s in whichever test happens to run second.
+        builder.UseSetting("Admin:Emails", $"{AdminEmail},{AdminEmail2},{AdminEmail3}");
     }
 }
 
@@ -76,6 +79,45 @@ public class GatingApiTests : IClassFixture<GatingServerFactory>
         var importPro = await client.PostAsJsonAsync($"/accounts/{acct.Id}/import",
             new ImportTransactionsRequest(Array.Empty<ImportRowDto>()));
         Assert.NotEqual(HttpStatusCode.PaymentRequired, importPro.StatusCode);
+    }
+
+    /// <summary>
+    /// The cohort-correction endpoint: admin-only, validating, and effective. This is the safety net behind
+    /// BetaPolicy's email patterns — an OAuth test sign-in can't use a +test alias, so some test accounts will
+    /// land in the lifetime-Pro cohort and need moving out without hand-written SQL against production.
+    /// </summary>
+    [Fact]
+    public async Task An_admin_can_move_an_account_out_of_the_lifetime_cohort()
+    {
+        var (admin, _) = await _factory.RegisterAndAuthAsync("cohortadmin", GatingServerFactory.AdminEmail3);
+        var (victim, _) = await _factory.RegisterAndAuthAsync("cohortsubject", "cohort.subject@somewhere.test");
+
+        // Fresh sign-up under the cap → lifetime cohort → unlimited + crowned while billing is off.
+        var before = await victim.GetFromJsonAsync<UserDto>("/me");
+        Assert.Equal("unlimited", before!.Plan);
+        Assert.True(before.ProBadge);
+
+        // Reclassify as one of ours.
+        var res = await admin.PostAsJsonAsync("/admin/cohort",
+            new SetCohortRequest("cohort.subject@somewhere.test", "test"));
+        res.EnsureSuccessStatusCode();
+        var body = (await res.Content.ReadFromJsonAsync<CohortResultDto>())!;
+        Assert.Equal("test", body.Cohort);
+        Assert.False(body.CountsAsBetaMember);
+
+        // It now gets the real Free experience: gated, no crown.
+        var after = await victim.GetFromJsonAsync<UserDto>("/me");
+        Assert.Equal("free", after!.Plan);
+        Assert.False(after.ProBadge);
+
+        // Guard rails: an invented cohort is refused (every downstream check reads this string), an unknown email
+        // 404s rather than silently doing nothing, and a non-admin can't reach it at all.
+        Assert.Equal(HttpStatusCode.BadRequest,
+            (await admin.PostAsJsonAsync("/admin/cohort", new SetCohortRequest("cohort.subject@somewhere.test", "vip"))).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound,
+            (await admin.PostAsJsonAsync("/admin/cohort", new SetCohortRequest("nobody@nowhere.test", "test"))).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden,
+            (await victim.PostAsJsonAsync("/admin/cohort", new SetCohortRequest("cohort.subject@somewhere.test", "beta"))).StatusCode);
     }
 
     /// <summary>

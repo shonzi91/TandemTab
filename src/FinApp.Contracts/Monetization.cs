@@ -56,6 +56,14 @@ public sealed record BetaCapacityDto(bool Capped, int Cap, int Taken, int? Remai
 /// "free", "pro", or null to clear.</summary>
 public sealed record PlanOverrideRequest(string? Plan);
 
+/// <summary>Admin-only: re-classify an account's cohort by email. "test" excludes it from the lifetime-Pro
+/// allowance and the tester count; "beta" grandfathers it; "free" is an ordinary post-cap member.</summary>
+public sealed record SetCohortRequest(string Email, string Cohort);
+
+/// <summary>The outcome of a cohort change — echoes what the account now is, so the console can confirm rather
+/// than assume.</summary>
+public sealed record CohortResultDto(string Email, string Cohort, bool CountsAsBetaMember);
+
 /// <summary>Admin-only view of a piece of feedback, for moderating what may appear on the landing page.</summary>
 public sealed record AdminFeedbackDto(string Id, int? Rating, string? Comment, bool PublicConsent,
     bool Approved, string Source, string At);

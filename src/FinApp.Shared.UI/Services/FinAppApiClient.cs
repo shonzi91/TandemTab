@@ -193,6 +193,11 @@ public sealed class FinAppApiClient(HttpClient http)
     public Task SetPlanOverrideAsync(string? plan, CancellationToken ct = default) =>
         SendAsync(HttpMethod.Post, "/admin/plan-override", new PlanOverrideRequest(plan), ct);
 
+    /// <summary>Admin-only: re-classify an account's cohort by email — the fix for a test account that landed in
+    /// the lifetime-Pro beta cohort (e.g. one created via Google sign-in, where no +test alias is possible).</summary>
+    public Task<CohortResultDto> SetCohortAsync(string email, string cohort, CancellationToken ct = default) =>
+        SendAsync<CohortResultDto>(HttpMethod.Post, "/admin/cohort", new SetCohortRequest(email, cohort), ct);
+
     /// <summary>Admin-only: the review moderation queue (everything with public consent).</summary>
     public Task<List<AdminFeedbackDto>> GetAdminFeedbackAsync(CancellationToken ct = default) =>
         SendAsync<List<AdminFeedbackDto>>(HttpMethod.Get, "/admin/feedback", null, ct);

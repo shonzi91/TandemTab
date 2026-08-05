@@ -515,6 +515,22 @@ public sealed class Localizer(IJSRuntime js)
         ["Exit test mode"] = "Изход от тестов режим",
         ["“Free” shows the locked features, the landing pricing and the upgrade prompt when you touch a Pro feature. “Pro” shows the crown."] =
             "„Безплатен“ показва заключените функции, цените на началната страница и подканата за надграждане при досег с Про функция. „Про“ показва короната.",
+        ["Admin — cohort"] = "Админ — група",
+        ["Move an account out of the lifetime-Pro group (or into it). Use “test” for accounts we create ourselves — they take no spot and get no crown."] =
+            "Премести профил извън групата с Про за цял живот (или в нея). Използвай „test“ за профили, които създаваме ние — те не заемат място и не получават корона.",
+        ["Account email"] = "Имейл на профила",
+        ["Cohort"] = "Група",
+        ["Ours"] = "Наш",
+        ["Ordinary"] = "Обикновен",
+        ["Lifetime"] = "За цял живот",
+        ["test"] = "test",
+        ["free"] = "free",
+        ["beta"] = "beta",
+        ["Enter the account's email first."] = "Първо въведи имейла на профила.",
+        ["{0} is now “{1}” — counts as a lifetime-Pro member."] =
+            "{0} вече е „{1}“ — счита се за член с Про за цял живот.",
+        ["{0} is now “{1}” — takes no lifetime-Pro spot."] =
+            "{0} вече е „{1}“ — не заема място с Про за цял живот.",
         ["Admin — reviews"] = "Админ — отзиви",
         ["People who agreed their words may be shown. Approve one and it appears in the landing carousel."] =
             "Хора, които се съгласиха думите им да бъдат показвани. Одобри отзив и той се появява на началната страница.",

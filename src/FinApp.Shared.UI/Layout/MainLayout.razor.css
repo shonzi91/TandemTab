@@ -408,6 +408,16 @@ html.dark ::deep .cc-mail { color: #57d9a3; }
 html.dark ::deep .cc-line { color: #c3cad4; }
 html.dark ::deep .cc-muted { color: #8f9dab; }
 
+/* Admin cohort form. */
+.pm-field { display: flex; flex-direction: column; gap: 4px; margin: 8px 0 6px; font-size: .78rem; color: #6b7280; }
+.pm-field input {
+    padding: 8px 11px; border: 1px solid #e3e6ec; border-radius: 9px;
+    font: inherit; font-size: .86rem; color: #26313d; background: #fff;
+}
+.pm-field input:focus-visible { outline: none; border-color: #13a06e; box-shadow: 0 0 0 3px rgba(19,160,110,.16); }
+html.dark .pm-field { color: #9aa8b4; }
+html.dark .pm-field input { background: #1e2330; border-color: #2c3142; color: #dfe5ec; }
+
 /* Admin review moderation queue. */
 .pm-revs { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
 .pm-rev { border: 1px solid #e6e2d8; border-radius: 11px; padding: 9px 11px; }

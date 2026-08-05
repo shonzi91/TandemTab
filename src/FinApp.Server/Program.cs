@@ -635,6 +635,33 @@ app.MapPost("/admin/plan-override", async (PlanOverrideRequest req, ClaimsPrinci
     return Results.NoContent();
 }).RequireAuthorization();
 
+// Admin-only: re-classify an account's cohort, by email.
+// The safety net behind BetaPolicy's pattern list. Patterns catch a test address at sign-up, but they can't catch
+// an OAuth sign-in (the provider hands over the real address, so no +test alias is possible) or an account made
+// before the patterns were configured. Those land in the beta cohort holding a lifetime-Pro seat, and previously
+// the only fix was raw SQL against prod. Accepts only the three known cohorts so a typo can't invent a fourth
+// that every downstream check would then treat as "not beta".
+app.MapPost("/admin/cohort", async (SetCohortRequest req, ClaimsPrincipal user, AdminPolicy adminPolicy,
+        FinAppDbContext db, SignupService signups, ILoggerFactory logs, CancellationToken ct) =>
+{
+    if (!adminPolicy.IsAdmin(user.Email())) return Results.Forbid();
+
+    var cohort = (req.Cohort ?? "").Trim().ToLowerInvariant();
+    if (cohort is not (SignupService.BetaCohort or SignupService.FreeCohort or SignupService.TestCohort))
+        return Results.BadRequest(new { error = "Cohort must be beta, free or test." });
+
+    var email = (req.Email ?? "").Trim().ToLowerInvariant();
+    var target = await db.Users.FirstOrDefaultAsync(u => u.Email == email, ct);
+    if (target is null) return Results.NotFound(new { error = "No account with that email." });
+
+    await signups.SetCohortAsync(target.Id, cohort, ct);
+    // Logged because this hands out (or takes away) a lifetime entitlement — worth an audit trail.
+    logs.CreateLogger("FinApp.Admin").LogInformation(
+        "Cohort for {Email} set to {Cohort} by {Admin}", email, cohort, user.Email());
+    return Results.Ok(new CohortResultDto(email, cohort,
+        CountsAsBetaMember: cohort == SignupService.BetaCohort));
+}).RequireAuthorization();
+
 // Admin-only review moderation. The approval gate shipped without a door — the column defaulted to 0 and
 // nothing could ever set it, so the landing carousel could never fill. This is that door.
 app.MapGet("/admin/feedback", async (ClaimsPrincipal user, AdminPolicy adminPolicy, FeedbackService feedback,

@@ -91,6 +91,54 @@ public sealed class SignupService(FinAppDbContext db)
     }
 
     /// <summary>
+    /// Move an existing account to a different cohort — the correction path for a mis-stamp.
+    /// <para>
+    /// <b>Why this has to exist.</b> <see cref="RecordAsync"/> is first-write-wins on purpose (a replayed
+    /// registration must not move <c>JoinedAt</c>), which also meant a cohort could never be fixed. The pattern
+    /// list in <see cref="BetaPolicy"/> catches test addresses at sign-up, but it cannot catch every case: a
+    /// Google/Facebook sign-in supplies the provider's real address, so a test account created that way cannot use
+    /// a <c>+test</c> alias and lands in the beta cohort — holding a lifetime-Pro seat never meant for it. Without
+    /// a way to re-stamp, the only remedy was hand-written SQL against production.
+    /// </para>
+    /// <para>Inserts a row when none exists, so an account predating stamping can be classified too. Never moves
+    /// <c>JoinedAt</c> — the join date is a fact, the cohort is a classification.</para>
+    /// </summary>
+    public async Task SetCohortAsync(Guid userId, string cohort, CancellationToken ct = default)
+    {
+        var conn = db.Database.GetDbConnection();
+        var opened = await OpenAsync(conn, ct);
+        try
+        {
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText =
+                "INSERT INTO \"UserSignups\" (\"UserId\", \"JoinedAt\", \"Cohort\") VALUES (@uid, @at, @cohort) " +
+                "ON CONFLICT (\"UserId\") DO UPDATE SET \"Cohort\" = @cohort";
+            AddParam(cmd, "@uid", userId.ToString());
+            AddParam(cmd, "@at", DateTimeOffset.UtcNow.ToString("O", CultureInfo.InvariantCulture));
+            AddParam(cmd, "@cohort", cohort);
+            await cmd.ExecuteNonQueryAsync(ct);
+        }
+        finally { if (opened) await conn.CloseAsync(); }
+    }
+
+    /// <summary>The cohort an account is in, or null when it has no row (i.e. it predates stamping — see
+    /// <see cref="IsBetaCohortAsync"/> for why a missing row counts as beta).</summary>
+    public async Task<string?> CohortOfAsync(Guid userId, CancellationToken ct = default)
+    {
+        var conn = db.Database.GetDbConnection();
+        var opened = await OpenAsync(conn, ct);
+        try
+        {
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText = "SELECT \"Cohort\" FROM \"UserSignups\" WHERE \"UserId\" = @uid";
+            AddParam(cmd, "@uid", userId.ToString());
+            return await cmd.ExecuteScalarAsync(ct) as string;
+        }
+        catch { return null; }
+        finally { if (opened) await conn.CloseAsync(); }
+    }
+
+    /// <summary>
     /// How many real beta seats have been taken since <paramref name="countFrom"/>. Counts <c>Cohort='beta'</c>
     /// only, so accounts stamped <see cref="TestCohort"/> never consume a seat.
     /// <para><b>Counted from a date, not from zero</b> — the cap was introduced mid-beta ("30 users from now

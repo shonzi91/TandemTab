@@ -305,6 +305,24 @@
                     }
                 </details>
 
+                @* Cohort correction. BetaPolicy's email patterns keep our own test sign-ups out of the lifetime-Pro
+                   allowance automatically, but they can't cover a Google sign-in (the provider supplies the real
+                   address, so no +test alias is possible) or an account made before the patterns existed. Those
+                   sit in the beta cohort holding a seat; this is how you move one out without touching prod SQL. *@
+                <details class="pm-section">
+                    <summary>@Loc["Admin — cohort"]</summary>
+                    <p class="pm-hint">@Loc["Move an account out of the lifetime-Pro group (or into it). Use “test” for accounts we create ourselves — they take no spot and get no crown."]</p>
+                    <label class="pm-field">@Loc["Account email"]
+                        <input type="email" @bind="_cohortEmail" placeholder="you+test1@gmail.com" />
+                    </label>
+                    <div class="pm-cycle" role="group" aria-label="@Loc["Cohort"]">
+                        <button type="button" disabled="@_cohortBusy" @onclick="@(() => SetCohort("test"))">@Loc["Ours"] <strong>@Loc["test"]</strong></button>
+                        <button type="button" disabled="@_cohortBusy" @onclick="@(() => SetCohort("free"))">@Loc["Ordinary"] <strong>@Loc["free"]</strong></button>
+                        <button type="button" disabled="@_cohortBusy" @onclick="@(() => SetCohort("beta"))">@Loc["Lifetime"] <strong>@Loc["beta"]</strong></button>
+                    </div>
+                    @if (_cohortMsg is { } cmsg) { <p class="pm-hint">@cmsg</p> }
+                </details>
+
                 @* Review moderation — the second of the two gates a review must pass (the first is the author's
                    own consent). Approve one and it appears in the landing carousel. *@
                 <details class="pm-section" @ontoggle="LoadAdminFeedback">
@@ -732,6 +750,30 @@
         }
         catch { /* leave the buttons as they were; /me is still the truth */ }
         finally { _overrideBusy = false; StateHasChanged(); }
+    }
+
+    // Admin cohort correction. Reports back what the account actually is now rather than assuming the write
+    // landed — this hands out (or withdraws) a lifetime entitlement, so a silent failure would be the worst case.
+    private string? _cohortEmail;
+    private string? _cohortMsg;
+    private bool _cohortBusy;
+    private async Task SetCohort(string cohort)
+    {
+        if (string.IsNullOrWhiteSpace(_cohortEmail)) { _cohortMsg = Loc["Enter the account's email first."]; return; }
+        _cohortBusy = true; _cohortMsg = null; StateHasChanged();
+        try
+        {
+            var res = await Api.SetCohortAsync(_cohortEmail!.Trim(), cohort);
+            _cohortMsg = string.Format(
+                res.CountsAsBetaMember
+                    ? Loc["{0} is now “{1}” — counts as a lifetime-Pro member."]
+                    : Loc["{0} is now “{1}” — takes no lifetime-Pro spot."],
+                res.Email, res.Cohort);
+            _adminMetrics = null; await LoadAdminMetrics();   // the tester counts just changed
+        }
+        catch (ApiException ex) { _cohortMsg = ex.Message; }
+        catch { _cohortMsg = Loc["Couldn’t reach the server. Check your connection and try again."]; }
+        finally { _cohortBusy = false; StateHasChanged(); }
     }
 
     // Admin review moderation.
