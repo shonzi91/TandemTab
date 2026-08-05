@@ -250,21 +250,22 @@ public sealed class Period : Entity
 
     /// <summary>
     /// Record a member's deposit, classified by <paramref name="categoryId"/> and attributed to
-    /// <paramref name="fundId"/> (the money lands in that fund). Deposits with the same
-    /// (member, category, fund) merge into one row; different combinations are separate rows.
+    /// <paramref name="fundId"/> (the money lands in that fund). <b>Every deposit is its own row</b>, including
+    /// repeats of the same (member, category, fund).
+    /// <para>
+    /// ⚠️ This used to merge a repeat into the existing row and add to its amount. That quietly destroyed
+    /// information: two salary payments in one month collapsed into a single row showing the total under the date of
+    /// the <i>first</i> one, so the ledger no longer said when the money actually arrived, and editing or removing
+    /// "that deposit" acted on the merged sum rather than the entry the user meant. A deposit is a ledger event, and
+    /// two events are two rows — the same rule expenses have always followed.
+    /// </para>
     /// </summary>
     public Contribution Deposit(Guid memberId, Money amount, Guid categoryId = default, Guid fundId = default, DateOnly date = default)
     {
         EnsureCurrency(amount);
-        var existing = _contributions.FirstOrDefault(c =>
-            c.MemberId == memberId && c.CategoryId == categoryId && c.FundId == fundId);
-        if (existing is null)
-        {
-            existing = new Contribution(memberId, Money.Zero(Currency), categoryId, fundId, date);
-            _contributions.Add(existing);
-        }
-        existing.RecordPayment(amount);
-        return existing;
+        var contribution = new Contribution(memberId, amount, categoryId, fundId, date);
+        _contributions.Add(contribution);
+        return contribution;
     }
 
     public Contribution? FindContribution(Guid contributionId) =>

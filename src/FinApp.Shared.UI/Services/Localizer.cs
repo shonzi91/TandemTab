@@ -1376,6 +1376,7 @@ public sealed class Localizer(IJSRuntime js)
         ["Just what's invested now"] = "Само това, което е инвестирано сега",
         ["Keep my account"] = "Запази профила ми",
         ["Log as adjustment"] = "Заведи като корекция",
+        ["Logging an adjustment adds a matching entry to this period so its books balance. Ignoring carries the difference forward untracked."] = "Корекцията добавя съответстващ запис в този период, за да излезе балансът. Пропускането пренася разликата напред, без да я записва.",
         ["Logged expenses on 15+ days in a single period."] = "Записани разходи в 15+ дни за един период.",
         ["Milestones in progress"] = "Постижения в процес",
         ["Money leaves that fund for this goal — it’s not counted as an expense and doesn’t dent your savings figures."] = "Парите напускат този фонд за тази цел — не се броят за разход и не намаляват спестяванията ти.",

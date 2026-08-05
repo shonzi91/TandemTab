@@ -1499,6 +1499,26 @@ input[type=date]::-webkit-calendar-picker-indicator:hover { opacity: 1; backgrou
 .modal-actions .ghost:not(.danger)::before { content: "✕"; font-size: 1rem; }
 .modal-actions button:not(.ghost)::before { content: "✓"; font-size: 1rem; }
 
+/* ⚠️ The icon treatment above only works for the two-way "cancel or confirm" shape every ordinary modal has. A row
+   offering a genuine CHOICE between several outcomes collapses into meaningless glyphs — the rollover reconcile step
+   rendered its three options ("I'll add it myself" / "Ignore" / "Log as adjustment") as ✕ ✕ ✓, so the two ghosts were
+   indistinguishable and the ✓ read as plain confirmation while actually writing Adjustment entries into the closing
+   period. Rows like that opt out with `modal-actions-labelled`: they stay in the body flow, at the bottom, with their
+   words. If a modal's actions can't be summed up as "no" and "yes", they must be readable. */
+.modal-actions.modal-actions-labelled {
+    order: 0; position: static; height: auto; min-height: 0;
+    margin: 4px 0 0; padding: 0; pointer-events: auto;
+    flex-wrap: wrap; gap: 8px;
+}
+/* ⚠️ Each collapse rule must be beaten on its OWN terms. `.modal-actions .ghost:not(.danger)` is (0,3,0) — a plain
+   `.modal-actions.modal-actions-labelled button` is only (0,2,1) and loses, which left the two ghost buttons still
+   font-size:0 while the primary un-collapsed correctly. Mirror both selectors with the modifier prepended. */
+.modal-actions.modal-actions-labelled .ghost:not(.danger),
+.modal-actions.modal-actions-labelled button:not(.ghost),
+.modal-actions.modal-actions-labelled button { font-size: .84rem; padding: 8px 14px; min-width: 0; }
+.modal-actions.modal-actions-labelled .ghost:not(.danger)::before,
+.modal-actions.modal-actions-labelled button:not(.ghost)::before { content: none; }
+
 @media (max-width: 720px) {
     .dash { padding: 12px; }
     .cards { grid-template-columns: repeat(2, 1fr); gap: 10px; }

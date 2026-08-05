@@ -2989,7 +2989,11 @@ else
                                 }
                             </ul>
                         </div>
-                        <div class="modal-actions">
+                        @* Three genuinely different outcomes, so this row keeps its labels (see modal-actions-labelled).
+                           As icons it read ✕ ✕ ✓, and the ✓ — which looks like plain confirmation — was the one that
+                           writes Adjustment entries into the closing period. *@
+                        <p class="hint">@Loc["Logging an adjustment adds a matching entry to this period so its books balance. Ignoring carries the difference forward untracked."]</p>
+                        <div class="modal-actions modal-actions-labelled">
                             <button class="ghost" @onclick="() => { _reconcileGaps = null; CloseModal(); }">@Loc["I’ll add it myself"]</button>
                             <button class="ghost" disabled="@_busy" @onclick="RolloverIgnoringGaps">@Loc["Ignore"]</button>
                             <button disabled="@_busy" @onclick="RolloverWithAdjustments">@Loc["Log as adjustment"]</button>

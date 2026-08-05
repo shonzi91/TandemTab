@@ -64,8 +64,11 @@ public class DepositMutationApiTests : IClassFixture<FinAppServerFactory>
     }
 
     [Fact]
-    public async Task Deposits_with_the_same_member_category_fund_merge_into_one_row()
+    public async Task Deposits_with_the_same_member_category_fund_are_still_separate_rows()
     {
+        // These used to merge into one row carrying the summed amount under the FIRST deposit's date, so two salary
+        // payments in a month became a single entry that misreported when the money arrived — and editing or deleting
+        // "that deposit" acted on the merged sum rather than the payment the user picked.
         var (client, auth) = await _factory.RegisterAndAuthAsync("dep_merge");
         var account = await CreateAccount(client, "Merge");
         var (salary, fund) = await SeedAsync(client, account.Id, auth.UserId);
@@ -73,11 +76,15 @@ public class DepositMutationApiTests : IClassFixture<FinAppServerFactory>
         var first = (await (await client.PostAsJsonAsync($"/accounts/{account.Id}/deposits",
             new AddDepositRequest(salary, fund, 300m, When))).Content.ReadFromJsonAsync<MutationResultDto>())!;
         var second = (await (await client.PostAsJsonAsync($"/accounts/{account.Id}/deposits",
-            new AddDepositRequest(salary, fund, 200m, When))).Content.ReadFromJsonAsync<MutationResultDto>())!;
+            new AddDepositRequest(salary, fund, 200m, When.AddDays(10)))).Content.ReadFromJsonAsync<MutationResultDto>())!;
 
-        Assert.Equal(first.EntityId, second.EntityId);   // same row, not a new one
+        Assert.NotEqual(first.EntityId, second.EntityId);   // a second event is a second row
         var ov = (await Overview(client, account.Id))!;
         Assert.Equal(500m, ov.Contributed);
+
+        // Removing one leaves the other untouched — the point of keeping them apart.
+        (await client.DeleteAsync($"/accounts/{account.Id}/deposits/{first.EntityId}")).EnsureSuccessStatusCode();
+        Assert.Equal(200m, (await Overview(client, account.Id))!.Contributed);
     }
 
     [Fact]

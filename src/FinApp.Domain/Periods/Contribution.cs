@@ -5,8 +5,8 @@ namespace FinApp.Domain.Periods;
 /// <summary>
 /// A member's deposit into a period — how much they have actually put in, classified by an optional
 /// contribution <see cref="CategoryId"/> (Salary, Vouchers…) and attributed to a <see cref="FundId"/>
-/// (the deposited money lands in that fund). Deposits with the same (member, category, fund) merge into
-/// one row; different combinations are separate rows. There are no pledges or due dates.
+/// (the deposited money lands in that fund). <b>One row per deposit</b>: two salary payments in a month are two
+/// rows, each with its own date, exactly as two expenses would be. There are no pledges or due dates.
 /// </summary>
 public sealed class Contribution : Entity
 {

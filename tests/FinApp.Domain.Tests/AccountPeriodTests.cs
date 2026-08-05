@@ -109,11 +109,13 @@ public class AccountPeriodTests
 
         var period = account.StartPeriod(new DateOnly(2026, 1, 1), new DateOnly(2026, 1, 31));
         period.Deposit(a.UserId, M(500));
-        period.Deposit(a.UserId, M(100)); // a second deposit adds on
+        period.Deposit(a.UserId, M(100)); // a second deposit is its own row, not added onto the first
         period.Deposit(b.UserId, M(200));
 
         Assert.Equal(M(800), period.ContributionsPaidTotal);
-        Assert.Equal(M(600), period.Contributions.First(c => c.MemberId == a.UserId).Paid);
+        Assert.Equal(3, period.Contributions.Count);
+        Assert.Equal(M(600), period.Contributions.Where(c => c.MemberId == a.UserId)
+            .Aggregate(M(0), (acc, c) => acc + c.Paid));
     }
 
     [Fact]
