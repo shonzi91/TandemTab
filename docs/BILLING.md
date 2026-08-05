@@ -11,6 +11,12 @@ the tier boundaries now** so the migration builds them in rather than bolting th
 
 This doc is the single source of truth for pricing/entitlements. Update it as decisions firm up.
 
+> **✅ PRICE RESOLVED (2026-08-05): €29.99 / year (with €3.99 / mo), a two-tier Free/Pro model.**
+> This is what ships — it's [MONETIZATION.md](../MONETIZATION.md)'s recommendation, it's the config default in
+> `MonetizationService`, and it's what the app serves. **The 3-tier `$4.99 Premium / $8.99 Ultra / $39.99 yr`
+> table below is a superseded exploration** — kept for the reasoning, not the numbers. Where this doc and
+> MONETIZATION.md disagree on price or tier count, MONETIZATION.md wins.
+
 ---
 
 ## Tiers

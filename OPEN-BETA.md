@@ -246,8 +246,8 @@ is in the right place. Open questions to settle in that pass:
   gating the 2nd) isn't enforced server-side yet. Confirm whether view-only-1-debt is the intended Free line.
 - **History window**: the Breakdown/Trends range beyond ~3 months is client-gated (`history`); **period
   back-navigation** past that window is not. Confirm the exact Free horizon and gate navigation to match.
-- **Price**: still **€29.99/yr (MONETIZATION.md) vs $39.99 (docs/BILLING.md)** — reconcile before any number is
-  ever shown (harmless while `Monetization:Enabled` is off).
+- **Price**: ✅ **resolved 2026-08-05 — €29.99/yr (+ €3.99/mo)**, the config default the app already serves.
+  `docs/BILLING.md`'s superseded 3-tier `$39.99` table is annotated as such; MONETIZATION.md is authoritative.
 
 ## After the door opens — parked by default
 
@@ -325,8 +325,8 @@ Shipped the **rails, not the billing**, exactly as this item asked. `Monetizatio
 off, and off during beta**) gates everything: while off there is no plan UI and every account is "unlimited".
 Flip it on to test — a "Your plan" panel (Free vs Pro cards, price from config) appears; beta-cohort accounts
 are **grandfathered to Pro** (keyed off B4's `UserSignups`). `/me` carries `Plan`+`MonetizationEnabled`; new
-`GET /plans`. Prices are config-driven — the hero is **€29.99/yr per MONETIZATION.md**; ⚠️ **docs/BILLING.md's
-$39.99 is the stale one and still needs reconciling to this.** Browser-verified with the flag on; the flag-off
+`GET /plans`. Prices are config-driven — the hero is **€29.99/yr per MONETIZATION.md** (✅ settled 2026-08-05;
+`docs/BILLING.md`'s old $39.99 3-tier table is annotated as superseded). Browser-verified with the flag on; the flag-off
 default ("unlimited", no UI) is test-pinned. **Deliberately not built:** enforcement at the individual gate
 points (shared accounts, import limits, history window, debt planner, Free caps) — the "at leisure" half; the
 non-backfillable cohort stamp already shipped in [B4](#b4--state-what-beta-promises-about-their-data-and-stamp-the-cohort--s-).
@@ -344,8 +344,8 @@ already recommends ("build the rails early; they're cheap and migration-independ
 - **Not now:** Stripe/Paddle integration, paywall UI, trial timer. Those are the expensive half and the standing
   decision is still *monetize after mobile + push*. A flag with no billing behind it is a day; a flag with
   billing behind it is weeks.
-- ⚠️ **Reconcile the price first.** [MONETIZATION.md](MONETIZATION.md) says €29.99/yr, `docs/BILLING.md` says
-  $39.99/yr. Harmless while nothing is shown; embarrassing the moment a number reaches a user.
+- ✅ **Price settled: €29.99/yr** (+ €3.99/mo), the config default the app serves. `docs/BILLING.md`'s old
+  $39.99 3-tier table is annotated as superseded; MONETIZATION.md is authoritative.
 
 ---
 
@@ -355,7 +355,7 @@ Recorded so they don't get re-litigated at the door.
 
 | Item | Why it can wait |
 |---|---|
-| **Billing / monetization** | The standing decision ([docs/BILLING.md](docs/BILLING.md)) is *monetize after mobile + push*. A free beta is correct; charging for a beta would be worse than not. ⚠️ [MONETIZATION.md](MONETIZATION.md) (€29.99/yr) and [docs/BILLING.md](docs/BILLING.md) ($39.99/yr) still disagree on price — reconcile before any pricing is ever shown, not before beta. |
+| **Billing / monetization** | The standing decision ([docs/BILLING.md](docs/BILLING.md)) is *monetize after mobile + push*. A free beta is correct; charging for a beta would be worse than not. ✅ **Price settled at €29.99/yr** (2026-08-05) — MONETIZATION.md is authoritative; `docs/BILLING.md`'s old $39.99 3-tier table is annotated as superseded. |
 | **Android** | It's a real thin client but is **~13 sessions behind web** (none of S70, S74–S82: Home hero/donut, bell grouping, period-lifecycle fixes, Debt R1/R2, F3, a11y). Ship the beta **web-only**; a stale mobile app is a worse first impression than no mobile app. Android parity is a post-beta track and beta feedback should steer which parts of it matter — see [docs/MOBILE.md](docs/MOBILE.md). |
 | **iOS** | **On hold (2026-08-04).** The product is web + Android; iOS is revisited only once that pairing is stable and there's real demand. |
 | **The feature backlog** | F1/F2/F4–F7, UX #10, projections D1–D8, the on-device AI assistant. Every one is an enhancement, none is a gap. |
