@@ -54,6 +54,22 @@ public sealed class SignupService(FinAppDbContext db)
         finally { if (opened) await conn.CloseAsync(); }
     }
 
+    /// <summary>Whether this user joined during the beta (stamped <c>Cohort = "beta"</c>). Used to grandfather
+    /// beta-cohort accounts to Pro when monetization is switched on (OPEN-BETA P4).</summary>
+    public async Task<bool> IsBetaCohortAsync(Guid userId, CancellationToken ct = default)
+    {
+        var conn = db.Database.GetDbConnection();
+        var opened = await OpenAsync(conn, ct);
+        try
+        {
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText = "SELECT COUNT(*) FROM \"UserSignups\" WHERE \"UserId\" = @uid AND \"Cohort\" = 'beta'";
+            AddParam(cmd, "@uid", userId.ToString());
+            return Convert.ToInt32(await cmd.ExecuteScalarAsync(ct), CultureInfo.InvariantCulture) > 0;
+        }
+        finally { if (opened) await conn.CloseAsync(); }
+    }
+
     /// <summary>How many accounts have been created (used by the tests; the real read path is SQL — see
     /// OPEN-BETA P2, which argues for a query before a dashboard).</summary>
     public async Task<int> CountAsync(CancellationToken ct = default)

@@ -31,6 +31,10 @@ public class FinAppServerFactory : WebApplicationFactory<Program>
         builder.UseSetting("Auth:Google:ClientSecret", "");
         builder.UseSetting("Auth:Facebook:AppId", "");
         builder.UseSetting("Auth:Facebook:AppSecret", "");
+        // Same reasoning: the dev appsettings turn these on for local testing, but the suite asserts the
+        // off-by-default behaviour (admin fails closed; monetization is "unlimited"), so pin them off here.
+        builder.UseSetting("Admin:Emails", "");
+        builder.UseSetting("Monetization:Enabled", "false");
     }
 
     /// <summary>Register a new user and return a client with its bearer token attached.</summary>

@@ -158,6 +158,20 @@ html.dark .pm-privacy li { color: #c3cad4; }
 .pm-admin-bar { flex: 1 1 0; min-width: 2px; background: #13a06e; border-radius: 2px 2px 0 0; }
 html.dark .pm-admin-grid > div { background: rgba(19,160,110,.14); }
 html.dark .pm-admin-n { color: #2ee59d; }
+/* P4 — Plans (only rendered when monetization is switched on): two compact tier cards. */
+.pm-plans { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 8px 0 4px; }
+.pm-plan { border: 1px solid #e6e2d8; border-radius: 11px; padding: 10px 11px; }
+.pm-plan h5 { margin: 0 0 6px; font-size: .9rem; display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; }
+.pm-plan-price { font-size: .74rem; font-weight: 700; color: #0e7c55; }
+.pm-plan ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.pm-plan li { font-size: .74rem; line-height: 1.35; color: #4b5563; }
+.pm-plan li::before { content: "✓ "; color: #13a06e; font-weight: 800; }
+.pm-plan-pro { border-color: #13a06e; background: rgba(19,160,110,.06); }
+.pm-plan.current { box-shadow: 0 0 0 2px rgba(19,160,110,.35) inset; }
+.pm-plan button[disabled] { margin-top: 8px; opacity: .6; cursor: not-allowed; }
+html.dark .pm-plan { border-color: rgba(255,255,255,.14); }
+html.dark .pm-plan li { color: #c3cad4; }
+html.dark .pm-plan-pro { background: rgba(19,160,110,.12); border-color: #13a06e; }
 /* White quiet-zone around the QR so it scans reliably on any theme. */
 .pm-2fa-qr { display: block; margin: 8px 0; padding: 8px; background: #ffffff; border-radius: 8px; }
 .pm-avatar-row { display: flex; align-items: center; gap: 12px; }

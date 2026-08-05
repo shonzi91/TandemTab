@@ -160,6 +160,10 @@ public sealed class FinAppApiClient(HttpClient http)
     public Task<AdminMetricsDto> GetAdminMetricsAsync(CancellationToken ct = default) =>
         SendAsync<AdminMetricsDto>(HttpMethod.Get, "/admin/metrics", null, ct);
 
+    /// <summary>The Plans screen data (OPEN-BETA P4). Reports Enabled=false while monetization is off.</summary>
+    public Task<PlansDto> GetPlansAsync(CancellationToken ct = default) =>
+        SendAsync<PlansDto>(HttpMethod.Get, "/plans", null, ct);
+
     // Loan installments — one payment posting several linked rows (principal / interest / additional lines).
     public Task<MutationResultDto> LogInstallmentAsync(Guid id, LogInstallmentRequest req, CancellationToken ct = default) =>
         SendAsync<MutationResultDto>(HttpMethod.Post, $"/accounts/{id}/installments", req, ct);

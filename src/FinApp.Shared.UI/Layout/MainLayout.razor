@@ -281,6 +281,51 @@
                         <p class="pm-hint">✉️ @Loc["Questions, or a privacy request?"] <a href="mailto:admin@tandemtab.com">admin@tandemtab.com</a></p>
                     </details>
 
+                    @* Plans (OPEN-BETA P4). Shown ONLY when monetization is switched on; during beta the flag is
+                       off, so no plan UI appears at all and every account is unlimited. No payment is wired — this
+                       is the rails + a testable surface. Beta-cohort accounts are grandfathered to Pro. *@
+                    @if (Auth.CurrentUser?.MonetizationEnabled == true)
+                    {
+                        <details class="pm-section" @ontoggle="LoadPlans">
+                            <summary>@Loc["Your plan"]</summary>
+                            <p class="pm-hint">@string.Format(Loc["You’re on the {0} plan."], PlanLabel(Auth.CurrentUser!.Plan))</p>
+                            @if (_plans is { } pl)
+                            {
+                                <div class="pm-plans">
+                                    <div class="pm-plan @(pl.CurrentPlan == "free" ? "current" : "")">
+                                        <h5>@Loc["Free"]</h5>
+                                        <ul>
+                                            <li>@Loc["Solo budgeting"]</li>
+                                            <li>@Loc["One debt, recent history"]</li>
+                                            <li>@Loc["Your first statement import"]</li>
+                                        </ul>
+                                    </div>
+                                    <div class="pm-plan pm-plan-pro @(pl.CurrentPlan is "pro" or "unlimited" ? "current" : "")">
+                                        <h5>@Loc["Pro"] <span class="pm-plan-price">@pl.Currency @pl.AnnualPrice/@Loc["yr"]</span></h5>
+                                        <ul>
+                                            <li>@Loc["Everything in Free, plus:"]</li>
+                                            <li>@Loc["Share with your household — one subscription covers everyone"]</li>
+                                            <li>@Loc["Unlimited imports and full history"]</li>
+                                            <li>@Loc["Full analytics, trends and debt planner"]</li>
+                                        </ul>
+                                        @if (pl.IsBetaCohort)
+                                        {
+                                            <p class="pm-hint">🎉 @Loc["You joined during beta — Pro is on us."]</p>
+                                        }
+                                        else if (pl.CurrentPlan == "free")
+                                        {
+                                            <button class="ghost" disabled>@Loc["Upgrade (coming soon)"]</button>
+                                        }
+                                    </div>
+                                </div>
+                            }
+                            else if (_plansBusy)
+                            {
+                                <p class="pm-hint">@Loc["Loading…"]</p>
+                            }
+                        </details>
+                    }
+
                     @* Owner-only usage metrics (OPEN-BETA P2). Shown only when the signed-in email is on the admin
                        allowlist; the server re-checks, so this is a convenience, not the gate. Counts + timestamps
                        only — never anyone's financial data. Loaded lazily when the section is opened. *@
@@ -436,6 +481,19 @@
         catch { _adminError = true; }
         finally { _adminBusy = false; StateHasChanged(); }
     }
+
+    // Plans (P4). Loaded lazily when the section is opened; only reachable when monetization is switched on.
+    private PlansDto? _plans;
+    private bool _plansBusy;
+    private async Task LoadPlans()
+    {
+        if (_plans is not null || _plansBusy) return;
+        _plansBusy = true; StateHasChanged();
+        try { _plans = await Api.GetPlansAsync(); }
+        catch { /* leave unset — the section just shows nothing */ }
+        finally { _plansBusy = false; StateHasChanged(); }
+    }
+    private string PlanLabel(string plan) => plan switch { "pro" => Loc["Pro"], "free" => Loc["Free"], _ => Loc["Unlimited"] };
 
     /// <summary>Schedule the signed-in user's account for deletion; on success /me flips to pending and the app shows the grace gate.</summary>
     private async Task DeleteAccount()

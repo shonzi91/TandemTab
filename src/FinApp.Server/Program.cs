@@ -92,6 +92,7 @@ builder.Services.AddScoped<FeedbackService>();
 builder.Services.AddScoped<SignupService>();
 builder.Services.AddSingleton<AdminPolicy>();          // owner allowlist (fails closed) for the P2 metrics
 builder.Services.AddScoped<AdminMetricsService>();
+builder.Services.AddSingleton<MonetizationService>();  // P4 rails: off by default, config flag flips it on
 builder.Services.AddScoped<ExternalAuthService>();
 builder.Services.AddHttpClient();
 builder.Services.AddScoped<AccountService>();
@@ -554,14 +555,30 @@ app.MapPost("/feedback", async (FeedbackRequest req, FeedbackService feedback, I
 
 app.MapGet("/me", async (ClaimsPrincipal user, AvatarService avatars, ExternalIdentityService identities,
         EmailVerificationService emailVerification, TwoFactorService twoFactor, AccountDeletionService deletions,
-        AdminPolicy adminPolicy, CancellationToken ct) =>
-        Results.Ok(new UserDto(user.UserId(), user.Username(), user.Email(),
-            await avatars.GetAsync(user.UserId(), ct), await identities.GetProviderAsync(user.UserId(), ct),
-            EmailVerified: await emailVerification.IsVerifiedAsync(user.UserId(), user.Email(), ct),
-            TwoFactorEnabled: await twoFactor.IsEnabledAsync(user.UserId(), ct),
-            PendingDeletionAt: await deletions.ScheduledAtAsync(user.UserId(), ct),
-            IsAdmin: adminPolicy.IsAdmin(user.Email()))))
-    .RequireAuthorization();
+        AdminPolicy adminPolicy, MonetizationService monetization, SignupService signups, CancellationToken ct) =>
+{
+    // "unlimited" (no gating) while monetization is off; when on, beta-cohort accounts are grandfathered to Pro.
+    var plan = monetization.Enabled
+        ? monetization.PlanFor(await signups.IsBetaCohortAsync(user.UserId(), ct))
+        : "unlimited";
+    return Results.Ok(new UserDto(user.UserId(), user.Username(), user.Email(),
+        await avatars.GetAsync(user.UserId(), ct), await identities.GetProviderAsync(user.UserId(), ct),
+        EmailVerified: await emailVerification.IsVerifiedAsync(user.UserId(), user.Email(), ct),
+        TwoFactorEnabled: await twoFactor.IsEnabledAsync(user.UserId(), ct),
+        PendingDeletionAt: await deletions.ScheduledAtAsync(user.UserId(), ct),
+        IsAdmin: adminPolicy.IsAdmin(user.Email()),
+        MonetizationEnabled: monetization.Enabled,
+        Plan: plan));
+}).RequireAuthorization();
+
+// The Plans screen's data (OPEN-BETA P4). Only meaningful when the flag is on; while off it reports Enabled=false
+// and "unlimited", so the client shows no plan UI at all. Prices are config values, never hard-coded.
+app.MapGet("/plans", async (ClaimsPrincipal user, MonetizationService monetization, SignupService signups, CancellationToken ct) =>
+{
+    var isBeta = monetization.Enabled && await signups.IsBetaCohortAsync(user.UserId(), ct);
+    return Results.Ok(new PlansDto(monetization.Enabled, monetization.PlanFor(isBeta), isBeta,
+        monetization.Currency, monetization.AnnualPrice, monetization.MonthlyPrice));
+}).RequireAuthorization();
 
 // Owner-only usage metrics (OPEN-BETA P2). Server-side authorization — an endpoint that enumerates users is the
 // highest-value target in the app, so the role check lives here, not behind a hidden route. Returns counts and
