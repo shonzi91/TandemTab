@@ -87,6 +87,12 @@ data class AccountOverviewDto(
     val contributed: Double,
     val billsDue: Double,
     val safeAfterBills: Double,
+    // The rest of the web Home hero, computed server-side (see AccountOverview in the domain). Defaulted so an
+    // older server still parses: the tiles that need them just render without their sub-lines.
+    val moneyIn: Double = 0.0,          // fresh income + free carry-in; moneyIn − contributed = the carried half
+    val transfersOut: Double = 0.0,     // the account-transfer half of money out; spent stays expenses-only
+    val savedThisPeriod: Double = 0.0,  // set aside THIS period (vs `saved`, the standing earmark)
+    val savedRate: Double? = null,      // savedThisPeriod / moneyIn, or null when nothing came in
 )
 
 @Serializable
@@ -211,6 +217,25 @@ data class TargetDto(
 
 @Serializable
 data class TargetsDto(val targets: List<TargetDto> = emptyList())
+
+// --- Notifications: the current period's alerts (GET /accounts/{id}/notifications) --------------------
+
+/** One alert. `targetTab` names the tab that addresses it, so a tap can jump there. */
+@Serializable
+data class NotificationDto(
+    val icon: String = "",
+    val text: String = "",
+    val desc: String? = null,
+    val urgent: Boolean = false,
+    val targetTab: String? = null,
+)
+
+@Serializable
+data class NotificationsViewDto(
+    val count: Int = 0,
+    val urgentCount: Int = 0,
+    val items: List<NotificationDto> = emptyList(),
+)
 
 // --- Budgets (per-category coverage for the Spending → Categories view) -------------------------------
 

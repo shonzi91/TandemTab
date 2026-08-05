@@ -20,14 +20,33 @@ namespace FinApp.Domain.Services;
 /// <para>Bank-live-balance adjustment (the header's <c>DisplayClosingBalance</c>) is deliberately <b>not</b>
 /// applied here — it's a display concern needing the live bank figure, and it stays client-side for this
 /// first slice. On accounts with no synced fund the two are identical.</para>
+///
+/// <para><b>The four trailing figures exist for the native client (R2 parity).</b> The web's Home hero is a
+/// four-part money summary — safe to spend, saved (with its rate), spent (with the transfer half broken out),
+/// money in (with carry-over broken out) — and every one of those beyond the first came from
+/// <c>BudgetingState</c>, i.e. from the domain the thin clients deliberately do not carry. Android could render
+/// three raw balances and nothing else. Rather than let the native app grow its own money model to catch up —
+/// which is precisely the drift this type was created to prevent — the same figures are computed here, once.</para>
 /// </summary>
+/// <param name="MoneyIn">Everything there was to work with this period: fresh income + free carry-in. The
+/// savings-rate denominator; <c>MoneyIn − Contributed</c> is the carried-over half.</param>
+/// <param name="TransfersOut">The account-to-account half of money out, on its own. <see cref="Spent"/> stays
+/// expenses-only (budget bars and health must not count a transfer as spending), so a client that wants the
+/// hero's "all money out" adds the two — and can name the transfer part rather than let it read as a blow-out.</param>
+/// <param name="SavedThisPeriod">Set aside this period, disbursements excluded — deploying a save to the goal it
+/// was for still counts as saved. Distinct from <see cref="Saved"/>, which is the standing earmarked balance.</param>
+/// <param name="SavedRate"><see cref="SavedThisPeriod"/> as a fraction of <see cref="MoneyIn"/>, or null when
+/// nothing came in. Sent computed rather than left to each client: two clients dividing the same two numbers is
+/// two chances to disagree about the zero case.</param>
 public readonly record struct AccountOverview(
-    Money Current, Money Free, Money Saved, Money Spent, Money Contributed, Money BillsDue, Money SafeAfterBills)
+    Money Current, Money Free, Money Saved, Money Spent, Money Contributed, Money BillsDue, Money SafeAfterBills,
+    Money MoneyIn, Money TransfersOut, Money SavedThisPeriod, decimal? SavedRate)
 {
     public static AccountOverview For(Account account, Period period)
     {
+        var savings = new SavingsReportService();
         // Prior-period savings reserved out of "free", same as BudgetingState.PriorSaved.
-        var priorSaved = new SavingsReportService().AccumulatedTotal(account) - period.SavingsNetTotal;
+        var priorSaved = savings.AccumulatedTotal(account) - period.SavingsNetTotal;
         var current = period.ExpectedClosingBalance;
         var free = period.FreeToAllocateAfter(priorSaved);
 
@@ -42,6 +61,8 @@ public readonly record struct AccountOverview(
         return new AccountOverview(
             current, free, current - free,
             period.ExpensesTotal, period.ContributionsPaidTotal,
-            billsDue, free - billsDue);
+            billsDue, free - billsDue,
+            savings.MoneyIn(account, period), period.AccountTransfersOutTotal,
+            period.SavingsSetAsideTotal, savings.PeriodMoneyInRate(account, period));
     }
 }

@@ -26,6 +26,7 @@ import com.tandemtab.app.data.FundRowDto
 import com.tandemtab.app.data.FundTransferRowDto
 import com.tandemtab.app.data.ConfirmRecurringRequest
 import com.tandemtab.app.data.InsightsDto
+import com.tandemtab.app.data.NotificationDto
 import com.tandemtab.app.data.PeriodRowDto
 import com.tandemtab.app.data.PeriodsViewDto
 import com.tandemtab.app.data.RecurringRowDto
@@ -85,6 +86,8 @@ data class UiState(
     // Home forecast (server-computed): the runway card + the "on track for" targets.
     val runway: RunwayDto? = null,
     val targets: List<TargetDto> = emptyList(),
+    // Current-period alerts (server-computed). Home renders the urgent ones; the rest are informational.
+    val alerts: List<NotificationDto> = emptyList(),
     val spending: SpendingUi = SpendingUi(),
     val goals: GoalsUi = GoalsUi(),
     val wallets: WalletsUi = WalletsUi(),
@@ -434,6 +437,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private suspend fun loadForecast(accountId: String) {
         runCatching { api.runway(accountId) }.onSuccess { r -> _state.update { it.copy(runway = r) } }
         runCatching { api.targets(accountId) }.getOrNull()?.let { t -> _state.update { it.copy(targets = t.targets) } }
+        // Alerts are only ever computed for the CURRENT period server-side, so a user browsing a past period would
+        // otherwise see this month's warnings attached to a month that already closed. Clear them instead.
+        val alerts = if (_state.value.selectedPeriod == null)
+            runCatching { api.notifications(accountId) }.getOrNull()?.items.orEmpty() else emptyList()
+        _state.update { it.copy(alerts = alerts) }
     }
 
     /** "July 2026" for a whole-month period, else a "d MMM – d MMM" range. Null if unparseable. */

@@ -26,7 +26,8 @@ public static class SpendingMap
         var ov = AccountOverview.For(account, period);
         var dto = new AccountOverviewDto(
             account.Currency, ov.Current.Amount, ov.Free.Amount, ov.Saved.Amount,
-            ov.Spent.Amount, ov.Contributed.Amount, ov.BillsDue.Amount, ov.SafeAfterBills.Amount);
+            ov.Spent.Amount, ov.Contributed.Amount, ov.BillsDue.Amount, ov.SafeAfterBills.Amount,
+            ov.MoneyIn.Amount, ov.TransfersOut.Amount, ov.SavedThisPeriod.Amount, ov.SavedRate);
         return AdjustForBank(dto, account, period, bankBalance, bankCurrency);
     }
 

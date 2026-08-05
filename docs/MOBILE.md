@@ -34,7 +34,9 @@ design call no longer has to be triple-checked against a SwiftUI implementation 
 stop needing a third arm speculatively designed in.
 
 **⚠️ Why "same features basically" is the expensive half of this decision.** Parity is a *goal that has to be
-maintained*, and right now it does not hold — Android is roughly **13 sessions behind web**:
+maintained*, and right now it does not hold.
+
+<details><summary>The original session-by-session gap list (written S82, superseded by the audit below)</summary>
 
 | Web session | Not on Android |
 |---|---|
@@ -46,6 +48,48 @@ maintained*, and right now it does not hold — Android is roughly **13 sessions
 | S80 | "Saved toward goals" Breakdown slice |
 | S81 | **Debt R1** (informative debt), F3 "left to spend today", a11y #11 |
 | S82 | **Debt R2** (installment split + hybrid balance, recurring-bill link) |
+
+</details>
+
+### ★ The parity gap, measured (Session 90, 2026-08-05)
+
+**Counting sessions was the wrong instrument** — it measures how long the drift has run, not how big it is, and
+it goes stale the moment web ships again. Since the native app is a thin client, there is an exact one: **which
+endpoints the server exposes that `TandemTabApi` never calls.** Every feature Android is missing has to show up
+there, because a thin client cannot render what it does not fetch.
+
+Android calls **37** of the account endpoints. It does not call these:
+
+| Missing capability | Endpoints never called | Weight |
+|---|---|---|
+| **Savings/debt buckets — create, edit, archive** | `/savings/buckets…`, `/savings/disburse`, `/savings/to-budget`, `/savings/transfer`, `/savings/movements/…` | **L** |
+| **Debt entirely** (R1 informative debt + R2 installments) | `/installments`, `/installments/{groupId}` | **L** |
+| **Sharing — the hero Pro feature** | `/invitations`, `/members/{id}`, `/transfer-ownership` | **L** |
+| **Period lifecycle** — an Android-only user can never roll into a new month | `/periods/start-next`, `/periods/latest`, `/periods/{i}/schedule` | **L** |
+| **Statement import** | `/import` | M |
+| **Fund management** (add/archive/opening balance) | `/funds…`, `/fund-transfers/{id}` | M |
+| **Account settings** — incl. the savings target and **F4 round-ups** | `/settings`, `/savings-target` | M |
+| **Tags** — incl. **F2** tag→category | `/tags…` | M |
+| Achievements + **F6** goal celebration | `/achievements`, `/milestones` | S–M |
+| Onboarding | `/onboarding`, `/onboarding/dismissed` | S |
+| Export | `/export` | S |
+| Reallocation between budget and savings | `/reallocations/to-budget`, `/reallocations/to-savings` | S |
+| Settling an on-behalf expense | `/expenses/{id}/settle` | S |
+| Contribution (income) categories | `/contribution-categories…` | S |
+
+**Read that table as the R2 backlog.** The four **L** rows are the ones that make Android a *different product*
+rather than a smaller one: a user who only has the phone cannot start next month, cannot create a savings goal,
+has no debt features at all, and cannot share an account — which is the thing Pro is sold on.
+
+**Closed in Session 90:** the Home money hero (all four tiles, incl. the money-in savings rate, the transfers
+sub-line and **F3 "left to spend today"**) and the rotating over-budget alert strip. Both needed server work
+first — see the note on `AccountOverview` below.
+
+⚠️ **A thin client cannot close a UI gap the API does not serve.** The web hero showed four figures the native
+app could not: three of them lived in `BudgetingState`, i.e. in the domain the thin clients deliberately do not
+carry. They are now computed once in `AccountOverview` (`MoneyIn`, `TransfersOut`, `SavedThisPeriod`,
+`SavedRate`). **Expect this shape again** for the rows above — check what the endpoint actually returns before
+estimating any of them as "just UI".
 
 Plus three standing gaps: **Breakdown** is blocked on the `[BACKEND] GET /breakdown` endpoint; **i18n (en/bg)**
 is deferred and is its own session; and the Android **write paths are wired but never click-fired** against a

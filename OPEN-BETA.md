@@ -264,9 +264,23 @@ against a moving feature set is work that gets redone. R4 lands before R7 for th
 > still **unseen with real data** and carry forward.
 
 ### R2 — Android catch-up + theme verification
-- Android's last commit is **2026-07-30**; the web has had **S74–S88** since. That's a diff-driven catch-up
+- Android's last commit is **2026-07-30**; the web has had **S74–S89** since. That's a diff-driven catch-up
   against the web's session log, not a rewrite. Debt R2's grouped *edit* is still unbuilt there.
 - Mirror the web's section layouts, cards and colours; differ only in **nav (bottom bar)** and **floating buttons**.
+- **★ The gap is now measured, not estimated (Session 90).** Counting sessions behind was the wrong instrument —
+  it ages the moment web ships. For a thin client there is an exact one: **the endpoints the server exposes that
+  `TandemTabApi` never calls**, since it cannot render what it does not fetch. The table lives in
+  [docs/MOBILE.md](docs/MOBILE.md#-the-parity-gap-measured-session-90-2026-08-05) and **is the R2 backlog**.
+  - ⚠️ **Four of the gaps make Android a *different* product, not a smaller one:** a phone-only user cannot
+    **start a new period**, cannot **create a savings goal or debt**, has **no debt features at all**, and cannot
+    **share an account** — the last being the feature Pro is sold on.
+  - ⚠️ **"Just UI" is usually wrong here.** Half of the Home hero could not be built until the *server* grew the
+    figures: they lived in `BudgetingState`, i.e. in the domain the thin client deliberately does not carry.
+    Check what the endpoint actually returns before sizing any row in that table.
+- **Session 90 closed:** the Home money hero (all four tiles — safe-to-spend with "after bills" and **F3
+  "left to spend today"**, saved with its money-in rate, spent with the transfers sub-line, money in with
+  carry-over) and the **rotating over-budget alert strip**. Both browser-verified against a real seeded account
+  in **both themes**. Android's own light/dark rendering was checked in the same pass and needed no fixes.
 - **Sweep light/dark on the web too, not just Android.** S88 shipped a dark-theme crown colour that silently
   never applied (a leading `::deep` compiles to a selector nothing matches). The web half is the cheaper half
   and has already produced one real bug.

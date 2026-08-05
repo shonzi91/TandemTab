@@ -353,7 +353,14 @@ public record AccountOverviewDto(
     decimal Spent,
     decimal Contributed,
     decimal BillsDue,
-    decimal SafeAfterBills)
+    decimal SafeAfterBills,
+    // The Home hero's remaining three tiles + the savings rate — added for native parity (R2). A thin client
+    // cannot derive these: they come from the domain the web client still carries and the native one does not.
+    // MoneyIn − Contributed is the carried-over half; Spent + TransfersOut is the hero's "all money out".
+    decimal MoneyIn = 0m,
+    decimal TransfersOut = 0m,
+    decimal SavedThisPeriod = 0m,
+    decimal? SavedRate = null)
 {
     public static readonly AccountOverviewDto Empty = new("", 0m, 0m, 0m, 0m, 0m, 0m, 0m);
 }

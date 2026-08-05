@@ -18,7 +18,7 @@ public static class NotificationsMap
     {
         if (account.CurrentPeriod is not { } period) return NotificationsViewDto.Empty;
         var today = DateOnly.FromDateTime(DateTime.Today);
-        string Fmt(Money m) => $"{m.Amount:0.##} {m.Currency}";
+        string Fmt(Money m) => MoneyText.Format(m.Amount, m.Currency);
         var items = new List<NotificationDto>();
 
         // Deficit — expenses ate into the savings earmark (the most urgent state).

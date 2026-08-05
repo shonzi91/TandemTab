@@ -216,6 +216,10 @@ class TandemTabApi(
     /** The Home "on track for" targets (debt-free date + each savings goal's projected month). */
     suspend fun targets(accountId: String): TargetsDto = authedGet("/accounts/$accountId/targets").body()
 
+    /** The alerts for the CURRENT period — deficit, over-budget categories, bills due, no income yet. Home shows
+     *  only the urgent ones; the server has always sent them, this client simply never asked. */
+    suspend fun notifications(accountId: String): NotificationsViewDto = authedGet("/accounts/$accountId/notifications").body()
+
     /** Recurring bills / income expectations with their due state for the open period. */
     suspend fun recurring(accountId: String, period: Int? = null): RecurringViewDto = authedGet("/accounts/$accountId/recurring${periodQ(period)}").body()
 

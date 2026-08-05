@@ -1,6 +1,92 @@
 # TandemTab (FinApp) — session handoff
 
-Last updated: 2026-08-05 (Session 89 — **DEPLOYED as `finapp-00277-p5t`.** Set the **seven-phase road to promotion** (R1–R7) in OPEN-BETA, then **cleared R1: the feature backlog** — F1 quick-add keypad + amount hints, F2 tag→category binding, F4 round-ups, F6 goal celebration, F7 weekly recap. F3 turned out to be **already shipped and never ticked**; **F5 was dropped by the owner** (shared accounts pool income, so there is nothing to settle). Then two owner-reported bugs — **income deposits were merging into one row**, and the rollover reconcile step **rendered its three-way choice as ✕ ✕ ✓**, which is how an unwanted Adjustment entry got written. Finally a **light/dark sweep** that found three colours never given a dark value, the widest being every chip-picker label in every modal. **319 domain + 48 persistence + 305 server green.** Prior context below is Session 88.)
+Last updated: 2026-08-05 (Session 90 — **NOT deployed; server changes are in the tree, uncommitted deploy.** Recorded
+**billing go-live (a real payment provider + the Pro trial) as R5 work** so it can't be forgotten, and flagged that
+"Stripe" is the reflex answer rather than the researched one (EU VAT / merchant-of-record). Then started **R2**:
+**measured** the Android parity gap instead of counting sessions behind — the exact instrument for a thin client is
+which endpoints it never calls — and closed the two biggest Home gaps: the **four-tile money hero** (incl. **F3
+"left to spend today"**) and the **rotating over-budget alert strip**. Both needed the server to grow the figures
+first. **322 domain + 48 persistence + 305 server green**, and the Android app was verified on an emulator against a
+real seeded account **in both themes**. Prior context below is Session 89.)
+
+## Session 90 (2026-08-05) — **R5 billing recorded; R2 started: parity measured + Home hero/alerts. Commits `751f386`, +1. ⚠️ NOT deployed.**
+
+### Billing go-live is now a written plan, not prose (`751f386`)
+- **Where it went:** an ⬜ TODO in [OPEN-BETA.md](OPEN-BETA.md) under **R5**, and the design detail in
+  [MONETIZATION.md → Billing go-live](MONETIZATION.md). **R5 is the right phase**: the provider needs the stable
+  webhook URL + secret store that **R4 moves**, and the frozen Free/Pro split that is R5's other half.
+- **★ The rails are built and the engine is a stub.** `IPaymentProvider`, `SandboxPaymentProvider` (walks the whole
+  flow, every row `Sandbox = 1`), `SubscriptionService` (entitlement is *ours*, never a live call to the provider),
+  gates + 402 backstop — all shipped. What does not exist is a provider that charges a card.
+- ⚠️ **"Stripe" is the default answer, not the researched one.** Selling digital subscriptions to EU consumers means
+  **VAT at the buyer's rate**; with Stripe that compliance is ours, a merchant-of-record (Paddle / Lemon Squeezy)
+  takes it on for a bigger cut. The `IPaymentProvider` seam makes it a self-contained choice — worth an hour first.
+- **★ The Pro trial has been promised since 30 July and nothing in the code models it** — `Subscriptions` has no
+  trial concept and `IsActiveAsync` matches only `Status = 'active'`. Three rules recorded because they are easy to
+  get wrong: **never delete the row on expiry** (deleting it makes the trial infinitely repeatable), **grant it per
+  account not per user** (a per-user trial is re-triggered by inviting yourself), and say when it ends before it does.
+  ⬜ **Owner call: length + card.** Docs disagreed (14-day card-optional vs 45-day cardless). **Recommended 30 days,
+  cardless** for a product-specific reason: this app's aha moment is the **period rollover**, and a 14-day trial can
+  end before the user has ever seen one.
+- **R7 gained the precondition this implies: do not promote while checkout is dead.** Past the lifetime-Pro cap of
+  100, users are genuinely gated Free and told *"Pro isn't on sale yet"* — and promotion is the spike that fills the
+  cap. Either billing is live or the cap is raised. Not neither.
+
+### R2 — the parity gap, measured
+- **★ Counting "sessions behind" was the wrong instrument.** It measures how long the drift has run, not how big it
+  is, and it ages the moment web ships. For a **thin** client there is an exact one: **which endpoints the server
+  exposes that `TandemTabApi` never calls** — it cannot render what it does not fetch. Android calls 37 of them;
+  the table of what it doesn't is in [docs/MOBILE.md](docs/MOBILE.md) and **is the R2 backlog**.
+- ⚠️ **Four gaps make Android a *different* product, not a smaller one.** A phone-only user cannot **start a new
+  period**, cannot **create a savings bucket or debt** (`/savings/buckets` is never called), has **no debt features
+  at all** (`/installments`), and cannot **share an account** (`/invitations`) — the feature Pro is sold on.
+- ⚠️ **"Just UI" is usually wrong here** — see the hero below.
+
+### What shipped on Android
+- **★ The Home money hero, all four tiles.** Was three raw balances (Available / Free / Saved) against the web's
+  four-part money summary. Now: **Safe to spend** + *"€X after bills"* + **F3 *"€X a day left"***; **Saved** +
+  *"N% of money in"*; **Spent** + *"+€X transferred"*; **Money in** + *"+€X carried"*. Laid out **2×2, which is
+  what the web itself does below 720px** — four columns on a phone shrink the headline figure to the size of its
+  own caption. A **closed period** keeps the shape but drops the per-day and after-bills lines: they describe a
+  period you can still act on.
+- **★ It needed a server change first, and that is the lesson.** Three of those figures lived in `BudgetingState`
+  — the domain the thin clients deliberately do not carry — so Android *could not* have rendered them. They are
+  now computed once in `AccountOverview` / `AccountOverviewDto`: **`MoneyIn`, `TransfersOut`, `SavedThisPeriod`,
+  `SavedRate`**. `Spent` deliberately stays expenses-only (budget bars and the health score read it); the hero adds
+  the two itself and **names the transfer half**, so one transfer doesn't read as a spending blow-out. The rate is
+  sent computed, not left to each client — two clients dividing the same two numbers is two chances to disagree
+  about the zero case (**null when nothing came in**, never "0% of money in" to someone who just started).
+- **Rotating over-budget alert strip**, under the health score as on web. The server has always served
+  `/notifications`; this client simply never asked. **Same-kind alerts collapse to one row with a ↻** — the server
+  sends one item per over-budget category, and rendering five would push the rest of Home off screen on exactly
+  the month you most need to see it. Only *urgent* items; bills-due and suggestions stay in the bell.
+  ⚠️ Alerts are computed for the **current** period only, so browsing a past period clears them rather than
+  hanging this month's warnings on a month that already closed.
+- **★ A money-formatting split the native app exposed.** `/notifications` wrote **"65.4 EUR"** while every other
+  figure on the same screen read **"€65.40"** — invisible on web (its thick Home builds its own alert text),
+  glaring on native, which has nothing else to render. New **`MoneyText.Format`** in Contracts, matching
+  `Dashboard.FmtCurrency` exactly; `NotificationsMap` and `AchievementsMap` both used the old spelling.
+
+### Verification
+- **322 domain (+3) + 48 persistence + 305 server green.**
+- **Verified on the emulator against a real seeded account** (local server via `10.0.2.2:5179`, reverted after):
+  hero reads €3,222.50 safe / €2,522.50 after bills / **€93.43 a day left** (= 2 522.50 ÷ 27 days remaining) /
+  €300.00 saved at 7% of money in / €527.50 spent with +€150.00 transferred / €4,050.00 money in — every figure
+  matching the `/overview` payload. Two over-budget categories collapse to **one row showing ↻ 1/2**, and tapping
+  it moves to *"Bills is over budget by €32.10"* **2/2**. Money now renders **€65.40**, not "65.4 EUR".
+- **Both themes checked** on the real screen (in-app Appearance toggle): light and dark both render the hero,
+  sub-lines and the amber alert card legibly. **No Android theme fixes were needed** — the token set already had
+  a dark value for everything the new UI uses.
+- ⚠️ **NOT deployed.** The server changes (the four overview fields + `MoneyText`) are additive and the suites are
+  green, but they have not been pushed to Cloud Run — **the next session should deploy before assuming a phone
+  build will see the new hero fields**, since an older server just sends the defaults.
+
+### ⚠️ Carry-over
+- **The R2 backlog is the endpoint table in docs/MOBILE.md.** The four **L** rows first.
+- **Everything in Session 89's carry-over still stands**, including F6's "together" line and the S88 chart
+  animations being unseen with real data, and `.modal-actions` collapsing `.danger-btn` to a ✓.
+
+## Session 89 (2026-08-05) — original entry ( **DEPLOYED as `finapp-00277-p5t`.** — **DEPLOYED as `finapp-00277-p5t`.** Set the **seven-phase road to promotion** (R1–R7) in OPEN-BETA, then **cleared R1: the feature backlog** — F1 quick-add keypad + amount hints, F2 tag→category binding, F4 round-ups, F6 goal celebration, F7 weekly recap. F3 turned out to be **already shipped and never ticked**; **F5 was dropped by the owner** (shared accounts pool income, so there is nothing to settle). Then two owner-reported bugs — **income deposits were merging into one row**, and the rollover reconcile step **rendered its three-way choice as ✕ ✕ ✓**, which is how an unwanted Adjustment entry got written. Finally a **light/dark sweep** that found three colours never given a dark value, the widest being every chip-picker label in every modal. **319 domain + 48 persistence + 305 server green.** Prior context below is Session 88.)
 
 ## Session 89 (2026-08-05) — **R1 feature backlog cleared, two reported bugs, theme sweep. Commits `19443cb`, `4b58ee0`, `c87a83d`, `5785ad4`. Live: `finapp-00277-p5t`.**
 

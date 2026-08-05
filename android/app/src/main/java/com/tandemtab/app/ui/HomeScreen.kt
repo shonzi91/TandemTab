@@ -12,6 +12,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -388,16 +389,15 @@ private fun HomePage(
 
         else -> {
             val fmt = rememberCurrency(overview.currency)
-            // The web "hero" balance bar: Available (main) | Free | Saved, hairline-divided.
-            BalanceHero(
-                current = fmt(overview.current),
-                free = fmt(overview.free),
-                saved = fmt(overview.saved),
-                dark = darkTheme,
-            )
+            // The period being viewed, which decides both the hero's shape (open vs closed) and F3's day count.
+            val viewedIndex = state.selectedPeriod ?: state.currentPeriodIndex
+            val viewed = state.periods.firstOrNull { it.index == viewedIndex }
+            BalanceHero(overview = overview, period = viewed, fmt = fmt, dark = darkTheme)
             Spacer(Modifier.height(14.dp))
             // Order per the design: health score on top, then bills, then "on track for", and finally the runway.
             HealthCard(health = state.health, onOpen = onOpenHealth)
+            // The urgent strip hangs directly off the score, as on web, so "how am I doing" reads as one block.
+            AlertStrip(state.alerts)
             Spacer(Modifier.height(14.dp))
             RecurringCard(recurring = state.recurring, onOpen = onOpenRecurring)
             Spacer(Modifier.height(14.dp))
@@ -464,26 +464,155 @@ private fun BarItem(dest: NavDest, current: NavDest, modifier: Modifier, onSelec
     }
 }
 
+/**
+ * The "needs attention" strip: the urgent alerts for the open period (a savings deficit, a category over its
+ * budget), sitting directly under the health score.
+ *
+ * **Alerts of the same kind are collapsed to one row with a ↻ to cycle**, which is what the web ends up showing.
+ * The server sends one item per over-budget category, and rendering them all would push the rest of Home off the
+ * screen on the exact months the user most needs to see it — five over-budget categories is a bad month, not five
+ * separate things to read. Non-urgent items (bills due, no income yet) are deliberately not here: they belong to
+ * the bell, and repeating them on Home is how a warning strip becomes wallpaper.
+ */
 @Composable
-private fun BalanceHero(current: String, free: String, saved: String, dark: Boolean) {
+private fun AlertStrip(alerts: List<com.tandemtab.app.data.NotificationDto>) {
+    val tandem = LocalTandemColors.current
+    val urgent = alerts.filter { it.urgent }
+    if (urgent.isEmpty()) return
+    val groups = urgent.groupBy { it.icon }.values.toList()
+    Spacer(Modifier.height(10.dp))
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        groups.forEach { group ->
+            // One index per group, remembered on the group's identity so cycling one doesn't reset another.
+            var shown by remember(group.first().text, group.size) { mutableStateOf(0) }
+            val item = group[shown % group.size]
+            Row(
+                Modifier.fillMaxWidth()
+                    .background(tandem.alertBg, RoundedCornerShape(14.dp))
+                    .border(1.dp, tandem.alertBorder, RoundedCornerShape(14.dp))
+                    .padding(horizontal = 14.dp, vertical = 11.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("⚠️", fontSize = 15.sp)
+                Spacer(Modifier.width(10.dp))
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(item.text, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface)
+                    item.desc?.let { Text(it, fontSize = 11.sp, color = tandem.muted) }
+                }
+                if (group.size > 1) {
+                    Spacer(Modifier.width(8.dp))
+                    Row(
+                        Modifier.clip(RoundedCornerShape(999.dp)).clickable { shown++ }
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text("↻", fontSize = 14.sp, color = tandem.warn, fontWeight = FontWeight.Bold)
+                        Spacer(Modifier.width(4.dp))
+                        Text("${(shown % group.size) + 1}/${group.size}", fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold, color = tandem.warn)
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * The Home money summary — the web hero, tile for tile. It is the only header the Home tab shows, so it doubles as
+ * the "how am I doing" glance: what is safe to spend now, what was set aside this period (and what share of the
+ * money that came in), what went out, and what came in.
+ *
+ * Laid out **2×2, which is what the web itself does below 720px** — four columns on a phone would shrink the
+ * headline figure to the size of its own caption.
+ *
+ * A closed period keeps the same four tiles but in their final state: what it closed with, and what came in / went
+ * out / was set aside while it ran. No "still due" or per-day sub-lines — those describe a period you can still act
+ * on, and reading them on a period that ended weeks ago would be an invitation to spend money that is already gone.
+ */
+@Composable
+private fun BalanceHero(
+    overview: com.tandemtab.app.data.AccountOverviewDto,
+    period: com.tandemtab.app.data.PeriodRowDto?,
+    fmt: (Double) -> String,
+    dark: Boolean,
+) {
     val tandem = LocalTandemColors.current
     val shape = RoundedCornerShape(18.dp)
     // In dark, the web's mint "glass" hero: an opaque base (so the glow doesn't bleed through), a mint tint on top,
     // a mint border, and a soft mint glow underneath. Light keeps the flat hero card.
     val borderColor = if (dark) Color(0x3D3FE0C5) else tandem.hairline
-    var heroMod = Modifier.fillMaxWidth().height(IntrinsicSize.Min)
+    var heroMod = Modifier.fillMaxWidth()
     if (dark) heroMod = heroMod.shadow(16.dp, shape, ambientColor = Mint, spotColor = Mint)
     heroMod = heroMod.clip(shape).background(tandem.hero)
     if (dark) heroMod = heroMod.background(Brush.linearGradient(listOf(Color(0x293FE0C5), Color(0x0A3FE0C5))))
-    heroMod = heroMod.border(1.dp, borderColor, shape).padding(vertical = 14.dp)
-    Row(modifier = heroMod) {
-        HeroPart("Available", current, main = true, valueColor = MaterialTheme.colorScheme.onBackground, weight = 1.4f)
-        HeroDivider()
-        HeroPart("Free", free, valueColor = tandem.positive)
-        HeroDivider()
-        HeroPart("Saved", saved, valueColor = tandem.saved)
+    heroMod = heroMod.border(1.dp, borderColor, shape).padding(vertical = 12.dp)
+
+    val open = period?.isOpen ?: true
+    val carried = overview.moneyIn - overview.contributed
+    val moneyOut = overview.spent + overview.transfersOut
+
+    Column(modifier = heroMod) {
+        Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
+            if (open) {
+                HeroPart("Safe to spend", fmt(overview.free), main = true, valueColor = tandem.positive) {
+                    // At most two context lines, in the order they answer "can I spend this?": what stays free once
+                    // the bills already known about are paid, then that headroom spread over the days still to go.
+                    if (overview.billsDue > 0.0) {
+                        val short = overview.safeAfterBills < 0.0
+                        HeroSub("${fmt(overview.safeAfterBills)} after bills", if (short) tandem.warn else tandem.muted)
+                    }
+                    perDay(overview, period)?.let { HeroSub("${fmt(it)} a day left", tandem.positive) }
+                }
+            } else {
+                HeroPart("Closed with", fmt(overview.current), main = true, valueColor = tandem.positive) {
+                    period?.let { HeroSub(closedOnLabel(it.to), tandem.muted) }
+                }
+            }
+            HeroDivider()
+            HeroPart("Saved", fmt(overview.savedThisPeriod), valueColor = tandem.saved) {
+                // No rate at all when nothing came in — the server sends null rather than a zero, and printing
+                // "0% of money in" to someone who has just started reads as a verdict on them.
+                overview.savedRate?.takeIf { it > 0.0 }?.let {
+                    HeroSub("${Math.round(it * 100)}% of money in", tandem.muted)
+                }
+            }
+        }
+        Spacer(Modifier.height(10.dp))
+        Box(Modifier.fillMaxWidth().height(1.dp).background(tandem.hairline))
+        Spacer(Modifier.height(10.dp))
+        Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
+            HeroPart("Spent", fmt(moneyOut), valueColor = MaterialTheme.colorScheme.onBackground) {
+                // Money moved to another account is money out, but it is not spending. Naming it stops a single
+                // transfer from reading as a blow-out month.
+                if (overview.transfersOut > 0.0) HeroSub("+${fmt(overview.transfersOut)} transferred", tandem.muted)
+            }
+            HeroDivider()
+            HeroPart("Money in", fmt(overview.moneyIn), valueColor = MaterialTheme.colorScheme.onBackground) {
+                if (carried > 0.0) HeroSub("+${fmt(carried)} carried", tandem.muted)
+            }
+        }
     }
 }
+
+/**
+ * F3 "left to spend today": the after-bills headroom spread over the days still left in the period. The numerator is
+ * `safeAfterBills`, already net of the bills we know are coming, so it cannot promise money that rent is about to
+ * take. Shown only on the open latest period and only when there is headroom — a negative or zero figure here is
+ * discouraging noise, and the over-budget alerts are where that gets said properly.
+ */
+private fun perDay(overview: com.tandemtab.app.data.AccountOverviewDto, period: com.tandemtab.app.data.PeriodRowDto?): Double? {
+    val p = period ?: return null
+    if (!p.isOpen || !p.isLatest || overview.safeAfterBills <= 0.0) return null
+    val end = runCatching { LocalDate.parse(p.to) }.getOrNull() ?: return null
+    val daysLeft = (end.toEpochDay() - LocalDate.now().toEpochDay() + 1).toInt()
+    if (daysLeft < 1) return null
+    return Math.round(overview.safeAfterBills / daysLeft * 100.0) / 100.0
+}
+
+private fun closedOnLabel(iso: String): String = runCatching {
+    LocalDate.parse(iso).format(DateTimeFormatter.ofPattern("dd MMM yyyy", Locale.getDefault()))
+}.getOrDefault(iso)
 
 @Composable
 private fun androidx.compose.foundation.layout.RowScope.HeroPart(
@@ -491,13 +620,13 @@ private fun androidx.compose.foundation.layout.RowScope.HeroPart(
     value: String,
     main: Boolean = false,
     valueColor: androidx.compose.ui.graphics.Color,
-    weight: Float = 1f,
+    subs: @Composable ColumnScope.() -> Unit = {},
 ) {
     val tandem = LocalTandemColors.current
     Column(
         modifier = Modifier
-            .weight(weight)
-            .padding(horizontal = 12.dp),
+            .weight(1f)
+            .padding(horizontal = 14.dp),
         verticalArrangement = Arrangement.spacedBy(3.dp),
     ) {
         Text(
@@ -511,13 +640,19 @@ private fun androidx.compose.foundation.layout.RowScope.HeroPart(
         // Shrink long amounts by length so big balances never clip on a narrow phone.
         Text(
             value,
-            fontSize = fitFont(value, base = if (main) 26 else 17, min = if (main) 15 else 12),
+            fontSize = fitFont(value, base = if (main) 25 else 19, min = if (main) 15 else 13),
             fontWeight = if (main) FontWeight.ExtraBold else FontWeight.Bold,
             color = valueColor,
             maxLines = 1,
             softWrap = false,
         )
+        subs()
     }
+}
+
+@Composable
+private fun HeroSub(text: String, color: Color) {
+    Text(text, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = color, maxLines = 1)
 }
 
 /** A length-based font size so long currency strings fit their column without wrapping or clipping. */

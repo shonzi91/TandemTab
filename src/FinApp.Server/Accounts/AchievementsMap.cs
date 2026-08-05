@@ -13,7 +13,7 @@ public static class AchievementsMap
 {
     public static AchievementsViewDto View(Account account)
     {
-        static string Fmt(Money m) => $"{m.Amount:0.##} {m.Currency}";
+        static string Fmt(Money m) => MoneyText.Format(m.Amount, m.Currency);
         var all = new AchievementsService().Build(account, Fmt);   // identity translate → English
         var log = account.AchievementLog;
 
