@@ -58,8 +58,8 @@ it goes stale the moment web ships again. Since the native app is a thin client,
 endpoints the server exposes that `TandemTabApi` never calls.** Every feature Android is missing has to show up
 there, because a thin client cannot render what it does not fetch.
 
-Android calls **37** of the account endpoints (**46** after Session 91, **55** after Session 92). It does not
-call these:
+Android calls **37** of the account endpoints (**46** after Session 91, **55** after Session 92, **59** after
+Session 94). It does not call these:
 
 | Missing capability | Endpoints never called | Weight |
 |---|---|---|
@@ -159,6 +159,34 @@ leave — nine calls, all of them already on the server. A phone-only user can n
   the hand-over picker both keyed off `handOverTo`, so *choosing* a new owner silently expanded that person's
   action row higher up the sheet and shoved the confirm block back under the bar. Caught on the emulator, not in
   review. They are separate now (`expandedMemberId` vs `handOverTo`).
+
+#### ✅ Recurring bills/income CRUD — closed (Session 94, 2026-08-07)
+
+Android could confirm or skip a bill that fell due, but could not declare one — so a phone-only user's Bills &
+income list could only ever be empty, and the surface that reminds you about money leaving was unreachable.
+Add / edit / pause / resume / remove now live in the Bills & income sheet (**four calls: 55 → 59**).
+
+- **★ The read model had to grow again — the fourth instance of the same shape.** `RecurringRowDto` carried
+  `CategoryName` / `FundName` but **not** `CategoryId` / `FundId` / `AutoPost`. Names are enough to *show* an
+  item and useless to *prefill an edit of* one: matching by display name means a rename or a duplicate name
+  silently retargets the save. Those three fields are now on the row, pinned by a server test.
+- **★ The pickers travel with the view.** `RecurringViewDto` also grew `Categories` (spend), `ContributionCategories`
+  (income sources), `Funds` and `Debts` — so the editor opens off the one read it already does, instead of
+  borrowing the Spending and Goals caches and hoping both were warm. They are built *before* the no-open-period
+  bail-out: an account between periods can still edit what recurs.
+- **The kind picker only exists when creating.** The server refuses to change an item's kind, and the category
+  list hangs off it (a spend category is not an income source), so on edit the chips are gone rather than shown
+  and rejected. Switching kind while creating clears the picked category for the same reason.
+- **★ The editor holds an id, not a row.** Pausing from inside the editor refreshes the list, and a captured row
+  would keep saying "Pause" after the item was already paused. The live row is looked up each recomposition and
+  the form fields are keyed on the **id**, so a refresh doesn't reseed the form and throw away what's being typed.
+  Both halves matter: keying on the row would reset the form on every pause.
+- **A second sheet is not stacked.** The editor renders *inside* the Bills & income sheet (list ⇄ edit), because
+  Compose only reliably drives one `ModalBottomSheet` at a time — and it mirrors what the web does anyway
+  (`Modal.Recurring` → `Modal.RecurringEdit`).
+- Verified end-to-end on the emulator in **both themes**: a bill created (Rent, €500, Bills, Bank, day 1) → edited
+  to €550 → paused (button flipped to Resume live) → removed behind a confirm dialog → then an income item
+  (Salary, €2,000, day 25) showing the source picker and no loan-link section.
 
 **Closed in Session 90:** the Home money hero (all four tiles, incl. the money-in savings rate, the transfers
 sub-line and **F3 "left to spend today"**) and the rotating over-budget alert strip. Both needed server work

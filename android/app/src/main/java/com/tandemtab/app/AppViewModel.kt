@@ -31,8 +31,11 @@ import com.tandemtab.app.data.InsightsDto
 import com.tandemtab.app.data.NotificationDto
 import com.tandemtab.app.data.PeriodRowDto
 import com.tandemtab.app.data.PeriodsViewDto
+import com.tandemtab.app.data.AddRecurringRequest
+import com.tandemtab.app.data.DebtOptionDto
 import com.tandemtab.app.data.RecurringRowDto
 import com.tandemtab.app.data.RecurringViewDto
+import com.tandemtab.app.data.UpdateRecurringRequest
 import com.tandemtab.app.data.SavingsViewDto
 import com.tandemtab.app.data.SpendFromSavingsRequest
 import com.tandemtab.app.data.TransferFundsRequest
@@ -188,7 +191,9 @@ data class GoalsUi(
     val saveError: String? = null,
 )
 
-/** Lazy-loaded state for the Recurring (bills/income) card + sheet. `busyId` is the item mid confirm/skip. */
+/** Lazy-loaded state for the Recurring (bills/income) card + sheet. `busyId` is the item mid confirm/skip/pause;
+ *  `saving` is the editor's own in-flight save (add/edit/delete), kept apart so a row's spinner and the sheet's
+ *  Save button can't be mistaken for each other. The picker lists travel with the view — see [RecurringViewDto]. */
 data class RecurringUi(
     val loading: Boolean = false,
     val loaded: Boolean = false,
@@ -196,8 +201,14 @@ data class RecurringUi(
     val currency: String = "",
     val billsDue: Double = 0.0,
     val items: List<RecurringRowDto> = emptyList(),
+    val categories: List<CategoryOptionDto> = emptyList(),
+    val contributionCategories: List<CategoryOptionDto> = emptyList(),
+    val funds: List<FundOptionDto> = emptyList(),
+    val debts: List<DebtOptionDto> = emptyList(),
     val busyId: String? = null,
     val actionError: String? = null,
+    val saving: Boolean = false,
+    val saveError: String? = null,
 )
 
 /** Lazy-loaded state for the Home Health card + Insights modal. Currency comes from the selected account. */
@@ -1081,7 +1092,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun recurringFrom(v: RecurringViewDto) =
-        RecurringUi(loaded = true, currency = v.currency, billsDue = v.billsDue, items = v.items)
+        RecurringUi(
+            loaded = true, currency = v.currency, billsDue = v.billsDue, items = v.items,
+            categories = v.categories, contributionCategories = v.contributionCategories,
+            funds = v.funds, debts = v.debts,
+        )
 
     /** Confirm a due bill/income at [amount] (posts a real expense/income). Refreshes the recurring list from the
      *  write's view, re-reads the overview (bills-due/spent/contributed move), and invalidates the Spending cache. */
@@ -1113,6 +1128,61 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 _state.update { it.copy(recurring = it.recurring.copy(busyId = null, actionError = e.message ?: "That didn't go through.")) }
             }
         }
+    }
+
+    // --- Recurring CRUD (declare / edit / pause / remove a bill or income expectation) --------------------
+    // Unlike confirm/skip these endpoints return only a version + id, so each finishes with a re-read of the
+    // Recurring view (which also refreshes the pickers) and of the overview — declaring a bill moves bills-due
+    // and safe-after-bills even though nothing was posted.
+
+    /** Declare a new bill / income expectation. [onDone] runs on success so the sheet closes only when it saved. */
+    fun addRecurring(req: AddRecurringRequest, onDone: () -> Unit) = runRecurringSave(onDone) { accountId ->
+        api.addRecurring(accountId, req)
+    }
+
+    /** Edit an item (its kind can't change — the server ignores a different one). */
+    fun updateRecurring(recurringId: String, req: UpdateRecurringRequest, onDone: () -> Unit) = runRecurringSave(onDone) { accountId ->
+        api.updateRecurring(accountId, recurringId, req)
+    }
+
+    /** Remove an item for good. Anything it already posted stays — this only stops it recurring. */
+    fun deleteRecurring(recurringId: String, onDone: () -> Unit) = runRecurringSave(onDone) { accountId ->
+        api.deleteRecurring(accountId, recurringId)
+    }
+
+    /** Pause or resume an item (a paused item never falls due). A row action, so it spins on the row. */
+    fun setRecurringActive(recurringId: String, active: Boolean) {
+        val accountId = _state.value.selectedAccountId ?: return
+        _state.update { it.copy(recurring = it.recurring.copy(busyId = recurringId, actionError = null)) }
+        viewModelScope.launch {
+            try {
+                api.setRecurringActive(accountId, recurringId, active)
+                refreshRecurring(accountId)
+            } catch (e: Exception) {
+                _state.update { it.copy(recurring = it.recurring.copy(busyId = null, actionError = e.message ?: "That didn't go through.")) }
+            }
+        }
+    }
+
+    private fun runRecurringSave(onDone: () -> Unit, action: suspend (String) -> Unit) {
+        val accountId = _state.value.selectedAccountId ?: return
+        _state.update { it.copy(recurring = it.recurring.copy(saving = true, saveError = null)) }
+        viewModelScope.launch {
+            try {
+                action(accountId)
+                refreshRecurring(accountId)
+                onDone()
+            } catch (e: Exception) {
+                _state.update { it.copy(recurring = it.recurring.copy(saving = false, saveError = e.message ?: "That didn't save.")) }
+            }
+        }
+    }
+
+    /** Re-read the Recurring view + overview after a write, clearing every in-flight flag. */
+    private suspend fun refreshRecurring(accountId: String) {
+        val view = api.recurring(accountId, _state.value.selectedPeriod)
+        val overview = runCatching { api.overview(accountId) }.getOrNull()
+        _state.update { it.copy(recurring = recurringFrom(view), overview = overview ?: it.overview) }
     }
 
     // --- FAB "Edit last": reopen the most recent manual expense in the add sheet, save via PUT ------------

@@ -156,6 +156,10 @@ fun HomeScreen(
     onLoadRecurring: (Boolean) -> Unit,
     onConfirmRecurring: (String, Double) -> Unit,
     onSkipRecurring: (String) -> Unit,
+    onAddRecurring: (com.tandemtab.app.data.AddRecurringRequest, () -> Unit) -> Unit,
+    onUpdateRecurring: (String, com.tandemtab.app.data.UpdateRecurringRequest, () -> Unit) -> Unit,
+    onSetRecurringActive: (String, Boolean) -> Unit,
+    onDeleteRecurring: (String, () -> Unit) -> Unit,
     onPrepareAdd: () -> Unit,
     onPrepareEditLast: () -> Unit,
     onPrepareEditLastIncome: () -> Unit,
@@ -361,6 +365,10 @@ fun HomeScreen(
                 recurring = state.recurring,
                 onConfirm = onConfirmRecurring,
                 onSkip = onSkipRecurring,
+                onAdd = onAddRecurring,
+                onUpdate = onUpdateRecurring,
+                onSetActive = onSetRecurringActive,
+                onDelete = onDeleteRecurring,
                 onDismiss = { showRecurring = false },
             )
         }

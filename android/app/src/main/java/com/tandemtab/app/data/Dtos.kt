@@ -673,21 +673,38 @@ data class RecurringRowDto(
     val mode: String,          // "fixed" | "typical" | "reminder"
     val expected: Double = 0.0,
     val dayOfMonth: Int = 0,
+    val categoryId: String = "",
     val categoryName: String = "",
+    val fundId: String = "",
     val fundName: String = "",
     val active: Boolean = true,
     val due: Boolean = false,
     val upcoming: Boolean = false,
     val daysUntilDue: Int = 0,
     val hasKnownAmount: Boolean = true,
+    val autoPost: Boolean = false,
+    // Set when this bill services a loan: posting it splits into interest/principal rows against that debt.
+    val linkedDebtBucketId: String? = null,
+    val linkedDebtName: String? = null,
 )
 
+/** A debt bucket a bill can be linked to. `paymentDriven` mirrors the bucket's "I log each installment here"
+ *  switch — a linked bill only drives the balance when it's on, so the editor hints rather than flipping it. */
+@Serializable
+data class DebtOptionDto(val id: String, val name: String, val paymentDriven: Boolean = false)
+
+/** The Recurring surface in one read. The pickers travel with it, so the editor needs no second call: `categories`
+ *  for a bill, `contributionCategories` for income, `funds`, and the `debts` a bill can service. */
 @Serializable
 data class RecurringViewDto(
     val version: Long = 0,
     val currency: String = "",
     val billsDue: Double = 0.0,
     val items: List<RecurringRowDto> = emptyList(),
+    val categories: List<CategoryOptionDto> = emptyList(),
+    val contributionCategories: List<CategoryOptionDto> = emptyList(),
+    val funds: List<FundOptionDto> = emptyList(),
+    val debts: List<DebtOptionDto> = emptyList(),
 )
 
 /** What a recurring confirm/skip returns: version, the item id, and the refreshed Recurring view. */
@@ -701,6 +718,41 @@ data class RecurringMutationDto(
 /** POST /accounts/{id}/recurring/{id}/confirm — post the bill/income with its actual amount. */
 @Serializable
 data class ConfirmRecurringRequest(val actualAmount: Double)
+
+/** POST /accounts/{id}/recurring — a new bill or income expectation. `kind` is "expense"/"income" and `mode` is
+ *  "fixed"/"typical"/"reminder" (language-independent strings the server maps to its enums). */
+@Serializable
+data class AddRecurringRequest(
+    val name: String,
+    val kind: String,
+    val mode: String,
+    val expected: Double,
+    val dayOfMonth: Int,
+    val categoryId: String,
+    val fundId: String,
+    val icon: String? = null,
+    val autoPost: Boolean = false,
+    val linkedDebtBucketId: String? = null,
+)
+
+/** PUT /accounts/{id}/recurring/{recurringId} — edit an item (its kind can't change). A null
+ *  `linkedDebtBucketId` is authoritative: it unlinks. */
+@Serializable
+data class UpdateRecurringRequest(
+    val name: String,
+    val mode: String,
+    val expected: Double,
+    val dayOfMonth: Int,
+    val categoryId: String,
+    val fundId: String,
+    val icon: String? = null,
+    val autoPost: Boolean = false,
+    val linkedDebtBucketId: String? = null,
+)
+
+/** PUT /accounts/{id}/recurring/{recurringId}/active — pause or resume (a paused item never falls due). */
+@Serializable
+data class SetActiveRequest(val active: Boolean)
 
 // --- Income surface (for the Add-income contribution-category picker) ---------------------------------
 

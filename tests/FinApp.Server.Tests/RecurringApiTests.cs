@@ -183,6 +183,41 @@ public class RecurringApiTests : IClassFixture<FinAppServerFactory>
         Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
     }
 
+    /// <summary>The view is what a thin client edits from: without the category/fund ids and AutoPost it can only
+    /// show an item, never prefill an edit of one — matching by display name would be the alternative, and a rename
+    /// or a duplicate name would silently retarget the save.</summary>
+    [Fact]
+    public async Task The_view_carries_what_an_edit_needs_to_prefill()
+    {
+        var (client, auth) = await _factory.RegisterAndAuthAsync("rc_viewedit");
+        var account = await CreateAccount(client, "ViewEdit");
+        var (rent, _, fund) = await SeedAsync(client, account.Id, auth.UserId);
+
+        await IdOf(await client.PostAsJsonAsync($"/accounts/{account.Id}/recurring",
+            new AddRecurringRequest("Rent", "expense", "fixed", 500m, 15, rent, fund, AutoPost: true)));
+
+        var row = (await client.GetFromJsonAsync<RecurringViewDto>($"/accounts/{account.Id}/recurring"))!.Items.Single();
+        Assert.Equal(rent, row.CategoryId);
+        Assert.Equal(fund, row.FundId);
+        Assert.True(row.AutoPost);
+    }
+
+    /// <summary>The pickers travel with the view so an editor needs no second read — and they're there even for
+    /// income, whose sources come from a different list than a bill's categories.</summary>
+    [Fact]
+    public async Task The_view_carries_the_editor_pickers()
+    {
+        var (client, auth) = await _factory.RegisterAndAuthAsync("rc_pickers");
+        var account = await CreateAccount(client, "Pickers");
+        var (rent, salary, fund) = await SeedAsync(client, account.Id, auth.UserId);
+
+        var view = (await client.GetFromJsonAsync<RecurringViewDto>($"/accounts/{account.Id}/recurring"))!;
+        Assert.Contains(view.Categories, c => c.Id == rent);
+        Assert.Contains(view.ContributionCategories, c => c.Id == salary);
+        Assert.Contains(view.Funds, f => f.Id == fund);
+        Assert.DoesNotContain(view.Categories, c => c.Id == salary);   // a spend category is not an income source
+    }
+
     [Fact]
     public async Task Stranger_cannot_create_a_recurring_item()
     {

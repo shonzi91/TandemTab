@@ -288,6 +288,22 @@ class TandemTabApi(
     suspend fun skipRecurring(accountId: String, recurringId: String): RecurringMutationDto =
         authedPostEmpty("/accounts/$accountId/recurring/$recurringId/skip").body()
 
+    /** Declare a new bill / income expectation. */
+    suspend fun addRecurring(accountId: String, req: AddRecurringRequest): MutationResultDto =
+        authedPost("/accounts/$accountId/recurring", req).body()
+
+    /** Edit an item (kind can't change). */
+    suspend fun updateRecurring(accountId: String, recurringId: String, req: UpdateRecurringRequest): MutationResultDto =
+        authedPut("/accounts/$accountId/recurring/$recurringId", req).body()
+
+    /** Pause or resume an item. */
+    suspend fun setRecurringActive(accountId: String, recurringId: String, active: Boolean): MutationResultDto =
+        authedPut("/accounts/$accountId/recurring/$recurringId/active", SetActiveRequest(active)).body()
+
+    /** Remove an item for good (its posted expenses/income stay). */
+    suspend fun deleteRecurring(accountId: String, recurringId: String): MutationResultDto =
+        authedDelete("/accounts/$accountId/recurring/$recurringId").body()
+
     /** Recent manual-expense history the add-expense modal derives its "most-used" chips + default funds from. */
     suspend fun expenseEntry(accountId: String): ExpenseEntryDto = authedGet("/accounts/$accountId/expense-entry").body()
 

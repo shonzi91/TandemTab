@@ -15,26 +15,39 @@ public record RecurringRowDto(
     string Mode,
     decimal Expected,
     int DayOfMonth,
+    Guid CategoryId,
     string CategoryName,
+    Guid FundId,
     string FundName,
     bool Active,
     bool Due,
     bool Upcoming,
     int DaysUntilDue,
     bool HasKnownAmount,
+    bool AutoPost,
     // R2: set when this bill services a loan — posting it splits into interest/principal rows against that debt.
     Guid? LinkedDebtBucketId = null,
     string? LinkedDebtName = null);
 
-/// <summary>The Recurring surface in one read: the known bills still expected this period (<see cref="BillsDue"/>) and
-/// every recurring item with its due state.</summary>
+/// <summary>A debt bucket a bill can be linked to. <see cref="PaymentDriven"/> mirrors the bucket's "I log each
+/// installment here" switch — a linked bill only drives the balance when it's on, which is the user's call, so the
+/// client shows a hint rather than flipping it.</summary>
+public record DebtOptionDto(Guid Id, string Name, bool PaymentDriven);
+
+/// <summary>The Recurring surface in one read: the known bills still expected this period (<see cref="BillsDue"/>),
+/// every recurring item with its due state, and the pickers an editor needs — spend categories (for a bill),
+/// contribution categories (for income), funds, and the debts a bill can service.</summary>
 public record RecurringViewDto(
     long Version,
     string Currency,
     decimal BillsDue,
-    IReadOnlyList<RecurringRowDto> Items)
+    IReadOnlyList<RecurringRowDto> Items,
+    IReadOnlyList<CategoryOptionDto> Categories,
+    IReadOnlyList<CategoryOptionDto> ContributionCategories,
+    IReadOnlyList<FundOptionDto> Funds,
+    IReadOnlyList<DebtOptionDto> Debts)
 {
-    public static readonly RecurringViewDto Empty = new(0, "", 0m, []);
+    public static readonly RecurringViewDto Empty = new(0, "", 0m, [], [], [], [], []);
 }
 
 /// <summary>The delta a recurring mutation returns (superset of <see cref="MutationResultDto"/>): new version, the
