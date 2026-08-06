@@ -11,25 +11,25 @@ overwrite whose read model was **missing four of the fields it overwrites**, so 
 
 ## Session 91 (2026-08-06) — **Two R2 L-rows closed (periods, bucket CRUD) + a danger-colour fix. Live: `finapp-00279-jrf`.**
 
-### Two deploys this session
-- **`finapp-00278-vkl`** (image `16a9a16`) — Session 90's Home-hero overview fields + `MoneyText`.
-- **`finapp-00279-jrf`** (image `1d25a9c`) — this session's bucket-prefill fields on `SavingBucketDto`. Traffic
-  forced `--to-latest` both times, **5 `secretKeyRef`s**, run URL + tandemtab.com 200, **no WARNING+ log entries**
-  on the new revision. ⚠️ The authed `/savings` payload was **not** re-checked against production — that would
-  mean registering a real prod account; it was verified against a local server running the same commit, and two
-  server tests pin the round-trip.
-
-### Deployed Session 90 (`finapp-00278-vkl`)
-- Image `finapp:16a9a16`, traffic forced `--to-latest`, **5 `secretKeyRef`s**, both the run URL and tandemtab.com
-  200. This is what makes the S90 Home hero fields (`MoneyIn`/`TransfersOut`/`SavedThisPeriod`/`SavedRate`) and
-  `MoneyText` real for a phone build — an older server just sent the defaults.
-- ⚠️ The **auto-mode classifier blocked `run deploy` three times** (both Git Bash and PowerShell) before the owner
-  authorised it explicitly; `builds submit` never blocks. Same non-deterministic block as Session 56.
+### Two deploys
+- **`finapp-00278-vkl`** (image `16a9a16`) — **Session 90's** Home-hero overview fields
+  (`MoneyIn`/`TransfersOut`/`SavedThisPeriod`/`SavedRate`) + `MoneyText`. Until this went out, a phone build just
+  received the defaults for the hero S90 had built.
+- **`finapp-00279-jrf`** (image `1d25a9c`) — **this session's** bucket-prefill fields on `SavingBucketDto`.
+- Both: traffic forced `--to-latest`, **5 `secretKeyRef`s**, run URL + tandemtab.com 200, and **no WARNING+ log
+  entries** on the new revision.
+- ⚠️ **Verification gap, stated plainly:** the authed `/savings` and `/overview` payloads were **not** re-checked
+  against production — that would mean registering a real account on prod. What is proven is that the right build
+  is serving (image digest + revision + traffic). The payloads themselves were verified against a local server
+  running the same commits, and server tests pin them.
+- ⚠️ The **auto-mode classifier blocked `run deploy` three times** (Git Bash *and* PowerShell) before the owner
+  authorised it explicitly; `builds submit` never blocks. Same non-deterministic block as Session 56. **Build the
+  image first regardless** — then only the two cheap commands are left to hand over if the block recurs.
 
 ### R2 — the period lifecycle on Android (the first **L** row)
 - **What shipped:** `/periods/start-next`, `/periods/{i}/schedule` and `DELETE /periods/latest`, all three hung off
   the Home period chip as on the web's period popover. Plus `POST /contribution-categories` and
-  `GET /bank/balance-at`, both of which the rollover needs. Android now calls **41** endpoints, not 37.
+  `GET /bank/balance-at`, both of which the rollover needs — five new calls.
 - **★ The gating is the design, not the endpoints.** *Start next month* shows only on the newest month and only
   once it has ended — **greyed with the reason** (*"Available once this month ends"*) rather than hidden, because
   the server enforces the same guard and a live-looking item is a 400 with extra steps. *Remove* appears only when
@@ -50,7 +50,7 @@ overwrite whose read model was **missing four of the fields it overwrites**, so 
   ⚠️ **This means S90's "Android needed no theme fixes" was too narrow** — it checked only the surfaces it had
   just built. The rest of the app was never swept.
 
-### Verification
+#### Verified (periods)
 - **Emulator, real seeded account, local server** (`10.0.2.2:5179`; build config + cleartext flag **reverted**).
   The three actions were exercised as one chain, which is also the only way to reach the rollover on a month that
   hasn't ended: **change dates** (31 Aug → 5 Aug) unlocked **start next month**; entering Cash €195 against a
@@ -61,13 +61,15 @@ overwrite whose read model was **missing four of the fields it overwrites**, so 
   **Remove** then restored the single 1–5 Aug period with the adjustment correctly still in it.
 - **Both themes** on the real screen: dark and light both render the drift card, the amber gap figure and all
   three buttons legibly; the confirm dialog's destructive button is red in both.
-- **No C# changed this session**, so the .NET suites were not re-run — they were green at S90
-  (322 domain + 48 persistence + 305 server).
+- This half of the session was **Android-only** — no C# changed, so nothing was re-run at that point. The bucket
+  work below then changed C# and the suites were run in full; see its Verified block for the real numbers.
 
 ### R2 — savings/debt bucket CRUD (the second **L** row)
 - **What shipped:** create / edit / archive / restore / delete across **all four kinds** (goal, debt, investment,
   expenses fund) from one sheet on the Goals tab, plus a "New goal, debt or fund" button in the Goals header and
-  an **Edit** pill on every bucket row. A phone-only user can now *make* a goal, not just look at one.
+  an **Edit** pill on every bucket row. A phone-only user can now *make* a goal, not just look at one. Four more
+  calls (`POST`/`PUT`/`PUT …/archived`/`DELETE` on `/savings/buckets`), taking the session's total to **nine new
+  endpoints — 37 → 46**.
 - **★ The read model had to grow first — the third time R2 has hit this exact shape.**
   `SaveSavingBucketRequest` is a full **overwrite**: `SavingBucketConfig.Apply` calls `SetSavingFund` /
   `ConfigureSavingGoal` / `SetSavingInitialAmount` unconditionally. Four of the fields it overwrites —
@@ -84,8 +86,8 @@ overwrite whose read model was **missing four of the fields it overwrites**, so 
   400. Archived buckets sit behind a collapsed **"Show archived (N)"** with Restore — otherwise "archive it
   instead" would be a dead end.
 
-### Verification (bucket CRUD)
-- **322 domain + 48 persistence + 307 server** (+2, both new).
+#### Verified (bucket CRUD)
+- **322 domain + 48 persistence + 307 server** (+2, both new) — the session's final numbers.
 - **Emulator, real seeded account, both themes** (local server; build config + cleartext flag **reverted**):
   created a **goal** (Holiday, €2,000 target, alert **65%**, notify on, held in **Cash**, €150 starting) →
   reopened Edit and every one of those prefilled correctly (not the 80% default) → **renamed only, saved, reopened:
@@ -94,12 +96,32 @@ overwrite whose read model was **missing four of the fields it overwrites**, so 
   as *"€7,500.00 · owed"* at 37.5% paid off. Delete removed the goal and dropped Saved to €0.00; Archive moved the
   debt into **"Show archived (1)"** and Restore brought it back intact.
 
-### ⚠️ Carry-over
-- **Two L rows left in [docs/MOBILE.md](docs/MOBILE.md)'s table:** debt (installments) and sharing.
-  Bucket **money-movements** (`/savings/disburse`, `/to-budget`, `/transfer`, `/movements`) are now an **M** —
-  allocate and spend already work, so they're refinements rather than a missing capability.
-- **A full Android light/dark sweep is still owed** — see the danger-colour note above.
-- **Everything in Session 90's carry-over still stands.**
+### ⚠️ Carry-over — and what the next session should pick up
+
+**Recommended order, with the reasoning:**
+
+1. **Sharing (`/invitations`, `/members/{id}`, `/transfer-ownership`) — the last L row that changes what the
+   product *is*.** ★ Take this before debt, even though debt is the bigger build: **sharing is the feature Pro is
+   sold on**, so while it's missing, a phone user cannot reach the thing R5's paywall charges for. Debt is a large
+   feature a phone user merely *lacks*; sharing is a promise the app makes and can't keep. ⚠️ Expect the same
+   read-model check first — invitations carry state (pending/accepted/expired) the thin client has never fetched.
+2. **Debt (`/installments`) — R1 informative debt + R2 installment splits.** The bucket side landed this session,
+   so a debt bucket already exists and projects; what's missing is logging installments against it. Note the
+   `debtPaymentDriven` switch is already in the create/edit sheet, which means **a user can turn on "I log each
+   installment here" and then have nowhere to log one** — that's a small trap worth closing early even if the
+   rest of the row waits.
+3. **A full Android light/dark sweep.** Still owed. The danger-colour bug was found *incidentally*, not by
+   looking — so treat the whole app as unswept, not just the surfaces recent sessions built. The web half has a
+   detector ([tools/pairscan.js](tools/pairscan.js)); Android has nothing equivalent, so this is manual.
+
+**Lower priority / explicitly parked:**
+- Bucket **money-movements** (`/savings/disburse`, `/to-budget`, `/transfer`, `/movements`) dropped from **L** to
+  **M** — allocate and spend already work, so these are refinements, not a missing capability.
+- **Everything in Session 90's carry-over still stands**, including F6's shared-account "together" line and the
+  S88 chart animations being unseen with real data, and `.modal-actions` collapsing `.danger-btn` to a ✓.
+
+⚠️ **R2 does not end when the table empties.** Its exit condition is *"Android at web parity; light/dark swept on
+both surfaces"* — item 3 above is half of that sentence and is the half most likely to be skipped.
 
 Last updated (prior): 2026-08-05 (Session 90 — **NOT deployed; server changes are in the tree, uncommitted deploy.** Recorded
 **billing go-live (a real payment provider + the Pro trial) as R5 work** so it can't be forgotten, and flagged that

@@ -58,7 +58,7 @@ it goes stale the moment web ships again. Since the native app is a thin client,
 endpoints the server exposes that `TandemTabApi` never calls.** Every feature Android is missing has to show up
 there, because a thin client cannot render what it does not fetch.
 
-Android calls **37** of the account endpoints (**41** since Session 91). It does not call these:
+Android calls **37** of the account endpoints (**46** since Session 91). It does not call these:
 
 | Missing capability | Endpoints never called | Weight |
 |---|---|---|
