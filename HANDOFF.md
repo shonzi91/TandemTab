@@ -15,6 +15,37 @@ a separate balance axis — because flows and a stock were sharing one scale. **
 as `de51071`, now live on **`finapp-00280-4s8`** (traffic forced `--to-latest`; run URL + tandemtab.com 200; 5
 `secretKeyRef`s; no WARNING+ logs). Prior context below is Session 91.)
 
+## Session 93 (2026-08-06) — **A bell tuck, the recap's "left over" fix, and Android installments (device pass owed)**
+
+Three follow-ons after the catch-up, each committed and pushed:
+- **Dismissed week-recap now tucks into the bell** instead of vanishing until Monday (`8a28866`). Deployed
+  **`finapp-00281-2b9`**. Gate is the strict mirror of `WeekRecapToShow` — bell entry only *while dismissed*, so the
+  recap lives in exactly one place and self-clears on the week roll-over.
+- **★ Week-recap "left over" measures against a *typical* week, not this one's lone salary** (`5df6531`). Deployed
+  **`finapp-00282-kt6`**. Salary lands in one week a month, so literal in-week income was zero three weeks in four and
+  "left over" read as a loss every time. Now smoothed: average of the periods that actually earned (an unpaid current
+  period *excluded*, not counted as a zero) → else recurring income set up → else zero (honest literal fallback). The
+  modal's "money in" tile relabels to "Typical income" so the two figures reconcile. **+4 domain tests (332 green).**
+  Owner-facing knobs (which window / whether to show the real salary spike on payday) are defensible either way; the
+  current default follows the user's "average-entered-first, recurring-second" steer.
+- **★ Android can log a loan installment** (`ee33ff3`) — **R2's last L row**, closing the S91 trap where the
+  "I log each installment here" switch had nowhere to log. A **Log payment** action on every debt bucket opens a sheet
+  mirroring the web's `Modal.LogInstallment` (amount prefilled to the installment · date · fund · one loan category ·
+  a **live interest/principal split**, `round(owed × APR/100/12, 2)` capped at what the payment services). Posts via a
+  new `/installments` client call; refetches Savings + invalidates Spending like `spendFromSavings`. **Kotlin compiles
+  clean (`compileDebugKotlin`).** ⚠️ **NOT emulator-verified — it moves real balances, so a device pass is owed before
+  it's called done.** Also a known parity gap left for next time: **extra lines (insurance/tax) and the
+  principal/interest tag split are web-only** (Android has no tag picker) — noted in `LogInstallmentSheet.kt`.
+
+### ⚠️ Carry-over — what the next session should pick up FIRST
+0. **Emulator-verify the installment log** (`ee33ff3`): build APK, boot `tandemtab_test`, create a **payment-driven**
+   debt bucket, log a payment, confirm the split reads right **and the balance drops by the principal**. The
+   [[reference_android_toolchain_thisdevice]] local-seed recipe (buildConfig → `10.0.2.2:5179`, revert before commit)
+   is the fastest path. This is the one unfinished thread of S93.
+1. **Then Android installment parity**: extra lines + the principal/interest tag split (needs an Android tag surface).
+2. **The Android light/dark sweep** (still owed — half of R2's exit condition) and the **`SheetShell` foot-of-sheet
+   audit** remain from S92 below.
+
 ## Session 92 (2026-08-06) — **Sharing on Android (R2's third L row) + a web batch. Committed; web deployed as `finapp-00280-4s8`.**
 
 ### What shipped
