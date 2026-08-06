@@ -473,6 +473,32 @@ data class SavingsViewDto(
 @Serializable
 data class MutationResultDto(val version: Long = 0, val entityId: String? = null)
 
+/** POST /accounts/{id}/installments — log a loan payment as its parts. `principalCategoryId` and
+ *  `interestCategoryId` are the same category (the split shows in the Breakdown by tag on the web); the
+ *  principal/interest tag ids and `additional` extra lines are web-only for now, so the phone sends them null. */
+@Serializable
+data class LogInstallmentRequest(
+    val bucketId: String,
+    val total: Double,
+    val fundId: String,
+    val date: String,               // ISO yyyy-MM-dd
+    val principalCategoryId: String,
+    val interestCategoryId: String,
+    val additional: List<InstallmentExtraDto>? = null,
+    val principalTagId: String? = null,
+    val interestTagId: String? = null,
+    val note: String? = null,
+)
+
+/** One non-loan line riding along on an installment (insurance, tax, a fee), with its own budget category. */
+@Serializable
+data class InstallmentExtraDto(
+    val amount: Double,
+    val categoryId: String,
+    val tagId: String? = null,
+    val note: String? = null,
+)
+
 /** POST /accounts/{id}/savings/deposits — earmark money into a bucket ("Add to savings"). */
 @Serializable
 data class AddSavingDepositRequest(

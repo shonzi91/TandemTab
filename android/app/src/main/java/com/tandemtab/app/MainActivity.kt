@@ -159,6 +159,8 @@ private fun App(vm: AppViewModel, onGoogle: () -> Unit) {
             onPrepareSpend = vm::prepareSpendFromSavings,
             onAllocate = vm::allocateSaving,
             onSpendFromSavings = vm::spendFromSavings,
+            onPrepareInstallment = vm::prepareLogInstallment,
+            onLogInstallment = vm::logInstallment,
             onPrepareBucket = vm::prepareSavingBucket,
             onSaveBucket = vm::saveSavingBucket,
             onArchiveBucket = vm::archiveSavingBucket,

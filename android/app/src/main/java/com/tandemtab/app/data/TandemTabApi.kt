@@ -182,6 +182,12 @@ class TandemTabApi(
     suspend fun spendFromSavings(accountId: String, req: SpendFromSavingsRequest): MutationResultDto =
         authedPost("/accounts/$accountId/savings/spend", req).body()
 
+    /** Log a loan installment against a debt bucket — posts interest/principal (+ any extra) rows as one linked
+     *  group and, on a payment-driven bucket, takes the principal off the balance. Also lands in Spending. The
+     *  server returns a richer InstallmentMutationDto; we only need the write to succeed, so read the lean shape. */
+    suspend fun logInstallment(accountId: String, req: LogInstallmentRequest): MutationResultDto =
+        authedPost("/accounts/$accountId/installments", req).body()
+
     /** Create a savings bucket (goal / debt / investment / expenses fund). Rejects a duplicate name. */
     suspend fun createSavingBucket(accountId: String, req: SaveSavingBucketRequest): MutationResultDto =
         authedPost("/accounts/$accountId/savings/buckets", req).body()

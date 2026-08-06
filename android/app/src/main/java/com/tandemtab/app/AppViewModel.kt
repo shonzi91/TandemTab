@@ -9,6 +9,7 @@ import com.tandemtab.app.data.AccountSummaryDto
 import com.tandemtab.app.data.AddDepositRequest
 import com.tandemtab.app.data.AddExpenseRequest
 import com.tandemtab.app.data.AddSavingDepositRequest
+import com.tandemtab.app.data.LogInstallmentRequest
 import com.tandemtab.app.data.BankSyncStatusDto
 import com.tandemtab.app.data.PendingBankTransactionDto
 import com.tandemtab.app.data.RecordConsentRequest
@@ -849,6 +850,45 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 onDone()
             } catch (e: Exception) {
                 _state.update { it.copy(goals = it.goals.copy(saving = false, saveError = e.message ?: "Couldn't spend from savings.")) }
+            }
+        }
+    }
+
+    /** Prep the "Log installment" sheet: clear a stale error and load the loan-category + fund pickers (/spending). */
+    fun prepareLogInstallment() {
+        _state.update { it.copy(goals = it.goals.copy(saveError = null)) }
+        loadSpending(false)
+    }
+
+    /** Log a loan payment: posts the interest/principal rows and, on a payment-driven bucket, moves the debt
+     *  balance. Like spendFromSavings this touches both Savings and Spending, so refetch Savings for Goals/overview
+     *  and invalidate the Spending cache so the new rows appear on next view. [onDone] fires only on success. */
+    fun logInstallment(
+        bucketId: String, total: Double, fundId: String, date: String, categoryId: String, note: String?, onDone: () -> Unit,
+    ) {
+        val accountId = _state.value.selectedAccountId ?: return
+        _state.update { it.copy(goals = it.goals.copy(saving = true, saveError = null)) }
+        viewModelScope.launch {
+            try {
+                api.logInstallment(
+                    accountId,
+                    LogInstallmentRequest(
+                        bucketId = bucketId, total = total, fundId = fundId, date = date,
+                        principalCategoryId = categoryId, interestCategoryId = categoryId,
+                        note = note?.ifBlank { null },
+                    ),
+                )
+                val v = api.savings(accountId, _state.value.selectedPeriod)
+                _state.update {
+                    it.copy(
+                        overview = v.overview,
+                        goals = goalsFrom(v),
+                        spending = it.spending.copy(loaded = false),   // new expense rows aren't cached — force a re-fetch
+                    )
+                }
+                onDone()
+            } catch (e: Exception) {
+                _state.update { it.copy(goals = it.goals.copy(saving = false, saveError = e.message ?: "Couldn't log the installment.")) }
             }
         }
     }
