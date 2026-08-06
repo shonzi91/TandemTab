@@ -149,4 +149,100 @@ public class WeeklyRecapTests
     {
         Assert.Null(new WeeklyRecapService().Build(new Account("Empty", Eur), Today));
     }
+
+    // --- The detail behind the card (the modal's figures) --------------------------------------------------
+
+    [Fact]
+    public void Transactions_are_counted_for_the_covered_week_only()
+    {
+        var (account, period, food, fun, member) = Setup();
+        Spend(account, period, food, member, 10m, new DateOnly(2026, 1, 5));
+        Spend(account, period, fun, member, 20m, new DateOnly(2026, 1, 7));
+        Spend(account, period, food, member, 30m, new DateOnly(2026, 1, 11));
+        Spend(account, period, food, member, 40m, new DateOnly(2026, 1, 13));   // current week
+        Spend(account, period, food, member, 50m, new DateOnly(2026, 1, 4));    // previous week
+
+        var recap = new WeeklyRecapService().Build(account, Today)!;
+
+        Assert.Equal(3, recap.ExpenseCount);
+    }
+
+    [Fact]
+    public void The_biggest_expense_names_its_category_date_and_note()
+    {
+        var (account, period, food, fun, member) = Setup();
+        Spend(account, period, food, member, 30m, new DateOnly(2026, 1, 6));
+        period.AddExpense(new Expense(fun.Id, M(120m), new DateOnly(2026, 1, 9), member, account.FundId("Cash"), "Concert tickets"));
+        Spend(account, period, fun, member, 900m, new DateOnly(2026, 1, 14));   // current week can't win it
+
+        var recap = new WeeklyRecapService().Build(account, Today)!;
+
+        Assert.NotNull(recap.Biggest);
+        Assert.Equal(M(120m), recap.Biggest!.Amount);
+        Assert.Equal(fun.Id, recap.Biggest.CategoryId);
+        Assert.Equal(new DateOnly(2026, 1, 9), recap.Biggest.Date);
+        Assert.Equal("Concert tickets", recap.Biggest.Note);
+    }
+
+    [Fact]
+    public void Two_equal_expenses_resolve_to_the_earlier_one_so_the_card_does_not_flicker()
+    {
+        var (account, period, food, fun, member) = Setup();
+        Spend(account, period, fun, member, 75m, new DateOnly(2026, 1, 9));
+        Spend(account, period, food, member, 75m, new DateOnly(2026, 1, 6));
+
+        var recap = new WeeklyRecapService().Build(account, Today)!;
+
+        Assert.Equal(new DateOnly(2026, 1, 6), recap.Biggest!.Date);
+    }
+
+    [Fact]
+    public void Income_covers_the_week_and_excludes_the_carried_over_balance()
+    {
+        // Carryover is booked as a contribution from a sentinel member. It is last month's leftover, not money
+        // that arrived — counting it would spike "money in" every time a period rolls over.
+        var (account, period, _, _, member) = Setup();
+        period.Deposit(member, M(900m), date: new DateOnly(2026, 1, 8));
+        period.Deposit(member, M(400m), date: new DateOnly(2026, 1, 13));                    // current week
+        period.Deposit(Period.CarryoverSource, M(5000m), date: new DateOnly(2026, 1, 8));    // not income
+
+        var recap = new WeeklyRecapService().Build(account, Today)!;
+
+        Assert.Equal(M(900m), recap.Income);
+    }
+
+    [Fact]
+    public void Categories_and_tags_break_the_week_down_largest_first()
+    {
+        var (account, period, food, fun, member) = Setup();
+        var work = account.AddTag("Work");
+        Spend(account, period, food, member, 20m, new DateOnly(2026, 1, 6));
+        Spend(account, period, fun, member, 65m, new DateOnly(2026, 1, 7));
+        var tagged = new Expense(food.Id, M(45m), new DateOnly(2026, 1, 8), member, account.FundId("Cash"));
+        tagged.SetTag(work.Id);
+        period.AddExpense(tagged);
+
+        var recap = new WeeklyRecapService().Build(account, Today)!;
+
+        // Food 20 + 45 = 65 ties Fun's 65; either order is defensible, so assert the totals rather than the order.
+        Assert.Equal(2, recap.CategoryBreakdown.Count);
+        Assert.Equal(M(65m), recap.CategoryBreakdown.Single(c => c.Id == food.Id).Total);
+        Assert.Equal(2, recap.CategoryBreakdown.Single(c => c.Id == food.Id).Count);
+
+        // Untagged expenses are absent rather than pooled under a pseudo-tag.
+        var tag = Assert.Single(recap.TagBreakdown);
+        Assert.Equal(work.Id, tag.Id);
+        Assert.Equal(M(45m), tag.Total);
+    }
+
+    [Fact]
+    public void An_untagged_account_reports_no_tags_rather_than_a_placeholder()
+    {
+        var (account, period, food, _, member) = Setup();
+        Spend(account, period, food, member, 25m, new DateOnly(2026, 1, 6));
+
+        var recap = new WeeklyRecapService().Build(account, Today)!;
+
+        Assert.Empty(recap.TagBreakdown);
+    }
 }

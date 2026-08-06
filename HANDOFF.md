@@ -1,6 +1,144 @@
 # TandemTab (FinApp) — session handoff
 
-Last updated: 2026-08-06 (Session 91 — **Session 90's server changes are now DEPLOYED as `finapp-00278-vkl`.** Then
+Last updated: 2026-08-06 (Session 92 — closed **R2's third L row, sharing**: invite, accept/decline, the member
+list, transfer ownership, remove, and an owner-leave with hand-over. Nine endpoints, **zero server changes** —
+the first R2 L row whose read model was already complete, which is itself the finding: the check that cost three
+sessions a server round is also what turns an **L** into an afternoon. Verified end-to-end on the emulator with
+**two real accounts** in both themes, including the Pro gate firing and the invitation landing on a user with no
+account at all. **322 + 48 + 307 green** (unchanged — no C# touched). Two bugs found on device, both layout, both
+in the same block: the S91 floating-action-bar shape for the **third** time, and one state variable doing two
+jobs. **Then a requested web batch:** F7's week recap became a glowing card + a full modal, two budget routes were
+pointed at the view that can actually change a budget, the **45-day** Pro trial message landed (owner call settled),
+admin gained **trial + paying-subscriber** metrics, and **Trends was rebuilt as two charts** — net-as-hero bars plus
+a separate balance axis — because flows and a stock were sharing one scale. **328 + 48 + 308 green.**
+⚠️ **Nothing is committed.** The Android half needs no deploy; **the web half does.** Prior context below is
+Session 91.)
+
+## Session 92 (2026-08-06) — **Sharing on Android (R2's third L row) + a web batch. Not committed, web not deployed.**
+
+### What shipped
+- **The inviter's half** — a **People** block in the Account sheet (⋯ by the account name), mirroring the web's
+  account menu: who's on the account with *you*/*owner* tags and their faces (`/accounts/{id}/avatars`), an
+  **Invite someone** row, and per-member **Make owner** / **Remove** for the owner.
+- **The invitee's half** — an invitations card on Home with **Accept** / **Decline**. Accepting switches straight
+  into the account joined, so "what just happened" is answered by the screen rather than left to the user.
+- **Owner-leave with hand-over** — Android previously offered Leave to non-owners only, so an owner's only exit
+  was Delete.
+- **Nine calls: 46 → 55.** `POST /accounts/{id}/invitations`, `GET /invitations/pending`, accept, decline,
+  `DELETE /accounts/{id}/members/{userId}`, `POST /accounts/{id}/transfer-ownership`, leave-with-new-owner, and
+  `GET /accounts/{id}/avatars`.
+
+### ★ The findings worth keeping
+- **★ Sharing is two halves that look alike and are not, and the placement follows from that.** The inviter's
+  half is account-scoped; the invitee's is not — an invitation arrives **before** there is any membership to hang
+  it off, and may land on a user with **no account at all**. So the card sits on Home *above* the money and
+  *outside* the `overview == null` branch. That is not a style choice: verified on device, a freshly-invited user
+  with zero accounts sees the invitation over an otherwise empty Home. Inside that branch it would have been
+  invisible to exactly the people it exists for.
+- **★ The read model was already complete — the first R2 L row where it was, and the check still paid.** S90, S91
+  and S91-again each needed the server to grow first. This time `AccountSummaryDto` already carried
+  `ownerUserId`/`isOwner`/`members` and `/me` already carried `id` and `plan`. What was missing was two fields
+  **Android had declined to parse** — `UserDto.id` was commented *"Server sends 'id'; we don't need it."* You do,
+  the moment two people share an account and the UI must say which one is *you*. **The lesson isn't "the check
+  was unnecessary"; it's that the same twenty minutes that has three times found a server gap this time turned an
+  L-sized row into an afternoon.**
+- **★ The crown decorates, the 402 gates.** The invite row wears the Pro crown when `plan == "free"`, but the
+  client never refuses the call itself — the server's 402 is the gate and its message is shown verbatim. A client
+  that decided for itself would lock out a paying user the moment its plan string went stale, and could never be
+  more right than the server it is guessing at. **Both paths seen on device:** a post-cap `@test.local` user got
+  the crown *and* "That's a Pro feature — upgrade to unlock it."; a beta-cohort user got neither and the invite
+  went through.
+- **★ The owner-leave picker is the request, not a courtesy.** The server refuses to orphan an account, so
+  `LeaveAccountRequest.NewOwnerUserId` is mandatory for an owner with company. The confirm block therefore carries
+  a member picker with **Leave greyed until one is chosen** — greyed rather than hidden, so the button explains
+  what it wants by sitting under the list that answers it. A **sole** owner still sees only Delete: with nobody to
+  hand it to, leave and delete are the same act, and offering both would be two doors to one room.
+
+### ⚠️ Two bugs found on the emulator — both layout, both in the same block
+- **The S91 floating-action-bar shape, for the third time.** The Account sheet's Done bar is a *sibling* of the
+  scrolling body, so the leave-confirm block — which grows by a picker row per member — was **born under it**:
+  wording visible, picker and buttons not. `SheetShell` now takes a `scrollToEnd` trigger and animates the
+  revealed block into view (two frames, because a picker's rows settle in a second pass). ⚠️ **Three instances in
+  two sessions means this is a property of every sheet in this app, not three unlucky screens** — anything that
+  grows at the foot of a `SheetShell` needs the trigger.
+- **One state variable doing two jobs.** The member-row expander and the hand-over picker both keyed off
+  `handOverTo`, so *choosing* a new owner silently expanded that person's action row higher up the sheet and shoved
+  the confirm block back under the bar — a second-order instance of the first bug, caused by reuse that looked
+  tidy. Separate now (`expandedMemberId` vs `handOverTo`). **Neither bug was visible in the code; both took the
+  device.**
+- **A dark-theme nit, found by looking rather than by luck:** the *you*/*owner* pills used `tandem.hero`, which in
+  dark is the sheet's own colour — so the chip was a chip on one theme only. Now `savingsTileBg`.
+
+### Verified
+- **322 domain + 48 persistence + 307 server** — unchanged, since no C# was touched.
+- **Emulator, local server (`10.0.2.2:5179`), two real registered users, both themes** (build config + cleartext
+  flag **reverted**). The whole loop as one chain: Free user invites → **402 shown verbatim**; Pro user invites →
+  *"Invitation sent to sharemate."*; **sharemate, who has no account at all, sees the card on an empty Home** →
+  Accept → lands in *Household* with its period label; People shows both with the right tags and no ⋯ for the
+  non-owner; **Make owner** flips the tags and strips rename/Delete on the spot; the new owner **removes** the old
+  one behind a confirm dialog; and an owner **leaves** by handing over, confirmed against `/accounts` (one member,
+  ownership moved). Light for the first half, dark from the theme toggle onward.
+- ⚠️ **Not verified:** anything against production. Nothing server-side changed, so there is nothing new to
+  serve — but the Android app itself has **no distribution pipeline**, so "shipped" here means *in the repo*.
+
+### Then a web batch, on request — F7, two routing fixes, the trial message, admin money metrics, and Trends
+
+- **F7 "your week in money" is now a card that opens.** The card glows (a brand ring, animated only under
+  `prefers-reduced-motion: no-preference`) and keeps just the headline; the modal adds transaction count with an
+  average, money in, left over, the biggest single expense with its note and day, a category bar breakdown, and
+  tags. `WeeklyRecap` grew to match, **+6 domain tests**. Two of those pin judgement calls: **carryover is excluded
+  from "money in"** (it's last month's leftover; counting it spikes income every rollover) and **equal expenses
+  tie-break to the earlier one**, so the card can't name a different purchase on each render.
+  - ⚠️ **`.modal-actions` collapses its buttons to ✕/✓ glyphs.** The first cut gave the modal two buttons, which
+    turned *"Dismiss for this week"* into a wordless ✕ sitting exactly where every other modal's **close** lives —
+    same glyph, same place, different meaning, discovered by losing the card. The modal has **one** action now and
+    dismissal stays on the card's own ✕. The CSS warns about this itself; **it is already on the carry-over list**
+    as "`.modal-actions` collapsing `.danger-btn` to a ✓", and this is the second sighting.
+- **"Rename account" → "Edit account".** The modal has carried the savings target for ages and F4 round-ups since,
+  so *Rename* undersold it in every case — relabelled unconditionally, not only when round-ups are on.
+- **Budget routes land on By budgets.** Both the *"trim a budget"* link and the end of the period rollover: a link
+  that names an action should arrive somewhere the action is possible, and a fresh month's budgets are the first
+  thing anyone touches.
+- **The 45-day Pro trial message**, and the owner call settled at **45 days** (the docs held 14, a 30-day
+  recommendation, and 45 — 45 now wins; it spans **two** rollovers, not one). ⚠️ **The copy ships only on the
+  "not on sale yet" branch**, the one with no checkout button: nothing models a trial, so the same sentence beside
+  a live *Upgrade to Pro* would be the UI promising what the server can't do.
+- **Admin money metrics:** trials started / in one, and paying subscribers. Both read **0** today, which is the
+  true answer — and also what a broken query returns, so a **server test** inserts a live trial, a lapsed trial, a
+  real payment and a sandbox payment and asserts the counters move and the sandbox row stays out. ⚠️ It is
+  **paying subscribers, not payments taken**: `Subscriptions` upserts one row per user, so a renewal adds none.
+  Per-payment history needs the provider's webhook log. The panel says so out loud.
+- **★ Trends: two charts, not four lines.** Money in / spent / net are **flows**; balance is a **stock** an order
+  of magnitude bigger. On one axis the balance line owned the scale and flattened everything being compared — and
+  the old remedy was *asking the user to hide a series to rescale*, which is a workaround for a category error,
+  not a chart. Now: **net as the hero bar** (green up, red down, printed on the bar at ≤6 months) with in/out as
+  held-back context, and **balance on its own axis** beneath, sharing slot centres so a month lines up across
+  both. The legend's hide-toggles are gone with the problem they existed to work around.
+  - ⚠️ **The area fill must close on the axis FLOOR, not zero.** Closing on zero looked right until a balance went
+    negative: the polygon crossed its own base, the lobes wound opposite ways, and the fill silently vanished from
+    the crossing onward. Caught on screen, not in review.
+  - Verified in both themes against six seeded months including a deliberate overspend — May's −€430 now reads at
+    a glance as a red bar under the line, which the four-line version could not show at all.
+
+### ⚠️ Carry-over — what the next session should pick up
+
+0. **Nothing here is committed, and the web half is not deployed.** The Android work needs no deploy (no server
+   change); the web batch above **does** — it touches `FinApp.Contracts`, `AdminMetricsService` and the WASM client.
+1. **Debt on Android (`/installments`) — the last L row.** R1 informative debt + R2 installment splits. The bucket
+   side landed in S91, so a debt bucket already exists and projects; what's missing is logging installments.
+   ⚠️ **The `debtPaymentDriven` switch has been live in the create/edit sheet since S91**, so a user can turn on
+   "I log each installment here" and have nowhere to log one. Close that trap early even if the rest waits.
+2. **A full Android light/dark sweep.** Still owed, and it is **half of R2's exit condition**. Two sessions running
+   have now found a theme bug *incidentally* (S91's danger-amber, S92's invisible pills) — that is evidence the
+   app is unswept, not that the bugs are rare. Web has [tools/pairscan.js](tools/pairscan.js); Android has nothing
+   equivalent, so this is manual.
+3. **A `SheetShell` audit for the floating-bar shape.** Cheap, and now three-for-three. Every sheet that reveals a
+   block at its foot wants the `scrollToEnd` trigger.
+
+⚠️ **R2 does not end when the table empties** — its exit condition is *"Android at web parity; light/dark swept on
+both surfaces"*, and item 2 is the half most likely to be skipped.
+
+Last updated (prior): 2026-08-06 (Session 91 — **Session 90's server changes are now DEPLOYED as `finapp-00278-vkl`.** Then
 closed **two of R2's four L-sized parity gaps**: the **period lifecycle** (start next month with the full reconcile
 step, change dates, remove) and **savings/debt bucket CRUD** (create/edit/archive/restore/delete, all four kinds).
 Both verified end-to-end on the emulator against a real seeded account **in both themes**. **322 + 48 + 307 green.**

@@ -285,6 +285,18 @@ against a moving feature set is work that gets redone. R4 lands before R7 for th
   step, change dates, remove. (2) **Savings/debt bucket CRUD** — create/edit/archive/restore/delete across all four
   kinds. Both verified end-to-end on the emulator in both themes. **Two L rows left: debt (installments) and
   sharing.**
+- **Session 92 closed sharing** — invite, accept/decline, member list, transfer ownership, remove, and owner-leave
+  with hand-over. **One L row left: debt (installments).**
+  - ★ **The invitee's half doesn't belong to an account.** An invitation arrives before there's any membership to
+    hang it off, so its card sits on Home outside the "have we got an overview" branch — verified against a user
+    with **no accounts at all**, which is exactly the case an account-scoped placement would have hidden.
+  - ★ **The read model was already complete — the first R2 L row where it was.** No server change: Android simply
+    hadn't parsed `UserDto.id` (commented *"we don't need it"*) or `plan`. Checking first still paid, turning an
+    **L** into an afternoon.
+  - ★ **The Pro crown decorates, the server's 402 gates.** The client never refuses the invite itself, so a stale
+    plan string can't lock out a paying user; the 402's message is shown verbatim. Both paths seen on device.
+  - ⚠️ **The S91 floating-action-bar bug recurred a third time** (a confirm block growing under the sheet's Done
+    bar) — now designed out via a `scrollToEnd` trigger on `SheetShell`. **Treat it as a hazard of every sheet.**
   - ⚠️ **The bucket row needed a server change first, for the third time in R2.** The bucket upsert is a full
     overwrite and four of the fields it overwrites weren't in the read model — so a native *rename* would have
     silently wiped the held-in fund, the alert threshold, the milestone flag and the starting balance. The lesson

@@ -183,6 +183,10 @@ html.dark .pm-theme-toggle:hover { border-color: #2f7d5c; background: #14251d; }
 .switch.on .switch-track { background: #13a06e; }
 .switch.on .switch-thumb { transform: translateX(18px); }
 .pm-hint { margin: 0; font-size: .72rem; color: #9ca3af; }
+/* The trial promise reads as an offer, not fine print — it's the one line in this prompt that gives something
+   away, so it gets the brand tint rather than the muted grey the surrounding hints wear. */
+.pm-trial { color: #0e7c55; font-weight: 600; }
+html.dark .pm-trial { color: #34d399; }
 .pm-privacy { list-style: none; margin: 6px 0 4px; padding: 0; display: flex; flex-direction: column; gap: 7px; }
 .pm-privacy li { display: flex; gap: 8px; font-size: .8rem; line-height: 1.4; color: #4b5563; }
 html.dark .pm-privacy li { color: #c3cad4; }

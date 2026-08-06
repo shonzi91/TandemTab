@@ -487,6 +487,12 @@ public sealed class Localizer(IJSRuntime js)
         ["That one’s part of Pro"] = "Това е част от Про",
         ["Pro isn’t on sale yet — it’s coming after our beta, and this feature unlocks then."] =
             "Про още не се продава — идва след бетата и тогава тази функция се отключва.",
+        ["When it does, you’ll get 45 days of Pro free — no card, and it simply stops at the end."] =
+            "Когато това стане, получаваш 45 дни Про безплатно — без карта, и просто спира накрая.",
+        ["Trials (started / in one)"] = "Пробни (започнати / активни)",
+        ["Paying subscribers"] = "Плащащи абонати",
+        ["Paying = distinct people on a real (non-sandbox) paid plan. Renewals reuse one row, so this isn’t a count of payments taken."] =
+            "Плащащи = различни хора с реален (не тестов) платен план. Подновяванията ползват същия ред, така че това не е брой плащания.",
         ["Everything you already use stays free. Pro adds sharing, unlimited imports, the payoff planner and your full history."] =
             "Всичко, което вече ползваш, остава безплатно. Про добавя споделяне, неограничени импорти, планера за дългове и пълната ти история.",
         ["Test mode — no card is charged and no real payment is taken."] =
@@ -654,6 +660,18 @@ public sealed class Localizer(IJSRuntime js)
         ["Rename tag"] = "Преименувай етикет",
         // F7 — weekly recap
         ["Your week in money"] = "Твоята седмица в пари",
+        ["See the whole week"] = "Виж цялата седмица",
+        ["Kept"] = "Остана",
+        ["Kept (what’s left)"] = "Остана (какво остава)",
+        ["Money in, spent and kept, month by month"] = "Влезли, похарчени и останали пари, месец по месец",
+        ["Balance at the end of each month"] = "Баланс в края на всеки месец",
+        ["Left over"] = "Остава",
+        ["in minus out"] = "влязло минус излязло",
+        ["{0} transaction"] = "{0} транзакция",
+        ["{0} transactions"] = "{0} транзакции",
+        ["{0} on average"] = "средно по {0}",
+        ["Biggest single expense"] = "Най-голям единичен разход",
+        ["Where it went"] = "Къде отиде",
         ["{0} less than the week before"] = "{0} по-малко от предната седмица",
         ["{0} more than the week before"] = "{0} повече от предната седмица",
         ["Most of it"] = "Най-много",

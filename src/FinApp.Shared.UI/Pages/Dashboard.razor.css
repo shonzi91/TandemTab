@@ -123,14 +123,40 @@ html.dark .onboard-desc { color: #a9b6ad; }
 /* F7 "your week in money". Neutral card, not an alert — nothing here needs acting on, and amber would make a
    read-out look like a problem. Sits between the score block and the money-glance row. */
 .week-recap {
-    margin: 0 0 14px; padding: 12px 14px;
+    position: relative;
+    margin: 0 0 14px;
     border: 1px solid #e6ece9; border-radius: 12px; background: #fbfdfc;
 }
-.week-recap-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+/* The card is a button now, so the padding moves onto the hit area — otherwise the clickable region stops short
+   of the border it looks like it fills, and the corners of the card don't respond. */
+.week-recap-hit {
+    display: block; width: 100%; padding: 12px 14px;
+    border: none; background: none; border-radius: 12px; text-align: left;
+    font: inherit; color: inherit; cursor: pointer;
+}
+/* The glow. A soft brand-tinted ring rather than a colour change: the recap is still a neutral read-out (amber
+   would make it look like a problem), but it now has somewhere to go, and a flat card gives no hint of that.
+   Kept still by default and only animated for users who haven't asked for less motion — a pulsing panel above
+   the fold is exactly the thing prefers-reduced-motion exists for. */
+.week-recap-glow { box-shadow: 0 0 0 3px rgba(19,160,110,.10), 0 2px 14px rgba(19,160,110,.14); }
+.week-recap-glow:hover { box-shadow: 0 0 0 3px rgba(19,160,110,.16), 0 3px 18px rgba(19,160,110,.22); }
+.week-recap-hit:focus-visible { outline: 2px solid #13a06e; outline-offset: 2px; }
+@media (prefers-reduced-motion: no-preference) {
+    .week-recap-glow { animation: wkGlow 3.4s ease-in-out infinite; }
+    @keyframes wkGlow {
+        0%, 100% { box-shadow: 0 0 0 3px rgba(19,160,110,.08), 0 2px 12px rgba(19,160,110,.10); }
+        50%      { box-shadow: 0 0 0 4px rgba(19,160,110,.18), 0 3px 20px rgba(19,160,110,.24); }
+    }
+}
+.week-recap-go { flex: none; font-size: 1.1rem; font-weight: 700; color: #13a06e; line-height: 1; }
+/* The ✕ leaves the header flow and sits over the card, because the header now lives inside the button and a
+   nested <button> is invalid HTML that browsers "fix" by splitting the markup. */
+.week-recap-x { position: absolute; top: 8px; right: 8px; z-index: 1; }
+.week-recap-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; padding-right: 20px; }
 .week-recap-title { display: inline-flex; align-items: center; gap: 6px; font-size: .84rem; font-weight: 800; color: #1f2430; }
 .week-recap-title svg { width: 15px; height: 15px; }
 .week-recap-dates { flex: 1 1 auto; font-size: .76rem; color: #8a97a0; }
-.week-recap-x { flex: none; border: none; background: none; color: #8a97a0; cursor: pointer; padding: 2px; line-height: 0; }
+.week-recap-x { border: none; background: none; color: #8a97a0; cursor: pointer; padding: 2px; line-height: 0; }
 .week-recap-x svg { width: 15px; height: 15px; }
 .week-recap-x:hover { color: #1f2430; }
 .week-recap-body { display: flex; flex-wrap: wrap; gap: 10px 26px; }
@@ -149,6 +175,59 @@ html.dark .week-recap-dates, html.dark .week-recap-lbl, html.dark .week-recap-fi
 html.dark .week-recap-fig small.warn-text { color: #f0b048; }
 html.dark .week-recap-fig small.good-text { color: #57d9a3; }
 html.dark .week-recap-x:hover { color: #e8eef0; }
+html.dark .week-recap-glow { box-shadow: 0 0 0 3px rgba(87,217,163,.10), 0 2px 14px rgba(87,217,163,.12); }
+html.dark .week-recap-go { color: #57d9a3; }
+@media (prefers-reduced-motion: no-preference) {
+    html.dark .week-recap-glow { animation: wkGlowDark 3.4s ease-in-out infinite; }
+    @keyframes wkGlowDark {
+        0%, 100% { box-shadow: 0 0 0 3px rgba(87,217,163,.08), 0 2px 12px rgba(87,217,163,.10); }
+        50%      { box-shadow: 0 0 0 4px rgba(87,217,163,.16), 0 3px 20px rgba(87,217,163,.20); }
+    }
+}
+
+/* --- The full week (F7 modal) -------------------------------------------------------------------------
+   A read-out, so it is laid out to be scanned rather than studied: four tiles, then the one memorable line
+   (the biggest expense), then the breakdown as bars. */
+.wk-tiles { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin: 6px 0 10px; }
+.wk-tile { display: flex; flex-direction: column; gap: 1px; padding: 9px 11px; border-radius: 10px; background: rgba(19,160,110,.06); }
+.wk-tile-l { font-size: .68rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: #8a97a0; }
+.wk-tile strong { font-size: 1.02rem; font-weight: 800; color: #1f2430; font-variant-numeric: tabular-nums; }
+.wk-tile small { font-size: .7rem; color: #8a97a0; }
+.wk-tile small.warn-text { color: #b45309; }
+.wk-tile small.good-text { color: #13a06e; }
+.wk-count { display: flex; align-items: center; gap: 7px; margin: 0 0 4px; font-size: .84rem; color: #4b5563; }
+.wk-count svg { width: 15px; height: 15px; }
+.wk-count-sub { color: #8a97a0; font-size: .78rem; }
+.wk-h { margin: 14px 0 6px; font-size: .74rem; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; color: #8a97a0; }
+.wk-big { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 10px; border: 1px solid #e6ece9; }
+.wk-big-main { display: flex; flex-direction: column; gap: 1px; flex: 1 1 auto; min-width: 0; }
+.wk-big-main strong { font-size: .92rem; color: #1f2430; }
+.wk-big-main small, .wk-big-amt small { font-size: .74rem; color: #8a97a0; }
+.wk-big-main small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wk-big-amt { display: flex; flex-direction: column; align-items: flex-end; gap: 1px; flex: none; }
+.wk-big-amt strong { font-size: 1rem; font-weight: 800; color: #1f2430; font-variant-numeric: tabular-nums; }
+.wk-bars { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 9px; }
+.wk-bar-top { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 3px; }
+.wk-bar-nm { display: inline-flex; align-items: center; gap: 6px; font-size: .86rem; color: #1f2430; min-width: 0; }
+.wk-bar-amt { font-size: .84rem; font-weight: 700; color: #4b5563; font-variant-numeric: tabular-nums; flex: none; }
+.wk-bar-track { display: block; height: 7px; border-radius: 999px; background: #eef2f0; overflow: hidden; }
+.wk-bar-fill { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, #13a06e, #34c48c); }
+.wk-tags { display: flex; flex-wrap: wrap; gap: 7px; }
+.wk-tag { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px;
+    background: rgba(19,160,110,.08); font-size: .8rem; color: #1f2430; }
+.wk-tag strong { font-weight: 800; font-variant-numeric: tabular-nums; }
+html.dark .wk-tile { background: rgba(87,217,163,.07); }
+html.dark .wk-tile strong, html.dark .wk-big-main strong, html.dark .wk-big-amt strong,
+html.dark .wk-bar-nm, html.dark .wk-tag { color: #e8eef0; }
+html.dark .wk-tile-l, html.dark .wk-tile small, html.dark .wk-count-sub, html.dark .wk-h,
+html.dark .wk-big-main small, html.dark .wk-big-amt small { color: #8b96a4; }
+html.dark .wk-tile small.warn-text { color: #f0b048; }
+html.dark .wk-tile small.good-text { color: #57d9a3; }
+html.dark .wk-count { color: #c3cad4; }
+html.dark .wk-big { border-color: #2c3644; }
+html.dark .wk-bar-amt { color: #c3cad4; }
+html.dark .wk-bar-track { background: #232c38; }
+html.dark .wk-tag { background: rgba(87,217,163,.10); }
 
 .home-alerts { display: flex; flex-direction: column; gap: 8px; margin: 0 0 14px; }
 .home-alert {
@@ -915,15 +994,33 @@ html.dark .home-brk-cta { color: var(--tm-mint); }
 .trend-tip-row { display: flex; align-items: center; gap: 6px; font-size: .78rem; white-space: nowrap; }
 .trend-tip-n { color: #6b7280; }
 .trend-tip-v { margin-left: auto; font-weight: 800; }
-.trend-legend { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
-.trend-leg { display: inline-flex; align-items: center; gap: 7px; background: none; border: 1px solid #e6e2d8;
-    border-radius: 999px; padding: 5px 11px; cursor: pointer; font-size: .82rem; color: inherit; }
-.trend-leg:hover { border-color: #c9c3b5; }
-.trend-leg.off { opacity: .45; }
+.trend-tip-net .trend-tip-n, .trend-tip-net .trend-tip-v { font-weight: 800; color: #1f2430; }
+/* --- Flow bars ------------------------------------------------------------------------------------------
+   In and out are context: same hues as before but held back, so the eye lands on the net bar. Dimming the
+   OTHER months on hover (rather than highlighting the hovered one) keeps the chart's overall shape readable
+   while you inspect a single column. */
+.trend-bar-in, .trend-bar-out { opacity: .42; }
+.trend-bar-net { opacity: 1; }
+.trend-bars { transition: opacity .12s ease; }
+.trend-bar-dim { opacity: .38; }
+/* The net figure printed on its own bar. Nudged clear of the bar end in whichever direction it grew. */
+.trend-barlabels { position: absolute; inset: 0; pointer-events: none; }
+.trend-barlbl {
+    position: absolute; transform: translate(-50%, -100%); margin-top: -2px;
+    font-size: 9px; font-weight: 800; line-height: 1; white-space: nowrap; color: #0e7c55;
+}
+.trend-barlbl.down { transform: translate(-50%, 0); margin-top: 3px; color: #dc2626; }
+/* A key, not a control — nothing here is clickable any more (see the razor comment). */
+.trend-key { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 10px; font-size: .8rem; color: #6b7280; }
+.trend-key-item { display: inline-flex; align-items: center; gap: 6px; }
+.trend-key-net { font-weight: 700; color: #1f2430; }
 .trend-leg-dot { width: 10px; height: 10px; border-radius: 3px; flex: none; }
-.trend-leg.off .trend-leg-dot { background: #b7c0cc !important; }
-.trend-leg-name { font-weight: 600; }
-.trend-leg-val { font-weight: 800; }
+/* --- Balance (the stock), its own chart -------------------------------------------------------------- */
+.trend-sub-h {
+    margin: 18px 0 4px; font-size: .74rem; font-weight: 800; text-transform: uppercase;
+    letter-spacing: .05em; color: #8a97a0;
+}
+.trend-bal-fill { opacity: .13; }
 .trend-spark-h { margin-top: 20px; }
 html.dark .trend-axis { stroke: rgba(255,255,255,.22); }
 html.dark .trend-grid { stroke: rgba(255,255,255,.09); }
@@ -933,8 +1030,16 @@ html.dark .trend-xlbl { color: #7c8a94; }
 html.dark .trend-xlbl.on { color: #34d399; }
 html.dark .trend-tip { background: #1d2530; border-color: rgba(255,255,255,.16); box-shadow: 0 6px 18px rgba(0,0,0,.45); }
 html.dark .trend-tip-h, html.dark .trend-tip-n { color: #9aa8b4; }
-html.dark .trend-leg { border-color: rgba(255,255,255,.16); }
-html.dark .trend-leg:hover { border-color: rgba(255,255,255,.3); }
+html.dark .trend-tip-net .trend-tip-n, html.dark .trend-tip-net .trend-tip-v { color: #e8eef0; }
+html.dark .trend-key { color: #9aa8b4; }
+html.dark .trend-key-net { color: #e8eef0; }
+html.dark .trend-sub-h { color: #8b96a4; }
+/* The flow bars need a touch more presence on a dark canvas — .42 that reads as "held back" on white reads as
+   "barely there" on #131a22. */
+html.dark .trend-bar-in, html.dark .trend-bar-out { opacity: .55; }
+html.dark .trend-barlbl { color: #57d9a3; }
+html.dark .trend-barlbl.down { color: #f87171; }
+html.dark .trend-bal-fill { opacity: .2; }
 
 .brk-chart { display: flex; justify-content: center; padding: 6px 0; }
 .brk-donut { width: min(240px, 68vw); height: auto; }

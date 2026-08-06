@@ -213,7 +213,10 @@ else
                             <button @onclick="OpenRecurring"><Icon Name="repeat" /> @Loc["Recurring"]</button>
                             @if (State.IsOwnerOfCurrent)
                             {
-                                <button @onclick="() => RunAcct(OpenEditAccount)"><Icon Name="pencil" /> @Loc["Rename account"]</button>
+                                @* "Edit account", not "Rename": the modal behind this has carried the savings target
+                                   for a long time and F4 round-ups since, so "Rename" undersold it into a label
+                                   nobody would open to change how much they save each month. *@
+                                <button @onclick="() => RunAcct(OpenEditAccount)"><Icon Name="pencil" /> @Loc["Edit account"]</button>
                             }
                             @if (HasArchivedItems)
                             {
@@ -599,44 +602,52 @@ else
                Deliberately not a permanent Home section: it is absent six days out of seven, which is the only reason
                a recap can sit above the fold without becoming another panel to scroll past. Nothing here is computed
                that the Breakdown doesn't already show — it's a read-out, so it can re-engage without making a claim. *@
+            @* The card is now a BUTTON that opens the full recap. It keeps only the headline — spent, the
+               comparison, and where most of it went — because the card's job is to be worth a tap, and a card
+               that already says everything is a section by another name (the thing this deliberately isn't).
+               The ✕ keeps its own click, stopping propagation, so dismissing never opens what you're dismissing. *@
             @if (WeekRecapToShow() is { } recap)
             {
                 var recapDown = recap.Change.IsNegative;
-                <section class="week-recap">
-                    <div class="week-recap-head">
-                        <span class="week-recap-title"><Icon Name="calendar" /> @Loc["Your week in money"]</span>
-                        <span class="week-recap-dates">@recap.From.ToString("d MMM") – @recap.To.ToString("d MMM")</span>
-                        <button class="week-recap-x" title="@Loc["Dismiss"]" aria-label="@Loc["Dismiss"]" @onclick="DismissWeekRecap"><Icon Name="x" /></button>
-                    </div>
-                    <div class="week-recap-body">
-                        <div class="week-recap-fig">
-                            <span class="week-recap-lbl">@Loc["Spent"]</span>
-                            <strong>@Fmt(recap.Spent)</strong>
-                            @* Only against a week that actually had spending — "100% less than last week" for a first
-                               week of use is noise wearing the costume of an insight. *@
-                            @if (recap.HasComparison)
+                <section class="week-recap week-recap-glow">
+                    <button type="button" class="week-recap-hit" @onclick="() => _modal = Modal.WeekRecap" title="@Loc["See the whole week"]">
+                        <div class="week-recap-head">
+                            <span class="week-recap-title"><Icon Name="calendar" /> @Loc["Your week in money"]</span>
+                            <span class="week-recap-dates">@recap.From.ToString("d MMM") – @recap.To.ToString("d MMM")</span>
+                            <span class="week-recap-go" aria-hidden="true">›</span>
+                        </div>
+                        <div class="week-recap-body">
+                            <div class="week-recap-fig">
+                                <span class="week-recap-lbl">@Loc["Spent"]</span>
+                                <strong>@Fmt(recap.Spent)</strong>
+                                @* Only against a week that actually had spending — "100% less than last week" for a first
+                                   week of use is noise wearing the costume of an insight. *@
+                                @if (recap.HasComparison)
+                                {
+                                    <small class="@(recapDown ? "good-text" : "warn-text")">
+                                        @string.Format(recapDown ? Loc["{0} less than the week before"] : Loc["{0} more than the week before"], Fmt(Math.Abs(recap.Change.Amount)))
+                                    </small>
+                                }
+                            </div>
+                            @if (recap.TopCategoryId is { } topCat)
                             {
-                                <small class="@(recapDown ? "good-text" : "warn-text")">
-                                    @string.Format(recapDown ? Loc["{0} less than the week before"] : Loc["{0} more than the week before"], Fmt(Math.Abs(recap.Change.Amount)))
-                                </small>
+                                <div class="week-recap-fig">
+                                    <span class="week-recap-lbl">@Loc["Most of it"]</span>
+                                    <strong><CatIcon Name="@State.CategoryIcon(topCat)" /> @State.CategoryName(topCat)</strong>
+                                    <small>@Fmt(recap.TopCategorySpent)</small>
+                                </div>
+                            }
+                            @if (recap.Saved.Amount > 0m)
+                            {
+                                <div class="week-recap-fig">
+                                    <span class="week-recap-lbl">@Loc["Set aside"]</span>
+                                    <strong class="good-text">@Fmt(recap.Saved)</strong>
+                                </div>
                             }
                         </div>
-                        @if (recap.TopCategoryId is { } topCat)
-                        {
-                            <div class="week-recap-fig">
-                                <span class="week-recap-lbl">@Loc["Most of it"]</span>
-                                <strong><CatIcon Name="@State.CategoryIcon(topCat)" /> @State.CategoryName(topCat)</strong>
-                                <small>@Fmt(recap.TopCategorySpent)</small>
-                            </div>
-                        }
-                        @if (recap.Saved.Amount > 0m)
-                        {
-                            <div class="week-recap-fig">
-                                <span class="week-recap-lbl">@Loc["Set aside"]</span>
-                                <strong class="good-text">@Fmt(recap.Saved)</strong>
-                            </div>
-                        }
-                    </div>
+                    </button>
+                    <button class="week-recap-x" title="@Loc["Dismiss"]" aria-label="@Loc["Dismiss"]"
+                            @onclick="DismissWeekRecap" @onclick:stopPropagation="true"><Icon Name="x" /></button>
                 </section>
             }
 
@@ -1684,7 +1695,6 @@ else
                     </div>
                     @{
                         var trRows = TrendRows();
-                        var trDefs = TrendSeriesDefs();
                         var trCi = System.Globalization.CultureInfo.InvariantCulture;
                     }
                     @if (trRows.Count < 2)
@@ -1693,51 +1703,54 @@ else
                     }
                     else
                     {
-                        var trSc = TrendScaleFor(trRows, trDefs);
+                        var trSc = TrendFlowScale(trRows);
+                        var trBal = TrendBalanceScale(trRows);
                         var trStride = Math.Max(1, (trRows.Count + 5) / 6);   // cap x-axis labels at ~6 to avoid crowding
-                        var trHalf = trRows.Count <= 1 ? 0.0 : (TrX1 - TrX0) / (trRows.Count - 1) / 2.0;
+                        var trSlotW = (TrX1 - TrX0) / Math.Max(1, trRows.Count);
+                        // Three bars a month with a little air either side. In and out are context; net is the point,
+                        // so it is the widest of the three and the only saturated one.
+                        var trBarW = Math.Max(2.0, trSlotW * 0.22);
+                        var trNetW = Math.Max(3.0, trSlotW * 0.30);
+                        var trZeroY = TrendY(0m, trSc);
+                        // Values sit on the bars themselves at short windows. Hover-only numbers mean the chart can't
+                        // be read at a glance at all, and 3 months is the window people actually read.
+                        var trLabelBars = trRows.Count <= 6;
                         <div class="trend-chart-wrap">
                         <div class="trend-plot-area">
-                            <svg class="trend-chart" @key="(_breakRange, trRows.Count)" viewBox="0 0 340 152" role="img" aria-label="@Loc["Money over time"]">
-                                @* Value scale: a gridline per tick, so a point's height means something without hovering
-                                   it. Ticks are "nice" round numbers spanning the VISIBLE series only, so hiding a big
-                                   line (Balance) rescales the axis to the smaller flow lines. The tick TEXT is HTML
-                                   overlaid below, not <text> — Razor reserves that tag name and won't take attributes
-                                   on it; the x-axis labels already work this way. *@
+                            <svg class="trend-chart" @key="(_breakRange, trRows.Count)" viewBox="0 0 340 152" role="img" aria-label="@Loc["Money in, spent and kept, month by month"]">
+                                @* Gridlines per tick so a bar's height means something without hovering it. The tick
+                                   TEXT is HTML overlaid below, not <text> — Razor reserves that tag name and won't
+                                   take attributes on it; the x-axis labels already work this way. *@
                                 @foreach (var tv in trSc.Ticks)
                                 {
-                                    var gy = TrendXY(trRows, 0, tv, trSc).Y;
+                                    var gy = TrendY(tv, trSc);
                                     <line x1="@TrX0.ToString("0.#", trCi)" y1="@gy.ToString("0.#", trCi)" x2="@TrX1.ToString("0.#", trCi)" y2="@gy.ToString("0.#", trCi)" class="@(tv == 0m ? "trend-axis" : "trend-grid")" />
                                 }
-                                @if (_trendHover is { } th && th >= 0 && th < trRows.Count)
+                                @for (var i = 0; i < trRows.Count; i++)
                                 {
-                                    var hx = TrendXY(trRows, th, 0m, trSc).X;
-                                    <line x1="@hx.ToString("0.#", trCi)" y1="@TrY0.ToString("0.#", trCi)" x2="@hx.ToString("0.#", trCi)" y2="@TrY1.ToString("0.#", trCi)" class="trend-guide" />
+                                    var row = trRows[i];
+                                    var (cx, _) = TrendSlot(trRows.Count, i);
+                                    var (inY, inH) = TrendBar(row.Income, trSc);
+                                    var (outY, outH) = TrendBar(row.Expenses, trSc);
+                                    var (netY, netH) = TrendBar(row.Net, trSc);
+                                    var netColor = row.Net < 0m ? TrendNetDownColor : TrendNetUpColor;
+                                    var dim = _trendHover is { } hv && hv != i ? "trend-bar-dim" : "";
+                                    <g class="trend-bars @dim">
+                                        <rect class="trend-bar trend-bar-in" x="@((cx - trNetW / 2 - trBarW - 1).ToString("0.#", trCi))" y="@inY.ToString("0.#", trCi)"
+                                              width="@trBarW.ToString("0.#", trCi)" height="@inH.ToString("0.#", trCi)" fill="@TrendInColor" rx="1.5" />
+                                        <rect class="trend-bar trend-bar-net" x="@((cx - trNetW / 2).ToString("0.#", trCi))" y="@netY.ToString("0.#", trCi)"
+                                              width="@trNetW.ToString("0.#", trCi)" height="@netH.ToString("0.#", trCi)" fill="@netColor" rx="1.5" />
+                                        <rect class="trend-bar trend-bar-out" x="@((cx + trNetW / 2 + 1).ToString("0.#", trCi))" y="@outY.ToString("0.#", trCi)"
+                                              width="@trBarW.ToString("0.#", trCi)" height="@outH.ToString("0.#", trCi)" fill="@TrendOutColor" rx="1.5" />
+                                    </g>
                                 }
-                                @for (var si = 0; si < trDefs.Length; si++)
-                                {
-                                    @if (!_trendHidden.Contains(si))
-                                    {
-                                        var pts = TrendPoints(trRows, trDefs[si].Val, trSc);
-                                        @* pathLength="1" normalises the line's length to 1 unit, so a dash of "1"
-                                           covers it exactly whatever its real geometry — that's what lets the
-                                           draw-on animation be pure CSS with no measuring in JS. *@
-                                        <polyline class="trend-line" pathLength="1" points="@pts" fill="none" stroke="@trDefs[si].Color" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" />
-                                        @for (var i = 0; i < trRows.Count; i++)
-                                        {
-                                            var (cx, cy) = TrendXY(trRows, i, trDefs[si].Val(trRows[i]), trSc);
-                                            <circle cx="@cx.ToString("0.#", trCi)" cy="@cy.ToString("0.#", trCi)" r="@(_trendHover == i ? "4" : "2.4")" fill="@trDefs[si].Color" class="trend-pt" />
-                                        }
-                                    }
-                                }
-                                @* Full-height hit columns, one per period. Hovering the 2.4px points themselves is a
-                                   losing game on touch and fiddly with a mouse; a column reads every visible series at
-                                   that month at once, which is the question being asked ("what happened in May?"). *@
+                                @* Full-height hit columns, one per month. A column reads the whole month at once,
+                                   which is the question being asked ("what happened in May?"), and it works on touch
+                                   where hovering a 3px bar does not. *@
                                 @for (var i = 0; i < trRows.Count; i++)
                                 {
                                     var hi = i;
-                                    var hcx = TrendXY(trRows, i, 0m, trSc).X;
-                                    var hw = trHalf <= 0 ? (TrX1 - TrX0) : trHalf * 2;
+                                    var (hcx, hw) = TrendSlot(trRows.Count, i);
                                     <rect x="@((hcx - hw / 2).ToString("0.#", trCi))" y="@TrY0.ToString("0.#", trCi)" width="@hw.ToString("0.#", trCi)" height="@((TrY1 - TrY0).ToString("0.#", trCi))"
                                           class="trend-hit" @onmouseover="() => _trendHover = hi" @onmouseout="() => _trendHover = null" @onclick="() => _trendHover = _trendHover == hi ? null : hi" />
                                 }
@@ -1745,27 +1758,55 @@ else
                             <div class="trend-ylabels" aria-hidden="true">
                                 @foreach (var tv in trSc.Ticks)
                                 {
-                                    var ly = TrendXY(trRows, 0, tv, trSc).Y / 152.0 * 100.0;
+                                    var ly = TrendY(tv, trSc) / 152.0 * 100.0;
                                     <span class="trend-ylbl" style="top:@ly.ToString("0.##", trCi)%">@TrendTick(tv)</span>
                                 }
                             </div>
+                            @* Net printed above (or below) its own bar at short windows — the one number worth
+                               reading without interacting. Positioned in percentages over the plot so it scales
+                               with the responsive SVG. *@
+                            @if (trLabelBars)
+                            {
+                                <div class="trend-barlabels" aria-hidden="true">
+                                    @for (var i = 0; i < trRows.Count; i++)
+                                    {
+                                        var row = trRows[i];
+                                        var (cx, _) = TrendSlot(trRows.Count, i);
+                                        var (nY, nH) = TrendBar(row.Net, trSc);
+                                        var down = row.Net < 0m;
+                                        var topY = down ? nY + nH : nY;
+                                        <span class="trend-barlbl @(down ? "down" : "up")"
+                                              style="left:@((cx / 340.0 * 100.0).ToString("0.##", trCi))%; top:@((topY / 152.0 * 100.0).ToString("0.##", trCi))%">@TrendTick(row.Net)</span>
+                                    }
+                                </div>
+                            }
                         </div>
                             @if (_trendHover is { } tp && tp >= 0 && tp < trRows.Count)
                             {
-                                var tipX = TrendXY(trRows, tp, 0m, trSc).X / 340.0 * 100.0;
+                                var tipX = TrendSlot(trRows.Count, tp).Centre / 340.0 * 100.0;
+                                var tipRow = trRows[tp];
                                 <div class="trend-tip @(tipX > 60 ? "left" : "")" style="left:@tipX.ToString("0.#", trCi)%">
-                                    <span class="trend-tip-h">@trRows[tp].Label</span>
-                                    @for (var si = 0; si < trDefs.Length; si++)
-                                    {
-                                        @if (!_trendHidden.Contains(si))
-                                        {
-                                            <span class="trend-tip-row">
-                                                <span class="trend-leg-dot" style="background:@trDefs[si].Color"></span>
-                                                <span class="trend-tip-n">@trDefs[si].Label</span>
-                                                <span class="trend-tip-v">@Fmt(State.Money(trDefs[si].Val(trRows[tp])))</span>
-                                            </span>
-                                        }
-                                    }
+                                    <span class="trend-tip-h">@tipRow.Label</span>
+                                    <span class="trend-tip-row">
+                                        <span class="trend-leg-dot" style="background:@TrendInColor"></span>
+                                        <span class="trend-tip-n">@Loc["Money in"]</span>
+                                        <span class="trend-tip-v">@Fmt(State.Money(tipRow.Income))</span>
+                                    </span>
+                                    <span class="trend-tip-row">
+                                        <span class="trend-leg-dot" style="background:@TrendOutColor"></span>
+                                        <span class="trend-tip-n">@Loc["Spent"]</span>
+                                        <span class="trend-tip-v">@Fmt(State.Money(tipRow.Expenses))</span>
+                                    </span>
+                                    <span class="trend-tip-row trend-tip-net">
+                                        <span class="trend-leg-dot" style="background:@(tipRow.Net < 0m ? TrendNetDownColor : TrendNetUpColor)"></span>
+                                        <span class="trend-tip-n">@Loc["Kept"]</span>
+                                        <span class="trend-tip-v">@Fmt(State.Money(tipRow.Net))</span>
+                                    </span>
+                                    <span class="trend-tip-row">
+                                        <span class="trend-leg-dot" style="background:@TrendBalColor"></span>
+                                        <span class="trend-tip-n">@Loc["Balance"]</span>
+                                        <span class="trend-tip-v">@Fmt(State.Money(tipRow.Balance))</span>
+                                    </span>
                                 </div>
                             }
                             <div class="trend-xaxis">
@@ -1773,22 +1814,55 @@ else
                                 {
                                     @if (i % trStride == 0 || i == trRows.Count - 1)
                                     {
-                                        var lx = TrendXY(trRows, i, 0m, trSc).X / 340.0 * 100.0;
+                                        var lx = TrendSlot(trRows.Count, i).Centre / 340.0 * 100.0;
                                         <span class="trend-xlbl @(_trendHover == i ? "on" : "")" style="left:@lx.ToString("0.#", trCi)%">@trRows[i].Label</span>
                                     }
                                 }
                             </div>
                         </div>
-                        <div class="trend-legend">
-                            @for (var si = 0; si < trDefs.Length; si++)
-                            {
-                                var idx = si;
-                                <button type="button" class="trend-leg @(_trendHidden.Contains(idx) ? "off" : "")" @onclick="() => ToggleTrendSeries(idx)" title="@Loc["Show or hide this line"]">
-                                    <span class="trend-leg-dot" style="background:@trDefs[idx].Color"></span>
-                                    <span class="trend-leg-name">@trDefs[idx].Label</span>
-                                    <span class="trend-leg-val">@Fmt(State.Money(trDefs[idx].Val(trRows[^1])))</span>
-                                </button>
-                            }
+                        @* A key, not a control. The old legend's hide-toggles existed so a giant balance line could
+                           be dropped to read the flow lines; with the two on separate axes there is nothing left to
+                           work around, and a toggle that only ever removes information is a worse default than none. *@
+                        <div class="trend-key">
+                            <span class="trend-key-item"><span class="trend-leg-dot" style="background:@TrendInColor"></span>@Loc["Money in"]</span>
+                            <span class="trend-key-item"><span class="trend-leg-dot" style="background:@TrendOutColor"></span>@Loc["Spent"]</span>
+                            <span class="trend-key-item trend-key-net"><span class="trend-leg-dot" style="background:@TrendNetUpColor"></span>@Loc["Kept (what’s left)"]</span>
+                        </div>
+
+                        @* The stock, on its own axis. Same slot centres as the bars above, so a month lines up
+                           vertically across both charts and the hover highlights the same column in each. *@
+                        <h5 class="trend-sub-h">@Loc["Balance at the end of each month"]</h5>
+                        <div class="trend-chart-wrap trend-bal-wrap">
+                            <div class="trend-plot-area trend-bal-area">
+                                <svg class="trend-chart" @key="(_breakRange, trRows.Count, 'b')" viewBox="0 0 340 92" role="img" aria-label="@Loc["Balance at the end of each month"]">
+                                    @foreach (var tv in trBal.Ticks)
+                                    {
+                                        var gy = TrendBalY(tv, trBal);
+                                        <line x1="@TrX0.ToString("0.#", trCi)" y1="@gy.ToString("0.#", trCi)" x2="@TrX1.ToString("0.#", trCi)" y2="@gy.ToString("0.#", trCi)" class="@(tv == 0m ? "trend-axis" : "trend-grid")" />
+                                    }
+                                    <polygon class="trend-bal-fill" points="@TrendBalanceArea(trRows, trBal)" fill="@TrendBalColor" />
+                                    <polyline class="trend-line" pathLength="1" points="@TrendBalancePoints(trRows, trBal)" fill="none" stroke="@TrendBalColor" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" />
+                                    @for (var i = 0; i < trRows.Count; i++)
+                                    {
+                                        var (bcx, _) = TrendSlot(trRows.Count, i);
+                                        <circle cx="@bcx.ToString("0.#", trCi)" cy="@TrendBalY(trRows[i].Balance, trBal).ToString("0.#", trCi)" r="@(_trendHover == i ? "4" : "2.4")" fill="@TrendBalColor" class="trend-pt" />
+                                    }
+                                    @for (var i = 0; i < trRows.Count; i++)
+                                    {
+                                        var hi = i;
+                                        var (hcx, hw) = TrendSlot(trRows.Count, i);
+                                        <rect x="@((hcx - hw / 2).ToString("0.#", trCi))" y="@BalY0.ToString("0.#", trCi)" width="@hw.ToString("0.#", trCi)" height="@((BalY1 - BalY0).ToString("0.#", trCi))"
+                                              class="trend-hit" @onmouseover="() => _trendHover = hi" @onmouseout="() => _trendHover = null" @onclick="() => _trendHover = _trendHover == hi ? null : hi" />
+                                    }
+                                </svg>
+                                <div class="trend-ylabels" aria-hidden="true">
+                                    @foreach (var tv in trBal.Ticks)
+                                    {
+                                        var ly = TrendBalY(tv, trBal) / 92.0 * 100.0;
+                                        <span class="trend-ylbl" style="top:@ly.ToString("0.##", trCi)%">@TrendTick(tv)</span>
+                                    }
+                                </div>
+                            </div>
                         </div>
                     }
                     @{ var trReport = CurrentReport(); }
@@ -2616,6 +2690,124 @@ else
                         <ul class="list list-even">
                             @foreach (var e in items) { @detailRow(e) }
                         </ul>
+                    }
+                    break;
+
+                @* The full week (F7). Everything here is a READ-OUT of entries already logged — nothing is
+                   projected, scored or advised. That is what lets it be a re-engagement surface without making a
+                   claim it would have to defend, and it's why the modal can afford to be generous where the card
+                   can't: opening it is a choice, so the cost of extra detail is paid only by whoever wanted it. *@
+                case Modal.WeekRecap:
+                    @if (State.WeeklyRecap() is { } wr)
+                    {
+                        var wrDown = wr.Change.IsNegative;
+                        <div class="modal-head">
+                            <h3><Icon Name="calendar" /> @Loc["Your week in money"]</h3>
+                            <span class="modal-head-actions">
+                                <button class="exp-edit" title="@Loc["Close"]" @onclick="Back"><Icon Name="x" /></button>
+                            </span>
+                        </div>
+                        <p class="hint">@wr.From.ToString("d MMM") – @wr.To.ToString("d MMM")</p>
+
+                        @* Four tiles, in the order the questions get asked: what went out, what came in, what that
+                           left, what was set aside. Net carries the colour because it's the one figure that is
+                           good or bad rather than merely large. *@
+                        <div class="wk-tiles">
+                            <div class="wk-tile">
+                                <span class="wk-tile-l">@Loc["Spent"]</span>
+                                <strong>@Fmt(wr.Spent)</strong>
+                                @if (wr.HasComparison)
+                                {
+                                    <small class="@(wrDown ? "good-text" : "warn-text")">
+                                        @string.Format(wrDown ? Loc["{0} less than the week before"] : Loc["{0} more than the week before"], Fmt(Math.Abs(wr.Change.Amount)))
+                                    </small>
+                                }
+                            </div>
+                            <div class="wk-tile">
+                                <span class="wk-tile-l">@Loc["Money in"]</span>
+                                <strong>@Fmt(wr.Income)</strong>
+                            </div>
+                            <div class="wk-tile">
+                                <span class="wk-tile-l">@Loc["Left over"]</span>
+                                <strong class="@(wr.Net.IsNegative ? "warn-text" : "good-text")">@Fmt(wr.Net)</strong>
+                                <small>@Loc["in minus out"]</small>
+                            </div>
+                            <div class="wk-tile">
+                                <span class="wk-tile-l">@Loc["Set aside"]</span>
+                                <strong class="@(wr.Saved.Amount > 0m ? "good-text" : "")">@Fmt(wr.Saved)</strong>
+                            </div>
+                        </div>
+
+                        @* How OFTEN, not just how much — one big week and forty small days are different habits and
+                           a total alone can't tell them apart. The average is only drawn when there's more than one
+                           entry, since "average of 1" is the same number twice. *@
+                        <p class="wk-count">
+                            <Icon Name="receipt" />
+                            @string.Format(wr.ExpenseCount == 1 ? Loc["{0} transaction"] : Loc["{0} transactions"], wr.ExpenseCount)
+                            @if (wr.ExpenseCount > 1)
+                            {
+                                <span class="wk-count-sub">@string.Format(Loc["{0} on average"], Fmt(wr.Spent.Amount / wr.ExpenseCount))</span>
+                            }
+                        </p>
+
+                        @if (wr.Biggest is { } big)
+                        {
+                            <h4 class="wk-h">@Loc["Biggest single expense"]</h4>
+                            <div class="wk-big">
+                                <CatIcon Name="@State.CategoryIcon(big.CategoryId)" />
+                                <span class="wk-big-main">
+                                    <strong>@State.CategoryName(big.CategoryId)</strong>
+                                    @* The note is usually the only thing that names the purchase — without it the
+                                       row says "Food, €80" and the user is left to remember which €80. *@
+                                    @if (!string.IsNullOrWhiteSpace(big.Note)) { <small>@big.Note</small> }
+                                </span>
+                                <span class="wk-big-amt">
+                                    <strong>@Fmt(big.Amount)</strong>
+                                    <small>@big.Date.ToString("ddd d MMM")</small>
+                                </span>
+                            </div>
+                        }
+
+                        @if (wr.CategoryBreakdown.Count > 0)
+                        {
+                            var wkMax = wr.CategoryBreakdown.Max(c => c.Total.Amount);
+                            <h4 class="wk-h">@Loc["Where it went"]</h4>
+                            <ul class="wk-bars">
+                                @foreach (var slice in wr.CategoryBreakdown)
+                                {
+                                    <li>
+                                        <span class="wk-bar-top">
+                                            <span class="wk-bar-nm"><CatIcon Name="@State.CategoryIcon(slice.Id)" /> @State.CategoryName(slice.Id)</span>
+                                            <span class="wk-bar-amt">@Fmt(slice.Total)</span>
+                                        </span>
+                                        <span class="wk-bar-track"><span class="wk-bar-fill" style="width:@(WeekBarPct(slice.Total.Amount, wkMax))%"></span></span>
+                                    </li>
+                                }
+                            </ul>
+                        }
+
+                        @* Tags only when the account actually tags. Most don't, and an empty "Tags" heading would
+                           read as a feature that's broken rather than one that's unused. *@
+                        @if (wr.TagBreakdown.Count > 0)
+                        {
+                            <h4 class="wk-h">@Loc["Tags"]</h4>
+                            <div class="wk-tags">
+                                @foreach (var t in wr.TagBreakdown)
+                                {
+                                    <span class="wk-tag"><CatIcon Name="@State.TagIcon(t.Id)" /> @State.TagName(t.Id) <strong>@Fmt(t.Total)</strong></span>
+                                }
+                            </div>
+                        }
+
+                        @* ONE action, deliberately. `.modal-actions` collapses its buttons to ✕/✓ glyphs — a
+                           treatment that only works for the "cancel or confirm" shape (the CSS says so itself).
+                           A second button here would have turned "Dismiss for this week" into a wordless ✕ sitting
+                           where every other modal's *close* lives: same glyph, same place, different meaning, and
+                           the user finds out by losing the card. Dismissal stays on the card's own ✕, which is
+                           where it already was and where it already reads correctly. *@
+                        <div class="modal-actions">
+                            <button @onclick="Back">@Loc["Done"]</button>
+                        </div>
                     }
                     break;
 
@@ -4849,7 +5041,7 @@ else
 }
 
 @code {
-    private enum Modal { None, BankReview, BankConsent, AddCat, AddBudget, DisburseSaving, PayoffProjection, GoalProjection, InvestmentProjection, BankTransfer, ExternalAccounts, HealthScore, RunwayMath, EditCat, DeleteCat, CategoryDetail, AddAccount, EditAccount, DeleteAccount, RemoveMember, LeaveAccount, AddExpense, NextPeriod, RemovePeriod, EditExpense, DeleteExpense, SettleExpense, AddBucket, EditBucket, DeleteBucket, EditCost, AddFund, EditFund, DeleteFund, Invite, Transfer, Deposit, EditDeposit, DeleteDeposit, ManageCats, ManageContribCats, ContribCat, DeleteContribCat, AddSaving, BudgetSaving, SpendSaving, EditSavingDeposit, DeleteSavingDeposit, EditTransfer, DeleteTransfer, EditPeriod, EditSavingMovement, DeleteSavingMovement, DeleteExternalTransfer, Achievements, Reallocate, Recurring, RecurringEdit, RecurringConfirm, Import, AddOrImport, ArchiveFund, FundMovements, Archived, ManageTags, EditTag, LogInstallment, DeleteInstallment }
+    private enum Modal { None, BankReview, BankConsent, AddCat, AddBudget, DisburseSaving, PayoffProjection, GoalProjection, InvestmentProjection, BankTransfer, ExternalAccounts, HealthScore, RunwayMath, EditCat, DeleteCat, CategoryDetail, AddAccount, EditAccount, DeleteAccount, RemoveMember, LeaveAccount, AddExpense, NextPeriod, RemovePeriod, EditExpense, DeleteExpense, SettleExpense, AddBucket, EditBucket, DeleteBucket, EditCost, AddFund, EditFund, DeleteFund, Invite, Transfer, Deposit, EditDeposit, DeleteDeposit, ManageCats, ManageContribCats, ContribCat, DeleteContribCat, AddSaving, BudgetSaving, SpendSaving, EditSavingDeposit, DeleteSavingDeposit, EditTransfer, DeleteTransfer, EditPeriod, EditSavingMovement, DeleteSavingMovement, DeleteExternalTransfer, Achievements, Reallocate, Recurring, RecurringEdit, RecurringConfirm, Import, AddOrImport, ArchiveFund, FundMovements, Archived, ManageTags, EditTag, LogInstallment, DeleteInstallment, WeekRecap }
     private enum Tab { Overview, Account, Budgets, Savings }
 
     /// <summary>Which kind of goal the Goals grid is showing. Defaults to All so the filter narrows on request
@@ -5143,7 +5335,12 @@ else
     // --- Trends (P3): money over time across periods -------------------------------------------------
     // One row per period in the shared Breakdown window, each carrying the four series the chart plots. Income /
     // spent / saved use the period's own totals (so they match the hero); balance is the ledger closing.
-    private sealed record TrendRow(string Label, decimal Income, decimal Expenses, decimal Saved, decimal Balance);
+    private sealed record TrendRow(string Label, decimal Income, decimal Expenses, decimal Saved, decimal Balance)
+    {
+        /// <summary>What the month actually kept. The chart's headline: it is the question the four-line version
+        /// made people answer for themselves by eyeballing the gap between two wiggly lines, which nobody can do.</summary>
+        public decimal Net => Income - Expenses;
+    }
 
     private List<TrendRow> TrendRows()
     {
@@ -5166,19 +5363,20 @@ else
         return rows;
     }
 
-    // Series definitions: label, line colour, and the value selector. Order fixes the legend + hide-toggle indices.
-    private (string Label, string Color, Func<TrendRow, decimal> Val)[] TrendSeriesDefs() => new[]
-    {
-        (Loc["Money in"], "#13a06e", (Func<TrendRow, decimal>)(r => r.Income)),
-        (Loc["Spent"],    "#ff7a59", (Func<TrendRow, decimal>)(r => r.Expenses)),
-        (Loc["Saved"],    "#2f9e44", (Func<TrendRow, decimal>)(r => r.Saved)),
-        (Loc["Balance"],  "#4da6ff", (Func<TrendRow, decimal>)(r => r.Balance)),
-    };
-
-    // Series the user has toggled off in the legend (indices into TrendSeriesDefs). Hiding a series rescales the
-    // Y axis to the visible ones, so a big "balance" line can be dropped to read the smaller flow lines.
-    private readonly HashSet<int> _trendHidden = new();
-    private void ToggleTrendSeries(int i) { if (!_trendHidden.Remove(i)) _trendHidden.Add(i); }
+    // ★ Two charts, not four lines on one axis. Money in / spent / net are FLOWS (what moved during a month);
+    // balance is a STOCK (what was left standing at the end of it) and is routinely an order of magnitude bigger.
+    // Sharing one linear axis let the balance line own the scale and flattened the three lines actually being
+    // compared — and the old fix for that was asking the user to hide a series to rescale, which is a workaround
+    // for a category error, not a chart. They now get an axis each, and the legend's hide-toggles are gone with
+    // the problem they existed to work around.
+    private const string TrendInColor = "#13a06e";
+    private const string TrendOutColor = "#ff7a59";
+    private const string TrendBalColor = "#4da6ff";
+    // Net is drawn in whichever direction it went, so the colour IS the answer: kept money, or spent more than
+    // came in. Deliberately not the "money in" green — a green net bar beside a green in bar would read as the
+    // same measurement twice.
+    private const string TrendNetUpColor = "#0e7c55";
+    private const string TrendNetDownColor = "#dc2626";
 
     // The period column the pointer is over (index into TrendRows). Drives the guide line, the enlarged points and
     // the value tooltip. Click toggles it too, so the numbers are reachable on touch where there is no hover.
@@ -5190,23 +5388,18 @@ else
     /// <summary>The Y axis: the value range the visible series occupy, snapped out to round tick numbers.</summary>
     private sealed record TrendScale(decimal Min, decimal Max, decimal[] Ticks);
 
-    /// <summary>Builds the value axis from the VISIBLE series only, so hiding Balance rescales to the flow lines.
-    /// Always includes zero (money charts that float off the baseline exaggerate small movements), and handles a
-    /// negative minimum — a balance can go under, and the old zero-anchored scale drew that off the bottom edge.</summary>
-    private TrendScale TrendScaleFor(IReadOnlyList<TrendRow> rows, (string Label, string Color, Func<TrendRow, decimal> Val)[] defs)
+    /// <summary>An axis over whatever values are handed in, snapped out to round ticks. Always includes zero:
+    /// money charts that float off the baseline exaggerate small movements, and on the flows chart the zero line
+    /// is what makes a negative net readable at a glance rather than merely "lower".</summary>
+    private static TrendScale TrendScaleOver(IEnumerable<decimal> values)
     {
         decimal lo = 0m, hi = 0m;
-        for (var si = 0; si < defs.Length; si++)
+        foreach (var v in values)
         {
-            if (_trendHidden.Contains(si)) continue;
-            foreach (var r in rows)
-            {
-                var v = defs[si].Val(r);
-                if (v < lo) lo = v;
-                if (v > hi) hi = v;
-            }
+            if (v < lo) lo = v;
+            if (v > hi) hi = v;
         }
-        if (hi <= lo) hi = lo + 1m;                       // everything hidden, or a dead-flat zero series
+        if (hi <= lo) hi = lo + 1m;                       // a dead-flat zero series still needs a drawable span
         var step = TrendNiceStep((hi - lo) / 4m);
         var nlo = Math.Floor(lo / step) * step;
         var nhi = Math.Ceiling(hi / step) * step;
@@ -5214,6 +5407,15 @@ else
         for (var t = nlo; t <= nhi + step / 2m; t += step) ticks.Add(t);
         return new TrendScale(nlo, nhi, ticks.ToArray());
     }
+
+    /// <summary>The flows axis: money in, spent and net. Net can be negative, which is exactly the case the axis
+    /// has to leave room for — a month that spent more than it earned is the one worth seeing.</summary>
+    private static TrendScale TrendFlowScale(IReadOnlyList<TrendRow> rows) =>
+        TrendScaleOver(rows.SelectMany(r => new[] { r.Income, r.Expenses, r.Net }));
+
+    /// <summary>The balance axis, on its own so the stock can't squash the flows (or be squashed by them).</summary>
+    private static TrendScale TrendBalanceScale(IReadOnlyList<TrendRow> rows) =>
+        TrendScaleOver(rows.Select(r => r.Balance));
 
     // Rounds a raw step up to the next 1 / 2 / 2.5 / 5 × 10ⁿ so axis labels read as round money, not 1,237.4.
     private static decimal TrendNiceStep(decimal raw)
@@ -5257,6 +5459,77 @@ else
             sb.Append(x.ToString("0.#", ci)).Append(',').Append(y.ToString("0.#", ci));
         }
         return sb.ToString();
+    }
+
+    // --- Bars ------------------------------------------------------------------------------------------
+    // ⚠️ Bars need their OWN x mapping. TrendXY spreads points edge to edge (i / count-1) because that is right
+    // for a line; used for bars it would hang the first and last columns half outside the plot. Bars occupy
+    // equal slots instead, each centred in its share of the width.
+
+    /// <summary>The centre and full width of month <paramref name="i"/>'s slot.</summary>
+    private static (double Centre, double Width) TrendSlot(int count, int i)
+    {
+        var w = (TrX1 - TrX0) / Math.Max(1, count);
+        return (TrX0 + w * (i + 0.5), w);
+    }
+
+    /// <summary>Y for a value on a scale, within the flows plot.</summary>
+    private static double TrendY(decimal value, TrendScale sc)
+    {
+        var span = sc.Max - sc.Min;
+        return span <= 0m ? TrY1 : TrY1 - (TrY1 - TrY0) * (double)((value - sc.Min) / span);
+    }
+
+    /// <summary>A bar drawn from the zero line to <paramref name="value"/>: its top edge and its height. Works in
+    /// both directions, so a negative net hangs below the axis instead of being clamped to it.</summary>
+    private static (double Y, double H) TrendBar(decimal value, TrendScale sc)
+    {
+        var zero = TrendY(0m, sc);
+        var v = TrendY(value, sc);
+        var y = Math.Min(zero, v);
+        // A floor of 1.5 units so a small-but-real month is still a visible mark rather than nothing at all —
+        // "we earned €4 more than we spent" and "we broke exactly even" must not draw identically.
+        var h = Math.Max(Math.Abs(zero - v), value == 0m ? 0 : 1.5);
+        return (y, h);
+    }
+
+    // The balance chart's own plot box — shorter than the flows chart because it carries one series and answers a
+    // slower question ("is the pile growing?"), so it earns less vertical room.
+    private const double BalY0 = 10, BalY1 = 74;
+
+    private static double TrendBalY(decimal value, TrendScale sc)
+    {
+        var span = sc.Max - sc.Min;
+        return span <= 0m ? BalY1 : BalY1 - (BalY1 - BalY0) * (double)((value - sc.Min) / span);
+    }
+
+    /// <summary>Balance polyline points, on the balance chart's slot centres so its dots line up with the bars above.</summary>
+    private static string TrendBalancePoints(IReadOnlyList<TrendRow> rows, TrendScale sc)
+    {
+        var ci = System.Globalization.CultureInfo.InvariantCulture;
+        var sb = new System.Text.StringBuilder();
+        for (var i = 0; i < rows.Count; i++)
+        {
+            var (cx, _) = TrendSlot(rows.Count, i);
+            if (i > 0) sb.Append(' ');
+            sb.Append(cx.ToString("0.#", ci)).Append(',').Append(TrendBalY(rows[i].Balance, sc).ToString("0.#", ci));
+        }
+        return sb.ToString();
+    }
+
+    /// <summary>The same points closed down to the baseline, so the line can be filled as an area — a stock reads
+    /// as an accumulation, and the fill says "this is a level" where a bare line says "this is a rate".
+    /// <para>⚠️ The baseline is the axis FLOOR, not zero. Closing on zero looks right until a balance goes
+    /// negative: the polygon then crosses its own base, the two lobes wind in opposite directions, and the fill
+    /// cancels out from the crossing onwards — the area silently disappears for the second half of the chart.
+    /// A floor at or below every point can't self-intersect.</para></summary>
+    private static string TrendBalanceArea(IReadOnlyList<TrendRow> rows, TrendScale sc)
+    {
+        var ci = System.Globalization.CultureInfo.InvariantCulture;
+        var baseY = TrendBalY(sc.Min, sc).ToString("0.#", ci);
+        var first = TrendSlot(rows.Count, 0).Centre.ToString("0.#", ci);
+        var last = TrendSlot(rows.Count, rows.Count - 1).Centre.ToString("0.#", ci);
+        return $"{first},{baseY} {TrendBalancePoints(rows, sc)} {last},{baseY}";
     }
 
     // The Home mini-donut: this period's spend by top-level category, top 4 + "Everything else" + transfers-out.
@@ -5497,6 +5770,11 @@ else
         try { await JS.InvokeVoidAsync("localStorage.setItem", RecapKey(), recap.From.ToString("yyyy-MM-dd")); }
         catch { /* no storage — it'll be back next load, which is the harmless direction */ }
     }
+
+    /// <summary>A bar's width as a whole percent of the largest bar, floored at 2 so a tiny-but-real slice still
+    /// draws something rather than vanishing into the track.</summary>
+    private static int WeekBarPct(decimal value, decimal max) =>
+        max <= 0m ? 0 : Math.Max(2, (int)Math.Round(value / max * 100m));
 
     // --- F6: shared-goal celebration ------------------------------------------------------------------
     // Which per-bucket milestones THIS DEVICE has already shown. Kept in localStorage, not in the account: the
@@ -6710,6 +6988,18 @@ else
         _dayView = null;   // default to the grouped all-dates list, not a single day
     }
 
+    /// <summary>
+    /// Open the Spending tab on <b>By budgets</b> — where budgets are actually adjusted.
+    /// <para>Used by every route whose next step is "now change a budget": the "trim a budget" link in the
+    /// over-planned alert, and the end of a period rollover. Landing those on the By-date ledger (the tab's
+    /// default) drops the user one tap short of the thing they just agreed to do, on a view that can't do it.</para>
+    /// </summary>
+    private void ShowBudgetsTab()
+    {
+        ShowExpensesTab();
+        SwitchToByBudgets();
+    }
+
     private DateOnly ClampToPeriod(DateOnly d) =>
         d < State.Period.From ? State.Period.From : d > State.Period.To ? State.Period.To : d;
 
@@ -7254,7 +7544,7 @@ else
         Action? Rotate, Action? Dismiss, bool Urgent, bool Due = false, RenderFragment? Rich = null);
 
     /// <summary>The "budgets plan more than is free" alert body: the sentence with "trim a budget" and "add income" as
-    /// inline action links (they run ShowExpensesTab / OpenDeposit), rather than a repeated trailing button. Built in
+    /// inline action links (they run ShowBudgetsTab / OpenDeposit), rather than a repeated trailing button. Built in
     /// code because notifications are data; kept i18n-friendly by localizing each phrase separately.</summary>
     private RenderFragment BudgetOverBody(Money planLeft, Money planFree) => builder =>
     {
@@ -7262,7 +7552,9 @@ else
         builder.AddContent(i++, string.Format(Loc["Your budgets still plan {0} but only {1} is free —"], Fmt(planLeft), Fmt(planFree)) + " ");
         builder.OpenElement(i++, "button");
         builder.AddAttribute(i++, "class", "alert-inline-link");
-        builder.AddAttribute(i++, "onclick", EventCallback.Factory.Create(this, ShowExpensesTab));
+        // "trim a budget" lands on By budgets, not the ledger: the link names the action, so it should arrive
+        // somewhere that action is possible.
+        builder.AddAttribute(i++, "onclick", EventCallback.Factory.Create(this, ShowBudgetsTab));
         builder.AddContent(i++, Loc["trim a budget"]);
         builder.CloseElement();
         builder.AddContent(i++, " " + Loc["or"] + " ");
@@ -7978,6 +8270,10 @@ else
         await State.StartNextPeriod(_copyBudgets, _realOpenings, _adjustBudgets, syncedClose);
         _reconcileGaps = null;
         CloseModal();
+        // A fresh month's budgets are the first thing anyone touches — whether they were copied forward (and now
+        // want tuning) or not carried at all (and now need setting). Closing the modal onto whatever tab happened
+        // to be open leaves that unsaid; landing on By budgets says it without a nag.
+        ShowBudgetsTab();
     }
 
     private void OpenRemovePeriod() => _modal = Modal.RemovePeriod;

@@ -226,6 +226,12 @@
                 else
                 {
                     <p class="pm-hint">@Loc["Pro isn’t on sale yet — it’s coming after our beta, and this feature unlocks then."]</p>
+                    @* The 45-day trial, stated ONLY on this branch — the one where nothing can be bought. Here it is
+                       a promise about the future with no button to contradict it. On the live branch above it would
+                       sit beside "Upgrade to Pro", which starts a real checkout: the trial is not modelled in the
+                       code at all (R5, with the payment provider), so advertising it next to a charge would be the
+                       UI making a claim the server cannot honour. That copy ships WITH the mechanics, not before. *@
+                    <p class="pm-hint pm-trial">🎁 @Loc["When it does, you’ll get 45 days of Pro free — no card, and it simply stops at the end."]</p>
                 }
                 @if (_checkoutMsg is { } gm) { <p class="pm-hint">@gm</p> }
                 <div class="pm-actions">
@@ -265,7 +271,18 @@
                             <div><span class="pm-admin-n">@m.BetaCohort</span><span class="pm-admin-l">@Loc["Beta cohort"]</span></div>
                             <div><span class="pm-admin-n">@m.NewUsers7d / @m.NewUsers30d</span><span class="pm-admin-l">@Loc["New (7d / 30d)"]</span></div>
                             <div><span class="pm-admin-n">@m.Active7d / @m.Active30d</span><span class="pm-admin-l">@Loc["Active (7d / 30d)"]</span></div>
+                            @* Money. Both read 0 until their machinery ships — no trial is modelled yet and every
+                               subscription row so far is a sandbox one — and 0 is the true answer, not a gap.
+                               "Started / in one" rather than a single number: take-up and retention inside the
+                               trial are different questions, and only the pair distinguishes "nobody tried it"
+                               from "everybody tried it and left". *@
+                            <div><span class="pm-admin-n">@m.TrialsStarted / @m.TrialsActive</span><span class="pm-admin-l">@Loc["Trials (started / in one)"]</span></div>
+                            <div><span class="pm-admin-n">@m.PayingSubscribers</span><span class="pm-admin-l">@Loc["Paying subscribers"]</span></div>
                         </div>
+                        @* Said plainly because the number invites the wrong reading: a renewal upserts the same
+                           row, so this counts PEOPLE currently paying, not payments ever taken. Per-payment
+                           history needs the provider's webhook log, which arrives with the provider itself. *@
+                        <p class="pm-hint">@Loc["Paying = distinct people on a real (non-sandbox) paid plan. Renewals reuse one row, so this isn’t a count of payments taken."]</p>
                         @if (m.SignupsByDay.Count > 0)
                         {
                             var maxc = m.SignupsByDay.Max(d => d.Count);

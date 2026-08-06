@@ -42,9 +42,42 @@ public sealed class AdminMetricsService(FinAppDbContext db)
 
             var byDay = await SignupsByDayAsync(conn, d30, ct);
 
-            return new AdminMetricsDto(totalUsers, totalAccounts, betaCohort, new7, new30, active7, active30, byDay);
+            // Monetization counts. Wrapped so a missing/empty Subscriptions table reports zeros rather than
+            // 500-ing the whole panel — the table is created idempotently at startup, but the metrics page must
+            // never be the thing that breaks because billing hasn't shipped.
+            var (trialsStarted, trialsActive, paying) = await MonetizationCountsAsync(conn, Iso(now), ct);
+
+            return new AdminMetricsDto(totalUsers, totalAccounts, betaCohort, new7, new30, active7, active30, byDay,
+                trialsStarted, trialsActive, paying);
         }
         finally { if (opened) await conn.CloseAsync(); }
+    }
+
+    /// <summary>
+    /// Trial take-up and real paying subscribers, from the <c>Subscriptions</c> table.
+    /// <para><b>The trial's shape is fixed here before it is built</b>, so the metric and the mechanics can't
+    /// disagree later: a trial is a row with <c>Provider = 'trial'</c> (the column is NOT NULL, so the "null
+    /// provider" sketched in MONETIZATION.md becomes this sentinel), and it is <b>never deleted on expiry</b> —
+    /// which is what makes "started" countable at all, and what stops a trial being replayable for free forever.</para>
+    /// <para>Paying = a real provider and <c>Sandbox = '0'</c>. Sandbox rows are excluded deliberately: every row
+    /// in existence today is one, and a metric that counted them would report revenue that never happened.</para>
+    /// </summary>
+    private static async Task<(int Started, int Active, int Paying)> MonetizationCountsAsync(
+        System.Data.Common.DbConnection conn, string nowIso, CancellationToken ct)
+    {
+        try
+        {
+            var started = await ScalarAsync(conn,
+                "SELECT COUNT(*) FROM \"Subscriptions\" WHERE \"Provider\" = 'trial'", ct);
+            var active = await ScalarAsync(conn,
+                "SELECT COUNT(*) FROM \"Subscriptions\" WHERE \"Provider\" = 'trial' " +
+                "AND \"Status\" = 'active' AND \"ExpiresAt\" > @now", ct, ("@now", nowIso));
+            var paying = await ScalarAsync(conn,
+                "SELECT COUNT(DISTINCT \"UserId\") FROM \"Subscriptions\" " +
+                "WHERE \"Provider\" <> 'trial' AND \"Sandbox\" = '0'", ct);
+            return (started, active, paying);
+        }
+        catch { return (0, 0, 0); }
     }
 
     private static async Task<IReadOnlyList<AdminDayPoint>> SignupsByDayAsync(

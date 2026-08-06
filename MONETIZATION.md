@@ -57,10 +57,10 @@ Market anchors (annual): YNAB ~$109, Monarch ~$100, Copilot ~$95, PocketGuard ~$
 
 **On price level:** €29.99/yr (~€2.50/mo) is the recommendation over a higher €4.99/mo headline. Reasoning: (1) budgeting audiences are price-sensitive and anchored to free apps; (2) an unknown brand can't command incumbent prices on day one; (3) the "one sub covers the whole household" model keeps unit economics healthy even at a low per-sub price; (4) it's far easier to *raise* prices for new cohorts than to lower them. Start low, prove retention, then increase.
 
-- **A full Pro trial**, cardless — the payoff planner and shared budget sell themselves once seen. ⚠️ **Not
-  built, and the length is an open owner call** — see [Billing go-live](#billing-go-live--the-real-provider-and-the-trial)
-  (this line originally said 14 days; the recommendation there is **30**, so the trial always spans one period
-  rollover).
+- **A full 45-day Pro trial**, cardless — the payoff planner and shared budget sell themselves once seen.
+  **Length settled 2026-08-06: 45 days** (this line originally said 14). ⚠️ **Still not built** — only the
+  *message* exists, and only where nothing can be bought; see
+  [Billing go-live](#billing-go-live--the-real-provider-and-the-trial).
 - **Bill annual-first**; annual dominates retention in this category, and the monthly is priced to nudge toward it.
 - EUR pricing suits the EU/Bulgaria base; mirror to USD (~$3.99 / $29.99) for other markets.
 
@@ -108,9 +108,18 @@ Three rules that are easy to get wrong:
 2. **★ Grant it per *account*, not per user.** One Pro sub covers a household by design, so a per-user trial is re-triggered by inviting yourself. Same reason: the beta cohort's lifetime Pro means **they never see a trial** — the trial exists for post-cap Free users, and offering it to someone who already has Pro for life reads as a downgrade.
 3. **Say when it ends, in the app, before it does.** A silent expiry that quietly re-locks the shared budget is how a good product earns a bad review.
 
-**⬜ Owner call — length and card:** the docs disagree ([docs/BILLING.md](docs/BILLING.md) says 45 days cardless → auto-downgrade; the line above says 14 days card-optional).
+**✅ Owner call — SETTLED 2026-08-06 (Session 92): 45 days, cardless, auto-downgrade.** The owner chose 45, which
+matches what [docs/BILLING.md](docs/BILLING.md) has said all along; the 14-day and 30-day figures elsewhere are now
+wrong and should be read as history. **45 days spans two rollovers, not one** — so a trialling user sees the
+reconcile step twice, which is the difference between having met the feature and having understood it. The cost is
+the one named below: a sixth of an annual subscription given to someone who may never convert.
 
-**Recommendation: 30 days, cardless, auto-downgrade to Free — no auto-charge.** The reasoning is specific to *this* product rather than category habit: TandemTab's aha moment is the **period rollover** — the reconcile step, the carried-over budgets, the goal that visibly moved. **A 14-day trial can end before the user has ever seen a rollover**, which means trialling the app without meeting the feature it is built around. 30 days guarantees exactly one. 45 is defensible for the same reason but gives away a sixth of an annual subscription's value to someone who may never convert. Cardless converts worse than a card-required trial and is the right call anyway for a brand whose whole pitch is *"we sell software, not your data"* — a surprise charge on a budgeting app is a self-inflicted wound. The model supports card-required later if conversion needs a lift.
+⚠️ **The message ships before the mechanics, deliberately and only in one place.** The upgrade prompt states the
+45 days **on the "not on sale yet" branch only** — the branch with no checkout button. Nothing in the code models a
+trial (see the shape above), so the same sentence beside a live *"Upgrade to Pro"* button would be the UI promising
+what the server cannot do. **That copy is part of the trial's own change, not a prelude to it.**
+
+**Original recommendation (kept for the reasoning, not the number): 30 days, cardless, auto-downgrade to Free — no auto-charge.** The reasoning is specific to *this* product rather than category habit: TandemTab's aha moment is the **period rollover** — the reconcile step, the carried-over budgets, the goal that visibly moved. **A 14-day trial can end before the user has ever seen a rollover**, which means trialling the app without meeting the feature it is built around. 30 days guarantees exactly one. 45 is defensible for the same reason but gives away a sixth of an annual subscription's value to someone who may never convert. Cardless converts worse than a card-required trial and is the right call anyway for a brand whose whole pitch is *"we sell software, not your data"* — a surprise charge on a budgeting app is a self-inflicted wound. The model supports card-required later if conversion needs a lift.
 
 ## Guardrails — do NOT paywall
 
