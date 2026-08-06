@@ -46,13 +46,12 @@
     font-size: 1.85rem;
     font-weight: 800;
     letter-spacing: -.4px;
-    color: #13a06e;
+    color: #33404f;   /* "Tandem" is the quiet half of the two-tone wordmark; "Tab" (below) carries the mint */
 }
 .auth-brand { display: flex; align-items: center; justify-content: center; gap: 10px; }
-.brand-tab {
-    background: #ffffff; color: #13a06e; border: 1px solid #d6f0e3;
-    border-radius: 9px; padding: 0 8px; margin-left: 0;
-}
+/* Two-tone, no box: the boxed "Tab" read as a misaligned tag (asymmetric padding). Just the mint accent now,
+   letting the icon carry the shape. */
+.brand-tab { color: #13a06e; }
 .auth-logo {
     width: 64px; height: 64px; flex: 0 0 auto;
     background: linear-gradient(135deg, #eef9f3, #e4f6ee);
@@ -180,8 +179,8 @@ html.dark .auth {
     background: #161b2c; border-color: #293049; color: #e8eaf0;
     box-shadow: 0 16px 46px rgba(0, 0, 0, .5);
 }
-html.dark .auth h1 { color: #3fe0c5; }
-html.dark .brand-tab { background: #12151d; color: #3fe0c5; border-color: rgba(63, 224, 197, .4); }
+html.dark .auth h1 { color: #c3ccd8; }
+html.dark .brand-tab { color: #3fe0c5; }
 html.dark .auth-logo {
     background: linear-gradient(135deg, rgba(63, 224, 197, .12), rgba(63, 224, 197, .05));
     border-color: rgba(63, 224, 197, .28);

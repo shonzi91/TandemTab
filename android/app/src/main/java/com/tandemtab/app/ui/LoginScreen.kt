@@ -179,17 +179,11 @@ private fun BrandHeader() {
             ) {
                 TandemLogo(size = 44.dp)
             }
+            // Two-tone wordmark, no box: "Tandem" quiet, "Tab" mint. The boxed "Tab" read as a misaligned tag
+            // (asymmetric padding); the icon above carries the shape now.
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Tandem", fontSize = 26.sp, fontWeight = FontWeight.ExtraBold, color = BrandGreen)
-                Box(
-                    modifier = Modifier
-                        .padding(start = 4.dp)
-                        .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(9.dp))
-                        .border(1.dp, tandem.savingsTileBorder, RoundedCornerShape(9.dp))
-                        .padding(horizontal = 8.dp, vertical = 1.dp),
-                ) {
-                    Text("Tab", fontSize = 26.sp, fontWeight = FontWeight.ExtraBold, color = BrandGreen)
-                }
+                Text("Tandem", fontSize = 26.sp, fontWeight = FontWeight.ExtraBold, color = tandem.muted)
+                Text("Tab", fontSize = 26.sp, fontWeight = FontWeight.ExtraBold, color = BrandGreen, modifier = Modifier.padding(start = 5.dp))
             }
         }
         Spacer(Modifier.height(10.dp))
