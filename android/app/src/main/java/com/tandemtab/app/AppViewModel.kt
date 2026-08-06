@@ -9,6 +9,7 @@ import com.tandemtab.app.data.AccountSummaryDto
 import com.tandemtab.app.data.AddDepositRequest
 import com.tandemtab.app.data.AddExpenseRequest
 import com.tandemtab.app.data.AddSavingDepositRequest
+import com.tandemtab.app.data.CreateAccountRequest
 import com.tandemtab.app.data.LogInstallmentRequest
 import com.tandemtab.app.data.BankSyncStatusDto
 import com.tandemtab.app.data.PendingBankTransactionDto
@@ -463,6 +464,24 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             loadInvitations()
         } catch (e: Exception) {
             _state.update { it.copy(busy = false, error = e.message ?: "Couldn't load your accounts.") }
+        }
+    }
+
+    /** Create a new budget account and land in it: create the header, seed it (bootstrap), refresh the list, switch
+     *  in. For a phone-only user this is the ONLY way to a first account — registration doesn't make one. The free
+     *  plan is capped at one account, so a 2nd surfaces the server's 402 as the error. [onDone] fires on success. */
+    fun createAccount(name: String, currency: String, onDone: () -> Unit) {
+        _state.update { it.copy(busy = true, error = null) }
+        viewModelScope.launch {
+            try {
+                val created = api.createAccount(CreateAccountRequest(name.trim(), currency))
+                api.bootstrapAccount(created.id, java.time.LocalDate.now().toString())
+                _state.update { it.copy(accounts = api.listAccounts()) }
+                onDone()
+                selectAccount(created.id)   // reloads every view for the new account (and sets it selected)
+            } catch (e: Exception) {
+                _state.update { it.copy(busy = false, error = e.message ?: "Couldn't create the account.") }
+            }
         }
     }
 

@@ -147,6 +147,15 @@ class TandemTabApi(
 
     suspend fun listAccounts(): List<AccountSummaryDto> = authedGet("/accounts").body()
 
+    /** Create a new budget account (name + ISO currency). Free plan is capped at one — the 2nd needs Pro, surfaced
+     *  as the server's 402. Returns the created account summary. */
+    suspend fun createAccount(req: CreateAccountRequest): AccountSummaryDto = authedPost("/accounts", req).body()
+
+    /** Seed a freshly-created account server-side (default categories/funds + the first period). `today` dates the
+     *  first period to the caller's local month. 409 if already set up. */
+    suspend fun bootstrapAccount(accountId: String, today: String): MutationResultDto =
+        authedPost("/accounts/$accountId/bootstrap", BootstrapAccountRequest(today)).body()
+
     suspend fun spending(accountId: String, period: Int? = null): SpendingViewDto = authedGet("/accounts/$accountId/spending${periodQ(period)}").body()
 
     /** Per-category budget coverage (allocated / spent / remaining) for the Spending → Categories view. */

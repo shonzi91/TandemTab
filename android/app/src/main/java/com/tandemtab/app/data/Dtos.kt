@@ -499,6 +499,15 @@ data class InstallmentExtraDto(
     val note: String? = null,
 )
 
+/** POST /accounts — create a new budget account. Free plan is capped at one (the 2nd needs Pro → server 402). */
+@Serializable
+data class CreateAccountRequest(val name: String, val currency: String)
+
+/** POST /accounts/{id}/bootstrap — seed a freshly-created account (default categories/funds + the first period).
+ *  `today` (ISO yyyy-MM-dd) dates the first period to the caller's local month. */
+@Serializable
+data class BootstrapAccountRequest(val today: String? = null)
+
 /** POST /accounts/{id}/savings/deposits — earmark money into a bucket ("Add to savings"). */
 @Serializable
 data class AddSavingDepositRequest(

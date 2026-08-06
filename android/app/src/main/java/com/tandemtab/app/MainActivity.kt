@@ -155,6 +155,7 @@ private fun App(vm: AppViewModel, onGoogle: () -> Unit) {
             onPrepareAddIncome = vm::prepareAddIncome,
             onTransfer = vm::transferFunds,
             onAddIncome = vm::addIncome,
+            onCreateAccount = vm::createAccount,
             onPrepareAllocate = vm::prepareAllocateSaving,
             onPrepareSpend = vm::prepareSpendFromSavings,
             onAllocate = vm::allocateSaving,

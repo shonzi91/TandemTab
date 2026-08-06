@@ -114,6 +114,7 @@ fun HomeScreen(
     darkTheme: Boolean,
     onToggleTheme: () -> Unit,
     onSelectAccount: (String) -> Unit,
+    onCreateAccount: (String, String, () -> Unit) -> Unit,
     onSelectPeriod: (Int?) -> Unit,
     onPrepareStartNextPeriod: () -> Unit,
     onPreparePeriodEdit: () -> Unit,
@@ -202,6 +203,7 @@ fun HomeScreen(
     var showNextPeriod by remember { mutableStateOf(false) }
     var showEditPeriod by remember { mutableStateOf(false) }
     var showRemovePeriod by remember { mutableStateOf(false) }
+    var showCreateAccount by remember { mutableStateOf(false) }
 
     // "Edit last" flows through the ViewModel: prepareEditLast loads + picks the last expense into state.editingExpense,
     // which we watch here to raise the add sheet in edit mode.
@@ -219,7 +221,7 @@ fun HomeScreen(
                 // Keep the brand mark (icon only, no wordmark) to anchor the compact header.
                 TandemLogo(size = 24.dp)
                 Spacer(Modifier.width(10.dp))
-                Box(Modifier.weight(1f)) { AccountSwitcher(state, onSelectAccount) }
+                Box(Modifier.weight(1f)) { AccountSwitcher(state, onSelectAccount, onCreateAccount = { showCreateAccount = true }) }
                 PeriodSwitcher(
                     state = state,
                     onSelectPeriod = onSelectPeriod,
@@ -248,6 +250,14 @@ fun HomeScreen(
         // The add / edit sheet. The FAB opens it in add mode; the in-sheet "Edit last" pulls in the last expense
         // (via the VM's editingExpense), which switches this same sheet into edit mode.
         val editingIncome = state.editingDeposit
+        if (showCreateAccount) {
+            CreateAccountSheet(
+                busy = state.busy,
+                error = state.error,
+                onDismiss = { showCreateAccount = false },
+                onCreate = onCreateAccount,
+            )
+        }
         if (showAddExpense || editing != null || editingIncome != null) {
             AddSheet(
                 spending = state.spending,
@@ -920,12 +930,23 @@ private fun monthsText(months: Int): String = when {
 /** The account name — a tap-to-switch dropdown when the user has more than one account, else a plain heading. Each
  *  dropdown row leads with the account's avatar (its members stacked, or a coloured initial). */
 @Composable
-private fun AccountSwitcher(state: UiState, onSelectAccount: (String) -> Unit) {
-    val account = state.selectedAccount ?: return
-    if (state.accounts.size <= 1) {
-        Text(account.name, fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.onBackground, maxLines = 1)
+private fun AccountSwitcher(state: UiState, onSelectAccount: (String) -> Unit, onCreateAccount: () -> Unit) {
+    val account = state.selectedAccount
+    // No account at all — the phone-only dead-end. Registration makes a user, not an account, so a fresh sign-up
+    // lands here with nothing; this is the only way out. Show a plain "create" affordance in place of the name.
+    if (account == null) {
+        Row(
+            Modifier.clip(RoundedCornerShape(10.dp)).clickable { onCreateAccount() }.padding(vertical = 2.dp, horizontal = 2.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(TandemIcons.Plus, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+            Spacer(Modifier.width(6.dp))
+            Text("Create account", fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.primary, maxLines = 1)
+        }
         return
     }
+    // Always a dropdown now (even for a single account), so "New account" has a home — the only place a second
+    // account can be made on the phone. Pro-gated: the server 402s a free user's second account.
     var open by remember { mutableStateOf(false) }
     Row(
         Modifier.clip(RoundedCornerShape(10.dp)).clickable { open = true }.padding(vertical = 2.dp, horizontal = 2.dp),
@@ -947,6 +968,12 @@ private fun AccountSwitcher(state: UiState, onSelectAccount: (String) -> Unit) {
                 } else null,
             )
         }
+        HorizontalDivider()
+        DropdownMenuItem(
+            text = { Text("New account", fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary) },
+            onClick = { open = false; onCreateAccount() },
+            leadingIcon = { Icon(TandemIcons.Plus, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp)) },
+        )
     }
 }
 
