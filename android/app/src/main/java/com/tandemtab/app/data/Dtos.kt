@@ -169,7 +169,7 @@ data class RenameAccountRequest(val name: String)
 @Serializable
 data class LeaveAccountRequest(val newOwnerUserId: String? = null)
 
-// --- Periods (for the current-period label in the top bar) --------------------------------------------
+// --- Periods: the top-bar label + the lifecycle writes (roll forward / reschedule / undo) --------------
 
 @Serializable
 data class PeriodRowDto(
@@ -186,6 +186,36 @@ data class PeriodsViewDto(
     val currentIndex: Int = -1,
     val periods: List<PeriodRowDto> = emptyList(),
 )
+
+/** POST /accounts/{id}/periods/start-next — close the open period and open the next one.
+ *
+ *  The domain deliberately never reads a bank: the *caller* supplies what each fund really holds now, keyed by
+ *  fund id, and those become the new period's opening balances. `syncedFundClosingBalance` is the one figure the
+ *  client can't hand-enter — the bank-synced fund's balance at the closing period's end (informative only). A
+ *  fund omitted from [fundOpenings] opens at zero, so send every non-synced fund. */
+@Serializable
+data class StartNextPeriodRequest(
+    val copyBudgets: Boolean = false,
+    val adjustBudgets: Boolean = false,
+    val fundOpenings: Map<String, Double>? = null,
+    val syncedFundClosingBalance: Double? = null,
+    val today: String? = null,   // ISO yyyy-MM-dd; the server defaults to its own UTC today
+)
+
+/** PUT /accounts/{id}/periods/{index}/schedule — move a period's dates. Every later period shifts to stay
+ *  contiguous, each keeping its own length. */
+@Serializable
+data class ReschedulePeriodRequest(val from: String, val to: String)
+
+/** GET /accounts/{id}/bank/balance-at?date=… — the synced fund's balance recorded at that date, or null when
+ *  sync history doesn't reach back that far. */
+@Serializable
+data class BankBalanceAtDto(val balance: Double? = null)
+
+/** POST /accounts/{id}/contribution-categories — an income source. Needed by the rollover's "log as adjustment"
+ *  path, which files unexplained money-IN under an "Adjustment" source. */
+@Serializable
+data class CreateContributionCategoryRequest(val name: String, val icon: String? = null)
 
 // --- Forecast: runway ("At this rate…") + targets ("You're on track for") -----------------------------
 

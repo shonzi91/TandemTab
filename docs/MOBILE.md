@@ -58,14 +58,14 @@ it goes stale the moment web ships again. Since the native app is a thin client,
 endpoints the server exposes that `TandemTabApi` never calls.** Every feature Android is missing has to show up
 there, because a thin client cannot render what it does not fetch.
 
-Android calls **37** of the account endpoints. It does not call these:
+Android calls **37** of the account endpoints (**41** since Session 91). It does not call these:
 
 | Missing capability | Endpoints never called | Weight |
 |---|---|---|
 | **Savings/debt buckets — create, edit, archive** | `/savings/buckets…`, `/savings/disburse`, `/savings/to-budget`, `/savings/transfer`, `/savings/movements/…` | **L** |
 | **Debt entirely** (R1 informative debt + R2 installments) | `/installments`, `/installments/{groupId}` | **L** |
 | **Sharing — the hero Pro feature** | `/invitations`, `/members/{id}`, `/transfer-ownership` | **L** |
-| **Period lifecycle** — an Android-only user can never roll into a new month | `/periods/start-next`, `/periods/latest`, `/periods/{i}/schedule` | **L** |
+| ~~**Period lifecycle**~~ | ~~`/periods/start-next`, `/periods/latest`, `/periods/{i}/schedule`~~ | ✅ **done S91** |
 | **Statement import** | `/import` | M |
 | **Fund management** (add/archive/opening balance) | `/funds…`, `/fund-transfers/{id}` | M |
 | **Account settings** — incl. the savings target and **F4 round-ups** | `/settings`, `/savings-target` | M |
@@ -75,11 +75,31 @@ Android calls **37** of the account endpoints. It does not call these:
 | Export | `/export` | S |
 | Reallocation between budget and savings | `/reallocations/to-budget`, `/reallocations/to-savings` | S |
 | Settling an on-behalf expense | `/expenses/{id}/settle` | S |
-| Contribution (income) categories | `/contribution-categories…` | S |
+| ~~Contribution (income) categories~~ | ~~`/contribution-categories…`~~ | ✅ **done S91** (create only) |
 
 **Read that table as the R2 backlog.** The four **L** rows are the ones that make Android a *different product*
 rather than a smaller one: a user who only has the phone cannot start next month, cannot create a savings goal,
 has no debt features at all, and cannot share an account — which is the thing Pro is sold on.
+
+#### ✅ Period lifecycle — closed (Session 91, 2026-08-06)
+
+All three writes now hang off the Home period chip, mirroring the web's period popover: **Start next month**,
+**Change these dates**, **Remove this month**. Three things are worth keeping:
+
+- **★ The gating is where the design lives, not the endpoints.** *Start next month* is offered only on the newest
+  month and only once it has ended, greyed with *"Available once this month ends"* rather than hidden — the server
+  enforces the same rule, so a live-looking item would just be a 400 with extra steps. *Remove* appears only when
+  there is an earlier month to fall back to (the server refuses to delete an account's only period).
+- **★ The reconcile step is the whole feature, and it must not be squeezed.** The rollover carries hand-entered
+  opening balances, so the client compares them to the ledger and names the per-fund drift. That is the choice the
+  web shipped as `✕ ✕ ✓` and had to fix in S89 — on a phone it is **three full-width labelled buttons stacked**,
+  never a row. Two layout bugs came out of building it, both the same shape: **a floating action bar sized for the
+  two-button case hides the tail of the three-button one.** The bar is now a *sibling* of the scrolling body rather
+  than overlaid, and the sheet **auto-scrolls to the drift block** when it appears — otherwise pressing the primary
+  button silently swaps the buttons under the user's thumb with the explanation still below the fold.
+- **Adjustments are written to the CLOSING period before it is sealed**, dated its last day, into a category named
+  *"Adjustment"* created on first use — which is why `/contribution-categories` came along (unexplained money-**in**
+  needs an income source, not an expense category).
 
 **Closed in Session 90:** the Home money hero (all four tiles, incl. the money-in savings rate, the transfers
 sub-line and **F3 "left to spend today"**) and the rotating over-budget alert strip. Both needed server work

@@ -45,6 +45,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -112,6 +113,11 @@ fun HomeScreen(
     onToggleTheme: () -> Unit,
     onSelectAccount: (String) -> Unit,
     onSelectPeriod: (Int?) -> Unit,
+    onPrepareStartNextPeriod: () -> Unit,
+    onPreparePeriodEdit: () -> Unit,
+    onStartNextPeriod: (Boolean, Boolean, Map<String, Double>, List<Pair<String, Double>>, () -> Unit) -> Unit,
+    onReschedulePeriod: (Int, String, String, () -> Unit) -> Unit,
+    onRemoveLatestPeriod: (() -> Unit) -> Unit,
     onSignOut: () -> Unit,
     onOpenSettings: () -> Unit,
     onChangePassword: (String, String) -> Unit,
@@ -179,6 +185,9 @@ fun HomeScreen(
     var showProfile by remember { mutableStateOf(false) }
     var showAccount by remember { mutableStateOf(false) }
     var showBank by remember { mutableStateOf(false) }
+    var showNextPeriod by remember { mutableStateOf(false) }
+    var showEditPeriod by remember { mutableStateOf(false) }
+    var showRemovePeriod by remember { mutableStateOf(false) }
 
     // "Edit last" flows through the ViewModel: prepareEditLast loads + picks the last expense into state.editingExpense,
     // which we watch here to raise the add sheet in edit mode.
@@ -197,7 +206,13 @@ fun HomeScreen(
                 TandemLogo(size = 24.dp)
                 Spacer(Modifier.width(10.dp))
                 Box(Modifier.weight(1f)) { AccountSwitcher(state, onSelectAccount) }
-                PeriodSwitcher(state, onSelectPeriod)
+                PeriodSwitcher(
+                    state = state,
+                    onSelectPeriod = onSelectPeriod,
+                    onStartNextPeriod = { onPrepareStartNextPeriod(); showNextPeriod = true },
+                    onEditPeriodDates = { onPreparePeriodEdit(); showEditPeriod = true },
+                    onRemovePeriod = { onPreparePeriodEdit(); showRemovePeriod = true },
+                )
                 IconButton(onClick = { onOpenSettings(); showAccount = true }) {
                     Icon(TandemIcons.Sliders, contentDescription = "Account", tint = tandem.muted)
                 }
@@ -341,6 +356,39 @@ fun HomeScreen(
                 onDelete = { onDeleteAccount { showAccount = false } },
                 onDismiss = { showAccount = false },
             )
+        }
+        // Period lifecycle. Rolling forward always acts on the newest month (never the one being browsed), so it
+        // reads its dates + funds from there; changing dates acts on whichever month is on screen.
+        if (showNextPeriod) {
+            state.periods.lastOrNull()?.let { latest ->
+                StartNextPeriodSheet(
+                    closing = latest,
+                    wallets = state.wallets,
+                    ops = state.periodOps,
+                    onDismiss = { showNextPeriod = false },
+                    onSubmit = onStartNextPeriod,
+                )
+            }
+        }
+        if (showEditPeriod) {
+            state.viewedPeriod?.let { p ->
+                EditPeriodDatesSheet(
+                    period = p,
+                    ops = state.periodOps,
+                    onDismiss = { showEditPeriod = false },
+                    onSubmit = onReschedulePeriod,
+                )
+            }
+        }
+        if (showRemovePeriod) {
+            state.periods.lastOrNull()?.let { latest ->
+                RemovePeriodDialog(
+                    latest = latest,
+                    ops = state.periodOps,
+                    onDismiss = { showRemovePeriod = false },
+                    onConfirm = onRemoveLatestPeriod,
+                )
+            }
         }
         if (showBank) {
             BankSheet(
@@ -823,13 +871,21 @@ private fun AccountAvatar(account: AccountSummaryDto, index: Int) {
     }
 }
 
-/** The viewed-period chip: the month/range label; tapping opens a menu of every period (newest first) to switch to. */
+/** The viewed-period chip: the month/range label; tapping opens a menu of every period (newest first) to switch
+ *  to, plus the lifecycle actions (start next month / change dates / remove) as on the web's period popover. */
 @Composable
-private fun PeriodSwitcher(state: UiState, onSelectPeriod: (Int?) -> Unit) {
+private fun PeriodSwitcher(
+    state: UiState,
+    onSelectPeriod: (Int?) -> Unit,
+    onStartNextPeriod: () -> Unit,
+    onEditPeriodDates: () -> Unit,
+    onRemovePeriod: () -> Unit,
+) {
     val tandem = LocalTandemColors.current
     val label = state.periodLabel ?: return
     var open by remember { mutableStateOf(false) }
     val viewing = state.selectedPeriod ?: state.currentPeriodIndex
+    val onLatest = viewing == state.periods.lastOrNull()?.index
     Row(
         Modifier.clip(RoundedCornerShape(999.dp)).clickable(enabled = state.periods.isNotEmpty()) { open = true }
             .padding(horizontal = 8.dp, vertical = 6.dp),
@@ -855,6 +911,34 @@ private fun PeriodSwitcher(state: UiState, onSelectPeriod: (Int?) -> Unit) {
                 trailingIcon = if (p.index == viewing) {
                     { Icon(TandemIcons.Check, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp)) }
                 } else null,
+            )
+        }
+        HorizontalDivider()
+        // Rolling forward is only ever offered on the newest month, and only once it has actually ended — the
+        // server enforces both, so a live-looking-but-doomed menu item would just be a 400 with extra steps.
+        DropdownMenuItem(
+            text = {
+                Column {
+                    Text("Start next month", color = MaterialTheme.colorScheme.onSurface)
+                    if (!state.canStartNextPeriod) {
+                        Text("Available once this month ends", fontSize = 11.sp, color = tandem.muted)
+                    }
+                }
+            },
+            enabled = state.canStartNextPeriod,
+            leadingIcon = { Icon(Icons.Rounded.Add, null, modifier = Modifier.size(18.dp)) },
+            onClick = { open = false; onStartNextPeriod() },
+        )
+        DropdownMenuItem(
+            text = { Text("Change these dates", color = MaterialTheme.colorScheme.onSurface) },
+            leadingIcon = { Icon(Icons.Rounded.Edit, null, modifier = Modifier.size(18.dp)) },
+            onClick = { open = false; onEditPeriodDates() },
+        )
+        if (onLatest && state.canRemoveLatestPeriod) {
+            DropdownMenuItem(
+                text = { Text("Remove this month", color = MaterialTheme.colorScheme.error) },
+                leadingIcon = { Icon(Icons.Rounded.Close, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp)) },
+                onClick = { open = false; onRemovePeriod() },
             )
         }
     }

@@ -281,6 +281,14 @@ against a moving feature set is work that gets redone. R4 lands before R7 for th
   "left to spend today"**, saved with its money-in rate, spent with the transfers sub-line, money in with
   carry-over) and the **rotating over-budget alert strip**. Both browser-verified against a real seeded account
   in **both themes**. Android's own light/dark rendering was checked in the same pass and needed no fixes.
+- **Session 91 closed the first L row: the period lifecycle.** Start next month (with the full reconcile step),
+  change dates, and remove — all three verified end-to-end on the emulator in both themes. **Three L rows left:**
+  savings/debt buckets, debt, sharing.
+  - ⚠️ **The sweep found a live theme bug beyond this feature.** Material's `error` slot was mapped to the
+    **warning amber**, and that slot backs every destructive control in the app — so **"Delete account"** rendered
+    in the same colour as *"you're over budget"*. Now the web's danger red (`#DC2626` / `#F87171` dark); warnings
+    keep the amber via `LocalTandemColors.warn`. **Android's theme pass is not "no fixes needed" after all** — S90
+    checked only the surfaces it had just built.
 - **Sweep light/dark on the web too, not just Android.** S88 shipped a dark-theme crown colour that silently
   never applied (a leading `::deep` compiles to a selector nothing matches). The web half is the cheaper half
   and has already produced one real bug.

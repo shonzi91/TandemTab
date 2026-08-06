@@ -42,6 +42,10 @@ import com.tandemtab.app.data.SavingBucketDto
 import com.tandemtab.app.data.TargetDto
 import com.tandemtab.app.data.TandemTabApi
 import com.tandemtab.app.data.TokenStore
+import com.tandemtab.app.data.CreateContributionCategoryRequest
+import com.tandemtab.app.data.ReschedulePeriodRequest
+import com.tandemtab.app.data.StartNextPeriodRequest
+import java.time.LocalDate
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -83,6 +87,8 @@ data class UiState(
     val periods: List<PeriodRowDto> = emptyList(),
     val currentPeriodIndex: Int = -1,
     val selectedPeriod: Int? = null,
+    // Write-flight state for the period-lifecycle sheets (roll forward / reschedule / undo).
+    val periodOps: PeriodUi = PeriodUi(),
     // Home forecast (server-computed): the runway card + the "on track for" targets.
     val runway: RunwayDto? = null,
     val targets: List<TargetDto> = emptyList(),
@@ -103,7 +109,27 @@ data class UiState(
 ) {
     val selectedAccount: AccountSummaryDto?
         get() = accounts.firstOrNull { it.id == selectedAccountId }
+
+    /** The period being looked at right now (the open one unless the user has paged back). */
+    val viewedPeriod: PeriodRowDto?
+        get() = periods.firstOrNull { it.index == (selectedPeriod ?: currentPeriodIndex) }
+
+    /** You can only roll into the next period once the current one has actually ended — the same guard the server
+     *  enforces (it 400s otherwise). Checked here too so the menu greys out rather than offering a doomed action. */
+    val canStartNextPeriod: Boolean
+        get() = periods.lastOrNull()?.let { runCatching { LocalDate.parse(it.to) < LocalDate.now() }.getOrDefault(false) } == true
+
+    /** Undo needs something to fall back to: the server refuses to delete an account's only period. */
+    val canRemoveLatestPeriod: Boolean
+        get() = periods.size > 1
 }
+
+/** Write-flight state shared by the three period-lifecycle sheets. Only one can be open at a time, so one
+ *  busy/error pair covers all of them. */
+data class PeriodUi(
+    val busy: Boolean = false,
+    val error: String? = null,
+)
 
 /** Lazy-loaded state for the Spending tab. Also the source of the add-expense pickers (categories/funds come
  *  free with the /spending payload); `recent` is fetched separately from /expense-entry for the "most-used" chips. */
@@ -456,6 +482,134 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 "${from.format(f)} – ${to.format(f)}"
             }
         }.getOrNull()
+    }
+
+    // --- Period lifecycle: roll into the next month, reschedule, undo the last rollover -------------------
+    // The gap R2 called out as making Android a *different* product: without these, a phone-only user can never
+    // leave the month they signed up in. The web's flow is mirrored, including its reconciliation step — the
+    // domain never reads a bank, so what each fund really holds is the caller's to supply.
+
+    /** Prep the "Start next month" sheet: clear a stale error and make sure the funds (and their balances) are
+     *  loaded, since they're what the opening-balance form is built from. */
+    fun prepareStartNextPeriod() {
+        _state.update { it.copy(periodOps = PeriodUi()) }
+        loadWallets(false)
+    }
+
+    /** Clear a stale error before opening the reschedule / undo sheets (neither needs any data prefetched). */
+    fun preparePeriodEdit() = _state.update { it.copy(periodOps = PeriodUi()) }
+
+    /**
+     * Close the open period and open the next one. [openings] is what each non-synced fund really holds now,
+     * keyed by fund id — those become the new period's opening balances.
+     *
+     * [adjustments] is the reconciliation choice: when non-empty, each (fundId, gap) is written into the
+     * **closing** period first, so its books balance before it's sealed. Passing an empty list is the "ignore"
+     * branch — the difference simply carries forward untracked, which is a legitimate choice, not a failure.
+     */
+    fun startNextPeriod(
+        copyBudgets: Boolean,
+        adjustBudgets: Boolean,
+        openings: Map<String, Double>,
+        adjustments: List<Pair<String, Double>> = emptyList(),
+        onDone: () -> Unit,
+    ) {
+        val accountId = _state.value.selectedAccountId ?: return
+        val closing = _state.value.periods.lastOrNull() ?: return
+        _state.update { it.copy(periodOps = PeriodUi(busy = true)) }
+        viewModelScope.launch {
+            try {
+                if (adjustments.isNotEmpty()) recordReconciliationAdjustments(accountId, adjustments, closing.to)
+                // The synced fund's opening isn't hand-entered. Prefer the balance recorded at the closing period's
+                // month-end so a late rollover doesn't leak next-month activity in; fall back to the live balance.
+                val syncedClose = if (_state.value.wallets.funds.any { it.synced }) {
+                    api.bankBalanceAt(accountId, closing.to) ?: _state.value.bank.balance
+                } else null
+                api.startNextPeriod(accountId, StartNextPeriodRequest(
+                    copyBudgets = copyBudgets,
+                    adjustBudgets = adjustBudgets && copyBudgets,
+                    fundOpenings = openings,
+                    syncedFundClosingBalance = syncedClose,
+                    today = LocalDate.now().toString(),
+                ))
+                reloadAfterPeriodChange(accountId)
+                onDone()
+            } catch (e: Exception) {
+                _state.update { it.copy(periodOps = PeriodUi(error = e.message ?: "Couldn't start the next period.")) }
+            }
+        }
+    }
+
+    /** Move the viewed period's dates. Later periods shift to stay contiguous (the server does the shifting). */
+    fun reschedulePeriod(index: Int, fromIso: String, toIso: String, onDone: () -> Unit) {
+        val accountId = _state.value.selectedAccountId ?: return
+        _state.update { it.copy(periodOps = PeriodUi(busy = true)) }
+        viewModelScope.launch {
+            try {
+                api.reschedulePeriod(accountId, index, ReschedulePeriodRequest(fromIso, toIso))
+                reloadAfterPeriodChange(accountId)
+                onDone()
+            } catch (e: Exception) {
+                _state.update { it.copy(periodOps = PeriodUi(error = e.message ?: "Couldn't change those dates.")) }
+            }
+        }
+    }
+
+    /** Undo the last rollover: delete the newest period and everything in it, re-opening the previous one. */
+    fun removeLatestPeriod(onDone: () -> Unit) {
+        val accountId = _state.value.selectedAccountId ?: return
+        _state.update { it.copy(periodOps = PeriodUi(busy = true)) }
+        viewModelScope.launch {
+            try {
+                api.removeLatestPeriod(accountId)
+                reloadAfterPeriodChange(accountId)
+                onDone()
+            } catch (e: Exception) {
+                _state.update { it.copy(periodOps = PeriodUi(error = e.message ?: "Couldn't remove that period.")) }
+            }
+        }
+    }
+
+    /**
+     * File the per-fund drift as real entries in the closing period, so its books reconcile. A fund holding LESS
+     * than the ledger says means spending that was never logged (an expense); MORE means money-in that wasn't
+     * (a deposit). Both land in a category named "Adjustment", created on first use, so the user can recategorise
+     * them later rather than hunting for an opaque correction.
+     */
+    private suspend fun recordReconciliationAdjustments(accountId: String, gaps: List<Pair<String, Double>>, dateIso: String) {
+        var expenseCat: String? = null
+        var contribCat: String? = null
+        for ((fundId, gap) in gaps) {
+            if (gap < 0) {
+                expenseCat = expenseCat
+                    ?: api.spending(accountId).categories.firstOrNull { it.name.equals("Adjustment", true) }?.id
+                    ?: api.createCategory(accountId, CreateCategoryRequest("Adjustment", null, "⚖️")).entityId
+                    ?: continue
+                api.addExpense(accountId, AddExpenseRequest(expenseCat, -gap, fundId, dateIso, "Reconciliation"))
+            } else if (gap > 0) {
+                contribCat = contribCat
+                    ?: api.income(accountId).categories.firstOrNull { it.name.equals("Adjustment", true) }?.id
+                    ?: api.createContributionCategory(accountId, CreateContributionCategoryRequest("Adjustment", "⚖️")).entityId
+                    ?: continue
+                api.addDeposit(accountId, AddDepositRequest(contribCat, fundId, gap, dateIso))
+            }
+        }
+    }
+
+    /** A period write changes every figure on every tab, so drop back to the (new) open period and refetch. */
+    private suspend fun reloadAfterPeriodChange(accountId: String) {
+        _state.update {
+            it.copy(
+                periodOps = PeriodUi(), selectedPeriod = null, overview = null, busy = true,
+                spending = SpendingUi(), goals = GoalsUi(), wallets = WalletsUi(), recurring = RecurringUi(), health = HealthUi(),
+            )
+        }
+        runCatching { api.overview(accountId) }.getOrNull()?.let { ov -> _state.update { it.copy(overview = ov) } }
+        _state.update { it.copy(busy = false) }
+        loadPeriodLabel(accountId)
+        loadForecast(accountId)
+        loadSpending(force = true); loadGoals(force = true); loadWallets(force = true)
+        loadRecurring(force = true); loadHealth(force = true)
     }
 
     fun selectAccount(accountId: String) {

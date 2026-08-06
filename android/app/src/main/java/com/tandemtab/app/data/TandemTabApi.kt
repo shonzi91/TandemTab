@@ -203,6 +203,30 @@ class TandemTabApi(
     /** The account's periods (oldest→newest) + the current index — used for the top-bar period label. */
     suspend fun periods(accountId: String): PeriodsViewDto = authedGet("/accounts/$accountId/periods").body()
 
+    /** Roll into the next period: close the open one and open the next, carrying the supplied opening balances.
+     *  400s if the current period hasn't ended yet (the server mirrors the web's CanStartNextPeriod guard). */
+    suspend fun startNextPeriod(accountId: String, req: StartNextPeriodRequest): MutationResultDto =
+        authedPost("/accounts/$accountId/periods/start-next", req).body()
+
+    /** Move a period's date range (later periods shift to stay contiguous). Index is positional, oldest = 0. */
+    suspend fun reschedulePeriod(accountId: String, index: Int, req: ReschedulePeriodRequest): MutationResultDto =
+        authedPut("/accounts/$accountId/periods/$index/schedule", req).body()
+
+    /** Undo the last rollover: delete the newest period and everything in it, re-opening the previous one.
+     *  400s when it's the only period. */
+    suspend fun removeLatestPeriod(accountId: String): MutationResultDto =
+        authedDelete("/accounts/$accountId/periods/latest").body()
+
+    /** The synced fund's balance as recorded at `dateIso` (yyyy-MM-dd). Null — including on any non-2xx, since
+     *  this is a best-effort input to the rollover, not a gate on it. */
+    suspend fun bankBalanceAt(accountId: String, dateIso: String): Double? = runCatching {
+        authedGet("/accounts/$accountId/bank/balance-at?date=$dateIso").body<BankBalanceAtDto>().balance
+    }.getOrNull()
+
+    /** Add an income-source (contribution) category. Used by the rollover's "log as adjustment" path. */
+    suspend fun createContributionCategory(accountId: String, req: CreateContributionCategoryRequest): MutationResultDto =
+        authedPost("/accounts/$accountId/contribution-categories", req).body()
+
     /** The Health/Insights read: score, savings rate, outgoings trend, signals, mini-trends, quick wins. */
     suspend fun insights(accountId: String): InsightsDto = authedGet("/accounts/$accountId/insights").body()
 

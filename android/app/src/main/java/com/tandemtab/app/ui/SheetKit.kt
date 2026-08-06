@@ -175,6 +175,7 @@ internal fun SheetScaffold(
     onDismiss: () -> Unit,
     onSave: () -> Unit,
     sheetState: SheetState,
+    saveLabel: String = "Save",
     body: @Composable () -> Unit,
 ) {
     ModalBottomSheet(
@@ -207,6 +208,7 @@ internal fun SheetScaffold(
                 onDismiss = onDismiss,
                 onSave = onSave,
                 modifier = Modifier.align(Alignment.BottomCenter),
+                saveLabel = saveLabel,
             )
         }
     }

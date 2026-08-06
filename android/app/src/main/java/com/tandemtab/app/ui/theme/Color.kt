@@ -15,6 +15,10 @@ val SavingsGreen = Color(0xFF0E9E6D)     // savings tile value (light)
 val Mint = Color(0xFF3FE0C5)             // dark-theme accent / saved
 val Coral = Color(0xFFFF7A66)            // "spent" partner accent
 val Amber = Color(0xFFB45309)            // warnings (light)
+// Danger — destructive actions and error text. Distinct from the warning amber above: an amber "Delete account"
+// reads as a caution, not a destruction. Matches the web's .danger-btn / .amt.debit pair.
+val DangerRed = Color(0xFFDC2626)        // danger (light)
+val DangerRedDark = Color(0xFFF87171)    // danger (dark)
 
 // Light surfaces & text
 val LightCanvas = Color(0xFFEEF3F0)

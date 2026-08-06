@@ -1,6 +1,65 @@
 # TandemTab (FinApp) — session handoff
 
-Last updated: 2026-08-05 (Session 90 — **NOT deployed; server changes are in the tree, uncommitted deploy.** Recorded
+Last updated: 2026-08-06 (Session 91 — **Session 90's server changes are now DEPLOYED as `finapp-00278-vkl`.** Then
+closed the **first of R2's four L-sized parity gaps: the Android period lifecycle** — start next month (with the
+full reconcile step), change dates, remove — all three verified end-to-end on the emulator against a real seeded
+account **in both themes**. The build surfaced a theme bug wider than the feature: Material's `error` slot was the
+**warning amber**, so every destructive control in the app — including **Delete account** — was the same colour as
+"you're over budget". Prior context below is Session 90.)
+
+## Session 91 (2026-08-06) — **Deployed S90; R2's period-lifecycle gap closed + a danger-colour fix. Live: `finapp-00278-vkl`.**
+
+### Deployed Session 90 (`finapp-00278-vkl`)
+- Image `finapp:16a9a16`, traffic forced `--to-latest`, **5 `secretKeyRef`s**, both the run URL and tandemtab.com
+  200. This is what makes the S90 Home hero fields (`MoneyIn`/`TransfersOut`/`SavedThisPeriod`/`SavedRate`) and
+  `MoneyText` real for a phone build — an older server just sent the defaults.
+- ⚠️ The **auto-mode classifier blocked `run deploy` three times** (both Git Bash and PowerShell) before the owner
+  authorised it explicitly; `builds submit` never blocks. Same non-deterministic block as Session 56.
+
+### R2 — the period lifecycle on Android (the first **L** row)
+- **What shipped:** `/periods/start-next`, `/periods/{i}/schedule` and `DELETE /periods/latest`, all three hung off
+  the Home period chip as on the web's period popover. Plus `POST /contribution-categories` and
+  `GET /bank/balance-at`, both of which the rollover needs. Android now calls **41** endpoints, not 37.
+- **★ The gating is the design, not the endpoints.** *Start next month* shows only on the newest month and only
+  once it has ended — **greyed with the reason** (*"Available once this month ends"*) rather than hidden, because
+  the server enforces the same guard and a live-looking item is a 400 with extra steps. *Remove* appears only when
+  an earlier month exists to fall back to.
+- **★ The reconcile step is the feature, and the layout nearly ate it.** The rollover carries **hand-entered**
+  opening balances (the domain never reads a bank), so the client names the per-fund drift and offers the same
+  three outcomes as web — **stacked full-width labelled buttons**, never the `✕ ✕ ✓` row S89 had to fix. Two bugs
+  came out of it, **both the same shape: a floating action bar sized for the two-button case hides the tail of the
+  three-button one.** First the alert card was clipped outright; then, with the bar made a *sibling* of the
+  scrolling body, it merely fell below the fold — so pressing the primary button swapped the buttons under the
+  user's thumb with the explanation still unseen. Fixed by **auto-scrolling to the drift block when it appears**.
+- **Adjustments go into the CLOSING period**, dated its last day, under a category named *"Adjustment"* created on
+  first use. Unexplained money-**in** needs an income source, which is why `/contribution-categories` came along.
+- **★ A danger colour that was a warning colour.** Material's `error` slot was `Amber` (light) / `#F5B24E` (dark) —
+  the app's *warning* colour — and that slot backs **every** destructive control: Remove month, Leave account,
+  **Delete account** and its confirm button. A delete looked like a caution. Now the web's pair
+  (`#DC2626` / `#F87171`); warnings keep the amber via `LocalTandemColors.warn`.
+  ⚠️ **This means S90's "Android needed no theme fixes" was too narrow** — it checked only the surfaces it had
+  just built. The rest of the app was never swept.
+
+### Verification
+- **Emulator, real seeded account, local server** (`10.0.2.2:5179`; build config + cleartext flag **reverted**).
+  The three actions were exercised as one chain, which is also the only way to reach the rollover on a month that
+  hasn't ended: **change dates** (31 Aug → 5 Aug) unlocked **start next month**; entering Cash €195 against a
+  €215 ledger raised **"Cash €20.00 less than expected"**; *Log as adjustment, then start* produced period
+  **6 Aug – 5 Sep** opening at **€2,704.50** (= 2509.50 + 195, the entered figures, not the ledger's 2,724.50),
+  *"+€2,704.50 carried"*, F3 recomputed to *"€87.24 a day left"*, and a **€20.00 "Reconciliation" expense dated
+  2026-08-05 in the closed period** under an *Adjustment* category — confirmed in the `?period=0` payload.
+  **Remove** then restored the single 1–5 Aug period with the adjustment correctly still in it.
+- **Both themes** on the real screen: dark and light both render the drift card, the amber gap figure and all
+  three buttons legibly; the confirm dialog's destructive button is red in both.
+- **No C# changed this session**, so the .NET suites were not re-run — they were green at S90
+  (322 domain + 48 persistence + 305 server).
+
+### ⚠️ Carry-over
+- **Three L rows left in [docs/MOBILE.md](docs/MOBILE.md)'s table:** savings/debt buckets, debt entirely, sharing.
+- **A full Android light/dark sweep is still owed** — see the danger-colour note above.
+- **Everything in Session 90's carry-over still stands.**
+
+Last updated (prior): 2026-08-05 (Session 90 — **NOT deployed; server changes are in the tree, uncommitted deploy.** Recorded
 **billing go-live (a real payment provider + the Pro trial) as R5 work** so it can't be forgotten, and flagged that
 "Stripe" is the reflex answer rather than the researched one (EU VAT / merchant-of-record). Then started **R2**:
 **measured** the Android parity gap instead of counting sessions behind — the exact instrument for a thin client is

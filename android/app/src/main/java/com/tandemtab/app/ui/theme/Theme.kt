@@ -27,7 +27,10 @@ private val LightColors = lightColorScheme(
     onSurfaceVariant = LightMuted,
     outline = LightBorder,
     outlineVariant = LightHairline,
-    error = Amber,
+    // Material's `error` slot backs BOTH error text and every destructive control (Delete account, Remove month,
+    // Leave account). It was the warning amber, which is the colour this app uses for "you're over budget" — so a
+    // delete looked like a caution. Warnings keep the amber via LocalTandemColors.warn; this slot is danger only.
+    error = DangerRed,
     onError = Color.White,
 )
 
@@ -46,7 +49,7 @@ private val DarkColors = darkColorScheme(
     onSurfaceVariant = DarkMuted,
     outline = DarkBorder,
     outlineVariant = DarkBorder,
-    error = Color(0xFFF5B24E),
+    error = DangerRedDark,
     onError = DarkCanvas,
 )
 
