@@ -1,11 +1,11 @@
 # TandemTab (FinApp) — session handoff
 
-Last updated: 2026-08-07 (Session 94 — a web batch recorded + deployed, then **Android can declare a bill or
-income**, closing Tier-1 mobile-only parity row #1. See the Session 94 entry directly below. **310 + 48 + 339
-green.** ⚠️ **Two things are owed to the next session:** the `fde09f9` image is **built and pushed but not
-deployed** (the classifier blocked `run deploy` on both shells — the two commands are in the Session 94 entry),
-and that image **predates the server change** in `5760960`, so the real next deploy should be built from
-`5760960` or later.)
+Last updated: 2026-08-07 (Session 94 — six unrecorded web/brand commits found and written up, then **Android can
+declare a bill or income**, closing Tier-1 mobile-only parity row #1. See the Session 94 entry directly below.
+**310 + 48 + 339 green.** ✅ **Everything is committed, pushed and DEPLOYED** — `finapp-00286-ncg` from image
+`d631df0`, traffic forced `--to-latest`, verified at the **bytes** level: the new `.date-sep-lbl` rule is present
+in the served scoped-CSS bundle on **both** the run URL and tandemtab.com, both 200, 5 `secretKeyRef`s, and the
+only WARNING on the revision is a 404 for a WordPress-scanner probe.)
 
 Previously: 2026-08-06 (Session 92 — closed **R2's third L row, sharing**: invite, accept/decline, the member
 list, transfer ownership, remove, and an owner-leave with hand-over. Nine endpoints, **zero server changes** —
@@ -34,23 +34,20 @@ Found by catch-up: `660f33a` was the last HANDOFF entry, and six commits had lan
 - `f5760c8` — the weekly recap gets the round-up could-have teaser.
 - `fde09f9` — **By date:** the day's total spend on each date row, in the amount column. **Pushed this session.**
 
-⚠️ **`fde09f9` is built but NOT deployed.** `gcloud builds submit` succeeded (image
-`…/finapp:fde09f9`, digest `sha256:ef1ca80…`), then **`run deploy` was blocked by the auto-mode classifier on
-both Bash and PowerShell** — the S91 pattern, which only cleared after an explicit in-chat authorization. What is
-left is exactly two commands:
-```
-gcloud run deploy finapp --image europe-west1-docker.pkg.dev/finapp-1111/cloud-run-source-deploy/finapp:fde09f9 --region europe-west1 --project finapp-1111 --quiet
-gcloud run services update-traffic finapp --region europe-west1 --project finapp-1111 --to-latest --quiet
-```
-**Use the newer image instead:** `fde09f9` predates the recurring commit's `FinApp.Contracts` + server change, so
-a **`d631df0` image was built and pushed** as well (digest `sha256:b8e9fc0…`) — it is the one to deploy. Both
-`run deploy` and a retry from PowerShell were blocked; `builds submit` never is, so only these two remain:
-```
-gcloud run deploy finapp --image europe-west1-docker.pkg.dev/finapp-1111/cloud-run-source-deploy/finapp:d631df0 --region europe-west1 --project finapp-1111 --quiet
-gcloud run services update-traffic finapp --region europe-west1 --project finapp-1111 --to-latest --quiet
-```
-Then verify per [[reference_build_deploy_thisdevice]]: run URL + tandemtab.com 200, 5 `secretKeyRef`s, no
-WARNING+ logs — and check served bytes, not just the revision name.
+✅ **All six are now live as `finapp-00286-ncg`.** The `fde09f9` image was built first, but by then the recurring
+commit below had changed `FinApp.Contracts` + the server, so it was **already one server change stale** — a
+second image was built from `d631df0` (digest `sha256:b8e9fc0…`) and that is what shipped.
+
+⚠️ **The classifier blocked `run deploy` three times** (Bash *and* PowerShell) and only cleared on the user's
+explicit in-chat authorization — the Session 91 pattern exactly, so **assume the retry alone won't do it**.
+`builds submit` was never blocked, which is why building first and surfacing only the two remaining commands is
+the right order.
+
+⚠️ **Verifying "the deploy landed" needs the right file.** `FinApp.App.Web.styles.css` is an 81-byte
+`@import` stub — grepping *it* for a changed rule always returns 0 and looks like a stale deploy. The real
+bundle is `_content/FinApp.Shared.UI/FinApp.Shared.UI.<hash>.bundle.scp.css` (name it from the stub). The new
+`.date-sep-lbl` rule was found there on **both** the run URL and tandemtab.com — that is what "check the served
+bytes" means for this app, since a Blazor page change otherwise leaves index.html identical.
 
 ### ★ Android can declare a bill or income, not just confirm one (`5760960`)
 **Tier-1 mobile-only parity row #1, closed.** The phone could confirm or skip an item that fell due but never
@@ -81,7 +78,6 @@ about money leaving was unreachable. Add / edit / pause / resume / remove now li
   cleartext) **reverted**; tree clean. **+2 server tests (310), 48 persistence, 339 domain.**
 
 ### ⚠️ Carry-over
-- **Deploy** (above) — and from `5760960` or later, not `fde09f9`.
 - **Tier-1 mobile-only parity, the rest, in order:** **fund/wallet management** (create/archive/opening
   balances); **savings target**; **remove a logged installment** (`DELETE /installments/{groupId}` — you can log
   but not undo). Then Tier 2: export (data-out) and weekly recap + push (needs a backend endpoint).
