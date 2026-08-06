@@ -32,19 +32,30 @@ Three follow-ons after the catch-up, each committed and pushed:
   "I log each installment here" switch had nowhere to log. A **Log payment** action on every debt bucket opens a sheet
   mirroring the web's `Modal.LogInstallment` (amount prefilled to the installment · date · fund · one loan category ·
   a **live interest/principal split**, `round(owed × APR/100/12, 2)` capped at what the payment services). Posts via a
-  new `/installments` client call; refetches Savings + invalidates Spending like `spendFromSavings`. **Kotlin compiles
-  clean (`compileDebugKotlin`).** ⚠️ **NOT emulator-verified — it moves real balances, so a device pass is owed before
-  it's called done.** Also a known parity gap left for next time: **extra lines (insurance/tax) and the
-  principal/interest tag split are web-only** (Android has no tag picker) — noted in `LogInstallmentSheet.kt`.
+  new `/installments` client call; refetches Savings + invalidates Spending like `spendFromSavings`. Known parity gap
+  left for next time: **extra lines (insurance/tax) and the principal/interest tag split are web-only** (Android has no
+  tag picker) — noted in `LogInstallmentSheet.kt`.
+- **★ Android can create a budget account** (`4746dc7`) — **the phone-only gate.** Registration makes a *user*, not an
+  account (the web seeds the first account client-side), and Android called neither create nor bootstrap, so a fresh
+  sign-up hit an empty list with no exit. New `CreateAccountSheet` (name + currency) → `POST /accounts` + `/bootstrap`
+  → refresh → switch in. Entry points: a "Create account" affordance replaces the empty switcher at zero accounts, and
+  "New account" is appended to the account dropdown for a 2nd+ (server 402s a free user's second). **Reframing:** with
+  mobile treated as a user's *only* client, this is Tier-1 #1 of the parity audit (see [docs/MOBILE.md](docs/MOBILE.md)).
+- **✅ Both verified end-to-end on the emulator** (`tandemtab_test`, local server `10.0.2.2:5179`, a freshly-registered
+  user): register → empty Home shows the **Create account** gate → create *Phone Budget* in **EUR** → lands in the
+  seeded **August 2026** account; then a **payment-driven** *Car loan* (€10,000 @ 12% APR, €300 installment) → **Log
+  payment** split read **€100 interest / €200 principal** → logging it dropped the balance to **€9,800.00**, i.e. by the
+  principal exactly. Build tweaks (buildConfig → local, cleartext) **reverted**; tree clean.
 
-### ⚠️ Carry-over — what the next session should pick up FIRST
-0. **Emulator-verify the installment log** (`ee33ff3`): build APK, boot `tandemtab_test`, create a **payment-driven**
-   debt bucket, log a payment, confirm the split reads right **and the balance drops by the principal**. The
-   [[reference_android_toolchain_thisdevice]] local-seed recipe (buildConfig → `10.0.2.2:5179`, revert before commit)
-   is the fastest path. This is the one unfinished thread of S93.
-1. **Then Android installment parity**: extra lines + the principal/interest tag split (needs an Android tag surface).
-2. **The Android light/dark sweep** (still owed — half of R2's exit condition) and the **`SheetShell` foot-of-sheet
-   audit** remain from S92 below.
+### ⚠️ Carry-over — what the next session should pick up
+- **Tier-1 mobile-only parity (the rest), in order:** recurring bills/income **CRUD** (Android only confirms/skips
+  today — can't set one up); **fund/wallet management** (create/archive/opening balances); **savings target**; and
+  **remove a logged installment** (`DELETE /installments/{groupId}` — you can log but not undo). See the re-tiered
+  audit in [docs/MOBILE.md](docs/MOBILE.md): mobile-only also promotes **export** (data-out) and **weekly recap+push**
+  (needs a backend endpoint) into Tier 2.
+- **Android installment parity:** extra lines + the principal/interest tag split (needs an Android tag surface).
+- **The Android light/dark sweep** (still owed — half of R2's exit condition) and the **`SheetShell` foot-of-sheet
+  audit** remain from S92 below.
 
 ## Session 92 (2026-08-06) — **Sharing on Android (R2's third L row) + a web batch. Committed; web deployed as `finapp-00280-4s8`.**
 
