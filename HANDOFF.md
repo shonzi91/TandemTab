@@ -11,10 +11,11 @@ jobs. **Then a requested web batch:** F7's week recap became a glowing card + a 
 pointed at the view that can actually change a budget, the **45-day** Pro trial message landed (owner call settled),
 admin gained **trial + paying-subscriber** metrics, and **Trends was rebuilt as two charts** — net-as-hero bars plus
 a separate balance axis — because flows and a stock were sharing one scale. **328 + 48 + 308 green.**
-⚠️ **Nothing is committed.** The Android half needs no deploy; **the web half does.** Prior context below is
-Session 91.)
+✅ **Committed and the web half is DEPLOYED** (Session 93 catch-up): Android sharing as `596eea5`, the web batch
+as `de51071`, now live on **`finapp-00280-4s8`** (traffic forced `--to-latest`; run URL + tandemtab.com 200; 5
+`secretKeyRef`s; no WARNING+ logs). Prior context below is Session 91.)
 
-## Session 92 (2026-08-06) — **Sharing on Android (R2's third L row) + a web batch. Not committed, web not deployed.**
+## Session 92 (2026-08-06) — **Sharing on Android (R2's third L row) + a web batch. Committed; web deployed as `finapp-00280-4s8`.**
 
 ### What shipped
 - **The inviter's half** — a **People** block in the Account sheet (⋯ by the account name), mirroring the web's
