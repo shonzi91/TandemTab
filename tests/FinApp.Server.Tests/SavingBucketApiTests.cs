@@ -219,6 +219,63 @@ public class SavingBucketApiTests : IClassFixture<FinAppServerFactory>
         Assert.Null(inv.Forecast.DebtStoredBalance);              // investment carries no debt knobs
     }
 
+    /// <summary>
+    /// The R2 edit-form prefill. <c>SaveSavingBucketRequest</c> is a full OVERWRITE, so a thin client has to read
+    /// back every field it doesn't edit and send it again. These four were invisible in the read model, which meant
+    /// a native edit silently cleared the held-in fund, reset the alert threshold to 80%, switched milestone
+    /// notification off, and wiped the starting balance. They are asserted together because they share one cause.
+    /// </summary>
+    [Fact]
+    public async Task Savings_read_exposes_the_fields_the_upsert_would_otherwise_clear()
+    {
+        var (client, auth) = await _factory.RegisterAndAuthAsync("bk_prefill");
+        var account = await CreateAccount(client, "Data");
+        var fund = await SeedAsync(client, account.Id, auth.UserId);
+
+        (await client.PostAsJsonAsync($"/accounts/{account.Id}/savings/buckets",
+            new SaveSavingBucketRequest("Holiday", GoalAmount: 2000m, ThresholdPercent: 65m,
+                NotifyOnMilestone: true, InitialAmount: 150m, FundId: fund))).EnsureSuccessStatusCode();
+
+        var view = (await client.GetFromJsonAsync<SavingsViewDto>($"/accounts/{account.Id}/savings"))!;
+        var bucket = view.Buckets.Single();
+        Assert.Equal(fund, bucket.FundId);
+        Assert.Equal(65m, bucket.ThresholdPercent);   // sent as a percentage, not the domain's 0..1 fraction
+        Assert.True(bucket.NotifyOnMilestone);
+        Assert.Equal(150m, bucket.InitialAmount);
+    }
+
+    /// <summary>An edit rebuilt purely from what the read model reports must be a no-op for everything the form
+    /// didn't touch — the actual round-trip a native edit performs.</summary>
+    [Fact]
+    public async Task Edit_rebuilt_from_the_read_model_preserves_fund_threshold_notify_and_initial()
+    {
+        var (client, auth) = await _factory.RegisterAndAuthAsync("bk_roundtrip");
+        var account = await CreateAccount(client, "Data");
+        var fund = await SeedAsync(client, account.Id, auth.UserId);
+
+        var created = (await (await client.PostAsJsonAsync($"/accounts/{account.Id}/savings/buckets",
+            new SaveSavingBucketRequest("Holiday", GoalAmount: 2000m, ThresholdPercent: 65m,
+                NotifyOnMilestone: true, InitialAmount: 150m, FundId: fund)))
+            .Content.ReadFromJsonAsync<MutationResultDto>())!;
+        var bucketId = created.EntityId!.Value;
+
+        var before = (await client.GetFromJsonAsync<SavingsViewDto>($"/accounts/{account.Id}/savings"))!.Buckets.Single();
+
+        // Rename only — every other field comes straight back from the read, as the sheet does.
+        (await client.PutAsJsonAsync($"/accounts/{account.Id}/savings/buckets/{bucketId}",
+            new SaveSavingBucketRequest("Holiday 2027", GoalAmount: before.GoalTarget,
+                ThresholdPercent: before.ThresholdPercent, NotifyOnMilestone: before.NotifyOnMilestone,
+                InitialAmount: before.InitialAmount, FundId: before.FundId))).EnsureSuccessStatusCode();
+
+        var after = (await client.GetFromJsonAsync<SavingsViewDto>($"/accounts/{account.Id}/savings"))!.Buckets.Single();
+        Assert.Equal("Holiday 2027", after.Name);
+        Assert.Equal(fund, after.FundId);
+        Assert.Equal(65m, after.ThresholdPercent);
+        Assert.True(after.NotifyOnMilestone);
+        Assert.Equal(150m, after.InitialAmount);
+        Assert.Equal(2000m, after.GoalTarget);
+    }
+
     [Fact]
     public async Task Stranger_cannot_create_a_bucket()
     {

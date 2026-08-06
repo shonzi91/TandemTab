@@ -341,14 +341,6 @@ fun RemovePeriodDialog(
     )
 }
 
-@Composable
-private fun CheckRow(label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Checkbox(checked = checked, onCheckedChange = onChange)
-        Text(label, color = MaterialTheme.colorScheme.onSurface, fontSize = 14.sp)
-    }
-}
-
 /** "1 – 31 Jul 2026" for a period row, for the sheet copy that has to name which month is being acted on. */
 internal fun periodDates(p: PeriodRowDto): String = runCatching {
     val from = LocalDate.parse(p.from); val to = LocalDate.parse(p.to)

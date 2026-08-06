@@ -1,13 +1,15 @@
 # TandemTab (FinApp) — session handoff
 
 Last updated: 2026-08-06 (Session 91 — **Session 90's server changes are now DEPLOYED as `finapp-00278-vkl`.** Then
-closed the **first of R2's four L-sized parity gaps: the Android period lifecycle** — start next month (with the
-full reconcile step), change dates, remove — all three verified end-to-end on the emulator against a real seeded
-account **in both themes**. The build surfaced a theme bug wider than the feature: Material's `error` slot was the
-**warning amber**, so every destructive control in the app — including **Delete account** — was the same colour as
-"you're over budget". Prior context below is Session 90.)
+closed **two of R2's four L-sized parity gaps**: the **period lifecycle** (start next month with the full reconcile
+step, change dates, remove) and **savings/debt bucket CRUD** (create/edit/archive/restore/delete, all four kinds).
+Both verified end-to-end on the emulator against a real seeded account **in both themes**. **322 + 48 + 307 green.**
+Two findings outlive the features: Material's `error` slot was the **warning amber**, so every destructive control
+in the app — including **Delete account** — was the colour of "you're over budget"; and the bucket upsert is a full
+overwrite whose read model was **missing four of the fields it overwrites**, so a rename would have wiped them.
+⚠️ **NOT deployed** — the bucket-prefill server change is in the tree. Prior context below is Session 90.)
 
-## Session 91 (2026-08-06) — **Deployed S90; R2's period-lifecycle gap closed + a danger-colour fix. Live: `finapp-00278-vkl`.**
+## Session 91 (2026-08-06) — **Deployed S90; two R2 L-rows closed (periods, bucket CRUD) + a danger-colour fix. ⚠️ the bucket server change is NOT deployed.**
 
 ### Deployed Session 90 (`finapp-00278-vkl`)
 - Image `finapp:16a9a16`, traffic forced `--to-latest`, **5 `secretKeyRef`s**, both the run URL and tandemtab.com
@@ -54,8 +56,40 @@ account **in both themes**. The build surfaced a theme bug wider than the featur
 - **No C# changed this session**, so the .NET suites were not re-run — they were green at S90
   (322 domain + 48 persistence + 305 server).
 
+### R2 — savings/debt bucket CRUD (the second **L** row)
+- **What shipped:** create / edit / archive / restore / delete across **all four kinds** (goal, debt, investment,
+  expenses fund) from one sheet on the Goals tab, plus a "New goal, debt or fund" button in the Goals header and
+  an **Edit** pill on every bucket row. A phone-only user can now *make* a goal, not just look at one.
+- **★ The read model had to grow first — the third time R2 has hit this exact shape.**
+  `SaveSavingBucketRequest` is a full **overwrite**: `SavingBucketConfig.Apply` calls `SetSavingFund` /
+  `ConfigureSavingGoal` / `SetSavingInitialAmount` unconditionally. Four of the fields it overwrites —
+  **`FundId`, `ThresholdPercent`, `NotifyOnMilestone`, `InitialAmount`** — **were not on `SavingBucketDto` at all**.
+  A native edit would therefore have cleared the held-in fund, reset the alert threshold to its 80% default,
+  switched milestone notification off and wiped the starting balance **every time someone renamed a bucket**.
+  Added to the DTO + `SavingsMap`, with **two new server tests** pinning the round-trip (one asserts the read
+  exposes them; one rebuilds an edit purely from the read and asserts nothing moved).
+- **Kind is fixed after creation**, as on web — the kinds have different fields, actions and projections, so
+  switching would strand data. The type chips render only when creating, and the Goals **filter pre-selects the
+  kind**, so "filter to Debts → add" starts you on a debt.
+- **Delete offers Archive in the same breath.** The domain refuses to delete a bucket with savings history, so
+  the confirm dialog says so up front and puts Archive next to Delete rather than letting the advice arrive as a
+  400. Archived buckets sit behind a collapsed **"Show archived (N)"** with Restore — otherwise "archive it
+  instead" would be a dead end.
+
+### Verification (bucket CRUD)
+- **322 domain + 48 persistence + 307 server** (+2, both new).
+- **Emulator, real seeded account, both themes** (local server; build config + cleartext flag **reverted**):
+  created a **goal** (Holiday, €2,000 target, alert **65%**, notify on, held in **Cash**, €150 starting) →
+  reopened Edit and every one of those prefilled correctly (not the 80% default) → **renamed only, saved, reopened:
+  nothing was lost**, which is the exact regression the server change prevents. Created a **debt** from the
+  *"Original + already paid"* mode (€12,000 − €4,500 → the sheet derived **"Owed now: €7,500.00"**), which landed
+  as *"€7,500.00 · owed"* at 37.5% paid off. Delete removed the goal and dropped Saved to €0.00; Archive moved the
+  debt into **"Show archived (1)"** and Restore brought it back intact.
+
 ### ⚠️ Carry-over
-- **Three L rows left in [docs/MOBILE.md](docs/MOBILE.md)'s table:** savings/debt buckets, debt entirely, sharing.
+- **Two L rows left in [docs/MOBILE.md](docs/MOBILE.md)'s table:** debt (installments) and sharing.
+  Bucket **money-movements** (`/savings/disburse`, `/to-budget`, `/transfer`, `/movements`) are now an **M** —
+  allocate and spend already work, so they're refinements rather than a missing capability.
 - **A full Android light/dark sweep is still owed** — see the danger-colour note above.
 - **Everything in Session 90's carry-over still stands.**
 

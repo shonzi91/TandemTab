@@ -281,9 +281,14 @@ against a moving feature set is work that gets redone. R4 lands before R7 for th
   "left to spend today"**, saved with its money-in rate, spent with the transfers sub-line, money in with
   carry-over) and the **rotating over-budget alert strip**. Both browser-verified against a real seeded account
   in **both themes**. Android's own light/dark rendering was checked in the same pass and needed no fixes.
-- **Session 91 closed the first L row: the period lifecycle.** Start next month (with the full reconcile step),
-  change dates, and remove — all three verified end-to-end on the emulator in both themes. **Three L rows left:**
-  savings/debt buckets, debt, sharing.
+- **Session 91 closed two of the four L rows.** (1) **Period lifecycle** — start next month with the full reconcile
+  step, change dates, remove. (2) **Savings/debt bucket CRUD** — create/edit/archive/restore/delete across all four
+  kinds. Both verified end-to-end on the emulator in both themes. **Two L rows left: debt (installments) and
+  sharing.**
+  - ⚠️ **The bucket row needed a server change first, for the third time in R2.** The bucket upsert is a full
+    overwrite and four of the fields it overwrites weren't in the read model — so a native *rename* would have
+    silently wiped the held-in fund, the alert threshold, the milestone flag and the starting balance. The lesson
+    is now written into [docs/MOBILE.md](docs/MOBILE.md): **check what the endpoint returns before sizing a row.**
   - ⚠️ **The sweep found a live theme bug beyond this feature.** Material's `error` slot was mapped to the
     **warning amber**, and that slot backs every destructive control in the app — so **"Delete account"** rendered
     in the same colour as *"you're over budget"*. Now the web's danger red (`#DC2626` / `#F87171` dark); warnings

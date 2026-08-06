@@ -182,6 +182,24 @@ class TandemTabApi(
     suspend fun spendFromSavings(accountId: String, req: SpendFromSavingsRequest): MutationResultDto =
         authedPost("/accounts/$accountId/savings/spend", req).body()
 
+    /** Create a savings bucket (goal / debt / investment / expenses fund). Rejects a duplicate name. */
+    suspend fun createSavingBucket(accountId: String, req: SaveSavingBucketRequest): MutationResultDto =
+        authedPost("/accounts/$accountId/savings/buckets", req).body()
+
+    /** Reconfigure a bucket. ⚠️ A full OVERWRITE, not a patch — every field in the request is applied, so send the
+     *  bucket's current values for anything the form doesn't edit or they are cleared. */
+    suspend fun editSavingBucket(accountId: String, bucketId: String, req: SaveSavingBucketRequest): MutationResultDto =
+        authedPut("/accounts/$accountId/savings/buckets/$bucketId", req).body()
+
+    /** Archive (hide) or restore a bucket. Reversible; keeps its history and its money. */
+    suspend fun archiveSavingBucket(accountId: String, bucketId: String, archived: Boolean): MutationResultDto =
+        authedPut("/accounts/$accountId/savings/buckets/$bucketId/archived", SetArchivedRequest(archived)).body()
+
+    /** Delete a bucket outright. 400s when the domain blocks it (sub-buckets, or savings activity to preserve) —
+     *  that message is worth showing verbatim, since "archive instead" is the answer. */
+    suspend fun deleteSavingBucket(accountId: String, bucketId: String): MutationResultDto =
+        authedDelete("/accounts/$accountId/savings/buckets/$bucketId").body()
+
     suspend fun wallets(accountId: String, period: Int? = null): WalletsViewDto = authedGet("/accounts/$accountId/wallets${periodQ(period)}").body()
 
     suspend fun income(accountId: String): IncomeViewDto = authedGet("/accounts/$accountId/income").body()

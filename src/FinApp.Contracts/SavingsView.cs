@@ -43,7 +43,15 @@ public record SavingBucketDto(
     bool DebtPaidInterestEstimated = false,
     // R2: true when this debt's balance moves only as installments are logged here (rather than being walked
     // forward over its schedule) — the row offers "Log installment" and stops advancing on its own.
-    bool DebtPaymentDriven = false);
+    bool DebtPaymentDriven = false,
+    // Edit-form prefill (added for native parity, R2). SaveSavingBucketRequest is a full OVERWRITE, not a patch —
+    // SavingBucketConfig.Apply calls SetSavingFund / ConfigureSavingGoal / SetSavingInitialAmount unconditionally.
+    // A client that cannot read these back would silently clear the held-in fund, reset the alert threshold to its
+    // 80% default, switch milestone notifications off, and wipe the starting balance every time a bucket is edited.
+    Guid? FundId = null,
+    decimal ThresholdPercent = 80m,
+    bool NotifyOnMilestone = false,
+    decimal InitialAmount = 0m);
 
 /// <summary>The raw knobs an interactive projection modal drags — supplied so the thin client can re-run the pure
 /// forecast math (<c>FinApp.Forecasting</c>: <c>InvestmentForecast</c>/<c>LoanForecast</c>) locally with zero

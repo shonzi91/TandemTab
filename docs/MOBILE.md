@@ -62,7 +62,7 @@ Android calls **37** of the account endpoints (**41** since Session 91). It does
 
 | Missing capability | Endpoints never called | Weight |
 |---|---|---|
-| **Savings/debt buckets — create, edit, archive** | `/savings/buckets…`, `/savings/disburse`, `/savings/to-budget`, `/savings/transfer`, `/savings/movements/…` | **L** |
+| **Savings/debt bucket money-movements** (CRUD ✅ **done S91**) | ~~`/savings/buckets…`~~, `/savings/disburse`, `/savings/to-budget`, `/savings/transfer`, `/savings/movements/…` | M |
 | **Debt entirely** (R1 informative debt + R2 installments) | `/installments`, `/installments/{groupId}` | **L** |
 | **Sharing — the hero Pro feature** | `/invitations`, `/members/{id}`, `/transfer-ownership` | **L** |
 | ~~**Period lifecycle**~~ | ~~`/periods/start-next`, `/periods/latest`, `/periods/{i}/schedule`~~ | ✅ **done S91** |
@@ -80,6 +80,7 @@ Android calls **37** of the account endpoints (**41** since Session 91). It does
 **Read that table as the R2 backlog.** The four **L** rows are the ones that make Android a *different product*
 rather than a smaller one: a user who only has the phone cannot start next month, cannot create a savings goal,
 has no debt features at all, and cannot share an account — which is the thing Pro is sold on.
+**Two of the four are closed (S91).** Left: **debt** (installments) and **sharing**.
 
 #### ✅ Period lifecycle — closed (Session 91, 2026-08-06)
 
@@ -100,6 +101,29 @@ All three writes now hang off the Home period chip, mirroring the web's period p
 - **Adjustments are written to the CLOSING period before it is sealed**, dated its last day, into a category named
   *"Adjustment"* created on first use — which is why `/contribution-categories` came along (unexplained money-**in**
   needs an income source, not an expense category).
+
+#### ✅ Savings/debt bucket CRUD — closed (Session 91, 2026-08-06)
+
+Create / edit / archive / restore / delete, all four kinds (goal, debt, investment, expenses fund), from a single
+sheet on the Goals tab. The money-movements (`/savings/disburse`, `/savings/to-budget`, `/savings/transfer`,
+`/savings/movements/…`) stay open as an **M** — allocate and spend already work, so those are refinements, not the
+"can't make a goal at all" gap.
+
+- **★ The read model had to grow before the write could be safe.** `SaveSavingBucketRequest` is a full
+  **overwrite**, not a patch: `SavingBucketConfig.Apply` calls `SetSavingFund` / `ConfigureSavingGoal` /
+  `SetSavingInitialAmount` unconditionally. Four of the fields it overwrites — **`FundId`, `ThresholdPercent`,
+  `NotifyOnMilestone`, `InitialAmount`** — were **not in `SavingBucketDto` at all**, so a client that couldn't read
+  them back would silently clear the held-in fund, reset the alert threshold to its 80% default, switch milestone
+  notifications off, and wipe the starting balance **every time the user renamed a bucket**. They are now on the
+  DTO, with two server tests pinning the round-trip. ⚠️ **This is the third time R2 has hit the same shape** (the
+  Home hero in S90, the reconcile inputs in S91): *check what the endpoint returns before sizing a row in that
+  table — "just UI" is usually wrong here.*
+- **Kind is fixed after creation**, as on web: the kinds carry different fields, actions and projections, so
+  switching would strand data. The chips only appear when creating, and the Goals filter pre-selects the kind
+  (filter to Debts, tap add, and you start on a debt).
+- **Delete offers Archive in the same breath.** The domain refuses to delete a bucket with savings history, so the
+  confirm dialog says so up front and puts Archive beside Delete — otherwise the advice arrives as a 400. Archived
+  buckets get a collapsed "Show archived (N)" section with Restore, so that advice isn't a dead end.
 
 **Closed in Session 90:** the Home money hero (all four tiles, incl. the money-in savings rate, the transfers
 sub-line and **F3 "left to spend today"**) and the rotating over-budget alert strip. Both needed server work

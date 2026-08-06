@@ -64,12 +64,23 @@ fun GoalsScreen(
     onPrepareSpend: () -> Unit,
     onAllocate: (bucketId: String, amount: Double, date: String, note: String?, onDone: () -> Unit) -> Unit,
     onSpend: (bucketId: String, categoryId: String, fundId: String, amount: Double, date: String, note: String?, onDone: () -> Unit) -> Unit,
+    canSetInitial: Boolean,
+    onPrepareBucket: () -> Unit,
+    onSaveBucket: (bucketId: String?, req: com.tandemtab.app.data.SaveSavingBucketRequest, onDone: () -> Unit) -> Unit,
+    onArchiveBucket: (bucketId: String, archived: Boolean, onDone: () -> Unit) -> Unit,
+    onDeleteBucket: (bucketId: String, onDone: () -> Unit) -> Unit,
 ) {
     val tandem = LocalTandemColors.current
     val fmt = rememberGoalsMoney(goals.currency)
     var filter by remember { mutableStateOf(GoalFilter.All) }
     var allocateBucket by remember { mutableStateOf<SavingBucketDto?>(null) }
     var spendBucket by remember { mutableStateOf<SavingBucketDto?>(null) }
+    // null = closed; the Unit-holder distinguishes "new" (editBucket set, value null) from "editing that bucket".
+    var editing by remember { mutableStateOf<Pair<Boolean, SavingBucketDto?>?>(null) }
+    var deleting by remember { mutableStateOf<SavingBucketDto?>(null) }
+    var showArchived by remember { mutableStateOf(false) }
+    // Which kind a *new* bucket opens on — taken from the active filter, so "Debts → add" starts on a debt.
+    var pendingKind by remember { mutableStateOf<String?>(null) }
 
     when {
         goals.loading && goals.buckets.isEmpty() ->
@@ -86,7 +97,16 @@ fun GoalsScreen(
 
         else -> {
             val active = goals.buckets.filter { !it.archived }
+            val archived = goals.buckets.filter { it.archived }
             SavedHeader(fmt(goals.saved))
+            Spacer(Modifier.height(10.dp))
+            // The web puts one "Add goal" in the Goals header and pre-selects the kind from the active filter;
+            // same here, so filtering to Debts and tapping add starts you on a debt.
+            AddBucketButton {
+                onPrepareBucket()
+                editing = true to null
+                pendingKind = filter.kind
+            }
             Spacer(Modifier.height(14.dp))
 
             // Wrap onto multiple lines rather than scrolling off-screen.
@@ -117,11 +137,53 @@ fun GoalsScreen(
                             // debt buckets are disbursed and investments withdrawn (a later slice).
                             canSpend = b.saved > 0 && b.kind != "debt" && b.kind != "investment",
                             onSpend = { onPrepareSpend(); spendBucket = b },
+                            onEdit = { onPrepareBucket(); pendingKind = null; editing = false to b },
                         )
                     }
                 }
             }
+
+            // Archived buckets are kept out of the way but reachable — archiving is the answer when a delete is
+            // refused, so hiding them with no way back would make that advice a dead end.
+            if (archived.isNotEmpty()) {
+                Spacer(Modifier.height(16.dp))
+                Text(
+                    if (showArchived) "Hide archived (${archived.size})" else "Show archived (${archived.size})",
+                    color = tandem.muted,
+                    fontSize = 13.sp,
+                    modifier = Modifier.clickable { showArchived = !showArchived }.padding(vertical = 6.dp),
+                )
+                if (showArchived) {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        archived.forEach { b ->
+                            ArchivedRow(b, fmt, onRestore = { onArchiveBucket(b.id, false) {} })
+                        }
+                    }
+                }
+            }
         }
+    }
+
+    editing?.let { (isNew, bucket) ->
+        SavingBucketSheet(
+            existing = bucket,
+            initialKind = if (isNew) pendingKind else null,
+            goals = goals,
+            funds = spending.funds,
+            canSetInitial = canSetInitial,
+            onDismiss = { editing = null },
+            onSave = onSaveBucket,
+            onArchive = bucket?.let { b -> { onArchiveBucket(b.id, true) { editing = null } } },
+            onDelete = bucket?.let { b -> { editing = null; deleting = b } },
+        )
+    }
+    deleting?.let { b ->
+        DeleteBucketDialog(
+            bucket = b, goals = goals,
+            onDismiss = { deleting = null },
+            onArchive = { onArchiveBucket(b.id, true) { deleting = null } },
+            onDelete = { onDeleteBucket(b.id) { deleting = null } },
+        )
     }
 
     allocateBucket?.let { b ->
@@ -156,7 +218,14 @@ private fun SavedHeader(saved: String) {
 }
 
 @Composable
-private fun GoalRow(b: SavingBucketDto, fmt: (Double) -> String, onAllocate: () -> Unit, canSpend: Boolean, onSpend: () -> Unit) {
+private fun GoalRow(
+    b: SavingBucketDto,
+    fmt: (Double) -> String,
+    onAllocate: () -> Unit,
+    canSpend: Boolean,
+    onSpend: () -> Unit,
+    onEdit: () -> Unit,
+) {
     val tandem = LocalTandemColors.current
     var expanded by remember(b.id) { mutableStateOf(false) }
     // Kind-specific headline + progress. Bars read positive (progress toward a goal / down a debt), so green.
@@ -231,8 +300,11 @@ private fun GoalRow(b: SavingBucketDto, fmt: (Double) -> String, onAllocate: () 
             }
         }
 
-        // Money-movement actions as fancier icon pills, right-aligned.
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
+        // Money-movement actions as fancier icon pills, right-aligned. Edit sits on the left, apart from them:
+        // it changes what the bucket *is*, not how much is in it.
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            ActionPill(TandemIcons.Pencil, "Edit", tandem.muted, onEdit)
+            Spacer(Modifier.weight(1f))
             if (canSpend) {
                 ActionPill(TandemIcons.Minus, "Spend", tandem.spent, onSpend)
                 Spacer(Modifier.width(8.dp))
@@ -269,6 +341,46 @@ private fun bucketDetails(b: SavingBucketDto, fmt: (Double) -> String): List<Pai
             b.targetShortfall?.takeIf { it > 0 }?.let { add("Still to save" to fmt(it)) }
             b.monthlySetAside?.takeIf { it > 0 }?.let { add("Set aside" to "${fmt(it)}/mo") }
         }
+    }
+}
+
+/** The Goals header's single add affordance — a dashed full-width row, so it reads as "there's room for more"
+ *  rather than competing with the bottom bar's FAB (which adds an expense, not a goal). */
+@Composable
+private fun AddBucketButton(onClick: () -> Unit) {
+    val tandem = LocalTandemColors.current
+    Row(
+        Modifier.fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.10f))
+            .clickable(onClick = onClick)
+            .padding(vertical = 12.dp),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(TandemIcons.Plus, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(17.dp))
+        Spacer(Modifier.width(7.dp))
+        Text("New goal, debt or fund", color = MaterialTheme.colorScheme.primary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+    }
+}
+
+/** An archived bucket: name + what it holds, and one way back. Deliberately flat — it's out of play. */
+@Composable
+private fun ArchivedRow(b: SavingBucketDto, fmt: (Double) -> String, onRestore: () -> Unit) {
+    val tandem = LocalTandemColors.current
+    Row(
+        Modifier.fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(12.dp))
+            .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(12.dp))
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        CatIcon(b.icon, b.name)
+        Spacer(Modifier.width(8.dp))
+        Text(b.name, color = tandem.muted, modifier = Modifier.weight(1f), maxLines = 1, fontSize = 14.sp)
+        Text(fmt(b.saved), color = tandem.muted, fontSize = 13.sp)
+        Spacer(Modifier.width(8.dp))
+        TextButton(onClick = onRestore) { Text("Restore", fontSize = 13.sp) }
     }
 }
 

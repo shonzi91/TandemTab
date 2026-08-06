@@ -106,7 +106,9 @@ public static class SavingsMap
             goalTarget, goalProgress, debtBalance, debtProgress, debtMonthsAhead,
             investmentProjected, monthlySetAside, targetShortfall, forecast, costs,
             debtPaidInterest, debtRemainingInterest, debtInstallmentDay, debtPaidInterestEstimated,
-            b.DebtPaymentDriven);
+            b.DebtPaymentDriven,
+            // Edit-form prefill: the upsert overwrites all three, so a client that can't read them back wipes them.
+            b.FundId, b.AlertThreshold * 100m, b.NotifyOnMilestone, b.InitialAmount);
     }
 
     // Domain cadence → the canonical wire string the write side (SavingBucketConfig.Cadence) round-trips.

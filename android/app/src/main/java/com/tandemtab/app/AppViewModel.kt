@@ -43,7 +43,9 @@ import com.tandemtab.app.data.TargetDto
 import com.tandemtab.app.data.TandemTabApi
 import com.tandemtab.app.data.TokenStore
 import com.tandemtab.app.data.CreateContributionCategoryRequest
+import com.tandemtab.app.data.MutationResultDto
 import com.tandemtab.app.data.ReschedulePeriodRequest
+import com.tandemtab.app.data.SaveSavingBucketRequest
 import com.tandemtab.app.data.StartNextPeriodRequest
 import java.time.LocalDate
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -809,6 +811,63 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 _state.update { it.copy(goals = it.goals.copy(saving = false, saveError = e.message ?: "Couldn't spend from savings.")) }
             }
         }
+    }
+
+    // --- Savings bucket CRUD (R2's second L row) ---------------------------------------------------------
+    // Without these a phone-only user can look at goals but never make one. The pickers the sheet needs (funds)
+    // ride the /spending payload, so prepare loads that.
+
+    /** Prep the new/edit-bucket sheet: clear a stale error and make sure the fund picker's options are loaded. */
+    fun prepareSavingBucket() {
+        _state.update { it.copy(goals = it.goals.copy(saveError = null)) }
+        loadSpending(false)
+    }
+
+    /** Create a bucket, or reconfigure [bucketId] when it's non-null. ⚠️ The server applies the request as a full
+     *  overwrite, so the sheet must send the bucket's whole configuration, not just what the user touched. */
+    fun saveSavingBucket(bucketId: String?, req: SaveSavingBucketRequest, onDone: () -> Unit) {
+        val accountId = _state.value.selectedAccountId ?: return
+        _state.update { it.copy(goals = it.goals.copy(saving = true, saveError = null)) }
+        viewModelScope.launch {
+            try {
+                if (bucketId == null) api.createSavingBucket(accountId, req)
+                else api.editSavingBucket(accountId, bucketId, req)
+                refreshGoals(accountId)
+                onDone()
+            } catch (e: Exception) {
+                _state.update { it.copy(goals = it.goals.copy(saving = false, saveError = e.message ?: "Couldn't save that goal.")) }
+            }
+        }
+    }
+
+    /** Archive (hide) or restore a bucket — reversible, and the money stays put. */
+    fun archiveSavingBucket(bucketId: String, archived: Boolean, onDone: () -> Unit) =
+        bucketMutation(onDone, "Couldn't archive that goal.") { acct -> api.archiveSavingBucket(acct, bucketId, archived) }
+
+    /** Delete a bucket. The domain blocks this when there's savings activity to preserve; that 400 carries a
+     *  message explaining why, and it's surfaced as-is because "archive it instead" is the useful answer. */
+    fun deleteSavingBucket(bucketId: String, onDone: () -> Unit) =
+        bucketMutation(onDone, "Couldn't delete that goal.") { acct -> api.deleteSavingBucket(acct, bucketId) }
+
+    private fun bucketMutation(onDone: () -> Unit, fallback: String, call: suspend (String) -> MutationResultDto) {
+        val accountId = _state.value.selectedAccountId ?: return
+        _state.update { it.copy(goals = it.goals.copy(saving = true, saveError = null)) }
+        viewModelScope.launch {
+            try {
+                call(accountId)
+                refreshGoals(accountId)
+                onDone()
+            } catch (e: Exception) {
+                _state.update { it.copy(goals = it.goals.copy(saving = false, saveError = e.message ?: fallback)) }
+            }
+        }
+    }
+
+    /** Re-read Savings after a bucket write. Buckets carry earmarks, so the overview's Saved/Free move too, and a
+     *  delete can release money the Spending tab's budget bars are drawn against. */
+    private suspend fun refreshGoals(accountId: String) {
+        val v = api.savings(accountId, _state.value.selectedPeriod)
+        _state.update { it.copy(overview = v.overview, goals = goalsFrom(v), spending = it.spending.copy(loaded = false)) }
     }
 
     /** Lazily load the Wallets tab (funds + transfers) the first time it's shown, or when forced. */

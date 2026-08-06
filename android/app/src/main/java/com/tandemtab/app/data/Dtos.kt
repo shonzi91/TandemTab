@@ -394,6 +394,34 @@ data class SavingBucketDto(
     val investmentProjected: Double? = null,
     val monthlySetAside: Double? = null,
     val targetShortfall: Double? = null,
+    // --- edit-form prefill ---------------------------------------------------------------------------
+    // Saving a bucket is a full overwrite, so the edit sheet has to send back everything it isn't editing.
+    // `forecast` carries the debt/investment knobs; the four flat fields below carry the rest.
+    val forecast: SavingBucketForecastDto? = null,
+    val costs: List<PlannedCostDto>? = null,
+    val debtInstallmentDay: Int? = null,
+    val debtPaymentDriven: Boolean = false,
+    val fundId: String? = null,
+    val thresholdPercent: Double = 80.0,
+    val notifyOnMilestone: Boolean = false,
+    val initialAmount: Double = 0.0,
+)
+
+/** The raw projection knobs behind a debt / investment bucket — what the edit form prefills from (the flat
+ *  `debtBalance` above is walked forward to today, whereas `debtStoredBalance` is the anchored figure). */
+@Serializable
+data class SavingBucketForecastDto(
+    val demonstratedPace: Double? = null,
+    val plannedContribution: Double? = null,
+    val investmentRatePercent: Double? = null,
+    val investmentTermYears: Double? = null,
+    val investmentCompoundsPerYear: Int? = null,
+    val debtStoredBalance: Double? = null,
+    val debtOriginalBalance: Double? = null,
+    val debtRatePercent: Double? = null,
+    val debtInstallment: Double? = null,
+    val debtBalanceAsOf: String? = null,
+    val debtStartDate: String? = null,
 )
 
 @Serializable
@@ -431,6 +459,54 @@ data class SpendFromSavingsRequest(
     val date: String,
     val fundId: String,
     val note: String? = null,
+)
+
+/** One planned future cost of an expenses (sinking) fund. Pure planning data — it never moves money; the server
+ *  turns the list into the monthly set-aside. `cadence` is "one-off"/"monthly"/"quarterly"/"yearly"; `dueDate`
+ *  (ISO yyyy-MM-dd) applies only to a one-off. */
+@Serializable
+data class PlannedCostDto(
+    val label: String,
+    val amount: Double,
+    val cadence: String,
+    val dueDate: String? = null,
+)
+
+/**
+ * Create (POST /savings/buckets) or reconfigure (PUT /savings/buckets/{id}) a bucket — one upsert covering all
+ * four kinds. The server picks the kind from the flags in priority order: `isDebt` → `isInvestment` →
+ * `isExpensesFund` → otherwise an ordinary goal. Send only the fields for the kind being saved; the rest keep
+ * their defaults.
+ *
+ * `initialAmount` is honoured only while the account has a single period (money you already had before using
+ * the app), which is why the sheet hides the field otherwise rather than sending a value that's silently dropped.
+ */
+@Serializable
+data class SaveSavingBucketRequest(
+    val name: String,
+    val icon: String? = null,
+    val goalAmount: Double? = null,
+    val thresholdPercent: Double = 80.0,
+    val notifyOnMilestone: Boolean = false,
+    val initialAmount: Double = 0.0,
+    val isDebt: Boolean = false,
+    val debtBalance: Double = 0.0,
+    val debtRate: Double = 0.0,
+    val debtInstallment: Double = 0.0,
+    // Lets the client send the "original principal + already paid" input mode (original >= current); null keeps
+    // the default of original = current balance, which reads as 0% paid off.
+    val debtOriginalBalance: Double? = null,
+    val debtInstallmentDay: Int? = null,
+    val debtStartDate: String? = null,   // ISO yyyy-MM-dd; makes "interest paid so far" exact instead of estimated
+    val plannedContribution: Double? = null,
+    val isInvestment: Boolean = false,
+    val invRate: Double = 0.0,
+    val invTermYears: Double = 0.0,
+    val invCompounds: Int = 12,
+    val fundId: String? = null,
+    val costs: List<PlannedCostDto>? = null,
+    val isExpensesFund: Boolean = false,
+    val debtPaymentDriven: Boolean = false,
 )
 
 /** What a savings money-movement returns: version, the row id, and a refreshed Savings view to reconcile. */

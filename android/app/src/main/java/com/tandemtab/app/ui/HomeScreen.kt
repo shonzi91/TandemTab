@@ -171,6 +171,10 @@ fun HomeScreen(
     onPrepareSpend: () -> Unit,
     onAllocate: (String, Double, String, String?, () -> Unit) -> Unit,
     onSpendFromSavings: (String, String, String, Double, String, String?, () -> Unit) -> Unit,
+    onPrepareBucket: () -> Unit,
+    onSaveBucket: (String?, com.tandemtab.app.data.SaveSavingBucketRequest, () -> Unit) -> Unit,
+    onArchiveBucket: (String, Boolean, () -> Unit) -> Unit,
+    onDeleteBucket: (String, () -> Unit) -> Unit,
 ) {
     val tandem = LocalTandemColors.current
     val scope = rememberCoroutineScope()
@@ -293,6 +297,13 @@ fun HomeScreen(
                             onPrepareSpend = onPrepareSpend,
                             onAllocate = onAllocate,
                             onSpend = onSpendFromSavings,
+                            // The starting-balance field is setup-only (the server drops it once a second period
+                            // exists), so it's shown only while the account still has one — mirrors the web.
+                            canSetInitial = state.periods.size <= 1,
+                            onPrepareBucket = onPrepareBucket,
+                            onSaveBucket = onSaveBucket,
+                            onArchiveBucket = onArchiveBucket,
+                            onDeleteBucket = onDeleteBucket,
                         )
                         NavDest.Wallets -> WalletsScreen(
                             wallets = state.wallets,
