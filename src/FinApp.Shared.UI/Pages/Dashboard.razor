@@ -7686,6 +7686,17 @@ else
                 if (!displayFreeOk || (s.Title.Code != InsightCodes.SigDeficitSavingsTitle && s.Title.Code != InsightCodes.SigDeficitIncomeTitle))
                     list.Add(new Notification("alert", N(s.Title), N(s.Desc), null, null, null, null, true));
             }
+
+        // F7: once the week-recap card is dismissed from Home it isn't gone, it's tucked into the bell — the ✕ should
+        // hide the clutter, not destroy the week. Strictly the mirror of the Home card's gate (WeekRecapToShow): shown
+        // here ONLY while dismissed for the current recap week, so the recap lives in exactly one place at a time and
+        // the bell never echoes a card that's still on Home. No dismiss of its own — it self-clears on Monday, when
+        // the new week's From no longer matches the stored flag and the card returns to Home.
+        if (_recapLoaded && State.WeeklyRecap() is { IsEmpty: false } dismissedRecap && _recapDismissed == dismissedRecap.From)
+            list.Add(new Notification("calendar", Loc["Your week in money"],
+                $"{Loc["Spent"]} {Fmt(dismissedRecap.Spent)} · {dismissedRecap.From.ToString("d MMM")} – {dismissedRecap.To.ToString("d MMM")}",
+                Loc["See the whole week"], () => _modal = Modal.WeekRecap, null, null, false));
+
         return list;
     }
 
