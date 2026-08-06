@@ -7,9 +7,17 @@ Both verified end-to-end on the emulator against a real seeded account **in both
 Two findings outlive the features: Material's `error` slot was the **warning amber**, so every destructive control
 in the app — including **Delete account** — was the colour of "you're over budget"; and the bucket upsert is a full
 overwrite whose read model was **missing four of the fields it overwrites**, so a rename would have wiped them.
-⚠️ **NOT deployed** — the bucket-prefill server change is in the tree. Prior context below is Session 90.)
+**DEPLOYED as `finapp-00279-jrf`.** Prior context below is Session 90.)
 
-## Session 91 (2026-08-06) — **Deployed S90; two R2 L-rows closed (periods, bucket CRUD) + a danger-colour fix. ⚠️ the bucket server change is NOT deployed.**
+## Session 91 (2026-08-06) — **Two R2 L-rows closed (periods, bucket CRUD) + a danger-colour fix. Live: `finapp-00279-jrf`.**
+
+### Two deploys this session
+- **`finapp-00278-vkl`** (image `16a9a16`) — Session 90's Home-hero overview fields + `MoneyText`.
+- **`finapp-00279-jrf`** (image `1d25a9c`) — this session's bucket-prefill fields on `SavingBucketDto`. Traffic
+  forced `--to-latest` both times, **5 `secretKeyRef`s**, run URL + tandemtab.com 200, **no WARNING+ log entries**
+  on the new revision. ⚠️ The authed `/savings` payload was **not** re-checked against production — that would
+  mean registering a real prod account; it was verified against a local server running the same commit, and two
+  server tests pin the round-trip.
 
 ### Deployed Session 90 (`finapp-00278-vkl`)
 - Image `finapp:16a9a16`, traffic forced `--to-latest`, **5 `secretKeyRef`s**, both the run URL and tandemtab.com
