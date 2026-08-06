@@ -1150,12 +1150,19 @@ html.dark .brk-note { color: #8b96a4; }
 .day-nav { display: flex; align-items: center; gap: 6px; }
 .day-nav input[type=date] { padding: 5px 8px; border: 1px solid #dde6e1; border-radius: 8px; font-size: .82rem; }
 .date-sep {
-    display: block; width: 100%; text-align: left; background: none; border: none; cursor: pointer;
+    display: flex; align-items: baseline; gap: 8px; width: 100%; text-align: left; background: none; border: none; cursor: pointer;
     color: #13a06e; font-weight: 700; font-size: .82rem; padding: 14px 4px 4px;
     border-bottom: 1px solid #f1f3f6;
 }
+.date-sep-lbl { flex: 1; min-width: 0; }
+/* The day total, in the amount column: width matches the row .amt so it lines up over the expense amounts, and the
+   pad matches .row-actions so both clear the trailing actions column. Quieter than the date — it's a subtotal. */
+.date-sep-tot { min-width: 88px; text-align: right; white-space: nowrap; color: #6b7684; font-weight: 800; font-variant-numeric: tabular-nums; }
+.date-sep-pad { min-width: 58px; flex-shrink: 0; }
 .date-sep:first-child { padding-top: 4px; }
-.date-sep:hover { color: #0e7c55; text-decoration: underline; }
+.date-sep:hover { color: #0e7c55; }
+.date-sep:hover .date-sep-lbl { text-decoration: underline; }
+html.dark .date-sep-tot { color: #93a0b0; }
 
 .exp-arrow { color: #b9bdd0; font-weight: 600; padding: 0 1px; }
 .fund-ico { font-size: .92em; }

@@ -1432,7 +1432,13 @@ else
                 {
                     @foreach (var grp in shown.GroupBy(e => e.Date).OrderByDescending(g => g.Key))
                     {
-                        <button class="date-sep" @onclick="() => GoToDay(grp.Key)">@DateSepLabel(grp.Key)</button>
+                        <button class="date-sep" @onclick="() => GoToDay(grp.Key)">
+                            <span class="date-sep-lbl">@DateSepLabel(grp.Key)</span>
+                            @* The day's spend, in the amount column — a running read of "what did today cost". Widths
+                               match the row's amt (88) + actions (58) so it sits directly over the expense amounts. *@
+                            <span class="date-sep-tot">@Fmt(State.Money(grp.Sum(e => e.Amount.Amount)))</span>
+                            <span class="date-sep-pad" aria-hidden="true"></span>
+                        </button>
                         <ul class="list list-even">@foreach (var e in grp) { @row(e) }</ul>
                     }
                 }
