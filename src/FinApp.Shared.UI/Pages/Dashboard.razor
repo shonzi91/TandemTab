@@ -2773,6 +2773,26 @@ else
                             </div>
                         </div>
 
+                        @* The Goals could-have teaser, on a weekly basis: for someone not using round-ups, what THIS
+                           week's spending would have skimmed at each step. A Pro what-if (free sees the locked bar);
+                           hidden for adopters, whose actual figure already rides the Set-aside tile above. *@
+                        @if (!State.RoundUpsOn)
+                        {
+                            var rw1 = State.CouldHaveSavedViaRoundUps(wr.From, wr.To, 1m);
+                            var rw5 = State.CouldHaveSavedViaRoundUps(wr.From, wr.To, 5m);
+                            @if (rw5 > 0m)
+                            {
+                                @if (Gate.Allows(PlanFeatures.Insights))
+                                {
+                                    <div class="brk-roundup brk-roundup-could" style="margin:2px 0 8px"><Icon Name="coins" /> @string.Format(Loc["Round-ups would have set aside {0} (to the nearest 1) or {1} (to the nearest 5) this week — switch them on in Edit account"], Fmt(State.Money(rw1)), Fmt(State.Money(rw5)))</div>
+                                }
+                                else
+                                {
+                                    <ProLock Feature="@PlanFeatures.Insights" Bar="true" Label="@Loc["See what round-ups could set aside — with Pro"]" />
+                                }
+                            }
+                        }
+
                         @* How OFTEN, not just how much — one big week and forty small days are different habits and
                            a total alone can't tell them apart. The average is only drawn when there's more than one
                            entry, since "average of 1" is the same number twice. *@
