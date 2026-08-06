@@ -130,15 +130,19 @@ data class SpendingViewDto(
 )
 
 /** The signed-in user (GET /me). `provider` is "google"/"facebook" for external sign-in (no local password), else
- *  null. Other fields (avatar/2FA/verification) are ignored by the client. Server sends "id"; we don't need it. */
+ *  null. `id` tells "you" apart from the other people on a shared account — which member row wears the *you* tag,
+ *  who can't be removed, and who is missing from the hand-over picker. `plan` ("free"/"pro"/"unlimited") decorates
+ *  the Pro entry points; it never gates anything on its own — the server's 402 is the gate. */
 @Serializable
 data class UserDto(
+    val id: String = "",
     val username: String = "",
     val email: String = "",
     val provider: String? = null,
     val avatar: String? = null,               // data-URL profile picture (provider-sourced for external logins)
     val emailVerified: Boolean = false,
     val twoFactorEnabled: Boolean = false,
+    val plan: String = "",
 )
 
 /** POST /auth/2fa/setup — begins enrollment. `qrImage` is a data-URL PNG of the otpauth URI to scan. */
@@ -168,6 +172,35 @@ data class RenameAccountRequest(val name: String)
 /** POST /accounts/{id}/leave — leave a shared account. `newOwnerUserId` is required only when the owner leaves. */
 @Serializable
 data class LeaveAccountRequest(val newOwnerUserId: String? = null)
+
+// --- Sharing: invitations + membership ----------------------------------------------------------------
+// The hero Pro feature, and the last thing a phone-only user couldn't do. Inviting is gated server-side
+// (PlanFeatures.Share → 402); accepting never is, since one Pro on the account covers everyone on it.
+
+/** POST /accounts/{id}/invitations — invite an existing user by username. Any contributor may send one. */
+@Serializable
+data class CreateInvitationRequest(val username: String)
+
+/** GET /invitations/pending — an invitation waiting on the signed-in user. Only pending ones are ever returned,
+ *  so `status` is informational; `accountName` and `invitedByUsername` are what the card actually shows. */
+@Serializable
+data class InvitationDto(
+    val id: String,
+    val accountId: String,
+    val accountName: String = "",
+    val invitedByUserId: String = "",
+    val invitedByUsername: String = "",
+    val status: String = "",
+    val createdAt: String = "",
+)
+
+/** POST /invitations/{id}/accept — the account the caller has just joined, so the client can switch to it. */
+@Serializable
+data class AcceptInvitationDto(val accountId: String = "")
+
+/** POST /accounts/{id}/transfer-ownership — hand the account to another current member (the caller stays on). */
+@Serializable
+data class TransferOwnershipRequest(val newOwnerUserId: String)
 
 // --- Periods: the top-bar label + the lifecycle writes (roll forward / reschedule / undo) --------------
 

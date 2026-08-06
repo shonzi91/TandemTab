@@ -29,6 +29,7 @@ import androidx.compose.material.icons.automirrored.rounded.Logout
 import androidx.compose.material.icons.rounded.DeleteForever
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Repeat
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -37,9 +38,13 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -197,15 +202,20 @@ fun ProfileSheet(
 
 // ── Account ─────────────────────────────────────────────────────────────────────────────────────────
 
-/** The Account actions sheet (the ⋯ by the account name), mirroring the web account menu: rename (owner), members,
- *  Recurring, and the destructive Leave / Delete. */
+/** The Account actions sheet (the ⋯ by the account name), mirroring the web account menu: rename (owner), the
+ *  People block (invite + who's on the account + the owner's per-member actions), Recurring, and the destructive
+ *  Leave / Delete. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AccountSheet(
     state: UiState,
     onRenameAccount: (String, () -> Unit) -> Unit,
     onOpenRecurring: () -> Unit,
-    onLeave: () -> Unit,
+    onInvite: (String) -> Unit,
+    onClearInviteResult: () -> Unit,
+    onRemoveMember: (String, () -> Unit) -> Unit,
+    onTransferOwnership: (String, () -> Unit) -> Unit,
+    onLeave: (String?) -> Unit,
     onDelete: () -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -217,8 +227,16 @@ fun AccountSheet(
     var accountName by remember(account?.id) { mutableStateOf(account?.name ?: "") }
     var renameSaved by remember { mutableStateOf(false) }
     var confirm by remember { mutableStateOf<String?>(null) }   // "leave" | "delete" | null
+    // Which member's action row is open. Deliberately SEPARATE from handOverTo below: sharing one id between
+    // "whose actions are showing" and "who takes the account over" makes picking a new owner silently expand
+    // that person's row higher up the sheet, which pushes the confirm block back under the Done bar.
+    var expandedMemberId by remember(account?.id) { mutableStateOf<String?>(null) }
+    // Who the owner is handing the account to on the way out (the server refuses to leave one with no owner).
+    var handOverTo by remember(account?.id) { mutableStateOf<String?>(null) }
+    // The member whose Remove is awaiting confirmation (never a delete without a confirm).
+    var removing by remember(account?.id) { mutableStateOf<com.tandemtab.app.data.MemberDto?>(null) }
 
-    SheetShell(sheetState, onDismiss, title = "Account") {
+    SheetShell(sheetState, onDismiss, title = "Account", scrollToEnd = confirm) {
         if (isOwner) {
             SectionTitle("Account name")
             OutlinedTextField(
@@ -238,20 +256,55 @@ fun AccountSheet(
             SectionDivider()
         }
 
-        // Members.
+        // People — who's on the account, plus the invite that puts them there. The owner's per-member actions
+        // (hand over / remove) expand under the tapped row rather than hiding in a menu: two actions don't earn
+        // a menu, and an inline row keeps the person they apply to on screen while you read them.
         val members = account?.members ?: emptyList()
-        if (members.isNotEmpty()) {
-            SectionTitle("Members")
+        if (account != null) {
+            SectionTitle("People")
             members.forEach { m ->
-                Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.size(30.dp).clip(CircleShape).background(tandem.savingsTileBg), contentAlignment = Alignment.Center) {
-                        Text(m.displayName.trim().firstOrNull()?.uppercase() ?: "?", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                val isMe = m.userId == state.myUserId
+                val isAccountOwner = m.userId == account.ownerUserId
+                val actionable = isOwner && !isMe
+                val expanded = expandedMemberId == m.userId
+                Column {
+                    Row(
+                        Modifier.fillMaxWidth()
+                            .then(if (actionable) Modifier.clickable { expandedMemberId = if (expanded) null else m.userId } else Modifier)
+                            .padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        MemberAvatar(m.displayName, state.sharing.avatars[m.userId])
+                        Spacer(Modifier.width(10.dp))
+                        Text(m.displayName.ifBlank { "—" }, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f))
+                        if (isMe) PersonTag("you")
+                        if (isAccountOwner) PersonTag("owner")
+                        if (actionable) {
+                            Spacer(Modifier.width(6.dp))
+                            Icon(TandemIcons.Dots, contentDescription = "Manage ${m.displayName}", tint = tandem.muted, modifier = Modifier.size(18.dp))
+                        }
                     }
-                    Spacer(Modifier.width(10.dp))
-                    Text(m.displayName.ifBlank { "—" }, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f))
-                    if (m.userId == account?.ownerUserId) Text("owner", color = tandem.muted, fontSize = 11.sp)
+                    if (expanded) {
+                        Row(Modifier.fillMaxWidth().padding(start = 40.dp, bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            OutlinedButton(
+                                onClick = { onTransferOwnership(m.userId) { expandedMemberId = null } },
+                                enabled = !state.sharing.busy, modifier = Modifier.weight(1f),
+                            ) { Text("Make owner", fontSize = 13.sp) }
+                            OutlinedButton(
+                                onClick = { removing = m; expandedMemberId = null },
+                                enabled = !state.sharing.busy, modifier = Modifier.weight(1f),
+                            ) { Text("Remove", color = MaterialTheme.colorScheme.error, fontSize = 13.sp) }
+                        }
+                    }
                 }
             }
+
+            InviteRow(
+                proLocked = state.shareIsProLocked,
+                sharing = state.sharing,
+                onInvite = onInvite,
+                onEdited = onClearInviteResult,
+            )
             SectionDivider()
         }
 
@@ -260,29 +313,55 @@ fun AccountSheet(
 
         settings.error?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 13.sp, modifier = Modifier.padding(top = 8.dp)) }
 
-        if (!isOwner) {
-            ActionRow("Leave account", TandemIcons.Logout, tint = MaterialTheme.colorScheme.error) { confirm = "leave" }
-        } else {
+        // An OWNER can leave too, as long as someone is left to take over — the server refuses to orphan an
+        // account, so the hand-over picker below is part of the request, not a courtesy. A sole owner has no one
+        // to hand it to; for them "leave" and "delete" are the same act, and Delete already says so plainly.
+        val others = state.otherMembers
+        val ownerCanLeave = isOwner && others.isNotEmpty()
+        if (!isOwner || ownerCanLeave) {
+            ActionRow("Leave account", TandemIcons.Logout, tint = MaterialTheme.colorScheme.error) {
+                confirm = "leave"; handOverTo = null; expandedMemberId = null
+            }
+        }
+        if (isOwner) {
             ActionRow("Delete account", TandemIcons.Trash, tint = MaterialTheme.colorScheme.error) { confirm = "delete" }
         }
 
         if (confirm != null) {
             val leaving = confirm == "leave"
+            val needsHandOver = leaving && ownerCanLeave
             Spacer(Modifier.height(8.dp))
             Column(
                 Modifier.fillMaxWidth().background(tandem.alertBg, RoundedCornerShape(12.dp)).border(1.dp, tandem.alertBorder, RoundedCornerShape(12.dp)).padding(14.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 Text(
-                    if (leaving) "Leave “${account?.name}”? You'll lose access unless you're invited back."
-                    else "Delete “${account?.name}”? It's removed after a 30-day grace period.",
+                    when {
+                        needsHandOver -> "Leave “${account?.name}”? You own it, so hand it to someone else before you go."
+                        leaving -> "Leave “${account?.name}”? You'll lose access unless you're invited back."
+                        else -> "Delete “${account?.name}”? It's removed after a 30-day grace period."
+                    },
                     color = MaterialTheme.colorScheme.onSurface, fontSize = 13.sp,
                 )
+                if (needsHandOver) {
+                    others.forEach { m ->
+                        val picked = handOverTo == m.userId
+                        Row(
+                            Modifier.fillMaxWidth().clickable { handOverTo = m.userId }.padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            RadioButton(selected = picked, onClick = { handOverTo = m.userId })
+                            Text(m.displayName.ifBlank { "—" }, color = MaterialTheme.colorScheme.onSurface, fontSize = 14.sp)
+                        }
+                    }
+                }
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     OutlinedButton(onClick = { confirm = null }, modifier = Modifier.weight(1f), enabled = !settings.busy) { Text("Cancel") }
                     Button(
-                        onClick = { if (leaving) onLeave() else onDelete() },
-                        enabled = !settings.busy,
+                        onClick = { if (leaving) onLeave(handOverTo) else onDelete() },
+                        // Greyed rather than hidden while nobody is picked: the button explains what's missing by
+                        // sitting under the list it wants an answer from.
+                        enabled = !settings.busy && (!needsHandOver || handOverTo != null),
                         modifier = Modifier.weight(1f),
                         colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
                     ) {
@@ -293,6 +372,148 @@ fun AccountSheet(
             }
         }
     }
+
+    removing?.let { target ->
+        RemoveMemberDialog(
+            member = target,
+            sharing = state.sharing,
+            onDismiss = { removing = null },
+            onConfirm = { onRemoveMember(target.userId) { removing = null } },
+        )
+    }
+}
+
+/** Confirm removing someone from the account. Says what survives them (their contributions and expenses) —
+ *  without that, "remove" reads like it might take the money history with it. */
+@Composable
+private fun RemoveMemberDialog(
+    member: com.tandemtab.app.data.MemberDto,
+    sharing: com.tandemtab.app.SharingUi,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = { if (!sharing.busy) onDismiss() },
+        title = { Text("Remove ${member.displayName}?") },
+        text = {
+            Column {
+                Text("They lose access to this account. Their recorded contributions and expenses stay.")
+                sharing.error?.let {
+                    Spacer(Modifier.height(10.dp))
+                    Text(it, color = MaterialTheme.colorScheme.error, fontSize = 13.sp)
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = onConfirm,
+                enabled = !sharing.busy,
+                colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+            ) {
+                if (sharing.busy) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onError)
+                else Text("Remove")
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss, enabled = !sharing.busy) { Text("Cancel") } },
+    )
+}
+
+/** The invite control: a "+ Invite someone" row that opens a username field in place. Wears the Pro crown when
+ *  the plan doesn't include sharing — but stays fully usable, because the crown is decoration and the server's
+ *  402 is the gate. A client that decided this for itself would lock out a paying user on a stale plan string. */
+@Composable
+private fun InviteRow(
+    proLocked: Boolean,
+    sharing: com.tandemtab.app.SharingUi,
+    onInvite: (String) -> Unit,
+    onEdited: () -> Unit,
+) {
+    val tandem = LocalTandemColors.current
+    var open by remember { mutableStateOf(false) }
+    var username by remember { mutableStateOf("") }
+
+    // Clear the field once the invitation has actually gone, so a second invite starts empty.
+    LaunchedEffect(sharing.invited) { if (sharing.invited != null) username = "" }
+
+    if (!open) {
+        Row(
+            Modifier.fillMaxWidth().clickable { open = true }.padding(vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(TandemIcons.Plus, contentDescription = null, tint = tandem.positive, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(10.dp))
+            Text("Invite someone", color = tandem.positive, fontWeight = FontWeight.SemiBold)
+            if (proLocked) {
+                Spacer(Modifier.width(8.dp))
+                Icon(TandemIcons.Crown, contentDescription = "Part of Pro", tint = tandem.warn, modifier = Modifier.size(15.dp))
+            }
+        }
+    } else {
+        Spacer(Modifier.height(4.dp))
+        Text(
+            "Enter the username of someone who already has a TandemTab account. They'll get a prompt to accept; " +
+                "once they do, they can edit everything except deleting the account.",
+            color = tandem.muted, fontSize = 12.sp,
+        )
+        Spacer(Modifier.height(8.dp))
+        OutlinedTextField(
+            value = username,
+            onValueChange = { username = it; onEdited() },
+            label = { Text("Username") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        sharing.invited?.let {
+            Text("Invitation sent to $it.", color = tandem.positive, fontSize = 13.sp, modifier = Modifier.padding(top = 6.dp))
+        }
+        sharing.error?.let {
+            Text(it, color = MaterialTheme.colorScheme.error, fontSize = 13.sp, modifier = Modifier.padding(top = 6.dp))
+        }
+        Spacer(Modifier.height(8.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            OutlinedButton(
+                onClick = { open = false; username = ""; onEdited() },
+                modifier = Modifier.weight(1f), enabled = !sharing.busy,
+            ) { Text("Cancel") }
+            Button(
+                onClick = { onInvite(username) },
+                enabled = !sharing.busy && username.isNotBlank(),
+                modifier = Modifier.weight(1f),
+            ) {
+                if (sharing.busy) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
+                else Text("Send invite")
+            }
+        }
+    }
+}
+
+/** A member's profile picture, falling back to their initial. Shared by the People list and the invitations card. */
+@Composable
+internal fun MemberAvatar(displayName: String, dataUrl: String?, size: androidx.compose.ui.unit.Dp = 30.dp) {
+    val tandem = LocalTandemColors.current
+    val bitmap = remember(dataUrl) { decodeDataUrlImage(dataUrl) }
+    Box(Modifier.size(size).clip(CircleShape).background(tandem.savingsTileBg), contentAlignment = Alignment.Center) {
+        if (bitmap != null) {
+            Image(bitmap, contentDescription = null, modifier = Modifier.size(size).clip(CircleShape), contentScale = ContentScale.Crop)
+        } else {
+            Text(
+                displayName.trim().firstOrNull()?.uppercase() ?: "?",
+                color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold, fontSize = (size.value / 2.3f).sp,
+            )
+        }
+    }
+}
+
+/** The small "you" / "owner" chip on a member row. Uses the tile background, not `hero`: hero is the canvas
+ *  tint, so in dark it is the same colour as the sheet and the chip reads as bare text on one theme only. */
+@Composable
+private fun PersonTag(text: String) {
+    val tandem = LocalTandemColors.current
+    Text(
+        text,
+        color = tandem.muted, fontSize = 11.sp, fontWeight = FontWeight.SemiBold,
+        modifier = Modifier.padding(start = 6.dp).background(tandem.savingsTileBg, RoundedCornerShape(6.dp)).padding(horizontal = 6.dp, vertical = 2.dp),
+    )
 }
 
 // ── Two-factor ──────────────────────────────────────────────────────────────────────────────────────
@@ -431,12 +652,27 @@ private fun SheetShell(
     sheetState: androidx.compose.material3.SheetState,
     onDismiss: () -> Unit,
     title: String,
+    // Set to a non-null value when the body reveals a block at its foot (a confirm panel). The sheet's own Done
+    // bar is a sibling of the scrolling body, so anything that grows at the bottom lands UNDER it — the exact
+    // shape of the two period-sheet bugs in Session 91. Scrolling to it is the fix; hoping the user finds it
+    // isn't, since the buttons they need are the part that's hidden.
+    scrollToEnd: Any? = null,
     body: @Composable () -> Unit,
 ) {
+    val scroll = rememberScrollState()
+    LaunchedEffect(scrollToEnd) {
+        if (scrollToEnd == null) return@LaunchedEffect
+        // The new block hasn't been measured on this frame, so maxValue is still the pre-growth one. Wait a
+        // frame and scroll; do it twice, because a picker's rows settle in a second pass.
+        withFrameNanos { }
+        scroll.animateScrollTo(scroll.maxValue)
+        withFrameNanos { }
+        scroll.animateScrollTo(scroll.maxValue)
+    }
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState, containerColor = MaterialTheme.colorScheme.surface) {
         Box(Modifier.fillMaxWidth().fillMaxHeight()) {
             Column(
-                Modifier.fillMaxWidth().imePadding().padding(horizontal = 18.dp).verticalScroll(rememberScrollState()).padding(bottom = 92.dp),
+                Modifier.fillMaxWidth().imePadding().padding(horizontal = 18.dp).verticalScroll(scroll).padding(bottom = 92.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 Text(title, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.padding(top = 4.dp, bottom = 4.dp))

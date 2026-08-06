@@ -41,6 +41,7 @@ import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.automirrored.rounded.ReceiptLong
 import androidx.compose.material.icons.automirrored.rounded.TrendingUp
+import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -49,6 +50,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.SnackbarHost
@@ -130,8 +132,14 @@ fun HomeScreen(
     onCancelTwoFactorSetup: () -> Unit,
     onDismissRecoveryCodes: () -> Unit,
     onRenameAccount: (String, () -> Unit) -> Unit,
-    onLeaveAccount: (() -> Unit) -> Unit,
+    onLeaveAccount: (String?, () -> Unit) -> Unit,
     onDeleteAccount: (() -> Unit) -> Unit,
+    onInvite: (String) -> Unit,
+    onClearInviteResult: () -> Unit,
+    onRemoveMember: (String, () -> Unit) -> Unit,
+    onTransferOwnership: (String, () -> Unit) -> Unit,
+    onAcceptInvitation: (String) -> Unit,
+    onDeclineInvitation: (String) -> Unit,
     onLoadSpending: (Boolean) -> Unit,
     onLoadGoals: (Boolean) -> Unit,
     onLoadWallets: (Boolean) -> Unit,
@@ -277,6 +285,8 @@ fun HomeScreen(
                             onOpenRecurring = { showRecurring = true },
                             onOpenHealth = { showHealth = true },
                             onOpenRunway = { showRunway = true },
+                            onAcceptInvitation = onAcceptInvitation,
+                            onDeclineInvitation = onDeclineInvitation,
                         )
                         NavDest.Spending -> SpendingScreen(
                             spending = state.spending,
@@ -363,7 +373,11 @@ fun HomeScreen(
                 state = state,
                 onRenameAccount = onRenameAccount,
                 onOpenRecurring = { showAccount = false; showRecurring = true },
-                onLeave = { onLeaveAccount { showAccount = false } },
+                onInvite = onInvite,
+                onClearInviteResult = onClearInviteResult,
+                onRemoveMember = onRemoveMember,
+                onTransferOwnership = onTransferOwnership,
+                onLeave = { newOwner -> onLeaveAccount(newOwner) { showAccount = false } },
                 onDelete = { onDeleteAccount { showAccount = false } },
                 onDismiss = { showAccount = false },
             )
@@ -435,9 +449,15 @@ private fun HomePage(
     onOpenRecurring: () -> Unit,
     onOpenHealth: () -> Unit,
     onOpenRunway: () -> Unit,
+    onAcceptInvitation: (String) -> Unit,
+    onDeclineInvitation: (String) -> Unit,
 ) {
     val tandem = LocalTandemColors.current
     val overview = state.overview
+    // Invitations sit ABOVE the money, and outside the branches below, deliberately: an invitation can arrive
+    // before the user has any account at all, and the "nothing to show" state is exactly when being told
+    // someone wants to share theirs matters most.
+    InvitationsCard(state.sharing, onAcceptInvitation, onDeclineInvitation)
     when {
         state.busy && overview == null -> Box(
             Modifier.fillMaxWidth().height(200.dp),
@@ -520,6 +540,66 @@ private fun BarItem(dest: NavDest, current: NavDest, modifier: Modifier, onSelec
         Icon(dest.icon, contentDescription = dest.label, tint = tint)
         Spacer(Modifier.height(3.dp))
         Text(dest.label, fontSize = 11.sp, color = tint, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal)
+    }
+}
+
+/**
+ * "X invited you to Y" — the invitee's half of sharing, and the only way onto someone else's account from a
+ * phone. Accepting switches straight to the account joined (see the ViewModel), so the answer to "what just
+ * happened" is the screen itself.
+ *
+ * Both buttons are full-width and labelled rather than a ✓/✕ pair: declining is not undoable from here (the
+ * invitation stops being pending and only the sender can re-issue it), and a one-character control is a poor
+ * place to learn that.
+ */
+@Composable
+private fun InvitationsCard(
+    sharing: com.tandemtab.app.SharingUi,
+    onAccept: (String) -> Unit,
+    onDecline: (String) -> Unit,
+) {
+    val tandem = LocalTandemColors.current
+    if (sharing.invitations.isEmpty()) return
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.padding(bottom = 14.dp)) {
+        sharing.invitations.forEach { inv ->
+            Column(
+                Modifier.fillMaxWidth()
+                    .background(tandem.savingsTileBg, RoundedCornerShape(14.dp))
+                    .border(1.dp, tandem.hairline, RoundedCornerShape(14.dp))
+                    .padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    MemberAvatar(inv.invitedByUsername, null, size = 34.dp)
+                    Spacer(Modifier.width(10.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("You're invited", fontSize = 11.sp, fontWeight = FontWeight.Bold,
+                            letterSpacing = 1.1.sp, color = tandem.muted)
+                        Text(
+                            "${inv.invitedByUsername} invited you to ${inv.accountName}",
+                            fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                    }
+                }
+                sharing.error?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 12.sp) }
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OutlinedButton(
+                        onClick = { onDecline(inv.id) },
+                        enabled = !sharing.busy,
+                        modifier = Modifier.weight(1f),
+                    ) { Text("Decline") }
+                    Button(
+                        onClick = { onAccept(inv.id) },
+                        enabled = !sharing.busy,
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        if (sharing.busy) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
+                        else Text("Accept")
+                    }
+                }
+            }
+        }
     }
 }
 

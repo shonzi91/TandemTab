@@ -72,6 +72,13 @@ data class UiState(
     val googleEnabled: Boolean = false,
     val username: String = "",
     val email: String = "",
+    // Who "you" are on a shared account (from /me): decides the *you* tag, who can't be removed, and who is left
+    // out of the hand-over picker. Blank until /me lands, which is why every use falls back to showing nothing
+    // rather than to showing the wrong person.
+    val myUserId: String = "",
+    // The resolved plan ("free"/"pro"/"unlimited"). Decoration only — the crown next to Invite. The server's 402
+    // is the actual gate, so a stale plan here can never wrongly allow or wrongly block anything.
+    val plan: String = "",
     // External sign-in provider ("google"/"facebook") for the current user, or null for a local password account.
     val provider: String? = null,
     // Profile: data-URL avatar (provider-sourced for external logins), email-verified + 2FA-enabled flags.
@@ -102,6 +109,7 @@ data class UiState(
     val health: HealthUi = HealthUi(),
     val recurring: RecurringUi = RecurringUi(),
     val settings: SettingsUi = SettingsUi(),
+    val sharing: SharingUi = SharingUi(),
     val twoFactor: TwoFactorUi = TwoFactorUi(),
     val bank: BankUi = BankUi(),
     // The expense the FAB's "Edit last" is currently editing (null = the add sheet is in add mode / closed).
@@ -111,6 +119,15 @@ data class UiState(
 ) {
     val selectedAccount: AccountSummaryDto?
         get() = accounts.firstOrNull { it.id == selectedAccountId }
+
+    /** Everyone on the open account except you — the people who can be removed, handed the account, or left it to. */
+    val otherMembers: List<com.tandemtab.app.data.MemberDto>
+        get() = selectedAccount?.members.orEmpty().filter { it.userId != myUserId }
+
+    /** Whether inviting is out of this plan's reach, i.e. whether to wear the crown. Only "free" is gated; an
+     *  unknown/absent plan is treated as ungated, so a failed /me never invents a paywall that isn't there. */
+    val shareIsProLocked: Boolean
+        get() = plan == "free"
 
     /** The period being looked at right now (the open one unless the user has paged back). */
     val viewedPeriod: PeriodRowDto?
@@ -226,6 +243,23 @@ data class SettingsUi(
     val busy: Boolean = false,
     val error: String? = null,
     val passwordChanged: Boolean = false,
+)
+
+/**
+ * Sharing: the invitations waiting on this user, plus the write-flight state for every membership action
+ * (invite / accept / decline / remove / hand over). One busy flag covers them because they're all raised from
+ * the same two surfaces and only one can be in flight at a time.
+ *
+ * `avatars` is the account's profile pictures by user id — fetched separately from the account summary, and
+ * allowed to be empty (a member list of initials is fine; a failed picture must never empty the list).
+ */
+data class SharingUi(
+    val invitations: List<com.tandemtab.app.data.InvitationDto> = emptyList(),
+    val avatars: Map<String, String> = emptyMap(),
+    val busy: Boolean = false,
+    val error: String? = null,
+    // Set after a successful invite so the sheet can say who it went to, cleared when the field is edited again.
+    val invited: String? = null,
 )
 
 /** Lazy-loaded state for the Wallets tab (funds + this period's transfers). Also carries the contribution-category
@@ -416,14 +450,16 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     overview = overview,
                 )
             }
-            selected?.let { loadPeriodLabel(it.id); loadForecast(it.id) }
+            selected?.let { loadPeriodLabel(it.id); loadForecast(it.id); loadMemberAvatars(it.id) }
             // Identity for the profile sheet (best-effort — the sheet still works from the stored username).
             runCatching { api.me() }.getOrNull()?.let { me ->
                 _state.update { it.copy(
+                    myUserId = me.id.ifBlank { it.myUserId }, plan = me.plan,
                     username = me.username.ifBlank { it.username }, email = me.email, provider = me.provider,
                     avatar = me.avatar, emailVerified = me.emailVerified, twoFactorEnabled = me.twoFactorEnabled,
                 ) }
             }
+            loadInvitations()
         } catch (e: Exception) {
             _state.update { it.copy(busy = false, error = e.message ?: "Couldn't load your accounts.") }
         }
@@ -622,6 +658,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 runway = null, targets = emptyList(),
                 spending = SpendingUi(), goals = GoalsUi(), wallets = WalletsUi(), health = HealthUi(), recurring = RecurringUi(),
                 bank = BankUi(),
+                // Faces belong to the account that was open, not to this one — but the invitations are the user's
+                // own and outlive any account switch, so they stay.
+                sharing = it.sharing.copy(avatars = emptyMap(), error = null, invited = null),
             )
         }
         viewModelScope.launch {
@@ -630,6 +669,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 _state.update { it.copy(busy = false, overview = overview) }
                 loadPeriodLabel(accountId)
                 loadForecast(accountId)
+                loadMemberAvatars(accountId)
             } catch (e: Exception) {
                 _state.update { it.copy(busy = false, error = e.message ?: "Couldn't load that account.") }
             }
@@ -1358,9 +1398,15 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /** Leave a shared account (non-owner) or delete it (owner). Both drop the account, so reload Home afterwards —
-     *  which re-selects another account, or lands on the empty state if it was the last one. [onDone] fires on success. */
-    fun leaveAccount(onDone: () -> Unit) = accountRemoval(onDone) { api.leaveAccount(it) }
+    /** Leave a shared account or delete it (owner). Both drop the account, so reload Home afterwards — which
+     *  re-selects another account, or lands on the empty state if it was the last one. [onDone] fires on success.
+     *
+     *  [newOwnerUserId] is required when the OWNER leaves an account someone else is still on: the server refuses
+     *  to orphan an account, so the picker in the confirm block is not a courtesy, it's the request being valid.
+     *  A sole member passes null and the server archives the account instead. */
+    fun leaveAccount(newOwnerUserId: String? = null, onDone: () -> Unit) =
+        accountRemoval(onDone) { api.leaveAccount(it, newOwnerUserId) }
+
     fun deleteAccount(onDone: () -> Unit) = accountRemoval(onDone) { api.deleteAccount(it) }
 
     private fun accountRemoval(onDone: () -> Unit, action: suspend (String) -> Unit) {
@@ -1380,6 +1426,123 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 loadHome()
             } catch (e: Exception) {
                 _state.update { it.copy(settings = it.settings.copy(busy = false, error = e.message ?: "That didn't work.")) }
+            }
+        }
+    }
+
+    // --- Sharing: invite, join, and who's on the account -------------------------------------------------
+    // The last R2 gap that changed what the product IS on a phone: sharing is the feature Pro is sold on, so
+    // while it was missing a phone-only user couldn't reach the thing the paywall charges for. Two halves that
+    // look alike and aren't: the INVITER's half is account-scoped and Pro-gated, the INVITEE's half is neither —
+    // an invitation arrives before there is any membership to hang it off, and may land on a user with no
+    // account at all.
+
+    /** Best-effort: the invitations waiting on this user. Failure leaves the card hidden rather than erroring —
+     *  nobody is blocked by not being told about an invite, and Home has better things to say. */
+    private suspend fun loadInvitations() {
+        val pending = runCatching { api.pendingInvitations() }.getOrNull() ?: return
+        _state.update { it.copy(sharing = it.sharing.copy(invitations = pending)) }
+    }
+
+    /** Best-effort: the account's member profile pictures, by user id. Empty is a fine answer (initials). */
+    private suspend fun loadMemberAvatars(accountId: String) {
+        val avatars = api.memberAvatars(accountId)
+        // Guard against a slow response for an account the user has since switched away from.
+        if (_state.value.selectedAccountId != accountId) return
+        _state.update { it.copy(sharing = it.sharing.copy(avatars = avatars)) }
+    }
+
+    /** Clear the "invitation sent" note + any stale error as soon as the username field is edited again. */
+    fun clearInviteResult() = _state.update { it.copy(sharing = it.sharing.copy(invited = null, error = null)) }
+
+    /**
+     * Invite someone to the open account by username. Deliberately NOT gated client-side on [UiState.plan]: the
+     * crown is decoration, the server's 402 is the gate, and letting the two disagree is how a paying user ends
+     * up locked out by a stale plan string. Every failure here already carries a message worth reading verbatim
+     * (no such user / already a contributor / already invited / "That's a Pro feature").
+     */
+    fun invite(username: String) {
+        val accountId = _state.value.selectedAccountId ?: return
+        val target = username.trim()
+        if (target.isBlank()) {
+            _state.update { it.copy(sharing = it.sharing.copy(error = "Enter the username of the person to invite.")) }
+            return
+        }
+        _state.update { it.copy(sharing = it.sharing.copy(busy = true, error = null, invited = null)) }
+        viewModelScope.launch {
+            try {
+                api.invite(accountId, target)
+                _state.update { it.copy(sharing = it.sharing.copy(busy = false, invited = target)) }
+            } catch (e: Exception) {
+                _state.update { it.copy(sharing = it.sharing.copy(busy = false, error = e.message ?: "Couldn't send that invitation.")) }
+            }
+        }
+    }
+
+    /** Accept an invitation and open the account it was for — landing on someone else's budget without being
+     *  taken to it would leave the user to work out what just happened from an unchanged screen. */
+    fun acceptInvitation(invitationId: String) {
+        _state.update { it.copy(sharing = it.sharing.copy(busy = true, error = null)) }
+        viewModelScope.launch {
+            try {
+                val accountId = api.acceptInvitation(invitationId)
+                val accounts = api.listAccounts()
+                _state.update { st ->
+                    st.copy(
+                        accounts = accounts,
+                        sharing = st.sharing.copy(busy = false, invitations = st.sharing.invitations.filterNot { it.id == invitationId }),
+                    )
+                }
+                // Reuse the normal switch so every tab, the period label and the forecast reload for the new
+                // account exactly as they would from the account picker.
+                if (accountId.isNotBlank() && accounts.any { it.id == accountId }) selectAccount(accountId) else loadHome()
+            } catch (e: Exception) {
+                _state.update { it.copy(sharing = it.sharing.copy(busy = false, error = e.message ?: "Couldn't accept that invitation.")) }
+            }
+        }
+    }
+
+    /** Decline an invitation. The sender isn't notified; it simply stops being pending. */
+    fun declineInvitation(invitationId: String) {
+        _state.update { it.copy(sharing = it.sharing.copy(busy = true, error = null)) }
+        viewModelScope.launch {
+            try {
+                api.declineInvitation(invitationId)
+                _state.update { st ->
+                    st.copy(sharing = st.sharing.copy(busy = false, invitations = st.sharing.invitations.filterNot { it.id == invitationId }))
+                }
+            } catch (e: Exception) {
+                _state.update { it.copy(sharing = it.sharing.copy(busy = false, error = e.message ?: "Couldn't decline that invitation.")) }
+            }
+        }
+    }
+
+    /** Owner removes a member. Their recorded contributions and expenses stay — only their access goes. */
+    fun removeMember(memberUserId: String, onDone: () -> Unit) = membershipWrite(onDone) { accountId ->
+        api.removeMember(accountId, memberUserId)
+    }
+
+    /** Owner hands the account to another member and stays on as an ordinary contributor. */
+    fun transferOwnership(newOwnerUserId: String, onDone: () -> Unit) = membershipWrite(onDone) { accountId ->
+        api.transferOwnership(accountId, newOwnerUserId)
+    }
+
+    /** Shared plumbing for the two owner-only membership writes: both change the account summary (its member
+     *  list or its owner), so both re-read /accounts rather than patching a guess into local state. */
+    private fun membershipWrite(onDone: () -> Unit, action: suspend (String) -> Unit) {
+        val accountId = _state.value.selectedAccountId ?: return
+        _state.update { it.copy(sharing = it.sharing.copy(busy = true, error = null)) }
+        viewModelScope.launch {
+            try {
+                action(accountId)
+                val accounts = runCatching { api.listAccounts() }.getOrNull()
+                _state.update { st ->
+                    st.copy(sharing = st.sharing.copy(busy = false), accounts = accounts ?: st.accounts)
+                }
+                loadMemberAvatars(accountId)
+                onDone()
+            } catch (e: Exception) {
+                _state.update { it.copy(sharing = it.sharing.copy(busy = false, error = e.message ?: "That didn't work.")) }
             }
         }
     }

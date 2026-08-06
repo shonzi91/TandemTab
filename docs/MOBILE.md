@@ -58,13 +58,14 @@ it goes stale the moment web ships again. Since the native app is a thin client,
 endpoints the server exposes that `TandemTabApi` never calls.** Every feature Android is missing has to show up
 there, because a thin client cannot render what it does not fetch.
 
-Android calls **37** of the account endpoints (**46** since Session 91). It does not call these:
+Android calls **37** of the account endpoints (**46** after Session 91, **55** after Session 92). It does not
+call these:
 
 | Missing capability | Endpoints never called | Weight |
 |---|---|---|
 | **Savings/debt bucket money-movements** (CRUD ✅ **done S91**) | ~~`/savings/buckets…`~~, `/savings/disburse`, `/savings/to-budget`, `/savings/transfer`, `/savings/movements/…` | M |
 | **Debt entirely** (R1 informative debt + R2 installments) | `/installments`, `/installments/{groupId}` | **L** |
-| **Sharing — the hero Pro feature** | `/invitations`, `/members/{id}`, `/transfer-ownership` | **L** |
+| ~~**Sharing — the hero Pro feature**~~ | ~~`/invitations`, `/members/{id}`, `/transfer-ownership`~~ | ✅ **done S92** |
 | ~~**Period lifecycle**~~ | ~~`/periods/start-next`, `/periods/latest`, `/periods/{i}/schedule`~~ | ✅ **done S91** |
 | **Statement import** | `/import` | M |
 | **Fund management** (add/archive/opening balance) | `/funds…`, `/fund-transfers/{id}` | M |
@@ -80,7 +81,7 @@ Android calls **37** of the account endpoints (**46** since Session 91). It does
 **Read that table as the R2 backlog.** The four **L** rows are the ones that make Android a *different product*
 rather than a smaller one: a user who only has the phone cannot start next month, cannot create a savings goal,
 has no debt features at all, and cannot share an account — which is the thing Pro is sold on.
-**Two of the four are closed (S91).** Left: **debt** (installments) and **sharing**.
+**Three of the four are closed (S91, S92).** Left: **debt** (installments).
 
 #### ✅ Period lifecycle — closed (Session 91, 2026-08-06)
 
@@ -124,6 +125,40 @@ sheet on the Goals tab. The money-movements (`/savings/disburse`, `/savings/to-b
 - **Delete offers Archive in the same breath.** The domain refuses to delete a bucket with savings history, so the
   confirm dialog says so up front and puts Archive beside Delete — otherwise the advice arrives as a 400. Archived
   buckets get a collapsed "Show archived (N)" section with Restore, so that advice isn't a dead end.
+
+#### ✅ Sharing — closed (Session 92, 2026-08-06)
+
+Invite by username, accept/decline an invitation, see who's on the account, hand it over, remove someone, and
+leave — nine calls, all of them already on the server. A phone-only user can now reach the feature Pro is sold on.
+
+- **★ Sharing is two halves that look alike and are not.** The **inviter's** half is account-scoped and
+  Pro-gated, and belongs with the account (the People block of the Account sheet, mirroring the web's account
+  menu). The **invitee's** half is neither: an invitation arrives *before* there is any membership to hang it
+  off, and it may land on a user with **no account at all**. So the invitations card sits on Home **above** the
+  money and **outside** the "have we got an overview" branch. Verified exactly there: a freshly-invited user with
+  zero accounts sees "shareowner invited you to Household" over an otherwise empty Home. Inside that branch it
+  would have been invisible to precisely the people who need it.
+- **★ The crown decorates; the server gates.** `/me` already carried `plan`, so the invite row can wear the Pro
+  crown — but the client never refuses the call on its own. The gate is the server's 402, whose message is shown
+  verbatim ("That's a Pro feature — upgrade to unlock it."). A client that decided for itself would lock out a
+  paying user whenever its plan string went stale, and could never be more correct than the server it guesses at.
+- **★ The read model was already complete — the first R2 **L** row where that's true.** `AccountSummaryDto`
+  carries `ownerUserId`/`isOwner`/`members`, and `/me` carries `id` and `plan`; **no server change was needed**,
+  only two fields Android had chosen not to parse (`UserDto.id` was even commented *"we don't need it"* — you do,
+  the moment two people share an account and the UI has to say which one is *you*). Checking first still paid:
+  it turned a row budgeted as **L** into an afternoon.
+- **The owner can leave now, which they could not before.** Android used to offer Leave only to non-owners, so an
+  owner's only exit was Delete. The server refuses to orphan an account, so the confirm block carries a member
+  picker and the Leave button stays greyed until one is chosen — the picker *is* the request being valid, not a
+  courtesy. A sole owner still sees only Delete: with nobody to hand it to, "leave" and "delete" are the same act.
+- ⚠️ **The S91 floating-bar bug has a third instance, and this time it was designed out.** The Account sheet's
+  Done bar is a sibling of the scrolling body, so a confirm block that grows at the foot lands underneath it —
+  the leave picker was born hidden. `SheetShell` now takes a `scrollToEnd` trigger and scrolls the revealed block
+  into view. ⚠️ Treat this as a **standing hazard of every sheet in this app**, not three unlucky screens.
+- ⚠️ **One state variable doing two jobs shipped a layout bug into the same block.** The member-row expander and
+  the hand-over picker both keyed off `handOverTo`, so *choosing* a new owner silently expanded that person's
+  action row higher up the sheet and shoved the confirm block back under the bar. Caught on the emulator, not in
+  review. They are separate now (`expandedMemberId` vs `handOverTo`).
 
 **Closed in Session 90:** the Home money hero (all four tiles, incl. the money-in savings rate, the transfers
 sub-line and **F3 "left to spend today"**) and the rotating over-budget alert strip. Both needed server work

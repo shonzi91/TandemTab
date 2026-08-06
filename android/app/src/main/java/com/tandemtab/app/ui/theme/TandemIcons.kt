@@ -81,6 +81,9 @@ object TandemIcons {
     val Info = icon("M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 11v5M12 7.5h.01")
     // "recall / undo-history" circular arrow — used for the add sheet's "edit last" affordance (web i-rotate)
     val Rotate = icon("M21 12a9 9 0 1 1-3-6.7L21 8M21 3v5h-5")
+    // The Pro crown (web i-crown), marking an entry point this plan doesn't include. Same path as the web's,
+    // so the two surfaces mark Pro with the same mark.
+    val Crown = icon("M3.5 17.5L2 7l5.5 4L12 4.5l4.5 6.5L22 7l-1.5 10.5zM3.5 20.5h17")
 
     // --- category-domain icons (the web CategoryIcons palette + guesser) -----------------------------
     // Names match CategoryIcons.Palette; resolve a category's stored icon/name to one via [forCategory].

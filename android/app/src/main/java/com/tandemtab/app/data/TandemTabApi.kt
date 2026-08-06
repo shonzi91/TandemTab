@@ -373,10 +373,49 @@ class TandemTabApi(
         authedPut("/accounts/$accountId/name", RenameAccountRequest(name))
     }
 
-    /** Leave a shared account (non-owner). Owner-leave would need a new-owner id, which the UI doesn't offer. */
-    suspend fun leaveAccount(accountId: String) {
-        authedPost("/accounts/$accountId/leave", LeaveAccountRequest())
+    /** Leave a shared account. The OWNER must name the member who takes over (the server 400s otherwise); a
+     *  non-owner passes null. The sole member of an account archives it instead — same call, server decides. */
+    suspend fun leaveAccount(accountId: String, newOwnerUserId: String? = null) {
+        authedPost("/accounts/$accountId/leave", LeaveAccountRequest(newOwnerUserId))
     }
+
+    // --- Sharing: invitations + membership ----------------------------------
+
+    /** Invite an existing user to this account by username. 402 when the caller's plan doesn't include sharing —
+     *  that message is the upgrade prompt and is worth showing verbatim. 404/409 name the real problem too
+     *  ("No user named 'x'.", "already a contributor", "already has a pending invitation"). */
+    suspend fun invite(accountId: String, username: String) {
+        authedPost("/accounts/$accountId/invitations", CreateInvitationRequest(username.trim()))
+    }
+
+    /** Invitations waiting on the signed-in user. Not account-scoped — an invite arrives before there's any
+     *  membership to hang it off, and for a brand-new user it may be the only thing on the screen. */
+    suspend fun pendingInvitations(): List<InvitationDto> = authedGet("/invitations/pending").body()
+
+    /** Accept an invitation; returns the id of the account just joined so the caller can switch straight to it. */
+    suspend fun acceptInvitation(invitationId: String): String =
+        authedPostEmpty("/invitations/$invitationId/accept").body<AcceptInvitationDto>().accountId
+
+    /** Decline an invitation (the sender isn't told; it simply stops being pending). */
+    suspend fun declineInvitation(invitationId: String) {
+        authedPostEmpty("/invitations/$invitationId/decline")
+    }
+
+    /** Owner removes another member. Their recorded contributions and expenses stay on the account. */
+    suspend fun removeMember(accountId: String, memberUserId: String) {
+        authedDelete("/accounts/$accountId/members/$memberUserId")
+    }
+
+    /** Owner hands ownership to another current member, staying on the account as an ordinary contributor. */
+    suspend fun transferOwnership(accountId: String, newOwnerUserId: String) {
+        authedPost("/accounts/$accountId/transfer-ownership", TransferOwnershipRequest(newOwnerUserId))
+    }
+
+    /** Profile pictures of everyone on the account, keyed by user id (members without one are absent).
+     *  Best-effort: a face next to a name is decoration, never a reason to fail the sheet. */
+    suspend fun memberAvatars(accountId: String): Map<String, String> = runCatching {
+        authedGet("/accounts/$accountId/avatars").body<Map<String, String>>()
+    }.getOrDefault(emptyMap())
 
     /** Delete the account (owner only; soft-delete with a 30-day grace server-side). Returns 204. */
     suspend fun deleteAccount(accountId: String) {
