@@ -1,6 +1,7 @@
 using FinApp.Domain.Accounts;
 using FinApp.Domain.Common;
 using FinApp.Domain.Periods;
+using FinApp.Domain.Recurring;
 
 namespace FinApp.Domain.Services;
 
@@ -38,12 +39,16 @@ public sealed record WeeklyRecap(
     Money TopCategorySpent,
     Money Saved,
     // Appended with defaults rather than inserted: this record is built in one place but read in several, and a
-    // positional record punishes reordering. The six above are the card; these five are what the modal adds.
+    // positional record punishes reordering. The six above are the card; these six are what the modal adds.
     int ExpenseCount = 0,
     Money Income = default,
     WeeklyRecapExpense? Biggest = null,
     IReadOnlyList<WeeklyRecapSlice>? Categories = null,
-    IReadOnlyList<WeeklyRecapSlice>? Tags = null)
+    IReadOnlyList<WeeklyRecapSlice>? Tags = null,
+    // A steady "what this account earns in a week" — see WeeklyRecapService.Build. Zero when there's no basis for it
+    // (no income ever received and no recurring income set up), in which case "left over" falls back to literal
+    // in-week cash flow. Present so a week with no salary deposit doesn't read as a pure loss.
+    Money TypicalWeeklyIncome = default)
 {
     /// <summary>Difference against the week before — negative means you spent less, which is the good direction.</summary>
     public Money Change => Spent - PreviousSpent;
@@ -61,11 +66,20 @@ public sealed record WeeklyRecap(
     /// <summary>Tags used, largest first. Empty is the normal case, not a gap.</summary>
     public IReadOnlyList<WeeklyRecapSlice> TagBreakdown => Tags ?? [];
 
-    /// <summary>What the week left behind: money in minus money out. Positive is the good direction.
-    /// <para>Guarded against a <c>default(Money)</c> income — that value carries no currency, and subtracting it
-    /// throws rather than returning a wrong number. Only a recap built by hand can hit this; every one from
-    /// <see cref="WeeklyRecapService.Build"/> has a real currency.</para></summary>
-    public Money Net => string.IsNullOrEmpty(Income.Currency) ? Money.Zero(Spent.Currency) - Spent : Income - Spent;
+    /// <summary>True when we have a steady income figure to smooth against — so the modal can label the income tile
+    /// as a *typical* week rather than claim money literally arrived.</summary>
+    public bool IncomeIsTypical => !string.IsNullOrEmpty(TypicalWeeklyIncome.Currency) && !TypicalWeeklyIncome.IsZero;
+
+    /// <summary>The income figure "left over" is measured against: the steady weekly income when we have one, else
+    /// the literal deposits that landed in the covered week. The smoothing is the whole point — salary lands in a
+    /// single week, so measuring every other week against its own (zero) deposits reports a loss the user didn't have.</summary>
+    public Money EffectiveIncome => IncomeIsTypical ? TypicalWeeklyIncome
+        : string.IsNullOrEmpty(Income.Currency) ? Money.Zero(Spent.Currency) : Income;
+
+    /// <summary>What the week left behind: income minus money out. Positive is the good direction. Uses
+    /// <see cref="EffectiveIncome"/>, so on a typical-income account a quiet week reads as a small surplus rather
+    /// than "you spent and earned nothing".</summary>
+    public Money Net => EffectiveIncome - Spent;
 }
 
 /// <summary>
@@ -158,7 +172,27 @@ public sealed class WeeklyRecapService
             .OrderByDescending(t => t.Total.Amount)
             .ToList();
 
+        // --- Typical weekly income -----------------------------------------------------------------------
+        // Salary lands in one week a month, so the literal in-week income is zero three weeks in four and "left over"
+        // reads as a loss on every one of them. Smooth it to a steady weekly figure instead, in the user's own
+        // priority order:
+        //   1. what the account actually earns — the average income of the periods that received any, so a
+        //      not-yet-paid current period doesn't drag the figure down (it's excluded, not counted as a zero);
+        //   2. failing any income at all (a fresh account), the recurring income they've set up but not yet received;
+        //   3. nothing to go on → zero, and Net falls back to the honest in-week cash flow.
+        // A flat 52/12 weeks per month keeps this a re-engagement heuristic, not an accounting claim.
+        const decimal weeksPerMonth = 52m / 12m;
+        var earningMonths = account.Periods
+            .Select(p => p.ContributionsPaidTotal.Amount)
+            .Where(a => a > 0m)
+            .ToList();
+        var monthlyIncome = earningMonths.Count > 0
+            ? earningMonths.Average()
+            : account.RecurringItems.Where(r => r.Kind == RecurringKind.Income).Sum(r => r.ExpectedAmount);
+        var typicalWeekly = monthlyIncome > 0m ? decimal.Round(monthlyIncome / weeksPerMonth, 2) : 0m;
+
         return new WeeklyRecap(from, to, spent, previous, topCategoryId, topSpent, saved,
-            inWeek.Count, income, biggest, categories, tags);
+            inWeek.Count, income, biggest, categories, tags,
+            TypicalWeeklyIncome: new Money(typicalWeekly, account.Currency));
     }
 }

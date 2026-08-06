@@ -667,6 +667,8 @@ public sealed class Localizer(IJSRuntime js)
         ["Balance at the end of each month"] = "Баланс в края на всеки месец",
         ["Left over"] = "Остава",
         ["in minus out"] = "влязло минус излязло",
+        ["Typical income"] = "Обичайни приходи",
+        ["vs a typical week"] = "спрямо обичайна седмица",
         ["{0} transaction"] = "{0} транзакция",
         ["{0} transactions"] = "{0} транзакции",
         ["{0} on average"] = "средно по {0}",

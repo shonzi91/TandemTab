@@ -2,6 +2,7 @@ using FinApp.Domain.Accounts;
 using FinApp.Domain.Budgeting;
 using FinApp.Domain.Common;
 using FinApp.Domain.Periods;
+using FinApp.Domain.Recurring;
 using FinApp.Domain.Services;
 using Xunit;
 
@@ -244,5 +245,83 @@ public class WeeklyRecapTests
         var recap = new WeeklyRecapService().Build(account, Today)!;
 
         Assert.Empty(recap.TagBreakdown);
+    }
+
+    // --- Typical weekly income: "left over" measured against a normal week, not this one's lone salary ------
+
+    [Fact]
+    public void Left_over_is_measured_against_a_typical_week_not_the_weeks_lone_salary()
+    {
+        // Setup's account earns 5000 a month (its one seeded deposit). A week with spending but no salary landing
+        // in it should still leave a surplus — otherwise three weeks in four read as a loss the user didn't have.
+        var (account, period, food, _, member) = Setup();
+        Spend(account, period, food, member, 60m, new DateOnly(2026, 1, 6));   // covered week, no deposit inside it
+
+        var recap = new WeeklyRecapService().Build(account, Today)!;
+
+        Assert.True(recap.IncomeIsTypical);
+        Assert.Equal(M(1153.85m), recap.TypicalWeeklyIncome);   // 5000 / (52/12), rounded to the cent
+        Assert.Equal(M(1153.85m), recap.EffectiveIncome);
+        Assert.Equal(M(1093.85m), recap.Net);                   // 1153.85 − 60
+        Assert.False(recap.Net.IsNegative);
+    }
+
+    [Fact]
+    public void Typical_income_falls_back_to_recurring_when_no_income_has_been_received_yet()
+    {
+        // A fresh account that has set up a salary but not yet received one: the recurring expectation is the only
+        // signal, so it drives the typical figure until real deposits exist to average instead.
+        var account = new Account("Fresh", Eur);
+        var member = account.AddMember(Guid.NewGuid(), "Stoyan");
+        var food = account.AddCategory("Food");
+        account.AddDefaultFunds();
+        var period = account.StartPeriod(new DateOnly(2026, 1, 1), new DateOnly(2026, 1, 31));   // no deposit at all
+        account.AddRecurring(new RecurringItem("Salary", RecurringKind.Income, RecurringAmountMode.Fixed,
+            2600m, 1, Guid.Empty, account.FundId("Cash")));
+        period.AddExpense(new Expense(food.Id, M(50m), new DateOnly(2026, 1, 6), member.UserId, account.FundId("Cash")));
+
+        var recap = new WeeklyRecapService().Build(account, Today)!;
+
+        Assert.True(recap.IncomeIsTypical);
+        Assert.Equal(M(600m), recap.TypicalWeeklyIncome);   // 2600 / (52/12) = 600 exactly
+        Assert.Equal(M(550m), recap.Net);
+    }
+
+    [Fact]
+    public void With_no_income_and_no_recurring_left_over_is_the_honest_in_week_cash_flow()
+    {
+        // Nothing to smooth from — no deposit ever, no recurring income. We don't invent income; Net is the literal
+        // (and honestly negative) in-week cash flow, exactly as before this feature.
+        var account = new Account("Bare", Eur);
+        var member = account.AddMember(Guid.NewGuid(), "Stoyan");
+        var food = account.AddCategory("Food");
+        account.AddDefaultFunds();
+        var period = account.StartPeriod(new DateOnly(2026, 1, 1), new DateOnly(2026, 1, 31));
+        period.AddExpense(new Expense(food.Id, M(50m), new DateOnly(2026, 1, 6), member.UserId, account.FundId("Cash")));
+
+        var recap = new WeeklyRecapService().Build(account, Today)!;
+
+        Assert.False(recap.IncomeIsTypical);
+        Assert.Equal(M(0m), recap.TypicalWeeklyIncome);
+        Assert.Equal(M(-50m), recap.Net);
+    }
+
+    [Fact]
+    public void A_period_that_has_not_earned_yet_does_not_drag_the_typical_down()
+    {
+        // December earned 2600; the current January hasn't been paid yet. The average is 2600, not 1300 — an unpaid
+        // month is excluded from the average rather than counted as a zero, so the figure reflects a normal month.
+        var account = new Account("Family", Eur);
+        var member = account.AddMember(Guid.NewGuid(), "Stoyan");
+        var food = account.AddCategory("Food");
+        account.AddDefaultFunds();
+        var december = account.StartPeriod(new DateOnly(2025, 12, 1), new DateOnly(2025, 12, 31));
+        var january = account.StartPeriod(new DateOnly(2026, 1, 1), new DateOnly(2026, 1, 31));   // not yet paid
+        december.Deposit(member.UserId, M(2600m));
+        january.AddExpense(new Expense(food.Id, M(50m), new DateOnly(2026, 1, 6), member.UserId, account.FundId("Cash")));
+
+        var recap = new WeeklyRecapService().Build(account, Today)!;
+
+        Assert.Equal(M(600m), recap.TypicalWeeklyIncome);   // 2600 / (52/12), not (2600 + 0) / 2
     }
 }

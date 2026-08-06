@@ -2723,14 +2723,17 @@ else
                                     </small>
                                 }
                             </div>
+                            @* When we have a steady income figure, "money in" shows that typical weekly income (not the
+                               literal deposits, which are zero most weeks) so it reconciles with "left over" below —
+                               otherwise a €0 "money in" beside a positive "left over" would contradict itself. *@
                             <div class="wk-tile">
-                                <span class="wk-tile-l">@Loc["Money in"]</span>
-                                <strong>@Fmt(wr.Income)</strong>
+                                <span class="wk-tile-l">@(wr.IncomeIsTypical ? Loc["Typical income"] : Loc["Money in"])</span>
+                                <strong>@Fmt(wr.EffectiveIncome)</strong>
                             </div>
                             <div class="wk-tile">
                                 <span class="wk-tile-l">@Loc["Left over"]</span>
                                 <strong class="@(wr.Net.IsNegative ? "warn-text" : "good-text")">@Fmt(wr.Net)</strong>
-                                <small>@Loc["in minus out"]</small>
+                                <small>@(wr.IncomeIsTypical ? Loc["vs a typical week"] : Loc["in minus out"])</small>
                             </div>
                             <div class="wk-tile">
                                 <span class="wk-tile-l">@Loc["Set aside"]</span>
