@@ -151,6 +151,24 @@ public class WeeklyRecapTests
         Assert.Null(new WeeklyRecapService().Build(new Account("Empty", Eur), Today));
     }
 
+    [Fact]
+    public void Round_ups_are_reported_as_the_painless_slice_of_what_was_set_aside()
+    {
+        // The round-up sweep and a manual deposit both land in the covered week. RoundUpsSaved is the sweep alone; it
+        // is a SUBSET of Saved, not additional to it — the recap says "and €X of that happened without you noticing".
+        var (account, period, _, _, _) = Setup();
+        var jar = account.AddSavingCategory("Spare change");
+        period.AllocateToSavings(jar.Id, M(0.60m), new DateOnly(2026, 1, 8), RoundUpService.SweepNote);
+        period.AllocateToSavings(jar.Id, M(0.40m), new DateOnly(2026, 1, 9), RoundUpService.SweepNote);
+        period.AllocateToSavings(jar.Id, M(50m), new DateOnly(2026, 1, 8));                          // a normal deposit
+        period.AllocateToSavings(jar.Id, M(5m), new DateOnly(2026, 1, 14), RoundUpService.SweepNote); // current week — out
+
+        var recap = new WeeklyRecapService().Build(account, Today)!;
+
+        Assert.Equal(M(51m), recap.Saved);            // 0.60 + 0.40 + 50
+        Assert.Equal(M(1m), recap.RoundUpsSaved);     // only the two sweeps, and only the ones in the covered week
+    }
+
     // --- The detail behind the card (the modal's figures) --------------------------------------------------
 
     [Fact]

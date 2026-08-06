@@ -48,7 +48,10 @@ public sealed record WeeklyRecap(
     // A steady "what this account earns in a week" — see WeeklyRecapService.Build. Zero when there's no basis for it
     // (no income ever received and no recurring income set up), in which case "left over" falls back to literal
     // in-week cash flow. Present so a week with no salary deposit doesn't read as a pure loss.
-    Money TypicalWeeklyIncome = default)
+    Money TypicalWeeklyIncome = default,
+    // The slice of Saved that came from F4 round-ups this week — the "set aside without noticing" figure. A subset of
+    // Saved, not additional to it. Zero for accounts that don't use round-ups, which is most.
+    Money RoundUpsSaved = default)
 {
     /// <summary>Difference against the week before — negative means you spent less, which is the good direction.</summary>
     public Money Change => Spent - PreviousSpent;
@@ -135,9 +138,15 @@ public sealed class WeeklyRecapService
 
         // Disbursements (savings deployed to their goal) are excluded: they are a bucket being spent for its
         // purpose, not money set aside this week, and counting them would report a negative week of "saving".
-        var saved = account.Periods
+        var savedAllocations = account.Periods
             .SelectMany(p => p.SavingAllocations)
             .Where(a => a.Date >= from && a.Date <= to && !a.IsDisbursement && !a.Amount.IsNegative)
+            .ToList();
+        var saved = savedAllocations.Aggregate(zero, (acc, a) => acc + a.Amount);
+        // The painless slice of what was set aside: a subset of `saved`, identified by the sweep's note (nothing else
+        // writes it), so the recap can say "and €X of that happened without you noticing".
+        var roundUpsSaved = savedAllocations
+            .Where(a => a.Note == RoundUpService.SweepNote)
             .Aggregate(zero, (acc, a) => acc + a.Amount);
 
         // --- The detail behind the card ------------------------------------------------------------------
@@ -193,6 +202,7 @@ public sealed class WeeklyRecapService
 
         return new WeeklyRecap(from, to, spent, previous, topCategoryId, topSpent, saved,
             inWeek.Count, income, biggest, categories, tags,
-            TypicalWeeklyIncome: new Money(typicalWeekly, account.Currency));
+            TypicalWeeklyIncome: new Money(typicalWeekly, account.Currency),
+            RoundUpsSaved: roundUpsSaved);
     }
 }

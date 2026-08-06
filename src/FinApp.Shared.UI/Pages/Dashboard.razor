@@ -1524,12 +1524,13 @@ else
                     }
                     else
                     {
-                        var ruCould = State.CouldHaveSavedViaRoundUps(brkFrom, brkTo);
-                        @if (ruCould > 0m)
+                        var ruCould1 = State.CouldHaveSavedViaRoundUps(brkFrom, brkTo, 1m);
+                        var ruCould5 = State.CouldHaveSavedViaRoundUps(brkFrom, brkTo, 5m);
+                        @if (ruCould5 > 0m)
                         {
                             @if (Gate.Allows(PlanFeatures.Insights))
                             {
-                                <div class="brk-roundup brk-roundup-could"><Icon Name="target" /> @string.Format(Loc["Round-ups would have set aside about {0} here — switch them on in Edit account"], Fmt(State.Money(ruCould)))</div>
+                                <div class="brk-roundup brk-roundup-could"><Icon Name="target" /> @string.Format(Loc["Round-ups would have set aside {0} (to the nearest 1) or {1} (to the nearest 5) here — switch them on in Edit account"], Fmt(State.Money(ruCould1)), Fmt(State.Money(ruCould5)))</div>
                             }
                             else
                             {
@@ -2764,6 +2765,12 @@ else
                             <div class="wk-tile">
                                 <span class="wk-tile-l">@Loc["Set aside"]</span>
                                 <strong class="@(wr.Saved.Amount > 0m ? "good-text" : "")">@Fmt(wr.Saved)</strong>
+                                @* The painless slice: money that rounded up into savings without a decision. Only drawn
+                                   when there is some, so it's a reward for using round-ups, not a nag to turn them on. *@
+                                @if (wr.RoundUpsSaved.Amount > 0m)
+                                {
+                                    <small>@string.Format(Loc["{0} via round-ups"], Fmt(wr.RoundUpsSaved))</small>
+                                }
                             </div>
                         </div>
 
