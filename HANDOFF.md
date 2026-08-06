@@ -42,8 +42,15 @@ left is exactly two commands:
 gcloud run deploy finapp --image europe-west1-docker.pkg.dev/finapp-1111/cloud-run-source-deploy/finapp:fde09f9 --region europe-west1 --project finapp-1111 --quiet
 gcloud run services update-traffic finapp --region europe-west1 --project finapp-1111 --to-latest --quiet
 ```
-**Better still: build a fresh image from `5760960` and deploy that** — the recurring commit below changed
-`FinApp.Contracts` + the server, so the `fde09f9` image is already one server change stale.
+**Use the newer image instead:** `fde09f9` predates the recurring commit's `FinApp.Contracts` + server change, so
+a **`d631df0` image was built and pushed** as well (digest `sha256:b8e9fc0…`) — it is the one to deploy. Both
+`run deploy` and a retry from PowerShell were blocked; `builds submit` never is, so only these two remain:
+```
+gcloud run deploy finapp --image europe-west1-docker.pkg.dev/finapp-1111/cloud-run-source-deploy/finapp:d631df0 --region europe-west1 --project finapp-1111 --quiet
+gcloud run services update-traffic finapp --region europe-west1 --project finapp-1111 --to-latest --quiet
+```
+Then verify per [[reference_build_deploy_thisdevice]]: run URL + tandemtab.com 200, 5 `secretKeyRef`s, no
+WARNING+ logs — and check served bytes, not just the revision name.
 
 ### ★ Android can declare a bill or income, not just confirm one (`5760960`)
 **Tier-1 mobile-only parity row #1, closed.** The phone could confirm or skip an item that fell due but never
