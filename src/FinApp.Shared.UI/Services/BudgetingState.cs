@@ -198,6 +198,20 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
             .Where(a => a.Note == RoundUpService.SweepNote)
             .Sum(a => a.Amount.Amount));
 
+    /// <summary>Round-ups actually swept into savings within [from, to] — the factual "you set aside €X painlessly"
+    /// figure for the Breakdown window. Free: it's the user's own money.</summary>
+    public Money RoundUpsSweptInRange(DateOnly from, DateOnly to) =>
+        Money(Account.Periods
+            .SelectMany(p => p.SavingAllocations)
+            .Where(a => a.Note == RoundUpService.SweepNote && a.Date >= from && a.Date <= to)
+            .Sum(a => a.Amount.Amount));
+
+    /// <summary>What round-ups WOULD have set aside over the expenses in [from, to], at a 1-unit step and whether or
+    /// not round-ups are on — the Pro teaser's hypothetical. A conservative step (1, not 5) keeps it believable, and
+    /// it's explicitly a "what if", not a claim: it assumes every purchase happened exactly as it did.</summary>
+    public decimal CouldHaveSavedViaRoundUps(DateOnly from, DateOnly to) =>
+        decimal.Round(ExpensesInRange(from, to).Sum(e => Account.RoundUpForStep(Math.Abs(e.Amount.Amount), 1m)), 2);
+
     /// <summary>Turn round-ups on (step 1 or 5 + a destination bucket) or off (step 0), and persist.</summary>
     // TODO(cutover): needs a command endpoint (account settings) — still local-mutate + whole-snapshot push.
     public Task ConfigureRoundUps(decimal roundUpTo, Guid? bucketId)

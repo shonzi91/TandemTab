@@ -34,6 +34,20 @@ public class RoundUpTests
         return expense;
     }
 
+    [Theory]
+    [InlineData(12.40, 1, 0.60)]     // up to €13
+    [InlineData(12.40, 5, 2.60)]     // up to €15
+    [InlineData(12.00, 1, 0.00)]     // already on the step
+    [InlineData(0, 1, 0.00)]         // nothing to round
+    [InlineData(-5, 1, 0.00)]        // guarded
+    [InlineData(12.40, 2, 0.00)]     // invalid step
+    public void RoundUpForStep_computes_the_change_regardless_of_the_switch(decimal amount, decimal step, decimal expected)
+    {
+        // The static helper powers the Pro "what round-ups WOULD have set aside" teaser for accounts that have them
+        // off, so it must NOT depend on RoundUpsOn (which RoundUpFor still checks).
+        Assert.Equal(expected, Account.RoundUpForStep(amount, step));
+    }
+
     [Fact]
     public void Round_ups_are_off_on_a_new_account_and_sweep_nothing()
     {

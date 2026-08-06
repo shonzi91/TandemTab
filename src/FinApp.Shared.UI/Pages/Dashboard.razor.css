@@ -936,6 +936,15 @@ html.dark .brk-range-lbl { color: #8b96a4; }
 html.dark .brk-sum { background: #171d26; border-color: #262f3c; }
 html.dark .brk-sum-lbl { color: #8b96a4; }
 
+/* F4 round-up callout under the summary: factual "you set aside €X" (free), or the Pro "could have" what-if. A
+   soft savings-tinted strip, quieter than a slice — it rode along with the spending, it isn't part of it. */
+.brk-roundup { display: flex; align-items: center; gap: 8px; margin-top: 2px; padding: 9px 13px; border-radius: 11px;
+    background: rgba(19, 160, 110, .08); border: 1px solid rgba(19, 160, 110, .18); color: #0f7a53; font-size: .84rem; font-weight: 600; }
+.brk-roundup svg { width: 16px; height: 16px; flex: 0 0 auto; }
+.brk-roundup-could { background: rgba(120, 130, 145, .08); border-color: rgba(120, 130, 145, .2); color: #5a6675; font-style: italic; }
+html.dark .brk-roundup { background: rgba(19, 160, 110, .12); border-color: rgba(19, 160, 110, .26); color: #4fd1a0; }
+html.dark .brk-roundup-could { background: rgba(140, 152, 168, .1); border-color: rgba(140, 152, 168, .22); color: #9aa6b5; }
+
 /* Home mini-breakdown card — a tappable "where your money went" donut + top-category legend that deep-links to the
    full Breakdown view (UX backlog #6). */
 .home-brk-hit { display: flex; align-items: center; gap: 18px; width: 100%; background: none; border: none; padding: 0;

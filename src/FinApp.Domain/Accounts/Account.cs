@@ -91,10 +91,15 @@ public sealed class Account : Entity
     /// <see cref="RoundUpTo"/>, or zero when round-ups are off, the amount is not positive, or it already lands exactly
     /// on the step. Pure, so the UI can preview the figure without performing the sweep.
     /// </summary>
-    public decimal RoundUpFor(decimal amount)
+    public decimal RoundUpFor(decimal amount) => RoundUpsOn ? RoundUpForStep(amount, RoundUpTo) : 0m;
+
+    /// <summary>The change an expense of <paramref name="amount"/> rounds up to the next multiple of
+    /// <paramref name="step"/> (1 or 5), <b>regardless of whether round-ups are switched on</b> — so a
+    /// "what round-ups WOULD have set aside" teaser can be computed for an account that hasn't turned them on.
+    /// Zero for a non-positive amount, an invalid step, or an amount already sitting on the step.</summary>
+    public static decimal RoundUpForStep(decimal amount, decimal step)
     {
-        if (!RoundUpsOn || amount <= 0m) return 0m;
-        var step = RoundUpTo;
+        if (amount <= 0m || step is not (1m or 5m)) return 0m;
         var rounded = Math.Ceiling(amount / step) * step;
         return decimal.Round(rounded - amount, 2, MidpointRounding.AwayFromZero);
     }
