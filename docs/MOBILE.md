@@ -59,7 +59,7 @@ endpoints the server exposes that `TandemTabApi` never calls.** Every feature An
 there, because a thin client cannot render what it does not fetch.
 
 Android calls **37** of the account endpoints (**46** after Session 91, **55** after Session 92, **59** after
-Session 94). It does not call these:
+Session 94, **66** after Session 95). It does not call these:
 
 | Missing capability | Endpoints never called | Weight |
 |---|---|---|
@@ -68,7 +68,7 @@ Session 94). It does not call these:
 | ~~**Sharing — the hero Pro feature**~~ | ~~`/invitations`, `/members/{id}`, `/transfer-ownership`~~ | ✅ **done S92** |
 | ~~**Period lifecycle**~~ | ~~`/periods/start-next`, `/periods/latest`, `/periods/{i}/schedule`~~ | ✅ **done S91** |
 | **Statement import** | `/import` | M |
-| **Fund management** (add/archive/opening balance) | `/funds…`, `/fund-transfers/{id}` | M |
+| ~~**Fund management** (add/archive/opening balance)~~ | ~~`/funds…`, `/fund-transfers/{id}`~~ | ✅ **done S95** |
 | **Account settings** — incl. the savings target and **F4 round-ups** | `/settings`, `/savings-target` | M |
 | **Tags** — incl. **F2** tag→category | `/tags…` | M |
 | Achievements + **F6** goal celebration | `/achievements`, `/milestones` | S–M |
@@ -187,6 +187,65 @@ Add / edit / pause / resume / remove now live in the Bills & income sheet (**fou
 - Verified end-to-end on the emulator in **both themes**: a bill created (Rent, €500, Bills, Bank, day 1) → edited
   to €550 → paused (button flipped to Resume live) → removed behind a confirm dialog → then an income item
   (Salary, €2,000, day 25) showing the source picker and no loan-link section.
+
+#### ✅ Fund management — closed (Session 95, 2026-08-07)
+
+Android could *see* its funds and move money between them, but not create one, rename one, set what it opened the
+period with, archive or restore one, remove one, or correct a transfer it had already made. **Seven calls: 59 →
+66** — `POST/PUT/DELETE /funds`, `PUT /funds/{id}/archived`, `PUT /funds/{id}/opening-balance`, and
+`PUT`/`DELETE /fund-transfers/{id}`.
+
+- **★ The read model was already complete — the second R2 row where the check paid by finding nothing.** After
+  four consecutive rows that needed the server to grow first (S90 hero, S91 reconcile, S91 bucket overwrite, S94
+  recurring), this one needed **zero server change**: `FundRowDto` already carried `Icon`, `Note`, `Balance`,
+  `OpeningBalance`, `Synced` and `Archived`, and `WalletsViewDto` already carried `ArchivedFunds`. **The ritual
+  is still worth its twenty minutes** — the thing it would have caught here is real (see the next bullet), and
+  the two rows where it found nothing were both rows that then took an afternoon instead of a session.
+- **★ `EditFundRequest` is a full overwrite, and `FundRowDto.Icon` is what makes that safe.** The server calls
+  `RenameFund` + `SetFundNote` + `SetFundIcon` unconditionally, so a client that doesn't send the icon back
+  *clears* it. The DTO carries the **raw stored** icon, not the display fallback — so the editor round-trips it.
+  Had it carried the effective icon, every first edit would have silently frozen a name-guessed icon into
+  storage; had it carried nothing, every rename would have wiped the icon. Same shape as S91's bucket overwrite,
+  caught by the same read-the-response habit.
+- **★ Archiving a fund is two commands, not one, and the order is the safety property.** A fund that still holds
+  money is transferred out **first** (a real fund transfer, so the account total is preserved and the archived
+  fund is left at zero), then flagged archived. If the second half fails the transfer stands — visible and
+  re-doable — rather than money disappearing into a hidden fund. This mirrors `BudgetingState.ArchiveFund`
+  exactly. Verified on device: archiving a €350 jar into Cash left the total at €1,550 and wrote a visible
+  "Holiday jar → Cash" transfer row.
+- **★ The transfer editor must be able to name an archived fund.** A transfer's sides are ordinary fund ids, and
+  archiving is exactly what happens to a fund *after* it has been transferred out of — so the picker is built
+  from `funds` **plus any archived fund this transfer references**. Without that the sheet opens with nothing
+  selected and re-saving silently retargets the transfer to whichever fund sorts first. Seen working on device:
+  the archived "Holiday jar" was still the selected FROM chip.
+- **★ The removal blockers are the server's to state, and it states them well.** `Account.FundRemovalBlocker`
+  names the reason ("it has sub-funds" / "it's the only fund" / "expenses reference it" / "a transfer references
+  it") and `SnapshotService` turns it into a 400 whose body Android already surfaces. So the client computes
+  **nothing** and shows the message verbatim, with **Restore** sitting beside Remove as the way out — the same
+  "archive is the answer" shape as the savings buckets. Confirmed on device: *"Cannot remove fund: a transfer
+  references it."*
+- **The destructive halves are dialogs, not in-sheet confirm blocks.** A dialog floats above everything, so
+  neither the archive picker nor the remove picker can be born under a floating action bar. That is the
+  `SheetShell` hazard designed out rather than worked around — it has now bitten four times in four sessions.
+- ⚠️ **The "move opening balance" picker is offered whenever there's somewhere to move it**, not only when this
+  period's opening is non-zero. The thin view carries the **open period's** opening balance, while
+  `Account.RemoveFund` drops the fund's openings in **every** period — so gating the picker on the one figure
+  the client can see would silently lose money a fund was given in an earlier month.
+- ⚠️ **Editing an archive-driven transfer down strands money in the archived fund.** Archive moved €350 out;
+  editing that transfer to €200 leaves €150 in a fund that is hidden but still counted in the total. The web
+  behaves identically (same two commands), so this is inherent to the design, not a port defect — but the
+  archived row does show the stranded figure, which is the mitigation.
+- ⚠️ **Not verified: the synced-fund branch.** A bank-linked fund is meant to show Edit but no Archive and no
+  opening-balance field; the emulator has no bank connection, so that path is code-reviewed only. Also **not
+  ported**: the web's `Modal.FundMovements` (a per-fund ledger), which is a *read* the thin Wallets view doesn't
+  carry, and the fund↔bank **sync toggle**, which has no command endpoint at all (`BudgetingState.SetFundSynced`
+  is still a whole-snapshot push, marked `TODO(cutover)`) — a thin client cannot do it until the server can.
+- Verified end-to-end on the emulator (`tandemtab_test`, local server `10.0.2.2:5179`, user `mob95b`, account
+  *Phone Budget*) in **both themes**: created *Savings jar* (coins icon, note, €300 opening) → total €1,200 →
+  €1,500 → edited to *Holiday jar* @ €350 with the note and icon intact → archived into Cash (total preserved,
+  transfer row written) → edited that transfer 350 → 200 → **remove refused with the server's blocker** →
+  removed the transfer (balances fully reversed) → removed the fund with its opening balance moved to Bank
+  (€1,200 → €1,550, total unchanged throughout).
 
 **Closed in Session 90:** the Home money hero (all four tiles, incl. the money-in savings rate, the transfers
 sub-line and **F3 "left to spend today"**) and the rotating over-budget alert strip. Both needed server work

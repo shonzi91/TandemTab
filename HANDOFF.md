@@ -1,6 +1,13 @@
 # TandemTab (FinApp) — session handoff
 
-Last updated: 2026-08-07 (Session 94 — six unrecorded web/brand commits found and written up, then **Android can
+Last updated: 2026-08-07 (Session 95 — **Android fund/wallet management**, Tier-1 mobile-only parity row #2.
+Create / edit / archive / restore / remove a fund, set its opening balance, and edit or undo a transfer —
+**seven calls, 59 → 66, and zero server change**, the second R2 row whose read model was already complete.
+**310 + 48 + 339 green** (unchanged — no C# touched). Verified end-to-end on the emulator in both themes.
+⚠️ **Android has no distribution pipeline, so nothing is owed to production and no deploy is needed.**
+See the Session 95 entry directly below.)
+
+Previously: 2026-08-07 (Session 94 — six unrecorded web/brand commits found and written up, then **Android can
 declare a bill or income**, closing Tier-1 mobile-only parity row #1. See the Session 94 entry directly below.
 **310 + 48 + 339 green.** ✅ **Everything is committed, pushed and DEPLOYED** — `finapp-00286-ncg` from image
 `d631df0`, traffic forced `--to-latest`, verified at the **bytes** level: the new `.date-sep-lbl` rule is present
@@ -21,6 +28,58 @@ a separate balance axis — because flows and a stock were sharing one scale. **
 ✅ **Committed and the web half is DEPLOYED** (Session 93 catch-up): Android sharing as `596eea5`, the web batch
 as `de51071`, now live on **`finapp-00280-4s8`** (traffic forced `--to-latest`; run URL + tandemtab.com 200; 5
 `secretKeyRef`s; no WARNING+ logs). Prior context below is Session 91.)
+
+## Session 95 (2026-08-07) — **Android fund management: the first R2 row that cost the server nothing**
+
+### ★ Android can manage its funds, not just spend from them
+**Tier-1 mobile-only parity row #2, closed.** The phone could see funds and move money between them but could not
+create one, rename one, say what it opened the period with, archive or restore one, remove one, or correct a
+transfer it had already made. **Seven calls: 59 → 66.** Full findings in [docs/MOBILE.md](docs/MOBILE.md); the
+ones worth carrying:
+
+- **★ The read model was already complete — no server change at all.** After four consecutive R2 rows that each
+  needed the server to grow first (Home hero S90, reconcile inputs S91, bucket overwrite S91, recurring S94),
+  this one needed nothing: `FundRowDto` already carried icon/note/balance/openingBalance/synced/archived and
+  `WalletsViewDto` already carried `ArchivedFunds`. **That is not an argument against the check** — it's the
+  second time (after S92 sharing) that twenty minutes of reading the endpoint turned a row into an afternoon.
+- **★ `EditFundRequest` is a full overwrite, and `FundRowDto.Icon` being the *raw stored* icon is what makes the
+  round-trip safe.** The server calls `RenameFund` + `SetFundNote` + `SetFundIcon` unconditionally. Had the DTO
+  carried the *effective* (name-guessed) icon instead, the first edit of any fund would have silently frozen a
+  guess into storage. Same shape as S91's bucket overwrite.
+- **★ Archive is two commands and the order is the safety property.** Money is transferred out first (a real
+  transfer, total-preserving), then the fund is flagged archived — so a failure of the second half leaves a
+  visible, re-doable transfer rather than money hidden inside an archived fund. Mirrors `BudgetingState.ArchiveFund`.
+- **★ The transfer editor has to be able to name an archived fund**, because archiving is exactly what happens to
+  a fund after you transfer out of it. The picker is `funds` **plus** any archived fund the transfer references;
+  without that, re-saving silently retargets the transfer. Seen working on device.
+- **★ The removal blockers stay server-side and land verbatim.** `FundRemovalBlocker` names the reason and
+  `SnapshotService` turns it into a 400 Android already surfaces — so the dialog shows *"Cannot remove fund: a
+  transfer references it."* with **Restore** beside Remove as the way out. The client computes nothing.
+- **The destructive halves are dialogs, not in-sheet confirm blocks** — which designs out the `SheetShell`
+  floating-bar hazard rather than working around it. Four sightings in four sessions made that the default.
+- ⚠️ **Two honest limits, both documented in MOBILE.md:** editing an archive-driven transfer *down* strands the
+  difference in the archived fund (the web does the same — inherent, not a port defect), and the **synced-fund
+  branch is code-reviewed only** (no bank connection on the emulator). The fund↔bank **sync toggle is not
+  portable at all** — `SetFundSynced` still has no command endpoint (`TODO(cutover)`), so a thin client cannot
+  offer it until the server can.
+- **Verified end-to-end on the emulator** (`tandemtab_test`, local server `10.0.2.2:5179`, user `mob95b`, account
+  *Phone Budget*) in **both themes**: *Savings jar* created with a coins icon, note and €300 opening (total
+  €1,200 → €1,500) → renamed *Holiday jar* @ €350, note and icon intact → archived into Cash (total preserved,
+  transfer row written) → that transfer edited 350 → 200 → remove **refused with the server's blocker** → the
+  transfer removed (balances fully reversed) → the fund removed with its opening balance moved to Bank (€1,200 →
+  €1,550, total unchanged throughout). Build tweaks (local `API_BASE_URL`, cleartext) **reverted**.
+- **310 server + 48 persistence + 339 domain, unchanged** — no C# was touched, which is the point of the entry.
+
+### ⚠️ Carry-over
+- **Tier-1 mobile-only parity, the rest, in order:** **savings target** (`/savings-target`, `/settings`); then
+  **remove a logged installment** (`DELETE /installments/{groupId}` — you can log but not undo). Then Tier 2:
+  export (data-out) and weekly recap + push (needs a backend endpoint).
+- **Android installment parity:** extra lines + the principal/interest tag split (needs an Android tag surface).
+- **The Android light/dark sweep** (half of R2's exit condition) and the **`SheetShell` foot-of-sheet audit**
+  remain. This session's new surfaces were checked in both themes and the sheet hazard was avoided by using
+  dialogs, but neither owed job is done.
+- ⚠️ **A stale emulator from S94 (PID from 2026-08-06) was still running and starving the new one** — System UI
+  ANR'd repeatedly until it was killed. Worth checking `Get-Process qemu-system-x86_64*` before blaming the app.
 
 ## Session 94 (2026-08-07) — **The unrecorded web batch, then Android's first Tier-1 parity row: recurring CRUD**
 

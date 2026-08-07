@@ -22,6 +22,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -29,6 +30,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -44,7 +46,8 @@ import java.util.Locale
 /**
  * The Wallets tab: where the money lives — each fund with its balance, plus this period's transfers.
  * Thin `WalletsViewDto` rendered directly (balances computed server-side, incl. synced funds). Non-synced
- * funds surface Transfer + Add-income actions (S68), which open the write sheets.
+ * funds surface Transfer + Add-income actions (S68), which open the write sheets. S95 adds the management
+ * half — create a fund, edit it, archive/restore it, remove one, and edit or undo a transfer.
  */
 @Composable
 fun WalletsScreen(
@@ -54,6 +57,12 @@ fun WalletsScreen(
     onPrepareAddIncome: () -> Unit,
     onTransfer: (fromFundId: String, toFundId: String, amount: Double, date: String, note: String?, onDone: () -> Unit) -> Unit,
     onAddIncome: (fundId: String, categoryId: String, amount: Double, date: String, onDone: () -> Unit) -> Unit,
+    onPrepareFund: () -> Unit = {},
+    onSaveFund: (fundId: String?, name: String, icon: String?, note: String?, openingBalance: Double?, onDone: () -> Unit) -> Unit = { _, _, _, _, _, _ -> },
+    onArchiveFund: (fundId: String, archived: Boolean, moveBalanceTo: String?, amount: Double, onDone: () -> Unit) -> Unit = { _, _, _, _, _ -> },
+    onDeleteFund: (fundId: String, moveOpeningBalancesTo: String?, onDone: () -> Unit) -> Unit = { _, _, _ -> },
+    onEditTransfer: (transferId: String, fromFundId: String, toFundId: String, amount: Double, note: String?, onDone: () -> Unit) -> Unit = { _, _, _, _, _, _ -> },
+    onDeleteTransfer: (transferId: String, onDone: () -> Unit) -> Unit = { _, _ -> },
     bankEnabled: Boolean = false,
     bankConnected: Boolean = false,
     bankReviewCount: Int = 0,
@@ -67,6 +76,22 @@ fun WalletsScreen(
     val fmt = rememberWalletsMoney(wallets.currency)
     var transferFrom by remember { mutableStateOf<FundRowDto?>(null) }
     var incomeTo by remember { mutableStateOf<FundRowDto?>(null) }
+    // ⚠️ The editor holds an **id**, not a captured row (the S94 lesson). Editing refreshes the list, and a
+    // captured row would keep showing the balance the fund had before the money moved. "Creating" is its own
+    // flag rather than a null id, so a fund vanishing under the editor can't be mistaken for a new one.
+    var creatingFund by remember { mutableStateOf(false) }
+    var editingFundId by remember { mutableStateOf<String?>(null) }
+    var archivingFundId by remember { mutableStateOf<String?>(null) }
+    var deletingFundId by remember { mutableStateOf<String?>(null) }
+    var editingTransferId by remember { mutableStateOf<String?>(null) }
+    var deletingTransferId by remember { mutableStateOf<String?>(null) }
+    var showArchived by remember { mutableStateOf(false) }
+
+    fun findFund(id: String?): FundRowDto? = id?.let { f ->
+        wallets.funds.firstOrNull { it.id == f } ?: wallets.archivedFunds.firstOrNull { it.id == f }
+    }
+    val editingFund = findFund(editingFundId)
+    val editingTransfer = editingTransferId?.let { id -> wallets.transfers.firstOrNull { it.id == id } }
 
     when {
         wallets.loading && wallets.funds.isEmpty() ->
@@ -84,6 +109,9 @@ fun WalletsScreen(
         else -> {
             TotalHeader(fmt(wallets.current))
             Spacer(Modifier.height(14.dp))
+
+            AddFundButton { onPrepareFund(); creatingFund = true }
+            Spacer(Modifier.height(12.dp))
 
             if (wallets.funds.isEmpty()) {
                 Box(Modifier.fillMaxWidth().height(160.dp), contentAlignment = Alignment.Center) {
@@ -103,7 +131,32 @@ fun WalletsScreen(
                             liveFmt = bankFmt,
                             onTransfer = { onPrepareTransfer(); transferFrom = f },
                             onAddIncome = { onPrepareAddIncome(); incomeTo = f },
+                            onEdit = { onPrepareFund(); editingFundId = f.id },
                         )
+                    }
+                }
+            }
+
+            // Archived funds stay reachable — archiving is what the server suggests when a removal is refused, so
+            // hiding them with no way back would make that advice a dead end. Collapsed, as on the Goals tab.
+            if (wallets.archivedFunds.isNotEmpty()) {
+                Spacer(Modifier.height(14.dp))
+                Text(
+                    if (showArchived) "Hide archived (${wallets.archivedFunds.size})"
+                    else "Show archived (${wallets.archivedFunds.size})",
+                    color = tandem.muted,
+                    fontSize = 13.sp,
+                    modifier = Modifier.clickable { showArchived = !showArchived }.padding(vertical = 6.dp),
+                )
+                if (showArchived) {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        wallets.archivedFunds.forEach { f ->
+                            ArchivedFundRow(
+                                f, fmt,
+                                onRestore = { onArchiveFund(f.id, false, null, 0.0) {} },
+                                onRemove = { onPrepareFund(); deletingFundId = f.id },
+                            )
+                        }
                     }
                 }
             }
@@ -127,7 +180,7 @@ fun WalletsScreen(
                         .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(14.dp)),
                 ) {
                     wallets.transfers.forEachIndexed { i, t ->
-                        TransferRow(t, fmt)
+                        TransferRow(t, fmt) { onPrepareFund(); editingTransferId = t.id }
                         if (i < wallets.transfers.lastIndex) {
                             Box(Modifier.fillMaxWidth().height(1.dp).padding(horizontal = 14.dp).background(tandem.hairline))
                         }
@@ -153,6 +206,97 @@ fun WalletsScreen(
             onSubmit = { cat, amt, date, onDone -> onAddIncome(to.id, cat, amt, date, onDone) },
         )
     }
+
+    if (creatingFund || editingFund != null) {
+        FundEditorSheet(
+            existing = editingFund,
+            wallets = wallets,
+            onDismiss = { creatingFund = false; editingFundId = null },
+            onSave = onSaveFund,
+            // Archive is offered only for a saved, non-synced fund: a synced fund's balance is the bank's, so
+            // there'd be nothing to move out and nothing meaningful to hide.
+            onArchive = editingFund?.takeIf { !it.synced && !it.archived }?.let { f ->
+                { editingFundId = null; archivingFundId = f.id }
+            },
+        )
+    }
+    findFund(archivingFundId)?.let { f ->
+        ArchiveFundDialog(
+            fund = f,
+            wallets = wallets,
+            onDismiss = { archivingFundId = null },
+            onConfirm = { moveTo -> onArchiveFund(f.id, true, moveTo, f.balance) { archivingFundId = null } },
+        )
+    }
+    findFund(deletingFundId)?.let { f ->
+        DeleteFundDialog(
+            fund = f,
+            wallets = wallets,
+            onDismiss = { deletingFundId = null },
+            onRestore = { onArchiveFund(f.id, false, null, 0.0) { deletingFundId = null } },
+            onDelete = { moveTo -> onDeleteFund(f.id, moveTo) { deletingFundId = null } },
+        )
+    }
+    editingTransfer?.let { t ->
+        EditTransferSheet(
+            transfer = t,
+            wallets = wallets,
+            onDismiss = { editingTransferId = null },
+            onSave = { from, to, amt, note, onDone -> onEditTransfer(t.id, from, to, amt, note, onDone) },
+            onDelete = { editingTransferId = null; deletingTransferId = t.id },
+        )
+    }
+    deletingTransferId?.let { id ->
+        wallets.transfers.firstOrNull { it.id == id }?.let { t ->
+            DeleteTransferDialog(
+                transfer = t,
+                wallets = wallets,
+                onDismiss = { deletingTransferId = null },
+                onDelete = { onDeleteTransfer(t.id) { deletingTransferId = null } },
+            )
+        }
+    }
+}
+
+/** The Wallets header's add affordance — a dashed-feeling full-width row, matching the Goals tab's, so it reads
+ *  as "there's room for more" rather than competing with the bottom bar's FAB (which adds an expense). */
+@Composable
+private fun AddFundButton(onClick: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.10f))
+            .clickable(onClick = onClick)
+            .padding(vertical = 12.dp),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(TandemIcons.Plus, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(17.dp))
+        Spacer(Modifier.width(7.dp))
+        Text("Add a fund", color = MaterialTheme.colorScheme.primary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+    }
+}
+
+/** An archived fund: name + what it holds, with the two ways out. Deliberately flat — it's out of play. */
+@Composable
+private fun ArchivedFundRow(f: FundRowDto, fmt: (Double) -> String, onRestore: () -> Unit, onRemove: () -> Unit) {
+    val tandem = LocalTandemColors.current
+    Row(
+        Modifier.fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(12.dp))
+            .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(12.dp))
+            .padding(start = 12.dp, top = 4.dp, bottom = 4.dp, end = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        CatIcon(f.icon, f.name)
+        Spacer(Modifier.width(8.dp))
+        Text(f.name, color = tandem.muted, modifier = Modifier.weight(1f), maxLines = 1, fontSize = 14.sp)
+        Text(fmt(f.balance), color = tandem.muted, fontSize = 13.sp)
+        TextButton(onClick = onRestore) { Text("Restore", fontSize = 13.sp) }
+        IconButton(onClick = onRemove, modifier = Modifier.size(38.dp)) {
+            Icon(TandemIcons.Trash, "Remove ${f.name}", tint = tandem.spent, modifier = Modifier.size(18.dp))
+        }
+    }
 }
 
 @Composable
@@ -176,6 +320,7 @@ private fun FundRow(
     fmt: (Double) -> String,
     onTransfer: () -> Unit,
     onAddIncome: () -> Unit,
+    onEdit: () -> Unit,
     liveBalance: Double? = null,
     liveFmt: (Double) -> String = fmt,
 ) {
@@ -202,7 +347,8 @@ private fun FundRow(
         // Synced funds show the live bank balance once it's loaded; everything else shows the app balance.
         Text(if (liveBalance != null) liveFmt(liveBalance) else fmt(f.balance), fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
         // The two common actions sit next to the balance — only for a non-synced fund (a synced fund is
-        // driven by its real bank balance, so manual moves don't apply).
+        // driven by its real bank balance, so manual moves don't apply). Edit follows for every fund: a synced
+        // fund can still be renamed or re-iconed, it just can't be moved money by hand.
         if (!f.synced) {
             IconButton(onClick = onTransfer, modifier = Modifier.size(38.dp)) {
                 Icon(TandemIcons.Swap, "Transfer", tint = tandem.muted)
@@ -210,6 +356,9 @@ private fun FundRow(
             IconButton(onClick = onAddIncome, modifier = Modifier.size(38.dp)) {
                 Icon(TandemIcons.Plus, "Add income", tint = tandem.muted)
             }
+        }
+        IconButton(onClick = onEdit, modifier = Modifier.size(38.dp)) {
+            Icon(TandemIcons.Pencil, "Edit ${f.name}", tint = tandem.muted, modifier = Modifier.size(17.dp))
         }
     }
 }
@@ -247,10 +396,10 @@ private fun BankEntryRow(connected: Boolean, reviewCount: Int, onClick: () -> Un
 }
 
 @Composable
-private fun TransferRow(t: FundTransferRowDto, fmt: (Double) -> String) {
+private fun TransferRow(t: FundTransferRowDto, fmt: (Double) -> String, onEdit: () -> Unit) {
     val tandem = LocalTandemColors.current
     Row(
-        Modifier.fillMaxWidth().padding(14.dp),
+        Modifier.fillMaxWidth().clickable(onClick = onEdit).padding(14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f)) {
@@ -260,6 +409,8 @@ private fun TransferRow(t: FundTransferRowDto, fmt: (Double) -> String) {
         }
         Spacer(Modifier.width(8.dp))
         Text(fmt(t.amount), fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+        Spacer(Modifier.width(6.dp))
+        Icon(TandemIcons.Pencil, contentDescription = "Edit transfer", tint = tandem.muted, modifier = Modifier.size(15.dp))
     }
 }
 

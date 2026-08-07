@@ -223,6 +223,41 @@ class TandemTabApi(
     suspend fun transferFunds(accountId: String, req: TransferFundsRequest): FundMutationDto =
         authedPost("/accounts/$accountId/fund-transfers", req).body()
 
+    /** Retarget/re-price a transfer already recorded this period. Its original date is kept by the server. */
+    suspend fun editFundTransfer(accountId: String, transferId: String, req: EditFundTransferRequest): MutationResultDto =
+        authedPut("/accounts/$accountId/fund-transfers/$transferId", req).body()
+
+    /** Undo a transfer. 400s if it isn't in the open period (history isn't rewritten). */
+    suspend fun deleteFundTransfer(accountId: String, transferId: String): MutationResultDto =
+        authedDelete("/accounts/$accountId/fund-transfers/$transferId").body()
+
+    /** Create a fund. Returns a refreshed Wallets view (and the new fund's id as `entityId`). */
+    suspend fun createFund(accountId: String, req: CreateFundRequest): FundMutationDto =
+        authedPost("/accounts/$accountId/funds", req).body()
+
+    /** Rename / re-note / re-icon a fund. ⚠️ A full overwrite — see [EditFundRequest]. */
+    suspend fun editFund(accountId: String, fundId: String, req: EditFundRequest): MutationResultDto =
+        authedPut("/accounts/$accountId/funds/$fundId", req).body()
+
+    /** Archive (hide) or restore a fund. Reversible; keeps its history. Does *not* move any money — the caller
+     *  transfers a remaining balance out first, exactly as the web does. */
+    suspend fun archiveFund(accountId: String, fundId: String, archived: Boolean): MutationResultDto =
+        authedPut("/accounts/$accountId/funds/$fundId/archived", SetArchivedRequest(archived)).body()
+
+    /** Remove a fund for good. Pass [moveOpeningBalancesTo] to land its opening balance on another top-level fund
+     *  first (total-preserving); without it the balance is dropped with the fund. 400s on a domain blocker
+     *  (sub-funds / the only fund / referenced by an expense or transfer) — show that message verbatim, since
+     *  "archive it instead" is the answer. */
+    suspend fun deleteFund(accountId: String, fundId: String, moveOpeningBalancesTo: String? = null): MutationResultDto =
+        authedDelete(
+            "/accounts/$accountId/funds/$fundId" +
+                (moveOpeningBalancesTo?.let { "?moveOpeningBalancesTo=$it" } ?: ""),
+        ).body()
+
+    /** Set what a fund held at the start of the open period (overwrites any existing opening balance). */
+    suspend fun setFundOpeningBalance(accountId: String, fundId: String, amount: Double): MutationResultDto =
+        authedPut("/accounts/$accountId/funds/$fundId/opening-balance", SetFundOpeningBalanceRequest(amount)).body()
+
     /** Record income into a fund (a deposit). Returns the recomputed overview. */
     suspend fun addDeposit(accountId: String, req: AddDepositRequest): DepositMutationDto =
         authedPost("/accounts/$accountId/deposits", req).body()

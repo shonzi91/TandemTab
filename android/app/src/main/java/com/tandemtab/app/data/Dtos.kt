@@ -643,6 +643,44 @@ data class FundMutationDto(
     val view: WalletsViewDto,
 )
 
+/** PUT /accounts/{id}/fund-transfers/{transferId} — retarget/re-price an existing transfer. The original date is
+ *  preserved server-side (there is no date field), so this edits the *what*, never the *when*. */
+@Serializable
+data class EditFundTransferRequest(
+    val fromFundId: String,
+    val toFundId: String,
+    val amount: Double,
+    val note: String? = null,
+)
+
+// --- Fund CRUD (mirrors the web's Wallets fund actions) ------------------------------------------------
+
+/** POST /accounts/{id}/funds. `parentId` nests an informational sub-fund — the web only ever creates top-level
+ *  funds from its Wallets section, and so do we. */
+@Serializable
+data class CreateFundRequest(
+    val name: String,
+    val parentId: String? = null,
+    val note: String? = null,
+    val icon: String? = null,
+)
+
+/** PUT /accounts/{id}/funds/{fundId}. ⚠️ A full OVERWRITE of (name, note, icon), not a patch: the server calls
+ *  RenameFund + SetFundNote + SetFundIcon unconditionally, so an omitted field is *cleared*, not kept. Send the
+ *  row's current values for anything the form didn't touch — `FundRowDto.icon` is the raw stored icon precisely
+ *  so it can be round-tripped (the name-based fallback is applied for display only). */
+@Serializable
+data class EditFundRequest(
+    val name: String,
+    val note: String? = null,
+    val icon: String? = null,
+)
+
+/** PUT /accounts/{id}/funds/{fundId}/opening-balance — what the fund held at the start of the open period.
+ *  Overwrites any existing opening balance. */
+@Serializable
+data class SetFundOpeningBalanceRequest(val amount: Double)
+
 /** POST /accounts/{id}/deposits — record income into a fund. `categoryId` empty = general income; deposits with
  *  the same (member, category, fund) merge server-side. `date` is an ISO yyyy-MM-dd string. */
 @Serializable

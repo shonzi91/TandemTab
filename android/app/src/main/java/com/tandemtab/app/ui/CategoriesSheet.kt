@@ -194,10 +194,11 @@ private fun CategoryEditor(
     }
 }
 
-/** A wrapping grid of the line-icon palette (plus an "Auto" chip that guesses from the name). Selected = highlighted. */
+/** A wrapping grid of the line-icon palette (plus an "Auto" chip that guesses from the name). Selected = highlighted.
+ *  Shared with the fund editor — categories and funds draw from the same palette, so they should look identical. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun IconPalette(selected: String?, name: String, onPick: (String?) -> Unit) {
+internal fun IconPalette(selected: String?, name: String, onPick: (String?) -> Unit) {
     val tandem = LocalTandemColors.current
     val autoName = CategoryIcons.guess(name)
     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {

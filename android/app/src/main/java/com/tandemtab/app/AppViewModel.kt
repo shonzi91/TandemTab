@@ -39,6 +39,9 @@ import com.tandemtab.app.data.UpdateRecurringRequest
 import com.tandemtab.app.data.SavingsViewDto
 import com.tandemtab.app.data.SpendFromSavingsRequest
 import com.tandemtab.app.data.TransferFundsRequest
+import com.tandemtab.app.data.CreateFundRequest
+import com.tandemtab.app.data.EditFundRequest
+import com.tandemtab.app.data.EditFundTransferRequest
 import com.tandemtab.app.data.WalletsViewDto
 import com.tandemtab.app.data.DepositRowDto
 import com.tandemtab.app.data.RecentExpenseDto
@@ -284,6 +287,9 @@ data class WalletsUi(
     val currency: String = "",
     val current: Double = 0.0,
     val funds: List<FundRowDto> = emptyList(),
+    // Archived funds are hidden from the money but stay reachable: archiving is what the server suggests when a
+    // delete is refused, so a one-way archive would make that advice a dead end.
+    val archivedFunds: List<FundRowDto> = emptyList(),
     val transfers: List<FundTransferRowDto> = emptyList(),
     val incomeCategories: List<CategoryOptionDto> = emptyList(),
     val saving: Boolean = false,
@@ -998,7 +1004,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun walletsFrom(v: WalletsViewDto, incomeCategories: List<CategoryOptionDto>) = WalletsUi(
         loaded = true, currency = v.currency, current = v.overview.current,
-        funds = v.funds, transfers = v.transfers, incomeCategories = incomeCategories,
+        funds = v.funds, archivedFunds = v.archivedFunds, transfers = v.transfers, incomeCategories = incomeCategories,
     )
 
     /** Clear any stale write error before opening a Wallets action sheet. */
@@ -1056,6 +1062,123 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 _state.update { it.copy(wallets = it.wallets.copy(saving = false, saveError = e.message ?: "Couldn't record income.")) }
             }
         }
+    }
+
+    // --- Fund management (S95): create / edit / archive / restore / remove, plus editing a transfer -------------
+    // Only the create endpoint answers with a refreshed Wallets view; the rest return a bare MutationResultDto,
+    // so those re-read /wallets to pick up balances, the archived list and the overview together.
+
+    /** Clear any stale write error before opening a fund editor / confirm dialog. */
+    fun prepareFund() = _state.update { it.copy(wallets = it.wallets.copy(saveError = null)) }
+
+    /**
+     * Create ([fundId] null) or update a fund, then set its opening balance for the open period.
+     *
+     * ⚠️ Two commands, because the server splits them: the fund's identity (name/note/icon) and what it *held* at
+     * the start of the period are separate writes. The opening balance goes second so a fund still exists to hang
+     * it on if the second call fails — a fund with the wrong opening balance is visible and fixable; an opening
+     * balance with no fund is nothing.
+     */
+    fun saveFund(fundId: String?, name: String, icon: String?, note: String?, openingBalance: Double?, onDone: () -> Unit) {
+        val accountId = _state.value.selectedAccountId ?: return
+        _state.update { it.copy(wallets = it.wallets.copy(saving = true, saveError = null)) }
+        viewModelScope.launch {
+            try {
+                val id = if (fundId == null) {
+                    api.createFund(accountId, CreateFundRequest(name.trim(), null, note?.ifBlank { null }, icon)).entityId
+                } else {
+                    api.editFund(accountId, fundId, EditFundRequest(name.trim(), note?.ifBlank { null }, icon))
+                    fundId
+                }
+                if (openingBalance != null && id != null) api.setFundOpeningBalance(accountId, id, openingBalance)
+                refreshWallets(accountId)
+                onDone()
+            } catch (e: Exception) {
+                _state.update { it.copy(wallets = it.wallets.copy(saving = false, saveError = e.message ?: "Couldn't save that fund.")) }
+            }
+        }
+    }
+
+    /**
+     * Archive or restore a fund. When archiving one that still holds money, [moveBalanceTo] + [amount] move it out
+     * first as a real transfer — the account total is preserved and the archived fund is left at zero, which is
+     * what the web does. Deliberately two commands: if the archive half fails the transfer stands, visible and
+     * re-doable, rather than money vanishing into a hidden fund.
+     */
+    fun archiveFund(fundId: String, archived: Boolean, moveBalanceTo: String? = null, amount: Double = 0.0, onDone: () -> Unit) {
+        val accountId = _state.value.selectedAccountId ?: return
+        _state.update { it.copy(wallets = it.wallets.copy(saving = true, saveError = null)) }
+        viewModelScope.launch {
+            try {
+                if (archived && moveBalanceTo != null && amount > 0.0) {
+                    api.transferFunds(
+                        accountId,
+                        TransferFundsRequest(fundId, moveBalanceTo, amount, LocalDate.now().toString(), null),
+                    )
+                }
+                api.archiveFund(accountId, fundId, archived)
+                refreshWallets(accountId)
+                onDone()
+            } catch (e: Exception) {
+                _state.update {
+                    it.copy(wallets = it.wallets.copy(saving = false, saveError = e.message ?: "Couldn't archive that fund."))
+                }
+            }
+        }
+    }
+
+    /** Remove a fund for good, optionally landing its opening balance on [moveOpeningBalancesTo] first. The domain
+     *  blockers (sub-funds, the only fund, an expense or transfer referencing it) arrive as a 400 whose message is
+     *  shown verbatim — it names the blocker, which is more than the client could work out for itself. */
+    fun deleteFund(fundId: String, moveOpeningBalancesTo: String?, onDone: () -> Unit) {
+        val accountId = _state.value.selectedAccountId ?: return
+        _state.update { it.copy(wallets = it.wallets.copy(saving = true, saveError = null)) }
+        viewModelScope.launch {
+            try {
+                api.deleteFund(accountId, fundId, moveOpeningBalancesTo)
+                refreshWallets(accountId)
+                onDone()
+            } catch (e: Exception) {
+                _state.update { it.copy(wallets = it.wallets.copy(saving = false, saveError = e.message ?: "Couldn't remove that fund.")) }
+            }
+        }
+    }
+
+    /** Retarget/re-price a transfer recorded this period (its date is kept server-side). */
+    fun editFundTransfer(transferId: String, fromFundId: String, toFundId: String, amount: Double, note: String?, onDone: () -> Unit) {
+        val accountId = _state.value.selectedAccountId ?: return
+        _state.update { it.copy(wallets = it.wallets.copy(saving = true, saveError = null)) }
+        viewModelScope.launch {
+            try {
+                api.editFundTransfer(accountId, transferId, EditFundTransferRequest(fromFundId, toFundId, amount, note?.ifBlank { null }))
+                refreshWallets(accountId)
+                onDone()
+            } catch (e: Exception) {
+                _state.update { it.copy(wallets = it.wallets.copy(saving = false, saveError = e.message ?: "Couldn't save that transfer.")) }
+            }
+        }
+    }
+
+    /** Undo a transfer recorded this period. */
+    fun deleteFundTransfer(transferId: String, onDone: () -> Unit) {
+        val accountId = _state.value.selectedAccountId ?: return
+        _state.update { it.copy(wallets = it.wallets.copy(saving = true, saveError = null)) }
+        viewModelScope.launch {
+            try {
+                api.deleteFundTransfer(accountId, transferId)
+                refreshWallets(accountId)
+                onDone()
+            } catch (e: Exception) {
+                _state.update { it.copy(wallets = it.wallets.copy(saving = false, saveError = e.message ?: "Couldn't remove that transfer.")) }
+            }
+        }
+    }
+
+    /** Re-read /wallets after a write that answered with only a version, so balances, the archived list and the
+     *  header total all move together. Keeps the income-category picker already fetched for the Add-income sheet. */
+    private suspend fun refreshWallets(accountId: String) {
+        val v = api.wallets(accountId, _state.value.selectedPeriod)
+        _state.update { it.copy(overview = v.overview, wallets = walletsFrom(v, it.wallets.incomeCategories)) }
     }
 
     /** Lazily load the Home Health card + Insights modal the first time Home is shown, or when forced. */
