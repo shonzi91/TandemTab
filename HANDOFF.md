@@ -4,8 +4,14 @@ Last updated: 2026-08-07 (Session 95 — **Tier-1 mobile-only parity is CLOSED.*
 management, the savings target, and removing a logged installment. Ten calls, **59 → 69**, and **zero server
 change** across all three. The last row turned out to be a **live data-integrity bug**, not a missing button:
 Android could delete one row of a multi-row loan payment. **310 + 48 + 339 green** (unchanged — no C# touched).
-All three verified end-to-end on the emulator in both themes. ⚠️ **Android has no distribution pipeline, so
-nothing is owed to production and no deploy is needed.** See the Session 95 entry directly below.)
+All three verified end-to-end on the emulator in both themes.
+✅ **Everything is committed and pushed** (`48b221b`, `3615081`, `e8131ce`); tree clean, `main` == `origin/main`.
+⚠️ **NO DEPLOY WAS NEEDED and none was run — this was checked, not assumed.** All three commits touch only
+`android/` + docs: `git diff --name-only 2a3868a..HEAD` lists **zero** files under `src/`, and
+`git log d631df0..HEAD -- src/ Dockerfile` is **empty**. Production still serves **`finapp-00286-ncg`** (from
+image `d631df0`, S94), traffic on LATEST, run URL + tandemtab.com both **200** — i.e. prod is already exactly
+current with the codebase. Deploying would have built a byte-identical image for a new revision number.
+Android has no distribution pipeline, so "shipped" here means *in the repo*. See the Session 95 entry below.)
 
 Previously: 2026-08-07 (Session 94 — six unrecorded web/brand commits found and written up, then **Android can
 declare a bill or income**, closing Tier-1 mobile-only parity row #1. See the Session 94 entry directly below.
