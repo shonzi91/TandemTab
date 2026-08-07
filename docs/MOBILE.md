@@ -81,7 +81,17 @@ Session 94, **69** after Session 95). It does not call these:
 **Read that table as the R2 backlog.** The four **L** rows are the ones that make Android a *different product*
 rather than a smaller one: a user who only has the phone cannot start next month, cannot create a savings goal,
 has no debt features at all, and cannot share an account — which is the thing Pro is sold on.
-**Three of the four are closed (S91, S92).** Left: **debt** (installments).
+✅ **All four are closed** (S91, S92, S93, S95), and with them the whole **Tier-1 mobile-only** list.
+
+**What's left in this table is the Tier-2 backlog**, and none of it is a phone-only dead-end — every remaining
+row is something a phone user can live without or reach another way:
+**statement import** (M), **savings/debt money-movements** (M — allocate and spend already work, so these are
+refinements), **tags** incl. F2 (M), **achievements + F6** (S–M), **onboarding** (S), **export** (S),
+**reallocation** (S), **settling an on-behalf expense** (S).
+⛔ Two items are blocked on the **server**, not on Android, and cannot be estimated as client work:
+**F4 round-ups** (no field on any contract *and* no command endpoint) and the **fund↔bank sync toggle**
+(`SetFundSynced`, `TODO(cutover)`). Both are still whole-snapshot pushes in the thick client. They would batch
+naturally into one "account settings commands" server slice.
 
 #### ✅ Period lifecycle — closed (Session 91, 2026-08-06)
 
