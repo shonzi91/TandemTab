@@ -1,10 +1,11 @@
 # TandemTab (FinApp) — session handoff
 
-Last updated: 2026-08-07 (Session 95 — **two Tier-1 mobile-only parity rows closed: fund/wallet management and
-the savings target.** Nine calls, **59 → 68**, and **zero server change** across both. **310 + 48 + 339 green**
-(unchanged — no C# touched). Both verified end-to-end on the emulator in both themes. ⚠️ **Android has no
-distribution pipeline, so nothing is owed to production and no deploy is needed.** See the Session 95 entry
-directly below.)
+Last updated: 2026-08-07 (Session 95 — **Tier-1 mobile-only parity is CLOSED.** Three rows: fund/wallet
+management, the savings target, and removing a logged installment. Ten calls, **59 → 69**, and **zero server
+change** across all three. The last row turned out to be a **live data-integrity bug**, not a missing button:
+Android could delete one row of a multi-row loan payment. **310 + 48 + 339 green** (unchanged — no C# touched).
+All three verified end-to-end on the emulator in both themes. ⚠️ **Android has no distribution pipeline, so
+nothing is owed to production and no deploy is needed.** See the Session 95 entry directly below.)
 
 Previously: 2026-08-07 (Session 94 — six unrecorded web/brand commits found and written up, then **Android can
 declare a bill or income**, closing Tier-1 mobile-only parity row #1. See the Session 94 entry directly below.
@@ -28,7 +29,35 @@ a separate balance axis — because flows and a stock were sharing one scale. **
 as `de51071`, now live on **`finapp-00280-4s8`** (traffic forced `--to-latest`; run URL + tandemtab.com 200; 5
 `secretKeyRef`s; no WARNING+ logs). Prior context below is Session 91.)
 
-## Session 95 (2026-08-07) — **Two Tier-1 rows, neither of which cost the server anything**
+## Session 95 (2026-08-07) — **Tier-1 parity closed: three rows, no server change, one real bug**
+
+### ★ Removing a logged installment — and the bug that was hiding behind it (`DELETE /installments/{groupId}`)
+**Tier-1 row #4, closed — and with it the whole Tier-1 list.** **One call: 68 → 69.**
+
+- **★ This was not a missing button, it was a live data-integrity bug — since S93.** A loan payment posts two or
+  more linked expense rows. Android's ordinary per-row trash sat on every one of them and called
+  `DELETE /expenses/{id}`, so deleting the principal left the interest behind **and** left a payment-driven loan
+  short of its principal. The web has redirected that delete to the group since the feature shipped; Android
+  picked up the *logging* in S93 and not the guard. **Shipping half of a paired feature ships the trap with it —
+  worth a look wherever else we ported one side of a web interaction.**
+- **★ The fields that fix it were on the wire all along.** `ExpenseDto` has carried `InstallmentGroupId` /
+  `InstallmentPart` / `DebtBucketId` since R2; Android's copy didn't declare them. Third row running with no
+  server change, and the second time (after S92's `UserDto.id`) the gap was a field Android had declined to
+  parse. **A thin client's blind spots live in its DTOs, not only in the API.**
+- **The delete redirects rather than blocking** — the trash still works, it just raises "all N of its rows go
+  together" and calls the group endpoint. Undoing a mistyped payment is exactly what a user wants; the whole
+  payment is the only coherent unit to undo.
+- **★ The row count is computed over the whole period, not the category expander.** A *web*-logged installment
+  can split principal and interest across two categories, so a per-category count would say "1 row" and
+  understate the delete. Android's own log sheet sends one category for both parts — which is precisely why this
+  would have tested clean and been wrong on real web data.
+- **Rows now say what they are** ("Car loan · 🧾 Principal"). The loan name comes from the row's **note** (the log
+  sheet writes the bucket name there), not from a name field — `ExpenseDto` has `debtBucketId` and no debt name.
+- **Verified on the emulator in both themes:** €300 logged against a payment-driven *Car loan* → €100 interest /
+  €200 principal, owed 10,000 → 9,800, spent 400 → 700 → deleted from the **principal** row → confirm named
+  **2 rows** → both gone, spent back to €400, owed back to **€10,000.00**, and `/spending` showed no orphans.
+
+## Session 95 (cont.) — **Two Tier-1 rows, neither of which cost the server anything**
 
 ### ★ The savings target is settable on a phone (`/settings` + `/savings-target`)
 **Tier-1 mobile-only parity row #3, closed.** Android already *showed* the target on the Health sheet
@@ -95,9 +124,11 @@ ones worth carrying:
 - **310 server + 48 persistence + 339 domain, unchanged** — no C# was touched, which is the point of the entry.
 
 ### ⚠️ Carry-over
-- **Tier-1 mobile-only parity — one row left:** **remove a logged installment**
-  (`DELETE /installments/{groupId}` — you can log one but not undo it). Then Tier 2: export (data-out) and
-  weekly recap + push (needs a backend endpoint).
+- ✅ **Tier-1 mobile-only parity is closed.** Next is **Tier 2: export** (data-out, `/export`) and **weekly recap
+  + push** (needs a backend endpoint). Neither is a phone-only dead-end, which is why they sat below Tier 1.
+- ⚠️ **Audit the rest of the ported-half-a-feature shape.** The installment row wasn't a gap, it was a *bug*:
+  S93 ported the web's "log an installment" without its delete guard. Anywhere else Android took one side of a
+  web interaction is worth the same look.
 - ⛔ **Two things are blocked on the server, not on Android:** **F4 round-ups** (no contract *and* no endpoint)
   and the **fund↔bank sync toggle** (`SetFundSynced`, `TODO(cutover)`). Both are whole-snapshot pushes in the
   thick client. Neither can be ported until the server grows a command endpoint — worth batching into one

@@ -111,6 +111,15 @@ data class ExpenseDto(
     val onBehalfOfOtherAccount: Boolean = false,
     val isSettlementSource: Boolean = false,
     val isSettlementDestination: Boolean = false,
+    // R2 installment split: rows sharing an `installmentGroupId` are ONE logged loan payment, and the server
+    // removes them as a unit. Parsing these is what stops a single-row delete from leaving a half-installment
+    // (principal gone, interest kept) that reconciles to nothing. `installmentPart` is
+    // "principal" | "interest" | "additional"; all three are null on an ordinary expense.
+    // ⚠️ `debtBucketId` names the loan by **id only** — the DTO carries no debt name, so a thin client can label
+    // the row "Principal" but can only say *which* loan if the Goals cache happens to be warm.
+    val installmentGroupId: String? = null,
+    val installmentPart: String? = null,
+    val debtBucketId: String? = null,
 )
 
 @Serializable

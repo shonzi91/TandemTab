@@ -1377,6 +1377,37 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** Delete an expense (swipe action). Splices it out of the Spending list and reflects the recomputed overview. */
+    /**
+     * Undo a logged installment. Removes **every** row of the payment (the server refuses to leave half of one),
+     * and gives a payment-driven debt its principal back — so this refetches Savings rather than just dropping
+     * rows from the cache: the debt balance on the Goals tab moves too, and Home's overview with it.
+     */
+    fun deleteInstallment(groupId: String, onDone: () -> Unit = {}) {
+        val accountId = _state.value.selectedAccountId ?: return
+        _state.update { it.copy(spending = it.spending.copy(saving = true, saveError = null)) }
+        viewModelScope.launch {
+            try {
+                api.deleteInstallment(accountId, groupId)
+                val v = api.savings(accountId, _state.value.selectedPeriod)
+                _state.update { st ->
+                    st.copy(
+                        overview = v.overview,
+                        goals = goalsFrom(v),
+                        spending = st.spending.copy(
+                            saving = false, saveError = null,
+                            // Drop the whole group locally so the list is right before the refetch lands.
+                            expenses = st.spending.expenses.filterNot { it.installmentGroupId == groupId },
+                            spent = v.overview.spent,
+                        ),
+                    )
+                }
+                onDone()
+            } catch (e: Exception) {
+                _state.update { it.copy(spending = it.spending.copy(saving = false, saveError = e.message ?: "Couldn't remove that installment.")) }
+            }
+        }
+    }
+
     fun deleteExpense(expenseId: String, onDone: () -> Unit = {}) {
         val accountId = _state.value.selectedAccountId ?: return
         _state.update { it.copy(spending = it.spending.copy(saving = true, saveError = null)) }

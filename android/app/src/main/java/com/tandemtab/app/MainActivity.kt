@@ -146,7 +146,12 @@ private fun App(vm: AppViewModel, onGoogle: () -> Unit) {
             onEditDeposit = vm::editDeposit,
             onClearEditingIncome = vm::clearEditingIncome,
             onBeginEditExpense = vm::beginEdit,
-            onDeleteExpense = { vm.deleteExpense(it.id) },
+            // An installment row is never removed on its own: its rows are one payment and the server drops them
+            // as a unit, so route on the group id. Deleting just the principal would leave interest behind and a
+            // payment-driven loan short of its principal — the confirm the user saw already said "all N rows".
+            onDeleteExpense = { e ->
+                e.installmentGroupId?.let { vm.deleteInstallment(it) } ?: vm.deleteExpense(e.id)
+            },
             onSetBudget = vm::setBudget,
             onRemoveBudget = vm::removeBudget,
             onAddCategory = vm::addCategory,

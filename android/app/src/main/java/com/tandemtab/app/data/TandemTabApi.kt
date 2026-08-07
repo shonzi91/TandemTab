@@ -197,6 +197,11 @@ class TandemTabApi(
     suspend fun logInstallment(accountId: String, req: LogInstallmentRequest): MutationResultDto =
         authedPost("/accounts/$accountId/installments", req).body()
 
+    /** Undo a logged installment — removes **every** row of it and gives a payment-driven debt its principal back.
+     *  The server refuses to remove half a payment, which is why this takes the group id, not an expense id. */
+    suspend fun deleteInstallment(accountId: String, groupId: String): MutationResultDto =
+        authedDelete("/accounts/$accountId/installments/$groupId").body()
+
     /** Create a savings bucket (goal / debt / investment / expenses fund). Rejects a duplicate name. */
     suspend fun createSavingBucket(accountId: String, req: SaveSavingBucketRequest): MutationResultDto =
         authedPost("/accounts/$accountId/savings/buckets", req).body()

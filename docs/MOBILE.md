@@ -59,12 +59,12 @@ endpoints the server exposes that `TandemTabApi` never calls.** Every feature An
 there, because a thin client cannot render what it does not fetch.
 
 Android calls **37** of the account endpoints (**46** after Session 91, **55** after Session 92, **59** after
-Session 94, **66** then **68** after Session 95). It does not call these:
+Session 94, **69** after Session 95). It does not call these:
 
 | Missing capability | Endpoints never called | Weight |
 |---|---|---|
 | **Savings/debt bucket money-movements** (CRUD ✅ **done S91**) | ~~`/savings/buckets…`~~, `/savings/disburse`, `/savings/to-budget`, `/savings/transfer`, `/savings/movements/…` | M |
-| **Debt entirely** (R1 informative debt + R2 installments) | `/installments`, `/installments/{groupId}` | **L** |
+| ~~**Debt entirely** (R1 informative debt + R2 installments)~~ | ~~`/installments`~~ (S93), ~~`/installments/{groupId}`~~ (S95) | ✅ **done** |
 | ~~**Sharing — the hero Pro feature**~~ | ~~`/invitations`, `/members/{id}`, `/transfer-ownership`~~ | ✅ **done S92** |
 | ~~**Period lifecycle**~~ | ~~`/periods/start-next`, `/periods/latest`, `/periods/{i}/schedule`~~ | ✅ **done S91** |
 | **Statement import** | `/import` | M |
@@ -285,6 +285,43 @@ account name. **Two calls: 66 → 68** — `GET /accounts/{id}/settings` (never 
   seeded to 20 from `/settings` with Save disabled → changed to 35 → **"Saved."** and Save disabled again →
   `GET /settings` confirmed `savingsRateTarget=0.35` → `/insights` confirmed `savingsTarget=0.35` → the Health
   sheet read the new goal → 150 raised the range warning and kept Save disabled → survived an app restart.
+
+#### ✅ Removing a logged installment — closed (Session 95, 2026-08-07)
+
+Since S93 Android could log a loan payment but never undo one. **One call: 68 → 69** (`DELETE
+/installments/{groupId}`) — but the row was not a missing button, it was a **live data-integrity bug**, and that
+is the finding.
+
+- **★ Android could already corrupt an installment, and had been able to since S93.** A payment posts two or more
+  linked expense rows. Android's expense list offered its ordinary per-row trash on every one of them, calling
+  `DELETE /expenses/{id}` — so deleting the principal row left the interest row behind **and** left a
+  payment-driven loan short of its principal. The web has guarded this since the feature shipped
+  (`OpenDeleteExpense` redirects to a group confirm); Android never picked the guard up when it picked up the
+  logging. **Shipping half of a paired feature ships the trap with it.**
+- **★ The three fields that fix it were on the wire all along.** `ExpenseDto` has carried `InstallmentGroupId`,
+  `InstallmentPart` and `DebtBucketId` since R2; Android's copy simply didn't declare them. **Third row running
+  where the server needed no change, and the second (after S92's `UserDto.id`) where the gap was a field Android
+  had declined to parse.** A thin client's blind spots are in its DTOs, not only in the API.
+- **The delete redirects rather than being blocked.** The trash still works on an installment row — it just
+  raises "Remove this installment? … all N of its rows go together — and a payment-driven loan gets its principal
+  back" and calls the group endpoint. Blocking would have been the lazier fix and a worse one: undoing a mistyped
+  payment is exactly what the user wants, and the whole payment is the only coherent unit to undo.
+- **★ The row count is computed across the period, never the drawer's slice.** A web-logged installment can put
+  principal and interest in **different categories**, so counting within one category's expander would report 1
+  and the confirm would understate what the delete removes. `groupSize` is threaded from the full expense list.
+  (Android's own log sheet happens to send one category for both parts, which is exactly why this would have
+  looked correct in testing and been wrong on real web-created data.)
+- **The rows now say what they are** — "Car loan · 🧾 Principal" — so two rows on one date read as one payment.
+  The loan name is not from the DTO (which carries `debtBucketId` but no debt *name*); it arrives as the row's
+  **note**, which the log sheet fills with the bucket name. A payment logged with a custom note shows that note,
+  which is correct — the note is the user's words.
+- **Removing refetches Savings, not just the expense list**, because a payment-driven debt gets its principal
+  back: the Goals balance and Home's overview move with it.
+- Verified end-to-end on the emulator (user `mob95b`, *Car loan* €10,000 @ 12% APR, payment-driven) in **both
+  themes**: logged €300 → split **€100 interest / €200 principal**, owed 10,000 → 9,800, spent 400 → 700, two
+  tagged rows → deleted from the **principal** row → the group confirm named **2 rows** → both rows gone, spent
+  back to €400, owed back to **€10,000.00**, and `/spending` confirmed a single remaining expense with no
+  orphaned installment rows.
 
 **Closed in Session 90:** the Home money hero (all four tiles, incl. the money-in savings rate, the transfers
 sub-line and **F3 "left to spend today"**) and the rotating over-budget alert strip. Both needed server work

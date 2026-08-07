@@ -190,6 +190,11 @@ private fun CategoriesView(
     fun expensesFor(catId: String): List<ExpenseDto> =
         spending.expenses.filter { it.categoryId == catId || catParent[it.categoryId] == catId }
 
+    // How many rows one installment payment has. Counted across the WHOLE period, never the drawer's slice: a
+    // web-logged installment puts principal and interest in different categories, so a per-category count would
+    // report 1 and the confirm would understate what the delete is about to remove.
+    val groupSize: (String) -> Int = { g -> spending.expenses.count { it.installmentGroupId == g } }
+
     // Top-level categories with spend but no budget row — the "other spending" list.
     val unbudgeted = remember(spending.expenses, spending.budgets, spending.categories) {
         spending.categories
@@ -215,7 +220,7 @@ private fun CategoriesView(
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         spending.budgets.sortedByDescending { it.spent }.forEach { b ->
             BudgetRow(
-                b, fmt, expenses = { expensesFor(b.categoryId) }, onEdit = onEdit, onDelete = onDelete,
+                b, fmt, expenses = { expensesFor(b.categoryId) }, groupSize = groupSize, onEdit = onEdit, onDelete = onDelete,
                 onEditBudget = { budgeting = BudgetTarget(b.categoryId, b.name, b.icon, b.allocated) },
             )
         }
@@ -227,7 +232,7 @@ private fun CategoriesView(
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             unbudgeted.forEach { (id, nameIcon, spent) ->
                 UnbudgetedRow(
-                    nameIcon.first, nameIcon.second, spent, fmt, expenses = { expensesFor(id) }, onEdit = onEdit, onDelete = onDelete,
+                    nameIcon.first, nameIcon.second, spent, fmt, expenses = { expensesFor(id) }, groupSize = groupSize, onEdit = onEdit, onDelete = onDelete,
                     onSetBudget = { budgeting = BudgetTarget(id, nameIcon.first, nameIcon.second, null) },
                 )
             }
@@ -300,6 +305,7 @@ private fun BudgetRow(
     b: BudgetRowDto,
     fmt: (Double) -> String,
     expenses: () -> List<ExpenseDto>,
+    groupSize: (String) -> Int,
     onEdit: (ExpenseDto) -> Unit,
     onDelete: (ExpenseDto) -> Unit,
     onEditBudget: () -> Unit,
@@ -330,7 +336,7 @@ private fun BudgetRow(
             if (b.over) "${fmt(-b.remaining)} over budget" else "${fmt(b.remaining)} left",
             fontSize = 12.sp, color = if (b.over) tandem.spent else tandem.muted,
         )
-        ExpenseDrawer(open, expenses, fmt, onEdit, onDelete)
+        ExpenseDrawer(open, expenses, fmt, groupSize, onEdit, onDelete)
     }
 }
 
@@ -341,6 +347,7 @@ private fun UnbudgetedRow(
     spent: Double,
     fmt: (Double) -> String,
     expenses: () -> List<ExpenseDto>,
+    groupSize: (String) -> Int,
     onEdit: (ExpenseDto) -> Unit,
     onDelete: (ExpenseDto) -> Unit,
     onSetBudget: () -> Unit,
@@ -368,12 +375,12 @@ private fun UnbudgetedRow(
                 modifier = Modifier.clip(RoundedCornerShape(6.dp)).clickable(onClick = onSetBudget).padding(horizontal = 6.dp, vertical = 2.dp),
             )
         }
-        ExpenseDrawer(open, expenses, fmt, onEdit, onDelete)
+        ExpenseDrawer(open, expenses, fmt, groupSize, onEdit, onDelete)
     }
 }
 
 @Composable
-private fun ExpenseDrawer(open: Boolean, expenses: () -> List<ExpenseDto>, fmt: (Double) -> String, onEdit: (ExpenseDto) -> Unit, onDelete: (ExpenseDto) -> Unit) {
+private fun ExpenseDrawer(open: Boolean, expenses: () -> List<ExpenseDto>, fmt: (Double) -> String, groupSize: (String) -> Int, onEdit: (ExpenseDto) -> Unit, onDelete: (ExpenseDto) -> Unit) {
     val tandem = LocalTandemColors.current
     AnimatedVisibility(open) {
         Column(Modifier.padding(top = 4.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -384,21 +391,47 @@ private fun ExpenseDrawer(open: Boolean, expenses: () -> List<ExpenseDto>, fmt: 
                 Row(Modifier.fillMaxWidth().padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text(e.note?.takeIf { it.isNotBlank() } ?: e.categoryName, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurface, maxLines = 1)
-                        Text("${shortDate(e.date)} · ${e.fundName}", fontSize = 11.sp, color = tandem.muted, maxLines = 1)
+                        // An installment row says so, because otherwise two or three rows on one date read as two
+                        // or three unexplained expenses rather than one loan payment.
+                        val part = installmentPartLabel(e)
+                        Text(
+                            if (part != null) "${shortDate(e.date)} · ${e.fundName} · $part"
+                            else "${shortDate(e.date)} · ${e.fundName}",
+                            fontSize = 11.sp, color = tandem.muted, maxLines = 1,
+                        )
                     }
                     Text(fmt(e.amount), fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = tandem.spent)
-                    EditExpenseButton(e, onEdit, onDelete)
+                    EditExpenseButton(e, groupSize, onEdit, onDelete)
                 }
             }
         }
     }
 }
 
+/** The part of a loan payment this row is, or null on an ordinary expense. The 🧾 marks it as one of several rows
+ *  belonging to a single installment.
+ *
+ *  It deliberately doesn't try to name the loan: `ExpenseDto` carries `debtBucketId` but no debt *name*. In
+ *  practice the name shows anyway, because the log sheet writes the bucket's name as each row's **note** and the
+ *  note is what the sub-line leads with — so a row reads "Car loan · 🧾 Principal". A payment logged with a
+ *  custom note will show that note instead, which is correct: the note is the user's words. */
+internal fun installmentPartLabel(e: ExpenseDto): String? = when (e.installmentPart?.lowercase()) {
+    "principal" -> "🧾 Principal"
+    "interest" -> "🧾 Interest"
+    "additional" -> "🧾 Extra"
+    else -> if (e.installmentGroupId != null) "🧾 Loan payment" else null
+}
+
 /** Inline edit + delete actions on an expense row. Auto-filed / from-savings rows aren't hand-editable (matches the
  *  web), so they reserve the same-width blank slot — keeping the icons (and amounts to their left) lined up across
- *  every row. Delete always asks to confirm. */
+ *  every row. Delete always asks to confirm.
+ *
+ *  ⚠️ An installment row is never deleted alone. Its rows are one payment and the server removes them as a unit
+ *  (`DELETE /installments/{groupId}`), because dropping the principal while keeping the interest leaves a payment
+ *  that reconciles to nothing. So the trash on such a row raises the *group* confirm and calls [onDelete] with a
+ *  row that still carries its `installmentGroupId` — the caller routes on that, exactly as the web does. */
 @Composable
-private fun EditExpenseButton(e: ExpenseDto, onEdit: (ExpenseDto) -> Unit, onDelete: (ExpenseDto) -> Unit) {
+private fun EditExpenseButton(e: ExpenseDto, groupSize: (String) -> Int, onEdit: (ExpenseDto) -> Unit, onDelete: (ExpenseDto) -> Unit) {
     val tandem = LocalTandemColors.current
     var confirmDelete by remember { mutableStateOf(false) }
     Spacer(Modifier.width(6.dp))
@@ -420,11 +453,24 @@ private fun EditExpenseButton(e: ExpenseDto, onEdit: (ExpenseDto) -> Unit, onDel
         }
     }
     if (confirmDelete) {
+        val group = e.installmentGroupId
+        val rows = group?.let { groupSize(it) } ?: 0
         AlertDialog(
             onDismissRequest = { confirmDelete = false },
-            title = { Text("Delete expense?") },
-            text = { Text("This removes “${e.note?.takeIf { it.isNotBlank() } ?: e.categoryName}” from this period.") },
-            confirmButton = { TextButton(onClick = { confirmDelete = false; onDelete(e) }) { Text("Delete", color = tandem.spent) } },
+            title = { Text(if (group != null) "Remove this installment?" else "Delete expense?") },
+            text = {
+                Text(
+                    if (group != null)
+                        "This is part of one loan payment, so all ${maxOf(rows, 1)} of its rows go together — and " +
+                            "a payment-driven loan gets its principal back."
+                    else "This removes “${e.note?.takeIf { it.isNotBlank() } ?: e.categoryName}” from this period.",
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { confirmDelete = false; onDelete(e) }) {
+                    Text(if (group != null) "Remove" else "Delete", color = tandem.spent)
+                }
+            },
             dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancel") } },
         )
     }
@@ -490,6 +536,7 @@ private fun SummaryHeader(label: String, value: String, suffix: String, fraction
 @Composable
 private fun ByDateView(spending: SpendingUi, fmt: (Double) -> String, onEdit: (ExpenseDto) -> Unit, onDelete: (ExpenseDto) -> Unit) {
     val tandem = LocalTandemColors.current
+    val groupSize: (String) -> Int = { g -> spending.expenses.count { it.installmentGroupId == g } }
     // By date is a ledger — its summary is "spent this period"; the budget-used progress lives in the Categories view.
     SpentHeader(fmt(spending.spent))
     Spacer(Modifier.height(16.dp))
@@ -507,7 +554,7 @@ private fun ByDateView(spending: SpendingUi, fmt: (Double) -> String, onEdit: (E
                 .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(14.dp)),
         ) {
             rows.forEachIndexed { i, e ->
-                ExpenseRow(e, fmt, onEdit, onDelete)
+                ExpenseRow(e, fmt, groupSize, onEdit, onDelete)
                 if (i < rows.lastIndex) {
                     Box(Modifier.fillMaxWidth().height(1.dp).padding(horizontal = 14.dp).background(tandem.hairline))
                 }
@@ -539,7 +586,7 @@ private fun DayHeader(iso: String) {
 }
 
 @Composable
-private fun ExpenseRow(e: ExpenseDto, fmt: (Double) -> String, onEdit: (ExpenseDto) -> Unit, onDelete: (ExpenseDto) -> Unit) {
+private fun ExpenseRow(e: ExpenseDto, fmt: (Double) -> String, groupSize: (String) -> Int, onEdit: (ExpenseDto) -> Unit, onDelete: (ExpenseDto) -> Unit) {
     val tandem = LocalTandemColors.current
     Row(modifier = Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
         CatIcon(e.categoryIcon, e.categoryName)
@@ -547,7 +594,9 @@ private fun ExpenseRow(e: ExpenseDto, fmt: (Double) -> String, onEdit: (ExpenseD
         Column(Modifier.weight(1f)) {
             Text(e.categoryName, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface, maxLines = 1)
             val sub = e.note?.takeIf { it.isNotBlank() } ?: e.fundName
-            Text(sub, fontSize = 12.sp, color = tandem.muted, maxLines = 1)
+            // An installment row names the part it is, so two rows on one date read as one loan payment.
+            val part = installmentPartLabel(e)
+            Text(if (part != null) "$sub · $part" else sub, fontSize = 12.sp, color = tandem.muted, maxLines = 1)
         }
         Spacer(Modifier.width(8.dp))
         Column(horizontalAlignment = Alignment.End) {
@@ -556,7 +605,7 @@ private fun ExpenseRow(e: ExpenseDto, fmt: (Double) -> String, onEdit: (ExpenseD
                 Text(if (e.fromSavings) "from savings" else "auto", fontSize = 10.sp, color = tandem.muted)
             }
         }
-        EditExpenseButton(e, onEdit, onDelete)
+        EditExpenseButton(e, groupSize, onEdit, onDelete)
     }
 }
 
