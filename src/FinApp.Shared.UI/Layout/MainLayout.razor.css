@@ -29,9 +29,13 @@
    The dark bar is navy glass, so there it can use the auth treatment verbatim (see html.dark below). */
 .brand-word { color: rgba(255, 255, 255, .70); }
 .brand-tab { color: #ffffff; line-height: 1.25; }
+/* ⚠ The only place the plate SURVIVES, and for a concrete reason: this bar is #13a06e in light, which is
+   exactly the mark's own dark field. Without a plate the mark's green half dissolves into the bar and you see
+   a mint blob. So light keeps a white plate — it reads as a keyline around an app icon, not as a second tile —
+   and dark drops it, because the dark bar is navy glass and the mark separates on its own. */
 .brand-logo {
     width: 38px; height: 38px; flex: 0 0 auto;
-    background: #ffffff; border-radius: 10px; padding: 4px;
+    background: #ffffff; border-radius: 11px; padding: 3px;
     display: grid; place-items: center;
 }
 .brand-logo ::deep svg { width: 100%; height: 100%; display: block; }
@@ -55,7 +59,7 @@ html.dark .app-bar {
     backdrop-filter: blur(8px);
     color: #e8eaf0;
 }
-html.dark .brand-logo { background: rgba(63, 224, 197, .10); }
+html.dark .brand-logo { background: none; padding: 0; }
 html.dark .brand-word { color: #c3ccd8; }
 html.dark .brand-tab { color: var(--tm-mint); }
 

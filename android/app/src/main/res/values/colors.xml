@@ -1,4 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="ic_launcher_background">#0E7C66</color>
+    <!-- The mark's dark field. It is the icon's background layer rather than a decorative backdrop: the
+         foreground draws only the mint half, so this colour must be exactly the mark's green (#13A06E) or the
+         two halves won't meet. Was #0E7C66 when the foreground was a white glyph on a plain plate. -->
+    <color name="ic_launcher_background">#13A06E</color>
 </resources>

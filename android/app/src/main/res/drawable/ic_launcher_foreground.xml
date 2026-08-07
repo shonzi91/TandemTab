@@ -3,30 +3,24 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- The TandemTab mark (two heads + two stems under a shared beam), reproduced from TandemLogo (viewBox 0 0 64
-         64) and scaled/centred into the adaptive-icon safe zone. White mark on the brand-green background. -->
-    <group
-        android:scaleX="1.15"
-        android:scaleY="1.15"
-        android:translateX="17"
-        android:translateY="20">
-        <!-- shared beam -->
-        <path
-            android:fillColor="#FFFFFF"
-            android:pathData="M16,22 h32 a4,4 0 0 1 0,8 h-32 a4,4 0 0 1 0,-8 z" />
-        <!-- two stems -->
-        <path
-            android:fillColor="#FFFFFF"
-            android:pathData="M20,31 a4,4 0 0 1 8,0 v17 a4,4 0 0 1 -8,0 v-17 z" />
-        <path
-            android:fillColor="#FFFFFF"
-            android:pathData="M36,31 a4,4 0 0 1 8,0 v17 a4,4 0 0 1 -8,0 v-17 z" />
-        <!-- two heads -->
-        <path
-            android:fillColor="#B8F0E2"
-            android:pathData="M18,14 a6,6 0 1 0 12,0 a6,6 0 1 0 -12,0 z" />
-        <path
-            android:fillColor="#B8F0E2"
-            android:pathData="M34,14 a6,6 0 1 0 12,0 a6,6 0 1 0 -12,0 z" />
-    </group>
+    <!-- The TandemTab mark (a rounded tile split by an S-curve, a dot in each field), from TandemLogo
+         (viewBox 0 0 64 64) scaled by 108/64 = 1.6875.
+
+         A tile-shaped mark maps onto an adaptive icon differently from the old glyph: the tile itself IS the
+         icon, so the launcher's own mask supplies the rounded shape and this layer bleeds to the edges. The
+         green field therefore moved to @color/ic_launcher_background and only the mint field is drawn here —
+         whatever the mask crops, green continues underneath.
+
+         ⚠ The dots are pulled in to ±15 from centre rather than the mark's ±12·1.6875 = ±20.25. At the true
+         position a dot reaches 42 units from centre and a circular mask (guaranteed area = the central 72dp,
+         i.e. radius 36) would clip it. This is a deliberate icon-only deviation; do not "fix" it back. -->
+    <path
+        android:fillColor="#34D399"
+        android:pathData="M162,-54 L108,0 C105.8,33.75 87.75,51.8 54,54 C20.25,56.2 2.2,74.25 0,108 L-54,162 L-54,-54 Z" />
+    <path
+        android:fillColor="#0B6B4A"
+        android:pathData="M39,39 m-13.5,0 a13.5,13.5 0 1,0 27,0 a13.5,13.5 0 1,0 -27,0 z" />
+    <path
+        android:fillColor="#A7F3D0"
+        android:pathData="M69,69 m-13.5,0 a13.5,13.5 0 1,0 27,0 a13.5,13.5 0 1,0 -27,0 z" />
 </vector>

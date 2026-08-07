@@ -1,27 +1,44 @@
-@* Brand mark: two stems under a shared beam (the tandem pair / two T's). Colours come from CSS custom
-   properties so the mark tracks the theme — the dark app is mint, light keeps the original green. The
-   inline defaults mean a host that sets neither still renders the original green. *@
+@* Brand mark: one rounded tile split corner-to-corner by an S-curve into two fields, each carrying a dot in the
+   other's tone — the pair sharing one account. Replaced the two-heads-under-a-beam mark, which read as two
+   people and dated the app to a couples-only product.
+
+   Why an S and not a single bow: the S crosses dead centre whatever its depth, so both fields stay equal and
+   both dots stay equally clear of the divide. A one-way bow moves the split toward one dot and away from the
+   other, so the curve amount and the dot positions stop being independent.
+
+   Field colours come from CSS custom properties so the mark tracks the theme (dark brightens the light half to
+   mint); the inline defaults mean a host that sets neither still renders the original green. The two dot tones
+   are fixed — they are chosen for contrast against their own field, not for the theme.
+
+   ⚠ The dots carry classes. Spinner.razor.css animates them, and the previous mark's loader selected a bare
+   `circle`, so deleting the heads would have silently orphaned the animation with no error. Do not remove
+   .tt-dot-a / .tt-dot-b without updating the spinner. *@
 <svg class="tandem-logo @(Pro ? "is-pro" : "")" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="@(Pro ? "TandemTab Pro" : "TandemTab")">
     <defs>
-        <linearGradient id="tandem-grad" x1="6" y1="6" x2="58" y2="58" gradientUnits="userSpaceOnUse">
-            <stop stop-color="var(--tt-logo-1, #34d399)" />
-            <stop offset="1" stop-color="var(--tt-logo-2, #13a06e)" />
-        </linearGradient>
+        @* Per-instance id: several TandemLogos can share a page (app bar + a loader), and SVG ids are
+           document-global, so a fixed id would be duplicate markup. *@
+        <clipPath id="@_clipId"><rect width="64" height="64" rx="17" /></clipPath>
     </defs>
-    <!-- shared beam -->
-    <rect x="12" y="22" width="40" height="8" rx="4" fill="url(#tandem-grad)" />
-    <!-- two stems: the tandem pair / two T's -->
-    <rect x="20" y="27" width="8" height="25" rx="4" fill="url(#tandem-grad)" />
-    <rect x="36" y="27" width="8" height="25" rx="4" fill="url(#tandem-grad)" />
-    <!-- two heads -->
-    <circle cx="24" cy="14" r="6" fill="var(--tt-logo-1, #34d399)" />
-    <circle cx="40" cy="14" r="6" fill="var(--tt-logo-1, #34d399)" />
+    <g clip-path="url(#@_clipId)">
+        <rect width="64" height="64" fill="var(--tt-logo-2, #13a06e)" />
+        @* The split is drawn well past the tile on both ends so the shape stays valid under any transform; the
+           clip does the trimming. Its endpoints are the tile's own corners, which sit inside the corner radius
+           and therefore cannot be expressed as a closed path along the tile outline — hence the clip. *@
+        <path d="M96 -32 L64 0 C62.7 20 52 30.7 32 32 C12 33.3 1.3 44 0 64 L-32 96 L-32 -32 Z"
+              fill="var(--tt-logo-1, #34d399)" />
+        <circle class="tt-dot-a" cx="20" cy="20" r="8" fill="#0b6b4a" />
+        <circle class="tt-dot-b" cx="44" cy="44" r="8" fill="#a7f3d0" />
+    </g>
     @if (Pro)
     {
-        @* Pro flourish: a small gold crown worn at a tilt by the left head. Deliberately perched rather than
-           centred — a symmetrical crown over both heads reads as a logo change, whereas a jaunty one reads as a
-           decoration on the same mark, which is what a plan badge should be. *@
-        <g transform="rotate(-20 24 9.5) translate(17 2.5)">
+        @* Pro flourish: a small gold crown worn at a tilt by the upper dot. Deliberately perched rather than
+           centred — a symmetrical crown reads as a logo change, whereas a jaunty one reads as a decoration on
+           the same mark, which is what a plan badge should be. It sits outside the clip so it can overlap the
+           tile edge, and on the UPPER-LEFT dot so the tilt leans into the mark rather than away from it. *@
+        @* scale 1.333 = 64/48: the crown asset was drawn against the mark laid out in a 48-unit tile, and this
+           tile is full-bleed 64. Scaling it by anything else leaves the crown hovering off its dot instead of
+           resting across it. *@
+        <g transform="rotate(-18 20 12.7) translate(10.7 4) scale(1.333)">
             <path d="M0 7 L0 1.6 L3.5 4.4 L7 0 L10.5 4.4 L14 1.6 L14 7 Z" fill="#f6c945" />
             <rect x="-0.4" y="6.6" width="14.8" height="2.4" rx="1.2" fill="#e0a92c" />
         </g>
@@ -32,4 +49,6 @@
     /// <summary>Renders the Pro flourish. Purely decorative — entitlement is decided server-side, so a client
     /// that set this by hand would gain a crown and nothing else.</summary>
     [Parameter] public bool Pro { get; set; }
+
+    private readonly string _clipId = $"tt-mark-{Guid.NewGuid():N}"[..16];
 }

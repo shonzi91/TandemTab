@@ -1,0 +1,19 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Themed-icon (Android 13+) layer. It gets a single tint, so the two-tone split cannot survive; the mark
+         reduces to its silhouette — the tile with the two dots knocked out (fillType evenOdd, one path).
+
+         This used to point at ic_launcher_foreground, which worked only while that layer WAS the silhouette
+         (a white glyph). Now the foreground is the mint half of a two-tone tile, and tinting it flat would have
+         rendered a diagonal blob. Hence a layer of its own.
+
+         Inset to the 72dp safe zone (18..90) rather than bled to the edges: a monochrome layer is drawn inside
+         the mask, not behind it. -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:fillType="evenOdd"
+        android:pathData="M37,18 H71 A19,19 0 0 1 90,37 V71 A19,19 0 0 1 71,90 H37 A19,19 0 0 1 18,71 V37 A19,19 0 0 1 37,18 Z M40.5,40.5 m-9,0 a9,9 0 1,0 18,0 a9,9 0 1,0 -18,0 z M67.5,67.5 m-9,0 a9,9 0 1,0 18,0 a9,9 0 1,0 -18,0 z" />
+</vector>

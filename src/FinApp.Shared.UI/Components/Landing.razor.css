@@ -19,10 +19,9 @@
 .lp-theme-toggle:hover { border-color: #13a06e; background: #eef9f3; }
 .lp-brand-sm { display: flex; align-items: center; gap: 9px; font-size: 1.2rem; font-weight: 800; color: #33404f; }
 html.dark .lp-brand-sm { color: #c3ccd8; }
+/* Plate dropped — the mark is its own tile (see AuthPanel.razor.css). */
 .lp-logo-sm {
     width: 36px; height: 36px; flex: 0 0 auto;
-    background: linear-gradient(135deg, #eef9f3, #e4f6ee);
-    border: 1px solid #d6f0e3; border-radius: 11px; padding: 5px;
     display: grid; place-items: center;
 }
 .lp-logo-sm ::deep svg { width: 100%; height: 100%; display: block; }
@@ -37,8 +36,6 @@ html.dark .lp-brand-sm { color: #c3ccd8; }
 .lp-brand { display: flex; align-items: center; gap: 12px; margin: 0 0 18px; font-size: 1.7rem; font-weight: 800; color: #13a06e; }
 .lp-logo {
     width: 52px; height: 52px; flex: 0 0 auto;
-    background: linear-gradient(135deg, #eef9f3, #e4f6ee);
-    border: 1px solid #d6f0e3; border-radius: 15px; padding: 6px;
     display: grid; place-items: center;
 }
 .lp-logo ::deep svg { width: 100%; height: 100%; display: block; }
@@ -159,7 +156,7 @@ html.dark .lp-signin:hover { background: #14251d; border-color: #2f7d5c; }
 html.dark .lp-link { color: #57d9a3; }
 html.dark .lp-auth-backdrop { background: rgba(0,0,0,.6); }
 /* The logo tile kept its near-white gradient in dark mode, so it read as a white blob. Give it a dark tile. */
-html.dark .lp-logo-sm, html.dark .lp-logo { background: linear-gradient(135deg, #14251d, #163024); border-color: #24493a; }
+/* The logo plates are gone in both themes — the mark carries its own surface now. */
 html.dark .lp-theme-toggle { background: #181c25; border-color: #262d3d; }
 html.dark .lp-theme-toggle:hover { border-color: #2f7d5c; background: #14251d; }
 

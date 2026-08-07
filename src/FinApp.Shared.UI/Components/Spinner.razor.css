@@ -1,14 +1,29 @@
 .spinner { display: inline-flex; align-items: center; gap: 8px; }
 .spinner-block { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 48px 0; }
 
-.spinner-logo { display: inline-flex; width: 20px; height: 20px; flex-shrink: 0; }
+/* 24px rather than 20: the mark's motion now lives in its two dots, which are a quarter of the tile each. At
+   20px a dot was under 4px across and the pulse barely read. */
+.spinner-logo { display: inline-flex; width: 24px; height: 24px; flex-shrink: 0; }
 .spinner-block .spinner-logo { width: 46px; height: 46px; }
 .spinner-logo ::deep .tandem-logo { width: 100%; height: 100%; display: block; }
-/* "Nod": the two head circles bob up/down in turn — a walking pair — instead of the whole mark
-   tumbling on a 360° spin (which flipped the people upside-down). The two <circle>s are the heads. */
-.spinner-logo ::deep .tandem-logo circle { animation: spinner-nod .7s ease-in-out infinite; }
-.spinner-logo ::deep .tandem-logo circle:nth-of-type(2) { animation-delay: .35s; }
-@keyframes spinner-nod { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
-@media (prefers-reduced-motion: reduce) { .spinner-logo ::deep .tandem-logo circle { animation: none; } }
+
+/* "Breath": the two dots pulse in turn inside a tile that never moves — so the silhouette is identical loading
+   or idle, and only the interior is alive. Deliberately not a rotation: a spinning mark makes the logo itself
+   read as a progress indicator everywhere else it appears.
+   ⚠ These select .tt-dot-a / .tt-dot-b in TandemLogo.razor BY CLASS, not a bare `circle`. The previous loader
+   selected `circle` — the old mark's two heads — so replacing the mark would have orphaned this animation
+   silently, with no error and no visible failure beyond a logo that stopped moving. */
+.spinner-logo ::deep .tandem-logo .tt-dot-a,
+.spinner-logo ::deep .tandem-logo .tt-dot-b {
+    animation: spinner-breath 1.1s ease-in-out infinite;
+    transform-box: fill-box;
+    transform-origin: center;
+}
+.spinner-logo ::deep .tandem-logo .tt-dot-b { animation-delay: .55s; }
+@keyframes spinner-breath { 0%, 100% { transform: scale(1); } 50% { transform: scale(.38); } }
+@media (prefers-reduced-motion: reduce) {
+    .spinner-logo ::deep .tandem-logo .tt-dot-a,
+    .spinner-logo ::deep .tandem-logo .tt-dot-b { animation: none; }
+}
 
 .spinner-text { color: #6b7280; font-size: .9rem; }
