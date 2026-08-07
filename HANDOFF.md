@@ -1,11 +1,10 @@
 # TandemTab (FinApp) — session handoff
 
-Last updated: 2026-08-07 (Session 95 — **Android fund/wallet management**, Tier-1 mobile-only parity row #2.
-Create / edit / archive / restore / remove a fund, set its opening balance, and edit or undo a transfer —
-**seven calls, 59 → 66, and zero server change**, the second R2 row whose read model was already complete.
-**310 + 48 + 339 green** (unchanged — no C# touched). Verified end-to-end on the emulator in both themes.
-⚠️ **Android has no distribution pipeline, so nothing is owed to production and no deploy is needed.**
-See the Session 95 entry directly below.)
+Last updated: 2026-08-07 (Session 95 — **two Tier-1 mobile-only parity rows closed: fund/wallet management and
+the savings target.** Nine calls, **59 → 68**, and **zero server change** across both. **310 + 48 + 339 green**
+(unchanged — no C# touched). Both verified end-to-end on the emulator in both themes. ⚠️ **Android has no
+distribution pipeline, so nothing is owed to production and no deploy is needed.** See the Session 95 entry
+directly below.)
 
 Previously: 2026-08-07 (Session 94 — six unrecorded web/brand commits found and written up, then **Android can
 declare a bill or income**, closing Tier-1 mobile-only parity row #1. See the Session 94 entry directly below.
@@ -29,7 +28,32 @@ a separate balance axis — because flows and a stock were sharing one scale. **
 as `de51071`, now live on **`finapp-00280-4s8`** (traffic forced `--to-latest`; run URL + tandemtab.com 200; 5
 `secretKeyRef`s; no WARNING+ logs). Prior context below is Session 91.)
 
-## Session 95 (2026-08-07) — **Android fund management: the first R2 row that cost the server nothing**
+## Session 95 (2026-08-07) — **Two Tier-1 rows, neither of which cost the server anything**
+
+### ★ The savings target is settable on a phone (`/settings` + `/savings-target`)
+**Tier-1 mobile-only parity row #3, closed.** Android already *showed* the target on the Health sheet
+("target 20%") but had no way to change it — the one number the health score measures you against was read-only.
+It now sits in the Account sheet under the account name, where the web keeps it. **Two calls: 66 → 68.**
+
+- **★ `null` is a meaningful loading state, and a default would have corrupted data.** `/settings` answers after
+  the sheet opens; seeding the field with the DTO's 20% default would let a user tap Save before the read lands
+  and overwrite a real 40% target with 20%. `SettingsUi.savingsTarget` is `Double?`, the field is disabled until
+  it arrives, and the caption says why.
+- **The actual rate sits under the target** (`AccountOverviewDto.savedRate`, already on the client) — a target is
+  a decision and can't be made against a blank. "Nothing came in yet" is stated as such, never as 0%.
+- **Saving invalidates the cached Insights read**, because the score is computed against the target. Verified:
+  after saving 35% the Health sheet read *"0% target 35%"* and *"...about €700.00 short of your goal"*.
+- ⚠️ **The owner gate is a UI convention, not enforcement.** The web gates its Edit-account menu item on owner
+  and Android matches — but `PUT /savings-target` is membership-scoped server-side, so any member could set it.
+  Don't mistake the missing field for a permission boundary.
+- ⛔ **F4 round-ups are NOT portable, and this row pinned down why.** `RoundUpTo`/`RoundUpBucketId` are on the
+  domain `Account` but appear **nowhere in `FinApp.Contracts`**, and there's no command endpoint either
+  (`ConfigureRoundUps` is a whole-snapshot push marked `TODO(cutover)`). A thin client needs the server to grow
+  **both** halves. Same shape as the fund↔bank sync toggle below.
+- ⚠️ **`InsightsDto.Empty` hard-codes a 20% target**, so `/insights` is not a trustworthy source for it on a
+  data-less account. `/settings` is. Harmless today only because the Health card is gated on `hasData`.
+
+## Session 95 (cont.) — **Android fund management: the first R2 row that cost the server nothing**
 
 ### ★ Android can manage its funds, not just spend from them
 **Tier-1 mobile-only parity row #2, closed.** The phone could see funds and move money between them but could not
@@ -71,9 +95,13 @@ ones worth carrying:
 - **310 server + 48 persistence + 339 domain, unchanged** — no C# was touched, which is the point of the entry.
 
 ### ⚠️ Carry-over
-- **Tier-1 mobile-only parity, the rest, in order:** **savings target** (`/savings-target`, `/settings`); then
-  **remove a logged installment** (`DELETE /installments/{groupId}` — you can log but not undo). Then Tier 2:
-  export (data-out) and weekly recap + push (needs a backend endpoint).
+- **Tier-1 mobile-only parity — one row left:** **remove a logged installment**
+  (`DELETE /installments/{groupId}` — you can log one but not undo it). Then Tier 2: export (data-out) and
+  weekly recap + push (needs a backend endpoint).
+- ⛔ **Two things are blocked on the server, not on Android:** **F4 round-ups** (no contract *and* no endpoint)
+  and the **fund↔bank sync toggle** (`SetFundSynced`, `TODO(cutover)`). Both are whole-snapshot pushes in the
+  thick client. Neither can be ported until the server grows a command endpoint — worth batching into one
+  "account settings commands" server slice rather than discovering them one row at a time.
 - **Android installment parity:** extra lines + the principal/interest tag split (needs an Android tag surface).
 - **The Android light/dark sweep** (half of R2's exit condition) and the **`SheetShell` foot-of-sheet audit**
   remain. This session's new surfaces were checked in both themes and the sheet hazard was avoided by using

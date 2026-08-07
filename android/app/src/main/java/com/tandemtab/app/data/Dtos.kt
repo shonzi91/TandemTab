@@ -653,6 +653,24 @@ data class EditFundTransferRequest(
     val note: String? = null,
 )
 
+// --- Account settings (mirrors FinApp.Contracts.AccountSettings) ---------------------------------------
+
+/** GET /accounts/{id}/settings. `savingsRateTarget` is a fraction 0..1; the UI shows it as a percent.
+ *  ⚠️ This is the *whole* thin settings surface — F4 round-up config (step + destination bucket) is NOT on it,
+ *  and has no command endpoint either (`BudgetingState.ConfigureRoundUps` is still a whole-snapshot push marked
+ *  TODO(cutover)), so a thin client cannot offer round-ups until the server grows both. */
+@Serializable
+data class AccountSettingsDto(
+    val name: String = "",
+    val currency: String = "",
+    val savingsRateTarget: Double = 0.20,
+)
+
+/** PUT /accounts/{id}/savings-target. `percent` is 0..100 (the server stores it as a fraction and 400s outside
+ *  that range), so the client clamps rather than sending something it knows will be refused. */
+@Serializable
+data class SetSavingsTargetRequest(val percent: Double)
+
 // --- Fund CRUD (mirrors the web's Wallets fund actions) ------------------------------------------------
 
 /** POST /accounts/{id}/funds. `parentId` nests an informational sub-fund — the web only ever creates top-level

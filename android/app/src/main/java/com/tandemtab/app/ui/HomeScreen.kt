@@ -133,6 +133,7 @@ fun HomeScreen(
     onCancelTwoFactorSetup: () -> Unit,
     onDismissRecoveryCodes: () -> Unit,
     onRenameAccount: (String, () -> Unit) -> Unit,
+    onSetSavingsTarget: (Double, () -> Unit) -> Unit,
     onLeaveAccount: (String?, () -> Unit) -> Unit,
     onDeleteAccount: (() -> Unit) -> Unit,
     onInvite: (String) -> Unit,
@@ -406,6 +407,7 @@ fun HomeScreen(
             AccountSheet(
                 state = state,
                 onRenameAccount = onRenameAccount,
+                onSetSavingsTarget = onSetSavingsTarget,
                 onOpenRecurring = { showAccount = false; showRecurring = true },
                 onInvite = onInvite,
                 onClearInviteResult = onClearInviteResult,

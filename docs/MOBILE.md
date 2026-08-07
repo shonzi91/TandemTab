@@ -59,7 +59,7 @@ endpoints the server exposes that `TandemTabApi` never calls.** Every feature An
 there, because a thin client cannot render what it does not fetch.
 
 Android calls **37** of the account endpoints (**46** after Session 91, **55** after Session 92, **59** after
-Session 94, **66** after Session 95). It does not call these:
+Session 94, **66** then **68** after Session 95). It does not call these:
 
 | Missing capability | Endpoints never called | Weight |
 |---|---|---|
@@ -69,7 +69,7 @@ Session 94, **66** after Session 95). It does not call these:
 | ~~**Period lifecycle**~~ | ~~`/periods/start-next`, `/periods/latest`, `/periods/{i}/schedule`~~ | ✅ **done S91** |
 | **Statement import** | `/import` | M |
 | ~~**Fund management** (add/archive/opening balance)~~ | ~~`/funds…`, `/fund-transfers/{id}`~~ | ✅ **done S95** |
-| **Account settings** — incl. the savings target and **F4 round-ups** | `/settings`, `/savings-target` | M |
+| **Account settings** — the savings target ✅ **done S95**; **F4 round-ups** are ⛔ **not portable** (no contract, no endpoint) | ~~`/settings`, `/savings-target`~~ | M |
 | **Tags** — incl. **F2** tag→category | `/tags…` | M |
 | Achievements + **F6** goal celebration | `/achievements`, `/milestones` | S–M |
 | Onboarding | `/onboarding`, `/onboarding/dismissed` | S |
@@ -246,6 +246,45 @@ period with, archive or restore one, remove one, or correct a transfer it had al
   transfer row written) → edited that transfer 350 → 200 → **remove refused with the server's blocker** →
   removed the transfer (balances fully reversed) → removed the fund with its opening balance moved to Bank
   (€1,200 → €1,550, total unchanged throughout).
+
+#### ✅ Savings target — closed (Session 95, 2026-08-07)
+
+Android *displayed* the target on the Health sheet ("target 20%") but had no way to change it, so the one number
+the health score measures you against was read-only on a phone. It now lives in the Account sheet beside the
+account name. **Two calls: 66 → 68** — `GET /accounts/{id}/settings` (never called before) and
+`PUT /accounts/{id}/savings-target`.
+
+- **★ The placement is inherited from the web, and so is the owner gate.** The web keeps the target in its
+  **"Edit account"** modal — renamed from *Rename* precisely because the modal had grown past renaming — and gates
+  that menu item on `IsOwnerOfCurrent`. Android now matches: the target sits inside the `isOwner` block under the
+  rename field. ⚠️ **That gate is a UI convention, not enforcement** — `PUT /savings-target` runs through
+  `MutateAsync`, which is membership-scoped, so the server would accept it from any member. Worth knowing before
+  someone "fixes" a non-owner's missing field and assumes the server was protecting it.
+- **★ `null` is a meaningful loading state here, and defaulting would corrupt data.** `/settings` answers *after*
+  the sheet opens. Seeding the field with the DTO's 20% default would let a user open the sheet, tap Save before
+  the read lands, and overwrite a real 40% target with 20% — so `SettingsUi.savingsTarget` is `Double?`, the
+  field is **disabled** until it arrives, and the caption says so.
+- **The actual rate sits under the target.** `AccountOverviewDto.savedRate` was already on the client, so the
+  editor can say *"You're saving 0% of money in this period"* right beneath the number being chosen — a target is
+  a decision, and it can't be made against a blank. Null (nothing came in yet) is stated as such, never as 0%.
+- **Saving invalidates the cached Insights read.** The health score is computed *against* this target, so a
+  stale `HealthUi` would show the old goal until the app restarted. Verified: after saving 35%, the Health sheet
+  read **"0% target 35%"** and its prose said *"...about €700.00 short of your goal this period"* (35% of €2,000).
+- **The client clamps to 0..100 rather than posting what the domain will refuse.** `SetSavingsRateTarget` throws
+  outside 0..1, so an out-of-range entry shows an amber "Keep this between 0 and 100%" and keeps Save disabled —
+  a 400 is a worse answer than the number the user obviously meant.
+- ⛔ **F4 round-ups are NOT portable, and this row is where that got pinned down.** `RoundUpTo` /
+  `RoundUpBucketId` live on the domain `Account` but appear **nowhere in `FinApp.Contracts`** — no field on
+  `AccountSettingsDto`, and no command endpoint (`BudgetingState.ConfigureRoundUps` is still a whole-snapshot
+  push marked `TODO(cutover)`). The web's Edit-account modal carries them; a thin client structurally cannot
+  until the server grows **both** halves. Same shape as the fund↔bank sync toggle from the row above.
+- ⚠️ `InsightsDto.Empty` hard-codes `SavingsTarget = 0.20`, so a data-less account reports a 20% target
+  regardless of what's stored. Harmless today — Android gates the Health card on `hasData` — but it means
+  `/insights` is not a trustworthy source for the target. `/settings` is.
+- Verified end-to-end on the emulator (user `mob95b`, account *Phone Budget*) in **both themes**: the field
+  seeded to 20 from `/settings` with Save disabled → changed to 35 → **"Saved."** and Save disabled again →
+  `GET /settings` confirmed `savingsRateTarget=0.35` → `/insights` confirmed `savingsTarget=0.35` → the Health
+  sheet read the new goal → 150 raised the range warning and kept Save disabled → survived an app restart.
 
 **Closed in Session 90:** the Home money hero (all four tiles, incl. the money-in savings rate, the transfers
 sub-line and **F3 "left to spend today"**) and the rotating over-budget alert strip. Both needed server work

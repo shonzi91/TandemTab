@@ -231,6 +231,14 @@ class TandemTabApi(
     suspend fun deleteFundTransfer(accountId: String, transferId: String): MutationResultDto =
         authedDelete("/accounts/$accountId/fund-transfers/$transferId").body()
 
+    /** The account's editable settings (name, currency, savings-rate target). */
+    suspend fun accountSettings(accountId: String): AccountSettingsDto =
+        authedGet("/accounts/$accountId/settings").body()
+
+    /** Set the account's target savings rate. [percent] is 0..100; outside that the domain 400s. */
+    suspend fun setSavingsTarget(accountId: String, percent: Double): MutationResultDto =
+        authedPut("/accounts/$accountId/savings-target", SetSavingsTargetRequest(percent)).body()
+
     /** Create a fund. Returns a refreshed Wallets view (and the new fund's id as `entityId`). */
     suspend fun createFund(accountId: String, req: CreateFundRequest): FundMutationDto =
         authedPost("/accounts/$accountId/funds", req).body()

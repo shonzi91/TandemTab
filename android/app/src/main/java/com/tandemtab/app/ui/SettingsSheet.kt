@@ -65,6 +65,7 @@ import androidx.compose.ui.unit.sp
 import com.tandemtab.app.UiState
 import com.tandemtab.app.ui.theme.LocalTandemColors
 import com.tandemtab.app.ui.theme.TandemIcons
+import kotlin.math.roundToInt
 
 // ── Profile (personal) ──────────────────────────────────────────────────────────────────────────────
 
@@ -210,6 +211,7 @@ fun ProfileSheet(
 fun AccountSheet(
     state: UiState,
     onRenameAccount: (String, () -> Unit) -> Unit,
+    onSetSavingsTarget: (Double, () -> Unit) -> Unit,
     onOpenRecurring: () -> Unit,
     onInvite: (String) -> Unit,
     onClearInviteResult: () -> Unit,
@@ -226,6 +228,12 @@ fun AccountSheet(
     val isOwner = account?.isOwner == true
     var accountName by remember(account?.id) { mutableStateOf(account?.name ?: "") }
     var renameSaved by remember { mutableStateOf(false) }
+    // Seeded from the loaded target rather than a default: /settings answers after the sheet opens, so keying on
+    // the loaded value is what makes the field fill in when it lands (and re-settle on whatever was saved).
+    var targetText by remember(account?.id, settings.savingsTarget) {
+        mutableStateOf(settings.savingsTarget?.let { (it * 100).roundToInt().toString() } ?: "")
+    }
+    var targetSaved by remember { mutableStateOf(false) }
     var confirm by remember { mutableStateOf<String?>(null) }   // "leave" | "delete" | null
     // Which member's action row is open. Deliberately SEPARATE from handOverTo below: sharing one id between
     // "whose actions are showing" and "who takes the account over" makes picking a new owner silently expand
@@ -250,6 +258,49 @@ fun AccountSheet(
                 enabled = !settings.busy && accountName.isNotBlank() && accountName != account?.name,
                 modifier = Modifier.fillMaxWidth(),
             ) { Text("Rename account") }
+            SectionDivider()
+
+            // The savings target — what the Insights health score measures you against. It sits with the account
+            // name because that's where the web keeps it (its modal is "Edit account", not "Rename", for exactly
+            // this reason), and because a single number doesn't earn a screen of its own.
+            SectionTitle("Savings target")
+            val typed = targetText.toDoubleOrNull()
+            val inRange = typed != null && typed in 0.0..100.0
+            OutlinedTextField(
+                value = targetText,
+                onValueChange = { targetText = it; targetSaved = false },
+                singleLine = true,
+                enabled = settings.savingsTarget != null,
+                label = { Text("Target (% of money in)") },
+                suffix = { Text("%") },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                modifier = Modifier.fillMaxWidth(),
+            )
+            // What you're actually saving this period, next to what you're aiming at — the number is a decision,
+            // and it can't be made against a blank. Null means nothing has come in yet, which is not 0%.
+            val actual = state.overview?.savedRate
+            Text(
+                when {
+                    settings.savingsTarget == null -> "Loading your current target…"
+                    actual != null -> "You're saving ${(actual * 100).roundToInt()}% of money in this period."
+                    else -> "Nothing has come in this period yet, so there's no rate to compare against."
+                },
+                fontSize = 12.sp, color = tandem.muted, modifier = Modifier.padding(top = 6.dp),
+            )
+            if (targetText.isNotBlank() && !inRange) {
+                Text(
+                    "Keep this between 0 and 100%.",
+                    color = tandem.warn, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp),
+                )
+            }
+            if (targetSaved) Text("Saved.", color = tandem.positive, fontSize = 13.sp, modifier = Modifier.padding(top = 6.dp))
+            Spacer(Modifier.height(8.dp))
+            Button(
+                onClick = { typed?.let { t -> onSetSavingsTarget(t) { targetSaved = true } } },
+                enabled = !settings.busy && inRange &&
+                    typed != settings.savingsTarget?.let { (it * 100).roundToInt().toDouble() },
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text("Save target") }
             SectionDivider()
         } else if (account != null) {
             Text(account.name, fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.padding(top = 4.dp, bottom = 8.dp))

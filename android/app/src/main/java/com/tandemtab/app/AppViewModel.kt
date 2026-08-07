@@ -259,6 +259,10 @@ data class SettingsUi(
     val busy: Boolean = false,
     val error: String? = null,
     val passwordChanged: Boolean = false,
+    // The account's savings-rate target as a fraction 0..1, or null until /settings answers. Null is meaningful:
+    // it's "we don't know yet", not "0%" — seeding the editor with a default would let a slow read overwrite the
+    // user's real target with 20% the moment they touched Save.
+    val savingsTarget: Double? = null,
 )
 
 /**
@@ -1522,8 +1526,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     // --- Profile & Account settings ---------------------------------------------------------------------
 
-    /** Clear stale settings state before opening the profile sheet, and refresh identity best-effort. */
+    /** Clear stale settings state before opening the profile / account sheet, and refresh identity and the
+     *  account's settings best-effort. Both reads are decoration on a sheet that already renders, so neither
+     *  failing is a reason to fail the sheet — the savings-target field just stays disabled until it lands. */
     fun openSettings() {
+        val accountId = _state.value.selectedAccountId
         _state.update { it.copy(settings = SettingsUi(), twoFactor = TwoFactorUi()) }
         viewModelScope.launch {
             runCatching { api.me() }.getOrNull()?.let { me ->
@@ -1531,6 +1538,33 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     username = me.username.ifBlank { it.username }, email = me.email, provider = me.provider,
                     avatar = me.avatar, emailVerified = me.emailVerified, twoFactorEnabled = me.twoFactorEnabled,
                 ) }
+            }
+        }
+        if (accountId != null) viewModelScope.launch {
+            runCatching { api.accountSettings(accountId) }.getOrNull()?.let { s ->
+                _state.update { it.copy(settings = it.settings.copy(savingsTarget = s.savingsRateTarget)) }
+            }
+        }
+    }
+
+    /**
+     * Set the account's target savings rate — the figure the Insights health score measures against.
+     * [percent] is 0..100; it's clamped here because the domain refuses anything outside that and a 400 is a
+     * worse answer than the number the user obviously meant.
+     */
+    fun setSavingsTarget(percent: Double, onDone: () -> Unit) {
+        val accountId = _state.value.selectedAccountId ?: return
+        val clamped = percent.coerceIn(0.0, 100.0)
+        _state.update { it.copy(settings = it.settings.copy(busy = true, error = null)) }
+        viewModelScope.launch {
+            try {
+                api.setSavingsTarget(accountId, clamped)
+                _state.update { it.copy(settings = it.settings.copy(busy = false, savingsTarget = clamped / 100.0)) }
+                // The health score is measured against this target, so a cached Insights read is now stale.
+                _state.update { it.copy(health = HealthUi()) }
+                onDone()
+            } catch (e: Exception) {
+                _state.update { it.copy(settings = it.settings.copy(busy = false, error = e.message ?: "Couldn't save the savings target.")) }
             }
         }
     }
