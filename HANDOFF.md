@@ -1,17 +1,28 @@
 # TandemTab (FinApp) — session handoff
 
-Last updated: 2026-08-07 (Session 95 — **Tier-1 mobile-only parity is CLOSED.** Three rows: fund/wallet
+Last updated: 2026-08-07 (Session 96 — **a UI/brand session, no server code at all.** Every native checkbox in
+the app became a `<Switch>` (19 web call sites + Android's shared `CheckRow`), the app bar's "Tab" finally lost
+its pill, and **the brand mark was replaced**: the two-heads-under-a-beam logo read as two men, so it is now an
+S-split rounded tile with a dot in each field. **339 + 48 + 310 green**; both surfaces build clean.
+✅ **Committed, pushed and DEPLOYED** — `bc6f4c3` + `d3d0bd8`, live on **`finapp-00287-cf9`** (image `d3d0bd8`),
+traffic forced `--to-latest`, verified at the **bytes** level on **both** the run URL and tandemtab.com: the new
+S-curve path present in `favicon.svg`, the old `linearGradient` mark gone, `app.css?v=41`, `spinner-breath`
+present and `spinner-nod` gone in the served scoped bundle, `tt-sw-track` ×15, identical 300,175-byte bundles,
+5 `secretKeyRef`s.
+⛔ **The log check found a real production bug that is NOT from this change** — a container **SIGABRT'd at
+startup** on the new revision. `Program.cs:271` runs the archived-account purge **unguarded**, and a
+multi-instance deploy races it into a `DbUpdateConcurrencyException` that kills the process before it can serve.
+It self-cleared and prod is healthy, but it is a latent boot-crash and it gets likelier as accounts age past the
+30-day window. **Read the ⛔ block in the Session 96 entry before the next deploy.**
+⚠️ Android is **build-verified only** — no emulator pass this session, so the native switches, the new mark and
+both launcher icons are unproven on a device. See the Session 96 entry below.)
+
+Previously: 2026-08-07 (Session 95 — **Tier-1 mobile-only parity is CLOSED.** Three rows: fund/wallet
 management, the savings target, and removing a logged installment. Ten calls, **59 → 69**, and **zero server
 change** across all three. The last row turned out to be a **live data-integrity bug**, not a missing button:
 Android could delete one row of a multi-row loan payment. **310 + 48 + 339 green** (unchanged — no C# touched).
-All three verified end-to-end on the emulator in both themes.
-✅ **Everything is committed and pushed** (`48b221b`, `3615081`, `e8131ce`); tree clean, `main` == `origin/main`.
-⚠️ **NO DEPLOY WAS NEEDED and none was run — this was checked, not assumed.** All three commits touch only
-`android/` + docs: `git diff --name-only 2a3868a..HEAD` lists **zero** files under `src/`, and
-`git log d631df0..HEAD -- src/ Dockerfile` is **empty**. Production still serves **`finapp-00286-ncg`** (from
-image `d631df0`, S94), traffic on LATEST, run URL + tandemtab.com both **200** — i.e. prod is already exactly
-current with the codebase. Deploying would have built a byte-identical image for a new revision number.
-Android has no distribution pipeline, so "shipped" here means *in the repo*. See the Session 95 entry below.)
+All three verified end-to-end on the emulator in both themes. Committed as `48b221b`, `3615081`, `e8131ce`;
+**no deploy was needed and none was run — checked, not assumed** (zero files under `src/`).)
 
 Previously: 2026-08-07 (Session 94 — six unrecorded web/brand commits found and written up, then **Android can
 declare a bill or income**, closing Tier-1 mobile-only parity row #1. See the Session 94 entry directly below.
@@ -34,6 +45,154 @@ a separate balance axis — because flows and a stock were sharing one scale. **
 ✅ **Committed and the web half is DEPLOYED** (Session 93 catch-up): Android sharing as `596eea5`, the web batch
 as `de51071`, now live on **`finapp-00280-4s8`** (traffic forced `--to-latest`; run URL + tandemtab.com 200; 5
 `secretKeyRef`s; no WARNING+ logs). Prior context below is Session 91.)
+
+## Session 96 (2026-08-07) — **Switches everywhere, the app-bar wordmark, and a new brand mark. Live: `finapp-00287-cf9`.**
+
+### ⛔ READ FIRST — a latent boot-crash in production, found in the deploy logs, NOT caused by this session
+
+The `severity>=WARNING` check after the deploy was not clean, and the deploy would have been reported as green
+if it had stopped at the revision name. On `finapp-00287-cf9` a container **aborted at startup**:
+`Uncaught signal: 6` / `Container terminated on signal 6` / `Default STARTUP TCP probe failed`.
+
+```
+Unhandled exception. DbUpdateConcurrencyException: expected to affect 1 row(s), but actually affected 0 row(s)
+  at ArchivedAccountsService.PurgeExpiredAsync ... ArchivedAccountsService.cs:line 85
+  at Program.<Main>$ ... Program.cs:line 271
+```
+
+- **Not from this change.** `git diff --name-only 890eb9c..d3d0bd8` lists **zero** files under
+  `src/FinApp.Server/`, zero `.cs`, and no `Dockerfile`.
+- **★ Housekeeping can stop the app booting.** [Program.cs:271](src/FinApp.Server/Program.cs) awaits
+  `archives.PurgeExpiredAsync()` with **no try/catch**, so a purge failure kills the process before it serves.
+  `deletions.PurgeDueAsync()` on the next line is identically exposed — and **both sit outside the try/catch
+  that already wraps the `SnapshotService` encryption step three lines later**, which is the pattern to copy.
+- **★ A deploy is itself the trigger.** Cloud Run starts several instances at once; each reads the same expired
+  account, each marks it `Removed`, the first `SaveChangesAsync` wins and the rest affect 0 rows. Needs a
+  `pg_advisory_lock` around the purge, or `DbUpdateConcurrencyException` treated as a benign "already done".
+- **★ The worse latent outcome is the ordering, not the race.** In `PurgeExpiredAsync`, `UnarchiveAsync(id)`
+  deletes the `ArchivedAccounts` row via raw SQL that **commits immediately**, while the `Account` delete waits
+  for `SaveChangesAsync` at the end of the loop. Die between the two and the account is left **unarchived AND
+  undeleted** — an account archived 30+ days ago silently reappears in the user's list instead of being purged.
+  Worth checking whether the 2026-08-07T09:39:11Z crash left one behind.
+- **It self-cleared and prod is healthy** — a later instance found nothing left to purge; six consecutive probes
+  of both URLs returned 200 in ~150 ms and a bad-credential login correctly returned 401 (so the DB path works).
+  First occurrence in 30 days of logs: it needs a grace window to expire at the same moment as a multi-instance
+  start. **Not an outage — a boot-crash waiting for the next coincidence.**
+
+### ★ Every checkbox in the app is now a switch (`bc6f4c3`)
+
+New [Switch.razor](src/FinApp.Shared.UI/Components/Switch.razor) + scoped CSS replaces **all 19** native
+checkboxes (Dashboard, the MainLayout consent gate, FeedbackForm, three Thin sections). Zero `type="checkbox"`
+left outside the component.
+
+- **A real `<input type=checkbox role=switch>` under a track/thumb**, not a styled `<div>`: keyboard (Space),
+  label-click and form semantics come free, and `role="switch"` is what turns the announcement from
+  "checkbox, checked" into "switch, on".
+- **★ The scope attribute won the specificity fight, so no per-container patch was needed.**
+  `.modal label { display:flex; flex-direction:column }` would have stacked each switch on top of its text;
+  `.tt-switch[b-xxx]` is (0,2,0) against that rule's (0,1,1), so the row stays a row. **The retired
+  `.modal .check { flex-direction: row }` was exactly the patch this makes unnecessary** — worth remembering
+  the next time a shared component fights a page-level rule.
+- **★ `.switch`/`.switch-track`/`.switch-thumb` in MainLayout had no markup left to match** — the element was
+  removed at some point and the styles stayed, including a dark rule in `app.css`. Dead CSS is invisible until
+  someone tries to reuse the name. Retired; `app.css` bumped to **`?v=41`**.
+- **A parent's scoped rule cannot style a child component's root.** `.fb-consent` and `.consent-card .check`
+  both stopped matching once the root became a `<Switch>` (the root carries the *child's* scope id).
+  `FeedbackForm.razor.css` now uses `.fb ::deep .fb-consent`; the MainLayout rule was dead and was deleted.
+- **`is-bare`**: a label-less switch (the CSV-import row list) drops the form-stack margin — it lives inside
+  someone else's row.
+- **Android**: the shared `CheckRow` in `SheetKit.kt` is a Material 3 `Switch` tinted from `catAccent` (green
+  light / mint dark), the whole row `toggleable` so the label is a hit target. **The switch stays LEFT of its
+  label**, against Material's trailing-control convention, because these rows are the phone's copy of the same
+  modal fields and the two surfaces reading differently is worse than the platform deviation.
+- ⚠️ **Three of the 19 are arguably the wrong control** and were converted because "all" was asked for: the two
+  **consent** ticks (Terms, bank consent) — a switch implies "setting, effective now" where a form wants a
+  checkbox — and the two **multi-select** lists (CSV import rows, Thin import groups), where a column of
+  switches reads as N independent settings. **The fix if it bothers anyone is a `Variant="Checkbox"` on the same
+  component, not reverting those sites.**
+
+### ★ The app bar's "Tab" lost its pill — and why it could not just copy the auth fix (`bc6f4c3`)
+
+`8266dcf` (S93) dropped the boxed "Tab" on auth, landing and Android login and **deliberately skipped
+MainLayout** — the commit says so. The reason it could not be copied verbatim: **that bar IS `#13a06e`**, so a
+green "Tab" is invisible on it. Transposed instead — dark (navy glass) uses the auth treatment **exactly**
+(slate "Tandem", mint "Tab"); light splits on **white opacity** (70% vs solid) because hue is not available.
+No box in either. Verified: `background-color` transparent, `border-width`, `padding`, `border-radius` all 0.
+
+### ★ New brand mark: an S-split tile (`d3d0bd8`)
+
+The owner's read was "it looks like 2 guys". **The diagnosis is that the circles were never the problem — the
+STEMS under them were:** a circle on a vertical bar is restroom-sign grammar, twice over. The mark is now one
+rounded tile split corner-to-corner by an S-curve into two fields, each carrying a dot in the other's tone.
+
+- **★ Why an S and not a single bow.** The S crosses **dead centre whatever its depth**, so both fields stay
+  equal and both dots stay equally clear of the divide. With a one-way bow the curve amount and the dot
+  positions stop being independent — the split closes on one dot as it opens on the other. (Explored on a
+  concept board; a full taijitu was rejected for carrying a religious reading and for forcing the dots out to
+  the semicircle centres, which drags the crown to the right.)
+- **★★ The loader was parasitic on the heads, and would have failed SILENTLY.** `Spinner.razor.css` animated a
+  bare `circle` — its comment literally read *"The two `<circle>`s are the heads."* A mark without heads kills
+  the animation with **no error and no build failure**, just a logo that quietly stops moving. The dots now
+  carry `.tt-dot-a`/`.tt-dot-b` and the spinner selects those by class. **Generalise this: an animation hooked
+  to an element TYPE is coupled to a drawing decision, and that coupling fails without a sound.**
+- **The loader is "breath"** — the two dots pulse in turn inside a tile that never moves, so the silhouette is
+  identical loading or idle. Deliberately **not** a rotation: a spinning mark makes the logo read as a progress
+  indicator everywhere else it appears. Inline spinner **20px → 24px**, because the motion now lives in two dots
+  that are a quarter of the tile each.
+- **★ A filled-tile mark is not a drop-in for a transparent glyph.** The app framed the old mark in a plate in
+  three places (`.brand-logo` white, `.auth-logo` and `.lp-logo`/`.lp-logo-sm` gradient+border) — a filled tile
+  inside a bordered tile reads as a mistake, so those are gone. **One survives for a concrete reason:** the
+  light app bar IS `#13a06e`, exactly the mark's own dark field, so without a plate the green half dissolves
+  into the bar and you see a mint blob. Light keeps a white plate (reads as a keyline round an app icon); dark
+  drops it, because the navy-glass bar separates the mark by itself.
+- **★ The crown needs `scale(1.333)`, not `1.15`.** The crown asset was drawn against the old mark laid out in
+  a **48**-unit tile; this one is full-bleed **64**. At 1.15 it hovered *above* its dot instead of resting
+  across it — visible at 120px, invisible at 38px. **Caught on a screenshot, not in the code.** It now perches
+  on the **upper-LEFT** dot so the −18° tilt leans into the mark.
+- **★ Android's adaptive icon needed a different decomposition.** A tile mark means the **launcher's own mask**
+  supplies the shape, so the green field moved into `@color/ic_launcher_background` (`#0E7C66` → `#13A06E` — it
+  is now *part of the mark*, not a backdrop) and the foreground draws only the mint half, bleeding to the edges.
+  Its dots are pulled to **±15** from centre rather than the true ±20.25: at the true position a dot reaches 42
+  units out and a circular mask (guaranteed area = the central 72 dp) clips it. Deliberate, documented,
+  icon-only — **do not "fix" it back**.
+- **★ `monochrome` had to stop pointing at the foreground.** That worked only while the foreground WAS the
+  silhouette (a white glyph); tinting half of a two-tone tile flat renders a diagonal blob. New
+  `ic_launcher_monochrome.xml`: the tile with both dots knocked out, **one path, `fillType="evenOdd"`**, inset
+  to the 72 dp safe zone.
+- **Per-instance `clipPath` id** (`tt-mark-<guid8>`): several `TandemLogo`s can share a page and SVG ids are
+  document-global.
+- **Four copies of the mark exist and had already drifted** — `TandemLogo.razor`, `favicon.svg`,
+  `TandemLogo.kt` (Compose Canvas), `ic_launcher_foreground.xml`. All four updated. Only the web mark has a
+  **Pro crown at all**; Android Pro users see none, which is a gap rather than a decision.
+
+### Verification
+
+- **339 + 48 + 310 green**; `FinApp.NoMaui.slnf` builds with **0 warnings, 0 errors**; Android `assembleDebug`
+  exit 0 (twice — after the switches, and after the mark + all four icon files).
+- **On the running app**, fresh account, both themes: consent gate toggled → *Accept & continue* enabled →
+  account created; the savings-bucket modal switch renders as a **row** (specificity proof); on/off computed
+  styles correct in both themes; the mark at **120/46/24/16px** free *and* Pro; the light app bar's plate; the
+  spinner bound to both dots (`spinner-breath`, 1.1 s, .55 s offset, `transform-box: fill-box`,
+  `transform-origin` 8px 8px) and **caught mid-pulse in a screenshot**; `favicon.svg` served, parsing, no
+  gradient left over.
+- ⚠️ **A gotcha that cost real time and will again:** *the browser pane freezes CSS transitions when it is not
+  compositing.* The switch thumb read `translateX(0)` and its halo read transparent — indistinguishable from a
+  dead selector — until the transition was disabled and both jumped to their correct values.
+
+### ⚠️ Carry-over
+
+- ⛔ **Fix the startup purge crash** (the block at the top of this entry). Highest priority in here: the failure
+  mode is "container will not start". A task chip was raised for it.
+- ⚠️ **Android is build-verified only this session** — the native switches, the new mark, the launcher icon and
+  the monochrome icon have **not** been seen on a device. First emulator session should look at all four.
+- **A figurative trademark search is still owed before R7** (EUIPO, Vienna classification, classes 9/36/42) —
+  same "lawyer's glance" OPEN-BETA already flags for the legal pages. A logo is cheaper to change now than
+  after promotion. Two overlapping equal circles was rejected during design *because* it is Mastercard/Maestro
+  territory in the same category; the shipped mark has no such neighbour that I could identify, but I could not
+  run a clearance search.
+- **The pre-S96 carry-over still stands** — Tier-2 mobile parity (export, weekly recap + push), the
+  ported-half-a-feature audit, the two server-blocked rows (F4 round-ups, the fund↔bank sync toggle), the
+  Android light/dark sweep and the `SheetShell` foot-of-sheet audit. See the Session 95 carry-over below.
 
 ## Session 95 (2026-08-07) — **Tier-1 parity closed: three rows, no server change, one real bug**
 
