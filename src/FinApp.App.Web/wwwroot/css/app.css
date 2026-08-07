@@ -298,7 +298,8 @@ html.dark .warn-text { color: #f0a85a; }
 
 /* Settings (gear) toggle row */
 html.dark .pm-theme-row { color: #e8eaf0; }
-html.dark .switch-track { background: #3a4256; }   /* off-state track; .switch.on stays mint */
+/* `.switch-track` was retired with its (already markup-less) light rule — the shared <Switch> component carries
+   its own dark values. */
 html.dark .app-legal { background: #0f1117; border-top-color: #262d3d; }
 /* `.app-legal-link` (the Contact button) shares the light rule with `a` — `.app-legal a, .app-legal-link { … }` —
    but only the anchor was given a dark value, so Contact stayed #6b7280 on #0f1117. Third instance of the same
@@ -308,7 +309,8 @@ html.dark .icon-btn { background: #1e2330; border-color: #2c3142; color: #e8eaf0
 html.dark .icon-btn.ok, html.dark .icon-btn.pin.on { background: #12332c; border-color: #1c3d38; color: #3fe0c5; }
 html.dark .bank-tx { border-top-color: #262d3d; }
 
-/* Checkbox labels (e.g. "On behalf of another account") — scoped rule set dark-on-dark text */
+/* `.check` labels are <Switch>es now; the component carries its own dark colour. This rule is kept only for any
+   .check label that is still plain text (no checkbox inside it). */
 html.dark .modal .check { color: #e8eaf0; }
 
 /* Expenses month calendar */

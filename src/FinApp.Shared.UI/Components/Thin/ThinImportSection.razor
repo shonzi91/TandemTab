@@ -69,7 +69,8 @@ else if (_step == Step.Review)
         @foreach (var g in _groups)
         {
             <div class="ti-group @(g.Skip ? "skip" : "")">
-                <label class="ti-gcheck"><input type="checkbox" checked="@(!g.Skip)" @onchange="e => g.Skip = !(bool)e.Value!" /></label>
+                @* Inverted: the switch reads "include this group", the model stores Skip. *@
+                <Switch Class="ti-gcheck" Value="@(!g.Skip)" ValueChanged="@((bool v) => g.Skip = !v)" />
                 <div class="ti-gmain">
                     <div class="ti-grow1">
                         <span class="ti-gdesc" title="@g.Description">@(string.IsNullOrWhiteSpace(g.Description) ? "(no description)" : g.Description)</span>
@@ -95,7 +96,7 @@ else if (_step == Step.Review)
         }
     </div>
 
-    <label class="ti-dupe"><input type="checkbox" @bind="_skipDuplicates" /> Skip transactions already in this period (avoids double-importing the same statement)</label>
+    <Switch @bind-Value="_skipDuplicates" Class="ti-dupe">Skip transactions already in this period (avoids double-importing the same statement)</Switch>
 
     <div class="ti-actions">
         <button class="ti-primary" @onclick="DoImport" disabled="@(_busy || toImport == 0)">Import @toImport transaction@(toImport == 1 ? "" : "s")</button>

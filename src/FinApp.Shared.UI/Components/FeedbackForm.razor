@@ -27,10 +27,7 @@
                   maxlength="4000" @bind="_comment" @bind:event="oninput"></textarea>
 
         @* Opt-in, unticked, per submission — a review is never quotable unless it was ticked for that review. *@
-        <label class="check fb-consent">
-            <input type="checkbox" @bind="_publicConsent" />
-            @Loc["You may show this on the site"]
-        </label>
+        <Switch @bind-Value="_publicConsent" Class="fb-consent">@Loc["You may show this on the site"]</Switch>
 
         @if (_error is not null)
         {

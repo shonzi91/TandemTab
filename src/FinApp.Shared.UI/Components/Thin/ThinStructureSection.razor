@@ -20,7 +20,7 @@
 else
 {
     <div class="ts-head">
-        <label class="ts-arch-toggle"><input type="checkbox" @bind="_showArchived" /> Show archived</label>
+        <Switch @bind-Value="_showArchived" Class="ts-arch-toggle">Show archived</Switch>
     </div>
 
     @* ---- Spend categories ---------------------------------------------------- *@
@@ -45,7 +45,7 @@ else
                     <option value="@p.Id">@p.Name</option>
                 }
             </select>
-            <label class="ts-ess"><input type="checkbox" @bind="_catEssential" /> Essential</label>
+            <Switch @bind-Value="_catEssential" Class="ts-ess">Essential</Switch>
             <button class="ts-save" disabled="@(_busy || string.IsNullOrWhiteSpace(_catName))" @onclick="AddCategory">Add</button>
             <button class="lnk" @onclick="() => _addingCat = false">cancel</button>
         </div>
@@ -255,7 +255,7 @@ else
             {
                 <input @bind="_eName" />
                 <input class="ts-icon-in" placeholder="icon" @bind="_eIcon" />
-                <label class="ts-ess"><input type="checkbox" @bind="_catEssential" /> Essential</label>
+                <Switch @bind-Value="_catEssential" Class="ts-ess">Essential</Switch>
                 <button class="ts-save" disabled="@(_busy || string.IsNullOrWhiteSpace(_eName))" @onclick="() => SaveCategory(c)">Save</button>
                 <button class="lnk" @onclick="CancelEdit">cancel</button>
             }

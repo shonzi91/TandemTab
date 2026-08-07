@@ -86,7 +86,7 @@ else
                     <div class="tg-form">
                         <label class="tg-lbl">Target <input type="number" step="0.01" min="0" placeholder="0.00" @bind="_nGoal" /></label>
                         <label class="tg-lbl">Alert at <input type="number" step="1" min="0" max="100" @bind="_nThreshold" />%</label>
-                        <label class="tg-chk"><input type="checkbox" @bind="_nNotify" /> Notify on milestones</label>
+                        <Switch @bind-Value="_nNotify" Class="tg-chk">Notify on milestones</Switch>
                     </div>
                     break;
                 case "debt":

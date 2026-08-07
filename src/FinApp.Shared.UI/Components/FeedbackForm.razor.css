@@ -12,7 +12,8 @@
     font: inherit; font-size: .9rem; background: #fff; color: #16211d; }
 .fb-text:focus { outline: none; border-color: #13a06e; }
 
-.fb-consent { font-size: .82rem; color: #55635d; }
+/* `::deep` because .fb-consent now sits on a <Switch>'s root, which carries *its* scope id, not this file's. */
+.fb ::deep .fb-consent { font-size: .82rem; color: #55635d; }
 
 .fb-send { align-self: flex-start; padding: 9px 18px; border: none; border-radius: 10px; background: #13a06e;
     color: #fff; font-weight: 700; font-size: .9rem; cursor: pointer; }
@@ -25,5 +26,5 @@
 html.dark .fb-star { color: #3a4a44; }
 html.dark .fb-star.on { color: #f2b632; }
 html.dark .fb-text { background: #16201c; border-color: #2b3a34; color: #e8f2ee; }
-html.dark .fb-consent { color: #9fb3aa; }
+html.dark .fb ::deep .fb-consent { color: #9fb3aa; }
 html.dark .fb-thanks { color: #57d9a3; }

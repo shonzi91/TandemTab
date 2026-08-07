@@ -17,13 +17,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material3.Button
-import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
@@ -34,6 +34,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.SheetState
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDatePickerState
@@ -48,6 +50,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.Role
 import com.tandemtab.app.ui.theme.LocalTandemColors
 import com.tandemtab.app.ui.theme.TandemIcons
 import java.time.Instant
@@ -242,11 +246,39 @@ internal fun SheetActionBar(
     }
 }
 
-/** A labelled checkbox row, as the sheets' opt-in switches (copy budgets forward, notify on milestone…). */
+/**
+ * A labelled on/off row (copy budgets forward, notify on milestone…) — a switch, matching the web's <Switch>.
+ *
+ * The switch stays on the LEFT with the label to its right, which is the web's order rather than Material's
+ * usual trailing-control convention: these rows are the phone's copy of the same modal fields, and the two
+ * surfaces reading differently is more jarring than departing from the platform default here.
+ *
+ * `toggleable` on the Row (with `onCheckedChange = null` on the switch itself) makes the label part of the hit
+ * target and gives the whole row one accessibility node announced as a switch, rather than two.
+ */
 @Composable
 internal fun CheckRow(label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Checkbox(checked = checked, onCheckedChange = onChange)
+    val tandem = LocalTandemColors.current
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .toggleable(value = checked, onValueChange = onChange, role = Role.Switch)
+            .padding(vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Switch(
+            checked = checked,
+            onCheckedChange = null,
+            colors = SwitchDefaults.colors(
+                // catAccent is the web's on-state pair: brand green in light, mint in dark.
+                checkedTrackColor = tandem.catAccent,
+                checkedBorderColor = tandem.catAccent,
+                checkedThumbColor = Color.White,
+                uncheckedTrackColor = MaterialTheme.colorScheme.surfaceVariant,
+                uncheckedBorderColor = tandem.hairline,
+            ),
+        )
         Text(label, color = MaterialTheme.colorScheme.onSurface, fontSize = 14.sp)
     }
 }

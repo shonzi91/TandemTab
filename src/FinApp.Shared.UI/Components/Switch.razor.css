@@ -1,0 +1,92 @@
+/* Toggle switch. Replaces the native checkbox everywhere in the app.
+
+   Layout note: this root is a <label>, and `.modal label { display:flex; flex-direction:column }` (Dashboard)
+   would otherwise stack the control on top of its text. The scoped attribute gives these rules (0,2,0)
+   specificity against that rule's (0,1,1), so the row stays a row without an !important or a `.check`-style
+   per-container override — which is exactly what the old `.modal .check { flex-direction: row }` patch was. */
+.tt-switch {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 10px;
+    margin: 8px 0;
+    font-size: .9rem;
+    line-height: 1.35;
+    color: #1f2430;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+}
+
+/* The control column keeps a fixed width so labels of different lengths line up down a stack of switches. */
+.tt-sw-ctl { position: relative; display: inline-flex; flex: 0 0 auto; }
+
+/* The native input stays in the layout (not display:none) so it remains focusable and label-clickable; it is
+   simply invisible and stretched over the track, making the control its own hit target. */
+.tt-sw-ctl input {
+    position: absolute; inset: 0; width: 100%; height: 100%;
+    margin: 0; opacity: 0; cursor: pointer; z-index: 1;
+}
+
+.tt-sw-track {
+    width: 42px; height: 24px; border-radius: 999px;
+    background: #cdd2dc;
+    display: inline-block; position: relative;
+    transition: background .2s ease, box-shadow .2s ease;
+}
+
+.tt-sw-thumb {
+    position: absolute; top: 3px; left: 3px; width: 18px; height: 18px;
+    border-radius: 50%; background: #ffffff;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, .28);
+    /* Slight overshoot on the way across — the one bit of "spring" in the app's motion vocabulary, and the
+       reason this reads as a physical switch rather than a colour change. */
+    transition: transform .24s cubic-bezier(.34, 1.4, .64, 1), width .18s ease;
+}
+
+/* On: the brand gradient rather than the flat green, plus a soft mint halo so an enabled row is legible at a
+   glance down a long form. */
+.tt-sw-ctl input:checked ~ .tt-sw-track {
+    background: linear-gradient(135deg, #34d399, #13a06e);
+    box-shadow: 0 0 0 1px rgba(19, 160, 110, .18), 0 2px 8px rgba(19, 160, 110, .30);
+}
+.tt-sw-ctl input:checked ~ .tt-sw-track .tt-sw-thumb { transform: translateX(18px); }
+
+/* Press: the thumb stretches toward its destination. Costs nothing and makes the control feel answerable. */
+.tt-sw-ctl input:active ~ .tt-sw-track .tt-sw-thumb { width: 22px; }
+.tt-sw-ctl input:checked:active ~ .tt-sw-track .tt-sw-thumb { transform: translateX(14px); }
+
+.tt-switch:hover .tt-sw-track { background: #bfc6d2; }
+.tt-switch:hover .tt-sw-ctl input:checked ~ .tt-sw-track { background: linear-gradient(135deg, #3ee0a8, #109063); }
+
+/* Keyboard focus only — a mouse click on a switch shouldn't leave a ring behind. */
+.tt-sw-ctl input:focus-visible ~ .tt-sw-track {
+    box-shadow: 0 0 0 3px rgba(18, 178, 154, .30);
+}
+
+.tt-sw-label { flex: 1 1 auto; min-width: 0; }
+
+/* Control-only (no label): it lives inside another row's layout — an import row's lead cell — so it drops the
+   form-stack margin and the label gap and behaves like the checkbox it replaced. */
+.tt-switch.is-bare { display: inline-flex; margin: 0; gap: 0; }
+
+.tt-switch.is-disabled { opacity: .55; cursor: not-allowed; }
+.tt-switch.is-disabled .tt-sw-ctl input { cursor: not-allowed; }
+
+/* Dark ("Tandem × Midnight"). */
+html.dark .tt-switch { color: #e8eaf0; }
+html.dark .tt-sw-track { background: #3a4256; }
+html.dark .tt-switch:hover .tt-sw-track { background: #454e66; }
+html.dark .tt-sw-thumb { background: #f2f5f9; }
+html.dark .tt-sw-ctl input:checked ~ .tt-sw-track {
+    background: linear-gradient(135deg, #3fe0c5, #12b29a);
+    box-shadow: 0 0 0 1px rgba(63, 224, 197, .22), 0 2px 10px rgba(63, 224, 197, .22);
+}
+html.dark .tt-switch:hover .tt-sw-ctl input:checked ~ .tt-sw-track {
+    background: linear-gradient(135deg, #55ecd3, #0f9c87);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .tt-sw-track, .tt-sw-thumb { transition: none; }
+    .tt-sw-ctl input:active ~ .tt-sw-track .tt-sw-thumb { width: 18px; }
+    .tt-sw-ctl input:checked:active ~ .tt-sw-track .tt-sw-thumb { transform: translateX(18px); }
+}

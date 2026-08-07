@@ -2518,7 +2518,7 @@ else
                     <h3>@_consentTitle</h3>
                     <p class="hint">@_consentBody</p>
                     <p class="hint"><a href="@PrivacyUrl" target="_blank" rel="noopener">@Loc["Privacy"]</a> · <a href="@TermsUrl" target="_blank" rel="noopener">@Loc["Terms"]</a></p>
-                    <label class="check"><input type="checkbox" @bind="_consentChecked" /> @Loc["I understand and consent."]</label>
+                    <Switch @bind-Value="_consentChecked">@Loc["I understand and consent."]</Switch>
                     <div class="modal-actions">
                         <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
                         <button @onclick="ConfirmBankConsent" disabled="@(!_consentChecked || _bankBusy)">@Loc["Consent & continue"]</button>
@@ -2534,7 +2534,7 @@ else
                     @iconGrid
                     <label>@Loc["Budget for this period (optional)"] <input type="number" step="0.01" min="0" @bind="_fBudget" /></label>
                     <small class="hint">@Loc["Available to budget:"] <strong>@Fmt(State.MaxBudgetFor(Guid.Empty))</strong></small>
-                    <label class="check"><input type="checkbox" @bind="_fEssential" /> @Loc["Essential spend (rent, groceries, health…)"]</label>
+                    <Switch @bind-Value="_fEssential">@Loc["Essential spend (rent, groceries, health…)"]</Switch>
                     <small class="hint">@Loc["Essential budgets are never suggested for redirecting toward a debt."]</small>
                     <div class="modal-actions">
                         <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
@@ -2591,8 +2591,8 @@ else
                     <label>@Loc["Budget amount"] <input type="number" step="0.01" min="0" @bind="_fBudget" /></label>
                     <small class="hint">@Loc["Available to budget:"] <strong>@Fmt(State.MaxBudgetFor(_modalCatId))</strong></small>
                     <label>@Loc["Alert at %"] <input type="number" step="1" min="0" max="100" @bind="_fThreshold" /></label>
-                    <label class="check"><input type="checkbox" @bind="_fNotify" /> @Loc["Notify on every expense"]</label>
-                    <label class="check"><input type="checkbox" @bind="_fEssential" /> @Loc["Essential spend (rent, groceries, health…)"]</label>
+                    <Switch @bind-Value="_fNotify">@Loc["Notify on every expense"]</Switch>
+                    <Switch @bind-Value="_fEssential">@Loc["Essential spend (rent, groceries, health…)"]</Switch>
                     var subs = State.ChildrenOf(_modalCatId).ToList();
                     @* One level of sub-categories only (keeps the app simple): a sub-category can't have its own
                        sub-categories, so this whole section is hidden when you're editing a sub. *@
@@ -3222,10 +3222,10 @@ else
                     {
                         <label>@f.Name <input type="text" inputmode="text" @bind:get="RealOpeningText(f.Id)" @bind:set="v => SetRealOpeningText(f.Id, v)" /></label>
                     }
-                    <label class="check"><input type="checkbox" @bind="_copyBudgets" /> Copy this period’s budgets forward</label>
+                    <Switch @bind-Value="_copyBudgets">Copy this period’s budgets forward</Switch>
                     @if (_copyBudgets)
                     {
-                        <label class="check"><input type="checkbox" @bind="_adjustBudgets" /> @Loc["Adjust budgets to this period’s spending"]</label>
+                        <Switch @bind-Value="_adjustBudgets">@Loc["Adjust budgets to this period’s spending"]</Switch>
                         <small class="hint">@Loc["Each budget moves halfway toward what was actually spent, rounded up to the nearest 10."]</small>
                     }
                     @if (_reconcileGaps is { Count: > 0 } gaps)
@@ -3426,7 +3426,7 @@ else
                             <label>@Loc["Loan start date"] <input type="date" @bind="_debtStart" /></label>
                         </div>
                         <small class="hint">@Loc["The start date bases “interest paid so far” on the real timeline — otherwise we infer it from the balance."]</small>
-                        <label class="check"><input type="checkbox" @bind="_debtPayDriven" /> @Loc["I log each installment here"]</label>
+                        <Switch @bind-Value="_debtPayDriven">@Loc["I log each installment here"]</Switch>
                         <small class="hint">@Loc["Then the balance drops only when you log a payment — and each payment is split into interest, principal and any extras. Otherwise we carry it forward on the loan’s own schedule."]</small>
                         <small class="hint">@Loc["Used only to project your payoff — never changes budgets, savings or balances. Set money aside with 💰, then pay the bank with 🎯."]</small>
                     }
@@ -3499,7 +3499,7 @@ else
                     {
                         <label>@Loc["Goal amount (optional)"] <input type="number" step="0.01" min="0" @bind="_goalAmount" /></label>
                         <label>@Loc["Alert at %"] <input type="number" step="1" min="0" max="100" @bind="_fThreshold" /></label>
-                        <label class="check"><input type="checkbox" @bind="_fNotify" /> @Loc["Notify on milestone"]</label>
+                        <Switch @bind-Value="_fNotify">@Loc["Notify on milestone"]</Switch>
                     }
                     <label>@Loc["Held in fund (optional)"]
                         <select @bind:get="_bucketFundId?.ToString()" @bind:set="v => _bucketFundId = Guid.TryParse(v, out var g) ? g : (Guid?)null">
@@ -3913,7 +3913,7 @@ else
                     <label>@Loc["Day of month"] <input type="number" step="1" min="1" max="28" @bind="_recDay" /></label>
                     @if (_recMode == RecurringAmountMode.Fixed)
                     {
-                        <label class="check"><input type="checkbox" @bind="_recAutoPost" /> @Loc["Post automatically when due (don't ask me)"]</label>
+                        <Switch @bind-Value="_recAutoPost">@Loc["Post automatically when due (don't ask me)"]</Switch>
                     }
                     @* A bill can service a loan. Only offered for expenses, and only when there's a debt to point at. *@
                     @if (_recKind == RecurringKind.Expense && State.LinkableDebts.Count > 0)
@@ -4033,7 +4033,7 @@ else
                                 var pinned = r.Tx.Amount < 0m && MappingFor(r.Tx.Description) is { Kind: "category" };
                                 <li>
                                     <span class="row-lead">
-                                        <input type="checkbox" checked="@r.Include" @onchange="e => r.Include = (bool)e.Value!" />
+                                        <Switch @bind-Value="r.Include" />
                                         <span class="import-when">@r.Tx.Date.ToString("dd MMM")</span>
                                         <span class="import-desc">@(string.IsNullOrWhiteSpace(r.Tx.Description) ? Loc["(no description)"] : r.Tx.Description)</span>
                                     </span>
@@ -4834,7 +4834,7 @@ else
                        already owns the bank link. *@
                     @if (_bankStatus?.Connected == true && (State.FundIsSynced(_modalFundId) || !State.HasSyncedFund))
                     {
-                        <label class="check"><input type="checkbox" @bind="_fSynced" /> @string.Format(Loc["Sync this fund with {0}"], _bankStatus.InstitutionName)</label>
+                        <Switch @bind-Value="_fSynced">@string.Format(Loc["Sync this fund with {0}"], _bankStatus.InstitutionName)</Switch>
                         @if (_fSynced)
                         {
                             <label>@Loc["Bank account"]

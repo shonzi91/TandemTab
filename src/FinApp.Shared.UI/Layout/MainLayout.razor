@@ -60,7 +60,7 @@
                         <a href="@PrivacyUrl" target="_blank" rel="noopener">@Loc["Privacy"]</a> ·
                         <a href="@TermsUrl" target="_blank" rel="noopener">@Loc["Terms"]</a>
                     </p>
-                    <label class="check"><input type="checkbox" @bind="_consentChecked" /> @Loc["I have read and accept the Terms of Service and Privacy Policy."]</label>
+                    <Switch @bind-Value="_consentChecked">@Loc["I have read and accept the Terms of Service and Privacy Policy."]</Switch>
                     <button class="primary" @onclick="AcceptLoginConsent" disabled="@(!_consentChecked || _consentBusy)">@Loc["Accept & continue"]</button>
                 </div>
             </div>

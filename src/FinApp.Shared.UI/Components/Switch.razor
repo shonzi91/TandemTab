@@ -1,0 +1,53 @@
+@* A labelled on/off switch, replacing the app's native checkboxes.
+
+   Why a real <input type="checkbox"> underneath rather than a styled <div role="switch">: the browser gives us
+   keyboard operation (Space), form/label semantics, and the :checked state for free. The input is transparent
+   and stretched over the track, so the whole row is the hit target — including the text. `role="switch"` is what
+   turns the announcement from "checkbox, checked" into "switch, on", which is what this now looks like.
+
+   The label content is optional: a bare <Switch @bind-Value="x" /> is a control-only switch for table rows. *@
+<label class="tt-switch @(HasLabel ? "" : "is-bare") @(Disabled ? "is-disabled" : "") @Class" title="@Title">
+    <span class="tt-sw-ctl">
+        <input type="checkbox" role="switch" checked="@Value" disabled="@Disabled"
+               @onchange="OnToggle" aria-label="@(ChildContent is null ? Label : null)" />
+        <span class="tt-sw-track" aria-hidden="true"><span class="tt-sw-thumb"></span></span>
+    </span>
+    @if (ChildContent is not null)
+    {
+        <span class="tt-sw-label">@ChildContent</span>
+    }
+    else if (!string.IsNullOrEmpty(Label))
+    {
+        <span class="tt-sw-label">@Label</span>
+    }
+</label>
+
+@code {
+    /// <summary>On/off state. Use with <c>@bind-Value</c>.</summary>
+    [Parameter] public bool Value { get; set; }
+    [Parameter] public EventCallback<bool> ValueChanged { get; set; }
+
+    /// <summary>Plain-text label to the right of the control. Ignored when <see cref="ChildContent"/> is set.</summary>
+    [Parameter] public string? Label { get; set; }
+
+    /// <summary>Rich label (markup, <c>@Loc[...]</c> with embedded elements). Takes precedence over <see cref="Label"/>.</summary>
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public string? Title { get; set; }
+
+    /// <summary>Extra class on the root, for callers that need to place the row (margins, grid cells).</summary>
+    [Parameter] public string? Class { get; set; }
+
+    /// <summary>A bare (control-only) switch sits inside someone else's row — a list row's lead cell, say — so it
+    /// must not bring the stacked-form margin with it.</summary>
+    private bool HasLabel => ChildContent is not null || !string.IsNullOrEmpty(Label);
+
+    private Task OnToggle(ChangeEventArgs e)
+    {
+        if (Disabled) return Task.CompletedTask;
+        var on = e.Value is bool b && b;
+        Value = on;
+        return ValueChanged.InvokeAsync(on);
+    }
+}
