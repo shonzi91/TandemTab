@@ -1262,7 +1262,13 @@ else
                                     <button class="row-ico" title="@Loc["Add expense"]" @onclick="() => OpenAddExpense(sub.Id)"><Icon Name="receipt" /></button>
                                 }
                                 <button class="row-ico" title="@(sHas ? Loc["Edit budget"] : Loc["Add budget"])" @onclick="() => OpenEdit(sub.Id)"><Icon Name="pencil" /></button>
-                                <button class="row-ico danger" title="@Loc["Remove"]" @onclick="() => OpenDelete(sub.Id)"><Icon Name="trash" /></button>
+                                @* The trash on a spending row removes the BUDGET, not the category — this list is the
+                                   budgets view, and a row here is a cap on a category, not the category itself.
+                                   Deleting the category proper lives in Manage categories. *@
+                                @if (sHas)
+                                {
+                                    <button class="row-ico danger" title="@Loc["Remove budget"]" @onclick="() => OpenDeleteBudget(sub.Id)"><Icon Name="trash" /></button>
+                                }
                                 <button class="row-ico cat-chev-btn" @onclick="() => ToggleSub(sub.Id)"><Icon Name="chevron" Class="cat-chev" /></button>
                             </div>
                         </div>
@@ -1325,7 +1331,10 @@ else
                                         <button class="row-ico" title="@Loc["Add expense"]" @onclick="() => OpenAddExpense(catId)"><Icon Name="receipt" /></button>
                                     }
                                     <button class="row-ico" title="@(hasBudget ? Loc["Edit budget"] : Loc["Add budget"])" @onclick="() => OpenEdit(catId)"><Icon Name="pencil" /></button>
-                                    <button class="row-ico danger" title="@Loc["Remove"]" @onclick="() => OpenDelete(catId)"><Icon Name="trash" /></button>
+                                    @if (hasBudget)
+                                    {
+                                        <button class="row-ico danger" title="@Loc["Remove budget"]" @onclick="() => OpenDeleteBudget(catId)"><Icon Name="trash" /></button>
+                                    }
                                     <button class="row-ico cat-chev-btn" @onclick="() => ToggleCatRow(catId)"><Icon Name="chevron" Class="cat-chev" /></button>
                                 </div>
                             </div>
@@ -1472,6 +1481,7 @@ else
                     @{
                         var brkSlices = BreakSlices();
                         var brkTotal = brkSlices.Sum(s => s.Amount);                                    // sum of the drawn slices (donut geometry)
+                        var brkPeriods = BreakPeriodCount();                                            // >1 → rows also carry a per-period average
                         var brkCi = System.Globalization.CultureInfo.InvariantCulture;
                         var (brkFrom, brkTo) = BreakWindow();
                         // Income for the window. For the current period, include the carried-in money so it matches the
@@ -1587,7 +1597,16 @@ else
                                             }
                                             <span class="brk-item-lbl">@s.Label</span>
                                         </span>
-                                        <span class="brk-item-amt">@Fmt(s.Amount)<span class="brk-item-pct">@pct.ToString("0.#", brkCi)%</span></span>
+                                        @* Over more than one period the total answers the wrong question — "is Food
+                                           expensive?" is a per-month question, and a 12-month total is 12× any figure
+                                           the reader has a feel for. The average is drawn only when the window
+                                           actually spans several periods; over one it would be the same number twice. *@
+                                        <span class="brk-item-amt">@Fmt(s.Amount)<span class="brk-item-pct">@pct.ToString("0.#", brkCi)%</span>
+                                            @if (brkPeriods > 1)
+                                            {
+                                                <span class="brk-item-avg">@string.Format(Loc["{0} avg / period"], Fmt(State.Money(decimal.Round(s.Amount / brkPeriods, 2))))</span>
+                                            }
+                                        </span>
                                         <Icon Name="chevron" Class="brk-item-chev" />
                                     </div>
                                     @if (expanded && (s.Key == TransfersKey || s.Key == SavedKey))
@@ -2289,30 +2308,13 @@ else
                     <button class="fund-add" @onclick="AddGoalForFilter"><Icon Name="plus" /> @Loc["Add goal"]</button>
                 </div>
                 @* F4 round-ups live with savings — this is where the mind is on setting money aside, not the spending
-                   Breakdown. On → the cumulative painless total (free). Off → what this period's spending would have
-                   skimmed at both steps, a Pro what-if; free sees the locked bar. *@
-                @if (State.RoundUpsOn)
+                   Breakdown. Only the cumulative painless total, and only once there IS one: it's a reward for using
+                   round-ups. The "would have set aside X at step 1 or 5" what-if that used to sit here was retired —
+                   two hypothetical figures for a feature the reader hasn't switched on is a projection they didn't
+                   ask for, and it landed on the page that is already the densest in the app. *@
+                @if (State.RoundUpsOn && State.RoundUpsSweptTotal.Amount > 0m)
                 {
-                    @if (State.RoundUpsSweptTotal.Amount > 0m)
-                    {
-                        <div class="brk-roundup"><Icon Name="coins" /> @string.Format(Loc["{0} saved this way so far."], Fmt(State.RoundUpsSweptTotal))</div>
-                    }
-                }
-                else
-                {
-                    var ruG1 = State.CouldHaveSavedViaRoundUps(State.Period.From, State.Period.To, 1m);
-                    var ruG5 = State.CouldHaveSavedViaRoundUps(State.Period.From, State.Period.To, 5m);
-                    @if (ruG5 > 0m)
-                    {
-                        @if (Gate.Allows(PlanFeatures.Insights))
-                        {
-                            <div class="brk-roundup brk-roundup-could"><Icon Name="coins" /> @string.Format(Loc["Round-ups would have set aside {0} (to the nearest 1) or {1} (to the nearest 5) this period — switch them on in Edit account"], Fmt(State.Money(ruG1)), Fmt(State.Money(ruG5)))</div>
-                        }
-                        else
-                        {
-                            <ProLock Feature="@PlanFeatures.Insights" Bar="true" Label="@Loc["See what round-ups could set aside — with Pro"]" />
-                        }
-                    }
+                    <div class="brk-roundup"><Icon Name="coins" /> @string.Format(Loc["{0} saved this way so far."], Fmt(State.RoundUpsSweptTotal))</div>
                 }
                 <div class="goal-filters" role="group">
                     <button type="button" class="chip @(_goalFilter == GoalFilter.All ? "on" : "")" @onclick="() => _goalFilter = GoalFilter.All">@Loc["All"] <span class="chip-n">@goalTotal</span></button>
@@ -2567,7 +2569,7 @@ else
                         <label>@Loc["Budget amount"] <input type="number" step="0.01" min="0" @bind="_fBudget" /></label>
                         <div class="modal-actions">
                             <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
-                            <button @onclick="SaveAddBudget" disabled="@(_budgetCatId == Guid.Empty || _fBudget <= 0)">@Loc["Add"]</button>
+                            <button @onclick="SaveAddBudget" disabled="@(_budgetCatId == Guid.Empty || _fBudget < 0)">@Loc["Add"]</button>
                         </div>
                     }
                     break;
@@ -2578,7 +2580,13 @@ else
                     <div class="modal-head">
                         <h3><CatIcon Name="@State.CategoryIcon(_modalCatId)" /> @Loc["Edit"] @State.CategoryName(_modalCatId)</h3>
                         <span class="modal-head-actions">
-                            <button class="exp-edit" title="@Loc["Delete"]" @onclick="EditDeleteSelf"><Icon Name="trash" /></button>
+                            @* This modal is opened from the budgets list, so its trash removes the BUDGET. The
+                               category itself is deleted from Manage categories — one destructive action per
+                               surface, and never the bigger one by surprise. *@
+                            @if (State.HasBudget(_modalCatId))
+                            {
+                                <button class="exp-edit" title="@Loc["Remove budget"]" @onclick="EditRemoveBudget"><Icon Name="trash" /></button>
+                            }
                             <button class="exp-edit" title="@Loc["Cancel"]" @onclick="Back"><Icon Name="x" /></button>
                             <button class="exp-edit head-ok" title="@Loc["Save"]" @onclick="SaveEditCat" disabled="@(string.IsNullOrWhiteSpace(_fName))"><Icon Name="check" /></button>
                         </span>
@@ -2642,17 +2650,46 @@ else
                     var catArchived = State.CategoryIsArchived(_modalCatId);
                     @if (State.CategoryRemovalBlocker(_modalCatId) is {} blocker)
                     {
-                        @if (catArchived)
+                        @* History pointing at it is no longer a refusal — it's a question of where the history goes.
+                           The expenses keep their id, amount, date and tags; they're re-filed, and only the caps are
+                           dropped. Archive stays offered first: it's the non-destructive answer to the same problem. *@
+                        var moveCount = State.ExpensesUnderCategory(_modalCatId);
+                        var moveTargets = State.ReassignTargetsFor(_modalCatId);
+                        <p class="hint">
+                            @if (moveCount > 0)
+                            {
+                                @string.Format(moveCount == 1
+                                    ? Loc["1 expense is filed here. Deleting moves it to another category — same amount, same date, same tags."]
+                                    : Loc["{0} expenses are filed here. Deleting moves them to another category — same amounts, same dates, same tags."], moveCount)
+                            }
+                            else
+                            {
+                                @Loc["Deleting takes its sub-categories with it."]
+                            }
+                            @((MarkupString)" ")@Loc["Any budget it has is dropped — spending moves, caps don’t."]
+                        </p>
+                        @if (moveTargets.Count == 0)
                         {
-                            <p class="hint">@Loc["Can’t delete —"] @blocker. @Loc["Remove those first."] @Loc["It stays archived and out of the way."]</p>
-                            <div class="modal-actions"><button class="ghost" @onclick="Back">@Loc["Close"]</button></div>
+                            <p class="hint">@Loc["There's nowhere to move them — this is your only category. Add another one first, or archive this."]</p>
+                            <div class="modal-actions">
+                                <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
+                                @if (!catArchived) { <button @onclick="ArchiveCat"><Icon Name="archive" /> @Loc["Archive"]</button> }
+                            </div>
                         }
                         else
                         {
-                            <p class="hint">@Loc["Can’t delete —"] @blocker. @Loc["Archive it instead to hide it while keeping its history."]</p>
+                            <label>@Loc["Move its history to"]
+                                <select @bind="_reassignCatId">
+                                    @foreach (var (cat, depth) in moveTargets)
+                                    {
+                                        <option value="@cat.Id">@CatOption(cat.Id, cat.Name, depth)</option>
+                                    }
+                                </select>
+                            </label>
                             <div class="modal-actions">
                                 <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
-                                <button @onclick="ArchiveCat"><Icon Name="archive" /> @Loc["Archive"]</button>
+                                @if (!catArchived) { <button @onclick="ArchiveCat"><Icon Name="archive" /> @Loc["Archive instead"]</button> }
+                                <button class="danger-btn" @onclick="ConfirmDeleteMoving" disabled="@(_reassignCatId == Guid.Empty)">@Loc["Move & delete"]</button>
                             </div>
                         }
                     }
@@ -2665,6 +2702,23 @@ else
                             <button class="danger-btn" @onclick="ConfirmDelete">@Loc["Delete"]</button>
                         </div>
                     }
+                    break;
+
+                case Modal.DeleteBudget:
+                    @* Removing a cap, not a category — say so plainly, and say what survives. Confirmed rather than
+                       done on the tap, because the trash sits inline on a row where a mis-tap is one pixel away. *@
+                    <h3>@Loc["Remove the budget for"] @State.CategoryName(_budgetCatId)?</h3>
+                    <p class="hint">
+                        @if (State.BudgetFor(_budgetCatId) is { } delBud)
+                        {
+                            @string.Format(Loc["Its {0} cap for this period goes away."], Fmt(delBud.Allocated))<text> </text>
+                        }
+                        @Loc["The category and every expense in it stay exactly as they are."]
+                    </p>
+                    <div class="modal-actions">
+                        <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
+                        <button class="danger-btn" @onclick="ConfirmRemoveBudget">@Loc["Remove budget"]</button>
+                    </div>
                     break;
 
                 case Modal.CategoryDetail:
@@ -2779,25 +2833,10 @@ else
                             </div>
                         </div>
 
-                        @* The Goals could-have teaser, on a weekly basis: for someone not using round-ups, what THIS
-                           week's spending would have skimmed at each step. A Pro what-if (free sees the locked bar);
-                           hidden for adopters, whose actual figure already rides the Set-aside tile above. *@
-                        @if (!State.RoundUpsOn)
-                        {
-                            var rw1 = State.CouldHaveSavedViaRoundUps(wr.From, wr.To, 1m);
-                            var rw5 = State.CouldHaveSavedViaRoundUps(wr.From, wr.To, 5m);
-                            @if (rw5 > 0m)
-                            {
-                                @if (Gate.Allows(PlanFeatures.Insights))
-                                {
-                                    <div class="brk-roundup brk-roundup-could" style="margin:2px 0 8px"><Icon Name="coins" /> @string.Format(Loc["Round-ups would have set aside {0} (to the nearest 1) or {1} (to the nearest 5) this week — switch them on in Edit account"], Fmt(State.Money(rw1)), Fmt(State.Money(rw5)))</div>
-                                }
-                                else
-                                {
-                                    <ProLock Feature="@PlanFeatures.Insights" Bar="true" Label="@Loc["See what round-ups could set aside — with Pro"]" />
-                                }
-                            }
-                        }
+                        @* The weekly round-up what-if ("would have set aside X or Y — switch them on") was retired
+                           along with its twin on Goals: the recap is a look back at what happened, and a hypothetical
+                           for a feature that isn't on is neither news nor something the reader can act on here.
+                           Adopters still get their real figure on the Set-aside tile above. *@
 
                         @* How OFTEN, not just how much — one big week and forty small days are different habits and
                            a total alone can't tell them apart. The average is only drawn when there's more than one
@@ -3263,9 +3302,12 @@ else
 
                 case Modal.EditExpense:
                     <h3>@Loc["Edit expense"]</h3>
-                    <label>@Loc["Category"]
+                    @* NOT a <label> — see CategoryPicker: a label re-dispatches every click inside it onto the
+                       picker's trigger button, which pinned the dropdown open with the whole modal unreachable.
+                       This is the same modal-field/lbl-row pairing the add-expense modal uses. *@
+                    <div class="modal-field"><span class="lbl-row">@Loc["Category"]</span>
                         <CategoryPicker @bind-Value="_categoryId" Options="State.CategoryOptions" />
-                    </label>
+                    </div>
                     <label>@Loc["Amount"] <input type="number" step="0.01" min="0" @bind="_amount" /></label>
                     <label>@Loc["Date"] <input type="date" @bind="_expenseDate" /></label>
                     @if (State.FindExpense(_editExpenseId) is { FundSynced: true })
@@ -4174,9 +4216,10 @@ else
 
                 case Modal.SpendSaving:
                     <h3>@Loc["Spend savings"] — @State.SavingBucketName(_spendExpBucketId)</h3>
-                    <label>@Loc["Category"]
+                    @* Same reason as the edit-expense modal: no <label> around a CategoryPicker. *@
+                    <div class="modal-field"><span class="lbl-row">@Loc["Category"]</span>
                         <CategoryPicker @bind-Value="_spendExpCategoryId" Options="State.CategoryOptions" />
-                    </label>
+                    </div>
                     <label>@Loc["Amount"] <input type="number" step="0.01" min="0" @bind="_spendExpAmount" /></label>
                     <small class="hint">@Loc["Records a real expense paid straight from this bucket (dated today)."]</small>
                     <div class="modal-actions">
@@ -5102,7 +5145,7 @@ else
 }
 
 @code {
-    private enum Modal { None, BankReview, BankConsent, AddCat, AddBudget, DisburseSaving, PayoffProjection, GoalProjection, InvestmentProjection, BankTransfer, ExternalAccounts, HealthScore, RunwayMath, EditCat, DeleteCat, CategoryDetail, AddAccount, EditAccount, DeleteAccount, RemoveMember, LeaveAccount, AddExpense, NextPeriod, RemovePeriod, EditExpense, DeleteExpense, SettleExpense, AddBucket, EditBucket, DeleteBucket, EditCost, AddFund, EditFund, DeleteFund, Invite, Transfer, Deposit, EditDeposit, DeleteDeposit, ManageCats, ManageContribCats, ContribCat, DeleteContribCat, AddSaving, BudgetSaving, SpendSaving, EditSavingDeposit, DeleteSavingDeposit, EditTransfer, DeleteTransfer, EditPeriod, EditSavingMovement, DeleteSavingMovement, DeleteExternalTransfer, Achievements, Reallocate, Recurring, RecurringEdit, RecurringConfirm, Import, AddOrImport, ArchiveFund, FundMovements, Archived, ManageTags, EditTag, LogInstallment, DeleteInstallment, WeekRecap }
+    private enum Modal { None, BankReview, BankConsent, AddCat, AddBudget, DisburseSaving, PayoffProjection, GoalProjection, InvestmentProjection, BankTransfer, ExternalAccounts, HealthScore, RunwayMath, EditCat, DeleteCat, DeleteBudget, CategoryDetail, AddAccount, EditAccount, DeleteAccount, RemoveMember, LeaveAccount, AddExpense, NextPeriod, RemovePeriod, EditExpense, DeleteExpense, SettleExpense, AddBucket, EditBucket, DeleteBucket, EditCost, AddFund, EditFund, DeleteFund, Invite, Transfer, Deposit, EditDeposit, DeleteDeposit, ManageCats, ManageContribCats, ContribCat, DeleteContribCat, AddSaving, BudgetSaving, SpendSaving, EditSavingDeposit, DeleteSavingDeposit, EditTransfer, DeleteTransfer, EditPeriod, EditSavingMovement, DeleteSavingMovement, DeleteExternalTransfer, Achievements, Reallocate, Recurring, RecurringEdit, RecurringConfirm, Import, AddOrImport, ArchiveFund, FundMovements, Archived, ManageTags, EditTag, LogInstallment, DeleteInstallment, WeekRecap }
     private enum Tab { Overview, Account, Budgets, Savings }
 
     /// <summary>Which kind of goal the Goals grid is showing. Defaults to All so the filter narrows on request
@@ -5229,6 +5272,21 @@ else
     // end stays put, then flip to Custom (which reads _breakFrom/_breakTo).
     private void BreakSetFrom(DateOnly d) { var (_, to) = BreakWindow(); _breakFrom = d; _breakTo = to; _breakRange = BreakRange.Custom; _breakExpanded.Clear(); }
     private void BreakSetTo(DateOnly d) { var (from, _) = BreakWindow(); _breakFrom = from; _breakTo = d; _breakRange = BreakRange.Custom; _breakExpanded.Clear(); }
+
+    /// <summary>
+    /// How many of the account's periods the Breakdown window covers — the divisor for the per-row average.
+    /// </summary>
+    /// <remarks>
+    /// Counted from the real periods that overlap the window, not from the number of months in it: a period is
+    /// whatever the user closed and rolled over, and dividing a 3-month window by 3 would quietly disagree with
+    /// the app's own idea of a month for anyone whose periods don't start on the 1st. A window that overlaps a
+    /// single period returns 1, which is exactly when the average is worth nothing and isn't drawn.
+    /// </remarks>
+    private int BreakPeriodCount()
+    {
+        var (from, to) = BreakWindow();
+        return Math.Max(1, State.Account.Periods.Count(p => p.From <= to && p.To >= from));
+    }
 
     // A tapped row expands in place to list its own expenses (several can be open at once).
     private readonly HashSet<Guid> _breakExpanded = new();
@@ -9105,7 +9163,16 @@ else
         catch { /* bank unreachable — just show none */ }
     }
 
-    private void OpenDelete(Guid categoryId) { _modalCatId = categoryId; _modal = Modal.DeleteCat; }
+    // Where a deleted category's expenses get re-filed. Seeded to the first eligible target so the danger button
+    // isn't dead on arrival, and re-seeded on every open (the previous pick may be the category being deleted).
+    private Guid _reassignCatId;
+
+    private void OpenDelete(Guid categoryId)
+    {
+        _modalCatId = categoryId;
+        _reassignCatId = State.ReassignTargetsFor(categoryId).FirstOrDefault().Category?.Id ?? Guid.Empty;
+        _modal = Modal.DeleteCat;
+    }
     private void OpenCategoryDetail(Guid categoryId) { _modalCatId = categoryId; _modal = Modal.CategoryDetail; }
     private void OpenAddAccount()
     {
@@ -9195,7 +9262,6 @@ else
 
     // Edit-category → sub-category modals (remember to return to editing the parent).
     private void EditAddSub() { var parent = _modalCatId; _modalBack.Push(() => OpenEdit(parent)); OpenAdd(parent); }
-    private void EditDeleteSelf() { var c = _modalCatId; _modalBack.Push(() => OpenEdit(c)); OpenDelete(c); }
     private void EditEditSub(Guid subId) { var parent = _modalCatId; _modalBack.Push(() => OpenEdit(parent)); OpenEdit(subId); }
     private void EditDeleteSub(Guid subId) { var parent = _modalCatId; _modalBack.Push(() => OpenEdit(parent)); OpenDelete(subId); }
 
@@ -9256,9 +9322,12 @@ else
         after?.Invoke(newId);
     });
 
+    // ★ Zero is a budget, not "no budget". Guarding on `> 0` (as this did) silently discarded the save and left the
+    // old cap in place — the one figure a user is most likely to want on a category they've decided to stop spending
+    // in. Only a NEGATIVE amount is rejected now; "no budget at all" is a separate act (Remove budget).
     private Task SaveAddBudget() => RunModal(async () =>
     {
-        if (_budgetCatId == Guid.Empty || _fBudget <= 0) return;
+        if (_budgetCatId == Guid.Empty || _fBudget < 0) return;
         await State.SaveBudget(_budgetCatId, _fBudget, 80, false);
         CloseModal();
     });
@@ -9268,20 +9337,32 @@ else
         if (string.IsNullOrWhiteSpace(_fName)) return;
         await State.EditCategory(_modalCatId, _fName!, _fIcon);
         await State.SetCategoryEssential(_modalCatId, _fEssential);
-        if (_fBudget > 0)
+        // 0 saves when there's already a budget to change (a deliberate "cap this at nothing"); on a category with
+        // no budget it stays a no-op, so opening Edit and pressing Save doesn't mint a 0 budget nobody asked for.
+        if (_fBudget > 0 || State.HasBudget(_modalCatId))
             await State.SaveBudget(_modalCatId, _fBudget, _fThreshold, _fNotify);
         CloseModal();
     });
 
-    private Task RemoveBudget() => RunModal(async () =>
+    private void OpenDeleteBudget(Guid categoryId) { _budgetCatId = categoryId; _modal = Modal.DeleteBudget; }
+    private void EditRemoveBudget() { var c = _modalCatId; _modalBack.Push(() => OpenEdit(c)); OpenDeleteBudget(c); }
+
+    private Task ConfirmRemoveBudget() => RunModal(async () =>
     {
-        await State.RemoveBudget(_modalCatId);
+        await State.RemoveBudget(_budgetCatId);
         CloseModal();
     });
 
     private Task ConfirmDelete() => RunModal(async () =>
     {
         await State.RemoveCategory(_modalCatId);
+        CloseModal();
+    });
+
+    private Task ConfirmDeleteMoving() => RunModal(async () =>
+    {
+        if (_reassignCatId == Guid.Empty) return;
+        await State.RemoveCategoryMovingExpenses(_modalCatId, _reassignCatId);
         CloseModal();
     });
 

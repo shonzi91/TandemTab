@@ -263,8 +263,11 @@ public sealed class FinAppApiClient(HttpClient http)
         SendAsync<MutationResultDto>(HttpMethod.Put, $"/accounts/{id}/categories/{categoryId}", req, ct);
     public Task<MutationResultDto> SetCategoryArchivedAsync(Guid id, Guid categoryId, bool archived, CancellationToken ct = default) =>
         SendAsync<MutationResultDto>(HttpMethod.Put, $"/accounts/{id}/categories/{categoryId}/archived", new SetArchivedRequest(archived), ct);
-    public Task<MutationResultDto> RemoveCategoryAsync(Guid id, Guid categoryId, CancellationToken ct = default) =>
-        SendAsync<MutationResultDto>(HttpMethod.Delete, $"/accounts/{id}/categories/{categoryId}", null, ct);
+    /// <summary><paramref name="moveTo"/> re-files this category's (and its sub-categories') expenses there instead
+    /// of the delete being refused because history references it. Null keeps the strict "nothing may point at it" rule.</summary>
+    public Task<MutationResultDto> RemoveCategoryAsync(Guid id, Guid categoryId, Guid? moveTo = null, CancellationToken ct = default) =>
+        SendAsync<MutationResultDto>(HttpMethod.Delete,
+            $"/accounts/{id}/categories/{categoryId}" + (moveTo is { } t ? $"?moveTo={t}" : ""), null, ct);
     public Task<MutationResultDto> CreateFundAsync(Guid id, CreateFundRequest req, CancellationToken ct = default) =>
         SendAsync<MutationResultDto>(HttpMethod.Post, $"/accounts/{id}/funds", req, ct);
     public Task<MutationResultDto> EditFundAsync(Guid id, Guid fundId, EditFundRequest req, CancellationToken ct = default) =>

@@ -268,11 +268,21 @@ using (var scope = app.Services.CreateScope())
     // Archived-accounts table + purge anything past its 30-day grace window on startup.
     var archives = scope.ServiceProvider.GetRequiredService<ArchivedAccountsService>();
     await archives.EnsureSchemaAsync();
-    await archives.PurgeExpiredAsync();
     // Pending user-deletion table + hard-delete any identity past its 30-day grace window on startup.
     var deletions = scope.ServiceProvider.GetRequiredService<AccountDeletionService>();
     await deletions.EnsureSchemaAsync();
-    await deletions.PurgeDueAsync();
+    // Both purges are HOUSEKEEPING and must never stop the app serving: this runs before the port is open, so
+    // an exception here is a container that fails its startup probe. (It has happened: a multi-instance deploy
+    // raced the archived-account purge into a DbUpdateConcurrencyException and the process aborted.) Each
+    // service already swallows per-row failures; this is the belt to that pair of braces.
+    try
+    {
+        var purgedAccounts = await archives.PurgeExpiredAsync();
+        if (purgedAccounts > 0) app.Logger.LogInformation("Purged {Count} archived account(s) past the grace window.", purgedAccounts);
+        var purgedUsers = await deletions.PurgeDueAsync();
+        if (purgedUsers > 0) app.Logger.LogInformation("Purged {Count} pending user deletion(s) past the grace window.", purgedUsers);
+    }
+    catch (Exception ex) { app.Logger.LogError(ex, "Startup retention purge failed; leaving it for the next start."); }
     // If snapshot encryption is configured, encrypt any rows still stored as plaintext (idempotent, no-op without KMS).
     try
     {
@@ -1736,12 +1746,16 @@ accounts.MapPut("/{id:guid}/categories/{categoryId:guid}/archived", async (Guid 
     return Results.Ok(new MutationResultDto(version, categoryId));
 });
 
-accounts.MapDelete("/{id:guid}/categories/{categoryId:guid}", async (Guid id, Guid categoryId, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
+// `moveTo` is how a category with history gets deleted: its expenses (and its sub-categories') are re-filed under
+// that category, keeping every row's id and figures, and the caps are dropped. Without it the plain removal rules
+// apply and a referenced category is refused — the caller has to say where the history goes.
+accounts.MapDelete("/{id:guid}/categories/{categoryId:guid}", async (Guid id, Guid categoryId, Guid? moveTo, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
 {
     var userId = user.UserId();
     var (version, _) = await svc.MutateAsync<object?>(userId, id, account =>
     {
-        account.RemoveCategory(categoryId);   // 400 on a removal blocker (sub-categories / budget / expense refs)
+        if (moveTo is { } target && target != Guid.Empty) account.RemoveCategoryReassigning(categoryId, target);
+        else account.RemoveCategory(categoryId);   // 400 on a removal blocker (sub-categories / budget / expense refs)
         return null;
     }, ct);
     await notifier.AccountChangedAsync(id, userId, version);

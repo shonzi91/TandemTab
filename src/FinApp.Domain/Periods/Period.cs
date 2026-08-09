@@ -322,6 +322,10 @@ public sealed class Period : Entity
         _budgets.Remove(budget);
     }
 
+    /// <summary>Drop this category's budget if it has one, without complaining when it doesn't. For sweeps over
+    /// many periods (see <c>Account.RemoveCategoryReassigning</c>) where "no budget here" is the normal case.</summary>
+    public void RemoveBudgetIfAny(Guid categoryId) => _budgets.RemoveAll(b => b.CategoryId == categoryId);
+
     /// <summary>
     /// Create or update a budget. Budgets are advisory plans and are <b>not</b> capped: they don't reserve cash
     /// (only savings does), and budgets copied forward into a fresh period must be editable before any

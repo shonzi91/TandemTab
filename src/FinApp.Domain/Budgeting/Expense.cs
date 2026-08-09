@@ -36,7 +36,7 @@ public sealed record InstallmentExtra(Common.Money Amount, Guid CategoryId, Guid
 /// </summary>
 public sealed class Expense : Entity
 {
-    public Guid CategoryId { get; }
+    public Guid CategoryId { get; private set; }
     public Money Amount { get; }
     public DateOnly Date { get; }
     public Guid MemberId { get; }
@@ -68,6 +68,15 @@ public sealed class Expense : Entity
     public bool FundSynced { get; private set; }
 
     public void SetFundSynced(bool synced) => FundSynced = synced;
+
+    /// <summary>
+    /// Re-file this expense under another category. Deliberately NOT the way a user edits an expense — that is
+    /// <c>Period.EditExpense</c>, which is append-only and mints a new id. This exists for one bulk maintenance
+    /// case: <see cref="Accounts.Account.RemoveCategoryReassigning"/>, where a category is deleted and its history
+    /// has to survive. Keeping the same expense id is the whole point there — the amount, date, member, fund,
+    /// tags, installment and settlement links all stay attached to the row that already exists.
+    /// </summary>
+    public void MoveToCategory(Guid categoryId) => CategoryId = categoryId;
 
     /// <summary>When set, the id of the bank transaction this expense was imported from — provenance and a dedupe
     /// key so a later re-sync of the same window doesn't re-add it. Null for purely manual expenses.</summary>

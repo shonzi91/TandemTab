@@ -3,15 +3,26 @@
 @* A category dropdown that shows each option's icon chip + name. Native <option> can only hold text, so where we
    want the category icons visible in the picker we use this instead of a plain <select>. Supports @bind-Value
    (and @bind-Value:after). Options are (Category, depth) — sub-categories indent. *@
+
+@* ★ preventDefault on the backdrop and the options is load-bearing, not tidiness. Wrap this component in a
+   <label> (as the edit-expense modal did) and the label's "labeled control" is its first LABELABLE descendant —
+   our trigger <button>. Every click inside that label is then re-dispatched onto the button as a DEFAULT ACTION
+   of the label: the backdrop's Close() ran, the synthetic click hit Toggle(), and the menu re-opened. Because the
+   backdrop covers the whole modal, the dropdown was stuck open with nothing else clickable — no other field, no
+   Cancel, no Save.
+   preventDefault is what cancels it; stopPropagation does NOT (a default action isn't propagation, and the tell
+   is that the re-dispatch survives capture-phase logging on every ancestor). It's applied per-element rather than
+   on this root on purpose: the search box needs its default click (focus + caret) intact. The call sites were
+   also moved off <label>, which is the real fix — this is the guard that stops it coming back. *@
 <div class="cat-picker @(_open ? "open" : "") @Class">
-    <button type="button" class="cat-picker-btn" @onclick="Toggle" disabled="@Disabled">
+    <button type="button" class="cat-picker-btn" @onclick="Toggle" @onclick:preventDefault="true" disabled="@Disabled">
         <CatIcon Name="@SelectedIcon" />
         <span class="cat-picker-lbl">@SelectedName</span>
         <Icon Name="chevron" Class="cat-picker-caret" />
     </button>
     @if (_open)
     {
-        <div class="cat-picker-backdrop" @onclick="Close"></div>
+        <div class="cat-picker-backdrop" @onclick="Close" @onclick:preventDefault="true"></div>
         <div class="cat-picker-menu">
             @* Type-to-search so the picker scales when there are many categories. Only shown once the list is long
                enough to be worth filtering. *@
@@ -26,7 +37,7 @@
                     <li>
                         <button type="button" class="cat-picker-opt @(cat.Id == Value ? "sel" : "")"
                                 style="@(depth > 0 && _filter.Length == 0 ? $"padding-inline-start:{10 + depth * 16}px" : null)"
-                                @onclick="() => Pick(cat.Id)">
+                                @onclick="() => Pick(cat.Id)" @onclick:preventDefault="true">
                             <CatIcon Name="@CategoryIcons.Effective(cat.Icon, cat.Name)" />
                             <span class="cat-picker-opt-lbl">@cat.Name</span>
                         </button>

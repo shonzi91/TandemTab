@@ -941,9 +941,7 @@ html.dark .brk-sum-lbl { color: #8b96a4; }
 .brk-roundup { display: flex; align-items: center; gap: 8px; margin-top: 2px; padding: 9px 13px; border-radius: 11px;
     background: rgba(19, 160, 110, .08); border: 1px solid rgba(19, 160, 110, .18); color: #0f7a53; font-size: .84rem; font-weight: 600; }
 .brk-roundup svg { width: 16px; height: 16px; flex: 0 0 auto; }
-.brk-roundup-could { background: rgba(120, 130, 145, .08); border-color: rgba(120, 130, 145, .2); color: #5a6675; font-style: italic; }
 html.dark .brk-roundup { background: rgba(19, 160, 110, .12); border-color: rgba(19, 160, 110, .26); color: #4fd1a0; }
-html.dark .brk-roundup-could { background: rgba(140, 152, 168, .1); border-color: rgba(140, 152, 168, .22); color: #9aa6b5; }
 
 /* Home mini-breakdown card — a tappable "where your money went" donut + top-category legend that deep-links to the
    full Breakdown view (UX backlog #6). */
@@ -1099,9 +1097,14 @@ html.dark .brk-item-head:hover { background: #191e27; }
 .brk-item-name { display: flex; align-items: center; gap: 7px; min-width: 0; flex: 1; }
 .brk-item-name svg { width: 17px; height: 17px; flex: none; }
 .brk-item-lbl { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.brk-item-amt { font-weight: 700; white-space: nowrap; display: inline-flex; align-items: baseline; gap: 7px; }
+.brk-item-amt { font-weight: 700; white-space: nowrap; display: inline-flex; align-items: baseline; gap: 7px;
+    flex-wrap: wrap; justify-content: flex-end; }
 .brk-item-pct { font-size: .76rem; font-weight: 600; color: #8a97a0; min-width: 42px; text-align: right; }
 html.dark .brk-item-pct { color: #8b96a4; }
+/* Multi-period average: its own line under the total (flex-basis 100% inside the wrapping .brk-item-amt), so the
+   row keeps one strong figure and the average reads as the gloss on it rather than competing for the same line. */
+.brk-item-avg { flex: 0 0 100%; text-align: right; font-size: .72rem; font-weight: 600; color: #8a97a0; margin-top: 1px; }
+html.dark .brk-item-avg { color: #8b96a4; }
 .brk-item-chev { width: 16px; height: 16px; color: #b6c0cc; flex: none; transition: transform .15s; }
 .brk-item.open .brk-item-chev { transform: rotate(90deg); }
 /* Expand-in-place: the expenses behind a slice — a tidy block indented under the row, accented in the slice colour.

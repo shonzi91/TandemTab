@@ -405,6 +405,43 @@ public sealed class Account : Entity
         _categories.Remove(category);
     }
 
+    /// <summary>
+    /// Delete a category that history still references, moving everything it holds to <paramref name="targetId"/>
+    /// instead of refusing (which is all <see cref="RemoveCategory"/> can do). Its sub-categories go with it.
+    /// </summary>
+    /// <remarks>
+    /// <para><b>Expenses keep their identity</b> — same id, amount, date, member, fund, tags, installment and
+    /// settlement links. Only the label changes, so every past total still adds up to the same money; it is
+    /// filed somewhere else. That is the honest limit of "delete without affecting previous records": the rows
+    /// survive intact, but they cannot go on pointing at a category that no longer exists.</para>
+    /// <para><b>Budgets are dropped, not merged.</b> Adding a deleted category's cap onto the target's would
+    /// silently raise a limit the user set deliberately — a budget is a decision, and inheriting one is worse
+    /// than losing one. Spending moves; the cap does not.</para>
+    /// </remarks>
+    public void RemoveCategoryReassigning(Guid categoryId, Guid targetId)
+    {
+        var category = FindCategory(categoryId) ?? throw new InvalidOperationException("Category not found.");
+        if (targetId == categoryId)
+            throw new InvalidOperationException("Choose a different category to move the expenses to.");
+        var target = FindCategory(targetId)
+            ?? throw new InvalidOperationException("The category to move the expenses to doesn't exist.");
+        // The target must survive the delete, so it can't be one of the sub-categories going down with it.
+        var doomed = _categories.Where(c => c.Id == categoryId || c.ParentId == categoryId).Select(c => c.Id).ToHashSet();
+        if (doomed.Contains(target.Id))
+            throw new InvalidOperationException("That category is being deleted too — pick one that will still exist.");
+
+        foreach (var period in _periods)
+        {
+            foreach (var expense in period.Expenses.Where(e => doomed.Contains(e.CategoryId)))
+                expense.MoveToCategory(targetId);
+            foreach (var id in doomed)
+                period.RemoveBudgetIfAny(id);
+        }
+        foreach (var tag in _tags.Where(t => t.CategoryId is { } c && doomed.Contains(c)))
+            tag.SetCategory(null);
+        _categories.RemoveAll(c => doomed.Contains(c.Id));
+    }
+
     public void RenameSavingCategory(Guid savingCategoryId, string name)
     {
         var bucket = FindSavingCategory(savingCategoryId) ?? throw new InvalidOperationException("Saving category not found.");

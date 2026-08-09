@@ -206,12 +206,6 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
             .Where(a => a.Note == RoundUpService.SweepNote && a.Date >= from && a.Date <= to)
             .Sum(a => a.Amount.Amount));
 
-    /// <summary>What round-ups WOULD have set aside over the expenses in [from, to] at the given <paramref name="step"/>
-    /// (1 or 5), whether or not round-ups are on — the Pro teaser's hypothetical, shown at both steps so the user sees
-    /// the trade-off. It's explicitly a "what if", not a claim: it assumes every purchase happened exactly as it did.</summary>
-    public decimal CouldHaveSavedViaRoundUps(DateOnly from, DateOnly to, decimal step) =>
-        decimal.Round(ExpensesInRange(from, to).Sum(e => Account.RoundUpForStep(Math.Abs(e.Amount.Amount), step)), 2);
-
     /// <summary>Turn round-ups on (step 1 or 5 + a destination bucket) or off (step 0), and persist.</summary>
     // TODO(cutover): needs a command endpoint (account settings) — still local-mutate + whole-snapshot push.
     public Task ConfigureRoundUps(decimal roundUpTo, Guid? bucketId)
@@ -2380,6 +2374,27 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     public Task RemoveCategory(Guid categoryId) =>
         ExecuteOptimisticAsync(() => Account.RemoveCategory(categoryId),
             id => api.RemoveCategoryAsync(id, categoryId), refetchAfter: false);
+
+    /// <summary>Delete a category that history references, moving its expenses (and its sub-categories') to
+    /// <paramref name="moveToCategoryId"/>. Re-fetches: the sweep touches rows across every period, so the local
+    /// aggregate should be replaced by the server's rather than trusted to have matched it move for move.</summary>
+    public Task RemoveCategoryMovingExpenses(Guid categoryId, Guid moveToCategoryId) =>
+        ExecuteOptimisticAsync(() => Account.RemoveCategoryReassigning(categoryId, moveToCategoryId),
+            id => api.RemoveCategoryAsync(id, categoryId, moveToCategoryId), refetchAfter: true);
+
+    /// <summary>How many expenses across all periods a delete would have to re-file (the category + its subs).</summary>
+    public int ExpensesUnderCategory(Guid categoryId)
+    {
+        var ids = Account.Categories.Where(c => c.Id == categoryId || c.ParentId == categoryId).Select(c => c.Id).ToHashSet();
+        return Account.Periods.SelectMany(p => p.Expenses).Count(e => ids.Contains(e.CategoryId));
+    }
+
+    /// <summary>Where a deleted category's history could go: every other category that will still exist afterwards
+    /// (so, not its own sub-categories). Archived ones are excluded — history shouldn't land somewhere hidden.</summary>
+    public IReadOnlyList<(Category Category, int Depth)> ReassignTargetsFor(Guid categoryId) =>
+        CategoryOptions.Where(o => o.Category.Id != categoryId
+                                && o.Category.ParentId != categoryId
+                                && !o.Category.IsArchived).ToList();
 
     /// <summary>Archive a category (hide it, keep its expenses/budgets in history). No reference blocker — unlike
     /// <see cref="RemoveCategory"/> this works even when expenses/budgets/sub-categories reference it.</summary>
