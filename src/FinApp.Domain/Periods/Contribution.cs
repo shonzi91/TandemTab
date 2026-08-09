@@ -22,6 +22,24 @@ public sealed class Contribution : Entity
 
     public void SetFundSynced(bool synced) => FundSynced = synced;
 
+    /// <summary>When set, this deposit is the receiving half of a transfer from another account: the shared id of
+    /// the <see cref="Funds.ExternalTransfer"/> that created it. Null on every ordinary deposit, and null on
+    /// transfers recorded before the link existed (see that property's remarks — legacy pairs are not guessed at).</summary>
+    public Guid? AccountTransferId { get; private set; }
+
+    /// <summary>The account the money came from, on a deposit created by a transfer. Null otherwise.</summary>
+    public Guid? FromAccountId { get; private set; }
+
+    /// <summary>True when this deposit is one half of an account-to-account transfer and can find its other half.</summary>
+    public bool IsTransferIn => AccountTransferId is not null;
+
+    /// <summary>Body data (rides in the snapshot, ignored by EF), so a setter rather than ctor parameters.</summary>
+    public void SetAccountTransferLink(Guid? transferId, Guid? fromAccountId)
+    {
+        AccountTransferId = transferId;
+        FromAccountId = fromAccountId;
+    }
+
     public Contribution(Guid memberId, Money paid, Guid categoryId = default, Guid fundId = default, DateOnly date = default)
     {
         if (paid.IsNegative)

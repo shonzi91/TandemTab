@@ -243,6 +243,14 @@ public record ConfirmRecurringRequest(decimal ActualAmount);
 public record TransferToAccountRequest(Guid DestinationAccountId, Guid FromFundId, decimal Amount,
     Guid DestinationFundId = default, string? Note = null, DateOnly? Date = null);
 
+/// <summary>Change an account-to-account transfer — <b>both halves at once</b>: the outflow here and the deposit it
+/// created in <see cref="DestinationAccountId"/>. Addressed by the pair id both rows carry, so a transfer recorded
+/// before that link existed can't be edited (it has no findable counterpart); the UI offers those the old one-sided
+/// delete instead. Empty <see cref="FromFundId"/>/<see cref="DestinationFundId"/> and a null <see cref="Date"/> keep
+/// what the transfer already has. Mirrors <c>BudgetingState.EditAccountTransfer</c>.</summary>
+public record EditAccountTransferRequest(Guid DestinationAccountId, decimal Amount,
+    Guid FromFundId = default, Guid DestinationFundId = default, string? Note = null, DateOnly? Date = null);
+
 /// <summary>Settle (or re-settle) part of an "on behalf of another account" expense onto another account: the amount
 /// becomes that account's own expense (in the picked fund + category) and this expense is reduced by it, the two linked
 /// by a settlement id so either side's edits keep the other in step. Capped at the expense's original amount. Empty

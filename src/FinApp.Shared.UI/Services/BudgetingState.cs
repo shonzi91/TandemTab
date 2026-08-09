@@ -2079,13 +2079,37 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
         _cache.Remove(accountId);
     }
 
-    // TODO(cutover): no DELETE /transfers-out endpoint yet — still local-mutate + whole-snapshot push. (Note the
-    // asymmetry: removing an outflow does NOT remove the deposit it created on the other account — same as the web
-    // has always behaved.)
+    // One-sided removal: drops the outflow here and leaves the other account's deposit standing. Now only reachable
+    // for transfers with no pair id — savings disbursements (which have no other account at all) and rows recorded
+    // before the link existed. Everything else goes through RemoveAccountTransfer below.
+    // TODO(cutover): no DELETE /transfers-out endpoint yet — still local-mutate + whole-snapshot push.
     public Task RemoveExternalTransfer(Guid id)
     {
         Period.RemoveExternalTransfer(id);
         return SaveAsync();
+    }
+
+    /// <summary>Whether both halves of this transfer can be found — i.e. it carries a pair id and names the other
+    /// account. False for savings disbursements and for transfers recorded before the link existed.</summary>
+    public bool IsLinkedAccountTransfer(ExternalTransfer transfer) =>
+        transfer is { AccountTransferId: not null, ToAccountId: not null };
+
+    /// <summary>Edit both halves of an account-to-account transfer. Two accounts change, so this uses the
+    /// no-optimism spine: the other account isn't loaded here, and the server's result is the only truth.</summary>
+    public async Task EditAccountTransfer(ExternalTransfer transfer, decimal amount, DateOnly date, Guid fromFundId, string? note)
+    {
+        if (amount <= 0m || transfer.AccountTransferId is not { } pairId || transfer.ToAccountId is not { } destination) return;
+        await ExecuteAsync(id => api.EditAccountTransferAsync(id, pairId,
+            new EditAccountTransferRequest(destination, amount, fromFundId, default, note, date)));
+        _cache.Remove(destination);   // its deposit changed server-side — a switch must refetch
+    }
+
+    /// <summary>Remove both halves: the outflow here and the deposit it created in the other account.</summary>
+    public async Task RemoveAccountTransfer(ExternalTransfer transfer)
+    {
+        if (transfer.AccountTransferId is not { } pairId || transfer.ToAccountId is not { } destination) return;
+        await ExecuteAsync(id => api.RemoveAccountTransferAsync(id, pairId, destination));
+        _cache.Remove(destination);
     }
 
     // --- Bank sync (Open Banking) -----------------------------------------

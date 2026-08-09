@@ -966,7 +966,20 @@ else
                                         }
                                         else if (State.IsPeriodOpen && t.IsExternal)
                                         {
-                                            <button class="exp-edit" title="@Loc["Remove this transfer (does not reverse the deposit in the other account)"]" @onclick="() => OpenDeleteExternalTransfer(t.Id)"><Icon Name="trash" /></button>
+                                            @* A transfer that can find its other half is edited and removed as ONE
+                                               movement. The one-sided route survives only for rows that genuinely
+                                               have no counterpart to touch (savings disbursements, and transfers
+                                               recorded before the two halves were linked). *@
+                                            var xt = State.FindExternalTransfer(t.Id);
+                                            @if (xt is not null && State.IsLinkedAccountTransfer(xt))
+                                            {
+                                                <button class="exp-edit" title="@Loc["Edit transfer"]" @onclick="() => OpenEditAccountTransfer(t.Id)"><Icon Name="pencil" /></button>
+                                                <button class="exp-edit" title="@Loc["Remove transfer"]" @onclick="() => OpenDeleteAccountTransfer(t.Id)"><Icon Name="trash" /></button>
+                                            }
+                                            else
+                                            {
+                                                <button class="exp-edit" title="@Loc["Remove this transfer (does not reverse the deposit in the other account)"]" @onclick="() => OpenDeleteExternalTransfer(t.Id)"><Icon Name="trash" /></button>
+                                            }
                                         }
                                     </span>
                                 </li>
@@ -5126,6 +5139,46 @@ else
                     </div>
                     break;
 
+                case Modal.EditAccountTransfer:
+                    @* Both halves are edited as one movement, so the modal says which account is on the other end
+                       and what will follow the change there. The destination fund is deliberately NOT offered: it's
+                       the other account's business, and the server keeps whatever fund the deposit already sits in. *@
+                    <h3>@Loc["Edit transfer"]</h3>
+                    @if (State.FindExternalTransfer(_extTransferId) is { } aet)
+                    {
+                        <p class="hint">@State.FundName(aet.FundId) → <strong>@State.AccountName(aet.ToAccountId ?? Guid.Empty)</strong></p>
+                        <label>@Loc["Amount"] <input type="number" step="0.01" min="0" @bind="_extAmount" /></label>
+                        <label>@Loc["Date"] <input type="date" @bind="_extDate" /></label>
+                        <label>@Loc["From fund"]
+                            <select @bind="_extFundId">
+                                @foreach (var f in State.SelectableFunds)
+                                {
+                                    <option value="@f.Id">@f.Name</option>
+                                }
+                            </select>
+                        </label>
+                        <label>@Loc["Note (optional)"] <input type="text" @bind="_extNote" /></label>
+                        <small class="hint">@string.Format(Loc["The deposit this created in {0} is updated to match."], State.AccountName(aet.ToAccountId ?? Guid.Empty))</small>
+                    }
+                    <div class="modal-actions">
+                        <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
+                        <button @onclick="SaveAccountTransfer" disabled="@(_extAmount <= 0)">@Loc["Save"]</button>
+                    </div>
+                    break;
+
+                case Modal.DeleteAccountTransfer:
+                    <h3>@Loc["Remove this transfer?"]</h3>
+                    @if (State.FindExternalTransfer(_extTransferId) is { } adt)
+                    {
+                        <p class="hint">@adt.Date.ToString("dd MMM") · @State.FundName(adt.FundId) → @State.AccountName(adt.ToAccountId ?? Guid.Empty) · @Fmt(adt.Amount)</p>
+                        <p class="hint">@string.Format(Loc["Both sides go: this outflow and the matching deposit in {0}."], State.AccountName(adt.ToAccountId ?? Guid.Empty))</p>
+                    }
+                    <div class="modal-actions">
+                        <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
+                        <button class="danger-btn" @onclick="ConfirmDeleteAccountTransfer">@Loc["Remove"]</button>
+                    </div>
+                    break;
+
                 case Modal.DeleteExternalTransfer:
                     <h3>@Loc["Remove this outgoing transfer?"]</h3>
                     @if (State.FindExternalTransfer(_extTransferId) is { } et)
@@ -5145,7 +5198,7 @@ else
 }
 
 @code {
-    private enum Modal { None, BankReview, BankConsent, AddCat, AddBudget, DisburseSaving, PayoffProjection, GoalProjection, InvestmentProjection, BankTransfer, ExternalAccounts, HealthScore, RunwayMath, EditCat, DeleteCat, DeleteBudget, CategoryDetail, AddAccount, EditAccount, DeleteAccount, RemoveMember, LeaveAccount, AddExpense, NextPeriod, RemovePeriod, EditExpense, DeleteExpense, SettleExpense, AddBucket, EditBucket, DeleteBucket, EditCost, AddFund, EditFund, DeleteFund, Invite, Transfer, Deposit, EditDeposit, DeleteDeposit, ManageCats, ManageContribCats, ContribCat, DeleteContribCat, AddSaving, BudgetSaving, SpendSaving, EditSavingDeposit, DeleteSavingDeposit, EditTransfer, DeleteTransfer, EditPeriod, EditSavingMovement, DeleteSavingMovement, DeleteExternalTransfer, Achievements, Reallocate, Recurring, RecurringEdit, RecurringConfirm, Import, AddOrImport, ArchiveFund, FundMovements, Archived, ManageTags, EditTag, LogInstallment, DeleteInstallment, WeekRecap }
+    private enum Modal { None, BankReview, BankConsent, AddCat, AddBudget, DisburseSaving, PayoffProjection, GoalProjection, InvestmentProjection, BankTransfer, ExternalAccounts, HealthScore, RunwayMath, EditCat, DeleteCat, DeleteBudget, EditAccountTransfer, DeleteAccountTransfer, CategoryDetail, AddAccount, EditAccount, DeleteAccount, RemoveMember, LeaveAccount, AddExpense, NextPeriod, RemovePeriod, EditExpense, DeleteExpense, SettleExpense, AddBucket, EditBucket, DeleteBucket, EditCost, AddFund, EditFund, DeleteFund, Invite, Transfer, Deposit, EditDeposit, DeleteDeposit, ManageCats, ManageContribCats, ContribCat, DeleteContribCat, AddSaving, BudgetSaving, SpendSaving, EditSavingDeposit, DeleteSavingDeposit, EditTransfer, DeleteTransfer, EditPeriod, EditSavingMovement, DeleteSavingMovement, DeleteExternalTransfer, Achievements, Reallocate, Recurring, RecurringEdit, RecurringConfirm, Import, AddOrImport, ArchiveFund, FundMovements, Archived, ManageTags, EditTag, LogInstallment, DeleteInstallment, WeekRecap }
     private enum Tab { Overview, Account, Budgets, Savings }
 
     /// <summary>Which kind of goal the Goals grid is showing. Defaults to All so the filter narrows on request
@@ -9115,6 +9168,36 @@ else
     private Task ConfirmDeleteExternalTransfer() => RunModal(async () =>
     {
         await State.RemoveExternalTransfer(_extTransferId);
+        CloseModal();
+    });
+
+    // --- Account-to-account transfers: both halves move together --------------------------------------------
+    private decimal _extAmount;
+    private DateOnly _extDate;
+    private Guid _extFundId;
+    private string? _extNote;
+
+    private void OpenEditAccountTransfer(Guid id)
+    {
+        if (State.FindExternalTransfer(id) is not { } t) return;
+        _extTransferId = id;
+        _extAmount = t.Amount.Amount; _extDate = t.Date; _extFundId = t.FundId; _extNote = t.Note;
+        _modal = Modal.EditAccountTransfer;
+    }
+
+    private Task SaveAccountTransfer() => RunModal(async () =>
+    {
+        if (_extAmount <= 0 || State.FindExternalTransfer(_extTransferId) is not { } t) return;
+        await State.EditAccountTransfer(t, _extAmount, _extDate, _extFundId, _extNote);
+        CloseModal();
+    });
+
+    private void OpenDeleteAccountTransfer(Guid id) { _extTransferId = id; _modal = Modal.DeleteAccountTransfer; }
+
+    private Task ConfirmDeleteAccountTransfer() => RunModal(async () =>
+    {
+        if (State.FindExternalTransfer(_extTransferId) is not { } t) return;
+        await State.RemoveAccountTransfer(t);
         CloseModal();
     });
 

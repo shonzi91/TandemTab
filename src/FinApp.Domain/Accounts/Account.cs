@@ -368,6 +368,25 @@ public sealed class Account : Entity
     private static bool NameEquals(string existing, string candidate) =>
         string.Equals(existing.Trim(), candidate?.Trim(), StringComparison.OrdinalIgnoreCase);
 
+    // --- Account-to-account transfers: finding the two halves of one movement ---------------------------------
+    // Both lookups sweep every period, not just the open one: a transfer made last month still has to be findable
+    // from the other account, which may have rolled over since. Callers are responsible for refusing to CHANGE a
+    // half that sits in a closed period — Period.EnsureOpen does that for them.
+
+    /// <summary>The outgoing half of an account-to-account transfer, by its shared link id.</summary>
+    public (Period Period, ExternalTransfer Transfer)? FindAccountTransferOut(Guid accountTransferId) =>
+        _periods.SelectMany(p => p.ExternalTransfers.Select(t => (Period: p, Transfer: t)))
+            .Where(x => x.Transfer.AccountTransferId == accountTransferId)
+            .Select(x => ((Period, ExternalTransfer)?)x)
+            .FirstOrDefault();
+
+    /// <summary>The receiving half (a deposit) of an account-to-account transfer, by its shared link id.</summary>
+    public (Period Period, Contribution Deposit)? FindAccountTransferIn(Guid accountTransferId) =>
+        _periods.SelectMany(p => p.Contributions.Select(c => (Period: p, Deposit: c)))
+            .Where(x => x.Deposit.AccountTransferId == accountTransferId)
+            .Select(x => ((Period, Contribution)?)x)
+            .FirstOrDefault();
+
     public Category? FindCategory(Guid categoryId) => _categories.FirstOrDefault(c => c.Id == categoryId);
     public SavingCategory? FindSavingCategory(Guid id) => _savingCategories.FirstOrDefault(c => c.Id == id);
 

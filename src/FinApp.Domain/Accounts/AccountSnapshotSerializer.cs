@@ -154,12 +154,12 @@ public static class AccountSnapshotSerializer
     private static PeriodNode ToNode(Period p) => new(
         p.Id, p.Currency, p.From, p.To, p.Status, p.CarriedIn.Amount,
         p.InitialBalances.Select(b => new InitialBalanceNode(b.Id, b.FundId, b.Amount.Amount, b.Informative)).ToList(),
-        p.Contributions.Select(c => new ContributionNode(c.Id, c.MemberId, c.Paid.Amount, c.CategoryId, c.FundId, c.Date, c.FundSynced)).ToList(),
+        p.Contributions.Select(c => new ContributionNode(c.Id, c.MemberId, c.Paid.Amount, c.CategoryId, c.FundId, c.Date, c.FundSynced, c.AccountTransferId, c.FromAccountId)).ToList(),
         p.Budgets.Select(b => new BudgetNode(b.Id, b.CategoryId, b.Allocated.Amount, b.AlertThreshold, b.NotifyOnEveryExpense)).ToList(),
         p.Expenses.Select(e => new ExpenseNode(e.Id, e.CategoryId, e.Amount.Amount, e.Date, e.MemberId, e.FundId, e.Note, e.SourceSavingCategoryId, e.OnBehalfOfOtherAccount, e.SettlementId, e.SettledToAccountId, e.SettledFromAccountId, e.SettledAmount, e.FundSynced, e.BankExternalId, e.AutoFiled, e.TagIds.Count == 0 ? null : e.TagIds.ToList(), e.InstallmentGroupId, e.Part, e.DebtBucketId)).ToList(),
         p.SavingAllocations.Select(a => new SavingAllocationNode(a.Id, a.SavingCategoryId, a.Amount.Amount, a.Date, a.Note, a.SourceExpenseId, a.BudgetCategoryId, a.TransferPairId, a.SourceExternalTransferId)).ToList(),
         p.FundTransfers.Select(t => new FundTransferNode(t.Id, t.FromFundId, t.ToFundId, t.Amount.Amount, t.Date, t.Note, t.FromSynced, t.ToSynced, t.BankExternalId, t.AutoFiled)).ToList(),
-        p.ExternalTransfers.Select(t => new ExternalTransferNode(t.Id, t.FundId, t.Amount.Amount, t.Date, t.ToAccountId, t.Note, t.FundSynced)).ToList());
+        p.ExternalTransfers.Select(t => new ExternalTransferNode(t.Id, t.FundId, t.Amount.Amount, t.Date, t.ToAccountId, t.Note, t.FundSynced, t.AccountTransferId)).ToList());
 
     // --- node -> domain ---------------------------------------------------
 
@@ -216,6 +216,7 @@ public static class AccountSnapshotSerializer
         {
             var contribution = Build(new Contribution(c.MemberId, M(c.Paid), c.CategoryId, c.FundId, c.Date), c.Id);
             contribution.SetFundSynced(c.FundSynced);
+            contribution.SetAccountTransferLink(c.AccountTransferId, c.FromAccountId);
             return contribution;
         }).ToList());
         SetField(p, "_budgets", n.Budgets.Select(b => Build(new Budget(b.CategoryId, M(b.Allocated), b.AlertThreshold, b.NotifyOnEveryExpense), b.Id)).ToList());
@@ -245,6 +246,7 @@ public static class AccountSnapshotSerializer
         {
             var transfer = Build(new ExternalTransfer(t.FundId, M(t.Amount), t.Date, t.ToAccountId, t.Note), t.Id);
             transfer.SetFundSynced(t.FundSynced);
+            transfer.SetAccountTransferLink(t.AccountTransferId);
             return transfer;
         }).ToList());
         return p;
@@ -323,7 +325,10 @@ public static class AccountSnapshotSerializer
 
     private record InitialBalanceNode(Guid Id, Guid FundId, decimal Amount, bool Informative);
     private record ContributionNode(Guid Id, Guid MemberId, decimal Paid,
-        Guid CategoryId = default, Guid FundId = default, DateOnly Date = default, bool FundSynced = false);
+        Guid CategoryId = default, Guid FundId = default, DateOnly Date = default, bool FundSynced = false,
+        // R2: the receiving half of an account-to-account transfer. Null on every node written before this and on
+        // every ordinary deposit — a missing JSON property lands on the default, so old snapshots read unchanged.
+        Guid? AccountTransferId = null, Guid? FromAccountId = null);
     private record BudgetNode(Guid Id, Guid CategoryId, decimal Allocated, decimal AlertThreshold, bool NotifyOnEveryExpense);
     private record ExpenseNode(Guid Id, Guid CategoryId, decimal Amount, DateOnly Date, Guid MemberId, Guid FundId, string? Note, Guid? SourceSavingCategoryId, bool OnBehalfOfOtherAccount = false,
         Guid? SettlementId = null, Guid? SettledToAccountId = null, Guid? SettledFromAccountId = null, decimal SettledAmount = 0m, bool FundSynced = false, string? BankExternalId = null, bool AutoFiled = false,
@@ -333,5 +338,8 @@ public static class AccountSnapshotSerializer
         Guid? InstallmentGroupId = null, InstallmentPart? Part = null, Guid? DebtBucketId = null);
     private record SavingAllocationNode(Guid Id, Guid SavingCategoryId, decimal Amount, DateOnly Date, string? Note, Guid? SourceExpenseId, Guid? BudgetCategoryId = null, Guid? TransferPairId = null, Guid? SourceExternalTransferId = null);
     private record FundTransferNode(Guid Id, Guid FromFundId, Guid ToFundId, decimal Amount, DateOnly Date, string? Note, bool FromSynced = false, bool ToSynced = false, string? BankExternalId = null, bool AutoFiled = false);
-    private record ExternalTransferNode(Guid Id, Guid FundId, decimal Amount, DateOnly Date, Guid? ToAccountId, string? Note, bool FundSynced = false);
+    private record ExternalTransferNode(Guid Id, Guid FundId, decimal Amount, DateOnly Date, Guid? ToAccountId, string? Note, bool FundSynced = false,
+        // R2: the shared id of the deposit this created in the other account. Null on legacy transfers, which stay
+        // one-sided on purpose — see ExternalTransfer.AccountTransferId.
+        Guid? AccountTransferId = null);
 }

@@ -265,6 +265,16 @@ public sealed class FinAppApiClient(HttpClient http)
         SendAsync<MutationResultDto>(HttpMethod.Put, $"/accounts/{id}/categories/{categoryId}/archived", new SetArchivedRequest(archived), ct);
     /// <summary><paramref name="moveTo"/> re-files this category's (and its sub-categories') expenses there instead
     /// of the delete being refused because history references it. Null keeps the strict "nothing may point at it" rule.</summary>
+    /// <summary>Edit both halves of an account-to-account transfer in one atomic two-account save. Addressed by the
+    /// pair id the two rows share (<c>ExternalTransfer.AccountTransferId</c>), not by either row's own id.</summary>
+    public Task<MutationResultDto> EditAccountTransferAsync(Guid id, Guid pairId, EditAccountTransferRequest req, CancellationToken ct = default) =>
+        SendAsync<MutationResultDto>(HttpMethod.Put, $"/accounts/{id}/account-transfers/{pairId}", req, ct);
+
+    /// <summary>Remove both halves of an account-to-account transfer: the outflow here and the deposit it created there.</summary>
+    public Task<MutationResultDto> RemoveAccountTransferAsync(Guid id, Guid pairId, Guid destinationAccountId, CancellationToken ct = default) =>
+        SendAsync<MutationResultDto>(HttpMethod.Delete,
+            $"/accounts/{id}/account-transfers/{pairId}?destinationAccountId={destinationAccountId}", null, ct);
+
     public Task<MutationResultDto> RemoveCategoryAsync(Guid id, Guid categoryId, Guid? moveTo = null, CancellationToken ct = default) =>
         SendAsync<MutationResultDto>(HttpMethod.Delete,
             $"/accounts/{id}/categories/{categoryId}" + (moveTo is { } t ? $"?moveTo={t}" : ""), null, ct);

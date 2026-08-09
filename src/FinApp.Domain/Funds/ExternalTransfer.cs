@@ -10,13 +10,13 @@ namespace FinApp.Domain.Funds;
 /// </summary>
 public sealed class ExternalTransfer : Entity
 {
-    public Guid FundId { get; }
-    public Money Amount { get; }
-    public DateOnly Date { get; }
+    public Guid FundId { get; private set; }
+    public Money Amount { get; private set; }
+    public DateOnly Date { get; private set; }
 
     /// <summary>The account the money was sent to (informational; the matching deposit lives in that account).</summary>
     public Guid? ToAccountId { get; }
-    public string? Note { get; }
+    public string? Note { get; private set; }
 
     /// <summary>True when the source fund was synced (bank-mirrored) at creation, so this outflow doesn't
     /// reduce the fund's balance (the real bank balance handles it). See <see cref="Fund.IsSynced"/>.</summary>
@@ -34,4 +34,31 @@ public sealed class ExternalTransfer : Entity
     }
 
     public void SetFundSynced(bool synced) => FundSynced = synced;
+
+    /// <summary>
+    /// Shared id tying this outflow to the deposit it created in <see cref="ToAccountId"/>, so either side can
+    /// find its counterpart — the same trick <c>Expense.SettlementId</c> uses for settlements.
+    /// </summary>
+    /// <remarks>
+    /// <b>Null on every transfer written before this existed</b>, and that is load-bearing rather than a gap to
+    /// backfill: a legacy pair cannot be identified with any confidence (two same-day, same-amount transfers to
+    /// one account are indistinguishable), and guessing would delete the wrong deposit. Unlinked rows therefore
+    /// keep the old one-sided behaviour, and the UI says so instead of pretending.
+    /// </remarks>
+    public Guid? AccountTransferId { get; private set; }
+
+    /// <summary>Body data, so a setter rather than a ctor parameter — see <see cref="AccountTransferId"/>.</summary>
+    public void SetAccountTransferLink(Guid? transferId) => AccountTransferId = transferId;
+
+    /// <summary>Overwrite the editable fields of a transfer (both sides are edited together — see the
+    /// <c>transfers-out</c> PUT endpoint, which keeps this and its counterpart deposit in step).</summary>
+    public void Update(Money amount, DateOnly date, Guid fundId, string? note)
+    {
+        if (amount.IsNegative || amount.IsZero)
+            throw new ArgumentException("Transfer amount must be positive.", nameof(amount));
+        Amount = amount;
+        Date = date;
+        FundId = fundId;
+        Note = string.IsNullOrWhiteSpace(note) ? null : note.Trim();
+    }
 }

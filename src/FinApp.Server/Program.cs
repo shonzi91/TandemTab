@@ -1365,6 +1365,10 @@ accounts.MapPost("/{id:guid}/transfers-out", async (Guid id, TransferToAccountRe
         // Outflow here (caps at the source fund's balance); a synced source keeps its real bank balance so it's informational.
         var outflow = sourcePeriod.TransferOut(req.FromFundId, new Money(req.Amount, source.Currency), date, req.DestinationAccountId, req.Note);
         outflow.SetFundSynced(sourceFund.IsSynced);
+        // One id on both halves, so either side can find (and edit, and delete) the other later. Minted here
+        // because this is the only place a pair is created — see ExternalTransfer.AccountTransferId.
+        var pairId = Guid.NewGuid();
+        outflow.SetAccountTransferLink(pairId);
 
         // Deposit there, into the resolved destination fund (empty → first unsynced, else first fund).
         var destFundId = req.DestinationFundId != Guid.Empty && dest.RootFunds.Any(f => f.Id == req.DestinationFundId)
@@ -1373,11 +1377,77 @@ accounts.MapPost("/{id:guid}/transfers-out", async (Guid id, TransferToAccountRe
               ?? throw new InvalidOperationException("The other account has no fund to receive the transfer.");
         var destDeposit = destPeriod.Deposit(userId, new Money(req.Amount, dest.Currency), Guid.Empty, destFundId, date);
         destDeposit.SetFundSynced(dest.FindFund(destFundId)?.IsSynced ?? false);
+        destDeposit.SetAccountTransferLink(pairId, id);
         return outflow.Id;
     }, ct);
     await notifier.AccountChangedAsync(id, userId, version);
     await notifier.AccountChangedAsync(req.DestinationAccountId, userId, destVersion);
     return Results.Ok(new MutationResultDto(version, transferId));
+});
+
+// Editing and deleting an account-to-account transfer. Both halves move together, in ONE two-account mutation, so
+// there is no window where the money exists on one side and not the other. Only transfers carrying a link id can be
+// handled here (see ExternalTransfer.AccountTransferId): legacy one-sided rows keep the old delete-this-side-only
+// route, which is why the plain transfer DELETE below stays.
+// The route id is the PAIR id (ExternalTransfer.AccountTransferId), not the row id, and the destination account
+// rides in the body — that way the two accounts are known before the mutation opens, with no extra snapshot load.
+// It is not a trust decision: MutateTwoAsync re-checks membership of BOTH accounts, and the pair id has to match a
+// row in each, so naming the wrong account simply fails to find a counterpart.
+accounts.MapPut("/{id:guid}/account-transfers/{pairId:guid}", async (Guid id, Guid pairId, EditAccountTransferRequest req, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
+{
+    var userId = user.UserId();
+    var (version, destVersion, _) = await svc.MutateTwoAsync<object?>(userId, id, req.DestinationAccountId, (from, to) =>
+    {
+        if (req.Amount <= 0m) throw new InvalidOperationException("The amount must be positive.");
+        var outgoing = from.FindAccountTransferOut(pairId)
+            ?? throw new InvalidOperationException("That transfer no longer exists.");
+        var incoming = to.FindAccountTransferIn(pairId)
+            ?? throw new InvalidOperationException("The matching deposit in the other account no longer exists.");
+        // Both periods must be open: editing into a closed period would silently rewrite a settled month.
+        if (outgoing.Period.Status != PeriodStatus.Open || incoming.Period.Status != PeriodStatus.Open)
+            throw new InvalidOperationException("One side of this transfer is in a closed period and can't be changed.");
+
+        var fundId = req.FromFundId != Guid.Empty ? req.FromFundId : outgoing.Transfer.FundId;
+        if (from.FindFund(fundId) is not { } fund) throw new InvalidOperationException("The source fund doesn't exist in this account.");
+        var date = req.Date ?? outgoing.Transfer.Date;
+        // Headroom is measured with this transfer's own amount added back, or raising it by any amount would be
+        // refused against a balance that already has the old figure deducted.
+        var headroom = outgoing.Period.FundBalance(fundId) + (fundId == outgoing.Transfer.FundId ? outgoing.Transfer.Amount : Money.Zero(from.Currency));
+        if (req.Amount > headroom.Amount)
+            throw new InvalidOperationException($"That fund only holds {headroom}; move money into it from another fund first.");
+
+        outgoing.Transfer.Update(new Money(req.Amount, from.Currency), date, fundId, req.Note);
+        outgoing.Transfer.SetFundSynced(fund.IsSynced);
+        var destFundId = req.DestinationFundId != Guid.Empty && to.RootFunds.Any(f => f.Id == req.DestinationFundId)
+            ? req.DestinationFundId
+            : incoming.Deposit.FundId;
+        incoming.Period.EditContribution(incoming.Deposit.Id, new Money(req.Amount, to.Currency), incoming.Deposit.CategoryId, destFundId, date);
+        incoming.Deposit.SetFundSynced(to.FindFund(destFundId)?.IsSynced ?? false);
+        return null;
+    }, ct);
+    await notifier.AccountChangedAsync(id, userId, version);
+    await notifier.AccountChangedAsync(req.DestinationAccountId, userId, destVersion);
+    return Results.Ok(new MutationResultDto(version, pairId));
+});
+
+accounts.MapDelete("/{id:guid}/account-transfers/{pairId:guid}", async (Guid id, Guid pairId, Guid destinationAccountId, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
+{
+    var userId = user.UserId();
+    var (version, destVersion, _) = await svc.MutateTwoAsync<object?>(userId, id, destinationAccountId, (from, to) =>
+    {
+        var outgoing = from.FindAccountTransferOut(pairId)
+            ?? throw new InvalidOperationException("That transfer no longer exists.");
+        var incoming = to.FindAccountTransferIn(pairId)
+            ?? throw new InvalidOperationException("The matching deposit in the other account no longer exists.");
+        if (outgoing.Period.Status != PeriodStatus.Open || incoming.Period.Status != PeriodStatus.Open)
+            throw new InvalidOperationException("One side of this transfer is in a closed period and can't be removed.");
+        outgoing.Period.RemoveExternalTransfer(outgoing.Transfer.Id);
+        incoming.Period.RemoveContribution(incoming.Deposit.Id);
+        return null;
+    }, ct);
+    await notifier.AccountChangedAsync(id, userId, version);
+    await notifier.AccountChangedAsync(destinationAccountId, userId, destVersion);
+    return Results.Ok(new MutationResultDto(version, pairId));
 });
 
 accounts.MapPost("/{id:guid}/expenses/{expenseId:guid}/settle", async (Guid id, Guid expenseId, SettleExpenseRequest req, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>

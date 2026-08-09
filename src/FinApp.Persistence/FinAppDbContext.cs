@@ -229,7 +229,8 @@ public sealed class FinAppDbContext(DbContextOptions<FinAppDbContext> options) :
             t.Property(x => x.Date);
             t.Property(x => x.ToAccountId);
             t.Property(x => x.Note);
-            t.Ignore(x => x.FundSynced);  // body data — synced-fund marker rides in the snapshot
+            t.Ignore(x => x.FundSynced);         // body data — synced-fund marker rides in the snapshot
+            t.Ignore(x => x.AccountTransferId);  // body data — the two-sided transfer link rides in the snapshot
         });
 
         b.Entity<InitialBalance>(i =>
@@ -265,7 +266,10 @@ public sealed class FinAppDbContext(DbContextOptions<FinAppDbContext> options) :
             c.Property(x => x.FundId);
             c.Property(x => x.Date);
             c.Property(x => x.Paid).HasConversion(money).IsRequired();
-            c.Ignore(x => x.FundSynced);  // body data — synced-fund marker rides in the snapshot
+            c.Ignore(x => x.FundSynced);         // body data — synced-fund marker rides in the snapshot
+            c.Ignore(x => x.AccountTransferId);  // body data — the two-sided transfer link rides in the snapshot
+            c.Ignore(x => x.FromAccountId);
+            c.Ignore(x => x.IsTransferIn);       // computed from AccountTransferId
         });
 
         b.Entity<Budget>(bu =>
