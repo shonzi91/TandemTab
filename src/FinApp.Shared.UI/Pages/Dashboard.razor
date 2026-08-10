@@ -2984,6 +2984,23 @@ else
                     <label>@Loc["Name"] <input type="text" @bind="_fName" /></label>
                     @SavingsTargetField
                     <p class="hint">@Loc["Your monthly savings goal — drives the Insights score."] @Loc["Currency"] (@State.Currency) @Loc["can't be changed once an account exists."]</p>
+                    @* Time cost. A number the user TYPES — never income ÷ working days, which is wrong for anyone
+                       freelance, part-time or on shifts. Blank simply turns the feature off; there's no default,
+                       because a wrong figure here quietly mis-prices every amount in the app. *@
+                    <label>@string.Format(Loc["What an hour of your time earns ({0}, optional)"], State.Currency)
+                        <input type="number" step="0.01" min="0" @bind="_fHourlyRate" />
+                    </label>
+                    <small class="hint">
+                        @if (_fHourlyRate is { } hr && hr > 0m)
+                        {
+                            @string.Format(Loc["Amounts will also show the time behind them — a {0} coffee reads as {1} of work."],
+                                Fmt(State.Money(HourlyExampleAmount)), HourlyExampleLabel(hr))
+                        }
+                        else
+                        {
+                            @Loc["Leave blank to keep amounts as money only."]
+                        }
+                    </small>
                     @* F4 round-ups. Lives here with the savings target rather than in a section of its own — it's one
                        account-level switch about saving, and a whole panel for a toggle is how a settings screen rots. *@
                     var ruBuckets = State.SavingBuckets.Where(b => !b.Bucket.IsArchived).ToList();
@@ -3220,6 +3237,13 @@ else
                     @if (_amount < 0)
                     {
                         <small class="hint warn-text">@Loc["Amount can't be negative — enter what you spent."]</small>
+                    }
+                    @* Time cost, live as you type (the amount binds on oninput). This is the moment it earns its
+                       place — a price is easiest to reconsider before it's logged, not in a recap afterwards.
+                       Silent unless a rate has been set: no rate, no claim. *@
+                    @if (_amount > 0 && State.TimeCostLabel(_amount) is { } timeCost)
+                    {
+                        <small class="hint time-cost"><Icon Name="clock" /> @string.Format(Loc["≈ {0} of work"], timeCost)</small>
                     }
                     @* Recent amounts for this category as tappable hints. Never pre-filled — the amount is the one
                        field that really changes each time, so a wrong default here writes a wrong ledger entry. *@
@@ -6269,6 +6293,19 @@ else
     private Guid _fRoundUpBucketId;
     /// <summary>A concrete amount for the round-up explainer, so the saving is shown rather than described.</summary>
     private const decimal RoundUpExample = 2.40m;
+
+    // Time cost: the edit-account modal's in-flight hourly rate (committed by SaveEditAccount). Nullable because
+    // "not set" is a real state and must survive a round trip through the field — 0 and blank both mean off.
+    private decimal? _fHourlyRate;
+    /// <summary>A concrete amount for the time-cost explainer, so the reader sees the effect before committing.</summary>
+    private const decimal HourlyExampleAmount = 3.50m;
+
+    /// <summary>The example's time cost at a rate that isn't saved yet, so it can't go through State.</summary>
+    private static string HourlyExampleLabel(decimal rate)
+    {
+        var minutes = (int)Math.Round((double)(HourlyExampleAmount / rate) * 60d);
+        return minutes < 60 ? $"{minutes}m" : minutes % 60 == 0 ? $"{minutes / 60}h" : $"{minutes / 60}h {minutes % 60}m";
+    }
     private string? _fIcon;
     private bool _iconOpen;   // add/edit modals: whether the icon palette (next to the Name field) is expanded
 
@@ -9272,6 +9309,7 @@ else
         _fRoundUpBucketId = State.RoundUpBucketId
             ?? State.SavingBuckets.FirstOrDefault(b => !b.Bucket.IsArchived).Bucket?.Id
             ?? Guid.Empty;
+        _fHourlyRate = State.HourlyRate;
         _modal = Modal.EditAccount;
     }
     private void OpenDeleteAccount() => _modal = Modal.DeleteAccount;
@@ -9367,6 +9405,9 @@ else
         // F4: only write when something actually changed — this is a whole-snapshot push, not a field update.
         if (_fRoundUpTo != State.RoundUpTo || (_fRoundUpTo > 0m && _fRoundUpBucketId != State.RoundUpBucketId))
             await State.ConfigureRoundUps(_fRoundUpTo, _fRoundUpTo > 0m ? _fRoundUpBucketId : null);
+        // Same rule: only write when it actually changed. Blank/0 clears the rate (the domain normalises both to null).
+        if (_fHourlyRate != State.HourlyRate)
+            await State.SetHourlyRate(_fHourlyRate);
         CloseModal();
     });
 

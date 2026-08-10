@@ -177,6 +177,32 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
         return SaveAsync();
     }
 
+    // --- Time cost: reading an amount as the hours behind it ----------------------------------------------------
+
+    /// <summary>What an hour of the user's time earns, or null when they haven't said. Never inferred from income.</summary>
+    public decimal? HourlyRate => Account.HourlyRate;
+
+    /// <summary>Set (or clear with null/0) the hourly rate and push the snapshot.</summary>
+    // TODO(cutover): needs a command endpoint (account settings) — still local-mutate + whole-snapshot push.
+    public Task SetHourlyRate(decimal? rate)
+    {
+        Account.SetHourlyRate(rate);
+        return SaveAsync();
+    }
+
+    /// <summary>
+    /// "≈ 2h 15m of work" for an amount, or null when no rate is set (in which case nothing is drawn — a blank is
+    /// better than a guess). Hours and minutes only: days would need a working-day length this app has no business
+    /// assuming, and an hourly rate is an estimate that shouldn't be dressed up in precision it doesn't have.
+    /// </summary>
+    public string? TimeCostLabel(decimal amount)
+    {
+        if (Account.TimeCostOf(amount) is not { } span || span.TotalMinutes < 1) return null;
+        var hours = (int)span.TotalHours;
+        var minutes = span.Minutes;
+        return hours == 0 ? $"{minutes}m" : minutes == 0 ? $"{hours}h" : $"{hours}h {minutes}m";
+    }
+
     /// <summary>F7 — "your week in money" for the last completed week, or null when there's nothing to report.</summary>
     public WeeklyRecap? WeeklyRecap() => _recap.Build(Account, Today());
 

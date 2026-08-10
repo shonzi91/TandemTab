@@ -55,6 +55,7 @@ public sealed class FinAppDbContext(DbContextOptions<FinAppDbContext> options) :
             a.Ignore(x => x.RoundUpTo);            // F4 body data — round-up settings ride in the snapshot
             a.Ignore(x => x.RoundUpBucketId);      // F4 body data — rides in the snapshot
             a.Ignore(x => x.RoundUpsOn);           // computed view over the two above
+            a.Ignore(x => x.HourlyRate);           // body data — the time-cost rate rides in the snapshot
 
             OwnedList(a, x => x.Members);
             OwnedList(a, x => x.Categories);

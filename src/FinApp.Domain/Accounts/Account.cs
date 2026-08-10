@@ -33,6 +33,17 @@ public sealed class Account : Entity
     public decimal SavingsRateTarget { get; private set; } = 0.20m;
 
     /// <summary>
+    /// What an hour of the user's time earns, in the account currency, so an amount can also be read as the time it
+    /// costs. Null = not set, and that is the deliberate default: this must be a number the user types.
+    /// </summary>
+    /// <remarks>
+    /// It is <b>not</b> derived from income ÷ working days. That division is wrong for anyone freelance, part-time,
+    /// on shifts or on irregular pay — a large slice of the people this app is for — and being quietly wrong about
+    /// what someone's hour is worth is worse than not saying. Body data; travels in the snapshot.
+    /// </remarks>
+    public decimal? HourlyRate { get; private set; }
+
+    /// <summary>
     /// Achievements start counting from this date — set once to the current period's start the first time the
     /// feature runs — so an existing account doesn't retroactively unlock its whole history, and back-/forward-dating
     /// periods can't farm milestones. Null until first anchored. Body data — travels in the snapshot.
@@ -173,6 +184,23 @@ public sealed class Account : Entity
             throw new ArgumentOutOfRangeException(nameof(target), "Savings target must be between 0% and 100%.");
         SavingsRateTarget = target;
     }
+
+    /// <summary>Set (or clear, with null or 0) what an hour of the user's time earns. See <see cref="HourlyRate"/>.</summary>
+    public void SetHourlyRate(decimal? rate)
+    {
+        if (rate is { } r && r < 0m)
+            throw new ArgumentOutOfRangeException(nameof(rate), "An hourly rate can't be negative.");
+        HourlyRate = rate is { } value && value > 0m ? value : null;
+    }
+
+    /// <summary>
+    /// How long someone works to afford <paramref name="amount"/>, or null when no rate is set. Rounded to the
+    /// minute — an hourly rate is an estimate, and seconds would dress it up as a measurement.
+    /// </summary>
+    public TimeSpan? TimeCostOf(decimal amount) =>
+        HourlyRate is { } rate && rate > 0m && amount > 0m
+            ? TimeSpan.FromMinutes(Math.Round((double)(amount / rate) * 60d))
+            : null;
 
     /// <summary>Anchor achievement tracking to <paramref name="onDate"/> the first time only (idempotent).</summary>
     public void SetAchievementsAnchor(DateOnly onDate) => AchievementsAnchor ??= onDate;
