@@ -179,14 +179,33 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
 
     // --- Time cost: reading an amount as the hours behind it ----------------------------------------------------
 
-    /// <summary>What an hour of the user's time earns, or null when they haven't said. Never inferred from income.</summary>
+    /// <summary>A rate typed by hand, or null when the user hasn't set one (they may still be deriving it).</summary>
     public decimal? HourlyRate => Account.HourlyRate;
+
+    public int? WorkingDaysPerMonth => Account.WorkingDaysPerMonth;
+    public decimal? WorkingHoursPerDay => Account.WorkingHoursPerDay;
+
+    /// <summary>The rate actually in use: typed if there is one, else derived from this period's income.</summary>
+    public decimal? EffectiveHourlyRate => Account.EffectiveHourlyRate;
+
+    /// <summary>New deposits this period — the numerator when the rate is derived from income.</summary>
+    public decimal IncomeThisPeriod => Period.ContributionsPaidTotal.Amount;
+
+    /// <summary>True when the rate in use is being computed from income rather than typed.</summary>
+    public bool HourlyRateIsDerived => Account.HourlyRate is null && Account.EffectiveHourlyRate is not null;
 
     /// <summary>Set (or clear with null/0) the hourly rate and push the snapshot.</summary>
     // TODO(cutover): needs a command endpoint (account settings) — still local-mutate + whole-snapshot push.
     public Task SetHourlyRate(decimal? rate)
     {
         Account.SetHourlyRate(rate);
+        return SaveAsync();
+    }
+
+    /// <summary>Set (or clear) the working pattern the rate is derived from, and push the snapshot.</summary>
+    public Task SetWorkingPattern(int? daysPerMonth, decimal? hoursPerDay)
+    {
+        Account.SetWorkingPattern(daysPerMonth, hoursPerDay);
         return SaveAsync();
     }
 

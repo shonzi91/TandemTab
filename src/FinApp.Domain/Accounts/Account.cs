@@ -43,6 +43,55 @@ public sealed class Account : Entity
     /// </remarks>
     public decimal? HourlyRate { get; private set; }
 
+    /// <summary>Days worked in a typical month, for deriving the rate from income. Null = not deriving.</summary>
+    public int? WorkingDaysPerMonth { get; private set; }
+
+    /// <summary>Hours worked on a typical working day, for deriving the rate from income. Null = not deriving.</summary>
+    public decimal? WorkingHoursPerDay { get; private set; }
+
+    /// <summary>
+    /// The rate actually used to price time: a rate typed by hand wins; otherwise it is derived from this period's
+    /// income over the working pattern; otherwise null and no time cost is shown anywhere.
+    /// </summary>
+    /// <remarks>
+    /// <b>The derived figure moves with income</b>, which is the honest consequence of asking for it: a thin month
+    /// makes every hour look cheaper and each purchase look longer. That is arithmetic, not a bug — but it is why
+    /// the UI shows the computed number rather than hiding the division, and why typing a rate stays available and
+    /// takes precedence. Anyone freelance, part-time or on irregular pay should use the typed one.
+    /// </remarks>
+    public decimal? EffectiveHourlyRate => HourlyRate is { } manual && manual > 0m ? manual : DerivedHourlyRate;
+
+    /// <summary>
+    /// What this period's income actually worked out at per hour, given the working pattern — computed whether or
+    /// not a rate was also typed, so the two can be compared. Null without a full pattern or without income.
+    /// </summary>
+    /// <remarks>
+    /// Keeping this alongside a typed rate is the point, not redundancy. They answer different questions: a typed
+    /// rate is what an hour is <i>worth</i> (roughly, what one more would earn), while this is what an hour actually
+    /// <i>paid</i> — unpaid overtime, a lean month and time off all land here and nowhere else. When they disagree
+    /// the app should say so rather than quietly pricing everything off the one the user forgot they set.
+    /// </remarks>
+    public decimal? DerivedHourlyRate
+    {
+        get
+        {
+            if (WorkingDaysPerMonth is not { } days || days <= 0) return null;
+            if (WorkingHoursPerDay is not { } hours || hours <= 0m) return null;
+            var income = CurrentPeriod?.ContributionsPaidTotal.Amount ?? 0m;
+            if (income <= 0m) return null;   // nothing came in yet — say nothing rather than divide by hope
+            return income / (days * hours);
+        }
+    }
+
+    /// <summary>
+    /// How far a typed rate sits from what the hours actually paid, as a fraction (0.5 = the typed rate is half
+    /// what was earned). Null unless both are known. The UI raises it past a threshold — a small gap is normal.
+    /// </summary>
+    public decimal? HourlyRateDrift =>
+        HourlyRate is { } typed && typed > 0m && DerivedHourlyRate is { } derived && derived > 0m
+            ? typed / derived
+            : null;
+
     /// <summary>
     /// Achievements start counting from this date — set once to the current period's start the first time the
     /// feature runs — so an existing account doesn't retroactively unlock its whole history, and back-/forward-dating
@@ -193,12 +242,23 @@ public sealed class Account : Entity
         HourlyRate = rate is { } value && value > 0m ? value : null;
     }
 
+    /// <summary>Set (or clear, with nulls/zeros) the working pattern the rate is derived from when no rate is typed.</summary>
+    public void SetWorkingPattern(int? daysPerMonth, decimal? hoursPerDay)
+    {
+        if (daysPerMonth is { } d && (d < 0 || d > 31))
+            throw new ArgumentOutOfRangeException(nameof(daysPerMonth), "Working days must be between 0 and 31.");
+        if (hoursPerDay is { } h && (h < 0m || h > 24m))
+            throw new ArgumentOutOfRangeException(nameof(hoursPerDay), "Working hours must be between 0 and 24.");
+        WorkingDaysPerMonth = daysPerMonth is { } days && days > 0 ? days : null;
+        WorkingHoursPerDay = hoursPerDay is { } hours && hours > 0m ? hours : null;
+    }
+
     /// <summary>
-    /// How long someone works to afford <paramref name="amount"/>, or null when no rate is set. Rounded to the
-    /// minute — an hourly rate is an estimate, and seconds would dress it up as a measurement.
+    /// How long someone works to afford <paramref name="amount"/>, or null when no rate is available. Rounded to
+    /// the minute — the rate is an estimate either way, and seconds would dress it up as a measurement.
     /// </summary>
     public TimeSpan? TimeCostOf(decimal amount) =>
-        HourlyRate is { } rate && rate > 0m && amount > 0m
+        EffectiveHourlyRate is { } rate && rate > 0m && amount > 0m
             ? TimeSpan.FromMinutes(Math.Round((double)(amount / rate) * 60d))
             : null;
 

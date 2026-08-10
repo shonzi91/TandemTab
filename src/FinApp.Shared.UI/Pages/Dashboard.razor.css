@@ -1919,6 +1919,18 @@ html.dark .win-bullet { background: rgba(19,160,110,.2); color: #5fe0b8; }
 
 /* Section sub-headers inside the Archived-items modal */
 .archived-h { margin: 14px 0 4px; font-size: .82rem; font-weight: 700; color: #6b7280; }
+
+/* Section headings inside a long settings modal (Edit account). A hairline above rather than a boxed group: the
+   fields already read as a stack, so the rule is enough to break it into thoughts without adding a second frame
+   inside the modal's own. First one loses the top rule and margin — it would draw a line straight under the title. */
+.modal-sec { margin: 20px 0 8px; padding-top: 14px; border-top: 1px solid #e6e9ef;
+    font-size: .74rem; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: #8a97a0; }
+.modal-sec:first-of-type { margin-top: 6px; padding-top: 0; border-top: 0; }
+html.dark .modal-sec { border-top-color: #2a3446; color: #8b96a4; }
+/* Paired numeric fields (working days / hours a day). Collapses on a phone, where two number inputs side by side
+   leave each too narrow to read its own label. */
+.modal .two-col { gap: 12px; }
+@media (max-width: 420px) { .modal .two-col { grid-template-columns: 1fr; } }
 html.dark .archived-h { color: #9aa7b4; }
 
 /* Per-row "⋯" action menu */

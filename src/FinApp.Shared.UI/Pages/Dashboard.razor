@@ -2980,29 +2980,19 @@ else
                     break;
 
                 case Modal.EditAccount:
+                    @* Three sections, because this modal has grown past the point where a flat stack of fields reads
+                       as one thought: what the account IS, how it saves, and how it prices time. The headings are
+                       the navigation — there are no tabs, so nothing is hidden behind a click. *@
                     <h3>@Loc["Edit account"]</h3>
+
+                    <h4 class="modal-sec">@Loc["Account"]</h4>
                     <label>@Loc["Name"] <input type="text" @bind="_fName" /></label>
+                    <small class="hint">@Loc["Currency"] (@State.Currency) @Loc["can't be changed once an account exists."]</small>
+
+                    <h4 class="modal-sec">@Loc["Saving"]</h4>
                     @SavingsTargetField
-                    <p class="hint">@Loc["Your monthly savings goal — drives the Insights score."] @Loc["Currency"] (@State.Currency) @Loc["can't be changed once an account exists."]</p>
-                    @* Time cost. A number the user TYPES — never income ÷ working days, which is wrong for anyone
-                       freelance, part-time or on shifts. Blank simply turns the feature off; there's no default,
-                       because a wrong figure here quietly mis-prices every amount in the app. *@
-                    <label>@string.Format(Loc["What an hour of your time earns ({0}, optional)"], State.Currency)
-                        <input type="number" step="0.01" min="0" @bind="_fHourlyRate" />
-                    </label>
-                    <small class="hint">
-                        @if (_fHourlyRate is { } hr && hr > 0m)
-                        {
-                            @string.Format(Loc["Amounts will also show the time behind them — a {0} coffee reads as {1} of work."],
-                                Fmt(State.Money(HourlyExampleAmount)), HourlyExampleLabel(hr))
-                        }
-                        else
-                        {
-                            @Loc["Leave blank to keep amounts as money only."]
-                        }
-                    </small>
-                    @* F4 round-ups. Lives here with the savings target rather than in a section of its own — it's one
-                       account-level switch about saving, and a whole panel for a toggle is how a settings screen rots. *@
+                    <small class="hint">@Loc["Your monthly savings goal — drives the Insights score."]</small>
+                    @* F4 round-ups sit under Saving with the target — one account-level idea about setting money aside. *@
                     var ruBuckets = State.SavingBuckets.Where(b => !b.Bucket.IsArchived).ToList();
                     <div class="modal-field">
                         <span class="lbl-row">@Loc["Round up spending"]</span>
@@ -3041,6 +3031,104 @@ else
                             }
                         }
                     </div>
+
+                    <h4 class="modal-sec">@Loc["Time cost"]</h4>
+                    @* Two ways to get a rate, and the choice is explicit rather than a silent default. Working out
+                       the rate from income is the easier ask, so it leads — but it MOVES WITH INCOME, and a thin
+                       month makes every purchase look longer. That's arithmetic, not a bug, which is exactly why the
+                       computed figure is shown rather than the division being hidden. Typing a rate wins over it,
+                       and is the honest choice for anyone freelance, part-time or on irregular pay. *@
+                    <div class="modal-field">
+                        <span class="lbl-row">@Loc["Show what an amount costs in hours worked"]</span>
+                        <div class="qp-row">
+                            @foreach (var (mode, label) in new (TimeCostMode, string)[]
+                                { (TimeCostMode.Off, Loc["Off"]), (TimeCostMode.FromIncome, Loc["From my income"]), (TimeCostMode.Manual, Loc["I'll set the rate"]) })
+                            {
+                                var tcm = mode;
+                                <button type="button" class="tag-chip @(_fTimeCostMode == tcm ? "tag-chip-on" : "")" @onclick="() => _fTimeCostMode = tcm">@label</button>
+                            }
+                        </div>
+                    </div>
+                    @if (_fTimeCostMode == TimeCostMode.FromIncome)
+                    {
+                        <div class="two-col">
+                            <label>@Loc["Working days a month"] <input type="number" step="1" min="1" max="31" @bind="_fWorkDays" /></label>
+                            <label>@Loc["Hours a day"] <input type="number" step="0.5" min="1" max="24" @bind="_fWorkHours" /></label>
+                        </div>
+                        <small class="hint">
+                            @if (DerivedRatePreview() is { } derived)
+                            {
+                                <text>@string.Format(Loc["This period's income over that pattern works out at {0} an hour — a {1} coffee reads as {2} of work."],
+                                    Fmt(State.Money(decimal.Round(derived, 2))), Fmt(State.Money(HourlyExampleAmount)), HourlyExampleLabel(derived))</text>
+                                <br />
+                                <text>@Loc["It's recalculated each period, so a lean month makes everything look more expensive in hours."]</text>
+                            }
+                            else if (_fWorkDays is > 0 && _fWorkHours is > 0m)
+                            {
+                                @Loc["Nothing has come in this period yet, so there's no income to divide — the time cost stays hidden until there is."]
+                            }
+                            else
+                            {
+                                @Loc["Fill both in and the rate is worked out from what you've been paid this period."]
+                            }
+                        </small>
+                    }
+                    else if (_fTimeCostMode == TimeCostMode.Manual)
+                    {
+                        <label>@string.Format(Loc["What an hour of your time earns ({0})"], State.Currency)
+                            <input type="number" step="0.01" min="0" @bind="_fHourlyRate" />
+                        </label>
+                        <small class="hint">
+                            @if (_fHourlyRate is { } hr && hr > 0m)
+                            {
+                                @string.Format(Loc["Amounts will also show the time behind them — a {0} coffee reads as {1} of work."],
+                                    Fmt(State.Money(HourlyExampleAmount)), HourlyExampleLabel(hr))
+                            }
+                            else
+                            {
+                                @Loc["A fixed rate, unaffected by how much came in this month."]
+                            }
+                        </small>
+                        @* The working pattern stays available here on purpose. A typed rate is what an hour is
+                           WORTH; income over hours is what an hour actually PAID — unpaid overtime, a lean month
+                           and time off land only in the second. Filling this in doesn't change what prices your
+                           time (the typed rate still wins); it buys the reality check below. *@
+                        <div class="two-col">
+                            <label>@Loc["Working days a month"] <input type="number" step="1" min="1" max="31" @bind="_fWorkDays" /></label>
+                            <label>@Loc["Hours a day"] <input type="number" step="0.5" min="1" max="24" @bind="_fWorkHours" /></label>
+                        </div>
+                        @if (DerivedRatePreview() is { } actual && _fHourlyRate is { } typed && typed > 0m)
+                        {
+                            var drift = typed / actual;
+                            @* A gap under ~15% either way is noise — pay dates and part-months move the divisor
+                               around. Past that it's telling the user something they can act on. *@
+                            <small class="hint @(drift < 0.85m || drift > 1.18m ? "warn-text" : "")">
+                                @if (drift < 0.85m)
+                                {
+                                    @string.Format(Loc["Heads up: your hours this period actually paid about {0} an hour — more than the {1} you typed, so amounts are showing MORE time than they really cost you."],
+                                        Fmt(State.Money(decimal.Round(actual, 2))), Fmt(State.Money(typed)))
+                                }
+                                else if (drift > 1.18m)
+                                {
+                                    @string.Format(Loc["Heads up: your hours this period actually paid about {0} an hour — less than the {1} you typed, so amounts are showing LESS time than they really cost you."],
+                                        Fmt(State.Money(decimal.Round(actual, 2))), Fmt(State.Money(typed)))
+                                }
+                                else
+                                {
+                                    @string.Format(Loc["Checks out — your hours this period paid about {0} an hour."], Fmt(State.Money(decimal.Round(actual, 2))))
+                                }
+                            </small>
+                        }
+                        else
+                        {
+                            <small class="hint">@Loc["Optional — fill these in and we'll tell you when your typed rate drifts from what you're really taking home per hour."]</small>
+                        }
+                    }
+                    else
+                    {
+                        <small class="hint">@Loc["Off — amounts stay as money only."]</small>
+                    }
+
                     <div class="modal-actions">
                         <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
                         <button @onclick="SaveEditAccount" disabled="@(string.IsNullOrWhiteSpace(_fName))">@Loc["Save"]</button>
@@ -6294,9 +6382,26 @@ else
     /// <summary>A concrete amount for the round-up explainer, so the saving is shown rather than described.</summary>
     private const decimal RoundUpExample = 2.40m;
 
-    // Time cost: the edit-account modal's in-flight hourly rate (committed by SaveEditAccount). Nullable because
+    /// <summary>How the time-cost rate is obtained. Only a UI concept — the domain stores a typed rate and/or a
+    /// working pattern, and the mode is just which of those the user is filling in.</summary>
+    private enum TimeCostMode { Off, FromIncome, Manual }
+    private TimeCostMode _fTimeCostMode;
+
+    // Time cost: the edit-account modal's in-flight values (committed by SaveEditAccount). Nullable because
     // "not set" is a real state and must survive a round trip through the field — 0 and blank both mean off.
     private decimal? _fHourlyRate;
+    private int? _fWorkDays;
+    private decimal? _fWorkHours;
+
+    /// <summary>The rate the From-my-income mode would produce right now, from values not yet saved — so the user
+    /// sees the division's result before committing to it. Null when the inputs or the income aren't there.</summary>
+    private decimal? DerivedRatePreview()
+    {
+        if (_fWorkDays is not { } days || days <= 0) return null;
+        if (_fWorkHours is not { } hours || hours <= 0m) return null;
+        var income = State.IncomeThisPeriod;
+        return income > 0m ? income / (days * hours) : null;
+    }
     /// <summary>A concrete amount for the time-cost explainer, so the reader sees the effect before committing.</summary>
     private const decimal HourlyExampleAmount = 3.50m;
 
@@ -9310,6 +9415,13 @@ else
             ?? State.SavingBuckets.FirstOrDefault(b => !b.Bucket.IsArchived).Bucket?.Id
             ?? Guid.Empty;
         _fHourlyRate = State.HourlyRate;
+        _fWorkDays = State.WorkingDaysPerMonth;
+        _fWorkHours = State.WorkingHoursPerDay;
+        // A typed rate wins in the domain, so it decides the mode here too; otherwise a working pattern means
+        // From-my-income, and neither means off.
+        _fTimeCostMode = State.HourlyRate is > 0m ? TimeCostMode.Manual
+            : State.WorkingDaysPerMonth is > 0 && State.WorkingHoursPerDay is > 0m ? TimeCostMode.FromIncome
+            : TimeCostMode.Off;
         _modal = Modal.EditAccount;
     }
     private void OpenDeleteAccount() => _modal = Modal.DeleteAccount;
@@ -9405,9 +9517,21 @@ else
         // F4: only write when something actually changed — this is a whole-snapshot push, not a field update.
         if (_fRoundUpTo != State.RoundUpTo || (_fRoundUpTo > 0m && _fRoundUpBucketId != State.RoundUpBucketId))
             await State.ConfigureRoundUps(_fRoundUpTo, _fRoundUpTo > 0m ? _fRoundUpBucketId : null);
-        // Same rule: only write when it actually changed. Blank/0 clears the rate (the domain normalises both to null).
-        if (_fHourlyRate != State.HourlyRate)
-            await State.SetHourlyRate(_fHourlyRate);
+        // Time cost. Only the TYPED rate is mode-dependent: clearing it is what makes "From my income" actually
+        // derive (the domain prefers a typed rate, so a leftover one would silently outrank the pattern the user
+        // just chose). The working pattern is kept in both modes — under Manual it doesn't price anything, it
+        // powers the "what your hours really paid" check.
+        var (wantRate, wantDays, wantHours) = _fTimeCostMode switch
+        {
+            TimeCostMode.Manual => (_fHourlyRate, _fWorkDays, _fWorkHours),
+            TimeCostMode.FromIncome => ((decimal?)null, _fWorkDays, _fWorkHours),
+            _ => (null, null, null),
+        };
+        // Same rule as round-ups: only write when something actually changed — this is a whole-snapshot push.
+        if (wantRate != State.HourlyRate)
+            await State.SetHourlyRate(wantRate);
+        if (wantDays != State.WorkingDaysPerMonth || wantHours != State.WorkingHoursPerDay)
+            await State.SetWorkingPattern(wantDays, wantHours);
         CloseModal();
     });
 

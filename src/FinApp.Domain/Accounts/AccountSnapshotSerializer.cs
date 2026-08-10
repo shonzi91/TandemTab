@@ -45,7 +45,8 @@ public static class AccountSnapshotSerializer
                 r.Id, r.Name, r.Kind, r.AmountMode, r.ExpectedAmount, r.DayOfMonth, r.CategoryId, r.FundId, r.Active, r.Icon, r.LastHandledPeriodFrom, r.AutoPost, r.CreatedOn, r.LinkedDebtBucketId)).ToList(),
             account.OnboardingDismissed,
             account.Tags.Count == 0 ? null : account.Tags.Select(t => new TagNode(t.Id, t.Name, t.Icon, t.IsArchived, t.CategoryId)).ToList(),
-            account.RoundUpTo, account.RoundUpBucketId, account.HourlyRate);
+            account.RoundUpTo, account.RoundUpBucketId, account.HourlyRate,
+            account.WorkingDaysPerMonth, account.WorkingHoursPerDay);
         return JsonSerializer.Serialize(node, Json);
     }
 
@@ -111,6 +112,7 @@ public static class AccountSnapshotSerializer
         SetField(account, "_periods", node.Periods.Select(p => ToEntity(p, node.Currency)).ToList());
         account.SetSavingsRateTarget(node.SavingsRateTarget);
         account.SetHourlyRate(node.HourlyRate);
+        account.SetWorkingPattern(node.WorkingDaysPerMonth, node.WorkingHoursPerDay);
         if (node.AchievementsAnchor is { } anchor) account.SetAchievementsAnchor(anchor);
         if (node.AchievementLog is { } log)
             foreach (var (key, on) in log) account.RecordAchievement(key, on);
@@ -294,7 +296,7 @@ public static class AccountSnapshotSerializer
         // F4: zero on every node written before round-ups existed → off, which is also the default for a new account.
         decimal RoundUpTo = 0m, Guid? RoundUpBucketId = null,
         // Null on every node written before the time-cost feature, and null is exactly "not set" — nothing to backfill.
-        decimal? HourlyRate = null);
+        decimal? HourlyRate = null, int? WorkingDaysPerMonth = null, decimal? WorkingHoursPerDay = null);
 
     private record RecurringItemNode(Guid Id, string Name, RecurringKind Kind, RecurringAmountMode AmountMode,
         decimal ExpectedAmount, int DayOfMonth, Guid CategoryId, Guid FundId, bool Active, string? Icon, DateOnly? LastHandledPeriodFrom,

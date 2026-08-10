@@ -56,6 +56,11 @@ public sealed class FinAppDbContext(DbContextOptions<FinAppDbContext> options) :
             a.Ignore(x => x.RoundUpBucketId);      // F4 body data — rides in the snapshot
             a.Ignore(x => x.RoundUpsOn);           // computed view over the two above
             a.Ignore(x => x.HourlyRate);           // body data — the time-cost rate rides in the snapshot
+            a.Ignore(x => x.WorkingDaysPerMonth);  // body data — the working pattern rides in the snapshot
+            a.Ignore(x => x.WorkingHoursPerDay);
+            a.Ignore(x => x.EffectiveHourlyRate);  // computed from the three above + this period's income
+            a.Ignore(x => x.DerivedHourlyRate);    // computed
+            a.Ignore(x => x.HourlyRateDrift);      // computed
 
             OwnedList(a, x => x.Members);
             OwnedList(a, x => x.Categories);
