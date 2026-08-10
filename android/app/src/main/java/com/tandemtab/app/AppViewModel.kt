@@ -1237,6 +1237,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         api.skipRecurring(accountId, recurringId).view
     }
 
+    /** Undo a skip — the bill falls due again this period, and counts toward "still due" once more. */
+    fun unskipRecurring(recurringId: String) = runRecurringAction(recurringId) { accountId ->
+        api.unskipRecurring(accountId, recurringId).view
+    }
+
     private fun runRecurringAction(recurringId: String, action: suspend (String) -> RecurringViewDto) {
         val accountId = _state.value.selectedAccountId ?: return
         _state.update { it.copy(recurring = it.recurring.copy(busyId = recurringId, actionError = null)) }

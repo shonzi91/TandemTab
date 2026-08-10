@@ -119,6 +119,7 @@ fun RecurringSheet(
     recurring: RecurringUi,
     onConfirm: (id: String, amount: Double) -> Unit,
     onSkip: (id: String) -> Unit,
+    onUnskip: (id: String) -> Unit,
     onAdd: (AddRecurringRequest, onDone: () -> Unit) -> Unit,
     onUpdate: (id: String, UpdateRecurringRequest, onDone: () -> Unit) -> Unit,
     onSetActive: (id: String, active: Boolean) -> Unit,
@@ -166,6 +167,7 @@ fun RecurringSheet(
                         busy = recurring.busyId == item.id,
                         onConfirm = { onConfirm(item.id, item.expected) },
                         onSkip = { onSkip(item.id) },
+                        onUnskip = { onUnskip(item.id) },
                         onEdit = { mode = RecurringMode.Edit(item.id) },
                     )
                 }
@@ -467,6 +469,7 @@ private fun RecurringRow(
     busy: Boolean,
     onConfirm: () -> Unit,
     onSkip: () -> Unit,
+    onUnskip: () -> Unit,
     onEdit: () -> Unit,
 ) {
     val tandem = LocalTandemColors.current
@@ -500,12 +503,25 @@ private fun RecurringRow(
                 if (busy) {
                     CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.primary)
                 } else {
-                    TextButton(onClick = onSkip) { Text("Skip", color = tandem.muted, fontWeight = FontWeight.SemiBold) }
+                    // "Skip this month", not "Skip": it declares the bill unpaid for the period, which drops it from
+                    // "still due" and raises safe-to-spend. The scope belongs in the label.
+                    TextButton(onClick = onSkip) { Text("Skip this month", color = tandem.muted, fontWeight = FontWeight.SemiBold) }
                     if (item.hasKnownAmount) {
                         TextButton(onClick = onConfirm) { Text("Confirm", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold) }
                     } else {
                         TextButton(onClick = onSkip) { Text("Mark handled", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold) }
                     }
+                }
+            }
+        } else if (item.active && item.skippedThisPeriod) {
+            // Skipped, and it stays visible with a way back — the figure it changed (safe-to-spend after bills) is
+            // not one the app should move and then forget it moved.
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
+                if (busy) {
+                    CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.primary)
+                } else {
+                    Text("Skipped this month", fontSize = 12.sp, color = tandem.muted, modifier = Modifier.weight(1f))
+                    TextButton(onClick = onUnskip) { Text("Undo", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold) }
                 }
             }
         } else if (busy) {

@@ -336,6 +336,13 @@ class TandemTabApi(
     suspend fun skipRecurring(accountId: String, recurringId: String): RecurringMutationDto =
         authedPostEmpty("/accounts/$accountId/recurring/$recurringId/skip").body()
 
+    /**
+     * Undo a skip — the item falls due again this period. The server refuses if the item was CONFIRMED rather than
+     * skipped, since re-arming a bill whose expense is already booked invites a second payment.
+     */
+    suspend fun unskipRecurring(accountId: String, recurringId: String): RecurringMutationDto =
+        authedPostEmpty("/accounts/$accountId/recurring/$recurringId/unskip").body()
+
     /** Declare a new bill / income expectation. */
     suspend fun addRecurring(accountId: String, req: AddRecurringRequest): MutationResultDto =
         authedPost("/accounts/$accountId/recurring", req).body()

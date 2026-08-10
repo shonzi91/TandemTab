@@ -136,6 +136,7 @@ private fun App(vm: AppViewModel, onGoogle: () -> Unit) {
             onLoadRecurring = vm::loadRecurring,
             onConfirmRecurring = vm::confirmRecurring,
             onSkipRecurring = vm::skipRecurring,
+            onUnskipRecurring = vm::unskipRecurring,
             onAddRecurring = vm::addRecurring,
             onUpdateRecurring = vm::updateRecurring,
             onSetRecurringActive = vm::setRecurringActive,
