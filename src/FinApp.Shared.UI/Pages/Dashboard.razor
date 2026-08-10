@@ -3765,7 +3765,41 @@ else
                     }
                     else
                     {
-                        <label>@Loc["Goal amount (optional)"] <DecimalInput @bind-Value="_goalAmount" /></label>
+                        @* The emergency fund is the one bucket whose goal the app works out rather than asks for:
+                           three months of what the essential categories actually cost, rounded up to 500. So the
+                           amount field gives way to the derived figure — showing both would be two numbers claiming
+                           to be the same target. *@
+                        <Switch @bind-Value="_fEmergency">@Loc["This is my emergency fund"]</Switch>
+                        @if (_fEmergency)
+                        {
+                            var _emTarget = State.EmergencyTarget();
+                            var _emBasis = State.EssentialSpendPerPeriod();
+                            @if (_emTarget is { } _emT && _emBasis is { } _emB)
+                            {
+                                @* The basis comes from the domain, NOT from _emT / 3 — the target is rounded up, so
+                                   dividing it back would report a monthly figure the user never actually spent. *@
+                                <div class="modal-field">
+                                    <span>@Loc["Goal amount"]</span>
+                                    <p class="hint"><Icon Name="shield" /> @string.Format(Loc["{0} — three months of essential spending ({1} a period), rounded up to the nearest 500. It follows your essentials, so you don't have to revisit it."], Fmt(_emT), Fmt(_emB))</p>
+                                </div>
+                            }
+                            else
+                            {
+                                @* Refusing to invent one: deriving from total spending would quietly redefine
+                                   "essential" as "everything", which is exactly the number an emergency fund
+                                   shouldn't be built on. *@
+                                <small class="hint warn-text">@Loc["No categories are marked essential yet, so there's nothing to size this from. Mark the ones you'd still have to pay (rent, food, utilities) and the target works itself out."]</small>
+                                <label>@Loc["Goal amount (optional)"] <DecimalInput @bind-Value="_goalAmount" /></label>
+                            }
+                            @if (State.OtherEmergencyFundName(_modalBucketId) is { } _otherEm)
+                            {
+                                <small class="hint">@string.Format(Loc["“{0}” is currently your emergency fund — saving this will move the label here."], _otherEm)</small>
+                            }
+                        }
+                        else
+                        {
+                            <label>@Loc["Goal amount (optional)"] <DecimalInput @bind-Value="_goalAmount" /></label>
+                        }
                         <label>@Loc["Alert at %"] <input type="number" step="1" min="0" max="100" @bind="_fThreshold" /></label>
                         <Switch @bind-Value="_fNotify">@Loc["Notify on milestone"]</Switch>
                     }
@@ -6434,6 +6468,8 @@ else
     private int? _debtDay;
     private DateOnly? _debtStart;
     private bool _debtPayDriven;
+    // The emergency-fund flag in the bucket editor. Its goal is derived, so this replaces the amount field.
+    private bool _fEmergency;
     private decimal _invRate, _invTermYears;
     private int _invCompounds = 12;
     private Guid? _bucketFundId;                       // Plans: the fund this bucket is earmarked in (defaults the disburse fund)
@@ -9101,7 +9137,7 @@ else
     {
         _modalBucketId = Guid.Empty; _fName = null; _fIcon = null; _goalAmount = 0; _fThreshold = 80; _fNotify = false; _initialSavings = 0;
         _bucketKind = kind; _debtBalance = 0; _debtRate = 0; _debtInstallment = 0;
-        _debtEnterInitial = false; _debtOriginal = 0; _debtPaidPrincipal = 0; _debtDay = null; _debtStart = null; _debtPayDriven = false;
+        _debtEnterInitial = false; _debtOriginal = 0; _debtPaidPrincipal = 0; _debtDay = null; _debtStart = null; _debtPayDriven = false; _fEmergency = false;
         _invRate = 0; _invTermYears = 0; _invCompounds = 12;
         _bucketFundId = null;
         _costRows = new();
@@ -9129,6 +9165,7 @@ else
         _debtDay = b?.DebtInstallmentDay;
         _debtStart = b?.DebtStartDate;
         _debtPayDriven = b?.DebtPaymentDriven ?? false;
+        _fEmergency = b?.IsEmergencyFund ?? false;
         _invRate = b?.InvestmentAnnualRatePercent ?? 0;
         _invTermYears = b?.InvestmentTermYears ?? 0;
         _invCompounds = b?.InvestmentCompoundsPerYear ?? 12;
@@ -9190,10 +9227,12 @@ else
         int? debtDay = isDebt ? _debtDay : null;
         DateOnly? debtStart = isDebt ? _debtStart : null;
         var debtPayDriven = isDebt && _debtPayDriven;
+        // Only an ordinary or sinking bucket can be the cushion — a debt or an investment is not one.
+        var emergency = _fEmergency && !isDebt && !isInv;
         if (_modal == Modal.AddBucket)
-            await State.AddSavingBucket(_fName!, goal, _fThreshold, _fNotify, _initialSavings, _fIcon, isDebt, debtBal, _debtRate, _debtInstallment, planned, isInv, _invRate, _invTermYears, _invCompounds, _bucketFundId, costs, isExpenses, debtOrig, debtDay, debtStart, debtPayDriven);
+            await State.AddSavingBucket(_fName!, goal, _fThreshold, _fNotify, _initialSavings, _fIcon, isDebt, debtBal, _debtRate, _debtInstallment, planned, isInv, _invRate, _invTermYears, _invCompounds, _bucketFundId, costs, isExpenses, debtOrig, debtDay, debtStart, debtPayDriven, emergency);
         else
-            await State.SaveSavingBucket(_modalBucketId, _fName!, goal, _fThreshold, _fNotify, _initialSavings, _fIcon, isDebt, debtBal, _debtRate, _debtInstallment, planned, isInv, _invRate, _invTermYears, _invCompounds, _bucketFundId, costs, isExpenses, debtOrig, debtDay, debtStart, debtPayDriven);
+            await State.SaveSavingBucket(_modalBucketId, _fName!, goal, _fThreshold, _fNotify, _initialSavings, _fIcon, isDebt, debtBal, _debtRate, _debtInstallment, planned, isInv, _invRate, _invTermYears, _invCompounds, _bucketFundId, costs, isExpenses, debtOrig, debtDay, debtStart, debtPayDriven, emergency);
         CloseModal();
     });
 

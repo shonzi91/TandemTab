@@ -276,6 +276,25 @@ public sealed class SavingCategory : Entity
 
     public void SetIcon(string? icon) => Icon = string.IsNullOrWhiteSpace(icon) ? null : icon.Trim();
 
+    /// <summary>
+    /// This is the account's emergency fund — the one bucket whose goal is derived rather than chosen: three times
+    /// what the essential categories actually cost, rounded up to the nearest 500. At most one bucket may carry it
+    /// (<see cref="Accounts.Account.SetEmergencyFund"/> enforces that), because "how many months could I survive" has
+    /// one answer, and two funds claiming it would each be measuring against the same expenses.
+    /// <para>Only meaningful on an ordinary savings bucket: a debt or an investment is not a cushion. Body data
+    /// (snapshot, not EF); false on every bucket stored before this existed.</para>
+    /// </summary>
+    public bool IsEmergencyFund { get; private set; }
+
+    /// <summary>Set/clear the emergency-fund flag. Ignored for a debt or investment bucket — go through
+    /// <see cref="Accounts.Account.SetEmergencyFund"/>, which also clears it from whichever bucket held it.</summary>
+    public void SetEmergencyFund(bool isEmergency) =>
+        IsEmergencyFund = isEmergency && Kind is SavingKind.Common or SavingKind.Expenses;
+
+    /// <summary>Restore the flag verbatim on load, without the kind gate — a snapshot replays what was stored, and
+    /// re-applying the rule here would silently drop the flag while the kind is still being restored.</summary>
+    public void RestoreEmergencyFund(bool isEmergency) => IsEmergencyFund = isEmergency;
+
     /// <summary>Mark this bucket as a debt-payoff envelope and set its (projection-only) loan figures. The original
     /// balance (for progress %) is captured the first time and preserved across later edits so paying it down doesn't
     /// reset progress; pass <paramref name="originalBalance"/> to set it explicitly (e.g. round-tripping the snapshot).</summary>

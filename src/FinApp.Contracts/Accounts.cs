@@ -132,7 +132,10 @@ public record SaveSavingBucketRequest(
     // R2: drive this debt's balance from logged installments instead of walking its schedule. Applied through
     // SavingCategory.SetPaymentDriven, which snapshots today's balance on the way in or out, so flipping it never
     // moves the figure — it only changes what moves it from here on.
-    bool DebtPaymentDriven = false);
+    bool DebtPaymentDriven = false,
+    // The account's emergency fund. At most one bucket holds it; saving it here clears it from any other. Its goal
+    // amount is then derived (3× essential spending, rounded up to 500) rather than taken from GoalAmount.
+    bool IsEmergencyFund = false);
 
 /// <summary>One non-loan line riding along on an installment (insurance, tax, a fee), with its own category and
 /// optional tag so it lands in the right budget and its own Breakdown slice. Sent as a list — see

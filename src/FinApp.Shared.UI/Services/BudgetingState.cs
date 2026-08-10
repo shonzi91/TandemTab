@@ -1584,6 +1584,21 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
         ExecuteOptimisticAsync(() => Period.TransferSavings(fromBucketId, toBucketId, Money(amount), Today(), note),
             id => api.MoveSavingsAsync(id, new MoveSavingsRequest(fromBucketId, toBucketId, amount, Today(), note)), refetchAfter: true);
 
+    /// <summary>What the emergency fund should hold — 3× essential spending, rounded up to 500. Null when nothing is
+    /// marked essential (there is nothing honest to derive it from).</summary>
+    public decimal? EmergencyTarget() => Account.EmergencyFundTarget();
+
+    /// <summary>The essential spend the target was derived from. Read this for the basis rather than dividing the
+    /// target — it is rounded up, so the division reports a figure nobody spent.</summary>
+    public decimal? EssentialSpendPerPeriod() => Account.EssentialSpendPerPeriod();
+
+    /// <summary>The bucket already holding the emergency label, when it isn't <paramref name="excludingId"/> — so the
+    /// editor can say the label is about to move rather than silently taking it.</summary>
+    public string? OtherEmergencyFundName(Guid excludingId) =>
+        Account.EmergencyFund is { } e && e.Id != excludingId ? e.Name : null;
+
+    public bool SavingBucketIsEmergency(Guid id) => FindSavingBucket(id)?.IsEmergencyFund ?? false;
+
     /// <summary>True during initial setup (only the first period exists) — when a bucket's pre-existing initial balance may be set.</summary>
     public bool CanSetInitialSavings => PeriodCount == 1;
 
@@ -1594,12 +1609,12 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
         bool isInvestment = false, decimal invRate = 0m, decimal invTermYears = 0m, int invCompounds = 12,
         Guid? fundId = null, IEnumerable<PlannedCost>? costs = null, bool isExpensesFund = false,
         decimal? debtOriginalBalance = null, int? debtInstallmentDay = null, DateOnly? debtStartDate = null,
-        bool debtPaymentDriven = false)
+        bool debtPaymentDriven = false, bool isEmergencyFund = false)
     {
         var req = BuildBucketRequest(name, goalAmount, thresholdPercent, notifyOnMilestone, initialAmount, icon,
             isDebt, debtBalance, debtRate, debtInstallment, plannedContribution,
             isInvestment, invRate, invTermYears, invCompounds, fundId, costs, isExpensesFund,
-            debtOriginalBalance, debtInstallmentDay, debtStartDate, debtPaymentDriven);
+            debtOriginalBalance, debtInstallmentDay, debtStartDate, debtPaymentDriven, isEmergencyFund);
         var result = await ExecuteAsync(id => api.AddSavingBucketAsync(id, req));
         return result.EntityId ?? Guid.Empty;
     }
@@ -1609,12 +1624,12 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
         bool isInvestment = false, decimal invRate = 0m, decimal invTermYears = 0m, int invCompounds = 12,
         Guid? fundId = null, IEnumerable<PlannedCost>? costs = null, bool isExpensesFund = false,
         decimal? debtOriginalBalance = null, int? debtInstallmentDay = null, DateOnly? debtStartDate = null,
-        bool debtPaymentDriven = false)
+        bool debtPaymentDriven = false, bool isEmergencyFund = false)
     {
         var req = BuildBucketRequest(name, goalAmount, thresholdPercent, notifyOnMilestone, initialAmount, icon,
             isDebt, debtBalance, debtRate, debtInstallment, plannedContribution,
             isInvestment, invRate, invTermYears, invCompounds, fundId, costs, isExpensesFund,
-            debtOriginalBalance, debtInstallmentDay, debtStartDate, debtPaymentDriven);
+            debtOriginalBalance, debtInstallmentDay, debtStartDate, debtPaymentDriven, isEmergencyFund);
         return ExecuteAsync(id => api.SaveSavingBucketAsync(id, savingCategoryId, req));
     }
 
@@ -1623,7 +1638,7 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
         bool isInvestment, decimal invRate, decimal invTermYears, int invCompounds,
         Guid? fundId, IEnumerable<PlannedCost>? costs, bool isExpensesFund,
         decimal? debtOriginalBalance = null, int? debtInstallmentDay = null, DateOnly? debtStartDate = null,
-        bool debtPaymentDriven = false) =>
+        bool debtPaymentDriven = false, bool isEmergencyFund = false) =>
         new(name, icon, goalAmount, thresholdPercent, notifyOnMilestone, initialAmount,
             isDebt, debtBalance, debtRate, debtInstallment,
             DebtOriginalBalance: debtOriginalBalance, DebtInstallmentDay: debtInstallmentDay, DebtStartDate: debtStartDate,
@@ -1631,7 +1646,7 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
             IsInvestment: isInvestment, InvRate: invRate, InvTermYears: invTermYears, InvCompounds: invCompounds, FundId: fundId,
             Costs: costs?.Select(c => new PlannedCostDto(c.Label, c.Amount, CadenceString(c.Cadence), c.DueDate)).ToList(),
             IsExpensesFund: isExpensesFund,
-            DebtPaymentDriven: debtPaymentDriven);
+            DebtPaymentDriven: debtPaymentDriven, IsEmergencyFund: isEmergencyFund);
 
     private static string CadenceString(CostCadence cadence) => cadence switch
     {

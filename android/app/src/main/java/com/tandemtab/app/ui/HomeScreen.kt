@@ -23,8 +23,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.pager.HorizontalPager
-import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -200,8 +200,10 @@ fun HomeScreen(
 ) {
     val tandem = LocalTandemColors.current
     val scope = rememberCoroutineScope()
-    val pagerState = rememberPagerState(pageCount = { NavDest.entries.size })
-    val dest = NavDest.entries[pagerState.currentPage]
+    // Tabs are the bottom bar's job; the horizontal swipe now moves between PERIODS. The four tabs are always one
+    // tap away on a bar that is permanently on screen, so spending the only full-width gesture on them bought
+    // nothing — while stepping through months previously needed the period chip, a menu and a tap.
+    var dest by remember { mutableStateOf(NavDest.Home) }
 
     val snackbar = remember { SnackbarHostState() }
     var showAddExpense by remember { mutableStateOf(false) }
@@ -252,7 +254,7 @@ fun HomeScreen(
         bottomBar = {
             TandemBottomBar(
                 current = dest,
-                onSelect = { d -> scope.launch { pagerState.animateScrollToPage(d.ordinal) } },
+                onSelect = { d -> dest = d },
                 onAdd = { onPrepareAdd(); showAddExpense = true },
             )
         },
@@ -284,7 +286,7 @@ fun HomeScreen(
                 onAddCategory = onAddCategory,
             )
         }
-        LaunchedEffect(pagerState.currentPage, state.selectedAccountId) {
+        LaunchedEffect(dest, state.selectedAccountId) {
             when (dest) {
                 NavDest.Spending -> onLoadSpending(false)
                 NavDest.Goals -> onLoadGoals(false)
@@ -293,15 +295,42 @@ fun HomeScreen(
             }
         }
 
-        Box(Modifier.fillMaxSize().padding(padding)) {
-            HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { page ->
+        // Swipe left → the next period, right → the previous one, matching the ‹ › arrows' own direction. A whole
+        // gesture rather than a pager because the app holds ONE period's data at a time: a pager would have to
+        // render pages it has no content for, and a swipe that briefly shows the wrong month's figures is worse
+        // than no animation. Nothing happens at either end of the list, and a drag under the threshold is a scroll.
+        val periodIdx = state.selectedPeriod ?: state.currentPeriodIndex
+        val firstIdx = state.periods.firstOrNull()?.index
+        val lastIdx = state.periods.lastOrNull()?.index
+        var dragX by remember { mutableStateOf(0f) }
+        Box(
+            Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .pointerInput(periodIdx, state.periods.size) {
+                    detectHorizontalDragGestures(
+                        onDragStart = { dragX = 0f },
+                        onDragEnd = {
+                            val threshold = 96.dp.toPx()
+                            if (dragX <= -threshold && lastIdx != null && periodIdx < lastIdx) {
+                                onSelectPeriod(periodIdx + 1)
+                            } else if (dragX >= threshold && firstIdx != null && periodIdx > firstIdx) {
+                                onSelectPeriod(periodIdx - 1)
+                            }
+                            dragX = 0f
+                        },
+                        onDragCancel = { dragX = 0f },
+                    ) { _, delta -> dragX += delta }
+                },
+        ) {
+            run {
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
                         .verticalScroll(rememberScrollState())
                         .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 24.dp),
                 ) {
-                    when (NavDest.entries[page]) {
+                    when (dest) {
                         NavDest.Home -> HomePage(
                             state,
                             darkTheme = darkTheme,

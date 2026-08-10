@@ -108,7 +108,11 @@ public static class SavingsMap
             debtPaidInterest, debtRemainingInterest, debtInstallmentDay, debtPaidInterestEstimated,
             b.DebtPaymentDriven,
             // Edit-form prefill: the upsert overwrites all three, so a client that can't read them back wipes them.
-            b.FundId, b.AlertThreshold * 100m, b.NotifyOnMilestone, b.InitialAmount);
+            b.FundId, b.AlertThreshold * 100m, b.NotifyOnMilestone, b.InitialAmount,
+            // The derived goal travels with the figure it was derived from, so the client can show the basis
+            // ("3 × €850 a month") instead of an unexplained target the user never typed.
+            b.IsEmergencyFund,
+            b.IsEmergencyFund ? account.EssentialSpendPerPeriod() : null);
     }
 
     // Domain cadence → the canonical wire string the write side (SavingBucketConfig.Cadence) round-trips.

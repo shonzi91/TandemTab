@@ -615,6 +615,73 @@ public sealed class Account : Entity
     public void RecordSavingDebtPayment(Guid savingCategoryId, decimal amount, DateOnly? asOf = null) =>
         (FindSavingCategory(savingCategoryId) ?? throw new InvalidOperationException("Saving category not found.")).RecordDebtPayment(amount, asOf);
 
+    /// <summary>
+    /// Make <paramref name="savingCategoryId"/> the emergency fund, clearing the flag from whichever bucket held it —
+    /// there is one answer to "how long could I last", so two funds claiming it would both be measuring the same
+    /// expenses. Pass <c>false</c> to simply clear it.
+    /// </summary>
+    public void SetEmergencyFund(Guid savingCategoryId, bool isEmergency)
+    {
+        var target = FindSavingCategory(savingCategoryId)
+            ?? throw new InvalidOperationException("Saving category not found.");
+        if (isEmergency)
+            foreach (var other in _savingCategories.Where(s => s.Id != savingCategoryId))
+                other.SetEmergencyFund(false);
+        target.SetEmergencyFund(isEmergency);
+    }
+
+    /// <summary>The bucket currently marked as the emergency fund, if any.</summary>
+    public Savings.SavingCategory? EmergencyFund => _savingCategories.FirstOrDefault(s => s.IsEmergencyFund);
+
+    /// <summary>
+    /// What the emergency fund should hold: three months of essential spending, rounded up to the nearest 500.
+    /// </summary>
+    /// <remarks>
+    /// <b>The monthly figure is an average over completed periods, not this period's running total.</b> Read
+    /// literally, "the sum of essential expenses" mid-month would put the target near zero on the 2nd and trip it
+    /// upward all month — a goal that grows as you spend is the opposite of a goal. Up to
+    /// <paramref name="lookbackPeriods"/> completed periods are averaged, which is also what makes the figure
+    /// resilient to one unusual month. With no completed period yet, the open one is used: a rough number beats no
+    /// number while the account is new.
+    /// <para>
+    /// The rounding is doing real work beyond tidiness: it damps the target so an ordinary week's shopping can't
+    /// move it, which is what lets the figure be derived live without the goal twitching under the user.
+    /// </para>
+    /// Returns null when nothing is marked essential — the app has nothing to base a claim on, and inventing a
+    /// target from total spending would quietly redefine what "essential" means.
+    /// </remarks>
+    public decimal? EmergencyFundTarget(int months = 3, int lookbackPeriods = 6) =>
+        EssentialSpendPerPeriod(lookbackPeriods) is { } perPeriod
+            ? Math.Ceiling(perPeriod * months / 500m) * 500m
+            : null;
+
+    /// <summary>
+    /// What the essential categories actually cost in a typical period — the figure <see cref="EmergencyFundTarget"/>
+    /// is built from, exposed so the UI can state the basis rather than an unexplained number.
+    /// <para>
+    /// <b>Read the basis from here, never as <c>target / months</c>.</b> The target is rounded UP to the nearest 500,
+    /// so dividing it back yields a plausible-looking monthly figure the user never actually spent — a fabricated
+    /// number presented as a fact about their own spending.
+    /// </para>
+    /// </summary>
+    public decimal? EssentialSpendPerPeriod(int lookbackPeriods = 6)
+    {
+        // A sub-category inherits its parent's essential-ness — marking "Groceries" essential has to cover the rows
+        // filed under it, or the figure silently omits most of the spend it claims to measure.
+        var essential = _categories
+            .Where(c => c.IsEssential || (c.ParentId is { } p && _categories.Any(x => x.Id == p && x.IsEssential)))
+            .Select(c => c.Id).ToHashSet();
+        if (essential.Count == 0) return null;
+
+        var closed = _periods.Where(p => p.Status == PeriodStatus.Closed).TakeLast(lookbackPeriods).ToList();
+        var basis = closed.Count > 0 ? closed : _periods.TakeLast(1).ToList();
+        if (basis.Count == 0) return null;
+
+        var perPeriod = basis.Sum(p => p.Expenses.Where(e => essential.Contains(e.CategoryId))
+                                        .Sum(e => e.Amount.Amount)) / basis.Count;
+        return perPeriod > 0m ? decimal.Round(perPeriod, 2) : null;
+    }
+
     /// <summary>Archive (or restore) a savings bucket — hides it from the main lists while keeping its history.</summary>
     public void SetSavingArchived(Guid savingCategoryId, bool archived) =>
         (FindSavingCategory(savingCategoryId) ?? throw new InvalidOperationException("Saving category not found.")).SetArchived(archived);

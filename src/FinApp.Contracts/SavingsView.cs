@@ -51,7 +51,11 @@ public record SavingBucketDto(
     Guid? FundId = null,
     decimal ThresholdPercent = 80m,
     bool NotifyOnMilestone = false,
-    decimal InitialAmount = 0m);
+    decimal InitialAmount = 0m,
+    // The account's emergency fund, and the monthly essential-spend figure its goal is derived from — sent so the
+    // client can show the basis rather than an unexplained number.
+    bool IsEmergencyFund = false,
+    decimal? EmergencyMonthlyEssentials = null);
 
 /// <summary>The raw knobs an interactive projection modal drags — supplied so the thin client can re-run the pure
 /// forecast math (<c>FinApp.Forecasting</c>: <c>InvestmentForecast</c>/<c>LoanForecast</c>) locally with zero

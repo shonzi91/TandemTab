@@ -42,8 +42,17 @@ public static class SavingBucketConfig
         {
             account.ClearSavingDebt(bucketId);
             account.ClearSavingInvestment(bucketId);
-            account.ConfigureSavingGoal(bucketId, req.GoalAmount is > 0m ? req.GoalAmount : null, req.ThresholdPercent / 100m, req.NotifyOnMilestone);
+            // An emergency fund's goal is derived, not typed: 3× essential spending rounded up to 500. The typed
+            // GoalAmount is ignored while the flag is on, so the two can't disagree on screen. Falls back to the
+            // typed figure when nothing is marked essential — there'd be nothing to derive from.
+            var goal = req.IsEmergencyFund
+                ? account.EmergencyFundTarget() ?? (req.GoalAmount is > 0m ? req.GoalAmount : null)
+                : req.GoalAmount is > 0m ? req.GoalAmount : null;
+            account.ConfigureSavingGoal(bucketId, goal, req.ThresholdPercent / 100m, req.NotifyOnMilestone);
         }
+        // After the kind is settled: the flag only sticks on an ordinary/expenses bucket, and this clears it from
+        // whichever bucket held it before.
+        account.SetEmergencyFund(bucketId, req.IsEmergencyFund);
 
         // The loan's due day is the one date, so a bill that services it follows the loan rather than drifting from
         // it. Only downward, from loan to bill: the bucket is where the contract's day is stated.

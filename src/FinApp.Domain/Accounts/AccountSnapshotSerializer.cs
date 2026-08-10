@@ -35,7 +35,7 @@ public static class AccountSnapshotSerializer
             account.Members.Select(m => new MemberNode(m.Id, m.UserId, m.DisplayName)).ToList(),
             account.Funds.Select(f => new FundNode(f.Id, f.Name, f.ParentId, f.Note, f.Icon, f.IsSynced, f.IsArchived)).ToList(),
             account.Categories.Select(c => new CategoryNode(c.Id, c.Name, c.ParentId, c.Icon, c.IsEssential, c.IsArchived)).ToList(),
-            account.SavingCategories.Select(s => new SavingCategoryNode(s.Id, s.Name, s.ParentId, s.GoalAmount, s.AlertThreshold, s.NotifyOnMilestone, s.InitialAmount, s.Icon, s.Kind, s.DebtBalance, s.DebtAnnualRatePercent, s.DebtInstallment, s.IsArchived, s.DebtOriginalBalance, s.PlannedContribution, s.InvestmentAnnualRatePercent, s.InvestmentTermYears, s.InvestmentCompoundsPerYear, s.FundId, s.Costs.Count == 0 ? null : s.Costs.ToList(), s.DebtBalanceAsOf, s.DebtInstallmentDay, s.DebtStartDate, s.DebtPaymentDriven)).ToList(),
+            account.SavingCategories.Select(s => new SavingCategoryNode(s.Id, s.Name, s.ParentId, s.GoalAmount, s.AlertThreshold, s.NotifyOnMilestone, s.InitialAmount, s.Icon, s.Kind, s.DebtBalance, s.DebtAnnualRatePercent, s.DebtInstallment, s.IsArchived, s.DebtOriginalBalance, s.PlannedContribution, s.InvestmentAnnualRatePercent, s.InvestmentTermYears, s.InvestmentCompoundsPerYear, s.FundId, s.Costs.Count == 0 ? null : s.Costs.ToList(), s.DebtBalanceAsOf, s.DebtInstallmentDay, s.DebtStartDate, s.DebtPaymentDriven, s.IsEmergencyFund)).ToList(),
             account.Periods.Select(ToNode).ToList(),
             account.ContributionCategories.Select(c => new ContributionCategoryNode(c.Id, c.Name, c.Icon)).ToList(),
             account.SavingsRateTarget,
@@ -187,6 +187,8 @@ public static class AccountSnapshotSerializer
             s.RestorePaymentDriven(n.DebtPaymentDriven);
         }
         if (n.Kind == SavingKind.Investment) s.ConfigureInvestment(n.InvestmentAnnualRatePercent, n.InvestmentTermYears, n.InvestmentCompoundsPerYear);
+        // Verbatim, and after the kind is known: SetEmergencyFund gates on kind, which would drop the flag here.
+        s.RestoreEmergencyFund(n.IsEmergencyFund);
         if (n.PlannedContribution is { } pc) s.SetPlannedContribution(pc);
         s.SetFund(n.FundId);
         if (n.Costs is { Count: > 0 }) s.ReplaceCosts(n.Costs);
@@ -324,7 +326,9 @@ public static class AccountSnapshotSerializer
         // R1 informative-debt fields; null on nodes written before they existed.
         int? DebtInstallmentDay = null, DateOnly? DebtStartDate = null,
         // R2: false on legacy nodes → every existing debt stays schedule-driven, which is what it has always been.
-        bool DebtPaymentDriven = false);
+        bool DebtPaymentDriven = false,
+        // False on legacy nodes — no account had an emergency fund before this existed.
+        bool IsEmergencyFund = false);
 
     private record PeriodNode(Guid Id, string Currency, DateOnly From, DateOnly To, PeriodStatus Status, decimal CarriedIn,
         List<InitialBalanceNode> InitialBalances, List<ContributionNode> Contributions, List<BudgetNode> Budgets,
