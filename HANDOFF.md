@@ -1,21 +1,23 @@
 # TandemTab (FinApp) — session handoff
 
-Last updated: 2026-08-11 (Session 98 — **a 14-item owner batch; ten done, four deliberately left**. The headline
-fix: amounts could not take a decimal on mobile web, because `<input type="number">` rejects the "," a European
-keypad offers. Also: a due bill is now *skipped*, not dismissed — with an undo the domain enforces; a loan and the
-bill that services it finally share one due date; the "I log each installment here" switch was renamed to what it
-actually controls; and an emergency fund that sizes itself. **381 + 48 + 325 green** (from 363 + 48 + 320).
-✅ **Committed, pushed and DEPLOYED** — `6937b6c`, `0b92bbd`, live on **`finapp-00292-mvj`**, traffic forced
-`--to-latest`, verified at the **bytes** level on both the run URL and tandemtab.com: identical 304,291-byte
-scoped bundles carrying `.inst-flag` ×5, `.card-act-transfer` ×4, `.bell-act-alt` ×3, `.num` ×2, and the OLD
-`inst-extra-row input[type="number"]` rule **gone** (0) — which is what proves a fresh build rather than a cache.
-5 `secretKeyRef`s; the only WARNINGs are two 401s from a logged-out browser hitting `/me` + `/auth/refresh`.
+Last updated: 2026-08-11 (Session 98 — **the owner's whole 14-item batch, plus carried owner-ask #7. All of it.**
+The headline fix: amounts could not take a decimal on mobile web, because `<input type="number">` rejects the ","
+a European keypad offers. Also: a due bill is now *skipped*, not dismissed — with an undo the domain enforces; a
+loan and the bill that services it share one due date, and linking the bill now drives the loan; the "I log each
+installment here" switch was renamed to what it actually controls; an emergency fund that sizes itself; a loan
+payment that shows what it bought; Home's header down from seven numbers to four; and the honest half of owner
+ask #7. **393 + 48 + 327 green** (from 363 + 48 + 320).
+✅ **Committed, pushed and DEPLOYED in two rounds** — `6937b6c`, `0b92bbd` on **`finapp-00292-mvj`**, then
+`f169319`, `d738f9d`. The first round was verified at the **bytes** level on both the run URL and tandemtab.com:
+identical 304,291-byte scoped bundles carrying `.inst-flag` ×5, `.card-act-transfer` ×4, `.bell-act-alt` ×3,
+`.num` ×2, and the OLD `inst-extra-row input[type="number"]` rule **gone** (0) — that absence is what proves a
+fresh build rather than a cache. 5 `secretKeyRef`s; the only WARNINGs were two 401s from a logged-out browser.
 ★ **The S97 purge fix caught the race a second time, on this deploy** — same `DbUpdateConcurrencyException`,
 stack ending at `PurgeExpiredAsync:103` with **no `Program.<Main>$` frame**, `warn:` prefix, "Purged 1 archived
 account(s)", startup probe succeeded. The container booted. Reading the last stack frame remains the check.
-⚠️ **Four items are NOT done and were left by agreement** — see the ⚠️ Carry-over in the Session 98 entry.
-⚠️ **Android: only the swipe changed, and it is build-verified only** — no emulator pass. Native now trails the
-web by rather a lot; the list is in the carry-over.)
+⚠️ **The native sweep is the one thing still genuinely outstanding** — native got the period swipe and the
+skip/undo this session, both **build-verified only, no emulator pass**, and still trails the web by a list that
+is written out in the carry-over.)
 
 Previously: 2026-08-10 (Session 97 — **the S96 boot-crash is fixed and PROVED itself in production**, plus a
 UI bug that made the edit-expense modal unusable, and five items off the owner's list. Four commits, four
@@ -75,11 +77,12 @@ a separate balance axis — because flows and a stock were sharing one scale. **
 as `de51071`, now live on **`finapp-00280-4s8`** (traffic forced `--to-latest`; run URL + tandemtab.com 200; 5
 `secretKeyRef`s; no WARNING+ logs). Prior context below is Session 91.)
 
-## Session 98 (2026-08-11) — **A 14-item owner batch: ten shipped, four left. Live: `finapp-00292-mvj`.**
+## Session 98 (2026-08-11) — **The owner's whole 14-item batch, plus owner-ask #7.**
 
-The owner filed 14 items plus carried owner-ask #7 into the batch (ask #8 stays on the roadmap). Ten are done,
-deployed and verified in the running app; four were left by agreement when the session was called. Two commits:
-`6937b6c`, `0b92bbd`.
+The owner filed 14 items and carried owner-ask #7 into the batch (ask #8 stays on the roadmap). **All of them are
+done**, deployed and verified in the running app. Four commits: `6937b6c`, `0b92bbd`, `f169319`, `d738f9d`.
+The session ran in two halves — the first ten items were deployed as `finapp-00292-mvj`, then the owner asked for
+the remainder rather than deferring them, so items 8, 10, the payment-driven default and owner-ask #7 followed.
 
 ### ★★ Amounts could not take a decimal on mobile — and the input *type* was the bug (`6937b6c`)
 
@@ -148,10 +151,16 @@ named the wrong thing entirely.
   both are right in different situations and the trade-off (a stale balance vs. an assumed one) *is* the decision.
 - Choosing "the payments I log" with no linked recurring bill now says so, rather than letting the balance quietly
   go stale on a promise nothing is helping the user keep.
-- **★ It is deliberately NOT auto-flipped when a bill is linked to a loan.** The prior code carried an explicit
-  note that this is the user's call and not a side effect of linking, and flipping it silently changes how a
-  balance is derived. Recommended in-session and then *not* done for that reason — the hint now states what will
-  happen instead. **Open question for the owner if they'd rather it defaulted.**
+- **★★ Linking a bill DOES now switch the loan onto logged payments (`f169319`) — reversed mid-session at the
+  owner's request.** It was initially left alone because the prior code carried an explicit note that the mode is
+  the user's call, not a side effect of linking. The owner overruled that, and they were right: linking says "I pay
+  this loan through this app", which is exactly what the setting was asking for, and leaving it off meant a user
+  could log every installment for months while the balance quietly ignored them.
+  **★ It fires on the transition INTO a link, never on an ordinary save.** Someone who sets a linked loan back to
+  "its own schedule" — the right call when the bill is only a reminder for a payment leaving an account this app
+  can't see — must not have it flipped back the next time they rename the bill. Keying on the transition buys the
+  default with no second "has the user chosen?" flag to store and keep honest. `SetPaymentDriven` re-anchors, so
+  what's owed today never moves; only what moves it from here on. Both halves are pinned by tests.
 
 ### The other four discrepancies in that cluster (answers, for the record)
 
@@ -159,11 +168,11 @@ named the wrong thing entirely.
 - **Can an ordinary expense be bound to a loan?** No. `SetInstallmentLink` is only written by `LogInstallment` and
   the edit path preserving an existing link.
 - **Where is it logged with the switch on and no recurring?** Nowhere — that is exactly the gap now warned about.
-- **★ "Make a payment" and "Log installment" have different balance semantics, and that is invisible.**
+- **★ "Make a payment" and "Log installment" have different balance semantics, and that is still invisible.**
   `LogInstallment` gates on `DebtPaymentDriven`; the disburse path (`Program.cs`, `RecordSavingDebtPayment`) does
-  **not**, and reduces the balance by the full amount as an extra principal payment. Defensible (an extra payment
-  is outside the schedule; a contractual one is inside it) but undocumented in the UI. **Not addressed this
-  session** — it belongs with owner item 10, which is still open.
+  **not**, and reduces the balance by the full amount as an extra principal payment. Defensible — an extra payment
+  is outside the schedule, a contractual one is inside it — but nothing in the UI says so. Item 10's work sits on
+  top of the disburse path without changing this. **Still worth a line of copy someday.**
 
 ### ★ Is this month's installment logged? (`6937b6c`)
 
@@ -224,28 +233,52 @@ back unchanged. Tests pin the legacy-load path for both.
 fail at once on `PendingModelChangesWarning`. That happened in-session and is the third time; the rule is in
 `reference_ef_ignore_computed_props`.
 
+### The second half of the session (items 8, 10, the payment-driven default, owner-ask #7)
+
+The owner asked for the remaining items rather than deferring them, so the session continued past the first deploy.
+
+- **★ Home's header drops from up to seven numbers to four (`f169319`) — owner item 8.**
+  - **Exactly ONE context line under Safe to spend, never two.** "After bills" and "a day left" answer the same
+    question at different resolutions — the per-day figure is *already computed after bills* — so showing both
+    spent a line saying the same thing twice, on the densest part of the app. The absolute figure wins only when
+    it turns negative, because "you are short" is a different statement from "here is your daily allowance" and
+    must not be softened into one.
+  - The three reference tiles keep their number and **lose their sub-lines** (savings rate, transfer split,
+    carry-over) into their tooltips. Each was the fourth, fifth and sixth number on the screen the user lands on,
+    and none was why they opened the app; all three live in full and in context on their own tabs.
+- **★★ "Make a payment" now shows what the money buys (`f169319`) — owner item 10.** New
+  `LoanForecast.PayLumpSum` reports **both** outcomes, because the same money can only buy one: keep the
+  installment and finish sooner (worth more interest), or keep the end date and drop the payment (worth more
+  monthly room). **Reporting only the interest saved would quietly recommend the first.** Shown live as the amount
+  is typed — while the choice still exists — then a dismissible receipt once it lands (a receipt, not a question:
+  the decision is already made).
+  **★ The outcome is captured BEFORE the payment posts**; afterwards the same call reports what the *next* payment
+  of that size would save, not the one just made.
+  Verified live on 10,000 at 6% paying 1,500: "saves 277.96 in interest", "Paid off Mar 2029 instead of Sep 2029 ·
+  6mo sooner", "or drop the installment to 252.21 a month".
+- **★★ Owner ask #7, the half that can be said honestly (`f169319`).** "The periods that cost you most", in Trends:
+  which closed periods ran materially above typical, and what drove each.
+  - **It observes and does not predict.** With about a year of history there is one observation per month, so a
+    season cannot be told from a one-off — "next December will be expensive" is a guess in a confident voice. A
+    second year earns that claim; this does not make it, and the copy says so out loud.
+  - **"Typical" is the MEDIAN period, not the mean** — one blow-out drags a mean up far enough to hide itself,
+    which is precisely the month this is looking for. A test pins it (4x1000 + 1x11,000 → typical stays 1000).
+  - **The driver is the category unusual FOR ITSELF that period, not the biggest** — otherwise rent is blamed
+    every time for months it did not change in.
+  - Nothing at all is claimed below four closed periods, where "typical" describes nothing.
+  - Lives inside Trends rather than as its own section, per the standing preference against new sections.
+
 ### ⚠️ Carry-over
 
-- **⛔ NOT DONE, left by agreement when the session was called** (owner: "leave the rest for the next session"):
-  - **Item 8 — Home cards still feel number-heavy.** Not started. Home currently leads with SAFE TO SPEND,
-    "€X a day left", SAVED, SPENT and MONEY IN before anything else. The owner's own suggestion was moving the
-    "a day left" figure elsewhere.
-  - **Item 10 — "Make a payment" should confirm the installment**, then report interest saved and the new payoff
-    date. `LoanForecast.PayOff` already returns `TotalInterest`, so both figures are computable. See also the
-    "different balance semantics" note above, which belongs with this item.
-  - **Item 13 — the native pass.** Deliberately deferred as one consolidated sweep rather than scattering
-    half-ports. See the Android list below.
-  - **Owner ask #7 — cost-heavy period tracking.** The value/effort answer WAS given this session and is worth
-    keeping: **the observation half is an M, not an L** (per-period totals and overlapping-period logic already
-    exist), but **the "advise where to save next year" half should be withheld** — with one year of history there
-    is exactly one observation per month, so a seasonal pattern cannot be told from a one-off, and advice on n=1 is
-    a guess in a confident voice. Recommendation: **ship the observation, let the second year earn the prediction.**
-  - **Owner ask #8** (a location/date-range "what did this trip cost" recap) stays on the roadmap, per the owner.
-- **⚠️ Android now trails the web by:** the emergency fund, the skip/undo, the loan due date, the installment
-  indicator, Transfer + Edit-last in the native FAB — *plus* the four already outstanding from S97 (two-sided
-  transfer edit/delete, category delete-with-reassign, the Breakdown per-period average, the whole time-cost
-  feature) — *plus* the S96 device gap (switches, brand mark, both launcher icons). **The new period swipe is
-  build-verified only and has had no emulator pass.**
+- **⛔ The native sweep is the one thing genuinely outstanding.** Native gained two things this session — the
+  period swipe and the skip/undo (`d738f9d`) — and **both are build-verified only, with no emulator pass.**
+  It still trails the web by: the emergency fund, the installment indicator, the "Make a payment" preview +
+  receipt, the Home header slimming, "the periods that cost you most", and Transfer + Edit-last in the FAB
+  (native's "+" goes straight to Add expense, so that one is a small UX restructure rather than a port) — **plus**
+  the four already outstanding from S97 (two-sided transfer edit/delete, category delete-with-reassign, the
+  Breakdown per-period average, the whole time-cost feature) — **plus** the S96 device gap (switches, brand mark,
+  both launcher icons). Realistically its own session, and it wants the emulator throughout.
+- **Owner ask #8** (a location/date-range "what did this trip cost" recap) stays on the roadmap, per the owner.
 - **The archived-account purge race fires on most multi-instance deploys and is EXPECTED.** It is caught, logged
   as `warn:`, and the container boots. Cloud Run stamps the unstructured multi-line output as ERROR regardless, so
   **the check is the last stack frame** — `PurgeExpiredAsync:103` with no `Program.<Main>$` frame means caught; a
@@ -259,8 +292,13 @@ fail at once on `PendingModelChangesWarning`. That happened in-session and is th
 
 ### Verification
 
-- **381 domain + 48 persistence + 325 server green** (was 363/48/320; 18 new tests across 2 new files —
-  `RecurringSkipTests`, `EmergencyFundTests` — plus 3 new server tests for the due-date sync and unskip).
+- **393 domain + 48 persistence + 327 server green** (was 363/48/320; 4 new test files —
+  `RecurringSkipTests`, `EmergencyFundTests`, `LoanLumpSumTests`, `CostHeavyPeriodTests` — plus 5 new server tests
+  for the due-date sync, unskip, and both halves of the payment-driven default).
+- **Second deploy: `finapp-00293-nxk`** from `d738f9d`, traffic forced `--to-latest`. Identical **308,004**-byte
+  scoped bundles on the run URL and tandemtab.com (a new hash, `fdm5fiqf3n`), carrying `.paydown-preview` ×2,
+  `.paydown-toast` ×8, `.costly-row` ×3, `.inst-flag` ×5. 5 `secretKeyRef`s. **No WARNING+ entries at all** on this
+  revision — the purge race didn't even fire this time.
 - Every UI change driven in the running app: the comma (typed "12,50" → SPENT €37.50 → €50.00, i.e. +12.50 and
   not +1250, with the time-cost hint reading "≈ 2h of work"); the filter row vanishing on a no-bucket account; the
   loan due date (asked 15, stored 28); the installment marker in both states; both branches of the
