@@ -1,6 +1,18 @@
 # TandemTab (FinApp) — session handoff
 
-Last updated: 2026-08-07 (Session 96 — **a UI/brand session, no server code at all.** Every native checkbox in
+Last updated: 2026-08-10 (Session 97 — **the S96 boot-crash is fixed and PROVED itself in production**, plus a
+UI bug that made the edit-expense modal unusable, and five items off the owner's list. Four commits, four
+deploys, all verified at the bytes level. **363 + 48 + 320 green** (from 339 + 48 + 314).
+✅ **Everything is committed, pushed and DEPLOYED** — `de45acb`, `b7f4435`, `0a539b2`, `4ff5234`, live on
+**`finapp-00291-25b`**, traffic forced `--to-latest`, identical 301,760-byte bundles on both URLs carrying
+`.modal-sec` ×3 and `.time-cost` ×2, 5 `secretKeyRef`s, **no WARNING+ on the final revision**.
+★ **The purge fix caught the exact crash it was written for, in prod, on the `b7f4435` deploy** — same
+`DbUpdateConcurrencyException`, but the container booted. See the ★★ block in the Session 97 entry.
+⚠️ **Android was not touched or built this session** — the new time-cost setting, the sectioned edit-account
+modal and the two-sided transfer edit/delete are **web-only**. Native still has the S96 gap too (switches,
+brand mark and both launcher icons unproven on a device).)
+
+Previously: 2026-08-07 (Session 96 — **a UI/brand session, no server code at all.** Every native checkbox in
 the app became a `<Switch>` (19 web call sites + Android's shared `CheckRow`), the app bar's "Tab" finally lost
 its pill, and **the brand mark was replaced**: the two-heads-under-a-beam logo read as two men, so it is now an
 S-split rounded tile with a dot in each field. **339 + 48 + 310 green**; both surfaces build clean.
@@ -45,6 +57,144 @@ a separate balance axis — because flows and a stock were sharing one scale. **
 ✅ **Committed and the web half is DEPLOYED** (Session 93 catch-up): Android sharing as `596eea5`, the web batch
 as `de51071`, now live on **`finapp-00280-4s8`** (traffic forced `--to-latest`; run URL + tandemtab.com 200; 5
 `secretKeyRef`s; no WARNING+ logs). Prior context below is Session 91.)
+
+## Session 97 (2026-08-10) — **The boot-crash fix proves itself, a modal that trapped its own user, and five owner asks. Live: `finapp-00291-25b`.**
+
+### ★★ The S96 boot-crash is fixed — and production reproduced it for us on the very next deploy (`de45acb`)
+
+S96 left a ⛔ block: `Program.cs:271` ran the archived-account purge unguarded, and a multi-instance deploy raced
+it into a `DbUpdateConcurrencyException` that SIGABRT'd the container before it could serve. Three changes:
+
+- **Each expired account is now its own save inside its own `try`.** A racing instance's "affected 0 rows" is
+  logged and skipped, not fatal. `db.ChangeTracker.Clear()` on failure, or the next account's save retries the
+  failed delete and dies with it.
+- **★ The account row is deleted BEFORE the raw-SQL unarchive commits.** The old order left a half-done purge with
+  an account **neither archived nor deleted** — it silently reappears in the user's list. Now the leftover is a
+  stale archive row, which the next sweep cleans (the account query returns null and only the unarchive runs).
+- **Both purges wrapped at the call site** in `Program.cs`. This runs *before the port is open*, so an exception
+  here is a container that fails its startup probe.
+
+**★★ The proof is better than a test.** The `b7f4435` deploy hit the identical race, and the logs read:
+
+```
+warn: FinApp.Server.Accounts.ArchivedAccountsService[0]
+      Purge of archived account 8ccb6e86-… failed; leaving it for the next sweep.
+      Purged 1 archived account(s) past the grace window.
+Default STARTUP TCP probe succeeded after 1 attempt
+```
+
+The stack **ends at `PurgeExpiredAsync:103` with no `Program.<Main>$` frame** — that's how you tell it was caught
+by the per-account handler and not the outer net (the S96 crash stack *did* carry the `Program.<Main>$` frame).
+The loop then purged a different account and the container booted. **Reading the stack's last frame is the check;
+the severity is not** — Cloud Run stamps unstructured multi-line output as ERROR regardless of the `warn:` prefix.
+
+### ★ A `<label>` made the edit-expense modal impossible to use — and `stopPropagation` does NOT fix it (`de45acb`)
+
+Owner report: open the category dropdown while editing an expense and *nothing* works — can't pick a field, can't
+Cancel, can't Save, the dropdown never closes.
+
+- **★ A `<label>`'s "labeled control" is its first LABELABLE descendant** — which was `CategoryPicker`'s trigger
+  `<button>`. Every click inside that label is re-dispatched onto the button by the browser. Clicking the backdrop
+  ran `Close()`, then the synthetic click hit `Toggle()` and re-opened the menu. The backdrop covers the whole
+  modal, so the dropdown was pinned open with nothing else reachable.
+- **★★ `stopPropagation` does not stop it; only `preventDefault` does.** Label forwarding is a **default action**,
+  not propagation. My first fix was wrong and the browser proved it — capture-phase logging on every ancestor
+  showed the phantom `cat-picker-btn` click arriving *after* `stopPropagation`:
+  `HTML|cat-picker-backdrop → LABEL|… → ROOT|…` then `HTML|cat-picker-btn → …`.
+- The two `<label>` call sites became `modal-field`/`lbl-row` — the pattern the **add**-expense modal already used,
+  which is exactly why adding an expense never had this bug. `preventDefault` on the trigger/backdrop/options is
+  the guard against it returning. **Not on the picker root**: the search box needs its default click for focus.
+
+### ★ Deleting a category can now re-file its history instead of refusing (`de45acb`)
+
+`Account.RemoveCategoryReassigning(categoryId, targetId)`. The category and its sub-categories go; their expenses
+move to a category you choose.
+
+- **Expenses keep their id** — amount, date, member, fund, note, tags, installment and settlement links all stay on
+  the same row. `Expense.CategoryId` gained a private setter + `MoveToCategory()`, deliberately *not* the
+  append-only `Period.EditExpense` path: keeping the row's identity is the whole point.
+- **★ Budgets are dropped, not merged.** Adding a deleted category's cap onto the target's silently raises a limit
+  the user set deliberately. Spending moves; caps don't.
+- The dialog states the count ("1 expense is filed here…"), offers Archive first, and excludes the doomed
+  sub-categories from the target list.
+
+### ★ Account-to-account transfers move as one (`b7f4435`)
+
+The two halves had **nothing tying them together** — `ExternalTransfer` carried no id for the deposit it created,
+and the delete modal admitted it ("does not reverse the deposit in the other account"). Both rows now share a pair
+id, the same trick `Expense.SettlementId` uses (which is why settlements always cascaded and these never did).
+
+- `PUT`/`DELETE /accounts/{id}/account-transfers/{pairId}`, both via `MutateTwoAsync` — no window where the money
+  exists on one side only. The route id is the **pair** id and the other account rides in the request; not a trust
+  decision, since membership of both accounts is re-checked and the pair id must match a row in each.
+- **★ Raising a transfer measures headroom with its own amount added back**, or the fund looks poorer than it is by
+  exactly the figure being replaced.
+- Both periods must be open — editing into a closed period would silently rewrite a settled month.
+- **★★ Legacy transfers are NOT backfilled, on purpose.** Two same-day, same-amount transfers to one account are
+  indistinguishable, and guessing would delete the wrong person's deposit. Unlinked rows keep the old one-sided
+  delete and its honest warning. A test pins that a pre-link snapshot loads intact and the two-sided delete refuses.
+
+### ★ Time cost: an amount also reads as the hours behind it (`0a539b2`, `4ff5234`)
+
+- **The daily half of the owner's ask already existed** — the SAFE TO SPEND tile has read "€18.51 a day left" for a
+  while. Only the hourly side was missing.
+- Two ways to get a rate — **Off / From my income / I'll set the rate** — and the computed figure is always shown,
+  so the division is never hidden. Derived = this period's income ÷ (working days × hours).
+- **★★ When the two disagree, the app says so.** Typing €20/h while the hours actually paid €6.25/h is not a
+  contradiction to resolve: a typed rate is what an hour is *worth*; income ÷ hours is what an hour actually
+  *paid* (unpaid overtime, a lean month and time off land only in the second). `DerivedHourlyRate` and
+  `HourlyRateDrift` keep both computable, the typed one still prices time, and past ~15% either way the modal
+  names the gap **and its direction**. This came out of the owner pushing back on the design — it's the most
+  useful thing the feature says.
+- The working pattern is kept under **both** modes; under Manual it prices nothing and exists only for that check.
+  Only the typed rate is cleared when switching to From-my-income (the domain prefers a typed rate, so a leftover
+  one would silently outrank the pattern just chosen).
+- Renders under the Amount field in add-expense, live as you type: **a price is easiest to reconsider before it's
+  logged**, not in a recap afterwards. Rounded to the minute; hours/minutes only (days would need a working-day
+  length this app has no business assuming). New `i-clock` sprite symbol, hands at 10-and-2 — a right angle inside
+  a circle reads as a plus sign at 16px.
+
+### Also in this session
+
+- **Breakdown rows carry a per-period average** when the window spans several periods (`de45acb`), divided by
+  **real overlapping periods, not months in the window** — periods are whatever the user rolled over.
+- **Zero is a budget, not "no budget"**: `SaveEditCat` guarded on `> 0`, so typing 0 silently discarded the save.
+- **Edit account split into three sections** — Account / Saving / Time cost, as `.modal-sec` headings with a
+  hairline above (a rule, not a boxed group: a second frame inside the modal's own reads as a form).
+- Round-up "would have set aside" projections retired; the factual "X saved this way so far" stays.
+
+### Migration notes (both features)
+
+**No schema change and no data rewrite anywhere in this session.** Every new field is body data: `Ignore()`d in
+`FinAppDbContext` (like `FundSynced`/`SavingsRateTarget`) and added as a **trailing optional parameter** on the
+snapshot node record, so a missing JSON property lands on the default and existing snapshots read back unchanged.
+Tests pin the legacy-load path for both the transfer link and the hourly rate.
+
+### ⚠️ Carry-over
+
+- **⛔ The S96 boot-crash block is CLOSED** — fixed, deployed, and observed catching the real thing. `AccountDeletionService.PurgeDueAsync` already had per-user try/catch and is now also wrapped at the call site.
+- **Owner list items #7 and #8 are still open and NOT started**: (7) tracking which periods are cost-heavy to
+  advise where to save next year, and (8) a location/date-range "what did this trip cost" recap. Both were asked
+  with "give me an honest answer about value and effort" — **that answer is still owed** before any code.
+- **⚠️ Android is untouched this session** and now trails the web by: two-sided transfer edit/delete, category
+  delete-with-reassign, the Breakdown per-period average, and the whole time-cost feature. The S96 device gap
+  (switches, brand mark, launcher icons) is also still unverified.
+- `BudgetTreeNode.razor` is **dead code** — nothing renders it. Noted twice now; safe to delete.
+- The pre-S96 carry-over still stands (Tier-2 mobile parity, the ported-half-a-feature audit, the two
+  server-blocked rows, the Android light/dark sweep, the `SheetShell` foot-of-sheet audit, the figurative
+  trademark search before R7).
+
+### Verification
+
+- **363 domain + 48 persistence + 320 server green** (was 339/48/314; 23 new tests across 3 new files).
+- Every UI change driven in the running app, both themes where visual: the dropdown fix (hit-tested that Save is
+  genuinely clickable), the category move-delete (€12.50 expense re-filed under Transport with its note, SPENT
+  unchanged), the Breakdown average (Aug 1–Sep 30 across two periods → €50 total, **€25.00 avg / period**), the
+  transfer edit (200→275 on both sides) and two-sided delete (source balance restored, destination `moneyIn` → 0),
+  and the drift warning firing on a real €1,000 period at 20×8.
+- **⚠️ A gotcha that cost time:** the Blazor WASM dev preview **served a stale build** after a rebuild — the new
+  markup simply wasn't there. `caches.delete()` + unregister the service worker + reload fixed it. Suspect this
+  before suspecting your code when a change "doesn't appear".
 
 ## Session 96 (2026-08-07) — **Switches everywhere, the app-bar wordmark, and a new brand mark. Live: `finapp-00287-cf9`.**
 
