@@ -1,6 +1,23 @@
 # TandemTab (FinApp) — session handoff
 
-Last updated: 2026-08-10 (Session 97 — **the S96 boot-crash is fixed and PROVED itself in production**, plus a
+Last updated: 2026-08-11 (Session 98 — **a 14-item owner batch; ten done, four deliberately left**. The headline
+fix: amounts could not take a decimal on mobile web, because `<input type="number">` rejects the "," a European
+keypad offers. Also: a due bill is now *skipped*, not dismissed — with an undo the domain enforces; a loan and the
+bill that services it finally share one due date; the "I log each installment here" switch was renamed to what it
+actually controls; and an emergency fund that sizes itself. **381 + 48 + 325 green** (from 363 + 48 + 320).
+✅ **Committed, pushed and DEPLOYED** — `6937b6c`, `0b92bbd`, live on **`finapp-00292-mvj`**, traffic forced
+`--to-latest`, verified at the **bytes** level on both the run URL and tandemtab.com: identical 304,291-byte
+scoped bundles carrying `.inst-flag` ×5, `.card-act-transfer` ×4, `.bell-act-alt` ×3, `.num` ×2, and the OLD
+`inst-extra-row input[type="number"]` rule **gone** (0) — which is what proves a fresh build rather than a cache.
+5 `secretKeyRef`s; the only WARNINGs are two 401s from a logged-out browser hitting `/me` + `/auth/refresh`.
+★ **The S97 purge fix caught the race a second time, on this deploy** — same `DbUpdateConcurrencyException`,
+stack ending at `PurgeExpiredAsync:103` with **no `Program.<Main>$` frame**, `warn:` prefix, "Purged 1 archived
+account(s)", startup probe succeeded. The container booted. Reading the last stack frame remains the check.
+⚠️ **Four items are NOT done and were left by agreement** — see the ⚠️ Carry-over in the Session 98 entry.
+⚠️ **Android: only the swipe changed, and it is build-verified only** — no emulator pass. Native now trails the
+web by rather a lot; the list is in the carry-over.)
+
+Previously: 2026-08-10 (Session 97 — **the S96 boot-crash is fixed and PROVED itself in production**, plus a
 UI bug that made the edit-expense modal unusable, and five items off the owner's list. Four commits, four
 deploys, all verified at the bytes level. **363 + 48 + 320 green** (from 339 + 48 + 314).
 ✅ **Everything is committed, pushed and DEPLOYED** — `de45acb`, `b7f4435`, `0a539b2`, `4ff5234`, live on
@@ -57,6 +74,200 @@ a separate balance axis — because flows and a stock were sharing one scale. **
 ✅ **Committed and the web half is DEPLOYED** (Session 93 catch-up): Android sharing as `596eea5`, the web batch
 as `de51071`, now live on **`finapp-00280-4s8`** (traffic forced `--to-latest`; run URL + tandemtab.com 200; 5
 `secretKeyRef`s; no WARNING+ logs). Prior context below is Session 91.)
+
+## Session 98 (2026-08-11) — **A 14-item owner batch: ten shipped, four left. Live: `finapp-00292-mvj`.**
+
+The owner filed 14 items plus carried owner-ask #7 into the batch (ask #8 stays on the roadmap). Ten are done,
+deployed and verified in the running app; four were left by agreement when the session was called. Two commits:
+`6937b6c`, `0b92bbd`.
+
+### ★★ Amounts could not take a decimal on mobile — and the input *type* was the bug (`6937b6c`)
+
+Owner report: on the phone, Add expense offers a keypad with "," and the app refuses it.
+
+- **An `<input type="number">` only accepts a "valid floating-point number", which by spec uses "." as the decimal
+  separator whatever the user's locale.** A European Android keypad offers ","; pressing it makes the browser
+  reject the *whole* value and hand Blazor an empty string. The keypad was already right (`inputmode="decimal"`
+  was set); the input `type` was the bug, and it had been there the whole time.
+- `DecimalInput` (new, `Components/DecimalInput.razor`) is a text input with the same keypad and our own parse:
+  either separator, and **every separator but the last treated as grouping**, so "1.234,56" and "1,234.56" both
+  come to 1234.56 without knowing the locale.
+- **★ It holds the typed text locally rather than re-rendering from `Value`.** Otherwise "12." parses to 12 and is
+  stomped back to "12" the instant the separator is typed — decimals impossible a *second* way. The buffer only
+  re-syncs when `Value` changed elsewhere, compared against the *parse* of the buffer, not its text.
+- Generic over `T`, so bound to `decimal?` an empty field honestly means null (a rate that isn't set) rather than 0.
+- **All 43 money/rate fields converted.** Integer-only fields (day of month, alert %) stayed `type="number"`.
+- **Native was never affected** — every Kotlin sheet already parses a plain text field with `replace(',', '.')`.
+  So this was mobile-web/PWA only, and the web fix closes it completely.
+
+**★★ The trap this had to survive:** the component's `<input>` carries **this component's** CSS scope, not the
+caller's, so Dashboard's scoped rules keyed on `input[type=number]` would have silently stopped matching and
+stripped the field styling off all 43 inputs. Restyled via `::deep` on a `.num` class hook — a class, never an
+element type. Verified in the running app that computed padding/border/radius are unchanged.
+
+### ★ A due bill is skipped, not dismissed — and only a skip can be undone (`6937b6c`)
+
+Owner report: dismissing a due-date notification silently removes it from safe-to-spend-after-bills.
+
+- The bell's wordless ✕ ran `MarkHandled`, which drops the bill from "still due" and so *raises* safe-to-spend — a
+  real financial decision behind an affordance that reads as "hide this reminder". The ✕ is gone from due and
+  upcoming rows. A due bill now leaves the list two ways only, both labelled: **Confirm** or **Skip this month**.
+- **★★ Adding an undo required the domain to tell a skip from a posting.** `LastHandledPeriodFrom` cannot:
+  un-handling a skip is harmless, but un-handling a *posting* re-arms a bill whose expense is already on the
+  ledger — one payment, charged twice. `RecurringItem.LastHandledWasSkip` says which it was, and `ClearHandled()`
+  **throws** on a posting rather than trusting the UI to withhold the button. `POST /recurring/{id}/unskip`.
+- Legacy snapshots read as "posted" — the conservative default, which merely withholds an undo rather than
+  offering an unsafe one.
+- Skipped rows stay visible with their undo but **do not drive the bell badge** (`Settled` on the notification
+  record): a decision already made is not an outstanding task, and it would otherwise nag for the rest of the month.
+- Upcoming (not-yet-due) rows now carry no actions at all — they clear themselves when the day arrives.
+
+### ★ One due date for a loan and the bill that services it (`6937b6c`)
+
+`RecurringItem.DayOfMonth` clamped 1–28 while `SavingCategory.DebtInstallmentDay` allowed 1–31, and linking a bill
+never consulted the loan — so the app could hold "due on the 30th" on the debt row over a bill set to day 15.
+
+- The clamp widens to **1–31**. `DueDateWithin` already pulls a day past the end of a short month back to its last
+  day, which is exactly what makes storing 31 safe; a test now pins that (Feb 28 / Mar 31).
+- `RecurringMap.SyncLoanDueDay` — the loan's stated day **wins** and moves the bill; when the loan states none, the
+  bill's day fills it in. Editing the loan's day moves every bill that services it (`SavingBucketConfig`).
+- Mirrored in `BudgetingState` for the optimistic local view, or the UI would flash a date the refetch corrects.
+- Verified live: created a bill asking for day 15 against a loan stating the 28th → stored **28**.
+
+### ★★ The switch that never logged anything (`6937b6c`)
+
+Owner question: "what was the *I log each installment here* switch doing?" — the honest answer is that its label
+named the wrong thing entirely.
+
+- `DebtPaymentDriven` does **not** decide where anything is logged. Installments log identically either way. It
+  decides **which source of truth owns the balance**: schedule-walked from `DebtBalanceAsOf`, or moved only by
+  logged payments. With it *off* you can still log installments — they post correct expenses but the loan ignores
+  them (deliberately, to avoid double-advancing). With it *on* and nothing logged, the balance simply freezes.
+  Both are the documented design; neither was discoverable.
+- Now a two-way choice — **"Its own schedule" / "The payments I log"** — each stating its consequence, because
+  both are right in different situations and the trade-off (a stale balance vs. an assumed one) *is* the decision.
+- Choosing "the payments I log" with no linked recurring bill now says so, rather than letting the balance quietly
+  go stale on a promise nothing is helping the user keep.
+- **★ It is deliberately NOT auto-flipped when a bill is linked to a loan.** The prior code carried an explicit
+  note that this is the user's call and not a side effect of linking, and flipping it silently changes how a
+  balance is derived. Recommended in-session and then *not* done for that reason — the hint now states what will
+  happen instead. **Open question for the owner if they'd rather it defaulted.**
+
+### The other four discrepancies in that cluster (answers, for the record)
+
+- **Does it cover recurring or manual?** Both — same `Period.LogInstallment` either way.
+- **Can an ordinary expense be bound to a loan?** No. `SetInstallmentLink` is only written by `LogInstallment` and
+  the edit path preserving an existing link.
+- **Where is it logged with the switch on and no recurring?** Nowhere — that is exactly the gap now warned about.
+- **★ "Make a payment" and "Log installment" have different balance semantics, and that is invisible.**
+  `LogInstallment` gates on `DebtPaymentDriven`; the disburse path (`Program.cs`, `RecordSavingDebtPayment`) does
+  **not**, and reduces the balance by the full amount as an extra principal payment. Defensible (an extra payment
+  is outside the schedule; a contractual one is inside it) but undocumented in the UI. **Not addressed this
+  session** — it belongs with owner item 10, which is still open.
+
+### ★ Is this month's installment logged? (`6937b6c`)
+
+A marker on the debt row, derived from the rows themselves (`e.DebtBucketId` + `InstallmentGroupId`) so it cannot
+drift. **This is the only place the app says whether logging is actually happening** — which is what makes "the
+balance follows my logs" checkable rather than a promise. Verified both states live: "No installment logged this
+period yet" → after a confirm, "This period's installment is logged — €400.00 recorded as an expense."
+
+### ★★ An emergency fund that sizes itself (`0b92bbd`)
+
+One bucket per account carries the label (`Account.SetEmergencyFund` clears it from whichever held it), and it is
+the only bucket whose goal the app derives rather than asks for: **three months of essential spending, rounded up
+to the nearest 500**. The amount field gives way to the derived figure — two numbers claiming to be the same
+target is worse than one.
+
+- **★ The monthly figure averages COMPLETED periods, not the running one.** Read literally, "the sum of essential
+  expenses" mid-month is near zero, so the target would start tiny and climb all month — *a goal that grows as you
+  spend is not a goal*. Up to six closed periods are averaged, which also stops one unusual month setting the bar.
+  With no history the open period is used: a rough number beats no number on a new account.
+- **★★ The basis is read from the domain, never as `target ÷ 3`.** The rounding is one-way: €900 of essentials
+  gives a €3000 target, and 3000/3 = €1000 — a figure the user never spent, presented as a fact about their own
+  spending. **The first cut shipped exactly that division and the running app showed it back** ("€166.67 a month"
+  against €50 of real spend), which is how it was caught. `Account.EssentialSpendPerPeriod` now carries the honest
+  figure and a test pins that the two are not interchangeable.
+- With nothing marked essential the app produces **no target at all** rather than deriving one from total
+  spending — that would quietly redefine "essential" as "everything", the one number a cushion must not use.
+- Sub-categories inherit their parent's essential-ness, or marking "Groceries" essential omits every row under it.
+- The rounding is load-bearing beyond tidiness: it damps the target so an ordinary week's shopping can't move it,
+  which is what lets the figure be derived live without the goal twitching.
+
+### Also in this session
+
+- **Transfer joins Home's everyday moves** (`0b92bbd`) — three buttons in one row (verified sharing one row), plus
+  the mobile FAB, which also gains **Edit last** (opens whichever of the last expense/income is more recent; a tie
+  goes to the expense, far more often the thing just mistyped). Both render only when they lead somewhere: no
+  second fund and no other account means no destination, and a button opening a dead end is worse than none.
+- **The mobile swipe moves between periods, not tabs** (`0b92bbd`, **Android only** — the swipe was Compose's
+  `HorizontalPager`; web never had one). The four tabs are always one tap away on a permanently-visible bar, so
+  the only full-width gesture was buying nothing. **★ Implemented as a drag gesture rather than re-pointing the
+  pager: the app holds ONE period's data at a time, so a pager would render pages it has no content for, and a
+  swipe briefly showing the wrong month's figures is worse than no animation.** 96dp threshold; no-ops at either
+  end of the period list.
+- **Breakdown rows rank biggest-first** inside a slice (`6937b6c`), matching the slices and sub-groups above them;
+  date only breaks ties. A date order buried the answer the view exists to give. Applied to expenses, grouped
+  sub-lists and the transfer-out/saved lists. (Transfer-outs were *already* a slice — the ask was read as ordering.)
+- **Empty bucket-type filter chips are gone** (`6937b6c`), and the whole row hides when only one kind is in play
+  (All + one chip cannot filter). Discovery is unaffected: the Add-goal modal has its own four-way kind picker.
+  A derived `goalFilter` falls back to All if the active filter empties out, so removing the last debt while
+  filtered to Debts can't strand the user — done without mutating state during render.
+
+### Migration notes
+
+**No schema change and no data rewrite.** `LastHandledWasSkip` and `IsEmergencyFund` are body data: trailing
+optional parameters on their snapshot nodes, so a missing property lands on the default and existing snapshots read
+back unchanged. Tests pin the legacy-load path for both.
+
+**⚠️ `IsEmergencyFund` needed its `Ignore()` in `FinAppDbContext`** — without it **283** persistence/server tests
+fail at once on `PendingModelChangesWarning`. That happened in-session and is the third time; the rule is in
+`reference_ef_ignore_computed_props`.
+
+### ⚠️ Carry-over
+
+- **⛔ NOT DONE, left by agreement when the session was called** (owner: "leave the rest for the next session"):
+  - **Item 8 — Home cards still feel number-heavy.** Not started. Home currently leads with SAFE TO SPEND,
+    "€X a day left", SAVED, SPENT and MONEY IN before anything else. The owner's own suggestion was moving the
+    "a day left" figure elsewhere.
+  - **Item 10 — "Make a payment" should confirm the installment**, then report interest saved and the new payoff
+    date. `LoanForecast.PayOff` already returns `TotalInterest`, so both figures are computable. See also the
+    "different balance semantics" note above, which belongs with this item.
+  - **Item 13 — the native pass.** Deliberately deferred as one consolidated sweep rather than scattering
+    half-ports. See the Android list below.
+  - **Owner ask #7 — cost-heavy period tracking.** The value/effort answer WAS given this session and is worth
+    keeping: **the observation half is an M, not an L** (per-period totals and overlapping-period logic already
+    exist), but **the "advise where to save next year" half should be withheld** — with one year of history there
+    is exactly one observation per month, so a seasonal pattern cannot be told from a one-off, and advice on n=1 is
+    a guess in a confident voice. Recommendation: **ship the observation, let the second year earn the prediction.**
+  - **Owner ask #8** (a location/date-range "what did this trip cost" recap) stays on the roadmap, per the owner.
+- **⚠️ Android now trails the web by:** the emergency fund, the skip/undo, the loan due date, the installment
+  indicator, Transfer + Edit-last in the native FAB — *plus* the four already outstanding from S97 (two-sided
+  transfer edit/delete, category delete-with-reassign, the Breakdown per-period average, the whole time-cost
+  feature) — *plus* the S96 device gap (switches, brand mark, both launcher icons). **The new period swipe is
+  build-verified only and has had no emulator pass.**
+- **The archived-account purge race fires on most multi-instance deploys and is EXPECTED.** It is caught, logged
+  as `warn:`, and the container boots. Cloud Run stamps the unstructured multi-line output as ERROR regardless, so
+  **the check is the last stack frame** — `PurgeExpiredAsync:103` with no `Program.<Main>$` frame means caught; a
+  `Program.<Main>$` frame means the S96 crash is back.
+- `BudgetTreeNode.razor` is **dead code** — nothing renders it. Noted three times now; safe to delete.
+- **Dead CSS spotted:** `.form.expense-form > input[type=number]` and `.transfer-form > input[type=number]` in
+  `Dashboard.razor.css` — neither `expense-form` nor `transfer-form` exists in the markup any more.
+- The pre-S96 carry-over still stands (Tier-2 mobile parity, the ported-half-a-feature audit, the two
+  server-blocked rows, the Android light/dark sweep, the `SheetShell` foot-of-sheet audit, the figurative
+  trademark search before R7).
+
+### Verification
+
+- **381 domain + 48 persistence + 325 server green** (was 363/48/320; 18 new tests across 2 new files —
+  `RecurringSkipTests`, `EmergencyFundTests` — plus 3 new server tests for the due-date sync and unskip).
+- Every UI change driven in the running app: the comma (typed "12,50" → SPENT €37.50 → €50.00, i.e. +12.50 and
+  not +1250, with the time-cost hint reading "≈ 2h of work"); the filter row vanishing on a no-bucket account; the
+  loan due date (asked 15, stored 28); the installment marker in both states; both branches of the
+  schedule/payments copy; Transfer opening a working modal from Home; and the three fast buttons sharing one row.
+- **⚠️ The stale-WASM trap bit again** — the preview served the old build after a rebuild, and the Transfer button
+  "wasn't there". `caches.delete()` + reload fixed it. Suspect this before suspecting the code. Note also that the
+  preview server **holds the DLLs**: stop it before a solution build or MSB3021 file-lock errors follow.
 
 ## Session 97 (2026-08-10) — **The boot-crash fix proves itself, a modal that trapped its own user, and five owner asks. Live: `finapp-00291-25b`.**
 
