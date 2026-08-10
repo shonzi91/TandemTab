@@ -442,7 +442,8 @@ public sealed class Period : Entity
                 contribution.SetFundSynced(fundSynced);
             }
         }
-        item.MarkHandled(From);
+        // A zero/negative amount posted nothing, so it counts as a skip and stays undoable.
+        item.MarkHandled(From, skipped: amount <= 0m);
     }
 
     /// <summary>

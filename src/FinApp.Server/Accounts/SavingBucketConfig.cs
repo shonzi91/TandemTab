@@ -45,6 +45,12 @@ public static class SavingBucketConfig
             account.ConfigureSavingGoal(bucketId, req.GoalAmount is > 0m ? req.GoalAmount : null, req.ThresholdPercent / 100m, req.NotifyOnMilestone);
         }
 
+        // The loan's due day is the one date, so a bill that services it follows the loan rather than drifting from
+        // it. Only downward, from loan to bill: the bucket is where the contract's day is stated.
+        if (req.IsDebt && req.DebtInstallmentDay is { } loanDay)
+            foreach (var bill in account.RecurringItems.Where(r => r.LinkedDebtBucketId == bucketId))
+                bill.SetDayOfMonth(loanDay);
+
         account.SetSavingPlannedContribution(bucketId, req.PlannedContribution);
         account.SetSavingFund(bucketId, req.FundId);
         account.SetSavingCosts(bucketId, MapCosts(req.Costs));

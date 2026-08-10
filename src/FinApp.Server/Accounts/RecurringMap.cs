@@ -44,6 +44,24 @@ public static class RecurringMap
     }
 
     /// <summary>
+    /// One due date for a loan and the bill that services it. A loan's installment day is a contractual fact, so
+    /// when the bucket states one it wins and the bill is moved onto it; when the bucket doesn't, the bill's day
+    /// fills it in. Either way the two can no longer disagree — which they previously could, leaving the app
+    /// claiming "due on the 30th" on the debt row and "day 15" on the bill that pays it.
+    /// <para>Call after the link is set. No-op for an unlinked bill or a bucket that isn't a debt.</para>
+    /// </summary>
+    public static void SyncLoanDueDay(Account account, RecurringItem item)
+    {
+        if (item.LinkedDebtBucketId is not { } bucketId) return;
+        if (account.FindSavingCategory(bucketId) is not { IsDebt: true } debt) return;
+
+        if (debt.DebtInstallmentDay is { } loanDay)
+            item.SetDayOfMonth(loanDay);
+        else
+            account.SetSavingDebtInstallmentDay(bucketId, item.DayOfMonth);
+    }
+
+    /// <summary>
     /// Post a due recurring item, routing a debt-linked bill through the installment split. The single place both the
     /// confirm endpoint and auto-post go through, so a linked bill can't split one way when confirmed and another when
     /// posted automatically.

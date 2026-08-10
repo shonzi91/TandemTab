@@ -29,7 +29,12 @@ public sealed class RecurringItem : Entity
     /// (0 and unused for <see cref="RecurringAmountMode.ReminderOnly"/>). Typical self-tunes on each confirm.</summary>
     public decimal ExpectedAmount { get; private set; }
 
-    /// <summary>Day of the month it's expected (1–28, so it exists in every month).</summary>
+    /// <summary>
+    /// Day of the month it's expected (1–31). Days past the end of a short month are pulled back to its last day by
+    /// <see cref="DueDateWithin"/>, which is why the range can be the full 1–31 rather than the old 1–28: a loan
+    /// stating the 30th has to be storable as the 30th, since <see cref="Savings.SavingCategory.DebtInstallmentDay"/>
+    /// already allows it and a bill that services that loan must be able to agree with it.
+    /// </summary>
     public int DayOfMonth { get; private set; }
 
     /// <summary>Expense category (for a bill) or contribution category (for income).</summary>
@@ -49,6 +54,19 @@ public sealed class RecurringItem : Entity
     /// "due" once per period. Null until first handled.</summary>
     public DateOnly? LastHandledPeriodFrom { get; private set; }
 
+    /// <summary>
+    /// Whether the last handling was a <b>skip</b> rather than a posting. The two are indistinguishable in
+    /// <see cref="LastHandledPeriodFrom"/> alone, and they must not be: un-handling a skip is harmless, while
+    /// un-handling a posting would make the item due again with its expense already on the ledger — one bill, paid
+    /// twice. So only a skip can be undone, and this is what says which it was.
+    /// <para>Body data (snapshot, not EF). False on every item stored before this existed, which reads as "posted" —
+    /// the conservative default, since it merely withholds an undo rather than offering an unsafe one.</para>
+    /// </summary>
+    public bool LastHandledWasSkip { get; private set; }
+
+    /// <summary>Skipped — deliberately not paid — in the period starting <paramref name="periodFrom"/>.</summary>
+    public bool SkippedIn(DateOnly periodFrom) => LastHandledPeriodFrom == periodFrom && LastHandledWasSkip;
+
     public RecurringItem(string name, RecurringKind kind, RecurringAmountMode amountMode, decimal expectedAmount,
         int dayOfMonth, Guid categoryId, Guid fundId, string? icon = null, bool autoPost = false)
     {
@@ -56,7 +74,7 @@ public sealed class RecurringItem : Entity
         Kind = kind;
         AmountMode = amountMode;
         ExpectedAmount = amountMode == RecurringAmountMode.ReminderOnly ? 0m : Math.Max(0m, expectedAmount);
-        DayOfMonth = Math.Clamp(dayOfMonth, 1, 28);
+        DayOfMonth = Math.Clamp(dayOfMonth, 1, 31);
         CategoryId = categoryId;
         FundId = fundId;
         Icon = icon;
@@ -69,7 +87,7 @@ public sealed class RecurringItem : Entity
         Name = Clean(name);
         AmountMode = amountMode;
         ExpectedAmount = amountMode == RecurringAmountMode.ReminderOnly ? 0m : Math.Max(0m, expectedAmount);
-        DayOfMonth = Math.Clamp(dayOfMonth, 1, 28);
+        DayOfMonth = Math.Clamp(dayOfMonth, 1, 31);
         CategoryId = categoryId;
         FundId = fundId;
         Icon = icon;
@@ -78,9 +96,29 @@ public sealed class RecurringItem : Entity
 
     public void SetActive(bool active) => Active = active;
 
-    /// <summary>Mark handled for the period starting <paramref name="periodFrom"/> (posted or skipped), so it isn't
-    /// "due" again until the next period.</summary>
-    public void MarkHandled(DateOnly periodFrom) => LastHandledPeriodFrom = periodFrom;
+    /// <summary>Move the expected day without touching anything else — used when a linked loan's own installment day
+    /// takes over (see <see cref="LinkedDebtBucketId"/>), where re-running <see cref="Update"/> would mean restating
+    /// every other field just to change a date.</summary>
+    public void SetDayOfMonth(int dayOfMonth) => DayOfMonth = Math.Clamp(dayOfMonth, 1, 31);
+
+    /// <summary>Mark handled for the period starting <paramref name="periodFrom"/>, so it isn't "due" again until the
+    /// next period. Pass <paramref name="skipped"/> when nothing was posted — that is the only case
+    /// <see cref="ClearHandled"/> will undo.</summary>
+    public void MarkHandled(DateOnly periodFrom, bool skipped = false)
+    {
+        LastHandledPeriodFrom = periodFrom;
+        LastHandledWasSkip = skipped;
+    }
+
+    /// <summary>Undo a skip: the item falls due again in the period it was skipped in. Refuses on a posting, because
+    /// the money has already moved and re-arming the item would invite a second one.</summary>
+    public void ClearHandled()
+    {
+        if (!LastHandledWasSkip)
+            throw new InvalidOperationException("Only a skipped item can be un-skipped — this one was posted.");
+        LastHandledPeriodFrom = null;
+        LastHandledWasSkip = false;
+    }
 
     /// <summary>Nudge a <see cref="RecurringAmountMode.Typical"/> estimate halfway toward what was actually paid, so
     /// next month's prediction improves on its own. No-op for the other modes.</summary>

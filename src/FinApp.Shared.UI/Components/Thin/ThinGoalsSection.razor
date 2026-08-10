@@ -56,7 +56,7 @@ else
         <select @bind="_bucketId">
             @foreach (var b in _state.ActiveBuckets) { <option value="@b.Id">@b.Name</option> }
         </select>
-        <input type="number" step="0.01" min="0" placeholder="0.00" @bind="_amount" />
+        <DecimalInput Placeholder="0.00" @bind-Value="_amount" />
         <button @onclick="Allocate" disabled="@(_busy || _amount <= 0 || _bucketId == Guid.Empty)">Save it</button>
     </div>
 
@@ -84,21 +84,21 @@ else
             {
                 case "goal":
                     <div class="tg-form">
-                        <label class="tg-lbl">Target <input type="number" step="0.01" min="0" placeholder="0.00" @bind="_nGoal" /></label>
+                        <label class="tg-lbl">Target <DecimalInput Placeholder="0.00" @bind-Value="_nGoal" /></label>
                         <label class="tg-lbl">Alert at <input type="number" step="1" min="0" max="100" @bind="_nThreshold" />%</label>
                         <Switch @bind-Value="_nNotify" Class="tg-chk">Notify on milestones</Switch>
                     </div>
                     break;
                 case "debt":
                     <div class="tg-form">
-                        <label class="tg-lbl">Balance owed <input type="number" step="0.01" min="0" placeholder="0.00" @bind="_nDebtBalance" /></label>
-                        <label class="tg-lbl">Rate <input type="number" step="0.01" min="0" @bind="_nDebtRate" />%</label>
-                        <label class="tg-lbl">Installment <input type="number" step="0.01" min="0" placeholder="0.00" @bind="_nDebtInstallment" /></label>
+                        <label class="tg-lbl">Balance owed <DecimalInput Placeholder="0.00" @bind-Value="_nDebtBalance" /></label>
+                        <label class="tg-lbl">Rate <DecimalInput @bind-Value="_nDebtRate" />%</label>
+                        <label class="tg-lbl">Installment <DecimalInput Placeholder="0.00" @bind-Value="_nDebtInstallment" /></label>
                     </div>
                     break;
                 case "investment":
                     <div class="tg-form">
-                        <label class="tg-lbl">Return <input type="number" step="0.01" min="0" @bind="_nInvRate" />%/yr</label>
+                        <label class="tg-lbl">Return <DecimalInput @bind-Value="_nInvRate" />%/yr</label>
                         <label class="tg-lbl">Term <input type="number" step="1" min="0" @bind="_nInvYears" /> yrs</label>
                         <label class="tg-lbl">Compounds/yr <input type="number" step="1" min="1" @bind="_nInvCompounds" /></label>
                     </div>
@@ -117,7 +117,7 @@ else
                     }
                     <div class="tg-form">
                         <input placeholder="Cost label" @bind="_costLabel" />
-                        <input type="number" step="0.01" min="0" placeholder="0.00" @bind="_costAmount" />
+                        <DecimalInput Placeholder="0.00" @bind-Value="_costAmount" />
                         <select @bind="_costCadence">
                             <option value="monthly">monthly</option>
                             <option value="quarterly">quarterly</option>
@@ -130,8 +130,8 @@ else
             }
 
             <div class="tg-form">
-                <label class="tg-lbl">Planned/mo <input type="number" step="0.01" min="0" placeholder="0.00" @bind="_nPlanned" /></label>
-                <label class="tg-lbl">Start with <input type="number" step="0.01" min="0" placeholder="0.00" @bind="_nInitial" /></label>
+                <label class="tg-lbl">Planned/mo <DecimalInput Placeholder="0.00" @bind-Value="_nPlanned" /></label>
+                <label class="tg-lbl">Start with <DecimalInput Placeholder="0.00" @bind-Value="_nInitial" /></label>
             </div>
 
             <div class="tg-form">

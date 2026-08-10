@@ -1410,6 +1410,13 @@ html.dark .goal-stat-v-period { color: #e8eef0; }
 .goal-stat-pct { font-size: .7rem; font-weight: 600; color: #6b7d72; }
 html.dark .goal-stat-pct { color: #9fb0a6; }
 .goal-done-badge { margin-left: 5px; }
+/* "Is this month's installment logged?" on a debt row. A state marker, not a button — muted when nothing is logged
+   (an open question, not a fault: the payment may simply not be due yet) and brand-green once it is. */
+.inst-flag { display: inline-flex; align-items: center; margin-left: 6px; color: #b3bfb8; vertical-align: -2px; }
+.inst-flag svg { width: 13px; height: 13px; }
+.inst-flag-on { color: #13a06e; }
+html.dark .inst-flag { color: #6d7a84; }
+html.dark .inst-flag-on { color: #57d9a3; }
 /* The ⋯ menu is absolutely positioned; let it escape the row's overflow:hidden while it's open. */
 .goal-row.goal-more-open { overflow: visible; }
 /* Bank-offer table can be wide — let it scroll on narrow screens rather than pushing the layout. */
@@ -1575,6 +1582,12 @@ html.dark .detail-subcat-sum { color: #7c8a94; }
    would forward stray clicks to the "+" button inside the label) — same column layout as .modal label. */
 .modal label, .modal .modal-field { display: flex; flex-direction: column; gap: 4px; font-size: .82rem; color: #6b7280; }
 .modal label input[type=text], .modal label input[type=number], .modal label input[type=date], .modal label select {
+    padding: 9px 10px; border: 1px solid #dde6e1; border-radius: 10px; font-size: .95rem; background: #ffffff;
+}
+/* Amount fields are <DecimalInput>, whose <input> belongs to that component's CSS scope — the rule above cannot
+   reach it, so it needs ::deep (which moves the scope attribute up to the <label>). Same look, matched by class
+   rather than by input type: the type is now text, because a number input rejects the "," a phone keypad offers. */
+.modal label ::deep .num {
     padding: 9px 10px; border: 1px solid #dde6e1; border-radius: 10px; font-size: .95rem; background: #ffffff;
 }
 /* Prettier dropdowns everywhere: drop the native arrow for a tidy chevron + room to breathe. */
@@ -1988,7 +2001,7 @@ html.dark .archived-h { color: #9aa7b4; }
 .cost-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .cost-row input, .cost-row select { padding: 7px 9px; border: 1px solid #dde6e1; border-radius: 9px; font-size: .88rem; background: #ffffff; }
 .cost-label { flex: 2 1 120px; min-width: 0; }
-.cost-amt { flex: 1 1 78px; min-width: 0; }
+.cost-row ::deep .cost-amt { flex: 1 1 78px; min-width: 0; }
 .cost-cad { flex: 1 1 104px; min-width: 0; }
 .cost-due { flex: 1 1 128px; min-width: 0; }
 .cost-del { flex: 0 0 auto; }
@@ -2063,6 +2076,12 @@ html.dark .review-badge { background: #e08a2e; color: #2a1a04; }
 .bell-desc { font-size: .78rem; color: #6b7d72; margin-top: 2px; line-height: 1.35; }
 .bell-act { margin-top: 6px; border: none; background: #eef9f3; color: #0f7a54; font-weight: 600; font-size: .78rem; border-radius: 999px; padding: 4px 12px; cursor: pointer; }
 .bell-act:hover { background: #d9f0e5; }
+/* Skip / Undo. Quieter than the primary act so "Confirm" stays the obvious move on a bill that is genuinely due —
+   this is the alternative, not the equal. Margin-left keeps the pair on one line when both are present. */
+.bell-act-alt { background: transparent; color: #6b7d72; font-weight: 600; box-shadow: inset 0 0 0 1px #dde6e1; margin-left: 6px; }
+.bell-act-alt:hover { background: #f3f6f4; color: #2f3a33; }
+/* A settled row (a skip you can still undo) is reference, not a task — so it reads back a shade. */
+.bell-item.settled .bell-text { color: #6b7d72; }
 .bell-item-ops { display: inline-flex; gap: 2px; flex: 0 0 auto; }
 html.dark .bell-menu { background: #232a33; border-color: #384250; }
 html.dark .bell-head { color: #9aa4b2; }
@@ -2071,6 +2090,8 @@ html.dark .bell-item { border-top-color: #313a45; }
 html.dark .bell-text { color: #dfe6ea; }
 html.dark .bell-desc { color: #a9b6ad; }
 html.dark .bell-act { background: #1c3a2f; color: #57d9a3; }
+html.dark .bell-act-alt { background: transparent; color: #a9b6ad; box-shadow: inset 0 0 0 1px #384250; }
+html.dark .bell-item.settled .bell-text { color: #a9b6ad; }
 
 /* ─────────────── HEADER POPOVERS ON PHONES ───────────────
    Same bottom sheet as the row/ring menus above — these break the same way, and worse. The bell is the FIRST of
@@ -2374,7 +2395,7 @@ html.dark .add-another { background: #16241d; border-color: #2b4438; color: #57d
 
 /* Log-installment modal (R2). One "anything else in this payment" line: amount, category, tag, remove. */
 .inst-extra-row { display: flex; align-items: center; gap: 6px; margin-top: 6px; }
-.inst-extra-row input[type="number"] { flex: 0 0 84px; min-width: 0; }
+.inst-extra-row ::deep .num { flex: 0 0 84px; min-width: 0; }
 .inst-extra-row select { flex: 1 1 0; min-width: 0; }
 .inst-extra-row .row-ico { flex: 0 0 auto; }
 /* The split read-out — the answer the modal exists to give, so it reads as a panel rather than more form. */
@@ -2764,6 +2785,13 @@ html.dark .quick-cat:hover { background: #1b2230; color: var(--tm-mint); }
 .card-act-income:hover { background: #0e8a5d; }
 .card-act-spend { background: #475569; }
 .card-act-spend:hover { background: #3a4453; }
+/* Transfer is the third everyday move, and the only one that moves money without spending or earning it — so it
+   reads as an outline rather than a third filled colour, which would make the row look like a choice of three
+   equals when two of them are the common ones. */
+.card-act-transfer { background: transparent; color: #475569; box-shadow: inset 0 0 0 1px #cbd5cf; }
+.card-act-transfer:hover { background: #f1f5f3; color: #2f3a33; }
+html.dark .card-act-transfer { color: #c3ccd6; box-shadow: inset 0 0 0 1px #3a4453; }
+html.dark .card-act-transfer:hover { background: #2a313c; color: #e8eaf0; }
 html.dark .card-act-income { background: #17a877; }
 html.dark .card-act-spend { background: #566173; }
 

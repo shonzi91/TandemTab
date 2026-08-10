@@ -1,0 +1,82 @@
+@* A number field a phone can actually type a decimal into. Generic so it binds to both `decimal` and `decimal?`.
+
+   Why not <input type="number">: an HTML number input only accepts a "valid floating-point number", which by spec
+   uses "." as the decimal separator whatever the user's locale. A European Android keypad offers "," — and when the
+   user presses it the browser rejects the whole value and hands us back an empty string, so amounts silently refuse
+   to take decimals. The keypad was already right (inputmode="decimal"); the input *type* was the bug.
+
+   So: a text input with inputmode="decimal" (same keypad, no spec-level rejection) and our own parse, which takes
+   either separator. The typed text is held locally rather than re-rendered from Value — otherwise "12." would parse
+   to 12 and be stomped back to "12" the instant the separator was typed, making decimals impossible a second way.
+   The buffer is only re-synced when Value changed somewhere else (a modal opening, a reset).
+
+   Bound to decimal?, an empty field means null ("no rate set"); bound to decimal it means 0, as a blank number
+   input did. *@
+@typeparam T
+
+@* The `num` class is the styling hook. A caller's scoped CSS cannot reach this element by tag or type — it is
+   rendered here, so it carries THIS component's CSS scope, not the caller's — and any rule still keyed on
+   input[type=number] now matches nothing. Style `.num` through `::deep` instead. *@
+<input type="text" inputmode="decimal" class="num @Class" placeholder="@Placeholder" disabled="@Disabled"
+       aria-label="@AriaLabel" @ref="_el" value="@_text" @oninput="OnInput" />
+
+@code {
+    /// <summary>The parsed amount. Use with <c>@bind-Value</c>.</summary>
+    [Parameter] public T? Value { get; set; }
+    [Parameter] public EventCallback<T?> ValueChanged { get; set; }
+
+    [Parameter] public string? Class { get; set; }
+    [Parameter] public string? Placeholder { get; set; }
+    [Parameter] public string? AriaLabel { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+
+    private ElementReference _el;
+    private string _text = "";
+
+    private static readonly bool IsNullableT = System.Nullable.GetUnderlyingType(typeof(T)) is not null;
+
+    /// <summary>Focus the field — the add-expense modal lands the cursor here when the category was already picked.</summary>
+    public ValueTask FocusAsync() => _el.FocusAsync();
+
+    protected override void OnParametersSet()
+    {
+        // Compare against the PARSE of the buffer, not its text: that is what lets "12." and "12,0" survive a render.
+        if (!Equals(Coerce(Parse(_text)), Value))
+            _text = ToText(Value);
+    }
+
+    private Task OnInput(ChangeEventArgs e)
+    {
+        _text = e.Value as string ?? "";
+        var parsed = Coerce(Parse(_text));
+        if (Equals(parsed, Value)) return Task.CompletedTask;
+        Value = parsed;
+        return ValueChanged.InvokeAsync(parsed);
+    }
+
+    /// <summary>Null (an empty or unparseable field) is null for a <c>decimal?</c> and 0 for a <c>decimal</c> —
+    /// <c>default(T)</c> is already both.</summary>
+    private static T? Coerce(decimal? d) => d is { } v ? (T)(object)v : default;
+
+    private static string ToText(T? value) =>
+        value is null || (!IsNullableT && Equals(value, 0m))
+            ? ""
+            : ((decimal)(object)value!).ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+    /// <summary>
+    /// Read an amount typed by a human. Accepts either separator, and treats every separator but the last as
+    /// grouping — so "1.234,56" and "1,234.56" both come to 1234.56 without having to know the user's locale.
+    /// Unparseable text (including a lone "," part-way through typing) reads as nothing, i.e. an empty field.
+    /// </summary>
+    internal static decimal? Parse(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return null;
+        // Strip every kind of space first — a grouped figure pasted in can carry NBSP or narrow-NBSP separators.
+        var s = new string(text.Where(c => !char.IsWhiteSpace(c)).ToArray()).Replace(',', '.');
+        var last = s.LastIndexOf('.');
+        if (last >= 0)
+            s = s[..last].Replace(".", "") + "." + s[(last + 1)..];
+        return decimal.TryParse(s, System.Globalization.NumberStyles.Number,
+            System.Globalization.CultureInfo.InvariantCulture, out var d) ? d : null;
+    }
+}

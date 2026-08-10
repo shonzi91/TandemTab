@@ -2063,6 +2063,7 @@ accounts.MapPost("/{id:guid}/recurring", async (Guid id, AddRecurringRequest req
         item.SetCreatedOn(today);   // can't fall due before it existed
         RecurringMap.ValidateDebtLink(account, req.LinkedDebtBucketId);
         item.SetLinkedDebtBucket(req.LinkedDebtBucketId);
+        RecurringMap.SyncLoanDueDay(account, item);   // a linked loan owns the due date
         account.AddRecurring(item);
         return item.Id;
     }, ct);
@@ -2080,6 +2081,7 @@ accounts.MapPut("/{id:guid}/recurring/{recurringId:guid}", async (Guid id, Guid 
         item.Update(req.Name, RecurringMap.Mode(req.Mode), req.Expected, req.DayOfMonth, req.CategoryId, req.FundId, req.Icon, req.AutoPost);
         RecurringMap.ValidateDebtLink(account, req.LinkedDebtBucketId);
         item.SetLinkedDebtBucket(req.LinkedDebtBucketId);   // authoritative: null unlinks
+        RecurringMap.SyncLoanDueDay(account, item);         // a linked loan owns the due date
         return null;
     }, ct);
     await notifier.AccountChangedAsync(id, userId, version);
@@ -2133,7 +2135,25 @@ accounts.MapPost("/{id:guid}/recurring/{recurringId:guid}/skip", async (Guid id,
     {
         var period = account.CurrentPeriod ?? throw new InvalidOperationException("There's no open period.");
         var item = account.FindRecurring(recurringId) ?? throw new InvalidOperationException("That recurring item doesn't exist in this account.");
-        item.MarkHandled(period.From);   // handled for this period without posting anything
+        item.MarkHandled(period.From, skipped: true);   // handled for this period without posting anything
+        return RecurringView.Of(account, 0);
+    }, ct);
+    await notifier.AccountChangedAsync(id, userId, version);
+    return Results.Ok(new RecurringMutationDto(version, recurringId, view with { Version = version }));
+});
+
+// Undo a skip — the item falls due again in this period. The domain refuses if the item was posted rather than
+// skipped, so this can never re-arm a bill whose expense is already on the ledger.
+accounts.MapPost("/{id:guid}/recurring/{recurringId:guid}/unskip", async (Guid id, Guid recurringId, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
+{
+    var userId = user.UserId();
+    var (version, view) = await svc.MutateAsync(userId, id, account =>
+    {
+        var period = account.CurrentPeriod ?? throw new InvalidOperationException("There's no open period.");
+        var item = account.FindRecurring(recurringId) ?? throw new InvalidOperationException("That recurring item doesn't exist in this account.");
+        if (!item.SkippedIn(period.From))
+            throw new InvalidOperationException("That item wasn't skipped in this period.");
+        item.ClearHandled();
         return RecurringView.Of(account, 0);
     }, ct);
     await notifier.AccountChangedAsync(id, userId, version);

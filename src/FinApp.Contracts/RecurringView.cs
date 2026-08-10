@@ -27,7 +27,9 @@ public record RecurringRowDto(
     bool AutoPost,
     // R2: set when this bill services a loan — posting it splits into interest/principal rows against that debt.
     Guid? LinkedDebtBucketId = null,
-    string? LinkedDebtName = null);
+    string? LinkedDebtName = null,
+    // Deliberately skipped in the open period (as opposed to posted) — the only state an un-skip may undo.
+    bool SkippedThisPeriod = false);
 
 /// <summary>A debt bucket a bill can be linked to. <see cref="PaymentDriven"/> mirrors the bucket's "I log each
 /// installment here" switch — a linked bill only drives the balance when it's on, which is the user's call, so the

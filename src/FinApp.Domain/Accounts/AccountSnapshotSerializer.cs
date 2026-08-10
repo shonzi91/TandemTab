@@ -42,7 +42,7 @@ public static class AccountSnapshotSerializer
             account.AchievementsAnchor,
             account.AchievementLog.Count == 0 ? null : new Dictionary<string, DateOnly>(account.AchievementLog),
             account.RecurringItems.Count == 0 ? null : account.RecurringItems.Select(r => new RecurringItemNode(
-                r.Id, r.Name, r.Kind, r.AmountMode, r.ExpectedAmount, r.DayOfMonth, r.CategoryId, r.FundId, r.Active, r.Icon, r.LastHandledPeriodFrom, r.AutoPost, r.CreatedOn, r.LinkedDebtBucketId)).ToList(),
+                r.Id, r.Name, r.Kind, r.AmountMode, r.ExpectedAmount, r.DayOfMonth, r.CategoryId, r.FundId, r.Active, r.Icon, r.LastHandledPeriodFrom, r.AutoPost, r.CreatedOn, r.LinkedDebtBucketId, r.LastHandledWasSkip)).ToList(),
             account.OnboardingDismissed,
             account.Tags.Count == 0 ? null : account.Tags.Select(t => new TagNode(t.Id, t.Name, t.Icon, t.IsArchived, t.CategoryId)).ToList(),
             account.RoundUpTo, account.RoundUpBucketId, account.HourlyRate,
@@ -125,7 +125,7 @@ public static class AccountSnapshotSerializer
         {
             var item = Build(new RecurringItem(r.Name, r.Kind, r.AmountMode, r.ExpectedAmount, r.DayOfMonth, r.CategoryId, r.FundId, r.Icon, r.AutoPost), r.Id);
             if (!r.Active) item.SetActive(false);
-            if (r.LastHandledPeriodFrom is { } h) item.MarkHandled(h);
+            if (r.LastHandledPeriodFrom is { } h) item.MarkHandled(h, r.LastHandledWasSkip);
             // Restored verbatim, including null: a legacy item has no creation date, and stamping today's would
             // suppress it for a period it should genuinely fire in.
             item.SetCreatedOn(r.CreatedOn);
@@ -302,7 +302,10 @@ public static class AccountSnapshotSerializer
         decimal ExpectedAmount, int DayOfMonth, Guid CategoryId, Guid FundId, bool Active, string? Icon, DateOnly? LastHandledPeriodFrom,
         bool AutoPost = false, DateOnly? CreatedOn = null,
         // R2: the debt bucket this bill services, when it's a loan installment. Null on every pre-R2 item.
-        Guid? LinkedDebtBucketId = null);
+        Guid? LinkedDebtBucketId = null,
+        // False on every item stored before skips were told apart from postings — see RecurringItem.LastHandledWasSkip
+        // for why "posted" is the safe reading of a legacy handled item.
+        bool LastHandledWasSkip = false);
 
     private record MemberNode(Guid Id, Guid UserId, string DisplayName);
     private record ContributionCategoryNode(Guid Id, string Name, string? Icon = null);

@@ -1270,6 +1270,7 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
             var item = new RecurringItem(name, kind, mode, expected, dayOfMonth, categoryId, fundId, icon, autoPost);
             item.SetCreatedOn(Today());
             item.SetLinkedDebtBucket(linkedDebtBucketId);
+            SyncLoanDueDay(item);
             Account.AddRecurring(item);
         },
         id => api.AddRecurringAsync(id, new AddRecurringRequest(name, RecurringKindString(kind), RecurringModeString(mode),
@@ -1281,10 +1282,46 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
         {
             Account.FindRecurring(id)?.Update(name, mode, expected, dayOfMonth, categoryId, fundId, icon, autoPost);
             Account.FindRecurring(id)?.SetLinkedDebtBucket(linkedDebtBucketId);   // authoritative: null unlinks
+            if (Account.FindRecurring(id) is { } updated) SyncLoanDueDay(updated);
         },
             acct => api.UpdateRecurringAsync(acct, id, new UpdateRecurringRequest(name, RecurringModeString(mode),
                 expected, dayOfMonth, categoryId, fundId, icon, autoPost, linkedDebtBucketId)),
             refetchAfter: true);
+
+    /// <summary>Mirror of the server's <c>RecurringMap.SyncLoanDueDay</c> for the optimistic local aggregate: a linked
+    /// loan's stated installment day wins; when the loan has none, the bill's day fills it in. Without this the
+    /// optimistic view would show a due date the refetch is about to correct.</summary>
+    private void SyncLoanDueDay(RecurringItem item)
+    {
+        if (item.LinkedDebtBucketId is not { } bucketId) return;
+        if (Account.FindSavingCategory(bucketId) is not { IsDebt: true } debt) return;
+        if (debt.DebtInstallmentDay is { } loanDay) item.SetDayOfMonth(loanDay);
+        else Account.SetSavingDebtInstallmentDay(bucketId, item.DayOfMonth);
+    }
+
+    /// <summary>The linked loan's installment day, when a bill's due date is being dictated by one.</summary>
+    public int? LoanDueDayFor(Guid? linkedDebtBucketId) =>
+        linkedDebtBucketId is { } id && FindSavingBucket(id) is { IsDebt: true } d ? d.DebtInstallmentDay : null;
+
+    /// <summary>Whether an active recurring bill services this debt — i.e. something is set up to log its installments
+    /// without the user remembering to. The difference between "the balance follows my logs" being a working
+    /// arrangement and a promise nothing is helping them keep.</summary>
+    public bool DebtHasLinkedBill(Guid bucketId) =>
+        Account.RecurringItems.Any(r => r.Active && r.LinkedDebtBucketId == bucketId);
+
+    /// <summary>The installment logged against this debt in the open period, if any — one group id, whatever the
+    /// number of rows it posted. Null when this period's payment hasn't been recorded.</summary>
+    public Guid? DebtInstallmentLoggedThisPeriod(Guid bucketId) =>
+        IsPeriodOpen
+            ? Period.Expenses.FirstOrDefault(e => e.DebtBucketId == bucketId && e.InstallmentGroupId is not null)?.InstallmentGroupId
+            : null;
+
+    /// <summary>Total actually paid toward this debt in the open period across every installment row (principal,
+    /// interest and extras) — what the row's "logged" marker reports.</summary>
+    public Money DebtPaidThisPeriod(Guid bucketId) =>
+        Money(!IsPeriodOpen ? 0m
+            : Period.Expenses.Where(e => e.DebtBucketId == bucketId && e.InstallmentGroupId is not null)
+                .Sum(e => e.Amount.Amount));
 
     public Task RemoveRecurring(Guid id) =>
         ExecuteOptimisticAsync(() => Account.RemoveRecurring(id), acct => api.RemoveRecurringAsync(acct, id), refetchAfter: false);
@@ -1382,9 +1419,25 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     public Task SkipRecurring(Guid id)
     {
         if (Account.FindRecurring(id) is null) return Task.CompletedTask;
-        return ExecuteOptimisticAsync(() => Account.FindRecurring(id)?.MarkHandled(Period.From),
+        return ExecuteOptimisticAsync(() => Account.FindRecurring(id)?.MarkHandled(Period.From, skipped: true),
             acct => api.SkipRecurringAsync(acct, id), refetchAfter: true);
     }
+
+    /// <summary>Undo a skip — the item falls due again this period. A no-op unless it really was skipped here, so a
+    /// posted item can never be re-armed while its expense sits on the ledger.</summary>
+    public Task UnskipRecurring(Guid id)
+    {
+        if (Account.FindRecurring(id) is not { } item || !item.SkippedIn(Period.From)) return Task.CompletedTask;
+        return ExecuteOptimisticAsync(() => Account.FindRecurring(id)?.ClearHandled(),
+            acct => api.UnskipRecurringAsync(acct, id), refetchAfter: true);
+    }
+
+    /// <summary>Recurring items deliberately skipped in the open period — offered an undo, and worth showing because
+    /// a skip quietly changes "bills still due" and so the safe-to-spend figure that reads off it.</summary>
+    public IReadOnlyList<FinApp.Domain.Recurring.RecurringItem> SkippedRecurring() =>
+        IsPeriodOpen
+            ? Account.RecurringItems.Where(r => r.Active && r.SkippedIn(Period.From)).ToList()
+            : [];
 
     /// <summary>Auto-post every due Fixed item flagged for it, marking each handled — one confirm command per item
     /// (auto-post <i>is</i> confirm-at-the-expected-amount), then a single refresh. Guarded against re-entry: this

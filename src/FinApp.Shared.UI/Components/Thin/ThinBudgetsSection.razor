@@ -43,7 +43,7 @@ else
             <option value="@Guid.Empty" disabled>Category…</option>
             @foreach (var c in _state.UnbudgetedCategories) { <option value="@c.Id">@(c.Icon) @c.Name</option> }
         </select>
-        <input type="number" step="0.01" min="0" placeholder="0.00" @bind="_amount" />
+        <DecimalInput Placeholder="0.00" @bind-Value="_amount" />
         <button @onclick="Set" disabled="@(_busy || _amount <= 0 || _categoryId == Guid.Empty)">Set budget</button>
     </div>
     }

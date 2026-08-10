@@ -51,7 +51,8 @@ else
         // appears in both places, so the bell no longer echoes the Home cards.
         var bellDue = notifications.Where(n => n.Due).ToList();
         var bellSuggest = notifications.Where(n => !n.Due && !n.Urgent).ToList();
-        var bellCount = bellDue.Count + bellSuggest.Count;
+        // Settled rows (a skip and its undo) still render, but the badge counts only what's actually outstanding.
+        var bellCount = bellDue.Count(n => !n.Settled) + bellSuggest.Count(n => !n.Settled);
     }
     <header class="dash-head">
         <div class="hdr-top">
@@ -152,7 +153,7 @@ else
                     {
                         @* One bell row — reused by the Due and Suggestions groups. *@
                         RenderFragment<Notification> bellRow = n =>
-                        @<div class="bell-item @(n.Urgent ? "urgent" : "")">
+                        @<div class="bell-item @(n.Urgent ? "urgent" : "") @(n.Settled ? "settled" : "")">
                             <span class="bell-ico">@IconOrEmoji(n.Icon)</span>
                             <div class="bell-body">
                                 @if (n.Rich is { } rich) { <div class="bell-text">@rich</div> } else { <div class="bell-text">@n.Text</div> }
@@ -160,6 +161,12 @@ else
                                 @if (n is { Rich: null, ActionLabel: { } al, Act: { } act })
                                 {
                                     <button class="bell-act" @onclick="@(() => { act(); _bellOpen = false; })">@al</button>
+                                }
+                                @* Stays open: skipping or undoing a bill is often one of several, and closing the
+                                   menu after each would make handling the month's list a series of re-openings. *@
+                                @if (n is { AltLabel: { } altL, Alt: { } altAct })
+                                {
+                                    <button class="bell-act bell-act-alt" @onclick="@(() => altAct())">@altL</button>
                                 }
                             </div>
                             <span class="bell-item-ops">
@@ -539,6 +546,17 @@ else
                         </span>
                     }
                 </div>
+                @* Third everyday move. Only rendered when there is somewhere to transfer to — with a single fund and
+                   no second account the form has no destination, and a button that opens a dead end is worse than
+                   no button. The row falls back to two columns in that case (see .action-cards). *@
+                @if (CanTransfer)
+                {
+                    <div class="tile-transfer action-card">
+                        <span class="card-act-row">
+                            <button class="card-act card-act-transfer" @onclick="OpenTransferFromDefaultFund"><Icon Name="swap" /> @Loc["Transfer"]</button>
+                        </span>
+                    </div>
+                }
             </section>
 
             @{ var ovBand = ov.Band switch { HealthBand.Healthy => "score-ok", HealthBand.Average => "score-warn", _ => "score-bad" }; }
@@ -1628,7 +1646,9 @@ else
                                         // Both slices list external-transfer rows; the source + the note-less fallback title
                                         // differ (a plain transfer vs. a disbursement of set-aside money toward a goal).
                                         var isSaved = s.Key == SavedKey;
-                                        var xfers = isSaved ? State.DisbursementsInRange(xFrom, xTo) : State.AccountTransfersInRange(xFrom, xTo);
+                                        // Biggest first, like every expense list in this view (date breaks ties).
+                                        var xfers = (isSaved ? State.DisbursementsInRange(xFrom, xTo) : State.AccountTransfersInRange(xFrom, xTo))
+                                            .OrderByDescending(t => Math.Abs(t.Amount.Amount)).ThenByDescending(t => t.Date).ToList();
                                         <ul class="brk-exp-list" style="--accent:@s.Color">
                                             @foreach (var t in xfers)
                                             {
@@ -1674,8 +1694,12 @@ else
                                             }
                                             else if (expMode == ExpGroup.None)
                                             {
+                                                @* Biggest first, not newest first. Every other level of this view is
+                                                   ranked by size — the slices, and the sub-groups inside them — and
+                                                   the question a breakdown answers is "what did the money go on",
+                                                   which a date order buries. Date breaks the ties. *@
                                                 <ul class="brk-exp-list">
-                                                    @foreach (var e in slExps.OrderByDescending(x => x.Date)) { @brkExpRow(e) }
+                                                    @foreach (var e in slExps.OrderByDescending(x => Math.Abs(x.Amount.Amount)).ThenByDescending(x => x.Date)) { @brkExpRow(e) }
                                                 </ul>
                                             }
                                             else
@@ -2006,7 +2030,22 @@ else
                             </span>
                             <span class="cat-row-main">
                                 <span class="cat-row-top">
-                                    <span class="cat-row-name">@ctx.Bucket.Name@if (done) { <span class="goal-done-badge" title="@(isDebt ? Loc["Paid off"] : Loc["Goal reached"])">🎉</span> }</span>
+                                    <span class="cat-row-name">@ctx.Bucket.Name@if (done) { <span class="goal-done-badge" title="@(isDebt ? Loc["Paid off"] : Loc["Goal reached"])">🎉</span> }@if (isDebt && !done && State.IsPeriodOpen)
+                                        {
+                                            @* Is this month's installment on the ledger? Every payment is money out and
+                                               should be an expense, so the answer is worth seeing without opening the row —
+                                               and it's the only place the app says whether logging is actually happening,
+                                               which is what makes "the balance follows my logs" checkable rather than a
+                                               promise. Derived from the rows themselves, so it can't drift. *@
+                                            @if (State.DebtInstallmentLoggedThisPeriod(bucketId) is not null)
+                                            {
+                                                <span class="inst-flag inst-flag-on" title="@string.Format(Loc["This period's installment is logged — {0} recorded as an expense."], Fmt(State.DebtPaidThisPeriod(bucketId)))"><Icon Name="check" /></span>
+                                            }
+                                            else
+                                            {
+                                                <span class="inst-flag" title="@Loc["No installment logged this period yet."]"><Icon Name="note" /></span>
+                                            }
+                                        }</span>
                                     <span class="cat-row-amt">
                                         @if (done) { <span class="good-text">@(isDebt ? Loc["Paid off"] : Loc["Goal reached"])</span> }
                                         else if (isDebt) { var _apr = State.SavingBucketDebtRate(bucketId); <text>@Fmt(debtOwed)<span class="cat-row-nb"> / @Fmt(debtOrig) @Loc["left"]@if (_apr > 0m) { <text> · @_apr.ToString("0.##")% APR</text> }</span></text> }
@@ -2294,7 +2333,21 @@ else
                 // One grid for every goal, filtered by kind — rather than a section per SavingKind, which is the axis
                 // that made this tab a wall of near-identical blocks (the same bucketCard rendered three times). Kind
                 // stays readable without the split: the ring colour and each card's sub-line already say which it is.
-                var goalBuckets = _goalFilter switch
+                // A chip is only offered for a kind that has buckets — an "Investments 0" chip filters to a page that
+                // says "nothing here yet", which is a control whose only outcome is an empty room. Discovery doesn't
+                // suffer: the Add-goal modal's own four-way kind picker is how every kind is reached anyway.
+                // Read through goalFilter, not _goalFilter, so removing the last debt while filtered to Debts falls
+                // back to All rather than stranding the user on a filter whose chip has just gone. Deriving it here
+                // (rather than resetting the field) keeps render free of state changes.
+                var goalFilter = _goalFilter switch
+                {
+                    GoalFilter.Debts when debtBuckets.Count == 0 => GoalFilter.All,
+                    GoalFilter.Savings when plainBuckets.Count == 0 => GoalFilter.All,
+                    GoalFilter.Investments when investmentBuckets.Count == 0 => GoalFilter.All,
+                    GoalFilter.Expenses when expenseBuckets.Count == 0 => GoalFilter.All,
+                    var f => f,
+                };
+                var goalBuckets = goalFilter switch
                 {
                     GoalFilter.Debts => debtBuckets,
                     GoalFilter.Savings => plainBuckets,
@@ -2303,6 +2356,10 @@ else
                     _ => debtBuckets.Concat(plainBuckets).Concat(investmentBuckets).Concat(expenseBuckets).ToList(),
                 };
                 var goalTotal = debtBuckets.Count + plainBuckets.Count + investmentBuckets.Count + expenseBuckets.Count;
+                // With one kind in play, "All" and that kind's chip select the identical list — a filter row that
+                // cannot filter. Hide the whole row until there is a second kind to switch between.
+                var goalKindsPresent = (debtBuckets.Count > 0 ? 1 : 0) + (plainBuckets.Count > 0 ? 1 : 0)
+                                     + (investmentBuckets.Count > 0 ? 1 : 0) + (expenseBuckets.Count > 0 ? 1 : 0);
             }
             <section class="panel">
                 @* Saved-summary header: the running TOTAL set aside across all buckets (this figure used to live in the
@@ -2329,17 +2386,32 @@ else
                 {
                     <div class="brk-roundup"><Icon Name="coins" /> @string.Format(Loc["{0} saved this way so far."], Fmt(State.RoundUpsSweptTotal))</div>
                 }
-                <div class="goal-filters" role="group">
-                    <button type="button" class="chip @(_goalFilter == GoalFilter.All ? "on" : "")" @onclick="() => _goalFilter = GoalFilter.All">@Loc["All"] <span class="chip-n">@goalTotal</span></button>
-                    <button type="button" class="chip @(_goalFilter == GoalFilter.Debts ? "on" : "")" @onclick="() => _goalFilter = GoalFilter.Debts"><Icon Name="card" /> @Loc["Debts"] <span class="chip-n">@debtBuckets.Count</span></button>
-                    <button type="button" class="chip @(_goalFilter == GoalFilter.Savings ? "on" : "")" @onclick="() => _goalFilter = GoalFilter.Savings"><Icon Name="coins" /> @Loc["Savings"] <span class="chip-n">@plainBuckets.Count</span></button>
-                    <button type="button" class="chip @(_goalFilter == GoalFilter.Investments ? "on" : "")" @onclick="() => _goalFilter = GoalFilter.Investments"><Icon Name="trending" /> @Loc["Investments"] <span class="chip-n">@investmentBuckets.Count</span></button>
-                    <button type="button" class="chip @(_goalFilter == GoalFilter.Expenses ? "on" : "")" @onclick="() => _goalFilter = GoalFilter.Expenses"><Icon Name="calendar" /> @Loc["Expenses"] <span class="chip-n">@expenseBuckets.Count</span></button>
-                </div>
+                @if (goalKindsPresent > 1)
+                {
+                    <div class="goal-filters" role="group">
+                        <button type="button" class="chip @(goalFilter == GoalFilter.All ? "on" : "")" @onclick="() => _goalFilter = GoalFilter.All">@Loc["All"] <span class="chip-n">@goalTotal</span></button>
+                        @if (debtBuckets.Count > 0)
+                        {
+                            <button type="button" class="chip @(goalFilter == GoalFilter.Debts ? "on" : "")" @onclick="() => _goalFilter = GoalFilter.Debts"><Icon Name="card" /> @Loc["Debts"] <span class="chip-n">@debtBuckets.Count</span></button>
+                        }
+                        @if (plainBuckets.Count > 0)
+                        {
+                            <button type="button" class="chip @(goalFilter == GoalFilter.Savings ? "on" : "")" @onclick="() => _goalFilter = GoalFilter.Savings"><Icon Name="coins" /> @Loc["Savings"] <span class="chip-n">@plainBuckets.Count</span></button>
+                        }
+                        @if (investmentBuckets.Count > 0)
+                        {
+                            <button type="button" class="chip @(goalFilter == GoalFilter.Investments ? "on" : "")" @onclick="() => _goalFilter = GoalFilter.Investments"><Icon Name="trending" /> @Loc["Investments"] <span class="chip-n">@investmentBuckets.Count</span></button>
+                        }
+                        @if (expenseBuckets.Count > 0)
+                        {
+                            <button type="button" class="chip @(goalFilter == GoalFilter.Expenses ? "on" : "")" @onclick="() => _goalFilter = GoalFilter.Expenses"><Icon Name="calendar" /> @Loc["Expenses"] <span class="chip-n">@expenseBuckets.Count</span></button>
+                        }
+                    </div>
+                }
                 @if (goalBuckets.Count == 0)
                 {
                     <p class="hint">
-                        @(_goalFilter switch
+                        @(goalFilter switch
                         {
                             GoalFilter.Debts => Loc["Track a loan or debt: set money aside toward it, then pay the bank. Figures here are projections — they don't move real money."],
                             GoalFilter.Investments => Loc["Track an investment: fund it with 💰, set an expected return, and project its growth. Figures here are projections — they don't move real money."],
@@ -2446,7 +2518,16 @@ else
         @if (_fabOpen)
         {
             <div class="qfab-backdrop" @onclick="() => _fabOpen = false"></div>
+            @* Order is bottom-up from the ＋: the most-used action sits nearest the thumb. *@
             <div class="qfab-menu">
+                @if (HasEditableLast)
+                {
+                    <button class="qfab-item" @onclick="FabEditLast"><Icon Name="pencil" /> @Loc["Edit last"]</button>
+                }
+                @if (CanTransfer)
+                {
+                    <button class="qfab-item" @onclick="FabTransfer"><Icon Name="swap" /> @Loc["Transfer"]</button>
+                }
                 <button class="qfab-item" @onclick="FabAddIncome"><Icon Name="note" /> @Loc["Add income"]</button>
                 <button class="qfab-item" @onclick="FabAddExpense"><Icon Name="receipt" /> @Loc["Add expense"]</button>
             </div>
@@ -2547,7 +2628,7 @@ else
                         <label class="grow">@Loc["Name"] <input type="text" @bind="_fName" @bind:after="() => _fEssential = BudgetingState.GuessEssential(_fName)" /></label>
                     </div>
                     @iconGrid
-                    <label>@Loc["Budget for this period (optional)"] <input type="number" step="0.01" min="0" @bind="_fBudget" /></label>
+                    <label>@Loc["Budget for this period (optional)"] <DecimalInput @bind-Value="_fBudget" /></label>
                     <small class="hint">@Loc["Available to budget:"] <strong>@Fmt(State.MaxBudgetFor(Guid.Empty))</strong></small>
                     <Switch @bind-Value="_fEssential">@Loc["Essential spend (rent, groceries, health…)"]</Switch>
                     <small class="hint">@Loc["Essential budgets are never suggested for redirecting toward a debt."]</small>
@@ -2579,7 +2660,7 @@ else
                                 }
                             </select>
                         </label>
-                        <label>@Loc["Budget amount"] <input type="number" step="0.01" min="0" @bind="_fBudget" /></label>
+                        <label>@Loc["Budget amount"] <DecimalInput @bind-Value="_fBudget" /></label>
                         <div class="modal-actions">
                             <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
                             <button @onclick="SaveAddBudget" disabled="@(_budgetCatId == Guid.Empty || _fBudget < 0)">@Loc["Add"]</button>
@@ -2609,7 +2690,7 @@ else
                         <label class="grow">@Loc["Name"] <input type="text" @bind="_fName" /></label>
                     </div>
                     @iconGrid
-                    <label>@Loc["Budget amount"] <input type="number" step="0.01" min="0" @bind="_fBudget" /></label>
+                    <label>@Loc["Budget amount"] <DecimalInput @bind-Value="_fBudget" /></label>
                     <small class="hint">@Loc["Available to budget:"] <strong>@Fmt(State.MaxBudgetFor(_modalCatId))</strong></small>
                     <label>@Loc["Alert at %"] <input type="number" step="1" min="0" max="100" @bind="_fThreshold" /></label>
                     <Switch @bind-Value="_fNotify">@Loc["Notify on every expense"]</Switch>
@@ -3053,7 +3134,7 @@ else
                     {
                         <div class="two-col">
                             <label>@Loc["Working days a month"] <input type="number" step="1" min="1" max="31" @bind="_fWorkDays" /></label>
-                            <label>@Loc["Hours a day"] <input type="number" step="0.5" min="1" max="24" @bind="_fWorkHours" /></label>
+                            <label>@Loc["Hours a day"] <DecimalInput @bind-Value="_fWorkHours" /></label>
                         </div>
                         <small class="hint">
                             @if (DerivedRatePreview() is { } derived)
@@ -3076,7 +3157,7 @@ else
                     else if (_fTimeCostMode == TimeCostMode.Manual)
                     {
                         <label>@string.Format(Loc["What an hour of your time earns ({0})"], State.Currency)
-                            <input type="number" step="0.01" min="0" @bind="_fHourlyRate" />
+                            <DecimalInput @bind-Value="_fHourlyRate" />
                         </label>
                         <small class="hint">
                             @if (_fHourlyRate is { } hr && hr > 0m)
@@ -3095,7 +3176,7 @@ else
                            time (the typed rate still wins); it buys the reality check below. *@
                         <div class="two-col">
                             <label>@Loc["Working days a month"] <input type="number" step="1" min="1" max="31" @bind="_fWorkDays" /></label>
-                            <label>@Loc["Hours a day"] <input type="number" step="0.5" min="1" max="24" @bind="_fWorkHours" /></label>
+                            <label>@Loc["Hours a day"] <DecimalInput @bind-Value="_fWorkHours" /></label>
                         </div>
                         @if (DerivedRatePreview() is { } actual && _fHourlyRate is { } typed && typed > 0m)
                         {
@@ -3319,9 +3400,10 @@ else
                         }
                         <CategoryPicker Value="_categoryId" ValueChanged="OnExpenseCategoryPicked" Options="State.CategoryOptions" />
                     </div>
-                    @* F1: inputmode="decimal" so a phone raises the numeric keypad rather than the full keyboard, and
+                    @* F1: DecimalInput raises the phone's decimal keypad AND accepts the "," that keypad offers — a
+                       type="number" field rejects it outright, which is why decimals couldn't be typed on mobile.
                        @ref so the cursor can land here when the category was already chosen (see OpenAddExpense). *@
-                    <label>@Loc["Amount"] <input type="number" inputmode="decimal" step="0.01" min="0" @ref="_amountInput" @bind="_amount" @bind:event="oninput" /></label>
+                    <label>@Loc["Amount"] <DecimalInput @ref="_amountInput" @bind-Value="_amount" /></label>
                     @if (_amount < 0)
                     {
                         <small class="hint warn-text">@Loc["Amount can't be negative — enter what you spent."]</small>
@@ -3433,7 +3515,7 @@ else
                     <div class="modal-field"><span class="lbl-row">@Loc["Category"]</span>
                         <CategoryPicker @bind-Value="_categoryId" Options="State.CategoryOptions" />
                     </div>
-                    <label>@Loc["Amount"] <input type="number" step="0.01" min="0" @bind="_amount" /></label>
+                    <label>@Loc["Amount"] <DecimalInput @bind-Value="_amount" /></label>
                     <label>@Loc["Date"] <input type="date" @bind="_expenseDate" /></label>
                     @if (State.FindExpense(_editExpenseId) is { FundSynced: true })
                     {
@@ -3534,7 +3616,7 @@ else
                                 }
                             </select>
                         </label>
-                        <label>@Loc["Amount"] <input type="number" step="0.01" min="0" @bind="_settleAmount" /></label>
+                        <label>@Loc["Amount"] <DecimalInput @bind-Value="_settleAmount" /></label>
                         <label>@Loc["Note (optional)"] <input type="text" @bind="_settleNote" /></label>
                         <small class="hint">@Loc["Records this amount as an expense on the chosen account (in that fund and category) and reduces this expense by the same amount."]</small>
                         <div class="modal-actions">
@@ -3578,28 +3660,47 @@ else
                         </div>
                         @if (!_debtEnterInitial)
                         {
-                            <label>@Loc["Balance owed"] <input type="number" step="0.01" min="0" @bind="_debtBalance" /></label>
+                            <label>@Loc["Balance owed"] <DecimalInput @bind-Value="_debtBalance" /></label>
                         }
                         else
                         {
-                            <label>@Loc["Original principal"] <input type="number" step="0.01" min="0" @bind="_debtOriginal" /></label>
-                            <label>@Loc["Already paid off (principal)"] <input type="number" step="0.01" min="0" @bind="_debtPaidPrincipal" /></label>
+                            <label>@Loc["Original principal"] <DecimalInput @bind-Value="_debtOriginal" /></label>
+                            <label>@Loc["Already paid off (principal)"] <DecimalInput @bind-Value="_debtPaidPrincipal" /></label>
                             <small class="hint">@string.Format(Loc["Owed now: {0}"], Fmt(new Money(Math.Max(0m, _debtOriginal - _debtPaidPrincipal), State.Currency)))</small>
                         }
-                        <label>@Loc["Interest rate (% APR)"] <input type="number" step="0.1" min="0" @bind="_debtRate" /></label>
-                        <label>@Loc["Monthly installment"] <input type="number" step="0.01" min="0" @bind="_debtInstallment" /></label>
+                        <label>@Loc["Interest rate (% APR)"] <DecimalInput @bind-Value="_debtRate" /></label>
+                        <label>@Loc["Monthly installment"] <DecimalInput @bind-Value="_debtInstallment" /></label>
                         <div class="field-row">
                             <label>@Loc["Installment due day"] <input type="number" step="1" min="1" max="31" placeholder="—" @bind="_debtDay" /></label>
                             <label>@Loc["Loan start date"] <input type="date" @bind="_debtStart" /></label>
                         </div>
                         <small class="hint">@Loc["The start date bases “interest paid so far” on the real timeline — otherwise we infer it from the balance."]</small>
-                        <Switch @bind-Value="_debtPayDriven">@Loc["I log each installment here"]</Switch>
-                        <small class="hint">@Loc["Then the balance drops only when you log a payment — and each payment is split into interest, principal and any extras. Otherwise we carry it forward on the loan’s own schedule."]</small>
+                        @* This was a switch reading "I log each installment here", which named the wrong thing: it
+                           does not decide where anything is logged (installments log the same either way) — it
+                           decides which source of truth owns the balance. Stated as a two-way choice with the
+                           consequence of each, because both are right in different situations and the trade-off
+                           (a stale balance vs. an assumed one) is the whole decision. *@
+                        <label>@Loc["What moves the balance"]</label>
+                        <div class="plan-toggle" role="group">
+                            <button type="button" class="chip @(!_debtPayDriven ? "on" : "")" @onclick="() => _debtPayDriven = false"><Icon Name="calendar" /> @Loc["Its own schedule"]</button>
+                            <button type="button" class="chip @(_debtPayDriven ? "on" : "")" @onclick="() => _debtPayDriven = true"><Icon Name="note" /> @Loc["The payments I log"]</button>
+                        </div>
+                        <small class="hint">
+                            @(_debtPayDriven
+                                ? Loc["The balance drops only when an installment is logged here — accurate while you keep logging, and it simply goes stale if you stop. Best when this loan is paid from a wallet this app tracks."]
+                                : Loc["The balance is carried forward over the installments due since it was last stated, whether or not you log them. Best when the loan is paid from an account this app can't see."])
+                        </small>
+                        @if (_debtPayDriven && _modal == Modal.EditBucket && !State.DebtHasLinkedBill(_modalBucketId))
+                        {
+                            @* The promise this mode makes is "I will keep logging", and nothing in the app is set up
+                               to help them keep it. Naming the gap beats letting the balance quietly freeze. *@
+                            <small class="hint warn-text">@Loc["Nothing is set to log this loan automatically yet — set up a recurring bill for it, or log each installment by hand, or the balance will stop moving."]</small>
+                        }
                         <small class="hint">@Loc["Used only to project your payoff — never changes budgets, savings or balances. Set money aside with 💰, then pay the bank with 🎯."]</small>
                     }
                     else if (_bucketKind == SavingKind.Investment)
                     {
-                        <label>@Loc["Expected return (% / year)"] <input type="number" step="0.1" min="0" @bind="_invRate" /></label>
+                        <label>@Loc["Expected return (% / year)"] <DecimalInput @bind-Value="_invRate" /></label>
                         <label>@Loc["Horizon (years)"] <input type="number" step="1" min="0" @bind="_invTermYears" /></label>
                         <label>@Loc["Compounding"]
                             <select @bind="_invCompounds">
@@ -3630,7 +3731,7 @@ else
                         {
                             <div class="cost-row">
                                 <input type="text" class="cost-label" placeholder="@Loc["e.g. Insurance"]" @bind="costRow.Label" />
-                                <input type="number" class="cost-amt" step="0.01" min="0" placeholder="0.00" @bind="costRow.Amount" />
+                                <DecimalInput Class="cost-amt" Placeholder="0.00" @bind-Value="costRow.Amount" />
                                 <select class="cost-cad" @bind="costRow.Cadence">
                                     <option value="@CostCadence.Monthly">@Loc["Monthly"]</option>
                                     <option value="@CostCadence.Quarterly">@Loc["Quarterly"]</option>
@@ -3664,7 +3765,7 @@ else
                     }
                     else
                     {
-                        <label>@Loc["Goal amount (optional)"] <input type="number" step="0.01" min="0" @bind="_goalAmount" /></label>
+                        <label>@Loc["Goal amount (optional)"] <DecimalInput @bind-Value="_goalAmount" /></label>
                         <label>@Loc["Alert at %"] <input type="number" step="1" min="0" max="100" @bind="_fThreshold" /></label>
                         <Switch @bind-Value="_fNotify">@Loc["Notify on milestone"]</Switch>
                     }
@@ -3680,7 +3781,7 @@ else
                     <small class="hint">@Loc["Which fund this bucket's money sits in. It moves no money — it just labels the bucket and picks the fund by default when you pay from it."]</small>
                     @if (State.CanSetInitialSavings)
                     {
-                        <label>@Loc["Already saved (starting balance)"] <input type="number" step="0.01" min="0" @bind="_initialSavings" /></label>
+                        <label>@Loc["Already saved (starting balance)"] <DecimalInput @bind-Value="_initialSavings" /></label>
                         <small class="hint">@Loc["Money you already had in this bucket before using FinApp. It counts toward the balance and goal, but not toward your savings rate."]</small>
                     }
                     <div class="modal-actions">
@@ -3694,7 +3795,7 @@ else
                 case Modal.EditCost:
                     <h3>@(_editCostIndex >= 0 ? Loc["Edit cost"] : Loc["Add a cost"])@(State.FindSavingBucket(_costBucketId) is { } costBkt ? $" · {costBkt.Name}" : "")</h3>
                     <label>@Loc["Name"] <input type="text" placeholder="@Loc["e.g. Insurance"]" @bind="_editCost.Label" /></label>
-                    <label>@Loc["Amount"] <input type="number" step="0.01" min="0" @bind="_editCost.Amount" /></label>
+                    <label>@Loc["Amount"] <DecimalInput @bind-Value="_editCost.Amount" /></label>
                     <label>@Loc["How often"]
                         <select @bind="_editCost.Cadence">
                             <option value="@CostCadence.Monthly">@Loc["Monthly"]</option>
@@ -3750,7 +3851,7 @@ else
                             </select>
                         </label>
                     }
-                    <label>@Loc["Amount"] <input type="number" step="0.01" min="0" @bind="_mTransferAmount" /></label>
+                    <label>@Loc["Amount"] <DecimalInput @bind-Value="_mTransferAmount" /></label>
                     @if (MTransferDestIsAccount)
                     {
                         <small class="hint @(MTransferDipsSavings ? "warn-text" : "")">@Loc["In this fund:"] <strong>@Fmt(State.FundBalance(_mTransferFromId))</strong>. @(MTransferDipsSavings ? Loc["⚠ This dips into money earmarked for savings."] : "")</small>
@@ -3831,7 +3932,7 @@ else
                             }
                         </select>
                     </label>
-                    <label>@Loc["Amount"] <input type="number" step="0.01" min="0" @bind="_depAmount" /></label>
+                    <label>@Loc["Amount"] <DecimalInput @bind-Value="_depAmount" /></label>
                     <label>@Loc["Date"] <input type="date" @bind="_depDate" min="@State.Period.From.ToString("yyyy-MM-dd")" max="@State.Period.To.ToString("yyyy-MM-dd")" /></label>
                     <div class="modal-actions">
                         <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
@@ -3975,7 +4076,7 @@ else
                     {
                         <p class="hint">@State.SavingBucketName(_savingBucketId)</p>
                     }
-                    <label>@Loc["Amount"] <input type="number" step="0.01" min="0" @bind="_savingAmount" /></label>
+                    <label>@Loc["Amount"] <DecimalInput @bind-Value="_savingAmount" /></label>
                     <div class="avail-note">@Loc["Available to save:"] <strong>@Fmt(State.AvailableToSaveDisplay(_bankStatus?.Balance, _bankStatus?.BalanceCurrency))</strong> — @Loc["your cash that isn't already set aside for savings"].</div>
                     <div class="modal-actions">
                         <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
@@ -4070,14 +4171,29 @@ else
                     </div>
                     @if (_recMode != RecurringAmountMode.ReminderOnly)
                     {
-                        <label>@(_recMode == RecurringAmountMode.Typical ? Loc["Typical amount"] : Loc["Amount"]) <input type="number" step="0.01" min="0" @bind="_recAmount" /></label>
+                        <label>@(_recMode == RecurringAmountMode.Typical ? Loc["Typical amount"] : Loc["Amount"]) <DecimalInput @bind-Value="_recAmount" /></label>
                         <small class="hint">@(_recMode == RecurringAmountMode.Typical ? Loc["An estimate that self-tunes toward what you actually pay."] : Loc["The same amount every month."])</small>
                     }
                     else
                     {
                         <small class="hint">@Loc["No amount — you'll enter the real figure each time it's due (good for a variable salary)."]</small>
                     }
-                    <label>@Loc["Day of month"] <input type="number" step="1" min="1" max="28" @bind="_recDay" /></label>
+                    @* One due date, not two. A loan's installment day is a contractual fact, so when the linked debt
+                       states one it takes over the field rather than sitting beside it disagreeing — which is what
+                       used to happen (the debt row saying "due on the 30th" over a bill set to day 15). With no day
+                       on the loan, the bill's own day fills it in on save. *@
+                    var _recLoanDay = State.LoanDueDayFor(_recDebtId == Guid.Empty ? null : _recDebtId);
+                    @if (_recLoanDay is { } _rld)
+                    {
+                        <div class="modal-field">
+                            <span>@Loc["Day of month"]</span>
+                            <p class="hint"><Icon Name="card" /> @string.Format(Loc["The {0} — taken from the loan's installment day. Change it on the loan to move both."], _rld)</p>
+                        </div>
+                    }
+                    else
+                    {
+                        <label>@Loc["Day of month"] <input type="number" step="1" min="1" max="31" @bind="_recDay" /></label>
+                    }
                     @if (_recMode == RecurringAmountMode.Fixed)
                     {
                         <Switch @bind-Value="_recAutoPost">@Loc["Post automatically when due (don't ask me)"]</Switch>
@@ -4101,7 +4217,7 @@ else
                             {
                                 @* Not flipped automatically: it changes how the balance is derived, which is the
                                    user's call, not a side effect of linking a bill. *@
-                                <small class="hint">@Loc["That loan still follows its own schedule. To have logged payments drive its balance instead, turn on “I log each installment here” when you edit it."]</small>
+                                <small class="hint">@Loc["That loan's balance still follows its own schedule, so confirming this bill will log the payment but won't move it. To have your logged payments drive it instead, edit the loan and set “What moves the balance”."]</small>
                             }
                         }
                     }
@@ -4120,7 +4236,7 @@ else
                             ? Loc["Enter what actually came in or went out."]
                             : string.Format(Loc["Expected about {0}. Adjust to the real amount if it differs."], Fmt(rc.ExpectedAmount)))</p>
                     }
-                    <label>@Loc["Actual amount"] <input type="number" step="0.01" min="0" @bind="_recConfirmAmount" @bind:event="oninput" /></label>
+                    <label>@Loc["Actual amount"] <DecimalInput @bind-Value="_recConfirmAmount" /></label>
                     <div class="modal-actions">
                         <button class="ghost" @onclick="DoSkipRecurring">@Loc["Skip this month"]</button>
                         <button @onclick="DoConfirmRecurring" disabled="@(_recConfirmAmount <= 0)">@Loc["Confirm"]</button>
@@ -4331,7 +4447,7 @@ else
                             }
                         </select>
                     </label>
-                    <label>@Loc["Amount"] <input type="number" step="0.01" min="0" @bind="_spendAmount" /></label>
+                    <label>@Loc["Amount"] <DecimalInput @bind-Value="_spendAmount" /></label>
                     <small class="hint">@Loc["A budget matures the saving into this month's plan; another bucket just shifts it across. The source bucket drops either way."]</small>
                     <div class="modal-actions">
                         <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
@@ -4345,7 +4461,7 @@ else
                     <div class="modal-field"><span class="lbl-row">@Loc["Category"]</span>
                         <CategoryPicker @bind-Value="_spendExpCategoryId" Options="State.CategoryOptions" />
                     </div>
-                    <label>@Loc["Amount"] <input type="number" step="0.01" min="0" @bind="_spendExpAmount" /></label>
+                    <label>@Loc["Amount"] <DecimalInput @bind-Value="_spendExpAmount" /></label>
                     <small class="hint">@Loc["Records a real expense paid straight from this bucket (dated today)."]</small>
                     <div class="modal-actions">
                         <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
@@ -4356,7 +4472,7 @@ else
                 case Modal.DisburseSaving:
                     var disBucketBal = DisburseBucketBalance();
                     <h3><Icon Name="target" /> @Loc["Apply to a goal"] — @State.SavingBucketName(_disburseBucketId)</h3>
-                    <label>@Loc["Amount"] <input type="number" step="0.01" min="0" @bind="_disburseAmount" /></label>
+                    <label>@Loc["Amount"] <DecimalInput @bind-Value="_disburseAmount" /></label>
                     <small class="hint">@Loc["Saved in this bucket:"] <strong>@Fmt(disBucketBal)</strong></small>
                     <label>@Loc["Take the money from"]
                         <select @bind="_disburseFundId">
@@ -4381,7 +4497,7 @@ else
                     var (_instInt, _instPrin, _) = State.InstallmentSplit(_instBucketId, _instTotal, _instExtras, _instDate);
                     var _instOver = _instExtras > _instTotal;
                     <h3><Icon Name="note" /> @Loc["Log installment"] — @State.SavingBucketName(_instBucketId)</h3>
-                    <label>@Loc["Amount paid"] <input type="number" step="0.01" min="0" @bind="_instTotal" @bind:event="oninput" /></label>
+                    <label>@Loc["Amount paid"] <DecimalInput @bind-Value="_instTotal" /></label>
                     <div class="field-row">
                         <label>@Loc["Date"] <input type="date" @bind="_instDate" /></label>
                         <label>@Loc["Paid from"]
@@ -4411,7 +4527,7 @@ else
                         var row = _instRows[i];
                         var idx = i;
                         <div class="inst-extra-row">
-                            <input type="number" step="0.01" min="0" placeholder="0.00" aria-label="@Loc["Amount"]" @bind="row.Amount" @bind:event="oninput" />
+                            <DecimalInput Placeholder="0.00" AriaLabel="@Loc["Amount"]" @bind-Value="row.Amount" />
                             <select aria-label="@Loc["Category"]" @bind="row.CategoryId">
                                 @foreach (var (c, depth) in State.CategoryOptions)
                                 {
@@ -4876,7 +4992,7 @@ else
                             }
                         </select>
                     </label>
-                    <label>@Loc["Amount"] <input type="number" step="0.01" min="0" @bind="_editContribAmount" /></label>
+                    <label>@Loc["Amount"] <DecimalInput @bind-Value="_editContribAmount" /></label>
                     <label>@Loc["Date"] <input type="date" @bind="_editContribDate" min="@State.Period.From.ToString("yyyy-MM-dd")" max="@State.Period.To.ToString("yyyy-MM-dd")" /></label>
                     <div class="modal-actions">
                         <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
@@ -4934,7 +5050,7 @@ else
 
                 case Modal.EditSavingDeposit:
                     <h3>@Loc["Edit savings deposit —"] @State.SavingBucketName(_savingDepositBucketId)</h3>
-                    <label>@Loc["Amount"] <input type="number" step="0.01" min="0" @bind="_savingDepositAmount" /></label>
+                    <label>@Loc["Amount"] <DecimalInput @bind-Value="_savingDepositAmount" /></label>
                     <div class="modal-actions">
                         <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
                         <button @onclick="SaveEditSavingDeposit" disabled="@(_savingDepositAmount <= 0)">@Loc["Save"]</button>
@@ -5183,7 +5299,7 @@ else
                             </select>
                         </label>
                     }
-                    <label>@Loc["Amount"] <input type="number" step="0.01" min="0" @bind="_editTransferAmount" /></label>
+                    <label>@Loc["Amount"] <DecimalInput @bind-Value="_editTransferAmount" /></label>
                     <label>@Loc["Note (optional)"] <input type="text" @bind="_editTransferNote" /></label>
                     @if (State.FindFundTransfer(_editTransferId) is { AutoFiled: true } autoTr)
                     {
@@ -5232,7 +5348,7 @@ else
                     {
                         <p class="hint">@State.SavingMovementTarget(mv)</p>
                     }
-                    <label>@Loc["Amount"] <input type="number" step="0.01" min="0" @bind="_savingMovementAmount" /></label>
+                    <label>@Loc["Amount"] <DecimalInput @bind-Value="_savingMovementAmount" /></label>
                     <div class="modal-actions">
                         <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
                         <button @onclick="SaveEditSavingMovement" disabled="@(_savingMovementAmount <= 0)">@Loc["Save"]</button>
@@ -5259,7 +5375,7 @@ else
                     @if (State.FindExternalTransfer(_extTransferId) is { } aet)
                     {
                         <p class="hint">@State.FundName(aet.FundId) → <strong>@State.AccountName(aet.ToAccountId ?? Guid.Empty)</strong></p>
-                        <label>@Loc["Amount"] <input type="number" step="0.01" min="0" @bind="_extAmount" /></label>
+                        <label>@Loc["Amount"] <DecimalInput @bind-Value="_extAmount" /></label>
                         <label>@Loc["Date"] <input type="date" @bind="_extDate" /></label>
                         <label>@Loc["From fund"]
                             <select @bind="_extFundId">
@@ -5502,7 +5618,8 @@ else
             var label = kv.Key == Guid.Empty ? (mode == ExpGroup.Tag ? Loc["Untagged"] : Loc["Uncategorised"])
                 : mode == ExpGroup.Tag ? State.TagName(kv.Key) : State.CategoryName(kv.Key);
             var icon = kv.Key == Guid.Empty ? null : mode == ExpGroup.Tag ? State.TagIcon(kv.Key) : State.CategoryStoredIcon(kv.Key);
-            var items = kv.Value.OrderByDescending(x => x.Date).ToList();
+            // Biggest first, matching the slice and group ranking above it (date only breaks ties).
+            var items = kv.Value.OrderByDescending(x => Math.Abs(x.Amount.Amount)).ThenByDescending(x => x.Date).ToList();
             var total = items.Sum(x => Math.Abs(x.Amount.Amount));
             return (Label: label, Icon: icon, Total: total, Items: items);
         }).OrderByDescending(g => g.Total).ToList();
@@ -7861,7 +7978,14 @@ else
     // NOT repeated in the bell (UX backlog #4 — each item lives in one place). Due = a time-based bill/recurring
     // reminder (due now, upcoming, or just auto-posted); the bell splits Due from the rest as "Suggestions" (#5).
     private sealed record Notification(string Icon, string Text, string? Desc, string? ActionLabel, Action? Act,
-        Action? Rotate, Action? Dismiss, bool Urgent, bool Due = false, RenderFragment? Rich = null);
+        Action? Rotate, Action? Dismiss, bool Urgent, bool Due = false, RenderFragment? Rich = null,
+        // A labelled secondary action (Skip / Undo). Deliberately NOT the ✕: a wordless dismiss on a bill reads as
+        // "hide this reminder" while actually declaring the bill unpaid for the period, which silently moves
+        // safe-to-spend. Anything with a consequence says what it does.
+        string? AltLabel = null, Action? Alt = null,
+        // Shown for reference and its undo, but already dealt with — so it doesn't drive the badge. A skip that
+        // counted toward the bell would nag for the rest of the month about a decision the user already made.
+        bool Settled = false);
 
     /// <summary>The "budgets plan more than is free" alert body: the sentence with "trim a budget" and "add income" as
     /// inline action links (they run ShowBudgetsTab / OpenDeposit), rather than a repeated trailing button. Built in
@@ -7959,8 +8083,23 @@ else
             var text = due.AmountMode == RecurringAmountMode.ReminderOnly
                 ? string.Format(Loc["{0} is due — enter the amount."], due.Name)
                 : string.Format(Loc["{0} is due (about {1}) — confirm it."], due.Name, Fmt(due.ExpectedAmount));
+            // No ✕ here. A due bill leaves the list two ways only: confirmed (it posts) or skipped (a stated decision
+            // that it isn't being paid this period). Both are labelled, and the skip is undoable — see SkippedRecurring.
             list.Add(new Notification(due.Icon ?? (due.Kind == RecurringKind.Income ? "note" : "repeat"), text, null,
-                Loc["Confirm"], () => OpenConfirmRecurring(id), null, () => SkipRecurringFromBell(id), false, Due: true));
+                Loc["Confirm"], () => OpenConfirmRecurring(id), null, null, false, Due: true,
+                AltLabel: Loc["Skip this month"], Alt: () => SkipRecurringFromBell(id)));
+        }
+
+        // Skipped this period — kept visible with an undo. A skip removes the bill from "still due", which moves the
+        // safe-to-spend figure; a change that size should not be something the app forgets it made.
+        foreach (var sk in State.SkippedRecurring())
+        {
+            var id = sk.Id;
+            list.Add(new Notification(sk.Icon ?? "calendar",
+                string.Format(Loc["{0} — skipped this month."], sk.Name),
+                Loc["It isn't counted as still due, so your safe-to-spend is higher by its amount."],
+                null, null, null, null, false, Due: true,
+                AltLabel: Loc["Undo"], Alt: () => UnskipRecurringFromBell(id), Settled: true));
         }
 
         // Recurring items coming up soon (not due yet) — a gentle heads-up so nothing sneaks up on you. Deliberately
@@ -7974,7 +8113,9 @@ else
             var text = soon.HasKnownAmount
                 ? string.Format(Loc["{0} (about {1}) is due {2}."], soon.Name, Fmt(soon.ExpectedAmount), whenText)
                 : string.Format(Loc["{0} is due {1}."], soon.Name, whenText);
-            list.Add(new Notification("calendar", text, null, null, null, null, () => SkipRecurringFromBell(id), false, Due: true));
+            // A pure heads-up: not yet due, so nothing to confirm — and nothing to dismiss either. It clears itself
+            // when the day arrives and it becomes a Due row with real choices on it.
+            list.Add(new Notification("calendar", text, null, null, null, null, null, false, Due: true));
         }
 
         // "Move it" reallocates for real (trims the budget + sets aside toward the debt), so the whole tip is gated
@@ -8311,6 +8452,7 @@ else
 
     // Dismissing a due-recurring notification from the bell skips it for this period (so it won't re-nag).
     private void SkipRecurringFromBell(Guid id) => _ = InvokeAsync(async () => { await State.SkipRecurring(id); StateHasChanged(); });
+    private void UnskipRecurringFromBell(Guid id) => _ = InvokeAsync(async () => { await State.UnskipRecurring(id); StateHasChanged(); });
 
     /// <summary>Set aside this period's sinking-fund shortfall in one tap. Nothing is remembered about having done
     /// it: the nudge is derived from what the bucket actually holds, so deleting the deposit — or spending against
@@ -8651,14 +8793,14 @@ else
 
     // F1: set when the modal should open with the cursor already in Amount; consumed once by OnAfterRenderAsync.
     private bool _focusAmount;
-    private ElementReference _amountInput;
+    private DecimalInput<decimal>? _amountInput;
 
     /// <summary>Put the cursor in the Amount field once, after the modal that owns it has rendered. Guarded on the
-    /// modal being open because the <see cref="ElementReference"/> only exists while it is; the try/catch covers the
-    /// render-timing case where the element is not attached yet (a missed focus must never break the modal).</summary>
+    /// modal being open because the component only exists while it is; the try/catch covers the render-timing case
+    /// where the element is not attached yet (a missed focus must never break the modal).</summary>
     private async Task FocusAmountIfRequestedAsync()
     {
-        if (!_focusAmount || _modal != Modal.AddExpense) return;
+        if (!_focusAmount || _modal != Modal.AddExpense || _amountInput is null) return;
         _focusAmount = false;
         try { await _amountInput.FocusAsync(); } catch { /* not attached — no focus, no harm */ }
     }
@@ -8703,6 +8845,32 @@ else
     private bool _fabOpen;
     private void FabAddExpense() { _fabOpen = false; OpenAddExpenseTab(); }
     private void FabAddIncome() { _fabOpen = false; OpenDeposit(); }
+    private Task FabTransfer() { _fabOpen = false; return OpenTransferFromDefaultFund(); }
+
+    /// <summary>Open Transfer without a fund already in hand — the Home button and the FAB reach it from nowhere in
+    /// particular, so the biggest root fund is the from-side (it's the one a transfer most often leaves).</summary>
+    private Task OpenTransferFromDefaultFund()
+    {
+        var from = State.RootFunds.OrderByDescending(f => State.FundBalance(f.Id).Amount).FirstOrDefault()
+                ?? State.RootFunds.FirstOrDefault();
+        return from is null ? Task.CompletedTask : OpenTransferFromFund(from.Id);
+    }
+
+    /// <summary>Edit whichever of the last expense / last income was more recent — the FAB has no context to choose
+    /// from, unlike the two modals where "Edit last" already lives. Ties go to the expense: it's far more often the
+    /// thing just mistyped. Renders only when <see cref="HasEditableLast"/>.</summary>
+    private void FabEditLast()
+    {
+        _fabOpen = false;
+        var exp = State.LastExpense;
+        var inc = State.LastContribution is { } c && State.CanHandleContribution(c) ? c : null;
+        if (exp is null && inc is null) return;
+        if (inc is null || (exp is not null && exp.Date >= inc.Date)) OpenEditExpense(exp!.Id);
+        else OpenEditDeposit(inc.Id);
+    }
+
+    private bool HasEditableLast =>
+        State.LastExpense is not null || (State.LastContribution is { } c && State.CanHandleContribution(c));
 
     // Multi-expense: a locally-staged list of expenses the user is building; the ✓ saves them all at once. Each draft
     // is a snapshot of the editor fields at the moment "Add another expense" was pressed.

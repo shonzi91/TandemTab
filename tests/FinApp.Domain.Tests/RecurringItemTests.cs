@@ -47,12 +47,25 @@ public class RecurringItemTests
 
     [Theory]
     [InlineData(0, 1)]
-    [InlineData(31, 28)]
+    [InlineData(31, 31)]
+    [InlineData(40, 31)]
     [InlineData(15, 15)]
-    public void DayOfMonth_is_clamped_to_a_day_that_exists_every_month(int given, int expected)
+    public void DayOfMonth_is_clamped_to_a_real_calendar_day(int given, int expected)
     {
+        // 1–31, not the old 1–28: a loan can contractually fall due on the 30th, and a bill servicing it has to be
+        // able to state the same day. Short months are handled where it matters — see DueDateWithin below.
         var item = Make(day: given);
         Assert.Equal(expected, item.DayOfMonth);
+    }
+
+    [Fact]
+    public void A_day_past_the_end_of_a_short_month_falls_due_on_its_last_day()
+    {
+        // This is what makes storing 31 safe: the day is pulled back to the month's end rather than overflowing
+        // into the next one or throwing.
+        var item = Make(day: 31);
+        Assert.Equal(new DateOnly(2026, 2, 28), item.DueDateWithin(new DateOnly(2026, 2, 1), new DateOnly(2026, 2, 28)));
+        Assert.Equal(new DateOnly(2026, 3, 31), item.DueDateWithin(new DateOnly(2026, 3, 1), new DateOnly(2026, 3, 31)));
     }
 
     [Fact]
@@ -147,7 +160,7 @@ public class RecurringItemTests
         Assert.Equal("Utilities", item.Name);
         Assert.Equal(RecurringAmountMode.Typical, item.AmountMode);
         Assert.Equal(80m, item.ExpectedAmount);
-        Assert.Equal(28, item.DayOfMonth);       // clamped
+        Assert.Equal(31, item.DayOfMonth);       // clamped to the longest real month
         Assert.Equal(cat, item.CategoryId);
         Assert.Equal(fund, item.FundId);
         Assert.Equal("💡", item.Icon);

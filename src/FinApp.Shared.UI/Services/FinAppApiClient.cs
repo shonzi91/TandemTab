@@ -319,6 +319,8 @@ public sealed class FinAppApiClient(HttpClient http)
         SendAsync<MutationResultDto>(HttpMethod.Post, $"/accounts/{id}/recurring/{recurringId}/confirm", new ConfirmRecurringRequest(actualAmount), ct);
     public Task<MutationResultDto> SkipRecurringAsync(Guid id, Guid recurringId, CancellationToken ct = default) =>
         SendAsync<MutationResultDto>(HttpMethod.Post, $"/accounts/{id}/recurring/{recurringId}/skip", null, ct);
+    public Task<MutationResultDto> UnskipRecurringAsync(Guid id, Guid recurringId, CancellationToken ct = default) =>
+        SendAsync<MutationResultDto>(HttpMethod.Post, $"/accounts/{id}/recurring/{recurringId}/unskip", null, ct);
 
     // Budgets + reallocation
     public Task<MutationResultDto> SetBudgetAsync(Guid id, Guid categoryId, SetBudgetRequest req, CancellationToken ct = default) =>

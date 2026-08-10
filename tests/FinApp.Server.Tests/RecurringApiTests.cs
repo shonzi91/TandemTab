@@ -156,7 +156,107 @@ public class RecurringApiTests : IClassFixture<FinAppServerFactory>
         (await client.PostAsync($"/accounts/{account.Id}/recurring/{recId}/skip", content: null)).EnsureSuccessStatusCode();
 
         Assert.Equal(0m, (await Overview(client, account.Id))!.Spent);   // nothing posted
-        Assert.Equal(new DateOnly(2026, 1, 1), (await LoadAsync(client, account.Id)).FindRecurring(recId)!.LastHandledPeriodFrom);
+        var skipped = (await LoadAsync(client, account.Id)).FindRecurring(recId)!;
+        Assert.Equal(new DateOnly(2026, 1, 1), skipped.LastHandledPeriodFrom);
+        Assert.True(skipped.LastHandledWasSkip);   // recorded as a skip, so it stays undoable
+    }
+
+    [Fact]
+    public async Task Unskip_makes_the_item_due_again()
+    {
+        var (client, auth) = await _factory.RegisterAndAuthAsync("rc_unskip");
+        var account = await CreateAccount(client, "Unskip");
+        var (rent, _, fund) = await SeedAsync(client, account.Id, auth.UserId);
+
+        var recId = await IdOf(await client.PostAsJsonAsync($"/accounts/{account.Id}/recurring",
+            new AddRecurringRequest("Rent", "expense", "fixed", 500m, 15, rent, fund)));
+
+        (await client.PostAsync($"/accounts/{account.Id}/recurring/{recId}/skip", content: null)).EnsureSuccessStatusCode();
+        (await client.PostAsync($"/accounts/{account.Id}/recurring/{recId}/unskip", content: null)).EnsureSuccessStatusCode();
+
+        var back = (await LoadAsync(client, account.Id)).FindRecurring(recId)!;
+        Assert.Null(back.LastHandledPeriodFrom);
+        Assert.Equal(0m, (await Overview(client, account.Id))!.Spent);   // undoing a skip still posts nothing
+    }
+
+    [Fact]
+    public async Task Unskip_refuses_on_a_confirmed_item()
+    {
+        // The bill's expense is already booked; re-arming it would invite a second payment. The refusal lives in
+        // the domain, so it holds however the request arrives.
+        var (client, auth) = await _factory.RegisterAndAuthAsync("rc_unskip_posted");
+        var account = await CreateAccount(client, "UnskipPosted");
+        var (rent, _, fund) = await SeedAsync(client, account.Id, auth.UserId);
+
+        var recId = await IdOf(await client.PostAsJsonAsync($"/accounts/{account.Id}/recurring",
+            new AddRecurringRequest("Rent", "expense", "fixed", 500m, 15, rent, fund)));
+
+        (await client.PostAsJsonAsync($"/accounts/{account.Id}/recurring/{recId}/confirm",
+            new ConfirmRecurringRequest(500m))).EnsureSuccessStatusCode();
+
+        var resp = await client.PostAsync($"/accounts/{account.Id}/recurring/{recId}/unskip", content: null);
+        Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
+        Assert.Equal(500m, (await Overview(client, account.Id))!.Spent);   // and the expense is untouched
+    }
+
+    [Fact]
+    public async Task A_bill_linked_to_a_loan_takes_the_loans_installment_day()
+    {
+        // The loan states the contractual day, so the bill moves onto it — the two could previously disagree, with
+        // the debt row reading "due on the 30th" over a bill set to day 15.
+        var (client, auth) = await _factory.RegisterAndAuthAsync("rc_loanday");
+        var account = await CreateAccount(client, "LoanDay");
+        var (rent, _, fund) = await SeedAsync(client, account.Id, auth.UserId);
+
+        var loanId = await IdOf(await client.PostAsJsonAsync($"/accounts/{account.Id}/savings/buckets",
+            new SaveSavingBucketRequest("Car loan", IsDebt: true, DebtBalance: 8000m, DebtRate: 6m,
+                DebtInstallment: 400m, DebtInstallmentDay: 28)));
+
+        var recId = await IdOf(await client.PostAsJsonAsync($"/accounts/{account.Id}/recurring",
+            new AddRecurringRequest("Car payment", "expense", "fixed", 400m, 15, rent, fund, LinkedDebtBucketId: loanId)));
+
+        Assert.Equal(28, (await LoadAsync(client, account.Id)).FindRecurring(recId)!.DayOfMonth);
+    }
+
+    [Fact]
+    public async Task A_loan_with_no_day_of_its_own_takes_the_bills()
+    {
+        // The other direction: nothing contractual is stated, so the bill's day fills the gap rather than the two
+        // staying independently unknown.
+        var (client, auth) = await _factory.RegisterAndAuthAsync("rc_billday");
+        var account = await CreateAccount(client, "BillDay");
+        var (rent, _, fund) = await SeedAsync(client, account.Id, auth.UserId);
+
+        var loanId = await IdOf(await client.PostAsJsonAsync($"/accounts/{account.Id}/savings/buckets",
+            new SaveSavingBucketRequest("Car loan", IsDebt: true, DebtBalance: 8000m, DebtRate: 6m,
+                DebtInstallment: 400m)));
+
+        var recId = await IdOf(await client.PostAsJsonAsync($"/accounts/{account.Id}/recurring",
+            new AddRecurringRequest("Car payment", "expense", "fixed", 400m, 9, rent, fund, LinkedDebtBucketId: loanId)));
+
+        var loaded = await LoadAsync(client, account.Id);
+        Assert.Equal(9, loaded.FindRecurring(recId)!.DayOfMonth);
+        Assert.Equal(9, loaded.FindSavingCategory(loanId)!.DebtInstallmentDay);
+    }
+
+    [Fact]
+    public async Task Moving_the_loans_day_moves_the_bill_that_services_it()
+    {
+        var (client, auth) = await _factory.RegisterAndAuthAsync("rc_moveday");
+        var account = await CreateAccount(client, "MoveDay");
+        var (rent, _, fund) = await SeedAsync(client, account.Id, auth.UserId);
+
+        var loanId = await IdOf(await client.PostAsJsonAsync($"/accounts/{account.Id}/savings/buckets",
+            new SaveSavingBucketRequest("Car loan", IsDebt: true, DebtBalance: 8000m, DebtRate: 6m,
+                DebtInstallment: 400m, DebtInstallmentDay: 10)));
+        var recId = await IdOf(await client.PostAsJsonAsync($"/accounts/{account.Id}/recurring",
+            new AddRecurringRequest("Car payment", "expense", "fixed", 400m, 10, rent, fund, LinkedDebtBucketId: loanId)));
+
+        (await client.PutAsJsonAsync($"/accounts/{account.Id}/savings/buckets/{loanId}",
+            new SaveSavingBucketRequest("Car loan", IsDebt: true, DebtBalance: 8000m, DebtRate: 6m,
+                DebtInstallment: 400m, DebtInstallmentDay: 22))).EnsureSuccessStatusCode();
+
+        Assert.Equal(22, (await LoadAsync(client, account.Id)).FindRecurring(recId)!.DayOfMonth);
     }
 
     [Fact]
