@@ -1410,6 +1410,52 @@ html.dark .goal-stat-v-period { color: #e8eef0; }
 .goal-stat-pct { font-size: .7rem; font-weight: 600; color: #6b7d72; }
 html.dark .goal-stat-pct { color: #9fb0a6; }
 .goal-done-badge { margin-left: 5px; }
+
+/* "The periods that cost you most" — a factual read-out inside Trends. Rows, not cards: it is a short ranked
+   list, and four cards would read as four things to act on when it is one observation. */
+.costly-intro { margin: 2px 0 8px; }
+.costly-list { display: flex; flex-direction: column; gap: 2px; }
+.costly-row { display: flex; align-items: baseline; gap: 10px; padding: 7px 2px; border-top: 1px solid #eef2f0; font-size: .84rem; }
+.costly-row:first-child { border-top: none; }
+.costly-when { flex: 0 0 74px; color: #6b7d72; font-weight: 600; }
+.costly-main { flex: 1 1 auto; min-width: 0; display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.costly-total { font-weight: 700; color: #2f3a33; font-variant-numeric: tabular-nums; }
+.costly-over { color: #c0723a; font-size: .78rem; }
+.costly-driver { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 4px; color: #6b7d72; font-size: .78rem; }
+.costly-driver svg { width: 13px; height: 13px; }
+html.dark .costly-row { border-top-color: #313a45; }
+html.dark .costly-when, html.dark .costly-driver { color: #a9b6ad; }
+html.dark .costly-total { color: #e8eaf0; }
+html.dark .costly-over { color: #f5b24e; }
+
+/* "Make a payment" on a loan — what the money buys, shown live while the amount is being typed. A panel rather
+   than another hint line: this is the answer the modal exists to give, and it has to out-rank the form around it. */
+.paydown-preview { margin-top: 10px; padding: 10px 12px; border: 1px solid #cfe9dd; border-radius: 10px; background: #f4fbf7; }
+.paydown-hero { font-size: .88rem; font-weight: 700; color: #0f7a54; display: flex; align-items: center; gap: 6px; }
+.paydown-hero svg { width: 15px; height: 15px; flex: 0 0 auto; }
+.paydown-line { font-size: .8rem; color: #4a5a51; margin-top: 4px; }
+/* The recast alternative sits under a hairline: same money, different good — it should read as a second option,
+   not as more detail about the first. */
+.paydown-alt { font-size: .78rem; color: #6b7d72; margin-top: 7px; padding-top: 7px; border-top: 1px solid #dcece4; }
+html.dark .paydown-preview { background: #16241d; border-color: #2b4438; }
+html.dark .paydown-hero { color: #57d9a3; }
+html.dark .paydown-line { color: #c2cfc7; }
+html.dark .paydown-alt { color: #a9b6ad; border-top-color: #2b4438; }
+
+/* The receipt after the payment lands. Bottom-centre, above the FAB, below the modal layer. */
+.paydown-toast {
+    position: fixed; left: 50%; transform: translateX(-50%); bottom: 88px; z-index: 60;
+    max-width: min(420px, calc(100vw - 32px)); padding: 12px 34px 12px 16px; cursor: pointer;
+    background: #ffffff; border: 1px solid #cfe9dd; border-radius: 14px;
+    box-shadow: 0 10px 30px rgba(16, 44, 33, .18);
+}
+.paydown-toast-hero { font-size: .92rem; font-weight: 700; color: #0f7a54; }
+.paydown-toast-sub { font-size: .8rem; color: #4a5a51; margin-top: 3px; line-height: 1.35; }
+.paydown-toast-x { position: absolute; top: 8px; right: 8px; border: none; background: none; cursor: pointer; color: #8a97a0; padding: 2px; }
+.paydown-toast-x svg { width: 14px; height: 14px; }
+html.dark .paydown-toast { background: #232a33; border-color: #2b4438; }
+html.dark .paydown-toast-hero { color: #57d9a3; }
+html.dark .paydown-toast-sub { color: #c2cfc7; }
 /* "Is this month's installment logged?" on a debt row. A state marker, not a button — muted when nothing is logged
    (an open question, not a fault: the payment may simply not be due yet) and brand-green once it is. */
 .inst-flag { display: inline-flex; align-items: center; margin-left: 6px; color: #b3bfb8; vertical-align: -2px; }

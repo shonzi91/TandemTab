@@ -2064,6 +2064,8 @@ accounts.MapPost("/{id:guid}/recurring", async (Guid id, AddRecurringRequest req
         RecurringMap.ValidateDebtLink(account, req.LinkedDebtBucketId);
         item.SetLinkedDebtBucket(req.LinkedDebtBucketId);
         RecurringMap.SyncLoanDueDay(account, item);   // a linked loan owns the due date
+        // A brand-new bill is always a fresh link, so the loan starts following what gets logged here.
+        RecurringMap.DefaultLoanToPaymentDriven(account, item, wasLinkedToSameBucket: false, today);
         account.AddRecurring(item);
         return item.Id;
     }, ct);
@@ -2074,14 +2076,19 @@ accounts.MapPost("/{id:guid}/recurring", async (Guid id, AddRecurringRequest req
 accounts.MapPut("/{id:guid}/recurring/{recurringId:guid}", async (Guid id, Guid recurringId, UpdateRecurringRequest req, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
 {
     var userId = user.UserId();
+    var today = DateOnly.FromDateTime(DateTime.UtcNow);
     var (version, _) = await svc.MutateAsync<object?>(userId, id, account =>
     {
         var item = account.FindRecurring(recurringId) ?? throw new InvalidOperationException("That recurring item doesn't exist in this account.");
+        // Captured BEFORE the link is overwritten: the payment-driven default fires on the transition into a link
+        // only, so that re-saving a bill can't undo a user's deliberate switch back to schedule-driven.
+        var previousLink = item.LinkedDebtBucketId;
         RecurringMap.ValidateRefs(account, item.Kind, req.CategoryId, req.FundId);   // kind can't change on edit
         item.Update(req.Name, RecurringMap.Mode(req.Mode), req.Expected, req.DayOfMonth, req.CategoryId, req.FundId, req.Icon, req.AutoPost);
         RecurringMap.ValidateDebtLink(account, req.LinkedDebtBucketId);
         item.SetLinkedDebtBucket(req.LinkedDebtBucketId);   // authoritative: null unlinks
         RecurringMap.SyncLoanDueDay(account, item);         // a linked loan owns the due date
+        RecurringMap.DefaultLoanToPaymentDriven(account, item, previousLink == item.LinkedDebtBucketId, today);
         return null;
     }, ct);
     await notifier.AccountChangedAsync(id, userId, version);

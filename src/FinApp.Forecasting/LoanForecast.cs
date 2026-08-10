@@ -159,6 +159,44 @@ public static class LoanForecast
             decimal.Round(Math.Max(0m, baseline.TotalInterest - faster.TotalInterest), 2));
     }
 
+    /// <summary>
+    /// What a one-off overpayment buys. <see cref="MonthsSaved"/>/<see cref="InterestSaved"/> assume you carry on
+    /// paying the same installment (the loan simply finishes early); <see cref="LoweredInstallment"/> is the other
+    /// thing a lender will do with the same money — keep the original end date and reduce the monthly payment.
+    /// </summary>
+    /// <remarks>
+    /// Both are reported because they are genuinely different goods and the money can only buy one: finishing
+    /// sooner is worth more in interest, lowering the payment is worth more in monthly breathing room. Presenting
+    /// only the interest saved would quietly recommend the first.
+    /// </remarks>
+    public readonly record struct LumpSum(
+        Payoff Before, Payoff AfterKeepingInstallment, decimal? LoweredInstallment,
+        int MonthsSaved, decimal InterestSaved, bool ClearsTheLoan);
+
+    /// <summary>
+    /// Model paying <paramref name="lumpSum"/> off <paramref name="balance"/> in one go. Null when the loan has no
+    /// schedule to compare against (no installment, or one that can't out-run the interest) — there is nothing
+    /// honest to claim in that case.
+    /// </summary>
+    public static LumpSum? PayLumpSum(decimal balance, decimal annualRatePercent, decimal installment, decimal lumpSum)
+    {
+        if (lumpSum <= 0m) return null;
+        if (PayOff(balance, annualRatePercent, installment) is not { } before) return null;
+
+        var remaining = Math.Max(0m, balance - lumpSum);
+        if (PayOff(remaining, annualRatePercent, installment) is not { } after) return null;
+
+        // Keeping the ORIGINAL term and dropping the payment — the alternative use of the same money. Null when the
+        // loan is cleared outright (there is no payment left to lower).
+        var lowered = remaining <= 0m ? 0m : PaymentFor(remaining, annualRatePercent, before.Months);
+
+        return new LumpSum(
+            before, after, lowered,
+            Math.Max(0, before.Months - after.Months),
+            decimal.Round(Math.Max(0m, before.TotalInterest - after.TotalInterest), 2),
+            remaining <= 0m);
+    }
+
     // ---- Multi-loan payoff strategies (avalanche / snowball) ----
 
     /// <summary>One loan as an input to a multi-loan plan. Pure numbers — decoupled from any money-model entity.</summary>

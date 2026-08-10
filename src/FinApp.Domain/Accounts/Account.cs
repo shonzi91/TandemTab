@@ -682,6 +682,81 @@ public sealed class Account : Entity
         return perPeriod > 0m ? decimal.Round(perPeriod, 2) : null;
     }
 
+    /// <summary>One period that cost noticeably more than this account's usual, and the category that drove it.</summary>
+    /// <param name="Excess">How much above the typical period this one ran.</param>
+    /// <param name="DriverExcess">How much of <paramref name="Excess"/> that one category accounts for.</param>
+    public readonly record struct CostHeavyPeriod(
+        DateOnly From, DateOnly To, decimal Total, decimal Excess, Guid? DriverCategoryId, decimal DriverExcess);
+
+    /// <summary>
+    /// Closed periods that ran materially above this account's typical spend, worst first — the factual half of
+    /// "which months cost you most", with the category that drove each one.
+    /// </summary>
+    /// <remarks>
+    /// <b>This deliberately observes and does not predict.</b> It reports what happened; it does not claim a month
+    /// will be expensive again, because with a year of history there is exactly one observation per month and a
+    /// seasonal pattern cannot be told apart from a one-off. A second year earns that claim; this does not make it.
+    /// <para>
+    /// "Typical" is the <b>median</b> period, not the mean: one blow-out month drags a mean up far enough to hide
+    /// itself, which is precisely the month this is looking for. Needs <paramref name="minPeriods"/> closed periods
+    /// before it says anything at all — below that, "typical" describes nothing.
+    /// </para>
+    /// <para>
+    /// The driver is the category whose own spend in that period most exceeds <i>its</i> median across periods, so
+    /// a category that is simply always large (rent) never gets blamed for a month it didn't change in.
+    /// </para>
+    /// </remarks>
+    public IReadOnlyList<CostHeavyPeriod> CostHeavyPeriods(int minPeriods = 4, decimal threshold = 1.15m)
+    {
+        var closed = _periods.Where(p => p.Status == PeriodStatus.Closed).ToList();
+        if (closed.Count < minPeriods) return [];
+
+        var totals = closed.ToDictionary(p => p.Id, p => p.Expenses.Sum(e => e.Amount.Amount));
+        var typical = Median(totals.Values);
+        if (typical <= 0m) return [];
+
+        // Each category's own median across the same periods, so "unusual" is judged per category.
+        var categoryMedians = _categories.ToDictionary(
+            c => c.Id,
+            c => Median(closed.Select(p => p.Expenses.Where(e => e.CategoryId == c.Id).Sum(e => e.Amount.Amount))));
+
+        var heavy = new List<CostHeavyPeriod>();
+        foreach (var p in closed)
+        {
+            var total = totals[p.Id];
+            if (total <= typical * threshold) continue;
+
+            var driver = p.Expenses
+                .GroupBy(e => e.CategoryId)
+                .Select(g => (CategoryId: g.Key, Excess: g.Sum(e => e.Amount.Amount) - categoryMedians.GetValueOrDefault(g.Key)))
+                .Where(x => x.Excess > 0m)
+                .OrderByDescending(x => x.Excess)
+                .FirstOrDefault();
+
+            heavy.Add(new CostHeavyPeriod(p.From, p.To, total, decimal.Round(total - typical, 2),
+                driver.CategoryId == Guid.Empty ? null : driver.CategoryId, decimal.Round(driver.Excess, 2)));
+        }
+        return heavy.OrderByDescending(h => h.Excess).ToList();
+    }
+
+    /// <summary>The typical (median) spend of a closed period — the baseline <see cref="CostHeavyPeriods"/> compares
+    /// against. Null until there is enough history for "typical" to mean anything.</summary>
+    public decimal? TypicalPeriodSpend(int minPeriods = 4)
+    {
+        var closed = _periods.Where(p => p.Status == PeriodStatus.Closed).ToList();
+        if (closed.Count < minPeriods) return null;
+        var median = Median(closed.Select(p => p.Expenses.Sum(e => e.Amount.Amount)));
+        return median > 0m ? decimal.Round(median, 2) : null;
+    }
+
+    private static decimal Median(IEnumerable<decimal> values)
+    {
+        var sorted = values.OrderBy(v => v).ToList();
+        if (sorted.Count == 0) return 0m;
+        var mid = sorted.Count / 2;
+        return sorted.Count % 2 == 1 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2m;
+    }
+
     /// <summary>Archive (or restore) a savings bucket — hides it from the main lists while keeping its history.</summary>
     public void SetSavingArchived(Guid savingCategoryId, bool archived) =>
         (FindSavingCategory(savingCategoryId) ?? throw new InvalidOperationException("Saving category not found.")).SetArchived(archived);

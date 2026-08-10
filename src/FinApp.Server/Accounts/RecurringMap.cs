@@ -62,6 +62,30 @@ public static class RecurringMap
     }
 
     /// <summary>
+    /// Linking a bill to a loan says "I pay this loan through this app", so the loan starts following the payments
+    /// logged here rather than walking its own schedule. That is the whole signal the setting was asking for, and
+    /// leaving it off meant a user could log every installment for months while the balance quietly ignored them.
+    /// </summary>
+    /// <remarks>
+    /// <b>★ Only on the transition into a link (<paramref name="wasLinkedToSameBucket"/> false), never on every
+    /// save.</b> The mode is still the user's to choose: someone who sets a linked loan back to "its own schedule"
+    /// — the right call when the bill is a reminder for a payment that leaves an account this app can't see — must
+    /// not have it flipped back the next time they rename the bill. Keying on the transition gets a sensible
+    /// default without a second "has the user chosen?" flag to store and keep honest.
+    /// <para>
+    /// <see cref="Savings.SavingCategory.SetPaymentDriven"/> snapshots what is owed today and re-anchors there, so
+    /// this changes what moves the balance from here on and never the figure itself.
+    /// </para>
+    /// </remarks>
+    public static void DefaultLoanToPaymentDriven(Account account, RecurringItem item, bool wasLinkedToSameBucket, DateOnly today)
+    {
+        if (wasLinkedToSameBucket) return;
+        if (item.LinkedDebtBucketId is not { } bucketId) return;
+        if (account.FindSavingCategory(bucketId) is not { IsDebt: true, DebtPaymentDriven: false }) return;
+        account.SetSavingDebtPaymentDriven(bucketId, true, today);
+    }
+
+    /// <summary>
     /// Post a due recurring item, routing a debt-linked bill through the installment split. The single place both the
     /// confirm endpoint and auto-post go through, so a linked bill can't split one way when confirmed and another when
     /// posted automatically.

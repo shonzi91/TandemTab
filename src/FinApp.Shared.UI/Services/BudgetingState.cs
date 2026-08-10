@@ -1271,6 +1271,7 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
             item.SetCreatedOn(Today());
             item.SetLinkedDebtBucket(linkedDebtBucketId);
             SyncLoanDueDay(item);
+            DefaultLoanToPaymentDriven(item, wasLinkedToSameBucket: false);
             Account.AddRecurring(item);
         },
         id => api.AddRecurringAsync(id, new AddRecurringRequest(name, RecurringKindString(kind), RecurringModeString(mode),
@@ -1280,9 +1281,14 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     public Task UpdateRecurring(Guid id, string name, RecurringAmountMode mode, decimal expected, int dayOfMonth, Guid categoryId, Guid fundId, string? icon, bool autoPost = false, Guid? linkedDebtBucketId = null) =>
         ExecuteOptimisticAsync(() =>
         {
+            var previousLink = Account.FindRecurring(id)?.LinkedDebtBucketId;
             Account.FindRecurring(id)?.Update(name, mode, expected, dayOfMonth, categoryId, fundId, icon, autoPost);
             Account.FindRecurring(id)?.SetLinkedDebtBucket(linkedDebtBucketId);   // authoritative: null unlinks
-            if (Account.FindRecurring(id) is { } updated) SyncLoanDueDay(updated);
+            if (Account.FindRecurring(id) is { } updated)
+            {
+                SyncLoanDueDay(updated);
+                DefaultLoanToPaymentDriven(updated, previousLink == updated.LinkedDebtBucketId);
+            }
         },
             acct => api.UpdateRecurringAsync(acct, id, new UpdateRecurringRequest(name, RecurringModeString(mode),
                 expected, dayOfMonth, categoryId, fundId, icon, autoPost, linkedDebtBucketId)),
@@ -1298,6 +1304,22 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
         if (debt.DebtInstallmentDay is { } loanDay) item.SetDayOfMonth(loanDay);
         else Account.SetSavingDebtInstallmentDay(bucketId, item.DayOfMonth);
     }
+
+    /// <summary>Mirror of the server's <c>RecurringMap.DefaultLoanToPaymentDriven</c> — see there for why this fires
+    /// only on the transition into a link and never on an ordinary re-save.</summary>
+    private void DefaultLoanToPaymentDriven(RecurringItem item, bool wasLinkedToSameBucket)
+    {
+        if (wasLinkedToSameBucket) return;
+        if (item.LinkedDebtBucketId is not { } bucketId) return;
+        if (FindSavingBucket(bucketId) is not { IsDebt: true, DebtPaymentDriven: false }) return;
+        Account.SetSavingDebtPaymentDriven(bucketId, true, Today());
+    }
+
+    /// <summary>Whether picking this loan in the bill editor will switch it onto logged payments — i.e. it isn't
+    /// already following them, and this bill isn't already the one linked to it.</summary>
+    public bool LinkingWouldSwitchLoanToPaymentDriven(Guid bucketId, Guid? currentlyLinkedBucketId) =>
+        currentlyLinkedBucketId != bucketId
+        && FindSavingBucket(bucketId) is { IsDebt: true, DebtPaymentDriven: false };
 
     /// <summary>The linked loan's installment day, when a bill's due date is being dictated by one.</summary>
     public int? LoanDueDayFor(Guid? linkedDebtBucketId) =>
@@ -1586,6 +1608,13 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
 
     /// <summary>What the emergency fund should hold — 3× essential spending, rounded up to 500. Null when nothing is
     /// marked essential (there is nothing honest to derive it from).</summary>
+    /// <summary>Closed periods that ran materially above this account's typical spend, worst first, with the
+    /// category that drove each. Observation only — see <c>Account.CostHeavyPeriods</c> for why it doesn't predict.</summary>
+    public IReadOnlyList<FinApp.Domain.Accounts.Account.CostHeavyPeriod> CostHeavyPeriods() => Account.CostHeavyPeriods();
+
+    /// <summary>The typical (median) closed-period spend these are measured against. Null until there's enough history.</summary>
+    public decimal? TypicalPeriodSpend() => Account.TypicalPeriodSpend();
+
     public decimal? EmergencyTarget() => Account.EmergencyFundTarget();
 
     /// <summary>The essential spend the target was derived from. Read this for the basis rather than dividing the

@@ -260,6 +260,54 @@ public class RecurringApiTests : IClassFixture<FinAppServerFactory>
     }
 
     [Fact]
+    public async Task Linking_a_bill_switches_the_loan_onto_logged_payments()
+    {
+        // Linking says "I pay this loan through this app" — which is exactly what the setting was asking for.
+        var (client, auth) = await _factory.RegisterAndAuthAsync("rc_paydriven");
+        var account = await CreateAccount(client, "PayDriven");
+        var (rent, _, fund) = await SeedAsync(client, account.Id, auth.UserId);
+
+        var loanId = await IdOf(await client.PostAsJsonAsync($"/accounts/{account.Id}/savings/buckets",
+            new SaveSavingBucketRequest("Car loan", IsDebt: true, DebtBalance: 8000m, DebtRate: 6m,
+                DebtInstallment: 400m)));
+        Assert.False((await LoadAsync(client, account.Id)).FindSavingCategory(loanId)!.DebtPaymentDriven);
+
+        await IdOf(await client.PostAsJsonAsync($"/accounts/{account.Id}/recurring",
+            new AddRecurringRequest("Car payment", "expense", "fixed", 400m, 10, rent, fund, LinkedDebtBucketId: loanId)));
+
+        var loan = (await LoadAsync(client, account.Id)).FindSavingCategory(loanId)!;
+        Assert.True(loan.DebtPaymentDriven);
+        Assert.Equal(8000m, loan.DebtBalance);   // the mode changed; what's owed did not
+    }
+
+    [Fact]
+    public async Task Re_saving_a_bill_does_not_undo_a_deliberate_switch_back_to_the_schedule()
+    {
+        // ★ The default fires on the transition INTO a link, never on every save. A user whose bill is only a
+        // reminder for a payment leaving an account this app can't see must be able to keep schedule-driven.
+        var (client, auth) = await _factory.RegisterAndAuthAsync("rc_paydriven_keep");
+        var account = await CreateAccount(client, "KeepSchedule");
+        var (rent, _, fund) = await SeedAsync(client, account.Id, auth.UserId);
+
+        var loanId = await IdOf(await client.PostAsJsonAsync($"/accounts/{account.Id}/savings/buckets",
+            new SaveSavingBucketRequest("Car loan", IsDebt: true, DebtBalance: 8000m, DebtRate: 6m, DebtInstallment: 400m)));
+        var recId = await IdOf(await client.PostAsJsonAsync($"/accounts/{account.Id}/recurring",
+            new AddRecurringRequest("Car payment", "expense", "fixed", 400m, 10, rent, fund, LinkedDebtBucketId: loanId)));
+
+        // The user deliberately puts it back on its own schedule...
+        (await client.PutAsJsonAsync($"/accounts/{account.Id}/savings/buckets/{loanId}",
+            new SaveSavingBucketRequest("Car loan", IsDebt: true, DebtBalance: 8000m, DebtRate: 6m,
+                DebtInstallment: 400m, DebtPaymentDriven: false))).EnsureSuccessStatusCode();
+
+        // ...then edits the bill for an unrelated reason.
+        (await client.PutAsJsonAsync($"/accounts/{account.Id}/recurring/{recId}",
+            new UpdateRecurringRequest("Car payment (renamed)", "fixed", 400m, 10, rent, fund, null, false, loanId)))
+            .EnsureSuccessStatusCode();
+
+        Assert.False((await LoadAsync(client, account.Id)).FindSavingCategory(loanId)!.DebtPaymentDriven);
+    }
+
+    [Fact]
     public async Task Create_with_an_unknown_category_is_rejected()
     {
         var (client, auth) = await _factory.RegisterAndAuthAsync("rc_badcat");

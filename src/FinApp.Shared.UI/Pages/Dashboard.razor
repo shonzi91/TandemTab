@@ -282,42 +282,41 @@ else
                 <div class="bal-part bal-part-main">
                     <span class="bal-label">@Loc["Safe to spend"]@if (LiveBalancePending) { <span class="bal-refreshing" title="@Loc["Updating live balance…"]"></span> }</span>
                     <strong class="@(State.IsOverAllocated ? "warn-text" : "bal-free-v")" title="@Loc["Not set aside for savings. Budgets are plans, so they don't reserve this."]">@Fmt(_balFree)</strong>
-                    @* One context line at most: the bills still due this period, which "safe to spend" doesn't yet
-                       subtract. When budgets outrun free cash the urgent Home alert already says so — not repeated here. *@
-                    @if (_billsDue.Amount > 0m)
+                    @* ★ Exactly ONE context line, never two. "After bills" and "a day left" answer the same question
+                       at different resolutions — the per-day figure is already computed after bills — so showing both
+                       spent a line to say the same thing twice, on the densest part of the app.
+                       The absolute figure wins only when it turns negative, because "you are short" is a different
+                       statement from "here is your daily allowance" and must not be softened into one. *@
+                    @if (_billsDue.Amount > 0m && _safeAfterBills.IsNegative)
                     {
-                        <small class="bal-sub @(_safeAfterBills.IsNegative ? "warn-text" : "")" title="@string.Format(Loc["{0} in known bills is still expected this period — this is what stays free once they are paid."], Fmt(_billsDue))">@Fmt(_safeAfterBills) @Loc["after bills"]</small>
+                        <small class="bal-sub warn-text" title="@string.Format(Loc["{0} in known bills is still expected this period — this is what stays free once they are paid."], Fmt(_billsDue))">@Fmt(_safeAfterBills) @Loc["after bills"]</small>
                     }
-                    @if (_perDay is { } _pd)
+                    else if (_perDay is { } _pd)
                     {
-                        <small class="bal-sub bal-daily" title="@string.Format(Loc["About {0} a day for the {1} days left this period, after known bills."], Fmt(_pd), _daysLeft)">@string.Format(Loc["{0} a day left"], Fmt(_pd))</small>
+                        <small class="bal-sub bal-daily" title="@string.Format(Loc["About {0} a day for the {1} days left this period, after known bills ({2})."], Fmt(_pd), _daysLeft, Fmt(_billsDue))">@string.Format(Loc["{0} a day left"], Fmt(_pd))</small>
+                    }
+                    else if (_billsDue.Amount > 0m)
+                    {
+                        <small class="bal-sub" title="@string.Format(Loc["{0} in known bills is still expected this period — this is what stays free once they are paid."], Fmt(_billsDue))">@Fmt(_safeAfterBills) @Loc["after bills"]</small>
                     }
                 </div>
+                @* ★ The three reference figures keep their number and lose their sub-lines. Each sub-line was a
+                   fourth, fifth and sixth number on the one screen the user lands on, and none of them was the
+                   reason they opened the app — the savings RATE lives on Goals, the transfer split and the
+                   carry-over on Wallets, in full and in context. They stay one hover away here via the title. *@
                 <div class="bal-part">
                     <span class="bal-label">@Loc["Saved"]</span>
-                    <strong class="bal-alloc-v" title="@Loc["Set aside for savings this period — reserved, not spent."]">@Fmt(_savedPeriod)</strong>
-                    @if (_savedRate is { } _sr && _sr > 0m)
-                    {
-                        <small class="bal-sub" title="@_moneyInTip">@(Math.Round(_sr * 100m).ToString("0", System.Globalization.CultureInfo.InvariantCulture))% @Loc["of money in"]</small>
-                    }
+                    <strong class="bal-alloc-v" title="@(_savedRate is { } _sr && _sr > 0m ? string.Format(Loc["Set aside for savings this period — reserved, not spent. That's {0}% of money in."], Math.Round(_sr * 100m).ToString("0", System.Globalization.CultureInfo.InvariantCulture)) : Loc["Set aside for savings this period — reserved, not spent."])">@Fmt(_savedPeriod)</strong>
                 </div>
                 <div class="bal-part">
                     <span class="bal-label">@Loc["Spent"]</span>
-                    <strong title="@Loc["All money out this period — spending plus account transfers."]">@Fmt(_spent)</strong>
-                    @if (_transfersOut.Amount > 0m)
-                    {
-                        <small class="bal-sub" title="@_transfersTip">+@Fmt(_transfersOut) @Loc["transferred"]</small>
-                    }
+                    <strong title="@(_transfersOut.Amount > 0m ? _transfersTip : Loc["All money out this period — spending plus account transfers."])">@Fmt(_spent)</strong>
                 </div>
                 <div class="bal-part">
                     @* Was "Income" — now "Money in" (fresh income + free carry-over) so it matches the denominator the
                        Saved rate is "% of". When nothing carried over it's just this period's income. *@
                     <span class="bal-label">@Loc["Money in"]</span>
                     <strong title="@_moneyInTip">@Fmt(State.MoneyInThisPeriod)</strong>
-                    @if (State.CarriedInThisPeriod.Amount > 0m)
-                    {
-                        <small class="bal-sub" title="@_moneyInTip">+@Fmt(State.CarriedInThisPeriod) @Loc["carried"]</small>
-                    }
                 </div>
             }
             else
@@ -1927,6 +1926,38 @@ else
                             </div>
                         </div>
                     }
+                    @* Owner ask #7, the half that can be said honestly: WHICH periods ran heavy, and what drove
+                       each. It reports; it does not predict. With about a year of history there is one observation
+                       per month, so a seasonal pattern cannot be told from a one-off — "next December will be
+                       expensive" is a guess in a confident voice, and this app doesn't make those. A second year
+                       earns that claim. Lives inside Trends rather than as its own section: it answers the same
+                       "how is it moving?" question the rest of this view does. *@
+                    @{ var costHeavy = State.CostHeavyPeriods(); }
+                    @if (costHeavy.Count > 0 && State.TypicalPeriodSpend() is { } typicalSpend)
+                    {
+                        <h4 class="insight-h trend-spark-h">@Loc["The periods that cost you most"]</h4>
+                        <p class="hint costly-intro">@string.Format(Loc["A typical period costs you {0}. These ran above it — worth a look before the same time next year, though one year of history can't tell a season from a one-off."], Fmt(State.Money(typicalSpend)))</p>
+                        <div class="costly-list">
+                            @foreach (var ch in costHeavy.Take(4))
+                            {
+                                <div class="costly-row">
+                                    <span class="costly-when">@ch.From.ToString("MMM yyyy")</span>
+                                    <span class="costly-main">
+                                        <span class="costly-total">@Fmt(State.Money(ch.Total))</span>
+                                        <span class="costly-over">+@Fmt(State.Money(ch.Excess)) @Loc["over typical"]</span>
+                                    </span>
+                                    @if (ch.DriverCategoryId is { } drv && ch.DriverExcess > 0m)
+                                    {
+                                        @* The category that was unusual FOR ITSELF that period — not simply the
+                                           biggest one, or rent would be blamed every time. *@
+                                        <span class="costly-driver" title="@string.Format(Loc["{0} ran {1} above its own usual that period."], State.CategoryName(drv), Fmt(State.Money(ch.DriverExcess)))">
+                                            <CatIcon Name="@State.CategoryIcon(drv)" /> @State.CategoryName(drv)
+                                        </span>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    }
                     @{ var trReport = CurrentReport(); }
                     @if (trReport.MiniTrends.Count > 0)
                     {
@@ -2542,6 +2573,28 @@ else
                  Together="@(State.IsReady && State.HasAccounts && State.RealUsers.Count > 1)"
                  Others="@(State.IsReady && State.HasAccounts ? OtherMemberNames() : null)"
                  OnDismiss="DismissCelebration" />
+
+@* What the payment just bought. Deliberately AFTER the fact and dismissible, not a modal: the decision is already
+   made, so this is a receipt, not a question. It states interest saved and the new finish date — the two things a
+   lump sum actually changes, and the two a bank statement will never tell you. *@
+@if (_paydownResult is { } pr)
+{
+    <div class="paydown-toast" role="status" @onclick="() => _paydownResult = null">
+        <button type="button" class="paydown-toast-x" aria-label="@Loc["Dismiss"]" @onclick="() => _paydownResult = null"><Icon Name="x" /></button>
+        @if (pr.Outcome.ClearsTheLoan)
+        {
+            <div class="paydown-toast-hero">🎉 @string.Format(Loc["{0} is paid off."], pr.Name)</div>
+            <div class="paydown-toast-sub">@string.Format(Loc["You've just avoided {0} of interest."], Fmt(State.Money(pr.Outcome.InterestSaved)))</div>
+        }
+        else
+        {
+            <div class="paydown-toast-hero">🎉 @string.Format(Loc["You've just saved {0} in interest."], Fmt(State.Money(pr.Outcome.InterestSaved)))</div>
+            <div class="paydown-toast-sub">
+                @string.Format(Loc["{0} now finishes {1}"], pr.Name, PayoffDate(pr.Outcome.AfterKeepingInstallment.Months))@if (pr.Outcome.MonthsSaved > 0) { <text> — @MonthsText(pr.Outcome.MonthsSaved) @Loc["sooner than before"]</text> }.
+            </div>
+        }
+    </div>
+}
 
 @if (_modal != Modal.None)
 {
@@ -4247,11 +4300,18 @@ else
                         @if (_recDebtId != Guid.Empty)
                         {
                             <small class="hint">@Loc["Each payment will be split into interest and principal rows against that loan, instead of one lump expense."]</small>
-                            @if (!State.SavingBucketDebtPaymentDriven(_recDebtId))
+                            @* Linking says "I pay this loan through this app", so the loan switches onto logged
+                               payments on save. Announced rather than done silently — it changes what moves the
+                               balance. It only fires on the transition into a link, so a user who later sets the
+                               loan back to its own schedule keeps that choice. *@
+                            var _recLinkSwitches = State.LinkingWouldSwitchLoanToPaymentDriven(_recDebtId, _recEditId == Guid.Empty ? null : State.RecurringItems.FirstOrDefault(x => x.Id == _recEditId)?.LinkedDebtBucketId);
+                            @if (_recLinkSwitches)
                             {
-                                @* Not flipped automatically: it changes how the balance is derived, which is the
-                                   user's call, not a side effect of linking a bill. *@
-                                <small class="hint">@Loc["That loan's balance still follows its own schedule, so confirming this bill will log the payment but won't move it. To have your logged payments drive it instead, edit the loan and set “What moves the balance”."]</small>
+                                <small class="hint"><Icon Name="note" /> @Loc["Saving this will also switch that loan's balance onto the payments you log, since you're telling us you pay it from here. What's owed today is kept exactly as it is; only what moves it from now on changes — and you can set it back on the loan."]</small>
+                            }
+                            else if (!State.SavingBucketDebtPaymentDriven(_recDebtId))
+                            {
+                                <small class="hint">@Loc["That loan's balance follows its own schedule by your choice, so confirming this bill will log the payment but won't move the balance. Change it on the loan under “What moves the balance”."]</small>
                             }
                         }
                     }
@@ -4518,6 +4578,33 @@ else
                     </label>
                     <label>@Loc["What for? (e.g. loan prepayment)"] <input type="text" @bind="_disburseNote" /></label>
                     <small class="hint">@Loc["Money leaves that fund for this goal — it’s not counted as an expense and doesn’t dent your savings figures."]</small>
+                    @* On a loan, a payment this size is a decision, not just a transfer: the same money either
+                       finishes the loan sooner or lowers every remaining payment, and the two are different goods.
+                       Shown live as the amount is typed — before it's committed, which is when the choice exists. *@
+                    @if (LumpSumOutcome() is { } _ls)
+                    {
+                        <div class="paydown-preview">
+                            @if (_ls.ClearsTheLoan)
+                            {
+                                <div class="paydown-hero"><Icon Name="trophy" /> @Loc["This clears the loan outright."]</div>
+                                <div class="paydown-line">@string.Format(Loc["You avoid the {0} of interest the remaining schedule would have cost."], Fmt(State.Money(_ls.InterestSaved)))</div>
+                            }
+                            else
+                            {
+                                <div class="paydown-hero"><Icon Name="trending" /> @string.Format(Loc["Keeping your {0} installment, this saves {1} in interest."], Fmt(State.SavingBucketDebtInstallment(_disburseBucketId)), Fmt(State.Money(_ls.InterestSaved)))</div>
+                                <div class="paydown-line">
+                                    @string.Format(Loc["Paid off {0} instead of {1}"], PayoffDate(_ls.AfterKeepingInstallment.Months), PayoffDate(_ls.Before.Months))
+                                    @if (_ls.MonthsSaved > 0) { <span class="good-text"> · @MonthsText(_ls.MonthsSaved) @Loc["sooner"]</span> }
+                                </div>
+                                @if (_ls.LoweredInstallment is { } _lower && _lower > 0m)
+                                {
+                                    @* The alternative the lender would also offer. Named so the interest figure
+                                       above doesn't silently read as the only option. *@
+                                    <div class="paydown-alt">@string.Format(Loc["Or ask your lender to keep the original end date and drop the installment to {0} a month instead."], Fmt(State.Money(_lower)))</div>
+                                }
+                            }
+                        </div>
+                    }
                     <div class="modal-actions">
                         <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
                         <button @onclick="DisburseSavingFromModal" disabled="@(_disburseAmount <= 0 || _disburseAmount > disBucketBal.Amount || _disburseFundId == Guid.Empty)"><Icon Name="target" /> @Loc["Apply"]</button>
@@ -7806,6 +7893,18 @@ else
         _modal = Modal.DisburseSaving;
     }
 
+    /// <summary>What the amount currently typed into "Make a payment" would do to the loan, or null when the bucket
+    /// isn't a debt / has no schedule to compare against / nothing is typed yet. Recomputed per render off the pure
+    /// forecast, so it can't drift from what the payment actually does.</summary>
+    private FinApp.Forecasting.LoanForecast.LumpSum? LumpSumOutcome()
+    {
+        if (_disburseAmount <= 0m) return null;
+        if (State.FindSavingBucket(_disburseBucketId) is not { IsDebt: true } debt) return null;
+        return FinApp.Forecasting.LoanForecast.PayLumpSum(
+            debt.DebtBalanceOn(DateOnly.FromDateTime(DateTime.Today)), debt.DebtAnnualRatePercent,
+            debt.DebtInstallment, _disburseAmount);
+    }
+
     /// <summary>How much this bucket holds (accumulated across periods) — the cap for a disbursement.</summary>
     private Money DisburseBucketBalance() =>
         State.SavingBuckets.FirstOrDefault(b => b.Bucket.Id == _disburseBucketId).Total is { } t && t.Currency is not null
@@ -7814,10 +7913,19 @@ else
     private Task DisburseSavingFromModal() => RunModal(async () =>
     {
         if (_disburseAmount <= 0 || _disburseAmount > DisburseBucketBalance().Amount || _disburseFundId == Guid.Empty) return;
+        // Captured BEFORE the payment lands: afterwards the balance has already moved, so the same call would
+        // report what the NEXT payment of this size would save, not the one just made.
+        var outcome = LumpSumOutcome();
+        var name = State.SavingBucketName(_disburseBucketId);
         await State.DisburseSaving(_disburseBucketId, _disburseFundId, _disburseAmount, _disburseNote);
         _disburseAmount = 0; _disburseNote = null;
+        _paydownResult = outcome is { } o ? (name, o) : null;
         CloseModal();
     });
+
+    /// <summary>The payment just made and what it bought — shown once, on the page behind the closed modal. Cleared
+    /// by a tap. Null when the payment wasn't against a loan (there'd be nothing to report).</summary>
+    private (string Name, FinApp.Forecasting.LoanForecast.LumpSum Outcome)? _paydownResult;
 
     // --- Log installment (R2): one payment posted as principal + interest + N extra lines --------------
     private Guid _instBucketId, _instFundId, _instCategoryId;
