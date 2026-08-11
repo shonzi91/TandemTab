@@ -929,7 +929,7 @@ public sealed class Localizer(IJSRuntime js)
         ["You're on track for"] = "На път сте към",
         ["Debt-free"] = "Без дългове",
         ["by"] = "до",
-        ["reached 🎉"] = "постигната 🎉",
+        ["reached"] = "постигната",
         ["Projections at your current pace — they don't move real money."] =
             "Прогнози при текущото ви темпо — не местят реални пари.",
         ["Set aside"] = "Заделени",
@@ -1600,7 +1600,8 @@ public sealed class Localizer(IJSRuntime js)
         ["Where"] = "Къде",
         ["Rome"] = "Рим",
         ["Rome, Italy"] = "Рим, Италия",
-        ["Flag or emoji"] = "Знаме или емоджи",
+        ["Mark"] = "Знак",
+        ["pick one below, or type an emoji"] = "избери отдолу или въведи емоджи",
         ["Money"] = "Пари",
         ["What you expect it to cost"] = "Колко очакваш да струва",
         ["optional"] = "по избор",
@@ -1647,5 +1648,34 @@ public sealed class Localizer(IJSRuntime js)
             "Избери каквото вече си платил/а за това пътуване — самолетни билети, хотел, входове. Остава в месеца, в който си платил/а; просто започва да се брои към пътуването.",
         ["Nothing logged yet."] = "Още няма нищо записано.",
         ["on {0}"] = "към {0}",
+
+        // Home's trip banner, the bell's departure nudge, and the softened over-budget line while travelling.
+        ["See the whole trip"] = "Виж цялото пътуване",
+        ["Day {0} of {1}"] = "Ден {0} от {1}",
+        ["So far"] = "Досега",
+        ["{0} booked ahead · {1} while away"] = "{0} платено предварително · {1} докато си там",
+        ["Of the {0} you planned"] = "От планираните {0}",
+        ["{0} left"] = "остават {0}",
+        ["{0} over"] = "{0} над",
+        ["starts today"] = "започва днес",
+        ["starts tomorrow"] = "започва утре",
+        ["{0} booked ahead so far."] = "{0} платено предварително досега.",
+        ["Open the trip"] = "Отвори пътуването",
+        ["Normal while you're away — it still counts, and it'll show in the trip's recap."] =
+            "Нормално е, докато си на път — сумата пак се брои и ще се появи в обобщението на пътуването.",
+
+        // The trip form: the overlap warning and the currency preview.
+        ["These dates overlap {0}. Both stay pickable on the expense form — on the shared days new expenses just default to whichever started later."] =
+            "Тези дати се застъпват с {0}. И двете остават достъпни във формата за разход — в общите дни новите разходи просто се отнасят по подразбиране към това, което е започнало по-късно.",
+        ["Rate"] = "Курс",
+        ["Files into"] = "Отчита се в",
+        ["— each label's own category —"] = "— категорията на всеки етикет —",
+        ["Every trip label files into its own everyday category — a hotel lands in Housing, dinners in Food. Your monthly budgets will move with the trip."] =
+            "Всеки етикет за пътуване се отчита в собствената си всекидневна категория — хотелът отива в Жилище, вечерите в Храна. Месечните ти бюджети ще се движат заедно с пътуването.",
+        ["The whole trip lands in this one category, so your everyday budgets keep describing everyday life. The trip's own recap still splits it by stay, travel, food and tickets."] =
+            "Цялото пътуване отива в тази една категория, така че всекидневните ти бюджети продължават да описват всекидневието. Обобщението на пътуването пак го разделя по настаняване, транспорт, храна и билети.",
+        ["{0} shows as {1}"] = "{0} се изписва като {1}",
+        ["We have no symbol for {0}, so it shows as {1}"] = "Нямаме символ за {0}, затова се изписва като {1}",
+        ["stored in {0}, this account's currency"] = "записва се в {0} — валутата на тази сметка",
     };
 }

@@ -142,7 +142,7 @@ html.dark .onboard-desc { color: #a9b6ad; }
 .week-recap-glow:hover { box-shadow: 0 0 0 3px rgba(19,160,110,.16), 0 3px 18px rgba(19,160,110,.22); }
 .week-recap-hit:focus-visible { outline: 2px solid #13a06e; outline-offset: 2px; }
 @media (prefers-reduced-motion: no-preference) {
-    .week-recap-glow { animation: wkGlow 3.4s ease-in-out infinite; }
+    .week-recap-glow { animation: wkGlow 5s ease-in-out infinite; }
     @keyframes wkGlow {
         0%, 100% { box-shadow: 0 0 0 3px rgba(19,160,110,.08), 0 2px 12px rgba(19,160,110,.10); }
         50%      { box-shadow: 0 0 0 4px rgba(19,160,110,.18), 0 3px 20px rgba(19,160,110,.24); }
@@ -169,6 +169,23 @@ html.dark .onboard-desc { color: #a9b6ad; }
    modifiers at matching specificity rather than weakening the default. (Same trap as `.list li` in S85.) */
 .week-recap-fig small.warn-text { color: #b45309; }
 .week-recap-fig small.good-text { color: #13a06e; }
+/* Same trap one element up: `.week-recap-fig strong` is (0,1,1), so the trip banner's over-budget figure lost to a
+   bare .warn-text exactly as the comparison line above did. Re-stated at matching specificity. */
+.week-recap-fig strong.warn-text { color: #b45309; }
+
+/* The Home trip banner borrows the week-recap card wholesale — same shell, same hit area, same figure grid — and
+   only changes its colour, because it is the same object (a read-out with somewhere to go) carrying different
+   content. What it deliberately does NOT borrow is the glow: see the markup for why an eight-day pulse is a nag.
+   Blue rather than the app's mint, and not an invented blue: #35538f / #e8eefc are already the trip idiom
+   (.trip-pill.soon, .trip-fx), so the banner and the Trips tab it opens speak with one voice. */
+.trip-banner { background: #f4f8ff; border-color: #d5e2f7; }
+.trip-banner .week-recap-go { color: #35538f; }
+.trip-banner .week-recap-title { color: #1e3a68; }
+.trip-banner-mark { font-size: 1.05rem; line-height: 1; }
+html.dark .trip-banner { background: #141b2b; border-color: #2a3651; }
+html.dark .trip-banner .week-recap-go,
+html.dark .trip-banner .week-recap-title { color: #9db6ea; }
+html.dark .week-recap-fig strong.warn-text { color: #f0b048; }
 html.dark .week-recap { background: #141a22; border-color: #2c3644; }
 html.dark .week-recap-title, html.dark .week-recap-fig strong { color: #e8eef0; }
 html.dark .week-recap-dates, html.dark .week-recap-lbl, html.dark .week-recap-fig small, html.dark .week-recap-x { color: #8b96a4; }
@@ -705,7 +722,7 @@ html.dark .row-sub { color: #8a94a6; }
 .row-ops { display: flex; align-items: center; gap: 4px; }
 
 .loading { padding: 64px 40px; text-align: center; color: #6b7280; display: flex; flex-direction: column; align-items: center; gap: 14px; }
-.loading-budgie { width: 56px; height: 56px; animation: budgie-bob 1.4s ease-in-out infinite; }
+.loading-budgie { width: 56px; height: 56px; animation: budgie-bob 2s ease-in-out infinite; }
 .loading-budgie ::deep .tandem-logo { width: 56px; height: 56px; }
 
 .firstrun {
@@ -719,7 +736,7 @@ html.dark .row-sub { color: #8a94a6; }
     background: linear-gradient(135deg, #eef9f3, #e4f6ee);
     border: 1px solid #d6f0e3; border-radius: 24px;
     display: grid; place-items: center; box-shadow: 0 8px 24px rgba(19, 160, 110,.12);
-    animation: budgie-bob 3s ease-in-out infinite;
+    animation: budgie-bob 4.2s ease-in-out infinite;
 }
 .firstrun-mascot ::deep svg { width: 100%; height: 100%; display: block; }
 @keyframes budgie-bob { 0%,100% { transform: translateY(0) rotate(-2deg); } 50% { transform: translateY(-5px) rotate(2deg); } }
@@ -1076,36 +1093,85 @@ html.dark .trend-barlbl.down { color: #f87171; }
 html.dark .trend-bal-fill { opacity: .2; }
 
 .brk-chart { display: flex; justify-content: center; padding: 6px 0; }
-.brk-donut { width: min(240px, 68vw); height: auto; }
+/* Wider than the old 240 because the viewBox now carries a margin for the leader labels: the ring is drawn at the
+   same r=90 it always was, so this keeps it at roughly its previous size on screen rather than shrinking it to pay
+   for the labels. */
+.brk-donut { width: min(470px, 98vw); height: auto; }
 .brk-donut path { stroke: var(--tt-donut-gap, #ffffff); stroke-width: 2; }
 html.dark .brk-donut path { stroke: #0f1420; }
-.brk-slice { transition: transform .2s ease, opacity .12s; }
+.brk-slice { transition: transform .3s ease, opacity .18s; }
 .brk-donut path:hover, .brk-donut circle:hover { opacity: .85; }
+
+/* Leader labels around the ring: hairline → badge in the slice's colour → its share.
+   ⚠️ The lines are <polyline>, not <path>, and that is load-bearing: `.brk-donut path` above paints every path's
+   stroke white (the gaps between slices), which would have made a leader line invisible on a white card and looked
+   exactly like a selector that never matched. Choosing a different element sidesteps the collision instead of
+   fighting it with specificity.
+   The whole group is transparent to the pointer so the slices keep their own hover and tooltips. */
+.brk-labels { pointer-events: none; }
+.brk-lbl-line { stroke-width: 1.5; opacity: .6; }
+/* ⚠️ NO `stroke` or `fill` colour here, and that is deliberate: the icon and the figure are painted with the
+   slice's own colour, set as a presentation ATTRIBUTE in the markup — and a presentation attribute loses to any
+   stylesheet declaration, so a colour written here would silently repaint every label the same. Only the shape
+   properties belong in this rule.
+   `fill: none` + stroke is the app's line-icon treatment (see `.ic`), so a chart icon and its list-row twin are
+   the same drawing. Slightly heavier stroke because the 24-unit symbol is drawn into an 18px box. */
+.brk-lbl-ic { fill: none; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+.brk-lbl-pct { font-size: 15px; font-weight: 800; font-variant-numeric: tabular-nums; }
+/* The sign stays muted so the eye lands on the number; it's the one part of the label that isn't slice-coloured. */
+.brk-lbl-sign { font-size: 10px; font-weight: 700; fill: #8a97a0; }
+html.dark .brk-lbl-sign { fill: #8b96a4; }
+html.dark .brk-lbl-line { opacity: .75; }
 
 /* Chart entrance animations. Kept deliberately restrained: one pass, no loop, no bounce — the point is to show
    that the data CHANGED (the eye follows the movement to the new shape), not to decorate. Replayed by the @key
-   on each svg, which makes Blazor build a fresh element when the window or axis changes. */
+   on each svg, which makes Blazor build a fresh element when the window or axis changes.
+   ⏱ Durations were taken up by roughly half across this block (and the decorative loops elsewhere in the file):
+   the originals were quick enough that the movement registered as a flicker rather than as the chart arriving.
+   Nothing here blocks input, so the extra time costs nothing — which is exactly why the loading spinner and the
+   save overlay were left alone: slowing THOSE would not be a nicer animation, it would be a slower app. */
 .brk-slice {
     transform-box: fill-box; transform-origin: center;
-    animation: brk-slice-in .55s cubic-bezier(.22,.8,.3,1) both;
+    animation: brk-slice-in .85s cubic-bezier(.22,.8,.3,1) both;
 }
 @keyframes brk-slice-in {
     from { opacity: 0; transform: scale(.86) rotate(-4deg); }
     to   { opacity: 1; transform: scale(1) rotate(0); }
 }
+/* The leader labels arrive after the ring they point at — a label landing on a wedge that is still growing points
+   at the wrong thing for a third of a second. */
+.brk-labels { animation: brk-lbl-in .5s ease-out .55s both; }
+@keyframes brk-lbl-in { from { opacity: 0; } to { opacity: 1; } }
+
+/* Trends, chart 1: the bars GROW out of the zero line rather than appearing at full height, so the eye reads each
+   month's size as it arrives. Scale, not height — a transform is composited, while animating the rect's height
+   would relayout the SVG on every frame.
+   ⚠️ Scoped to `.trend-chart` on purpose: `.trend-bar` is also an HTML div bar further down this file (the mini
+   month bars), and a bare `.trend-bar` rule would animate both. */
+.trend-chart .trend-bar {
+    transform-box: fill-box; transform-origin: center bottom;
+    animation: trend-bar-grow .9s cubic-bezier(.22,.8,.3,1) both;
+    animation-delay: calc(var(--tb, 0) * 45ms);
+}
+/* Negative "kept": the bar hangs below the axis, so it grows down from its top edge. */
+.trend-chart .trend-bar-down { transform-origin: center top; }
+/* Transform only — the three bars carry different opacities (.42 for in/out, 1 for net) and a keyframe touching
+   opacity would flatten that distinction for the length of the animation and then snap it back. */
+@keyframes trend-bar-grow { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+
 /* Line "draws" left to right. pathLength="1" on the polyline normalises its length, so one dash of 1 covers the
    whole line regardless of how many months are plotted. */
 .trend-line {
     stroke-dasharray: 1; stroke-dashoffset: 1;
-    animation: trend-draw 1.1s cubic-bezier(.4,0,.2,1) forwards;
+    animation: trend-draw 1.7s cubic-bezier(.4,0,.2,1) forwards;
 }
 @keyframes trend-draw { to { stroke-dashoffset: 0; } }
-.trend-pt { animation: trend-pt-in .5s ease-out .5s both; }
+.trend-pt { animation: trend-pt-in .7s ease-out .9s both; }
 @keyframes trend-pt-in { from { opacity: 0; } to { opacity: 1; } }
 
 /* Motion is a preference, not a given: honour the OS setting and show the final state immediately. */
 @media (prefers-reduced-motion: reduce) {
-    .brk-slice, .trend-line, .trend-pt { animation: none; }
+    .brk-slice, .trend-line, .trend-pt, .brk-labels, .trend-chart .trend-bar { animation: none; }
     .trend-line { stroke-dashoffset: 0; }
 }
 .brk-donut-tot { font-size: 22px; font-weight: 800; fill: #1f2430; }
@@ -2379,7 +2445,7 @@ html.dark .ach-locked-title, html.dark .ach-ring-sub, html.dark .ach-ring-desc {
     background: linear-gradient(90deg, transparent, rgba(255,255,255,.8), transparent);
     transform: rotate(22deg) translateX(-160%);
 }
-.ach-badge.earned:hover .ach-badge-sheen::before { animation: ach-sheen .75s ease-out; }
+.ach-badge.earned:hover .ach-badge-sheen::before { animation: ach-sheen 1.1s ease-out; }
 @keyframes ach-sheen { to { transform: rotate(22deg) translateX(360%); } }
 .ach-badge.locked { background: #eef1f4; border: 2px solid #dfe4ea; }
 .ach-badge-ico { font-size: 2rem; line-height: 1; position: relative; z-index: 3; }
@@ -2981,6 +3047,23 @@ html.dark .trip-budget.over,
 html.dark .trip-acts .link.danger { color: #f87171; }
 html.dark .trip-budget.under,
 html.dark .trip-funded { color: #57d9a3; }
+
+/* A tag's mark when it resolves to a sprite icon rather than a raw emoji (see TagMark). Sized and spaced like the
+   .tag-emoji it replaces so a chip's width doesn't shift depending on which kind of mark it carries. */
+.tag-ic { width: 1.05em; height: 1.05em; flex: none; vertical-align: -0.16em; }
+
+/* Tap-to-fill icon suggestions under the trip's flag field. Sized for a finger and for emoji, which carry their
+   own optical padding — hence the near-square button rather than the tag-chip shape used for text. */
+.icon-picks { display: flex; flex-wrap: wrap; gap: 6px; margin: -2px 0 2px; }
+.icon-pick {
+    min-width: 34px; height: 34px; padding: 0 7px;
+    border: 1px solid #e2e8f0; border-radius: 9px; background: #fff;
+    font-size: 1.05rem; line-height: 1; cursor: pointer;
+}
+.icon-pick:hover { border-color: var(--tm-mint); }
+.icon-pick.on { border-color: var(--tm-mint); background: #f2fbf7; }
+html.dark .icon-pick { border-color: #2a3342; background: #131820; }
+html.dark .icon-pick.on { background: #12352a; }
 
 /* Entry flow: the trip row on the expense form + the converted-amount line. */
 .trip-pick-field .tag-chip { display: inline-flex; align-items: center; gap: 5px; }

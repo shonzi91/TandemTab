@@ -6,7 +6,7 @@
     position: fixed; inset: 0; z-index: 90;
     display: flex; align-items: center; justify-content: center; padding: 20px;
     background: rgba(16, 24, 32, .45);
-    animation: celebrate-fade .18s ease-out both;
+    animation: celebrate-fade .26s ease-out both;
 }
 
 .celebrate {
@@ -17,7 +17,7 @@
     background: #fff;
     box-shadow: 0 18px 48px rgba(16, 24, 32, .28);
     text-align: center;
-    animation: celebrate-pop .32s cubic-bezier(.2, .8, .3, 1) both;
+    animation: celebrate-pop .48s cubic-bezier(.2, .8, .3, 1) both;
 }
 
 .celebrate-medal { font-size: 2.6rem; line-height: 1; margin-bottom: 10px; }
@@ -37,7 +37,7 @@
 .celebrate-bit {
     position: absolute; top: 34px; left: 50%;
     width: 7px; height: 11px; border-radius: 2px; opacity: 0;
-    animation: celebrate-bit .9s ease-out both;
+    animation: celebrate-bit 1.35s ease-out both;
 }
 .celebrate-bit-0 { background: #13a06e; --dx: -108px; --dr: -140deg; animation-delay: .02s; }
 .celebrate-bit-1 { background: #f5a524; --dx: -78px;  --dr: 120deg;  animation-delay: .06s; }

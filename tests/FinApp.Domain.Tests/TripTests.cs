@@ -380,4 +380,75 @@ public class TripTests
         Assert.Null(restored.ActiveTrip(new DateOnly(2026, 6, 11)));
         Assert.Single(restored.Periods.SelectMany(p => p.Expenses));
     }
+
+    // --- Filing the whole trip into one category ------------------------------------------------------------
+
+    [Fact]
+    public void A_trip_files_per_label_until_it_is_given_a_category()
+    {
+        var (account, _, _, _, _) = Setup();
+        var trip = account.AddTrip("Rome", new DateOnly(2026, 6, 10), new DateOnly(2026, 6, 17));
+
+        // The default is the original behaviour, so every trip that already exists keeps filing as it did.
+        Assert.Null(trip.CategoryId);
+        Assert.False(trip.FilesIntoOneCategory);
+    }
+
+    [Fact]
+    public void A_trip_can_collect_into_one_category_and_let_it_go_again()
+    {
+        var (account, _, food, _, _) = Setup();
+        var trip = account.AddTrip("Rome", new DateOnly(2026, 6, 10), new DateOnly(2026, 6, 17));
+
+        account.SetTripCategory(trip.Id, food);
+        Assert.Equal(food, trip.CategoryId);
+        Assert.True(trip.FilesIntoOneCategory);
+
+        // Clearing goes back to per-label filing rather than leaving a dangling id.
+        account.SetTripCategory(trip.Id, null);
+        Assert.Null(trip.CategoryId);
+        Assert.False(trip.FilesIntoOneCategory);
+    }
+
+    [Fact]
+    public void A_trip_category_must_exist_in_the_account()
+    {
+        var (account, _, _, _, _) = Setup();
+        var trip = account.AddTrip("Rome", new DateOnly(2026, 6, 10), new DateOnly(2026, 6, 17));
+
+        // A link to nothing would silently fall back to per-label filing, which reads as the setting being ignored.
+        Assert.Throws<InvalidOperationException>(() => account.SetTripCategory(trip.Id, Guid.NewGuid()));
+        Assert.Null(trip.CategoryId);
+    }
+
+    [Fact]
+    public void The_trip_category_survives_a_snapshot_round_trip()
+    {
+        var (account, _, food, _, _) = Setup();
+        var trip = account.AddTrip("Rome", new DateOnly(2026, 6, 10), new DateOnly(2026, 6, 17));
+        account.SetTripCategory(trip.Id, food);
+
+        var restored = AccountSnapshotSerializer.Deserialize(AccountSnapshotSerializer.Serialize(account));
+
+        Assert.Equal(food, restored.FindTrip(trip.Id)!.CategoryId);
+    }
+
+    [Fact]
+    public void A_trip_snapshot_written_before_the_category_existed_files_per_label()
+    {
+        var (account, _, _, _, _) = Setup();
+        var trip = account.AddTrip("Rome", new DateOnly(2026, 6, 10), new DateOnly(2026, 6, 17));
+
+        // Body data as a trailing optional: a writer that never knew about CategoryId omits it, and the property
+        // has to land on null — i.e. the behaviour that trip already had — rather than throwing or defaulting to
+        // some category. This is the guarantee that makes the change need no migration.
+        var payload = AccountSnapshotSerializer.Serialize(account)
+            .Replace(",\"CategoryId\":null", "").Replace("\"CategoryId\":null,", "");
+        var restored = AccountSnapshotSerializer.Deserialize(payload);
+
+        var rt = restored.FindTrip(trip.Id)!;
+        Assert.Null(rt.CategoryId);
+        Assert.False(rt.FilesIntoOneCategory);
+        Assert.Equal("Rome", rt.Name);
+    }
 }

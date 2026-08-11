@@ -81,7 +81,7 @@ else
                                     @foreach (var m in a.Members.Take(3)) { <Avatar Name="@m.DisplayName" Picture="@State.MemberAvatar(m.UserId)" Size="22" /> }
                                 </span>
                                 <span class="acct-nm">@a.Name<small>@MembersLine(a.Members)</small></span>
-                                @if (aid == State.CurrentAccountId) { <span class="acct-check">✓</span> }
+                                @if (aid == State.CurrentAccountId) { <span class="acct-check"><Icon Name="check" /></span> }
                             </button>
                         }
                         @* People on the current account live here — with the account identity, not on the Wallets tab.
@@ -179,7 +179,7 @@ else
                             <div class="bell-head"><Icon Name="bell" /> @Loc["Notifications"]</div>
                             @if (bellCount == 0)
                             {
-                                <div class="bell-empty">@Loc["You're all caught up."] ✅</div>
+                                <div class="bell-empty"><Icon Name="check" /> @Loc["You're all caught up."]</div>
                             }
                             else
                             {
@@ -497,7 +497,7 @@ else
                     <section class="panel onboard-card">
                         <div class="onboard-head">
                             <div>
-                                <h2 class="onboard-h">👋 @Loc["Welcome! Let's get you set up"]</h2>
+                                <h2 class="onboard-h"><Icon Name="bulb" /> @Loc["Welcome! Let's get you set up"]</h2>
                                 <p class="onboard-sub">@string.Format(Loc["{0} of {1} done — takes a couple of minutes."], obDone, obSteps.Length)</p>
                             </div>
                             @* Once active, the header control collapses back to the mini link (dismiss stays on that link);
@@ -645,7 +645,50 @@ else
                comparison, and where most of it went — because the card's job is to be worth a tap, and a card
                that already says everything is a section by another name (the thing this deliberately isn't).
                The ✕ keeps its own click, stopping propagation, so dismissing never opens what you're dismissing. *@
-            @if (WeekRecapToShow() is { } recap)
+            @* While a trip is running, Home leads with the trip instead of the week. A REPLACEMENT rather than a
+               second card, and the ordering is the argument: both answer "what has money been doing lately", and
+               the one you are living through wins — stacking them would put the week you are not having above the
+               fold on a phone. The week isn't lost: it moves into the bell for the duration (see
+               HomeNotifications), the same place the ✕ sends it, so it is displaced and never destroyed.
+               ★ No dismiss and no pulse. The card is self-limiting — it appears the morning the trip starts and is
+               gone the morning after it ends — so there is nothing to dismiss, and a card that glowed for eight
+               straight days would be the nag this whole feature is trying not to be. *@
+            @if (State.ActiveTrip is { } liveTrip && State.TripRecap(liveTrip.Id) is { } liveRecap)
+            {
+                <section class="week-recap trip-banner">
+                    <button type="button" class="week-recap-hit" @onclick="() => ShowTripsTab(liveTrip.Id)" title="@Loc["See the whole trip"]">
+                        <div class="week-recap-head">
+                            <span class="week-recap-title"><span class="trip-banner-mark">@TripMark(liveTrip.Icon)</span> @liveTrip.Name</span>
+                            <span class="week-recap-dates">@string.Format(Loc["Day {0} of {1}"], liveTrip.DayOn(State.TodayDate), liveTrip.LengthInDays)</span>
+                            <span class="week-recap-go" aria-hidden="true">›</span>
+                        </div>
+                        <div class="week-recap-body">
+                            <div class="week-recap-fig">
+                                <span class="week-recap-lbl">@Loc["So far"]</span>
+                                <strong>@Fmt(liveRecap.Spent)</strong>
+                                @* The split is stated here, not left to be discovered on the Trips tab, because the
+                                   headline is the one number in the app that deliberately does NOT mean "what I've
+                                   spent this week": a flight bought in March is in it. Saying so where the figure
+                                   is read costs one line and stops the total looking wrong. *@
+                                @if (!liveRecap.PrePaid.IsZero)
+                                {
+                                    <small>@string.Format(Loc["{0} booked ahead · {1} while away"], Fmt(liveRecap.PrePaid), Fmt(liveRecap.OnTrip))</small>
+                                }
+                            </div>
+                            @if (liveRecap.AgainstBudget is { } tripLeft)
+                            {
+                                <div class="week-recap-fig">
+                                    <span class="week-recap-lbl">@string.Format(Loc["Of the {0} you planned"], Fmt(State.Money(liveRecap.Budget!.Value)))</span>
+                                    <strong class="@(liveRecap.IsOverBudget ? "warn-text" : "")">
+                                        @string.Format(liveRecap.IsOverBudget ? Loc["{0} over"] : Loc["{0} left"], Fmt(State.Money(Math.Abs(tripLeft.Amount))))
+                                    </strong>
+                                </div>
+                            }
+                        </div>
+                    </button>
+                </section>
+            }
+            else if (WeekRecapToShow() is { } recap)
             {
                 var recapDown = recap.Change.IsNegative;
                 <section class="week-recap week-recap-glow">
@@ -803,7 +846,7 @@ else
                                 <span class="target-name">@t.Name</span>
                                 @if (t.Reached)
                                 {
-                                    <span class="target-when"><strong class="target-date good-text">@Loc["reached 🎉"]</strong></span>
+                                    <span class="target-when"><strong class="target-date good-text"><Icon Name="trophy" /> @Loc["reached"]</strong></span>
                                 }
                                 else
                                 {
@@ -829,7 +872,7 @@ else
                 @* One line, not a panel of bars: the full progress lives in the 🏆 Achievements modal, so Home just
                    points to it rather than stacking a second motivational section under "You're on track for". *@
                 <button class="home-ms-line" @onclick="() => _modal = Modal.Achievements">
-                    <span class="home-ms-lead">🏆 @Loc["Milestones in progress"]</span>
+                    <span class="home-ms-lead"><Icon Name="trophy" /> @Loc["Milestones in progress"]</span>
                     <span class="home-ms-n">@milestones.Count</span>
                     <span class="home-ms-arrow">›</span>
                 </button>
@@ -1190,7 +1233,7 @@ else
                                     {
                                         var tid = t.Id;
                                         var on = _spendTagFilter.Contains(tid);
-                                        <button type="button" class="tag-chip @(on ? "tag-chip-on" : "")" @onclick="() => ToggleSpendTag(tid)">@if (!string.IsNullOrEmpty(t.Icon)) { <span class="tag-emoji">@t.Icon</span> }@t.Name</button>
+                                        <button type="button" class="tag-chip @(on ? "tag-chip-on" : "")" @onclick="() => ToggleSpendTag(tid)">@TagMark(t.Icon)@t.Name</button>
                                     }
                                     @if (_spendTagFilter.Count > 0)
                                     {
@@ -1272,7 +1315,7 @@ else
                                 }
                                 @foreach (var t in State.ExpenseTags(ctx.E))
                                 {
-                                    <span class="exp-tag">@if (!string.IsNullOrEmpty(t.Icon)) { <span class="tag-emoji">@t.Icon</span> }@t.Name</span>
+                                    <span class="exp-tag">@TagMark(t.Icon)@t.Name</span>
                                 }
                             </span>
                         </span>
@@ -1596,7 +1639,14 @@ else
                             @* @key on the window/axis so Blazor builds a FRESH svg whenever the data set changes —
                                that's what replays the slice entrance animation. Without it Blazor patches the
                                existing paths in place and the CSS animation, already finished, never re-runs. *@
-                            <svg class="brk-donut" @key="(_breakRange, _breakBase, brkSlices.Count)" viewBox="0 0 200 200" role="img" aria-label="@Loc["Spending breakdown"]">
+                            @* The viewBox is bigger than the ring so the leader labels have somewhere to live —
+                               the ring itself stays at r=90 around (100,100), exactly where it was; the extra
+                               space is margin, not a resize.
+                               ⚠️ The horizontal margin has to clear the ICON **and the percentage beyond it**: an
+                               icon centre reaches x=248 at 3 o'clock, then the text starts 15 further out and runs
+                               about 40 wide. A first cut sized to the icon alone clipped the digits and turned
+                               "45%" into "459" and "13%" into "3%" — a wrong number, rendered confidently. *@
+                            <svg class="brk-donut" @key="(_breakRange, _breakBase, brkSlices.Count)" viewBox="-108 -60 416 320" role="img" aria-label="@Loc["Spending breakdown"]">
                                 @if (brkSlices.Count == 1)
                                 {
                                     <circle cx="100" cy="100" r="73" fill="none" stroke="@brkSlices[0].Color" stroke-width="34"><title>@brkSlices[0].Label · 100%</title></circle>
@@ -1617,6 +1667,37 @@ else
                                         acc += sweep;
                                         <path class="brk-slice" d="@d" fill="@s.Color" transform="translate(@tx.ToString("0.##", brkCi) @ty.ToString("0.##", brkCi))"><title>@s.Label · @sweep.ToString("0.#", brkCi)%</title></path>
                                     }
+                                }
+                                @* Leader labels: a hairline out to the slice's own icon on a badge in its colour,
+                                   with its share beside it. Decorative — every one of these is a slice already
+                                   named, with its money, in the list below — so it's hidden from assistive tech and
+                                   transparent to the pointer, and the ring keeps its tooltips.
+                                   Skipped for the single-slice ring above: a leader line to "100%" of a complete
+                                   circle points at nothing the eye hasn't already worked out. *@
+                                @if (brkSlices.Count > 1)
+                                {
+                                    <g class="brk-labels" aria-hidden="true">
+                                        @* The labels ride a long way out (r=148 against a ring of r=90). Close in,
+                                           a label that the spread pass had nudged toward its neighbour ended up
+                                           sitting ON the ring, because the nudge moves it vertically while its x
+                                           stays put — the further out the orbit, the more vertical room a nudge has
+                                           before it runs back into the chart. The long leader lines are the price
+                                           and they read fine; icons overlapping wedges did not. *@
+                                        @foreach (var lb in DonutLabels(brkSlices, brkTotal, 100, 100, 90, 148, -46, 246))
+                                        {
+                                            var lx = lb.Bx + (lb.Right ? -12 : 12);
+                                            <polyline class="brk-lbl-line" fill="none" stroke="@lb.Slice.Color"
+                                                      points="@F(lb.Ax),@F(lb.Ay) @F(lx),@F(lb.By)" />
+                                            @* A bare line icon, exactly as the list rows draw it (CatIcon: monochrome
+                                               stroke, no colour chip) — the first cut put it in white on a filled
+                                               disc, which was a second icon idiom invented for one chart.
+                                               The colour is the SLICE's, not the app accent: with the chip gone that
+                                               is the only thing left tying the mark to its wedge. *@
+                                            <use class="brk-lbl-ic" href="#i-@SliceSprite(lb.Slice)" stroke="@lb.Slice.Color"
+                                                 x="@F(lb.Bx - 9)" y="@F(lb.By - 9)" width="18" height="18" />
+                                            @DonutPct(lb)
+                                        }
+                                    </g>
                                 }
                                 @* Counts to the new figure when the window or axis changes, so the centre number
                                    settles with the slices instead of snapping while they animate. *@
@@ -1648,7 +1729,7 @@ else
                                             }
                                             else if (BreakByTag)
                                             {
-                                                @if (!string.IsNullOrEmpty(s.Icon)) { <span class="tag-emoji">@s.Icon</span> }
+                                                @TagMark(s.Icon)
                                             }
                                             else if (s.Key != Guid.Empty && s.Key != OtherKey)
                                             {
@@ -1737,7 +1818,7 @@ else
                                                     <div class="brk-exp-grp-head">
                                                         @if (expMode == ExpGroup.Tag)
                                                         {
-                                                            @if (!string.IsNullOrEmpty(grp.Icon)) { <span class="tag-emoji">@grp.Icon</span> }
+                                                            @TagMark(grp.Icon)
                                                         }
                                                         else
                                                         {
@@ -1825,10 +1906,17 @@ else
                                     var (netY, netH) = TrendBar(row.Net, trSc);
                                     var netColor = row.Net < 0m ? TrendNetDownColor : TrendNetUpColor;
                                     var dim = _trendHover is { } hv && hv != i ? "trend-bar-dim" : "";
-                                    <g class="trend-bars @dim">
+                                    @* --tb staggers the grow: the months rise left to right, in the order they
+                                       happened, so the entrance reads as the story the chart is telling rather than
+                                       as everything twitching at once. *@
+                                    <g class="trend-bars @dim" style="--tb:@i">
                                         <rect class="trend-bar trend-bar-in" x="@((cx - trNetW / 2 - trBarW - 1).ToString("0.#", trCi))" y="@inY.ToString("0.#", trCi)"
                                               width="@trBarW.ToString("0.#", trCi)" height="@inH.ToString("0.#", trCi)" fill="@TrendInColor" rx="1.5" />
-                                        <rect class="trend-bar trend-bar-net" x="@((cx - trNetW / 2).ToString("0.#", trCi))" y="@netY.ToString("0.#", trCi)"
+                                        @* A negative "kept" bar hangs BELOW the zero line, so it has to grow
+                                           downward from the axis. Growing it from its own bottom edge — the default
+                                           for every other bar here — would have it rise up out of the floor of the
+                                           chart to meet a baseline it never touches. *@
+                                        <rect class="trend-bar trend-bar-net @(row.Net < 0m ? "trend-bar-down" : "")" x="@((cx - trNetW / 2).ToString("0.#", trCi))" y="@netY.ToString("0.#", trCi)"
                                               width="@trNetW.ToString("0.#", trCi)" height="@netH.ToString("0.#", trCi)" fill="@netColor" rx="1.5" />
                                         <rect class="trend-bar trend-bar-out" x="@((cx + trNetW / 2 + 1).ToString("0.#", trCi))" y="@outY.ToString("0.#", trCi)"
                                               width="@trBarW.ToString("0.#", trCi)" height="@outH.ToString("0.#", trCi)" fill="@TrendOutColor" rx="1.5" />
@@ -2034,7 +2122,7 @@ else
                         double sweepAt = 0;
                         <div class="trip-card @status @(open ? "open" : "")">
                             <button type="button" class="trip-head" @onclick="() => _expandedTripId = open ? Guid.Empty : tRecap.TripId">
-                                <span class="trip-mark">@(trip.Icon ?? "🧳")</span>
+                                <span class="trip-mark">@TripMark(trip.Icon)</span>
                                 <span class="trip-id">
                                     <span class="trip-name">@trip.Name</span>
                                     <span class="trip-when">
@@ -2738,12 +2826,12 @@ else
         <button type="button" class="paydown-toast-x" aria-label="@Loc["Dismiss"]" @onclick="() => _paydownResult = null"><Icon Name="x" /></button>
         @if (pr.Outcome.ClearsTheLoan)
         {
-            <div class="paydown-toast-hero">🎉 @string.Format(Loc["{0} is paid off."], pr.Name)</div>
+            <div class="paydown-toast-hero"><Icon Name="trophy" />@string.Format(Loc["{0} is paid off."], pr.Name)</div>
             <div class="paydown-toast-sub">@string.Format(Loc["You've just avoided {0} of interest."], Fmt(State.Money(pr.Outcome.InterestSaved)))</div>
         }
         else
         {
-            <div class="paydown-toast-hero">🎉 @string.Format(Loc["You've just saved {0} in interest."], Fmt(State.Money(pr.Outcome.InterestSaved)))</div>
+            <div class="paydown-toast-hero"><Icon Name="trophy" />@string.Format(Loc["You've just saved {0} in interest."], Fmt(State.Money(pr.Outcome.InterestSaved)))</div>
             <div class="paydown-toast-sub">
                 @string.Format(Loc["{0} now finishes {1}"], pr.Name, PayoffDate(pr.Outcome.AfterKeepingInstallment.Months))@if (pr.Outcome.MonthsSaved > 0) { <text> — @MonthsText(pr.Outcome.MonthsSaved) @Loc["sooner than before"]</text> }.
             </div>
@@ -2782,7 +2870,7 @@ else
                                 var tid = t.Id;
                                 var on = _fTagId == tid;
                                 <button type="button" class="tag-chip @(on ? "tag-chip-on" : "")" @onclick="() => ToggleTagSel(tid)">
-                                    @if (!string.IsNullOrEmpty(t.Icon)) { <span class="tag-emoji">@t.Icon</span> }@t.Name
+                                    @TagMark(t.Icon)@t.Name
                                 </button>
                             }
                         </div>
@@ -3599,6 +3687,31 @@ else
                             <button type="button" class="repeat-last" title="@Loc["Edit last"]" @onclick="() => OpenEditExpense(lastExp.Id)"><Icon Name="pencil" /> <span class="last-act-verb">@Loc["Edit"]</span> <span class="last-act-ctx"><strong>@State.CategoryName(lastExp.CategoryId)</strong> · @Fmt(lastExp.Amount)</span></button>
                         </div>
                     }
+                    @* ★ On a trip, the trip and its labels come FIRST and the category follows them.
+                       The trip decides the context and — when it files into one category — decides the category
+                       too, so leading with a category picker asked the user to answer a question the next two
+                       taps were about to answer for them. Off a trip this block renders nothing and the form is
+                       exactly as it was. *@
+                    @if (FormTripOptions.Count > 0)
+                    {
+                        <div class="modal-field trip-pick-field">
+                            <span class="lbl-row">@Loc["Part of a trip"]</span>
+                            <div class="qp-row">
+                                <button type="button" class="tag-chip @(_expTripId == Guid.Empty ? "tag-chip-on" : "")" @onclick="() => OnExpenseTripPicked(Guid.Empty)">@Loc["Not a trip"]</button>
+                                @foreach (var t in FormTripOptions)
+                                {
+                                    var tripOpt = t;
+                                    <button type="button" class="tag-chip @(_expTripId == tripOpt.Id ? "tag-chip-on" : "")" @onclick="() => OnExpenseTripPicked(tripOpt.Id)">
+                                        @TripMark(tripOpt.Icon)@tripOpt.Name
+                                    </button>
+                                }
+                            </div>
+                        </div>
+                        @if (onTrip)
+                        {
+                            @tagPicker
+                        }
+                    }
                     var qpCats = State.RecentCategories(6);
                     <div class="modal-field"><span class="lbl-row">@Loc["Category"] <button type="button" class="lbl-add" title="@Loc["Add category"]" @onclick="ExpenseAddCategory">+</button></span>
                         @* Most-used categories as one-tap chips right above the picker; the picker (type to search)
@@ -3618,25 +3731,7 @@ else
                     @* F1: DecimalInput raises the phone's decimal keypad AND accepts the "," that keypad offers — a
                        type="number" field rejects it outright, which is why decimals couldn't be typed on mobile.
                        @ref so the cursor can land here when the category was already chosen (see OpenAddExpense). *@
-                    @* Trip row. Only rendered when there's a trip running or coming up — an account that doesn't
-                       travel never sees it. The active trip is pre-selected; "Not a trip" is always one tap away,
-                       because plenty of ordinary life happens while you're away. *@
-                    @if (FormTripOptions.Count > 0)
-                    {
-                        <div class="modal-field trip-pick-field">
-                            <span class="lbl-row">@Loc["Part of a trip"]</span>
-                            <div class="qp-row">
-                                <button type="button" class="tag-chip @(_expTripId == Guid.Empty ? "tag-chip-on" : "")" @onclick="() => _expTripId = Guid.Empty">@Loc["Not a trip"]</button>
-                                @foreach (var t in FormTripOptions)
-                                {
-                                    var tripOpt = t;
-                                    <button type="button" class="tag-chip @(_expTripId == tripOpt.Id ? "tag-chip-on" : "")" @onclick="() => _expTripId = tripOpt.Id">
-                                        <span class="tag-emoji">@(tripOpt.Icon ?? "🧳")</span>@tripOpt.Name
-                                    </button>
-                                }
-                            </div>
-                        </div>
-                    }
+                    @* (The trip row moved ABOVE the category picker — see the block up there for why.) *@
                     <label>@(FormTrip is { HasRate: true } cur ? string.Format(Loc["Amount in {0}"], cur.SpendCurrency) : Loc["Amount"]) <DecimalInput @ref="_amountInput" @bind-Value="_amount" /></label>
                     @if (_amount < 0)
                     {
@@ -3688,7 +3783,13 @@ else
                         <small class="hint"><Icon Name="bank" /> @Loc["This is a bank-synced fund — logging here records the expense without changing the synced balance (the bank stays the source). If the same charge later imports, you can dismiss the duplicate."]</small>
                     }
                     <label>@Loc["Note (optional)"] <input type="text" @bind="_note" /></label>
-                    @tagPicker
+                    @* Off a trip the tag picker keeps its old place down here — an optional label belongs after the
+                       facts. On a trip it has already been rendered above the category, because there it is not a
+                       label but the thing that does the filing. Rendered in exactly one of the two spots. *@
+                    @if (!onTrip)
+                    {
+                        @tagPicker
+                    }
                     <button type="button" class="add-another" @onclick="StageCurrentExpense" disabled="@(_amount <= 0)"><Icon Name="plus" /> @Loc["Add another expense"]</button>
                     <div class="modal-actions">
                         <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
@@ -4360,37 +4461,102 @@ else
                         <label>@Loc["From"] <input type="date" @bind="_tripFrom" /></label>
                         <label>@Loc["To"] <input type="date" @bind="_tripTo" /></label>
                     </div>
-                    <label>@Loc["Flag or emoji"] <input type="text" maxlength="4" @bind="_tripIcon" @bind:event="oninput" placeholder="🧳" /></label>
-                    <div class="modal-sec">
-                        <h4>@Loc["Money"]</h4>
-                        <label>@Loc["What you expect it to cost"] <DecimalInput T="decimal?" class="num" @bind-Value="_tripBudget" placeholder="@Loc["optional"]" /></label>
-                        @{ var tripBuckets = State.SavingBuckets.Where(b => !b.Bucket.IsArchived && !b.Bucket.IsDebt).ToList(); }
-                        @if (tripBuckets.Count > 0)
+                    @* Overlap warning. Overlapping trips are ALLOWED — people really do fly straight from one to
+                       the next — but the app resolves "which trip is running today" to the most recent departure,
+                       so on the shared days one of them silently stops being the default on the expense form.
+                       Saying so is the whole fix: it is a consequence to know about, not an error to block. *@
+                    @if (OverlappingTrips() is { Count: > 0 } clash)
+                    {
+                        <small class="hint warn-text"><Icon Name="info" />
+                            @string.Format(Loc["These dates overlap {0}. Both stay pickable on the expense form — on the shared days new expenses just default to whichever started later."], string.Join(", ", clash.Select(t => t.Name)))
+                        </small>
+                    }
+                    <label>@Loc["Mark"] <input type="text" maxlength="4" @bind="_tripIcon" @bind:event="oninput" placeholder="@Loc["pick one below, or type an emoji"]" /></label>
+                    @* Tap-to-fill rather than a typeahead: the field takes any emoji, and the only ones worth
+                       suggesting are the flag for the place named above plus a handful of trip shapes. A guessed
+                       flag leads when there is one. *@
+                    <div class="icon-picks">
+                        @foreach (var pick in TripIconSuggestions())
                         {
-                            <label>@Loc["Paid for from"]
-                                <select @bind="_tripBucketId">
-                                    <option value="@Guid.Empty">@Loc["— nothing set aside —"]</option>
-                                    @foreach (var (bucket, _) in tripBuckets)
-                                    {
-                                        <option value="@bucket.Id">@bucket.Name</option>
-                                    }
-                                </select>
-                            </label>
-                            <small class="hint">@Loc["The recap will say how much of the trip came out of that pot. It never discounts the total — the money still left."]</small>
+                            var ico = pick;
+                            <button type="button" class="icon-pick @(_tripIcon == ico ? "on" : "")" @onclick="() => _tripIcon = ico">@TagMark(ico)</button>
                         }
                     </div>
-                    <div class="modal-sec">
-                        <h4>@Loc["Spending in another currency"]</h4>
-                        @* One fixed rate the user sets, not a live feed: a feed means a rate provider, a new
-                           sub-processor and a rate per expense. The conversion happens as you type an amount and
-                           what gets stored is already in the account currency, so editing this later can never
-                           rewrite what past expenses cost. *@
-                        <div class="row2">
-                            <label>@Loc["Currency"] <input type="text" maxlength="3" @bind="_tripCurrency" @bind:event="oninput" placeholder="GBP" /></label>
-                            <label>@string.Format(Loc["1 {0} is"], string.IsNullOrWhiteSpace(_tripCurrency) ? "?" : _tripCurrency!.ToUpperInvariant()) <DecimalInput T="decimal?" class="num" @bind-Value="_tripRate" placeholder="1.00" /></label>
-                        </div>
-                        <small class="hint">@Loc["Type amounts in the local currency and we'll convert them as you log. It's your own fixed rate, so treat the totals as close rather than exact."]</small>
+
+                    <h4 class="modal-sec">@Loc["Money"]</h4>
+                    <label>@Loc["What you expect it to cost"] <DecimalInput T="decimal?" class="num" @bind-Value="_tripBudget" placeholder="@Loc["optional"]" /></label>
+                    @* Where the trip's spending lands in the ordinary budget. One category by default, because a
+                       fortnight away otherwise detonates Food, Transport AND Rent at once and those categories
+                       stop describing everyday life. The trip labels still carry stay/travel/food, so the detail
+                       is not lost — it just lives on the axis built for it. *@
+                    <label>@Loc["Files into"]
+                        <select @bind="_tripCategoryId">
+                            <option value="@Guid.Empty">@Loc["— each label's own category —"]</option>
+                            @foreach (var (c, depth) in State.CategoryOptions)
+                            {
+                                <option value="@c.Id">@IndentLabel(c.Name, depth)</option>
+                            }
+                        </select>
+                    </label>
+                    <small class="hint">
+                        @(_tripCategoryId == Guid.Empty
+                            ? Loc["Every trip label files into its own everyday category — a hotel lands in Housing, dinners in Food. Your monthly budgets will move with the trip."]
+                            : Loc["The whole trip lands in this one category, so your everyday budgets keep describing everyday life. The trip's own recap still splits it by stay, travel, food and tickets."])
+                    </small>
+                    var tripBuckets = State.SavingBuckets.Where(b => !b.Bucket.IsArchived && !b.Bucket.IsDebt).ToList();
+                    @if (tripBuckets.Count > 0)
+                    {
+                        <label>@Loc["Paid for from"]
+                            <select @bind="_tripBucketId">
+                                <option value="@Guid.Empty">@Loc["— nothing set aside —"]</option>
+                                @foreach (var (bucket, _) in tripBuckets)
+                                {
+                                    <option value="@bucket.Id">@bucket.Name</option>
+                                }
+                            </select>
+                        </label>
+                        <small class="hint">@Loc["The recap will say how much of the trip came out of that pot. It never discounts the total — the money still left."]</small>
+                    }
+
+                    <h4 class="modal-sec">@Loc["Spending in another currency"]</h4>
+                    @* One fixed rate the user sets, not a live feed: a feed means a rate provider, a new
+                       sub-processor and a rate per expense. The conversion happens as you type an amount and
+                       what gets stored is already in the account currency, so editing this later can never
+                       rewrite what past expenses cost. *@
+                    <div class="row2">
+                        @* A datalist rather than a <select>: the shortlist is a shortcut, and a closed list would
+                           refuse a currency we simply didn't think of. Typing still wins. *@
+                        <label>@Loc["Currency"]
+                            <input type="text" maxlength="3" list="trip-ccy" @bind="_tripCurrency" @bind:event="oninput" placeholder="GBP" />
+                            @* ⚠️ The loop variable is NOT called `code`: "@code" is the Razor @code DIRECTIVE, so
+                               writing it in markup makes the compiler look for a member block and fail with a
+                               cascade of errors that name everything except the variable. *@
+                            <datalist id="trip-ccy">
+                                @foreach (var ccy in CurrencyInfo.Common)
+                                {
+                                    <option value="@ccy">@ccy — @CurrencyInfo.Symbol(ccy).Trim()</option>
+                                }
+                            </datalist>
+                        </label>
+                        @* "1 ? is" was the empty state, which reads like a broken template rather than a field
+                           waiting for its currency. *@
+                        <label>@(string.IsNullOrWhiteSpace(_tripCurrency) ? Loc["Rate"] : string.Format(Loc["1 {0} is"], _tripCurrency!.ToUpperInvariant())) <DecimalInput T="decimal?" class="num" @bind-Value="_tripRate" placeholder="1.00" /></label>
                     </div>
+                    @* What the code you typed actually prints, and — separately — where the money ends up. Two
+                       facts, because they are genuinely different: the symbol answers "what will I see", and the
+                       storage line answers "what will my totals be in". ★ For a currency we hold no symbol for it
+                       says so instead of inventing one; a confident wrong preview is worse than no preview. *@
+                    @if (!string.IsNullOrWhiteSpace(_tripCurrency))
+                    {
+                        var ccyCode = _tripCurrency!.Trim().ToUpperInvariant();
+                        <small class="hint">
+                            @(CurrencyInfo.HasSymbol(ccyCode)
+                                ? string.Format(Loc["{0} shows as {1}"], ccyCode, CurrencyInfo.Symbol(ccyCode).Trim() + "100.00")
+                                : string.Format(Loc["We have no symbol for {0}, so it shows as {1}"], ccyCode, CurrencyInfo.Symbol(ccyCode) + "100.00"))
+                            · @string.Format(Loc["stored in {0}, this account's currency"], State.Currency)
+                        </small>
+                    }
+                    <small class="hint">@Loc["Type amounts in the local currency and we'll convert them as you log. It's your own fixed rate, so treat the totals as close rather than exact."]</small>
                     <div class="modal-actions">
                         <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
                         <button @onclick="SaveTripForm" disabled="@(string.IsNullOrWhiteSpace(_tripName) || _tripTo < _tripFrom)">@Loc["Save"]</button>
@@ -6444,6 +6610,125 @@ else
             x(a1, rInner), y(a1, rInner), rInner, x(a0, rInner), y(a0, rInner));
     }
 
+    /// <summary>A coordinate for an SVG attribute. <b>Invariant, always</b> — the app runs in Bulgarian too, and a
+    /// culture that writes "12,5" turns one number into two in an SVG points list, which fails silently as a line
+    /// drawn somewhere else entirely.</summary>
+    private static string F(double v) => v.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+
+    /// <summary>One leader-line label around a donut: where the line touches the arc, where the badge sits, and the
+    /// share it states. <see cref="By"/> is settable because the spread pass moves it — see <see cref="DonutLabels"/>.</summary>
+    private sealed record DonutLabel(BreakSlice Slice, double Pct, double Ax, double Ay, double Bx, bool Right)
+    {
+        /// <summary>The badge's centre y. Starts on the slice's own bisector, then gets nudged clear of its neighbours.</summary>
+        public double By { get; set; }
+    }
+
+    /// <summary>
+    /// Lay a leader-line label around each slice of a donut — the slice's own icon on a badge in its colour, with
+    /// its share beside it.
+    /// <para>
+    /// ★ Why it's worth the arithmetic: a legend makes the reader carry a colour from a swatch to a wedge and back
+    /// again, for every row. A label attached to the wedge removes that lookup, and an icon does it without a word
+    /// to read or translate. The legend below stays — it carries the money, which is what a label this size can't.
+    /// </para>
+    /// <para>
+    /// ★★ The spread pass is what makes this usable rather than a demo. Two adjacent 4% slices have almost the same
+    /// bisector, so their badges land on top of one another: the naive version looks correct on whatever data it was
+    /// written against and falls apart on a real month. Labels are pushed apart down their own side to a minimum
+    /// spacing, then pulled back inside the box — and only the badge moves, never the point on the arc, so a nudged
+    /// label still visibly points at its own wedge.
+    /// </para>
+    /// <para>
+    /// Slices below <paramref name="minPct"/> get no label: the badge would be wider than the wedge it points at,
+    /// and they are all in the list underneath with their exact figures anyway.
+    /// </para>
+    /// </summary>
+    private static List<DonutLabel> DonutLabels(IReadOnlyList<BreakSlice> slices, decimal total,
+        double cx, double cy, double rOuter, double rBadge, double minY, double maxY, double minPct = 2.0)
+    {
+        var labels = new List<DonutLabel>();
+        if (total <= 0m) return labels;
+        double acc = 0;
+        foreach (var s in slices)
+        {
+            var sweep = (double)(s.Amount / total) * 100.0;
+            var mid = ((acc + sweep / 2) / 100.0) * 2 * Math.PI - Math.PI / 2;
+            acc += sweep;
+            if (sweep < minPct) continue;
+            double cos = Math.Cos(mid), sin = Math.Sin(mid);
+            labels.Add(new DonutLabel(s, sweep, cx + cos * (rOuter + 2), cy + sin * (rOuter + 2),
+                cx + cos * rBadge, cos >= 0) { By = cy + sin * rBadge });
+        }
+
+        // Spread, per side, top to bottom. Sides are independent: a label on the left can never collide with one on
+        // the right, and treating them as one list would shuffle labels across the chart to fix a clash that isn't.
+        const double gap = 27;
+        foreach (var isRight in new[] { true, false })
+        {
+            var side = labels.Where(l => l.Right == isRight).OrderBy(l => l.By).ToList();
+            if (side.Count == 0) continue;
+            for (var i = 1; i < side.Count; i++)
+                side[i].By = Math.Max(side[i].By, side[i - 1].By + gap);
+            // Pushing down can run the last one off the bottom; walk back up from a pinned bottom, then re-pin the
+            // top. A side would have to hold more labels than the box has room for to still collide after that,
+            // which eight slices across two sides cannot do.
+            if (side[^1].By > maxY)
+            {
+                side[^1].By = maxY;
+                for (var i = side.Count - 2; i >= 0; i--)
+                    side[i].By = Math.Min(side[i].By, side[i + 1].By - gap);
+            }
+            if (side[0].By < minY)
+            {
+                side[0].By = minY;
+                for (var i = 1; i < side.Count; i++)
+                    side[i].By = Math.Max(side[i].By, side[i - 1].By + gap);
+            }
+        }
+        return labels;
+    }
+
+    /// <summary>
+    /// A leader label's "34%", as an SVG <c>&lt;text&gt;</c> with the sign set smaller beside the figure.
+    /// <para>
+    /// ⚠️ Built with the render-tree builder rather than written as markup because <b>Razor reserves
+    /// <c>&lt;text&gt;</c></b> as its explicit-markup delimiter inside a code block, and rejects any attributes on
+    /// it (RZ1023). The chart's centre total gets away with a plain <c>&lt;text&gt;</c> only because it sits in
+    /// straight markup; anything inside a <c>@foreach</c> has to come this way. Same reason the Trends tick labels
+    /// are HTML overlaid on the chart instead of SVG text.
+    /// </para>
+    /// </summary>
+    private RenderFragment DonutPct(DonutLabel lb) => builder =>
+    {
+        var ci = System.Globalization.CultureInfo.InvariantCulture;
+        var i = 0;
+        builder.OpenElement(i++, "text");
+        builder.AddAttribute(i++, "class", "brk-lbl-pct");
+        // The figure takes the slice's colour so the label reads as part of the wedge rather than as another
+        // number floating near the chart. Set as an attribute, which means the CSS class must NOT declare `fill`
+        // or it would win outright — a presentation attribute loses to any stylesheet declaration.
+        builder.AddAttribute(i++, "fill", lb.Slice.Color);
+        builder.AddAttribute(i++, "x", F(lb.Bx + (lb.Right ? 15 : -15)));
+        builder.AddAttribute(i++, "y", F(lb.By + 5));
+        builder.AddAttribute(i++, "text-anchor", lb.Right ? "start" : "end");
+        builder.AddContent(i++, lb.Pct.ToString("0", ci));
+        builder.OpenElement(i++, "tspan");
+        builder.AddAttribute(i++, "class", "brk-lbl-sign");
+        builder.AddContent(i++, "%");
+        builder.CloseElement();
+        builder.CloseElement();
+    };
+
+    /// <summary>The mark that labels a slice — the same choice the legend rows make, in one place so the donut and
+    /// the list underneath can never show a different icon for the same slice. Always resolves to a real sprite
+    /// name: <c>CategoryIcons.Effective</c> falls back rather than returning nothing.</summary>
+    private string SliceSprite(BreakSlice s) =>
+        s.Key == TransfersKey ? "swap"
+        : s.Key == SavedKey ? "target"
+        : s.Key == OtherKey ? "list"
+        : BreakByFund ? CategoryIcons.Effective(State.FundIcon(s.Key), s.Label)
+        : CategoryIcons.Effective(s.Icon, s.Label);
+
     // Tag filter for the Spending tab: when any tag is selected, every expense list (the by-date ledger and each
     // category/sub drawer) narrows to expenses carrying at least one of the chosen tags. Bars/totals stay unfiltered —
     // this is a "find the tagged expenses" filter, not a re-budgeting view.
@@ -7886,6 +8171,17 @@ else
         SwitchToByBudgets();
     }
 
+    /// <summary>Open the Spending tab on <b>Trips</b> with one trip's recap already expanded.
+    /// <para>Where the Home trip banner and the bell's departure nudge both land: "tell me more" about a trip means
+    /// its recap, not the ledger — and the ledger is scoped to one period, which is the one view that cannot answer
+    /// a question about a trip.</para></summary>
+    private void ShowTripsTab(Guid tripId)
+    {
+        ShowExpensesTab();
+        _spendView = SpendView.Trips;
+        _expandedTripId = tripId;
+    }
+
     private DateOnly ClampToPeriod(DateOnly d) =>
         d < State.Period.From ? State.Period.From : d > State.Period.To ? State.Period.To : d;
 
@@ -7952,6 +8248,7 @@ else
         // Keyed off the DAY being logged, not today: opening the 12th from the calendar while a trip covers it
         // should default to that trip even if you're back home when you enter it.
         _expTripId = State.AllTrips.FirstOrDefault(t => t.IsActiveOn(_expenseDate))?.Id ?? Guid.Empty;
+        ApplyTripCategoryDefault();
     }
 
     private void ResetPickers()
@@ -8115,11 +8412,14 @@ else
     private decimal ExpenseAmountToLog(decimal typed) =>
         FormTrip is { HasRate: true } t ? t.ToAccountCurrency(typed) : typed;
 
-    /// <summary>Trips the expense form offers: the one running now, plus anything upcoming — because the whole
+    /// <summary>Trips the expense form offers: every one running now, plus anything upcoming — because the whole
     /// point is that a flight bought today belongs to next summer. Past trips are left out; attaching to one is
-    /// the rarer "I forgot this" case, and that goes through the expense row's own menu.</summary>
+    /// the rarer "I forgot this" case, and that goes through the expense row's own menu.
+    /// <para>★ <b>All</b> the running ones, not just <c>ActiveTrip</c>. This used to offer the single resolved
+    /// winner, so with two overlapping trips the one you happened not to start later became unpickable while you
+    /// were on it — found by driving the form with a real overlap.</para></summary>
     private IReadOnlyList<FinApp.Domain.Budgeting.Trip> FormTripOptions =>
-        (State.ActiveTrip is { } a ? new[] { a } : []).Concat(State.UpcomingTrips).ToList();
+        State.RunningTrips.Concat(State.UpcomingTrips).ToList();
 
     // The trip form. Guid.Empty in _tripId means "new" — the same modal serves both, since every field is the same.
     private Guid _tripId;
@@ -8130,6 +8430,7 @@ else
     private DateOnly _tripTo = DateOnly.FromDateTime(DateTime.Today).AddDays(6);
     private decimal? _tripBudget;
     private Guid _tripBucketId;      // Guid.Empty = not funded from a bucket (the <select> needs a real value)
+    private Guid _tripCategoryId;    // Guid.Empty = file per trip label (the original behaviour)
     private string? _tripCurrency;
     private decimal? _tripRate;
 
@@ -8140,7 +8441,20 @@ else
         // A week starting today is the shape of most trips and the least typing; both dates are editable anyway.
         _tripFrom = State.TodayDate; _tripTo = State.TodayDate.AddDays(6);
         _tripBudget = null; _tripBucketId = Guid.Empty; _tripCurrency = null; _tripRate = null;
+        // Default a NEW trip to one category when the account has an obvious travel one, because that is the
+        // better behaviour and a default nobody sets is a feature nobody gets. Falls back to per-label filing
+        // when there's nothing sensible to point at, rather than picking a category at random.
+        _tripCategoryId = TravelCategoryGuess() ?? Guid.Empty;
         _modal = Modal.TripEdit;
+    }
+
+    /// <summary>An existing category that plainly means "travel", or null. Deliberately name-matched and narrow:
+    /// guessing wrong here would file a whole trip into an unrelated budget, which is worse than not guessing.</summary>
+    private Guid? TravelCategoryGuess()
+    {
+        string[] names = ["travel", "trips", "trip", "holiday", "holidays", "vacation", "пътуване", "пътувания", "почивка"];
+        return State.CategoryOptions.Select(c => c.Category)
+            .FirstOrDefault(c => names.Any(n => string.Equals(c.Name, n, StringComparison.CurrentCultureIgnoreCase)))?.Id;
     }
 
     private void OpenEditTrip(Guid tripId)
@@ -8151,6 +8465,7 @@ else
         _tripFrom = trip.From; _tripTo = trip.To;
         _tripBudget = trip.Budget;
         _tripBucketId = trip.SavingCategoryId ?? Guid.Empty;
+        _tripCategoryId = trip.CategoryId ?? Guid.Empty;
         _tripCurrency = trip.SpendCurrency; _tripRate = trip.Rate;
         _modal = Modal.TripEdit;
     }
@@ -8160,13 +8475,14 @@ else
         var name = _tripName?.Trim();
         if (string.IsNullOrWhiteSpace(name) || _tripTo < _tripFrom) return;
         var bucket = _tripBucketId == Guid.Empty ? (Guid?)null : _tripBucketId;
+        var tripCat = _tripCategoryId == Guid.Empty ? (Guid?)null : _tripCategoryId;
         if (_tripId == Guid.Empty)
         {
             // Create then save the rest: AddTrip covers the identity fields, and everything else (budget, bucket,
-            // rate) is one full-replace edit — the same call the edit form makes, so there's one code path for it.
+            // category, rate) is one full-replace edit — the same call the edit form makes, one code path.
             var id = await State.AddTrip(name, _tripFrom, _tripTo, _tripDestination, _tripIcon);
-            if (id != Guid.Empty && (bucket is not null || _tripBudget is not null || _tripRate is not null))
-                await State.SaveTrip(id, name, _tripFrom, _tripTo, _tripDestination, _tripIcon, bucket, _tripBudget, _tripCurrency, _tripRate);
+            if (id != Guid.Empty && (bucket is not null || tripCat is not null || _tripBudget is not null || _tripRate is not null))
+                await State.SaveTrip(id, name, _tripFrom, _tripTo, _tripDestination, _tripIcon, bucket, _tripBudget, _tripCurrency, _tripRate, tripCat);
             // Seed the trip labels on the first trip only — EnsureTripTags is a no-op afterwards.
             if (State.TripTags.Count == 0) await State.EnsureTripTags(TripTagSeeds());
             _spendView = SpendView.Trips;
@@ -8174,10 +8490,29 @@ else
         }
         else
         {
-            await State.SaveTrip(_tripId, name, _tripFrom, _tripTo, _tripDestination, _tripIcon, bucket, _tripBudget, _tripCurrency, _tripRate);
+            await State.SaveTrip(_tripId, name, _tripFrom, _tripTo, _tripDestination, _tripIcon, bucket, _tripBudget, _tripCurrency, _tripRate, tripCat);
         }
         Back();
     });
+
+    /// <summary>Icons offered under the flag field: the flag for the place typed above (when we can guess one),
+    /// then the generic trip shapes. Deduplicated, so a guessed flag never appears twice.</summary>
+    private IReadOnlyList<string> TripIconSuggestions()
+    {
+        var guess = DestinationFlags.Guess(_tripDestination, _tripName);
+        return (guess is null ? DestinationFlags.Generic : new[] { guess }.Concat(DestinationFlags.Generic))
+            .Distinct(StringComparer.Ordinal).ToList();
+    }
+
+    /// <summary>
+    /// Other trips whose dates cross the ones on the form — excluding the trip being edited, which cannot clash
+    /// with itself. Drives a warning, never a block: back-to-back travel is real, and refusing to record it would
+    /// be the app disbelieving the user about their own diary.
+    /// </summary>
+    private IReadOnlyList<FinApp.Domain.Budgeting.Trip> OverlappingTrips() =>
+        State.AllTrips
+            .Where(t => t.Id != _tripId && t.From <= _tripTo && _tripFrom <= t.To)
+            .ToList();
 
     private void ConfirmRemoveTrip(Guid tripId) { _tripId = tripId; _modal = Modal.DeleteTrip; }
 
@@ -8207,12 +8542,14 @@ else
 
         return
         [
-            new TripTagSeed(Loc["Stay"], "🏨", Cat("Housing", "Home", "Rent")),
-            new TripTagSeed(Loc["Travel"], "✈️", Cat("Transport", "Travel")),
-            new TripTagSeed(Loc["Food & drink"], "🍽️", Cat("Food", "Groceries")),
-            new TripTagSeed(Loc["Tickets & tours"], "🎟️", Cat("Fun", "Entertainment", "Leisure")),
-            new TripTagSeed(Loc["Shopping"], "🛍️", Cat("Shopping")),
-            new TripTagSeed(Loc["Other"], "📦", null),
+            // Sprite names, not emoji: these chips sit beside category chips drawn from the same line-icon set,
+            // and a row of full-colour emoji next to them read as a different app. Rendered by TagMark.
+            new TripTagSeed(Loc["Stay"], "house", Cat("Housing", "Home", "Rent")),
+            new TripTagSeed(Loc["Travel"], "plane", Cat("Transport", "Travel")),
+            new TripTagSeed(Loc["Food & drink"], "utensils", Cat("Food", "Groceries")),
+            new TripTagSeed(Loc["Tickets & tours"], "film", Cat("Fun", "Entertainment", "Leisure")),
+            new TripTagSeed(Loc["Shopping"], "bag", Cat("Shopping")),
+            new TripTagSeed(Loc["Other"], "tag", null),
         ];
     }
 
@@ -8619,8 +8956,41 @@ else
     {
         "import","repeat","bank","bell","shield","alert","receipt","note","target","pulse","sliders","pencil","trash",
         "check","x","plus","tag","archive","coins","swap","trending","bulb","pin","link","list","share","info","rotate",
-        "calendar","card","chart","users","logout","arrow-right","scale","calculator","bookmark","trophy",
+        "calendar","card","chart","users","logout","arrow-right","scale","calculator","bookmark","trophy","plane",
     };
+    /// <summary>
+    /// A tag's mark. Draws the app's line icon when the stored value is a sprite name — which is what the seeded
+    /// trip labels now carry — and falls back to the raw glyph for a tag someone typed an emoji into themselves.
+    /// <para>
+    /// ★ The same read-time translation categories got: stored data is left alone and the <i>rendering</i> decides,
+    /// so a tag saved as "🏨" before the switch keeps working and no migration is needed. Legacy emoji that map to
+    /// a known icon are upgraded on the way out via <c>CategoryIcons.EmojiToName</c>.
+    /// </para>
+    /// </summary>
+    /// <summary>A trip's mark: its own flag or icon, falling back to the app's plane rather than a 🧳 — the
+    /// fallback is the app choosing, and everything the app chooses is drawn from the sprite.</summary>
+    private RenderFragment TripMark(string? icon) => TagMark(string.IsNullOrEmpty(icon) ? "plane" : icon);
+
+    private RenderFragment TagMark(string? icon) => builder =>
+    {
+        if (string.IsNullOrEmpty(icon)) return;
+        var resolved = CategoryIcons.Names.Contains(icon) ? icon : CategoryIcons.EffectiveOrNull(icon);
+        if (resolved is not null)
+        {
+            builder.OpenComponent<Icon>(0);
+            builder.AddAttribute(1, "Name", resolved);
+            builder.AddAttribute(2, "Class", "tag-ic");
+            builder.CloseComponent();
+        }
+        else
+        {
+            builder.OpenElement(3, "span");
+            builder.AddAttribute(4, "class", "tag-emoji");
+            builder.AddContent(5, icon);
+            builder.CloseElement();
+        }
+    };
+
     private RenderFragment IconOrEmoji(string icon) => builder =>
     {
         if (IconNames.Contains(icon) || CategoryIcons.Names.Contains(icon))
@@ -8720,6 +9090,24 @@ else
             list.Add(new Notification("calendar", text, null, null, null, null, null, false, Due: true));
         }
 
+        // A trip about to start. Grouped with the bills as "Due" rather than as a suggestion, because it is a date
+        // arriving and not advice — and it stops exactly where the Home banner takes over, so the two never say the
+        // same thing at once. The window is a week: earlier than that there is nothing to do about it yet.
+        // ⚠️ This is an IN-APP nudge, seen when the app is opened. There is no push anywhere in the product (no FCM
+        // on the server, only the SignalR sync hub), and nothing here should be worded as though there were.
+        foreach (var soonTrip in State.UpcomingTrips.Where(t => t.DaysUntil(State.TodayDate) is <= 7))
+        {
+            var tripId = soonTrip.Id;
+            var sleeps = soonTrip.DaysUntil(State.TodayDate) ?? 0;
+            var whenTrip = sleeps == 0 ? Loc["starts today"] : sleeps == 1 ? Loc["starts tomorrow"] : string.Format(Loc["in {0} days"], sleeps);
+            // What's already been paid, if anything — the figure that makes the nudge worth opening rather than
+            // merely worth reading, since the bookings are the half people have forgotten they made.
+            var booked = State.TripRecap(tripId);
+            list.Add(new Notification(soonTrip.Icon ?? "plane", $"{soonTrip.Name} — {whenTrip}",
+                booked is { IsEmpty: false } ? string.Format(Loc["{0} booked ahead so far."], Fmt(booked.Spent)) : null,
+                Loc["Open the trip"], () => ShowTripsTab(tripId), null, null, false, Due: true));
+        }
+
         // "Move it" reallocates for real (trims the budget + sets aside toward the debt), so the whole tip is gated
         // on free cash existing. Showing "you have spare in Groceries — put it on the loan" while the free balance
         // is already negative describes spare money that isn't there: the budget has room, the account doesn't.
@@ -8735,7 +9123,16 @@ else
         if (OverBudgetTip() is { } ob)
         {
             Action? rotate = OverBudgetCandidates().Count > 1 ? () => _overIndex++ : null;
-            list.Add(new Notification("alert", ob.Title, ob.Desc, Loc["Review"], () => OpenCategoryDetail(ob.CatId), rotate, () => DismissOverBudget(ob.CatId), true));
+            // ★★ Tone, not truth. While a trip is running the same overspend stops being an urgent "needs attention"
+            // row on Home and becomes an ordinary bell suggestion, worded as an observation rather than a correction.
+            // ★ Nothing is hidden, excluded or discounted: the money still counts against the budget, against
+            // safe-to-spend and in the trip's own recap — the figure in the title is the same figure. What changes is
+            // that the app stops asking someone in the middle of a holiday to go and fix it today, which is a request
+            // they cannot act on and did not need. It comes back the morning they land, as itself.
+            var travelling = State.InTripMode;
+            list.Add(new Notification(travelling ? "info" : "alert", ob.Title,
+                travelling ? Loc["Normal while you're away — it still counts, and it'll show in the trip's recap."] : ob.Desc,
+                Loc["Review"], () => OpenCategoryDetail(ob.CatId), rotate, () => DismissOverBudget(ob.CatId), !travelling));
         }
         // Pace reminders: at most one per off-track debt/goal, with the payoff-date slip and a "set aside" action.
         list.AddRange(PaceReminders());
@@ -8752,10 +9149,14 @@ else
 
         // F7: once the week-recap card is dismissed from Home it isn't gone, it's tucked into the bell — the ✕ should
         // hide the clutter, not destroy the week. Strictly the mirror of the Home card's gate (WeekRecapToShow): shown
-        // here ONLY while dismissed for the current recap week, so the recap lives in exactly one place at a time and
-        // the bell never echoes a card that's still on Home. No dismiss of its own — it self-clears on Monday, when
-        // the new week's From no longer matches the stored flag and the card returns to Home.
-        if (_recapLoaded && State.WeeklyRecap() is { IsEmpty: false } dismissedRecap && _recapDismissed == dismissedRecap.From)
+        // here ONLY while the card isn't on Home, so the recap lives in exactly one place at a time and the bell never
+        // echoes a card that's still up. No dismiss of its own — it self-clears on Monday, when the new week's From no
+        // longer matches the stored flag and the card returns to Home.
+        // The second way it leaves Home is a running trip taking its place. Displaced is not dismissed, so it comes
+        // here for the length of the trip and goes back the day the traveller lands — the ✕ and the trip banner reach
+        // the same fallback, which is what stops "the card is gone" ever meaning "the week is gone".
+        if (_recapLoaded && State.WeeklyRecap() is { IsEmpty: false } dismissedRecap
+            && (_recapDismissed == dismissedRecap.From || State.InTripMode))
             list.Add(new Notification("calendar", Loc["Your week in money"],
                 $"{Loc["Spent"]} {Fmt(dismissedRecap.Spent)} · {dismissedRecap.From.ToString("d MMM")} – {dismissedRecap.To.ToString("d MMM")}",
                 Loc["See the whole week"], () => _modal = Modal.WeekRecap, null, null, false));
@@ -9392,6 +9793,17 @@ else
         _fundId = DefaultFundForCategory(categoryId); _modal = Modal.AddExpense;
         _focusAmount = focusAmount;
         _expTripId = State.ActiveTrip?.Id ?? Guid.Empty;   // trip mode: default it, don't enforce it
+        // ★ And take the trip's category with it. Applying this only when a trip CHIP is tapped meant the form
+        // opened on the running trip while still showing the last-used everyday category — the setting looked
+        // broken precisely for the person who never touches the trip row because it is already correct.
+        ApplyTripCategoryDefault();
+    }
+
+    /// <summary>Point the category at the current trip's, when that trip collects into one. Safe to call from any
+    /// path that assigns <c>_expTripId</c>; a trip that files per label leaves the category alone.</summary>
+    private void ApplyTripCategoryDefault()
+    {
+        if (State.FindTrip(_expTripId) is { CategoryId: { } tripCat }) _categoryId = tripCat;
     }
 
     // F1: set when the modal should open with the cursor already in Amount; consumed once by OnAfterRenderAsync.
@@ -9525,9 +9937,27 @@ else
     private void ApplyTagBinding(Guid tagId)
     {
         if (_modal != Modal.AddExpense) return;
+        // ★ A trip that files into ONE category owns the filing, so its labels tag without re-filing. Letting the
+        // binding fire here would undo the setting on every tap — pick "Stay" and the expense jumps back out of
+        // Travel into Housing, which is precisely the spread the user turned off.
+        if (FormTrip is { FilesIntoOneCategory: true }) return;
         if (State.TagCategory(tagId) is not { } cat || cat == _categoryId) return;
         _categoryId = cat;
         _tagFiledTo = cat;   // so the swap is announced, not silent
+    }
+
+    /// <summary>Picking a trip on the expense form. When that trip collects into one category, the category follows
+    /// it — the setting exists to stop the user filing each trip expense by hand, so applying it only at save time
+    /// would leave the form showing something other than what it is about to do.</summary>
+    private void OnExpenseTripPicked(Guid tripId)
+    {
+        _expTripId = tripId;
+        if (_modal != Modal.AddExpense) return;
+        if (State.FindTrip(tripId) is { CategoryId: { } tripCat })
+        {
+            _categoryId = tripCat;
+            _tagFiledTo = null;   // not a tag's doing, so the "filed under" note would misattribute it
+        }
     }
 
     // F2: set when picking a tag just changed the category, so the modal can say so. Cleared on the next tag action.
@@ -10406,8 +10836,9 @@ else
     // share one core, so the rendered string is byte-identical however a figure is sourced.
     private static string FmtCurrency(decimal amount, string currency)
     {
-        var symbol = currency switch { "EUR" => "€", "USD" => "$", "GBP" => "£", _ => currency + " " };
-        return $"{symbol}{amount:N2}";
+        // The three-symbol switch that used to live here moved to CurrencyInfo, which knows the ~35 a traveller is
+        // likely to meet and keeps the same "CODE " fallback for everything else.
+        return $"{CurrencyInfo.Symbol(currency)}{amount:N2}";
     }
 
     private string Fmt(decimal amount) => FmtCurrency(amount, State.Currency);

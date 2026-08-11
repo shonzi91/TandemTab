@@ -43,6 +43,25 @@ public sealed class Trip : Entity
     /// still reports its total, it just has nothing to be over or under.</summary>
     public decimal? Budget { get; private set; }
 
+    /// <summary>
+    /// The one category every expense on this trip files into, when the user picks one. Null keeps the original
+    /// behaviour: each trip label files into its own everyday category.
+    /// <para>
+    /// <b>★ Why this exists.</b> Filing a trip across the everyday categories put a Roman hotel in <i>Rent</i> and
+    /// a week of restaurants in the <i>Food</i> budget — so a fortnight away detonated three household budgets at
+    /// once, and the categories stopped meaning what they say. With one category the trip is a single line in the
+    /// month, which is what it actually is, and the everyday budgets keep describing everyday life.
+    /// </para>
+    /// <para>
+    /// <b>Nothing is lost by collapsing them</b>, and that is what makes it safe: the tag axis still carries
+    /// stay / travel / food / tickets, so "what did the hotel cost" is answered by the trip's own recap. The
+    /// category axis was never where that question was going to be answered — no household has an
+    /// "Accommodation" budget.
+    /// </para>
+    /// <para>Per trip, not global: a road trip you want spread across the usual categories simply leaves it unset.</para>
+    /// </summary>
+    public Guid? CategoryId { get; private set; }
+
     /// <summary>The currency actually being spent on the trip, when it isn't the account's ("GBP"). Display only —
     /// see <see cref="Rate"/>.</summary>
     public string? SpendCurrency { get; private set; }
@@ -91,6 +110,15 @@ public sealed class Trip : Entity
     /// <summary>Set (or clear with null) what the trip is expected to cost. A negative budget is meaningless, so
     /// it clears rather than throwing — the field is a planning aid, not a ledger entry.</summary>
     public void SetBudget(decimal? budget) => Budget = budget is > 0m ? budget : null;
+
+    /// <summary>Set the one category this trip's expenses file into, or clear it with null/empty to go back to
+    /// per-label filing. Validated by <c>Account.SetTripCategory</c>, which owns the category list.</summary>
+    public void SetCategory(Guid? categoryId) =>
+        CategoryId = categoryId is { } id && id != Guid.Empty ? id : null;
+
+    /// <summary>True when this trip collapses into one category — i.e. the expense form should default there and
+    /// a trip label should tag without re-filing.</summary>
+    public bool FilesIntoOneCategory => CategoryId is not null;
 
     /// <summary>Set the fixed conversion for a trip spent in another currency, or clear it by passing null for
     /// either half. The two only mean anything together: a rate with no currency has nothing to label the field

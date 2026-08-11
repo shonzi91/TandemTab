@@ -69,6 +69,33 @@ html.dark .brand-logo { background: none; padding: 0; }
 html.dark .brand-word { color: #c3ccd8; }
 html.dark .brand-tab { color: var(--tm-mint); }
 
+/* ─────────── Trip mode: the shell wears the journey ───────────
+   The bar leaves the app's mint for the trip blue while a trip is running. Not an invented colour — #35538f /
+   #e8eefc are already the trip idiom on the Spending tab (.trip-pill.soon, .trip-fx) and on Home's trip banner,
+   so the whole feature speaks one language wherever it surfaces.
+   ⚠️ SCOPE, stated plainly: this shifts the SHELL — the bar, the wordmark and the flag — not every mint accent in
+   the app. The product has no accent custom property to override (colours are hardcoded hex across ~3,000 lines of
+   scoped component CSS, with a global html.dark layer over the top), so a true accent swap is a sweep of its own,
+   not a class. What is here is the part that is visible on every tab, which is the part that had to carry it. */
+.app-shell.trip .app-bar { background: linear-gradient(100deg, #1e5f9e, #2f8fc4); }
+/* The mark keeps its white plate here. It exists because the LIGHT bar is exactly #13a06e, the mark's own dark
+   field — on blue the mark would separate without it, but the plate reads as an app-icon keyline either way, and
+   having it appear and disappear as someone flies out is a costume change nobody asked for. */
+.brand-trip {
+    align-self: center; margin-left: 5px;
+    font-size: .95rem; line-height: 1;
+    padding: 3px 6px; border-radius: 8px;
+    background: rgba(255,255,255,.18);
+}
+/* Dark keeps the navy glass — the ground is the ground — and moves only the hairline and the accent word from mint
+   to sky, which is the whole signal there. */
+html.dark .app-shell.trip .app-bar {
+    background: rgba(17, 26, 43, .82);
+    border-bottom-color: rgba(125, 180, 235, .18);
+}
+html.dark .app-shell.trip .brand-tab { color: #7cc4f0; }
+html.dark .brand-trip { background: rgba(125, 180, 235, .16); }
+
 .appbar-user {
     margin-left: auto;
     display: flex;

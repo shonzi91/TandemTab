@@ -41,6 +41,11 @@ public static class CategoryIcons
         ["🎨"] = "palette", ["💵"] = "note", ["👛"] = "purse", ["💼"] = "briefcase", ["🪙"] = "coins",
         ["💳"] = "card", ["📈"] = "trending", ["🎉"] = "party", ["🏖️"] = "beach", ["🩺"] = "stethoscope",
         ["🚿"] = "shower", ["🏷️"] = "tag",
+        // The trip labels seeded as emoji before they were seeded as icon names. Mapping them here upgrades every
+        // account that already has them on the next render — no data change, no re-seed (EnsureTripTags is
+        // idempotent and would never touch them again anyway).
+        ["🏨"] = "house", ["🎟️"] = "film", ["🎟"] = "film", ["📦"] = "tag", ["🧳"] = "plane",
+        ["🏔️"] = "beach", ["🎿"] = "beach", ["🏕️"] = "beach", ["🚗"] = "car", ["🚢"] = "bus",
     };
 
     // The colour each icon sits on — semantic and stable (all "cart" categories share the same green, etc.), so a
@@ -111,6 +116,20 @@ public static class CategoryIcons
         if (Names.Contains(icon)) return icon;                                   // already an icon name (new data)
         return EmojiToName.TryGetValue(icon, out var mapped) ? mapped : Guess(name);  // legacy emoji → name
     }
+
+    /// <summary>
+    /// The icon name for a stored value, or <c>null</c> when it is a glyph we have no icon for.
+    /// <para>
+    /// Unlike <see cref="Effective"/> this never guesses from a name and never falls back to "tag" — the caller
+    /// wants to know whether an icon genuinely exists, so it can draw the user's own emoji rather than silently
+    /// replacing it with a generic label mark.
+    /// </para>
+    /// </summary>
+    public static string? EffectiveOrNull(string? icon) =>
+        string.IsNullOrWhiteSpace(icon) ? null
+        : Names.Contains(icon) ? icon
+        : EmojiToName.TryGetValue(icon, out var mapped) ? mapped
+        : null;
 
     /// <summary>Best-effort icon name for a category name (used when no icon is stored).</summary>
     public static string Guess(string? name)

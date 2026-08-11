@@ -506,6 +506,17 @@ public sealed class Account : Entity
         trip.SetSavingCategory(savingCategoryId);
     }
 
+    /// <summary>Point a trip at the single category its expenses file into, or clear with null. The category must
+    /// exist here — a link to nothing would silently fall back to per-label filing, which looks exactly like the
+    /// setting being ignored.</summary>
+    public void SetTripCategory(Guid tripId, Guid? categoryId)
+    {
+        var trip = FindTrip(tripId) ?? throw new InvalidOperationException("Trip not found.");
+        if (categoryId is { } id && id != Guid.Empty && FindCategory(id) is null)
+            throw new InvalidOperationException("Category does not exist in this account.");
+        trip.SetCategory(categoryId);
+    }
+
     /// <summary>Set (or clear) what the trip is expected to cost.</summary>
     public void SetTripBudget(Guid tripId, decimal? budget) =>
         (FindTrip(tripId) ?? throw new InvalidOperationException("Trip not found.")).SetBudget(budget);

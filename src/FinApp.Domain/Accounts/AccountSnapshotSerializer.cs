@@ -48,7 +48,8 @@ public static class AccountSnapshotSerializer
             account.RoundUpTo, account.RoundUpBucketId, account.HourlyRate,
             account.WorkingDaysPerMonth, account.WorkingHoursPerDay,
             account.Trips.Count == 0 ? null : account.Trips.Select(t => new TripNode(
-                t.Id, t.Name, t.From, t.To, t.Destination, t.Icon, t.SavingCategoryId, t.Budget, t.SpendCurrency, t.Rate)).ToList());
+                t.Id, t.Name, t.From, t.To, t.Destination, t.Icon, t.SavingCategoryId, t.Budget, t.SpendCurrency, t.Rate,
+                t.CategoryId)).ToList());
         return JsonSerializer.Serialize(node, Json);
     }
 
@@ -115,6 +116,7 @@ public static class AccountSnapshotSerializer
             trip.SetSavingCategory(t.SavingCategoryId);
             trip.SetBudget(t.Budget);
             trip.SetRate(t.SpendCurrency, t.Rate);
+            trip.SetCategory(t.CategoryId);
             return trip;
         }).ToList());
         SetField(account, "_savingCategories", node.SavingCategories.Select(ToEntity).ToList());
@@ -322,9 +324,11 @@ public static class AccountSnapshotSerializer
         List<TripNode>? Trips = null);
 
     // Dates are the trip's own, never a filter over expenses — see Trip for why membership is by link.
+    // CategoryId is a TRAILING optional, like every other body-data addition: a snapshot written before it existed
+    // deserializes with null, which is exactly "file per label" — the behaviour those trips already had.
     private record TripNode(Guid Id, string Name, DateOnly From, DateOnly To, string? Destination = null,
         string? Icon = null, Guid? SavingCategoryId = null, decimal? Budget = null,
-        string? SpendCurrency = null, decimal? Rate = null);
+        string? SpendCurrency = null, decimal? Rate = null, Guid? CategoryId = null);
 
     private record RecurringItemNode(Guid Id, string Name, RecurringKind Kind, RecurringAmountMode AmountMode,
         decimal ExpectedAmount, int DayOfMonth, Guid CategoryId, Guid FundId, bool Active, string? Icon, DateOnly? LastHandledPeriodFrom,

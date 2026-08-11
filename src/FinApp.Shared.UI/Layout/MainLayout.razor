@@ -9,14 +9,18 @@
 @inject PlanGate Gate
 
 <IconSprite />
-<div class="app-shell">
+@* While a trip is running the shell wears it: the bar shifts from the app's mint to the trip blue and the
+   destination's flag sits beside the wordmark. Ambient, not a control — it is the one thing on screen that says
+   "the app knows you're away" without spending a row of Home to say it, and it is derived from the dates, so it
+   cannot be left switched on. *@
+<div class="app-shell @(LiveTrip is null ? "" : "trip")">
     @if (Auth.IsAuthenticated)
     {
         <header class="app-bar">
             @* The Pro mark only appears once monetization is live AND the account is actually Pro — during beta
                the flag is off and every account reads "unlimited", which deliberately does NOT earn a crown.
                Badging everyone would make the mark meaningless the day it starts meaning something. *@
-            <span class="brand"><span class="brand-logo"><TandemLogo Pro="@IsPro" /></span><span class="brand-word">Tandem<span class="brand-tab">Tab</span></span>@if (IsPro) { <span class="brand-pro" title="@Loc["You’re on Pro"]">@Loc["Pro"]</span> }</span>
+            <span class="brand"><span class="brand-logo"><TandemLogo Pro="@IsPro" /></span><span class="brand-word">Tandem<span class="brand-tab">Tab</span></span>@if (IsPro) { <span class="brand-pro" title="@Loc["You’re on Pro"]">@Loc["Pro"]</span> }@if (LiveTrip is { } lt) { <span class="brand-trip" title="@lt.Name">@(lt.Icon ?? "🧳")</span> }</span>
             <span class="appbar-user">
                 <LanguagePicker />
                 @* Admin lives in its own door, not buried in profile settings. Only rendered for an admin; the
@@ -387,7 +391,7 @@
                 <h4>@Loc["Appearance"]</h4>
                 <div class="pm-theme-row">
                     <span>@Loc[_dark ? "Dark theme" : "Light theme"]</span>
-                    <button type="button" class="pm-theme-toggle" title="@Loc[_dark ? "Light theme" : "Dark theme"]" @onclick="ToggleTheme">@(_dark ? "☀️" : "🌙")</button>
+                    <button type="button" class="pm-theme-toggle" title="@Loc[_dark ? "Light theme" : "Dark theme"]" @onclick="ToggleTheme"><Icon Name="@(_dark ? "sun" : "moon")" /></button>
                 </div>
                 <h4>@Loc["Profile picture"]</h4>
                 <div class="pm-avatar-row">
@@ -550,17 +554,17 @@
                     <details class="pm-section">
                         <summary>@Loc["Your data & privacy"]</summary>
                         <ul class="pm-privacy">
-                            <li>🔒 @Loc["Your data is encrypted and stored per account."]</li>
-                            <li>🚫 @Loc["We never sell your data, and never feed your raw data to any AI."]</li>
-                            <li>📄 @Loc["Statement import runs on your device — a file you choose, not a bank login we hold."]</li>
+                            <li><Icon Name="lock" /> @Loc["Your data is encrypted and stored per account."]</li>
+                            <li><Icon Name="x" /> @Loc["We never sell your data, and never feed your raw data to any AI."]</li>
+                            <li><Icon Name="receipt" /> @Loc["Statement import runs on your device — a file you choose, not a bank login we hold."]</li>
                             @* The export BUTTON used to sit here too, running the identical
                                State.ExportCurrentAccountAsync() as the account ⋯ menu's "Export to Excel" — two
                                controls, one action, in two places. Kept as a statement of the promise (which is
                                what this privacy section is for) and points at the one place that does it. *@
-                            <li>📤 @Loc["You can export any account to a spreadsheet at any time — from the account menu (⋯) → Export to Excel."]</li>
+                            <li><Icon Name="share" /> @Loc["You can export any account to a spreadsheet at any time — from the account menu (⋯) → Export to Excel."]</li>
                         </ul>
                         @* A real person to reach — the same address the privacy policy names as the GDPR/data contact. *@
-                        <p class="pm-hint">✉️ @Loc["Questions, or a privacy request?"] <a href="mailto:admin@tandemtab.com">admin@tandemtab.com</a></p>
+                        <p class="pm-hint"><Icon Name="mail" /> @Loc["Questions, or a privacy request?"] <a href="mailto:admin@tandemtab.com">admin@tandemtab.com</a></p>
                     </details>
 
                     @* Plans (OPEN-BETA P4). Shown ONLY when monetization is switched on; during beta the flag is
@@ -581,7 +585,7 @@
                                     {
                                         var has = pl.CurrentPlan is "pro" or "unlimited" ? f.InPro : f.InFree;
                                         <li class="pm-feat @(has ? "on" : "off")">
-                                            <span class="pm-feat-m" aria-hidden="true">@(has ? "✓" : "🔒")</span>
+                                            <span class="pm-feat-m" aria-hidden="true"><Icon Name="@(has ? "check" : "lock")" /></span>
                                             <span>@FeatureLabel(f.Key)</span>
                                             @if (!has) { <span class="pm-feat-tag">@Loc["Pro"]</span> }
                                         </li>
@@ -830,6 +834,24 @@
     }
     private string PlanLabel(string plan) => plan switch { "pro" => Loc["Pro"], "free" => Loc["Free"], _ => Loc["Unlimited"] };
 
+    /// <summary>The trip running today, or null when we're home. Guarded on the state actually holding an account:
+    /// the shell renders during sign-in, first run and account switches, and <c>State.Account</c> throws in all
+    /// three.</summary>
+    private Trip? LiveTrip => State.IsReady && State.HasAccounts ? State.ActiveTrip : null;
+
+    /// <summary>
+    /// What the shell is currently wearing — the trip's id and flag. Compared on every state change so the layout
+    /// re-renders <b>only</b> when one of them actually differs.
+    /// <para>
+    /// ★ The guard is the point, not an optimisation reflex. Re-rendering this layout re-renders <c>@Body</c>, i.e.
+    /// the whole 10k-line Dashboard, which already subscribes to the same event and re-renders itself — so an
+    /// unguarded handler would double every render in the app to keep a flag beside the logo up to date. Keyed this
+    /// way it fires on the morning a trip starts, the morning after it ends, an account switch, and an edit to the
+    /// flag. Effectively never.
+    /// </para>
+    /// </summary>
+    private (Guid Id, string? Icon) _shellTrip;
+
     /// <summary>Whether to wear the Pro mark. Requires monetization to be ON — "unlimited" (the beta state) is
     /// everyone, and a badge everyone has is not a badge.</summary>
     // The Pro tag + logo crown. Server-computed (ProBadge): during beta it follows the lifetime-cohort so the
@@ -1039,6 +1061,7 @@
     {
         Auth.Changed += OnChanged;
         Loc.Changed += OnChanged;
+        State.Changed += OnTripMaybeChanged;
         Gate.Blocked += OnPlanBlocked;
         Api.PaymentRequired += OnServerBlocked;   // a 402 from the server-side gate raises the same prompt
         await Loc.InitializeAsync();
@@ -1062,6 +1085,15 @@
         try { _dark = (await JS.InvokeAsync<string>("finappGetTheme")) == "dark"; } catch { /* host without the helper */ }
         await LoadFeedbackDoneAsync();
         await LoadLoginConsentAsync();
+    }
+
+    /// <summary>Re-render the shell when — and only when — the trip it is wearing changed. See <see cref="_shellTrip"/>.</summary>
+    private void OnTripMaybeChanged()
+    {
+        var now = LiveTrip is { } t ? (t.Id, t.Icon) : (Guid.Empty, null);
+        if (now == _shellTrip) return;
+        _shellTrip = now;
+        InvokeAsync(StateHasChanged);
     }
 
     private void OnChanged()
@@ -1150,6 +1182,7 @@
     {
         Auth.Changed -= OnChanged;
         Loc.Changed -= OnChanged;
+        State.Changed -= OnTripMaybeChanged;
         Gate.Blocked -= OnPlanBlocked;
         Api.PaymentRequired -= OnServerBlocked;
     }

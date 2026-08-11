@@ -1,6 +1,19 @@
 # TandemTab (FinApp) — session handoff
 
-Last updated: 2026-08-11 (Session 99 — **Trip mode, built from the domain up.** Owner ask #8 promoted into a real
+Last updated: 2026-08-11 (Session 100 — **the four trip items the owner left, and S99's whole unproven UI finally
+driven in a running app.** The Home trip banner, the shell theme shift, the bell departure nudge and the
+over-budget tone change. Then two owner asks off the back of a reference image: **leader labels on the Breakdown
+donut** (category icon + share pointing at each wedge) and **growing bars in the first Trends chart**, plus every
+decorative animation in the app slowed by about half.
+**427 + 48 + 340 green** (from 422; five new domain tests for a trip's single filing category).
+`tools/pairscan.js` reports **0** partially-darkened rules.
+✅ **Everything above is BROWSER-VERIFIED**, including S99's trip feature, which had never been opened: a local
+account with four periods and two trips proved the banner arithmetic, the blue shell, the bell nudge, the tone
+change **and its control case**, the Trips tab, and the entry form defaulting to the running trip.
+⚠️ **NOT deployed.** Committed nowhere yet either — the working tree holds it. S99's `aa2b965` is still unpushed.
+⚠️ **Android has none of trips**, on top of everything it already trailed by.)
+
+Previously: 2026-08-11 (Session 99 — **Trip mode, built from the domain up.** Owner ask #8 promoted into a real
 feature: a trip is a named date range that expenses **point at**, so a flight bought in March counts toward a June
 trip while staying in March's period and March's budget. Domain + snapshot + 5 endpoints + the Spending → **Trips**
 tab + the entry flow. **422 + 48 + 340 green** (from 399 + 48 + 327; 23 domain + 13 server tests are new).
@@ -92,6 +105,262 @@ a separate balance axis — because flows and a stock were sharing one scale. **
 ✅ **Committed and the web half is DEPLOYED** (Session 93 catch-up): Android sharing as `596eea5`, the web batch
 as `de51071`, now live on **`finapp-00280-4s8`** (traffic forced `--to-latest`; run URL + tandemtab.com 200; 5
 `secretKeyRef`s; no WARNING+ logs). Prior context below is Session 91.)
+
+## Session 100 (2026-08-11) — **The four trip items, and S99 finally proved in a running app.**
+
+### ★★ The finding that outranks the features: S99's trip mode works, and now we know that
+
+S99 shipped ~2,100 lines of trip feature that had never been rendered. This session built the fixture that was
+missing — a local account, four periods, a trip running today and one three days out — and drove the whole thing.
+It worked, and **the numbers reconcile**, which is the part worth writing down:
+
+- Home banner: `Rome · Day 4 of 8 · SO FAR €539.50 · €380.00 booked ahead · €159.50 while away · €660.50 left of
+  €1,200.00`. The €380 is a flight dated **12 June**, in a closed period, while the SPENT tile beside it reads
+  €1,999.50 for August alone. That single screen is the feature's whole thesis, holding.
+- The Trips tab, the trip create/edit modal, and the expense form's "Part of a trip" row **defaulting to Rome**
+  because a trip is running — all rendered, all correct, first try.
+
+**The fixture is the reusable part.** Register through the UI (the S98 seeder is still stale), then drive
+`/accounts/{id}/…` with `fetch` from the browser console carrying the localStorage bearer token — categories,
+expenses, budgets, trips, periods. Two notes that cost time: `POST /periods/start-next` **400s mid-period** unless
+you first `PUT /periods/0/schedule` the opening period into the past and then pass `Today` on each roll; and Trends
+is Pro-gated, unlocked locally by setting `UserSignups.Cohort='beta'` — **lower-case the UserId in the WHERE, the
+column stores it lower-case and SQLite compares case-sensitively**, so an upper-case id silently updates 0 rows.
+
+### The four items
+
+- **★ The Home banner REPLACES the weekly recap rather than stacking under it.** Both answer "what has money been
+  doing lately", and the one you are living through wins; two cards would push the week you are *not* having above
+  the fold on a phone. **★★ Displaced is not dismissed** — while a trip runs the week recap moves into the bell,
+  the same fallback the card's ✕ already used, and comes back the day you land. Verified both directions.
+- **★ No dismiss and no pulse on the banner.** It is self-limiting — it appears the morning the trip starts and is
+  gone the morning after it ends — so there is nothing to dismiss, and the recap card's glow animation would have
+  been an eight-day pulse above the fold, which is the nag this feature exists not to be.
+- **★ The pre-paid split is stated ON the banner**, not left to the Trips tab. That headline is the one number in
+  the app that deliberately does *not* mean "what I spent this week"; saying so where it is read costs one line and
+  stops the total looking broken.
+- **The shell theme shift** — `.app-shell.trip` turns the bar from mint to a sea-to-sky gradient and puts the
+  destination flag beside the wordmark. ⚠️ **Scope, stated plainly: this shifts the SHELL, not every accent in the
+  app.** There is no accent custom property to override — colours are hardcoded hex across ~3,000 lines of scoped
+  component CSS with a global `html.dark` layer over the top — so a true accent swap is a sweep of its own. The
+  colour is not invented either: `#35538f`/`#e8eefc` were already the trip idiom (`.trip-pill.soon`, `.trip-fx`).
+- **★★ MainLayout subscribes to `State.Changed` but re-renders only when the trip it is WEARING changed.**
+  Re-rendering the layout re-renders `@Body` — the whole 10k-line Dashboard, which already subscribes to the same
+  event and re-renders itself. An unguarded handler would have doubled every render in the app to keep one flag
+  up to date. Keyed on `(TripId, Icon)` it fires on the morning a trip starts, the morning after it ends, an
+  account switch, and an edit to the flag. Effectively never.
+- **The bell nudge** — "Vienna — in 3 days", grouped as **Due** (a date arriving, not advice), inside a one-week
+  window that stops exactly where the Home banner takes over, carrying "€X booked ahead so far" when there is any.
+  ⚠️ In-app only: there is still no push anywhere in the product, and nothing is worded as though there were.
+  ⚠️ `"plane"` had to be added to Dashboard's `IconNames` whitelist or the fallback icon renders as the literal
+  text "plane" — the sprite has had `i-plane` all along, the notification whitelist just never listed it.
+- **★★ The over-budget tone change is tone, not truth.** While travelling the same overspend leaves Home's urgent
+  strip for the bell's suggestions, with `"alert"` becoming `"info"` and a line that says it is normal on a trip.
+  **The figure is identical and nothing is excluded** — it still counts against the budget, safe-to-spend and the
+  trip recap. What stops is the app asking someone mid-holiday to go and fix something they cannot act on.
+  **Proved with its control case**: with the trip running, "You're €124.50 over your Food budget" sits in the bell
+  with the softened line and Home's strip has four items; move the trip's dates into the past and the same alert
+  is back in Home's strip, urgent, with the same €124.50.
+
+### ★ Leader labels on the Breakdown donut (owner ask, from a reference image)
+
+Each wedge ≥2% gets a hairline out to its category icon and its share. Below 2% nothing: the icon would be wider
+than the wedge, and those rows carry exact figures in the list underneath.
+
+- **★★ The percentages were silently CLIPPED by the viewBox on the first cut** — "45%" rendered "459" and "13%"
+  rendered "3%". Not a missing label: **a wrong number, stated confidently**. The margin has to clear the icon
+  *and the text beyond it*, which is a different sum from the one that sizes the ring.
+- **★ The icons use the list's own idiom** (`fill:none` + stroke, no colour chip) after the first cut invented a
+  second icon style — white glyphs on filled discs — for one chart. With the chip gone, icon and figure take the
+  **slice's** colour, which is the only thing left tying the mark to its wedge.
+  ⚠️ Which means the CSS rule must declare **no** `fill`/`stroke` colour: those are presentation attributes set
+  per-slice in the markup, and a presentation attribute loses to any stylesheet declaration.
+- **★★ The anti-overlap pass moves labels vertically only**, so close in, a nudged label sat *on* the ring. Fixed
+  by orbiting far out (r=148 against a ring of r=90): the further out, the more vertical room a nudge has before
+  it runs back into the chart. Long leader lines are the price; icons over wedges was not payable.
+- ⚠️ **Razor reserves `<text>`** and rejects attributes on it (RZ1023) inside a code block, so the percentage is
+  emitted through a `RenderFragment` built with the render-tree builder. The chart's centre total gets away with
+  plain markup only because it sits outside any `@foreach`. Same reason Trends' tick labels are HTML overlays.
+- Applied to the **Breakdown donut only**. Home's and Trips' donuts are ~110px thumbnails with their legend
+  already beside them; leader labels there would collide with the legend rather than replace it.
+
+### Trends chart 1, and the animation pass
+
+- **The net/in/out bars grow out of the zero line**, staggered left to right by `--tb` so the months arrive in the
+  order they happened. **★ A negative "kept" bar grows DOWNWARD from the axis** — growing it from its own bottom
+  edge, the default for every other bar, would have it rise out of the chart floor to meet a baseline it never
+  touches. ⚠️ Scoped to `.trend-chart .trend-bar`: `.trend-bar` is *also* an HTML div bar further down the same
+  stylesheet, and a bare selector animates both. Transform only, never opacity — the three bars carry different
+  opacities (.42 in/out, 1 net) and a keyframe touching opacity flattens that and snaps it back.
+- **Decorative animations slowed by ~1.5×** app-wide: donut slices .55→.85s, the trend line 1.1→1.7s, trend points
+  .5→.7s, celebration/confetti, both recap glows 3.4→5s, the mascot bob, the achievement sheen.
+  **★ Three were deliberately left alone** — the loading spinner, the balance-refresh spinner and the save overlay.
+  Slowing those is not a nicer animation, it is a slower app.
+
+### ★★ The trip modal's "weird big capped text" was a class used on the wrong element
+
+Owner report. The New/Edit trip form rendered every field label, every hint and the placeholder text in tiny
+uppercase letter-spaced grey — including a two-line explanatory paragraph, which is unreadable that way.
+
+- `.modal-sec` carries `text-transform: uppercase`, `letter-spacing`, `font-size: .74rem`, `font-weight: 800` and
+  a muted colour. It was written in S97 to go **on the `<h4>` itself** — `<h4 class="modal-sec">Account</h4>` — and
+  Edit account uses it that way. S99's trip modal instead wrapped whole sections in `<div class="modal-sec">`.
+- **★ Every one of those properties inherits**, and `.modal label` (which sets only font-size and colour) resets
+  none of them. So a class meant to style four words styled forty, and nothing in the CSS looked wrong.
+- Fixed by matching Edit account's shape: the heading carries the class, the fields are its siblings. **No CSS
+  change** — the rule was always right about what it styles, the markup was wrong about what it wrapped.
+- ⚠️ **Worth a habit:** a class whose job is typography must go on the element it types. Wrapping is for layout.
+
+### Currency and flag pickers on the trip form (owner ask)
+
+- **`CurrencyInfo` (new)** — the app knew exactly **three** symbols (EUR/USD/GBP) and printed the bare code for
+  everything else. Invisible while only an account had a currency; trips made it visible, since a trip is the one
+  place a user names a *second* currency and immediately wants to know what they get back. Now ~35 codes, and
+  `FmtCurrency` reads from it. **★ Ambiguous dollars keep a prefix** — CAD/AUD/NZD/SGD/HKD/MXN render "CA$", "A$"
+  and so on, because printing a bare "$" for six currencies states something the app cannot back up.
+- A `<datalist>` (not a `<select>`) on the currency field, plus a live line: `SEK shows as kr100.00 · stored in
+  EUR, this account's currency`. **★ It tells the truth for an unlisted code** — "We have no symbol for XYZ, so it
+  shows as XYZ 100.00" — rather than implying a symbol it will not print. Both facts are shown because they are
+  different questions: what you will see, and what your totals are in.
+- `"1 ? is"` was the rate label's empty state, which read like a broken template. It is `"Rate"` until a code exists.
+- **`DestinationFlags` (new)** — tap-to-fill icon chips under the flag field, led by a flag guessed from the
+  destination ("Rome, Italy" → 🇮🇹), then eight generic trip shapes. **★ Longest key wins** in the lookup, or
+  "new zealand" loses to "new york" and "south africa" to "africa" purely on table order.
+- ⚠️ **Two Razor traps in this edit**, both now commented at the call site: `@{ … }` is invalid at switch-case
+  level (the surrounding `@switch` is already a code block), and **a loop variable named `code` collides with the
+  `@code` directive** — `@code —` in markup produced six errors, none of which named the variable.
+
+### ★ Overlapping trips are allowed, and now say so
+
+Owner spotted two overlapping trips in the fixture. They were mine — deliberately overlapped to raise the banner
+and the departure nudge at once — but the question exposed a real gap: **the app has never prevented overlap and
+never mentioned it.** `Account.ActiveTrip` resolves the shared days to the most recent departure, so on those days
+one trip silently stops being the expense form's default.
+
+The fix is a warning, not a block: back-to-back travel is real, and refusing to record it would be the app
+disbelieving someone about their own diary. The form now says which trip it overlaps and what follows from it.
+
+### ★★ A trip files into ONE category now — the owner's question that found a design fault
+
+Owner asked what category trip expenses were going to. The answer was bad: each trip label was F2-bound to an
+everyday category, so **a Roman hotel filed into `Rent`** and a week of restaurants into `Food`. A fortnight away
+detonated three household budgets at once — and that is the real reason S99 needed an over-budget tone change at
+all. The tone change was treating a symptom.
+
+- `Trip.CategoryId` (body data: `Ignore()`-free since `Account.Trips` is already ignored, trailing optional on
+  `TripNode`, **no migration**) collects the whole trip into one category. **Per trip, not global** — a road trip
+  you want spread across the usual categories just leaves it unset, which is also what every existing trip does.
+- **★ Nothing is lost by collapsing them, and that is what makes it safe.** The tag axis still carries
+  stay / travel / food / tickets, so the trip's own recap answers "what did the hotel cost". The category axis was
+  never going to answer it — no household has an "Accommodation" budget.
+- **★ A trip label tags without re-filing when the trip owns the filing** (`ApplyTagBinding` returns early). Letting
+  the F2 binding fire would undo the setting on every tap: pick "Stay" and the expense jumps back out of Travel
+  into Housing, which is exactly the spread the user turned off.
+- New trips **default** to an existing travel-ish category when the account has one (name-matched, EN + BG); with
+  nothing sensible to point at it falls back to per-label rather than picking a category at random.
+- ⚠️ **The bug driving it found:** the trip's category was applied when a trip CHIP was tapped but not when the
+  form *opened* on the running trip — so the setting looked broken for exactly the person who never touches the
+  trip row because it is already right. `ApplyTripCategoryDefault()` is now called from both open paths too.
+- Minor, left as is: clearing to "Not a trip" leaves the trip's category behind rather than reverting. There is no
+  well-defined "previous" to revert to, and the picker is right there.
+- **427 domain tests** (from 422): five new, covering the default, set/clear, the account-membership guard, the
+  snapshot round trip, and a snapshot written before the field existed.
+
+### ★ On a trip, the labels come first
+
+Also the owner's: the tag chips now render **above** the category picker in trip mode — order is *Part of a trip →
+What kind of spend? → Category*. Leading with a category picker asked the user to answer a question the next two
+taps were about to answer for them. Off a trip the picker keeps its old place after the note, where an optional
+label belongs; it renders in exactly one of the two spots, never both.
+
+### ★★ Overlapping trips hid a running trip from the expense form
+
+Found by driving the form with a real overlap. `FormTripOptions` offered `ActiveTrip` — the *single* resolved
+winner — plus upcoming, so with two trips running, the one that departed earlier became **unpickable while you
+were on it**. Fly in for a conference during a longer holiday and the holiday disappears from the form.
+
+`BudgetingState.RunningTrips` (new) returns every trip today falls inside. `ActiveTrip` still resolves one winner,
+because "what does the shell wear, what does the form default to" needs a single answer — but defaulting to one is
+a convenience, whereas hiding the other is the app deciding which trip you are on. The overlap warning's copy was
+corrected with it: it now says both stay pickable, which is only true because of this fix.
+
+### ★ Emoji the app itself picks are now line icons
+
+Owner: "do all emojis to be the app style too". The rule applied: **anything the APP chooses comes from the sprite;
+anything the USER supplies stays theirs.**
+
+- `TagMark` (new) renders a tag's mark as a sprite icon when the stored value resolves to one, and as the raw glyph
+  when it doesn't — so a tag someone typed "🐙" into keeps its octopus. `CategoryIcons.EffectiveOrNull` is the
+  honest half of `Effective`: it returns null instead of guessing, which is what lets the caller fall back.
+- Converted: the six seeded trip labels, the trip fallback mark, the icon suggestions under a trip's mark, the
+  account tick, the empty-bell tick, the onboarding and milestones headers, the payoff toasts, "reached", and
+  MainLayout's privacy list, plan ticks/locks and theme toggle. **Four symbols added to the sprite** — `lock`,
+  `sun`, `moon`, `mail` — because swapping those emoji for approximations would have been worse than leaving them.
+- **★★ The read-time map is what makes it retroactive.** Existing accounts already had the trip labels seeded as
+  emoji, and `EnsureTripTags` is idempotent so it will never re-seed them. Adding 🏨/🎟️/📦/🧳 (and the suggestion
+  glyphs) to `CategoryIcons.EmojiToName` upgrades every one of them **on the next render, with no data change and
+  no migration** — the same trick that moved categories off emoji. Caught because three of six labels were still
+  emoji after the first pass; the three that had already converted were the ones the map happened to cover.
+- **Deliberately still emoji, with reasons:** country flags on trips (the glyph *is* the information, and it was an
+  explicit owner ask), the language picker's flags, `CategoryIcons.EmojiToName`'s own keys (it is the legacy map),
+  and emoji inside sentences in `Localizer`. Plus one hard constraint: **`<option>` elements cannot contain SVG**,
+  so the 📤/🏦 markers inside `<select>`s stay glyphs.
+- ⚠️ **Not swept:** the Thin UI components (`Components/Thin/*`, `ThinDashboard.razor`), Landing, AuthPanel,
+  InvitationsPanel, FeedbackForm. Thin is the verification-only skeleton, the others are pre-auth surfaces — none
+  of them sit next to the line-icon category set, which is what made the mixture jarring in the first place.
+
+### ⛔⛔ NEXT SESSION, FIRST: a trip rate double-converts card payments. The rate is on the wrong object.
+
+Owner question that found a **live correctness bug**, not a gap: *"when I pay with card my amount in the statement
+is still in my currency (EUR), so I should be able to choose which currency."*
+
+`ExpenseAmountToLog` is `FormTrip is { HasRate: true } t ? t.ToAccountCurrency(typed) : typed` — there is **no
+per-expense escape hatch**. Set a trip rate, pay by card, read €50 off your statement, type 50, and the app stores
+**€58.50**. Every card payment on a rated trip is silently inflated by the rate. For most travellers card is the
+majority of the spend, so a rated trip's totals are wrong in the common case.
+
+**★★ The fix is to move the rate off the trip and onto the FUND, because the rate belongs to the money, not to the
+journey.** That is also exactly how it works in life:
+
+- **Card** → the bank already converted; the statement is in the account currency. Paying from the bank fund means
+  no conversion at all, and you type what the statement says.
+- **Cash from the exchange office** → a specific pile of foreign notes bought at a specific rate. That is a
+  *wallet*, which this app already models as a fund.
+
+So `Fund.Currency` + `Fund.Rate` (both optional; null = account currency, the ordinary case). **Choosing the
+currency becomes choosing the wallet**, which is a choice the user is already making on every expense, so the form
+gains no new question — the Amount label just follows the fund instead of the trip.
+
+Design notes for whoever picks this up:
+
+- **Load the wallet by transfer, and derive the rate — don't ask for it.** "€234 out of Bank → £200 into Lisbon
+  cash" gives 1.17 exactly, and the user has the exchange receipt in their hand, not a rate. A derived rate is also
+  the true rate for that pile of cash, including the office's margin, which a typed mid-market rate never is.
+- **"Temporary" is `IsArchived`, which funds already have.** No new concept — a trip wallet is a fund you close
+  when you get home. Worth offering the close at the end of the trip rather than leaving it in the wallets list.
+- **★ Leftover cash is the interesting case and must not be fudged.** Come home with £30 and that is still money.
+  Closing the wallet converts it back at a *new* rate, and the difference is a real gain or loss — it should land
+  somewhere honest, not silently vanish into a rounding line.
+- **`Trip.SpendCurrency`/`Rate` should demote to a default, not be deleted** — it seeds a new trip wallet's rate,
+  and the wallet owns the truth from then on. Keeping the field also keeps existing trips loading.
+- The entry-time conversion discipline stays exactly as it is: convert once, store in the account currency, never
+  re-apply. That part of S99 was right; only the thing holding the rate was wrong.
+
+### ⚠️ Carry-over
+
+- **⛔ NOTHING IS COMMITTED OR DEPLOYED.** S99's `aa2b965` is still unpushed, and this session's work is in the
+  working tree on top of it. A deploy covers both sessions at once.
+- ⚠️ **Windows desktop Chrome renders a flag emoji as its two letters** — 🇮🇹 shows as "IT" in the app-bar chip and
+  the trip cards. Not a bug in the markup (phones and macOS show the flag); it is what Windows does with regional
+  indicator pairs. The chip still reads as a destination marker, but if that is unacceptable the icon field would
+  need a non-flag default or a bundled flag font.
+- ⚠️ **The Trends bar growth was confirmed from computed styles, not watched.** The preview pane stopped
+  compositing frames partway through the session (a known local trap — see `reference_browser_pane_frozen_transitions`),
+  so the delays, `transform-box`, and the flipped origin on the four negative bars were read out of the DOM
+  instead. The final rendered state is correct; the motion itself has not been seen by eye.
+- A local dev account `chartcheck / chartcheck@test.local` was left in `src/FinApp.Server/finapp-server.db` with
+  the fixture data. Harmless, and it is the fastest way back into a trip-mode UI.
+- Everything in Session 99's and Session 98's carry-over still stands, including the whole Android sweep.
 
 ## Session 99 (2026-08-11) — **Trip mode: what a journey costs. Not deployed, not browser-verified.**
 

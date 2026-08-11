@@ -246,7 +246,12 @@ public record CreateTripRequest(string Name, DateOnly From, DateOnly To, string?
 /// Mirrors <c>BudgetingState.SaveTrip</c>.
 /// </summary>
 public record EditTripRequest(string Name, DateOnly From, DateOnly To, string? Destination = null, string? Icon = null,
-    Guid? SavingCategoryId = null, decimal? Budget = null, string? SpendCurrency = null, decimal? Rate = null);
+    Guid? SavingCategoryId = null, decimal? Budget = null, string? SpendCurrency = null, decimal? Rate = null,
+    // The single category this trip's expenses file into; null means file per trip label, the original behaviour.
+    // A full-replace request like the rest of this record, so an older client that omits it CLEARS the setting —
+    // which is the safe direction: it degrades to per-label filing rather than silently filing to a category the
+    // client can't show.
+    Guid? CategoryId = null);
 
 /// <summary>Attach an expense to a trip, or detach it with a null <see cref="TripId"/>. Separate from the expense's
 /// own edit so that changing what a trip contains never has to re-post its amount, category or date.</summary>

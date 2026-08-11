@@ -2653,8 +2653,22 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     public bool InTripMode => ActiveTrip is not null;
 
     /// <summary>Trips that haven't started yet, soonest first — what the "part of a trip" picker offers alongside
-    /// the active one, so a booking paid today can be filed against next summer.</summary>
+    /// the running ones, so a booking paid today can be filed against next summer.</summary>
     public IReadOnlyList<Trip> UpcomingTrips => Account.UpcomingTrips(Today()).ToList();
+
+    /// <summary>
+    /// <b>Every</b> trip today falls inside, latest departure first — not just the one <see cref="ActiveTrip"/>
+    /// resolves to.
+    /// <para>
+    /// ★ The distinction only shows up when trips overlap, and there it matters: <c>ActiveTrip</c> picks a single
+    /// winner so that "what does the app wear, and what does the form default to" has one answer. Offering only
+    /// that winner in the picker made the *other* trip you are genuinely on unselectable — fly into a city for a
+    /// conference during a longer holiday and the holiday disappears from the form. Defaulting to one is a
+    /// convenience; hiding the other is the app deciding which trip you are on.
+    /// </para>
+    /// </summary>
+    public IReadOnlyList<Trip> RunningTrips =>
+        Account.Trips.Where(t => t.IsActiveOn(Today())).OrderByDescending(t => t.From).ToList();
 
     /// <summary>The trip labels (Stay, Travel, Food &amp; drink…), the axis a trip's cost split is drawn on. Empty
     /// until the first trip seeds them.</summary>
@@ -2674,15 +2688,17 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     /// <summary>Save a trip's whole intended state — the same full-replace shape as the endpoint, so an omitted
     /// field means "no longer set". Moving the dates never detaches expenses.</summary>
     public Task SaveTrip(Guid tripId, string name, DateOnly from, DateOnly to, string? destination = null, string? icon = null,
-        Guid? savingCategoryId = null, decimal? budget = null, string? spendCurrency = null, decimal? rate = null) =>
+        Guid? savingCategoryId = null, decimal? budget = null, string? spendCurrency = null, decimal? rate = null,
+        Guid? categoryId = null) =>
         ExecuteOptimisticAsync(() =>
         {
             Account.UpdateTrip(tripId, name, from, to, destination, icon);
             Account.SetTripSavingCategory(tripId, savingCategoryId);
+            Account.SetTripCategory(tripId, categoryId);
             Account.SetTripBudget(tripId, budget);
             Account.SetTripRate(tripId, spendCurrency, rate);
         },
-            id => api.EditTripAsync(id, tripId, new EditTripRequest(name, from, to, destination, icon, savingCategoryId, budget, spendCurrency, rate)),
+            id => api.EditTripAsync(id, tripId, new EditTripRequest(name, from, to, destination, icon, savingCategoryId, budget, spendCurrency, rate, categoryId)),
             refetchAfter: true);
 
     public Task RemoveTrip(Guid tripId) =>

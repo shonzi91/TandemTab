@@ -1907,6 +1907,7 @@ accounts.MapPut("/{id:guid}/trips/{tripId:guid}", async (Guid id, Guid tripId, E
     {
         account.UpdateTrip(tripId, req.Name, req.From, req.To, req.Destination, req.Icon);   // throws if missing / duplicate / end before start
         account.SetTripSavingCategory(tripId, req.SavingCategoryId);   // throws if the bucket isn't in this account
+        account.SetTripCategory(tripId, req.CategoryId);               // throws if the category isn't in this account
         account.SetTripBudget(tripId, req.Budget);
         account.SetTripRate(tripId, req.SpendCurrency, req.Rate);
         return null;
