@@ -257,6 +257,22 @@ public record EditTripRequest(string Name, DateOnly From, DateOnly To, string? D
 /// own edit so that changing what a trip contains never has to re-post its amount, category or date.</summary>
 public record SetExpenseTripRequest(Guid? TripId);
 
+/// <summary>Declare a trip over (or put it back on the road). Its own endpoint rather than a field on
+/// <see cref="EditTripRequest"/>: the edit form is a full replace, so carrying this there would silently reopen a
+/// finished trip every time someone corrected its name. Mirrors <c>BudgetingState.FinishTrip</c>.</summary>
+public record FinishTripRequest(bool Finished);
+
+/// <summary>Confirm a trip has actually begun (or take that back). Trip mode is opt-in on the day — see
+/// <c>Trip.StartedOn</c> for why a date isn't a departure. Mirrors <c>BudgetingState.StartTrip</c>.</summary>
+public record StartTripRequest(bool Started);
+
+/// <summary>
+/// Release money the user saved for this trip into the trip's own budget: drops the earmark on the trip's linked
+/// savings bucket and adds <see cref="Amount"/> to the trip's category budget for the open period. <b>No money
+/// physically moves</b> — see <c>Period.ConvertSavingToBudget</c>. Mirrors <c>BudgetingState.UseTripSavings</c>.
+/// </summary>
+public record UseTripSavingsRequest(decimal Amount, DateOnly Date, string? Note = null);
+
 /// <summary>
 /// Create the trip label set (Stay, Travel, Food &amp; drink…) if it doesn't exist yet. The client sends them because
 /// only the client knows the user's language; the server seeds once and ignores every later call, so two languages

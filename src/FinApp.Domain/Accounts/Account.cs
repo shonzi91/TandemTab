@@ -517,6 +517,55 @@ public sealed class Account : Entity
         trip.SetCategory(categoryId);
     }
 
+    /// <summary>Confirm a trip has begun — see <see cref="Trip.StartedOn"/> for why this is a tap and not a date
+    /// comparison. Refuses outside the trip's own window: "we've left" is meaningless the week before, and a trip
+    /// started early would sit in a state nothing in the UI describes.</summary>
+    public void StartTrip(Guid tripId, DateOnly today)
+    {
+        var trip = FindTrip(tripId) ?? throw new InvalidOperationException("Trip not found.");
+        if (today < trip.From || today > trip.To)
+            throw new InvalidOperationException("This trip isn't due to start today.");
+        trip.Start(today);
+    }
+
+    /// <summary>Take back a start ("we haven't left yet").</summary>
+    public void UnstartTrip(Guid tripId) =>
+        (FindTrip(tripId) ?? throw new InvalidOperationException("Trip not found.")).Unstart();
+
+    /// <summary>Trips whose dates have arrived but that nobody has confirmed leaving on — what the "Start the trip?"
+    /// prompt is built from, soonest departure first.</summary>
+    public IEnumerable<Trip> TripsAwaitingStart(DateOnly today) =>
+        _trips.Where(t => t.IsAwaitingStart(today)).OrderBy(t => t.From);
+
+    /// <summary>End a trip as of <paramref name="today"/> — see <see cref="Trip.Finish"/>. Idempotent: finishing an
+    /// already-finished trip just restates the same day.</summary>
+    public void FinishTrip(Guid tripId, DateOnly today) =>
+        (FindTrip(tripId) ?? throw new InvalidOperationException("Trip not found.")).Finish(today);
+
+    /// <summary>Put a finished trip back on the road.</summary>
+    public void ReopenTrip(Guid tripId) =>
+        (FindTrip(tripId) ?? throw new InvalidOperationException("Trip not found.")).Reopen();
+
+    /// <summary>
+    /// Record that <paramref name="amount"/> of the trip's linked savings bucket has been released into its budget.
+    /// The money movement itself belongs to the period (<c>Period.ConvertSavingToBudget</c>); this is the trip's own
+    /// record of it, so the recap can say "€1,500 of this was money you'd saved" without re-deriving it from
+    /// allocations that carry no trip.
+    /// <para>Requires the trip to have both a bucket and a category — without the first there is nothing to release,
+    /// and without the second there is no budget to release it into.</para>
+    /// </summary>
+    public void ApplyTripSavings(Guid tripId, decimal amount)
+    {
+        var trip = FindTrip(tripId) ?? throw new InvalidOperationException("Trip not found.");
+        if (trip.SavingCategoryId is null)
+            throw new InvalidOperationException("This trip isn't linked to a savings bucket.");
+        if (trip.CategoryId is null)
+            throw new InvalidOperationException("This trip has no category to release the money into.");
+        if (amount <= 0m)
+            throw new ArgumentException("Amount must be positive.", nameof(amount));
+        trip.AddSavingsApplied(amount);
+    }
+
     /// <summary>Set (or clear) what the trip is expected to cost.</summary>
     public void SetTripBudget(Guid tripId, decimal? budget) =>
         (FindTrip(tripId) ?? throw new InvalidOperationException("Trip not found.")).SetBudget(budget);

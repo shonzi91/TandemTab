@@ -37,6 +37,8 @@ public class TripTests
         var trip = account.AddTrip("Day out", new DateOnly(2026, 6, 10), new DateOnly(2026, 6, 10));
 
         Assert.Equal(1, trip.LengthInDays);
+        // Active once confirmed — the dates open the window, the tap turns trip mode on (see StartedOn).
+        account.StartTrip(trip.Id, new DateOnly(2026, 6, 10));
         Assert.True(trip.IsActiveOn(new DateOnly(2026, 6, 10)));
     }
 
@@ -53,23 +55,29 @@ public class TripTests
     // --- Trip mode is derived, never stored -----------------------------------------------------------------
 
     [Fact]
-    public void Trip_mode_is_derived_from_the_dates_so_it_cannot_be_left_switched_on()
+    public void Trip_mode_switches_itself_OFF_on_the_dates_even_though_it_is_switched_on_by_hand()
     {
         var account = new Account("Personal", Eur);
-        account.AddTrip("Rome", new DateOnly(2026, 6, 10), new DateOnly(2026, 6, 17));
+        var trip = account.AddTrip("Rome", new DateOnly(2026, 6, 10), new DateOnly(2026, 6, 17));
+        account.StartTrip(trip.Id, new DateOnly(2026, 6, 10));   // the confirmation — a date is not a departure
 
-        Assert.Null(account.ActiveTrip(new DateOnly(2026, 6, 9)));    // the day before
+        // The asymmetry is deliberate. Turning trip mode ON is a decision (the flight may be at six in the evening),
+        // but turning it OFF is not: the trip's last day passes and it is over, so there is still no toggle anyone
+        // can leave switched on by accident.
+        Assert.Null(account.ActiveTrip(new DateOnly(2026, 6, 9)));      // the day before
         Assert.NotNull(account.ActiveTrip(new DateOnly(2026, 6, 10)));  // departure, inclusive
         Assert.NotNull(account.ActiveTrip(new DateOnly(2026, 6, 17)));  // return, inclusive
-        Assert.Null(account.ActiveTrip(new DateOnly(2026, 6, 18)));   // home again — no toggle to forget
+        Assert.Null(account.ActiveTrip(new DateOnly(2026, 6, 18)));     // home again
     }
 
     [Fact]
     public void Overlapping_trips_resolve_to_the_one_that_started_most_recently()
     {
         var account = new Account("Personal", Eur);
-        account.AddTrip("Long haul", new DateOnly(2026, 6, 1), new DateOnly(2026, 6, 30));
-        account.AddTrip("Side trip", new DateOnly(2026, 6, 10), new DateOnly(2026, 6, 12));
+        var longHaul = account.AddTrip("Long haul", new DateOnly(2026, 6, 1), new DateOnly(2026, 6, 30));
+        var side = account.AddTrip("Side trip", new DateOnly(2026, 6, 10), new DateOnly(2026, 6, 12));
+        account.StartTrip(longHaul.Id, new DateOnly(2026, 6, 1));
+        account.StartTrip(side.Id, new DateOnly(2026, 6, 10));
 
         Assert.Equal("Side trip", account.ActiveTrip(new DateOnly(2026, 6, 11))!.Name);
     }
@@ -450,5 +458,217 @@ public class TripTests
         Assert.Null(rt.CategoryId);
         Assert.False(rt.FilesIntoOneCategory);
         Assert.Equal("Rome", rt.Name);
+    }
+
+    // --- Finishing a trip: "finish" has to mean OVER --------------------------------------------------------
+
+    [Fact]
+    public void Finishing_a_trip_ends_it_today_and_it_stops_being_active_the_same_day()
+    {
+        var (account, _, _, _, _) = Setup();
+        var trip = account.AddTrip("Rome", new DateOnly(2026, 6, 10), new DateOnly(2026, 6, 17));
+        var backEarly = new DateOnly(2026, 6, 13);
+
+        account.FinishTrip(trip.Id, backEarly);
+
+        // The end date tells the truth about when it ended...
+        Assert.Equal(backEarly, trip.To);
+        Assert.Equal(backEarly, trip.FinishedOn);
+        // ...and the app stops wearing it THAT day, not at midnight. This is the whole point: pulling the end date
+        // back to today would still leave today inside [From..To], so the Home hero and the form's default stayed.
+        Assert.False(trip.IsActiveOn(backEarly));
+        Assert.True(trip.IsFinishedOn(backEarly));
+        Assert.Null(account.ActiveTrip(backEarly));
+    }
+
+    [Fact]
+    public void Finishing_a_trip_that_has_not_left_yet_leaves_its_dates_alone()
+    {
+        var (account, _, _, _, _) = Setup();
+        var trip = account.AddTrip("Rome", new DateOnly(2026, 6, 10), new DateOnly(2026, 6, 17));
+
+        // Cancelled before departure. The dates cannot be pulled back (a trip can't end before it starts) and there
+        // is nothing to correct anyway — what changes is that it is no longer coming.
+        account.FinishTrip(trip.Id, new DateOnly(2026, 6, 1));
+
+        Assert.Equal(new DateOnly(2026, 6, 10), trip.From);
+        Assert.Equal(new DateOnly(2026, 6, 17), trip.To);
+        Assert.False(trip.IsUpcomingOn(new DateOnly(2026, 6, 1)));
+        Assert.Empty(account.UpcomingTrips(new DateOnly(2026, 6, 1)));
+    }
+
+    [Fact]
+    public void Reopening_a_finished_trip_puts_it_back_on_the_road()
+    {
+        var (account, _, _, _, _) = Setup();
+        var trip = account.AddTrip("Rome", new DateOnly(2026, 6, 10), new DateOnly(2026, 6, 17));
+        account.StartTrip(trip.Id, new DateOnly(2026, 6, 10));
+        account.FinishTrip(trip.Id, new DateOnly(2026, 6, 13));
+
+        account.ReopenTrip(trip.Id);
+
+        Assert.Null(trip.FinishedOn);
+        // The pulled-in end date is deliberately NOT restored — we no longer know what it was.
+        Assert.Equal(new DateOnly(2026, 6, 13), trip.To);
+        // Still started, so reopening puts it straight back on the road rather than asking "have you left?" again.
+        Assert.True(trip.IsActiveOn(new DateOnly(2026, 6, 13)));
+    }
+
+    [Fact]
+    public void A_finished_trip_survives_a_snapshot_round_trip_without_being_re_finished()
+    {
+        var (account, _, _, _, _) = Setup();
+        var trip = account.AddTrip("Rome", new DateOnly(2026, 6, 10), new DateOnly(2026, 6, 17));
+        account.FinishTrip(trip.Id, new DateOnly(2026, 6, 13));
+
+        var restored = AccountSnapshotSerializer.Deserialize(AccountSnapshotSerializer.Serialize(account));
+
+        // Restored, never replayed: calling Finish(today) on load would re-cut the end date against whatever day
+        // the snapshot happens to be read on.
+        var rt = restored.FindTrip(trip.Id)!;
+        Assert.Equal(new DateOnly(2026, 6, 13), rt.FinishedOn);
+        Assert.Equal(new DateOnly(2026, 6, 13), rt.To);
+    }
+
+    [Fact]
+    public void A_trip_snapshot_written_before_finishing_existed_is_simply_not_finished()
+    {
+        var (account, _, _, _, _) = Setup();
+        var trip = account.AddTrip("Rome", new DateOnly(2026, 6, 10), new DateOnly(2026, 6, 17));
+
+        var payload = AccountSnapshotSerializer.Serialize(account)
+            .Replace(",\"FinishedOn\":null", "").Replace(",\"SavingsApplied\":0", "");
+        var restored = AccountSnapshotSerializer.Deserialize(payload);
+
+        var rt = restored.FindTrip(trip.Id)!;
+        Assert.Null(rt.FinishedOn);
+        Assert.Equal(0m, rt.SavingsApplied);
+        // Not finished — and, since this snapshot predates opt-in start too, awaiting its confirmation rather than
+        // running. See the round-trip test in the opt-in section for why that default is the safe one.
+        Assert.False(rt.IsFinishedOn(new DateOnly(2026, 6, 12)));
+        Assert.True(rt.IsAwaitingStart(new DateOnly(2026, 6, 12)));
+    }
+
+    // --- Opt-in start: a date is not a departure ------------------------------------------------------------
+
+    [Fact]
+    public void A_trips_dates_arriving_does_not_switch_trip_mode_on()
+    {
+        var (account, _, _, _, _) = Setup();
+        var trip = account.AddTrip("Rome", new DateOnly(2026, 6, 10), new DateOnly(2026, 6, 17));
+        var departureDay = new DateOnly(2026, 6, 10);
+
+        // The window is open, but nobody has said they've left — the flight may be at six in the evening.
+        Assert.True(trip.IsAwaitingStart(departureDay));
+        Assert.False(trip.IsActiveOn(departureDay));
+        Assert.Null(account.ActiveTrip(departureDay));
+        Assert.Single(account.TripsAwaitingStart(departureDay));
+
+        account.StartTrip(trip.Id, departureDay);
+
+        Assert.False(trip.IsAwaitingStart(departureDay));
+        Assert.True(trip.IsActiveOn(departureDay));
+        Assert.Equal(trip.Id, account.ActiveTrip(departureDay)!.Id);
+    }
+
+    [Fact]
+    public void A_trip_cannot_be_started_outside_its_own_window()
+    {
+        var (account, _, _, _, _) = Setup();
+        var trip = account.AddTrip("Rome", new DateOnly(2026, 6, 10), new DateOnly(2026, 6, 17));
+
+        Assert.Throws<InvalidOperationException>(() => account.StartTrip(trip.Id, new DateOnly(2026, 6, 9)));
+        Assert.Throws<InvalidOperationException>(() => account.StartTrip(trip.Id, new DateOnly(2026, 6, 18)));
+        Assert.Null(trip.StartedOn);
+    }
+
+    [Fact]
+    public void Confirming_a_departure_late_does_not_move_the_trips_dates()
+    {
+        var (account, _, _, _, _) = Setup();
+        var trip = account.AddTrip("Rome", new DateOnly(2026, 6, 10), new DateOnly(2026, 6, 17));
+
+        // Confirmed two days in. The PLAN is what the recap's booked-ahead split is measured against, so a late
+        // confirmation must not silently re-file the bookings made before the 10th.
+        account.StartTrip(trip.Id, new DateOnly(2026, 6, 12));
+
+        Assert.Equal(new DateOnly(2026, 6, 10), trip.From);
+        Assert.Equal(new DateOnly(2026, 6, 12), trip.StartedOn);
+        Assert.Equal(3, trip.DayOn(new DateOnly(2026, 6, 12)));
+    }
+
+    [Fact]
+    public void An_unstarted_trip_is_not_upcoming_once_its_dates_have_arrived()
+    {
+        var (account, _, _, _, _) = Setup();
+        var trip = account.AddTrip("Rome", new DateOnly(2026, 6, 10), new DateOnly(2026, 6, 17));
+        var day = new DateOnly(2026, 6, 12);
+
+        // It is in none of the three ordinary buckets — it is a question waiting for an answer, and the UI has a
+        // fourth state for exactly that.
+        Assert.False(trip.IsUpcomingOn(day));
+        Assert.False(trip.IsActiveOn(day));
+        Assert.False(trip.IsFinishedOn(day));
+        Assert.True(trip.IsAwaitingStart(day));
+    }
+
+    [Fact]
+    public void A_started_trip_survives_a_snapshot_round_trip_and_an_old_one_asks_first()
+    {
+        var (account, _, _, _, _) = Setup();
+        var trip = account.AddTrip("Rome", new DateOnly(2026, 6, 10), new DateOnly(2026, 6, 17));
+        account.StartTrip(trip.Id, new DateOnly(2026, 6, 10));
+
+        var payload = AccountSnapshotSerializer.Serialize(account);
+        Assert.Equal(new DateOnly(2026, 6, 10),
+            AccountSnapshotSerializer.Deserialize(payload).FindTrip(trip.Id)!.StartedOn);
+
+        // A snapshot written before opt-in start existed has no confirmation — so a trip that was running reads as
+        // awaiting start and costs one tap. Deliberate: defaulting it to "started" would re-introduce the automatic
+        // trip mode this replaced.
+        var legacy = payload.Replace(",\"StartedOn\":\"2026-06-10\"", "");
+        var rt = AccountSnapshotSerializer.Deserialize(legacy).FindTrip(trip.Id)!;
+        Assert.Null(rt.StartedOn);
+        Assert.True(rt.IsAwaitingStart(new DateOnly(2026, 6, 12)));
+    }
+
+    // --- Releasing saved money into a trip's budget ---------------------------------------------------------
+
+    [Fact]
+    public void Releasing_saved_money_needs_both_a_bucket_and_a_category()
+    {
+        var (account, _, food, _, _) = Setup();
+        var trip = account.AddTrip("Rome", new DateOnly(2026, 6, 10), new DateOnly(2026, 6, 17));
+
+        // No bucket: nothing to release.
+        Assert.Throws<InvalidOperationException>(() => account.ApplyTripSavings(trip.Id, 100m));
+
+        var bucket = account.AddSavingCategory("Holiday");
+        account.SetTripSavingCategory(trip.Id, bucket.Id);
+        // Bucket but no category: nowhere to release it INTO.
+        Assert.Throws<InvalidOperationException>(() => account.ApplyTripSavings(trip.Id, 100m));
+
+        account.SetTripCategory(trip.Id, food);
+        account.ApplyTripSavings(trip.Id, 100m);
+        Assert.Equal(100m, trip.SavingsApplied);
+    }
+
+    [Fact]
+    public void Released_savings_accumulate_and_survive_a_round_trip()
+    {
+        var (account, _, food, _, _) = Setup();
+        var trip = account.AddTrip("Rome", new DateOnly(2026, 6, 10), new DateOnly(2026, 6, 17));
+        var bucket = account.AddSavingCategory("Holiday");
+        account.SetTripSavingCategory(trip.Id, bucket.Id);
+        account.SetTripCategory(trip.Id, food);
+
+        // Additive: "release some now, some more later" is the real flow, and a setter would lose the first release.
+        account.ApplyTripSavings(trip.Id, 400m);
+        account.ApplyTripSavings(trip.Id, 350m);
+        Assert.Equal(750m, trip.SavingsApplied);
+        Assert.Throws<ArgumentException>(() => account.ApplyTripSavings(trip.Id, 0m));
+
+        var restored = AccountSnapshotSerializer.Deserialize(AccountSnapshotSerializer.Serialize(account));
+        Assert.Equal(750m, restored.FindTrip(trip.Id)!.SavingsApplied);
     }
 }

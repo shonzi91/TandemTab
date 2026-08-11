@@ -18,6 +18,8 @@
 .brand {
     display: inline-flex;
     align-items: center;
+    /* Anchors the TripMode balloon to the wordmark's corner (see .brand-tripmode). */
+    position: relative;
     /* Tightened from 8px: the mark and the wordmark are one lockup, and the wider gap read as two separate
        things sitting near each other on the bar. */
     gap: 6px;
@@ -81,12 +83,40 @@ html.dark .brand-tab { color: var(--tm-mint); }
 /* The mark keeps its white plate here. It exists because the LIGHT bar is exactly #13a06e, the mark's own dark
    field — on blue the mark would separate without it, but the plate reads as an app-icon keyline either way, and
    having it appear and disappear as someone flies out is a costume change nobody asked for. */
-.brand-trip {
-    align-self: center; margin-left: 5px;
-    font-size: .95rem; line-height: 1;
-    padding: 3px 6px; border-radius: 8px;
-    background: rgba(255,255,255,.18);
+/* ─── The TripMode balloon ───
+   A small bubble hanging off the wordmark's bottom-right corner, carrying the destination's flag and the app's own
+   name in its trip state. It REPLACES the old flag chip: one object, not two.
+   ★ The two-tone is TandemTab's, with the emphasis swapped — "Trip" takes the solid colour "Tab" wears and "Mode"
+   takes the receded one "Tandem" wears. Same lockup, reversed, which is what makes it read as a state rather than
+   a badge someone stuck on.
+   ⚠️ The balloon sits on a LIGHT plate while the bar behind it is saturated, so the two-tone can't be white-opacity
+   the way the wordmark's is (white on white is nothing). Transposed to the trip blue at two strengths, which keeps
+   the relationship — solid leads, muted follows — and is legible. Same transposition the wordmark itself does
+   between the light bar and the dark one. */
+/* ⚠️ Mixed case, NOT uppercase. "TRIP MODE" is a system label; "TripMode" is the wordmark's own shape, and the
+   shape is the whole point — it has to be read against "TandemTab" a few pixels above it.
+   ⚠️ The offsets clear the LETTERS, not just the box. A balloon at bottom:-7px sat across the bottom half of
+   "Tab" and made both unreadable; it has to hang off the corner, overlapping only the corner. */
+.brand-tripmode {
+    position: absolute; right: 2px; bottom: -16px; z-index: 1;
+    /* ⚠️ No `gap` here: a flex gap falls between EVERY child, so it also split "Trip" and "Mode" into "Trip Mode"
+       — which is the one thing the lockup must not be. The spacing is the mark's own margin instead. */
+    display: inline-flex; align-items: center;
+    padding: 2px 7px; border-radius: 999px;
+    background: #ffffff; box-shadow: 0 2px 6px rgba(12, 40, 74, .28);
+    font-size: .56rem; font-weight: 800; letter-spacing: 0; line-height: 1.4;
+    white-space: nowrap;
 }
+/* The tail. A rotated square behind the bubble, pointing up-left into the wordmark it belongs to — without it the
+   balloon reads as a chip that happens to be nearby rather than something attached. */
+.brand-tripmode::before {
+    content: ""; position: absolute; left: 11px; top: -3px; z-index: -1;
+    width: 8px; height: 8px; border-radius: 2px;
+    background: inherit; transform: rotate(45deg);
+}
+.btm-mark { font-size: .72rem; line-height: 1; letter-spacing: 0; margin-right: 4px; }
+.btm-trip { color: #1e5f9e; }
+.btm-mode { color: rgba(30, 95, 158, .58); }
 /* Dark keeps the navy glass — the ground is the ground — and moves only the hairline and the accent word from mint
    to sky, which is the whole signal there. */
 html.dark .app-shell.trip .app-bar {
@@ -94,7 +124,12 @@ html.dark .app-shell.trip .app-bar {
     border-bottom-color: rgba(125, 180, 235, .18);
 }
 html.dark .app-shell.trip .brand-tab { color: #7cc4f0; }
-html.dark .brand-trip { background: rgba(125, 180, 235, .16); }
+/* Dark: the balloon can't be a white plate against navy glass — it would be the brightest thing on the screen. It
+   becomes a deep plate instead, and the two-tone goes back to the wordmark's OWN dark pair (sky accent, muted
+   grey), which is the same relationship one layer down. */
+html.dark .brand-tripmode { background: #16233a; box-shadow: 0 2px 8px rgba(0, 0, 0, .5); }
+html.dark .btm-trip { color: #7cc4f0; }
+html.dark .btm-mode { color: rgba(195, 204, 216, .70); }
 
 .appbar-user {
     margin-left: auto;

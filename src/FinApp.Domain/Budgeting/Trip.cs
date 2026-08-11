@@ -76,6 +76,49 @@ public sealed class Trip : Entity
     /// </para></summary>
     public decimal? Rate { get; private set; }
 
+    /// <summary>
+    /// The day the traveller declared the trip over, or null while it is simply running its dates out.
+    /// <para>
+    /// <b>★ "Finish" has to mean OVER, and dates alone can't say that.</b> Pulling <see cref="To"/> back to today
+    /// still leaves today inside the trip, so the app went on wearing it — the Home hero stayed up, the expense form
+    /// went on defaulting to it, and the card still read "Day 4". Someone who has just landed and tapped Finish is
+    /// telling us something the calendar doesn't know.
+    /// </para>
+    /// <para>
+    /// It is a date rather than a flag because the date is the fact ("we got back on the 11th"), and because a flag
+    /// would have nothing to say if the trip were ever reopened and finished again.
+    /// </para>
+    /// </summary>
+    public DateOnly? FinishedOn { get; private set; }
+
+    /// <summary>
+    /// The day the traveller confirmed they had actually left, or null while the trip is only <i>due</i> to start.
+    /// <para>
+    /// <b>★ Trip mode is opt-in on the day, not automatic.</b> A date is not a departure: the flight may be at six in
+    /// the evening, it may be delayed, the whole thing may be called off. Switching the app's shell, its Home card
+    /// and its expense-form default on the stroke of midnight means every coffee bought on the morning of departure
+    /// is filed as holiday spending, and the user never asked for that.
+    /// </para>
+    /// <para>
+    /// So the date opens a <i>window</i> (<see cref="IsAwaitingStart"/>) and the user closes it with one tap. Nothing
+    /// is lost by waiting: an expense can be attached to the trip either way, and the trip is still offered by the
+    /// entry form the whole time.
+    /// </para>
+    /// </summary>
+    public DateOnly? StartedOn { get; private set; }
+
+    /// <summary>
+    /// How much of the linked savings bucket has been released into this trip's budget — the running total of
+    /// "we saved for this, and now we're spending it".
+    /// <para>
+    /// Separate from <c>TripRecap.FundedFromSavings</c>, which counts expenses paid <i>directly</i> out of the
+    /// bucket. Both are true and they answer different questions: this one is the money moved across in advance,
+    /// that one is the money taken out as it was spent. Neither discounts the trip's total — the money left either
+    /// way.
+    /// </para>
+    /// </summary>
+    public decimal SavingsApplied { get; private set; }
+
     public Trip(string name, DateOnly from, DateOnly to)
     {
         Name = Clean(name);
@@ -145,12 +188,62 @@ public sealed class Trip : Entity
             ? decimal.Round(amountInSpendCurrency * r, 2, MidpointRounding.AwayFromZero)
             : amountInSpendCurrency;
 
+    /// <summary>Confirm the trip has actually begun — the tap that turns trip mode on. Idempotent, and it never
+    /// touches the dates: the plan said the 8th and the plan is what the recap's "booked ahead" split is measured
+    /// against, so a confirmation at six in the evening must not silently re-file the morning's bookings.</summary>
+    public void Start(DateOnly today) => StartedOn ??= today;
+
+    /// <summary>Undo a <see cref="Start"/> — "no, we haven't left yet".</summary>
+    public void Unstart() => StartedOn = null;
+
+    /// <summary>
+    /// End the trip as of <paramref name="today"/>: it stops on the day it actually stopped, and it is over from
+    /// that moment rather than at midnight. Pulls <see cref="To"/> in when the trip was going to run longer, and
+    /// never pushes it out — finishing early is what this is for; extending a trip is an edit.
+    /// </summary>
+    public void Finish(DateOnly today)
+    {
+        // A trip cannot end before it starts, so finishing one that hasn't left yet leaves the dates alone and
+        // simply marks it done — "we cancelled it" and "we came back" are the same fact to everything downstream.
+        if (today < To && today >= From) To = today;
+        FinishedOn = today;
+    }
+
+    /// <summary>Undo a <see cref="Finish"/> — the dates stand, the trip is simply live again. The pulled-in end date
+    /// is deliberately NOT restored: we no longer know what it was, and inventing one would be worse than leaving
+    /// the user to set it.</summary>
+    public void Reopen() => FinishedOn = null;
+
+    /// <summary>Record money released from the linked savings bucket into this trip's budget. Additive — the flow
+    /// is "release some now, some more later", and a setter would lose the earlier releases.</summary>
+    public void AddSavingsApplied(decimal amount)
+    {
+        if (amount > 0m) SavingsApplied += amount;
+    }
+
+    /// <summary>Clear the released-savings total (the undo path).</summary>
+    public void ResetSavingsApplied() => SavingsApplied = 0m;
+
     /// <summary>How many days the trip covers, both ends inclusive.</summary>
     public int LengthInDays => To.DayNumber - From.DayNumber + 1;
 
-    public bool IsActiveOn(DateOnly today) => today >= From && today <= To;
-    public bool IsUpcomingOn(DateOnly today) => today < From;
-    public bool IsFinishedOn(DateOnly today) => today > To;
+    // ★ Every "is the app wearing this trip" question routes through these — the shell theme, the Home hero, the
+    // expense form's default and the card's status all derive from them — so honouring StartedOn/FinishedOn here is
+    // the whole of "opt in on the day" and "finish means over". There is nowhere else to remember to check them.
+    //
+    // The four states are: upcoming (before the dates) → awaiting start (dates open, not confirmed) → active
+    // (confirmed) → finished. Awaiting-start is deliberately NOT active: see StartedOn.
+    public bool IsActiveOn(DateOnly today) => FinishedOn is null && StartedOn is not null && today >= From && today <= To;
+    // Deliberately NOT gated on StartedOn: a trip can only be started once its window is open, so before From it is
+    // upcoming whatever else is set — and a state that is neither upcoming nor active nor finished is a limbo the
+    // UI would have nothing to say about.
+    public bool IsUpcomingOn(DateOnly today) => FinishedOn is null && today < From;
+    public bool IsFinishedOn(DateOnly today) => FinishedOn is not null || today > To;
+
+    /// <summary>The trip's dates have arrived but nobody has said they've left yet — the state the "Start the trip?"
+    /// prompt lives in. Neither upcoming nor running: it is a question waiting for an answer.</summary>
+    public bool IsAwaitingStart(DateOnly today) =>
+        FinishedOn is null && StartedOn is null && today >= From && today <= To;
 
     /// <summary>Which day of the trip it is ("Day 4"), or null when the trip isn't running today.</summary>
     public int? DayOn(DateOnly today) => IsActiveOn(today) ? today.DayNumber - From.DayNumber + 1 : null;

@@ -1628,6 +1628,8 @@ public sealed class Localizer(IJSRuntime js)
         ["Where the trip money went"] = "Къде отидоха парите за пътуването",
         ["Split by category, because most of this trip isn't labelled. Tag as you go and this becomes stay / travel / food / tickets."] =
             "Разбито по категории, защото по-голямата част от това пътуване няма етикети. Слагай етикети в движение и това ще стане настаняване / транспорт / храна / билети.",
+        ["One ring, because the whole trip files into one category and nothing here is labelled yet. Tag as you go and this becomes stay / travel / food / tickets."] =
+            "Един пръстен, защото цялото пътуване се отчита в една категория, а тук още няма етикети. Слагай етикети в движение и това ще стане настаняване / транспорт / храна / билети.",
         ["Biggest single thing: {0} — {1}"] = "Най-голямото едно нещо: {0} — {1}",
         // The trip labels seeded on the first trip. Short enough to read as chips on the expense form.
         ["Stay"] = "Настаняване",
@@ -1669,13 +1671,54 @@ public sealed class Localizer(IJSRuntime js)
             "Тези дати се застъпват с {0}. И двете остават достъпни във формата за разход — в общите дни новите разходи просто се отнасят по подразбиране към това, което е започнало по-късно.",
         ["Rate"] = "Курс",
         ["Files into"] = "Отчита се в",
-        ["— each label's own category —"] = "— категорията на всеки етикет —",
-        ["Every trip label files into its own everyday category — a hotel lands in Housing, dinners in Food. Your monthly budgets will move with the trip."] =
-            "Всеки етикет за пътуване се отчита в собствената си всекидневна категория — хотелът отива в Жилище, вечерите в Храна. Месечните ти бюджети ще се движат заедно с пътуването.",
-        ["The whole trip lands in this one category, so your everyday budgets keep describing everyday life. The trip's own recap still splits it by stay, travel, food and tickets."] =
-            "Цялото пътуване отива в тази една категория, така че всекидневните ти бюджети продължават да описват всекидневието. Обобщението на пътуването пак го разделя по настаняване, транспорт, храна и билети.",
+        // A trip files into ONE category now, so the per-label option — and the hint that explained it — are gone
+        // from the form; their strings went with them.
+        ["The whole trip lands in this one category and every trip label files there, so one budget covers the journey and your everyday budgets keep describing everyday life. The trip's own recap still splits it by stay, travel, food and tickets."] =
+            "Цялото пътуване отива в тази една категория и всички етикети се отчитат там, така че един бюджет покрива пътуването, а всекидневните ти бюджети продължават да описват всекидневието. Обобщението на пътуването пак го разделя по настаняване, транспорт, храна и билети.",
         ["{0} shows as {1}"] = "{0} се изписва като {1}",
         ["We have no symbol for {0}, so it shows as {1}"] = "Нямаме символ за {0}, затова се изписва като {1}",
         ["stored in {0}, this account's currency"] = "записва се в {0} — валутата на тази сметка",
+
+        // Home's trip hero, the trips list (status marks, sorting, the expense list) and finishing a trip.
+        ["of {0} planned"] = "от планирани {0}",
+        ["Past trips"] = "Минали пътувания",
+        ["By date"] = "По дата",
+        ["By amount"] = "По сума",
+        ["Happening now"] = "В момента",
+        ["Still ahead"] = "Предстои",
+        ["Finished"] = "Приключило",
+        ["Everything on this trip"] = "Всичко по това пътуване",
+        ["Finish trip"] = "Приключи пътуването",
+        // The per-row version of the three-way split. Lower case: these run inside a row's sub-line, not as headings.
+        ["booked ahead"] = "платено предварително",
+        ["while away"] = "докато си там",
+        ["after getting back"] = "след връщането",
+        ["Not finished after all"] = "Всъщност не е приключило",
+
+        // Opt-in start: the dates open the window, a tap turns trip mode on.
+        ["Ready to go"] = "Готово за тръгване",
+        ["We've left — start the trip"] = "Тръгнахме — започни пътуването",
+        ["We've left"] = "Тръгнахме",
+        ["{0} {1} — are you off?"] = "{0} {1} — тръгвате ли?",
+        ["started {0}"] = "започна на {0}",
+        ["Trip mode stays off until you say so, so nothing gets filed as holiday spending by mistake."] =
+            "Режим „пътуване“ остава изключен, докато не кажеш, за да не се отчете нещо като разход по почивка по погрешка.",
+
+        // Releasing money saved for a trip into that trip's budget.
+        ["Use the saved money"] = "Използвай спестените пари",
+        ["{0} released from {1} into this trip's budget."] = "{0} освободени от {1} към бюджета на това пътуване.",
+        ["This releases money you'd set aside in {0} into {1}'s budget for this month, so the trip's spending has its own money instead of eating your everyday budget. No money actually moves between wallets."] =
+            "Това освобождава парите, които си заделил/а в {0}, към бюджета на {1} за този месец, така че разходите по пътуването да имат свои пари, вместо да ядат всекидневния ти бюджет. Реални пари не се местят между портфейлите.",
+        ["Set aside"] = "Заделени",
+        ["Trip budget"] = "Бюджет на пътуването",
+        ["Already released"] = "Вече освободени",
+        ["That's more than the {0} you've set aside."] = "Това е повече от заделените {0}.",
+        ["Release it"] = "Освободи",
+
+        // What Pro adds to trips.
+        ["Plan several trips, fund them from savings, spend abroad"] = "Няколко пътувания наведнъж, финансиране от спестявания и харчене в чужбина",
+        ["{0} older trips — see your whole travel history with Pro"] = "Още {0} по-стари пътувания — виж цялата си история с Pro",
+        ["Save up for a trip and spend it as a trip — with Pro"] = "Спестявай за пътуване и го харчи като пътуване — с Pro",
+        ["Log a trip in its local currency — with Pro"] = "Записвай пътуване в местната му валута — с Pro",
     };
 }

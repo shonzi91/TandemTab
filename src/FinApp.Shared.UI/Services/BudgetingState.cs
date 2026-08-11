@@ -2701,6 +2701,40 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
             id => api.EditTripAsync(id, tripId, new EditTripRequest(name, from, to, destination, icon, savingCategoryId, budget, spendCurrency, rate, categoryId)),
             refetchAfter: true);
 
+    /// <summary>Trips whose dates have arrived but that nobody has confirmed leaving on. Trip mode is opt-in on the
+    /// day — a date is not a departure.</summary>
+    public IReadOnlyList<Trip> TripsAwaitingStart => Account.TripsAwaitingStart(Today()).ToList();
+
+    /// <summary>Confirm a trip has begun (or take it back). This is the tap that turns trip mode on.</summary>
+    public Task StartTrip(Guid tripId, bool started = true) =>
+        ExecuteOptimisticAsync(() =>
+        {
+            if (started) Account.StartTrip(tripId, Today());
+            else Account.UnstartTrip(tripId);
+        },
+            id => api.StartTripAsync(id, tripId, started), refetchAfter: true);
+
+    /// <summary>Declare a trip over as of today, or put it back on the road. "Over" is a stored fact, not a date
+    /// comparison — see <c>Trip.FinishedOn</c> for why pulling the end date in wasn't enough.</summary>
+    public Task FinishTrip(Guid tripId, bool finished = true) =>
+        ExecuteOptimisticAsync(() =>
+        {
+            if (finished) Account.FinishTrip(tripId, Today());
+            else Account.ReopenTrip(tripId);
+        },
+            id => api.FinishTripAsync(id, tripId, finished), refetchAfter: true);
+
+    /// <summary>Release money saved for a trip into that trip's budget for this period. Both halves — the period's
+    /// saving→budget maturing and the trip's own record of it — happen in one server mutation.</summary>
+    public Task UseTripSavings(Guid tripId, decimal amount, string? note) =>
+        ExecuteOptimisticAsync(() =>
+        {
+            var trip = Account.FindTrip(tripId) ?? throw new InvalidOperationException("Trip not found.");
+            Account.ApplyTripSavings(tripId, amount);
+            Period.ConvertSavingToBudget(trip.SavingCategoryId!.Value, trip.CategoryId!.Value, Money(amount), Today(), note);
+        },
+            id => api.UseTripSavingsAsync(id, tripId, new UseTripSavingsRequest(amount, Today(), note)), refetchAfter: true);
+
     public Task RemoveTrip(Guid tripId) =>
         ExecuteOptimisticAsync(() => Account.RemoveTrip(tripId),
             id => api.RemoveTripAsync(id, tripId), refetchAfter: true);

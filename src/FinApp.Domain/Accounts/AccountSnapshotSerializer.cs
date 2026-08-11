@@ -49,7 +49,7 @@ public static class AccountSnapshotSerializer
             account.WorkingDaysPerMonth, account.WorkingHoursPerDay,
             account.Trips.Count == 0 ? null : account.Trips.Select(t => new TripNode(
                 t.Id, t.Name, t.From, t.To, t.Destination, t.Icon, t.SavingCategoryId, t.Budget, t.SpendCurrency, t.Rate,
-                t.CategoryId)).ToList());
+                t.CategoryId, t.FinishedOn, t.SavingsApplied, t.StartedOn)).ToList());
         return JsonSerializer.Serialize(node, Json);
     }
 
@@ -117,6 +117,11 @@ public static class AccountSnapshotSerializer
             trip.SetBudget(t.Budget);
             trip.SetRate(t.SpendCurrency, t.Rate);
             trip.SetCategory(t.CategoryId);
+            // Restored, not replayed: Finish(today) would pull the end date in against TODAY's date on every load,
+            // and Start(today) would stamp a confirmation nobody gave.
+            if (t.FinishedOn is { } finished) SetAuto(trip, nameof(Trip.FinishedOn), finished);
+            if (t.StartedOn is { } started) SetAuto(trip, nameof(Trip.StartedOn), started);
+            trip.AddSavingsApplied(t.SavingsApplied);
             return trip;
         }).ToList());
         SetField(account, "_savingCategories", node.SavingCategories.Select(ToEntity).ToList());
@@ -326,9 +331,17 @@ public static class AccountSnapshotSerializer
     // Dates are the trip's own, never a filter over expenses — see Trip for why membership is by link.
     // CategoryId is a TRAILING optional, like every other body-data addition: a snapshot written before it existed
     // deserializes with null, which is exactly "file per label" — the behaviour those trips already had.
+    // FinishedOn and SavingsApplied are trailing optionals like everything else here: a snapshot written before them
+    // deserializes as "never declared over" and "nothing released", which is exactly what those trips were.
     private record TripNode(Guid Id, string Name, DateOnly From, DateOnly To, string? Destination = null,
         string? Icon = null, Guid? SavingCategoryId = null, decimal? Budget = null,
-        string? SpendCurrency = null, decimal? Rate = null, Guid? CategoryId = null);
+        string? SpendCurrency = null, decimal? Rate = null, Guid? CategoryId = null,
+        DateOnly? FinishedOn = null, decimal SavingsApplied = 0m,
+        // ⚠️ StartedOn is the one trailing optional whose default CHANGES behaviour for existing data: a trip written
+        // before opt-in start has no confirmation, so a trip that is running right now reads as "awaiting start" on
+        // the first load after this ships. That is a one-tap prompt, not lost data — and the alternative (defaulting
+        // it to "started") would silently re-introduce the automatic trip mode this exists to remove.
+        DateOnly? StartedOn = null);
 
     private record RecurringItemNode(Guid Id, string Name, RecurringKind Kind, RecurringAmountMode AmountMode,
         decimal ExpectedAmount, int DayOfMonth, Guid CategoryId, Guid FundId, bool Active, string? Icon, DateOnly? LastHandledPeriodFrom,

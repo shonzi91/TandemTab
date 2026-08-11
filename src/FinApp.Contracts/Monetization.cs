@@ -84,4 +84,9 @@ public static class PlanFeatures
     public const string Insights = "insights";
     public const string History = "history";
     public const string Caps = "caps";
+
+    /// <summary>Trips beyond the one you're on: planning the next while this one runs, funding a trip from a savings
+    /// pot, and spending it in another currency. The trip you are actually taking — the entry flow, the Home card and
+    /// the recap — is deliberately free; see MONETIZATION.md.</summary>
+    public const string Trips = "trips";
 }

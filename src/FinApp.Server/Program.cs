@@ -1888,13 +1888,77 @@ accounts.MapDelete("/{id:guid}/tags/{tagId:guid}", async (Guid id, Guid tagId, C
 
 // Trips — a named journey expenses point at. Membership is by link, never by date, so none of these endpoints
 // touches an expense's own period, amount or budget impact.
-accounts.MapPost("/{id:guid}/trips", async (Guid id, CreateTripRequest req, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
+accounts.MapPost("/{id:guid}/trips", async (Guid id, CreateTripRequest req, ClaimsPrincipal user, SnapshotService svc,
+        EntitlementService entitlements, SyncNotifier notifier, CancellationToken ct) =>
 {
     var userId = user.UserId();
+    // Free = one trip on the go at a time (MONETIZATION.md). The cap is on LIVE trips, not on trips per year: you
+    // can always record the journey you are actually on, so the app never refuses to record real life — what Free
+    // can't do is plan the next one while this one runs. Nothing is ever deleted or hidden by this, and finishing a
+    // trip frees the slot. Inert for unlimited/pro, so it changes nothing until monetization is live.
+    var today = DateOnly.FromDateTime(DateTime.UtcNow);
+    var snap = await svc.GetAsync(userId, id, ct);
+    if (!string.IsNullOrEmpty(snap.Payload)
+        && AccountSnapshotSerializer.Deserialize(snap.Payload).Trips.Any(t => !t.IsFinishedOn(today)))
+        await entitlements.RequireAsync(userId, PlanFeatures.Trips, ct);
+
     var (version, tripId) = await svc.MutateAsync(userId, id, account =>
     {
         var trip = account.AddTrip(req.Name, req.From, req.To, req.Destination, req.Icon);   // 400 on duplicate name / bad dates
         return trip.Id;
+    }, ct);
+    await notifier.AccountChangedAsync(id, userId, version);
+    return Results.Ok(new MutationResultDto(version, tripId));
+});
+
+// Confirm a departure (or take it back). Trip mode never switches itself on — see Trip.StartedOn.
+accounts.MapPut("/{id:guid}/trips/{tripId:guid}/started", async (Guid id, Guid tripId, StartTripRequest req, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
+{
+    var userId = user.UserId();
+    var (version, _) = await svc.MutateAsync<object?>(userId, id, account =>
+    {
+        // Server date, like finishing: "we've left" is a fact about now.
+        if (req.Started) account.StartTrip(tripId, DateOnly.FromDateTime(DateTime.UtcNow));
+        else account.UnstartTrip(tripId);
+        return null;
+    }, ct);
+    await notifier.AccountChangedAsync(id, userId, version);
+    return Results.Ok(new MutationResultDto(version, tripId));
+});
+
+// Finish / reopen. See FinishTripRequest for why this isn't a field on the edit form's full-replace payload.
+accounts.MapPut("/{id:guid}/trips/{tripId:guid}/finished", async (Guid id, Guid tripId, FinishTripRequest req, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
+{
+    var userId = user.UserId();
+    var (version, _) = await svc.MutateAsync<object?>(userId, id, account =>
+    {
+        // The server's own date, not the client's: "over" is a fact about now, and a device with a wrong clock
+        // would otherwise write an end date the rest of the account disagrees with.
+        if (req.Finished) account.FinishTrip(tripId, DateOnly.FromDateTime(DateTime.UtcNow));
+        else account.ReopenTrip(tripId);
+        return null;
+    }, ct);
+    await notifier.AccountChangedAsync(id, userId, version);
+    return Results.Ok(new MutationResultDto(version, tripId));
+});
+
+// Release saved money into the trip's budget: one mutation covering both halves (the period's money movement and
+// the trip's record of it), so a failure can't leave a budget raised with no trip line to explain it.
+accounts.MapPost("/{id:guid}/trips/{tripId:guid}/use-savings", async (Guid id, Guid tripId, UseTripSavingsRequest req, ClaimsPrincipal user, SnapshotService svc,
+        EntitlementService entitlements, SyncNotifier notifier, CancellationToken ct) =>
+{
+    var userId = user.UserId();
+    // Funding a trip from a savings pot is the planning half of trips, which is where Pro sits.
+    await entitlements.RequireAsync(userId, PlanFeatures.Trips, ct);
+    var (version, _) = await svc.MutateAsync<object?>(userId, id, account =>
+    {
+        var trip = account.FindTrip(tripId) ?? throw new InvalidOperationException("Trip not found.");
+        var period = account.CurrentPeriod ?? throw new InvalidOperationException("No open period to budget into.");
+        // Validates the link, the category and the amount before any money moves.
+        account.ApplyTripSavings(tripId, req.Amount);
+        period.ConvertSavingToBudget(trip.SavingCategoryId!.Value, trip.CategoryId!.Value,
+            new Money(req.Amount, account.Currency), req.Date, req.Note);
+        return null;
     }, ct);
     await notifier.AccountChangedAsync(id, userId, version);
     return Results.Ok(new MutationResultDto(version, tripId));

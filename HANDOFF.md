@@ -1,6 +1,22 @@
 # TandemTab (FinApp) — session handoff
 
-Last updated: 2026-08-11 (Session 100 — **the four trip items the owner left, and S99's whole unproven UI finally
+Last updated: 2026-08-11 (Session 101 — **nine owner items on trip mode, and two of them changed what trip mode
+IS.** The expense modal now wears the trip (flag + blue rail, trip row first); the trip card lists every expense
+on the journey; the Home card became a gradient hero with day/spend bars and moved under the action buttons; the
+trips list gained status marks, a past-trips sort and a Finish action; **a trip always files into ONE category**
+now (the per-label option is gone — you budget a journey, not an audit of it); the savings link finally has the
+action it was missing — **"Use the saved money" releases a pot into the trip's budget**; the app bar wears a
+**TripMode balloon** (TandemTab's own two-tone with the emphasis swapped); trips got their Pro line; and the two
+structural ones: **"Finish" now means OVER, not "ends today"**, and **trip mode never switches itself on** — a
+date is not a departure, so the day it arrives you get a confirm button on Home and a Due row in the bell.
+**439 + 48 + 340 green** (from 427; 12 new domain tests, 5 existing ones rewritten around the new rules).
+`tools/pairscan.js` reports **0** partially-darkened rules.
+✅ **Everything is BROWSER-VERIFIED** on a fresh four-trip fixture, both themes.
+✅ **Committed, pushed and DEPLOYED** — see the Session 101 entry for the revision and the served-bytes check.
+⚠️ **⛔ The trip-rate double-conversion bug from S100 is STILL OPEN** — it is item #9 and the next thing to do.
+⚠️ **Android has none of any of this.**)
+
+Previously: 2026-08-11 (Session 100 — **the four trip items the owner left, and S99's whole unproven UI finally
 driven in a running app.** The Home trip banner, the shell theme shift, the bell departure nudge and the
 over-budget tone change. Then two owner asks off the back of a reference image: **leader labels on the Breakdown
 donut** (category icon + share pointing at each wedge) and **growing bars in the first Trends chart**, plus every
@@ -105,6 +121,123 @@ a separate balance axis — because flows and a stock were sharing one scale. **
 ✅ **Committed and the web half is DEPLOYED** (Session 93 catch-up): Android sharing as `596eea5`, the web batch
 as `de51071`, now live on **`finapp-00280-4s8`** (traffic forced `--to-latest`; run URL + tandemtab.com 200; 5
 `secretKeyRef`s; no WARNING+ logs). Prior context below is Session 91.)
+
+## Session 101 (2026-08-11) — **Nine owner items on trip mode; two of them changed what trip mode is.**
+
+### ★★ Trip mode is opt-in on the day now — a date is not a departure
+
+Owner: *"don't enter trip mode automatically… the trip may be in the afternoon after all."* Dead right, and the old
+behaviour was worse than it looks: the shell, the Home card and the expense form's default all flipped at midnight,
+so **every coffee bought on the morning of departure was filed as holiday spending** by an app nobody had told.
+
+- `Trip.StartedOn` (body data, trailing optional, **no migration**) is the confirmation. The dates now open a
+  *window* — `IsAwaitingStart` — and a tap closes it. Four states: upcoming → awaiting start → active → finished.
+- **★ The asymmetry is the design.** Turning trip mode ON is a decision; turning it OFF is not. A trip still stops
+  being active when its last day passes, so there is *still* no toggle anyone can leave switched on by accident —
+  which was the whole argument for deriving trip mode in S99. Only the "on" edge became a question.
+- **★★ Confirming late must NOT move the dates.** `Start(today)` records the day and touches nothing else: the
+  planned `From` is what the recap's booked-ahead / while-away split is measured against, so a confirmation at six
+  in the evening on day three would otherwise silently re-file everything bought before it.
+- The prompt is **Urgent AND Due** — the one combination that lands in both places, so Home's alert strip renders
+  it with its "We've left" button attached and the bell lists it under Due. The app normally refuses to duplicate a
+  prompt (UX backlog #4); this earns the exception because it is the only notification whose action changes how the
+  entire shell behaves. There is a third door on the trip card itself ("We've left — start the trip").
+- ⚠️ **Existing running trips read as "awaiting start" on the first load after this deploys** — one tap each. That
+  is the deliberate default: making `StartedOn` default to "started" would have re-introduced exactly what this
+  removes. Said out loud in the snapshot node's own comment.
+- ⚠️ `FormTripOptions` had to become "everything not finished" rather than running + upcoming: an awaiting-start
+  trip is in neither list, and it is precisely the trip you'd log the taxi to the airport against.
+- ⚠️ The card's status must test **finished first, then active** — testing "upcoming" before "finished" dropped an
+  awaiting-start trip into the past.
+
+### ★★ "Finish" means over, not "ends today"
+
+First cut pulled `To` back to today and called it done. It isn't: today is still inside `[From..To]`, so the app
+went on wearing the trip until midnight — hero up, form defaulting, card reading "Day 4". Someone who has just
+landed and tapped Finish is telling us something the calendar does not know.
+
+- `Trip.FinishedOn` (body data, trailing optional, **no migration**) records it. A date rather than a flag because
+  the date is the fact ("we got back on the 11th"), and a flag would have nothing to say if a trip were reopened.
+- `Finish(today)` also pulls `To` in when the trip was going to run longer, and **never pushes it out** — finishing
+  early is what this is for; extending is an edit. Finishing a trip that hasn't left yet (a cancellation) leaves
+  the dates alone: a trip cannot end before it starts.
+- Reversible: "Not finished after all" on the finished card. The pulled-in end date is deliberately **not**
+  restored — we no longer know what it was, and inventing one is worse than letting the user set it.
+
+### ★ Using the money you saved for the trip (owner Q3)
+
+The mechanism existed end-to-end and **nothing drove it from the trip**: `Period.ConvertSavingToBudget` matures a
+pot into a category's budget, but doing it from the Goals tab left the trip unaware, so the recap's "came out of
+Holiday" line stayed at zero.
+
+- New `POST /trips/{id}/use-savings` does **both halves in one mutation** — the period's saving→budget maturing and
+  the trip's own record of it (`Trip.SavingsApplied`, additive) — so a failure can't raise a budget with no line to
+  explain it. Pre-filled with `min(pot, trip budget)`: it's a decision, not a calculation.
+- **Two different lines, both true, neither discounting the total**: `FundedFromSavings` counts expenses paid
+  *directly* out of the bucket; `SavingsApplied` is money moved across *in advance*. The money left either way.
+- The modal says "no money actually moves between wallets" out loud, because that is the surprising part — the pot
+  is an earmark, so releasing it changes what you may spend, not where the money is.
+
+### ★★ A trip files into ONE category, full stop
+
+The per-label option is **gone from the form**. Owner: *"I am budgeting the trip overall, not every single thing in
+it — that would be a nightmare."* The guess list gained entertainment / leisure / fun / развлечения and now falls
+back to the first category rather than giving up, and `ApplyTagBinding` returns early on **any** trip (not just one
+with a category set) — a trip saved before the setting existed scattering its labels across the household budgets
+is the original bug, not a preserved option. Old trips resolve to the guess at read time; no migration.
+
+⚠️ **Consequence, and it needed handling:** the trip donut's category fallback is now always a single slice. Two
+fixes fell out — the single-slice ring had to become a `<circle>` (a 100% arc starts and ends at the same point and
+**drew nothing** — the ring rendered as an empty box, the same special case Breakdown has always had), and the
+fallback now says why it is one ring instead of leaving a solid disc looking broken. The tag split is untouched and
+still leads whenever half the trip is labelled.
+
+### The rest of the batch
+
+- **Expense modal in trip mode** — trip row first (it decides the next two answers), flag + name lockup beside the
+  title, a blue rail, and the picked trip chip in blue while every other chip keeps mint: the trip is a *context*,
+  the rest are values. ⚠️ The rail is an **inset box-shadow**, not an absolute `::before` — `.modal` is the scroll
+  container, and an absolute child of one scrolls away with the content.
+- **Every expense listed on the trip card**, Breakdown's row shape, biggest first, sub-line leading with the trip
+  label and saying which side of the trip it fell on. Capped at 320px and scrolling.
+- **Home trip hero** — gradient card, day bar + spend bar, over-budget recolours the *bar* only (the tone change
+  S100 built stays intact). Sits **under the action buttons**, on the owner's call: the actions are what someone
+  opens the app to do, and a card you read shouldn't come before the buttons you press.
+- **Trips list** — status marks on the flag (pin / plane / flag), a **Past trips: By date / By amount** sort that
+  owns only the history (a trip you're on can't be pushed below a bigger one from two years ago), Finish/Start
+  actions. ⚠️ The badge's reserved space must be its **full** width incl. the ring, or it sits on the glyph — and a
+  flag emoji is two letters wide on Windows desktop.
+- **The TripMode balloon** — TandemTab's own two-tone with the **emphasis swapped** ("Trip" solid, "Mode" receded),
+  the destination flag folded in, hanging off the wordmark's corner. It **replaces** the old flag chip: the bar
+  already carried a mark, a wordmark and a gold Pro tag, so this had to cost nothing net. ⚠️ Mixed case, not
+  uppercase — the shape is the joke. ⚠️ No flex `gap`, or it renders "Trip Mode".
+- **A live bug fixed in passing:** `.week-recap-fig strong` (0,1,1) out-specified `.good-text` (0,1,0), so the week
+  recap's "Set aside" figure — its one green number — had been rendering in the ordinary text colour.
+
+### Pro vs free for trips (owner Q4)
+
+New `PlanFeatures.Trips`. **Free keeps the whole "what did this trip cost" loop** — unlimited *recording*, the entry
+flow, the hero, the recap, the tag donut — because that is the part people tell friends about, and a free user
+taking one holiday a year costs nothing.
+
+- **The cap is on LIVE trips (one), not trips per year.** A yearly cap bites on the second holiday: the user is
+  already travelling, the app refuses, and they log the expenses untripped and never come back. A live cap means
+  you can always record the journey you are on; what you can't do is plan the next while this one runs — a limit
+  met while *planning*, which is when people pay. Finishing a trip frees the slot. Enforced client + server.
+- Also Pro: **multi-currency trips** (the most involved machinery in the feature) and the **savings→trip funding**
+  (planning is where Pro lives). Trip history beyond the last two finished trips reuses the existing `history`
+  entitlement rather than inventing a second one — same argument as the 6/12-month Breakdown windows. Nothing is
+  deleted or unlinked by any of it; downgrading can never lose data.
+
+### Verification
+
+Fresh fixture (`tripcheck` / `Tripcheck1!`, account "Trip check"): four trips — one running with 7 expenses either
+side of its dates, one upcoming, two finished — plus a Holiday bucket. Proved by eye: the hero's arithmetic
+(€625.50 booked ahead + €257.50 while away = €883.00), the sort re-ordering only the past, finish → card goes
+`past` + hero gone + shell drops the theme, reopen → all three return, the release moving Entertainment's budget
+300 → 1,200 and SAVED 900 → 0, the Pro gate firing for a free account, and the departure prompt → one tap → balloon
++ hero + theme all on. **The fixture's own bug worth remembering:** the snapshot serializes `Amount` as a bare
+number, so a script reading `.Amount.Amount` writes **zero** — it silently blanked seven expenses.
 
 ## Session 100 (2026-08-11) — **The four trip items, and S99 finally proved in a running app.**
 

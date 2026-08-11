@@ -580,6 +580,68 @@ else
                 }
             </section>
 
+            @* ★ While a trip is running it sits directly under the three everyday actions — above the score, the
+               money glance and everything else on the tab. Not at the very top: the actions are what someone opens
+               the app to DO, and a card you read shouldn't come before the buttons you press. Everything below it
+               is being distorted by the trip, so the card that explains that belongs ahead of them.
+               ★ No dismiss and no pulse. It is self-limiting: it appears the morning the trip starts and is gone
+               the moment the trip is over, so there is nothing to dismiss, and a glow above the fold for eight
+               straight days would be the nag this whole feature exists not to be.
+               The week recap keeps its old slot further down and is suppressed for the duration — displaced into
+               the bell, never destroyed. *@
+            @if (State.ActiveTrip is { } liveTrip && State.TripRecap(liveTrip.Id) is { } liveRecap)
+            {
+                var tripDay = liveTrip.DayOn(State.TodayDate) ?? 1;
+                // Day 1 of 1 must read as a full bar, not 100% of nothing — hence day/length, both ends inclusive.
+                var tripDayPct = Math.Clamp(tripDay * 100.0 / liveTrip.LengthInDays, 0, 100);
+                // The spend bar is capped at 100% so an overspend can't run the fill off the end of the card; the
+                // figure beside it is what states the overspend, and it is not clamped.
+                var tripSpendPct = liveRecap.HasBudget
+                    ? Math.Clamp((double)(liveRecap.Spent.Amount / liveRecap.Budget!.Value) * 100.0, 0, 100)
+                    : 0.0;
+                <section class="trip-hero @(liveRecap.IsOverBudget ? "over" : "")">
+                    <button type="button" class="trip-hero-hit" @onclick="() => ShowTripsTab(liveTrip.Id)" title="@Loc["See the whole trip"]">
+                        <div class="trip-hero-head">
+                            <span class="trip-hero-mark">@TripMark(liveTrip.Icon)</span>
+                            <span class="trip-hero-id">
+                                <span class="trip-hero-name">@liveTrip.Name</span>
+                                <span class="trip-hero-when">
+                                    @string.Format(Loc["Day {0} of {1}"], tripDay, liveTrip.LengthInDays)@(string.IsNullOrWhiteSpace(liveTrip.Destination) ? "" : " · " + liveTrip.Destination)
+                                </span>
+                            </span>
+                            <span class="trip-hero-go" aria-hidden="true">›</span>
+                        </div>
+                        @* How far through the trip you are. Days, not money — it is the one bar on this card that
+                           cannot be behind or ahead of anything, so it reads as pure context for the two that can. *@
+                        <div class="trip-hero-days" aria-hidden="true"><span class="trip-hero-days-fill" style="width:@F(tripDayPct)%"></span></div>
+                        <div class="trip-hero-figs">
+                            <span class="trip-hero-fig">
+                                <span class="trip-hero-lbl">@Loc["So far"]</span>
+                                <strong>@Fmt(liveRecap.Spent)</strong>
+                            </span>
+                            @if (liveRecap.AgainstBudget is { } tripLeft)
+                            {
+                                <span class="trip-hero-fig trip-hero-fig-end">
+                                    <span class="trip-hero-lbl">@string.Format(Loc["of {0} planned"], Fmt(State.Money(liveRecap.Budget!.Value)))</span>
+                                    <strong>@string.Format(liveRecap.IsOverBudget ? Loc["{0} over"] : Loc["{0} left"], Fmt(State.Money(Math.Abs(tripLeft.Amount))))</strong>
+                                </span>
+                            }
+                        </div>
+                        @if (liveRecap.HasBudget)
+                        {
+                            <div class="trip-hero-bar" aria-hidden="true"><span class="trip-hero-bar-fill" style="width:@F(tripSpendPct)%"></span></div>
+                        }
+                        @* The split is stated on the card, not left to be discovered on the Trips tab: this headline
+                           is the one figure in the app that deliberately does NOT mean "what I spent this week" — a
+                           flight bought in March is inside it. One line, where the number is actually read. *@
+                        @if (!liveRecap.PrePaid.IsZero)
+                        {
+                            <small class="trip-hero-split">@string.Format(Loc["{0} booked ahead · {1} while away"], Fmt(liveRecap.PrePaid), Fmt(liveRecap.OnTrip))</small>
+                        }
+                    </button>
+                </section>
+            }
+
             @{ var ovBand = ov.Band switch { HealthBand.Healthy => "score-ok", HealthBand.Average => "score-warn", _ => "score-bad" }; }
             @* Just the score header on Home now — a tap opens the modal for the detail (verdict, quick wins, savings
                rate, spending trend, and the per-category trends-over-time sparklines that used to sit here). Moving the
@@ -645,50 +707,11 @@ else
                comparison, and where most of it went — because the card's job is to be worth a tap, and a card
                that already says everything is a section by another name (the thing this deliberately isn't).
                The ✕ keeps its own click, stopping propagation, so dismissing never opens what you're dismissing. *@
-            @* While a trip is running, Home leads with the trip instead of the week. A REPLACEMENT rather than a
-               second card, and the ordering is the argument: both answer "what has money been doing lately", and
-               the one you are living through wins — stacking them would put the week you are not having above the
-               fold on a phone. The week isn't lost: it moves into the bell for the duration (see
-               HomeNotifications), the same place the ✕ sends it, so it is displaced and never destroyed.
-               ★ No dismiss and no pulse. The card is self-limiting — it appears the morning the trip starts and is
-               gone the morning after it ends — so there is nothing to dismiss, and a card that glowed for eight
-               straight days would be the nag this whole feature is trying not to be. *@
-            @if (State.ActiveTrip is { } liveTrip && State.TripRecap(liveTrip.Id) is { } liveRecap)
-            {
-                <section class="week-recap trip-banner">
-                    <button type="button" class="week-recap-hit" @onclick="() => ShowTripsTab(liveTrip.Id)" title="@Loc["See the whole trip"]">
-                        <div class="week-recap-head">
-                            <span class="week-recap-title"><span class="trip-banner-mark">@TripMark(liveTrip.Icon)</span> @liveTrip.Name</span>
-                            <span class="week-recap-dates">@string.Format(Loc["Day {0} of {1}"], liveTrip.DayOn(State.TodayDate), liveTrip.LengthInDays)</span>
-                            <span class="week-recap-go" aria-hidden="true">›</span>
-                        </div>
-                        <div class="week-recap-body">
-                            <div class="week-recap-fig">
-                                <span class="week-recap-lbl">@Loc["So far"]</span>
-                                <strong>@Fmt(liveRecap.Spent)</strong>
-                                @* The split is stated here, not left to be discovered on the Trips tab, because the
-                                   headline is the one number in the app that deliberately does NOT mean "what I've
-                                   spent this week": a flight bought in March is in it. Saying so where the figure
-                                   is read costs one line and stops the total looking wrong. *@
-                                @if (!liveRecap.PrePaid.IsZero)
-                                {
-                                    <small>@string.Format(Loc["{0} booked ahead · {1} while away"], Fmt(liveRecap.PrePaid), Fmt(liveRecap.OnTrip))</small>
-                                }
-                            </div>
-                            @if (liveRecap.AgainstBudget is { } tripLeft)
-                            {
-                                <div class="week-recap-fig">
-                                    <span class="week-recap-lbl">@string.Format(Loc["Of the {0} you planned"], Fmt(State.Money(liveRecap.Budget!.Value)))</span>
-                                    <strong class="@(liveRecap.IsOverBudget ? "warn-text" : "")">
-                                        @string.Format(liveRecap.IsOverBudget ? Loc["{0} over"] : Loc["{0} left"], Fmt(State.Money(Math.Abs(tripLeft.Amount))))
-                                    </strong>
-                                </div>
-                            }
-                        </div>
-                    </button>
-                </section>
-            }
-            else if (WeekRecapToShow() is { } recap)
+            @* The trip card used to sit here, in the week recap's slot. It now leads the whole tab — see the
+               .trip-hero block at the top of this panel. The week keeps this slot and is still SUPPRESSED while a
+               trip runs (it moves into the bell for the duration, the same place the ✕ sends it), because both
+               cards answer "what has money been doing lately" and the trip you are living through wins. *@
+            @if (State.ActiveTrip is null && WeekRecapToShow() is { } recap)
             {
                 var recapDown = recap.Change.IsNegative;
                 <section class="week-recap week-recap-glow">
@@ -2102,12 +2125,31 @@ else
                    March shows up under a June trip — and why these totals deliberately don't match any one
                    period's spending. *@
                 <div class="trips-view">
-                    @foreach (var tRecap in State.TripRecaps())
+                    @* Sort applies to FINISHED trips only. A trip you are on and one you leave for on Friday are
+                       answers to "what now?", so they stay pinned at the top in date order however the history
+                       below them is arranged — sorting them by size would bury today's trip under a big one from
+                       two years ago. The control only appears once there is more than one past trip to order. *@
+                    @if (TripHistory().Count > 1)
+                    {
+                        <div class="trips-sort" role="group">
+                            <span class="trips-sort-lbl">@Loc["Past trips"]</span>
+                            <button type="button" class="chip @(_tripSort == TripSort.Date ? "on" : "")" @onclick="() => _tripSort = TripSort.Date"><Icon Name="calendar" /> @Loc["By date"]</button>
+                            <button type="button" class="chip @(_tripSort == TripSort.Spent ? "on" : "")" @onclick="() => _tripSort = TripSort.Spent"><Icon Name="coins" /> @Loc["By amount"]</button>
+                        </div>
+                    }
+                    @foreach (var tRecap in SortedTripRecaps())
                     {
                         var trip = State.FindTrip(tRecap.TripId)!;
                         var today = State.TodayDate;
                         var open = _expandedTripId == tRecap.TripId;
-                        var status = trip.IsActiveOn(today) ? "now" : trip.IsUpcomingOn(today) ? "soon" : "past";
+                        // ⚠️ Finished FIRST, then active. A trip awaiting its start confirmation is neither active
+                        // nor upcoming, and testing "upcoming" before "finished" would drop it into the past.
+                        var status = trip.IsFinishedOn(today) ? "past" : trip.IsActiveOn(today) ? "now" : "soon";
+                        // One icon per state, so the card says which of the three it is before any date is read:
+                        // a pin for the one you are standing in, a departing plane for one still ahead, a flag for
+                        // one that is over. The colour is the card's own status colour, set in CSS.
+                        var statusIcon = status switch { "now" => "pin", "soon" => "plane", _ => "flag" };
+                        var awaitingStart = trip.IsAwaitingStart(today);
                         // Lead with tags when enough of the trip is labelled; otherwise categories, the axis every
                         // expense always carries. A pie that is mostly one grey "untagged" wedge tells nobody anything.
                         var byTag = tRecap.TagsAreRepresentative && tRecap.TagBreakdown.Count > 0;
@@ -2122,7 +2164,7 @@ else
                         double sweepAt = 0;
                         <div class="trip-card @status @(open ? "open" : "")">
                             <button type="button" class="trip-head" @onclick="() => _expandedTripId = open ? Guid.Empty : tRecap.TripId">
-                                <span class="trip-mark">@TripMark(trip.Icon)</span>
+                                <span class="trip-mark">@TripMark(trip.Icon)<span class="trip-status" title="@(status == "now" ? Loc["Happening now"] : status == "soon" ? Loc["Still ahead"] : Loc["Finished"])"><Icon Name="@statusIcon" /></span></span>
                                 <span class="trip-id">
                                     <span class="trip-name">@trip.Name</span>
                                     <span class="trip-when">
@@ -2130,6 +2172,12 @@ else
                                         @if (trip.IsActiveOn(today))
                                         {
                                             <span class="trip-pill now">@string.Format(Loc["Day {0}"], trip.DayOn(today))</span>
+                                        }
+                                        else if (awaitingStart)
+                                        {
+                                            @* The dates have arrived; the traveller hasn't said so. Its own pill,
+                                               because "Day 1" would be a claim and "in 0 days" is not an answer. *@
+                                            <span class="trip-pill soon">@Loc["Ready to go"]</span>
                                         }
                                         else if (trip.DaysUntil(today) is { } sleeps)
                                         {
@@ -2175,16 +2223,36 @@ else
                                                money left either way; it just says how much of it had been saved for. *@
                                             <p class="trip-funded"><Icon Name="target" /> @string.Format(Loc["{0} of this came out of {1}."], Fmt(tRecap.FundedFromSavings), State.SavingBucketName(bkt))</p>
                                         }
+                                        @* The other half of the same sentence: money released from the pot into this
+                                           trip's BUDGET, before any of it was spent. Both lines can show at once and
+                                           neither discounts the total — see Trip.SavingsApplied. *@
+                                        @if (trip.SavingsApplied > 0m && trip.SavingCategoryId is { } appliedBkt)
+                                        {
+                                            <p class="trip-funded"><Icon Name="coins" /> @string.Format(Loc["{0} released from {1} into this trip's budget."], Fmt(State.Money(trip.SavingsApplied)), State.SavingBucketName(appliedBkt))</p>
+                                        }
 
                                         @if (tSlices.Count > 0 && tTotal > 0m)
                                         {
                                             <div class="trip-split">
                                                 <svg class="trip-donut" viewBox="0 0 100 100" role="img" aria-label="@Loc["Where the trip money went"]">
-                                                    @foreach (var s in tSlices)
+                                                    @* ⚠️ A single slice has to be a CIRCLE, not an arc. An arc sweeping the
+                                                       whole 100% starts and ends at the same point, so the path closes on
+                                                       itself and draws nothing — the ring rendered as an empty box.
+                                                       Now the ordinary case rather than an edge case: a trip files into one
+                                                       category, so unless its labels are used there IS only ever one slice.
+                                                       Same special case the Breakdown donut has always had. *@
+                                                    @if (tSlices.Count == 1)
                                                     {
-                                                        var pct = (double)(s.Amount / tTotal) * 100.0;
-                                                        <path d="@DonutArc(sweepAt, pct, 50, 50, 46, 27)" fill="@s.Color"></path>
-                                                        sweepAt += pct;
+                                                        <circle cx="50" cy="50" r="36.5" fill="none" stroke="@tSlices[0].Color" stroke-width="19"><title>@tSlices[0].Label · 100%</title></circle>
+                                                    }
+                                                    else
+                                                    {
+                                                        @foreach (var s in tSlices)
+                                                        {
+                                                            var pct = (double)(s.Amount / tTotal) * 100.0;
+                                                            <path d="@DonutArc(sweepAt, pct, 50, 50, 46, 27)" fill="@s.Color"><title>@s.Label · @pct.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture)%</title></path>
+                                                            sweepAt += pct;
+                                                        }
                                                     }
                                                 </svg>
                                                 <ul class="trip-legend">
@@ -2198,18 +2266,102 @@ else
                                                     }
                                                 </ul>
                                             </div>
-                                            @if (!byTag && tRecap.TagBreakdown.Count > 0)
+                                            @* The tag split is still the headline whenever half the trip is labelled
+                                               (TagsAreRepresentative) — this is the fallback, and it now needs saying
+                                               out loud. A trip files into ONE category, so the category axis draws a
+                                               single full ring: true, and useless. Nothing is wrong with the chart;
+                                               the trip simply hasn't been labelled, and the label is the only axis
+                                               that can answer "what did the hotel cost". *@
+                                            @if (!byTag)
                                             {
-                                                <p class="hint">@Loc["Split by category, because most of this trip isn't labelled. Tag as you go and this becomes stay / travel / food / tickets."]</p>
+                                                <p class="hint">@(tRecap.TagBreakdown.Count > 0
+                                                    ? Loc["Split by category, because most of this trip isn't labelled. Tag as you go and this becomes stay / travel / food / tickets."]
+                                                    : Loc["One ring, because the whole trip files into one category and nothing here is labelled yet. Tag as you go and this becomes stay / travel / food / tickets."])</p>
                                             }
                                         }
                                         @if (tRecap.Biggest is { } big)
                                         {
                                             <p class="trip-biggest">@string.Format(Loc["Biggest single thing: {0} — {1}"], Fmt(big.Amount), string.IsNullOrWhiteSpace(big.Note) ? State.CategoryName(big.CategoryId) : big.Note)</p>
                                         }
+
+                                        @* Everything attached to the trip, in the Breakdown's own row shape — the
+                                           donut above says where the money went, and this says what it actually
+                                           bought. Biggest first, matching every other expense list in Spending:
+                                           the question a recap answers is "what did this cost", which a date order
+                                           buries. Date breaks the ties.
+                                           ⚠️ Not the period's expenses — the trip's, gathered by LINK across every
+                                           period, so March's flight is in this list under a June trip. *@
+                                        @* ⚠️ No `@{`: this sits inside the `else` of the IsEmpty check, which is already
+                                           a code block — inside one, `@` is the switch back to markup, not into code. *@
+                                        var tExps = State.TripExpenses(tRecap.TripId)
+                                            .OrderByDescending(e => Math.Abs(e.Amount.Amount)).ThenByDescending(e => e.Date).ToList();
+                                        @if (tExps.Count > 0)
+                                        {
+                                            <div class="trip-exps">
+                                                <div class="trip-exps-head">
+                                                    <span class="trip-exps-lbl">@Loc["Everything on this trip"]</span>
+                                                    <span class="trip-exps-n">@tExps.Count</span>
+                                                </div>
+                                                <ul class="brk-exp-list">
+                                                    @foreach (var te in tExps)
+                                                    {
+                                                        <li class="brk-exp-row">
+                                                            <span class="brk-exp-date"><span class="brk-exp-d">@te.Date.ToString("dd")</span><span class="brk-exp-m">@te.Date.ToString("MMM")</span></span>
+                                                            <span class="brk-exp-main">
+                                                                <span class="brk-exp-title">@(string.IsNullOrEmpty(te.Note) ? State.CategoryName(te.CategoryId) : te.Note)</span>
+                                                                @* The sub-line carries the trip's OWN axis (the label) when there is one,
+                                                                   falling back to the category. On a trip that files into one category the
+                                                                   category is the same word on every row, so printing it there would be a
+                                                                   column of "Entertainment" saying nothing. *@
+                                                                <span class="brk-exp-sub">
+                                                                    @if (te.TagId is { } teTag)
+                                                                    {
+                                                                        @TagMark(State.TagIcon(teTag))<span>@State.TagName(teTag)</span>
+                                                                    }
+                                                                    else
+                                                                    {
+                                                                        <span>@State.CategoryName(te.CategoryId)</span>
+                                                                    }
+                                                                    <span class="brk-exp-when">@TripWhenLabel(trip, te.Date)</span>
+                                                                </span>
+                                                            </span>
+                                                            <span class="brk-exp-amt">@Fmt(te.Amount)</span>
+                                                        </li>
+                                                    }
+                                                </ul>
+                                            </div>
+                                        }
                                     }
                                     <div class="trip-acts">
                                         <button class="link" @onclick="() => OpenAttachToTrip(tRecap.TripId)"><Icon Name="plus" /> @Loc["Add something already paid"]</button>
+                                        @* The action the savings link was missing. Only when there is a pot to draw on and
+                                           a category to release it into — without either there is nothing this could do,
+                                           and a button that opens a dead end is worse than no button. *@
+                                        @if (trip.SavingCategoryId is { } useBkt && trip.CategoryId is not null
+                                             && State.SavingBucketSaved(useBkt).Amount > 0m && State.IsPeriodOpen)
+                                        {
+                                            <button class="link" @onclick="() => OpenUseTripSavings(tRecap.TripId)"><Icon Name="coins" /> @Loc["Use the saved money"] <ProLock Feature="@PlanFeatures.Trips" Static="true" /></button>
+                                        }
+                                        @* Finish means OVER, not "ends today": it ends the trip on the day it actually
+                                           ended AND records that the traveller said so, because a trip whose last day is
+                                           today would otherwise go on being worn by the app until midnight. Only on a
+                                           running trip — a finished one offers the undo instead, and a future one would
+                                           be cancelled rather than finished. *@
+                                        @* The opt-in. Trip mode never switches itself on, so the day the dates arrive
+                                           this is the tap that does it — the same confirmation the bell and Home
+                                           offer, put where someone looking at the trip itself would reach for it. *@
+                                        @if (awaitingStart)
+                                        {
+                                            <button class="link" @onclick="() => StartTrip(tRecap.TripId)"><Icon Name="plane" /> @Loc["We've left — start the trip"]</button>
+                                        }
+                                        else if (trip.IsActiveOn(today))
+                                        {
+                                            <button class="link" @onclick="() => FinishTrip(tRecap.TripId)"><Icon Name="flag" /> @Loc["Finish trip"]</button>
+                                        }
+                                        else if (trip.FinishedOn is not null)
+                                        {
+                                            <button class="link" @onclick="() => ReopenTrip(tRecap.TripId)"><Icon Name="rotate" /> @Loc["Not finished after all"]</button>
+                                        }
                                         <button class="link" @onclick="() => OpenEditTrip(tRecap.TripId)"><Icon Name="pencil" /> @Loc["Edit"]</button>
                                         <button class="link danger" @onclick="() => ConfirmRemoveTrip(tRecap.TripId)"><Icon Name="trash" /> @Loc["Delete"]</button>
                                     </div>
@@ -2217,7 +2369,13 @@ else
                             }
                         </div>
                     }
-                    <button class="fund-add trips-add" @onclick="OpenAddTrip"><Icon Name="plus" /> @Loc["New trip"]</button>
+                    @* Older trips are behind the same "full history" entitlement as the long Breakdown windows. Said
+                       as a count, not a blank space, so it reads as "there is more here" rather than "we lost them". *@
+                    @if (_tripsHidden > 0)
+                    {
+                        <ProLock Feature="@PlanFeatures.History" Bar="true" Label="@string.Format(Loc["{0} older trips — see your whole travel history with Pro"], _tripsHidden)" />
+                    }
+                    <button class="fund-add trips-add" @onclick="OpenAddTrip"><Icon Name="plus" /> @Loc["New trip"]@if (HasLiveTrip) { <ProLock Feature="@PlanFeatures.Trips" Static="true" /> }</button>
                 </div>
                 }
             </section>
@@ -2842,8 +3000,10 @@ else
 @if (_modal != Modal.None)
 {
     <div class="modal-backdrop">
-        @* Review modals hold rows of data rather than a column of fields, so they get the wider box. *@
-        <div class="modal @(_modal is Modal.BankReview or Modal.Import ? "modal-wide" : "")">
+        @* Review modals hold rows of data rather than a column of fields, so they get the wider box.
+           A trip picked on the expense form puts the whole modal into trip mode — the same blue the app bar and the
+           Home hero wear while you're away, so the form you log into looks like the trip it logs against. *@
+        <div class="modal @(_modal is Modal.BankReview or Modal.Import ? "modal-wide" : "") @(_modal is Modal.AddExpense && _expTripId != Guid.Empty ? "modal-trip" : "")">
             @if (_modalError is not null)
             {
                 <div class="modal-error">@_modalError</div>
@@ -3654,7 +3814,38 @@ else
                     break;
 
                 case Modal.AddExpense:
-                    <h3>@Loc["Add expense"]</h3>
+                    @* The title says what is being logged AGAINST when that isn't just "this month": the flag and
+                       the trip's name, in the trip's own blue. It is the one piece of context that changes where
+                       every figure below lands, so it goes where a title goes rather than into a hint. *@
+                    <h3 class="modal-h-trip">
+                        <span>@Loc["Add expense"]</span>
+                        @if (State.FindTrip(_expTripId) is { } hdrTrip)
+                        {
+                            <span class="exp-trip-tag">@TripMark(hdrTrip.Icon)@hdrTrip.Name</span>
+                        }
+                    </h3>
+                    @* ★ The trip leads the form. It is the first question because it decides the answers to the next
+                       two — a trip that files into one category settles the category, and the labels replace the
+                       everyday tags — so asking it after them would mean answering them twice. When nothing is
+                       running or booked the whole block renders nothing and the form is exactly as it was.
+                       Past trips are deliberately absent: attaching something you forgot is the rarer case and it
+                       has its own door, "Add something already paid" on the trip's own card. *@
+                    @if (FormTripOptions.Count > 0)
+                    {
+                        <div class="modal-field trip-pick-field">
+                            <span class="lbl-row">@Loc["Part of a trip"]</span>
+                            <div class="qp-row">
+                                <button type="button" class="tag-chip @(_expTripId == Guid.Empty ? "tag-chip-on" : "")" @onclick="() => OnExpenseTripPicked(Guid.Empty)">@Loc["Not a trip"]</button>
+                                @foreach (var t in FormTripOptions)
+                                {
+                                    var tripOpt = t;
+                                    <button type="button" class="tag-chip @(_expTripId == tripOpt.Id ? "tag-chip-on" : "")" @onclick="() => OnExpenseTripPicked(tripOpt.Id)">
+                                        @TripMark(tripOpt.Icon)@tripOpt.Name
+                                    </button>
+                                }
+                            </div>
+                        </div>
+                    }
                     @* Staged expenses: "+ Add another expense" parks the current entry here as a compact row and clears
                        the editor for the next; the ✓ in the header saves them all at once. Tap a row to pull it back
                        into the editor to fix it; 🗑 drops it. *@
@@ -3687,30 +3878,14 @@ else
                             <button type="button" class="repeat-last" title="@Loc["Edit last"]" @onclick="() => OpenEditExpense(lastExp.Id)"><Icon Name="pencil" /> <span class="last-act-verb">@Loc["Edit"]</span> <span class="last-act-ctx"><strong>@State.CategoryName(lastExp.CategoryId)</strong> · @Fmt(lastExp.Amount)</span></button>
                         </div>
                     }
-                    @* ★ On a trip, the trip and its labels come FIRST and the category follows them.
-                       The trip decides the context and — when it files into one category — decides the category
-                       too, so leading with a category picker asked the user to answer a question the next two
-                       taps were about to answer for them. Off a trip this block renders nothing and the form is
-                       exactly as it was. *@
-                    @if (FormTripOptions.Count > 0)
+                    @* On a trip the labels sit here, directly above the category — the trip row itself has moved to
+                       the top of the form (see the block under the title). They stay adjacent to the category
+                       because on a trip a label is not decoration: it is the axis the trip's recap is drawn on,
+                       while the category is settled by the trip. Off a trip the picker keeps its old place further
+                       down, where an optional label belongs. It renders in exactly one of the two spots. *@
+                    @if (onTrip)
                     {
-                        <div class="modal-field trip-pick-field">
-                            <span class="lbl-row">@Loc["Part of a trip"]</span>
-                            <div class="qp-row">
-                                <button type="button" class="tag-chip @(_expTripId == Guid.Empty ? "tag-chip-on" : "")" @onclick="() => OnExpenseTripPicked(Guid.Empty)">@Loc["Not a trip"]</button>
-                                @foreach (var t in FormTripOptions)
-                                {
-                                    var tripOpt = t;
-                                    <button type="button" class="tag-chip @(_expTripId == tripOpt.Id ? "tag-chip-on" : "")" @onclick="() => OnExpenseTripPicked(tripOpt.Id)">
-                                        @TripMark(tripOpt.Icon)@tripOpt.Name
-                                    </button>
-                                }
-                            </div>
-                        </div>
-                        @if (onTrip)
-                        {
-                            @tagPicker
-                        }
+                        @tagPicker
                     }
                     var qpCats = State.RecentCategories(6);
                     <div class="modal-field"><span class="lbl-row">@Loc["Category"] <button type="button" class="lbl-add" title="@Loc["Add category"]" @onclick="ExpenseAddCategory">+</button></span>
@@ -4485,26 +4660,30 @@ else
 
                     <h4 class="modal-sec">@Loc["Money"]</h4>
                     <label>@Loc["What you expect it to cost"] <DecimalInput T="decimal?" class="num" @bind-Value="_tripBudget" placeholder="@Loc["optional"]" /></label>
-                    @* Where the trip's spending lands in the ordinary budget. One category by default, because a
-                       fortnight away otherwise detonates Food, Transport AND Rent at once and those categories
-                       stop describing everyday life. The trip labels still carry stay/travel/food, so the detail
-                       is not lost — it just lives on the axis built for it. *@
+                    @* Where the trip's spending lands in the ordinary budget. ★ ONE category, always — the
+                       per-label option that used to head this list is gone. You budget a trip as a trip; spreading
+                       it across Food, Transport and Housing means keeping four budgets to describe one holiday and
+                       breaking all four the same fortnight. The trip labels still carry stay / travel / food /
+                       tickets, so nothing is lost: the detail lives on the axis built for it, and the trip's own
+                       recap is where it gets read. *@
                     <label>@Loc["Files into"]
                         <select @bind="_tripCategoryId">
-                            <option value="@Guid.Empty">@Loc["— each label's own category —"]</option>
                             @foreach (var (c, depth) in State.CategoryOptions)
                             {
                                 <option value="@c.Id">@IndentLabel(c.Name, depth)</option>
                             }
                         </select>
                     </label>
-                    <small class="hint">
-                        @(_tripCategoryId == Guid.Empty
-                            ? Loc["Every trip label files into its own everyday category — a hotel lands in Housing, dinners in Food. Your monthly budgets will move with the trip."]
-                            : Loc["The whole trip lands in this one category, so your everyday budgets keep describing everyday life. The trip's own recap still splits it by stay, travel, food and tickets."])
-                    </small>
+                    <small class="hint">@Loc["The whole trip lands in this one category and every trip label files there, so one budget covers the journey and your everyday budgets keep describing everyday life. The trip's own recap still splits it by stay, travel, food and tickets."]</small>
                     var tripBuckets = State.SavingBuckets.Where(b => !b.Bucket.IsArchived && !b.Bucket.IsDebt).ToList();
-                    @if (tripBuckets.Count > 0)
+                    @* Funding a trip from a pot is the planning half of trips, and planning is where Pro sits. Shown
+                       rather than hidden on Free: the field explains what the paid tier is FOR, which a missing row
+                       can't. The gate that matters is the server's, on use-savings. *@
+                    @if (tripBuckets.Count > 0 && !Gate.Allows(PlanFeatures.Trips))
+                    {
+                        <ProLock Feature="@PlanFeatures.Trips" Bar="true" Label="@Loc["Save up for a trip and spend it as a trip — with Pro"]" />
+                    }
+                    else if (tripBuckets.Count > 0)
                     {
                         <label>@Loc["Paid for from"]
                             <select @bind="_tripBucketId">
@@ -4519,6 +4698,15 @@ else
                     }
 
                     <h4 class="modal-sec">@Loc["Spending in another currency"]</h4>
+                    @* The most involved machinery in the feature — a second currency, a rate, a conversion at entry
+                       time — so it is the natural paid line. Free trips work completely in the account's own
+                       currency; nothing about the entry flow, the recap or the Home card depends on this. *@
+                    @if (!Gate.Allows(PlanFeatures.Trips))
+                    {
+                        <ProLock Feature="@PlanFeatures.Trips" Bar="true" Label="@Loc["Log a trip in its local currency — with Pro"]" />
+                    }
+                    else
+                    {
                     @* One fixed rate the user sets, not a live feed: a feed means a rate provider, a new
                        sub-processor and a rate per expense. The conversion happens as you type an amount and
                        what gets stored is already in the account currency, so editing this later can never
@@ -4557,9 +4745,45 @@ else
                         </small>
                     }
                     <small class="hint">@Loc["Type amounts in the local currency and we'll convert them as you log. It's your own fixed rate, so treat the totals as close rather than exact."]</small>
+                    }
                     <div class="modal-actions">
                         <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
                         <button @onclick="SaveTripForm" disabled="@(string.IsNullOrWhiteSpace(_tripName) || _tripTo < _tripFrom)">@Loc["Save"]</button>
+                    </div>
+                    break;
+
+                case Modal.UseTripSavings:
+                    // Inside the switch, which is already a code block — no `@{` here (see the trip expense list).
+                    var usTrip = State.FindTrip(_useSavingsTripId);
+                    var usPot = usTrip?.SavingCategoryId is { } usBkt ? State.SavingBucketSaved(usBkt) : State.Money(0m);
+                    <h3><Icon Name="coins" /> @Loc["Use the saved money"]</h3>
+                    @if (usTrip is not null)
+                    {
+                        @* Said plainly, because "no money moves" is the surprising part: the pot is an earmark, not a
+                           separate wallet, so releasing it changes what you're allowed to spend rather than where the
+                           money is. Nothing leaves the account and the period still reconciles. *@
+                        <p class="hint">@string.Format(Loc["This releases money you'd set aside in {0} into {1}'s budget for this month, so the trip's spending has its own money instead of eating your everyday budget. No money actually moves between wallets."],
+                            State.SavingBucketName(usTrip.SavingCategoryId!.Value), State.CategoryName(usTrip.CategoryId!.Value))</p>
+                        <div class="trip-when-split">
+                            <span class="tws"><span class="tws-k">@Loc["Set aside"]</span><span class="tws-v">@Fmt(usPot)</span></span>
+                            @if (usTrip.Budget is { } usBudget)
+                            {
+                                <span class="tws"><span class="tws-k">@Loc["Trip budget"]</span><span class="tws-v">@Fmt(State.Money(usBudget))</span></span>
+                            }
+                            @if (usTrip.SavingsApplied > 0m)
+                            {
+                                <span class="tws"><span class="tws-k">@Loc["Already released"]</span><span class="tws-v">@Fmt(State.Money(usTrip.SavingsApplied))</span></span>
+                            }
+                        </div>
+                        <label>@Loc["Amount"] <DecimalInput @bind-Value="_useSavingsAmount" /></label>
+                        @if (_useSavingsAmount > usPot.Amount)
+                        {
+                            <small class="hint warn-text">@string.Format(Loc["That's more than the {0} you've set aside."], Fmt(usPot))</small>
+                        }
+                    }
+                    <div class="modal-actions">
+                        <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
+                        <button @onclick="UseTripSavingsConfirmed" disabled="@(_useSavingsAmount <= 0 || _useSavingsAmount > usPot.Amount)"><Icon Name="arrow-right" /> @Loc["Release it"]</button>
                     </div>
                     break;
 
@@ -6018,7 +6242,7 @@ else
 }
 
 @code {
-    private enum Modal { None, BankReview, BankConsent, AddCat, AddBudget, DisburseSaving, PayoffProjection, GoalProjection, InvestmentProjection, BankTransfer, ExternalAccounts, HealthScore, RunwayMath, EditCat, DeleteCat, DeleteBudget, EditAccountTransfer, DeleteAccountTransfer, CategoryDetail, AddAccount, EditAccount, DeleteAccount, RemoveMember, LeaveAccount, AddExpense, NextPeriod, RemovePeriod, EditExpense, DeleteExpense, SettleExpense, AddBucket, EditBucket, DeleteBucket, EditCost, AddFund, EditFund, DeleteFund, Invite, Transfer, Deposit, EditDeposit, DeleteDeposit, ManageCats, ManageContribCats, ContribCat, DeleteContribCat, AddSaving, BudgetSaving, SpendSaving, EditSavingDeposit, DeleteSavingDeposit, EditTransfer, DeleteTransfer, EditPeriod, EditSavingMovement, DeleteSavingMovement, DeleteExternalTransfer, Achievements, Reallocate, Recurring, RecurringEdit, RecurringConfirm, Import, AddOrImport, ArchiveFund, FundMovements, Archived, ManageTags, EditTag, LogInstallment, DeleteInstallment, WeekRecap, TripEdit, DeleteTrip, AttachToTrip }
+    private enum Modal { None, BankReview, BankConsent, AddCat, AddBudget, DisburseSaving, PayoffProjection, GoalProjection, InvestmentProjection, BankTransfer, ExternalAccounts, HealthScore, RunwayMath, EditCat, DeleteCat, DeleteBudget, EditAccountTransfer, DeleteAccountTransfer, CategoryDetail, AddAccount, EditAccount, DeleteAccount, RemoveMember, LeaveAccount, AddExpense, NextPeriod, RemovePeriod, EditExpense, DeleteExpense, SettleExpense, AddBucket, EditBucket, DeleteBucket, EditCost, AddFund, EditFund, DeleteFund, Invite, Transfer, Deposit, EditDeposit, DeleteDeposit, ManageCats, ManageContribCats, ContribCat, DeleteContribCat, AddSaving, BudgetSaving, SpendSaving, EditSavingDeposit, DeleteSavingDeposit, EditTransfer, DeleteTransfer, EditPeriod, EditSavingMovement, DeleteSavingMovement, DeleteExternalTransfer, Achievements, Reallocate, Recurring, RecurringEdit, RecurringConfirm, Import, AddOrImport, ArchiveFund, FundMovements, Archived, ManageTags, EditTag, LogInstallment, DeleteInstallment, WeekRecap, TripEdit, DeleteTrip, AttachToTrip, UseTripSavings }
     private enum Tab { Overview, Account, Budgets, Savings }
 
     /// <summary>Which kind of goal the Goals grid is showing. Defaults to All so the filter narrows on request
@@ -8418,8 +8642,103 @@ else
     /// <para>★ <b>All</b> the running ones, not just <c>ActiveTrip</c>. This used to offer the single resolved
     /// winner, so with two overlapping trips the one you happened not to start later became unpickable while you
     /// were on it — found by driving the form with a real overlap.</para></summary>
+    /// <para>★ Now "everything not finished" rather than running + upcoming: with trip mode opt-in, a trip whose
+    /// dates have arrived but which nobody has confirmed leaving on is in neither of those lists, and it was
+    /// exactly the trip you'd be logging the taxi to the airport against.</para>
     private IReadOnlyList<FinApp.Domain.Budgeting.Trip> FormTripOptions =>
-        State.RunningTrips.Concat(State.UpcomingTrips).ToList();
+        State.AllTrips.Where(t => !t.IsFinishedOn(State.TodayDate))
+            .OrderBy(t => t.From).ToList();
+
+    /// <summary>How the finished trips are ordered. Date is the default because a list of journeys is a diary
+    /// first; by amount is the comparison ("what did Rome cost against Vienna?") that a diary can't answer.</summary>
+    private enum TripSort { Date, Spent }
+    private TripSort _tripSort = TripSort.Date;
+
+    /// <summary>The finished trips — everything the sort control applies to.</summary>
+    private IReadOnlyList<TripRecap> TripHistory() =>
+        State.TripRecaps().Where(r => State.FindTrip(r.TripId)?.IsFinishedOn(State.TodayDate) == true).ToList();
+
+    /// <summary>The trips list in display order: everything live or still ahead first, always by date, then the
+    /// history in whichever order was asked for.
+    /// <para>★ The split is the point. Sorting the whole list by size would push the trip you are ON below a
+    /// bigger one from two years ago — and "what am I spending right now" is not a question the history can
+    /// answer. So the sort owns the past and never touches the present.</para></summary>
+    private IReadOnlyList<TripRecap> SortedTripRecaps()
+    {
+        var today = State.TodayDate;
+        var all = State.TripRecaps();
+        var live = all.Where(r => State.FindTrip(r.TripId)?.IsFinishedOn(today) != true).ToList();
+        var past = all.Where(r => State.FindTrip(r.TripId)?.IsFinishedOn(today) == true);
+        // Date order is already BuildAll's (newest departure first), so only the amount sort re-orders — with the
+        // departure date breaking ties so two equal totals can't swap places between renders.
+        past = _tripSort == TripSort.Spent
+            ? past.OrderByDescending(r => r.Spent.Amount).ThenByDescending(r => r.From)
+            : past.OrderByDescending(r => r.From);
+        var shown = past.ToList();
+        // Free keeps the last two finished trips — enough to answer "what did the last one cost", which is the
+        // question a first trip raises. Comparing a run of journeys across years is the same argument as the
+        // Breakdown's 6/12-month windows, so it reuses that entitlement rather than inventing a second one.
+        // ⚠️ Nothing is deleted or unlinked: the trips are still there, still counted in every total, just not
+        // listed. Downgrading can never lose data.
+        if (!Gate.Allows(PlanFeatures.History) && shown.Count > FreeTripHistory)
+        {
+            _tripsHidden = shown.Count - FreeTripHistory;
+            shown = shown.Take(FreeTripHistory).ToList();
+        }
+        else
+        {
+            _tripsHidden = 0;
+        }
+        return live.Concat(shown).ToList();
+    }
+
+    private const int FreeTripHistory = 2;
+    private int _tripsHidden;
+
+    /// <summary>Where one expense sits against the trip's own dates — the three-way split the recap headline is
+    /// built on, said again per row so a March flight in a June list explains itself.</summary>
+    private string TripWhenLabel(FinApp.Domain.Budgeting.Trip trip, DateOnly date) =>
+        date < trip.From ? Loc["booked ahead"] : date > trip.To ? Loc["after getting back"] : Loc["while away"];
+
+    /// <summary>End a running trip today. Not a delete and not an archive: everything about trip mode — the shell,
+    /// Home's hero, the expense form's default — is derived from the dates, so pulling the end date to today is the
+    /// entire switch. Undone by editing the date back, which is why it doesn't stop to confirm.</summary>
+    /// <summary>End a running trip. "Finish" means OVER, so this is a stored fact and not just a shorter end date —
+    /// the hero disappears, the shell drops the trip theme, the expense form stops defaulting to it and the card
+    /// moves into the history, all from the moment it's tapped. Reversible from the finished card.</summary>
+    private Task FinishTrip(Guid tripId) => Run(() => State.FinishTrip(tripId));
+
+    /// <summary>Confirm a departure — the tap that turns trip mode on. Deliberately the only way in: see
+    /// <c>Trip.StartedOn</c> for why a date arriving isn't enough.</summary>
+    private Task StartTrip(Guid tripId) => Run(() => State.StartTrip(tripId));
+
+    /// <summary>Put a finished trip back on the road (the undo for the above).</summary>
+    private Task ReopenTrip(Guid tripId) => Run(() => State.FinishTrip(tripId, finished: false));
+
+    // --- Using the money saved for a trip --------------------------------
+    private Guid _useSavingsTripId;
+    private decimal _useSavingsAmount;
+
+    /// <summary>Open "use the saved money" for a trip, pre-filled with the sensible amount: whatever is still needed
+    /// to cover the trip's budget, capped at what the bucket actually holds. Pre-filled rather than blank because
+    /// this is a decision ("release it") not a calculation, and the app already knows both numbers.</summary>
+    private void OpenUseTripSavings(Guid tripId)
+    {
+        if (!Gate.Require(PlanFeatures.Trips)) return;
+        if (State.FindTrip(tripId) is not { SavingCategoryId: { } bucketId } trip) return;
+        var pot = State.SavingBucketSaved(bucketId).Amount;
+        var need = trip.Budget ?? 0m;
+        _useSavingsTripId = tripId;
+        _useSavingsAmount = need > 0m ? Math.Min(pot, need) : pot;
+        _modal = Modal.UseTripSavings;
+    }
+
+    private Task UseTripSavingsConfirmed() => RunModal(async () =>
+    {
+        if (_useSavingsAmount <= 0m) return;
+        await State.UseTripSavings(_useSavingsTripId, _useSavingsAmount, State.TripName(_useSavingsTripId));
+        CloseModal();
+    });
 
     // The trip form. Guid.Empty in _tripId means "new" — the same modal serves both, since every field is the same.
     private Guid _tripId;
@@ -8434,27 +8753,54 @@ else
     private string? _tripCurrency;
     private decimal? _tripRate;
 
+    /// <summary>A trip that hasn't been declared over — running or still ahead. The Free cap counts these, so
+    /// finishing a trip always frees the slot and nothing the user has recorded is ever in the way.</summary>
+    private bool HasLiveTrip => State.AllTrips.Any(t => !t.IsFinishedOn(State.TodayDate));
+
     private void OpenAddTrip()
     {
+        // Free = one trip on the go. Deliberately a cap on LIVE trips, not trips per year: you can always record the
+        // journey you're actually on, so the app never refuses real life — what Free can't do is plan the next one
+        // while this one runs. The server enforces the same rule (POST /trips).
+        if (HasLiveTrip && !Gate.Require(PlanFeatures.Trips)) return;
         _tripId = Guid.Empty;
         _tripName = null; _tripDestination = null; _tripIcon = null;
         // A week starting today is the shape of most trips and the least typing; both dates are editable anyway.
         _tripFrom = State.TodayDate; _tripTo = State.TodayDate.AddDays(6);
         _tripBudget = null; _tripBucketId = Guid.Empty; _tripCurrency = null; _tripRate = null;
-        // Default a NEW trip to one category when the account has an obvious travel one, because that is the
-        // better behaviour and a default nobody sets is a feature nobody gets. Falls back to per-label filing
-        // when there's nothing sensible to point at, rather than picking a category at random.
-        _tripCategoryId = TravelCategoryGuess() ?? Guid.Empty;
+        _tripCategoryId = TripCategoryGuess();
         _modal = Modal.TripEdit;
     }
 
-    /// <summary>An existing category that plainly means "travel", or null. Deliberately name-matched and narrow:
-    /// guessing wrong here would file a whole trip into an unrelated budget, which is worse than not guessing.</summary>
-    private Guid? TravelCategoryGuess()
+    /// <summary>
+    /// The one category a trip files into by default.
+    /// <para>
+    /// ★ <b>A trip always files into one category now</b> — the "each label files into its own everyday category"
+    /// mode is gone from the form. It was the original behaviour and it does not survive contact with a real trip:
+    /// you are budgeting the journey, not auditing it, and spreading a fortnight across Food / Transport / Housing
+    /// means setting four budgets to describe one holiday and watching all four break at once.
+    /// </para>
+    /// <para>
+    /// Travel-ish names win when the account has one, then entertainment/leisure — a trip is discretionary spending
+    /// and that is the budget it belongs beside. Falling back to the first category is deliberate: with one category
+    /// as the rule, "we found nothing to point at" must still resolve to something the user can then change, and the
+    /// picker is right there in the same form.
+    /// </para>
+    /// </summary>
+    private Guid TripCategoryGuess()
     {
-        string[] names = ["travel", "trips", "trip", "holiday", "holidays", "vacation", "пътуване", "пътувания", "почивка"];
-        return State.CategoryOptions.Select(c => c.Category)
-            .FirstOrDefault(c => names.Any(n => string.Equals(c.Name, n, StringComparison.CurrentCultureIgnoreCase)))?.Id;
+        string[] names =
+        [
+            "travel", "trips", "trip", "holiday", "holidays", "vacation", "пътуване", "пътувания", "почивка",
+            "entertainment", "leisure", "fun", "going out", "развлечения", "забавления", "свободно време",
+        ];
+        var cats = State.CategoryOptions.Select(c => c.Category).ToList();
+        // Ordered by the list, not by the account: a category named "Travel" beats one named "Entertainment"
+        // whatever order the account happens to hold them in.
+        foreach (var n in names)
+            if (cats.FirstOrDefault(c => string.Equals(c.Name, n, StringComparison.CurrentCultureIgnoreCase)) is { } hit)
+                return hit.Id;
+        return cats.FirstOrDefault()?.Id ?? Guid.Empty;
     }
 
     private void OpenEditTrip(Guid tripId)
@@ -8465,7 +8811,10 @@ else
         _tripFrom = trip.From; _tripTo = trip.To;
         _tripBudget = trip.Budget;
         _tripBucketId = trip.SavingCategoryId ?? Guid.Empty;
-        _tripCategoryId = trip.CategoryId ?? Guid.Empty;
+        // A trip saved before one-category filing existed carries no category. It gets the same guess a new trip
+        // gets rather than an empty picker, so opening Edit on an old trip and pressing Save is all it takes to
+        // bring it in line — and the field never shows a blank the user has to work out how to fill.
+        _tripCategoryId = trip.CategoryId ?? TripCategoryGuess();
         _tripCurrency = trip.SpendCurrency; _tripRate = trip.Rate;
         _modal = Modal.TripEdit;
     }
@@ -9088,6 +9437,24 @@ else
             // A pure heads-up: not yet due, so nothing to confirm — and nothing to dismiss either. It clears itself
             // when the day arrives and it becomes a Due row with real choices on it.
             list.Add(new Notification("calendar", text, null, null, null, null, null, false, Due: true));
+        }
+
+        // ★ The departure confirmation. Its date has arrived, but a date is not a departure — the flight may be at
+        // six in the evening — so nothing switches until this is answered.
+        // ⚠️ Urgent AND Due, which is the one combination that lands in BOTH places: Home's alert strip renders it
+        // with its button attached (Urgent), and the bell lists it under Due. Normally the app refuses to duplicate
+        // a prompt (UX backlog #4) — this earns the exception because it is the only notification whose action
+        // changes how the entire shell behaves, and missing it means a fortnight filed as everyday spending.
+        foreach (var dueTrip in State.TripsAwaitingStart)
+        {
+            var dueId = dueTrip.Id;
+            var away = dueTrip.From == State.TodayDate
+                ? Loc["starts today"]
+                : string.Format(Loc["started {0}"], dueTrip.From.ToString("d MMM"));
+            list.Add(new Notification(dueTrip.Icon ?? "plane",
+                string.Format(Loc["{0} {1} — are you off?"], dueTrip.Name, away),
+                Loc["Trip mode stays off until you say so, so nothing gets filed as holiday spending by mistake."],
+                Loc["We've left"], () => _ = StartTrip(dueId), null, null, Urgent: true, Due: true));
         }
 
         // A trip about to start. Grouped with the bills as "Due" rather than as a suggestion, because it is a date
@@ -9799,11 +10166,16 @@ else
         ApplyTripCategoryDefault();
     }
 
-    /// <summary>Point the category at the current trip's, when that trip collects into one. Safe to call from any
-    /// path that assigns <c>_expTripId</c>; a trip that files per label leaves the category alone.</summary>
+    /// <summary>Point the category at the trip's. Safe to call from any path that assigns <c>_expTripId</c>.
+    /// <para>★ A trip saved before one-category filing existed carries no category of its own; rather than leaving
+    /// the form on whatever everyday category was last used — which is how a Roman hotel ended up in Rent — it
+    /// resolves to the same guess a new trip would get. The user can still change it on the form; what it must not
+    /// do is silently file trip spending into the household budgets.</para></summary>
     private void ApplyTripCategoryDefault()
     {
-        if (State.FindTrip(_expTripId) is { CategoryId: { } tripCat }) _categoryId = tripCat;
+        if (State.FindTrip(_expTripId) is not { } trip) return;
+        var cat = trip.CategoryId ?? TripCategoryGuess();
+        if (cat != Guid.Empty) _categoryId = cat;
     }
 
     // F1: set when the modal should open with the cursor already in Amount; consumed once by OnAfterRenderAsync.
@@ -9937,10 +10309,13 @@ else
     private void ApplyTagBinding(Guid tagId)
     {
         if (_modal != Modal.AddExpense) return;
-        // ★ A trip that files into ONE category owns the filing, so its labels tag without re-filing. Letting the
-        // binding fire here would undo the setting on every tap — pick "Stay" and the expense jumps back out of
-        // Travel into Housing, which is precisely the spread the user turned off.
-        if (FormTrip is { FilesIntoOneCategory: true }) return;
+        // ★ On a trip the TRIP owns the filing, so its labels tag without re-filing — every label on the trip lands
+        // in the trip's one category. Letting the binding fire would undo that on every tap: pick "Stay" and the
+        // expense jumps out of the trip's category into Housing, which is exactly the spread this replaced.
+        // Note this is now "on any trip", not "on a trip that files into one": a trip saved before the setting
+        // existed has no category of its own, and scattering ITS labels across the household budgets is the
+        // original bug, not a preserved option.
+        if (_expTripId != Guid.Empty) return;
         if (State.TagCategory(tagId) is not { } cat || cat == _categoryId) return;
         _categoryId = cat;
         _tagFiledTo = cat;   // so the swap is announced, not silent
@@ -9953,11 +10328,9 @@ else
     {
         _expTripId = tripId;
         if (_modal != Modal.AddExpense) return;
-        if (State.FindTrip(tripId) is { CategoryId: { } tripCat })
-        {
-            _categoryId = tripCat;
-            _tagFiledTo = null;   // not a tag's doing, so the "filed under" note would misattribute it
-        }
+        if (tripId == Guid.Empty) return;   // "Not a trip" leaves the category alone — see the note on clearing
+        ApplyTripCategoryDefault();
+        _tagFiledTo = null;   // not a tag's doing, so the "filed under" note would misattribute it
     }
 
     // F2: set when picking a tag just changed the category, so the modal can say so. Cleared on the next tag action.

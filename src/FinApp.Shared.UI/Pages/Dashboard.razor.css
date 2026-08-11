@@ -169,23 +169,60 @@ html.dark .onboard-desc { color: #a9b6ad; }
    modifiers at matching specificity rather than weakening the default. (Same trap as `.list li` in S85.) */
 .week-recap-fig small.warn-text { color: #b45309; }
 .week-recap-fig small.good-text { color: #13a06e; }
-/* Same trap one element up: `.week-recap-fig strong` is (0,1,1), so the trip banner's over-budget figure lost to a
-   bare .warn-text exactly as the comparison line above did. Re-stated at matching specificity. */
-.week-recap-fig strong.warn-text { color: #b45309; }
+/* Same trap one element up, and it was live: `.week-recap-fig strong` is (0,1,1), so the "Set aside" figure — the
+   one green number on the card — lost to it and rendered in the ordinary text colour. Re-stated at matching
+   specificity rather than weakening the default. */
+.week-recap-fig strong.good-text { color: #13a06e; }
 
-/* The Home trip banner borrows the week-recap card wholesale — same shell, same hit area, same figure grid — and
-   only changes its colour, because it is the same object (a read-out with somewhere to go) carrying different
-   content. What it deliberately does NOT borrow is the glow: see the markup for why an eight-day pulse is a nag.
-   Blue rather than the app's mint, and not an invented blue: #35538f / #e8eefc are already the trip idiom
-   (.trip-pill.soon, .trip-fx), so the banner and the Trips tab it opens speak with one voice. */
-.trip-banner { background: #f4f8ff; border-color: #d5e2f7; }
-.trip-banner .week-recap-go { color: #35538f; }
-.trip-banner .week-recap-title { color: #1e3a68; }
-.trip-banner-mark { font-size: 1.05rem; line-height: 1; }
-html.dark .trip-banner { background: #141b2b; border-color: #2a3651; }
-html.dark .trip-banner .week-recap-go,
-html.dark .trip-banner .week-recap-title { color: #9db6ea; }
-html.dark .week-recap-fig strong.warn-text { color: #f0b048; }
+/* The Home trip hero. It used to be the week-recap card in a pale blue; leading the tab it has to hold its own
+   against the score block below it, so it is a filled card rather than a tinted one — the only saturated surface
+   on Home, which is exactly the point: it is there for a week and then it is gone.
+   The blue is not invented: #35538f is already the trip idiom (.trip-pill.soon, .trip-fx, the trip shell), so the
+   hero, the app bar it sits under and the Trips tab it opens all speak with one voice.
+   ⚠️ Everything inside is stated in white/alpha-white rather than the app's greys, because the surface underneath
+   is dark in BOTH themes — a rule that inherits Home's usual text colour disappears here. */
+.trip-hero {
+    position: relative; overflow: hidden;
+    border-radius: 14px; margin: 0 0 12px;
+    background: linear-gradient(135deg, #2b4a86 0%, #3c6bb4 55%, #4f93c9 100%);
+    box-shadow: 0 6px 18px rgba(29, 52, 96, .22);
+}
+.trip-hero-hit {
+    display: block; width: 100%; text-align: left; cursor: pointer;
+    border: none; background: none; padding: 14px 16px; color: #fff;
+}
+.trip-hero-head { display: flex; align-items: center; gap: 10px; }
+.trip-hero-mark { flex: none; font-size: 1.5rem; line-height: 1; display: inline-flex; }
+.trip-hero-mark svg { width: 22px; height: 22px; }
+.trip-hero-id { display: flex; flex-direction: column; gap: 1px; min-width: 0; flex: 1 1 auto; }
+.trip-hero-name { font-size: 1.02rem; font-weight: 800; color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.trip-hero-when { font-size: .76rem; color: rgba(255, 255, 255, .78); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.trip-hero-go { flex: none; font-size: 1.2rem; font-weight: 700; line-height: 1; color: rgba(255, 255, 255, .8); }
+/* Two bars, deliberately different weights: days is a hairline (context you cannot be behind on) and spend is the
+   thick one (the figure that can go wrong). Same track colour so they read as one family. */
+.trip-hero-days { height: 3px; border-radius: 2px; background: rgba(255, 255, 255, .22); margin: 10px 0 12px; overflow: hidden; }
+.trip-hero-days-fill { display: block; height: 100%; border-radius: 2px; background: rgba(255, 255, 255, .55); }
+.trip-hero-figs { display: flex; align-items: flex-end; gap: 10px 20px; }
+.trip-hero-fig { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.trip-hero-fig-end { margin-left: auto; text-align: right; }
+.trip-hero-lbl { font-size: .68rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: rgba(255, 255, 255, .7); }
+.trip-hero-fig strong { font-size: 1.2rem; font-weight: 800; color: #fff; font-variant-numeric: tabular-nums; }
+.trip-hero-fig-end strong { font-size: .95rem; }
+.trip-hero-bar { height: 6px; border-radius: 3px; background: rgba(255, 255, 255, .22); margin-top: 9px; overflow: hidden; }
+.trip-hero-bar-fill { display: block; height: 100%; border-radius: 3px; background: #d8f3e5; }
+/* Over budget recolours the SPEND bar and nothing else. The card keeps its blue and the figure keeps its white:
+   this is a holiday, and the app saying so in alarm colours is the tone change S100 spent a section removing. */
+.trip-hero.over .trip-hero-bar-fill { background: #ffd7a8; }
+.trip-hero-split { display: block; margin-top: 9px; font-size: .74rem; color: rgba(255, 255, 255, .74); }
+/* Dark theme drops the whole gradient a stop rather than restyling anything inside it — every colour in there is
+   alpha-white, so the contents follow the surface automatically. */
+html.dark .trip-hero {
+    background: linear-gradient(135deg, #1b2c50 0%, #24406b 55%, #2c5a7e 100%);
+    box-shadow: 0 6px 18px rgba(0, 0, 0, .38);
+}
+html.dark .trip-hero-bar-fill { background: #8fd9bb; }
+html.dark .trip-hero.over .trip-hero-bar-fill { background: #e0b078; }
+html.dark .week-recap-fig strong.good-text { color: #57d9a3; }
 html.dark .week-recap { background: #141a22; border-color: #2c3644; }
 html.dark .week-recap-title, html.dark .week-recap-fig strong { color: #e8eef0; }
 html.dark .week-recap-dates, html.dark .week-recap-lbl, html.dark .week-recap-fig small, html.dark .week-recap-x { color: #8b96a4; }
@@ -2991,11 +3028,44 @@ html.dark .cal-cell:hover:not(.cal-out) { border-color: #3a8f6c; background: #16
    expands) rather than a modal, so it reads like the rest of the Spending tab. Every colour introduced here
    gets its dark counterpart in the block at the bottom — run tools/pairscan.js after touching this. */
 .trips-view { display: flex; flex-direction: column; gap: 10px; padding: 4px 0 10px; }
+/* The sort row governs the PAST trips only (see SortedTripRecaps), so it names them rather than sitting over the
+   list as if it ordered everything. */
+.trips-sort { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 2px 0; }
+.trips-sort-lbl { font-size: .68rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: #64748b; margin-right: 2px; }
+/* ⚠️ `.chip` on its own is the ORANGE alert chip (see the .alert block) — every toggle row in the app restates it
+   for its own context, and a row that forgets renders as a peach pill with white text. The other rows are restated
+   in app.css; this one is restated here, in full, so the trips list carries its own light AND dark styling and
+   needs no global-stylesheet edit (and no cache-bust) to look right. */
+.trips-sort .chip {
+    display: inline-flex; align-items: center; gap: 5px;
+    border: 1px solid #e6ece9; background: #faf8f3; color: #5b6270;
+    border-radius: 999px; padding: 5px 12px; font-size: .78rem; font-weight: 600; cursor: pointer;
+}
+.trips-sort .chip svg { width: 13px; height: 13px; }
+.trips-sort .chip.on { background: #13a06e; border-color: #13a06e; color: #ffffff; }
+html.dark .trips-sort .chip { background: #1e2330; border-color: #2c3142; color: #aab0c0; }
+html.dark .trips-sort .chip.on { background: var(--tm-mint); border-color: var(--tm-mint); color: #0f1322; }
 .trip-card { border: 1px solid #e2e8f0; border-radius: 14px; background: #fff; overflow: hidden; }
 .trip-card.now { border-color: var(--tm-mint); box-shadow: 0 0 0 1px var(--tm-mint) inset; }
 .trip-head { display: flex; align-items: center; gap: 10px; width: 100%; padding: 12px 14px; background: none; border: 0; text-align: left; cursor: pointer; }
 .trip-head:hover { background: #f6faf8; }
-.trip-mark { font-size: 1.35rem; line-height: 1; }
+/* The mark is the trip's own flag; the status badge rides its bottom-right, because the two answer different
+   questions ("where" and "when") and stacking them keeps the row to one leading object.
+   ⚠️ The padding is what stops the badge landing ON the mark. A flag emoji is one glyph on a phone but TWO LETTERS
+   on Windows desktop (regional-indicator pairs), so the mark is far wider there than the design assumed and a
+   badge at right:-6px covered the second letter. Reserving the space makes it beside-and-below in both cases.
+   ⚠️ And the reserved space must be at least the badge's FULL width — 16px plus 2×1.5px of ring = 19px. A 13px
+   pad still left a 6px overlap, which is exactly what it looked like. */
+.trip-mark { position: relative; font-size: 1.35rem; line-height: 1; display: inline-flex; padding-right: 21px; }
+.trip-status {
+    position: absolute; right: 0; bottom: -3px;
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 16px; height: 16px; border-radius: 999px;
+    background: #eef2f7; color: #64748b; border: 1.5px solid #fff;
+}
+.trip-status svg { width: 9px; height: 9px; }
+.trip-card.now .trip-status { background: #d9f5e9; color: #0e7c55; }
+.trip-card.soon .trip-status { background: #e8eefc; color: #35538f; }
 .trip-id { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
 .trip-name { font-weight: 650; color: #0f172a; }
 .trip-when { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: .72rem; color: #64748b; }
@@ -3026,7 +3096,20 @@ html.dark .cal-cell:hover:not(.cal-out) { border-color: #3a8f6c; background: #16
 .tl-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #334155; }
 .tl-amt { font-variant-numeric: tabular-nums; font-weight: 600; color: #0f172a; }
 
-.trip-acts { display: flex; gap: 14px; padding-top: 2px; }
+/* Every expense on the trip, in the Breakdown's own row shape. The list is capped and scrolls rather than growing
+   the card without limit — a fortnight away is easily fifty rows, and a card that long buries the ✎/🗑 actions
+   underneath it. */
+.trip-exps { display: flex; flex-direction: column; gap: 2px; }
+.trip-exps-head { display: flex; align-items: baseline; gap: 6px; }
+.trip-exps-lbl { font-size: .68rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: #64748b; }
+.trip-exps-n { font-size: .68rem; font-weight: 700; color: #94a3b8; }
+/* Reset the Breakdown list's own indent + rail: there it hangs off a coloured slice, here it is the card's own
+   content and has nothing to hang from. */
+.trip-exps .brk-exp-list { margin: 0; padding: 2px 0 0; border-left: none; max-height: 320px; overflow-y: auto; }
+.trip-exps .brk-exp-sub { display: inline-flex; align-items: center; gap: 5px; }
+.brk-exp-when { color: #b3bdc8; }
+.brk-exp-when::before { content: "· "; }
+.trip-acts { display: flex; gap: 14px; padding-top: 2px; flex-wrap: wrap; }
 .trip-acts .link.danger { color: #dc2626; }
 .trips-add { align-self: flex-start; }
 
@@ -3047,6 +3130,14 @@ html.dark .trip-budget.over,
 html.dark .trip-acts .link.danger { color: #f87171; }
 html.dark .trip-budget.under,
 html.dark .trip-funded { color: #57d9a3; }
+html.dark .trips-sort-lbl,
+html.dark .trip-exps-lbl { color: #93a3b5; }
+html.dark .trip-exps-n { color: #6b7a8c; }
+html.dark .brk-exp-when { color: #5f6b79; }
+/* The badge's ring is the CARD's colour, not white, or a finished trip's grey pill sits on a white halo. */
+html.dark .trip-status { background: #232c3a; color: #93a3b5; border-color: #131820; }
+html.dark .trip-card.now .trip-status { background: #12352a; color: #57d9a3; }
+html.dark .trip-card.soon .trip-status { background: #1b2740; color: #9db6ea; }
 
 /* A tag's mark when it resolves to a sprite icon rather than a raw emoji (see TagMark). Sized and spaced like the
    .tag-emoji it replaces so a chip's width doesn't shift depending on which kind of mark it carries. */
@@ -3069,6 +3160,33 @@ html.dark .icon-pick.on { background: #12352a; }
 .trip-pick-field .tag-chip { display: inline-flex; align-items: center; gap: 5px; }
 .trip-fx { color: #35538f; display: flex; align-items: center; gap: 6px; }
 html.dark .trip-fx { color: #9db6ea; }
+
+/* --- The expense modal in trip mode ---------------------------------------------------------------------
+   A picked trip re-colours the form's SELECTION state — the top rail, the title's trip lockup and the chosen trip
+   chip — and nothing else. The fields stay exactly where they were: this is the form saying which trip it is
+   filing against, not a different form.
+   ⚠️ The rail is an INSET SHADOW, not an absolutely-positioned ::before. `.modal` is the scroll container
+   (overflow-y: auto), and an absolute child of a scroll container scrolls away with the content — the rail would
+   slide off the top the moment the form was long enough to scroll. An inset shadow is painted on the border box,
+   so it stays put and follows the 16px radius for free. The outer drop shadow has to be restated with it, since
+   the property replaces rather than adds. */
+.modal-trip { box-shadow: inset 0 4px 0 #35538f, 0 20px 60px rgba(0, 0, 0, .25); }
+.modal-h-trip { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+/* The trip lockup beside the title: flag + name, in the trip blue. Kept to the same weight as the heading so it
+   reads as part of the title rather than a badge stuck onto it. */
+.exp-trip-tag {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 2px 9px; border-radius: 999px;
+    background: #e8eefc; color: #35538f;
+    font-size: .74rem; font-weight: 800; line-height: 1.5;
+}
+.exp-trip-tag .tag-ic { width: .95em; height: .95em; }
+/* The selected trip chip goes blue while every other chip on the form keeps the app's mint. Two selection colours
+   on one form is deliberate: the trip is a CONTEXT (it changes what the other fields mean), the rest are values. */
+.trip-pick-field .tag-chip.tag-chip-on { border-color: #35538f; background: #e8eefc; color: #1e3a68; }
+html.dark .modal-trip { box-shadow: inset 0 4px 0 #4a6ea8, 0 20px 60px rgba(0, 0, 0, .5); }
+html.dark .exp-trip-tag { background: #1b2740; color: #9db6ea; }
+html.dark .trip-pick-field .tag-chip.tag-chip-on { border-color: #4a6ea8; background: #1b2740; color: #c3d4f2; }
 
 /* "Add something already paid" — the picker that attaches an expense from any period to a trip. */
 .attach-list { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; gap: 5px; max-height: 46vh; overflow-y: auto; }
