@@ -229,6 +229,33 @@ taking one holiday a year costs nothing.
   entitlement rather than inventing a second one — same argument as the 6/12-month Breakdown windows. Nothing is
   deleted or unlinked by any of it; downgrading can never lose data.
 
+### A second round, after the first deploy
+
+Five more owner asks, all on the same feature:
+
+- **The TripMode badge moved off the wordmark and onto the ACCOUNT chip**, between the name and the caret. A trip
+  belongs to one account — switch accounts and it is simply not on — while the app bar's brand spans every account
+  someone owns, so the badge up there was claiming something wider than it meant. The bar keeps the colour shift,
+  which *is* account-wide. Same badge now also sits beside the Add-expense title, so the two surfaces say it in one
+  language. **★ The flag came out of it**: the destination is already on the Home card and the expense form's trip
+  chip, and three flags on one screen is a costume rather than a signal. The badge answers "what mode", not "where".
+- **"Add something already paid" can reach the whole history.** It listed the 60 most recent expenses — about two
+  months on an active account, and a June trip's flights are routinely bought in January. There is now a search that
+  runs over **every** period before the cap is applied, a footer saying what is *not* shown, and rows already on the
+  trip are pinned in regardless (ticking one could otherwise make it vanish from the list you ticked it in).
+- **★ Those rows can be labelled from the picker.** New `PUT /expenses/{id}/tag` — its own endpoint for exactly the
+  reason the trip link has one: a trip's bookings sit in months closed long before the trip is reviewed, and the
+  full expense edit refuses those (rightly — it would let a closed month's money change). A label moves no money.
+  This matters because the recap is drawn on the tag axis: a booking that joins untagged drags the whole split
+  below the threshold where it is worth showing, and nothing else could fix it.
+- **The trip form's To field takes `min="{From}"`** — one attribute doing two jobs: it greys out every day before
+  departure, and it makes the picker open on the departure month rather than today's.
+- **★ Trips are drawn on the by-date calendar.** A journey is the one thing in this app that is a *range* rather
+  than a point, and the calendar is the only view that can show that shape. The band runs edge to edge and rounds
+  off only at the trip's two ends, so a week away reads as one bar rather than seven marks; the name is printed on
+  the first day only. Days outside the shown period keep the band at lower weight. ⚠️ `margin-top: auto` on the
+  band — without it the bar jumps up and down across the week depending on which days had spending above it.
+
 ### Deploy
 
 `81b0963`, image `gcr.io/finapp-1111/finapp:81b0963`, live on **`finapp-00296-q8x`**. Traffic went to it on its own

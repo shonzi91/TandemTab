@@ -1649,6 +1649,10 @@ public sealed class Localizer(IJSRuntime js)
         ["Pick anything you've already paid for this trip — flights, a hotel, tickets. It stays in the month you paid it; it just starts counting toward the trip."] =
             "Избери каквото вече си платил/а за това пътуване — самолетни билети, хотел, входове. Остава в месеца, в който си платил/а; просто започва да се брои към пътуването.",
         ["Nothing logged yet."] = "Още няма нищо записано.",
+        ["Nothing matches that."] = "Нищо не съвпада.",
+        ["Search every month — “flight”, “hotel”…"] = "Търси във всички месеци — „самолет“, „хотел“…",
+        ["Showing the most recent {0} of {1}. Search to reach anything older."] =
+            "Показани са последните {0} от {1}. Търси, за да стигнеш до по-стари.",
         ["on {0}"] = "към {0}",
 
         // Home's trip banner, the bell's departure nudge, and the softened over-budget line while travelling.

@@ -321,6 +321,8 @@ public sealed class FinAppApiClient(HttpClient http)
         SendAsync<MutationResultDto>(HttpMethod.Post, $"/accounts/{id}/trips/{tripId}/use-savings", req, ct);
     public Task<MutationResultDto> SetExpenseTripAsync(Guid id, Guid expenseId, Guid? tripId, CancellationToken ct = default) =>
         SendAsync<MutationResultDto>(HttpMethod.Put, $"/accounts/{id}/expenses/{expenseId}/trip", new SetExpenseTripRequest(tripId), ct);
+    public Task<MutationResultDto> SetExpenseTagAsync(Guid id, Guid expenseId, Guid? tagId, CancellationToken ct = default) =>
+        SendAsync<MutationResultDto>(HttpMethod.Put, $"/accounts/{id}/expenses/{expenseId}/tag", new SetExpenseTagRequest(tagId), ct);
     public Task<MutationResultDto> SeedTripTagsAsync(Guid id, SeedTripTagsRequest req, CancellationToken ct = default) =>
         SendAsync<MutationResultDto>(HttpMethod.Post, $"/accounts/{id}/trip-tags", req, ct);
 

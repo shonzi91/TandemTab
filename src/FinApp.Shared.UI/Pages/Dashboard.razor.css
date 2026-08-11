@@ -364,7 +364,9 @@ html.dark .home-ms-line:hover { color: #3fe0c5; }
 .hdr-trophy { font-size: 1.1rem; }
 
 /* Account switcher chip — partner avatars + name + who's on it */
-.acct-wrap { position: relative; }
+/* The account chip and its TripMode badge sit on one row — the badge is a property of the account beside it, not a
+   second line of header. It wraps rather than squeezing the account name on a narrow phone. */
+.acct-wrap { position: relative; display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
 .acct-chip {
     display: flex; align-items: center; gap: 10px; background: none; border: none;
     border-radius: 12px; padding: 4px 10px 4px 5px; cursor: pointer; font: inherit; max-width: 340px;
@@ -1719,6 +1721,29 @@ html.dark .detail-subcat-sum { color: #7c8a94; }
 .cal-cell.cal-today { border-color: #13a06e; }
 .cal-cell.cal-today .cal-num { color: #13a06e; }
 .cal-cell.cal-sel { background: #e4f6ee; border-color: #13a06e; }
+
+/* ─── Trips drawn on the month ───
+   A journey is the one thing in this app that is a RANGE rather than a point, and the calendar is the only view
+   that can show that shape. The band runs the full width of each day and rounds off only at the trip's two ends, so
+   a week away reads as one bar across the row instead of seven unrelated marks.
+   ⚠️ Pushed to the bottom with margin-top:auto so it sits on the cell's floor whether or not that day has a total
+   above it — otherwise the bar jumps up and down across the week depending on where money was spent. */
+.cal-trip-band {
+    margin-top: auto; align-self: stretch;
+    /* Negative margins take it to the cell's edges, under the 5px padding, so consecutive days join up. */
+    margin-left: -5px; margin-right: -5px; margin-bottom: -5px;
+    min-height: 13px; padding: 1px 4px;
+    background: #dbe6fa; color: #1e3a68;
+    font-size: .56rem; font-weight: 800; line-height: 11px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.cal-cell.cal-trip-a .cal-trip-band { margin-left: 0; border-top-left-radius: 6px; border-bottom-left-radius: 6px; }
+.cal-cell.cal-trip-z .cal-trip-band { margin-right: 0; border-top-right-radius: 6px; border-bottom-right-radius: 6px; }
+/* A day outside the shown period keeps the band but drops its weight — the trip is real, that day just isn't
+   this month's business. */
+.cal-cell.cal-out .cal-trip-band { background: #eaeff8; color: #98a6bd; }
+html.dark .cal-trip-band { background: #1e3054; color: #9db6ea; }
+html.dark .cal-cell.cal-out .cal-trip-band { background: #1a2233; color: #5f6b79; }
 
 @media (max-width: 720px) {
     .cal-cell { min-height: 48px; }
@@ -3161,6 +3186,31 @@ html.dark .icon-pick.on { background: #12352a; }
 .trip-fx { color: #35538f; display: flex; align-items: center; gap: 6px; }
 html.dark .trip-fx { color: #9db6ea; }
 
+/* --- The TripMode badge ---------------------------------------------------------------------------------
+   The destination's flag plus the app's own name in its trip state, wearing TandemTab's two-tone with the EMPHASIS
+   SWAPPED — "Trip" solid, "Mode" receded. Same lockup, reversed, which is what makes it read as a state rather
+   than a sticker.
+   Two call sites, one rule set: beside the account name (a trip belongs to an account) and in the expense modal's
+   title (this form is filing against one).
+   ⚠️ Mixed case, NOT uppercase. "TRIP MODE" is a system label; "TripMode" is the wordmark's own shape, and the
+   shape is the whole point.
+   ⚠️ No flex `gap`: a gap falls between EVERY child, so it also splits "Trip" and "Mode" into "Trip Mode" — the one
+   thing this lockup must not be. The spacing is the mark's own margin. */
+   ★ No flag. The destination is already on the Home card and on the expense form's trip chip, and three flags on
+   one screen is a costume rather than a signal — this badge answers "what mode am I in", not "where am I". The
+   pill itself is the S101 shape: a soft blue plate with a hairline, sized to sit beside a status chip. */
+.tripmode-tag {
+    display: inline-flex; align-items: center; flex: none;
+    padding: 3px 9px; border-radius: 999px;
+    background: #e8eefc; border: 1px solid #cfdcf6;
+    font-size: .6rem; font-weight: 800; letter-spacing: 0; line-height: 1.4; white-space: nowrap;
+}
+.tmt-trip { color: #1e3a68; }
+.tmt-mode { color: rgba(30, 58, 104, .55); }
+html.dark .tripmode-tag { background: #1b2740; border-color: #2e4368; }
+html.dark .tmt-trip { color: #9db6ea; }
+html.dark .tmt-mode { color: rgba(157, 182, 234, .58); }
+
 /* --- The expense modal in trip mode ---------------------------------------------------------------------
    A picked trip re-colours the form's SELECTION state — the top rail, the title's trip lockup and the chosen trip
    chip — and nothing else. The fields stay exactly where they were: this is the form saying which trip it is
@@ -3172,24 +3222,26 @@ html.dark .trip-fx { color: #9db6ea; }
    the property replaces rather than adds. */
 .modal-trip { box-shadow: inset 0 4px 0 #35538f, 0 20px 60px rgba(0, 0, 0, .25); }
 .modal-h-trip { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-/* The trip lockup beside the title: flag + name, in the trip blue. Kept to the same weight as the heading so it
-   reads as part of the title rather than a badge stuck onto it. */
-.exp-trip-tag {
-    display: inline-flex; align-items: center; gap: 5px;
-    padding: 2px 9px; border-radius: 999px;
-    background: #e8eefc; color: #35538f;
-    font-size: .74rem; font-weight: 800; line-height: 1.5;
-}
-.exp-trip-tag .tag-ic { width: .95em; height: .95em; }
+/* (The flag + trip-name lockup that used to sit beside this title is now the shared .tripmode-tag — same badge the
+   account chip wears, so the two surfaces say it in one language.) */
 /* The selected trip chip goes blue while every other chip on the form keeps the app's mint. Two selection colours
    on one form is deliberate: the trip is a CONTEXT (it changes what the other fields mean), the rest are values. */
 .trip-pick-field .tag-chip.tag-chip-on { border-color: #35538f; background: #e8eefc; color: #1e3a68; }
 html.dark .modal-trip { box-shadow: inset 0 4px 0 #4a6ea8, 0 20px 60px rgba(0, 0, 0, .5); }
-html.dark .exp-trip-tag { background: #1b2740; color: #9db6ea; }
 html.dark .trip-pick-field .tag-chip.tag-chip-on { border-color: #4a6ea8; background: #1b2740; color: #c3d4f2; }
 
 /* "Add something already paid" — the picker that attaches an expense from any period to a trip. */
+/* The search field. A cap on the list is not a history: 60 rows is about two months on an active account, and a
+   June trip's flights are routinely bought in January. */
+.attach-search { display: flex; align-items: center; gap: 7px; padding: 7px 10px; border: 1px solid #e2e8f0; border-radius: 10px; }
+.attach-search svg { width: 15px; height: 15px; flex: none; color: #94a3b8; }
+.attach-search input { flex: 1; min-width: 0; border: none; outline: none; background: none; font: inherit; font-size: .84rem; }
+html.dark .attach-search { border-color: #2a3342; }
+html.dark .attach-search svg { color: #6b7a8c; }
 .attach-list { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; gap: 5px; max-height: 46vh; overflow-y: auto; }
+/* The label chips on an attached row. Indented under the row they belong to, and only shown once it is on the trip
+   — labelling something that isn't part of the journey would be filing it under a split it doesn't appear in. */
+.attach-tags { display: flex; flex-wrap: wrap; gap: 5px; padding: 0 10px 8px 34px; }
 .attach-row { border: 1px solid #eef2f7; border-radius: 10px; }
 .attach-row.on { border-color: var(--tm-mint); background: #f2fbf7; }
 .attach-main { display: flex; align-items: center; gap: 9px; width: 100%; padding: 8px 10px; background: none; border: 0; text-align: left; cursor: pointer; }

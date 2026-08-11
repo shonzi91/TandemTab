@@ -20,17 +20,10 @@
             @* The Pro mark only appears once monetization is live AND the account is actually Pro — during beta
                the flag is off and every account reads "unlimited", which deliberately does NOT earn a crown.
                Badging everyone would make the mark meaningless the day it starts meaning something. *@
-            <span class="brand"><span class="brand-logo"><TandemLogo Pro="@IsPro" /></span><span class="brand-word">Tandem<span class="brand-tab">Tab</span></span>@if (IsPro) { <span class="brand-pro" title="@Loc["You’re on Pro"]">@Loc["Pro"]</span> }@if (LiveTrip is { } lt) {
-                @* ★ The app renames itself for the duration. A balloon off the wordmark's bottom-right corner, the
-                   destination's flag in it, and "TripMode" wearing TandemTab's own two-tone with the EMPHASIS
-                   SWAPPED — the strong word leads instead of trailing. That swap is the signal: it reads as the
-                   same brand in a different state, which is exactly what trip mode is.
-                   It replaces the separate flag chip rather than joining it — the bar already carries a mark, a
-                   wordmark and (on Pro) a gold tag, so this had to cost nothing net.
-                   ⚠️ NOT localized: it's a brand lockup, like TandemTab itself, not a sentence. *@
-                <span class="brand-tripmode" title="@lt.Name">
-                    <span class="btm-mark">@(lt.Icon ?? "🧳")</span><span class="btm-trip">Trip</span><span class="btm-mode">Mode</span>
-                </span> }</span>
+            <span class="brand"><span class="brand-logo"><TandemLogo Pro="@IsPro" /></span><span class="brand-word">Tandem<span class="brand-tab">Tab</span></span>@if (IsPro) { <span class="brand-pro" title="@Loc["You’re on Pro"]">@Loc["Pro"]</span> }</span>
+            @* The TripMode badge used to hang off this wordmark. It moved to the ACCOUNT chip (Dashboard) — a trip
+               belongs to one account, while this brand spans every account someone owns, so the badge was claiming
+               something wider than it meant. The bar keeps the colour shift, which IS account-wide context. *@
             <span class="appbar-user">
                 <LanguagePicker />
                 @* Admin lives in its own door, not buried in profile settings. Only rendered for an admin; the

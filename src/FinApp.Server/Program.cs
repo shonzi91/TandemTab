@@ -2011,6 +2011,24 @@ accounts.MapPut("/{id:guid}/expenses/{expenseId:guid}/trip", async (Guid id, Gui
     return Results.Ok(new MutationResultDto(version, expenseId));
 });
 
+// Label one expense, in any period. Same shape and the same reason as the trip link above: a trip's bookings sit in
+// months that are closed by the time the trip is being reviewed, and a tag moves no money.
+accounts.MapPut("/{id:guid}/expenses/{expenseId:guid}/tag", async (Guid id, Guid expenseId, SetExpenseTagRequest req, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
+{
+    var userId = user.UserId();
+    var (version, _) = await svc.MutateAsync<object?>(userId, id, account =>
+    {
+        var expense = account.Periods.SelectMany(p => p.Expenses).FirstOrDefault(e => e.Id == expenseId)
+            ?? throw new InvalidOperationException("That expense doesn't exist in this account.");
+        if (req.TagId is { } tagId && account.FindTag(tagId) is null)
+            throw new InvalidOperationException("That tag doesn't exist in this account.");
+        expense.SetTag(req.TagId);
+        return null;
+    }, ct);
+    await notifier.AccountChangedAsync(id, userId, version);
+    return Results.Ok(new MutationResultDto(version, expenseId));
+});
+
 // Seed the trip labels once. Idempotent by design — the client sends its localized names, and a second call (or a
 // second language) is a no-op, so the split can't fork into two parallel tag sets.
 accounts.MapPost("/{id:guid}/trip-tags", async (Guid id, SeedTripTagsRequest req, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>

@@ -65,6 +65,15 @@ else
                         }
                     </span>
                     <span class="acct-nm">@State.Account.Name<small>@MembersLine(State.RealUsers)</small></span>
+                    @* ★ The TripMode badge sits with the ACCOUNT, not with the product wordmark. A trip belongs to
+                       one account — switch accounts and it is simply not on — whereas the app bar's brand spans all
+                       of them, so a badge up there claimed something wider than it meant.
+                       Inside the chip, between the name and the caret: it qualifies the account NAME, and anything
+                       outside the button reads as a separate object sitting near it rather than part of it. *@
+                    @if (State.ActiveTrip is { } acctTrip)
+                    {
+                        @TripModeTag(acctTrip)
+                    }
                     <span class="acct-car">▾</span>
                 </button>
                 @if (_acctDropOpen)
@@ -1533,12 +1542,23 @@ else
                         {
                             var inRange = d >= State.Period.From && d <= State.Period.To;
                             byDay.TryGetValue(d, out var info);
+                            // ★ Trips are drawn ON the month. A journey is the one thing in this app that is a RANGE
+                            // of days rather than a point, and a calendar is the only view that can show that shape —
+                            // seeing the block is how "the flight was before we left" stops being an abstraction.
+                            // Any trip covering the day, not just the running one: the grid is as often read about a
+                            // month that is finished as about the one you're in.
+                            var calTrip = State.AllTrips.FirstOrDefault(t => d >= t.From && d <= t.To);
+                            var tripStart = calTrip is not null && d == calTrip.From;
+                            var tripEnd = calTrip is not null && d == calTrip.To;
                             var cls = "cal-cell"
                                 + (inRange ? "" : " cal-out")
                                 + (d == calToday ? " cal-today" : "")
-                                + (_dayView == d ? " cal-sel" : "");
+                                + (_dayView == d ? " cal-sel" : "")
+                                + (calTrip is null ? "" : " cal-trip")
+                                + (tripStart ? " cal-trip-a" : "")
+                                + (tripEnd ? " cal-trip-z" : "");
                             var day = d;
-                            <div class="@cls" @onclick="() => OpenDayFromCalendar(day)">
+                            <div class="@cls" @onclick="() => OpenDayFromCalendar(day)" title="@(calTrip?.Name)">
                                 <span class="cal-top">
                                     <span class="cal-num">@d.Day</span>
                                     @if (inRange && State.IsPeriodOpen)
@@ -1549,6 +1569,13 @@ else
                                 @if (inRange && info.Count > 0)
                                 {
                                     <span class="cal-total">@Fmt(info.Total)</span>
+                                }
+                                @* The band runs edge to edge across the trip's days and rounds off only at its two
+                                   ends, so a week away reads as one bar rather than seven separate marks. The name
+                                   is printed on the first day only — repeating it seven times is noise. *@
+                                @if (calTrip is not null)
+                                {
+                                    <span class="cal-trip-band">@(tripStart ? calTrip.Name : "")</span>
                                 }
                             </div>
                         }
@@ -3817,11 +3844,14 @@ else
                     @* The title says what is being logged AGAINST when that isn't just "this month": the flag and
                        the trip's name, in the trip's own blue. It is the one piece of context that changes where
                        every figure below lands, so it goes where a title goes rather than into a hint. *@
+                    @* The same TripMode badge the account carries, so "this form is filing against a trip" is said
+                       in one visual language wherever it appears. The trip's NAME is not repeated here — the chip
+                       row immediately below shows it, selected, and the badge carries it in its tooltip. *@
                     <h3 class="modal-h-trip">
                         <span>@Loc["Add expense"]</span>
                         @if (State.FindTrip(_expTripId) is { } hdrTrip)
                         {
-                            <span class="exp-trip-tag">@TripMark(hdrTrip.Icon)@hdrTrip.Name</span>
+                            @TripModeTag(hdrTrip)
                         }
                     </h3>
                     @* ★ The trip leads the form. It is the first question because it decides the answers to the next
@@ -4632,9 +4662,13 @@ else
                     <h3>@(_tripId == Guid.Empty ? Loc["New trip"] : Loc["Edit trip"])</h3>
                     <label>@Loc["Name"] <input type="text" maxlength="40" @bind="_tripName" @bind:event="oninput" placeholder="@Loc["Rome"]" /></label>
                     <label>@Loc["Where"] <input type="text" maxlength="60" @bind="_tripDestination" @bind:event="oninput" placeholder="@Loc["Rome, Italy"]" /></label>
+                    @* ⚠️ `min` on the To field does two jobs at once: it greys out every day before departure (a trip
+                       cannot end before it starts, and the Save button's guard shouldn't be the first time anyone
+                       hears that), and it makes the picker OPEN on the departure month instead of today's — the
+                       browser opens an empty/earlier date input at its minimum. One attribute, both asks. *@
                     <div class="row2">
                         <label>@Loc["From"] <input type="date" @bind="_tripFrom" /></label>
-                        <label>@Loc["To"] <input type="date" @bind="_tripTo" /></label>
+                        <label>@Loc["To"] <input type="date" @bind="_tripTo" min="@_tripFrom.ToString("yyyy-MM-dd")" /></label>
                     </div>
                     @* Overlap warning. Overlapping trips are ALLOWED — people really do fly straight from one to
                        the next — but the app resolves "which trip is running today" to the most recent departure,
@@ -4793,10 +4827,19 @@ else
                        and by now March is closed. Attaching writes only the link, so a closed period is no
                        obstacle — nothing here edits the expense itself. *@
                     <p class="hint">@Loc["Pick anything you've already paid for this trip — flights, a hotel, tickets. It stays in the month you paid it; it just starts counting toward the trip."]</p>
-                    var attachable = State.RecentExpensesAcrossPeriods();
+                    @* ★ Search, because a cap is not a history. The list shows the most recent 60, which on an active
+                       account is about two months — and a flight for a June trip is routinely bought in January. The
+                       search runs over EVERY period before the cap is applied, so anything is reachable by typing;
+                       and rows already on this trip are pinned in regardless, or ticking one could make it vanish
+                       from the list you ticked it in. *@
+                    <label class="attach-search">
+                        <Icon Name="search" />
+                        <input type="text" placeholder="@Loc["Search every month — “flight”, “hotel”…"]" @bind="_attachSearch" @bind:event="oninput" />
+                    </label>
+                    var attachable = State.RecentExpensesAcrossPeriods(60, _attachSearch, _tripId);
                     @if (attachable.Count == 0)
                     {
-                        <p class="hint">@Loc["Nothing logged yet."]</p>
+                        <p class="hint">@(string.IsNullOrWhiteSpace(_attachSearch) ? Loc["Nothing logged yet."] : Loc["Nothing matches that."])</p>
                     }
                     else
                     {
@@ -4822,9 +4865,32 @@ else
                                         <span class="attach-amt">@Fmt(row.Amount)</span>
                                         @if (mine) { <Icon Name="check" /> }
                                     </button>
+                                    @* ★ Label it here, on the row, the moment it is attached. The trip's recap is
+                                       drawn on the tag axis, so a booking that joins the trip untagged lands in the
+                                       "untagged" share and drags the whole split below the threshold where it is
+                                       worth showing — and the ordinary edit form can't fix it, because the month it
+                                       was paid in has been closed for six months. This writes only the tag. *@
+                                    @if (mine && State.TripTags.Count > 0)
+                                    {
+                                        <div class="attach-tags">
+                                            @foreach (var tt in State.TripTags)
+                                            {
+                                                var attTag = tt;
+                                                var tagOn = row.TagId == attTag.Id;
+                                                <button type="button" class="tag-chip @(tagOn ? "tag-chip-on" : "")"
+                                                        @onclick="() => SetAttachedTag(row.Id, tagOn ? null : attTag.Id)">
+                                                    @TagMark(attTag.Icon)@attTag.Name
+                                                </button>
+                                            }
+                                        </div>
+                                    }
                                 </li>
                             }
                         </ul>
+                        @if (string.IsNullOrWhiteSpace(_attachSearch) && State.AllExpensesCount > attachable.Count)
+                        {
+                            <small class="hint">@string.Format(Loc["Showing the most recent {0} of {1}. Search to reach anything older."], attachable.Count, State.AllExpensesCount)</small>
+                        }
                     }
                     <div class="modal-actions">
                         <button @onclick="Back">@Loc["Done"]</button>
@@ -8865,7 +8931,14 @@ else
 
     private void ConfirmRemoveTrip(Guid tripId) { _tripId = tripId; _modal = Modal.DeleteTrip; }
 
-    private void OpenAttachToTrip(Guid tripId) { _tripId = tripId; _modal = Modal.AttachToTrip; }
+    // Search text for the attach-to-trip picker. Cleared on open — a stale filter would make the list look empty.
+    private string? _attachSearch;
+
+    private void OpenAttachToTrip(Guid tripId) { _tripId = tripId; _attachSearch = null; _modal = Modal.AttachToTrip; }
+
+    /// <summary>Label an attached booking from inside the picker. Deliberately does NOT close the modal — labelling
+    /// a trip's bookings is a run of taps, like attaching them.</summary>
+    private Task SetAttachedTag(Guid expenseId, Guid? tagId) => RunModal(() => State.SetExpenseTag(expenseId, tagId));
 
     /// <summary>Attach or detach one already-logged expense. Deliberately does NOT close the modal — attaching a
     /// trip's bookings is a run of several taps, and closing after each would make a five-item trip five trips.</summary>
@@ -9319,6 +9392,20 @@ else
     /// <summary>A trip's mark: its own flag or icon, falling back to the app's plane rather than a 🧳 — the
     /// fallback is the app choosing, and everything the app chooses is drawn from the sprite.</summary>
     private RenderFragment TripMark(string? icon) => TagMark(string.IsNullOrEmpty(icon) ? "plane" : icon);
+
+    /// <summary>
+    /// The TripMode badge: the app's own name in its trip state — TandemTab's two-tone with the <b>emphasis
+    /// swapped</b>, so "Trip" takes the solid colour "Tab" wears and "Mode" the receded one "Tandem" wears. Same
+    /// lockup, reversed, which is what makes it read as a state rather than a sticker.
+    /// <para>★ <b>No flag.</b> The destination is already on the Home card and on the expense form's trip chip, and
+    /// three flags on one screen is a costume rather than a signal. This badge answers "what mode am I in", not
+    /// "where am I" — and stripping it back to two words is what lets it sit tight against a label instead of
+    /// floating beside it as a third object.</para>
+    /// <para>One fragment, two call sites (the account chip and the expense modal's title) so they can't drift. Not
+    /// localized: it is a brand lockup, like TandemTab itself, not a sentence. The trip's name is the tooltip.</para>
+    /// </summary>
+    private RenderFragment TripModeTag(FinApp.Domain.Budgeting.Trip trip) =>
+        @<span class="tripmode-tag" title="@trip.Name"><span class="tmt-trip">Trip</span><span class="tmt-mode">Mode</span></span>;
 
     private RenderFragment TagMark(string? icon) => builder =>
     {

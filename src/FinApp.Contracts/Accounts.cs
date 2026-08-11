@@ -257,6 +257,12 @@ public record EditTripRequest(string Name, DateOnly From, DateOnly To, string? D
 /// own edit so that changing what a trip contains never has to re-post its amount, category or date.</summary>
 public record SetExpenseTripRequest(Guid? TripId);
 
+/// <summary>Set (or clear) one expense's tag without touching anything else about it. Its own endpoint for the same
+/// reason as <see cref="SetExpenseTripRequest"/>: labelling a trip's bookings means reaching into periods that are
+/// long closed, and the full expense edit refuses those — rightly, since it would let a closed month's money change.
+/// A label moves no money. Mirrors <c>BudgetingState.SetExpenseTag</c>.</summary>
+public record SetExpenseTagRequest(Guid? TagId);
+
 /// <summary>Declare a trip over (or put it back on the road). Its own endpoint rather than a field on
 /// <see cref="EditTripRequest"/>: the edit form is a full replace, so carrying this there would silently reopen a
 /// finished trip every time someone corrected its name. Mirrors <c>BudgetingState.FinishTrip</c>.</summary>
