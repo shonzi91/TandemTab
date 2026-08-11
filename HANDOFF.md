@@ -336,6 +336,15 @@ interesting finding of the session.
   both launcher icons). Realistically its own session, and it wants the emulator throughout.
   ★ **Start with the lease residual**: it is the only one of these where a native user gets a *wrong number*
   rather than a missing convenience.
+- **⚠️ The owner's own car-lease bucket still holds the old figures — a data fix only they can make.** The feature
+  shipped, but the bucket that prompted it was never re-entered, so it is still projecting from an instalment that
+  includes VAT and no residual at all. In the live account, set:
+  - **Monthly instalment → 553.61** (not 650). 650 is the VAT-inclusive figure; only the "Лизингова вноска (без
+    ДДС)" amount services the lease, and VAT goes to the state rather than against the balance.
+  - **Final / residual payment → 9 630.49** — the balloon still owed on the last scheduled date (Aug 2030).
+  - Leave the rate at **3.51%** and the balance as-is; both reconciled exactly against the lender's table.
+  It should then read **Aug 2030** instead of Apr 2031. Worth doing before trusting any other debt projection in
+  that account, since the payoff date feeds the pace reminders and the "spare → loan" nudges.
 - **Owner ask #8** (a location/date-range "what did this trip cost" recap) stays on the roadmap, per the owner.
 - **The archived-account purge race fires on most multi-instance deploys and is EXPECTED.** It is caught, logged
   as `warn:`, and the container boots. Cloud Run stamps the unstructured multi-line output as ERROR regardless, so
