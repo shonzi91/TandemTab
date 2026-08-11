@@ -282,22 +282,44 @@ else
                 <div class="bal-part bal-part-main">
                     <span class="bal-label">@Loc["Safe to spend"]@if (LiveBalancePending) { <span class="bal-refreshing" title="@Loc["Updating live balance…"]"></span> }</span>
                     <strong class="@(State.IsOverAllocated ? "warn-text" : "bal-free-v")" title="@Loc["Not set aside for savings. Budgets are plans, so they don't reserve this."]">@Fmt(_balFree)</strong>
-                    @* ★ Exactly ONE context line, never two. "After bills" and "a day left" answer the same question
-                       at different resolutions — the per-day figure is already computed after bills — so showing both
-                       spent a line to say the same thing twice, on the densest part of the app.
-                       The absolute figure wins only when it turns negative, because "you are short" is a different
-                       statement from "here is your daily allowance" and must not be softened into one. *@
-                    @if (_billsDue.Amount > 0m && _safeAfterBills.IsNegative)
+                    @* ★ Exactly ONE context line, never two — and it is the "after bills" figure, not the daily
+                       allowance. Both answered the same question at different resolutions (the per-day number is
+                       already computed after bills), and the absolute one is what the owner actually reads: what
+                       is left once the month's known commitments are met. The per-day figure moves into the
+                       explainer below, where it costs nothing.
+                       Tapped rather than hovered — there is no hover on a phone, which is where this line matters
+                       most, so a title attribute hid the explanation from exactly the people who needed it. *@
+                    @if (_billsDue.Amount > 0m)
                     {
-                        <small class="bal-sub warn-text" title="@string.Format(Loc["{0} in known bills is still expected this period — this is what stays free once they are paid."], Fmt(_billsDue))">@Fmt(_safeAfterBills) @Loc["after bills"]</small>
+                        <button type="button" class="bal-sub bal-sub-btn @(_safeAfterBills.IsNegative ? "warn-text" : "")"
+                                aria-expanded="@(_safeInfoOpen ? "true" : "false")"
+                                @onclick="() => _safeInfoOpen = !_safeInfoOpen" @onclick:stopPropagation="true">@Fmt(_safeAfterBills) @Loc["after bills"] <Icon Name="info" Class="bal-sub-i" /></button>
                     }
-                    else if (_perDay is { } _pd)
+                    else if (_perDay is { } _pdOnly)
                     {
-                        <small class="bal-sub bal-daily" title="@string.Format(Loc["About {0} a day for the {1} days left this period, after known bills ({2})."], Fmt(_pd), _daysLeft, Fmt(_billsDue))">@string.Format(Loc["{0} a day left"], Fmt(_pd))</small>
+                        @* Nothing outstanding, so "after bills" would just restate the headline. *@
+                        <button type="button" class="bal-sub bal-sub-btn bal-daily"
+                                aria-expanded="@(_safeInfoOpen ? "true" : "false")"
+                                @onclick="() => _safeInfoOpen = !_safeInfoOpen" @onclick:stopPropagation="true">@string.Format(Loc["{0} a day left"], Fmt(_pdOnly)) <Icon Name="info" Class="bal-sub-i" /></button>
                     }
-                    else if (_billsDue.Amount > 0m)
+                    @if (_safeInfoOpen)
                     {
-                        <small class="bal-sub" title="@string.Format(Loc["{0} in known bills is still expected this period — this is what stays free once they are paid."], Fmt(_billsDue))">@Fmt(_safeAfterBills) @Loc["after bills"]</small>
+                        @* A click anywhere else closes it — the backdrop is the whole viewport, so there is no way
+                           to leave a stray popover open, which is the failure mode of tap-to-open tooltips. *@
+                        <div class="bal-info-backdrop" @onclick="() => _safeInfoOpen = false"></div>
+                        <div class="bal-info" role="tooltip">
+                            <div class="bal-info-row"><span>@Loc["Safe to spend"]</span><strong>@Fmt(_balFree)</strong></div>
+                            @if (_billsDue.Amount > 0m)
+                            {
+                                <div class="bal-info-row"><span>@Loc["Known bills still due"]</span><strong>−@Fmt(_billsDue)</strong></div>
+                                <div class="bal-info-row bal-info-total"><span>@Loc["Left after bills"]</span><strong class="@(_safeAfterBills.IsNegative ? "warn-text" : "")">@Fmt(_safeAfterBills)</strong></div>
+                            }
+                            @if (_perDay is { } _pdInfo)
+                            {
+                                <div class="bal-info-note">@string.Format(Loc["That's about {0} a day for the {1} days left in this period."], Fmt(_pdInfo), _daysLeft)</div>
+                            }
+                            <div class="bal-info-note">@Loc["Money set aside for savings is already excluded. Budgets are plans, so they don't reserve anything here."]</div>
+                        </div>
                     }
                 </div>
                 @* ★ The three reference figures keep their number and lose their sub-lines. Each sub-line was a
@@ -5775,6 +5797,17 @@ else
     private const string SavedColor = "#2f9e44";
 
     // Build the slices for the current window + drill state, largest first. Amounts use the absolute expense value.
+    /// <summary>Put <paramref name="slice"/> where its size says it belongs, ahead of the first slice it outranks —
+    /// but never ahead of nothing, and always before the "Everything else"/"Saved" tail if it is smaller than the
+    /// head. Used for the transfers slice, which has no category to be grouped with but is still money out.</summary>
+    private static void InsertByAmount(List<BreakSlice> slices, BreakSlice slice)
+    {
+        var at = slices.FindIndex(s => s.Key != OtherKey && s.Amount < slice.Amount);
+        if (at < 0) at = slices.FindIndex(s => s.Key == OtherKey);      // above "Everything else" if it beats nothing
+        if (at < 0) at = slices.Count;
+        slices.Insert(at, slice);
+    }
+
     private List<BreakSlice> BreakSlices()
     {
         var (from, to) = BreakWindow();
@@ -5829,8 +5862,13 @@ else
         }
         // Money transferred out to other accounts is outflow too — its own standalone slice in every grouping
         // (transfers carry no category/tag/… of their own), so the donut total stays consistent across the toggles.
+        // ★ RANKED IN, not appended. Appending sorted a transfer last however large it was, which for anyone who
+        // moves real money between accounts meant the single biggest outflow of the period sat at the bottom of a
+        // list ordered by size. It keeps its own colour (it isn't a category) but takes its rightful place.
+        // Deliberately not eligible for the "Everything else" rollup: that bucket is category-only, so its
+        // drill-down list stays well-defined.
         var xfer = State.AccountTransfersInRange(from, to).Sum(t => Math.Abs(t.Amount.Amount));
-        if (xfer > 0m) slices.Add(new BreakSlice(TransfersKey, Loc["Transfers out"], null, xfer, TransfersColor));
+        if (xfer > 0m) InsertByAmount(slices, new BreakSlice(TransfersKey, Loc["Transfers out"], null, xfer, TransfersColor));
         // Savings disbursements are shown as a positive "Saved toward goals" slice — money put to work, not spent
         // (kept out of "Spent"; see brkMoneyOut). Last so it reads as the rewarding coda to the outflow story.
         var saved = State.DisbursementsInRange(from, to).Sum(t => Math.Abs(t.Amount.Amount));
@@ -6088,8 +6126,10 @@ else
             slices.Add(new BreakSlice(head[i].Key, State.CategoryName(head[i].Key), State.CategoryStoredIcon(head[i].Key), head[i].Value, SliceColor(i)));
         if (groupTail)
             slices.Add(new BreakSlice(OtherKey, Loc["Everything else"], null, ordered.Skip(4).Sum(kv => kv.Value), OtherColor));
+        // Ranked in rather than appended — see InsertByAmount. Home only lists the top 4, so an appended transfer
+        // was invisible here entirely, however much money it moved.
         var xfer = State.Period.AccountTransfersOut.Sum(t => Math.Abs(t.Amount.Amount));
-        if (xfer > 0m) slices.Add(new BreakSlice(TransfersKey, Loc["Transfers out"], null, xfer, TransfersColor));
+        if (xfer > 0m) InsertByAmount(slices, new BreakSlice(TransfersKey, Loc["Transfers out"], null, xfer, TransfersColor));
         var saved = State.Period.ExternalTransfers.Except(State.Period.AccountTransfersOut).Sum(t => Math.Abs(t.Amount.Amount));
         if (saved > 0m) slices.Add(new BreakSlice(SavedKey, Loc["Saved toward goals"], null, saved, SavedColor));
         return slices;
@@ -8118,6 +8158,9 @@ else
 
     // --- Notifications bell — aggregates the transient Home prompts into one dropdown by the account controls -----
     private bool _bellOpen;
+    // The tap-to-open explainer under "Safe to spend". Tap, not hover: the phone is where this line matters most
+    // and has no hover at all, so a title attribute hid it from the people who needed it.
+    private bool _safeInfoOpen;
     // Urgent = a "needs attention" item (overspend / over-budget / health warning). These show inline on Home and are
     // NOT repeated in the bell (UX backlog #4 — each item lives in one place). Due = a time-based bill/recurring
     // reminder (due now, upcoming, or just auto-posted); the bell splits Due from the rest as "Suggestions" (#5).

@@ -18,7 +18,9 @@
 .brand {
     display: inline-flex;
     align-items: center;
-    gap: 8px;
+    /* Tightened from 8px: the mark and the wordmark are one lockup, and the wider gap read as two separate
+       things sitting near each other on the bar. */
+    gap: 6px;
     font-weight: 700;
     font-size: 1.3rem;
     letter-spacing: .2px;
@@ -33,9 +35,11 @@
    exactly the mark's own dark field. Without a plate the mark's green half dissolves into the bar and you see
    a mint blob. So light keeps a white plate — it reads as a keyline around an app icon, not as a second tile —
    and dark drops it, because the dark bar is navy glass and the mark separates on its own. */
+/* 38px → 30px: at 38 the mark stood a clear head taller than the cap-height of the wordmark beside it, so the
+   icon led the lockup instead of supporting it. 30 sits just above the caps, which is where a mark belongs. */
 .brand-logo {
-    width: 38px; height: 38px; flex: 0 0 auto;
-    background: #ffffff; border-radius: 11px; padding: 3px;
+    width: 30px; height: 30px; flex: 0 0 auto;
+    background: #ffffff; border-radius: 9px; padding: 2px;
     display: grid; place-items: center;
 }
 .brand-logo ::deep svg { width: 100%; height: 100%; display: block; }
@@ -43,9 +47,11 @@
    account, it isn't a second brand. Sits on the wordmark's baseline via align-self rather than the flex centre,
    so it reads as a superscript on "Tab" instead of a floating chip. */
 .brand-pro {
-    align-self: center; margin-left: 2px;
-    font-size: .58rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase;
-    padding: 2px 6px; border-radius: 999px; line-height: 1;
+    /* Shrunk with the mark (.58 → .5rem, tighter padding) and pulled in against the wordmark: it labels the
+       account, so it should read as a superscript on "Tab" rather than a third element in the row. */
+    align-self: center; margin-left: 1px;
+    font-size: .5rem; font-weight: 800; letter-spacing: .07em; text-transform: uppercase;
+    padding: 2px 5px; border-radius: 999px; line-height: 1;
     background: linear-gradient(135deg, #ffe28a, #f6c945); color: #6b4c05;
     box-shadow: 0 1px 3px rgba(0,0,0,.18);
 }
@@ -366,7 +372,7 @@ html.dark .pm-exit-test:hover { color: #2ee59d; }
 @media (max-width: 560px) {
     .app-bar { padding: 0 12px; gap: 8px; }
     .brand { font-size: 1.1rem; min-width: 0; }
-    .brand-logo { width: 32px; height: 32px; }
+    .brand-logo { width: 26px; height: 26px; border-radius: 8px; }
     .appbar-user { gap: 8px; min-width: 0; }
     .appbar-user .user { display: none; }
     .appbar-user .link { padding: 6px 10px; }
