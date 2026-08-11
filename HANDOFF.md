@@ -229,6 +229,16 @@ taking one holiday a year costs nothing.
   entitlement rather than inventing a second one — same argument as the 6/12-month Breakdown windows. Nothing is
   deleted or unlinked by any of it; downgrading can never lose data.
 
+### Deploy
+
+`81b0963`, image `gcr.io/finapp-1111/finapp:81b0963`, live on **`finapp-00296-q8x`**. Traffic went to it on its own
+— the service spec is back on `latestRevision: true` (the pinned revisionName that forced `--to-latest` through
+S97/S98 is gone), so `status.traffic` reads 100% / latestRevision with no revision pin. Verified at the **bytes**
+level on both the run URL and tandemtab.com: identical 338,414-byte scoped bundles (hash `3lodm76x08`) carrying
+`.trip-hero` ×26, `.trip-status` ×7, `.trips-sort` ×8, `.modal-trip` ×2, `.exp-trip-tag` ×3, `.trip-exps` ×8,
+`.brand-tripmode` ×4, `.btm-trip` ×2. No WARNING+ on the revision. `app.css` untouched, so no `?v=` bump was
+needed — every rule this session is in a scoped component stylesheet.
+
 ### Verification
 
 Fresh fixture (`tripcheck` / `Tripcheck1!`, account "Trip check"): four trips — one running with 7 expenses either
