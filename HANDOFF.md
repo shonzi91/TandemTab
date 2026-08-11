@@ -266,6 +266,37 @@ level on both the run URL and tandemtab.com: identical 338,414-byte scoped bundl
 `.brand-tripmode` ×4, `.btm-trip` ×2. No WARNING+ on the revision. `app.css` untouched, so no `?v=` bump was
 needed — every rule this session is in a scoped component stylesheet.
 
+### Second deploy, and ⛔ a NEW boot crash found in its logs (not the purge one)
+
+`6dfc2f8` → **`finapp-00297-w9p`**, traffic 100%, identical 339,708-byte scoped bundles (hash `0sye04oku1`) on both
+hosts carrying `.tripmode-tag` ×3, `.tmt-trip` ×2, `.cal-trip-band` ×6, `.attach-search` ×5, `.attach-tags` ×1 —
+and **`brand-tripmode` GONE (0)**, which is the absence that proves a fresh build rather than a cache.
+
+⛔ **The log check found a real boot crash, and it is NOT the S96/S97 archived-account purge race.** Read the last
+stack frame, as ever:
+
+```
+Unhandled exception. Npgsql.NpgsqlException: Exception while reading from stream
+ ---> System.TimeoutException: Timeout during reading attempt
+   … NpgsqlConnector.AuthenticateSASL / Open …
+   at Microsoft.EntityFrameworkCore.Infrastructure.DatabaseFacade.EnsureCreated()
+   at Program.<Main>$(String[] args) in /src/src/FinApp.Server/Program.cs:line 245
+Uncaught signal: 6, pid=1, tid=1
+```
+
+**Both** starting instances died this way at 17:45:58, Cloud Run retried, and the next pair came up at 17:46:02 and
+are serving — index 200, service `Ready=True`. So prod is healthy and this self-cleared, exactly like S96's did.
+
+But it is a latent availability bug and a *different* one: `Program.cs:245` runs `EnsureCreated()` **unguarded and
+with no retry**, so any cold start where Neon is slow to complete SASL auth takes the whole container down. Neon
+scale-to-zero makes a slow first connection ordinary, not exceptional. Every instance boots through this line, so a
+long enough Neon stall takes the service down rather than degrading it.
+
+The fix is the same shape as the S97 purge fix: wrap the schema-ensure block in a retry-with-backoff (or a
+try/catch that lets the app start and re-attempts in the background), so a slow database delays readiness instead
+of killing the process. **Worth doing before the next deploy** — it is three lines and it removes a whole class of
+random deploy failures.
+
 ### Verification
 
 Fresh fixture (`tripcheck` / `Tripcheck1!`, account "Trip check"): four trips — one running with 7 expenses either
