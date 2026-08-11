@@ -6,9 +6,14 @@ a European keypad offers. Also: a due bill is now *skipped*, not dismissed — w
 loan and the bill that services it share one due date, and linking the bill now drives the loan; the "I log each
 installment here" switch was renamed to what it actually controls; an emergency fund that sizes itself; a loan
 payment that shows what it bought; Home's header down from seven numbers to four; and the honest half of owner
-ask #7. **393 + 48 + 327 green** (from 363 + 48 + 320).
-✅ **Committed, pushed and DEPLOYED in two rounds** — `6937b6c`, `0b92bbd` on **`finapp-00292-mvj`**, then
-`f169319`, `d738f9d`. The first round was verified at the **bytes** level on both the run URL and tandemtab.com:
+ask #7. **Then a follow-up round from the owner's own data**: a transfer out now ranks by its size instead of
+always sorting last, "after bills" replaces the daily figure under Safe to spend (tapped, not hovered), the brand
+lockup tightened — and **a lease now finishes at its residual rather than at zero**, found by reconciling the
+owner's real contract against the lender's amortisation table. **399 + 48 + 327 green** (from 363 + 48 + 320).
+✅ **Committed, pushed and DEPLOYED in three rounds** — `6937b6c`, `0b92bbd` on **`finapp-00292-mvj`**, then
+`f169319`, `d738f9d` on **`finapp-00293-nxk`**, then `c36cefd`, `502ac89`, `75d249e` on **`finapp-00294-lzn`**
+(traffic forced `--to-latest` each time). Every round was verified
+at the **bytes** level on both the run URL and tandemtab.com:
 identical 304,291-byte scoped bundles carrying `.inst-flag` ×5, `.card-act-transfer` ×4, `.bell-act-alt` ×3,
 `.num` ×2, and the OLD `inst-extra-row input[type="number"]` rule **gone** (0) — that absence is what proves a
 fresh build rather than a cache. 5 `secretKeyRef`s; the only WARNINGs were two 401s from a logged-out browser.
@@ -268,16 +273,69 @@ The owner asked for the remaining items rather than deferring them, so the sessi
   - Nothing at all is claimed below four closed periods, where "typical" describes nothing.
   - Lives inside Trends rather than as its own section, per the standing preference against new sections.
 
+### The third round — found by reconciling the owner's own contract
+
+The owner came back with three things from using the deployed build, and one of them turned into the most
+interesting finding of the session.
+
+- **★★ A lease finishes at its residual, not at zero (`502ac89`).** The owner's debt projection read Apr 2031 for
+  a contract ending Aug 2030, and asked whether the 20% VAT explained it. They posted the lender's amortisation
+  table, which settled it — and their VAT instinct was right, just working the opposite way round.
+  - **Their 3.51% and their "5,379 already paid off" were both exactly right.** Month-1 interest of €112.34 on
+    €38,517.32 is 0.29167%/month = **3.50% nominal**; €5,379.84 is precisely row 12 of the table (11 payments in).
+  - **The €650 instalment was wrong.** The lender's own "Лизингова вноска (без ДДС)" column reads **€553.61**, and
+    it reconciles: principal €441.27 + interest €112.34. €650 is roughly the VAT-inclusive figure (553.61 × 1.20 =
+    664.33, or 641.86 if VAT is charged on the principal portion only, the usual BG leasing treatment). **VAT goes
+    to the state, not against the balance**, so entering it overstated repayment by ~€96/month — which pulled the
+    date *earlier*.
+  - **★ The real cause: a lease is not a loan that happens to end early.** Its instalments are sized to leave a
+    stated sum owed on the last scheduled date. At the true €553.61, after the 48 payments to Aug 2030 there is
+    still **€9,630.49** outstanding — the balloon. The app amortised straight through it to zero, pushing the date
+    *later*. Apr 2031 was those two errors combined.
+  - `LoanForecast.PayOff` takes an optional residual and stops there; `SavingCategory.DebtResidual` is body data
+    (Ignore()d, trailing optional snapshot param, zero on every existing bucket → ordinary loans project
+    identically, pinned by a test). Wired through the bucket editor, the row's payoff flag and slider,
+    `RemainingInterest`, `MonthsRemaining` and the savings DTO (the upsert is a full overwrite, so a client that
+    could not read it back would silently clear it).
+  - **★ The residual is compared to the CENT, and only when there is one.** A stated residual (from a contract, or
+    from `BalanceAfter`, which rounds) meets a raw running total that does not — without the tolerance a fraction
+    of a cent bought a whole extra month, landing on 61 instead of 60. A zero target needs no tolerance: nothing
+    owed is exact, and loosening it there could end an ordinary loan a month early.
+  - `LeaseResidualTests` reconciles the real contract end to end and is the regression guard.
+- **★ A transfer out ranks by its size (`c36cefd`).** Both slice builders appended it AFTER the categories had been
+  ordered, so however large it was it sorted last — and Home lists only the top four, so a transfer bigger than
+  every category combined **did not appear on Home at all**. `InsertByAmount` places it where its size says,
+  keeping its own colour and staying out of the "Everything else" rollup so that bucket's drill-down stays
+  well-defined. Verified: a €900 transfer against €120/€80/€45 of categories now leads both lists (78.6%).
+- **"After bills" replaces the daily figure under Safe to spend (`c36cefd`)**, and the explainer is **tapped, not
+  hovered** — a phone has no hover, and the phone is where that line matters most, so a `title` attribute hid the
+  explanation from exactly the people who needed it. A full-viewport backdrop closes it, which is the failure mode
+  tap-to-open tooltips usually have. The daily figure moves inside, where it costs nothing.
+- **The brand lockup tightened (`c36cefd`)** — the mark stood a head taller than the wordmark's cap height, so the
+  icon led the lockup instead of supporting it: 38px → 30px (26 on phones), gap 8px → 6px, Pro tag shrunk and
+  pulled in so it reads as a superscript on "Tab".
+- **"Edit last" left the FAB for the Transfer modal (`75d249e`).** The FAB entry had to guess between the last
+  expense, income and transfer and then act on its guess — a wordless choice under a ＋, which is the wrong place
+  for an action that reaches back and changes something already recorded. Each modal now carries its own and can
+  name what it would edit ("Edit Bank → Cash · €150.00"). **★ Wallet-to-wallet only**: an account-to-account
+  transfer has two halves and its own two-sided editor, so editing one from here would strand the far-side deposit
+  — the exact bug that editor was built to fix.
+
 ### ⚠️ Carry-over
 
 - **⛔ The native sweep is the one thing genuinely outstanding.** Native gained two things this session — the
   period swipe and the skip/undo (`d738f9d`) — and **both are build-verified only, with no emulator pass.**
   It still trails the web by: the emergency fund, the installment indicator, the "Make a payment" preview +
-  receipt, the Home header slimming, "the periods that cost you most", and Transfer + Edit-last in the FAB
-  (native's "+" goes straight to Add expense, so that one is a small UX restructure rather than a port) — **plus**
+  receipt, the Home header slimming, "the periods that cost you most", Transfer in the FAB (native's "+" goes
+  straight to Add expense, so that one is a small UX restructure rather than a port) — **plus** the third round:
+  **the lease residual field** (the domain and DTO carry it, but there is no native input for it, so a lease user
+  on Android still gets the overshooting projection), the transfer-out ranking in its slice lists, the tap-to-open
+  "after bills" explainer, the tightened brand lockup, and "Edit last transfer" in the transfer sheet — **plus**
   the four already outstanding from S97 (two-sided transfer edit/delete, category delete-with-reassign, the
   Breakdown per-period average, the whole time-cost feature) — **plus** the S96 device gap (switches, brand mark,
   both launcher icons). Realistically its own session, and it wants the emulator throughout.
+  ★ **Start with the lease residual**: it is the only one of these where a native user gets a *wrong number*
+  rather than a missing convenience.
 - **Owner ask #8** (a location/date-range "what did this trip cost" recap) stays on the roadmap, per the owner.
 - **The archived-account purge race fires on most multi-instance deploys and is EXPECTED.** It is caught, logged
   as `warn:`, and the container boots. Cloud Run stamps the unstructured multi-line output as ERROR regardless, so
@@ -292,17 +350,24 @@ The owner asked for the remaining items rather than deferring them, so the sessi
 
 ### Verification
 
-- **393 domain + 48 persistence + 327 server green** (was 363/48/320; 4 new test files —
-  `RecurringSkipTests`, `EmergencyFundTests`, `LoanLumpSumTests`, `CostHeavyPeriodTests` — plus 5 new server tests
+- **399 domain + 48 persistence + 327 server green** (was 363/48/320; 5 new test files — `RecurringSkipTests`,
+  `EmergencyFundTests`, `LoanLumpSumTests`, `CostHeavyPeriodTests`, `LeaseResidualTests` — plus 5 new server tests
   for the due-date sync, unskip, and both halves of the payment-driven default).
 - **Second deploy: `finapp-00293-nxk`** from `d738f9d`, traffic forced `--to-latest`. Identical **308,004**-byte
   scoped bundles on the run URL and tandemtab.com (a new hash, `fdm5fiqf3n`), carrying `.paydown-preview` ×2,
   `.paydown-toast` ×8, `.costly-row` ×3, `.inst-flag` ×5. 5 `secretKeyRef`s. **No WARNING+ entries at all** on this
   revision — the purge race didn't even fire this time.
+- **Third deploy: `finapp-00294-lzn`** from `75d249e`, traffic forced `--to-latest`. Identical **310,549**-byte
+  bundles on both hosts (hash `k9jmqedvzg`), carrying `.bal-info` ×11, `.bal-sub-btn` ×2, `.paydown-preview` ×2,
+  `.costly-row` ×3 and the 30px brand mark ×6. 5 `secretKeyRef`s. **No WARNING+ entries** on this revision either.
 - Every UI change driven in the running app: the comma (typed "12,50" → SPENT €37.50 → €50.00, i.e. +12.50 and
   not +1250, with the time-cost hint reading "≈ 2h of work"); the filter row vanishing on a no-bucket account; the
   loan due date (asked 15, stored 28); the installment marker in both states; both branches of the
   schedule/payments copy; Transfer opening a working modal from Home; and the three fast buttons sharing one row.
+  Third round: a €900 transfer leading both the Home list and the Breakdown (78.6%) where it previously did not
+  render on Home at all; "€1,155.00 after bills" opening to €1,855.00 − €700.00 and closing on click-out; the FAB
+  at 375px listing only Transfer / Add income / Add expense; and the Transfer modal growing "Edit Bank → Cash ·
+  €150.00" once a wallet transfer exists.
 - **⚠️ The stale-WASM trap bit again** — the preview served the old build after a rebuild, and the Transfer button
   "wasn't there". `caches.delete()` + reload fixed it. Suspect this before suspecting the code. Note also that the
   preview server **holds the DLLs**: stop it before a solution build or MSB3021 file-lock errors follow.
