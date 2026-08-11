@@ -306,6 +306,18 @@ public sealed class FinAppApiClient(HttpClient http)
     public Task<MutationResultDto> RemoveTagAsync(Guid id, Guid tagId, CancellationToken ct = default) =>
         SendAsync<MutationResultDto>(HttpMethod.Delete, $"/accounts/{id}/tags/{tagId}", null, ct);
 
+    // Trips
+    public Task<MutationResultDto> CreateTripAsync(Guid id, CreateTripRequest req, CancellationToken ct = default) =>
+        SendAsync<MutationResultDto>(HttpMethod.Post, $"/accounts/{id}/trips", req, ct);
+    public Task<MutationResultDto> EditTripAsync(Guid id, Guid tripId, EditTripRequest req, CancellationToken ct = default) =>
+        SendAsync<MutationResultDto>(HttpMethod.Put, $"/accounts/{id}/trips/{tripId}", req, ct);
+    public Task<MutationResultDto> RemoveTripAsync(Guid id, Guid tripId, CancellationToken ct = default) =>
+        SendAsync<MutationResultDto>(HttpMethod.Delete, $"/accounts/{id}/trips/{tripId}", null, ct);
+    public Task<MutationResultDto> SetExpenseTripAsync(Guid id, Guid expenseId, Guid? tripId, CancellationToken ct = default) =>
+        SendAsync<MutationResultDto>(HttpMethod.Put, $"/accounts/{id}/expenses/{expenseId}/trip", new SetExpenseTripRequest(tripId), ct);
+    public Task<MutationResultDto> SeedTripTagsAsync(Guid id, SeedTripTagsRequest req, CancellationToken ct = default) =>
+        SendAsync<MutationResultDto>(HttpMethod.Post, $"/accounts/{id}/trip-tags", req, ct);
+
     // Recurring items
     public Task<MutationResultDto> AddRecurringAsync(Guid id, AddRecurringRequest req, CancellationToken ct = default) =>
         SendAsync<MutationResultDto>(HttpMethod.Post, $"/accounts/{id}/recurring", req, ct);

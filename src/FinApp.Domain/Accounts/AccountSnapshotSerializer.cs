@@ -44,9 +44,11 @@ public static class AccountSnapshotSerializer
             account.RecurringItems.Count == 0 ? null : account.RecurringItems.Select(r => new RecurringItemNode(
                 r.Id, r.Name, r.Kind, r.AmountMode, r.ExpectedAmount, r.DayOfMonth, r.CategoryId, r.FundId, r.Active, r.Icon, r.LastHandledPeriodFrom, r.AutoPost, r.CreatedOn, r.LinkedDebtBucketId, r.LastHandledWasSkip)).ToList(),
             account.OnboardingDismissed,
-            account.Tags.Count == 0 ? null : account.Tags.Select(t => new TagNode(t.Id, t.Name, t.Icon, t.IsArchived, t.CategoryId)).ToList(),
+            account.Tags.Count == 0 ? null : account.Tags.Select(t => new TagNode(t.Id, t.Name, t.Icon, t.IsArchived, t.CategoryId, t.IsTripTag)).ToList(),
             account.RoundUpTo, account.RoundUpBucketId, account.HourlyRate,
-            account.WorkingDaysPerMonth, account.WorkingHoursPerDay);
+            account.WorkingDaysPerMonth, account.WorkingHoursPerDay,
+            account.Trips.Count == 0 ? null : account.Trips.Select(t => new TripNode(
+                t.Id, t.Name, t.From, t.To, t.Destination, t.Icon, t.SavingCategoryId, t.Budget, t.SpendCurrency, t.Rate)).ToList());
         return JsonSerializer.Serialize(node, Json);
     }
 
@@ -99,7 +101,21 @@ public static class AccountSnapshotSerializer
             // separately and their order relative to tags isn't guaranteed, so a validating call could reject a
             // binding that is in fact sound. Removal already clears bindings, so a stale id can't arise here.
             tag.SetCategory(t.CategoryId);
+            tag.SetTripTag(t.IsTripTag);
             return tag;
+        }).ToList());
+        // Restored directly rather than through AddTrip/SetTripSavingCategory for the same reason as a tag's
+        // category binding: the validating calls check collections that may not be restored yet, and the name-clash
+        // guard would reject a snapshot that is merely being reloaded.
+        SetField(account, "_trips", (node.Trips ?? []).Select(t =>
+        {
+            var trip = Build(new Trip(t.Name, t.From, t.To), t.Id);
+            trip.SetDestination(t.Destination);
+            trip.SetIcon(t.Icon);
+            trip.SetSavingCategory(t.SavingCategoryId);
+            trip.SetBudget(t.Budget);
+            trip.SetRate(t.SpendCurrency, t.Rate);
+            return trip;
         }).ToList());
         SetField(account, "_savingCategories", node.SavingCategories.Select(ToEntity).ToList());
         SetField(account, "_contributionCategories",
@@ -159,7 +175,7 @@ public static class AccountSnapshotSerializer
         p.InitialBalances.Select(b => new InitialBalanceNode(b.Id, b.FundId, b.Amount.Amount, b.Informative)).ToList(),
         p.Contributions.Select(c => new ContributionNode(c.Id, c.MemberId, c.Paid.Amount, c.CategoryId, c.FundId, c.Date, c.FundSynced, c.AccountTransferId, c.FromAccountId)).ToList(),
         p.Budgets.Select(b => new BudgetNode(b.Id, b.CategoryId, b.Allocated.Amount, b.AlertThreshold, b.NotifyOnEveryExpense)).ToList(),
-        p.Expenses.Select(e => new ExpenseNode(e.Id, e.CategoryId, e.Amount.Amount, e.Date, e.MemberId, e.FundId, e.Note, e.SourceSavingCategoryId, e.OnBehalfOfOtherAccount, e.SettlementId, e.SettledToAccountId, e.SettledFromAccountId, e.SettledAmount, e.FundSynced, e.BankExternalId, e.AutoFiled, e.TagIds.Count == 0 ? null : e.TagIds.ToList(), e.InstallmentGroupId, e.Part, e.DebtBucketId)).ToList(),
+        p.Expenses.Select(e => new ExpenseNode(e.Id, e.CategoryId, e.Amount.Amount, e.Date, e.MemberId, e.FundId, e.Note, e.SourceSavingCategoryId, e.OnBehalfOfOtherAccount, e.SettlementId, e.SettledToAccountId, e.SettledFromAccountId, e.SettledAmount, e.FundSynced, e.BankExternalId, e.AutoFiled, e.TagIds.Count == 0 ? null : e.TagIds.ToList(), e.InstallmentGroupId, e.Part, e.DebtBucketId, e.TripId)).ToList(),
         p.SavingAllocations.Select(a => new SavingAllocationNode(a.Id, a.SavingCategoryId, a.Amount.Amount, a.Date, a.Note, a.SourceExpenseId, a.BudgetCategoryId, a.TransferPairId, a.SourceExternalTransferId)).ToList(),
         p.FundTransfers.Select(t => new FundTransferNode(t.Id, t.FromFundId, t.ToFundId, t.Amount.Amount, t.Date, t.Note, t.FromSynced, t.ToSynced, t.BankExternalId, t.AutoFiled)).ToList(),
         p.ExternalTransfers.Select(t => new ExternalTransferNode(t.Id, t.FundId, t.Amount.Amount, t.Date, t.ToAccountId, t.Note, t.FundSynced, t.AccountTransferId)).ToList());
@@ -233,6 +249,7 @@ public static class AccountSnapshotSerializer
             expense.SetFundSynced(e.FundSynced);
             expense.SetBankLink(e.BankExternalId, e.AutoFiled);
             if (e.TagIds is { Count: > 0 }) expense.SetTags(e.TagIds);
+            expense.SetTrip(e.TripId);
             return expense;
         }).ToList());
         SetField(p, "_savingAllocations", n.SavingAllocations.Select(a =>
@@ -299,7 +316,15 @@ public static class AccountSnapshotSerializer
         // F4: zero on every node written before round-ups existed → off, which is also the default for a new account.
         decimal RoundUpTo = 0m, Guid? RoundUpBucketId = null,
         // Null on every node written before the time-cost feature, and null is exactly "not set" — nothing to backfill.
-        decimal? HourlyRate = null, int? WorkingDaysPerMonth = null, decimal? WorkingHoursPerDay = null);
+        decimal? HourlyRate = null, int? WorkingDaysPerMonth = null, decimal? WorkingHoursPerDay = null,
+        // Null on every node written before trips existed — i.e. an account that has never travelled, which is
+        // also the state of a brand-new account, so legacy snapshots need no back-fill.
+        List<TripNode>? Trips = null);
+
+    // Dates are the trip's own, never a filter over expenses — see Trip for why membership is by link.
+    private record TripNode(Guid Id, string Name, DateOnly From, DateOnly To, string? Destination = null,
+        string? Icon = null, Guid? SavingCategoryId = null, decimal? Budget = null,
+        string? SpendCurrency = null, decimal? Rate = null);
 
     private record RecurringItemNode(Guid Id, string Name, RecurringKind Kind, RecurringAmountMode AmountMode,
         decimal ExpectedAmount, int DayOfMonth, Guid CategoryId, Guid FundId, bool Active, string? Icon, DateOnly? LastHandledPeriodFrom,
@@ -316,7 +341,9 @@ public static class AccountSnapshotSerializer
     private record CategoryNode(Guid Id, string Name, Guid? ParentId, string? Icon = null, bool IsEssential = false, bool IsArchived = false);
     // F2: CategoryId is null on every node written before the binding existed — i.e. the tag files nothing, which is
     // exactly what an unbound tag means, so legacy snapshots need no back-fill.
-    private record TagNode(Guid Id, string Name, string? Icon = null, bool IsArchived = false, Guid? CategoryId = null);
+    // IsTripTag is false on every node written before trips existed — i.e. an ordinary tag, which is what they all were.
+    private record TagNode(Guid Id, string Name, string? Icon = null, bool IsArchived = false, Guid? CategoryId = null,
+        bool IsTripTag = false);
     private record SavingCategoryNode(Guid Id, string Name, Guid? ParentId, decimal? GoalAmount, decimal AlertThreshold, bool NotifyOnMilestone, decimal InitialAmount, string? Icon = null,
         SavingKind Kind = SavingKind.Common, decimal DebtBalance = 0m, decimal DebtAnnualRatePercent = 0m, decimal DebtInstallment = 0m, bool IsArchived = false,
         decimal DebtOriginalBalance = 0m, decimal? PlannedContribution = null,
@@ -350,7 +377,11 @@ public static class AccountSnapshotSerializer
         // Null on legacy nodes (pre-tags) → the expense simply has no tags.
         IReadOnlyList<Guid>? TagIds = null,
         // R2 installment-split fields; null on every node written before them, i.e. every ordinary expense.
-        Guid? InstallmentGroupId = null, InstallmentPart? Part = null, Guid? DebtBucketId = null);
+        Guid? InstallmentGroupId = null, InstallmentPart? Part = null, Guid? DebtBucketId = null,
+        // The trip this expense belongs to. Null on every node written before trips and on every expense logged at
+        // home — and note it is stored independently of Date, which is what carries a pre-paid booking into a trip
+        // that hasn't happened yet.
+        Guid? TripId = null);
     private record SavingAllocationNode(Guid Id, Guid SavingCategoryId, decimal Amount, DateOnly Date, string? Note, Guid? SourceExpenseId, Guid? BudgetCategoryId = null, Guid? TransferPairId = null, Guid? SourceExternalTransferId = null);
     private record FundTransferNode(Guid Id, Guid FromFundId, Guid ToFundId, decimal Amount, DateOnly Date, string? Note, bool FromSynced = false, bool ToSynced = false, string? BankExternalId = null, bool AutoFiled = false);
     private record ExternalTransferNode(Guid Id, Guid FundId, decimal Amount, DateOnly Date, Guid? ToAccountId, string? Note, bool FundSynced = false,

@@ -55,11 +55,21 @@ public record BootstrapAccountRequest(DateOnly? Today = null);
 /// "synced" flag is derived from the fund itself, so neither is in the request. Bank-import and on-behalf settlement
 /// provenance are handled by their own flows, not here. Mirrors <c>BudgetingState.AddExpense</c>.
 /// </summary>
-public record AddExpenseRequest(Guid CategoryId, decimal Amount, Guid FundId, DateOnly Date, string? Note = null, bool OnBehalfOfOtherAccount = false, Guid? TagId = null);
+public record AddExpenseRequest(Guid CategoryId, decimal Amount, Guid FundId, DateOnly Date, string? Note = null, bool OnBehalfOfOtherAccount = false, Guid? TagId = null,
+    // The trip this expense belongs to. Set at entry (trip mode defaults it) so attaching costs no extra round trip.
+    // Note it is NOT on the edit request — see EditExpenseRequest for why.
+    Guid? TripId = null);
 
 /// <summary>Replace an existing expense's category/amount/fund/note/date (an append-only edit — see
 /// <c>Period.EditExpense</c>). The expense id travels in the route. <see cref="TagId"/> sets the expense's single
-/// tag (null clears it). One tag per expense. Mirrors <c>BudgetingState.EditExpense</c>.</summary>
+/// tag (null clears it). One tag per expense. Mirrors <c>BudgetingState.EditExpense</c>.
+/// <para>
+/// <b>★ There is deliberately no TripId here.</b> Every other field on this request is authoritative — an omitted
+/// value means "no longer set" — and a trip link that behaved the same way would be destroyed by any client that
+/// hasn't learned about trips yet: correcting an amount from an older app would silently drop the expense out of
+/// its recap, with nothing to notice. <c>Period.EditExpense</c> carries the link across the edit instead, and
+/// changing it has its own endpoint (<see cref="SetExpenseTripRequest"/>).
+/// </para></summary>
 public record EditExpenseRequest(Guid CategoryId, decimal Amount, Guid FundId, DateOnly Date, string? Note = null, Guid? TagId = null);
 
 /// <summary>
@@ -210,6 +220,48 @@ public record CreateTagRequest(string Name, string? Icon = null);
 /// the tag's whole intended state, so an omitted field means "no longer set", not "leave alone".
 /// Mirrors <c>BudgetingState.SaveTag</c>.</summary>
 public record EditTagRequest(string Name, string? Icon = null, Guid? CategoryId = null);
+
+// --- Trips ---------------------------------------------------------------------------------------------------
+
+/// <summary>
+/// Create a trip — a named journey expenses can be attached to. Rejects a duplicate name.
+/// <para>
+/// <see cref="From"/>/<see cref="To"/> are the trip's own dates, both inclusive. They say when the app should
+/// default new expenses to this trip and when to count down to it; they do <b>not</b> decide what's in it — an
+/// expense belongs to a trip because it carries its id, which is what lets a booking paid months early count.
+/// </para>
+/// Mirrors <c>BudgetingState.AddTrip</c>.
+/// </summary>
+public record CreateTripRequest(string Name, DateOnly From, DateOnly To, string? Destination = null, string? Icon = null);
+
+/// <summary>
+/// Edit a trip. A full replace, like every other edit request here: the caller sends the whole intended state, so an
+/// omitted field means "no longer set", not "leave alone". Moving the dates never detaches expenses.
+/// <para>
+/// <see cref="SavingCategoryId"/> links the savings bucket funding the trip (null clears it; the bucket must exist
+/// in this account). <see cref="Budget"/> is what it's expected to cost. <see cref="SpendCurrency"/> +
+/// <see cref="Rate"/> are the one fixed conversion for a trip spent in another currency — both or neither, and the
+/// conversion applies at entry time only, never to already-stored amounts.
+/// </para>
+/// Mirrors <c>BudgetingState.SaveTrip</c>.
+/// </summary>
+public record EditTripRequest(string Name, DateOnly From, DateOnly To, string? Destination = null, string? Icon = null,
+    Guid? SavingCategoryId = null, decimal? Budget = null, string? SpendCurrency = null, decimal? Rate = null);
+
+/// <summary>Attach an expense to a trip, or detach it with a null <see cref="TripId"/>. Separate from the expense's
+/// own edit so that changing what a trip contains never has to re-post its amount, category or date.</summary>
+public record SetExpenseTripRequest(Guid? TripId);
+
+/// <summary>
+/// Create the trip label set (Stay, Travel, Food &amp; drink…) if it doesn't exist yet. The client sends them because
+/// only the client knows the user's language; the server seeds once and ignores every later call, so two languages
+/// can't mint two parallel sets. Each label may name the category it files into, so picking it on the expense form
+/// also files the expense.
+/// </summary>
+public record SeedTripTagsRequest(IReadOnlyList<TripTagSeed> Tags);
+
+/// <summary>One trip label to seed — its display name, its emoji, and the category it files into (optional).</summary>
+public record TripTagSeed(string Name, string? Icon = null, Guid? CategoryId = null);
 
 // --- Recurring items (bills / income expectations) ----------------------------------------------------------
 

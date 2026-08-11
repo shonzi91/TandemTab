@@ -1154,18 +1154,22 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     public IReadOnlyList<Fund> ExpensableFunds =>
         Account.RootFunds.Where(f => !f.IsArchived).OrderBy(f => f.IsSynced ? 1 : 0).ToList();
 
-    public Task AddExpense(Guid categoryId, decimal amount, Guid fundId, string? note, DateOnly date, bool onBehalfOfOtherAccount = false, Guid? tagId = null) =>
+    /// <summary><paramref name="tripId"/> attaches the expense to a trip. The caller passes
+    /// <see cref="ActiveTrip"/> while trip mode is on — a default the user can clear on the form, not a rule, since
+    /// the weekly shop still happens on the day you fly home.</summary>
+    public Task AddExpense(Guid categoryId, decimal amount, Guid fundId, string? note, DateOnly date, bool onBehalfOfOtherAccount = false, Guid? tagId = null, Guid? tripId = null) =>
         ExecuteOptimisticAsync(() =>
         {
             var expense = new Expense(categoryId, Money(amount), date, CurrentMemberId, fundId, note, onBehalfOfOtherAccount: onBehalfOfOtherAccount);
             expense.SetFundSynced(FundIsSynced(fundId));
             expense.SetTag(tagId);
+            expense.SetTrip(tripId);
             Period.AddExpense(expense);
             // F4: sweep the change into savings. The server runs the identical service on its side of this request,
             // so the optimistic paint matches what the refetch brings back.
             _roundUps.Sweep(Account, Period, expense.Amount, expense.Date);
         },
-        id => api.AddExpenseAsync(id, new AddExpenseRequest(categoryId, amount, fundId, date, note, onBehalfOfOtherAccount, tagId)),
+        id => api.AddExpenseAsync(id, new AddExpenseRequest(categoryId, amount, fundId, date, note, onBehalfOfOtherAccount, tagId, tripId)),
         refetchAfter: true);
 
     // Bank-confirm flows only — bank provenance (externalId + auto-filed badge) isn't in the command API yet.
@@ -2628,6 +2632,102 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     public Task RemoveTag(Guid tagId) =>
         ExecuteOptimisticAsync(() => Account.RemoveTag(tagId),
             id => api.RemoveTagAsync(id, tagId), refetchAfter: true);
+
+    // --- Trips: a named journey expenses point at ------------------------------------------------------------
+    /// <summary>Today, as the rest of the app reckons it — so a view can ask a trip whether it's running without
+    /// minting its own clock (and disagreeing with <see cref="ActiveTrip"/> by a day around midnight).</summary>
+    public DateOnly TodayDate => Today();
+
+    /// <summary>Every trip, newest departure first — the trips list.</summary>
+    public IReadOnlyList<Trip> AllTrips => Account.TripsByDeparture.ToList();
+    public Trip? FindTrip(Guid tripId) => Account.FindTrip(tripId);
+    public string TripName(Guid tripId) => Account.FindTrip(tripId)?.Name ?? "—";
+    public string? TripIcon(Guid tripId) => Account.FindTrip(tripId)?.Icon;
+
+    /// <summary>The trip "today" falls inside, or null when we're not travelling — this is what trip mode means.
+    /// Derived from the dates on every read, so there is no state that can be left switched on.</summary>
+    public Trip? ActiveTrip => Account.ActiveTrip(Today());
+
+    /// <summary>True while a trip is running: the expense form defaults to it, Home wears the trip banner, and the
+    /// over-budget strip changes tone rather than nagging through someone's holiday.</summary>
+    public bool InTripMode => ActiveTrip is not null;
+
+    /// <summary>Trips that haven't started yet, soonest first — what the "part of a trip" picker offers alongside
+    /// the active one, so a booking paid today can be filed against next summer.</summary>
+    public IReadOnlyList<Trip> UpcomingTrips => Account.UpcomingTrips(Today()).ToList();
+
+    /// <summary>The trip labels (Stay, Travel, Food &amp; drink…), the axis a trip's cost split is drawn on. Empty
+    /// until the first trip seeds them.</summary>
+    public IReadOnlyList<Tag> TripTags => Account.TripTags.Where(t => !t.IsArchived).ToList();
+
+    /// <summary>Tags for the everyday picker — the trip labels are left out, since "Tickets &amp; tours" is noise
+    /// when you're logging groceries. Inside trip mode the caller shows <see cref="TripTags"/> instead.</summary>
+    public IReadOnlyList<Tag> EverydayTags => ActiveTags.Where(t => !t.IsTripTag).ToList();
+
+    public async Task<Guid> AddTrip(string name, DateOnly from, DateOnly to, string? destination = null, string? icon = null)
+    {
+        var result = await ExecuteOptimisticAsync(() => { Account.AddTrip(name, from, to, destination, icon); },
+            id => api.CreateTripAsync(id, new CreateTripRequest(name, from, to, destination, icon)), refetchAfter: true);
+        return result.EntityId ?? Guid.Empty;
+    }
+
+    /// <summary>Save a trip's whole intended state — the same full-replace shape as the endpoint, so an omitted
+    /// field means "no longer set". Moving the dates never detaches expenses.</summary>
+    public Task SaveTrip(Guid tripId, string name, DateOnly from, DateOnly to, string? destination = null, string? icon = null,
+        Guid? savingCategoryId = null, decimal? budget = null, string? spendCurrency = null, decimal? rate = null) =>
+        ExecuteOptimisticAsync(() =>
+        {
+            Account.UpdateTrip(tripId, name, from, to, destination, icon);
+            Account.SetTripSavingCategory(tripId, savingCategoryId);
+            Account.SetTripBudget(tripId, budget);
+            Account.SetTripRate(tripId, spendCurrency, rate);
+        },
+            id => api.EditTripAsync(id, tripId, new EditTripRequest(name, from, to, destination, icon, savingCategoryId, budget, spendCurrency, rate)),
+            refetchAfter: true);
+
+    public Task RemoveTrip(Guid tripId) =>
+        ExecuteOptimisticAsync(() => Account.RemoveTrip(tripId),
+            id => api.RemoveTripAsync(id, tripId), refetchAfter: true);
+
+    /// <summary>Attach an expense to a trip, or detach it with null. Works on any period's expense — attaching last
+    /// March's flight to this June's trip is the point.</summary>
+    public Task SetExpenseTrip(Guid expenseId, Guid? tripId) =>
+        ExecuteOptimisticAsync(() =>
+        {
+            var expense = Account.Periods.SelectMany(p => p.Expenses).FirstOrDefault(e => e.Id == expenseId);
+            expense?.SetTrip(tripId);
+        },
+            id => api.SetExpenseTripAsync(id, expenseId, tripId), refetchAfter: true);
+
+    /// <summary>Create the trip labels if they don't exist. The caller passes localized names — the server seeds
+    /// once and ignores later calls, so switching language can't fork the split into two tag sets.</summary>
+    public Task EnsureTripTags(IReadOnlyList<TripTagSeed> seeds) =>
+        ExecuteOptimisticAsync(() => Account.EnsureTripTags(seeds.Select(s => (s.Name, s.Icon, s.CategoryId))),
+            id => api.SeedTripTagsAsync(id, new SeedTripTagsRequest(seeds)), refetchAfter: true);
+
+    /// <summary>What a trip cost, split by where it went — see <c>TripRecapService</c>.</summary>
+    public TripRecap? TripRecap(Guid tripId) => new TripRecapService().Build(Account, tripId);
+
+    /// <summary>Every trip's recap, newest departure first — the trips list.</summary>
+    public IReadOnlyList<TripRecap> TripRecaps() => new TripRecapService().BuildAll(Account);
+
+    /// <summary>The expenses attached to a trip, newest first.</summary>
+    public IReadOnlyList<FinApp.Domain.Budgeting.Expense> TripExpenses(Guid tripId) =>
+        Account.TripExpenses(tripId).ToList();
+
+    /// <summary>
+    /// Expenses across <b>every</b> period, newest first — the pool the "attach something you've already paid"
+    /// picker draws from.
+    /// <para>
+    /// Spanning periods is the requirement, not a convenience: the flight that belongs to a June trip was paid in
+    /// March, and by the time the trip exists that period is closed. Nothing here edits the expense — attaching
+    /// only writes the link — so a closed period is no obstacle.
+    /// </para>
+    /// </summary>
+    public IReadOnlyList<FinApp.Domain.Budgeting.Expense> RecentExpensesAcrossPeriods(int take = 60) =>
+        Account.Periods.SelectMany(p => p.Expenses)
+            .OrderByDescending(e => e.Date).ThenByDescending(e => e.Id)
+            .Take(take).ToList();
 
     // Budget CRUD (the endpoint takes the threshold as a percent 0–100, same as these signatures)
     public Task SaveBudget(Guid categoryId, decimal amount, decimal thresholdPercent, bool notifyEvery) =>

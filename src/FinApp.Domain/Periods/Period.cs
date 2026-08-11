@@ -401,6 +401,7 @@ public sealed class Period : Entity
         // the row's siblings and leave a half-installment that can't be removed as one.
         edited.SetInstallmentLink(old.InstallmentGroupId, old.Part, old.DebtBucketId);
         edited.SetTags(old.TagIds);   // tags survive an edit (edit mints a new id, so re-apply them)
+        edited.SetTrip(old.TripId);   // and so does the trip — otherwise correcting an amount drops it from the recap
         return edited;
     }
 

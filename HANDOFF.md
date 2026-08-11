@@ -1,6 +1,17 @@
 # TandemTab (FinApp) — session handoff
 
-Last updated: 2026-08-11 (Session 98 — **the owner's whole 14-item batch, plus carried owner-ask #7. All of it.**
+Last updated: 2026-08-11 (Session 99 — **Trip mode, built from the domain up.** Owner ask #8 promoted into a real
+feature: a trip is a named date range that expenses **point at**, so a flight bought in March counts toward a June
+trip while staying in March's period and March's budget. Domain + snapshot + 5 endpoints + the Spending → **Trips**
+tab + the entry flow. **422 + 48 + 340 green** (from 399 + 48 + 327; 23 domain + 13 server tests are new).
+`tools/pairscan.js` reports **0** partially-darkened rules.
+⚠️ **NOT deployed and NOT browser-verified** — everything is build-clean and test-green, but the Trips tab has
+never been opened in a running app. No screenshot, no real data. Treat this as unproven UI.
+⚠️ **Four items were left by the owner for the next session**: the Home trip banner, the trip theme shift, the
+bell nudge ("Rome in 3 days") and the over-budget tone change while travelling. See the ⚠️ Carry-over.
+⚠️ **Android has none of this**, on top of everything it already trailed by.)
+
+Previously: 2026-08-11 (Session 98 — **the owner's whole 14-item batch, plus carried owner-ask #7. All of it.**
 The headline fix: amounts could not take a decimal on mobile web, because `<input type="number">` rejects the ","
 a European keypad offers. Also: a due bill is now *skipped*, not dismissed — with an undo the domain enforces; a
 loan and the bill that services it share one due date, and linking the bill now drives the loan; the "I log each
@@ -81,6 +92,139 @@ a separate balance axis — because flows and a stock were sharing one scale. **
 ✅ **Committed and the web half is DEPLOYED** (Session 93 catch-up): Android sharing as `596eea5`, the web batch
 as `de51071`, now live on **`finapp-00280-4s8`** (traffic forced `--to-latest`; run URL + tandemtab.com 200; 5
 `secretKeyRef`s; no WARNING+ logs). Prior context below is Session 91.)
+
+## Session 99 (2026-08-11) — **Trip mode: what a journey costs. Not deployed, not browser-verified.**
+
+Owner ask #8 ("a location/date-range what-did-this-trip-cost recap") was promoted off the roadmap into a feature.
+The owner asked for it explicitly ahead of R2, and the reasoning is sound: it's feedback-driven, they travel a lot,
+and it shows well on the landing page R5 has to rewrite anyway. Design was settled in conversation first; four
+decisions were the owner's, one was left to a recommendation (the split axis).
+
+### ★★ The spine: a trip is a LINK, not a date range filter
+
+Everything else falls out of this one choice, so it's worth stating plainly.
+
+- `Expense.TripId` is set independently of `Expense.Date`. **An expense belongs to a trip because it carries the
+  trip's id — never because its date falls between the trip's dates.**
+- That is what makes pre-payment free. A flight bought on 4 March for a 10–17 June trip keeps its March date, sits
+  in March's period, counts against March's budget and safe-to-spend — and still appears in the June trip's total.
+  Nothing about periods, budgets or carry-over needed to change. Not one line.
+- **Consequence to keep saying out loud in the UI:** a trip total is *not* "spending between these dates". Anyone
+  who checks it against a period will find they don't match, and that's correct.
+
+### ★ Why the trip is NOT a tag, which was the obvious first guess
+
+The owner's instinct was that this is "a specific utilisation of the tags feature". Nearly — but **one tag per
+expense is the model now** (`Expense.TagId`; `TagIds` is snapshot back-compat that never holds more than one).
+
+- If the trip occupies the tag slot, it eats the very axis the recap needs to split by.
+- And the split the owner actually wants — tickets, accommodation, tours, restaurants — **are not household budget
+  categories**. Nobody has an "Accommodation" budget at home. Modelling them as categories would pollute the budget
+  tree permanently for two weeks a year.
+- So `TripId` got its own axis alongside `TagId`. A trip expense is "Rome" **and** "hotel". The cost split is then
+  the *existing* Breakdown donut machinery, which already groups by category / fund / **tag**.
+
+### ★ The split axis: tags, made to work rather than merely offered
+
+Tags normally go unused because tagging is extra work *on top of* categorising. In trip mode that's inverted:
+
+- Six trip labels (**Stay / Travel / Food & drink / Tickets & tours / Shopping / Other**) are seeded on the first
+  trip, each bound to a category via **F2**. On a trip the tag chips *become* those labels and the everyday tags
+  step aside — so one tap tags **and** files. Less work than the normal form, not more.
+- `Tag.IsTripTag` keeps them out of the everyday picker: "Tickets & tours" is noise at the supermarket.
+- **Seeding is idempotent server-side, not client-side.** The client sends localized names (only it knows the
+  language); the server seeds once and ignores every later call. A server test posts English then Bulgarian and
+  asserts **two** tags, not four — otherwise switching language forks every future breakdown in two.
+- **Graceful fallback:** `TripRecap.TagsAreRepresentative` — below half the trip's spend tagged, the recap leads
+  with categories instead of drawing a pie that is mostly one grey "untagged" wedge.
+
+### ★ Trip mode is derived, never stored
+
+`Account.ActiveTrip(today)` reads the dates. There is no toggle.
+
+A mode you switch on is a mode you forget to switch off, and the failure is silent and expensive: you come home and
+keep filing groceries to Rome for three weeks. Derived, the app cannot be wrong for longer than it takes to correct
+the dates. Overlapping trips (a user mistake, not a modelled case) resolve to the most recently started.
+
+### ★ Currency: one fixed rate, converted at entry, never re-applied
+
+The gap that decides whether this is any good for real travel — the account has **one** currency and `Money` carries
+it everywhere, so a trip to London is wrong unless something converts.
+
+- `Trip.SpendCurrency` + `Trip.Rate` are one rate the user sets for the whole trip. **Not** a live feed: that means
+  a rate provider, a new sub-processor (→ a privacy-policy edit in R5) and a rate per expense.
+- **The conversion happens at entry time and the stored amount is already in the account currency.** Same discipline
+  as F2's tag→category binding. Editing the rate later therefore cannot rewrite what past expenses cost.
+- The form shows the converted figure *before* it's logged ("logs as €23.40 at your trip rate") rather than applying
+  it silently — the rate is the user's own guess, so the honest thing is to put the result in front of them.
+- ⚠️ **Two traps this had to survive**, both fixed: the recent-amount hints are **suppressed** while converting (they
+  are account-currency figures, and tapping one into a field being read as pounds logs a number nobody meant), and a
+  staged draft stores **both** the converted and the typed amount — pulling a draft back into the editor restores the
+  *typed* one, or every round trip would re-convert it and the amount would climb.
+
+### ★ Budgets still count; only the tone was going to change
+
+Settled by recommendation: trip spending **counts against monthly budgets** — the money really left, and excluding it
+would corrupt safe-to-spend. What changes is that the over-budget strip should stop nagging while a trip is running.
+**That half is NOT built** — see the carry-over.
+
+### ★ `TripId` is deliberately absent from `EditExpenseRequest`
+
+Every other field on that request is authoritative: omitted means "no longer set". A trip link behaving that way
+would be **destroyed by any client that hasn't learned about trips** — Android correcting an amount would silently
+drop the row out of its recap, with nothing to notice. Instead `Period.EditExpense` carries the link across the edit
+(beside the tags, same reason), and changing it has its own endpoint. A server test pins exactly this: edit an
+expense with a trip-less request, assert it's still on the trip.
+
+### What shipped
+
+| Layer | Files |
+|---|---|
+| Domain | **`Budgeting/Trip.cs`** (new), `Budgeting/Expense.cs` (`TripId`+`SetTrip`), `Budgeting/Tag.cs` (`IsTripTag`), `Accounts/Account.cs` (CRUD, `ActiveTrip`, `TripExpenses`, `EnsureTripTags`), `Periods/Period.cs` (link survives an edit) |
+| Recap | **`Services/TripRecapService.cs`** (new) — a near-copy of `WeeklyRecapService`'s shape, filtered by trip |
+| Snapshot | `AccountSnapshotSerializer.cs` — `TripNode` + `ExpenseNode.TripId` + `TagNode.IsTripTag`, all trailing optionals. **No migration.** |
+| Persistence | `FinAppDbContext.cs` — `Ignore()` on `Trips`, `TripsByDeparture`, `TripTags`, `Expense.TripId` |
+| Contracts | `Accounts.cs` — `CreateTripRequest`, `EditTripRequest`, `SetExpenseTripRequest`, `SeedTripTagsRequest`, `TripTagSeed`, `AddExpenseRequest.TripId` |
+| Server | `Program.cs` — 5 endpoints: trip POST/PUT/DELETE, `PUT /expenses/{id}/trip`, `POST /trip-tags` |
+| Client | `FinAppApiClient.cs`, `BudgetingState.cs` (`ActiveTrip`, `InTripMode`, `TripRecaps()`, `EverydayTags` vs `TripTags`, `RecentExpensesAcrossPeriods`) |
+| UI | `Dashboard.razor` — the **Trips** sub-tab, trip create/edit/delete modals, the **Add something already paid** picker, the expense-form trip row + converted-amount line + label swap; `Dashboard.razor.css`; 52 Bulgarian strings |
+
+**The recap** reports the total, **booked ahead / while away / after getting back**, per-day (on the *trip's* length,
+not the span of its expense dates), the biggest single thing, the category and tag splits, budget over/under, and
+how much came out of a linked savings bucket. That last line never discounts the total — the money left either way.
+
+**The Trips tab only exists once a trip does.** Creating the first one lives in the Spending ⋯ menu. An account that
+never travels never sees any of this — FEATURE-BACKLOG's own "opt-in or invisible-until-useful" rule, and the
+standing preference against more sections.
+
+### ⚠️ Carry-over
+
+- **⛔ NOT DEPLOYED and NOT BROWSER-VERIFIED.** Build-clean and test-green, but no one has opened the Trips tab in a
+  running app. **Do this first next session** — the Browser-verify recipe is in memory (same-origin `ApiBaseUrl`,
+  press Tab to commit `@bind`), and the stale-WASM trap (`caches.delete()` + reload) bit twice in S98.
+- **⛔ Left by the owner for next session** (owner: "leave the rest for next session"):
+  - **The Home trip banner** — "Day 4 · €612 so far" while a trip is running, in place of the weekly-recap card.
+  - **The theme shift** — a `.trip` class on the shell overriding the accent, destination flag beside the logo.
+    Give every new colour its dark counterpart and re-run `tools/pairscan.js`; hook animations to a **class**.
+  - **The bell nudge** — "Rome in 3 days". Cheap: bell items are computed in `HomeNotifications`, so it's a few
+    lines. ⚠️ **Real push does not exist** (no FCM anywhere on the server, only the SignalR `SyncHub`) — that's a new
+    subsystem and it belongs with the Tier-2 mobile backlog, not attached to this feature.
+  - **The over-budget tone change while travelling** — one condition in `HomeNotifications`. Small, and it's the
+    difference between a travel companion and a nag on someone's holiday.
+- **Deliberately not built, and why:** per-traveller splitting (F5 was dropped for exactly this reason — shared
+  accounts pool income, so there's no per-person balance), and **Google Photos**. The photo case is worth recording:
+  Google's photo scopes are **restricted**, so a production app needs their annual third-party security assessment
+  (recurring real money), the broad library-read scopes have been narrowed in favour of the Picker, and it is a new
+  sub-processor + a privacy-policy edit aimed straight at the "we sell software, not your data" wedge — all for a
+  picture on a card. The flag emoji + a per-trip gradient gets most of the feel for nothing.
+- **Android has none of trips**, on top of the S98 list.
+- Everything else in Session 98's carry-over still stands.
+
+### Verification
+
+- **422 domain + 48 persistence + 340 server green** (from 399/48/327). New: `TripTests` (23), `TripApiTests` (13).
+- `tools/pairscan.js`: **0** partially-darkened rules — no light-only colour shipped.
+- ⚠️ **No browser pass.** Stated plainly rather than implied: the entire UI half of this session is unproven.
 
 ## Session 98 (2026-08-11) — **The owner's whole 14-item batch, plus owner-ask #7.**
 

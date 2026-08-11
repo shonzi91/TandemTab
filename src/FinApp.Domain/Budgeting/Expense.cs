@@ -143,6 +143,24 @@ public sealed class Expense : Entity
     /// <summary>Set (or clear, with null / <see cref="Guid.Empty"/>) this expense's single tag.</summary>
     public void SetTag(Guid? tagId) => SetTags(tagId is { } t && t != Guid.Empty ? new[] { t } : null);
 
+    /// <summary>
+    /// The <see cref="Trip"/> this expense belongs to, or null. Set on its own axis rather than by reusing the tag
+    /// slot: one tag per expense is the model, and letting a trip occupy it would consume the very axis the trip
+    /// recap splits by (stay / travel / food / tickets). With both, a trip expense is "Rome" *and* "hotel".
+    /// <para>
+    /// <b>Independent of <see cref="Date"/> and of the trip's own dates</b> — that is what lets a flight bought in
+    /// March count toward a June trip while staying in March's period and March's budget. Nothing about periods,
+    /// budgets or safe-to-spend keys off this field; it is a reporting link only.
+    /// </para>
+    /// Body data — travels in the account snapshot, not the relational header.
+    /// </summary>
+    public Guid? TripId { get; private set; }
+
+    /// <summary>Attach this expense to a trip (or detach with null / <see cref="Guid.Empty"/>). A setter rather
+    /// than a constructor argument because this is snapshot body data, and EF cannot bind an ignored property to a
+    /// constructor parameter — the ledger fields it *does* map must stay the whole ctor.</summary>
+    public void SetTrip(Guid? tripId) => TripId = tripId is { } t && t != Guid.Empty ? t : null;
+
     public Expense(
         Guid categoryId,
         Money amount,

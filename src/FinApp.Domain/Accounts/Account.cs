@@ -16,6 +16,7 @@ public sealed class Account : Entity
     private readonly List<AccountMember> _members = [];
     private readonly List<Category> _categories = [];
     private readonly List<Tag> _tags = [];
+    private readonly List<Trip> _trips = [];
     private readonly List<SavingCategory> _savingCategories = [];
     private readonly List<ContributionCategory> _contributionCategories = [];
     private readonly List<Fund> _funds = [];
@@ -438,6 +439,132 @@ public sealed class Account : Entity
     {
         var tag = FindTag(tagId) ?? throw new InvalidOperationException("Tag not found.");
         _tags.Remove(tag);
+    }
+
+    // --- Trips: a named journey expenses point at, and the tag set its cost split is drawn on ------------------
+
+    /// <summary>Every trip, in the order they were added. Body data — travels in the snapshot.</summary>
+    public IReadOnlyList<Trip> Trips => _trips;
+
+    /// <summary>Trips newest departure first — the order the trips list reads in.</summary>
+    public IEnumerable<Trip> TripsByDeparture => _trips.OrderByDescending(t => t.From);
+
+    public Trip? FindTrip(Guid tripId) => _trips.FirstOrDefault(t => t.Id == tripId);
+
+    /// <summary>The trip labels (Stay, Travel, Food &amp; drink…), in the order they were seeded.</summary>
+    public IEnumerable<Tag> TripTags => _tags.Where(t => t.IsTripTag);
+
+    /// <summary>
+    /// The trip that "now" falls inside, or null when we're not travelling. This — not a stored flag — is what trip
+    /// mode means.
+    /// <para>
+    /// <b>★ Derived on purpose.</b> A mode you switch on is a mode you forget to switch off, and the failure is
+    /// silent and expensive: you come home and keep filing groceries to Rome for three weeks. Deriving it from the
+    /// dates means the app cannot be wrong about whether you're away for longer than it takes to correct the dates.
+    /// </para>
+    /// Overlapping trips are a user mistake rather than a modelled case; the one that started most recently wins,
+    /// so the answer is stable and the newer plan is the one in force.
+    /// </summary>
+    public Trip? ActiveTrip(DateOnly today) =>
+        _trips.Where(t => t.IsActiveOn(today)).OrderByDescending(t => t.From).FirstOrDefault();
+
+    /// <summary>Trips that haven't started yet, soonest first — the ones a countdown or a "book it to this trip"
+    /// picker should offer.</summary>
+    public IEnumerable<Trip> UpcomingTrips(DateOnly today) =>
+        _trips.Where(t => t.IsUpcomingOn(today)).OrderBy(t => t.From);
+
+    /// <summary>Add a trip. Rejects a duplicate name (case-insensitive) so two "Rome"s can't be told apart only by
+    /// their dates in a picker.</summary>
+    public Trip AddTrip(string name, DateOnly from, DateOnly to, string? destination = null, string? icon = null)
+    {
+        if (_trips.Any(t => NameEquals(t.Name, name)))
+            throw new InvalidOperationException($"A trip named “{name.Trim()}” already exists.");
+        var trip = new Trip(name, from, to);
+        trip.SetDestination(destination);
+        trip.SetIcon(icon);
+        _trips.Add(trip);
+        return trip;
+    }
+
+    /// <summary>Rename/re-date/re-describe a trip. Moving the dates changes when trip mode is active and nothing
+    /// else — expenses stay attached, because membership was never date-based.</summary>
+    public void UpdateTrip(Guid tripId, string name, DateOnly from, DateOnly to, string? destination = null, string? icon = null)
+    {
+        var trip = FindTrip(tripId) ?? throw new InvalidOperationException("Trip not found.");
+        if (_trips.Any(t => t.Id != tripId && NameEquals(t.Name, name)))
+            throw new InvalidOperationException($"A trip named “{name.Trim()}” already exists.");
+        trip.Update(name, from, to, destination, icon);
+    }
+
+    /// <summary>Link a trip to the savings bucket funding it, or clear with null. The bucket must exist here — a
+    /// link pointing at nothing would quietly drop the "funded from" line and read as the feature being broken.</summary>
+    public void SetTripSavingCategory(Guid tripId, Guid? savingCategoryId)
+    {
+        var trip = FindTrip(tripId) ?? throw new InvalidOperationException("Trip not found.");
+        if (savingCategoryId is { } id && id != Guid.Empty && FindSavingCategory(id) is null)
+            throw new InvalidOperationException("Savings bucket does not exist in this account.");
+        trip.SetSavingCategory(savingCategoryId);
+    }
+
+    /// <summary>Set (or clear) what the trip is expected to cost.</summary>
+    public void SetTripBudget(Guid tripId, decimal? budget) =>
+        (FindTrip(tripId) ?? throw new InvalidOperationException("Trip not found.")).SetBudget(budget);
+
+    /// <summary>Set (or clear) the trip's fixed currency conversion. See <see cref="Trip.Rate"/> for why a single
+    /// user-set rate rather than a live feed, and why it converts at entry time only.</summary>
+    public void SetTripRate(Guid tripId, string? spendCurrency, decimal? rate) =>
+        (FindTrip(tripId) ?? throw new InvalidOperationException("Trip not found.")).SetRate(spendCurrency, rate);
+
+    /// <summary>
+    /// Remove a trip, detaching every expense that pointed at it. The expenses themselves are never touched
+    /// otherwise — the money was still spent, it just stops being counted as part of a journey.
+    /// <para>
+    /// Detaching rather than leaving the ids dangling: an expense carrying a trip id that resolves to nothing would
+    /// look attached in the data and appear in no trip, which is the kind of state that surfaces years later as
+    /// "why doesn't this total match".
+    /// </para>
+    /// </summary>
+    public void RemoveTrip(Guid tripId)
+    {
+        var trip = FindTrip(tripId) ?? throw new InvalidOperationException("Trip not found.");
+        foreach (var expense in _periods.SelectMany(p => p.Expenses).Where(e => e.TripId == tripId))
+            expense.SetTrip(null);
+        _trips.Remove(trip);
+    }
+
+    /// <summary>Every expense attached to a trip, across all periods, newest first. The recap's whole input — note
+    /// it spans periods by nature, because the booking and the holiday rarely sit in the same month.</summary>
+    public IEnumerable<Expense> TripExpenses(Guid tripId) =>
+        _periods.SelectMany(p => p.Expenses).Where(e => e.TripId == tripId).OrderByDescending(e => e.Date);
+
+    /// <summary>
+    /// Create the trip label set once, the first time it's needed. Each seed carries the category it files into, so
+    /// picking "Stay" on the expense form also files the expense — tagging on a trip <i>replaces</i> categorising
+    /// instead of being extra work on top of it, which is the only version people actually do while standing in a
+    /// hotel lobby.
+    /// <para>
+    /// <b>Seeded once, ever</b> — if any trip tag already exists this is a no-op, so a second trip (or a client
+    /// posting a different language's labels) can't mint a parallel set and split every future breakdown in two.
+    /// A seed whose name matches a tag the user already has adopts that tag rather than colliding with it.
+    /// </para>
+    /// </summary>
+    public IReadOnlyList<Tag> EnsureTripTags(IEnumerable<(string Name, string? Icon, Guid? CategoryId)> seeds)
+    {
+        if (_tags.Any(t => t.IsTripTag)) return TripTags.ToList();
+
+        var created = new List<Tag>();
+        foreach (var seed in seeds)
+        {
+            if (string.IsNullOrWhiteSpace(seed.Name)) continue;
+            var tag = _tags.FirstOrDefault(t => NameEquals(t.Name, seed.Name)) ?? AddTag(seed.Name);
+            tag.SetTripTag(true);
+            tag.SetArchived(false);   // it's about to be offered on every trip expense form
+            if (tag.Icon is null) tag.SetIcon(seed.Icon);
+            if (tag.CategoryId is null && seed.CategoryId is { } cid && FindCategory(cid) is not null)
+                tag.SetCategory(cid);
+            created.Add(tag);
+        }
+        return created;
     }
 
     /// <summary>Add a savings bucket. Pass <paramref name="parentId"/> to make it a sub-bucket.</summary>

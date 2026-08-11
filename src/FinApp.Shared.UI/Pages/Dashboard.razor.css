@@ -2919,3 +2919,89 @@ html.dark .row-menu button:hover { background: rgba(255,255,255,.06); }
 html.dark .period-btn:hover,
 html.dark .nav:hover:not(:disabled) { background: rgba(63,224,197,.12); color: var(--tm-mint); }
 html.dark .cal-cell:hover:not(.cal-out) { border-color: #3a8f6c; background: #161b24; }
+
+/* --- Trips: what a journey cost -------------------------------------------------------------------------
+   A card list with an inline recap drawer, following the budget-category row idiom (head button toggles, body
+   expands) rather than a modal, so it reads like the rest of the Spending tab. Every colour introduced here
+   gets its dark counterpart in the block at the bottom — run tools/pairscan.js after touching this. */
+.trips-view { display: flex; flex-direction: column; gap: 10px; padding: 4px 0 10px; }
+.trip-card { border: 1px solid #e2e8f0; border-radius: 14px; background: #fff; overflow: hidden; }
+.trip-card.now { border-color: var(--tm-mint); box-shadow: 0 0 0 1px var(--tm-mint) inset; }
+.trip-head { display: flex; align-items: center; gap: 10px; width: 100%; padding: 12px 14px; background: none; border: 0; text-align: left; cursor: pointer; }
+.trip-head:hover { background: #f6faf8; }
+.trip-mark { font-size: 1.35rem; line-height: 1; }
+.trip-id { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.trip-name { font-weight: 650; color: #0f172a; }
+.trip-when { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: .72rem; color: #64748b; }
+.trip-pill { border-radius: 999px; padding: 1px 7px; font-size: .65rem; font-weight: 650; }
+.trip-pill.now { background: #d9f5e9; color: #0e7c55; }
+.trip-pill.soon { background: #e8eefc; color: #35538f; }
+.trip-total { font-weight: 700; font-variant-numeric: tabular-nums; color: #0f172a; }
+.trip-body { padding: 0 14px 14px; display: flex; flex-direction: column; gap: 10px; }
+
+/* Booked ahead / while away / after getting back. The first figure is the whole point of the feature — the
+   half people forget — so the row gives the three equal weight rather than burying it in a footnote. */
+.trip-when-split { display: flex; flex-wrap: wrap; gap: 8px; }
+.tws { display: flex; flex-direction: column; gap: 1px; flex: 1 1 84px; border: 1px solid #eef2f7; border-radius: 10px; padding: 7px 9px; }
+.tws-k { font-size: .62rem; text-transform: uppercase; letter-spacing: .04em; color: #64748b; }
+.tws-v { font-weight: 650; font-variant-numeric: tabular-nums; color: #0f172a; }
+
+.trip-budget { margin: 0; font-size: .74rem; font-weight: 600; }
+.trip-budget.over { color: #dc2626; }
+.trip-budget.under { color: #0e7c55; }
+.trip-funded { margin: 0; font-size: .74rem; color: #0e7c55; display: flex; align-items: center; gap: 6px; }
+.trip-biggest { margin: 0; font-size: .72rem; color: #64748b; }
+
+.trip-split { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.trip-donut { width: 116px; height: 116px; flex: 0 0 auto; }
+.trip-legend { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; flex: 1 1 160px; min-width: 0; }
+.trip-legend li { display: flex; align-items: center; gap: 7px; font-size: .74rem; }
+.tl-dot { width: 9px; height: 9px; border-radius: 3px; flex: 0 0 auto; }
+.tl-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #334155; }
+.tl-amt { font-variant-numeric: tabular-nums; font-weight: 600; color: #0f172a; }
+
+.trip-acts { display: flex; gap: 14px; padding-top: 2px; }
+.trip-acts .link.danger { color: #dc2626; }
+.trips-add { align-self: flex-start; }
+
+html.dark .trip-card { border-color: #2a3342; background: #131820; }
+html.dark .trip-head:hover { background: #1b2230; }
+html.dark .trip-name,
+html.dark .trip-total,
+html.dark .tws-v,
+html.dark .tl-amt { color: #e6edf5; }
+html.dark .trip-when,
+html.dark .tws-k,
+html.dark .trip-biggest { color: #93a3b5; }
+html.dark .tws { border-color: #2a3342; }
+html.dark .tl-label { color: #c3cedb; }
+html.dark .trip-pill.now { background: #12352a; color: #57d9a3; }
+html.dark .trip-pill.soon { background: #1b2740; color: #9db6ea; }
+html.dark .trip-budget.over,
+html.dark .trip-acts .link.danger { color: #f87171; }
+html.dark .trip-budget.under,
+html.dark .trip-funded { color: #57d9a3; }
+
+/* Entry flow: the trip row on the expense form + the converted-amount line. */
+.trip-pick-field .tag-chip { display: inline-flex; align-items: center; gap: 5px; }
+.trip-fx { color: #35538f; display: flex; align-items: center; gap: 6px; }
+html.dark .trip-fx { color: #9db6ea; }
+
+/* "Add something already paid" — the picker that attaches an expense from any period to a trip. */
+.attach-list { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; gap: 5px; max-height: 46vh; overflow-y: auto; }
+.attach-row { border: 1px solid #eef2f7; border-radius: 10px; }
+.attach-row.on { border-color: var(--tm-mint); background: #f2fbf7; }
+.attach-main { display: flex; align-items: center; gap: 9px; width: 100%; padding: 8px 10px; background: none; border: 0; text-align: left; cursor: pointer; }
+.attach-main:disabled { opacity: .5; cursor: default; }
+.attach-id { display: flex; flex-direction: column; gap: 1px; flex: 1; min-width: 0; }
+.attach-cat { font-size: .78rem; color: #0f172a; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.attach-when { font-size: .66rem; color: #64748b; }
+.attach-taken { color: #94a3b8; }
+.attach-amt { font-variant-numeric: tabular-nums; font-weight: 650; color: #0f172a; }
+
+html.dark .attach-row { border-color: #2a3342; }
+html.dark .attach-row.on { border-color: var(--tm-mint); background: #12352a; }
+html.dark .attach-cat,
+html.dark .attach-amt { color: #e6edf5; }
+html.dark .attach-when { color: #93a3b5; }
+html.dark .attach-taken { color: #6b7c8f; }

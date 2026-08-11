@@ -52,6 +52,9 @@ public sealed class FinAppDbContext(DbContextOptions<FinAppDbContext> options) :
             a.Ignore(x => x.RecurringItems);       // body data — recurring templates ride in the snapshot
             a.Ignore(x => x.Tags);                 // body data — cross-cutting tags ride in the snapshot, no relational header
             a.Ignore(x => x.ActiveTags);           // computed view over Tags
+            a.Ignore(x => x.Trips);                // body data — trips ride in the snapshot, no relational header
+            a.Ignore(x => x.TripsByDeparture);     // computed view over Trips
+            a.Ignore(x => x.TripTags);             // computed view over Tags
             a.Ignore(x => x.RoundUpTo);            // F4 body data — round-up settings ride in the snapshot
             a.Ignore(x => x.RoundUpBucketId);      // F4 body data — rides in the snapshot
             a.Ignore(x => x.RoundUpsOn);           // computed view over the two above
@@ -319,6 +322,7 @@ public sealed class FinAppDbContext(DbContextOptions<FinAppDbContext> options) :
             e.Ignore(x => x.Part);
             e.Ignore(x => x.DebtBucketId);
             e.Ignore(x => x.IsInstallmentPart);   // computed from InstallmentGroupId
+            e.Ignore(x => x.TripId);              // body data — the trip link rides in the snapshot
         });
 
         b.Entity<SavingAllocation>(s =>

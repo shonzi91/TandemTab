@@ -1588,5 +1588,64 @@ public sealed class Localizer(IJSRuntime js)
         ["based on your last month"] = "по последния ти месец",
         ["based on your last {0} months"] = "по последните ти {0} месеца",
         ["some bills have no amount yet"] = "някои сметки още нямат сума",
+
+        // Trips. "Trip mode" is never named as such in the UI — the app simply behaves differently while a trip
+        // is running — so there is no jargon term to translate, only what the user sees.
+        ["Trips"] = "Пътувания",
+        ["New trip"] = "Ново пътуване",
+        ["Edit trip"] = "Редакция на пътуване",
+        ["Delete this trip?"] = "Да изтрия ли това пътуване?",
+        ["“{0}” will be removed. The expenses stay exactly where they are — they just stop being counted as part of a trip."] =
+            "„{0}“ ще бъде премахнато. Разходите остават точно където са — просто спират да се броят като част от пътуване.",
+        ["Where"] = "Къде",
+        ["Rome"] = "Рим",
+        ["Rome, Italy"] = "Рим, Италия",
+        ["Flag or emoji"] = "Знаме или емоджи",
+        ["Money"] = "Пари",
+        ["What you expect it to cost"] = "Колко очакваш да струва",
+        ["optional"] = "по избор",
+        ["Paid for from"] = "Платено от",
+        ["— nothing set aside —"] = "— нищо заделено —",
+        ["The recap will say how much of the trip came out of that pot. It never discounts the total — the money still left."] =
+            "Обобщението ще каже колко от пътуването е излязло от там. Никога не намалява общата сума — парите пак са излезли.",
+        ["Spending in another currency"] = "Харчене в друга валута",
+        ["Currency"] = "Валута",
+        ["1 {0} is"] = "1 {0} е",
+        ["Type amounts in the local currency and we'll convert them as you log. It's your own fixed rate, so treat the totals as close rather than exact."] =
+            "Въвеждай сумите в местната валута и ще ги превалутираме, докато записваш. Курсът е твой и фиксиран, така че приемай сумите за приблизителни, не за точни.",
+        ["Day {0}"] = "Ден {0}",
+        ["in {0} days"] = "след {0} дни",
+        ["Nothing logged against this trip yet. Log an expense while you're away, or attach one you've already paid — a flight, a hotel — from the expense's ⋯ menu."] =
+            "Още няма нищо записано към това пътуване. Запиши разход, докато си там, или прикачи вече платен — самолетен билет, хотел — от менюто ⋯ на разхода.",
+        ["Booked ahead"] = "Платено предварително",
+        ["While away"] = "Докато си там",
+        ["After getting back"] = "След връщането",
+        ["A day"] = "На ден",
+        ["{0} over the {1} you planned."] = "{0} над планираните {1}.",
+        ["{0} under the {1} you planned."] = "{0} под планираните {1}.",
+        ["{0} of this came out of {1}."] = "{0} от това излезе от {1}.",
+        ["Where the trip money went"] = "Къде отидоха парите за пътуването",
+        ["Split by category, because most of this trip isn't labelled. Tag as you go and this becomes stay / travel / food / tickets."] =
+            "Разбито по категории, защото по-голямата част от това пътуване няма етикети. Слагай етикети в движение и това ще стане настаняване / транспорт / храна / билети.",
+        ["Biggest single thing: {0} — {1}"] = "Най-голямото едно нещо: {0} — {1}",
+        // The trip labels seeded on the first trip. Short enough to read as chips on the expense form.
+        ["Stay"] = "Настаняване",
+        ["Travel"] = "Транспорт",
+        ["Food & drink"] = "Храна и напитки",
+        ["Tickets & tours"] = "Билети и турове",
+        ["Shopping"] = "Пазаруване",
+
+        // Entry flow: attaching an expense to a trip as you log it, and afterwards.
+        ["Part of a trip"] = "Част от пътуване",
+        ["Not a trip"] = "Не е пътуване",
+        ["Amount in {0}"] = "Сума в {0}",
+        ["logs as {0} at your trip rate"] = "записва се като {0} по твоя курс",
+        ["What kind of spend?"] = "Какъв разход е това?",
+        ["Add something already paid"] = "Добави вече платено",
+        ["Add to {0}"] = "Добави към {0}",
+        ["Pick anything you've already paid for this trip — flights, a hotel, tickets. It stays in the month you paid it; it just starts counting toward the trip."] =
+            "Избери каквото вече си платил/а за това пътуване — самолетни билети, хотел, входове. Остава в месеца, в който си платил/а; просто започва да се брои към пътуването.",
+        ["Nothing logged yet."] = "Още няма нищо записано.",
+        ["on {0}"] = "към {0}",
     };
 }

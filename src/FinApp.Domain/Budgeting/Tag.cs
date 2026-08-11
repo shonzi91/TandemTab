@@ -36,6 +36,21 @@ public sealed class Tag : Entity
     public void SetCategory(Guid? categoryId) =>
         CategoryId = categoryId is { } id && id != Guid.Empty ? id : null;
 
+    /// <summary>
+    /// This tag is one of the trip labels (Stay, Travel, Food &amp; drink, Tickets &amp; tours…) — the axis a
+    /// <see cref="Trip"/>'s cost split is drawn on. Flagged so the everyday tag picker can leave them out:
+    /// "Tickets &amp; tours" is noise when you're logging groceries, and a picker that grows six entries nobody
+    /// uses at home is how tagging stops being used at all.
+    /// <para>
+    /// Nothing else treats them specially — a trip tag is an ordinary tag that can be renamed, re-iconed, bound to
+    /// a category and archived like any other. The flag is a display hint, not a type.
+    /// </para>
+    /// </summary>
+    public bool IsTripTag { get; private set; }
+
+    /// <summary>Mark (or unmark) this tag as one of the trip labels.</summary>
+    public void SetTripTag(bool isTripTag) => IsTripTag = isTripTag;
+
     public Tag(string name)
     {
         if (string.IsNullOrWhiteSpace(name))

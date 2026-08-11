@@ -1122,6 +1122,12 @@ else
                         <button type="button" class="chip @(_spendView == SpendView.Categories ? "on" : "")" @onclick="SwitchToByBudgets"><Icon Name="chart" /> @Loc["By budgets"]</button>
                         <button type="button" class="chip @(_spendView == SpendView.Breakdown ? "on" : "")" @onclick="() => _spendView = SpendView.Breakdown"><Icon Name="pie" /> @Loc["Breakdown"]</button>
                         <button type="button" class="chip @(_spendView == SpendView.Trends ? "on" : "")" @onclick="ShowTrends"><Icon Name="pulse" /> @Loc["Trends"] <ProLock Feature="@PlanFeatures.Insights" Static="true" /></button>
+                        @* Invisible until useful: the tab only exists once there's a trip. Creating the first one
+                           lives in the ⋯ menu, so an account that never travels never sees any of this. *@
+                        @if (State.AllTrips.Count > 0)
+                        {
+                            <button type="button" class="chip @(_spendView == SpendView.Trips ? "on" : "")" @onclick="() => _spendView = SpendView.Trips"><Icon Name="plane" /> @Loc["Trips"]</button>
+                        }
                     </span>
                     @if (State.IsPeriodOpen)
                     {
@@ -1143,6 +1149,7 @@ else
                                 <button @onclick="async () => { _spendMenuOpen = false; await OpenImport(); }"><Icon Name="import" /> @Loc["Import statement"] <ProLock Feature="@PlanFeatures.Import" Static="true" /></button>
                                 <button @onclick="() => { _spendMenuOpen = false; OpenManageCats(); }"><Icon Name="tag" /> @Loc["Manage categories"]</button>
                                 <button @onclick="() => { _spendMenuOpen = false; OpenManageTags(); }"><Icon Name="tag" /> @Loc["Manage tags"]</button>
+                                <button @onclick="() => { _spendMenuOpen = false; OpenAddTrip(); }"><Icon Name="plane" /> @Loc["New trip"]</button>
                             </div>
                         }
                     </span>
@@ -2001,6 +2008,130 @@ else
                     }
                 </div>
                 }
+                else if (_spendView == SpendView.Trips)
+                {
+                @* Trips: what each journey cost. Gathered by LINK across periods, which is why a flight bought in
+                   March shows up under a June trip — and why these totals deliberately don't match any one
+                   period's spending. *@
+                <div class="trips-view">
+                    @foreach (var tRecap in State.TripRecaps())
+                    {
+                        var trip = State.FindTrip(tRecap.TripId)!;
+                        var today = State.TodayDate;
+                        var open = _expandedTripId == tRecap.TripId;
+                        var status = trip.IsActiveOn(today) ? "now" : trip.IsUpcomingOn(today) ? "soon" : "past";
+                        // Lead with tags when enough of the trip is labelled; otherwise categories, the axis every
+                        // expense always carries. A pie that is mostly one grey "untagged" wedge tells nobody anything.
+                        var byTag = tRecap.TagsAreRepresentative && tRecap.TagBreakdown.Count > 0;
+                        var tSlices = (byTag
+                                ? tRecap.TagBreakdown.Select(s => (Key: s.Id, Label: State.TagName(s.Id), Icon: State.TagIcon(s.Id), Amt: s.Total.Amount))
+                                : tRecap.CategoryBreakdown.Select(s => (Key: s.Id, Label: State.CategoryName(s.Id), Icon: State.CategoryStoredIcon(s.Id), Amt: s.Total.Amount)))
+                            .Where(s => s.Amt > 0m)
+                            .Take(MaxSlices)
+                            .Select((s, i) => new BreakSlice(s.Key, s.Label, s.Icon, s.Amt, SliceColor(i)))
+                            .ToList();
+                        var tTotal = tSlices.Sum(s => s.Amount);
+                        double sweepAt = 0;
+                        <div class="trip-card @status @(open ? "open" : "")">
+                            <button type="button" class="trip-head" @onclick="() => _expandedTripId = open ? Guid.Empty : tRecap.TripId">
+                                <span class="trip-mark">@(trip.Icon ?? "🧳")</span>
+                                <span class="trip-id">
+                                    <span class="trip-name">@trip.Name</span>
+                                    <span class="trip-when">
+                                        @trip.From.ToString("d MMM")–@trip.To.ToString("d MMM yyyy")
+                                        @if (trip.IsActiveOn(today))
+                                        {
+                                            <span class="trip-pill now">@string.Format(Loc["Day {0}"], trip.DayOn(today))</span>
+                                        }
+                                        else if (trip.DaysUntil(today) is { } sleeps)
+                                        {
+                                            <span class="trip-pill soon">@(sleeps == 0 ? Loc["Today"] : string.Format(Loc["in {0} days"], sleeps))</span>
+                                        }
+                                    </span>
+                                </span>
+                                <span class="trip-total">@Fmt(tRecap.Spent)</span>
+                            </button>
+                            @if (open)
+                            {
+                                <div class="trip-body">
+                                    @if (tRecap.IsEmpty)
+                                    {
+                                        <p class="hint">@Loc["Nothing logged against this trip yet. Log an expense while you're away, or add something you've already paid for — a flight, a hotel."]</p>
+                                    }
+                                    else
+                                    {
+                                        @* The three-way split is the point of the whole feature: the pre-paid half is
+                                           the part people forget, because the trip felt like it cost what they spent
+                                           while they were there. *@
+                                        <div class="trip-when-split">
+                                            <span class="tws"><span class="tws-k">@Loc["Booked ahead"]</span><span class="tws-v">@Fmt(tRecap.PrePaid)</span></span>
+                                            <span class="tws"><span class="tws-k">@Loc["While away"]</span><span class="tws-v">@Fmt(tRecap.OnTrip)</span></span>
+                                            @if (!tRecap.AfterReturn.IsZero)
+                                            {
+                                                <span class="tws"><span class="tws-k">@Loc["After getting back"]</span><span class="tws-v">@Fmt(tRecap.AfterReturn)</span></span>
+                                            }
+                                            <span class="tws"><span class="tws-k">@Loc["A day"]</span><span class="tws-v">@Fmt(tRecap.PerDay)</span></span>
+                                        </div>
+
+                                        @if (tRecap.AgainstBudget is { } delta)
+                                        {
+                                            <p class="trip-budget @(tRecap.IsOverBudget ? "over" : "under")">
+                                                @(tRecap.IsOverBudget
+                                                    ? string.Format(Loc["{0} over the {1} you planned."], Fmt(State.Money(Math.Abs(delta.Amount))), Fmt(State.Money(tRecap.Budget!.Value)))
+                                                    : string.Format(Loc["{0} under the {1} you planned."], Fmt(State.Money(Math.Abs(delta.Amount))), Fmt(State.Money(tRecap.Budget!.Value))))
+                                            </p>
+                                        }
+                                        @if (!tRecap.FundedFromSavings.IsZero && trip.SavingCategoryId is { } bkt)
+                                        {
+                                            @* The line the savings link exists for. It never discounts the total — the
+                                               money left either way; it just says how much of it had been saved for. *@
+                                            <p class="trip-funded"><Icon Name="target" /> @string.Format(Loc["{0} of this came out of {1}."], Fmt(tRecap.FundedFromSavings), State.SavingBucketName(bkt))</p>
+                                        }
+
+                                        @if (tSlices.Count > 0 && tTotal > 0m)
+                                        {
+                                            <div class="trip-split">
+                                                <svg class="trip-donut" viewBox="0 0 100 100" role="img" aria-label="@Loc["Where the trip money went"]">
+                                                    @foreach (var s in tSlices)
+                                                    {
+                                                        var pct = (double)(s.Amount / tTotal) * 100.0;
+                                                        <path d="@DonutArc(sweepAt, pct, 50, 50, 46, 27)" fill="@s.Color"></path>
+                                                        sweepAt += pct;
+                                                    }
+                                                </svg>
+                                                <ul class="trip-legend">
+                                                    @foreach (var s in tSlices)
+                                                    {
+                                                        <li>
+                                                            <span class="tl-dot" style="background:@s.Color"></span>
+                                                            <span class="tl-label"><CatIcon Name="@CategoryIcons.Effective(s.Icon, s.Label)" /> @s.Label</span>
+                                                            <span class="tl-amt">@Fmt(State.Money(s.Amount))</span>
+                                                        </li>
+                                                    }
+                                                </ul>
+                                            </div>
+                                            @if (!byTag && tRecap.TagBreakdown.Count > 0)
+                                            {
+                                                <p class="hint">@Loc["Split by category, because most of this trip isn't labelled. Tag as you go and this becomes stay / travel / food / tickets."]</p>
+                                            }
+                                        }
+                                        @if (tRecap.Biggest is { } big)
+                                        {
+                                            <p class="trip-biggest">@string.Format(Loc["Biggest single thing: {0} — {1}"], Fmt(big.Amount), string.IsNullOrWhiteSpace(big.Note) ? State.CategoryName(big.CategoryId) : big.Note)</p>
+                                        }
+                                    }
+                                    <div class="trip-acts">
+                                        <button class="link" @onclick="() => OpenAttachToTrip(tRecap.TripId)"><Icon Name="plus" /> @Loc["Add something already paid"]</button>
+                                        <button class="link" @onclick="() => OpenEditTrip(tRecap.TripId)"><Icon Name="pencil" /> @Loc["Edit"]</button>
+                                        <button class="link danger" @onclick="() => ConfirmRemoveTrip(tRecap.TripId)"><Icon Name="trash" /> @Loc["Delete"]</button>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    }
+                    <button class="fund-add trips-add" @onclick="OpenAddTrip"><Icon Name="plus" /> @Loc["New trip"]</button>
+                </div>
+                }
             </section>
 
             @* Bank expenses to review moved off the Spending tab into the 🔔 review window (see the External-accounts button). *@
@@ -2633,13 +2764,20 @@ else
                 // Shared tag selector for the add/edit-expense modals: single-select chips for existing tags (one tag
                 // per expense — picking another replaces it, tapping the selected one clears it) + an inline "new tag"
                 // input that creates and selects. Selection lives in _fTagId; the save handlers pass it to Add/EditExpense.
+                // On a trip the chips become the trip labels (Stay / Travel / Food & drink / Tickets & tours…) and
+                // the everyday ones step aside. That swap is what makes the trip cost split work at all: tagging is
+                // normally extra work ON TOP of categorising, so it doesn't happen — but a trip label is bound to a
+                // category, so here one tap does both, and the recap gets its axis for free.
+                // Off a trip the trip labels are hidden, because "Tickets & tours" is noise at the supermarket.
+                var onTrip = _expTripId != Guid.Empty && State.TripTags.Count > 0;
+                var pickTags = onTrip ? State.TripTags : State.EverydayTags;
                 RenderFragment tagPicker =
                 @<div class="modal-field">
-                    <span class="lbl-row">@Loc["Tag (optional)"]</span>
-                    @if (State.ActiveTags.Count > 0)
+                    <span class="lbl-row">@(onTrip ? Loc["What kind of spend?"] : Loc["Tag (optional)"])</span>
+                    @if (pickTags.Count > 0)
                     {
                         <div class="tag-pick">
-                            @foreach (var t in State.ActiveTags)
+                            @foreach (var t in pickTags)
                             {
                                 var tid = t.Id;
                                 var on = _fTagId == tid;
@@ -3480,21 +3618,50 @@ else
                     @* F1: DecimalInput raises the phone's decimal keypad AND accepts the "," that keypad offers — a
                        type="number" field rejects it outright, which is why decimals couldn't be typed on mobile.
                        @ref so the cursor can land here when the category was already chosen (see OpenAddExpense). *@
-                    <label>@Loc["Amount"] <DecimalInput @ref="_amountInput" @bind-Value="_amount" /></label>
+                    @* Trip row. Only rendered when there's a trip running or coming up — an account that doesn't
+                       travel never sees it. The active trip is pre-selected; "Not a trip" is always one tap away,
+                       because plenty of ordinary life happens while you're away. *@
+                    @if (FormTripOptions.Count > 0)
+                    {
+                        <div class="modal-field trip-pick-field">
+                            <span class="lbl-row">@Loc["Part of a trip"]</span>
+                            <div class="qp-row">
+                                <button type="button" class="tag-chip @(_expTripId == Guid.Empty ? "tag-chip-on" : "")" @onclick="() => _expTripId = Guid.Empty">@Loc["Not a trip"]</button>
+                                @foreach (var t in FormTripOptions)
+                                {
+                                    var tripOpt = t;
+                                    <button type="button" class="tag-chip @(_expTripId == tripOpt.Id ? "tag-chip-on" : "")" @onclick="() => _expTripId = tripOpt.Id">
+                                        <span class="tag-emoji">@(tripOpt.Icon ?? "🧳")</span>@tripOpt.Name
+                                    </button>
+                                }
+                            </div>
+                        </div>
+                    }
+                    <label>@(FormTrip is { HasRate: true } cur ? string.Format(Loc["Amount in {0}"], cur.SpendCurrency) : Loc["Amount"]) <DecimalInput @ref="_amountInput" @bind-Value="_amount" /></label>
                     @if (_amount < 0)
                     {
                         <small class="hint warn-text">@Loc["Amount can't be negative — enter what you spent."]</small>
                     }
+                    @* What will actually be stored. Shown rather than silently applied: the rate is the user's own
+                       fixed guess, so the honest thing is to put the converted figure in front of them before it
+                       becomes a ledger entry. *@
+                    @if (_amount > 0 && FormTrip is { HasRate: true })
+                    {
+                        <small class="hint trip-fx"><Icon Name="swap" /> @string.Format(Loc["logs as {0} at your trip rate"], Fmt(State.Money(ExpenseAmountToLog(_amount))))</small>
+                    }
                     @* Time cost, live as you type (the amount binds on oninput). This is the moment it earns its
                        place — a price is easiest to reconsider before it's logged, not in a recap afterwards.
                        Silent unless a rate has been set: no rate, no claim. *@
-                    @if (_amount > 0 && State.TimeCostLabel(_amount) is { } timeCost)
+                    @* Time cost is read off the CONVERTED figure — hours of work against £20 would be nonsense. *@
+                    @if (_amount > 0 && State.TimeCostLabel(ExpenseAmountToLog(_amount)) is { } timeCost)
                     {
                         <small class="hint time-cost"><Icon Name="clock" /> @string.Format(Loc["≈ {0} of work"], timeCost)</small>
                     }
                     @* Recent amounts for this category as tappable hints. Never pre-filled — the amount is the one
                        field that really changes each time, so a wrong default here writes a wrong ledger entry. *@
-                    var amtHints = State.RecentAmountsForCategory(_categoryId);
+                    @* Suppressed while converting: these are past amounts in the ACCOUNT currency, and tapping one
+                       into a field that's being read as pounds would log a number nobody meant. *@
+                    var amtHints = FormTrip is { HasRate: true } ? [] : State.RecentAmountsForCategory(_categoryId);
                     @if (amtHints.Count > 0 && _expenseDrafts.Count == 0)
                     {
                         <div class="qp-row amt-hints">
@@ -4182,6 +4349,104 @@ else
                     <div class="modal-actions">
                         <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
                         <button @onclick="SaveEditTag" disabled="@string.IsNullOrWhiteSpace(_editTagName)">@Loc["Save"]</button>
+                    </div>
+                    break;
+
+                case Modal.TripEdit:
+                    <h3>@(_tripId == Guid.Empty ? Loc["New trip"] : Loc["Edit trip"])</h3>
+                    <label>@Loc["Name"] <input type="text" maxlength="40" @bind="_tripName" @bind:event="oninput" placeholder="@Loc["Rome"]" /></label>
+                    <label>@Loc["Where"] <input type="text" maxlength="60" @bind="_tripDestination" @bind:event="oninput" placeholder="@Loc["Rome, Italy"]" /></label>
+                    <div class="row2">
+                        <label>@Loc["From"] <input type="date" @bind="_tripFrom" /></label>
+                        <label>@Loc["To"] <input type="date" @bind="_tripTo" /></label>
+                    </div>
+                    <label>@Loc["Flag or emoji"] <input type="text" maxlength="4" @bind="_tripIcon" @bind:event="oninput" placeholder="🧳" /></label>
+                    <div class="modal-sec">
+                        <h4>@Loc["Money"]</h4>
+                        <label>@Loc["What you expect it to cost"] <DecimalInput T="decimal?" class="num" @bind-Value="_tripBudget" placeholder="@Loc["optional"]" /></label>
+                        @{ var tripBuckets = State.SavingBuckets.Where(b => !b.Bucket.IsArchived && !b.Bucket.IsDebt).ToList(); }
+                        @if (tripBuckets.Count > 0)
+                        {
+                            <label>@Loc["Paid for from"]
+                                <select @bind="_tripBucketId">
+                                    <option value="@Guid.Empty">@Loc["— nothing set aside —"]</option>
+                                    @foreach (var (bucket, _) in tripBuckets)
+                                    {
+                                        <option value="@bucket.Id">@bucket.Name</option>
+                                    }
+                                </select>
+                            </label>
+                            <small class="hint">@Loc["The recap will say how much of the trip came out of that pot. It never discounts the total — the money still left."]</small>
+                        }
+                    </div>
+                    <div class="modal-sec">
+                        <h4>@Loc["Spending in another currency"]</h4>
+                        @* One fixed rate the user sets, not a live feed: a feed means a rate provider, a new
+                           sub-processor and a rate per expense. The conversion happens as you type an amount and
+                           what gets stored is already in the account currency, so editing this later can never
+                           rewrite what past expenses cost. *@
+                        <div class="row2">
+                            <label>@Loc["Currency"] <input type="text" maxlength="3" @bind="_tripCurrency" @bind:event="oninput" placeholder="GBP" /></label>
+                            <label>@string.Format(Loc["1 {0} is"], string.IsNullOrWhiteSpace(_tripCurrency) ? "?" : _tripCurrency!.ToUpperInvariant()) <DecimalInput T="decimal?" class="num" @bind-Value="_tripRate" placeholder="1.00" /></label>
+                        </div>
+                        <small class="hint">@Loc["Type amounts in the local currency and we'll convert them as you log. It's your own fixed rate, so treat the totals as close rather than exact."]</small>
+                    </div>
+                    <div class="modal-actions">
+                        <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
+                        <button @onclick="SaveTripForm" disabled="@(string.IsNullOrWhiteSpace(_tripName) || _tripTo < _tripFrom)">@Loc["Save"]</button>
+                    </div>
+                    break;
+
+                case Modal.AttachToTrip:
+                    <h3>@string.Format(Loc["Add to {0}"], State.TripName(_tripId))</h3>
+                    @* The flow that makes pre-payment work: the flight was bought in March, the trip is in June,
+                       and by now March is closed. Attaching writes only the link, so a closed period is no
+                       obstacle — nothing here edits the expense itself. *@
+                    <p class="hint">@Loc["Pick anything you've already paid for this trip — flights, a hotel, tickets. It stays in the month you paid it; it just starts counting toward the trip."]</p>
+                    var attachable = State.RecentExpensesAcrossPeriods();
+                    @if (attachable.Count == 0)
+                    {
+                        <p class="hint">@Loc["Nothing logged yet."]</p>
+                    }
+                    else
+                    {
+                        <ul class="attach-list">
+                            @foreach (var candidate in attachable)
+                            {
+                                var row = candidate;
+                                var mine = row.TripId == _tripId;
+                                var elsewhere = row.TripId is { } other && other != _tripId;
+                                <li class="attach-row @(mine ? "on" : "")">
+                                    <button type="button" class="attach-main" disabled="@elsewhere" @onclick="() => ToggleAttachToTrip(row.Id, mine)">
+                                        <CatIcon Name="@State.CategoryIcon(row.CategoryId)" />
+                                        <span class="attach-id">
+                                            <span class="attach-cat">@(string.IsNullOrWhiteSpace(row.Note) ? State.CategoryName(row.CategoryId) : row.Note)</span>
+                                            <span class="attach-when">
+                                                @row.Date.ToString("d MMM yyyy")
+                                                @if (elsewhere)
+                                                {
+                                                    <span class="attach-taken">· @string.Format(Loc["on {0}"], State.TripName(row.TripId!.Value))</span>
+                                                }
+                                            </span>
+                                        </span>
+                                        <span class="attach-amt">@Fmt(row.Amount)</span>
+                                        @if (mine) { <Icon Name="check" /> }
+                                    </button>
+                                </li>
+                            }
+                        </ul>
+                    }
+                    <div class="modal-actions">
+                        <button @onclick="Back">@Loc["Done"]</button>
+                    </div>
+                    break;
+
+                case Modal.DeleteTrip:
+                    <h3>@Loc["Delete this trip?"]</h3>
+                    <p>@string.Format(Loc["“{0}” will be removed. The expenses stay exactly where they are — they just stop being counted as part of a trip."], State.TripName(_tripId))</p>
+                    <div class="modal-actions">
+                        <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
+                        <button class="danger" @onclick="RemoveTripConfirmed">@Loc["Delete"]</button>
                     </div>
                     break;
 
@@ -5587,7 +5852,7 @@ else
 }
 
 @code {
-    private enum Modal { None, BankReview, BankConsent, AddCat, AddBudget, DisburseSaving, PayoffProjection, GoalProjection, InvestmentProjection, BankTransfer, ExternalAccounts, HealthScore, RunwayMath, EditCat, DeleteCat, DeleteBudget, EditAccountTransfer, DeleteAccountTransfer, CategoryDetail, AddAccount, EditAccount, DeleteAccount, RemoveMember, LeaveAccount, AddExpense, NextPeriod, RemovePeriod, EditExpense, DeleteExpense, SettleExpense, AddBucket, EditBucket, DeleteBucket, EditCost, AddFund, EditFund, DeleteFund, Invite, Transfer, Deposit, EditDeposit, DeleteDeposit, ManageCats, ManageContribCats, ContribCat, DeleteContribCat, AddSaving, BudgetSaving, SpendSaving, EditSavingDeposit, DeleteSavingDeposit, EditTransfer, DeleteTransfer, EditPeriod, EditSavingMovement, DeleteSavingMovement, DeleteExternalTransfer, Achievements, Reallocate, Recurring, RecurringEdit, RecurringConfirm, Import, AddOrImport, ArchiveFund, FundMovements, Archived, ManageTags, EditTag, LogInstallment, DeleteInstallment, WeekRecap }
+    private enum Modal { None, BankReview, BankConsent, AddCat, AddBudget, DisburseSaving, PayoffProjection, GoalProjection, InvestmentProjection, BankTransfer, ExternalAccounts, HealthScore, RunwayMath, EditCat, DeleteCat, DeleteBudget, EditAccountTransfer, DeleteAccountTransfer, CategoryDetail, AddAccount, EditAccount, DeleteAccount, RemoveMember, LeaveAccount, AddExpense, NextPeriod, RemovePeriod, EditExpense, DeleteExpense, SettleExpense, AddBucket, EditBucket, DeleteBucket, EditCost, AddFund, EditFund, DeleteFund, Invite, Transfer, Deposit, EditDeposit, DeleteDeposit, ManageCats, ManageContribCats, ContribCat, DeleteContribCat, AddSaving, BudgetSaving, SpendSaving, EditSavingDeposit, DeleteSavingDeposit, EditTransfer, DeleteTransfer, EditPeriod, EditSavingMovement, DeleteSavingMovement, DeleteExternalTransfer, Achievements, Reallocate, Recurring, RecurringEdit, RecurringConfirm, Import, AddOrImport, ArchiveFund, FundMovements, Archived, ManageTags, EditTag, LogInstallment, DeleteInstallment, WeekRecap, TripEdit, DeleteTrip, AttachToTrip }
     private enum Tab { Overview, Account, Budgets, Savings }
 
     /// <summary>Which kind of goal the Goals grid is showing. Defaults to All so the filter narrows on request
@@ -5640,7 +5905,8 @@ else
     // Spending panel view. Categories = the ring/bar budget list; ByDate = the same expenses flat, organised by date;
     // Breakdown = a budget-free, multi-period pie of where the money actually went (drill into subcategories/tags);
     // Trends = money over time (income/spent/saved/balance) across periods — answers "how it's moving" (P3).
-    private enum SpendView { Categories, ByDate, Breakdown, Trends }
+    // Trips = what a journey cost, gathered by link across periods — answers "how much was Rome?".
+    private enum SpendView { Categories, ByDate, Breakdown, Trends, Trips }
     // Default to the plain date ledger — the first thing people look for is "what did I spend, recently"; the
     // budget-vs-spent breakdown lives one tap away under "By budgets".
     private SpendView _spendView = SpendView.ByDate;
@@ -7683,6 +7949,9 @@ else
         _expenseDate = ClampToPeriod(d);
         _fundId = State.SelectableFunds.FirstOrDefault()?.Id ?? Guid.Empty;
         _modal = Modal.AddExpense;
+        // Keyed off the DAY being logged, not today: opening the 12th from the calendar while a trip covers it
+        // should default to that trip even if you're back home when you enter it.
+        _expTripId = State.AllTrips.FirstOrDefault(t => t.IsActiveOn(_expenseDate))?.Id ?? Guid.Empty;
     }
 
     private void ResetPickers()
@@ -7820,6 +8089,132 @@ else
         Back();
     });
     private async Task EditTagKey(KeyboardEventArgs e) { if (e.Key is "Enter" && !string.IsNullOrWhiteSpace(_editTagName)) await SaveEditTag(); }
+
+    // --- Trips ---------------------------------------------------------------------------------------------
+    // Which trip's recap drawer is open in the Trips tab (accordion, like the budget category rows).
+    private Guid _expandedTripId;
+
+    // The trip the add-expense form will attach to. Guid.Empty = not part of a trip. Defaulted from the active
+    // trip when the form opens — a default the user can clear, never a rule: the weekly shop still happens on
+    // the day you fly home, and a mode that insisted otherwise would quietly corrupt the recap.
+    private Guid _expTripId;
+
+    /// <summary>The trip currently picked on the expense form, when there is one.</summary>
+    private FinApp.Domain.Budgeting.Trip? FormTrip => _expTripId == Guid.Empty ? null : State.FindTrip(_expTripId);
+
+    /// <summary>
+    /// What actually gets logged: the typed figure converted at the trip's own fixed rate, or the typed figure
+    /// itself when there's no rate.
+    /// <para>
+    /// <b>Converting here and storing the result is the whole design.</b> Every total in the app stays in one
+    /// currency — budgets, safe-to-spend, the hero — and editing the rate afterwards can never rewrite what a past
+    /// expense cost. The price is that the stored figure is only as good as the rate on the day, which is why the
+    /// form says so rather than implying precision it doesn't have.
+    /// </para>
+    /// </summary>
+    private decimal ExpenseAmountToLog(decimal typed) =>
+        FormTrip is { HasRate: true } t ? t.ToAccountCurrency(typed) : typed;
+
+    /// <summary>Trips the expense form offers: the one running now, plus anything upcoming — because the whole
+    /// point is that a flight bought today belongs to next summer. Past trips are left out; attaching to one is
+    /// the rarer "I forgot this" case, and that goes through the expense row's own menu.</summary>
+    private IReadOnlyList<FinApp.Domain.Budgeting.Trip> FormTripOptions =>
+        (State.ActiveTrip is { } a ? new[] { a } : []).Concat(State.UpcomingTrips).ToList();
+
+    // The trip form. Guid.Empty in _tripId means "new" — the same modal serves both, since every field is the same.
+    private Guid _tripId;
+    private string? _tripName;
+    private string? _tripDestination;
+    private string? _tripIcon;
+    private DateOnly _tripFrom = DateOnly.FromDateTime(DateTime.Today);
+    private DateOnly _tripTo = DateOnly.FromDateTime(DateTime.Today).AddDays(6);
+    private decimal? _tripBudget;
+    private Guid _tripBucketId;      // Guid.Empty = not funded from a bucket (the <select> needs a real value)
+    private string? _tripCurrency;
+    private decimal? _tripRate;
+
+    private void OpenAddTrip()
+    {
+        _tripId = Guid.Empty;
+        _tripName = null; _tripDestination = null; _tripIcon = null;
+        // A week starting today is the shape of most trips and the least typing; both dates are editable anyway.
+        _tripFrom = State.TodayDate; _tripTo = State.TodayDate.AddDays(6);
+        _tripBudget = null; _tripBucketId = Guid.Empty; _tripCurrency = null; _tripRate = null;
+        _modal = Modal.TripEdit;
+    }
+
+    private void OpenEditTrip(Guid tripId)
+    {
+        if (State.FindTrip(tripId) is not { } trip) return;
+        _tripId = tripId;
+        _tripName = trip.Name; _tripDestination = trip.Destination; _tripIcon = trip.Icon;
+        _tripFrom = trip.From; _tripTo = trip.To;
+        _tripBudget = trip.Budget;
+        _tripBucketId = trip.SavingCategoryId ?? Guid.Empty;
+        _tripCurrency = trip.SpendCurrency; _tripRate = trip.Rate;
+        _modal = Modal.TripEdit;
+    }
+
+    private Task SaveTripForm() => RunModal(async () =>
+    {
+        var name = _tripName?.Trim();
+        if (string.IsNullOrWhiteSpace(name) || _tripTo < _tripFrom) return;
+        var bucket = _tripBucketId == Guid.Empty ? (Guid?)null : _tripBucketId;
+        if (_tripId == Guid.Empty)
+        {
+            // Create then save the rest: AddTrip covers the identity fields, and everything else (budget, bucket,
+            // rate) is one full-replace edit — the same call the edit form makes, so there's one code path for it.
+            var id = await State.AddTrip(name, _tripFrom, _tripTo, _tripDestination, _tripIcon);
+            if (id != Guid.Empty && (bucket is not null || _tripBudget is not null || _tripRate is not null))
+                await State.SaveTrip(id, name, _tripFrom, _tripTo, _tripDestination, _tripIcon, bucket, _tripBudget, _tripCurrency, _tripRate);
+            // Seed the trip labels on the first trip only — EnsureTripTags is a no-op afterwards.
+            if (State.TripTags.Count == 0) await State.EnsureTripTags(TripTagSeeds());
+            _spendView = SpendView.Trips;
+            if (id != Guid.Empty) _expandedTripId = id;
+        }
+        else
+        {
+            await State.SaveTrip(_tripId, name, _tripFrom, _tripTo, _tripDestination, _tripIcon, bucket, _tripBudget, _tripCurrency, _tripRate);
+        }
+        Back();
+    });
+
+    private void ConfirmRemoveTrip(Guid tripId) { _tripId = tripId; _modal = Modal.DeleteTrip; }
+
+    private void OpenAttachToTrip(Guid tripId) { _tripId = tripId; _modal = Modal.AttachToTrip; }
+
+    /// <summary>Attach or detach one already-logged expense. Deliberately does NOT close the modal — attaching a
+    /// trip's bookings is a run of several taps, and closing after each would make a five-item trip five trips.</summary>
+    private Task ToggleAttachToTrip(Guid expenseId, bool alreadyOn) =>
+        RunModal(() => State.SetExpenseTrip(expenseId, alreadyOn ? null : _tripId));
+
+    private Task RemoveTripConfirmed() => RunModal(async () =>
+    {
+        await State.RemoveTrip(_tripId);
+        _expandedTripId = Guid.Empty;
+        if (State.AllTrips.Count == 0) _spendView = SpendView.ByDate;   // the tab is about to disappear
+        Back();
+    });
+
+    // The trip labels, localized here because only the UI knows the language. Each files into a category so that
+    // picking one on the expense form also categorizes the expense — tagging replaces a step instead of adding one.
+    // The server seeds them once and ignores later calls, so switching language can't create a second set.
+    private IReadOnlyList<TripTagSeed> TripTagSeeds()
+    {
+        Guid? Cat(params string[] names) =>
+            State.CategoryOptions.Select(c => c.Category)
+                .FirstOrDefault(c => names.Any(n => string.Equals(c.Name, n, StringComparison.CurrentCultureIgnoreCase)))?.Id;
+
+        return
+        [
+            new TripTagSeed(Loc["Stay"], "🏨", Cat("Housing", "Home", "Rent")),
+            new TripTagSeed(Loc["Travel"], "✈️", Cat("Transport", "Travel")),
+            new TripTagSeed(Loc["Food & drink"], "🍽️", Cat("Food", "Groceries")),
+            new TripTagSeed(Loc["Tickets & tours"], "🎟️", Cat("Fun", "Entertainment", "Leisure")),
+            new TripTagSeed(Loc["Shopping"], "🛍️", Cat("Shopping")),
+            new TripTagSeed(Loc["Other"], "📦", null),
+        ];
+    }
 
     private void OpenEditDeposit(Guid contributionId)
     {
@@ -8996,6 +9391,7 @@ else
         _expenseDate = _dayView ?? DateOnly.FromDateTime(DateTime.Today);
         _fundId = DefaultFundForCategory(categoryId); _modal = Modal.AddExpense;
         _focusAmount = focusAmount;
+        _expTripId = State.ActiveTrip?.Id ?? Guid.Empty;   // trip mode: default it, don't enforce it
     }
 
     // F1: set when the modal should open with the cursor already in Amount; consumed once by OnAfterRenderAsync.
@@ -9066,15 +9462,18 @@ else
 
     // Multi-expense: a locally-staged list of expenses the user is building; the ✓ saves them all at once. Each draft
     // is a snapshot of the editor fields at the moment "Add another expense" was pressed.
-    private sealed record ExpenseDraft(Guid CategoryId, decimal Amount, Guid FundId, string? Note, DateOnly Date, Guid? TagId);
+    // Amount is stored ALREADY CONVERTED (see ExpenseAmountToLog), so a draft never carries a foreign figure —
+    // the trip id rides along only to attach the row, never to re-convert it.
+    private sealed record ExpenseDraft(Guid CategoryId, decimal Amount, Guid FundId, string? Note, DateOnly Date, Guid? TagId, Guid? TripId, decimal TypedAmount);
     private readonly List<ExpenseDraft> _expenseDrafts = new();
 
     /// <summary>Park the current editor entry as a staged draft row, then clear the per-item fields (keeping
-    /// category/fund/date) so the next one is quick to enter.</summary>
+    /// category/fund/date, and the trip — a staged row is usually one of several from the same day away).</summary>
     private void StageCurrentExpense()
     {
         if (_amount <= 0) return;
-        _expenseDrafts.Add(new ExpenseDraft(_categoryId, _amount, _fundId, _note, _expenseDate, _fTagId));
+        _expenseDrafts.Add(new ExpenseDraft(_categoryId, ExpenseAmountToLog(_amount), _fundId, _note, _expenseDate, _fTagId,
+            _expTripId == Guid.Empty ? null : _expTripId, _amount));
         _amount = 0; _note = null; _fTagId = null; _newTagName = null; _tagFiledTo = null;
     }
 
@@ -9084,8 +9483,12 @@ else
     {
         if (_amount > 0) StageCurrentExpense();
         _expenseDrafts.Remove(d);
-        _categoryId = d.CategoryId; _amount = d.Amount; _fundId = d.FundId; _note = d.Note; _expenseDate = d.Date;
+        _categoryId = d.CategoryId; _fundId = d.FundId; _note = d.Note; _expenseDate = d.Date;
         _fTagId = d.TagId; _newTagName = null; _tagFiledTo = null;
+        _expTripId = d.TripId ?? Guid.Empty;
+        // Back into the editor as the figure that was TYPED, not the converted one — otherwise pulling a draft back
+        // on a foreign-currency trip re-converts it on the next save and the amount climbs every round trip.
+        _amount = d.TypedAmount;
     }
 
     private void RemoveDraft(ExpenseDraft d) => _expenseDrafts.Remove(d);
@@ -9098,7 +9501,7 @@ else
         var lastDate = _expenseDate;
         foreach (var d in _expenseDrafts)
         {
-            await State.AddExpense(d.CategoryId, d.Amount, d.FundId, d.Note, d.Date, tagId: d.TagId);
+            await State.AddExpense(d.CategoryId, d.Amount, d.FundId, d.Note, d.Date, tagId: d.TagId, tripId: d.TripId);
             lastDate = d.Date;
         }
         _dayView = ClampToPeriod(lastDate); // keep the Expenses tab on the day just used (feature 6)

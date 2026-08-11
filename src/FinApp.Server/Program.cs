@@ -1129,6 +1129,8 @@ accounts.MapPost("/{id:guid}/expenses", async (Guid id, AddExpenseRequest req, C
             onBehalfOfOtherAccount: req.OnBehalfOfOtherAccount);
         expense.SetFundSynced(fund.IsSynced);   // synced funds aren't debited — the real bank balance handles it
         if (req.TagId is { } addTag && account.FindTag(addTag) is not null) expense.SetTag(addTag);
+        // Guarded like the tag: a trip that isn't in this account is dropped rather than stored as a dangling id.
+        if (req.TripId is { } addTrip && account.FindTrip(addTrip) is not null) expense.SetTrip(addTrip);
         period.AddExpense(expense);
         // F4 round-ups. Same service the web client runs in its optimistic apply, so the two can't produce different
         // savings rows — the config lives on the aggregate, so nothing about it needs to travel in the request.
@@ -1882,6 +1884,80 @@ accounts.MapDelete("/{id:guid}/tags/{tagId:guid}", async (Guid id, Guid tagId, C
     }, ct);
     await notifier.AccountChangedAsync(id, userId, version);
     return Results.Ok(new MutationResultDto(version, tagId));
+});
+
+// Trips — a named journey expenses point at. Membership is by link, never by date, so none of these endpoints
+// touches an expense's own period, amount or budget impact.
+accounts.MapPost("/{id:guid}/trips", async (Guid id, CreateTripRequest req, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
+{
+    var userId = user.UserId();
+    var (version, tripId) = await svc.MutateAsync(userId, id, account =>
+    {
+        var trip = account.AddTrip(req.Name, req.From, req.To, req.Destination, req.Icon);   // 400 on duplicate name / bad dates
+        return trip.Id;
+    }, ct);
+    await notifier.AccountChangedAsync(id, userId, version);
+    return Results.Ok(new MutationResultDto(version, tripId));
+});
+
+accounts.MapPut("/{id:guid}/trips/{tripId:guid}", async (Guid id, Guid tripId, EditTripRequest req, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
+{
+    var userId = user.UserId();
+    var (version, _) = await svc.MutateAsync<object?>(userId, id, account =>
+    {
+        account.UpdateTrip(tripId, req.Name, req.From, req.To, req.Destination, req.Icon);   // throws if missing / duplicate / end before start
+        account.SetTripSavingCategory(tripId, req.SavingCategoryId);   // throws if the bucket isn't in this account
+        account.SetTripBudget(tripId, req.Budget);
+        account.SetTripRate(tripId, req.SpendCurrency, req.Rate);
+        return null;
+    }, ct);
+    await notifier.AccountChangedAsync(id, userId, version);
+    return Results.Ok(new MutationResultDto(version, tripId));
+});
+
+accounts.MapDelete("/{id:guid}/trips/{tripId:guid}", async (Guid id, Guid tripId, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
+{
+    var userId = user.UserId();
+    var (version, _) = await svc.MutateAsync<object?>(userId, id, account =>
+    {
+        account.RemoveTrip(tripId);   // detaches its expenses; the expenses themselves are untouched
+        return null;
+    }, ct);
+    await notifier.AccountChangedAsync(id, userId, version);
+    return Results.Ok(new MutationResultDto(version, tripId));
+});
+
+// Attach/detach one expense. Its own endpoint rather than a field on the expense edit — see EditExpenseRequest.
+accounts.MapPut("/{id:guid}/expenses/{expenseId:guid}/trip", async (Guid id, Guid expenseId, SetExpenseTripRequest req, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
+{
+    var userId = user.UserId();
+    var (version, _) = await svc.MutateAsync<object?>(userId, id, account =>
+    {
+        // Any period, not just the open one: attaching last March's flight to this June's trip is the main reason
+        // this endpoint exists, and that expense sits in a closed period.
+        var expense = account.Periods.SelectMany(p => p.Expenses).FirstOrDefault(e => e.Id == expenseId)
+            ?? throw new InvalidOperationException("That expense doesn't exist in this account.");
+        if (req.TripId is { } tripId && account.FindTrip(tripId) is null)
+            throw new InvalidOperationException("That trip doesn't exist in this account.");
+        expense.SetTrip(req.TripId);
+        return null;
+    }, ct);
+    await notifier.AccountChangedAsync(id, userId, version);
+    return Results.Ok(new MutationResultDto(version, expenseId));
+});
+
+// Seed the trip labels once. Idempotent by design — the client sends its localized names, and a second call (or a
+// second language) is a no-op, so the split can't fork into two parallel tag sets.
+accounts.MapPost("/{id:guid}/trip-tags", async (Guid id, SeedTripTagsRequest req, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
+{
+    var userId = user.UserId();
+    var (version, _) = await svc.MutateAsync<object?>(userId, id, account =>
+    {
+        account.EnsureTripTags(req.Tags.Select(t => (t.Name, t.Icon, t.CategoryId)));
+        return null;
+    }, ct);
+    await notifier.AccountChangedAsync(id, userId, version);
+    return Results.Ok(new MutationResultDto(version, id));
 });
 
 // Funds
