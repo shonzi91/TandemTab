@@ -2094,6 +2094,11 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
 
     public FundTransfer? FindFundTransfer(Guid id) => Period.FundTransfers.FirstOrDefault(t => t.Id == id);
 
+    /// <summary>The most recent wallet-to-wallet transfer this period — what the Transfer modal's "Edit last"
+    /// edits. Account-to-account transfers are deliberately excluded: they have two halves and a two-sided editor
+    /// of their own, so editing one from here would touch only the near side.</summary>
+    public FundTransfer? LastFundTransfer => Period.FundTransfers.OrderByDescending(t => t.Date).FirstOrDefault();
+
     public Task EditFundTransfer(Guid id, Guid fromFundId, Guid toFundId, decimal amount, string? note) =>
         ExecuteOptimisticAsync(() =>
         {

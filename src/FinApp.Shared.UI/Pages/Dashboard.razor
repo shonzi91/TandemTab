@@ -2574,12 +2574,11 @@ else
         @if (_fabOpen)
         {
             <div class="qfab-backdrop" @onclick="() => _fabOpen = false"></div>
-            @* Order is bottom-up from the ＋: the most-used action sits nearest the thumb. *@
+            @* Order is bottom-up from the ＋: the most-used action sits nearest the thumb.
+               No "Edit last" here. Each modal already carries its own — Add expense, Add income and now Transfer —
+               where it can name what it would edit. A single FAB entry had to guess between the three, and a
+               destructive-ish action that picks its own target is the wrong thing to put under a ＋. *@
             <div class="qfab-menu">
-                @if (HasEditableLast)
-                {
-                    <button class="qfab-item" @onclick="FabEditLast"><Icon Name="pencil" /> @Loc["Edit last"]</button>
-                }
                 @if (CanTransfer)
                 {
                     <button class="qfab-item" @onclick="FabTransfer"><Icon Name="swap" /> @Loc["Transfer"]</button>
@@ -3940,6 +3939,15 @@ else
 
                 case Modal.Transfer:
                     <h3>@Loc["Transfer from"] @State.FundName(_mTransferFromId)</h3>
+                    @* "Edit last" belongs to the thing it edits, not to the ＋ menu — the same pattern Add expense
+                       and Add income already use. Between wallets only: an account-to-account transfer has two
+                       halves and its own two-sided editor, so it must not be quietly edited from here. *@
+                    @if (State.LastFundTransfer is { } _lastXfer)
+                    {
+                        <div class="last-actions">
+                            <button type="button" class="repeat-last" title="@Loc["Edit last transfer"]" @onclick="() => OpenEditTransfer(_lastXfer.Id)"><Icon Name="pencil" /> <span class="last-act-verb">@Loc["Edit"]</span> <span class="last-act-ctx"><strong>@State.FundName(_lastXfer.FromFundId) → @State.FundName(_lastXfer.ToFundId)</strong> · @Fmt(_lastXfer.Amount)</span></button>
+                        </div>
+                    }
                     <label>@Loc["To"]
                         <select @bind="_mTransferDestId" @bind:after="OnModalDestChanged">
                             <optgroup label="@Loc["Wallets"]">
@@ -9055,21 +9063,6 @@ else
         return from is null ? Task.CompletedTask : OpenTransferFromFund(from.Id);
     }
 
-    /// <summary>Edit whichever of the last expense / last income was more recent — the FAB has no context to choose
-    /// from, unlike the two modals where "Edit last" already lives. Ties go to the expense: it's far more often the
-    /// thing just mistyped. Renders only when <see cref="HasEditableLast"/>.</summary>
-    private void FabEditLast()
-    {
-        _fabOpen = false;
-        var exp = State.LastExpense;
-        var inc = State.LastContribution is { } c && State.CanHandleContribution(c) ? c : null;
-        if (exp is null && inc is null) return;
-        if (inc is null || (exp is not null && exp.Date >= inc.Date)) OpenEditExpense(exp!.Id);
-        else OpenEditDeposit(inc.Id);
-    }
-
-    private bool HasEditableLast =>
-        State.LastExpense is not null || (State.LastContribution is { } c && State.CanHandleContribution(c));
 
     // Multi-expense: a locally-staged list of expenses the user is building; the ✓ saves them all at once. Each draft
     // is a snapshot of the editor fields at the moment "Add another expense" was pressed.
