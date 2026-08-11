@@ -236,41 +236,86 @@ forwarded.KnownNetworks.Clear();
 forwarded.KnownProxies.Clear();
 app.UseForwardedHeaders(forwarded);
 
+// ⛔ Why this whole block is wrapped in a retry (S101).
+//
+// Every line below runs BEFORE the port is open, so anything that throws here doesn't degrade the app — it aborts
+// the process, the startup probe fails, and Cloud Run has no container. That happened on the finapp-00297-w9p
+// deploy: both starting instances died with
+//     Npgsql.NpgsqlException → TimeoutException: Timeout during reading attempt
+//       … AuthenticateSASL … at DatabaseFacade.EnsureCreated() at Program.<Main>$:245
+// i.e. the managed Postgres simply took too long to finish authenticating a cold connection. Neon scales to zero,
+// so a slow first connect is ORDINARY, not exceptional — and a transient database hiccup must not be the same
+// thing as "this build cannot boot".
+//
+// The retry makes a slow database DELAY readiness instead of killing the process. Deliberately:
+//   • the whole block, not just EnsureCreated — every EnsureSchemaAsync below opens the same cold connection, so
+//     guarding one line just moves the crash down a few rows;
+//   • idempotent by construction (EnsureCreated / CREATE TABLE IF NOT EXISTS / Migrate), so re-running a partly
+//     completed pass is safe — that is what makes a retry legitimate here rather than a gamble;
+//   • it still THROWS after the last attempt. A server that came up without its schema would fail every request
+//     with something far less obvious than a boot failure, so a genuinely broken database should still be loud.
+static async Task WithDbRetryAsync(ILogger logger, string what, Func<Task> action)
+{
+    const int attempts = 5;
+    for (var attempt = 1; ; attempt++)
+    {
+        try { await action(); return; }
+        catch (Exception ex) when (attempt < attempts)
+        {
+            // 1s, 2s, 4s, 8s — about 15s of patience in total, comfortably inside Cloud Run's startup grace and
+            // well past a Neon cold start, without holding a genuinely dead deploy up for minutes.
+            var delay = TimeSpan.FromSeconds(Math.Pow(2, attempt - 1));
+            logger.LogWarning(ex, "{What} failed on attempt {Attempt}/{Attempts}; retrying in {Delay}s.",
+                what, attempt, attempts, delay.TotalSeconds);
+            await Task.Delay(delay);
+        }
+    }
+}
+
 // Ensure the server DB schema is current on startup.
 // SQLite uses the EF migrations; Postgres uses EnsureCreated (the migrations are SQLite-specific,
 // and the cloud DB is provisioned fresh) so we build the schema straight from the model.
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<FinAppDbContext>();
-    if (usePostgres) db.Database.EnsureCreated();
-    else db.Database.Migrate();
-    // Avatars live in a standalone table created idempotently (no EF migration; works on both providers).
-    await scope.ServiceProvider.GetRequiredService<AvatarService>().EnsureSchemaAsync();
-    // Bank-sync tables (connections + staged transactions) follow the same idempotent-create pattern.
-    await scope.ServiceProvider.GetRequiredService<BankSyncService>().EnsureSchemaAsync();
-    // External-identity marker table (which users signed up via Google/Facebook) — same pattern.
-    await scope.ServiceProvider.GetRequiredService<ExternalIdentityService>().EnsureSchemaAsync();
-    // Consent audit log (login / bank-link / bank-sync grants + withdrawals).
-    await scope.ServiceProvider.GetRequiredService<ConsentService>().EnsureSchemaAsync();
-    await scope.ServiceProvider.GetRequiredService<FeedbackService>().EnsureSchemaAsync();
-    await scope.ServiceProvider.GetRequiredService<SignupService>().EnsureSchemaAsync();
-    await scope.ServiceProvider.GetRequiredService<SubscriptionService>().EnsureSchemaAsync();
-    await scope.ServiceProvider.GetRequiredService<PlanOverrideService>().EnsureSchemaAsync();
-    // Refresh-token store (rotation + reuse detection) — same idempotent-create pattern.
-    await scope.ServiceProvider.GetRequiredService<RefreshTokenService>().EnsureSchemaAsync();
-    // One-time auth codes for external sign-in (keeps session tokens out of the redirect URL).
-    await scope.ServiceProvider.GetRequiredService<AuthCodeService>().EnsureSchemaAsync();
-    // Email-verification state + one-time confirmation tokens.
-    await scope.ServiceProvider.GetRequiredService<EmailVerificationService>().EnsureSchemaAsync();
-    await scope.ServiceProvider.GetRequiredService<PasswordResetService>().EnsureSchemaAsync();
-    // Two-factor (TOTP) secrets + recovery codes.
-    await scope.ServiceProvider.GetRequiredService<TwoFactorService>().EnsureSchemaAsync();
-    // Archived-accounts table + purge anything past its 30-day grace window on startup.
+    await WithDbRetryAsync(app.Logger, "Database schema check", () =>
+    {
+        if (usePostgres) db.Database.EnsureCreated();
+        else db.Database.Migrate();
+        return Task.CompletedTask;
+    });
+    // Every one of these is an idempotent CREATE TABLE IF NOT EXISTS, so the whole run is safe to repeat — which is
+    // what lets one retry cover the lot rather than needing one per service.
     var archives = scope.ServiceProvider.GetRequiredService<ArchivedAccountsService>();
-    await archives.EnsureSchemaAsync();
-    // Pending user-deletion table + hard-delete any identity past its 30-day grace window on startup.
     var deletions = scope.ServiceProvider.GetRequiredService<AccountDeletionService>();
-    await deletions.EnsureSchemaAsync();
+    await WithDbRetryAsync(app.Logger, "Auxiliary table setup", async () =>
+    {
+        // Avatars live in a standalone table created idempotently (no EF migration; works on both providers).
+        await scope.ServiceProvider.GetRequiredService<AvatarService>().EnsureSchemaAsync();
+        // Bank-sync tables (connections + staged transactions) follow the same idempotent-create pattern.
+        await scope.ServiceProvider.GetRequiredService<BankSyncService>().EnsureSchemaAsync();
+        // External-identity marker table (which users signed up via Google/Facebook) — same pattern.
+        await scope.ServiceProvider.GetRequiredService<ExternalIdentityService>().EnsureSchemaAsync();
+        // Consent audit log (login / bank-link / bank-sync grants + withdrawals).
+        await scope.ServiceProvider.GetRequiredService<ConsentService>().EnsureSchemaAsync();
+        await scope.ServiceProvider.GetRequiredService<FeedbackService>().EnsureSchemaAsync();
+        await scope.ServiceProvider.GetRequiredService<SignupService>().EnsureSchemaAsync();
+        await scope.ServiceProvider.GetRequiredService<SubscriptionService>().EnsureSchemaAsync();
+        await scope.ServiceProvider.GetRequiredService<PlanOverrideService>().EnsureSchemaAsync();
+        // Refresh-token store (rotation + reuse detection) — same idempotent-create pattern.
+        await scope.ServiceProvider.GetRequiredService<RefreshTokenService>().EnsureSchemaAsync();
+        // One-time auth codes for external sign-in (keeps session tokens out of the redirect URL).
+        await scope.ServiceProvider.GetRequiredService<AuthCodeService>().EnsureSchemaAsync();
+        // Email-verification state + one-time confirmation tokens.
+        await scope.ServiceProvider.GetRequiredService<EmailVerificationService>().EnsureSchemaAsync();
+        await scope.ServiceProvider.GetRequiredService<PasswordResetService>().EnsureSchemaAsync();
+        // Two-factor (TOTP) secrets + recovery codes.
+        await scope.ServiceProvider.GetRequiredService<TwoFactorService>().EnsureSchemaAsync();
+        // Archived-accounts table (its purge runs below, outside the retry — housekeeping, not schema).
+        await archives.EnsureSchemaAsync();
+        // Pending user-deletion table (same).
+        await deletions.EnsureSchemaAsync();
+    });
     // Both purges are HOUSEKEEPING and must never stop the app serving: this runs before the port is open, so
     // an exception here is a container that fails its startup probe. (It has happened: a multi-instance deploy
     // raced the archived-account purge into a DbUpdateConcurrencyException and the process aborted.) Each

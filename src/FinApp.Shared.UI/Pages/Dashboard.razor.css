@@ -3197,19 +3197,25 @@ html.dark .trip-fx { color: #9db6ea; }
    ⚠️ No flex `gap`: a gap falls between EVERY child, so it also splits "Trip" and "Mode" into "Trip Mode" — the one
    thing this lockup must not be. The spacing is the mark's own margin. */
    ★ No flag. The destination is already on the Home card and on the expense form's trip chip, and three flags on
-   one screen is a costume rather than a signal — this badge answers "what mode am I in", not "where am I". The
-   pill itself is the S101 shape: a soft blue plate with a hairline, sized to sit beside a status chip. */
+   one screen is a costume rather than a signal — this badge answers "what mode am I in", not "where am I".
+   ★ The PILL is the balloon it wore when it hung off the TandemTab wordmark: a lifted white plate with a soft
+   shadow, not a flat tinted chip. The shadow is what makes it read as a thing placed ON the header rather than a
+   second status chip printed into it — which is the difference between "the app is in a mode" and "here is another
+   label". Only the tail was dropped: a tail has to point AT something, and here it sits inline. */
 .tripmode-tag {
     display: inline-flex; align-items: center; flex: none;
-    padding: 3px 9px; border-radius: 999px;
-    background: #e8eefc; border: 1px solid #cfdcf6;
-    font-size: .6rem; font-weight: 800; letter-spacing: 0; line-height: 1.4; white-space: nowrap;
+    padding: 3px 8px; border-radius: 999px;
+    background: #ffffff; box-shadow: 0 2px 6px rgba(12, 40, 74, .28);
+    font-size: .56rem; font-weight: 800; letter-spacing: 0; line-height: 1.4; white-space: nowrap;
 }
-.tmt-trip { color: #1e3a68; }
-.tmt-mode { color: rgba(30, 58, 104, .55); }
-html.dark .tripmode-tag { background: #1b2740; border-color: #2e4368; }
-html.dark .tmt-trip { color: #9db6ea; }
-html.dark .tmt-mode { color: rgba(157, 182, 234, .58); }
+.tmt-trip { color: #1e5f9e; }
+.tmt-mode { color: rgba(30, 95, 158, .58); }
+/* Dark: a white plate against navy glass would be the brightest thing on the screen, so it becomes a deep plate
+   and the two-tone goes to the wordmark's own dark pair (sky accent, muted grey) — the same relationship one
+   layer down. */
+html.dark .tripmode-tag { background: #16233a; box-shadow: 0 2px 8px rgba(0, 0, 0, .5); }
+html.dark .tmt-trip { color: #7cc4f0; }
+html.dark .tmt-mode { color: rgba(195, 204, 216, .70); }
 
 /* --- The expense modal in trip mode ---------------------------------------------------------------------
    A picked trip re-colours the form's SELECTION state — the top rail, the title's trip lockup and the chosen trip
