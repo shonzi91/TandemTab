@@ -3195,25 +3195,35 @@ html.dark .trip-fx { color: #9db6ea; }
    ⚠️ Mixed case, NOT uppercase. "TRIP MODE" is a system label; "TripMode" is the wordmark's own shape, and the
    shape is the whole point.
    ⚠️ No flex `gap`: a gap falls between EVERY child, so it also splits "Trip" and "Mode" into "Trip Mode" — the one
-   thing this lockup must not be. The spacing is the mark's own margin. */
+   thing this lockup must not be.
    ★ No flag. The destination is already on the Home card and on the expense form's trip chip, and three flags on
    one screen is a costume rather than a signal — this badge answers "what mode am I in", not "where am I".
-   ★ The PILL is the balloon it wore when it hung off the TandemTab wordmark: a lifted white plate with a soft
-   shadow, not a flat tinted chip. The shadow is what makes it read as a thing placed ON the header rather than a
-   second status chip printed into it — which is the difference between "the app is in a mode" and "here is another
-   label". Only the tail was dropped: a tail has to point AT something, and here it sits inline. */
+   ★ The SHADOW is the point. It lifts the badge off the header, so it reads as something placed ON the app rather
+   than printed into it — the difference between "the app is in a mode" and "here is another status label". It is
+   also what keeps a badge that sits there for a fortnight from becoming furniture.
+   ★ A rounded RECTANGLE, not a pill. A pill is this app's shape for a status ("Active", "Day 4") and this is not a
+   status — it is a mode the whole app is in. Softly-rounded corners plus a hairline read as a small plate laid on
+   the header, which is the same thing the shadow is saying, and together they let the type drop to .5rem without
+   the badge going vague. Tight padding for the same reason: small and crisp beats small and soft.
+   ⚠️ THIS COMMENT HAS BITTEN TWICE, both times caught before shipping. Replacing a rule's opening line with text
+   that also carries its own comment terminator leaves a stray one behind; CSS then swallows everything up to the
+   next brace and SILENTLY DROPS the rule below. The badge kept only its html.dark overrides, and the screenshot
+   still looked plausible — it took reading the computed styles to see that padding, radius and font-size were all
+   at their defaults. If a rule here stops applying, check the comment above it before doubting the selector. (And
+   never write a comment terminator inside a comment, even in backticks: that is how this broke the second time.) */
 .tripmode-tag {
     display: inline-flex; align-items: center; flex: none;
-    padding: 3px 8px; border-radius: 999px;
-    background: #ffffff; box-shadow: 0 2px 6px rgba(12, 40, 74, .28);
-    font-size: .56rem; font-weight: 800; letter-spacing: 0; line-height: 1.4; white-space: nowrap;
+    padding: 2px 6px; border-radius: 6px;
+    background: #ffffff; border: 1px solid rgba(30, 95, 158, .22);
+    box-shadow: 0 2px 6px rgba(12, 40, 74, .28);
+    font-size: .5rem; font-weight: 800; letter-spacing: .01em; line-height: 1.5; white-space: nowrap;
 }
 .tmt-trip { color: #1e5f9e; }
 .tmt-mode { color: rgba(30, 95, 158, .58); }
 /* Dark: a white plate against navy glass would be the brightest thing on the screen, so it becomes a deep plate
    and the two-tone goes to the wordmark's own dark pair (sky accent, muted grey) — the same relationship one
    layer down. */
-html.dark .tripmode-tag { background: #16233a; box-shadow: 0 2px 8px rgba(0, 0, 0, .5); }
+html.dark .tripmode-tag { background: #16233a; border-color: rgba(157, 182, 234, .26); box-shadow: 0 2px 8px rgba(0, 0, 0, .5); }
 html.dark .tmt-trip { color: #7cc4f0; }
 html.dark .tmt-mode { color: rgba(195, 204, 216, .70); }
 
