@@ -1638,12 +1638,12 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
         bool isInvestment = false, decimal invRate = 0m, decimal invTermYears = 0m, int invCompounds = 12,
         Guid? fundId = null, IEnumerable<PlannedCost>? costs = null, bool isExpensesFund = false,
         decimal? debtOriginalBalance = null, int? debtInstallmentDay = null, DateOnly? debtStartDate = null,
-        bool debtPaymentDriven = false, bool isEmergencyFund = false)
+        bool debtPaymentDriven = false, bool isEmergencyFund = false, decimal debtResidual = 0m)
     {
         var req = BuildBucketRequest(name, goalAmount, thresholdPercent, notifyOnMilestone, initialAmount, icon,
             isDebt, debtBalance, debtRate, debtInstallment, plannedContribution,
             isInvestment, invRate, invTermYears, invCompounds, fundId, costs, isExpensesFund,
-            debtOriginalBalance, debtInstallmentDay, debtStartDate, debtPaymentDriven, isEmergencyFund);
+            debtOriginalBalance, debtInstallmentDay, debtStartDate, debtPaymentDriven, isEmergencyFund, debtResidual);
         var result = await ExecuteAsync(id => api.AddSavingBucketAsync(id, req));
         return result.EntityId ?? Guid.Empty;
     }
@@ -1653,12 +1653,12 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
         bool isInvestment = false, decimal invRate = 0m, decimal invTermYears = 0m, int invCompounds = 12,
         Guid? fundId = null, IEnumerable<PlannedCost>? costs = null, bool isExpensesFund = false,
         decimal? debtOriginalBalance = null, int? debtInstallmentDay = null, DateOnly? debtStartDate = null,
-        bool debtPaymentDriven = false, bool isEmergencyFund = false)
+        bool debtPaymentDriven = false, bool isEmergencyFund = false, decimal debtResidual = 0m)
     {
         var req = BuildBucketRequest(name, goalAmount, thresholdPercent, notifyOnMilestone, initialAmount, icon,
             isDebt, debtBalance, debtRate, debtInstallment, plannedContribution,
             isInvestment, invRate, invTermYears, invCompounds, fundId, costs, isExpensesFund,
-            debtOriginalBalance, debtInstallmentDay, debtStartDate, debtPaymentDriven, isEmergencyFund);
+            debtOriginalBalance, debtInstallmentDay, debtStartDate, debtPaymentDriven, isEmergencyFund, debtResidual);
         return ExecuteAsync(id => api.SaveSavingBucketAsync(id, savingCategoryId, req));
     }
 
@@ -1667,7 +1667,7 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
         bool isInvestment, decimal invRate, decimal invTermYears, int invCompounds,
         Guid? fundId, IEnumerable<PlannedCost>? costs, bool isExpensesFund,
         decimal? debtOriginalBalance = null, int? debtInstallmentDay = null, DateOnly? debtStartDate = null,
-        bool debtPaymentDriven = false, bool isEmergencyFund = false) =>
+        bool debtPaymentDriven = false, bool isEmergencyFund = false, decimal debtResidual = 0m) =>
         new(name, icon, goalAmount, thresholdPercent, notifyOnMilestone, initialAmount,
             isDebt, debtBalance, debtRate, debtInstallment,
             DebtOriginalBalance: debtOriginalBalance, DebtInstallmentDay: debtInstallmentDay, DebtStartDate: debtStartDate,
@@ -1675,7 +1675,7 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
             IsInvestment: isInvestment, InvRate: invRate, InvTermYears: invTermYears, InvCompounds: invCompounds, FundId: fundId,
             Costs: costs?.Select(c => new PlannedCostDto(c.Label, c.Amount, CadenceString(c.Cadence), c.DueDate)).ToList(),
             IsExpensesFund: isExpensesFund,
-            DebtPaymentDriven: debtPaymentDriven, IsEmergencyFund: isEmergencyFund);
+            DebtPaymentDriven: debtPaymentDriven, IsEmergencyFund: isEmergencyFund, DebtResidual: debtResidual);
 
     private static string CadenceString(CostCadence cadence) => cadence switch
     {
@@ -1837,6 +1837,9 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     /// <summary>Whether this debt's balance moves only when an installment is logged here (rather than being walked
     /// forward over its schedule). Drives the "Log installment" action and the row's "you're tracking payments" note.</summary>
     public bool SavingBucketDebtPaymentDriven(Guid id) => FindSavingBucket(id)?.DebtPaymentDriven ?? false;
+
+    /// <summary>A lease's residual/balloon — the sum its schedule amortises down to. 0 for an ordinary loan.</summary>
+    public decimal SavingBucketDebtResidual(Guid id) => FindSavingBucket(id)?.DebtResidual ?? 0m;
 
     /// <summary>How a payment of <paramref name="total"/> against this debt splits today: what the extra lines take,
     /// then interest on what's owed, then principal. Pure preview — computed exactly as

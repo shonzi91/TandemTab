@@ -70,6 +70,22 @@ public sealed class SavingCategory : Entity
     /// Captured automatically on first <see cref="ConfigureDebt"/>; never drops below the current balance. Body data.</summary>
     public decimal DebtOriginalBalance { get; private set; }
 
+    /// <summary>
+    /// Debt buckets only: a final lump the schedule amortises <b>down to</b> rather than through — a lease's
+    /// residual / balloon / buy-out value. Zero (the default) is an ordinary loan that finishes at nothing.
+    /// <para>
+    /// A lease is not a loan that ends early: its instalments are sized to leave a stated sum outstanding on the
+    /// last scheduled date. Without this the app amortises to zero and reports a payoff date months past the
+    /// contract's own end — which is exactly what a real 60-month lease at 3.5% did, landing on Apr 2031 for a
+    /// contract ending Aug 2030.
+    /// </para>
+    /// Body data (snapshot, not EF); zero on every bucket stored before this existed, i.e. unchanged behaviour.
+    /// </summary>
+    public decimal DebtResidual { get; private set; }
+
+    /// <summary>Set the residual/balloon (0 clears it). Negative is treated as none.</summary>
+    public void SetDebtResidual(decimal residual) => DebtResidual = Math.Max(0m, residual);
+
     /// <summary>Debt buckets only: the day of the month (1–31) the installment falls due. Informational + drives R2
     /// recurring due dates; the balance walk stays anchored on <see cref="DebtBalanceAsOf"/> (not this day). Null when
     /// unknown. Body data (snapshot, not EF).</summary>
@@ -185,8 +201,19 @@ public sealed class SavingCategory : Entity
     /// (no installment) or the payment can't clear it (no finite total to promise).</summary>
     public decimal RemainingInterest(DateOnly asOf) =>
         IsDebt && DebtInstallment > 0m
-            ? FinApp.Forecasting.LoanForecast.PayOff(DebtBalanceOn(asOf), DebtAnnualRatePercent, DebtInstallment)?.TotalInterest ?? 0m
+            ? FinApp.Forecasting.LoanForecast.PayOff(DebtBalanceOn(asOf), DebtAnnualRatePercent, DebtInstallment, DebtResidual)?.TotalInterest ?? 0m
             : 0m;
+
+    /// <summary>Months of scheduled payments left at the current installment, amortising down to any
+    /// <see cref="DebtResidual"/>. Null when there is no workable schedule.</summary>
+    public int? MonthsRemaining(DateOnly asOf) =>
+        IsDebt && DebtInstallment > 0m
+            ? FinApp.Forecasting.LoanForecast.PayOff(DebtBalanceOn(asOf), DebtAnnualRatePercent, DebtInstallment, DebtResidual)?.Months
+            : null;
+
+    /// <summary>A lease's schedule ends with the residual still owed, so "cleared" and "finished paying the
+    /// instalments" are different events. True once the balance is down to the residual.</summary>
+    public bool DebtScheduleComplete => IsDebt && DebtResidual > 0m && DebtBalance <= DebtResidual;
 
     /// <summary>Debt buckets: the interest paid to date, <b>reconstructed from the loan's own amortization schedule</b>
     /// (original balance at its APR paying the installment, over the months elapsed) — so principal cleared and interest

@@ -30,9 +30,19 @@ public static class LoanForecast
     /// <paramref name="monthlyPayment"/> each month (interest compounds monthly). Returns null when the payment
     /// can't cover the monthly interest (it would never clear) or the balance/payment is non-positive.
     /// </summary>
-    public static Payoff? PayOff(decimal balance, decimal annualRatePercent, decimal monthlyPayment)
+    /// <param name="residual">
+    /// A final lump the schedule amortises <b>down to</b> rather than through — a lease's residual / balloon /
+    /// buy-out value. Zero (the default) is an ordinary loan, which finishes at nothing.
+    /// <para>
+    /// This exists because a lease is not a loan that happens to end early. Its instalments are sized to leave a
+    /// stated sum outstanding on the last scheduled date, and amortising it to zero overshoots the contract's own
+    /// end by months — reporting a payoff date the lessee will never see, and interest they will never pay.
+    /// </para>
+    /// </param>
+    public static Payoff? PayOff(decimal balance, decimal annualRatePercent, decimal monthlyPayment, decimal residual = 0m)
     {
-        if (balance <= 0m) return new Payoff(0, 0m);
+        var target = Math.Max(0m, residual);
+        if (balance <= target) return new Payoff(0, 0m);
         if (monthlyPayment <= 0m) return null;
 
         var monthlyRate = annualRatePercent / 100m / 12m;
@@ -45,7 +55,14 @@ public static class LoanForecast
             if (monthlyPayment <= monthInterest) return null;   // payment doesn't even dent the principal
             interest += monthInterest;
             remaining = remaining + monthInterest - monthlyPayment;
-            if (remaining <= 0m) return new Payoff(month, decimal.Round(interest, 2));
+            // The month the balance reaches the residual is the last SCHEDULED month. The residual itself is paid
+            // then too, but it is not amortised and carries no further interest, so it doesn't extend the term.
+            // ★ Compared to the cent when there IS a residual: that figure is *stated* (from a contract, or from
+            // BalanceAfter, which rounds) while `remaining` is a raw running total, so the two agree only to two
+            // decimals — and without this a fraction of a cent bought a whole extra month. A zero target needs no
+            // tolerance: nothing owed is exact, and loosening it there could end an ordinary loan a month early.
+            var reached = target > 0m ? decimal.Round(remaining, 2, MidpointRounding.AwayFromZero) <= target : remaining <= 0m;
+            if (reached) return new Payoff(month, decimal.Round(interest, 2));
         }
         return null;   // still not cleared after the cap → treat as "never" at this pace
     }

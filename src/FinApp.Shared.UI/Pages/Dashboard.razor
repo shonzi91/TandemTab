@@ -2055,8 +2055,11 @@ else
                             if (payInst > 0m)
                             {
                                 var payRate = State.SavingBucketDebtRate(bucketId);
-                                payBase = FinApp.Forecasting.LoanForecast.PayOff(debtOwed, payRate, payInst);
-                                payFast = FinApp.Forecasting.LoanForecast.PayOff(debtOwed, payRate, payInst + _goalExtra);
+                                // On a lease the schedule ends at the residual, not at zero — amortising through it
+                                // would put the finish flag months past the contract's own end date.
+                                var payRes = State.SavingBucketDebtResidual(bucketId);
+                                payBase = FinApp.Forecasting.LoanForecast.PayOff(debtOwed, payRate, payInst, payRes);
+                                payFast = FinApp.Forecasting.LoanForecast.PayOff(debtOwed, payRate, payInst + _goalExtra, payRes);
                                 payBaseMonths = payBase?.Months ?? 0;
                                 payFastMonths = payFast?.Months ?? 0;
                                 payMonthsSaved = payBaseMonths > 0 && payFastMonths > 0 ? Math.Max(0, payBaseMonths - payFastMonths) : 0;
@@ -3750,6 +3753,13 @@ else
                             <label>@Loc["Loan start date"] <input type="date" @bind="_debtStart" /></label>
                         </div>
                         <small class="hint">@Loc["The start date bases “interest paid so far” on the real timeline — otherwise we infer it from the balance."]</small>
+                        @* A lease is not a loan that happens to end early: its instalments are sized to leave a
+                           stated sum owed on the last scheduled date. Without this the payoff projection amortises
+                           to zero and overshoots the contract's own end by months. *@
+                        <label>@Loc["Final / residual payment (leases only)"] <DecimalInput @bind-Value="_debtResidual" /></label>
+                        <small class="hint">@(_debtResidual > 0m
+                            ? string.Format(Loc["The schedule will finish once {0} is left — that last lump is paid separately (or the item handed back), so it isn't spread across the instalments."], Fmt(State.Money(_debtResidual)))
+                            : Loc["Leave at 0 for an ordinary loan. On a car lease this is the balloon / buy-out value stated in the contract."])</small>
                         @* This was a switch reading "I log each installment here", which named the wrong thing: it
                            does not decide where anything is logged (installments log the same either way) — it
                            decides which source of truth owns the balance. Stated as a two-way choice with the
@@ -6595,6 +6605,8 @@ else
     private int? _debtDay;
     private DateOnly? _debtStart;
     private bool _debtPayDriven;
+    // A lease's residual / balloon on the edit form. 0 = an ordinary loan that amortises to nothing.
+    private decimal _debtResidual;
     // The emergency-fund flag in the bucket editor. Its goal is derived, so this replaces the amount field.
     private bool _fEmergency;
     private decimal _invRate, _invTermYears;
@@ -9288,7 +9300,7 @@ else
     {
         _modalBucketId = Guid.Empty; _fName = null; _fIcon = null; _goalAmount = 0; _fThreshold = 80; _fNotify = false; _initialSavings = 0;
         _bucketKind = kind; _debtBalance = 0; _debtRate = 0; _debtInstallment = 0;
-        _debtEnterInitial = false; _debtOriginal = 0; _debtPaidPrincipal = 0; _debtDay = null; _debtStart = null; _debtPayDriven = false; _fEmergency = false;
+        _debtEnterInitial = false; _debtOriginal = 0; _debtPaidPrincipal = 0; _debtDay = null; _debtStart = null; _debtPayDriven = false; _fEmergency = false; _debtResidual = 0;
         _invRate = 0; _invTermYears = 0; _invCompounds = 12;
         _bucketFundId = null;
         _costRows = new();
@@ -9317,6 +9329,7 @@ else
         _debtStart = b?.DebtStartDate;
         _debtPayDriven = b?.DebtPaymentDriven ?? false;
         _fEmergency = b?.IsEmergencyFund ?? false;
+        _debtResidual = b?.DebtResidual ?? 0m;
         _invRate = b?.InvestmentAnnualRatePercent ?? 0;
         _invTermYears = b?.InvestmentTermYears ?? 0;
         _invCompounds = b?.InvestmentCompoundsPerYear ?? 12;
@@ -9381,9 +9394,9 @@ else
         // Only an ordinary or sinking bucket can be the cushion — a debt or an investment is not one.
         var emergency = _fEmergency && !isDebt && !isInv;
         if (_modal == Modal.AddBucket)
-            await State.AddSavingBucket(_fName!, goal, _fThreshold, _fNotify, _initialSavings, _fIcon, isDebt, debtBal, _debtRate, _debtInstallment, planned, isInv, _invRate, _invTermYears, _invCompounds, _bucketFundId, costs, isExpenses, debtOrig, debtDay, debtStart, debtPayDriven, emergency);
+            await State.AddSavingBucket(_fName!, goal, _fThreshold, _fNotify, _initialSavings, _fIcon, isDebt, debtBal, _debtRate, _debtInstallment, planned, isInv, _invRate, _invTermYears, _invCompounds, _bucketFundId, costs, isExpenses, debtOrig, debtDay, debtStart, debtPayDriven, emergency, isDebt ? _debtResidual : 0m);
         else
-            await State.SaveSavingBucket(_modalBucketId, _fName!, goal, _fThreshold, _fNotify, _initialSavings, _fIcon, isDebt, debtBal, _debtRate, _debtInstallment, planned, isInv, _invRate, _invTermYears, _invCompounds, _bucketFundId, costs, isExpenses, debtOrig, debtDay, debtStart, debtPayDriven, emergency);
+            await State.SaveSavingBucket(_modalBucketId, _fName!, goal, _fThreshold, _fNotify, _initialSavings, _fIcon, isDebt, debtBal, _debtRate, _debtInstallment, planned, isInv, _invRate, _invTermYears, _invCompounds, _bucketFundId, costs, isExpenses, debtOrig, debtDay, debtStart, debtPayDriven, emergency, isDebt ? _debtResidual : 0m);
         CloseModal();
     });
 

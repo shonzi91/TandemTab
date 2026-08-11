@@ -135,7 +135,9 @@ public record SaveSavingBucketRequest(
     bool DebtPaymentDriven = false,
     // The account's emergency fund. At most one bucket holds it; saving it here clears it from any other. Its goal
     // amount is then derived (3× essential spending, rounded up to 500) rather than taken from GoalAmount.
-    bool IsEmergencyFund = false);
+    bool IsEmergencyFund = false,
+    // A lease's residual / balloon: the sum still owed on the last scheduled payment date. 0 = an ordinary loan.
+    decimal DebtResidual = 0m);
 
 /// <summary>One non-loan line riding along on an installment (insurance, tax, a fee), with its own category and
 /// optional tag so it lands in the right budget and its own Breakdown slice. Sent as a list — see

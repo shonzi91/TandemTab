@@ -112,7 +112,8 @@ public static class SavingsMap
             // The derived goal travels with the figure it was derived from, so the client can show the basis
             // ("3 × €850 a month") instead of an unexplained target the user never typed.
             b.IsEmergencyFund,
-            b.IsEmergencyFund ? account.EssentialSpendPerPeriod() : null);
+            b.IsEmergencyFund ? account.EssentialSpendPerPeriod() : null,
+            b.DebtResidual);
     }
 
     // Domain cadence → the canonical wire string the write side (SavingBucketConfig.Cadence) round-trips.

@@ -55,7 +55,10 @@ public record SavingBucketDto(
     // The account's emergency fund, and the monthly essential-spend figure its goal is derived from — sent so the
     // client can show the basis rather than an unexplained number.
     bool IsEmergencyFund = false,
-    decimal? EmergencyMonthlyEssentials = null);
+    decimal? EmergencyMonthlyEssentials = null,
+    // A lease's residual/balloon. Part of the edit-form prefill too — the upsert is a full overwrite, so a client
+    // that can't read it back would silently clear it and the payoff date would jump months out again.
+    decimal DebtResidual = 0m);
 
 /// <summary>The raw knobs an interactive projection modal drags — supplied so the thin client can re-run the pure
 /// forecast math (<c>FinApp.Forecasting</c>: <c>InvestmentForecast</c>/<c>LoanForecast</c>) locally with zero
