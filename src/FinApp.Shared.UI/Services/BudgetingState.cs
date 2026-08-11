@@ -2014,6 +2014,16 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
             id => api.EditFundAsync(id, fundId, new EditFundRequest(name, note, icon)), refetchAfter: true);
     }
 
+    /// <summary>Set (or clear) the foreign currency a fund holds and the rate it was bought at.</summary>
+    public Task SetFundCurrency(Guid fundId, string? currency, decimal? rate) =>
+        ExecuteOptimisticAsync(() => Account.SetFundCurrency(fundId, currency, rate),
+            id => api.SetFundCurrencyAsync(id, fundId, currency, rate), refetchAfter: true);
+
+    /// <summary>The fund an expense is being paid from, when it holds foreign money — what the entry form labels its
+    /// Amount in and converts by. Null for an ordinary account-currency fund, which is nearly always.</summary>
+    public Fund? ForeignFund(Guid fundId) =>
+        Account.FindFund(fundId) is { HasRate: true } f ? f : null;
+
     /// <summary>Toggle a fund's bank-synced flag (forward-only — see <see cref="Fund.IsSynced"/>).</summary>
     // TODO(cutover): needs a command endpoint (fund synced flag) — still local-mutate + whole-snapshot push.
     public Task SetFundSynced(Guid fundId, bool synced)

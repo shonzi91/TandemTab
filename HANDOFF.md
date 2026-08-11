@@ -229,6 +229,39 @@ taking one holiday a year costs nothing.
   entitlement rather than inventing a second one — same argument as the 6/12-month Breakdown windows. Nothing is
   deleted or unlinked by any of it; downgrading can never lose data.
 
+### ⛔→✅ #9 IS FIXED: the exchange rate moved off the trip and onto the fund
+
+The S100 correctness bug is closed. `ExpenseAmountToLog` applied the **trip's** rate to everything, including the
+payments the bank had already converted: on a rated trip you read €50 off your card statement, typed 50, and the
+app stored **€58.50**. Card is the majority of most people's travel spend, so a rated trip's totals were wrong in
+the common case.
+
+- **`Fund.Currency` + `Fund.Rate`** (both optional; null = account currency — body data, `Ignore()`d in the
+  DbContext, trailing optionals on `FundNode`, **no migration**). `ExpenseAmountToLog` now reads the **fund**.
+- **★ It matches life, which is why it's the right model.** Card → the money leaves the bank fund, which holds
+  account-currency money, so nothing converts and you type what the statement says. Cash from an exchange office →
+  a specific pile of foreign notes bought at a specific price, which is a *wallet*, which this app already models
+  as a fund. **Choosing the currency became choosing the wallet** — a choice the user already makes on every
+  expense — so the form gained no new question. The Amount label just follows the fund.
+- The trip's own `SpendCurrency`/`Rate` are **demoted, not deleted**: nothing reads them at entry time any more,
+  the fields stay (every existing trip still loads), and the form now says out loud that they are a note rather
+  than a conversion, pointing at the wallet instead.
+- Its own endpoint (`PUT /funds/{id}/currency`), because the fund edit is a full replace and every single-field
+  setter re-sends the whole triple — carrying the rate there would let a rename silently wipe a wallet's rate.
+  Pro-gated on *setting* a currency, never on clearing one: a downgrade must be able to put a wallet back.
+- ⚠️ **The EF trap caught this one too** — a new prop on an EF-mapped entity needs `p.Ignore()` or the persistence
+  tests fail en masse with `PendingModelChangesWarning`. `Currency`, `Rate` and `HasRate` are all ignored.
+- **Verified both ways in a running app**, which is the only proof that matters here: with a rated trip running,
+  the Bank fund shows plain "Amount" and converts nothing (this is the case that was broken), and picking the
+  "Rome cash" wallet (GBP @ 1.17) switches the label to "Amount in GBP" and shows *"logs as €58.50 — Rome cash's
+  rate"*. Same €50, and now only the wallet decides.
+
+⚠️ **Two pieces of the S100 design are deliberately still outstanding**, and neither blocks correctness:
+**deriving the rate from the loading transfer** ("€234 out of Bank → £200 into Lisbon cash" gives 1.17 exactly,
+and the user holds a receipt rather than a rate), and **closing a wallet with money left in it** (come home with
+£30 and that is still money; converting it back at a new rate is a real gain or loss and must land somewhere
+honest rather than vanishing into a rounding line). The rate is typed for now.
+
 ### A second round, after the first deploy
 
 Five more owner asks, all on the same feature:

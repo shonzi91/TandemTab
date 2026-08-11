@@ -3937,7 +3937,10 @@ else
                        type="number" field rejects it outright, which is why decimals couldn't be typed on mobile.
                        @ref so the cursor can land here when the category was already chosen (see OpenAddExpense). *@
                     @* (The trip row moved ABOVE the category picker — see the block up there for why.) *@
-                    <label>@(FormTrip is { HasRate: true } cur ? string.Format(Loc["Amount in {0}"], cur.SpendCurrency) : Loc["Amount"]) <DecimalInput @ref="_amountInput" @bind-Value="_amount" /></label>
+                    @* ★ The Amount label follows the FUND, not the trip. Paying by card means paying from the bank
+                       fund, which holds account-currency money, so it says "Amount" and nothing converts — the
+                       statement already did. Paying from a foreign-cash wallet says "Amount in GBP". *@
+                    <label>@(FormForeignFund is { } cur ? string.Format(Loc["Amount in {0}"], cur.Currency) : Loc["Amount"]) <DecimalInput @ref="_amountInput" @bind-Value="_amount" /></label>
                     @if (_amount < 0)
                     {
                         <small class="hint warn-text">@Loc["Amount can't be negative — enter what you spent."]</small>
@@ -3945,9 +3948,9 @@ else
                     @* What will actually be stored. Shown rather than silently applied: the rate is the user's own
                        fixed guess, so the honest thing is to put the converted figure in front of them before it
                        becomes a ledger entry. *@
-                    @if (_amount > 0 && FormTrip is { HasRate: true })
+                    @if (_amount > 0 && FormForeignFund is { } fxFund)
                     {
-                        <small class="hint trip-fx"><Icon Name="swap" /> @string.Format(Loc["logs as {0} at your trip rate"], Fmt(State.Money(ExpenseAmountToLog(_amount))))</small>
+                        <small class="hint trip-fx"><Icon Name="swap" /> @string.Format(Loc["logs as {0} — {1}'s rate"], Fmt(State.Money(ExpenseAmountToLog(_amount))), fxFund.Name)</small>
                     }
                     @* Time cost, live as you type (the amount binds on oninput). This is the moment it earns its
                        place — a price is easiest to reconsider before it's logged, not in a recap afterwards.
@@ -3961,7 +3964,7 @@ else
                        field that really changes each time, so a wrong default here writes a wrong ledger entry. *@
                     @* Suppressed while converting: these are past amounts in the ACCOUNT currency, and tapping one
                        into a field that's being read as pounds would log a number nobody meant. *@
-                    var amtHints = FormTrip is { HasRate: true } ? [] : State.RecentAmountsForCategory(_categoryId);
+                    var amtHints = FormForeignFund is not null ? [] : State.RecentAmountsForCategory(_categoryId);
                     @if (amtHints.Count > 0 && _expenseDrafts.Count == 0)
                     {
                         <div class="qp-row amt-hints">
@@ -4732,6 +4735,14 @@ else
                     }
 
                     <h4 class="modal-sec">@Loc["Spending in another currency"]</h4>
+                    @* ⛔ DEMOTED (S101). This rate no longer converts anything. It used to convert EVERY expense on
+                       the trip, including the card payments the bank had already converted — read €50 off your
+                       statement, type 50, and the app stored €58.50. The rate now lives on the FUND (a wallet of
+                       foreign cash), because that is what a rate is attached to in life.
+                       The fields stay because they are still useful as the trip's own note of what it expects to
+                       spend in and roughly at what — and because deleting them would break every existing trip's
+                       load. What changed is that nothing reads them at entry time. *@
+                    <small class="hint"><Icon Name="info" /> @Loc["This is a note on the trip, not a conversion. To actually convert as you log, set the currency and rate on the wallet you'll spend from (Wallets → the wallet → Foreign cash) — card payments are already converted by your bank and must not be converted twice."]</small>
                     @* The most involved machinery in the feature — a second currency, a rate, a conversion at entry
                        time — so it is the natural paid line. Free trips work completely in the account's own
                        currency; nothing about the entry flow, the recap or the Home card depends on this. *@
@@ -6021,6 +6032,37 @@ else
                     else if (_bankStatus?.Enabled == true)
                     {
                         <small class="hint">@Loc["Link a bank first (Money → Bank sync) to sync a fund with it."]</small>
+                    }
+                    @* ★ Where the exchange rate lives now (S101). A wallet of foreign cash IS the rate: you bought a
+                       specific pile of notes at a specific price, and everything spent out of it converts at that
+                       price. Money you pay by card never comes through here — it leaves the bank fund, which holds
+                       account-currency money, and the bank has already done the conversion.
+                       ⚠️ This replaced a rate on the TRIP, which converted card payments too and inflated every one
+                       of them. Do not put a rate back on the journey. *@
+                    <h4 class="modal-sec">@Loc["Foreign cash"]</h4>
+                    @if (!Gate.Allows(PlanFeatures.Trips))
+                    {
+                        <ProLock Feature="@PlanFeatures.Trips" Bar="true" Label="@Loc["Hold a wallet in another currency — with Pro"]" />
+                    }
+                    else
+                    {
+                        <div class="row2">
+                            <label>@Loc["Currency"]
+                                <input type="text" maxlength="3" list="fund-ccy" @bind="_fundCurrency" @bind:event="oninput" placeholder="@State.Currency" />
+                                <datalist id="fund-ccy">
+                                    @foreach (var ccy in CurrencyInfo.Common)
+                                    {
+                                        <option value="@ccy">@ccy — @CurrencyInfo.Symbol(ccy).Trim()</option>
+                                    }
+                                </datalist>
+                            </label>
+                            <label>@(string.IsNullOrWhiteSpace(_fundCurrency) ? Loc["Rate"] : string.Format(Loc["1 {0} is"], _fundCurrency!.ToUpperInvariant())) <DecimalInput T="decimal?" class="num" @bind-Value="_fundRate" placeholder="1.00" /></label>
+                        </div>
+                        <small class="hint">
+                            @(string.IsNullOrWhiteSpace(_fundCurrency)
+                                ? Loc["Leave this empty for an ordinary wallet. Set it for a pile of foreign cash — a holiday wallet — and everything you spend from it converts at the rate you bought it at."]
+                                : string.Format(Loc["Amounts spent from this wallet are typed in {0} and stored in {1}. Card payments don't come through here — they leave your bank, already converted."], _fundCurrency!.ToUpperInvariant(), State.Currency))
+                        </small>
                     }
                     var fundRules = FundRulesFor(_modalFundId).ToList();
                     @if (fundRules.Count > 0)
@@ -7369,6 +7411,9 @@ else
     private string? _editTransferNote;
     private Guid _modalFundId;
     private string? _fundNote;
+    // The wallet's foreign currency + the rate it was bought at (S101 — the rate moved off the trip onto the fund).
+    private string? _fundCurrency;
+    private decimal? _fundRate;
     private decimal _openingAmount;
     private bool _fSynced;   // Edit-fund: "synced with a linked bank account"
     private string? _fBankAccountRef;   // Edit-fund: which bank account this fund mirrors
@@ -8689,18 +8734,33 @@ else
     /// <summary>The trip currently picked on the expense form, when there is one.</summary>
     private FinApp.Domain.Budgeting.Trip? FormTrip => _expTripId == Guid.Empty ? null : State.FindTrip(_expTripId);
 
+    /// <summary>The fund being paid from, when it holds foreign money — null for an ordinary fund, which is nearly
+    /// always. This is what decides whether the Amount field converts.</summary>
+    private FinApp.Domain.Funds.Fund? FormForeignFund => State.ForeignFund(_fundId);
+
     /// <summary>
-    /// What actually gets logged: the typed figure converted at the trip's own fixed rate, or the typed figure
-    /// itself when there's no rate.
+    /// What actually gets logged: the typed figure converted at the <b>fund's</b> rate, or the typed figure itself.
     /// <para>
-    /// <b>Converting here and storing the result is the whole design.</b> Every total in the app stays in one
-    /// currency — budgets, safe-to-spend, the hero — and editing the rate afterwards can never rewrite what a past
-    /// expense cost. The price is that the stored figure is only as good as the rate on the day, which is why the
-    /// form says so rather than implying precision it doesn't have.
+    /// ⛔ <b>This used to convert at the TRIP's rate, and that was a live correctness bug.</b> A trip-wide rate
+    /// converts everything, including the payments your bank already converted: read €50 off your card statement on
+    /// a rated trip, type 50, and the app stored €58.50. For most travellers card is the majority of the spend, so
+    /// a rated trip's totals were wrong in the common case.
+    /// </para>
+    /// <para>
+    /// The rate belongs to the money, not to the journey — see <c>Fund.Currency</c>. Card → the bank already
+    /// converted, the statement is in the account currency, the bank fund carries no rate, nothing converts, and
+    /// you type what the statement says. Cash from an exchange office → a specific pile of foreign notes bought at
+    /// a specific rate, which is a wallet, which this app already models as a fund. Choosing the currency is
+    /// choosing the wallet, a choice the user is already making on every expense.
+    /// </para>
+    /// <para>
+    /// <b>Converting here and storing the result is unchanged and still right.</b> Every total in the app stays in
+    /// one currency — budgets, safe-to-spend, the hero — and editing a rate afterwards can never rewrite what a
+    /// past expense cost. That part of S99 was correct; only the thing holding the rate was wrong.
     /// </para>
     /// </summary>
     private decimal ExpenseAmountToLog(decimal typed) =>
-        FormTrip is { HasRate: true } t ? t.ToAccountCurrency(typed) : typed;
+        FormForeignFund is { } f ? f.ToAccountCurrency(typed) : typed;
 
     /// <summary>Trips the expense form offers: every one running now, plus anything upcoming — because the whole
     /// point is that a flight bought today belongs to next summer. Past trips are left out; attaching to one is
@@ -10753,6 +10813,8 @@ else
         _fundNote = State.FundNote(fundId);
         _openingAmount = State.FundOpeningBalance(fundId).Amount;
         _fSynced = State.FundIsSynced(fundId);
+        var fx = State.Account.FindFund(fundId);
+        _fundCurrency = fx?.Currency; _fundRate = fx?.Rate;
         _fBankAccountRef = _bankStatus?.AccountRef;
         _modal = Modal.EditFund;
         // Load the connection's bank accounts so the fund can be mapped to a specific one.
@@ -10800,6 +10862,14 @@ else
             await State.RenameFund(_modalFundId, _fName!);
             await State.SetFundNote(_modalFundId, _fundNote);
             await State.SetFundIcon(_modalFundId, _fIcon);
+            // The wallet's currency + rate ride their own endpoint (see SetFundCurrencyRequest), so a rename can't
+            // wipe them. Only written when they actually changed — the endpoint is Pro-gated on SETTING a currency,
+            // and a Free user renaming an ordinary wallet must not trip that gate.
+            var fxNow = State.Account.FindFund(_modalFundId);
+            var wantCcy = string.IsNullOrWhiteSpace(_fundCurrency) ? null : _fundCurrency!.Trim().ToUpperInvariant();
+            var wantRate = _fundRate is > 0m ? _fundRate : null;
+            if (fxNow?.Currency != wantCcy || fxNow?.Rate != wantRate)
+                await State.SetFundCurrency(_modalFundId, wantCcy, wantRate);
             if (!_fSynced)   // a synced fund's opening balance is bank-managed, not user-set
                 await State.SetFundOpeningBalance(_modalFundId, _openingAmount);
             // Bind/unbind this fund to the live bank connection (writes the binding server-side too).

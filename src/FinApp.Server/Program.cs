@@ -2056,6 +2056,25 @@ accounts.MapPut("/{id:guid}/expenses/{expenseId:guid}/trip", async (Guid id, Gui
     return Results.Ok(new MutationResultDto(version, expenseId));
 });
 
+// A fund's foreign currency + the rate it was bought at. See Fund.Currency for why the rate lives here and not on
+// the trip, and SetFundCurrencyRequest for why this isn't two more fields on the fund edit.
+accounts.MapPut("/{id:guid}/funds/{fundId:guid}/currency", async (Guid id, Guid fundId, SetFundCurrencyRequest req, ClaimsPrincipal user, SnapshotService svc,
+        EntitlementService entitlements, SyncNotifier notifier, CancellationToken ct) =>
+{
+    var userId = user.UserId();
+    // Holding money in a second currency is the Pro half of trips (MONETIZATION.md). Clearing it never is — a
+    // downgrade must be able to put a wallet back to the account currency.
+    if (!string.IsNullOrWhiteSpace(req.Currency))
+        await entitlements.RequireAsync(userId, PlanFeatures.Trips, ct);
+    var (version, _) = await svc.MutateAsync<object?>(userId, id, account =>
+    {
+        account.SetFundCurrency(fundId, req.Currency, req.Rate);
+        return null;
+    }, ct);
+    await notifier.AccountChangedAsync(id, userId, version);
+    return Results.Ok(new MutationResultDto(version, fundId));
+});
+
 // Label one expense, in any period. Same shape and the same reason as the trip link above: a trip's bookings sit in
 // months that are closed by the time the trip is being reviewed, and a tag moves no money.
 accounts.MapPut("/{id:guid}/expenses/{expenseId:guid}/tag", async (Guid id, Guid expenseId, SetExpenseTagRequest req, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>

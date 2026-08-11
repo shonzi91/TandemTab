@@ -1642,7 +1642,17 @@ public sealed class Localizer(IJSRuntime js)
         ["Part of a trip"] = "Част от пътуване",
         ["Not a trip"] = "Не е пътуване",
         ["Amount in {0}"] = "Сума в {0}",
-        ["logs as {0} at your trip rate"] = "записва се като {0} по твоя курс",
+        ["logs as {0} — {1}'s rate"] = "записва се като {0} — по курса на {1}",
+        // The rate moved off the trip and onto the wallet: a card payment is already converted by the bank, and
+        // converting it again inflated every one. See Fund.Currency.
+        ["Foreign cash"] = "Валута в брой",
+        ["Hold a wallet in another currency — with Pro"] = "Портфейл в друга валута — с Pro",
+        ["Leave this empty for an ordinary wallet. Set it for a pile of foreign cash — a holiday wallet — and everything you spend from it converts at the rate you bought it at."] =
+            "Остави празно за обикновен портфейл. Попълни го за пари в чужда валута в брой — портфейл за почивката — и всичко похарчено от него се превалутира по курса, на който си ги купил/а.",
+        ["Amounts spent from this wallet are typed in {0} and stored in {1}. Card payments don't come through here — they leave your bank, already converted."] =
+            "Сумите от този портфейл се въвеждат в {0} и се записват в {1}. Плащанията с карта не минават оттук — те излизат от банката ти, вече превалутирани.",
+        ["This is a note on the trip, not a conversion. To actually convert as you log, set the currency and rate on the wallet you'll spend from (Wallets → the wallet → Foreign cash) — card payments are already converted by your bank and must not be converted twice."] =
+            "Това е бележка към пътуването, не превалутиране. За да се превалутира при записване, задай валута и курс на портфейла, от който ще харчиш (Портфейли → портфейла → Валута в брой) — плащанията с карта вече са превалутирани от банката и не бива да се превалутират втори път.",
         ["What kind of spend?"] = "Какъв разход е това?",
         ["Add something already paid"] = "Добави вече платено",
         ["Add to {0}"] = "Добави към {0}",

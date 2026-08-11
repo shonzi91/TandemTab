@@ -1107,6 +1107,13 @@ public sealed class Account : Entity
     public void SetFundIcon(Guid fundId, string? icon) =>
         (FindFund(fundId) ?? throw new InvalidOperationException("Fund not found.")).SetIcon(icon);
 
+    /// <summary>Set (or clear) the foreign currency a fund holds and the rate it was bought at — see
+    /// <see cref="Fund.Currency"/> for why the rate belongs to the money rather than to the trip. Forward-only in
+    /// effect: amounts are converted at entry time and stored in the account currency, so changing this can never
+    /// rewrite what past expenses cost.</summary>
+    public void SetFundCurrency(Guid fundId, string? currency, decimal? rate) =>
+        (FindFund(fundId) ?? throw new InvalidOperationException("Fund not found.")).SetCurrency(currency, rate);
+
     /// <summary>Mark/unmark a fund as synced to a bank account. Forward-only: existing entries keep their markers.</summary>
     public void SetFundSynced(Guid fundId, bool synced) =>
         (FindFund(fundId) ?? throw new InvalidOperationException("Fund not found.")).SetSynced(synced);

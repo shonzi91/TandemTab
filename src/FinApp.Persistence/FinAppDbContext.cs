@@ -92,6 +92,11 @@ public sealed class FinAppDbContext(DbContextOptions<FinAppDbContext> options) :
             f.Ignore(x => x.Icon);  // body data — in the snapshot, not a relational column
             f.Ignore(x => x.IsSynced);  // body data — synced-fund flag rides in the snapshot
             f.Ignore(x => x.IsArchived);  // body data — archived flag rides in the snapshot
+            // Body data — the wallet's foreign currency + the rate it was bought at ride in the snapshot, so there
+            // is no schema change and no migration (see Fund.Currency for why the rate lives on the fund at all).
+            f.Ignore(x => x.Currency);
+            f.Ignore(x => x.Rate);
+            f.Ignore(x => x.HasRate);
         });
 
         b.Entity<User>(u =>

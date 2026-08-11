@@ -205,6 +205,14 @@ public record CreateFundRequest(string Name, Guid? ParentId = null, string? Note
 /// <summary>Edit a fund's name, note and icon (null note/icon clear them). Mirrors <c>BudgetingState.RenameFund</c>+note/icon.</summary>
 public record EditFundRequest(string Name, string? Note = null, string? Icon = null);
 
+/// <summary>
+/// Set (or clear, with nulls) the foreign currency a fund holds and the rate it was bought at. Its own endpoint
+/// rather than two more fields on <see cref="EditFundRequest"/>: that request is a full replace and every
+/// single-field setter in the client re-sends the whole triple, so carrying the rate there would let a rename
+/// silently wipe a wallet's rate. Mirrors <c>BudgetingState.SetFundCurrency</c>.
+/// </summary>
+public record SetFundCurrencyRequest(string? Currency, decimal? Rate);
+
 /// <summary>Add a contribution (income) category (Salary, Vouchers…). Mirrors <c>BudgetingState.AddContributionCategory</c>.</summary>
 public record CreateContributionCategoryRequest(string Name, string? Icon = null);
 

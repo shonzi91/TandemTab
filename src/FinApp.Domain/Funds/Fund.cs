@@ -36,6 +36,59 @@ public sealed class Fund : Entity
     /// so referencing transactions are never orphaned. Body data (in the snapshot, not EF).</summary>
     public bool IsArchived { get; private set; }
 
+    /// <summary>
+    /// The currency the money in this fund is actually held in, when it isn't the account's ("GBP"). Null — the
+    /// ordinary case — means the account currency.
+    /// <para>
+    /// <b>★ Why the rate lives on the FUND and not on the trip.</b> A trip-wide rate converted <i>everything</i>,
+    /// which is wrong the moment you pay by card: the bank has already converted, your statement is in your own
+    /// currency, and applying the trip's rate on top inflates the entry — so every card payment on a rated trip was
+    /// silently overstated. The rate belongs to the money, and that is also how it works in life. A card payment
+    /// leaves the bank fund, which is in your currency, so nothing converts. Cash from an exchange office is a
+    /// specific pile of foreign notes bought at a specific rate — which is a <i>wallet</i>, and this app already
+    /// models a wallet as a fund. Choosing the currency therefore becomes choosing the fund, a choice the user is
+    /// already making on every expense, so the form gains no new question.
+    /// </para>
+    /// </summary>
+    public string? Currency { get; private set; }
+
+    /// <summary>
+    /// How many units of the <i>account</i> currency one unit of <see cref="Currency"/> is worth (1 GBP = 1.17 EUR
+    /// → <c>1.17</c>). Set together with <see cref="Currency"/>; neither means anything without the other.
+    /// <para>
+    /// Best derived from the transfer that loaded the wallet ("€234 out of Bank → £200 into Lisbon cash" gives
+    /// 1.17 exactly) rather than typed: the user holds an exchange receipt, not a rate, and a derived rate is the
+    /// true rate for that pile of cash including the office's margin, which a typed mid-market rate never is.
+    /// </para>
+    /// </summary>
+    public decimal? Rate { get; private set; }
+
+    /// <summary>True when this fund holds foreign money and can convert it — i.e. the entry form should label its
+    /// Amount in <see cref="Currency"/> and convert what is typed.</summary>
+    public bool HasRate => Rate is > 0m && !string.IsNullOrEmpty(Currency);
+
+    /// <summary>Set (or clear, by passing null for either half) the foreign currency this fund holds and its rate.
+    /// Clearing does not touch anything already recorded: amounts are stored converted, at entry time, so a rate
+    /// change can never rewrite what past expenses cost.</summary>
+    public void SetCurrency(string? currency, decimal? rate)
+    {
+        if (string.IsNullOrWhiteSpace(currency) || rate is not > 0m)
+        {
+            Currency = null;
+            Rate = null;
+            return;
+        }
+        Currency = currency.Trim().ToUpperInvariant();
+        Rate = rate;
+    }
+
+    /// <summary>Convert an amount typed in this fund's currency into the account currency, rounded to the cent.
+    /// Returns it unchanged when the fund holds account-currency money, so callers need no branch.</summary>
+    public decimal ToAccountCurrency(decimal amountInFundCurrency) =>
+        Rate is { } r && r > 0m
+            ? decimal.Round(amountInFundCurrency * r, 2, MidpointRounding.AwayFromZero)
+            : amountInFundCurrency;
+
     public Fund(string name, Guid? parentId = null)
     {
         if (string.IsNullOrWhiteSpace(name))

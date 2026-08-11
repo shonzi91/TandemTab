@@ -632,6 +632,75 @@ public class TripTests
         Assert.True(rt.IsAwaitingStart(new DateOnly(2026, 6, 12)));
     }
 
+    // --- ⛔ The rate belongs to the money, not the journey ---------------------------------------------------
+
+    [Fact]
+    public void A_fund_holding_account_currency_money_never_converts()
+    {
+        var account = new Account("Personal", Eur);
+        var bank = account.AddFund("Bank");
+
+        // The card case, and the whole reason this moved off the trip: the bank already converted, the statement is
+        // in the account currency, and typing 50 must store 50 — even while a rated trip is running.
+        Assert.False(bank.HasRate);
+        Assert.Equal(50m, bank.ToAccountCurrency(50m));
+    }
+
+    [Fact]
+    public void A_wallet_of_foreign_cash_converts_at_the_rate_it_was_bought_at()
+    {
+        var account = new Account("Personal", Eur);
+        var wallet = account.AddFund("Lisbon cash");
+
+        account.SetFundCurrency(wallet.Id, "gbp", 1.17m);
+
+        Assert.True(wallet.HasRate);
+        Assert.Equal("GBP", wallet.Currency);           // normalised, like every other currency code in the app
+        Assert.Equal(234m, wallet.ToAccountCurrency(200m));
+        // Rounded to the cent, away from zero — the same discipline the trip rate used.
+        Assert.Equal(11.70m, wallet.ToAccountCurrency(10m));
+    }
+
+    [Fact]
+    public void A_fund_rate_needs_both_halves_and_clears_together()
+    {
+        var account = new Account("Personal", Eur);
+        var wallet = account.AddFund("Lisbon cash");
+
+        // A rate with no currency has nothing to label the field with; a currency with no rate cannot convert.
+        account.SetFundCurrency(wallet.Id, "GBP", null);
+        Assert.False(wallet.HasRate);
+        account.SetFundCurrency(wallet.Id, null, 1.17m);
+        Assert.False(wallet.HasRate);
+
+        account.SetFundCurrency(wallet.Id, "GBP", 1.17m);
+        account.SetFundCurrency(wallet.Id, null, null);
+        Assert.Null(wallet.Currency);
+        Assert.Null(wallet.Rate);
+        // Clearing converts nothing retroactively: amounts were stored converted at entry time.
+        Assert.Equal(200m, wallet.ToAccountCurrency(200m));
+    }
+
+    [Fact]
+    public void A_funds_currency_survives_a_snapshot_round_trip_and_an_old_fund_has_none()
+    {
+        var account = new Account("Personal", Eur);
+        var wallet = account.AddFund("Lisbon cash");
+        account.SetFundCurrency(wallet.Id, "GBP", 1.17m);
+
+        var payload = AccountSnapshotSerializer.Serialize(account);
+        var restored = AccountSnapshotSerializer.Deserialize(payload).FindFund(wallet.Id)!;
+        Assert.Equal("GBP", restored.Currency);
+        Assert.Equal(1.17m, restored.Rate);
+
+        // A snapshot written before the rate moved off the trip carries neither field — which reads as an ordinary
+        // account-currency wallet, i.e. exactly what those funds were.
+        var legacy = payload.Replace(",\"Currency\":\"GBP\",\"Rate\":1.17", "");
+        var old = AccountSnapshotSerializer.Deserialize(legacy).FindFund(wallet.Id)!;
+        Assert.Null(old.Currency);
+        Assert.False(old.HasRate);
+    }
+
     // --- Releasing saved money into a trip's budget ---------------------------------------------------------
 
     [Fact]

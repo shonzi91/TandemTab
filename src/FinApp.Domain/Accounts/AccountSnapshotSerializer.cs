@@ -33,7 +33,7 @@ public static class AccountSnapshotSerializer
         var node = new AccountNode(
             account.Id, account.Name, account.Currency, account.OwnerUserId,
             account.Members.Select(m => new MemberNode(m.Id, m.UserId, m.DisplayName)).ToList(),
-            account.Funds.Select(f => new FundNode(f.Id, f.Name, f.ParentId, f.Note, f.Icon, f.IsSynced, f.IsArchived)).ToList(),
+            account.Funds.Select(f => new FundNode(f.Id, f.Name, f.ParentId, f.Note, f.Icon, f.IsSynced, f.IsArchived, f.Currency, f.Rate)).ToList(),
             account.Categories.Select(c => new CategoryNode(c.Id, c.Name, c.ParentId, c.Icon, c.IsEssential, c.IsArchived)).ToList(),
             account.SavingCategories.Select(s => new SavingCategoryNode(s.Id, s.Name, s.ParentId, s.GoalAmount, s.AlertThreshold, s.NotifyOnMilestone, s.InitialAmount, s.Icon, s.Kind, s.DebtBalance, s.DebtAnnualRatePercent, s.DebtInstallment, s.IsArchived, s.DebtOriginalBalance, s.PlannedContribution, s.InvestmentAnnualRatePercent, s.InvestmentTermYears, s.InvestmentCompoundsPerYear, s.FundId, s.Costs.Count == 0 ? null : s.Costs.ToList(), s.DebtBalanceAsOf, s.DebtInstallmentDay, s.DebtStartDate, s.DebtPaymentDriven, s.IsEmergencyFund, s.DebtResidual)).ToList(),
             account.Periods.Select(ToNode).ToList(),
@@ -83,6 +83,7 @@ public static class AccountSnapshotSerializer
             fund.SetIcon(f.Icon);
             fund.SetSynced(f.IsSynced);
             if (f.IsArchived) fund.SetArchived(true);
+            fund.SetCurrency(f.Currency, f.Rate);
             return fund;
         }).ToList());
         SetField(account, "_categories", node.Categories.Select(c =>
@@ -354,7 +355,10 @@ public static class AccountSnapshotSerializer
 
     private record MemberNode(Guid Id, Guid UserId, string DisplayName);
     private record ContributionCategoryNode(Guid Id, string Name, string? Icon = null);
-    private record FundNode(Guid Id, string Name, Guid? ParentId, string? Note = null, string? Icon = null, bool IsSynced = false, bool IsArchived = false);
+    // Currency/Rate are trailing optionals like every other body-data addition: a snapshot written before the rate
+    // moved off the trip deserializes with null, which is exactly "this fund holds account-currency money".
+    private record FundNode(Guid Id, string Name, Guid? ParentId, string? Note = null, string? Icon = null, bool IsSynced = false, bool IsArchived = false,
+        string? Currency = null, decimal? Rate = null);
     private record CategoryNode(Guid Id, string Name, Guid? ParentId, string? Icon = null, bool IsEssential = false, bool IsArchived = false);
     // F2: CategoryId is null on every node written before the binding existed — i.e. the tag files nothing, which is
     // exactly what an unbound tag means, so legacy snapshots need no back-fill.
