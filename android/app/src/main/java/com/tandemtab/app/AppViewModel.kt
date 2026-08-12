@@ -39,6 +39,7 @@ import com.tandemtab.app.data.UpdateRecurringRequest
 import com.tandemtab.app.data.SavingsViewDto
 import com.tandemtab.app.data.CreateTripRequest
 import com.tandemtab.app.data.EditTripRequest
+import com.tandemtab.app.data.TripDetailDto
 import com.tandemtab.app.data.TripDto
 import com.tandemtab.app.data.TripTagDto
 import com.tandemtab.app.data.SpendFromSavingsRequest
@@ -198,6 +199,12 @@ data class TripsUi(
     val currency: String = "",
     val trips: List<TripDto> = emptyList(),
     val tripTags: List<TripTagDto> = emptyList(),
+    // The opened card's split + ledger, fetched on expand. Only one card is open at a time, so one slot: a map
+    // would keep every journey's expenses in memory to redraw one. `detailTripId` is which card is open — kept
+    // apart from `detail` so a slow response can be matched against it and dropped if the user has moved on.
+    val detailTripId: String? = null,
+    val detail: TripDetailDto? = null,
+    val detailLoading: Boolean = false,
     val saving: Boolean = false,
     val saveError: String? = null,
 ) {
@@ -807,6 +814,31 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun prepareTrip() = _state.update { it.copy(trips = it.trips.copy(saveError = null)) }
 
     /**
+     * Open (or close) a trip card. Opening fetches its split + ledger; closing drops them.
+     *
+     * The detail is dropped on collapse rather than cached: a trip's expenses are the one part of this feature
+     * that has no bound, and the figures go stale the moment anything is logged. Re-reading on expand costs one
+     * request and is always right; a cache would cost memory and be wrong exactly when someone looks twice.
+     */
+    fun openTrip(tripId: String?) {
+        val accountId = _state.value.selectedAccountId ?: return
+        if (tripId == null) {
+            _state.update { it.copy(trips = it.trips.copy(detailTripId = null, detail = null, detailLoading = false)) }
+            return
+        }
+        _state.update { it.copy(trips = it.trips.copy(detailTripId = tripId, detail = null, detailLoading = true)) }
+        viewModelScope.launch {
+            val d = runCatching { api.tripDetail(accountId, tripId, todayIso()) }.getOrNull()
+            _state.update { st ->
+                // Drop a response the user has moved on from: closing the card, or opening another, changes
+                // `detailTripId`, and splicing this in would show one trip's expenses under another's name.
+                if (st.trips.detailTripId != tripId) st
+                else st.copy(trips = st.trips.copy(detail = d, detailLoading = false))
+            }
+        }
+    }
+
+    /**
      * Re-read the trips after an **expense** write.
      *
      * ★ Found on the emulator, not in a test: logging €23.40 onto Rome from the FAB left the trip card reading its
@@ -818,9 +850,15 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private fun refreshTripsIfLoaded() {
         val accountId = _state.value.selectedAccountId ?: return
         if (!_state.value.trips.loaded) return
+        val openId = _state.value.trips.detailTripId
         viewModelScope.launch {
             val v = runCatching { api.trips(accountId, todayIso()) }.getOrNull() ?: return@launch
             _state.update { it.copy(trips = it.trips.copy(currency = v.currency, trips = v.trips, tripTags = v.tripTags)) }
+            // …and the open card's own split + ledger, which is downstream of the same expenses.
+            if (openId != null) {
+                val d = runCatching { api.tripDetail(accountId, openId, todayIso()) }.getOrNull()
+                _state.update { st -> if (st.trips.detailTripId != openId) st else st.copy(trips = st.trips.copy(detail = d)) }
+            }
         }
     }
 
@@ -837,6 +875,16 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                         saving = false, saveError = null, loaded = true,
                         currency = v.currency, trips = v.trips, tripTags = v.tripTags,
                     ))
+                }
+                // A trip write moves the open card too — attaching an expense is the obvious one, but editing the
+                // budget or the dates re-splits the same expenses into before / during / after.
+                _state.value.trips.detailTripId?.let { openId ->
+                    if (v.trips.any { t -> t.id == openId }) {
+                        val d = runCatching { api.tripDetail(accountId, openId, todayIso()) }.getOrNull()
+                        _state.update { st -> if (st.trips.detailTripId != openId) st else st.copy(trips = st.trips.copy(detail = d)) }
+                    } else {
+                        _state.update { st -> st.copy(trips = st.trips.copy(detailTripId = null, detail = null)) }   // deleted
+                    }
                 }
                 onDone()
             } catch (e: Exception) {

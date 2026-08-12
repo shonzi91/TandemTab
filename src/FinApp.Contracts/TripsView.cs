@@ -54,6 +54,49 @@ public record TripDto(
 /// note.</summary>
 public record TripTagDto(Guid Id, string Name, string? Icon, Guid? CategoryId);
 
+/// <summary>One wedge of a trip's spending — a category or a tag, already labelled and already ranked.</summary>
+public record TripSliceDto(Guid Id, string Label, string? Icon, decimal Amount, int Count);
+
+/// <summary>
+/// One expense on a trip, gathered by <b>link</b> across every period — so a March flight appears under a June
+/// trip. <see cref="When"/> says which side of the journey it falls on (<c>before</c> / <c>during</c> / <c>after</c>),
+/// resolved here against the trip's dates so no client re-derives it. <see cref="TagName"/> is the trip's own axis
+/// and leads the sub-line when set: on a trip that files into one category, printing the category on every row is
+/// a column of the same word.
+/// </summary>
+public record TripExpenseRowDto(
+    Guid Id,
+    DateOnly Date,
+    decimal Amount,
+    string? Note,
+    Guid CategoryId,
+    string CategoryName,
+    string? CategoryIcon,
+    Guid? TagId,
+    string? TagName,
+    string? TagIcon,
+    string When);
+
+/// <summary>
+/// One trip opened up: the card's own figures, the split behind them, and everything attached to it.
+/// <para>
+/// Its own read rather than fields on <see cref="TripsViewDto"/> — the list would otherwise carry every expense of
+/// every journey the account has ever taken, to draw one card the reader may never open.
+/// </para>
+/// </summary>
+/// <param name="SliceAxis"><c>tag</c> or <c>category</c>. The tag split is the headline whenever at least half the
+/// trip is labelled; below that the pie would be mostly one unlabelled hole, so it falls back to the axis every
+/// expense always carries. The decision travels so both clients lead with the same one.</param>
+/// <param name="HasTagSlices">Whether any tag was used at all — the difference between "mostly unlabelled" and
+/// "never labelled", which are two different sentences to show under the chart.</param>
+public record TripDetailDto(
+    TripDto Trip,
+    IReadOnlyList<TripSliceDto> Slices,
+    string SliceAxis,
+    bool HasTagSlices,
+    TripExpenseRowDto? Biggest,
+    IReadOnlyList<TripExpenseRowDto> Expenses);
+
 /// <summary>
 /// The whole Trips surface in one read. <see cref="Trips"/> is newest departure first — the order the list reads in.
 /// <para>

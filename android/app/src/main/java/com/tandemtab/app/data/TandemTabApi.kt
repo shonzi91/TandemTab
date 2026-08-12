@@ -167,6 +167,11 @@ class TandemTabApi(
     suspend fun trips(accountId: String, today: String): TripsViewDto =
         authedGet("/accounts/$accountId/trips?today=$today").body()
 
+    /** One trip opened up: the split behind its total and every expense linked to it. Its own read, because the
+     *  list would otherwise carry every expense of every journey to draw a card nobody may open. */
+    suspend fun tripDetail(accountId: String, tripId: String, today: String): TripDetailDto =
+        authedGet("/accounts/$accountId/trips/$tripId?today=$today").body()
+
     suspend fun createTrip(accountId: String, req: CreateTripRequest): MutationResultDto =
         authedPost("/accounts/$accountId/trips", req).body()
 

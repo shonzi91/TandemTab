@@ -149,9 +149,22 @@ start, finish, reopen, edit, delete (behind a confirm that says the expenses sur
 - **★ The edit form carries `savingCategoryId` through untouched.** The server's trip edit is a full replace, so a
   form that omitted it would silently unlink the savings pot every time someone corrected a name. Linking a pot is
   still web-only; this makes sure the native editor cannot destroy one. (Fourth full-replace trap in R2.)
-- **Not built:** the recap donut (needs the category/tag slices on the DTO), the per-trip expense list (the thin
-  client holds only the open period's ledger, so "add something already paid" can only offer this month), the
-  savings release, and the Home trip banner / shell shift.
+- **✅ The recap donut and the trip's own ledger followed** (same session), on a new
+  `GET /accounts/{id}/trips/{tripId}?today=` → `TripDetailDto`: slices, which axis they're on, the biggest single
+  thing, and every expense linked to the trip. **Its own read, not fields on the list** — the list would otherwise
+  carry every expense of every journey the account has ever taken to draw a card nobody may open. Fetched on
+  expand, dropped on collapse, and re-read after any expense or trip write.
+  - **★ The axis decision travels, like the state does.** Tags lead only when at least half the trip is labelled;
+    below that it falls back to categories. Two clients deciding that separately is two chances to lead with a
+    different chart for the same trip.
+  - ⚠️ **A single slice must be a full circle, not a 360° arc** — an arc that starts and ends at the same point
+    draws nothing. That is the *ordinary* case here: a trip files into one category, so unless its labels are
+    used there is only ever one wedge. The web hit the identical bug in S100.
+  - ⚠️ **When the list's `expenseCount` and the detail's ledger disagree, the detail wins.** They are separate
+    reads; deciding the empty state from the older one puts "nothing logged yet" above a list of six expenses.
+- **Not built:** the savings release (`/trips/{id}/use-savings`), the seeded trip labels (`/trip-tags`), and the
+  Home trip banner / shell shift. "Add something already paid" can still only offer the open period, because
+  that is the only ledger a thin client holds.
 - Verified on the emulator against a three-trip local seed (running / upcoming / finished) in **both themes**:
   state marks and pills, the split arithmetic (€374.90 booked ahead + €208.10 while away), attaching an expense
   (total moved €484.70 → €549.60, and the 8 Aug shop correctly counted as *booked ahead* against a 10 Aug

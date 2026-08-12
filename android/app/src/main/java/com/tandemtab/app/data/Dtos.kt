@@ -208,6 +208,46 @@ object TripState {
 @Serializable
 data class TripTagDto(val id: String, val name: String, val icon: String? = null, val categoryId: String? = null)
 
+/** One wedge of a trip's spending — already labelled and already ranked by the server. */
+@Serializable
+data class TripSliceDto(
+    val id: String,
+    val label: String,
+    val icon: String? = null,
+    val amount: Double = 0.0,
+    val count: Int = 0,
+)
+
+/** One expense on a trip, gathered by LINK across every period — so a March flight appears under a June trip.
+ *  `when` is "before" | "during" | "after", resolved by the server against the trip's dates. */
+@Serializable
+data class TripExpenseRowDto(
+    val id: String,
+    val date: String,
+    val amount: Double = 0.0,
+    val note: String? = null,
+    val categoryId: String = "",
+    val categoryName: String = "",
+    val categoryIcon: String? = null,
+    val tagId: String? = null,
+    val tagName: String? = null,
+    val tagIcon: String? = null,
+    val `when`: String = "during",
+)
+
+/** One trip opened up. `sliceAxis` ("tag" | "category") is the server's call, not ours: the tag split leads only
+ *  when at least half the trip is labelled, and both clients must lead with the same one. `hasTagSlices`
+ *  separates "mostly unlabelled" from "never labelled" — two different sentences under the chart. */
+@Serializable
+data class TripDetailDto(
+    val trip: TripDto,
+    val slices: List<TripSliceDto> = emptyList(),
+    val sliceAxis: String = "category",
+    val hasTagSlices: Boolean = false,
+    val biggest: TripExpenseRowDto? = null,
+    val expenses: List<TripExpenseRowDto> = emptyList(),
+)
+
 @Serializable
 data class TripsViewDto(
     val version: Long = 0,

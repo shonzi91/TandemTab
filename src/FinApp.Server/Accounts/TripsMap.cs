@@ -47,6 +47,53 @@ public static class TripsMap
     }
 
     /// <summary>
+    /// One trip opened up: its card figures, the split behind them, and every expense linked to it.
+    /// <para>
+    /// ★ <b>Which axis the split uses is decided here, not by each client.</b> Tags lead whenever the trip is at
+    /// least half labelled (<c>TagsAreRepresentative</c>); below that the ring would be mostly one unlabelled hole,
+    /// so it falls back to categories — the axis every expense always carries. Two clients deciding that
+    /// separately is two chances to lead with a different chart for the same trip.
+    /// </para>
+    /// </summary>
+    public static TripDetailDto? Detail(Account account, long version, Guid tripId, DateOnly today)
+    {
+        if (account.FindTrip(tripId) is not { } trip) return null;
+        var recap = new TripRecapService().Build(account, tripId);
+        if (recap is null) return null;
+
+        var byTag = recap.TagsAreRepresentative && recap.TagBreakdown.Count > 0;
+        var slices = (byTag
+                ? recap.TagBreakdown.Select(s => new TripSliceDto(s.Id, account.FindTag(s.Id)?.Name ?? "—", account.FindTag(s.Id)?.Icon, s.Total.Amount, s.Count))
+                : recap.CategoryBreakdown.Select(s => new TripSliceDto(s.Id, account.FindCategory(s.Id)?.Name ?? "—", account.FindCategory(s.Id)?.Icon, s.Total.Amount, s.Count)))
+            .Where(s => s.Amount > 0m)
+            .ToList();
+
+        // Biggest first, matching every other expense list in Spending: the question a recap answers is "what did
+        // this cost", which a date order buries. Date, then id, breaks the ties — a stable order, so the list
+        // can't reshuffle between two renders of the same data.
+        var rows = account.TripExpenses(tripId)
+            .OrderByDescending(e => Math.Abs(e.Amount.Amount)).ThenByDescending(e => e.Date).ThenBy(e => e.Id)
+            .Select(e => Row(account, trip, e))
+            .ToList();
+
+        var biggest = rows.Count == 0 ? null : rows[0];
+        return new TripDetailDto(
+            View(account, version, today).Trips.First(t => t.Id == tripId),
+            slices, byTag ? "tag" : "category", recap.TagBreakdown.Count > 0, biggest, rows);
+    }
+
+    private static TripExpenseRowDto Row(Account account, FinApp.Domain.Budgeting.Trip trip, FinApp.Domain.Budgeting.Expense e)
+    {
+        var category = account.FindCategory(e.CategoryId);
+        var tag = e.TagId is { } tid ? account.FindTag(tid) : null;
+        return new TripExpenseRowDto(
+            e.Id, e.Date, Math.Abs(e.Amount.Amount), e.Note,
+            e.CategoryId, category?.Name ?? "—", category?.Icon,
+            tag?.Id, tag?.Name, tag?.Icon,
+            e.Date < trip.From ? "before" : e.Date > trip.To ? "after" : "during");
+    }
+
+    /// <summary>
     /// The four states, in the order they must be tested. <b>Finished is checked first</b> — a trip declared over
     /// is over even if today still falls inside its dates, which is the whole reason Finish exists as its own
     /// action. <b>Active requires a confirmed departure</b>: between the start date and that confirmation the trip

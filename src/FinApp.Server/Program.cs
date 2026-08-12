@@ -1959,6 +1959,19 @@ accounts.MapGet("/{id:guid}/trips", async (Guid id, DateOnly? today, ClaimsPrinc
     return Results.Ok(TripsMap.View(account, snap.Version, today ?? DateOnly.FromDateTime(DateTime.UtcNow)));
 });
 
+// One trip opened up — the split behind its total, and every expense linked to it. Its own read rather than
+// fields on the list: the list would otherwise carry every expense of every journey the account has ever taken
+// to draw one card the reader may never open.
+accounts.MapGet("/{id:guid}/trips/{tripId:guid}", async (Guid id, Guid tripId, DateOnly? today, ClaimsPrincipal user, SnapshotService svc, CancellationToken ct) =>
+{
+    var snap = await svc.GetAsync(user.UserId(), id, ct);
+    if (string.IsNullOrEmpty(snap.Payload)) return Results.NotFound();
+    var account = AccountSnapshotSerializer.Deserialize(snap.Payload);
+    return TripsMap.Detail(account, snap.Version, tripId, today ?? DateOnly.FromDateTime(DateTime.UtcNow)) is { } detail
+        ? Results.Ok(detail)
+        : Results.NotFound();
+});
+
 accounts.MapPost("/{id:guid}/trips", async (Guid id, CreateTripRequest req, ClaimsPrincipal user, SnapshotService svc,
         EntitlementService entitlements, SyncNotifier notifier, CancellationToken ct) =>
 {

@@ -180,6 +180,7 @@ fun HomeScreen(
     onStartTrip: (String, Boolean) -> Unit,
     onFinishTrip: (String, Boolean) -> Unit,
     onAttachExpenseToTrip: (String, String?, () -> Unit) -> Unit,
+    onOpenTrip: (String?) -> Unit,
     onPrepareTrip: () -> Unit,
     onClearEditing: () -> Unit,
     onAddExpenses: (List<com.tandemtab.app.data.AddExpenseRequest>, () -> Unit) -> Unit,
@@ -366,6 +367,7 @@ fun HomeScreen(
                             onStartTrip = onStartTrip,
                             onFinishTrip = onFinishTrip,
                             onAttachExpenseToTrip = onAttachExpenseToTrip,
+                            onOpenTrip = onOpenTrip,
                             onPrepareTrip = onPrepareTrip,
                         )
                         NavDest.Goals -> GoalsScreen(

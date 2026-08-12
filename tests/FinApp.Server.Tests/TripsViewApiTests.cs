@@ -193,6 +193,78 @@ public class TripsViewApiTests : IClassFixture<FinAppServerFactory>
     }
 
     [Fact]
+    public async Task A_trips_detail_lists_its_expenses_biggest_first_and_says_which_side_of_the_journey_each_falls_on()
+    {
+        var (client, auth) = await _factory.RegisterAndAuthAsync("tripdetail_rows");
+        var account = await CreateAccount(client, "Trips");
+        var (cat, fund, _) = await SeedAsync(client, account.Id, auth.UserId);
+        var tripId = await CreateTrip(client, account.Id, "Rome", From, To);
+        foreach (var (amount, date, note) in new[]
+                 {
+                     (220m, new DateOnly(2026, 6, 2), "Flight"),
+                     (60m, new DateOnly(2026, 6, 12), "Dinner"),
+                     (18m, new DateOnly(2026, 6, 20), "Late charge"),
+                 })
+        {
+            (await client.PostAsJsonAsync($"/accounts/{account.Id}/expenses",
+                new AddExpenseRequest(cat, amount, fund, date, note, TripId: tripId))).EnsureSuccessStatusCode();
+        }
+
+        var detail = (await client.GetFromJsonAsync<TripDetailDto>($"/accounts/{account.Id}/trips/{tripId}?today=2026-06-21"))!;
+
+        Assert.Equal(new[] { "Flight", "Dinner", "Late charge" }, detail.Expenses.Select(e => e.Note));
+        Assert.Equal(new[] { "before", "during", "after" }, detail.Expenses.Select(e => e.When));
+        Assert.Equal("Flight", detail.Biggest?.Note);
+        Assert.Equal(298m, detail.Trip.Spent);   // the card's own figures ride along, so one read draws the whole thing
+    }
+
+    [Fact]
+    public async Task The_split_leads_with_tags_only_when_half_the_trip_is_labelled()
+    {
+        var (client, auth) = await _factory.RegisterAndAuthAsync("tripdetail_axis");
+        var account = await CreateAccount(client, "Trips");
+        var (cat, fund, _) = await SeedAsync(client, account.Id, auth.UserId);
+        var tripId = await CreateTrip(client, account.Id, "Rome", From, To);
+        var tagId = (await (await client.PostAsJsonAsync($"/accounts/{account.Id}/tags", new CreateTagRequest("Stay", "house")))
+            .Content.ReadFromJsonAsync<MutationResultDto>())!.EntityId!.Value;
+
+        // One small labelled row against a big unlabelled one: tags exist, but they describe a tenth of the trip,
+        // so leading with them would draw a ring that is 90% hole.
+        (await client.PostAsJsonAsync($"/accounts/{account.Id}/expenses",
+            new AddExpenseRequest(cat, 30m, fund, new DateOnly(2026, 6, 12), "Hostel", TagId: tagId, TripId: tripId))).EnsureSuccessStatusCode();
+        (await client.PostAsJsonAsync($"/accounts/{account.Id}/expenses",
+            new AddExpenseRequest(cat, 270m, fund, new DateOnly(2026, 6, 2), "Flight", TripId: tripId))).EnsureSuccessStatusCode();
+
+        var thin = (await client.GetFromJsonAsync<TripDetailDto>($"/accounts/{account.Id}/trips/{tripId}?today=2026-06-21"))!;
+        Assert.Equal("category", thin.SliceAxis);
+        Assert.True(thin.HasTagSlices);            // "mostly unlabelled" — a different sentence from "never labelled"
+
+        // Label the big one too and the tag split becomes the honest headline.
+        var flightId = thin.Expenses.First(e => e.Note == "Flight").Id;
+        (await client.PutAsJsonAsync($"/accounts/{account.Id}/expenses/{flightId}/tag", new SetExpenseTagRequest(tagId)))
+            .EnsureSuccessStatusCode();
+
+        var labelled = (await client.GetFromJsonAsync<TripDetailDto>($"/accounts/{account.Id}/trips/{tripId}?today=2026-06-21"))!;
+        Assert.Equal("tag", labelled.SliceAxis);
+        var slice = Assert.Single(labelled.Slices);
+        Assert.Equal("Stay", slice.Label);
+        Assert.Equal(300m, slice.Amount);
+        Assert.Equal(2, slice.Count);
+    }
+
+    [Fact]
+    public async Task A_trip_from_another_account_is_a_404_not_someone_elses_ledger()
+    {
+        var (client, auth) = await _factory.RegisterAndAuthAsync("tripdetail_404");
+        var account = await CreateAccount(client, "Trips");
+        await SeedAsync(client, account.Id, auth.UserId);
+
+        var resp = await client.GetAsync($"/accounts/{account.Id}/trips/{Guid.NewGuid()}");
+
+        Assert.Equal(System.Net.HttpStatusCode.NotFound, resp.StatusCode);
+    }
+
+    [Fact]
     public async Task The_spending_view_carries_an_expenses_trip_and_tags_plus_the_tag_options()
     {
         var (client, auth) = await _factory.RegisterAndAuthAsync("tripsview_spending");

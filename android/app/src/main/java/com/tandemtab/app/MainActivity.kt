@@ -164,6 +164,7 @@ private fun App(vm: AppViewModel, onGoogle: () -> Unit) {
             onStartTrip = vm::startTrip,
             onFinishTrip = vm::finishTrip,
             onAttachExpenseToTrip = vm::setExpenseTrip,
+            onOpenTrip = vm::openTrip,
             onPrepareTrip = vm::prepareTrip,
             onClearEditing = vm::clearEditing,
             onAddExpenses = vm::addExpenses,

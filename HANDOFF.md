@@ -14,7 +14,9 @@ R2 backlog itself — rewritten with the fresh measurement.
 state marks, the three-way split, the actions, and a Trip row on the add sheet that defaults to the journey you're
 on. ★ The emulator caught what no test would: a trip card is a **recap of expenses**, so it went stale the moment
 one was logged from the FAB — now re-read after every expense write.
-⚠️ Still open on trips: the recap donut, the per-trip expense list, the savings release, the Home banner.
+✅ **The recap donut and the trip's own ledger landed too**, on a new `GET /trips/{tripId}` detail read — fetched on
+expand rather than bloating the list, with the tag-vs-category axis decided server-side like the state is.
+⚠️ Still open on trips: the savings release, the seeded labels, the Home banner. **350 server tests** (3 new).
 
 Previously: 2026-08-12 (Session 102 — **three owner items on Breakdown, and a dead CSS rule they uncovered.**
 The "← All categories" button is gone (the axis chips already cleared the drill); the Income/Spent/of-income
@@ -204,9 +206,20 @@ reopen, edit, delete-behind-a-confirm. The FAB's add sheet gained a **Trip row d
 - **★ The native edit form carries `savingCategoryId` through untouched** — the server's trip edit is a full
   replace, so omitting it would unlink the savings pot every time someone corrected a name. Fourth full-replace
   trap in R2; the pattern is now reliable enough to check for by default.
-- **Not built (named, not hidden):** the recap donut (needs slices on the DTO), the per-trip expense list (the thin
-  client holds only the open period, so "add something already paid" can offer only this month), the savings
-  release, and the Home trip banner / shell shift.
+- **✅ Then the recap donut and the trip's own ledger** — a new `GET /trips/{tripId}?today=` → `TripDetailDto`
+  (slices, the axis they're on, the biggest single thing, every linked expense). **Its own read, not fields on the
+  list**: the list would otherwise carry every expense of every journey to draw a card nobody may open. Fetched on
+  expand, dropped on collapse, re-read after any expense or trip write, and matched against the open card's id so
+  a slow response can't show one trip's expenses under another's name.
+  - **★ The axis decision travels, like the state does** — tags lead only when half the trip is labelled, else
+    categories. Two clients deciding that separately is two chances to draw a different chart for one trip.
+  - ⚠️ **A single slice must be a full circle, not a 360° arc** (an arc from a point back to itself draws nothing),
+    and this is the *ordinary* case: a trip files into one category, so unless labels are used there is one wedge.
+    The web hit the same thing in S100 — worth assuming for any donut in this app.
+  - ⚠️ **List count vs. detail ledger: the detail wins.** Separate reads; keying the empty state off the older one
+    prints "nothing logged yet" above six expenses.
+- **Not built (named, not hidden):** the savings release, the seeded trip labels, and the Home banner / shell shift.
+  "Add something already paid" still offers only the open period — the one ledger a thin client holds.
 - ✅ **Emulator-verified in both themes** on a three-trip seed: the marks and pills, the split arithmetic, attaching
   an expense (€484.70 → €549.60, with an 8 Aug shop correctly counted as *booked ahead* of a 10 Aug departure),
   logging one from the FAB onto the live trip (€573 → €583 on the card, no manual refresh), and the delete confirm.

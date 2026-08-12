@@ -95,6 +95,7 @@ fun SpendingScreen(
     onStartTrip: (tripId: String, started: Boolean) -> Unit,
     onFinishTrip: (tripId: String, finished: Boolean) -> Unit,
     onAttachExpenseToTrip: (expenseId: String, tripId: String?, onDone: () -> Unit) -> Unit,
+    onOpenTrip: (tripId: String?) -> Unit,
     onPrepareTrip: () -> Unit,
 ) {
     val tandem = LocalTandemColors.current
@@ -147,6 +148,7 @@ fun SpendingScreen(
                     onStart = onStartTrip,
                     onFinish = onFinishTrip,
                     onAttachExpense = onAttachExpenseToTrip,
+                    onOpen = onOpenTrip,
                     onPrepare = onPrepareTrip,
                 )
             }

@@ -1,5 +1,6 @@
 package com.tandemtab.app.ui
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -36,7 +37,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -44,7 +48,9 @@ import androidx.compose.ui.unit.sp
 import com.tandemtab.app.TripsUi
 import com.tandemtab.app.data.CategoryOptionDto
 import com.tandemtab.app.data.ExpenseDto
+import com.tandemtab.app.data.TripDetailDto
 import com.tandemtab.app.data.TripDto
+import com.tandemtab.app.data.TripExpenseRowDto
 import com.tandemtab.app.ui.theme.LocalTandemColors
 import com.tandemtab.app.ui.theme.TandemIcons
 import java.time.LocalDate
@@ -70,11 +76,11 @@ fun TripsView(
     onStart: (tripId: String, started: Boolean) -> Unit,
     onFinish: (tripId: String, finished: Boolean) -> Unit,
     onAttachExpense: (expenseId: String, tripId: String?, onDone: () -> Unit) -> Unit,
+    onOpen: (tripId: String?) -> Unit,
     onPrepare: () -> Unit,
 ) {
     val tandem = LocalTandemColors.current
     val fmt = rememberTripMoney(trips.currency)
-    var expandedId by remember { mutableStateOf<String?>(null) }
     var editing by remember { mutableStateOf<TripEdit?>(null) }
     var deleting by remember { mutableStateOf<TripDto?>(null) }
     var attachingTo by remember { mutableStateOf<TripDto?>(null) }
@@ -103,12 +109,16 @@ fun TripsView(
                 }
             }
             trips.trips.forEach { trip ->
+                val open = trips.detailTripId == trip.id
                 TripCard(
                     trip = trip,
                     fmt = fmt,
-                    open = expandedId == trip.id,
+                    open = open,
+                    // The split + ledger are fetched on expand, so they belong to whichever card is open.
+                    detail = if (open) trips.detail else null,
+                    detailLoading = open && trips.detailLoading,
                     busy = trips.saving,
-                    onToggle = { expandedId = if (expandedId == trip.id) null else trip.id },
+                    onToggle = { onOpen(if (open) null else trip.id) },
                     onStart = { onStart(trip.id, true) },
                     onFinish = { onFinish(trip.id, true) },
                     onReopen = { onFinish(trip.id, false) },
@@ -189,6 +199,8 @@ private fun TripCard(
     trip: TripDto,
     fmt: (Double) -> String,
     open: Boolean,
+    detail: TripDetailDto?,
+    detailLoading: Boolean,
     busy: Boolean,
     onToggle: () -> Unit,
     onStart: () -> Unit,
@@ -254,7 +266,11 @@ private fun TripCard(
         if (!open) return@Column
         Spacer(Modifier.height(12.dp))
 
-        if (trip.expenseCount == 0) {
+        // ⚠️ The detail wins over the list's count once it has arrived. They come from different reads, and when
+        // they disagree the detail is the newer one — otherwise a card can show "nothing logged yet" above a
+        // ledger of six expenses, which is what happens the moment anything is logged outside this screen.
+        val hasSpend = detail?.expenses?.isNotEmpty() ?: (trip.expenseCount > 0)
+        if (!hasSpend) {
             Text(
                 "Nothing logged against this trip yet. Log an expense while you're away, or add something you've " +
                     "already paid for — a flight, a hotel.",
@@ -290,8 +306,34 @@ private fun TripCard(
                 Spacer(Modifier.height(6.dp))
                 FundedLine(TandemIcons.Coins, "${fmt(trip.savingsApplied)} released from ${trip.savingCategoryName} into this trip's budget.")
             }
-            Spacer(Modifier.height(8.dp))
-            Text("${trip.expenseCount} expense(s) on this journey", fontSize = 12.sp, color = tandem.muted)
+
+            // The split and the ledger arrive on their own read (see openTrip) — the list can't carry every
+            // expense of every journey to draw one card.
+            if (detailLoading) {
+                Spacer(Modifier.height(14.dp))
+                Box(Modifier.fillMaxWidth().height(60.dp), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(color = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp), strokeWidth = 2.dp)
+                }
+            } else if (detail != null) {
+                if (detail.slices.isNotEmpty()) {
+                    Spacer(Modifier.height(14.dp))
+                    TripSplit(detail, fmt)
+                }
+                detail.biggest?.let { big ->
+                    Spacer(Modifier.height(10.dp))
+                    Text(
+                        "Biggest single thing: ${fmt(big.amount)} — ${big.note?.takeIf { it.isNotBlank() } ?: big.categoryName}",
+                        fontSize = 12.5.sp, color = tandem.muted,
+                    )
+                }
+                if (detail.expenses.isNotEmpty()) {
+                    Spacer(Modifier.height(14.dp))
+                    TripLedger(detail.expenses, fmt)
+                }
+            } else {
+                Spacer(Modifier.height(8.dp))
+                Text("${trip.expenseCount} expense(s) on this journey", fontSize = 12.sp, color = tandem.muted)
+            }
         }
 
         Spacer(Modifier.height(14.dp))
@@ -309,6 +351,131 @@ private fun TripCard(
         }
     }
 }
+
+/**
+ * Where the trip's money went: a ring plus its legend.
+ *
+ * ⚠️ **A single slice has to be a full circle, not an arc.** An arc sweeping 360° starts and ends at the same
+ * point, and on some renderers draws nothing at all — which is the *ordinary* case here, not an edge case: a trip
+ * that files into one category has exactly one slice unless its labels are used. The web hit this too.
+ */
+@Composable
+private fun TripSplit(detail: TripDetailDto, fmt: (Double) -> String) {
+    val tandem = LocalTandemColors.current
+    val total = detail.slices.sumOf { it.amount }
+    if (total <= 0.0) return
+    // Capped at the palette: past ten wedges a ring is unreadable, and the legend below carries the detail anyway.
+    val shown = detail.slices.take(SlicePalette.size)
+
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Canvas(Modifier.size(96.dp)) {
+            val stroke = size.minDimension * 0.21f
+            val inset = stroke / 2f
+            val arcSize = Size(size.width - stroke, size.height - stroke)
+            if (shown.size == 1) {
+                drawCircle(
+                    color = SlicePalette[0],
+                    radius = (size.minDimension - stroke) / 2f,
+                    style = Stroke(width = stroke),
+                )
+            } else {
+                var start = -90f
+                shown.forEachIndexed { i, s ->
+                    val sweep = (s.amount / total * 360.0).toFloat()
+                    drawArc(
+                        color = SlicePalette[i % SlicePalette.size],
+                        startAngle = start,
+                        sweepAngle = sweep,
+                        useCenter = false,
+                        topLeft = Offset(inset, inset),
+                        size = arcSize,
+                        style = Stroke(width = stroke),
+                    )
+                    start += sweep
+                }
+            }
+        }
+        Spacer(Modifier.width(14.dp))
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            shown.forEachIndexed { i, s ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.size(9.dp).clip(RoundedCornerShape(3.dp)).background(SlicePalette[i % SlicePalette.size]))
+                    Spacer(Modifier.width(7.dp))
+                    CatIcon(s.icon, s.label, size = 13.dp)
+                    Spacer(Modifier.width(5.dp))
+                    Text(s.label, fontSize = 12.5.sp, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f))
+                    Text(fmt(s.amount), fontSize = 12.5.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                }
+            }
+        }
+    }
+    // Said out loud when the ring isn't the split people expect. A trip files into ONE category, so the category
+    // axis draws a single full ring: true, and useless. Nothing is wrong with the chart — the trip just isn't
+    // labelled, and the label is the only axis that can answer "what did the hotel cost".
+    if (detail.sliceAxis != "tag") {
+        Spacer(Modifier.height(8.dp))
+        Text(
+            if (detail.hasTagSlices)
+                "Split by category, because most of this trip isn't labelled. Tag as you go and this becomes stay / travel / food / tickets."
+            else
+                "One ring, because the whole trip files into one category and nothing here is labelled yet.",
+            fontSize = 12.sp, color = tandem.muted,
+        )
+    }
+}
+
+/**
+ * Everything attached to the trip. Biggest first, matching every other expense list in Spending — the question a
+ * recap answers is "what did this cost", which a date order buries.
+ *
+ * ⚠️ Not the period's expenses: the *trip's*, gathered by link across every period, so March's flight is in this
+ * list under a June trip.
+ */
+@Composable
+private fun TripLedger(rows: List<TripExpenseRowDto>, fmt: (Double) -> String) {
+    val tandem = LocalTandemColors.current
+    Text(
+        "EVERYTHING ON THIS TRIP",
+        fontSize = 9.sp, letterSpacing = 0.9.sp, fontWeight = FontWeight.Bold, color = tandem.muted,
+    )
+    Spacer(Modifier.height(4.dp))
+    Column {
+        rows.forEach { e ->
+            Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.width(34.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(dayOfMonth(e.date), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                    Text(monthShort(e.date).uppercase(Locale.getDefault()), fontSize = 8.5.sp, fontWeight = FontWeight.Bold, color = tandem.muted)
+                }
+                Spacer(Modifier.width(10.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        e.note?.takeIf { it.isNotBlank() } ?: e.categoryName,
+                        fontSize = 13.5.sp, color = MaterialTheme.colorScheme.onSurface, maxLines = 1,
+                    )
+                    // The sub-line carries the trip's OWN axis — the label — falling back to the category. On a
+                    // trip filing into one category, printing the category here is the same word on every row.
+                    Text(
+                        (e.tagName ?: e.categoryName) + " · " + whenLabel(e.`when`),
+                        fontSize = 11.sp, color = tandem.muted, maxLines = 1,
+                    )
+                }
+                Text(fmt(e.amount), fontSize = 13.5.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+            }
+        }
+    }
+}
+
+private fun whenLabel(w: String) = when (w) {
+    "before" -> "booked ahead"
+    "after" -> "after getting back"
+    else -> "while away"
+}
+
+/** The same categorical palette the web's charts use, so a trip's ring reads as one system across surfaces. */
+private val SlicePalette = listOf(
+    Color(0xFF13A06E), Color(0xFFFF7A66), Color(0xFFF5A623), Color(0xFF5B8DEF), Color(0xFFA06BD6),
+    Color(0xFF22B8CF), Color(0xFFE8590C), Color(0xFF7CB342), Color(0xFFEC407A), Color(0xFF5C6BC0),
+)
 
 @Composable
 private fun SplitFigure(label: String, value: String) {
@@ -575,6 +742,12 @@ private fun AttachExpenseSheet(
 private fun prettyDay(iso: String, withYear: Boolean = false): String = runCatching {
     LocalDate.parse(iso).format(DateTimeFormatter.ofPattern(if (withYear) "d MMM yyyy" else "d MMM", Locale.getDefault()))
 }.getOrDefault(iso)
+
+private fun dayOfMonth(iso: String): String = runCatching { LocalDate.parse(iso).dayOfMonth.toString().padStart(2, '0') }.getOrDefault("--")
+
+private fun monthShort(iso: String): String = runCatching {
+    LocalDate.parse(iso).format(DateTimeFormatter.ofPattern("MMM", Locale.getDefault()))
+}.getOrDefault("")
 
 @Composable
 private fun rememberTripMoney(currencyCode: String): (Double) -> String {
