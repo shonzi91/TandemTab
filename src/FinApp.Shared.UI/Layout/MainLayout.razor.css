@@ -236,9 +236,23 @@ html.dark .pm-admin-n { color: #2ee59d; }
    Rows rather than a grid because the descriptions are sentences and would set an unreadable column width. */
 .pm-cohorts { display: flex; flex-direction: column; gap: 5px; margin: 8px 0 6px; }
 .pm-cohort {
-    display: grid; grid-template-columns: auto auto 1fr; align-items: baseline; gap: 4px 8px;
     padding: 7px 10px; border-radius: 9px; border-left: 3px solid #9ca3af; background: rgba(148,163,184,.10);
 }
+/* The whole row is the hit target — the count and the meaning are as much "open this" as the chevron is. */
+.pm-cohort-hit {
+    display: grid; grid-template-columns: auto auto 1fr auto; align-items: baseline; gap: 4px 8px;
+    width: 100%; padding: 0; border: none; background: none; cursor: pointer; font: inherit; text-align: left;
+}
+.pm-cohort-chev { color: #9ca3af; font-size: .7rem; }
+/* Members: username, then the email (the field Set cohort takes), then when they joined. */
+.pm-cohort-list { list-style: none; margin: 7px 0 0; padding: 7px 0 0; border-top: 1px solid rgba(148,163,184,.28);
+    display: flex; flex-direction: column; gap: 4px; max-height: 220px; overflow-y: auto; }
+.pm-cohort-list li { display: grid; grid-template-columns: auto 1fr auto; align-items: baseline; gap: 8px; }
+.pm-cohort-u { font-size: .76rem; font-weight: 700; color: #374151; }
+.pm-cohort-e { font-size: .72rem; color: #6b7280; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pm-cohort-j { font-size: .68rem; color: #9ca3af; white-space: nowrap; }
+html.dark .pm-cohort-u { color: #e6edf3; }
+html.dark .pm-cohort-e { color: #93a0b0; }
 .pm-cohort-n { font-size: 1.02rem; font-weight: 800; color: #0e7c55; font-variant-numeric: tabular-nums; }
 .pm-cohort-k { font-size: .68rem; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; color: #6b7280; }
 .pm-cohort-d { font-size: .72rem; color: #9ca3af; }

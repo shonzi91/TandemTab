@@ -1938,6 +1938,8 @@ public sealed class Localizer(IJSRuntime js)
             "{0} от {1} бета места са заети — остават {2}, преди новите регистрации да минават на Безплатен.",
         ["The beta cap is 0, so every new sign-up joins on Free."] =
             "Лимитът за бета е 0, така че всяка нова регистрация минава на Безплатен.",
+        ["Showing the {0} most recent of {1}."] = "Показани са {0}-те най-скорошни от {1}.",
+        ["Couldn’t load this cohort."] = "Кохортата не можа да се зареди.",
         ["{0} of {1} users carry a cohort — the rest registered before cohorts were recorded."] =
             "{0} от {1} потребители имат кохорта — останалите са се регистрирали, преди кохортите да се записват.",
 

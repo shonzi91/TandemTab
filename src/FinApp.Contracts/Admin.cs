@@ -45,3 +45,18 @@ public sealed record AdminDayPoint(string Day, int Count);
 /// column still shows up here instead of being silently folded into another row.
 /// </summary>
 public sealed record AdminCohortPoint(string Cohort, int Count);
+
+/// <summary>
+/// One member of a cohort: who they are and when they joined. Fetched <b>only</b> when an admin opens a cohort,
+/// never as part of the metrics payload — the panel stays a counts-only view of the beta until someone asks a
+/// question that needs a name, which is almost always "who do I pass to <c>POST /admin/cohort</c>".
+/// <para>
+/// Identity and join date only. Nothing here touches an account snapshot, so a person's financial data stays as
+/// unreachable to the admin console as it was before this existed.
+/// </para>
+/// </summary>
+public sealed record AdminCohortMember(string Username, string Email, string JoinedAt);
+
+/// <summary>A page of cohort members. <see cref="Total"/> is the full head count, so the UI can say how many of
+/// them it is actually showing rather than implying the cap is the whole cohort.</summary>
+public sealed record AdminCohortMembersDto(string Cohort, int Total, IReadOnlyList<AdminCohortMember> Members);

@@ -299,10 +299,42 @@
                                 @foreach (var c in cohorts)
                                 {
                                     var known = c.Cohort is "beta" or "free" or "test";
+                                    var key = c.Cohort;
+                                    var open = _cohortOpen == key;
                                     <div class="pm-cohort pm-cohort-@(known ? c.Cohort : "other")">
-                                        <span class="pm-cohort-n">@c.Count</span>
-                                        <span class="pm-cohort-k">@CohortLabel(c.Cohort)</span>
-                                        <span class="pm-cohort-d">@CohortMeaning(c.Cohort)</span>
+                                        @* Names are behind a tap, and fetched only then: the panel is a counts view
+                                           of the beta until you ask a question that needs one — which is nearly
+                                           always "whose email do I paste into Set cohort below". *@
+                                        <button type="button" class="pm-cohort-hit" @onclick="() => ToggleCohort(key)">
+                                            <span class="pm-cohort-n">@c.Count</span>
+                                            <span class="pm-cohort-k">@CohortLabel(c.Cohort)</span>
+                                            <span class="pm-cohort-d">@CohortMeaning(c.Cohort)</span>
+                                            <span class="pm-cohort-chev">@(open ? "▾" : "▸")</span>
+                                        </button>
+                                        @if (open)
+                                        {
+                                            @if (_cohortMembers is { } mem && mem.Cohort == key)
+                                            {
+                                                <ul class="pm-cohort-list">
+                                                    @foreach (var p in mem.Members)
+                                                    {
+                                                        <li>
+                                                            <span class="pm-cohort-u">@p.Username</span>
+                                                            @* The email is the field the cohort setter takes, so it
+                                                               is the one worth being able to copy. *@
+                                                            <span class="pm-cohort-e">@p.Email</span>
+                                                            <span class="pm-cohort-j">@JoinedLabel(p.JoinedAt)</span>
+                                                        </li>
+                                                    }
+                                                </ul>
+                                                @if (mem.Members.Count < mem.Total)
+                                                {
+                                                    <p class="pm-hint">@string.Format(Loc["Showing the {0} most recent of {1}."], mem.Members.Count, mem.Total)</p>
+                                                }
+                                            }
+                                            else if (_cohortListBusy) { <p class="pm-hint">@Loc["Loading…"]</p> }
+                                            else { <p class="pm-hint">@Loc["Couldn’t load this cohort."]</p> }
+                                        }
                                     </div>
                                 }
                             </div>
@@ -798,6 +830,30 @@
         catch { _adminError = true; }
         finally { _adminBusy = false; StateHasChanged(); }
     }
+
+    // Which cohort's member list is open, and its contents. Fetched per open rather than with the metrics so the
+    // panel stays counts-only until a name is actually wanted; not cached between opens because the answer changes
+    // every time someone registers, and a stale list is worse here than a second round-trip.
+    private string? _cohortOpen;
+    private AdminCohortMembersDto? _cohortMembers;
+    private bool _cohortListBusy;
+
+    private async Task ToggleCohort(string cohort)
+    {
+        if (_cohortOpen == cohort) { _cohortOpen = null; _cohortMembers = null; return; }
+        _cohortOpen = cohort; _cohortMembers = null; _cohortListBusy = true;
+        try { _cohortMembers = await Api.GetCohortMembersAsync(cohort); }
+        catch { _cohortMembers = null; }
+        finally { _cohortListBusy = false; }
+    }
+
+    // The stored value is a full ISO timestamp; the date is the part anyone reads. Falls back to the raw string
+    // rather than showing nothing if a row ever holds something unparseable.
+    private static string JoinedLabel(string joinedAt) =>
+        DateTimeOffset.TryParse(joinedAt, System.Globalization.CultureInfo.InvariantCulture,
+            System.Globalization.DateTimeStyles.RoundtripKind, out var t)
+            ? t.ToString("d MMM yyyy", System.Globalization.CultureInfo.InvariantCulture)
+            : joinedAt;
 
     // Cohort keys are stored values, not display text. An unknown one is shown verbatim rather than mapped to
     // "Other": if a typo ever reaches the column, seeing it is the point.

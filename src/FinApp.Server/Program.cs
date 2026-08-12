@@ -717,6 +717,15 @@ app.MapPost("/admin/cohort", async (SetCohortRequest req, ClaimsPrincipal user, 
         CountsAsBetaMember: cohort == SignupService.BetaCohort));
 }).RequireAuthorization();
 
+// Who is in a cohort. Split from /admin/metrics on purpose: that endpoint is a counts-only view of the beta and
+// stays one, so a name is only ever read when an admin asks for a specific cohort — which they do to find the
+// email that POST /admin/cohort needs. Identity + join date only; no account snapshot is opened.
+app.MapGet("/admin/cohort/{cohort}/members", async (string cohort, ClaimsPrincipal user, AdminPolicy adminPolicy,
+        AdminMetricsService metrics, CancellationToken ct) =>
+    adminPolicy.IsAdmin(user.Email())
+        ? Results.Ok(await metrics.MembersAsync(cohort, ct: ct))
+        : Results.Forbid()).RequireAuthorization();
+
 // Admin-only review moderation. The approval gate shipped without a door — the column defaulted to 0 and
 // nothing could ever set it, so the landing carousel could never fill. This is that door.
 app.MapGet("/admin/feedback", async (ClaimsPrincipal user, AdminPolicy adminPolicy, FeedbackService feedback,

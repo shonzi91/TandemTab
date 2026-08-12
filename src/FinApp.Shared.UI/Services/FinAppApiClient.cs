@@ -173,6 +173,11 @@ public sealed class FinAppApiClient(HttpClient http)
     public Task<AdminMetricsDto> GetAdminMetricsAsync(CancellationToken ct = default) =>
         SendAsync<AdminMetricsDto>(HttpMethod.Get, "/admin/metrics", null, ct);
 
+    /// <summary>Who is in one sign-up cohort. Its own call, made only when an admin opens a cohort — the metrics
+    /// panel itself never carries names.</summary>
+    public Task<AdminCohortMembersDto> GetCohortMembersAsync(string cohort, CancellationToken ct = default) =>
+        SendAsync<AdminCohortMembersDto>(HttpMethod.Get, $"/admin/cohort/{Uri.EscapeDataString(cohort)}/members", null, ct);
+
     /// <summary>The Plans screen data (OPEN-BETA P4). Reports Enabled=false while monetization is off.</summary>
     public Task<PlansDto> GetPlansAsync(CancellationToken ct = default) =>
         SendAsync<PlansDto>(HttpMethod.Get, "/plans", null, ct);

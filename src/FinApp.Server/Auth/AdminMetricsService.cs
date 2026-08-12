@@ -85,6 +85,61 @@ public sealed class AdminMetricsService(FinAppDbContext db, BetaPolicy beta)
     }
 
     /// <summary>
+    /// Who is in one cohort — username, email and join date, newest first. Deliberately a <b>separate call</b>
+    /// from <see cref="BuildAsync"/>: the metrics panel is a counts-only view and should stay one, so names are
+    /// fetched only when an admin opens a cohort to answer "who do I pass to <c>POST /admin/cohort</c>".
+    /// <para>
+    /// Capped at <paramref name="max"/> rows. The cap is not privacy theatre — it stops a cohort of ten thousand
+    /// from being serialized into a popover — and <see cref="AdminCohortMembersDto.Total"/> carries the real count
+    /// so the UI can say what it is not showing.
+    /// </para>
+    /// </summary>
+    public async Task<AdminCohortMembersDto> MembersAsync(string cohort, int max = 200, CancellationToken ct = default)
+    {
+        var key = (cohort ?? "").Trim().ToLowerInvariant();
+        var conn = db.Database.GetDbConnection();
+        var opened = await OpenAsync(conn, ct);
+        try
+        {
+            var total = await ScalarAsync(conn,
+                "SELECT COUNT(*) FROM \"UserSignups\" WHERE \"Cohort\" = @c", ct, ("@c", key));
+
+            // ⚠️ Two steps, not one SQL join. UserSignups stores its UserId as TEXT (the table is created by raw
+            // DDL, deliberately migration-free), while Users."Id" is whatever the provider maps a Guid to — TEXT
+            // in one case, a real uuid in Postgres. Joining them in SQL matches nothing on SQLite and would need
+            // a cast on Postgres, so the id half is handed to EF, which knows the mapping on both.
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText =
+                "SELECT \"UserId\", \"JoinedAt\" FROM \"UserSignups\" WHERE \"Cohort\" = @c " +
+                "ORDER BY \"JoinedAt\" DESC LIMIT @max";
+            AddParam(cmd, "@c", key);
+            AddParam(cmd, "@max", max);
+            var joined = new List<(Guid Id, string At)>();
+            await using (var reader = await cmd.ExecuteReaderAsync(ct))
+            {
+                while (await reader.ReadAsync(ct))
+                    if (Guid.TryParse(reader.GetString(0), out var uid))
+                        joined.Add((uid, reader.GetString(1)));
+            }
+            if (joined.Count == 0) return new AdminCohortMembersDto(key, total, []);
+
+            var ids = joined.Select(j => j.Id).ToList();
+            var users = await db.Users.Where(u => ids.Contains(u.Id))
+                .Select(u => new { u.Id, u.Username, u.Email })
+                .ToDictionaryAsync(u => u.Id, ct);
+
+            // A signup row whose user has since been deleted drops out rather than rendering as a blank line the
+            // admin can do nothing with. The order set by the query above is preserved.
+            var rows = joined
+                .Where(j => users.ContainsKey(j.Id))
+                .Select(j => new AdminCohortMember(users[j.Id].Username, users[j.Id].Email, j.At))
+                .ToList();
+            return new AdminCohortMembersDto(key, total, rows);
+        }
+        finally { if (opened) await conn.CloseAsync(); }
+    }
+
+    /// <summary>
     /// Head count per sign-up cohort, biggest first. Grouped in SQL rather than filtered three times so a cohort
     /// value nobody expected still appears — a typo written straight to the column is exactly the thing this
     /// panel should surface, and three COUNT(*)s with hardcoded names would hide it.
