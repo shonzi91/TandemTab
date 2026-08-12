@@ -1,6 +1,19 @@
 # TandemTab (FinApp) — session handoff
 
-Last updated: 2026-08-11 (Session 101 — **nine owner items on trip mode, and two of them changed what trip mode
+Last updated: 2026-08-12 (Session 102 — **three owner items on Breakdown, and a dead CSS rule they uncovered.**
+The "← All categories" button is gone (the axis chips already cleared the drill); the Income/Spent/of-income
+cards now **toggle** with the drilled category's name, since they describe the window, not one category; a
+category **always** splits by tag and each tag is its own **collapsed section**; and the drilled view lost the
+group-by row and the header that repeated the tag's name and total one line under itself.
+★ **Both Breakdown chevrons had never rotated** — the rule's last selector was the `<Icon>` component's own
+`<svg>`, which does not carry this component's scope attribute, so it matched nothing. Wrapped in a span this
+component owns; both turn now. Also: the drilled donut said "4 categories" for what are tags.
+No domain/server code touched — **439 + 48 + 340 green** carried from S101. `tools/pairscan.js`: **0**.
+✅ **Everything is BROWSER-VERIFIED** on a purpose-built four-tag fixture.
+✅ **Committed, pushed and DEPLOYED** — see the Session 102 entry.
+⚠️ **Android has none of this**, on top of everything it already trailed by, trips included.)
+
+Previously: 2026-08-11 (Session 101 — **nine owner items on trip mode, and two of them changed what trip mode
 IS.** The expense modal now wears the trip (flag + blue rail, trip row first); the trip card lists every expense
 on the journey; the Home card became a gradient hero with day/spend bars and moved under the action buttons; the
 trips list gained status marks, a past-trips sort and a Finish action; **a trip always files into ONE category**
@@ -123,6 +136,42 @@ a separate balance axis — because flows and a stock were sharing one scale. **
 ✅ **Committed and the web half is DEPLOYED** (Session 93 catch-up): Android sharing as `596eea5`, the web batch
 as `de51071`, now live on **`finapp-00280-4s8`** (traffic forced `--to-latest`; run URL + tandemtab.com 200; 5
 `secretKeyRef`s; no WARNING+ logs). Prior context below is Session 91.)
+
+## Session 102 (2026-08-12) — **Three owner items on Breakdown: fewer controls, and the ones left mean something.**
+
+Owner, on the Breakdown view: the "← All categories" button is redundant; the Income/Spent/of-income cards are
+irrelevant once you are inside one category; the "Group by" chips should not exist; and the drilled view repeats
+the tag's name and total one line under itself. All three landed, plus two defects found while in there.
+
+- **The drill-out button is gone, and the summary row now toggles.** Every one of the Categories / Tags / Funds
+  chips already calls `SetBreakBase`, which clears the drill — the exit existed twice. Drilled, the row shows the
+  **category name + BY TAG**; undrilled, it shows Income · Spent · % of income. The three cards describe the
+  *window*, so inside one category's split they were three numbers answering a question nobody asked.
+- **A category always splits by tag, and each tag is its own collapsed section.** `ExpGroup`/`_brkExpGroup` and
+  the None/Tag chips are deleted; `BreakExpandGroups` is tag-only and now returns a `Key` so the sections track
+  their own open state (`_brkGrpExpanded`, keyed by **(slice, tag)** — a tag used in two categories must not
+  unroll in both from one press). An expanded category reads as a short list of tag subtotals; only the tag you
+  press shows receipts. A category with nothing tagged still falls back to the flat list, as do tag/fund slices.
+- **The drilled view lost both redundant rows.** `isCatSlice` now requires `_breakDrill is null`, so expanding a
+  tag slice inside the category chart lists its receipts straight — no group row, no "Chart this", no header
+  repeating the name and sum it sits directly under.
+- **★ The chevrons had never rotated — a scoped-CSS rule that could not match.** `.brk-item-chev` was a class on
+  the `<Icon>` component's own `<svg>`, and Blazor appends this component's scope attribute to the rule's last
+  selector, which that svg does not carry. So `.brk-item.open .brk-item-chev { transform: rotate(90deg) }` had
+  been inert since the day it was written, as was `.brk-exp-grp-head svg { width: 15px }`. Both chevrons are now
+  wrapped in a **span this component owns** and turn properly; the tag mark is sized via the header's own
+  `font-size` (the only handle a parent has on an em-sized `.ic`). Worth remembering: **a scoped rule whose last
+  selector lands inside a child component silently does nothing** — same failure family as the animation-hook
+  and frozen-transition notes.
+- The donut centre said **"4 categories"** while drilled, when the slices are tags. Now "4 tags".
+- Four dead Bulgarian strings removed ("All categories" ×2, "Group by", "None").
+
+**Verified in a running app** on a purpose-built fixture (4 categories, 4 tags, 11 expenses, one category partly
+untagged and one fully untagged): the toggle both ways, sections opening independently, the drilled flat list,
+the Tags and Funds axes unchanged, the Categories chip as the way back, and `rotate(90deg)` on both chevrons
+(read with `transition:none` — the preview pane does not composite transitions, so the live computed value
+reads as identity; see that memory before doubting a transform again). `tools/pairscan.js`: **0** partially-
+darkened rules. No domain/server code touched, so the test counts are unchanged from S101.
 
 ## Session 101 (2026-08-11) — **Nine owner items on trip mode; two of them changed what trip mode is.**
 

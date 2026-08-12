@@ -1279,23 +1279,27 @@ html.dark .brk-item-pct { color: #8b96a4; }
    row keeps one strong figure and the average reads as the gloss on it rather than competing for the same line. */
 .brk-item-avg { flex: 0 0 100%; text-align: right; font-size: .72rem; font-weight: 600; color: #8a97a0; margin-top: 1px; }
 html.dark .brk-item-avg { color: #8b96a4; }
-.brk-item-chev { width: 16px; height: 16px; color: #b6c0cc; flex: none; transition: transform .15s; }
+/* A span around the <Icon>, not the icon itself: scoped CSS can't reach into a child component's markup, so a
+   rule ending at that <svg> matches nothing and the row's chevron sits still however open the row is. */
+.brk-item-chev { display: inline-flex; font-size: .9rem; color: #b6c0cc; flex: none; transition: transform .15s; }
 .brk-item.open .brk-item-chev { transform: rotate(90deg); }
 /* Expand-in-place: the expenses behind a slice — a tidy block indented under the row, accented in the slice colour.
-   A category slice can regroup its own expenses by sub-category/tag (the .brk-exp-group chips + per-group headers);
-   transfers and the other slices just list their rows. */
+   A category slice always splits into per-tag sections (.brk-exp-grp-head, each one collapsed until pressed) and
+   carries the "Chart this" chip in .brk-exp-group; transfers and the other slices just list their rows. */
 .brk-exp { margin: 2px 6px 12px 30px; padding-left: 12px; border-left: 2px solid var(--accent, #dde6e1); }
 .brk-exp-group { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; padding: 4px 2px 6px; }
-.brk-exp-group-lbl { font-size: .66rem; font-weight: 700; letter-spacing: .4px; text-transform: uppercase; color: #8a97a0; margin-right: 2px; }
 .brk-exp-group .chip { border: 1px solid #e6ece9; background: #faf8f3; color: #5b6270; cursor: pointer; font-weight: 600; border-radius: 999px; padding: 3px 10px; font-size: .74rem; }
-.brk-exp-group .chip.on { background: #13a06e; border-color: #13a06e; color: #ffffff; }
-html.dark .brk-exp-group-lbl { color: #8b96a4; }
 html.dark .brk-exp-group .chip { background: #171d26; border-color: #2c3644; color: #c4ccd6; }
-html.dark .brk-exp-group .chip.on { background: #13a06e; border-color: #13a06e; color: #ffffff; }
-.brk-exp-grp-head { display: flex; align-items: center; gap: 7px; padding: 8px 6px 2px; }
-.brk-exp-grp-head svg { width: 15px; height: 15px; }
+/* A tag section header IS the control that opens it, so it gets the affordances of one: pointer, hover, chevron.
+   Its font-size is load-bearing: the tag mark is an <Icon>, sized in em by the global .ic rule, and the header's
+   own size is the only handle this component has on it (a `… svg { }` rule here would be scoped away, as above). */
+.brk-exp-grp-head { display: flex; align-items: center; gap: 7px; padding: 7px 8px; border-radius: 9px; cursor: pointer; font-size: .85rem; }
+.brk-exp-grp-head:hover { background: #f2f7f4; }
 .brk-exp-grp-name { font-size: .78rem; font-weight: 800; color: #384250; }
 .brk-exp-grp-tot { margin-left: auto; font-size: .78rem; font-weight: 800; color: #5b6470; }
+.brk-exp-grp-chev { display: inline-flex; font-size: .8rem; color: #b6c0cc; flex: none; transition: transform .15s; }
+.brk-exp-grp-head.open .brk-exp-grp-chev { transform: rotate(90deg); }
+html.dark .brk-exp-grp-head:hover { background: #1a2029; }
 html.dark .brk-exp-grp-name { color: #d3dae2; }
 html.dark .brk-exp-grp-tot { color: #aab4c0; }
 .brk-exp-list { list-style: none; margin: 2px 6px 12px 30px; padding: 4px 4px 4px 12px; display: flex; flex-direction: column;
@@ -1598,8 +1602,9 @@ html.dark .goal-stat { background: #14231d; border-color: #24463a; }
 .brk-drill-cat { display: inline-flex; align-items: center; gap: 6px; font-size: .9rem; color: #1f2430; }
 html.dark .brk-drill-cat { color: #e6edf3; }
 .brk-drill-by { font-size: .72rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: #8a97a0; }
-.brk-drill-out, .brk-drill-in { cursor: pointer; }
-.brk-drill-in { display: inline-flex; align-items: center; gap: 5px; margin-left: auto; }
+/* "Chart this" now sits alone on its row (the Group by chips are gone), so it leads the row instead of hanging
+   off its right edge — a lone right-aligned chip under a left-aligned list reads as something left behind. */
+.brk-drill-in { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; }
 .brk-drill-in svg { width: 13px; height: 13px; }
 @media (max-width: 560px) {
     .spend-summary .spend-view-toggle { flex: 1 1 100%; }

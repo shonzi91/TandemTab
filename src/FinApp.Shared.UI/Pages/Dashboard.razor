@@ -1640,12 +1640,15 @@ else
                             <button type="button" class="chip @(_breakBase == BreakGroup.Fund ? "on" : "")" @onclick="() => SetBreakBase(BreakGroup.Fund)">@Loc["Funds"]</button>
                         </span>
                     </div>
-                    @* Drilled into one category: say which, and give the way back. The chart below is that category's
-                       tag split, so without this line a single-tag category looks exactly like a broken pie. *@
+                    @* One line, two jobs, depending on whether the chart is drilled into a category.
+                       Drilled: name the category — the chart below is its tag split, so without this line a
+                       single-tag category looks exactly like a broken pie. There's no way-back button: every one of
+                       the Categories / Tags / Funds chips above clears the drill, so the exit already exists twice.
+                       Not drilled: Income · Spent · % of income for the window. Those three are about the WINDOW, so
+                       inside one category's split they'd be three numbers answering a question nobody asked. *@
                     @if (_breakDrill is { } drilledId)
                     {
                         <div class="brk-drill">
-                            <button type="button" class="chip brk-drill-out" @onclick="DrillOut">← @Loc["All categories"]</button>
                             <span class="brk-drill-cat">
                                 <CatIcon Name="@State.CategoryIcon(drilledId)" />
                                 <strong>@State.CategoryName(drilledId)</strong>
@@ -1653,12 +1656,14 @@ else
                             </span>
                         </div>
                     }
-                    @* Income · Spent · % of income for the window (independent of the group-by axis). *@
-                    <div class="brk-summary">
-                        <span class="brk-sum"><span class="brk-sum-lbl">@Loc["Income"]</span><span class="brk-sum-val good-text">@Fmt(brkIncome)</span></span>
-                        <span class="brk-sum"><span class="brk-sum-lbl">@Loc["Spent"]</span><span class="brk-sum-val">@Fmt(brkMoneyOut)</span></span>
-                        <span class="brk-sum"><span class="brk-sum-lbl">@Loc["of income"]</span><span class="brk-sum-val">@(brkIncome > 0m ? (brkMoneyOut / brkIncome * 100).ToString("0.#", brkCi) + "%" : "—")</span></span>
-                    </div>
+                    else
+                    {
+                        <div class="brk-summary">
+                            <span class="brk-sum"><span class="brk-sum-lbl">@Loc["Income"]</span><span class="brk-sum-val good-text">@Fmt(brkIncome)</span></span>
+                            <span class="brk-sum"><span class="brk-sum-lbl">@Loc["Spent"]</span><span class="brk-sum-val">@Fmt(brkMoneyOut)</span></span>
+                            <span class="brk-sum"><span class="brk-sum-lbl">@Loc["of income"]</span><span class="brk-sum-val">@(brkIncome > 0m ? (brkMoneyOut / brkIncome * 100).ToString("0.#", brkCi) + "%" : "—")</span></span>
+                        </div>
+                    }
                     @if (brkSlices.Count == 0 || brkTotal <= 0m)
                     {
                         <p class="brk-empty"><Icon Name="pie" /> @Loc["No expenses in this window yet."]</p>
@@ -1732,7 +1737,7 @@ else
                                 @* Counts to the new figure when the window or axis changes, so the centre number
                                    settles with the slices instead of snapping while they animate. *@
                                 <text x="100" y="94" class="brk-donut-tot" text-anchor="middle"><Rolling Value="@brkTotal" Format="@(v => Fmt(State.Money(v)))" /></text>
-                                <text x="100" y="112" class="brk-donut-sub" text-anchor="middle">@(brkSlices.Count == 1 ? brkSlices[0].Label : string.Format(BreakByFund ? Loc["{0} funds"] : BreakByTag ? Loc["{0} tags"] : Loc["{0} categories"], brkSlices.Count))</text>
+                                <text x="100" y="112" class="brk-donut-sub" text-anchor="middle">@(brkSlices.Count == 1 ? brkSlices[0].Label : string.Format(BreakByFund ? Loc["{0} funds"] : BreakByTag || _breakDrill is not null ? Loc["{0} tags"] : Loc["{0} categories"], brkSlices.Count))</text>
                             </svg>
                         </div>
                         <ul class="brk-list">
@@ -1777,7 +1782,9 @@ else
                                                 <span class="brk-item-avg">@string.Format(Loc["{0} avg / period"], Fmt(State.Money(decimal.Round(s.Amount / brkPeriods, 2))))</span>
                                             }
                                         </span>
-                                        <Icon Name="chevron" Class="brk-item-chev" />
+                                        @* Wrapped for the same reason as the tag-section chevron below: the rotation
+                                           has to be applied to an element this component owns. *@
+                                        <span class="brk-item-chev"><Icon Name="chevron" /></span>
                                     </div>
                                     @if (expanded && (s.Key == TransfersKey || s.Key == SavedKey))
                                     {
@@ -1805,21 +1812,19 @@ else
                                     else if (expanded)
                                     {
                                         var slExps = BreakSliceExpenses(s.Key);
-                                        // A real category slice can regroup its own expenses by tag, and — the part
-                                        // worth having — re-draw the CHART as that category's tag split. Tag / fund /
-                                        // "everything else" slices can't: they are already the axis, or they are a bag.
-                                        var isCatSlice = !BreakByTag && !BreakByFund && s.Key != OtherKey && s.Key != Guid.Empty;
+                                        // A real category slice splits its expenses by tag — always, no "Group by"
+                                        // switch: a flat list of a whole category is the one thing the row above
+                                        // already told you. It can also re-draw the CHART as that split.
+                                        // Not while drilled: the slices ARE tags there, so grouping a tag's expenses
+                                        // by tag repeats the row header and its total one line below itself.
+                                        // Tag / fund / "everything else" slices can't either — already the axis, or a bag.
+                                        var isCatSlice = _breakDrill is null && !BreakByTag && !BreakByFund && s.Key != OtherKey && s.Key != Guid.Empty;
                                         var hasTags = isCatSlice && slExps.Any(e => State.ExpenseTags(e).Count > 0);
-                                        var expMode = _brkExpGroup == ExpGroup.Tag && hasTags ? _brkExpGroup : ExpGroup.None;
                                         <div class="brk-exp" style="--accent:@s.Color">
                                             @if (hasTags)
                                             {
+                                                @* The drill: the same split, drawn. *@
                                                 <div class="brk-exp-group">
-                                                    <span class="brk-exp-group-lbl">@Loc["Group by"]</span>
-                                                    <button type="button" class="chip @(expMode == ExpGroup.None ? "on" : "")" @onclick:stopPropagation="true" @onclick="() => _brkExpGroup = ExpGroup.None">@Loc["None"]</button>
-                                                    <button type="button" class="chip @(expMode == ExpGroup.Tag ? "on" : "")" @onclick:stopPropagation="true" @onclick="() => _brkExpGroup = ExpGroup.Tag">@Loc["Tag"]</button>
-                                                    @* The drill: the same split, drawn. Kept beside the grouping chips because it
-                                                       answers the same question at a glance rather than being a different feature. *@
                                                     <button type="button" class="chip brk-drill-in" @onclick:stopPropagation="true" @onclick="() => DrillIntoCategory(s.Key)"><Icon Name="pie" /> @Loc["Chart this"]</button>
                                                 </div>
                                             }
@@ -1827,7 +1832,7 @@ else
                                             {
                                                 <p class="brk-exp-empty">@Loc["No expenses in this window yet."]</p>
                                             }
-                                            else if (expMode == ExpGroup.None)
+                                            else if (!hasTags)
                                             {
                                                 @* Biggest first, not newest first. Every other level of this view is
                                                    ranked by size — the slices, and the sub-groups inside them — and
@@ -1839,23 +1844,28 @@ else
                                             }
                                             else
                                             {
-                                                @foreach (var grp in BreakExpandGroups(slExps, expMode))
+                                                @* Each tag is its own collapsed section: the category opens as a short
+                                                   list of tag subtotals — the answer to "what inside Food?" — and only
+                                                   the tag you press unrolls its receipts. *@
+                                                @foreach (var grp in BreakExpandGroups(slExps))
                                                 {
-                                                    <div class="brk-exp-grp-head">
-                                                        @if (expMode == ExpGroup.Tag)
-                                                        {
-                                                            @TagMark(grp.Icon)
-                                                        }
-                                                        else
-                                                        {
-                                                            <CatIcon Name="@CategoryIcons.Effective(grp.Icon, grp.Label)" />
-                                                        }
+                                                    var grpOpen = _brkGrpExpanded.Contains((s.Key, grp.Key));
+                                                    <div class="brk-exp-grp-head @(grpOpen ? "open" : "")" @onclick:stopPropagation="true" @onclick="() => ToggleBreakGroup(s.Key, grp.Key)">
+                                                        @TagMark(grp.Icon)
                                                         <span class="brk-exp-grp-name">@grp.Label</span>
                                                         <span class="brk-exp-grp-tot">@Fmt(grp.Total)</span>
+                                                        @* The chevron is wrapped, and the wrapper is what turns. A scoped
+                                                           CSS rule can only reach elements of THIS component, so a rule
+                                                           ending at the <Icon>'s own <svg> never matches and the rotation
+                                                           silently does nothing — see the sibling .brk-item-chev. *@
+                                                        <span class="brk-exp-grp-chev"><Icon Name="chevron" /></span>
                                                     </div>
-                                                    <ul class="brk-exp-list">
-                                                        @foreach (var e in grp.Items) { @brkExpRow(e) }
-                                                    </ul>
+                                                    @if (grpOpen)
+                                                    {
+                                                        <ul class="brk-exp-list">
+                                                            @foreach (var e in grp.Items) { @brkExpRow(e) }
+                                                        </ul>
+                                                    }
                                                 }
                                             }
                                         </div>
@@ -6479,12 +6489,7 @@ else
     private BreakGroup _breakBase = BreakGroup.Category;
     private bool BreakByTag => _breakBase == BreakGroup.Tag;
     private bool BreakByFund => _breakBase == BreakGroup.Fund;
-    private void SetBreakBase(BreakGroup g) { _breakBase = g; _breakExpanded.Clear(); _breakDrill = null; }
-
-    // Inside an expanded *category* slice, regroup its expenses by tag (shared across expanded rows; falls back to
-    // a flat list for a category where nothing is tagged). The old Sub member went with sub-categories.
-    private enum ExpGroup { None, Tag }
-    private ExpGroup _brkExpGroup = ExpGroup.None;
+    private void SetBreakBase(BreakGroup g) { _breakBase = g; BreakCollapseAll(); _breakDrill = null; }
 
     private (DateOnly From, DateOnly To) BreakWindow()
     {
@@ -6510,13 +6515,13 @@ else
         // Free = current + ~3 months (MONETIZATION.md). Deeper windows are the Pro "history" entitlement (P4).
         if ((r is BreakRange.M6 or BreakRange.M12 or BreakRange.All or BreakRange.Custom)
             && !Gate.Require(PlanFeatures.History)) return;
-        _breakRange = r; _breakExpanded.Clear();
+        _breakRange = r; BreakCollapseAll();
     }
 
     // Editing either date directly defines a custom window. We seed from the currently-shown window so the untouched
     // end stays put, then flip to Custom (which reads _breakFrom/_breakTo).
-    private void BreakSetFrom(DateOnly d) { var (_, to) = BreakWindow(); _breakFrom = d; _breakTo = to; _breakRange = BreakRange.Custom; _breakExpanded.Clear(); }
-    private void BreakSetTo(DateOnly d) { var (from, _) = BreakWindow(); _breakFrom = from; _breakTo = d; _breakRange = BreakRange.Custom; _breakExpanded.Clear(); }
+    private void BreakSetFrom(DateOnly d) { var (_, to) = BreakWindow(); _breakFrom = d; _breakTo = to; _breakRange = BreakRange.Custom; BreakCollapseAll(); }
+    private void BreakSetTo(DateOnly d) { var (from, _) = BreakWindow(); _breakFrom = from; _breakTo = d; _breakRange = BreakRange.Custom; BreakCollapseAll(); }
 
     /// <summary>
     /// How many of the account's periods the Breakdown window covers — the divisor for the per-row average.
@@ -6536,6 +6541,18 @@ else
     // A tapped row expands in place to list its own expenses (several can be open at once).
     private readonly HashSet<Guid> _breakExpanded = new();
     private void ToggleBreakExpand(Guid key) { if (!_breakExpanded.Remove(key)) _breakExpanded.Add(key); }
+
+    // ...and inside an expanded category, each tag section opens on its own. Keyed by (slice, tag) so the same tag
+    // used in two categories tracks separately, and so a shared tag doesn't unroll twice from one press.
+    private readonly HashSet<(Guid Slice, Guid Group)> _brkGrpExpanded = new();
+    private void ToggleBreakGroup(Guid slice, Guid group)
+    {
+        if (!_brkGrpExpanded.Remove((slice, group))) _brkGrpExpanded.Add((slice, group));
+    }
+
+    // Fold everything back up. Called whenever the window or the axis changes: the keys mean something different
+    // after that (a tag id where a category id was), so a carried-over expansion would point at the wrong row.
+    private void BreakCollapseAll() { _breakExpanded.Clear(); _brkGrpExpanded.Clear(); }
 
     // The expenses behind one slice, for the expand-in-place list — honouring the window + the active axis.
     private IReadOnlyList<FinApp.Domain.Budgeting.Expense> BreakSliceExpenses(Guid key)
@@ -6568,9 +6585,10 @@ else
     }
 
     // Regroup one category slice's expenses inside its expanded row by tag (an expense appears under each of its
-    // tags; untagged in its own bucket). Largest subtotal first.
-    private List<(string Label, string? Icon, decimal Total, List<FinApp.Domain.Budgeting.Expense> Items)> BreakExpandGroups(
-        IReadOnlyList<FinApp.Domain.Budgeting.Expense> exps, ExpGroup mode)
+    // tags; untagged in its own bucket). Largest subtotal first. Tag is the only axis now — the by-category mode
+    // went when the grouping chips did, and it only ever regrouped a category by itself.
+    private List<(Guid Key, string Label, string? Icon, decimal Total, List<FinApp.Domain.Budgeting.Expense> Items)> BreakExpandGroups(
+        IReadOnlyList<FinApp.Domain.Budgeting.Expense> exps)
     {
         var buckets = new Dictionary<Guid, List<FinApp.Domain.Budgeting.Expense>>();
         void Add(Guid k, FinApp.Domain.Budgeting.Expense e)
@@ -6580,22 +6598,17 @@ else
         }
         foreach (var e in exps)
         {
-            if (mode == ExpGroup.Tag)
-            {
-                var ids = State.ExpenseTags(e).Select(t => t.Id).ToList();
-                if (ids.Count == 0) Add(Guid.Empty, e); else foreach (var id in ids) Add(id, e);
-            }
-            else Add(e.CategoryId, e);
+            var ids = State.ExpenseTags(e).Select(t => t.Id).ToList();
+            if (ids.Count == 0) Add(Guid.Empty, e); else foreach (var id in ids) Add(id, e);
         }
         return buckets.Select(kv =>
         {
-            var label = kv.Key == Guid.Empty ? (mode == ExpGroup.Tag ? Loc["Untagged"] : Loc["Uncategorised"])
-                : mode == ExpGroup.Tag ? State.TagName(kv.Key) : State.CategoryName(kv.Key);
-            var icon = kv.Key == Guid.Empty ? null : mode == ExpGroup.Tag ? State.TagIcon(kv.Key) : State.CategoryStoredIcon(kv.Key);
+            var label = kv.Key == Guid.Empty ? Loc["Untagged"] : State.TagName(kv.Key);
+            var icon = kv.Key == Guid.Empty ? null : State.TagIcon(kv.Key);
             // Biggest first, matching the slice and group ranking above it (date only breaks ties).
             var items = kv.Value.OrderByDescending(x => Math.Abs(x.Amount.Amount)).ThenByDescending(x => x.Date).ToList();
             var total = items.Sum(x => Math.Abs(x.Amount.Amount));
-            return (Label: label, Icon: icon, Total: total, Items: items);
+            return (Key: kv.Key, Label: label, Icon: icon, Total: total, Items: items);
         }).OrderByDescending(g => g.Total).ToList();
     }
 
@@ -6751,10 +6764,8 @@ else
         _breakDrill = categoryId;
         // Collapse the expanded rows: they belong to the chart we just left, and an expansion carried across would
         // point at a key that means something different now (a tag id, not a category id).
-        _breakExpanded.Clear();
+        BreakCollapseAll();
     }
-
-    private void DrillOut() { _breakDrill = null; _breakExpanded.Clear(); }
 
     // Open the Trends view. A single-period ("This period") window is a 1-point chart, so default Trends to a
     // multi-period window when arriving from it — the range chips then re-narrow as the user wishes.
@@ -7022,7 +7033,8 @@ else
         _spendView = SpendView.Breakdown;
         _breakRange = BreakRange.ThisPeriod;
         _breakBase = BreakGroup.Category;
-        _breakExpanded.Clear();
+        _breakDrill = null;                  // "pinned to categories" means the whole window, not whatever was drilled
+        BreakCollapseAll();
     }
 
     // SVG donut: turn the slices into arc <path> d-strings over a 0–100 sweep. Returns (Slice, PathD) pairs.

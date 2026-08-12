@@ -636,15 +636,12 @@ public sealed class Localizer(IJSRuntime js)
         ["12 months"] = "12 месеца",
         ["All time"] = "Всичко",
         ["Custom"] = "По избор",
-        ["All categories"] = "Всички категории",
         ["Spending breakdown"] = "Разбивка на разходите",
         ["No expenses in this window yet."] = "Още няма разходи в този период.",
         ["{0} categories"] = "{0} категории",
         ["{0} tags"] = "{0} етикета",
         ["{0} funds"] = "{0} портфейла",
         ["Funds"] = "Портфейли",
-        ["Group by"] = "Групирай по",
-        ["None"] = "Без",
         ["Sub-category"] = "Подкатегория",
         ["Tag"] = "Етикет",
         ["Re-slice the chart"] = "Пренареди диаграмата",
@@ -1763,7 +1760,6 @@ public sealed class Localizer(IJSRuntime js)
 
         // Breakdown: the per-category tag drill.
         ["Chart this"] = "Покажи на графика",
-        ["All categories"] = "Всички категории",
         ["by tag"] = "по етикет",
         ["Uncategorised"] = "Без категория",
         ["Other"] = "Друго",
