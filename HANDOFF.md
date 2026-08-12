@@ -285,6 +285,34 @@ there); archive showing *"the 312.73 GBP left is worth €344.00"* and *"€14.0
 expense"*; and afterwards 344 − 14 − 330 = **0**, wallet archived empty, with the "Exchange difference" category
 created carrying the `swap` icon.
 
+### A third round: the trip rate leaves the trip form, and Add expense gets shorter
+
+- **The trip's currency + rate are GONE from the trip form.** Demoting them with a hint was half a decision; the
+  owner's call was right. A rate attaches to a pile of notes bought at a price — a wallet — and that is where it
+  now lives *and* is derived. Asking again on the trip was asking the same question in the place that answers it
+  wrong. Domain fields kept so existing trips load; nothing reads or writes them.
+- **Trips are coloured on the calendar and named on EVERY day.** Five colours, cycled. ⚠️ The index counts from the
+  OLDEST departure, not `AllTrips` (newest-first) — indexing off that would re-colour every existing trip the
+  moment a later one was booked. Backdating still shifts the ones after it; that is the honest limit, and it beats
+  a hash, which is perfectly stable but lets two trips in one month collide on a colour.
+  The name repeats because a month grid wraps every seven days: a label only on day one is off the row by the time
+  you are reading day five, and the trip you want to identify is the one under *today*.
+- **The whole "are you off?" row wears the trip gradient**, with white text and an inverted white button — a
+  gradient button on a gradient row disappears into it. It pulses at 3.6s behind `prefers-reduced-motion`, the same
+  gate the week-recap glow uses. **"Let's go"**, not "We've left": the latter reads as a past-tense statement on a
+  button whose job is to ask about right now.
+- **★★ Add expense is much shorter in trip mode**, and both cuts remove *asking*, never capability:
+  - **The category is stated, not asked.** A trip files into one category by design, yet the picker and its chip
+    row were the tallest block on the form — displaying an answer the user cannot usefully change without breaking
+    the setting they turned on. Now one line, "Files into Entertainment · Change", and Change brings the whole
+    picker back for that one expense.
+  - **Date and note collapse to a line.** On a trip it is today in almost every case and already defaults there;
+    a full date control for a field nobody edits is the largest thing on the form earning nothing. The note becomes
+    "+ Add a note" — but only while it is EMPTY, or a typed note could hide behind a link.
+  - The result fits one screen with no scrolling, which matters because this form gets used standing in a bar.
+  - ⚠️ `.modal .modal-field` sets `flex-direction: column` at (0,2,0), and the settled line carries both classes —
+    without restating `row` the fact and its Change link stacked and centred, reading as two controls.
+
 ### A second round, after the first deploy
 
 Five more owner asks, all on the same feature:

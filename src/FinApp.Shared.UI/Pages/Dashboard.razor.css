@@ -296,6 +296,48 @@ html.dark .wk-tag { background: rgba(87,217,163,.10); }
     padding: 3px 10px; border-radius: 999px; cursor: pointer; white-space: nowrap;
 }
 .home-alert-act:hover { background: #855107; }
+/* ★ The one alert that wears the thing it switches on: the whole "are you off?" row carries the trip card's own
+   sea-to-sky gradient, so the prompt and the hero it summons are visibly the same object. Every other alert keeps
+   the strip's amber — two styles here is deliberate and rare (see Notification.ActionClass): amber means "something
+   needs attention", and leaving on holiday is not that, it is an invitation.
+   ⚠️ The row is a saturated surface, so everything inside it has to be re-stated in white — the strip's ordinary
+   ink (#7a5b12 on cream) is invisible here. And the BUTTON inverts: white plate, blue text. A gradient button on a
+   gradient row would disappear into it.
+   The slow pulse is the only animation in the app on a button. It earns it because this prompt gates the whole
+   feature — miss it and a fortnight files as everyday spending — and it is self-limiting: one tap and it is gone
+   for the trip. 3.6s, barely moving, and off entirely for anyone who asked for less motion (the same rule the
+   week-recap glow follows — a pulsing thing above the fold is exactly what that preference is for). */
+.home-alert.home-alert-trip {
+    background: linear-gradient(100deg, #1e5f9e, #2f8fc4);
+    border-color: #1a5289;
+    box-shadow: 0 2px 10px rgba(30, 95, 158, .28);
+}
+.home-alert.home-alert-trip .home-alert-text { color: #ffffff; }
+.home-alert.home-alert-trip .home-alert-ico { color: rgba(255, 255, 255, .9); }
+.home-alert-act.home-alert-trip {
+    background: #ffffff; color: #1e5f9e;
+    box-shadow: 0 1px 4px rgba(9, 32, 60, .28);
+}
+.home-alert-act.home-alert-trip:hover { background: #eaf2fb; color: #17497a; }
+@media (prefers-reduced-motion: no-preference) {
+    .home-alert-act.home-alert-trip { animation: tripGoPulse 3.6s ease-in-out infinite; }
+    @keyframes tripGoPulse {
+        0%, 100% { box-shadow: 0 1px 4px rgba(9, 32, 60, .28); }
+        50%      { box-shadow: 0 1px 4px rgba(9, 32, 60, .28), 0 0 0 5px rgba(255, 255, 255, .30); }
+    }
+}
+/* ⚠️ `html.dark .home-alert` and `html.dark .home-alert-act` are (0,3,0) and out-specify the (0,2,0) rules above,
+   so the dark theme kept painting the row and its button amber while the shadow and pulse came through — the
+   classic partial application. Both have to be RE-STATED at matching specificity rather than the base rules being
+   weakened. (Caught by reading computed styles; the screenshot looked plausible.) */
+html.dark .home-alert.home-alert-trip {
+    background: linear-gradient(100deg, #1b4d80, #256f9c);
+    border-color: #2a5c8d;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, .40);
+}
+html.dark .home-alert.home-alert-trip .home-alert-text { color: #eaf2fb; }
+html.dark .home-alert-act.home-alert-trip { background: #eaf2fb; color: #17497a; box-shadow: 0 1px 4px rgba(0, 0, 0, .45); }
+html.dark .home-alert-act.home-alert-trip:hover { background: #ffffff; color: #133c66; }
 /* .alert-inline-link lives in the GLOBAL app.css, not here — deliberately.
    Those buttons are built in C# with RenderTreeBuilder (see BudgetOverBody), and Blazor stamps its scope
    attribute onto MARKUP elements only. A builder-created element carries no `b-…` attribute, so a scoped
@@ -1737,6 +1779,20 @@ html.dark .detail-subcat-sum { color: #7c8a94; }
     font-size: .56rem; font-weight: 800; line-height: 11px;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
+/* ★ A colour per trip, cycled by TripColourIndex, so two journeys in one month are told apart at a glance rather
+   than by reading their labels. Five is enough: it is the number of trips that can plausibly touch one month, and
+   a longer ramp starts inventing colours the palette can't keep legible in both themes.
+   Each pair is a soft tint + a dark ink of the same hue, and every one has a dark-theme twin below (pairscan). */
+.cal-trip-c0 .cal-trip-band { background: #dbe6fa; color: #1e3a68; }   /* the trip blue — the feature's own colour */
+.cal-trip-c1 .cal-trip-band { background: #d8f0e4; color: #14543a; }   /* green */
+.cal-trip-c2 .cal-trip-band { background: #f7e2cf; color: #7a4415; }   /* amber */
+.cal-trip-c3 .cal-trip-band { background: #ecdcf6; color: #55247a; }   /* violet */
+.cal-trip-c4 .cal-trip-band { background: #fadadf; color: #7c1f36; }   /* rose */
+html.dark .cal-trip-c0 .cal-trip-band { background: #1e3054; color: #9db6ea; }
+html.dark .cal-trip-c1 .cal-trip-band { background: #16382a; color: #74d3a8; }
+html.dark .cal-trip-c2 .cal-trip-band { background: #3d2a16; color: #e0b078; }
+html.dark .cal-trip-c3 .cal-trip-band { background: #2f1f42; color: #c3a0e0; }
+html.dark .cal-trip-c4 .cal-trip-band { background: #40202a; color: #e79aab; }
 .cal-cell.cal-trip-a .cal-trip-band { margin-left: 0; border-top-left-radius: 6px; border-bottom-left-radius: 6px; }
 .cal-cell.cal-trip-z .cal-trip-band { margin-right: 0; border-top-right-radius: 6px; border-bottom-right-radius: 6px; }
 /* A day outside the shown period keeps the band but drops its weight — the trip is real, that day just isn't
@@ -3052,6 +3108,20 @@ html.dark .cal-cell:hover:not(.cal-out) { border-color: #3a8f6c; background: #16
    A card list with an inline recap drawer, following the budget-category row idiom (head button toggles, body
    expands) rather than a modal, so it reads like the rest of the Spending tab. Every colour introduced here
    gets its dark counterpart in the block at the bottom — run tools/pairscan.js after touching this. */
+/* Trip mode settles the category, the date and usually the note, so the form STATES them on one line instead of
+   asking. Quiet by design — a settled fact should not look like a control — with the escape hatch as a plain link. */
+/* ⚠️ `flex-direction: row` is not redundant here: `.modal .modal-field` is (0,2,0) and sets `column`, and this
+   element carries BOTH classes — so without it the fact and its "Change" link stacked and centred, which read as
+   two separate controls rather than one settled line. */
+.modal .exp-settled { flex-direction: row; align-items: center; justify-content: flex-start; gap: 8px; flex-wrap: wrap; }
+.exp-settled-txt { display: inline-flex; align-items: center; gap: 6px; font-size: .84rem; color: #48607a; }
+.exp-settled-txt svg { width: 15px; height: 15px; }
+.exp-settled-txt strong { color: #1f2430; }
+.exp-add-note { align-self: flex-start; display: inline-flex; align-items: center; gap: 5px; }
+.exp-add-note svg { width: 13px; height: 13px; }
+html.dark .exp-settled-txt { color: #93a3b5; }
+html.dark .exp-settled-txt strong { color: #e6edf5; }
+
 .trips-view { display: flex; flex-direction: column; gap: 10px; padding: 4px 0 10px; }
 /* The sort row governs the PAST trips only (see SortedTripRecaps), so it names them rather than sitting over the
    list as if it ordered everything. */

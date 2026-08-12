@@ -1723,8 +1723,13 @@ public sealed class Localizer(IJSRuntime js)
 
         // Opt-in start: the dates open the window, a tap turns trip mode on.
         ["Ready to go"] = "Готово за тръгване",
-        ["We've left — start the trip"] = "Тръгнахме — започни пътуването",
-        ["We've left"] = "Тръгнахме",
+        // "Let's go" rather than "We've left" — the latter reads as a statement in the past tense on a button
+        // whose job is to ask about right now.
+        ["Let's go — start the trip"] = "Да тръгваме — започни пътуването",
+        ["Let's go"] = "Да тръгваме",
+        // Trip mode states the settled fields instead of asking for them.
+        ["Change"] = "Промени",
+        ["Add a note"] = "Добави бележка",
         ["{0} {1} — are you off?"] = "{0} {1} — тръгвате ли?",
         ["started {0}"] = "започна на {0}",
         ["Trip mode stays off until you say so, so nothing gets filed as holiday spending by mistake."] =

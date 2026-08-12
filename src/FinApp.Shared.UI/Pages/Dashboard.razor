@@ -680,7 +680,7 @@ else
                     <div class="home-alerts">
                         @foreach (var n in homeAlerts)
                         {
-                            <div class="home-alert">
+                            <div class="home-alert @n.ActionClass">
                                 <span class="home-alert-ico">@IconOrEmoji(n.Icon)</span>
                                 <div class="home-alert-body">
                                     @if (n.Rich is { } rich)
@@ -692,7 +692,7 @@ else
                                         <span class="home-alert-text">@n.Text</span>
                                         @if (n is { ActionLabel: { } al, Act: { } act })
                                         {
-                                            <button class="home-alert-act" @onclick="@(() => act())">@al</button>
+                                            <button class="home-alert-act @n.ActionClass" @onclick="@(() => act())">@al</button>
                                         }
                                     }
                                 </div>
@@ -1550,11 +1550,16 @@ else
                             var calTrip = State.AllTrips.FirstOrDefault(t => d >= t.From && d <= t.To);
                             var tripStart = calTrip is not null && d == calTrip.From;
                             var tripEnd = calTrip is not null && d == calTrip.To;
+                            // ★ A colour per trip, so two journeys in one month are told apart at a glance rather
+                            // than by reading their names. Keyed on the trip's position in the account's own list,
+                            // not on a hash: the same trip must keep the same colour every time the month is
+                            // opened, and a hash of the id would also have to be checked for collisions.
+                            var calTripC = calTrip is null ? 0 : TripColourIndex(calTrip.Id);
                             var cls = "cal-cell"
                                 + (inRange ? "" : " cal-out")
                                 + (d == calToday ? " cal-today" : "")
                                 + (_dayView == d ? " cal-sel" : "")
-                                + (calTrip is null ? "" : " cal-trip")
+                                + (calTrip is null ? "" : $" cal-trip cal-trip-c{calTripC}")
                                 + (tripStart ? " cal-trip-a" : "")
                                 + (tripEnd ? " cal-trip-z" : "");
                             var day = d;
@@ -1571,11 +1576,14 @@ else
                                     <span class="cal-total">@Fmt(info.Total)</span>
                                 }
                                 @* The band runs edge to edge across the trip's days and rounds off only at its two
-                                   ends, so a week away reads as one bar rather than seven separate marks. The name
-                                   is printed on the first day only — repeating it seven times is noise. *@
+                                   ends, so a week away reads as one bar rather than seven separate marks.
+                                   ★ The name is on EVERY day, not just the first. A month grid wraps every seven
+                                   days, so a label on day one is off the row (and often off the screen) by the time
+                                   you are looking at day five — and the trip you are trying to identify is usually
+                                   the one under today, not the one under its own departure date. *@
                                 @if (calTrip is not null)
                                 {
-                                    <span class="cal-trip-band">@(tripStart ? calTrip.Name : "")</span>
+                                    <span class="cal-trip-band">@calTrip.Name</span>
                                 }
                             </div>
                         }
@@ -2379,7 +2387,7 @@ else
                                            offer, put where someone looking at the trip itself would reach for it. *@
                                         @if (awaitingStart)
                                         {
-                                            <button class="link" @onclick="() => StartTrip(tRecap.TripId)"><Icon Name="plane" /> @Loc["We've left — start the trip"]</button>
+                                            <button class="link" @onclick="() => StartTrip(tRecap.TripId)"><Icon Name="plane" /> @Loc["Let's go — start the trip"]</button>
                                         }
                                         else if (trip.IsActiveOn(today))
                                         {
@@ -3917,6 +3925,22 @@ else
                     {
                         @tagPicker
                     }
+                    @* ★ On a trip the category is SETTLED, so the form states it instead of asking for it. The trip
+                       files into one category by design — that is the whole point of the setting — yet the picker
+                       and its chip row were still the tallest block on the screen, displaying an answer the user
+                       cannot usefully change without breaking the thing they turned on.
+                       One line, with a way out for the rare exception. Nothing is removed: "Change" brings the
+                       whole picker back exactly as it was, for this one expense. *@
+                    var tripSettlesCategory = FormTrip is not null && _categoryId != Guid.Empty;
+                    @if (tripSettlesCategory && !_expShowCategory)
+                    {
+                        <div class="modal-field exp-settled">
+                            <span class="exp-settled-txt">@Loc["Files into"] <CatIcon Name="@State.CategoryIcon(_categoryId)" /> <strong>@State.CategoryName(_categoryId)</strong></span>
+                            <button type="button" class="link" @onclick="() => _expShowCategory = true">@Loc["Change"]</button>
+                        </div>
+                    }
+                    else
+                    {
                     var qpCats = State.RecentCategories(6);
                     <div class="modal-field"><span class="lbl-row">@Loc["Category"] <button type="button" class="lbl-add" title="@Loc["Add category"]" @onclick="ExpenseAddCategory">+</button></span>
                         @* Most-used categories as one-tap chips right above the picker; the picker (type to search)
@@ -3933,6 +3957,7 @@ else
                         }
                         <CategoryPicker Value="_categoryId" ValueChanged="OnExpenseCategoryPicked" Options="State.CategoryOptions" />
                     </div>
+                    }
                     @* F1: DecimalInput raises the phone's decimal keypad AND accepts the "," that keypad offers — a
                        type="number" field rejects it outright, which is why decimals couldn't be typed on mobile.
                        @ref so the cursor can land here when the category was already chosen (see OpenAddExpense). *@
@@ -3975,7 +4000,23 @@ else
                             }
                         </div>
                     }
-                    <label>@Loc["Date"] <input type="date" @bind="_expenseDate" min="@State.Period.From.ToString("yyyy-MM-dd")" max="@State.Period.To.ToString("yyyy-MM-dd")" /></label>
+                    @* ★ On a trip the date is today in almost every case — you are logging the coffee you just
+                       bought — and it already defaults there. Shown as a line rather than a date input: a full
+                       picker for a field nobody changes is the single largest control on the form earning nothing.
+                       Off a trip it keeps its input, where back-dating is a normal thing to do. *@
+                    @if (FormTrip is not null && !_expShowDate)
+                    {
+                        <div class="modal-field exp-settled">
+                            <span class="exp-settled-txt"><Icon Name="calendar" />
+                                @(_expenseDate == State.TodayDate ? Loc["Today"] : _expenseDate.ToString("d MMM"))
+                            </span>
+                            <button type="button" class="link" @onclick="() => _expShowDate = true">@Loc["Change"]</button>
+                        </div>
+                    }
+                    else
+                    {
+                        <label>@Loc["Date"] <input type="date" @bind="_expenseDate" min="@State.Period.From.ToString("yyyy-MM-dd")" max="@State.Period.To.ToString("yyyy-MM-dd")" /></label>
+                    }
                     <div class="modal-field"><span class="lbl-row">@Loc["Fund"] <button type="button" class="lbl-add" title="@Loc["New fund"]" @onclick="ExpenseAddFund">+</button></span>
                         @* Funds are few, so the whole list is chips — no dropdown. Selected one highlighted; 🏦 = synced. *@
                         <div class="qp-row">
@@ -3990,7 +4031,17 @@ else
                     {
                         <small class="hint"><Icon Name="bank" /> @Loc["This is a bank-synced fund — logging here records the expense without changing the synced balance (the bank stays the source). If the same charge later imports, you can dismiss the duplicate."]</small>
                     }
-                    <label>@Loc["Note (optional)"] <input type="text" @bind="_note" /></label>
+                    @* Same treatment as the date: on a trip the note is genuinely optional and usually skipped, so
+                       it collapses to a link until it is wanted. Only while it is EMPTY — a note that had been
+                       typed and then hidden behind a link would be a note nobody could see they had written. *@
+                    @if (FormTrip is not null && !_expShowNote && string.IsNullOrEmpty(_note))
+                    {
+                        <button type="button" class="link exp-add-note" @onclick="() => _expShowNote = true"><Icon Name="plus" /> @Loc["Add a note"]</button>
+                    }
+                    else
+                    {
+                        <label>@Loc["Note (optional)"] <input type="text" @bind="_note" /></label>
+                    }
                     @* Off a trip the tag picker keeps its old place down here — an optional label belongs after the
                        facts. On a trip it has already been rendered above the category, because there it is not a
                        label but the thing that does the filing. Rendered in exactly one of the two spots. *@
@@ -4754,63 +4805,14 @@ else
                         <small class="hint">@Loc["The recap will say how much of the trip came out of that pot. It never discounts the total — the money still left."]</small>
                     }
 
-                    <h4 class="modal-sec">@Loc["Spending in another currency"]</h4>
-                    @* ⛔ DEMOTED (S101). This rate no longer converts anything. It used to convert EVERY expense on
-                       the trip, including the card payments the bank had already converted — read €50 off your
-                       statement, type 50, and the app stored €58.50. The rate now lives on the FUND (a wallet of
-                       foreign cash), because that is what a rate is attached to in life.
-                       The fields stay because they are still useful as the trip's own note of what it expects to
-                       spend in and roughly at what — and because deleting them would break every existing trip's
-                       load. What changed is that nothing reads them at entry time. *@
-                    <small class="hint"><Icon Name="info" /> @Loc["This is a note on the trip, not a conversion. To actually convert as you log, set the currency and rate on the wallet you'll spend from (Wallets → the wallet → Foreign cash) — card payments are already converted by your bank and must not be converted twice."]</small>
-                    @* The most involved machinery in the feature — a second currency, a rate, a conversion at entry
-                       time — so it is the natural paid line. Free trips work completely in the account's own
-                       currency; nothing about the entry flow, the recap or the Home card depends on this. *@
-                    @if (!Gate.Allows(PlanFeatures.Trips))
-                    {
-                        <ProLock Feature="@PlanFeatures.Trips" Bar="true" Label="@Loc["Log a trip in its local currency — with Pro"]" />
-                    }
-                    else
-                    {
-                    @* One fixed rate the user sets, not a live feed: a feed means a rate provider, a new
-                       sub-processor and a rate per expense. The conversion happens as you type an amount and
-                       what gets stored is already in the account currency, so editing this later can never
-                       rewrite what past expenses cost. *@
-                    <div class="row2">
-                        @* A datalist rather than a <select>: the shortlist is a shortcut, and a closed list would
-                           refuse a currency we simply didn't think of. Typing still wins. *@
-                        <label>@Loc["Currency"]
-                            <input type="text" maxlength="3" list="trip-ccy" @bind="_tripCurrency" @bind:event="oninput" placeholder="GBP" />
-                            @* ⚠️ The loop variable is NOT called `code`: "@code" is the Razor @code DIRECTIVE, so
-                               writing it in markup makes the compiler look for a member block and fail with a
-                               cascade of errors that name everything except the variable. *@
-                            <datalist id="trip-ccy">
-                                @foreach (var ccy in CurrencyInfo.Common)
-                                {
-                                    <option value="@ccy">@ccy — @CurrencyInfo.Symbol(ccy).Trim()</option>
-                                }
-                            </datalist>
-                        </label>
-                        @* "1 ? is" was the empty state, which reads like a broken template rather than a field
-                           waiting for its currency. *@
-                        <label>@(string.IsNullOrWhiteSpace(_tripCurrency) ? Loc["Rate"] : string.Format(Loc["1 {0} is"], _tripCurrency!.ToUpperInvariant())) <DecimalInput T="decimal?" class="num" @bind-Value="_tripRate" placeholder="1.00" /></label>
-                    </div>
-                    @* What the code you typed actually prints, and — separately — where the money ends up. Two
-                       facts, because they are genuinely different: the symbol answers "what will I see", and the
-                       storage line answers "what will my totals be in". ★ For a currency we hold no symbol for it
-                       says so instead of inventing one; a confident wrong preview is worse than no preview. *@
-                    @if (!string.IsNullOrWhiteSpace(_tripCurrency))
-                    {
-                        var ccyCode = _tripCurrency!.Trim().ToUpperInvariant();
-                        <small class="hint">
-                            @(CurrencyInfo.HasSymbol(ccyCode)
-                                ? string.Format(Loc["{0} shows as {1}"], ccyCode, CurrencyInfo.Symbol(ccyCode).Trim() + "100.00")
-                                : string.Format(Loc["We have no symbol for {0}, so it shows as {1}"], ccyCode, CurrencyInfo.Symbol(ccyCode) + "100.00"))
-                            · @string.Format(Loc["stored in {0}, this account's currency"], State.Currency)
-                        </small>
-                    }
-                    <small class="hint">@Loc["Type amounts in the local currency and we'll convert them as you log. It's your own fixed rate, so treat the totals as close rather than exact."]</small>
-                    }
+                    @* ⛔ The trip's own currency + rate are GONE from this form. They converted EVERY expense on the
+                       trip, including the card payments the bank had already converted — read €50 off your
+                       statement, type 50, and the app stored €58.50.
+                       A rate is attached to a specific pile of foreign notes bought at a specific price, which is a
+                       WALLET, so that is where it lives now: Wallets → the wallet → Foreign cash, where it is also
+                       derived from the transfer that loaded it rather than typed. Asking for it again here would be
+                       asking the same question in the place that gets the answer wrong.
+                       The domain fields stay (every existing trip must keep loading); nothing reads or writes them. *@
                     <div class="modal-actions">
                         <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
                         <button @onclick="SaveTripForm" disabled="@(string.IsNullOrWhiteSpace(_tripName) || _tripTo < _tripFrom)">@Loc["Save"]</button>
@@ -8842,6 +8844,28 @@ else
     private enum TripSort { Date, Spent }
     private TripSort _tripSort = TripSort.Date;
 
+    /// <summary>
+    /// Which of the calendar's trip colours a trip wears: its position among the account's trips ordered by
+    /// departure, <b>oldest first</b>, wrapped into the palette.
+    /// <para>
+    /// ⚠️ Ordering matters and the obvious choice is the wrong one. <c>AllTrips</c> is newest-departure-first, so
+    /// indexing off it would re-colour every existing trip the moment a later one was booked. Counting from the
+    /// oldest instead means a new trip only ever appends: <b>booking a future trip never changes the colour of one
+    /// already on the calendar.</b> Backdating a trip still shifts the ones after it — that is the honest limit
+    /// here, and it is cosmetic and rare, which is why it buys simplicity over a hash (a hash is perfectly stable
+    /// but lets two trips in the same month land on the same colour, defeating the point).
+    /// </para>
+    /// </summary>
+    private int TripColourIndex(Guid tripId)
+    {
+        var byDeparture = State.AllTrips.OrderBy(t => t.From).ThenBy(t => t.Id).ToList();
+        for (var i = 0; i < byDeparture.Count; i++)
+            if (byDeparture[i].Id == tripId) return i % CalTripColours;
+        return 0;
+    }
+
+    private const int CalTripColours = 5;
+
     /// <summary>The finished trips — everything the sort control applies to.</summary>
     private IReadOnlyList<TripRecap> TripHistory() =>
         State.TripRecaps().Where(r => State.FindTrip(r.TripId)?.IsFinishedOn(State.TodayDate) == true).ToList();
@@ -8938,6 +8962,9 @@ else
     private decimal? _tripBudget;
     private Guid _tripBucketId;      // Guid.Empty = not funded from a bucket (the <select> needs a real value)
     private Guid _tripCategoryId;    // Guid.Empty = file per trip label (the original behaviour)
+    // The trip's own currency/rate are no longer collected — the rate lives on the wallet you pay from. These two
+    // carry whatever an existing trip already stored, purely so a full-replace save doesn't wipe it; nothing in the
+    // form writes them and nothing at entry time reads them.
     private string? _tripCurrency;
     private decimal? _tripRate;
 
@@ -9468,7 +9495,11 @@ else
         string? AltLabel = null, Action? Alt = null,
         // Shown for reference and its undo, but already dealt with — so it doesn't drive the badge. A skip that
         // counted toward the bell would nag for the rest of the month about a decision the user already made.
-        bool Settled = false);
+        bool Settled = false,
+        // An extra class on the action button, for the one prompt that has to look like the thing it switches on
+        // (the trip's "We've left"). Deliberately opt-in and rare: if every notification could restyle its button,
+        // the strip would stop reading as one list of comparable things.
+        string? ActionClass = null);
 
     /// <summary>The "budgets plan more than is free" alert body: the sentence with "trim a budget" and "add income" as
     /// inline action links (they run ShowBudgetsTab / OpenDeposit), rather than a repeated trailing button. Built in
@@ -9663,7 +9694,10 @@ else
             list.Add(new Notification(dueTrip.Icon ?? "plane",
                 string.Format(Loc["{0} {1} — are you off?"], dueTrip.Name, away),
                 Loc["Trip mode stays off until you say so, so nothing gets filed as holiday spending by mistake."],
-                Loc["We've left"], () => _ = StartTrip(dueId), null, null, Urgent: true, Due: true));
+                // "Let's go" rather than "We've left": the latter reads as a statement the app might be making, and
+                // in the past tense — on a button whose whole job is to ask a question about right now.
+                Loc["Let's go"], () => _ = StartTrip(dueId), null, null, Urgent: true, Due: true,
+                ActionClass: "home-alert-trip"));
         }
 
         // A trip about to start. Grouped with the bills as "Due" rather than as a suggestion, because it is a date
@@ -10367,6 +10401,7 @@ else
         _fTagId = null; _newTagName = null; _tagFiledTo = null;
         _expenseDate = _dayView ?? DateOnly.FromDateTime(DateTime.Today);
         _fundId = DefaultFundForCategory(categoryId); _modal = Modal.AddExpense;
+        _expShowCategory = false; _expShowDate = false; _expShowNote = false;
         _focusAmount = focusAmount;
         _expTripId = State.ActiveTrip?.Id ?? Guid.Empty;   // trip mode: default it, don't enforce it
         // ★ And take the trip's category with it. Applying this only when a trip CHIP is tapped meant the form
@@ -10386,6 +10421,11 @@ else
         var cat = trip.CategoryId ?? TripCategoryGuess();
         if (cat != Guid.Empty) _categoryId = cat;
     }
+
+    // Trip mode settles the category, the date and (usually) the note, so the form STATES them instead of asking.
+    // These three are the "actually, let me change that" escapes — reset every time the modal opens, because a
+    // form that stayed expanded from last time would defeat the point on the next expense.
+    private bool _expShowCategory, _expShowDate, _expShowNote;
 
     // F1: set when the modal should open with the cursor already in Amount; consumed once by OnAfterRenderAsync.
     private bool _focusAmount;
