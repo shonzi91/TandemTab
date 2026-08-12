@@ -320,6 +320,11 @@ public sealed class FinAppDbContext(DbContextOptions<FinAppDbContext> options) :
             e.Ignore(x => x.IsSettlementSource);
             e.Ignore(x => x.IsSettlementDestination);
             e.Ignore(x => x.OriginalAmount);
+            // Body data — what was typed before conversion on a foreign-cash wallet rides in the snapshot.
+            // ⚠️ ForeignAmount is NOT OriginalAmount above: that one is "before a settlement was pushed away".
+            e.Ignore(x => x.ForeignAmount);
+            e.Ignore(x => x.ForeignCurrency);
+            e.Ignore(x => x.HasForeign);
             e.Ignore(x => x.FundSynced);       // body data — synced-fund marker rides in the snapshot
             e.Ignore(x => x.BankExternalId);   // body data — bank provenance rides in the snapshot
             e.Ignore(x => x.AutoFiled);        // body data — auto-filed marker rides in the snapshot

@@ -156,6 +156,36 @@ html.dark .cat-picker-opt { color: #cfd4de; }
 html.dark .cat-picker-opt:hover { background: #1b2236; }
 html.dark .cat-picker-opt.sel { background: #14352a; color: #6fe0b4; }
 
+/* ─── The currency picker (CurrencyPicker.razor) ───
+   It reuses .cat-picker wholesale — those rules are themed, and proven on a phone — and adds only the code and
+   symbol columns.
+   ⚠️ These MUST live here, in the global sheet, not in Dashboard.razor.css. CurrencyPicker has no .razor.css of
+   its own, so Blazor stamps no scope attribute on its markup and a scoped `.ccy-code[b-…]` can never match it.
+   The first cut put them in the scoped file and the picker rendered completely unstyled — invisible in a
+   screenshot, obvious the moment the computed font-weight was read back. */
+.ccy-code { font-weight: 800; font-size: .78rem; letter-spacing: .02em; min-width: 36px; }
+.ccy-sym { margin-left: auto; opacity: .6; font-size: .78rem; }
+.ccy-picker .cat-picker-opt { gap: 8px; }
+.ccy-picker .cat-picker-lbl { opacity: .75; }
+
+/* ★ On a phone the menu becomes a bottom sheet. Dropping 280px of list below a field that already sits low in a
+   scrolling modal put the options off the bottom of the screen — reachable only by scrolling the modal, which is
+   exactly the "the picker isn't there" problem the native <datalist> had. Anchored to the bottom edge it cannot
+   open off-screen whatever the field's position.
+   Scoped to .ccy-picker on purpose: the category picker's own menu behaves fine where it sits, and changing a
+   shared control's behaviour to fix one call site is how a fix becomes a regression. */
+@media (max-width: 560px) {
+    .ccy-picker .cat-picker-menu {
+        position: fixed; top: auto; bottom: 0; left: 0; right: 0;
+        max-height: 62vh; border-radius: 14px 14px 0 0; padding: 8px;
+        box-shadow: 0 -8px 28px rgba(0, 0, 0, .28);
+    }
+    .ccy-picker .cat-picker-search { font-size: 16px; }   /* ≥16px or iOS zooms the whole page on focus */
+    /* The backdrop has to cover the viewport, not just the field's box, or a tap outside the sheet lands on the
+       form behind it instead of closing. */
+    .ccy-picker .cat-picker-backdrop { position: fixed; inset: 0; }
+}
+
 /* ─────────────────────────── DARK THEME ───────────────────────────
    The app's colours are hardcoded hex inside scoped component CSS. Rather than
    re-theme every file, this layer overrides the structural surfaces/text from a

@@ -49,4 +49,34 @@ public static class CurrencyInfo
     /// "shows as SEK 100.00" honestly instead of implying a "kr" it wouldn't actually print.</summary>
     public static bool HasSymbol(string? code) =>
         !string.IsNullOrWhiteSpace(code) && Symbols.ContainsKey(code.Trim());
+
+    /// <summary>
+    /// The currency's plain-English name, for a picker that can be searched by word as well as by code — people
+    /// reach for "Swedish", "SEK" or "kr" depending on what they happen to know.
+    /// <para>Deliberately NOT localized: these are the names printed on the money and used by banks everywhere, and
+    /// a translated "Швейцарски франк" would stop matching the "CHF" someone is actually typing. An unlisted code
+    /// returns itself, so the picker never shows a blank row.</para>
+    /// </summary>
+    public static string Name(string? code)
+    {
+        if (string.IsNullOrWhiteSpace(code)) return "";
+        var c = code.Trim().ToUpperInvariant();
+        return Names.TryGetValue(c, out var n) ? n : c;
+    }
+
+    private static readonly IReadOnlyDictionary<string, string> Names = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+    {
+        ["EUR"] = "Euro", ["USD"] = "US dollar", ["GBP"] = "British pound", ["CHF"] = "Swiss franc",
+        ["SEK"] = "Swedish krona", ["NOK"] = "Norwegian krone", ["DKK"] = "Danish krone", ["ISK"] = "Icelandic króna",
+        ["PLN"] = "Polish złoty", ["CZK"] = "Czech koruna", ["HUF"] = "Hungarian forint",
+        ["RON"] = "Romanian leu", ["BGN"] = "Bulgarian lev", ["RSD"] = "Serbian dinar",
+        ["UAH"] = "Ukrainian hryvnia", ["TRY"] = "Turkish lira", ["ILS"] = "Israeli shekel",
+        ["JPY"] = "Japanese yen", ["CNY"] = "Chinese yuan", ["KRW"] = "South Korean won",
+        ["THB"] = "Thai baht", ["VND"] = "Vietnamese dong", ["PHP"] = "Philippine peso",
+        ["IDR"] = "Indonesian rupiah", ["MYR"] = "Malaysian ringgit", ["SGD"] = "Singapore dollar",
+        ["HKD"] = "Hong Kong dollar", ["INR"] = "Indian rupee",
+        ["CAD"] = "Canadian dollar", ["AUD"] = "Australian dollar", ["NZD"] = "New Zealand dollar",
+        ["MXN"] = "Mexican peso", ["BRL"] = "Brazilian real", ["ZAR"] = "South African rand",
+        ["AED"] = "UAE dirham", ["SAR"] = "Saudi riyal", ["EGP"] = "Egyptian pound", ["MAD"] = "Moroccan dirham",
+    };
 }

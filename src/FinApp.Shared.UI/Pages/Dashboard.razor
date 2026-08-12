@@ -1019,7 +1019,17 @@ else
                                 <button class="fund-row-name" title="@(string.IsNullOrEmpty(note) ? Loc["Actions"] : note)" @onclick="() => ToggleFundMenu(fid)">
                                     @if (synced) { <span class="fund-row-ico"><Icon Name="link" /></span> } else { <CatIcon Name="@State.FundIcon(fid)" /> } @f.Name
                                 </button>
-                                <span class="fund-row-amt" title="@(synced ? SyncedFundDisplay(fid).Title : "")">@Fmt(bal)</span>
+                                @* ★ A foreign-cash wallet says what it holds in BOTH currencies. The account figure
+                                   is the one every total is built from, so it stays the headline; the foreign one
+                                   is what you can actually count in your hand, which is the question you open the
+                                   wallets list to answer while you are away.
+                                   Derived from the wallet's current rate on purpose — unlike an expense, which
+                                   records what was typed, a BALANCE is a live figure and the current rate is the
+                                   right lens for "what is left". *@
+                                <span class="fund-row-amt" title="@(synced ? SyncedFundDisplay(fid).Title : "")">@Fmt(bal)@if (State.ForeignFund(fid) is { } fxF && bal.Amount != 0m)
+                                    {
+                                        <small class="fund-row-fx">@CurrencyInfo.Symbol(fxF.Currency)@decimal.Round(bal.Amount / fxF.Rate!.Value, 2).ToString("0.00")</small>
+                                    }</span>
                                 @* The two common actions — move money out, log money in — sit next to the ⋯ (the menu
                                    keeps Movements / Edit / Archive). Only for a spendable, non-synced fund in an open
                                    period. The cluster is a fixed width so every row's amount lines up in one column
@@ -1351,7 +1361,13 @@ else
                                 }
                             </span>
                         </span>
-                        <span class="amt">@Fmt(ctx.E.Amount)</span>
+                        @* ★ What you actually handed over, under what it cost you. Recorded at entry (see
+                           Expense.ForeignAmount), never re-derived — so this row keeps saying "£12.50" even after
+                           the wallet is reloaded at a different rate. That is the whole reason it is stored. *@
+                        <span class="amt">@Fmt(ctx.E.Amount)@if (ctx.E.HasForeign)
+                            {
+                                <small class="amt-fx">@CurrencyInfo.Symbol(ctx.E.ForeignCurrency)@ctx.E.ForeignAmount!.Value.ToString("0.00")</small>
+                            }</span>
                         <span class="row-actions">
                             @if (State.IsPeriodOpen)
                             {
@@ -2360,7 +2376,10 @@ else
                                                                     <span class="brk-exp-when">@TripWhenLabel(trip, te.Date)</span>
                                                                 </span>
                                                             </span>
-                                                            <span class="brk-exp-amt">@Fmt(te.Amount)</span>
+                                                            <span class="brk-exp-amt">@Fmt(te.Amount)@if (te.HasForeign)
+                                                                {
+                                                                    <small class="amt-fx">@CurrencyInfo.Symbol(te.ForeignCurrency)@te.ForeignAmount!.Value.ToString("0.00")</small>
+                                                                }</span>
                                                         </li>
                                                     }
                                                 </ul>
@@ -3054,6 +3073,73 @@ else
                 // Off a trip the trip labels are hidden, because "Tickets & tours" is noise at the supermarket.
                 var onTrip = _expTripId != Guid.Empty && State.TripTags.Count > 0;
                 var pickTags = onTrip ? State.TripTags : State.EverydayTags;
+                @* Amount and Fund are fragments so the expense form can render them in EITHER order: money-first on
+                   a trip (amount → fund → label), and the original order off one. Each renders exactly once. *@
+                RenderFragment amountField =
+                @<text>
+                    @* F1: DecimalInput raises the phone's decimal keypad AND accepts the "," that keypad offers — a
+                       type="number" field rejects it outright, which is why decimals couldn't be typed on mobile.
+                       @ref so the cursor can land here when the category was already chosen (see OpenAddExpense). *@
+                    @* ★ The Amount label follows the FUND, not the trip. Paying by card means paying from the bank
+                       fund, which holds account-currency money, so it says "Amount" and nothing converts — the
+                       statement already did. Paying from a foreign-cash wallet says "Amount in GBP". *@
+                    <label>@(FormForeignFund is { } cur ? string.Format(Loc["Amount in {0}"], cur.Currency) : Loc["Amount"]) <DecimalInput @ref="_amountInput" @bind-Value="_amount" /></label>
+                    @if (_amount < 0)
+                    {
+                        <small class="hint warn-text">@Loc["Amount can't be negative — enter what you spent."]</small>
+                    }
+                    @* What will actually be stored. Shown rather than silently applied: the rate is the user's own
+                       fixed guess, so the honest thing is to put the converted figure in front of them before it
+                       becomes a ledger entry. *@
+                    @if (_amount > 0 && FormForeignFund is { } fxFund)
+                    {
+                        <small class="hint trip-fx"><Icon Name="swap" /> @string.Format(Loc["logs as {0} — {1}'s rate"], Fmt(State.Money(ExpenseAmountToLog(_amount))), fxFund.Name)</small>
+                    }
+                    @* Time cost, live as you type (the amount binds on oninput). This is the moment it earns its
+                       place — a price is easiest to reconsider before it's logged, not in a recap afterwards.
+                       Time cost is read off the CONVERTED figure — hours of work against £20 would be nonsense. *@
+                    @if (_amount > 0 && State.TimeCostLabel(ExpenseAmountToLog(_amount)) is { } timeCost)
+                    {
+                        <small class="hint time-cost"><Icon Name="clock" /> @string.Format(Loc["≈ {0} of work"], timeCost)</small>
+                    }
+                    @* Recent amounts for this category as tappable hints. Never pre-filled — the amount is the one
+                       field that really changes each time, so a wrong default here writes a wrong ledger entry.
+                       Suppressed while converting: these are past amounts in the ACCOUNT currency, and tapping one
+                       into a field being read as pounds would log a number nobody meant. *@
+                    @{
+                        var amtHints = FormForeignFund is not null
+                            ? Array.Empty<decimal>() : (IReadOnlyList<decimal>)State.RecentAmountsForCategory(_categoryId);
+                    }
+                    @if (amtHints.Count > 0 && _expenseDrafts.Count == 0)
+                    {
+                        <div class="qp-row amt-hints">
+                            @foreach (var h in amtHints)
+                            {
+                                var hint = h;
+                                <button type="button" class="tag-chip amt-hint @(_amount == hint ? "tag-chip-on" : "")" @onclick="() => UseAmountHint(hint)">@Fmt(hint)</button>
+                            }
+                        </div>
+                    }
+                </text>;
+
+                RenderFragment fundField =
+                @<text>
+                    <div class="modal-field"><span class="lbl-row">@Loc["Fund"] <button type="button" class="lbl-add" title="@Loc["New fund"]" @onclick="ExpenseAddFund">+</button></span>
+                        @* Funds are few, so the whole list is chips — no dropdown. Selected one highlighted; 🏦 = synced. *@
+                        <div class="qp-row">
+                            @foreach (var f in State.ExpensableFunds)
+                            {
+                                var qpFund = f.Id;
+                                <button type="button" class="tag-chip @(_fundId == qpFund ? "tag-chip-on" : "")" @onclick="() => _fundId = qpFund"><CatIcon Name="@State.FundIcon(qpFund)" /> @f.Name@(f.IsSynced ? " 🏦" : "")@if (State.ForeignFund(qpFund) is { } ffx) { <span class="fund-chip-ccy">@ffx.Currency</span> }</button>
+                            }
+                        </div>
+                    </div>
+                    @if (State.FundIsSynced(_fundId))
+                    {
+                        <small class="hint"><Icon Name="bank" /> @Loc["This is a bank-synced fund — logging here records the expense without changing the synced balance (the bank stays the source). If the same charge later imports, you can dismiss the duplicate."]</small>
+                    }
+                </text>;
+
                 RenderFragment tagPicker =
                 @<div class="modal-field">
                     <span class="lbl-row">@(onTrip ? Loc["What kind of spend?"] : Loc["Tag (optional)"])</span>
@@ -3070,10 +3156,21 @@ else
                             }
                         </div>
                     }
-                    <div class="tag-new-row">
-                        <input type="text" class="tag-new-in" placeholder="@Loc["New tag…"]" maxlength="30" @bind="_newTagName" @bind:event="oninput" @onkeydown="TagNewKey" />
-                        <button type="button" class="lbl-add" title="@Loc["Add tag"]" disabled="@string.IsNullOrWhiteSpace(_newTagName)" @onclick="AddTagFromModal">+</button>
-                    </div>
+                    @* ★ The "new tag" box is behind the ＋ now. Creating a tag is the rare case — the chips above
+                       cover almost every entry — and an always-open text field read as something that wanted
+                       filling in, on a form whose whole job this round was to stop asking. The ＋ keeps it one tap
+                       away and the row collapses back once the tag is made. *@
+                    @if (_tagNewOpen)
+                    {
+                        <div class="tag-new-row">
+                            <input type="text" class="tag-new-in" placeholder="@Loc["New tag…"]" maxlength="30" @bind="_newTagName" @bind:event="oninput" @onkeydown="TagNewKey" />
+                            <button type="button" class="lbl-add" title="@Loc["Add tag"]" disabled="@string.IsNullOrWhiteSpace(_newTagName)" @onclick="AddTagFromModal">+</button>
+                        </div>
+                    }
+                    else
+                    {
+                        <button type="button" class="link tag-new-open" @onclick="() => _tagNewOpen = true"><Icon Name="plus" /> @Loc["New tag"]</button>
+                    }
                     @* F2: say it out loud when a tag moved the category — the category chips above do update, but a
                        silent change to where money is filed is exactly the kind of "helpful" nobody asked for. *@
                     @if (_tagFiledTo is { } filed)
@@ -3550,7 +3647,13 @@ else
                 case Modal.AddAccount:
                     <h3>@Loc["New account"]</h3>
                     <label>@Loc["Name"] <input type="text" @bind="_fName" /></label>
-                    <label>@Loc["Currency"] <input type="text" maxlength="3" @bind="_fCurrency" /></label>
+                    @* The same searchable picker as a wallet's, minus the "same as the account" row — this IS the
+                       account, so there is nothing above it to inherit from. It replaces a bare three-letter text
+                       box that accepted any typo silently and offered no help at all. *@
+                    <div class="modal-field"><span class="lbl-row">@Loc["Currency"]</span>
+                        <CurrencyPicker Value="@_fCurrency" ValueChanged="@(v => _fCurrency = v ?? _fCurrency)"
+                                        AccountCurrency="@_fCurrency" AllowNone="false" />
+                    </div>
                     @SavingsTargetField
                     <div class="modal-actions">
                         <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
@@ -3916,13 +4019,17 @@ else
                             <button type="button" class="repeat-last" title="@Loc["Edit last"]" @onclick="() => OpenEditExpense(lastExp.Id)"><Icon Name="pencil" /> <span class="last-act-verb">@Loc["Edit"]</span> <span class="last-act-ctx"><strong>@State.CategoryName(lastExp.CategoryId)</strong> · @Fmt(lastExp.Amount)</span></button>
                         </div>
                     }
-                    @* On a trip the labels sit here, directly above the category — the trip row itself has moved to
-                       the top of the form (see the block under the title). They stay adjacent to the category
-                       because on a trip a label is not decoration: it is the axis the trip's recap is drawn on,
-                       while the category is settled by the trip. Off a trip the picker keeps its old place further
-                       down, where an optional label belongs. It renders in exactly one of the two spots. *@
+                    @* ★ MONEY FIRST on a trip. The trip is picked above; after that the thing someone opened the app
+                       to type is the number, and then which pocket it came out of. The label follows, because it is
+                       a two-tap afterthought — and it moved BELOW the fund on purpose: on a foreign-cash wallet the
+                       fund is what decides the currency the amount is read in, so it has to be settled first.
+                       Off a trip the order is untouched.
+                       (The labels used to sit here, above the category. The category no longer asks a question on a
+                       trip — see the settled line below — so there is nothing left for them to lead into.) *@
                     @if (onTrip)
                     {
+                        @amountField
+                        @fundField
                         @tagPicker
                     }
                     @* ★ On a trip the category is SETTLED, so the form states it instead of asking for it. The trip
@@ -3958,47 +4065,11 @@ else
                         <CategoryPicker Value="_categoryId" ValueChanged="OnExpenseCategoryPicked" Options="State.CategoryOptions" />
                     </div>
                     }
-                    @* F1: DecimalInput raises the phone's decimal keypad AND accepts the "," that keypad offers — a
-                       type="number" field rejects it outright, which is why decimals couldn't be typed on mobile.
-                       @ref so the cursor can land here when the category was already chosen (see OpenAddExpense). *@
-                    @* (The trip row moved ABOVE the category picker — see the block up there for why.) *@
-                    @* ★ The Amount label follows the FUND, not the trip. Paying by card means paying from the bank
-                       fund, which holds account-currency money, so it says "Amount" and nothing converts — the
-                       statement already did. Paying from a foreign-cash wallet says "Amount in GBP". *@
-                    <label>@(FormForeignFund is { } cur ? string.Format(Loc["Amount in {0}"], cur.Currency) : Loc["Amount"]) <DecimalInput @ref="_amountInput" @bind-Value="_amount" /></label>
-                    @if (_amount < 0)
+                    @* Off a trip these keep their old position, after the category. On a trip they were rendered
+                       above (money first) — each renders in exactly one of the two places. *@
+                    @if (!onTrip)
                     {
-                        <small class="hint warn-text">@Loc["Amount can't be negative — enter what you spent."]</small>
-                    }
-                    @* What will actually be stored. Shown rather than silently applied: the rate is the user's own
-                       fixed guess, so the honest thing is to put the converted figure in front of them before it
-                       becomes a ledger entry. *@
-                    @if (_amount > 0 && FormForeignFund is { } fxFund)
-                    {
-                        <small class="hint trip-fx"><Icon Name="swap" /> @string.Format(Loc["logs as {0} — {1}'s rate"], Fmt(State.Money(ExpenseAmountToLog(_amount))), fxFund.Name)</small>
-                    }
-                    @* Time cost, live as you type (the amount binds on oninput). This is the moment it earns its
-                       place — a price is easiest to reconsider before it's logged, not in a recap afterwards.
-                       Silent unless a rate has been set: no rate, no claim. *@
-                    @* Time cost is read off the CONVERTED figure — hours of work against £20 would be nonsense. *@
-                    @if (_amount > 0 && State.TimeCostLabel(ExpenseAmountToLog(_amount)) is { } timeCost)
-                    {
-                        <small class="hint time-cost"><Icon Name="clock" /> @string.Format(Loc["≈ {0} of work"], timeCost)</small>
-                    }
-                    @* Recent amounts for this category as tappable hints. Never pre-filled — the amount is the one
-                       field that really changes each time, so a wrong default here writes a wrong ledger entry. *@
-                    @* Suppressed while converting: these are past amounts in the ACCOUNT currency, and tapping one
-                       into a field that's being read as pounds would log a number nobody meant. *@
-                    var amtHints = FormForeignFund is not null ? [] : State.RecentAmountsForCategory(_categoryId);
-                    @if (amtHints.Count > 0 && _expenseDrafts.Count == 0)
-                    {
-                        <div class="qp-row amt-hints">
-                            @foreach (var h in amtHints)
-                            {
-                                var hint = h;
-                                <button type="button" class="tag-chip amt-hint @(_amount == hint ? "tag-chip-on" : "")" @onclick="() => UseAmountHint(hint)">@Fmt(hint)</button>
-                            }
-                        </div>
+                        @amountField
                     }
                     @* ★ On a trip the date is today in almost every case — you are logging the coffee you just
                        bought — and it already defaults there. Shown as a line rather than a date input: a full
@@ -4017,19 +4088,9 @@ else
                     {
                         <label>@Loc["Date"] <input type="date" @bind="_expenseDate" min="@State.Period.From.ToString("yyyy-MM-dd")" max="@State.Period.To.ToString("yyyy-MM-dd")" /></label>
                     }
-                    <div class="modal-field"><span class="lbl-row">@Loc["Fund"] <button type="button" class="lbl-add" title="@Loc["New fund"]" @onclick="ExpenseAddFund">+</button></span>
-                        @* Funds are few, so the whole list is chips — no dropdown. Selected one highlighted; 🏦 = synced. *@
-                        <div class="qp-row">
-                            @foreach (var f in State.ExpensableFunds)
-                            {
-                                var qpFund = f.Id;
-                                <button type="button" class="tag-chip @(_fundId == qpFund ? "tag-chip-on" : "")" @onclick="() => _fundId = qpFund"><CatIcon Name="@State.FundIcon(qpFund)" /> @f.Name@(f.IsSynced ? " 🏦" : "")</button>
-                            }
-                        </div>
-                    </div>
-                    @if (State.FundIsSynced(_fundId))
+                    @if (!onTrip)
                     {
-                        <small class="hint"><Icon Name="bank" /> @Loc["This is a bank-synced fund — logging here records the expense without changing the synced balance (the bank stays the source). If the same charge later imports, you can dismiss the duplicate."]</small>
+                        @fundField
                     }
                     @* Same treatment as the date: on a trip the note is genuinely optional and usually skipped, so
                        it collapses to a link until it is wanted. Only while it is EMPTY — a note that had been
@@ -6010,6 +6071,32 @@ else
                     @iconGrid
                     <label>@Loc["Note (optional)"] <input type="text" @bind="_fundNote" /></label>
                     <label>@Loc["Opening balance this period (optional)"] <input type="text" inputmode="text" @bind:get="_openingAmount.ToString(System.Globalization.CultureInfo.InvariantCulture)" @bind:set="v => _openingAmount = EvalSum(v)" /></label>
+                    @* ★ The currency belongs at CREATION, not only in Edit. A holiday wallet is made for the trip —
+                       "new wallet, Lisbon cash, GBP" is one thought — and making someone save it first and then
+                       reopen it to say what it holds is asking the same question in two sittings.
+                       Defaults to the account's currency, which is what almost every wallet is, so the ordinary
+                       case is untouched: leave it alone and nothing about the wallet changes. *@
+                    <h4 class="modal-sec">@Loc["Foreign cash"]</h4>
+                    @if (!Gate.Allows(PlanFeatures.Trips))
+                    {
+                        <ProLock Feature="@PlanFeatures.Trips" Bar="true" Label="@Loc["Hold a wallet in another currency — with Pro"]" />
+                    }
+                    else
+                    {
+                        <div class="row2">
+                            <div class="modal-field"><span class="lbl-row">@Loc["Currency"]</span>
+                                <CurrencyPicker @bind-Value="_fundCurrency" AccountCurrency="@State.Currency" />
+                            </div>
+                            @if (!string.IsNullOrWhiteSpace(_fundCurrency))
+                            {
+                                <label>@string.Format(Loc["1 {0} is"], _fundCurrency!.ToUpperInvariant()) <DecimalInput T="decimal?" class="num" @bind-Value="_fundRate" placeholder="1.00" /></label>
+                            }
+                        </div>
+                        @if (!string.IsNullOrWhiteSpace(_fundCurrency))
+                        {
+                            <small class="hint">@Loc["You can leave the rate blank and let it work itself out: transfer money into this wallet and tell us what you received, and we'll take the rate from that."]</small>
+                        }
+                    }
                     <div class="modal-actions">
                         <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
                         <button @onclick="SaveFund" disabled="@(string.IsNullOrWhiteSpace(_fName))">@Loc["Add"]</button>
@@ -6068,16 +6155,12 @@ else
                     }
                     else
                     {
+                        @* A real dropdown, not a <datalist>: see CurrencyPicker for why the native one had to go
+                           (unstyleable, and unreliable-to-invisible on mobile). *@
                         <div class="row2">
-                            <label>@Loc["Currency"]
-                                <input type="text" maxlength="3" list="fund-ccy" @bind="_fundCurrency" @bind:event="oninput" placeholder="@State.Currency" />
-                                <datalist id="fund-ccy">
-                                    @foreach (var ccy in CurrencyInfo.Common)
-                                    {
-                                        <option value="@ccy">@ccy — @CurrencyInfo.Symbol(ccy).Trim()</option>
-                                    }
-                                </datalist>
-                            </label>
+                            <div class="modal-field"><span class="lbl-row">@Loc["Currency"]</span>
+                                <CurrencyPicker @bind-Value="_fundCurrency" AccountCurrency="@State.Currency" />
+                            </div>
                             <label>@(string.IsNullOrWhiteSpace(_fundCurrency) ? Loc["Rate"] : string.Format(Loc["1 {0} is"], _fundCurrency!.ToUpperInvariant())) <DecimalInput T="decimal?" class="num" @bind-Value="_fundRate" placeholder="1.00" /></label>
                         </div>
                         <small class="hint">
@@ -10401,7 +10484,7 @@ else
         _fTagId = null; _newTagName = null; _tagFiledTo = null;
         _expenseDate = _dayView ?? DateOnly.FromDateTime(DateTime.Today);
         _fundId = DefaultFundForCategory(categoryId); _modal = Modal.AddExpense;
-        _expShowCategory = false; _expShowDate = false; _expShowNote = false;
+        _expShowCategory = false; _expShowDate = false; _expShowNote = false; _tagNewOpen = false;
         _focusAmount = focusAmount;
         _expTripId = State.ActiveTrip?.Id ?? Guid.Empty;   // trip mode: default it, don't enforce it
         // ★ And take the trip's category with it. Applying this only when a trip CHIP is tapped meant the form
@@ -10426,6 +10509,8 @@ else
     // These three are the "actually, let me change that" escapes — reset every time the modal opens, because a
     // form that stayed expanded from last time would defeat the point on the next expense.
     private bool _expShowCategory, _expShowDate, _expShowNote;
+    // The inline "new tag" box, behind its ＋ until asked for. Closed again once a tag is created.
+    private bool _tagNewOpen;
 
     // F1: set when the modal should open with the cursor already in Amount; consumed once by OnAfterRenderAsync.
     private bool _focusAmount;
@@ -10497,7 +10582,9 @@ else
     // is a snapshot of the editor fields at the moment "Add another expense" was pressed.
     // Amount is stored ALREADY CONVERTED (see ExpenseAmountToLog), so a draft never carries a foreign figure —
     // the trip id rides along only to attach the row, never to re-convert it.
-    private sealed record ExpenseDraft(Guid CategoryId, decimal Amount, Guid FundId, string? Note, DateOnly Date, Guid? TagId, Guid? TripId, decimal TypedAmount);
+    // TypedAmount is the pre-conversion figure; ForeignCurrency names what it was typed in (null on an ordinary
+    // wallet). Both ride the draft so a staged row saves with the same "€14.63 · £12.50" pair as a direct one.
+    private sealed record ExpenseDraft(Guid CategoryId, decimal Amount, Guid FundId, string? Note, DateOnly Date, Guid? TagId, Guid? TripId, decimal TypedAmount, string? ForeignCurrency);
     private readonly List<ExpenseDraft> _expenseDrafts = new();
 
     /// <summary>Park the current editor entry as a staged draft row, then clear the per-item fields (keeping
@@ -10506,7 +10593,7 @@ else
     {
         if (_amount <= 0) return;
         _expenseDrafts.Add(new ExpenseDraft(_categoryId, ExpenseAmountToLog(_amount), _fundId, _note, _expenseDate, _fTagId,
-            _expTripId == Guid.Empty ? null : _expTripId, _amount));
+            _expTripId == Guid.Empty ? null : _expTripId, _amount, FormForeignFund?.Currency));
         _amount = 0; _note = null; _fTagId = null; _newTagName = null; _tagFiledTo = null;
     }
 
@@ -10534,7 +10621,8 @@ else
         var lastDate = _expenseDate;
         foreach (var d in _expenseDrafts)
         {
-            await State.AddExpense(d.CategoryId, d.Amount, d.FundId, d.Note, d.Date, tagId: d.TagId, tripId: d.TripId);
+            await State.AddExpense(d.CategoryId, d.Amount, d.FundId, d.Note, d.Date, tagId: d.TagId, tripId: d.TripId,
+                foreignAmount: d.ForeignCurrency is null ? null : d.TypedAmount, foreignCurrency: d.ForeignCurrency);
             lastDate = d.Date;
         }
         _dayView = ClampToPeriod(lastDate); // keep the Expenses tab on the day just used (feature 6)
@@ -10599,6 +10687,7 @@ else
         var id = existing?.Id ?? await State.AddTag(name);
         if (id != Guid.Empty) _fTagId = id;
         _newTagName = null;
+        _tagNewOpen = false;   // made it — the box folds away rather than sitting open for a second one
         _categoryId = keepCat; _fundId = keepFund;
         // Restore first, then let F2 have its say: a brand-new tag is unbound (no-op), but typing the name of an
         // existing bound tag selects that tag, and it should file exactly as tapping its chip would.
@@ -10904,7 +10993,9 @@ else
 
     private void OpenAddFund()
     {
-        _modalFundId = Guid.Empty; _fName = null; _fIcon = null; _fundNote = null; _openingAmount = 0; _modal = Modal.AddFund;
+        _modalFundId = Guid.Empty; _fName = null; _fIcon = null; _fundNote = null; _openingAmount = 0;
+        _fundCurrency = null; _fundRate = null;   // default: an ordinary wallet in the account's own currency
+        _modal = Modal.AddFund;
     }
 
     private void OpenEditFund(Guid fundId)
@@ -10958,6 +11049,10 @@ else
             newId = await State.AddFund(_fName!, _fundNote, _fIcon);
             if (_openingAmount > 0)
                 await State.SetFundOpeningBalance(newId, _openingAmount);
+            // A wallet created as foreign cash carries its currency from the start. The rate may legitimately be
+            // blank here — the transfer that loads it will derive one — so only the currency is required.
+            if (newId != Guid.Empty && !string.IsNullOrWhiteSpace(_fundCurrency))
+                await State.SetFundCurrency(newId, _fundCurrency!.Trim().ToUpperInvariant(), _fundRate is > 0m ? _fundRate : null);
         }
         else
         {

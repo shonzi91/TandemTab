@@ -1176,6 +1176,9 @@ accounts.MapPost("/{id:guid}/expenses", async (Guid id, AddExpenseRequest req, C
         if (req.TagId is { } addTag && account.FindTag(addTag) is not null) expense.SetTag(addTag);
         // Guarded like the tag: a trip that isn't in this account is dropped rather than stored as a dangling id.
         if (req.TripId is { } addTrip && account.FindTrip(addTrip) is not null) expense.SetTrip(addTrip);
+        // What was typed before conversion. Display only — Amount is still the single figure every total is built
+        // from, and the server does not re-convert: the client already did, once, at entry.
+        expense.SetForeign(req.ForeignAmount, req.ForeignCurrency);
         period.AddExpense(expense);
         // F4 round-ups. Same service the web client runs in its optimistic apply, so the two can't produce different
         // savings rows — the config lives on the aggregate, so nothing about it needs to travel in the request.

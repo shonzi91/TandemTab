@@ -285,6 +285,42 @@ there); archive showing *"the 312.73 GBP left is worth €344.00"* and *"€14.0
 expense"*; and afterwards 344 − 14 − 330 = **0**, wallet archived empty, with the "Exchange difference" category
 created carrying the `swap` icon.
 
+### A fourth round: a real currency picker, both figures everywhere, money-first entry
+
+- **`CurrencyPicker` (new)** replaces the native `<input list>` + `<datalist>`, which cannot be styled and which
+  mobile browsers render as a cramped native sheet or, on some Android builds, not at all — a picker you cannot see
+  is not a shortcut. It reuses `.cat-picker*` wholesale (themed, and already proven on a phone) and searches on
+  **code or name**, so "kr", "SEK" and "Swedish" all find the same row. An unlisted code is still offered verbatim,
+  because a closed list would be a regression on the datalist it replaces. Used in three places: the wallet's
+  Foreign cash section, **wallet creation**, and **account creation** (where "same as the account" is suppressed —
+  this *is* the account).
+  ⚠️ **Its CSS had to go in the GLOBAL app.css.** A component with no `.razor.css` of its own gets no scope
+  attribute, so a scoped `.ccy-code[b-…]` can never match it — the first cut put the rules in Dashboard's scoped
+  sheet and the picker rendered entirely unstyled. Same trap as `.alert-inline-link`, and the screenshot looked
+  fine; reading the computed font-weight is what showed it. `app.css?v=` bumped to **42**.
+  ⚠️ On phones the menu becomes a **bottom sheet** (scoped to `.ccy-picker`, not the shared class): 280px of list
+  dropped below a field low in a scrolling modal opened off the bottom of the screen, which is the same
+  "it isn't there" failure the datalist had.
+- **★★ Both figures are shown, and the foreign one is RECORDED rather than re-derived.** `Expense.ForeignAmount` +
+  `ForeignCurrency` (body data, `Ignore()`d, trailing optionals — no migration) store what was typed. Deriving it
+  later by dividing by the wallet's rate would restate what you spent last week in Lisbon the moment you buy pounds
+  again this morning. A **wallet's balance** is the opposite case and IS derived — a balance is a live figure, so
+  the current rate is the right lens for "what is left".
+  ⚠️ Named `Foreign*`, not `Original*`: `Expense.OriginalAmount` already exists and means "before a settlement was
+  pushed to another account". Two properties a line apart both called Original is how a wrong figure renders for
+  years.
+- **★ A bug this batch created and caught:** `Fund.SetCurrency` cleared the currency whenever the rate was blank
+  ("neither means anything without the other"), which contradicted the new "name the currency now, the transfer
+  will derive the rate" flow — a wallet created as *NOK, rate to follow* silently saved as an ordinary one. The two
+  facts are learned at different moments, so they store at different moments; `HasRate` still gates conversion.
+- **Money-first entry (suggestions 3 + 4).** On a trip the order is now trip → **amount → wallet** → label. Amount
+  and Fund became render fragments so they can appear in either position, each exactly once. The wallet sits above
+  the label deliberately: on a foreign-cash wallet the fund decides which currency the amount is read in, so it has
+  to be settled first. Fund chips now carry the wallet's currency code, which is what explains the Amount label
+  changing to "Amount in GBP" a line above.
+- **The "new tag" box is behind its ＋.** An always-open text field read as something that wanted filling in, on a
+  form whose whole job this round was to stop asking. It folds away again once the tag is made.
+
 ### A third round: the trip rate leaves the trip form, and Add expense gets shorter
 
 - **The trip's currency + rate are GONE from the trip form.** Demoting them with a hint was half a decision; the

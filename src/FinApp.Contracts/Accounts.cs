@@ -58,7 +58,10 @@ public record BootstrapAccountRequest(DateOnly? Today = null);
 public record AddExpenseRequest(Guid CategoryId, decimal Amount, Guid FundId, DateOnly Date, string? Note = null, bool OnBehalfOfOtherAccount = false, Guid? TagId = null,
     // The trip this expense belongs to. Set at entry (trip mode defaults it) so attaching costs no extra round trip.
     // Note it is NOT on the edit request — see EditExpenseRequest for why.
-    Guid? TripId = null);
+    Guid? TripId = null,
+    // What was typed before conversion, when the fund holds foreign cash — Amount is already the converted figure.
+    // Display only: see Expense.ForeignAmount for why it is recorded rather than derived from the wallet's rate.
+    decimal? ForeignAmount = null, string? ForeignCurrency = null);
 
 /// <summary>Replace an existing expense's category/amount/fund/note/date (an append-only edit — see
 /// <c>Period.EditExpense</c>). The expense id travels in the route. <see cref="TagId"/> sets the expense's single

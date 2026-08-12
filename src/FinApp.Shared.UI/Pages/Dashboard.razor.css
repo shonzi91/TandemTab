@@ -3118,6 +3118,18 @@ html.dark .cal-cell:hover:not(.cal-out) { border-color: #3a8f6c; background: #16
 .exp-settled-txt svg { width: 15px; height: 15px; }
 .exp-settled-txt strong { color: #1f2430; }
 .exp-add-note { align-self: flex-start; display: inline-flex; align-items: center; gap: 5px; }
+.tag-new-open { align-self: flex-start; display: inline-flex; align-items: center; gap: 5px; }
+.tag-new-open svg { width: 13px; height: 13px; }
+/* The wallet's currency on its chip in the fund row — so "which pocket" and "which money" are one glance, and the
+   Amount label switching to "Amount in GBP" a line above is explained by the chip you just tapped. */
+.fund-chip-ccy { margin-left: 5px; font-size: .62rem; font-weight: 800; opacity: .65; letter-spacing: .03em; }
+/* The foreign figure under a converted one — on a wallet's balance and on an expense row. Deliberately small and
+   secondary: the account figure is what every total is built from, this is the one you can count in your hand. */
+.amt-fx, .fund-row-fx { display: block; font-size: .68rem; font-weight: 700; color: #8a97a0; font-variant-numeric: tabular-nums; }
+html.dark .amt-fx, html.dark .fund-row-fx { color: #7c8a99; }
+/* (CurrencyPicker's own rules live in the GLOBAL app.css, not here — a component with no .razor.css of its own
+   renders WITHOUT a scope attribute, so a scoped `.ccy-code[b-…]` can never match it. Same trap and same reason as
+   .alert-inline-link above. Caught by reading computed styles: the markup looked right and was entirely unstyled.) */
 .exp-add-note svg { width: 13px; height: 13px; }
 html.dark .exp-settled-txt { color: #93a3b5; }
 html.dark .exp-settled-txt strong { color: #e6edf5; }
@@ -3293,6 +3305,9 @@ html.dark .trip-fx { color: #9db6ea; }
 /* Dark: a white plate against navy glass would be the brightest thing on the screen, so it becomes a deep plate
    and the two-tone goes to the wordmark's own dark pair (sky accent, muted grey) — the same relationship one
    layer down. */
+/* The account chip is a two-line block (name over the members line), so the badge's natural cross-axis centre sits
+   below the NAME it qualifies. Pinned to the top and nudged down to the name's optical middle instead. */
+.acct-chip .tripmode-tag { align-self: flex-start; margin-top: 3px; }
 html.dark .tripmode-tag { background: #16233a; border-color: rgba(157, 182, 234, .26); box-shadow: 0 2px 8px rgba(0, 0, 0, .5); }
 html.dark .tmt-trip { color: #7cc4f0; }
 html.dark .tmt-mode { color: rgba(195, 204, 216, .70); }

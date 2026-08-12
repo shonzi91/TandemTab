@@ -1,0 +1,118 @@
+@inject Localizer Loc
+
+@* A searchable currency dropdown: code + symbol + name, filtered as you type.
+   ★ It deliberately REUSES CategoryPicker's `.cat-picker*` classes rather than growing a parallel stylesheet.
+   Those rules are global (app.css), already themed for light and dark, and — the part that matters here — already
+   proven on a phone. The thing this replaces was a native <input list> + <datalist>, which cannot be styled at all
+   and which several mobile browsers render as a cramped native sheet or, on some Android builds, not at all. A
+   picker the user cannot see is not a shortcut.
+   ⚠️ Same preventDefault discipline as CategoryPicker, and for the same reason — see the long note in that file
+   about a wrapping <label> re-dispatching clicks onto the trigger button and jamming the menu open. *@
+<div class="cat-picker ccy-picker @(_open ? "open" : "") @Class">
+    <button type="button" class="cat-picker-btn" @onclick="Toggle" @onclick:preventDefault="true">
+        <span class="ccy-code">@(string.IsNullOrWhiteSpace(Value) ? Placeholder : Value!.ToUpperInvariant())</span>
+        <span class="cat-picker-lbl">@SelectedLabel</span>
+        <Icon Name="chevron" Class="cat-picker-caret" />
+    </button>
+    @if (_open)
+    {
+        <div class="cat-picker-backdrop" @onclick="Close" @onclick:preventDefault="true"></div>
+        <div class="cat-picker-menu">
+            @* Always shown here, unlike the category picker's conditional box: the list is ~35 long and nobody
+               scrolls a currency list looking for the one they already know the code of. *@
+            <input type="text" class="cat-picker-search" placeholder="@Loc["Search currencies…"]"
+                   @bind="_filter" @bind:event="oninput" @onclick:stopPropagation="true" />
+            <ul class="cat-picker-opts">
+                @* "Same as the account" is a real answer, not an empty state — most wallets hold ordinary money,
+                   and the alternative is a picker you cannot back out of once opened. *@
+                @if (AllowNone && _filter.Length == 0)
+                {
+                    <li>
+                        <button type="button" class="cat-picker-opt @(string.IsNullOrWhiteSpace(Value) ? "sel" : "")"
+                                @onclick="() => Pick(null)" @onclick:preventDefault="true">
+                            <span class="ccy-code">@AccountCurrency</span>
+                            <span class="cat-picker-opt-lbl">@NoneLabel</span>
+                        </button>
+                    </li>
+                }
+                @* ⚠️ The loop variable is NOT called `code`: "@code" is the Razor @code DIRECTIVE, so writing it in
+                   markup makes the compiler look for a member block and fail with errors that name everything
+                   except the variable. (Same trap the trip form's currency list hit — it is worth the odd name.) *@
+                @foreach (var c in Filtered)
+                {
+                    var ccy = c;
+                    <li>
+                        <button type="button" class="cat-picker-opt @(string.Equals(ccy, Value, StringComparison.OrdinalIgnoreCase) ? "sel" : "")"
+                                @onclick="() => Pick(ccy)" @onclick:preventDefault="true">
+                            <span class="ccy-code">@ccy</span>
+                            <span class="cat-picker-opt-lbl">@CurrencyInfo.Name(ccy)</span>
+                            <span class="ccy-sym">@CurrencyInfo.Symbol(ccy).Trim()</span>
+                        </button>
+                    </li>
+                }
+                @* ★ A code we don't list is still a currency. Typing three letters offers them verbatim rather than
+                   refusing — the old <datalist> allowed that too, and a closed list would be a regression. *@
+                @if (Filtered.Count == 0 && _filter.Trim().Length is > 0 and <= 4)
+                {
+                    <li>
+                        <button type="button" class="cat-picker-opt" @onclick="() => Pick(_filter.Trim())" @onclick:preventDefault="true">
+                            <span class="ccy-code">@_filter.Trim().ToUpperInvariant()</span>
+                            <span class="cat-picker-opt-lbl">@Loc["Use this code"]</span>
+                        </button>
+                    </li>
+                }
+                else if (Filtered.Count == 0)
+                {
+                    <li class="cat-picker-empty">@Loc["No matches"]</li>
+                }
+            </ul>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public string? Value { get; set; }
+    [Parameter] public EventCallback<string?> ValueChanged { get; set; }
+    /// <summary>The account's own currency — shown as the "same as the account" row and as the empty-state code.</summary>
+    [Parameter] public string AccountCurrency { get; set; } = "EUR";
+    /// <summary>Whether "same as the account" is offered. False on account creation, where a currency must be chosen.</summary>
+    [Parameter] public bool AllowNone { get; set; } = true;
+    [Parameter] public string? Class { get; set; }
+
+    private bool _open;
+    private string _filter = "";
+
+    private string Placeholder => AccountCurrency;
+
+    private string NoneLabel => Loc["Same as the account"];
+
+    private string SelectedLabel =>
+        string.IsNullOrWhiteSpace(Value)
+            ? (AllowNone ? NoneLabel : CurrencyInfo.Name(AccountCurrency))
+            : CurrencyInfo.Name(Value!);
+
+    /// <summary>Matches on the CODE or the NAME, so "kr", "SEK" and "Swedish" all find the same row — people
+    /// reach for whichever of the three they happen to know.</summary>
+    private IReadOnlyList<string> Filtered
+    {
+        get
+        {
+            var q = _filter.Trim();
+            if (q.Length == 0) return CurrencyInfo.Common;
+            return CurrencyInfo.Common
+                .Where(c => c.Contains(q, StringComparison.OrdinalIgnoreCase)
+                            || CurrencyInfo.Name(c).Contains(q, StringComparison.CurrentCultureIgnoreCase))
+                .ToList();
+        }
+    }
+
+    private void Toggle() { _open = !_open; _filter = ""; }
+    private void Close() { _open = false; _filter = ""; }
+
+    private async Task Pick(string? code)
+    {
+        _open = false; _filter = "";
+        var next = string.IsNullOrWhiteSpace(code) ? null : code!.Trim().ToUpperInvariant();
+        if (!string.Equals(next, Value, StringComparison.Ordinal)) await ValueChanged.InvokeAsync(next);
+    }
+}

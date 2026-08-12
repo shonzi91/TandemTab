@@ -662,19 +662,36 @@ public class TripTests
     }
 
     [Fact]
-    public void A_fund_rate_needs_both_halves_and_clears_together()
+    public void A_wallet_can_name_its_currency_before_anyone_knows_the_rate()
     {
         var account = new Account("Personal", Eur);
         var wallet = account.AddFund("Lisbon cash");
 
-        // A rate with no currency has nothing to label the field with; a currency with no rate cannot convert.
-        account.SetFundCurrency(wallet.Id, "GBP", null);
+        // ★ The state the creation form produces: "this wallet is for pounds, I'll buy them tomorrow." The two
+        // facts arrive at different moments, so they must be storable at different moments — these used to clear
+        // together and the wallet silently saved as an ordinary one.
+        account.SetFundCurrency(wallet.Id, "gbp", null);
+        Assert.Equal("GBP", wallet.Currency);
+        Assert.Null(wallet.Rate);
+        // No rate means nothing converts, which is exactly right until the loading transfer derives one.
         Assert.False(wallet.HasRate);
-        account.SetFundCurrency(wallet.Id, null, 1.17m);
-        Assert.False(wallet.HasRate);
+        Assert.Equal(200m, wallet.ToAccountCurrency(200m));
 
         account.SetFundCurrency(wallet.Id, "GBP", 1.17m);
-        account.SetFundCurrency(wallet.Id, null, null);
+        Assert.True(wallet.HasRate);
+        Assert.Equal(234m, wallet.ToAccountCurrency(200m));
+    }
+
+    [Fact]
+    public void Clearing_a_wallets_currency_drops_the_rate_with_it()
+    {
+        var account = new Account("Personal", Eur);
+        var wallet = account.AddFund("Lisbon cash");
+        account.SetFundCurrency(wallet.Id, "GBP", 1.17m);
+
+        // A rate with no currency has nothing to label the field with, so the currency is what owns the pair.
+        account.SetFundCurrency(wallet.Id, null, 1.17m);
+
         Assert.Null(wallet.Currency);
         Assert.Null(wallet.Rate);
         // Clearing converts nothing retroactively: amounts were stored converted at entry time.

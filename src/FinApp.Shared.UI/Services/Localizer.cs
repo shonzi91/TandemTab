@@ -1730,6 +1730,13 @@ public sealed class Localizer(IJSRuntime js)
         // Trip mode states the settled fields instead of asking for them.
         ["Change"] = "Промени",
         ["Add a note"] = "Добави бележка",
+        ["New tag"] = "Нов етикет",
+        // The searchable currency picker (replaces the native datalist, which mobile could not show).
+        ["Search currencies…"] = "Търси валута…",
+        ["Same as the account"] = "Като на сметката",
+        ["Use this code"] = "Използвай този код",
+        ["You can leave the rate blank and let it work itself out: transfer money into this wallet and tell us what you received, and we'll take the rate from that."] =
+            "Може да оставиш курса празен: прехвърли пари в този портфейл и кажи колко си получил/а — ще вземем курса оттам.",
         ["{0} {1} — are you off?"] = "{0} {1} — тръгвате ли?",
         ["started {0}"] = "започна на {0}",
         ["Trip mode stays off until you say so, so nothing gets filed as holiday spending by mistake."] =

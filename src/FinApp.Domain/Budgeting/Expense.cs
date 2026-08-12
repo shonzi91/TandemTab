@@ -161,6 +161,46 @@ public sealed class Expense : Entity
     /// constructor parameter — the ledger fields it *does* map must stay the whole ctor.</summary>
     public void SetTrip(Guid? tripId) => TripId = tripId is { } t && t != Guid.Empty ? t : null;
 
+    /// <summary>
+    /// What was actually typed when this expense was paid from a foreign-cash wallet — "£12.50" — together with
+    /// <see cref="ForeignCurrency"/>. Null on every ordinary expense, which is nearly all of them.
+    /// <para>
+    /// ⚠️ <b>Not to be confused with <see cref="OriginalAmount"/></b>, which is a much older and unrelated thing:
+    /// this expense's value before a settlement was pushed to another account. Hence "Foreign" rather than the
+    /// "Original" that would read more naturally here — two properties a line apart both called Original, meaning
+    /// different things, is how a wrong figure gets rendered for years.
+    /// </para>
+    /// <para>
+    /// <b>★ Recorded, not re-derived.</b> <see cref="Amount"/> is already converted and stays the single figure
+    /// every total in the app is built from; this is only ever displayed alongside it. Working the foreign figure
+    /// back out by dividing by the wallet's current rate would be wrong the moment that wallet is reloaded at a new
+    /// rate — the app would start restating what you spent last week in Lisbon because you bought pounds again this
+    /// morning. What you typed is a fact about that moment, so it is stored as one.
+    /// </para>
+    /// Body data — travels in the account snapshot, not the relational header.
+    /// </summary>
+    public decimal? ForeignAmount { get; private set; }
+
+    /// <summary>The currency <see cref="ForeignAmount"/> was typed in ("GBP"), or null.</summary>
+    public string? ForeignCurrency { get; private set; }
+
+    /// <summary>True when this expense carries a foreign figure worth showing next to the converted one.</summary>
+    public bool HasForeign => ForeignAmount is > 0m && !string.IsNullOrEmpty(ForeignCurrency);
+
+    /// <summary>Record what was typed, and in what, before conversion. Clears with a null/zero amount. A setter for
+    /// the same reason as <see cref="SetTrip"/>: EF cannot bind an ignored property to a constructor parameter.</summary>
+    public void SetForeign(decimal? amount, string? currency)
+    {
+        if (amount is not > 0m || string.IsNullOrWhiteSpace(currency))
+        {
+            ForeignAmount = null;
+            ForeignCurrency = null;
+            return;
+        }
+        ForeignAmount = amount;
+        ForeignCurrency = currency.Trim().ToUpperInvariant();
+    }
+
     public Expense(
         Guid categoryId,
         Money amount,

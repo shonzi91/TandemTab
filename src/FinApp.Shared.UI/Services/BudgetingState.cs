@@ -1157,19 +1157,26 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     /// <summary><paramref name="tripId"/> attaches the expense to a trip. The caller passes
     /// <see cref="ActiveTrip"/> while trip mode is on — a default the user can clear on the form, not a rule, since
     /// the weekly shop still happens on the day you fly home.</summary>
-    public Task AddExpense(Guid categoryId, decimal amount, Guid fundId, string? note, DateOnly date, bool onBehalfOfOtherAccount = false, Guid? tagId = null, Guid? tripId = null) =>
+    /// <param name="foreignAmount">What the user actually typed, when the fund holds foreign cash and
+    /// <paramref name="amount"/> is the converted figure. Display only — see <c>Expense.ForeignAmount</c>.</param>
+    public Task AddExpense(Guid categoryId, decimal amount, Guid fundId, string? note, DateOnly date, bool onBehalfOfOtherAccount = false, Guid? tagId = null, Guid? tripId = null,
+        decimal? foreignAmount = null, string? foreignCurrency = null) =>
         ExecuteOptimisticAsync(() =>
         {
             var expense = new Expense(categoryId, Money(amount), date, CurrentMemberId, fundId, note, onBehalfOfOtherAccount: onBehalfOfOtherAccount);
             expense.SetFundSynced(FundIsSynced(fundId));
             expense.SetTag(tagId);
             expense.SetTrip(tripId);
+            // Remember what was typed before conversion, so the row can show "€14.63 · £12.50" for ever after. The
+            // caller passes the pre-conversion figure; deriving it later from the wallet's rate would restate old
+            // expenses every time that wallet is reloaded at a new rate.
+            expense.SetForeign(foreignAmount, foreignCurrency);
             Period.AddExpense(expense);
             // F4: sweep the change into savings. The server runs the identical service on its side of this request,
             // so the optimistic paint matches what the refetch brings back.
             _roundUps.Sweep(Account, Period, expense.Amount, expense.Date);
         },
-        id => api.AddExpenseAsync(id, new AddExpenseRequest(categoryId, amount, fundId, date, note, onBehalfOfOtherAccount, tagId, tripId)),
+        id => api.AddExpenseAsync(id, new AddExpenseRequest(categoryId, amount, fundId, date, note, onBehalfOfOtherAccount, tagId, tripId, foreignAmount, foreignCurrency)),
         refetchAfter: true);
 
     // Bank-confirm flows only — bank provenance (externalId + auto-filed badge) isn't in the command API yet.

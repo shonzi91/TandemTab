@@ -67,19 +67,30 @@ public sealed class Fund : Entity
     /// Amount in <see cref="Currency"/> and convert what is typed.</summary>
     public bool HasRate => Rate is > 0m && !string.IsNullOrEmpty(Currency);
 
-    /// <summary>Set (or clear, by passing null for either half) the foreign currency this fund holds and its rate.
-    /// Clearing does not touch anything already recorded: amounts are stored converted, at entry time, so a rate
-    /// change can never rewrite what past expenses cost.</summary>
+    /// <summary>
+    /// Set the foreign currency this fund holds and, optionally, the rate it was bought at. Passing a null/blank
+    /// currency clears both.
+    /// <para>
+    /// ★ <b>A currency without a rate is a legitimate state</b>, and getting this wrong cost a debugging round: the
+    /// two used to clear together, so creating a wallet as "NOK, rate to follow" silently saved an ordinary wallet.
+    /// The two facts are learned at different moments — the currency when you make the wallet ("this one is for
+    /// Norway"), the rate when you actually buy the notes, which is the transfer that loads it. Until then
+    /// <see cref="HasRate"/> is false, so nothing converts and the entry form behaves exactly as it does for an
+    /// ordinary wallet. That is the correct behaviour for a wallet whose rate nobody has told us yet.
+    /// </para>
+    /// <para>Clearing never touches what is already recorded: amounts are stored converted, at entry time, so a
+    /// rate change can never rewrite what past expenses cost.</para>
+    /// </summary>
     public void SetCurrency(string? currency, decimal? rate)
     {
-        if (string.IsNullOrWhiteSpace(currency) || rate is not > 0m)
+        if (string.IsNullOrWhiteSpace(currency))
         {
             Currency = null;
             Rate = null;
             return;
         }
         Currency = currency.Trim().ToUpperInvariant();
-        Rate = rate;
+        Rate = rate is > 0m ? rate : null;
     }
 
     /// <summary>Convert an amount typed in this fund's currency into the account currency, rounded to the cent.
