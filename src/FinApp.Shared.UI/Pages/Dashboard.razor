@@ -4455,6 +4455,26 @@ else
                         </label>
                     }
                     <label>@Loc["Amount"] <DecimalInput @bind-Value="_mTransferAmount" /></label>
+                    @* ★ Loading a foreign-cash wallet DERIVES its rate instead of asking for one. "€234 out, £200
+                       in" is what actually happened at the exchange office — the user is holding a receipt, not a
+                       rate — and 234/200 = 1.17 is the TRUE rate for that pile of notes, margin and fees included,
+                       which a typed mid-market figure never is.
+                       Only when the destination wallet already names a currency: the currency is a property of the
+                       wallet (set once, on the wallet), the rate is a property of this particular purchase. *@
+                    @if (!MTransferDestIsAccount && State.Account.FindFund(_mTransferDestId) is { Currency: not null } fxDest)
+                    {
+                        <label>@string.Format(Loc["And you received ({0})"], fxDest.Currency) <DecimalInput T="decimal?" @bind-Value="_mTransferReceived" placeholder="@Loc["optional"]" /></label>
+                        @if (_mTransferReceived is > 0m && _mTransferAmount > 0m)
+                        {
+                            <small class="hint trip-fx"><Icon Name="swap" />
+                                @string.Format(Loc["Rate: 1 {0} = {1}. Saved on {2}, and used for everything you spend from it."],
+                                    fxDest.Currency, Fmt(State.Money(decimal.Round(_mTransferAmount / _mTransferReceived.Value, 4, MidpointRounding.AwayFromZero))), fxDest.Name)</small>
+                        }
+                        else
+                        {
+                            <small class="hint">@string.Format(Loc["What you got in {0}, so we can work out the rate you actually paid. Leave it blank to keep {1}'s current rate."], fxDest.Currency, fxDest.Name)</small>
+                        }
+                    }
                     @if (MTransferDestIsAccount)
                     {
                         <small class="hint @(MTransferDipsSavings ? "warn-text" : "")">@Loc["In this fund:"] <strong>@Fmt(State.FundBalance(_mTransferFromId))</strong>. @(MTransferDipsSavings ? Loc["⚠ This dips into money earmarked for savings."] : "")</small>
@@ -6118,6 +6138,7 @@ else
                 case Modal.ArchiveFund:
                     <h3><Icon Name="archive" /> @Loc["Archive"] @State.FundName(_modalFundId)</h3>
                     var _arcBal = State.FundBalance(_modalFundId);
+                    var _arcFx = State.Account.FindFund(_modalFundId) is { HasRate: true } af ? af : null;
                     @if (_arcBal.Amount > 0m)
                     {
                         <p class="hint">@string.Format(Loc["This fund still holds {0}. Move it to another fund before archiving — its history stays intact and you can restore it anytime."], Fmt(_arcBal))</p>
@@ -6130,6 +6151,30 @@ else
                                 }
                             </select>
                         </label>
+                        @* ★ Coming home with foreign cash left over is the interesting case, and it must not be
+                           fudged. The ledger says this wallet holds €35.10 because that is what the notes cost at
+                           the rate you bought them. Change them back and you will not get €35.10 — the rate has
+                           moved and the office takes its cut. The difference is a REAL gain or loss and has to
+                           land somewhere honest, not vanish into a rounding line.
+                           Defaulted to the book value, so someone who spent the wallet down to nothing or doesn't
+                           care simply presses Archive and nothing is invented. *@
+                        @if (_arcFx is { } arcFx)
+                        {
+                            <label>@Loc["What you actually got back"] <DecimalInput T="decimal?" @bind-Value="_arcGotBack" placeholder="@Fmt(_arcBal)" /></label>
+                            <small class="hint">
+                                @string.Format(Loc["At {0}'s rate the {1} left is worth {2}. Change it back at a different rate and the difference is a real gain or loss — tell us what you got and we'll book it."],
+                                    arcFx.Name,
+                                    arcFx.Rate is { } rr && rr > 0m ? $"{decimal.Round(_arcBal.Amount / rr, 2)} {arcFx.Currency}" : arcFx.Currency,
+                                    Fmt(_arcBal))
+                            </small>
+                            @if (_arcGotBack is { } got && got > 0m && got != _arcBal.Amount)
+                            {
+                                var diff = got - _arcBal.Amount;
+                                <small class="hint @(diff < 0 ? "warn-text" : "good-text")">
+                                    @string.Format(diff < 0 ? Loc["{0} exchange loss — logged as an expense."] : Loc["{0} exchange gain — logged as money in."], Fmt(State.Money(Math.Abs(diff))))
+                                </small>
+                            }
+                        }
                     }
                     else
                     {
@@ -7099,10 +7144,15 @@ else
 
     private void OpenFundMovements(Guid fundId) { _modalFundId = fundId; _modal = Modal.FundMovements; }
 
+    // What came back when a foreign-cash wallet was changed back. Null = "the books are right", which is the
+    // ordinary case and the default.
+    private decimal? _arcGotBack;
+
     private void OpenArchiveFund(Guid fundId)
     {
         _modalFundId = fundId;
         _moveBalanceToId = State.RootFunds.FirstOrDefault(f => f.Id != fundId && !State.FundIsSynced(f.Id))?.Id ?? Guid.Empty;
+        _arcGotBack = null;
         _modal = Modal.ArchiveFund;
     }
 
@@ -7112,6 +7162,15 @@ else
         if (bal.Amount > 0m)
         {
             if (_moveBalanceToId == Guid.Empty) return;   // must land the balance somewhere (archiving keeps history)
+            // ★ Closing a foreign-cash wallet: book the exchange difference BEFORE moving the money, so the wallet
+            // is worth exactly what came back by the time it is emptied and lands at zero. Booking it after would
+            // move a figure the wallet no longer holds.
+            var fx = State.Account.FindFund(_modalFundId);
+            if (fx is { HasRate: true } && _arcGotBack is { } got && got > 0m && got != bal.Amount)
+            {
+                await State.RecordExchangeDifference(_modalFundId, got - bal.Amount, State.TodayDate);
+                bal = State.FundBalance(_modalFundId);   // re-read: the adjustment moved it
+            }
             await State.ArchiveFund(_modalFundId, _moveBalanceToId, bal.Amount);
         }
         else
@@ -7403,6 +7462,9 @@ else
     private Guid _mTransferDestId;
     private Guid _mTransferDestFundId;
     private decimal _mTransferAmount;
+    // What the exchange office actually handed over, in the destination wallet's currency. Optional: blank keeps
+    // the wallet's existing rate. See the Transfer modal for why the rate is derived here rather than typed.
+    private decimal? _mTransferReceived;
 
     private Guid _editTransferId;
     private Guid _editTransferFromId;
@@ -10973,6 +11035,7 @@ else
         _mTransferDestId = State.RootFunds.FirstOrDefault(f => f.Id != fundId)?.Id
             ?? State.TransferableAccounts.FirstOrDefault()?.Id ?? Guid.Empty;
         _mTransferAmount = 0;
+        _mTransferReceived = null;
         _mTransferDestFundId = Guid.Empty;
         _modal = Modal.Transfer;
         if (MTransferDestIsAccount) await OnModalDestChanged();
@@ -10995,7 +11058,19 @@ else
         if (MTransferDestIsAccount)
             await State.TransferToAccount(_mTransferDestId, _mTransferFromId, _mTransferAmount, null, _mTransferDestFundId);
         else
+        {
             await State.TransferFunds(_mTransferFromId, _mTransferDestId, _mTransferAmount, null);
+            // ★ Derive the wallet's rate from what actually changed hands. The transfer itself is unchanged — it
+            // moves the account-currency amount, and the wallet's BALANCE stays in the account currency like every
+            // other fund's. What the rate records is how many of those units one unit of foreign cash cost, which
+            // is exactly out ÷ received.
+            if (_mTransferReceived is > 0m
+                && State.Account.FindFund(_mTransferDestId) is { Currency: { } destCcy })
+            {
+                var derived = decimal.Round(_mTransferAmount / _mTransferReceived.Value, 4, MidpointRounding.AwayFromZero);
+                if (derived > 0m) await State.SetFundCurrency(_mTransferDestId, destCcy, derived);
+            }
+        }
         CloseModal();
     });
 

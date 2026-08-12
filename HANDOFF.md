@@ -13,8 +13,10 @@ date is not a departure, so the day it arrives you get a confirm button on Home 
 `tools/pairscan.js` reports **0** partially-darkened rules.
 ✅ **Everything is BROWSER-VERIFIED** on a fresh four-trip fixture, both themes.
 ✅ **Committed, pushed and DEPLOYED** — see the Session 101 entry for the revision and the served-bytes check.
-⚠️ **⛔ The trip-rate double-conversion bug from S100 is STILL OPEN** — it is item #9 and the next thing to do.
-⚠️ **Android has none of any of this.**)
+✅ **#9 — the trip-rate double-conversion — is FIXED, and its two follow-ups with it**: the rate now lives on the
+fund, is derived from the transfer that loads the wallet, and closing a wallet books the real gain or loss on
+whatever cash came home.
+⚠️ **Android has none of any of this** — it is now the only large thing outstanding on trips.)
 
 Previously: 2026-08-11 (Session 100 — **the four trip items the owner left, and S99's whole unproven UI finally
 driven in a running app.** The Home trip banner, the shell theme shift, the bell departure nudge and the
@@ -256,11 +258,32 @@ the common case.
   "Rome cash" wallet (GBP @ 1.17) switches the label to "Amount in GBP" and shows *"logs as €58.50 — Rome cash's
   rate"*. Same €50, and now only the wallet decides.
 
-⚠️ **Two pieces of the S100 design are deliberately still outstanding**, and neither blocks correctness:
-**deriving the rate from the loading transfer** ("€234 out of Bank → £200 into Lisbon cash" gives 1.17 exactly,
-and the user holds a receipt rather than a rate), and **closing a wallet with money left in it** (come home with
-£30 and that is still money; converting it back at a new rate is a real gain or loss and must land somewhere
-honest rather than vanishing into a rounding line). The rate is typed for now.
+### ✅ …and both of #9's leftovers are done too
+
+**The rate is DERIVED from the transfer that loads the wallet.** Move money into a wallet that names a currency and
+the form asks one extra question — "and you received (GBP)" — then stores `out ÷ received`. €234 for £200 is 1.17,
+and that is the *true* rate for that pile of notes, the office's margin included, which a typed mid-market figure
+never is. The user is holding a receipt, not a rate. Blank keeps the existing rate, so it never gets in the way.
+The transfer itself is untouched: it still moves the account-currency amount, and the wallet's balance stays in the
+account currency like every other fund's. Only the **currency** lives on the wallet; the **rate** is a property of
+each purchase, which is why it is captured here.
+
+**Closing a wallet with money left in it books a real gain or loss.** Archiving a foreign-cash wallet now asks what
+actually came back. The ledger says the wallet holds €344 because that is what the notes cost; change them back at
+a different rate and you get €330, and that €14 is not a rounding line — it is what travelling in another currency
+cost. It lands as an expense (or a deposit, on a gain) in its own **"Exchange difference"** category, deliberately
+*not* the reconciliation "Adjustment" one: both are corrections but they answer different questions ("the books
+drifted" vs "the pound moved"), and a category that means two things means neither.
+
+⚠️ **Order matters and is commented at the call site**: the difference is booked BEFORE the balance is moved, so
+the wallet is worth exactly what came back by the time it is emptied. Booking it after would move a figure the
+wallet no longer holds.
+
+**Proved end to end in a running app**: €234 for £200 → rate 1.17; a second load of €110 for £100 → rate rewritten
+to **1.10** (which is what proves the derivation actually writes rather than agreeing with what was already
+there); archive showing *"the 312.73 GBP left is worth €344.00"* and *"€14.00 exchange loss — logged as an
+expense"*; and afterwards 344 − 14 − 330 = **0**, wallet archived empty, with the "Exchange difference" category
+created carrying the `swap` icon.
 
 ### A second round, after the first deploy
 

@@ -1646,6 +1646,18 @@ public sealed class Localizer(IJSRuntime js)
         // The rate moved off the trip and onto the wallet: a card payment is already converted by the bank, and
         // converting it again inflated every one. See Fund.Currency.
         ["Foreign cash"] = "Валута в брой",
+        // Deriving a wallet's rate from the transfer that loads it, and settling what's left when it is closed.
+        ["And you received ({0})"] = "И получи ({0})",
+        ["Rate: 1 {0} = {1}. Saved on {2}, and used for everything you spend from it."] =
+            "Курс: 1 {0} = {1}. Запазен на {2} и се използва за всичко похарчено от него.",
+        ["What you got in {0}, so we can work out the rate you actually paid. Leave it blank to keep {1}'s current rate."] =
+            "Колко получи в {0}, за да изчислим реалния курс. Остави празно, за да запазиш текущия курс на {1}.",
+        ["What you actually got back"] = "Колко получи обратно",
+        ["At {0}'s rate the {1} left is worth {2}. Change it back at a different rate and the difference is a real gain or loss — tell us what you got and we'll book it."] =
+            "По курса на {0} остатъкът от {1} струва {2}. Ако го обмениш по друг курс, разликата е реална печалба или загуба — кажи колко получи и ще я запишем.",
+        ["{0} exchange loss — logged as an expense."] = "{0} загуба от обмен — записва се като разход.",
+        ["{0} exchange gain — logged as money in."] = "{0} печалба от обмен — записва се като приход.",
+        ["Exchange difference"] = "Разлика от обмен",
         ["Hold a wallet in another currency — with Pro"] = "Портфейл в друга валута — с Pro",
         ["Leave this empty for an ordinary wallet. Set it for a pile of foreign cash — a holiday wallet — and everything you spend from it converts at the rate you bought it at."] =
             "Остави празно за обикновен портфейл. Попълни го за пари в чужда валута в брой — портфейл за почивката — и всичко похарчено от него се превалутира по курса, на който си ги купил/а.",

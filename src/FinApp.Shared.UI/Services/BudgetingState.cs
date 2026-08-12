@@ -1516,6 +1516,35 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
         }
     }
 
+    /// <summary>
+    /// Book the gain or loss from changing foreign cash back — the difference between what a wallet's notes cost
+    /// and what they were actually worth on the way home. A loss becomes an <i>expense</i> in the fund, a gain a
+    /// <i>deposit</i> into it, so the wallet ends up holding exactly what came back and can be closed at zero.
+    /// <para>
+    /// ★ Its own <b>"Exchange difference"</b> category rather than the reconciliation "Adjustment" one. Both are
+    /// corrections, but they answer different questions — "the books drifted from reality" versus "the pound moved
+    /// while I was away" — and a category that means two things means neither. It also makes the cost of travelling
+    /// in a foreign currency visible, which is a figure worth being able to look at.
+    /// </para>
+    /// </summary>
+    public async Task RecordExchangeDifference(Guid fundId, decimal difference, DateOnly date)
+    {
+        if (difference == 0m) return;
+        const string name = "Exchange difference";
+        if (difference < 0m)
+        {
+            var cat = AllCategories.FirstOrDefault(c => string.Equals(c.Name, name, StringComparison.OrdinalIgnoreCase))?.Id
+                      ?? await AddCategory(name, null, "swap");
+            await AddExpense(cat, Math.Abs(difference), fundId, name, date);
+        }
+        else
+        {
+            var cat = ContributionCategories.FirstOrDefault(c => string.Equals(c.Name, name, StringComparison.OrdinalIgnoreCase))?.Id
+                      ?? await AddContributionCategory(name, "swap");
+            await RecordDeposit(cat, fundId, difference, date);
+        }
+    }
+
     /// <summary>True when the deposit belongs to the signed-in user (only they may edit/remove it).</summary>
     public bool CanHandleContribution(Contribution c) => c.MemberId == CurrentMemberId;
 
