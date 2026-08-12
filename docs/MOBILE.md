@@ -61,6 +61,30 @@ there, because a thin client cannot render what it does not fetch.
 Android calls **37** of the account endpoints (**46** after Session 91, **55** after Session 92, **59** after
 Session 94, **69** after Session 95). It does not call these:
 
+> ### ⚠️ Re-measured, Session 103 (2026-08-12) — read this before the table below
+>
+> **The gap did not just grow; its character changed.** Re-running the measurement (every `accounts.Map*` route
+> against every path in `TandemTabApi`) puts Android at **61 of 99** account paths, with **38** never called. The
+> table below is still right about what it lists, but it predates trips, expense↔tag/trip links, wallet
+> currencies, transfers-out and half the bank rows.
+>
+> **★ The finding that matters is not a count.** The two biggest remaining rows — **trips** and **tags** — were
+> **not client work at all**: neither had *any* read model. Trips were **write-only over the API** (five commands,
+> no `GET`), because the thick client reads them out of the account snapshot it carries; and `ExpenseDto` carried
+> neither `TripId` nor `TagIds`, with no tag list on any view. A thin client cannot render what it cannot fetch,
+> so Android had **no trips at all** — not a smaller trips, none — and could not so much as show that an expense
+> was labelled. **This is the fourth time R2 has hit the same shape** (the Home hero, the reconcile inputs, the
+> bucket upsert): *check what the endpoint returns before sizing a row.* It is no longer a caution — it is the
+> single most reliable predictor of what a row costs.
+>
+> **✅ Both are now unblocked (Session 103):** `GET /accounts/{id}/trips?today=` → `TripsViewDto` (built on
+> `TripRecapService`, so the totals are the domain's, not a second summation), `ExpenseDto.TripId` + `TagIds`,
+> and `TagOptionDto` on the Spending view. Seven server tests. Android's data layer (DTOs + eight API calls) is
+> wired; **its UI is not built yet** — that is the next Android row, and it is the largest one left.
+>
+> **The remaining server-blocked rows** are unchanged: **F4 round-ups** (no contract field, no command endpoint)
+> and the **fund↔bank sync toggle** (`SetFundSynced`, `TODO(cutover)`).
+
 | Missing capability | Endpoints never called | Weight |
 |---|---|---|
 | **Savings/debt bucket money-movements** (CRUD ✅ **done S91**) | ~~`/savings/buckets…`~~, `/savings/disburse`, `/savings/to-budget`, `/savings/transfer`, `/savings/movements/…` | M |
@@ -77,6 +101,17 @@ Session 94, **69** after Session 95). It does not call these:
 | Reallocation between budget and savings | `/reallocations/to-budget`, `/reallocations/to-savings` | S |
 | Settling an on-behalf expense | `/expenses/{id}/settle` | S |
 | ~~Contribution (income) categories~~ | ~~`/contribution-categories…`~~ | ✅ **done S91** (create only) |
+| **Trips — the whole feature** (S99–S101). Read model ✅ **added S103**; the **UI is the open row** | `/trips` (GET ✅ + POST), `/trips/{id}` (PUT/DELETE), `/trips/{id}/started`, `/trips/{id}/finished`, `/trips/{id}/use-savings`, `/trip-tags`, `/expenses/{id}/trip` — **all now called by `TandemTabApi`; nothing renders them yet** | **L** |
+| **Expense labels** — read ✅ **added S103** (`ExpenseDto.TagIds`, `TagOptionDto`); writing one is still unwired | `/expenses/{id}/tag` | S |
+| **Money to another account** (transfers out + editing the pair) | `/transfers-out`, `/account-transfers/{id}` | M |
+| **A wallet's own currency** (the S~102 multi-currency work) | `/funds/{id}/currency` | S–M |
+| **Bank sync's back half** — Android links and syncs but can't map, re-point or reset a connection | `/bank/accounts`, `/bank/account`, `/bank/fund`, `/bank/mappings`, `/bank/reset` | M |
+| Archived accounts (list + reactivate) | `/archived`, `/reactivate` | S |
+| Editing/removing an income category | `/contribution-categories/{id}` | S |
+| The account structure read (a thicker picker source) | `/structure` | S |
+
+*(`/snapshot` is deliberately absent from that list: it is the thick client's whole-aggregate channel, and a thin
+client calling it would be carrying the domain it exists not to carry.)*
 
 **Read that table as the R2 backlog.** The four **L** rows are the ones that make Android a *different product*
 rather than a smaller one: a user who only has the phone cannot start next month, cannot create a savings goal,

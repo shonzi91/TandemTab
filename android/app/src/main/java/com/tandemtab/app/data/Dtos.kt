@@ -120,6 +120,10 @@ data class ExpenseDto(
     val installmentGroupId: String? = null,
     val installmentPart: String? = null,
     val debtBucketId: String? = null,
+    // The journey this expense points at, if any. A LINK, never a date test — a March flight belongs to a June trip.
+    val tripId: String? = null,
+    // Its labels. A list because the server's field has always been one, though the UI settles on at most one.
+    val tagIds: List<String> = emptyList(),
 )
 
 @Serializable
@@ -127,6 +131,17 @@ data class CategoryOptionDto(val id: String, val name: String, val icon: String?
 
 @Serializable
 data class FundOptionDto(val id: String, val name: String, val synced: Boolean = false)
+
+/** A tag as a picker option. `categoryId` is the category picking it files the expense into (so a label is a filing
+ *  decision, not a note); `tripTag` marks the seeded trip label set, which only the trip entry form offers. */
+@Serializable
+data class TagOptionDto(
+    val id: String,
+    val name: String,
+    val icon: String? = null,
+    val categoryId: String? = null,
+    val tripTag: Boolean = false,
+)
 
 @Serializable
 data class SpendingViewDto(
@@ -136,7 +151,109 @@ data class SpendingViewDto(
     val expenses: List<ExpenseDto> = emptyList(),
     val categories: List<CategoryOptionDto> = emptyList(),
     val funds: List<FundOptionDto> = emptyList(),
+    val tags: List<TagOptionDto> = emptyList(),
 )
+
+/** One trip. `state` is resolved by the SERVER against the local date we send it — deliberately not re-derived
+ *  here: four states come out of three nullable dates plus a "today", and the rules are not obvious (a trip is
+ *  finished when the traveller says so *or* its last day passes; it is active only once departure is CONFIRMED,
+ *  because a date is not a departure). A second implementation in Kotlin is a second place for it to drift. */
+@Serializable
+data class TripDto(
+    val id: String,
+    val name: String,
+    val destination: String? = null,
+    val from: String,                          // ISO yyyy-MM-dd, inclusive
+    val to: String,                            // ISO yyyy-MM-dd, inclusive
+    val icon: String? = null,
+    val savingCategoryId: String? = null,
+    val savingCategoryName: String? = null,
+    val budget: Double? = null,
+    val categoryId: String? = null,
+    val categoryName: String? = null,
+    val categoryIcon: String? = null,
+    val spendCurrency: String? = null,
+    val rate: Double? = null,
+    val startedOn: String? = null,
+    val finishedOn: String? = null,
+    val savingsApplied: Double = 0.0,
+    val state: String = TripState.UPCOMING,
+    val lengthInDays: Int = 1,
+    val day: Int? = null,                      // which day of the trip today is, 1-based
+    val daysUntil: Int? = null,
+    val spent: Double = 0.0,
+    val expenseCount: Int = 0,
+    val prePaid: Double = 0.0,                 // paid before departure — the half people forget
+    val onTrip: Double = 0.0,
+    val afterReturn: Double = 0.0,
+    val fundedFromSavings: Double = 0.0,
+    val perDay: Double = 0.0,
+) {
+    val isActive: Boolean get() = state == TripState.ACTIVE
+    val isAwaitingStart: Boolean get() = state == TripState.AWAITING_START
+    val isFinished: Boolean get() = state == TripState.FINISHED
+    val overBudget: Boolean get() = budget?.let { it > 0.0 && spent > it } == true
+}
+
+/** The four trip states the server sends. Constants rather than an enum so an unknown value from a newer server
+ *  degrades to "some other state" instead of throwing during deserialization. */
+object TripState {
+    const val UPCOMING = "upcoming"
+    const val AWAITING_START = "awaiting-start"
+    const val ACTIVE = "active"
+    const val FINISHED = "finished"
+}
+
+/** A trip label (Stay, Travel, Food & drink…) — `categoryId` is where picking it files the expense. */
+@Serializable
+data class TripTagDto(val id: String, val name: String, val icon: String? = null, val categoryId: String? = null)
+
+@Serializable
+data class TripsViewDto(
+    val version: Long = 0,
+    val currency: String = "",
+    val trips: List<TripDto> = emptyList(),    // newest departure first
+    val tripTags: List<TripTagDto> = emptyList(),
+)
+
+/** Create a trip. The dates say when to default new expenses to it and when to count down — they do NOT decide
+ *  what is in it: an expense belongs because it carries the trip's id. */
+@Serializable
+data class CreateTripRequest(
+    val name: String,
+    val from: String,
+    val to: String,
+    val destination: String? = null,
+    val icon: String? = null,
+)
+
+/** Edit a trip — a FULL REPLACE, like every other edit request on this API: an omitted field means "no longer set",
+ *  not "leave alone". Send the whole intended state or you will clear the savings link, the budget and the rate. */
+@Serializable
+data class EditTripRequest(
+    val name: String,
+    val from: String,
+    val to: String,
+    val destination: String? = null,
+    val icon: String? = null,
+    val savingCategoryId: String? = null,
+    val budget: Double? = null,
+    val spendCurrency: String? = null,
+    val rate: Double? = null,
+    val categoryId: String? = null,
+)
+
+/** Attach an expense to a trip, or detach it with a null id. */
+@Serializable
+data class SetExpenseTripRequest(val tripId: String? = null)
+
+/** Declare a trip over, or put it back on the road. */
+@Serializable
+data class FinishTripRequest(val finished: Boolean)
+
+/** Confirm the trip has actually begun (or take that back) — the tap that turns "awaiting-start" into "active". */
+@Serializable
+data class StartTripRequest(val started: Boolean)
 
 /** The signed-in user (GET /me). `provider` is "google"/"facebook" for external sign-in (no local password), else
  *  null. `id` tells "you" apart from the other people on a shared account — which member row wears the *you* tag,

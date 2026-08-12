@@ -1945,6 +1945,20 @@ accounts.MapDelete("/{id:guid}/tags/{tagId:guid}", async (Guid id, Guid tagId, C
 
 // Trips — a named journey expenses point at. Membership is by link, never by date, so none of these endpoints
 // touches an expense's own period, amount or budget impact.
+
+// The read side. Everything below this was write-only until it existed: the thick client reads trips out of the
+// snapshot it already carries, so five commands shipped with no way for a thin client to see what they had done —
+// which is why Android had no trips at all rather than a smaller version of them.
+// `today` is the caller's own local date (as on /bootstrap): whether a trip is running is a question about the
+// traveller's day, and a server in UTC would flip a trip's state hours early or late for half the world.
+accounts.MapGet("/{id:guid}/trips", async (Guid id, DateOnly? today, ClaimsPrincipal user, SnapshotService svc, CancellationToken ct) =>
+{
+    var snap = await svc.GetAsync(user.UserId(), id, ct);
+    if (string.IsNullOrEmpty(snap.Payload)) return Results.Ok(TripsViewDto.Empty);
+    var account = AccountSnapshotSerializer.Deserialize(snap.Payload);
+    return Results.Ok(TripsMap.View(account, snap.Version, today ?? DateOnly.FromDateTime(DateTime.UtcNow)));
+});
+
 accounts.MapPost("/{id:guid}/trips", async (Guid id, CreateTripRequest req, ClaimsPrincipal user, SnapshotService svc,
         EntitlementService entitlements, SyncNotifier notifier, CancellationToken ct) =>
 {

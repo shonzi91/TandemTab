@@ -1,6 +1,18 @@
 # TandemTab (FinApp) — session handoff
 
-Last updated: 2026-08-12 (Session 102 — **three owner items on Breakdown, and a dead CSS rule they uncovered.**
+Last updated: 2026-08-12 (Session 103 — **the Android parity gap re-measured, and what the measurement found.**
+Android calls **61 of 99** account paths. The count isn't the finding: **trips were write-only over the API** —
+five commands, no `GET`, because the thick client reads them out of the snapshot it carries — and `ExpenseDto`
+carried neither `TripId` nor `TagIds`. So R2's two biggest remaining rows were **not client work at all**;
+Android had *no* trips rather than a smaller version of them. Fourth time R2 has hit that shape.
+✅ **Unblocked:** `GET /trips?today=` → `TripsViewDto` (built on `TripRecapService`, and the **derived state
+travels** so Kotlin never re-derives it), `ExpenseDto.TripId`/`TagIds`, `TagOptionDto` on the Spending view,
+7 new server tests, and Android's data layer wired (`compileDebugKotlin` clean). `docs/MOBILE.md`'s table — the
+R2 backlog itself — rewritten with the fresh measurement.
+**454 + 48 + 347 green.**
+⚠️ **No Android trips UI yet** — the next row, and the largest one left.
+
+Previously: 2026-08-12 (Session 102 — **three owner items on Breakdown, and a dead CSS rule they uncovered.**
 The "← All categories" button is gone (the axis chips already cleared the drill); the Income/Spent/of-income
 cards now **toggle** with the drilled category's name, since they describe the window, not one category; a
 category **always** splits by tag and each tag is its own **collapsed section**; and the drilled view lost the
@@ -136,6 +148,40 @@ a separate balance axis — because flows and a stock were sharing one scale. **
 ✅ **Committed and the web half is DEPLOYED** (Session 93 catch-up): Android sharing as `596eea5`, the web batch
 as `de51071`, now live on **`finapp-00280-4s8`** (traffic forced `--to-latest`; run URL + tandemtab.com 200; 5
 `secretKeyRef`s; no WARNING+ logs). Prior context below is Session 91.)
+
+## Session 103 (2026-08-12) — **The Android parity gap, re-measured — and the thing the measurement found.**
+
+Owner picked R2 off the open-beta roadmap. The re-measure (every `accounts.Map*` route against every path in
+`TandemTabApi`) puts Android at **61 of 99** account paths, **38** never called. The count is not the finding.
+
+- **★★ Trips were WRITE-ONLY over the API, and tags nearly so.** Five trip commands shipped in S99–S101 with
+  **no `GET`** — the thick client reads trips out of the snapshot it already carries, so nothing ever needed one.
+  `ExpenseDto` carried neither `TripId` nor `TagIds`, and no view carried a tag list. So the two biggest rows
+  left in R2 were **not client work**: Android had no trips at all — not a smaller trips, *none* — and could not
+  show that an expense was labelled. **Fourth time R2 has hit this shape** (Home hero, reconcile inputs, bucket
+  upsert): *check what the endpoint returns before sizing a row.*
+- **The read slice that unblocks both.** `GET /accounts/{id}/trips?today=` → `TripsViewDto`, built on
+  **`TripRecapService`** rather than a second summation for the wire — a trip's total is gathered by expense
+  *link* across every period, and re-deriving that on the server would be a parallel implementation of the one
+  rule the feature rests on. Plus `ExpenseDto.TripId` + `TagIds` and `TagOptionDto` on the Spending view, both
+  trailing and optional so an older client deserializes the same responses unchanged.
+- **★ The derived state travels, rather than each client re-deriving it.** Four states (upcoming →
+  awaiting-start → active → finished) come out of three nullable dates plus a "today", and the rules are not
+  obvious: *finished* is declared **or** past the last day, and *active* needs a **confirmed** departure because
+  a date is not a departure. A second implementation in Kotlin is a second place for it to drift, on the surface
+  least able to prove it. The client sends its local date (`?today=`), the server answers with the state.
+- **⚠️ Starting/finishing are written against the SERVER's date and the domain refuses to start a trip that
+  isn't running today** — so a test that confirms a departure cannot use a fixed calendar fixture. Two tests were
+  rebuilt around a today-relative trip. Worth knowing before writing the next one.
+- **Android's data layer is wired** — `TripDto`/`TripsViewDto`/`TripTagDto`, the four request records, `TagOptionDto`,
+  `ExpenseDto.tripId`/`tagIds`, and eight API calls. `:app:compileDebugKotlin` clean.
+- `docs/MOBILE.md`'s parity table — which **is** the R2 backlog — was rewritten with the fresh measurement and
+  seven rows it never had (trips, expense labels, transfers-out, wallet currency, the bank back half, archived
+  accounts, income-category edits).
+
+**454 + 48 + 347 green** (7 new server tests; domain and persistence untouched by this change).
+⚠️ **No Android UI yet.** The trips screen is the next row and the largest one left — deliberately not started
+half-way here, because S99 already proved what unproven UI costs.
 
 ## Session 102 (2026-08-12) — **Three owner items on Breakdown: fewer controls, and the ones left mean something.**
 

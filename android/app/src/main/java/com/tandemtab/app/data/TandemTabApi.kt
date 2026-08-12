@@ -158,6 +158,38 @@ class TandemTabApi(
 
     suspend fun spending(accountId: String, period: Int? = null): SpendingViewDto = authedGet("/accounts/$accountId/spending${periodQ(period)}").body()
 
+    // --- Trips: a named journey expenses point at ---------------------------------------------------------------
+    // Membership is by LINK, never by date, so none of these touches an expense's period, amount or budget impact.
+
+    /** Every trip, newest departure first, with what it has cost and the state it is in. `today` is our own local
+     *  date: whether a trip is running is a question about the traveller's day, and a UTC server would flip its
+     *  state hours early or late. */
+    suspend fun trips(accountId: String, today: String): TripsViewDto =
+        authedGet("/accounts/$accountId/trips?today=$today").body()
+
+    suspend fun createTrip(accountId: String, req: CreateTripRequest): MutationResultDto =
+        authedPost("/accounts/$accountId/trips", req).body()
+
+    /** Full replace — send the whole intended state (see [EditTripRequest]). */
+    suspend fun editTrip(accountId: String, tripId: String, req: EditTripRequest): MutationResultDto =
+        authedPut("/accounts/$accountId/trips/$tripId", req).body()
+
+    /** Deletes the trip, not its expenses: they are detached and stay in their periods. */
+    suspend fun deleteTrip(accountId: String, tripId: String): MutationResultDto =
+        authedDelete("/accounts/$accountId/trips/$tripId").body()
+
+    /** "We've left." The server dates it — a device with a wrong clock shouldn't be able to write a departure. */
+    suspend fun startTrip(accountId: String, tripId: String, started: Boolean): MutationResultDto =
+        authedPut("/accounts/$accountId/trips/$tripId/started", StartTripRequest(started)).body()
+
+    suspend fun finishTrip(accountId: String, tripId: String, finished: Boolean): MutationResultDto =
+        authedPut("/accounts/$accountId/trips/$tripId/finished", FinishTripRequest(finished)).body()
+
+    /** Attach an existing expense to a trip (null detaches). Its own call so labelling a booking never has to
+     *  re-post its amount — the full expense edit refuses rows in closed periods, and a booking usually is one. */
+    suspend fun setExpenseTrip(accountId: String, expenseId: String, tripId: String?): MutationResultDto =
+        authedPut("/accounts/$accountId/expenses/$expenseId/trip", SetExpenseTripRequest(tripId)).body()
+
     /** Per-category budget coverage (allocated / spent / remaining) for the Spending → Categories view. */
     suspend fun budgets(accountId: String, period: Int? = null): BudgetsViewDto = authedGet("/accounts/$accountId/budgets${periodQ(period)}").body()
 

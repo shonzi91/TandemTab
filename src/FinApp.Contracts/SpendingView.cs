@@ -28,13 +28,24 @@ public record ExpenseDto(
     // "principal"/"interest"/"additional"; DebtBucketId names the loan. All null on an ordinary expense.
     Guid? InstallmentGroupId = null,
     string? InstallmentPart = null,
-    Guid? DebtBucketId = null);
+    Guid? DebtBucketId = null,
+    // The journey this expense points at, if any — a March flight can belong to a June trip, so this is a link,
+    // never a date test. Null on ordinary spending.
+    Guid? TripId = null,
+    // The labels on it. A list because the field has always been one (see Expense.TagIds), though the UI has
+    // settled on at most one; a client that assumes a scalar here would break the day that changes back.
+    IReadOnlyList<Guid>? TagIds = null);
 
 /// <summary>A spend category as a picker option — id, label, stored icon, and parent for indentation. No money.</summary>
 public record CategoryOptionDto(Guid Id, string Name, string? Icon, Guid? ParentId);
 
 /// <summary>A fund as a picker option. <see cref="Synced"/> funds are bank-driven and excluded from manual pickers.</summary>
 public record FundOptionDto(Guid Id, string Name, bool Synced);
+
+/// <summary>A tag as a picker option — the flat, cross-cutting label axis that sits alongside categories.
+/// <see cref="CategoryId"/> is the category picking it files the expense into (F2), and <see cref="TripTag"/> marks
+/// the seeded trip label set, which the trip entry form offers and the everyday one does not.</summary>
+public record TagOptionDto(Guid Id, string Name, string? Icon, Guid? CategoryId, bool TripTag);
 
 /// <summary>The whole Spending surface in one read — the thin client's initial load: the current period's expenses,
 /// the balance-header figures, and the category/fund options its pickers need. <see cref="Version"/> is the account
@@ -45,9 +56,15 @@ public record SpendingViewDto(
     AccountOverviewDto Overview,
     IReadOnlyList<ExpenseDto> Expenses,
     IReadOnlyList<CategoryOptionDto> Categories,
-    IReadOnlyList<FundOptionDto> Funds)
+    IReadOnlyList<FundOptionDto> Funds,
+    // Active tags, so a thin client can label an expense and read the labels back. Trailing + optional: an older
+    // client deserializes this response unchanged.
+    IReadOnlyList<TagOptionDto>? Tags = null)
 {
     public static readonly SpendingViewDto Empty = new(0, "", AccountOverviewDto.Empty, [], [], []);
+
+    /// <summary>Tags as a list, never null — an account with no tags is an empty picker, not a missing one.</summary>
+    public IReadOnlyList<TagOptionDto> TagOptions => Tags ?? [];
 }
 
 /// <summary>The delta an expense mutation returns: the new snapshot <see cref="Version"/>, the affected row's id, the

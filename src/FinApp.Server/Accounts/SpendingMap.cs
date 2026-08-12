@@ -67,7 +67,11 @@ public static class SpendingMap
             InstallmentPart.Additional => "additional",
             _ => null,
         },
-        e.DebtBucketId);
+        e.DebtBucketId,
+        e.TripId,
+        // Only tags that still exist: a deleted tag leaves its id behind on old rows (see Account.RemoveTag), and a
+        // client that rendered those would show a label with no name.
+        e.TagIds.Where(t => account.FindTag(t) is not null).ToList());
 
     /// <summary>The full Spending surface for <paramref name="viewPeriod"/> (the current period when null; empty
     /// currency-only view when the account has no period).</summary>
@@ -91,7 +95,10 @@ public static class SpendingMap
             .Where(f => !f.IsArchived)
             .Select(f => new FundOptionDto(f.Id, f.Name, f.IsSynced))
             .ToList();
+        var tags = account.ActiveTags
+            .Select(t => new TagOptionDto(t.Id, t.Name, t.Icon, t.CategoryId, t.IsTripTag))
+            .ToList();
 
-        return new SpendingViewDto(version, account.Currency, Overview(account, period, bankBalance, bankCurrency), expenses, categories, funds);
+        return new SpendingViewDto(version, account.Currency, Overview(account, period, bankBalance, bankCurrency), expenses, categories, funds, tags);
     }
 }
