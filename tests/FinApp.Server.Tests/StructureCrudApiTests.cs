@@ -51,7 +51,7 @@ public class StructureCrudApiTests : IClassFixture<FinAppServerFactory>
     // --- Spend categories ----------------------------------------------------
 
     [Fact]
-    public async Task Create_category_under_a_parent_with_icon_and_essential()
+    public async Task Create_category_keeps_icon_and_essential_and_ignores_any_parent()
     {
         var (client, auth) = await _factory.RegisterAndAuthAsync("st_cat_create");
         var account = await CreateAccount(client, "Data");
@@ -63,7 +63,7 @@ public class StructureCrudApiTests : IClassFixture<FinAppServerFactory>
         var child = (await LoadAsync(client, account.Id)).FindCategory(childId)!;
         Assert.Equal("Groceries", child.Name);
         Assert.Equal("cart", child.Icon);
-        Assert.Equal(food, child.ParentId);
+        Assert.Null(child.ParentId);   // categories are flat now — see CategoryFlattenTests
         Assert.True(child.IsEssential);
     }
 

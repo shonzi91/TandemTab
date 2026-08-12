@@ -27,9 +27,10 @@ public class AccountRoundTripTests : IDisposable
         Assert.Equal("Family", account.Name);
         Assert.Equal(2, account.Members.Count);
 
-        // Flat categories incl. sub-categories (Food, Restaurants, Kids, Kid1).
+        // Four categories, all top-level: nesting is gone, and a parent id passed by an older caller is ignored
+        // rather than rejected (see CategoryFlattenTests for what happens to trees already in the wild).
         Assert.Equal(4, account.Categories.Count);
-        Assert.Contains(account.Categories, c => c.Name == "Restaurants" && c.ParentId is not null);
+        Assert.All(account.Categories, c => Assert.Null(c.ParentId));
 
         var period = Assert.Single(account.Periods);
         Assert.Equal(new Money(1250, "EUR"), period.InitialTotal);     // 1100 bank + 150 cash

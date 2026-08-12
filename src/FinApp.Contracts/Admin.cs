@@ -26,7 +26,22 @@ public sealed record AdminMetricsDto(
     /// renewal <i>upserts</i> it, so a customer in their third year is one row, not three payments. Counting real
     /// payments needs a payment/webhook event log, which lands with the provider — see MONETIZATION.md. Until then
     /// this is the honest figure: distinct users on a real (non-sandbox, non-trial) paid plan.</summary>
-    int PayingSubscribers = 0);
+    int PayingSubscribers = 0,
+    // --- Cohorts -------------------------------------------------------------------------------------------
+    /// <summary>Every cohort with a head count, biggest first. <see cref="BetaCohort"/> above is the beta row of
+    /// this list and stays for the tile that reads it; this is the whole picture beside it.</summary>
+    IReadOnlyList<AdminCohortPoint>? Cohorts = null,
+    /// <summary>The configured free-beta seat cap (<c>Beta__Cap</c>). 0 means the beta is closed/disabled.</summary>
+    int BetaCap = 0,
+    /// <summary>Seats left before new sign-ups stop being grandfathered to Pro. Never negative.</summary>
+    int BetaSeatsLeft = 0);
 
 /// <summary>One day's sign-up count, for the little activity sparkline. <see cref="Day"/> is an ISO date (yyyy-MM-dd).</summary>
 public sealed record AdminDayPoint(string Day, int Count);
+
+/// <summary>
+/// One sign-up cohort and how many people are in it. <see cref="Cohort"/> is the stored key (<c>beta</c>,
+/// <c>free</c>, <c>test</c>) rather than a display name, so an unrecognised value that somehow reached the
+/// column still shows up here instead of being silently folded into another row.
+/// </summary>
+public sealed record AdminCohortPoint(string Cohort, int Count);

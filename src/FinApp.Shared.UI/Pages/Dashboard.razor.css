@@ -1331,10 +1331,24 @@ html.dark .brk-note { color: #8b96a4; }
     color: #13a06e; font-weight: 700; font-size: .82rem; padding: 14px 4px 4px;
     border-bottom: 1px solid #f1f3f6;
 }
-.date-sep-lbl { flex: 1; min-width: 0; }
+.date-sep-lbl { flex: none; min-width: 0; }
+/* The trip a day falls inside, beside its date. Same palette index as the calendar band (see .cal-trip-cN, which
+   these share their colours with) so both views agree about which journey a day belongs to. It takes the leftover
+   width rather than the label, so a long trip name truncates instead of pushing the date around. */
+.date-sep-trip {
+    flex: 0 1 auto; min-width: 0; margin-left: 8px;
+    display: inline-flex; align-items: center; gap: 4px; width: max-content; max-width: 100%;
+    padding: 1px 8px; border-radius: 999px;
+    font-size: .64rem; font-weight: 800; letter-spacing: .01em;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.date-sep-trip-ico { font-size: .72rem; line-height: 1; }
+.date-sep:hover .date-sep-trip { text-decoration: none; }
 /* The day total, in the amount column: width matches the row .amt so it lines up over the expense amounts, and the
    pad matches .row-actions so both clear the trailing actions column. Quieter than the date — it's a subtotal. */
-.date-sep-tot { min-width: 88px; text-align: right; white-space: nowrap; color: #6b7684; font-weight: 800; font-variant-numeric: tabular-nums; }
+/* margin-left:auto, not a flex-grow on the label: the label now shares the row with an optional trip chip, and
+   growing either one moves the total depending on whether the day happens to be inside a trip. */
+.date-sep-tot { margin-left: auto; min-width: 88px; text-align: right; white-space: nowrap; color: #6b7684; font-weight: 800; font-variant-numeric: tabular-nums; }
 .date-sep-pad { min-width: 58px; flex-shrink: 0; }
 .date-sep:first-child { padding-top: 4px; }
 .date-sep:hover { color: #0e7c55; }
@@ -1572,6 +1586,25 @@ html.dark .debt-prog-cap { color: #7b8194; }
 .goal-stat { background: #f3fbf7; border: 1px solid #e2efe8; border-radius: 14px; padding: 8px 14px; display: flex; flex-flow: row wrap; align-items: baseline; gap: 3px 8px; }
 html.dark .goal-stat { background: #14231d; border-color: #24463a; }
 .goal-summary .fund-add { margin-left: auto; }
+/* Spending's view switch carries five chips once an account has a trip, and .plan-toggle doesn't wrap — so on a
+   phone the row ran off the right edge and Trends/Trips were simply unreachable. The chips wrap among themselves,
+   and below 560px the switch takes a row of its own so the add-action and the ⋯ menu drop to the next one
+   together rather than being squeezed against the edge by the chips beside them. */
+.spend-view-toggle { flex-wrap: wrap; }
+
+/* Breakdown drilled into one category: the way back, then which category is being split. The back chip leads the
+   row because leaving is the action — the label beside it is a statement, not a control. */
+.brk-drill { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 0 0 10px; }
+.brk-drill-cat { display: inline-flex; align-items: center; gap: 6px; font-size: .9rem; color: #1f2430; }
+html.dark .brk-drill-cat { color: #e6edf3; }
+.brk-drill-by { font-size: .72rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: #8a97a0; }
+.brk-drill-out, .brk-drill-in { cursor: pointer; }
+.brk-drill-in { display: inline-flex; align-items: center; gap: 5px; margin-left: auto; }
+.brk-drill-in svg { width: 13px; height: 13px; }
+@media (max-width: 560px) {
+    .spend-summary .spend-view-toggle { flex: 1 1 100%; }
+    .spend-summary .fund-add { margin-left: 0; }
+}
 .goal-stat-k { font-size: .63rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: #8a97a0; }
 .goal-stat-v { font-size: 1.18rem; font-weight: 800; color: #13a06e; line-height: 1.15; letter-spacing: -.01em; }
 html.dark .goal-stat-v { color: #3fe0c5; }
@@ -1774,25 +1807,30 @@ html.dark .detail-subcat-sum { color: #7c8a94; }
     margin-top: auto; align-self: stretch;
     /* Negative margins take it to the cell's edges, under the 5px padding, so consecutive days join up. */
     margin-left: -5px; margin-right: -5px; margin-bottom: -5px;
-    min-height: 13px; padding: 1px 4px;
+    min-height: 15px; padding: 2px 5px;
     background: #dbe6fa; color: #1e3a68;
-    font-size: .56rem; font-weight: 800; line-height: 11px;
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    font-size: .58rem; font-weight: 800; line-height: 11px;
+    /* The icon and the name are one lockup now, so the band is a flex row rather than a text node. The name is the
+       part that gives — it's the half you can lose and still know which journey this is. */
+    display: flex; align-items: center; gap: 3px;
+    overflow: hidden; white-space: nowrap;
 }
+.cal-trip-ico { flex: none; font-size: .64rem; line-height: 1; }
+.cal-trip-nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 /* ★ A colour per trip, cycled by TripColourIndex, so two journeys in one month are told apart at a glance rather
    than by reading their labels. Five is enough: it is the number of trips that can plausibly touch one month, and
    a longer ramp starts inventing colours the palette can't keep legible in both themes.
    Each pair is a soft tint + a dark ink of the same hue, and every one has a dark-theme twin below (pairscan). */
-.cal-trip-c0 .cal-trip-band { background: #dbe6fa; color: #1e3a68; }   /* the trip blue — the feature's own colour */
-.cal-trip-c1 .cal-trip-band { background: #d8f0e4; color: #14543a; }   /* green */
-.cal-trip-c2 .cal-trip-band { background: #f7e2cf; color: #7a4415; }   /* amber */
-.cal-trip-c3 .cal-trip-band { background: #ecdcf6; color: #55247a; }   /* violet */
-.cal-trip-c4 .cal-trip-band { background: #fadadf; color: #7c1f36; }   /* rose */
-html.dark .cal-trip-c0 .cal-trip-band { background: #1e3054; color: #9db6ea; }
-html.dark .cal-trip-c1 .cal-trip-band { background: #16382a; color: #74d3a8; }
-html.dark .cal-trip-c2 .cal-trip-band { background: #3d2a16; color: #e0b078; }
-html.dark .cal-trip-c3 .cal-trip-band { background: #2f1f42; color: #c3a0e0; }
-html.dark .cal-trip-c4 .cal-trip-band { background: #40202a; color: #e79aab; }
+.cal-trip-c0 .cal-trip-band, .date-sep-trip.cal-trip-c0 { background: #dbe6fa; color: #1e3a68; }   /* the trip blue — the feature's own colour */
+.cal-trip-c1 .cal-trip-band, .date-sep-trip.cal-trip-c1 { background: #d8f0e4; color: #14543a; }   /* green */
+.cal-trip-c2 .cal-trip-band, .date-sep-trip.cal-trip-c2 { background: #f7e2cf; color: #7a4415; }   /* amber */
+.cal-trip-c3 .cal-trip-band, .date-sep-trip.cal-trip-c3 { background: #ecdcf6; color: #55247a; }   /* violet */
+.cal-trip-c4 .cal-trip-band, .date-sep-trip.cal-trip-c4 { background: #fadadf; color: #7c1f36; }   /* rose */
+html.dark .cal-trip-c0 .cal-trip-band, html.dark .date-sep-trip.cal-trip-c0 { background: #1e3054; color: #9db6ea; }
+html.dark .cal-trip-c1 .cal-trip-band, html.dark .date-sep-trip.cal-trip-c1 { background: #16382a; color: #74d3a8; }
+html.dark .cal-trip-c2 .cal-trip-band, html.dark .date-sep-trip.cal-trip-c2 { background: #3d2a16; color: #e0b078; }
+html.dark .cal-trip-c3 .cal-trip-band, html.dark .date-sep-trip.cal-trip-c3 { background: #2f1f42; color: #c3a0e0; }
+html.dark .cal-trip-c4 .cal-trip-band, html.dark .date-sep-trip.cal-trip-c4 { background: #40202a; color: #e79aab; }
 .cal-cell.cal-trip-a .cal-trip-band { margin-left: 0; border-top-left-radius: 6px; border-bottom-left-radius: 6px; }
 .cal-cell.cal-trip-z .cal-trip-band { margin-right: 0; border-top-right-radius: 6px; border-bottom-right-radius: 6px; }
 /* A day outside the shown period keeps the band but drops its weight — the trip is real, that day just isn't
@@ -2212,6 +2250,17 @@ html.dark .archived-h { color: #9aa7b4; }
 }
 .row-menu button:hover { background: #f3f5f8; }
 .row-menu button.danger { color: #c0392b; }
+/* A ⋯ menu opens downward, so on a row near the bottom of the list it lands below the fold — and a menu you have
+   to scroll to find reads as a menu that didn't open. `finappFitMenus` (index.html) measures after each render and
+   flips it above its row when there isn't room below. The last selector wins over the per-variant `top` overrides
+   further down (.fund-row / .ring-card), which is why this sits with them rather than in the base rule.
+   ⚠️ Scoped to 561px and up: below that the menu is already a fixed bottom sheet (see the phone media rule), so
+   it can't fall below the fold there and this override would only fight the sheet's own pinning. */
+@media (min-width: 561px) {
+    .row-menu.menu-up, .fund-row .row-menu.menu-up, .ring-card .row-menu.menu-up {
+        top: auto; bottom: 100%; margin-top: 0; margin-bottom: 8px;
+    }
+}
 /* Circle action menus (budget + savings/debt buckets): a wider speech-bubble that points at the ring. */
 .ring-card .row-menu { top: -4px; left: 100%; right: auto; margin-left: 11px; min-width: 210px; }
 .ring-card .row-menu::before {

@@ -1758,5 +1758,191 @@ public sealed class Localizer(IJSRuntime js)
         ["{0} older trips — see your whole travel history with Pro"] = "Още {0} по-стари пътувания — виж цялата си история с Pro",
         ["Save up for a trip and spend it as a trip — with Pro"] = "Спестявай за пътуване и го харчи като пътуване — с Pro",
         ["Log a trip in its local currency — with Pro"] = "Записвай пътуване в местната му валута — с Pro",
+
+        // ─── Catch-up sweep: everything the recent batches shipped in English only ───
+
+        // Breakdown: the per-category tag drill.
+        ["Chart this"] = "Покажи на графика",
+        ["All categories"] = "Всички категории",
+        ["by tag"] = "по етикет",
+        ["Uncategorised"] = "Без категория",
+        ["Other"] = "Друго",
+        ["{0} avg / period"] = "средно {0} / период",
+        ["Transfer to another account"] = "Прехвърляне към друга сметка",
+
+        // The by-date ledger and its day headings.
+        ["Today"] = "Днес",
+        ["Yesterday"] = "Вчера",
+        ["Period options"] = "Настройки на периода",
+        ["Switch account"] = "Смени сметката",
+        ["Edit last transfer"] = "Редактирай последния превод",
+        ["Tag (optional)"] = "Етикет (по избор)",
+        ["Saving"] = "Спестяване",
+        ["Paid from"] = "Платено от",
+        ["From fund"] = "От портфейл",
+        ["From my income"] = "От доходите ми",
+        ["Goal amount"] = "Целева сума",
+        ["just you"] = "само ти",
+        ["you & {0}"] = "ти и {0}",
+        ["you + {0}"] = "ти + {0}",
+
+        // Deleting a category: where its history goes.
+        ["1 expense is filed here. Deleting moves it to another category — same amount, same date, same tags."] =
+            "Тук е записан 1 разход. Изтриването го премества в друга категория — същата сума, същата дата, същите етикети.",
+        ["{0} expenses are filed here. Deleting moves them to another category — same amounts, same dates, same tags."] =
+            "Тук са записани {0} разхода. Изтриването ги премества в друга категория — същите суми, същите дати, същите етикети.",
+        ["Any budget it has is dropped — spending moves, caps don’t."] =
+            "Бюджетът ѝ отпада — разходите се местят, лимитите не.",
+        ["There's nowhere to move them — this is your only category. Add another one first, or archive this."] =
+            "Няма къде да ги преместим — това е единствената ти категория. Добави друга или архивирай тази.",
+        ["Move its history to"] = "Премести историята ѝ в",
+        ["Move & delete"] = "Премести и изтрий",
+        ["Archive instead"] = "Архивирай вместо това",
+        ["The category and every expense in it stay exactly as they are."] =
+            "Категорията и всички разходи в нея остават точно както са.",
+        ["Its {0} cap for this period goes away."] = "Лимитът ѝ от {0} за този период отпада.",
+        ["Remove budget"] = "Премахни бюджета",
+        ["Remove the budget for"] = "Премахни бюджета за",
+        ["Remove this period"] = "Премахни този период",
+
+        // Transfers and settlements.
+        ["Both sides go: this outflow and the matching deposit in {0}."] =
+            "И двете страни отпадат: този разход и съответното постъпление в {0}.",
+        ["The deposit this created in {0} is updated to match."] =
+            "Постъплението, което това създаде в {0}, се обновява съответно.",
+        ["This is a bank-synced fund — logging here records the expense without changing the synced balance (the bank stays the source). If the same charge later imports, you can dismiss the duplicate."] =
+            "Този портфейл е свързан с банка — записът тук отчита разхода, без да променя синхронизираното салдо (банката остава източникът). Ако същата транзакция се внесе после, можеш да отхвърлиш дубликата.",
+
+        // Importing a statement.
+        ["Choose a file"] = "Избери файл",
+        ["Choose…"] = "Избери…",
+        ["or drop it here"] = "или го пусни тук",
+        ["Supported formats"] = "Поддържани формати",
+        ["Parsed on your device — nothing is sent until you confirm the rows."] =
+            "Обработва се на твоето устройство — нищо не се изпраща, докато не потвърдиш редовете.",
+
+        // Bills, loans and what moves a balance.
+        ["{0} — skipped this month."] = "{0} — пропуснат този месец.",
+        ["Known bills still due"] = "Известни сметки, които предстоят",
+        ["Left after bills"] = "Остава след сметките",
+        ["It isn't counted as still due, so your safe-to-spend is higher by its amount."] =
+            "Не се брои за предстоящ, така че „безопасно за харчене“ е по-високо със сумата му.",
+        ["What moves the balance"] = "Какво движи остатъка",
+        ["The payments I log"] = "Плащанията, които записвам",
+        ["Its own schedule"] = "Собствения си погасителен план",
+        ["The balance drops only when an installment is logged here — accurate while you keep logging, and it simply goes stale if you stop. Best when this loan is paid from a wallet this app tracks."] =
+            "Остатъкът намалява само когато тук се запише вноска — точно е, докато записваш, и просто остарява, ако спреш. Подходящо, когато кредитът се плаща от портфейл, който приложението следи.",
+        ["The balance is carried forward over the installments due since it was last stated, whether or not you log them. Best when the loan is paid from an account this app can't see."] =
+            "Остатъкът се пренася през вноските, дължими след последното му обявяване, независимо дали ги записваш. Подходящо, когато кредитът се плаща от сметка, която приложението не вижда.",
+        ["That loan's balance follows its own schedule by your choice, so confirming this bill will log the payment but won't move the balance. Change it on the loan under “What moves the balance”."] =
+            "По твой избор остатъкът по този кредит следва собствения си план, така че потвърждаването на сметката ще запише плащането, но няма да движи остатъка. Смени го при кредита под „Какво движи остатъка“.",
+        ["Saving this will also switch that loan's balance onto the payments you log, since you're telling us you pay it from here. What's owed today is kept exactly as it is; only what moves it from now on changes — and you can set it back on the loan."] =
+            "Запазването ще превключи остатъка по кредита към плащанията, които записваш, защото ни казваш, че го плащаш оттук. Дължимото днес остава точно същото; променя се само какво го движи оттук нататък — и можеш да го върнеш от кредита.",
+        ["The {0} — taken from the loan's installment day. Change it on the loan to move both."] =
+            "{0} — взето от деня на вноската по кредита. Смени го при кредита, за да се преместят и двете.",
+        ["No installment logged this period yet."] = "Още няма записана вноска за този период.",
+        ["This period's installment is logged — {0} recorded as an expense."] =
+            "Вноската за този период е записана — {0} отчетени като разход.",
+        ["Nothing is set to log this loan automatically yet — set up a recurring bill for it, or log each installment by hand, or the balance will stop moving."] =
+            "Още нищо не записва този кредит автоматично — създай повтаряща се сметка за него или записвай всяка вноска ръчно, иначе остатъкът ще спре да се движи.",
+        ["Final / residual payment (leases only)"] = "Финално / остатъчно плащане (само при лизинг)",
+        ["Leave at 0 for an ordinary loan. On a car lease this is the balloon / buy-out value stated in the contract."] =
+            "Остави 0 при обикновен кредит. При лизинг на автомобил това е остатъчната / изкупната стойност от договора.",
+        ["The schedule will finish once {0} is left — that last lump is paid separately (or the item handed back), so it isn't spread across the instalments."] =
+            "Планът приключва, когато остане {0} — тази последна сума се плаща отделно (или вещта се връща), затова не се разпределя по вноските.",
+
+        // Paying a debt down early.
+        ["A payment lowers the balance right away, so the interest you're charged each period drops from then on. This is a single payment out of what you've already set aside — not a new monthly commitment."] =
+            "Плащането намалява остатъка веднага, така че лихвата за всеки следващ период спада. Това е еднократно плащане от вече заделеното — не е нов месечен ангажимент.",
+        ["A recurring amount you'd pay on top of the installment every month, month after month — separate from the one-off above. Starts from your recent saving pace; change it to see how paying more (or less) moves the date and interest."] =
+            "Повтаряща се сума, която плащаш над вноската всеки месец — отделно от еднократната по-горе. Тръгва от скорошното ти темпо на спестяване; промени я, за да видиш как повече (или по-малко) мести датата и лихвата.",
+        ["Drag to pay a little more each month and watch the finish move closer."] =
+            "Плъзни, за да плащаш по малко повече всеки месец, и виж как краят се приближава.",
+        ["{0} now finishes {1}"] = "{0} вече приключва {1}",
+        ["sooner than before"] = "по-рано от преди",
+        ["Keeping your {0} installment, this saves {1} in interest."] =
+            "При същата вноска от {0} това спестява {1} лихва.",
+        ["Or ask your lender to keep the original end date and drop the installment to {0} a month instead."] =
+            "Или помоли кредитора да запази първоначалния краен срок и вместо това да намали вноската до {0} на месец.",
+        ["This clears the loan outright."] = "Това погасява кредита изцяло.",
+        ["{0} is paid off."] = "{0} е погасен.",
+        ["Paid off {0} instead of {1}"] = "Погасен на {0} вместо на {1}",
+        ["You avoid the {0} of interest the remaining schedule would have cost."] =
+            "Спестяваш {0} лихва, която оставащият план би струвал.",
+        ["You've just avoided {0} of interest."] = "Току-що спести {0} лихва.",
+        ["You've just saved {0} in interest."] = "Току-що спести {0} лихва.",
+
+        // The emergency fund sizing itself.
+        ["This is my emergency fund"] = "Това е моят авариен фонд",
+        ["“{0}” is currently your emergency fund — saving this will move the label here."] =
+            "„{0}“ в момента е твоят авариен фонд — запазването ще премести етикета тук.",
+        ["{0} — three months of essential spending ({1} a period), rounded up to the nearest 500. It follows your essentials, so you don't have to revisit it."] =
+            "{0} — три месеца задължителни разходи ({1} на период), закръглено до 500. Следва задължителните ти разходи, за да не се връщаш към него.",
+        ["No categories are marked essential yet, so there's nothing to size this from. Mark the ones you'd still have to pay (rent, food, utilities) and the target works itself out."] =
+            "Още няма категории, отбелязани като задължителни, така че няма от какво да се изчисли. Отбележи тези, които така или иначе плащаш (наем, храна, сметки), и целта се получава сама.",
+        ["Repeating costs are averaged over the year; a dated one-off is spread over the months until it's due, less what this bucket already holds."] =
+            "Повтарящите се разходи се осредняват за годината; еднократен разход с дата се разпределя по месеците до падежа, минус това, което кофата вече държи.",
+        ["Money set aside for savings is already excluded. Budgets are plans, so they don't reserve anything here."] =
+            "Заделеното за спестяване вече е извадено. Бюджетите са планове, затова не запазват нищо тук.",
+        ["Set aside for savings this period — reserved, not spent. That's {0}% of money in."] =
+            "Заделено за спестяване този период — запазено, не похарчено. Това е {0}% от постъпленията.",
+        ["That's about {0} a day for the {1} days left in this period."] =
+            "Това е около {0} на ден за оставащите {1} дни от периода.",
+
+        // Time cost: what an amount is worth in hours worked.
+        ["Time cost"] = "Цена във време",
+        ["Show what an amount costs in hours worked"] = "Показвай колко часа труд струва дадена сума",
+        ["Off — amounts stay as money only."] = "Изключено — сумите остават само пари.",
+        ["Amounts will also show the time behind them — a {0} coffee reads as {1} of work."] =
+            "Сумите ще показват и времето зад тях — кафе за {0} се чете като {1} труд.",
+        ["≈ {0} of work"] = "≈ {0} труд",
+        ["What an hour of your time earns ({0})"] = "Колко изкарваш на час ({0})",
+        ["I'll set the rate"] = "Ще задам ставката",
+        ["A fixed rate, unaffected by how much came in this month."] =
+            "Фиксирана ставка, независима от това колко е влязло този месец.",
+        ["It's recalculated each period, so a lean month makes everything look more expensive in hours."] =
+            "Преизчислява се всеки период, така че слаб месец прави всичко по-скъпо в часове.",
+        ["Hours a day"] = "Часа на ден",
+        ["Working days a month"] = "Работни дни в месеца",
+        ["Fill both in and the rate is worked out from what you've been paid this period."] =
+            "Попълни и двете и ставката се изчислява от изкараното този период.",
+        ["Optional — fill these in and we'll tell you when your typed rate drifts from what you're really taking home per hour."] =
+            "По избор — попълни ги и ще ти казваме, когато въведената ставка се разминава с това, което реално изкарваш на час.",
+        ["This period's income over that pattern works out at {0} an hour — a {1} coffee reads as {2} of work."] =
+            "Доходът за този период при този режим излиза {0} на час — кафе за {1} се чете като {2} труд.",
+        ["Checks out — your hours this period paid about {0} an hour."] =
+            "Съвпада — часовете ти този период са платени около {0} на час.",
+        ["Heads up: your hours this period actually paid about {0} an hour — less than the {1} you typed, so amounts are showing LESS time than they really cost you."] =
+            "Внимание: часовете ти този период реално са платени около {0} на час — по-малко от въведените {1}, така че сумите показват ПО-МАЛКО време, отколкото наистина ти струват.",
+        ["Heads up: your hours this period actually paid about {0} an hour — more than the {1} you typed, so amounts are showing MORE time than they really cost you."] =
+            "Внимание: часовете ти този период реално са платени около {0} на час — повече от въведените {1}, така че сумите показват ПОВЕЧЕ време, отколкото наистина ти струват.",
+        ["Nothing has come in this period yet, so there's no income to divide — the time cost stays hidden until there is."] =
+            "Още нищо не е влязло този период, така че няма доход за разделяне — цената във време остава скрита, докато има.",
+
+        // Insights: which periods cost the most.
+        ["The periods that cost you most"] = "Периодите, които са ти стрували най-много",
+        ["A typical period costs you {0}. These ran above it — worth a look before the same time next year, though one year of history can't tell a season from a one-off."] =
+            "Типичен период ти струва {0}. Тези са над него — струва си да ги погледнеш преди същото време догодина, макар една година история да не различава сезон от случайност.",
+        ["{0} ran {1} above its own usual that period."] = "{0} беше с {1} над обичайното си за този период.",
+        ["over typical"] = "над обичайното",
+
+        // Admin console: the sign-up cohorts behind the beta.
+        ["Beta"] = "Бета",
+        ["Free"] = "Безплатен",
+        ["Test"] = "Тест",
+        ["Lifetime Pro — joined inside the cap"] = "Pro завинаги — включил се е в рамките на лимита",
+        ["Joined after the cap was full"] = "Включил се е след запълване на лимита",
+        ["Our own addresses"] = "Нашите собствени адреси",
+        ["Unrecognised cohort"] = "Непозната кохорта",
+        ["{0} of {1} beta seats taken — {2} left before new sign-ups join on Free."] =
+            "{0} от {1} бета места са заети — остават {2}, преди новите регистрации да минават на Безплатен.",
+        ["The beta cap is 0, so every new sign-up joins on Free."] =
+            "Лимитът за бета е 0, така че всяка нова регистрация минава на Безплатен.",
+        ["{0} of {1} users carry a cohort — the rest registered before cohorts were recorded."] =
+            "{0} от {1} потребители имат кохорта — останалите са се регистрирали, преди кохортите да се записват.",
+
+        // Trips: the empty state on a trip with nothing logged yet.
+        ["Nothing logged against this trip yet. Log an expense while you're away, or add something you've already paid for — a flight, a hotel."] =
+            "Още няма нищо записано по това пътуване. Запиши разход, докато си там, или добави нещо вече платено — самолетен билет, хотел.",
     };
 }

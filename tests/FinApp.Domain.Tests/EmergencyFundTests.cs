@@ -59,16 +59,19 @@ public class EmergencyFundTests
     }
 
     [Fact]
-    public void Sub_categories_inherit_their_parents_essential_ness()
+    public void Spending_under_a_flattened_sub_category_still_counts_as_essential()
     {
-        // Otherwise marking "Groceries" essential would silently omit every row filed under it.
+        // This used to be inheritance: a sub-category counted because its parent was essential. Sub-categories are
+        // gone, and the property survives for a better reason — the spend now sits ON the essential category.
         var account = Seed(out var rent, out _);
-        var sub = account.AddCategory("Utilities", rent).Id;
+        var sub = account.AddCategory("Utilities").Id;
         var p = account.StartPeriod(new DateOnly(2026, 1, 1), new DateOnly(2026, 1, 31));
         Spend(p, account, sub, 600m);
         p.Close();
 
-        Assert.Equal(2000m, account.EmergencyFundTarget());   // 600 × 3 = 1800 → 2000
+        var loaded = CategoryFlattenTests.LoadAsLegacy(account, "Utilities", rent);
+
+        Assert.Equal(2000m, loaded.EmergencyFundTarget());   // 600 × 3 = 1800 → 2000
     }
 
     [Fact]

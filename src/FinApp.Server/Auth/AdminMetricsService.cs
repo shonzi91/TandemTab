@@ -12,7 +12,7 @@ namespace FinApp.Server.Auth;
 /// <c>UserSignups</c> (<see cref="SignupService"/>), activity from when refresh tokens were last issued
 /// (a login/refresh is the cheapest "came back" signal we already store).
 /// </summary>
-public sealed class AdminMetricsService(FinAppDbContext db)
+public sealed class AdminMetricsService(FinAppDbContext db, BetaPolicy beta)
 {
     public async Task<AdminMetricsDto> BuildAsync(CancellationToken ct = default)
     {
@@ -41,14 +41,18 @@ public sealed class AdminMetricsService(FinAppDbContext db)
                 "SELECT COUNT(DISTINCT \"UserId\") FROM \"RefreshTokens\" WHERE \"CreatedAt\" >= @cut", ct, ("@cut", d30));
 
             var byDay = await SignupsByDayAsync(conn, d30, ct);
+            var cohorts = await CohortsAsync(conn, ct);
 
             // Monetization counts. Wrapped so a missing/empty Subscriptions table reports zeros rather than
             // 500-ing the whole panel — the table is created idempotently at startup, but the metrics page must
             // never be the thing that breaks because billing hasn't shipped.
             var (trialsStarted, trialsActive, paying) = await MonetizationCountsAsync(conn, Iso(now), ct);
 
+            // Seats are counted against the SAME rows the cap is enforced on at registration (BetaPolicy takes the
+            // beta head count), so the panel can't say "12 left" while the next sign-up is told the beta is full.
             return new AdminMetricsDto(totalUsers, totalAccounts, betaCohort, new7, new30, active7, active30, byDay,
-                trialsStarted, trialsActive, paying);
+                trialsStarted, trialsActive, paying,
+                cohorts, beta.Cap, beta.Remaining(betaCohort) is var left && left == int.MaxValue ? 0 : left);
         }
         finally { if (opened) await conn.CloseAsync(); }
     }
@@ -78,6 +82,26 @@ public sealed class AdminMetricsService(FinAppDbContext db)
             return (started, active, paying);
         }
         catch { return (0, 0, 0); }
+    }
+
+    /// <summary>
+    /// Head count per sign-up cohort, biggest first. Grouped in SQL rather than filtered three times so a cohort
+    /// value nobody expected still appears — a typo written straight to the column is exactly the thing this
+    /// panel should surface, and three COUNT(*)s with hardcoded names would hide it.
+    /// </summary>
+    private static async Task<IReadOnlyList<AdminCohortPoint>> CohortsAsync(
+        System.Data.Common.DbConnection conn, CancellationToken ct)
+    {
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText =
+            "SELECT \"Cohort\", COUNT(*) AS c FROM \"UserSignups\" GROUP BY \"Cohort\" ORDER BY c DESC";
+        var rows = new List<AdminCohortPoint>();
+        await using var reader = await cmd.ExecuteReaderAsync(ct);
+        while (await reader.ReadAsync(ct))
+            rows.Add(new AdminCohortPoint(
+                reader.IsDBNull(0) ? "(none)" : reader.GetString(0),
+                Convert.ToInt32(reader.GetValue(1), CultureInfo.InvariantCulture)));
+        return rows;
     }
 
     private static async Task<IReadOnlyList<AdminDayPoint>> SignupsByDayAsync(

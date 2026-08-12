@@ -1176,10 +1176,8 @@ else
                         .OrderByDescending(c => State.Coverage(c.Category.Id).Spent.Amount)
                         .ToList();
                     var unbudgeted = State.CategoryOptions
-                        .Where(c => c.Depth == 0
-                                    && !State.HasBudget(c.Category.Id)
-                                    && State.SpentInCategory(c.Category.Id).Amount > 0
-                                    && !State.ChildrenOf(c.Category.Id).Any(ch => State.HasBudget(ch.Id)))
+                        .Where(c => !State.HasBudget(c.Category.Id)
+                                    && State.SpentInCategory(c.Category.Id).Amount > 0)
                         .OrderByDescending(c => State.SpentInCategory(c.Category.Id).Amount)
                         .ToList();
 
@@ -1377,70 +1375,11 @@ else
                         </span>
                     </li>;
 
-                    // A sub-category renders as its own expandable cat-row (same ring + bar + drawer as a top-level
-                    // row) so sub-categories expand just like the parents. Nesting is capped at one level, so a sub's
-                    // drawer only holds its expenses + actions — never more sub-rows.
-                    RenderFragment<FinApp.Domain.Budgeting.Category> subRow = sub =>
-                    @<div class="cat-row cat-row-sub@(_expandedSubs.Contains(sub.Id) ? " open" : "")">
-                        @{
-                            var sHas = State.HasBudget(sub.Id);
-                            var sCov = sHas ? State.Coverage(sub.Id) : null;
-                            var sSpent = sHas ? sCov!.Spent : State.SpentInCategory(sub.Id);
-                            var sPct = sHas ? Math.Clamp((double)(sCov!.Percent ?? 0), 0, 100) : 0;
-                            var sOver = sHas && sCov!.IsOverBudget;
-                            var sOpen = _expandedSubs.Contains(sub.Id);
-                            var sCount = State.ExpenseCountInCategory(sub.Id);
-                        }
-                        <div class="cat-row-head">
-                            <button class="cat-row-hit" @onclick="() => ToggleSub(sub.Id)">
-                                <span class="cat-chip-ring">
-                                    <ProgressRing Percent="@sPct" Class="@(sHas ? (sOver ? "over" : sCov!.ThresholdReached ? "warn" : "ok") : "mint")" Color="@(sHas ? SpendBarColorAt(sPct) : null)" Dashed="@(!sHas)">
-                                        <CatIcon Name="@State.CategoryIcon(sub.Id)" Class="cat-chip-ring-ico" />
-                                    </ProgressRing>
-                                </span>
-                                <span class="cat-row-main">
-                                    <span class="cat-row-top">
-                                        <span class="cat-row-name">@sub.Name@if (sCount > 0) { <span class="cat-row-subn">@sCount</span> }</span>
-                                        <span class="cat-row-amt @(sOver ? "warn-text" : "")">@Fmt(sSpent)@if (sHas) { <text> / @Fmt(sCov!.Allocated)</text> } else { <span class="cat-row-nb"> · @Loc["no budget"]</span> }</span>
-                                    </span>
-                                    <span class="cbar-track"><span class="cbar-grad@(sHas ? "" : " cbar-flat")" style="--pct:@sPct.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)%"></span></span>
-                                </span>
-                            </button>
-                            <div class="cat-row-acts">
-                                @if (State.IsPeriodOpen)
-                                {
-                                    <button class="row-ico" title="@Loc["Add expense"]" @onclick="() => OpenAddExpense(sub.Id)"><Icon Name="receipt" /></button>
-                                }
-                                <button class="row-ico" title="@(sHas ? Loc["Edit budget"] : Loc["Add budget"])" @onclick="() => OpenEdit(sub.Id)"><Icon Name="pencil" /></button>
-                                @* The trash on a spending row removes the BUDGET, not the category — this list is the
-                                   budgets view, and a row here is a cap on a category, not the category itself.
-                                   Deleting the category proper lives in Manage categories. *@
-                                @if (sHas)
-                                {
-                                    <button class="row-ico danger" title="@Loc["Remove budget"]" @onclick="() => OpenDeleteBudget(sub.Id)"><Icon Name="trash" /></button>
-                                }
-                                <button class="row-ico cat-chev-btn" @onclick="() => ToggleSub(sub.Id)"><Icon Name="chevron" Class="cat-chev" /></button>
-                            </div>
-                        </div>
-                        @if (sOpen)
-                        {
-                            var sExps = FilterByTags(State.ExpensesFor(sub.Id));
-                            <div class="cat-drawer">
-                                @if (sExps.Count == 0)
-                                {
-                                    <p class="cat-drawer-empty">@Loc["No expenses in this category yet."]</p>
-                                }
-                                else
-                                {
-                                    <ul class="list list-even cat-drawer-list">@foreach (var e in sExps) { @expenseRow((e, true)) }</ul>
-                                }
-                            </div>
-                        }
-                    </div>;
                 }
                 @* Category list: a status-ring chip + a gradient progress bar per row, ordered by spend. Tapping a
-                   row opens a drawer with its expenses, sub-categories and actions — so the actions and the spend
-                   detail are inline instead of behind a ring popover (which is why the ring's menu is gone). *@
+                   row opens a drawer with its expenses and actions — so the actions and the spend detail are inline
+                   instead of behind a ring popover (which is why the ring's menu is gone). One level: the drawer
+                   used to lead with a sub-category block, and that block is what tags carry now. *@
                 @if (_spendView == SpendView.Categories)
                 {
                 <div class="cat-list">
@@ -1491,17 +1430,6 @@ else
                             @if (open)
                             {
                                 <div class="cat-drawer">
-                                    @{ var subs = State.ChildrenOf(catId).ToList(); }
-                                    @if (subs.Count > 0)
-                                    {
-                                        <div class="cat-drawer-label">@Loc["Sub-categories"]</div>
-                                        <div class="cat-subs">
-                                            @foreach (var sub in subs)
-                                            {
-                                                @subRow(sub)
-                                            }
-                                        </div>
-                                    }
                                     @{
                                         var ownExpenses = FilterByTags(State.ExpensesFor(catId));
                                         var shownExpenses = _catShowAllExp ? ownExpenses : ownExpenses.Take(CatDrawerExpenseCap).ToList();
@@ -1599,7 +1527,12 @@ else
                                    the one under today, not the one under its own departure date. *@
                                 @if (calTrip is not null)
                                 {
-                                    <span class="cal-trip-band">@calTrip.Name</span>
+                                    <span class="cal-trip-band">
+                                        @* The icon leads: on a narrow cell the name is the first thing to get cut,
+                                           and a flag/emoji still identifies the journey when the text is an ellipsis. *@
+                                        <span class="cal-trip-ico">@(calTrip.Icon ?? "✈️")</span>
+                                        <span class="cal-trip-nm">@calTrip.Name</span>
+                                    </span>
                                 }
                             </div>
                         }
@@ -1617,8 +1550,18 @@ else
                 {
                     @foreach (var grp in shown.GroupBy(e => e.Date).OrderByDescending(g => g.Key))
                     {
+                        @* A day inside a trip says so, in the trip's own colour — the same lookup and the same
+                           palette index the calendar band uses, so the two views agree about which journey a day
+                           belongs to. It answers "why was this Tuesday expensive" without opening anything. *@
+                        var sepTrip = State.AllTrips.FirstOrDefault(t => grp.Key >= t.From && grp.Key <= t.To);
                         <button class="date-sep" @onclick="() => GoToDay(grp.Key)">
                             <span class="date-sep-lbl">@DateSepLabel(grp.Key)</span>
+                            @if (sepTrip is not null)
+                            {
+                                <span class="date-sep-trip cal-trip-c@(TripColourIndex(sepTrip.Id))">
+                                    <span class="date-sep-trip-ico">@(sepTrip.Icon ?? "✈️")</span>@sepTrip.Name
+                                </span>
+                            }
                             @* The day's spend, in the amount column — a running read of "what did today cost". Widths
                                match the row's amt (88) + actions (58) so it sits directly over the expense amounts. *@
                             <span class="date-sep-tot">@Fmt(State.Money(grp.Sum(e => e.Amount.Amount)))</span>
@@ -1689,7 +1632,7 @@ else
                         <span class="brk-date-dash">–</span>
                         <input type="date" class="brk-date-in" @bind:get="brkTo" @bind:set="BreakSetTo" min="@brkFrom.ToString("yyyy-MM-dd")" />
                         <span class="brk-split brk-split-end">
-                            <button type="button" class="chip @(_breakBase == BreakGroup.Category ? "on" : "")" @onclick="() => SetBreakBase(BreakGroup.Category)">@Loc["Categories"]</button>
+                            <button type="button" class="chip @(_breakBase == BreakGroup.Category && _breakDrill is null ? "on" : "")" @onclick="() => SetBreakBase(BreakGroup.Category)">@Loc["Categories"]</button>
                             @if (State.ActiveTags.Count > 0)
                             {
                                 <button type="button" class="chip @(_breakBase == BreakGroup.Tag ? "on" : "")" @onclick="() => SetBreakBase(BreakGroup.Tag)">@Loc["Tags"]</button>
@@ -1697,6 +1640,19 @@ else
                             <button type="button" class="chip @(_breakBase == BreakGroup.Fund ? "on" : "")" @onclick="() => SetBreakBase(BreakGroup.Fund)">@Loc["Funds"]</button>
                         </span>
                     </div>
+                    @* Drilled into one category: say which, and give the way back. The chart below is that category's
+                       tag split, so without this line a single-tag category looks exactly like a broken pie. *@
+                    @if (_breakDrill is { } drilledId)
+                    {
+                        <div class="brk-drill">
+                            <button type="button" class="chip brk-drill-out" @onclick="DrillOut">← @Loc["All categories"]</button>
+                            <span class="brk-drill-cat">
+                                <CatIcon Name="@State.CategoryIcon(drilledId)" />
+                                <strong>@State.CategoryName(drilledId)</strong>
+                                <span class="brk-drill-by">@Loc["by tag"]</span>
+                            </span>
+                        </div>
+                    }
                     @* Income · Spent · % of income for the window (independent of the group-by axis). *@
                     <div class="brk-summary">
                         <span class="brk-sum"><span class="brk-sum-lbl">@Loc["Income"]</span><span class="brk-sum-val good-text">@Fmt(brkIncome)</span></span>
@@ -1849,26 +1805,22 @@ else
                                     else if (expanded)
                                     {
                                         var slExps = BreakSliceExpenses(s.Key);
-                                        // A real top-level category slice can regroup its own expenses by sub-category or tag
-                                        // (only offering the axes that apply to it). Tag/fund/"everything else" slices don't.
+                                        // A real category slice can regroup its own expenses by tag, and — the part
+                                        // worth having — re-draw the CHART as that category's tag split. Tag / fund /
+                                        // "everything else" slices can't: they are already the axis, or they are a bag.
                                         var isCatSlice = !BreakByTag && !BreakByFund && s.Key != OtherKey && s.Key != Guid.Empty;
-                                        var hasSubs = isCatSlice && State.ChildrenOf(s.Key).Any();
                                         var hasTags = isCatSlice && slExps.Any(e => State.ExpenseTags(e).Count > 0);
-                                        var expMode = (_brkExpGroup == ExpGroup.Sub && hasSubs) || (_brkExpGroup == ExpGroup.Tag && hasTags) ? _brkExpGroup : ExpGroup.None;
+                                        var expMode = _brkExpGroup == ExpGroup.Tag && hasTags ? _brkExpGroup : ExpGroup.None;
                                         <div class="brk-exp" style="--accent:@s.Color">
-                                            @if (hasSubs || hasTags)
+                                            @if (hasTags)
                                             {
                                                 <div class="brk-exp-group">
                                                     <span class="brk-exp-group-lbl">@Loc["Group by"]</span>
                                                     <button type="button" class="chip @(expMode == ExpGroup.None ? "on" : "")" @onclick:stopPropagation="true" @onclick="() => _brkExpGroup = ExpGroup.None">@Loc["None"]</button>
-                                                    @if (hasSubs)
-                                                    {
-                                                        <button type="button" class="chip @(expMode == ExpGroup.Sub ? "on" : "")" @onclick:stopPropagation="true" @onclick="() => _brkExpGroup = ExpGroup.Sub">@Loc["Sub-category"]</button>
-                                                    }
-                                                    @if (hasTags)
-                                                    {
-                                                        <button type="button" class="chip @(expMode == ExpGroup.Tag ? "on" : "")" @onclick:stopPropagation="true" @onclick="() => _brkExpGroup = ExpGroup.Tag">@Loc["Tag"]</button>
-                                                    }
+                                                    <button type="button" class="chip @(expMode == ExpGroup.Tag ? "on" : "")" @onclick:stopPropagation="true" @onclick="() => _brkExpGroup = ExpGroup.Tag">@Loc["Tag"]</button>
+                                                    @* The drill: the same split, drawn. Kept beside the grouping chips because it
+                                                       answers the same question at a glance rather than being a different feature. *@
+                                                    <button type="button" class="chip brk-drill-in" @onclick:stopPropagation="true" @onclick="() => DrillIntoCategory(s.Key)"><Icon Name="pie" /> @Loc["Chart this"]</button>
                                                 </div>
                                             }
                                             @if (slExps.Count == 0)
@@ -3217,7 +3169,7 @@ else
                     break;
 
                 case Modal.AddCat:
-                    <h3>@Loc["Add category"] @(_addParentId is {} p ? $"under {State.CategoryName(p)}" : "(top level)")</h3>
+                    <h3>@Loc["Add category"]</h3>
                     <div class="name-icon-row">
                         @iconButton
                         <label class="grow">@Loc["Name"] <input type="text" @bind="_fName" @bind:after="() => _fEssential = BudgetingState.GuessEssential(_fName)" /></label>
@@ -3290,33 +3242,6 @@ else
                     <label>@Loc["Alert at %"] <input type="number" step="1" min="0" max="100" @bind="_fThreshold" /></label>
                     <Switch @bind-Value="_fNotify">@Loc["Notify on every expense"]</Switch>
                     <Switch @bind-Value="_fEssential">@Loc["Essential spend (rent, groceries, health…)"]</Switch>
-                    var subs = State.ChildrenOf(_modalCatId).ToList();
-                    @* One level of sub-categories only (keeps the app simple): a sub-category can't have its own
-                       sub-categories, so this whole section is hidden when you're editing a sub. *@
-                    var editIsTop = State.CategoryOptions.Any(c => c.Category.Id == _modalCatId && c.Depth == 0);
-                    @if (editIsTop)
-                    {
-                        <div class="detail-sub-head">
-                            <h4 class="detail-sub">@Loc["Sub-categories"]</h4>
-                            <button class="lbl-add" title="@Loc["Sub-category"]" @onclick="EditAddSub">+</button>
-                        </div>
-                        @if (subs.Count > 0)
-                        {
-                            <ul class="list">
-                                @foreach (var sub in subs)
-                                {
-                                    var subId = sub.Id;
-                                    <li>
-                                        <span class="row-main"><CatIcon Name="@State.CategoryIcon(subId)" /> @sub.Name</span>
-                                        <span class="row-actions">
-                                            <button class="exp-edit" title="@Loc["Edit"]" @onclick="() => EditEditSub(subId)"><Icon Name="pencil" /></button>
-                                            <button class="exp-edit" title="@Loc["Remove"]" @onclick="() => EditDeleteSub(subId)"><Icon Name="trash" /></button>
-                                        </span>
-                                    </li>
-                                }
-                            </ul>
-                        }
-                    }
                     @if (_editCatVendors.Count > 0)
                     {
                         @* Folded by default — it's reference detail, not something you edit every visit; the count is
@@ -3351,10 +3276,8 @@ else
                                     ? Loc["1 expense is filed here. Deleting moves it to another category — same amount, same date, same tags."]
                                     : Loc["{0} expenses are filed here. Deleting moves them to another category — same amounts, same dates, same tags."], moveCount)
                             }
-                            else
-                            {
-                                @Loc["Deleting takes its sub-categories with it."]
-                            }
+                            @* No "…takes its sub-categories with it" branch any more: with the tree gone, the only
+                               blocker left that isn't expenses is a budget, which the next sentence already says. *@
                             @((MarkupString)" ")@Loc["Any budget it has is dropped — spending moves, caps don’t."]
                         </p>
                         @if (moveTargets.Count == 0)
@@ -3445,27 +3368,18 @@ else
                                 }
                             </span>
                         </li>;
-                    // Parent's own expenses, then one labelled block per sub-category that has any — so the whole
-                    // tree reads at a glance without drilling into each sub-category.
+                    // Everything filed here, one list. The labelled per-sub-category blocks that used to follow went
+                    // with the tree; the Breakdown's tag drill is where that split lives now, and it can show a
+                    // split this list never could (a tag that spans two categories).
                     var ownExpenses = State.ExpensesFor(_modalCatId);
-                    var childSections = State.ChildrenOf(_modalCatId)
-                        .Select(c => (Cat: c, Items: State.ExpensesFor(c.Id)))
-                        .Where(x => x.Items.Count > 0).ToList();
                     <h4 class="detail-sub">@Loc["Expenses"]</h4>
                     <ul class="list list-even">
                         @foreach (var e in ownExpenses) { @detailRow(e) }
-                        @if (ownExpenses.Count == 0 && childSections.Count == 0)
+                        @if (ownExpenses.Count == 0)
                         {
                             <li><em>@Loc["No expenses in this category yet."]</em></li>
                         }
                     </ul>
-                    @foreach (var (sub, items) in childSections)
-                    {
-                        <h5 class="detail-subcat"><CatIcon Name="@State.CategoryIcon(sub.Id)" /> @sub.Name <span class="detail-subcat-sum">@Fmt(items.Aggregate(State.Money(0m), (s, e) => s + e.Amount))</span></h5>
-                        <ul class="list list-even">
-                            @foreach (var e in items) { @detailRow(e) }
-                        </ul>
-                    }
                     break;
 
                 @* The full week (F7). Everything here is a READ-OUT of entries already logged — nothing is
@@ -4696,14 +4610,12 @@ else
                             @foreach (var (cat, _) in topCats)
                             {
                                 var catId = cat.Id;
-                                var subCount = State.ChildrenOf(catId).Count();
                                 <li>
                                     <span class="row-lead">
                                         <button class="exp-edit" title="@Loc["Edit"]" @onclick="() => ManageEditCat(catId)"><Icon Name="pencil" /></button>
                                         <button class="exp-edit" title="@Loc["Remove"]" @onclick="() => ManageDeleteCat(catId)"><Icon Name="trash" /></button>
                                         <span><CatIcon Name="@State.CategoryIcon(catId)" /> @cat.Name</span>
                                     </span>
-                                    @if (subCount > 0) { <span class="ring-muted">@string.Format(Loc["{0} sub"], subCount)</span> }
                                 </li>
                             }
                         </ul>
@@ -6494,9 +6406,6 @@ else
     private Guid _expandedCatId;
     private bool _catShowAllExp;   // drawer shows the first few expenses; this reveals the rest for the open row
     private void ToggleCatRow(Guid id) { _expandedCatId = _expandedCatId == id ? Guid.Empty : id; _catShowAllExp = false; }
-    // Sub-categories expand independently (a set, not a single id) so several can be open inside a parent's drawer.
-    private readonly HashSet<Guid> _expandedSubs = new();
-    private void ToggleSub(Guid id) { if (!_expandedSubs.Remove(id)) _expandedSubs.Add(id); }
     private const int CatDrawerExpenseCap = 5;
 
     // Goals list: which goal/debt/investment row's drawer is open (accordion, one at a time). The debt drawer's inline
@@ -6570,11 +6479,11 @@ else
     private BreakGroup _breakBase = BreakGroup.Category;
     private bool BreakByTag => _breakBase == BreakGroup.Tag;
     private bool BreakByFund => _breakBase == BreakGroup.Fund;
-    private void SetBreakBase(BreakGroup g) { _breakBase = g; _breakExpanded.Clear(); }
+    private void SetBreakBase(BreakGroup g) { _breakBase = g; _breakExpanded.Clear(); _breakDrill = null; }
 
-    // Inside an expanded *category* slice, regroup its expenses by sub-category or tag (shared across expanded rows;
-    // falls back to a flat list where that axis doesn't apply to the category).
-    private enum ExpGroup { None, Sub, Tag }
+    // Inside an expanded *category* slice, regroup its expenses by tag (shared across expanded rows; falls back to
+    // a flat list for a category where nothing is tagged). The old Sub member went with sub-categories.
+    private enum ExpGroup { None, Tag }
     private ExpGroup _brkExpGroup = ExpGroup.None;
 
     private (DateOnly From, DateOnly To) BreakWindow()
@@ -6633,6 +6542,16 @@ else
     {
         var (from, to) = BreakWindow();
         var expenses = State.ExpensesInRange(from, to);
+        // Drilled into a category: the keys are that category's TAGS, and Empty means "in this category, untagged"
+        // — not the account-wide untagged bucket the tag axis uses. Checked before the drill's own category filter
+        // below, which is why this can't just reuse the BreakByTag branch.
+        if (_breakDrill is { } drillId && key != drillId)
+        {
+            var inCategory = expenses.Where(e => State.RootCategoryId(e.CategoryId) == drillId);
+            return key == Guid.Empty
+                ? inCategory.Where(e => State.ExpenseTags(e).Count == 0).ToList()
+                : inCategory.Where(e => e.TagIds.Contains(key)).ToList();
+        }
         if (key == OtherKey)
         {
             // Everything the head slices don't cover (category level only, matching where OtherKey is emitted).
@@ -6648,8 +6567,8 @@ else
         return expenses.Where(e => State.RootCategoryId(e.CategoryId) == key).ToList();   // top-level category
     }
 
-    // Regroup one category slice's expenses inside its expanded row — by sub-category (each expense once) or by tag
-    // (an expense appears under each of its tags; untagged in its own bucket). Largest subtotal first.
+    // Regroup one category slice's expenses inside its expanded row by tag (an expense appears under each of its
+    // tags; untagged in its own bucket). Largest subtotal first.
     private List<(string Label, string? Icon, decimal Total, List<FinApp.Domain.Budgeting.Expense> Items)> BreakExpandGroups(
         IReadOnlyList<FinApp.Domain.Budgeting.Expense> exps, ExpGroup mode)
     {
@@ -6723,6 +6642,7 @@ else
     private List<BreakSlice> BreakSlices()
     {
         var (from, to) = BreakWindow();
+        if (_breakDrill is { } drillId) return BreakDrillSlices(drillId);
         var expenses = State.ExpensesInRange(from, to);
         // Group key: by fund → the expense's fund; by tag → each tag id (an expense can appear under several tags);
         // otherwise → the top-level (root) category.
@@ -6787,6 +6707,54 @@ else
         if (saved > 0m) slices.Add(new BreakSlice(SavedKey, Loc["Saved toward goals"], null, saved, SavedColor));
         return slices;
     }
+
+    /// <summary>
+    /// The chart drilled into one category: the same window, re-sliced by the tags used INSIDE that category, with
+    /// everything untagged gathered under the category's own name.
+    /// </summary>
+    /// <remarks>
+    /// <para>★ The untagged bucket is labelled with the <b>category</b>, not "Untagged" — that is the fallback, and
+    /// it is what makes the drill safe to offer on every category. Spend nobody labelled is not a gap in the data,
+    /// it is just "Food", and a slice reading "Untagged" invites people to go and fix something that isn't broken.
+    /// A category with no tags at all therefore draws as a single ring of itself rather than an empty chart.</para>
+    /// <para>Tags are the axis sub-categories used to be, so this is the old drill-by-sub-category — except a tag
+    /// can appear in two categories, which a sub-category never could.</para>
+    /// </remarks>
+    private List<BreakSlice> BreakDrillSlices(Guid categoryId)
+    {
+        var expenses = BreakSliceExpenses(categoryId);
+        var groups = new Dictionary<Guid, decimal>();
+        foreach (var e in expenses)
+        {
+            var amt = Math.Abs(e.Amount.Amount);
+            if (amt == 0) continue;
+            var ids = State.ExpenseTags(e).Select(t => t.Id).ToList();
+            if (ids.Count == 0) groups[Guid.Empty] = groups.GetValueOrDefault(Guid.Empty) + amt;
+            else foreach (var id in ids) groups[id] = groups.GetValueOrDefault(id) + amt;
+        }
+        var slices = new List<BreakSlice>();
+        var i = 0;
+        foreach (var kv in groups.OrderByDescending(kv => kv.Value))
+        {
+            var label = kv.Key == Guid.Empty ? State.CategoryName(categoryId) : State.TagName(kv.Key);
+            var icon = kv.Key == Guid.Empty ? State.CategoryStoredIcon(categoryId) : State.TagIcon(kv.Key);
+            slices.Add(new BreakSlice(kv.Key, label, icon, kv.Value, SliceColor(i++)));
+        }
+        return slices;
+    }
+
+    /// <summary>Which category the Breakdown chart is drilled into, or null for the whole window.</summary>
+    private Guid? _breakDrill;
+
+    private void DrillIntoCategory(Guid categoryId)
+    {
+        _breakDrill = categoryId;
+        // Collapse the expanded rows: they belong to the chart we just left, and an expansion carried across would
+        // point at a key that means something different now (a tag id, not a category id).
+        _breakExpanded.Clear();
+    }
+
+    private void DrillOut() { _breakDrill = null; _breakExpanded.Clear(); }
 
     // Open the Trends view. A single-period ("This period") window is a 1-point chart, so default Trends to a
     // multi-period window when arriving from it — the range chips then re-narrow as the user wishes.
@@ -7694,7 +7662,6 @@ else
     // Modal state
     private Modal _modal = Modal.None;
     private Guid _modalCatId;
-    private Guid? _addParentId;
     private string? _fName;
     private decimal _fBudget;
     private Guid _budgetCatId;      // selected category in the Add-budget modal
@@ -7831,6 +7798,10 @@ else
         }
         await SyncBackDepthAsync();
         await FocusAmountIfRequestedAsync();
+
+        // Flip any open ⋯ menu above its row when it would open below the fold. Has to run after the render that
+        // created the menu — its position can't be known before it exists — and it's a no-op when none is open.
+        try { await JS.InvokeVoidAsync("finappFitMenus"); } catch { /* host without the shim */ }
 
         if (State.IsReady && State.HasAccounts)
         {
@@ -8766,7 +8737,12 @@ else
         await Task.Yield();
         try { await action(); }
         catch (Exception ex) { _error = Describe(ex); }
-        finally { _busy = false; }
+        // ⚠️ Repaint explicitly rather than relying on Blazor's post-handler render. That render only happens for a
+        // handler the framework AWAITS — a caller that fires this and drops the task (an Action-typed callback, e.g.
+        // a Notification's, which can't await) leaves the last paint as the one where _busy was still true, and the
+        // "Saving…" overlay sits there over a save that already finished. An extra render on the awaited path costs
+        // nothing; a missing one on the other path locks the screen.
+        finally { _busy = false; StateHasChanged(); }
     }
 
     /// <summary>Like <see cref="Run"/>, but routes failures to the open modal (<c>_modalError</c>) so the
@@ -8780,7 +8756,7 @@ else
         await Task.Yield();
         try { await action(); }
         catch (Exception ex) { _modalError = Describe(ex); }
-        finally { _busy = false; }
+        finally { _busy = false; StateHasChanged(); }   // same reason as Run's — see the note there
     }
 
     /// <summary>Turn an exception into a message a person can act on (instead of raw .NET text).</summary>
@@ -8830,7 +8806,7 @@ else
     // Spending-category manager (the "Categories" header button) — a fast home for add/edit/remove without a budget.
     // Edit/Add/Delete remember to return here on Cancel (Save/Delete close out, matching the CategoryDetail flow).
     private void OpenManageCats() => _modal = Modal.ManageCats;
-    private void ManageAddCat() { _modalBack.Push(OpenManageCats); OpenAdd(null); }
+    private void ManageAddCat() { _modalBack.Push(OpenManageCats); OpenAdd(); }
     private void ManageEditCat(Guid id) { _modalBack.Push(OpenManageCats); OpenEdit(id); }
     private void ManageDeleteCat(Guid id) { _modalBack.Push(OpenManageCats); OpenDelete(id); }
 
@@ -11282,9 +11258,9 @@ else
 
     // --- Modals -----------------------------------------------------------
 
-    private void OpenAdd(Guid? parentId)
+    private void OpenAdd()
     {
-        _addParentId = parentId; _fName = null; _fBudget = 0; _fIcon = null; _fEssential = false; _modal = Modal.AddCat;
+        _fName = null; _fBudget = 0; _fIcon = null; _fEssential = false; _modal = Modal.AddCat;
     }
 
     /// <summary>Open the "Add budget" modal, pre-selecting the first category that has no budget yet.</summary>
@@ -11294,8 +11270,6 @@ else
         _budgetCatId = State.CategoryOptions.FirstOrDefault(c => !State.HasBudget(c.Category.Id)).Category?.Id ?? Guid.Empty;
         _modal = Modal.AddBudget;
     }
-
-    private void OpenAddSub(Guid parentId) => OpenAdd(parentId);
 
     private void OpenEdit(Guid categoryId)
     {
@@ -11405,9 +11379,9 @@ else
     private void DepositAddFund() { _afterCreate = id => _depFundId = id; _modalBack.Push(() => _modal = Modal.Deposit); OpenAddFund(); }
 
     // Add-expense modal → inline-create a budget category / fund (then return to the expense, with it selected).
-    private void ExpenseAddCategory() { _afterCreate = id => _categoryId = id; _modalBack.Push(() => _modal = Modal.AddExpense); OpenAdd(null); }
+    private void ExpenseAddCategory() { _afterCreate = id => _categoryId = id; _modalBack.Push(() => _modal = Modal.AddExpense); OpenAdd(); }
     // Add-budget modal → inline-create a category (then return to the budget, with it selected).
-    private void BudgetAddCategory() { _afterCreate = id => _budgetCatId = id; _modalBack.Push(() => _modal = Modal.AddBudget); OpenAdd(null); }
+    private void BudgetAddCategory() { _afterCreate = id => _budgetCatId = id; _modalBack.Push(() => _modal = Modal.AddBudget); OpenAdd(); }
     private void ExpenseAddFund() { _afterCreate = id => _fundId = id; _modalBack.Push(() => _modal = Modal.AddExpense); OpenAddFund(); }
 
     // Modal navigation stack: opening a modal from inside another pushes a "reopen the parent" action,
@@ -11430,10 +11404,6 @@ else
     private void DetailEditExpense(Guid id) { var c = _modalCatId; _modalBack.Push(() => OpenCategoryDetail(c)); OpenEditExpense(id); }
     private void DetailDeleteExpense(Guid id) { var c = _modalCatId; _modalBack.Push(() => OpenCategoryDetail(c)); OpenDeleteExpense(id); }
 
-    // Edit-category → sub-category modals (remember to return to editing the parent).
-    private void EditAddSub() { var parent = _modalCatId; _modalBack.Push(() => OpenEdit(parent)); OpenAdd(parent); }
-    private void EditEditSub(Guid subId) { var parent = _modalCatId; _modalBack.Push(() => OpenEdit(parent)); OpenEdit(subId); }
-    private void EditDeleteSub(Guid subId) { var parent = _modalCatId; _modalBack.Push(() => OpenEdit(parent)); OpenDelete(subId); }
 
     private Task SendInvite() => RunModal(async () =>
     {
@@ -11499,7 +11469,7 @@ else
     private Task SaveAddCat() => RunModal(async () =>
     {
         if (string.IsNullOrWhiteSpace(_fName)) return;
-        var newId = await State.AddCategory(_fName!, _addParentId, _fIcon, _fEssential);
+        var newId = await State.AddCategory(_fName!, _fIcon, _fEssential);
         if (_fBudget > 0)
             await State.SaveBudget(newId, _fBudget, 80, false);
         var after = _afterCreate; _afterCreate = null;

@@ -35,6 +35,32 @@
         window.finappNavigate = (url) => { window.location.href = url; };
         window.finappScrollIntoView = (id) => { const el = document.getElementById(id); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); };
         window.finappConfirm = (msg) => { try { return window.confirm(msg); } catch (e) { return true; } };
+        // A ⋯ row menu opens downward. On a row near the bottom of a list that puts it below the fold, which reads
+        // as the menu not opening at all. Flip it above its row when it would overflow — but only when there is
+        // actually room up there, or a tall menu on a short screen just swaps one clipped edge for the other.
+        // ⚠️ Measure from the ROW, never from the menu's own rect. The menu's position is what this function is
+        // about to change, so reading it back conflates "where it is" with "where it would go" — the first cut
+        // flipped a menu clean off the top of the screen that way. The row is a fixed anchor: compare the space
+        // above and below it against the menu's height, and flip only when down doesn't fit and up does.
+        window.finappFitMenus = () => {
+            try {
+                document.querySelectorAll('.row-menu').forEach(m => {
+                    m.classList.remove('menu-up');
+                    // Below 560px this menu is already a fixed bottom sheet — it cannot fall below the fold, and
+                    // flipping it would fight the sheet's own pinning and throw it off the top of the screen.
+                    if (getComputedStyle(m).position === 'fixed') return;
+                    const host = m.parentElement;
+                    if (!host) return;
+                    const h = m.getBoundingClientRect().height;
+                    const row = host.getBoundingClientRect();
+                    if (window.innerHeight - row.bottom < h + 8 && row.top > h + 8) m.classList.add('menu-up');
+                });
+            } catch (e) { /* measurement is a nicety; never break a render over it */ }
+        };
+        // Scrolling changes the answer, and the menu stays open across it.
+        window.addEventListener('scroll', () => {
+            if (document.querySelector('.row-menu')) window.finappFitMenus();
+        }, { passive: true, capture: true });
         window.finappTakeAuthCode = () => {
             try {
                 const params = new URLSearchParams(window.location.search);

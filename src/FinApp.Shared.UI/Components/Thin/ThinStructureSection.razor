@@ -25,26 +25,16 @@ else
 
     @* ---- Spend categories ---------------------------------------------------- *@
     <h3>Spend categories</h3>
+    @* Flat: sub-categories were removed and are flattened into tags on load, so there is never a second level. *@
     @foreach (var c in Roots(_view.Categories))
     {
         @RenderCategory(c, 0)
-        @foreach (var child in _view.Categories.Where(x => x.ParentId == c.Id).Where(Visible))
-        {
-            @RenderCategory(child, 1)
-        }
     }
     @if (_addingCat)
     {
         <div class="ts-add">
             <input placeholder="Name" @bind="_catName" />
             <input class="ts-icon-in" placeholder="icon" @bind="_catIcon" />
-            <select @bind="_catParent">
-                <option value="">— top level —</option>
-                @foreach (var p in Roots(_view.Categories))
-                {
-                    <option value="@p.Id">@p.Name</option>
-                }
-            </select>
             <Switch @bind-Value="_catEssential" Class="ts-ess">Essential</Switch>
             <button class="ts-save" disabled="@(_busy || string.IsNullOrWhiteSpace(_catName))" @onclick="AddCategory">Add</button>
             <button class="lnk" @onclick="() => _addingCat = false">cancel</button>
@@ -151,7 +141,7 @@ else
 
     // add-form state
     private bool _addingCat, _addingFund, _addingCc;
-    private string _catName = "", _catIcon = "", _catParent = ""; private bool _catEssential;
+    private string _catName = "", _catIcon = ""; private bool _catEssential;
     private string _fundName = "", _fundIcon = "", _fundNote = "";
     private string _ccName = "", _ccIcon = "";
 
@@ -167,19 +157,18 @@ else
         catch (Exception ex) { _error = ex.Message; }
     }
 
-    private IEnumerable<StructureCategoryDto> Roots(IReadOnlyList<StructureCategoryDto> cats) => cats.Where(c => c.ParentId is null).Where(Visible);
+    private IEnumerable<StructureCategoryDto> Roots(IReadOnlyList<StructureCategoryDto> cats) => cats.Where(Visible);
     private bool Visible(StructureCategoryDto c) => _showArchived || !c.Archived;
     private bool Visible(StructureFundDto f) => _showArchived || !f.Archived;
     private static string Ic(string? icon) => string.IsNullOrWhiteSpace(icon) ? "" : $"[{icon}] ";
 
     // ---- categories ----
-    private void StartAddCategory() { _addingCat = true; _catName = ""; _catIcon = ""; _catParent = ""; _catEssential = false; }
+    private void StartAddCategory() { _addingCat = true; _catName = ""; _catIcon = ""; _catEssential = false; }
 
     private async Task AddCategory()
     {
-        Guid? parent = Guid.TryParse(_catParent, out var p) ? p : null;
         await Run(() => Api.CreateCategoryAsync(AccountId,
-            new CreateCategoryRequest(_catName.Trim(), parent, Blank(_catIcon), _catEssential)));
+            new CreateCategoryRequest(_catName.Trim(), null, Blank(_catIcon), _catEssential)));
         _addingCat = false;
     }
 

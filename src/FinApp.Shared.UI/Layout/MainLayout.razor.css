@@ -13,6 +13,14 @@
     padding: 0 18px;
     background: #13a06e;
     color: #ffffff;
+    /* ⚠️ This is what keeps the language menu on top, and it is NOT a z-index race.
+       `html.dark .app-bar` sets `backdrop-filter: blur(8px)`, and a backdrop-filter creates a STACKING CONTEXT.
+       Everything inside the bar — including a popover at z-index 91 — is then trapped in it, so the dashboard
+       header below (bell, account chip) painted over the open menu no matter how high its z-index went. Raising
+       the menu's number does nothing; the bar itself has to win. 92 clears the app's 90/91 popover band and
+       stays far below the modal layer (1000/2000), which must still cover the bar. */
+    position: relative;
+    z-index: 92;
 }
 
 .brand {
@@ -223,6 +231,27 @@ html.dark .pm-privacy li { color: #c3cad4; }
 .pm-admin-bar { flex: 1 1 0; min-width: 2px; background: #13a06e; border-radius: 2px 2px 0 0; }
 html.dark .pm-admin-grid > div { background: rgba(19,160,110,.14); }
 html.dark .pm-admin-n { color: #2ee59d; }
+/* Cohort rows: count, key, and what the key MEANS. The meaning is the whole reason this isn't just three more
+   tiles in the grid above — "beta" and "free" differ by a lifetime Pro seat, and a bare number never says that.
+   Rows rather than a grid because the descriptions are sentences and would set an unreadable column width. */
+.pm-cohorts { display: flex; flex-direction: column; gap: 5px; margin: 8px 0 6px; }
+.pm-cohort {
+    display: grid; grid-template-columns: auto auto 1fr; align-items: baseline; gap: 4px 8px;
+    padding: 7px 10px; border-radius: 9px; border-left: 3px solid #9ca3af; background: rgba(148,163,184,.10);
+}
+.pm-cohort-n { font-size: 1.02rem; font-weight: 800; color: #0e7c55; font-variant-numeric: tabular-nums; }
+.pm-cohort-k { font-size: .68rem; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; color: #6b7280; }
+.pm-cohort-d { font-size: .72rem; color: #9ca3af; }
+/* The beta row carries the app's own green — it is the cohort that costs something (a lifetime Pro seat). */
+.pm-cohort-beta { border-left-color: #13a06e; background: rgba(19,160,110,.10); }
+.pm-cohort-test { border-left-color: #f5a623; background: rgba(245,166,35,.10); }
+.pm-cohort-other { border-left-color: #ff7a66; background: rgba(255,122,102,.12); }
+html.dark .pm-cohort { background: rgba(148,163,184,.14); }
+html.dark .pm-cohort-n { color: #2ee59d; }
+html.dark .pm-cohort-k { color: #93a0b0; }
+html.dark .pm-cohort-beta { background: rgba(19,160,110,.16); }
+html.dark .pm-cohort-test { background: rgba(245,166,35,.16); }
+html.dark .pm-cohort-other { background: rgba(255,122,102,.18); }
 /* P4 — Plans (only rendered when monetization is switched on): two compact tier cards. */
 .pm-plans { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 8px 0 4px; }
 .pm-plan { border: 1px solid #e6e2d8; border-radius: 11px; padding: 10px 11px; }

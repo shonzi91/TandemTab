@@ -96,6 +96,11 @@ public sealed class RecurringItem : Entity
 
     public void SetActive(bool active) => Active = active;
 
+    /// <summary>Re-file this item under another category without touching its amount, day or fund — used when a
+    /// sub-category is flattened away and the bill it filed under has to follow the parent. <see cref="Update"/>
+    /// would work too, but only by re-stating every other field, which is how one of them quietly changes.</summary>
+    public void MoveToCategory(Guid categoryId) => CategoryId = categoryId;
+
     /// <summary>Move the expected day without touching anything else — used when a linked loan's own installment day
     /// takes over (see <see cref="LinkedDebtBucketId"/>), where re-running <see cref="Update"/> would mean restating
     /// every other field just to change a date.</summary>

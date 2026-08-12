@@ -54,7 +54,7 @@ public class StructureViewApiTests : IClassFixture<FinAppServerFactory>
     }
 
     [Fact]
-    public async Task Created_child_category_carries_parent_icon_and_essential()
+    public async Task A_category_created_with_a_parent_id_is_created_at_the_top_level()
     {
         var (client, auth) = await _factory.RegisterAndAuthAsync("sv_child");
         var account = await CreateAccount(client, "Child");
@@ -64,10 +64,12 @@ public class StructureViewApiTests : IClassFixture<FinAppServerFactory>
             new CreateCategoryRequest("Groceries", ParentId: food, Icon: "cart", Essential: true)))
             .Content.ReadFromJsonAsync<MutationResultDto>())!;
 
+        // Sub-categories are gone. An older client's ParentId is accepted and ignored rather than 400'd — it has
+        // nothing useful to do with the error, and the category itself is what the user asked for.
         var row = (await GetStructure(client, account.Id))!.Categories.Single(c => c.Id == created.EntityId);
         Assert.Equal("Groceries", row.Name);
         Assert.Equal("cart", row.Icon);
-        Assert.Equal(food, row.ParentId);
+        Assert.Null(row.ParentId);
         Assert.True(row.Essential);
     }
 

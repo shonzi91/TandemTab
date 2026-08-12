@@ -3,10 +3,10 @@ using FinApp.Domain.Common;
 namespace FinApp.Domain.Budgeting;
 
 /// <summary>
-/// A cross-cutting label attached to expenses (e.g. "Vacation", "Work", "Reimbursable"). Unlike a
-/// <see cref="Category"/> a tag is flat (no tree) and an expense can carry several — so tags cut across
-/// categories for analysis, sitting <i>alongside</i> sub-categories rather than replacing them. Stored flat
-/// on the <c>Account</c>; travels in the account snapshot, not the relational header.
+/// A cross-cutting label attached to expenses (e.g. "Vacation", "Work", "Reimbursable"). A tag cuts across
+/// categories, which is what makes it the app's one splitting axis: tags are now what sub-categories used to
+/// be <i>and</i> what they never could be — "Lidl" can sit under Food this week and Household the next, and
+/// still add up. Stored flat on the <c>Account</c>; travels in the account snapshot, not the relational header.
 /// </summary>
 public sealed class Tag : Entity
 {
@@ -57,6 +57,17 @@ public sealed class Tag : Entity
             throw new ArgumentException("Tag name is required.", nameof(name));
         Name = name.Trim();
     }
+
+    /// <summary>
+    /// A tag carrying a chosen id — used only when a sub-category is converted into the tag that replaces it, so
+    /// the label <i>inherits the sub-category's identity</i> rather than being a new thing with the same name.
+    /// <para>
+    /// That identity is what makes the conversion safe to run on every load: the flatten mints the same id every
+    /// time, so a client that read a snapshot and posted back a tag id is never talking about a tag the server
+    /// has since re-created under a different id. Ids are otherwise generated, never chosen — hence internal.
+    /// </para>
+    /// </summary>
+    internal Tag(string name, Guid id) : this(name) => Id = id;
 
     public void Rename(string name)
     {

@@ -55,6 +55,7 @@ public sealed class FinAppDbContext(DbContextOptions<FinAppDbContext> options) :
             a.Ignore(x => x.Trips);                // body data — trips ride in the snapshot, no relational header
             a.Ignore(x => x.TripsByDeparture);     // computed view over Trips
             a.Ignore(x => x.TripTags);             // computed view over Tags
+            a.Ignore(x => x.LastCategoryFlatten);  // load-time report, not data — never persisted anywhere
             a.Ignore(x => x.RoundUpTo);            // F4 body data — round-up settings ride in the snapshot
             a.Ignore(x => x.RoundUpBucketId);      // F4 body data — rides in the snapshot
             a.Ignore(x => x.RoundUpsOn);           // computed view over the two above

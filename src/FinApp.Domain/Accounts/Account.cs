@@ -327,23 +327,123 @@ public sealed class Account : Entity
 
     // --- Categories -------------------------------------------------------
 
-    /// <summary>Add a category. Pass <paramref name="parentId"/> to make it a sub-category (e.g. Kids → Kid1).</summary>
+    /// <summary>
+    /// Add a category. Always top-level: sub-categories were removed, and a tag is what splits a category now.
+    /// </summary>
+    /// <param name="parentId">
+    /// Ignored. Kept on the signature so an older client posting a parent still gets its category created —
+    /// filed at the top level — instead of a 400 it can't act on. Nothing in the app sends one any more.
+    /// </param>
     public Category AddCategory(string name, Guid? parentId = null, string? icon = null)
     {
-        if (parentId is { } pid)
-        {
-            var parent = _categories.FirstOrDefault(c => c.Id == pid)
-                ?? throw new InvalidOperationException("Parent category does not exist in this account.");
-            // One level of nesting only: a sub-category can't itself be a parent (keeps the tree simple).
-            if (parent.ParentId is not null)
-                throw new InvalidOperationException("Categories can only be nested one level deep.");
-        }
         if (_categories.Any(c => NameEquals(c.Name, name)))
             throw new InvalidOperationException($"A category named “{name.Trim()}” already exists.");
-        var category = new Category(name, parentId);
+        var category = new Category(name);
         category.SetIcon(icon);
         _categories.Add(category);
         return category;
+    }
+
+    /// <summary>
+    /// Collapse the legacy sub-category tree: each sub-category becomes a <see cref="Tag"/> bound to its old
+    /// parent, its expenses re-file to that parent (carrying the new tag), and its budget merges into the
+    /// parent's. Idempotent — an account with no sub-categories left is untouched, so this can run on every load.
+    /// </summary>
+    /// <remarks>
+    /// <para><b>Nothing is lost that the app could otherwise show.</b> The sub-category's name survives as the tag,
+    /// its history survives on the expenses, and the <see cref="Tag.CategoryId"/> binding preserves the one
+    /// convenience nesting actually bought: picking "Groceries" on a new expense still files it under Food.</para>
+    /// <para><b>Budgets merge rather than drop</b>, which is the opposite of <see cref="RemoveCategoryReassigning"/>
+    /// and deliberately so: there the user is deleting a category and inheriting its cap would raise a limit they
+    /// set on purpose, while here the two budgets were always one plan — Food €600 was already the sum of its
+    /// children. Merging keeps the total the user is used to; dropping would quietly free €400 of budget.</para>
+    /// <para><b>The tag is applied to stored rows</b>, which a tag→category binding is otherwise forbidden from
+    /// doing (see <see cref="Tag.CategoryId"/>). The rule protects history from a binding made <i>later</i>; this
+    /// is the same fact the expense already carried, written on the axis that still exists.</para>
+    /// <para><b>An expense that already has a tag keeps it.</b> One tag per expense is the model, and the tag was
+    /// chosen for that row while the sub-category was mostly the shape of the picker. Those rows still re-file to
+    /// the parent, so no money moves — they just lose the sub-category distinction. The count comes back in
+    /// <see cref="CategoryFlattenResult.ExpensesTagSlotTaken"/> so a caller can say so out loud.</para>
+    /// </remarks>
+    /// <summary>
+    /// What the last <see cref="FlattenCategoryTree"/> on this loaded aggregate did — <see cref="CategoryFlattenResult.Nothing"/>
+    /// for every account whose tree was already flat. Load-time state, not stored data: it exists so the surface that
+    /// loaded the account can tell the user their sub-categories became tags, once, instead of the conversion being
+    /// something they notice later as "my budgets changed".
+    /// </summary>
+    public CategoryFlattenResult LastCategoryFlatten { get; private set; } = CategoryFlattenResult.Nothing;
+
+    public CategoryFlattenResult FlattenCategoryTree()
+    {
+        var children = _categories.Where(c => !c.IsRoot).ToList();
+        if (children.Count == 0) return LastCategoryFlatten = CategoryFlattenResult.Nothing;
+
+        int converted = 0, refiled = 0, slotTaken = 0, budgetsMerged = 0, recurringMoved = 0;
+
+        foreach (var child in children)
+        {
+            var parent = child.ParentId is { } pid ? FindCategory(pid) : null;
+            // Two levels deep can't happen (AddCategory refused it), but a parent that is itself a child in some
+            // hand-edited snapshot would otherwise convert into a tag bound to a category about to disappear.
+            if (parent is null || !parent.IsRoot)
+            {
+                child.ClearParent();
+                continue;
+            }
+
+            // A tag the user already has under this name wins over minting a second one: two tags called
+            // "Groceries" would split every future breakdown and break the account's own name-uniqueness rule.
+            // Otherwise the tag takes over the sub-category's id — see the Tag(name, id) constructor for why.
+            var tag = _tags.FirstOrDefault(t => NameEquals(t.Name, child.Name));
+            if (tag is null)
+            {
+                tag = new Tag(child.Name, child.Id);
+                tag.SetIcon(child.Icon);
+                _tags.Add(tag);
+            }
+            tag.SetArchived(false);   // it is about to carry history; a hidden tag would vanish from the Breakdown
+            if (tag.CategoryId is null) tag.SetCategory(parent.Id);
+
+            foreach (var period in _periods)
+            {
+                foreach (var expense in period.Expenses.Where(e => e.CategoryId == child.Id))
+                {
+                    expense.MoveToCategory(parent.Id);
+                    if (expense.TagId is null) { expense.SetTag(tag.Id); refiled++; }
+                    else slotTaken++;
+                }
+
+                if (period.FindBudget(child.Id) is { } childBudget)
+                {
+                    var parentBudget = period.FindBudget(parent.Id);
+                    // The parent's own alert settings survive when it had a budget; a parent that had none adopts
+                    // the child's, so a threshold someone set deliberately isn't replaced by the 80% default.
+                    period.SetBudget(parent.Id,
+                        parentBudget is null ? childBudget.Allocated : parentBudget.Allocated + childBudget.Allocated,
+                        parentBudget?.AlertThreshold ?? childBudget.AlertThreshold,
+                        parentBudget?.NotifyOnEveryExpense ?? childBudget.NotifyOnEveryExpense);
+                    period.RemoveBudgetIfAny(child.Id);
+                    budgetsMerged++;
+                }
+            }
+
+            // Everything else that files by category id. A bill pointing at a category that no longer exists would
+            // post its next expense into nothing, so these move even though they hold no history themselves.
+            foreach (var item in _recurring.Where(r => r.CategoryId == child.Id))
+            {
+                item.MoveToCategory(parent.Id);
+                recurringMoved++;
+            }
+            foreach (var trip in _trips.Where(t => t.CategoryId == child.Id))
+                trip.SetCategory(parent.Id);
+            foreach (var other in _tags.Where(t => t.CategoryId == child.Id))
+                other.SetCategory(parent.Id);
+
+            _categories.Remove(child);
+            converted++;
+        }
+
+        return LastCategoryFlatten = new CategoryFlattenResult(converted, refiled, slotTaken, budgetsMerged, recurringMoved);
     }
 
     /// <summary>Set (or clear) a category's display icon.</summary>
@@ -676,8 +776,8 @@ public sealed class Account : Entity
     /// <summary>Why a category can't be removed, or null when it can.</summary>
     public string? CategoryRemovalBlocker(Guid categoryId)
     {
-        if (_categories.Any(c => c.ParentId == categoryId))
-            return "it has sub-categories";
+        // No "it has sub-categories" branch any more: the tree is flattened on load, so a category with children
+        // cannot reach this method. A blocker naming a concept the app no longer has would be unreadable advice.
         if (_periods.SelectMany(p => p.Budgets).Any(b => b.CategoryId == categoryId))
             return "a budget references it";
         if (_periods.SelectMany(p => p.Expenses).Any(e => e.CategoryId == categoryId))
@@ -701,7 +801,7 @@ public sealed class Account : Entity
 
     /// <summary>
     /// Delete a category that history still references, moving everything it holds to <paramref name="targetId"/>
-    /// instead of refusing (which is all <see cref="RemoveCategory"/> can do). Its sub-categories go with it.
+    /// instead of refusing (which is all <see cref="RemoveCategory"/> can do).
     /// </summary>
     /// <remarks>
     /// <para><b>Expenses keep their identity</b> — same id, amount, date, member, fund, tags, installment and
@@ -717,23 +817,18 @@ public sealed class Account : Entity
         var category = FindCategory(categoryId) ?? throw new InvalidOperationException("Category not found.");
         if (targetId == categoryId)
             throw new InvalidOperationException("Choose a different category to move the expenses to.");
-        var target = FindCategory(targetId)
+        _ = FindCategory(targetId)
             ?? throw new InvalidOperationException("The category to move the expenses to doesn't exist.");
-        // The target must survive the delete, so it can't be one of the sub-categories going down with it.
-        var doomed = _categories.Where(c => c.Id == categoryId || c.ParentId == categoryId).Select(c => c.Id).ToHashSet();
-        if (doomed.Contains(target.Id))
-            throw new InvalidOperationException("That category is being deleted too — pick one that will still exist.");
 
         foreach (var period in _periods)
         {
-            foreach (var expense in period.Expenses.Where(e => doomed.Contains(e.CategoryId)))
+            foreach (var expense in period.Expenses.Where(e => e.CategoryId == categoryId))
                 expense.MoveToCategory(targetId);
-            foreach (var id in doomed)
-                period.RemoveBudgetIfAny(id);
+            period.RemoveBudgetIfAny(categoryId);
         }
-        foreach (var tag in _tags.Where(t => t.CategoryId is { } c && doomed.Contains(c)))
+        foreach (var tag in _tags.Where(t => t.CategoryId == categoryId))
             tag.SetCategory(null);
-        _categories.RemoveAll(c => doomed.Contains(c.Id));
+        _categories.Remove(category);
     }
 
     public void RenameSavingCategory(Guid savingCategoryId, string name)
@@ -858,11 +953,9 @@ public sealed class Account : Entity
     /// </summary>
     public decimal? EssentialSpendPerPeriod(int lookbackPeriods = 6)
     {
-        // A sub-category inherits its parent's essential-ness — marking "Groceries" essential has to cover the rows
-        // filed under it, or the figure silently omits most of the spend it claims to measure.
-        var essential = _categories
-            .Where(c => c.IsEssential || (c.ParentId is { } p && _categories.Any(x => x.Id == p && x.IsEssential)))
-            .Select(c => c.Id).ToHashSet();
+        // Flat: the inherited case (a sub-category counting because its parent was essential) went away with the
+        // tree — that spend now sits on the essential category itself, so a plain filter sees all of it.
+        var essential = _categories.Where(c => c.IsEssential).Select(c => c.Id).ToHashSet();
         if (essential.Count == 0) return null;
 
         var closed = _periods.Where(p => p.Status == PeriodStatus.Closed).TakeLast(lookbackPeriods).ToList();

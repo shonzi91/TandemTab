@@ -40,20 +40,19 @@ public class CategoryReassignDeleteTests
     }
 
     [Fact]
-    public void Sub_categories_go_with_it_and_their_expenses_land_on_the_target_too()
+    public void Every_expense_on_the_category_lands_on_the_target()
     {
+        // There is no cascade to test any more — categories are flat — but the money still has to be untouched.
         var account = new Account("Personal", Eur);
         var food = account.AddCategory("Food");
-        var groceries = account.AddCategory("Groceries", food.Id);
         var transport = account.AddCategory("Transport");
         var period = account.StartPeriod(new DateOnly(2026, 1, 1), new DateOnly(2026, 1, 31));
         period.AddExpense(new Expense(food.Id, M(10), new DateOnly(2026, 1, 5), Guid.NewGuid(), Guid.NewGuid()));
-        period.AddExpense(new Expense(groceries.Id, M(15), new DateOnly(2026, 1, 6), Guid.NewGuid(), Guid.NewGuid()));
+        period.AddExpense(new Expense(food.Id, M(15), new DateOnly(2026, 1, 6), Guid.NewGuid(), Guid.NewGuid()));
 
         account.RemoveCategoryReassigning(food.Id, transport.Id);
 
         Assert.Null(account.FindCategory(food.Id));
-        Assert.Null(account.FindCategory(groceries.Id));
         Assert.All(period.Expenses, e => Assert.Equal(transport.Id, e.CategoryId));
         Assert.Equal(25m, period.Expenses.Sum(e => e.Amount.Amount));   // the money is untouched
     }
@@ -108,15 +107,13 @@ public class CategoryReassignDeleteTests
     }
 
     [Fact]
-    public void The_target_cannot_be_the_category_being_deleted_or_one_of_its_subs()
+    public void The_target_cannot_be_the_category_being_deleted()
     {
         var account = new Account("Personal", Eur);
         var food = account.AddCategory("Food");
-        var groceries = account.AddCategory("Groceries", food.Id);
 
         Assert.Throws<InvalidOperationException>(() => account.RemoveCategoryReassigning(food.Id, food.Id));
-        // A sub-category is deleted along with its parent, so re-filing into it would strand the expenses.
-        Assert.Throws<InvalidOperationException>(() => account.RemoveCategoryReassigning(food.Id, groceries.Id));
+        Assert.Throws<InvalidOperationException>(() => account.RemoveCategoryReassigning(food.Id, Guid.NewGuid()));
         Assert.NotNull(account.FindCategory(food.Id));   // nothing was removed on the way to the throw
     }
 }

@@ -157,6 +157,13 @@ public static class AccountSnapshotSerializer
             account.AddRecurring(item);
         }
         CollapseMultiTags(account);
+        // Sub-categories were removed: each one becomes a tag bound to its old parent. Runs here, on every load, for
+        // the same reason CollapseMultiTags does — it is the one place every read path goes through, and the result
+        // persists the next time the account is saved. It is idempotent and mints deterministic tag ids (the
+        // sub-category's own), so loading twice without an intervening save cannot produce two different answers.
+        // ⚠️ Order matters: AFTER CollapseMultiTags, or an expense whose legacy multi-tag list is about to be reduced
+        // could be judged as "already tagged" and lose its sub-category label to a tag that then gets collapsed away.
+        account.FlattenCategoryTree();
         return account;
     }
 

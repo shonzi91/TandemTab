@@ -41,25 +41,18 @@ public class CategoryAdminTests
     }
 
     [Fact]
-    public void Category_with_children_cannot_be_removed()
+    public void Categories_are_flat_so_nothing_can_be_created_under_another()
     {
+        // Sub-categories were removed — see CategoryFlattenTests for what happens to the ones already out there.
+        // A parent id is ignored rather than rejected so an older client's create still succeeds.
         var account = new Account("Personal", Eur);
         var kids = account.AddCategory("Kids");
-        account.AddCategory("Kid1", kids.Id);
 
-        Assert.Equal("it has sub-categories", account.CategoryRemovalBlocker(kids.Id));
-    }
+        var kid1 = account.AddCategory("Kid1", kids.Id);
 
-    [Fact]
-    public void Sub_category_cannot_have_its_own_sub_category()
-    {
-        var account = new Account("Personal", Eur);
-        var food = account.AddCategory("Food");
-        var groceries = account.AddCategory("Groceries", food.Id);   // one level deep: allowed
-
-        // Nesting is capped at one level, so a sub-category can't be a parent.
-        var ex = Assert.Throws<InvalidOperationException>(() => account.AddCategory("Fruit", groceries.Id));
-        Assert.Contains("one level", ex.Message);
+        Assert.True(kid1.IsRoot);
+        Assert.DoesNotContain(account.Categories, c => !c.IsRoot);
+        Assert.Null(account.CategoryRemovalBlocker(kids.Id));
     }
 
     [Fact]

@@ -687,30 +687,17 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     // Pickers and the budget tree show only active (non-archived) categories; archived ones stay resolvable by
     // name/id (via FindCategory/CategoryName) so historical expenses keep their label.
     public IEnumerable<Category> RootCategories => Account.RootCategories.Where(c => !c.IsArchived);
-    public IEnumerable<Category> ChildrenOf(Guid parentId) => Account.ChildrenOfCategory(parentId).Where(c => !c.IsArchived);
     public IReadOnlyList<Category> AllCategories => Account.Categories.Where(c => !c.IsArchived).ToList();
 
-    /// <summary>Root categories that are archived (hidden from the tree) — for a collapsible "archived" section.</summary>
-    public IReadOnlyList<Category> ArchivedCategories => Account.Categories.Where(c => c.IsRoot && c.IsArchived).ToList();
+    /// <summary>Categories that are archived (hidden from the list) — for a collapsible "archived" section.</summary>
+    public IReadOnlyList<Category> ArchivedCategories => Account.Categories.Where(c => c.IsArchived).ToList();
 
-    /// <summary>Categories in tree order with their depth, for an indented &lt;select&gt; (parents above their children).</summary>
-    public IReadOnlyList<(Category Category, int Depth)> CategoryOptions
-    {
-        get
-        {
-            var result = new List<(Category, int)>();
-            void Walk(IEnumerable<Category> nodes, int depth)
-            {
-                foreach (var c in nodes.Where(c => !c.IsArchived))
-                {
-                    result.Add((c, depth));
-                    Walk(Account.ChildrenOfCategory(c.Id), depth + 1);
-                }
-            }
-            Walk(Account.RootCategories, 0);
-            return result;
-        }
-    }
+    /// <summary>
+    /// Every active category, for pickers and lists. The <c>Depth</c> is always 0 and survives only so the call
+    /// sites that destructure this tuple don't all have to change at once — categories are flat.
+    /// </summary>
+    public IReadOnlyList<(Category Category, int Depth)> CategoryOptions =>
+        Account.Categories.Where(c => !c.IsArchived).Select(c => (c, 0)).ToList();
     public Budget? BudgetFor(Guid categoryId) => Period.FindBudget(categoryId);
     public bool HasBudget(Guid categoryId) => Period.FindBudget(categoryId) is not null;
     public BudgetCoverage Coverage(Guid categoryId) => _coverage.ForCategory(Account, Period, categoryId);
@@ -722,7 +709,7 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     public IEnumerable<Category> BudgetedCategories =>
         Period.Budgets.Select(b => Account.FindCategory(b.CategoryId)!).Where(c => c is not null);
 
-    /// <summary>Total spent in a category and its sub-categories this period (works without a budget).</summary>
+    /// <summary>Total spent in a category this period (works without a budget).</summary>
     public Money SpentInCategory(Guid categoryId)
     {
         var ids = Account.CategoryWithDescendantIds(categoryId).ToHashSet();
@@ -1511,7 +1498,7 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
             if (gap < 0)
             {
                 expenseCat ??= AllCategories.FirstOrDefault(c => string.Equals(c.Name, "Adjustment", StringComparison.OrdinalIgnoreCase))?.Id
-                               ?? await AddCategory("Adjustment", null, "⚖️");
+                               ?? await AddCategory("Adjustment", "⚖️");
                 await AddExpense(expenseCat.Value, Math.Abs(gap), fundId, "Reconciliation", date);
             }
             else if (gap > 0)
@@ -1541,7 +1528,7 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
         if (difference < 0m)
         {
             var cat = AllCategories.FirstOrDefault(c => string.Equals(c.Name, name, StringComparison.OrdinalIgnoreCase))?.Id
-                      ?? await AddCategory(name, null, "swap");
+                      ?? await AddCategory(name, "swap");
             await AddExpense(cat, Math.Abs(difference), fundId, name, date);
         }
         else
@@ -2518,14 +2505,16 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     }
 
     // Category CRUD
-    public async Task<Guid> AddCategory(string name, Guid? parentId, string? icon = null, bool essential = false)
+    public async Task<Guid> AddCategory(string name, string? icon = null, bool essential = false)
     {
         var result = await ExecuteOptimisticAsync(() =>
         {
-            var category = Account.AddCategory(name, parentId, icon);
+            var category = Account.AddCategory(name, icon: icon);
             if (essential) Account.SetCategoryEssential(category.Id, true);
         },
-        id => api.CreateCategoryAsync(id, new CreateCategoryRequest(name, parentId, icon, essential)),
+        // ParentId stays on the request contract (older clients still post one, and the server ignores it) but this
+        // client never sends one — categories are flat.
+        id => api.CreateCategoryAsync(id, new CreateCategoryRequest(name, null, icon, essential)),
         refetchAfter: true);
         return result.EntityId ?? Guid.Empty;
     }

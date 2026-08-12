@@ -290,6 +290,47 @@
                            row, so this counts PEOPLE currently paying, not payments ever taken. Per-payment
                            history needs the provider's webhook log, which arrives with the provider itself. *@
                         <p class="pm-hint">@Loc["Paying = distinct people on a real (non-sandbox) paid plan. Renewals reuse one row, so this isn’t a count of payments taken."]</p>
+                        @* Cohorts in full, not just the beta tile above. The three are not interchangeable — beta
+                           carries a lifetime Pro seat, test is us, free is everyone after the cap — so "who is in
+                           what" is the question the seat count can't answer on its own. *@
+                        @if (m.Cohorts is { Count: > 0 } cohorts)
+                        {
+                            <div class="pm-cohorts">
+                                @foreach (var c in cohorts)
+                                {
+                                    var known = c.Cohort is "beta" or "free" or "test";
+                                    <div class="pm-cohort pm-cohort-@(known ? c.Cohort : "other")">
+                                        <span class="pm-cohort-n">@c.Count</span>
+                                        <span class="pm-cohort-k">@CohortLabel(c.Cohort)</span>
+                                        <span class="pm-cohort-d">@CohortMeaning(c.Cohort)</span>
+                                    </div>
+                                }
+                            </div>
+                            @* The cap is the thing that decides which cohort the NEXT person lands in, so it belongs
+                               beside the counts rather than in a settings page nobody opens. *@
+                            @if (m.BetaCap > 0)
+                            {
+                                <p class="pm-hint">
+                                    @string.Format(Loc["{0} of {1} beta seats taken — {2} left before new sign-ups join on Free."],
+                                        m.BetaCohort, m.BetaCap, m.BetaSeatsLeft)
+                                </p>
+                            }
+                            else
+                            {
+                                <p class="pm-hint">@Loc["The beta cap is 0, so every new sign-up joins on Free."]</p>
+                            }
+                            @* These deliberately don't add up to Users, and the gap is worth stating: cohorts are
+                               stamped at registration, so accounts made before that shipped have no row at all.
+                               Left unsaid, the mismatch reads as a broken count. *@
+                            var cohorted = cohorts.Sum(c => c.Count);
+                            @if (cohorted < m.TotalUsers)
+                            {
+                                <p class="pm-hint">
+                                    @string.Format(Loc["{0} of {1} users carry a cohort — the rest registered before cohorts were recorded."],
+                                        cohorted, m.TotalUsers)
+                                </p>
+                            }
+                        }
                         @if (m.SignupsByDay.Count > 0)
                         {
                             var maxc = m.SignupsByDay.Max(d => d.Count);
@@ -757,6 +798,24 @@
         catch { _adminError = true; }
         finally { _adminBusy = false; StateHasChanged(); }
     }
+
+    // Cohort keys are stored values, not display text. An unknown one is shown verbatim rather than mapped to
+    // "Other": if a typo ever reaches the column, seeing it is the point.
+    private string CohortLabel(string cohort) => cohort switch
+    {
+        "beta" => Loc["Beta"],
+        "free" => Loc["Free"],
+        "test" => Loc["Test"],
+        _ => cohort,
+    };
+
+    private string CohortMeaning(string cohort) => cohort switch
+    {
+        "beta" => Loc["Lifetime Pro — joined inside the cap"],
+        "free" => Loc["Joined after the cap was full"],
+        "test" => Loc["Our own addresses"],
+        _ => Loc["Unrecognised cohort"],
+    };
 
     // Admin test switch: pin this account to a plan (or clear). Re-reads /me and drops the cached tiers so the
     // whole surface — feature list, upsell, crown, gates — reflects the new plan immediately.
