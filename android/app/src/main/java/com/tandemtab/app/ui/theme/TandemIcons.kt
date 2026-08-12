@@ -85,6 +85,11 @@ object TandemIcons {
     // so the two surfaces mark Pro with the same mark.
     val Crown = icon("M3.5 17.5L2 7l5.5 4L12 4.5l4.5 6.5L22 7l-1.5 10.5zM3.5 20.5h17")
 
+    // Trip status marks (web i-plane / i-pin), one per state: a departing plane for a journey still ahead, a pin
+    // for the one you are standing in. The third is Flag, above. Same paths as the web's sprite.
+    val Plane = icon("M12 2.5c.7 0 1 .8 1 2V9l7 4v2l-7-2v4l2 1.7v1.5L12 19l-3 1.2v-1.5l2-1.7v-4l-7 2v-2l7-4V4.5c0-1.2.3-2 1-2z")
+    val Pin = icon("M12 17v5M9 3h6l-1 2 2 3-1 4H8l-1-4 2-3z")
+
     // --- category-domain icons (the web CategoryIcons palette + guesser) -----------------------------
     // Names match CategoryIcons.Palette; resolve a category's stored icon/name to one via [forCategory].
     private val categoryPaths: Map<String, String> = mapOf(

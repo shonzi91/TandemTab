@@ -57,6 +57,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.tandemtab.app.SpendingUi
+import com.tandemtab.app.TripsUi
 import com.tandemtab.app.data.AddExpenseRequest
 import com.tandemtab.app.data.CategoryOptionDto
 import com.tandemtab.app.data.DepositRowDto
@@ -77,6 +78,9 @@ private data class ExpenseDraft(
     val amount: Double,
     val note: String,
     val date: String,
+    // Which journey this row is filed to, if any. Carried per staged row rather than per sheet, so a batch can
+    // hold both a holiday dinner and the ordinary shopping done the same day.
+    val tripId: String? = null,
 )
 
 private enum class AddMode { Expense, Income }
@@ -91,6 +95,7 @@ private enum class AddMode { Expense, Income }
 @Composable
 fun AddSheet(
     spending: SpendingUi,
+    trips: TripsUi,
     startWithIncome: Boolean = false,
     editing: ExpenseDto? = null,
     editingDeposit: DepositRowDto? = null,
@@ -154,10 +159,15 @@ fun AddSheet(
     var creatingCat by remember { mutableStateOf(false) }
     var hint by remember { mutableStateOf<String?>(null) }
 
+    // The trip a new row is filed to. Defaults to the one being lived — the app knows you're away, so it offers
+    // it — but never to a trip that has only *arrived* by date: trip mode is opt-in, and a coffee on the morning
+    // of departure is not holiday spending until someone says the trip has started.
+    var tripId by remember(editing, trips.live?.id) { mutableStateOf(editing?.tripId ?: trips.live?.id) }
+
     val parsed = amountText.replace(',', '.').toDoubleOrNull()?.takeIf { it > 0 }
     val currentValid = parsed != null && categoryId != null && fundId != null
     fun currentDraft(): ExpenseDraft? =
-        if (currentValid) ExpenseDraft(categoryId!!, fundId!!, parsed!!, note.trim(), date) else null
+        if (currentValid) ExpenseDraft(categoryId!!, fundId!!, parsed!!, note.trim(), date, tripId) else null
 
     val pendingCount = staged.size + (if (currentValid) 1 else 0)
     val pendingTotal = staged.sumOf { it.amount } + (if (currentValid) parsed!! else 0.0)
@@ -193,7 +203,7 @@ fun AddSheet(
                 val batch = buildList {
                     addAll(staged)
                     currentDraft()?.let { add(it) }
-                }.map { AddExpenseRequest(it.categoryId, it.amount, it.fundId, it.date, it.note.ifBlank { null }) }
+                }.map { AddExpenseRequest(it.categoryId, it.amount, it.fundId, it.date, it.note.ifBlank { null }, tripId = it.tripId) }
                 if (batch.isEmpty()) { hint = "Enter an amount."; return }
                 onSaveExpenses(batch) { staged = emptyList(); amountText = ""; note = ""; onDismiss() }
             }
@@ -390,6 +400,31 @@ fun AddSheet(
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
                     )
+
+                    // On a trip: file this spending to it. Offered only when adding — the server's expense EDIT
+                    // deliberately carries no trip field (so a client that knows nothing about trips can correct
+                    // an amount without dropping the row out of a recap); changing the link is its own action, on
+                    // the Trips tab. Hidden entirely when the account has no trips, rather than shown empty.
+                    if (!editingMode && trips.trips.isNotEmpty()) {
+                        Spacer(Modifier.height(14.dp))
+                        FieldLabel("Trip")
+                        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            PickChip(label = "No trip", icon = null, selected = tripId == null) { tripId = null }
+                            // Live and upcoming journeys only: a finished trip is history, and offering it here is
+                            // how a weekly shop ends up in last summer's holiday.
+                            trips.trips.filter { !it.isFinished }.forEach { t ->
+                                PickChip(label = t.name, icon = t.icon ?: "plane", catName = t.name, selected = tripId == t.id) { tripId = t.id }
+                            }
+                        }
+                        if (tripId != null && trips.trips.firstOrNull { it.id == tripId }?.isActive != true) {
+                            Spacer(Modifier.height(6.dp))
+                            Text(
+                                "Filed to a trip you haven't left for yet — that's fine, it's how a flight bought " +
+                                    "now counts later.",
+                                fontSize = 12.sp, color = tandem.muted,
+                            )
+                        }
+                    }
 
                     hint?.let {
                         Spacer(Modifier.height(8.dp))

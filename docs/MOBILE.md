@@ -101,7 +101,7 @@ Session 94, **69** after Session 95). It does not call these:
 | Reallocation between budget and savings | `/reallocations/to-budget`, `/reallocations/to-savings` | S |
 | Settling an on-behalf expense | `/expenses/{id}/settle` | S |
 | ~~Contribution (income) categories~~ | ~~`/contribution-categories…`~~ | ✅ **done S91** (create only) |
-| **Trips — the whole feature** (S99–S101). Read model ✅ **added S103**; the **UI is the open row** | `/trips` (GET ✅ + POST), `/trips/{id}` (PUT/DELETE), `/trips/{id}/started`, `/trips/{id}/finished`, `/trips/{id}/use-savings`, `/trip-tags`, `/expenses/{id}/trip` — **all now called by `TandemTabApi`; nothing renders them yet** | **L** |
+| ~~**Trips — the whole feature** (S99–S101)~~ | ~~`/trips`, `/trips/{id}`, `/trips/{id}/started`, `/trips/{id}/finished`, `/expenses/{id}/trip`~~ | ✅ **done S103** — see below. Still open on this row: `/trips/{id}/use-savings` (releasing a savings pot into the trip's budget) and `/trip-tags` (the seeded label set) |
 | **Expense labels** — read ✅ **added S103** (`ExpenseDto.TagIds`, `TagOptionDto`); writing one is still unwired | `/expenses/{id}/tag` | S |
 | **Money to another account** (transfers out + editing the pair) | `/transfers-out`, `/account-transfers/{id}` | M |
 | **A wallet's own currency** (the S~102 multi-currency work) | `/funds/{id}/currency` | S–M |
@@ -127,6 +127,35 @@ refinements), **tags** incl. F2 (M), **achievements + F6** (S–M), **onboarding
 **F4 round-ups** (no field on any contract *and* no command endpoint) and the **fund↔bank sync toggle**
 (`SetFundSynced`, `TODO(cutover)`). Both are still whole-snapshot pushes in the thick client. They would batch
 naturally into one "account settings commands" server slice.
+
+#### ✅ Trips — closed (Session 103, 2026-08-12)
+
+Spending gains a third segment (**By date · By budgets · Trips**), mirroring where the web keeps it, rather than a
+fifth bottom-tab. A trip card carries its state mark (pin / plane / flag), its dates and pill (**Day 3** ·
+**Ready to go** · **in 9 days**), and its total; opening it shows the **booked-ahead / while-away / after-getting-
+back / a-day** split, the budget line, the two savings sentences, and the actions — attach an already-paid expense,
+start, finish, reopen, edit, delete (behind a confirm that says the expenses survive). The FAB's add sheet gained a
+**Trip row that defaults to the journey you're on**.
+
+- **★ The bug the emulator found, and a test could not have.** Logging €23.40 onto Rome from the FAB left the trip
+  card reading its old total: every trip figure is a *recap of expenses*, and nothing told the recap that an
+  expense had moved. Fixed with `refreshTripsIfLoaded()` on add/edit/delete — same shape as S95's "removing an
+  installment refetches Savings". **A screen whose numbers are derived server-side has to re-read them whenever
+  their inputs change, and the inputs are usually owned by a different screen.**
+- **The trip picker defaults to the *live* trip, never to one that has merely arrived by date.** Trip mode is
+  opt-in; defaulting on the date would file the morning-of-departure coffee as holiday spending, which is the
+  exact thing S101 removed on the web. Finished trips are left out of the picker entirely — that is how a weekly
+  shop ends up in last summer's holiday.
+- **★ The edit form carries `savingCategoryId` through untouched.** The server's trip edit is a full replace, so a
+  form that omitted it would silently unlink the savings pot every time someone corrected a name. Linking a pot is
+  still web-only; this makes sure the native editor cannot destroy one. (Fourth full-replace trap in R2.)
+- **Not built:** the recap donut (needs the category/tag slices on the DTO), the per-trip expense list (the thin
+  client holds only the open period's ledger, so "add something already paid" can only offer this month), the
+  savings release, and the Home trip banner / shell shift.
+- Verified on the emulator against a three-trip local seed (running / upcoming / finished) in **both themes**:
+  state marks and pills, the split arithmetic (€374.90 booked ahead + €208.10 while away), attaching an expense
+  (total moved €484.70 → €549.60, and the 8 Aug shop correctly counted as *booked ahead* against a 10 Aug
+  departure), logging one from the FAB onto the live trip, and the delete confirm.
 
 #### ✅ Period lifecycle — closed (Session 91, 2026-08-06)
 

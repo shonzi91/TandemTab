@@ -10,7 +10,11 @@ travels** so Kotlin never re-derives it), `ExpenseDto.TripId`/`TagIds`, `TagOpti
 7 new server tests, and Android's data layer wired (`compileDebugKotlin` clean). `docs/MOBILE.md`'s table — the
 R2 backlog itself — rewritten with the fresh measurement.
 **454 + 48 + 347 green.**
-⚠️ **No Android trips UI yet** — the next row, and the largest one left.
+✅ **And the Android trips UI is built and EMULATOR-VERIFIED in both themes** — a third Spending segment with the
+state marks, the three-way split, the actions, and a Trip row on the add sheet that defaults to the journey you're
+on. ★ The emulator caught what no test would: a trip card is a **recap of expenses**, so it went stale the moment
+one was logged from the FAB — now re-read after every expense write.
+⚠️ Still open on trips: the recap donut, the per-trip expense list, the savings release, the Home banner.
 
 Previously: 2026-08-12 (Session 102 — **three owner items on Breakdown, and a dead CSS rule they uncovered.**
 The "← All categories" button is gone (the axis chips already cleared the drill); the Income/Spent/of-income
@@ -180,8 +184,33 @@ Owner picked R2 off the open-beta roadmap. The re-measure (every `accounts.Map*`
   accounts, income-category edits).
 
 **454 + 48 + 347 green** (7 new server tests; domain and persistence untouched by this change).
-⚠️ **No Android UI yet.** The trips screen is the next row and the largest one left — deliberately not started
-half-way here, because S99 already proved what unproven UI costs.
+
+### ✅ …and then the Android trips UI, driven on a real emulator
+
+Spending gained a third segment (**By date · By budgets · Trips**) — where the web keeps it, not a fifth bottom-tab.
+Cards with state marks and pills (Day 3 / Ready to go / in 9 days), the booked-ahead / while-away / after / a-day
+split, the budget line, both savings sentences, and the actions: attach an already-paid expense, start, finish,
+reopen, edit, delete-behind-a-confirm. The FAB's add sheet gained a **Trip row defaulting to the journey you're on**.
+
+- **★★ The emulator found a bug no test would have.** Logging €23.40 onto Rome from the FAB left the trip card
+  showing its old total. Every trip figure is a **recap of expenses**, and nothing told the recap an expense had
+  moved — so the screen was right about its own data and wrong about the world. `refreshTripsIfLoaded()` now runs
+  after add/edit/delete. Generalised: **a screen whose numbers are derived server-side must re-read them whenever
+  their inputs change, and the inputs usually belong to a different screen.** (S95 learned the same thing about
+  Savings and installments; this is the second instance, so treat it as the rule.)
+- **The picker never defaults to a trip that has merely *arrived* by date** — only to a confirmed, live one.
+  Defaulting on the date would file the morning-of-departure coffee as holiday spending, which is precisely what
+  S101 removed on the web. Finished trips are excluded from the picker entirely.
+- **★ The native edit form carries `savingCategoryId` through untouched** — the server's trip edit is a full
+  replace, so omitting it would unlink the savings pot every time someone corrected a name. Fourth full-replace
+  trap in R2; the pattern is now reliable enough to check for by default.
+- **Not built (named, not hidden):** the recap donut (needs slices on the DTO), the per-trip expense list (the thin
+  client holds only the open period, so "add something already paid" can offer only this month), the savings
+  release, and the Home trip banner / shell shift.
+- ✅ **Emulator-verified in both themes** on a three-trip seed: the marks and pills, the split arithmetic, attaching
+  an expense (€484.70 → €549.60, with an 8 Aug shop correctly counted as *booked ahead* of a 10 Aug departure),
+  logging one from the FAB onto the live trip (€573 → €583 on the card, no manual refresh), and the delete confirm.
+- The local-dev flips (`API_BASE_URL` → `10.0.2.2:5179`, `usesCleartextTraffic`) were **reverted before commit**.
 
 ## Session 102 (2026-08-12) — **Three owner items on Breakdown: fewer controls, and the ones left mean something.**
 

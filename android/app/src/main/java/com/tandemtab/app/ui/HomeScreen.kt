@@ -174,6 +174,13 @@ fun HomeScreen(
     onAddCategory: (String, String?, String?, (String?) -> Unit) -> Unit,
     onEditCategory: (String, String, String?, () -> Unit) -> Unit,
     onArchiveCategory: (String, () -> Unit) -> Unit,
+    onLoadTrips: (Boolean) -> Unit,
+    onSaveTrip: (String?, String, String, String, String?, String?, String?, Double?, String?, () -> Unit) -> Unit,
+    onDeleteTrip: (String, () -> Unit) -> Unit,
+    onStartTrip: (String, Boolean) -> Unit,
+    onFinishTrip: (String, Boolean) -> Unit,
+    onAttachExpenseToTrip: (String, String?, () -> Unit) -> Unit,
+    onPrepareTrip: () -> Unit,
     onClearEditing: () -> Unit,
     onAddExpenses: (List<com.tandemtab.app.data.AddExpenseRequest>, () -> Unit) -> Unit,
     onEditExpense: (String, com.tandemtab.app.data.AddExpenseRequest, () -> Unit) -> Unit,
@@ -275,6 +282,7 @@ fun HomeScreen(
         if (showAddExpense || editing != null || editingIncome != null) {
             AddSheet(
                 spending = state.spending,
+                trips = state.trips,
                 editing = editing,
                 editingDeposit = editingIncome,
                 onEditLast = onPrepareEditLast,
@@ -343,6 +351,7 @@ fun HomeScreen(
                         )
                         NavDest.Spending -> SpendingScreen(
                             spending = state.spending,
+                            trips = state.trips,
                             onRetry = { onLoadSpending(true) },
                             onEdit = onBeginEditExpense,
                             onDelete = onDeleteExpense,
@@ -351,6 +360,13 @@ fun HomeScreen(
                             onAddCategory = onAddCategory,
                             onEditCategory = onEditCategory,
                             onArchiveCategory = onArchiveCategory,
+                            onLoadTrips = { onLoadTrips(false) },
+                            onSaveTrip = onSaveTrip,
+                            onDeleteTrip = onDeleteTrip,
+                            onStartTrip = onStartTrip,
+                            onFinishTrip = onFinishTrip,
+                            onAttachExpenseToTrip = onAttachExpenseToTrip,
+                            onPrepareTrip = onPrepareTrip,
                         )
                         NavDest.Goals -> GoalsScreen(
                             goals = state.goals,

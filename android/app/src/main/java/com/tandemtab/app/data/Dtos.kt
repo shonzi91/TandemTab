@@ -504,6 +504,9 @@ data class AddExpenseRequest(
     val onBehalfOfOtherAccount: Boolean = false,
     // One tag per expense (the Android add sheet doesn't expose a tag picker yet, so this stays null).
     val tagId: String? = null,
+    // File this straight onto a journey. The trip is a LINK, so this doesn't move the expense out of the period
+    // it was paid in — which is exactly what lets a flight bought in March count toward a June trip.
+    val tripId: String? = null,
 )
 
 /** What POST/PUT/DELETE /expenses returns: the new snapshot version, the row's id, the (added/edited) row for the

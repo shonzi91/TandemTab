@@ -59,7 +59,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.runtime.LaunchedEffect
 import com.tandemtab.app.SpendingUi
+import com.tandemtab.app.TripsUi
 import com.tandemtab.app.data.BudgetRowDto
 import com.tandemtab.app.data.ExpenseDto
 import com.tandemtab.app.ui.theme.LocalTandemColors
@@ -68,7 +70,7 @@ import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
-private enum class SpendView { Categories, ByDate }
+private enum class SpendView { Categories, ByDate, Trips }
 
 /**
  * The Spending tab: a Categories view (each category as a spent-vs-budget progress-bar row, expandable to its
@@ -77,6 +79,7 @@ private enum class SpendView { Categories, ByDate }
 @Composable
 fun SpendingScreen(
     spending: SpendingUi,
+    trips: TripsUi,
     onRetry: () -> Unit,
     onEdit: (ExpenseDto) -> Unit,
     onDelete: (ExpenseDto) -> Unit,
@@ -85,11 +88,23 @@ fun SpendingScreen(
     onAddCategory: (name: String, parentId: String?, icon: String?, onDone: (String?) -> Unit) -> Unit,
     onEditCategory: (id: String, name: String, icon: String?, onDone: () -> Unit) -> Unit,
     onArchiveCategory: (id: String, onDone: () -> Unit) -> Unit,
+    onLoadTrips: () -> Unit,
+    onSaveTrip: (tripId: String?, name: String, from: String, to: String, destination: String?, icon: String?,
+                 savingCategoryId: String?, budget: Double?, categoryId: String?, onDone: () -> Unit) -> Unit,
+    onDeleteTrip: (tripId: String, onDone: () -> Unit) -> Unit,
+    onStartTrip: (tripId: String, started: Boolean) -> Unit,
+    onFinishTrip: (tripId: String, finished: Boolean) -> Unit,
+    onAttachExpenseToTrip: (expenseId: String, tripId: String?, onDone: () -> Unit) -> Unit,
+    onPrepareTrip: () -> Unit,
 ) {
     val tandem = LocalTandemColors.current
     val fmt = rememberMoney(spending.currency)
     var view by remember { mutableStateOf(SpendView.ByDate) }
     var showManage by remember { mutableStateOf(false) }
+
+    // Trips are their own read (they span periods, so they don't ride along with /spending) — fetched the first
+    // time the segment is opened rather than on every visit to the tab.
+    LaunchedEffect(view) { if (view == SpendView.Trips) onLoadTrips() }
 
     when {
         spending.loading && spending.expenses.isEmpty() && spending.budgets.isEmpty() ->
@@ -122,6 +137,18 @@ fun SpendingScreen(
             when (view) {
                 SpendView.Categories -> CategoriesView(spending, fmt, onEdit, onDelete, onSetBudget, onRemoveBudget)
                 SpendView.ByDate -> ByDateView(spending, fmt, onEdit, onDelete)
+                SpendView.Trips -> TripsView(
+                    trips = trips,
+                    categories = spending.categories,
+                    periodExpenses = spending.expenses,
+                    onRetry = { onLoadTrips() },
+                    onSave = onSaveTrip,
+                    onDelete = onDeleteTrip,
+                    onStart = onStartTrip,
+                    onFinish = onFinishTrip,
+                    onAttachExpense = onAttachExpenseToTrip,
+                    onPrepare = onPrepareTrip,
+                )
             }
         }
     }
@@ -147,6 +174,7 @@ private fun ViewToggle(view: SpendView, onSelect: (SpendView) -> Unit) {
     val tabs = listOf(
         SpendTab(SpendView.ByDate, "By date", TandemIcons.Calendar),
         SpendTab(SpendView.Categories, "By budgets", TandemIcons.Chart),
+        SpendTab(SpendView.Trips, "Trips", TandemIcons.Plane),
     )
     Row(Modifier.fillMaxWidth().background(tandem.segmentTrack, RoundedCornerShape(12.dp)).padding(3.dp)) {
         tabs.forEach { tab ->

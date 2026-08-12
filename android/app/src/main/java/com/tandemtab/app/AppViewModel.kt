@@ -37,6 +37,10 @@ import com.tandemtab.app.data.RecurringRowDto
 import com.tandemtab.app.data.RecurringViewDto
 import com.tandemtab.app.data.UpdateRecurringRequest
 import com.tandemtab.app.data.SavingsViewDto
+import com.tandemtab.app.data.CreateTripRequest
+import com.tandemtab.app.data.EditTripRequest
+import com.tandemtab.app.data.TripDto
+import com.tandemtab.app.data.TripTagDto
 import com.tandemtab.app.data.SpendFromSavingsRequest
 import com.tandemtab.app.data.TransferFundsRequest
 import com.tandemtab.app.data.CreateFundRequest
@@ -112,6 +116,7 @@ data class UiState(
     // Current-period alerts (server-computed). Home renders the urgent ones; the rest are informational.
     val alerts: List<NotificationDto> = emptyList(),
     val spending: SpendingUi = SpendingUi(),
+    val trips: TripsUi = TripsUi(),
     val goals: GoalsUi = GoalsUi(),
     val wallets: WalletsUi = WalletsUi(),
     val health: HealthUi = HealthUi(),
@@ -180,6 +185,28 @@ data class SpendingUi(
     val saving: Boolean = false,
     val saveError: String? = null,
 )
+
+/**
+ * Lazy-loaded state for Spending → Trips. The list arrives already ordered (newest departure first) and already
+ * *stated* — see [TripDto.state]: the four states are resolved server-side against the local date we send, so
+ * nothing here re-derives "is this trip running".
+ */
+data class TripsUi(
+    val loading: Boolean = false,
+    val loaded: Boolean = false,
+    val error: String? = null,
+    val currency: String = "",
+    val trips: List<TripDto> = emptyList(),
+    val tripTags: List<TripTagDto> = emptyList(),
+    val saving: Boolean = false,
+    val saveError: String? = null,
+) {
+    /** The trip the app should offer by default when logging spending: the one being lived, if any. */
+    val live: TripDto? get() = trips.firstOrNull { it.isActive }
+
+    /** Dates arrived, departure unconfirmed — the trip waiting for its one tap. */
+    val awaitingStart: TripDto? get() = trips.firstOrNull { it.isAwaitingStart }
+}
 
 /** Lazy-loaded state for the Goals tab (savings buckets: goals/debts/investments/sinking funds). */
 data class GoalsUi(
@@ -698,6 +725,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 busy = true, selectedAccountId = accountId, overview = null, periodLabel = null,
                 runway = null, targets = emptyList(),
                 spending = SpendingUi(), goals = GoalsUi(), wallets = WalletsUi(), health = HealthUi(), recurring = RecurringUi(),
+                // Trips belong to the account, not to the period — so they survive paging back through months and
+                // are dropped only when the account itself changes.
+                trips = TripsUi(),
                 bank = BankUi(),
                 // Faces belong to the account that was open, not to this one — but the invitations are the user's
                 // own and outlive any account switch, so they stay.
@@ -744,11 +774,129 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    // --- Trips (S103): a named journey expenses point at -------------------------------------------------------
+    // Membership is by LINK, never by date — none of these writes touches an expense's period, amount or budget
+    // impact. Every mutation re-reads /trips rather than patching the list: the recap figures (the three-way
+    // split, the per-day, what's left of a budget) are the server's, and a client that recomputed them locally
+    // would be the second implementation this feature was careful not to have.
+
+    /** Today as the server wants it — the caller's own local date, which is what decides a trip's state. */
+    private fun todayIso(): String = LocalDate.now().toString()
+
+    fun loadTrips(force: Boolean = false) {
+        val accountId = _state.value.selectedAccountId ?: return
+        val cur = _state.value.trips
+        if (!force && (cur.loaded || cur.loading)) return
+        _state.update { it.copy(trips = it.trips.copy(loading = true, error = null)) }
+        viewModelScope.launch {
+            try {
+                val v = api.trips(accountId, todayIso())
+                _state.update {
+                    it.copy(trips = it.trips.copy(
+                        loading = false, loaded = true, error = null,
+                        currency = v.currency, trips = v.trips, tripTags = v.tripTags,
+                    ))
+                }
+            } catch (e: Exception) {
+                _state.update { it.copy(trips = it.trips.copy(loading = false, error = e.message ?: "Couldn't load your trips.")) }
+            }
+        }
+    }
+
+    /** Clear a stale write error before opening a trip editor or confirm. */
+    fun prepareTrip() = _state.update { it.copy(trips = it.trips.copy(saveError = null)) }
+
+    /**
+     * Re-read the trips after an **expense** write.
+     *
+     * ★ Found on the emulator, not in a test: logging €23.40 onto Rome from the FAB left the trip card reading its
+     * old total, because a trip's figures are a *recap of expenses* and nothing told the recap an expense had
+     * moved. Every trip total, its three-way split and its budget line are downstream of the expense ledger, so
+     * any expense write invalidates them — the same lesson as S95's "removing an installment refetches Savings".
+     * Silent (no spinner, no error surfaced): a stale trip card is worth fixing, never worth failing a save over.
+     */
+    private fun refreshTripsIfLoaded() {
+        val accountId = _state.value.selectedAccountId ?: return
+        if (!_state.value.trips.loaded) return
+        viewModelScope.launch {
+            val v = runCatching { api.trips(accountId, todayIso()) }.getOrNull() ?: return@launch
+            _state.update { it.copy(trips = it.trips.copy(currency = v.currency, trips = v.trips, tripTags = v.tripTags)) }
+        }
+    }
+
+    /** One shape for every trip write: flag saving, run it, re-read the list, call [onDone] only on success. */
+    private fun tripWrite(onDone: () -> Unit = {}, fallback: String, block: suspend (String) -> Unit) {
+        val accountId = _state.value.selectedAccountId ?: return
+        _state.update { it.copy(trips = it.trips.copy(saving = true, saveError = null)) }
+        viewModelScope.launch {
+            try {
+                block(accountId)
+                val v = api.trips(accountId, todayIso())
+                _state.update {
+                    it.copy(trips = it.trips.copy(
+                        saving = false, saveError = null, loaded = true,
+                        currency = v.currency, trips = v.trips, tripTags = v.tripTags,
+                    ))
+                }
+                onDone()
+            } catch (e: Exception) {
+                _state.update { it.copy(trips = it.trips.copy(saving = false, saveError = e.message ?: fallback)) }
+            }
+        }
+    }
+
+    /** Create a trip, or save an existing one. ⚠️ The edit is a FULL REPLACE — [budget] and [savingCategoryId]
+     *  must carry the trip's current values when they aren't being changed, or saving a new name clears them. */
+    fun saveTrip(
+        tripId: String?,
+        name: String,
+        from: String,
+        to: String,
+        destination: String?,
+        icon: String?,
+        savingCategoryId: String?,
+        budget: Double?,
+        categoryId: String?,
+        onDone: () -> Unit,
+    ) = tripWrite(onDone, "Couldn't save the trip.") { accountId ->
+        if (tripId == null) {
+            api.createTrip(accountId, CreateTripRequest(name, from, to, destination?.ifBlank { null }, icon))
+        } else {
+            api.editTrip(accountId, tripId, EditTripRequest(
+                name = name, from = from, to = to, destination = destination?.ifBlank { null }, icon = icon,
+                savingCategoryId = savingCategoryId, budget = budget, categoryId = categoryId,
+            ))
+        }
+    }
+
+    /** Deletes the trip, never its expenses — they are detached and stay where they were logged. */
+    fun deleteTrip(tripId: String, onDone: () -> Unit) =
+        tripWrite(onDone, "Couldn't delete the trip.") { api.deleteTrip(it, tripId) }
+
+    /** "We've left." The tap that turns an awaiting-start trip into a live one — trip mode never switches itself
+     *  on, because a date is not a departure. [started] false takes it back. */
+    fun startTrip(tripId: String, started: Boolean = true) =
+        tripWrite(fallback = "Couldn't start the trip.") { api.startTrip(it, tripId, started) }
+
+    /** Finish means OVER, not "ends today" — and it can be undone with [finished] false. */
+    fun finishTrip(tripId: String, finished: Boolean = true) =
+        tripWrite(fallback = "Couldn't finish the trip.") { api.finishTrip(it, tripId, finished) }
+
+    /** Attach an already-logged expense to a trip (null detaches) — the flight bought back in March. Refreshes
+     *  Spending too, so the ledger row shows its new trip without a manual pull. */
+    fun setExpenseTrip(expenseId: String, tripId: String?, onDone: () -> Unit) =
+        tripWrite(onDone, "Couldn't attach that expense.") { accountId ->
+            api.setExpenseTrip(accountId, expenseId, tripId)
+            loadSpending(force = true)
+        }
+
     /** Prepare the add sheet (Expense + Income): ensure the /spending pickers are loaded, pull the recent-expense
      *  history (/expense-entry) for the most-used chips + per-category default fund, and pull the contribution
      *  (income source) categories (/income) for the Income tab. */
     fun prepareAdd() {
         loadSpending(false)
+        // Trips too: the add sheet offers the journey you're on, and it can't offer what hasn't been fetched.
+        loadTrips(false)
         val accountId = _state.value.selectedAccountId ?: return
         _state.update { it.copy(spending = it.spending.copy(saveError = null)) }
         viewModelScope.launch {
@@ -809,6 +957,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                         ),
                     )
                 }
+                refreshTripsIfLoaded()   // a row may have been filed onto a journey
                 onDone()
             } catch (e: Exception) {
                 // Some rows may have saved before the failure — reflect those and let the user retry the rest.
@@ -1429,6 +1578,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                         ),
                     )
                 }
+                refreshTripsIfLoaded()   // the row may have been on a journey
                 onDone()
             } catch (e: Exception) {
                 _state.update { it.copy(spending = it.spending.copy(saving = false, saveError = e.message ?: "Couldn't delete the expense.")) }
@@ -1461,6 +1611,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                         spending = st.spending.copy(saving = false, saveError = null, expenses = list, spent = mut.overview.spent),
                     )
                 }
+                refreshTripsIfLoaded()   // an amount change moves its trip's total
                 onDone()
             } catch (e: Exception) {
                 _state.update { it.copy(spending = it.spending.copy(saving = false, saveError = e.message ?: "Couldn't save the change.")) }
@@ -1742,6 +1893,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                         settings = it.settings.copy(busy = false),
                         selectedAccountId = null, overview = null, periodLabel = null, runway = null, targets = emptyList(),
                         spending = SpendingUi(), goals = GoalsUi(), wallets = WalletsUi(), health = HealthUi(), recurring = RecurringUi(),
+                        trips = TripsUi(),
                     )
                 }
                 onDone()
