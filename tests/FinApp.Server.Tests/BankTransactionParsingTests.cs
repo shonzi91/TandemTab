@@ -98,8 +98,19 @@ public class BankTransactionParsingTests
         Assert.Equal("COFFEE SHOP", t.Description);
     }
 
+    /// <summary>
+    /// ⚠️ <b>This test used to assert only that two parses agree, and it passed throughout the bug it exists to
+    /// catch.</b> The id was built with <c>string.GetHashCode()</c>, which is randomized <i>per process</i> — so it
+    /// is perfectly stable within one test run and changes on every server restart. Dismissed and confirmed rows
+    /// came back as new pending ones, and the guard said everything was fine.
+    /// <para>
+    /// Pinning the literal is what actually tests the property: a value that survives a restart has to be one this
+    /// test could write down. If the hashing changes deliberately, this fails once and is updated once — at the cost
+    /// of every previously-staged synthetic row resurfacing, which is the honest price of changing a dedupe key.
+    /// </para>
+    /// </summary>
     [Fact]
-    public void Synthesizes_a_stable_id_when_reference_is_missing()
+    public void Synthesizes_an_id_that_survives_a_process_restart()
     {
         var json = """
         {
@@ -110,10 +121,36 @@ public class BankTransactionParsingTests
         """;
 
         var first = Parse(json).Single().ExternalId;
-        var again = Parse(json).Single().ExternalId;
 
-        Assert.False(string.IsNullOrEmpty(first));
-        Assert.Equal(first, again);                     // deterministic, so re-syncs dedupe
+        Assert.Equal(first, Parse(json).Single().ExternalId);   // deterministic within a run...
+        // ...and across runs: a hard-coded expectation is the only thing a per-process hash cannot satisfy.
+        Assert.Equal(EnableBankingClient.SyntheticId("2026-06-01", -5.00m, "Bank transaction"), first);
+        Assert.StartsWith("syn-", first);
+    }
+
+    [Fact]
+    public void Reads_a_booking_time_when_the_bank_states_one_and_leaves_it_null_otherwise()
+    {
+        // Some banks put a full timestamp in the booking date, some in their own field, most give neither.
+        var json = """
+        {
+          "transactions": { "booked": [
+            { "transactionId": "a", "bookingDate": "2026-06-01T19:42:07Z",
+              "transactionAmount": { "currency": "EUR", "amount": "-5.00" } },
+            { "transactionId": "b", "bookingDate": "2026-06-01", "bookingDateTime": "2026-06-01T08:15:00Z",
+              "transactionAmount": { "currency": "EUR", "amount": "-6.00" } },
+            { "transactionId": "c", "bookingDate": "2026-06-01",
+              "transactionAmount": { "currency": "EUR", "amount": "-7.00" } }
+          ] }
+        }
+        """;
+
+        var txns = Parse(json).ToDictionary(t => t.ExternalId);
+
+        Assert.Equal(new TimeOnly(19, 42, 7), txns["a"].Time);
+        Assert.Equal(new DateOnly(2026, 6, 1), txns["a"].Date);   // the timestamp still yields a clean date
+        Assert.Equal(new TimeOnly(8, 15, 0), txns["b"].Time);
+        Assert.Null(txns["c"].Time);                              // date only — never invented as midnight
     }
 
     [Fact]

@@ -297,6 +297,52 @@ public class SavingsTests
     }
 
     [Fact]
+    public void Spending_a_sinking_fund_does_not_make_saved_this_period_negative()
+    {
+        // The reported bug: a sinking fund filled over a year pays the insurance bill it exists for, in a month
+        // that set nothing new aside — and the Home "Saved" card read −€620. Nothing was un-saved that month.
+        var account = new Account("Personal", Eur);
+        account.AddDefaultFunds();
+        var member = account.AddMember(Guid.NewGuid(), "Stoyan");
+        var fund = account.FundId("Bank");
+        var insurance = account.AddSavingCategory("Insurance");
+        insurance.ConfigureExpensesFund();
+        var bills = account.AddCategory("Bills");
+
+        var p1 = account.StartPeriod(new DateOnly(2026, 1, 1), new DateOnly(2026, 1, 31));
+        p1.Deposit(member.UserId, M(1000), fundId: fund);
+        p1.AllocateToSavings(insurance.Id, M(620), new DateOnly(2026, 1, 10));
+        p1.Close();
+
+        // The month the bill actually lands: no new deposit into the bucket, the whole thing goes out.
+        var p2 = account.StartPeriod(new DateOnly(2026, 2, 1), new DateOnly(2026, 2, 28));
+        p2.Deposit(member.UserId, M(1000), fundId: fund);
+        p2.ConvertSavingToExpense(insurance.Id, bills.Id, M(620), new DateOnly(2026, 2, 14), member.UserId, fund, "Car insurance");
+
+        Assert.Equal(M(-620), p2.SavingsNetTotal);       // the earmark really did drain — money model unchanged
+        Assert.Equal(M(0), p2.SavingsSetAsideTotal);     // ...but nothing was un-set-aside this period
+        Assert.Equal(0m, new SavingsReportService().PeriodSavingsRate(p2));
+    }
+
+    [Fact]
+    public void Moving_between_buckets_is_not_counted_as_freshly_saved()
+    {
+        var account = new Account("Personal", Eur);
+        var member = account.AddMember(Guid.NewGuid(), "Stoyan");
+        var holiday = account.AddSavingCategory("Holiday");
+        var car = account.AddSavingCategory("Car");
+
+        var p = account.StartPeriod(new DateOnly(2026, 3, 1), new DateOnly(2026, 3, 31));
+        p.Deposit(member.UserId, M(1000));
+        p.AllocateToSavings(holiday.Id, M(300), new DateOnly(2026, 3, 5));
+        p.TransferSavings(holiday.Id, car.Id, M(300), new DateOnly(2026, 3, 20));
+
+        // The same €300 wearing a different label — counting the incoming half would report €600 set aside.
+        Assert.Equal(M(300), p.SavingsNetTotal);
+        Assert.Equal(M(300), p.SavingsSetAsideTotal);
+    }
+
+    [Fact]
     public void Removing_a_disbursement_transfer_restores_the_bucket()
     {
         var account = new Account("Personal", Eur);

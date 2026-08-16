@@ -127,8 +127,9 @@ public sealed class SpendingViewState(FinAppApiClient api)
         if (delta.Expense is { } row)
         {
             if (i >= 0) Expenses[i] = row; else Expenses.Insert(0, row);
-            // Keep the list ordered the way the server returns it (newest date first).
-            Expenses = Expenses.OrderByDescending(e => e.Date).ToList();
+            // Keep the list ordered the way the server returns it: newest date first, and within a day newest on the
+            // clock first, with untimed rows last (TimeOnly.MinValue) rather than treated as midnight — see SpendingMap.
+            Expenses = Expenses.OrderByDescending(e => e.Date).ThenByDescending(e => e.Time ?? TimeOnly.MinValue).ToList();
         }
         else if (i >= 0) Expenses.RemoveAt(i);
         Raise();

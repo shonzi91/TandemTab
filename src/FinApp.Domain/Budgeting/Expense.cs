@@ -162,6 +162,34 @@ public sealed class Expense : Entity
     public void SetTrip(Guid? tripId) => TripId = tripId is { } t && t != Guid.Empty ? t : null;
 
     /// <summary>
+    /// What time of day the money was spent, or null when nothing recorded one.
+    /// <para>
+    /// <b>★ Null is a real answer, not a missing one, and it must not be defaulted to midnight.</b> Most bank feeds
+    /// report a booking <i>date</i> and no clock time; an expense typed in three days later has no time either. Filling
+    /// those in with 00:00 would sort a whole day's imports above everything genuinely logged that morning, and would
+    /// print "00:00" next to entries nobody claimed happened at midnight. So the field stays optional, and a row
+    /// without one simply shows no time and sorts after the timed rows on its day.
+    /// </para>
+    /// <para>
+    /// <b>Deliberately separate from <see cref="Date"/> rather than widening it to a DateTime.</b> The date is what
+    /// every period, budget and total in the app keys off, and it is the field a user edits when an entry is on the
+    /// wrong day. Time is decoration on the ledger row — it orders a day and jogs the memory — so it is carried
+    /// alongside, where it cannot change which month an expense lands in.
+    /// </para>
+    /// Body data — travels in the account snapshot, not the relational header.
+    /// </summary>
+    public TimeOnly? Time { get; private set; }
+
+    /// <summary>Record (or clear, with null) the time of day. A setter for the same reason as <see cref="SetTrip"/>:
+    /// EF cannot bind an ignored property to a constructor parameter.</summary>
+    public void SetTime(TimeOnly? time) => Time = time;
+
+    /// <summary>This expense's position on the clock, for ordering a single day. Untimed rows fall to the end of a
+    /// descending sort (they report <see cref="TimeOnly.MinValue"/>) — see <see cref="Time"/> for why they are not
+    /// pretended to be midnight-and-therefore-newest.</summary>
+    public TimeOnly SortTime => Time ?? TimeOnly.MinValue;
+
+    /// <summary>
     /// What was actually typed when this expense was paid from a foreign-cash wallet — "£12.50" — together with
     /// <see cref="ForeignCurrency"/>. Null on every ordinary expense, which is nearly all of them.
     /// <para>

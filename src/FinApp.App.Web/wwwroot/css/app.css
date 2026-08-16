@@ -278,13 +278,14 @@ html.dark .modal-backdrop, html.dark .pm-backdrop { background: rgba(0,0,0,.6); 
 /* Form controls (the more-specific scoped rules below need matching dark overrides to win) */
 html.dark input, html.dark select, html.dark textarea,
 html.dark .modal label input[type=text], html.dark .modal label input[type=number],
-html.dark .modal label input[type=date], html.dark .modal label select,
+html.dark .modal label input[type=date], html.dark .modal label input[type=time], html.dark .modal label select,
 html.dark .form select, html.dark .form input, html.dark .acct-select,
 html.dark .firstrun-form input, html.dark .dates-form input, html.dark .contrib-actions input {
     background: #1e2330; color: #e8eaf0; border-color: #2c3142;
 }
 html.dark option { background: #1e2330; color: #e8eaf0; }
-html.dark input[type=date] { color-scheme: dark; }
+/* Both pickers need the dark color-scheme, or the native clock/calendar popup renders as a white sheet. */
+html.dark input[type=date], html.dark input[type=time] { color-scheme: dark; }
 /* Re-apply the custom dropdown chevron in dark (the shorthand background above resets it). */
 html.dark .modal label select, html.dark .form select, html.dark .contrib-actions select, html.dark .import-list select, html.dark select.acct-select {
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.5 6 8l3.5-3.5' fill='none' stroke='%233fe0c5' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");

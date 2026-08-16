@@ -1335,6 +1335,10 @@ else
                                 }
                             </span>
                             <span class="row-sub">
+                                @* When it happened, on rows that know. Leads the sub-line because within a day —
+                                   which is how this list is grouped — the clock is what orders the rows, so it is
+                                   the one thing that says where you are in the day. Absent, not blank, when unknown. *@
+                                @if (ctx.E.Time is { } rowTime) { <span class="exp-time">@rowTime.ToString("HH:mm")</span> }
                                 <span class="sub-to">@State.FundName(ctx.E.FundId)</span>
                                 @if (ctx.E.IsFromSavings) { <span><Icon Name="coins" /> @Loc["saving"]</span> }
                                 @if (!string.IsNullOrEmpty(ctx.E.Note)) { <span class="sub-note">@ctx.E.Note</span> }
@@ -1618,7 +1622,7 @@ else
                             <span class="brk-exp-date"><span class="brk-exp-d">@e.Date.ToString("dd")</span><span class="brk-exp-m">@e.Date.ToString("MMM")</span></span>
                             <span class="brk-exp-main">
                                 <span class="brk-exp-title">@(string.IsNullOrEmpty(e.Note) ? State.CategoryName(e.CategoryId) : e.Note)</span>
-                                <span class="brk-exp-sub">@(string.IsNullOrEmpty(e.Note) ? State.FundName(e.FundId) : State.CategoryName(e.CategoryId))</span>
+                                <span class="brk-exp-sub">@(string.IsNullOrEmpty(e.Note) ? State.FundName(e.FundId) : State.CategoryName(e.CategoryId))@if (e.Time is { } brkTime) { <span class="exp-time">@brkTime.ToString("HH:mm")</span> }</span>
                             </span>
                             <span class="brk-exp-amt">@Fmt(e.Amount)</span>
                         </li>;
@@ -2221,6 +2225,16 @@ else
                                             }
                                             <span class="tws"><span class="tws-k">@Loc["A day"]</span><span class="tws-v">@Fmt(tRecap.PerDay)</span></span>
                                         </div>
+                                        @* ★ What the trip cost in working time. This is the second place in the app
+                                           the time cost appears, and the trip is the right one: it is a single,
+                                           finished, memorable total that the reader has deliberately opened — "Lisbon
+                                           was four days of work" is a sentence, where "this coffee is 24 minutes" on
+                                           every ledger row would be nagging. One line inside a card that is already
+                                           open, not a section, and it says nothing at all when no rate is set. *@
+                                        @if (State.TimeCostLabel(tRecap.Spent.Amount) is { } tripTimeCost)
+                                        {
+                                            <p class="trip-timecost"><Icon Name="clock" /> @string.Format(Loc["That's about {0} of work."], tripTimeCost)</p>
+                                        }
 
                                         @if (tRecap.AgainstBudget is { } delta)
                                         {
@@ -3019,7 +3033,7 @@ else
         @* Review modals hold rows of data rather than a column of fields, so they get the wider box.
            A trip picked on the expense form puts the whole modal into trip mode — the same blue the app bar and the
            Home hero wear while you're away, so the form you log into looks like the trip it logs against. *@
-        <div class="modal @(_modal is Modal.BankReview or Modal.Import ? "modal-wide" : "") @(_modal is Modal.AddExpense && _expTripId != Guid.Empty ? "modal-trip" : "")">
+        <div class="modal @(_modal is Modal.BankReview or Modal.Import ? "modal-wide" : "") @((_modal is Modal.AddExpense or Modal.EditExpense or Modal.BankConfirm) && _expTripId != Guid.Empty ? "modal-trip" : "")">
             @if (_modalError is not null)
             {
                 <div class="modal-error">@_modalError</div>
@@ -3035,6 +3049,12 @@ else
                 // Off a trip the trip labels are hidden, because "Tickets & tours" is noise at the supermarket.
                 var onTrip = _expTripId != Guid.Empty && State.TripTags.Count > 0;
                 var pickTags = onTrip ? State.TripTags : State.EverydayTags;
+                // ★ Whatever is selected is always in the row, even when it belongs to the other axis. The two lists
+                // are disjoint by design, so without this a tag picked before the trip was chosen — or an everyday
+                // tag reached by typing its name into the "new tag" box — stays attached to the expense while its
+                // chip is nowhere on screen: the form would be lying about what it is about to save.
+                if (_fTagId is { } selTag && pickTags.All(t => t.Id != selTag) && State.FindTag(selTag) is { } selEntity)
+                    pickTags = pickTags.Append(selEntity).ToList();
                 @* Amount and Fund are fragments so the expense form can render them in EITHER order: money-first on
                    a trip (amount → fund → label), and the original order off one. Each renders exactly once. *@
                 RenderFragment amountField =
@@ -3165,6 +3185,103 @@ else
                     <div class="modal-actions">
                         <button class="ghost" @onclick="DismissBankReview">@Loc["Close"]</button>
                     </div>
+                    break;
+
+                @* ★ Confirming an imported transaction is a full entry form now, not a category dropdown on a list row.
+                   The row could set exactly one thing — the category — so a card charge picked up during a trip could
+                   not be attached to that trip, could not be labelled, and could not teach the app anything about the
+                   merchant without a separate ＋ tap. Everything the manual add-expense form asks, this asks, in the
+                   same order, with the bank's own facts (merchant, amount, date, time) stated rather than requested. *@
+                case Modal.BankConfirm:
+                    @if (_bcTx is { } bc)
+                    {
+                        <h3 class="modal-h-trip">
+                            <span><Icon Name="bank" /> @Loc["Add this expense"]</span>
+                            @if (State.FindTrip(_expTripId) is { } bcHdrTrip)
+                            {
+                                @TripModeTag(bcHdrTrip)
+                            }
+                        </h3>
+                        @* The bank's facts, stated. None of them is a question: the merchant, what left the account,
+                           and when. The time shows only when the bank actually reported one. *@
+                        <div class="bank-confirm-head">
+                            <span class="vendor-badge" style="background:@VendorColor(bc.Description)">@VendorInitial(bc.Description)</span>
+                            <span class="bank-confirm-desc">@bc.Description</span>
+                            <span class="amt">−@Fmt(new Money(Math.Abs(bc.Amount), State.Currency))</span>
+                        </div>
+                        <p class="hint bank-confirm-when">
+                            <Icon Name="calendar" /> @bc.Date.ToString("ddd, dd MMM")@if (bc.Time is { } bcTime) { <text> · @bcTime.ToString("HH:mm")</text> }
+                            @if (bc.Date != ClampToPeriod(bc.Date))
+                            {
+                                <text> — @string.Format(Loc["filed on {0}, the nearest day in this period"], ClampToPeriod(bc.Date).ToString("dd MMM"))</text>
+                            }
+                        </p>
+                        @* The trip leads, exactly as it does on the manual form and for the same reason: a trip that
+                           files into one category settles the category below, and it swaps the labels. Defaulted from
+                           the TRANSACTION's date, not today — you review the statement after you are home. *@
+                        @if (EditTripOptions.Count > 0)
+                        {
+                            <div class="modal-field trip-pick-field">
+                                <span class="lbl-row">@Loc["Part of a trip"]</span>
+                                <div class="qp-row">
+                                    <button type="button" class="tag-chip @(_expTripId == Guid.Empty ? "tag-chip-on" : "")" @onclick="() => OnExpenseTripPicked(Guid.Empty)">@Loc["Not a trip"]</button>
+                                    @foreach (var t in EditTripOptions)
+                                    {
+                                        var bcTrip = t;
+                                        <button type="button" class="tag-chip @(_expTripId == bcTrip.Id ? "tag-chip-on" : "")" @onclick="() => OnExpenseTripPicked(bcTrip.Id)">
+                                            @TripMark(bcTrip.Icon)@bcTrip.Name
+                                        </button>
+                                    }
+                                </div>
+                            </div>
+                        }
+                        <div class="modal-field"><span class="lbl-row">@Loc["Category"]</span>
+                            <CategoryPicker @bind-Value="_categoryId" Options="State.CategoryOptions" />
+                        </div>
+                        @tagPicker
+                        <label>@Loc["Note (optional)"] <input type="text" @bind="_note" /></label>
+                        @* The auto-file rule, in the form itself rather than behind a pin on a list row. Turning it on
+                           reveals which words are matched, because "remember this" and "remember it by WHICH words"
+                           are one decision — a rule keyed on the whole description matches one transaction for ever. *@
+                        @if (MappedLabel(bc.Description) is { } bcMapped)
+                        {
+                            <div class="modal-field bank-rule-known">
+                                <small class="hint"><Icon Name="pin" /> @string.Format(Loc["Auto-files to {0} from now on."], bcMapped)</small>
+                                <button type="button" class="link" @onclick="() => ForgetMapping(bc)" disabled="@_busy">@Loc["Forget this rule"]</button>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="modal-field">
+                                <Switch Value="_bcRemember" ValueChanged="OnBankRememberChanged" Label="@Loc["Always file this merchant here"]" />
+                                @if (_bcRemember)
+                                {
+                                    <span class="rule-tokens" title="@Loc["Tap a word to include or exclude it from matching. A transaction matches when all the highlighted words appear in it."]">
+                                        @foreach (var tok in _pinTokens)
+                                        {
+                                            var bcTok = tok;
+                                            <button type="button" class="rule-chip @(_pinOn.Contains(bcTok) ? "on" : "")" @onclick="() => TogglePinToken(bcTok)">@bcTok</button>
+                                        }
+                                    </span>
+                                    <small class="hint">@Loc["Future transactions matching the highlighted words file themselves here."]</small>
+                                }
+                            </div>
+                        }
+                        @* The way out for a charge that shouldn't become an expense at all — a refund line, a
+                           duplicate, a transfer the app already knows about. Deliberately NOT in .modal-actions:
+                           that bar is a sticky title strip that collapses its buttons to ✕ and ✓ glyphs, and the one
+                           slot that keeps its text (.ghost.danger) pins a red pill to the far left of the heading —
+                           which is right for a one-word "Unsettle" and wrong for a sentence. As a link in the body
+                           it reads as what it is: a secondary path, next to the thing it is an alternative to.
+                           Same verb as the ✗ on the review row, so it is one action with one name. *@
+                        <button type="button" class="link settle-link" @onclick="DismissFromBankConfirm" disabled="@_busy">
+                            <Icon Name="x" /> @Loc["Not an expense — dismiss it"]
+                        </button>
+                        <div class="modal-actions">
+                            <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
+                            <button @onclick="ConfirmBankFromModal" disabled="@(_busy || _categoryId == Guid.Empty)"><Icon Name="check" /> @Loc["Add expense"]</button>
+                        </div>
+                    }
                     break;
 
                 case Modal.BankConsent:
@@ -4003,14 +4120,20 @@ else
                     {
                         <div class="modal-field exp-settled">
                             <span class="exp-settled-txt"><Icon Name="calendar" />
-                                @(_expenseDate == State.TodayDate ? Loc["Today"] : _expenseDate.ToString("d MMM"))
+                                @(_expenseDate == State.TodayDate ? Loc["Today"] : _expenseDate.ToString("d MMM"))@if (_expenseTime is { } collapsedTime) { <text> · @collapsedTime.ToString("HH:mm")</text> }
                             </span>
                             <button type="button" class="link" @onclick="() => _expShowDate = true">@Loc["Change"]</button>
                         </div>
                     }
                     else
                     {
-                        <label>@Loc["Date"] <input type="date" @bind="_expenseDate" min="@State.Period.From.ToString("yyyy-MM-dd")" max="@State.Period.To.ToString("yyyy-MM-dd")" /></label>
+                        @* Date and time on one row. The time is optional in the strict sense — blank it and the row
+                           simply carries no clock — but it arrives filled in with "now" for an expense being logged
+                           today, which is the overwhelming case and the one where the value is free and accurate. *@
+                        <div class="field-row">
+                            <label>@Loc["Date"] <input type="date" @bind="_expenseDate" @bind:after="OnExpenseDateChanged" min="@State.Period.From.ToString("yyyy-MM-dd")" max="@State.Period.To.ToString("yyyy-MM-dd")" /></label>
+                            <label>@Loc["Time (optional)"] <input type="time" @bind="_expenseTime" /></label>
+                        </div>
                     }
                     @if (!onTrip)
                     {
@@ -4097,7 +4220,40 @@ else
                     break;
 
                 case Modal.EditExpense:
-                    <h3>@Loc["Edit expense"]</h3>
+                    @* Wears the trip exactly as the add form does — the badge and the blue rail. An expense that
+                       belongs to a journey should look like it in every form that shows it, not only the one that
+                       created it; otherwise the trip reads as something you can set but never see. *@
+                    <h3 class="modal-h-trip">
+                        <span>@Loc["Edit expense"]</span>
+                        @if (State.FindTrip(_expTripId) is { } editHdrTrip)
+                        {
+                            @TripModeTag(editHdrTrip)
+                        }
+                    </h3>
+                    @* ★ The trip leads here as it does on the add form, and for the same reason: it decides which
+                       labels the picker below offers (trip labels on a trip, everyday ones off it), so asking it
+                       after them would mean answering them twice.
+                       Unlike the add form this offers FINISHED trips too — that is the whole point of editing:
+                       attaching the flight you booked in March, or the card charge that landed while you were away
+                       and got filed on your return, to a journey that is now over. Until now the only door to that
+                       was the trip card's own "add something already paid", which you had to know existed.
+                       Unlike the add form it does NOT re-file the category: see OnExpenseTripPicked. *@
+                    @if (EditTripOptions.Count > 0)
+                    {
+                        <div class="modal-field trip-pick-field">
+                            <span class="lbl-row">@Loc["Part of a trip"]</span>
+                            <div class="qp-row">
+                                <button type="button" class="tag-chip @(_expTripId == Guid.Empty ? "tag-chip-on" : "")" @onclick="() => OnExpenseTripPicked(Guid.Empty)">@Loc["Not a trip"]</button>
+                                @foreach (var t in EditTripOptions)
+                                {
+                                    var editTripOpt = t;
+                                    <button type="button" class="tag-chip @(_expTripId == editTripOpt.Id ? "tag-chip-on" : "")" @onclick="() => OnExpenseTripPicked(editTripOpt.Id)">
+                                        @TripMark(editTripOpt.Icon)@editTripOpt.Name
+                                    </button>
+                                }
+                            </div>
+                        </div>
+                    }
                     @* NOT a <label> — see CategoryPicker: a label re-dispatches every click inside it onto the
                        picker's trigger button, which pinned the dropdown open with the whole modal unreachable.
                        This is the same modal-field/lbl-row pairing the add-expense modal uses. *@
@@ -4105,7 +4261,10 @@ else
                         <CategoryPicker @bind-Value="_categoryId" Options="State.CategoryOptions" />
                     </div>
                     <label>@Loc["Amount"] <DecimalInput @bind-Value="_amount" /></label>
-                    <label>@Loc["Date"] <input type="date" @bind="_expenseDate" /></label>
+                    <div class="field-row">
+                        <label>@Loc["Date"] <input type="date" @bind="_expenseDate" /></label>
+                        <label>@Loc["Time (optional)"] <input type="time" @bind="_expenseTime" /></label>
+                    </div>
                     @if (State.FindExpense(_editExpenseId) is { FundSynced: true })
                     {
                         // A bank-synced expense lives in the synced fund (its balance mirrors the real account) — its
@@ -6402,7 +6561,7 @@ else
 }
 
 @code {
-    private enum Modal { None, BankReview, BankConsent, AddCat, AddBudget, DisburseSaving, PayoffProjection, GoalProjection, InvestmentProjection, BankTransfer, ExternalAccounts, HealthScore, RunwayMath, EditCat, DeleteCat, DeleteBudget, EditAccountTransfer, DeleteAccountTransfer, CategoryDetail, AddAccount, EditAccount, DeleteAccount, RemoveMember, LeaveAccount, AddExpense, NextPeriod, RemovePeriod, EditExpense, DeleteExpense, SettleExpense, AddBucket, EditBucket, DeleteBucket, EditCost, AddFund, EditFund, DeleteFund, Invite, Transfer, Deposit, EditDeposit, DeleteDeposit, ManageCats, ManageContribCats, ContribCat, DeleteContribCat, AddSaving, BudgetSaving, SpendSaving, EditSavingDeposit, DeleteSavingDeposit, EditTransfer, DeleteTransfer, EditPeriod, EditSavingMovement, DeleteSavingMovement, DeleteExternalTransfer, Achievements, Reallocate, Recurring, RecurringEdit, RecurringConfirm, Import, AddOrImport, ArchiveFund, FundMovements, Archived, ManageTags, EditTag, LogInstallment, DeleteInstallment, WeekRecap, TripEdit, DeleteTrip, AttachToTrip, UseTripSavings }
+    private enum Modal { None, BankReview, BankConfirm, BankConsent, AddCat, AddBudget, DisburseSaving, PayoffProjection, GoalProjection, InvestmentProjection, BankTransfer, ExternalAccounts, HealthScore, RunwayMath, EditCat, DeleteCat, DeleteBudget, EditAccountTransfer, DeleteAccountTransfer, CategoryDetail, AddAccount, EditAccount, DeleteAccount, RemoveMember, LeaveAccount, AddExpense, NextPeriod, RemovePeriod, EditExpense, DeleteExpense, SettleExpense, AddBucket, EditBucket, DeleteBucket, EditCost, AddFund, EditFund, DeleteFund, Invite, Transfer, Deposit, EditDeposit, DeleteDeposit, ManageCats, ManageContribCats, ContribCat, DeleteContribCat, AddSaving, BudgetSaving, SpendSaving, EditSavingDeposit, DeleteSavingDeposit, EditTransfer, DeleteTransfer, EditPeriod, EditSavingMovement, DeleteSavingMovement, DeleteExternalTransfer, Achievements, Reallocate, Recurring, RecurringEdit, RecurringConfirm, Import, AddOrImport, ArchiveFund, FundMovements, Archived, ManageTags, EditTag, LogInstallment, DeleteInstallment, WeekRecap, TripEdit, DeleteTrip, AttachToTrip, UseTripSavings }
     private enum Tab { Overview, Account, Budgets, Savings }
 
     /// <summary>Which kind of goal the Goals grid is showing. Defaults to All so the filter narrows on request
@@ -7486,6 +7645,13 @@ else
     private readonly Dictionary<string, string> _bankRowCredit = new(); // credit → "fund:guid" | "contributor:guid"
     private List<string> _editCatVendors = [];   // merchants mapped to the category open in the edit modal
     private DateOnly _expenseDate = DateOnly.FromDateTime(DateTime.Today);
+    // The time of day on the expense form. Null = "nobody knows", which is a real answer and is stored as such —
+    // see Expense.Time. Stamped with "now" when the form opens on today's date, cleared when the date moves off it
+    // (the clock says nothing about a Tuesday you are logging on Friday).
+    private TimeOnly? _expenseTime;
+    // Set when the edit form opened on an expense that already had a time, so blanking the box is understood as a
+    // deliberate clear rather than as "said nothing" — the two mean different things on the edit request.
+    private bool _expenseHadTime;
     private DateOnly? _dayView;   // when set, the Expenses tab focuses a single day
     private bool _calendar;       // Expenses tab: month-grid view instead of the list
 
@@ -8167,7 +8333,7 @@ else
                         {
                             <button class="icon-btn" title="@Loc["Record as a transfer to another fund/account"]" @onclick="() => OpenBankTransfer(t)" disabled="@_bankBusy">⇄</button>
                         }
-                        <button class="icon-btn ok" title="@Loc["Add expense"]" @onclick="() => ConfirmBankRow(t)" disabled="@_bankBusy"><Icon Name="check" /></button>
+                        <button class="icon-btn ok" title="@Loc["Review and add"]" @onclick="() => OpenBankConfirm(t)" disabled="@_bankBusy"><Icon Name="check" /></button>
                     }
                     else
                     {
@@ -8371,22 +8537,93 @@ else
         finally { _bankBusy = false; }
     }
 
-    private async Task ConfirmBankRow(PendingBankTransactionDto tx)
+    // --- Confirming an imported debit: the full review modal (Modal.BankConfirm) -----------------
+    private PendingBankTransactionDto? _bcTx;   // the row being reviewed
+    private bool _bcRemember;                   // write an auto-file rule for this merchant on confirm
+
+    /// <summary>
+    /// Open the review modal for a pending debit, pre-answered as far as the app honestly can: the merchant's saved
+    /// rule (or the row's pick) chooses the category, and the trip is the one running <b>on the transaction's own
+    /// date</b>.
+    /// <para>
+    /// ★ That date, not today, is the whole point. Card charges are reviewed days after they are made — usually once
+    /// you are home — so defaulting from "is a trip active now" answers a question nobody asked and leaves every
+    /// holiday card payment un-attachable without knowing that the trip card has its own attach door.
+    /// </para>
+    /// </summary>
+    private void OpenBankConfirm(PendingBankTransactionDto tx)
     {
-        var cat = RowCat(tx.ExternalId);
-        // Bank expenses come from the linked account, so they always post to the synced fund (which isn't
-        // debited — the real bank balance handles it). Fall back to the row's fund only if no fund is synced yet.
-        var fund = State.HasSyncedFund ? State.SyncedFundId : RowFund(tx.ExternalId);
-        if (cat == Guid.Empty || fund == Guid.Empty) { _bankError = Loc["Pick a category first."]; return; }
-        _bankBusy = true; _bankError = null; _rowSaving.Add(tx.ExternalId);
-        try
-        {
-            await State.ConfirmBankTransaction(tx.ExternalId, cat, Math.Abs(tx.Amount), fund, tx.Description, ClampToPeriod(tx.Date));
-            _bankPending.RemoveAll(p => p.ExternalId == tx.ExternalId);
-        }
-        catch (Exception ex) { _bankError = ex.Message; }
-        finally { _bankBusy = false; _rowSaving.Remove(tx.ExternalId); }
+        _bcTx = tx;
+        _bcRemember = false;
+        _bankError = null; _modalError = null;
+        var mapped = MappingFor(tx.Description);
+        _categoryId = mapped is { Kind: "category" } m && State.CategoryOptions.Any(c => c.Category.Id == m.TargetId)
+            ? m.TargetId
+            : RowCat(tx.ExternalId);
+        _note = tx.Description;
+        _expenseDate = ClampToPeriod(tx.Date);
+        _expenseTime = tx.Time;   // only when the bank stated one — see Expense.Time
+        _fTagId = null; _newTagName = null; _tagFiledTo = null; _tagNewOpen = false;
+        // Defaulted, never enforced: the weekly shop still happens on the day you fly home, so "Not a trip" is one tap.
+        _expTripId = State.AllTrips.FirstOrDefault(t => tx.Date >= t.From && tx.Date <= t.To)?.Id ?? Guid.Empty;
+        ApplyTripCategoryDefault();
+        // Pre-load the rule's word chooser so flipping the switch has something to show immediately.
+        _pinTokens = BudgetingState.BankTokens(tx.Description).ToList();
+        _pinOn = _pinTokens.ToHashSet(StringComparer.Ordinal);
+        _modalBack.Push(() => _modal = Modal.BankReview);   // Cancel returns to the list, not out of the review
+        _modal = Modal.BankConfirm;
     }
+
+    /// <summary>Back to the review list after handling one row — a statement is read a transaction at a time, and
+    /// dropping the user out of the list after each one would make them re-open it for every charge.</summary>
+    private void BackToBankReview()
+    {
+        _bcTx = null;
+        _modalError = null;
+        _modalBack.Clear();
+        _expenseDrafts.Clear();
+        _modal = Modal.BankReview;
+    }
+
+    private void OnBankRememberChanged(bool on) => _bcRemember = on;
+
+    /// <summary>Save the reviewed transaction as a real expense — with its label, its trip and (optionally) the
+    /// auto-file rule that stops the next one asking.</summary>
+    private Task ConfirmBankFromModal() => RunModal(async () =>
+    {
+        if (_bcTx is not { } tx) return;
+        // Bank expenses come from the linked account, so they always post to the synced fund (which isn't debited —
+        // the real bank balance handles it). Fall back to the row's fund only if no fund is synced yet.
+        var fund = State.HasSyncedFund ? State.SyncedFundId : RowFund(tx.ExternalId);
+        if (_categoryId == Guid.Empty || fund == Guid.Empty) { _modalError = Loc["Pick a category first."]; return; }
+
+        // The rule goes first: writing it after the confirm would have nothing left to match, and if the rule write
+        // fails the expense should still not be posted twice by a retry.
+        if (_bcRemember)
+        {
+            var key = string.Join(' ', _pinTokens.Where(_pinOn.Contains));
+            if (key.Length == 0) key = string.Join(' ', _pinTokens);
+            await State.SetBankMapping(key, "category", _categoryId);
+            _bankMappings[key] = ("category", _categoryId);
+        }
+
+        await State.ConfirmBankTransaction(tx.ExternalId, _categoryId, Math.Abs(tx.Amount), fund, _note,
+            _expenseDate, tagId: _fTagId, tripId: _expTripId == Guid.Empty ? null : _expTripId, time: _expenseTime);
+        _bankPending.RemoveAll(p => p.ExternalId == tx.ExternalId);
+        // A new rule usually covers other rows waiting in the same review list — clear those rather than making the
+        // user confirm the same merchant five more times.
+        if (_bcRemember) await AutoHandleMappedDebitsAsync();
+        BackToBankReview();
+    });
+
+    /// <summary>"Not an expense" from inside the modal — the same dismissal the ✗ on the row does.</summary>
+    private Task DismissFromBankConfirm() => RunModal(async () =>
+    {
+        if (_bcTx is not { } tx) return;
+        await State.DismissBankTransaction(tx.ExternalId);
+        _bankPending.RemoveAll(p => p.ExternalId == tx.ExternalId);
+        BackToBankReview();
+    });
 
     private PendingBankTransactionDto? _bankXferTx;   // the money-out row being routed as a transfer (Modal.BankTransfer)
 
@@ -8945,12 +9182,18 @@ else
     /// history in whichever order was asked for.
     /// <para>★ The split is the point. Sorting the whole list by size would push the trip you are ON below a
     /// bigger one from two years ago — and "what am I spending right now" is not a question the history can
-    /// answer. So the sort owns the past and never touches the present.</para></summary>
+    /// answer. So the sort owns the past and never touches the present.</para>
+    /// <para>★ <b>The two halves run in opposite directions, because they answer opposite questions.</b> The future
+    /// is read forwards — the trip you are on, then the one you leave for next — so it sorts <i>ascending</i> and the
+    /// nearest departure is always at the top. The past is read backwards, most recent first. Sorting both the same
+    /// way put the journey furthest away at the top of the list, above the one you were actually packing for.</para></summary>
     private IReadOnlyList<TripRecap> SortedTripRecaps()
     {
         var today = State.TodayDate;
         var all = State.TripRecaps();
-        var live = all.Where(r => State.FindTrip(r.TripId)?.IsFinishedOn(today) != true).ToList();
+        // Soonest first: an active trip (departed on or before today) naturally leads, then the next one up.
+        var live = all.Where(r => State.FindTrip(r.TripId)?.IsFinishedOn(today) != true)
+            .OrderBy(r => r.From).ToList();
         var past = all.Where(r => State.FindTrip(r.TripId)?.IsFinishedOn(today) == true);
         // Date order is already BuildAll's (newest departure first), so only the amount sort re-orders — with the
         // departure date breaking ties so two equal totals can't swap places between renders.
@@ -10471,6 +10714,10 @@ else
         _categoryId = categoryId; _amount = 0; _note = null;
         _fTagId = null; _newTagName = null; _tagFiledTo = null;
         _expenseDate = _dayView ?? DateOnly.FromDateTime(DateTime.Today);
+        // Stamp the clock only when the form really is about today — the Expenses tab can open this on a day the
+        // user is browsing, and "now" would be a fact about the wrong day. See Expense.Time.
+        _expenseTime = _expenseDate == State.TodayDate ? TimeOnly.FromDateTime(DateTime.Now) : null;
+        _expenseHadTime = false;
         _fundId = DefaultFundForCategory(categoryId); _modal = Modal.AddExpense;
         _expShowCategory = false; _expShowDate = false; _expShowNote = false; _tagNewOpen = false;
         _focusAmount = focusAmount;
@@ -10536,6 +10783,10 @@ else
         _note = e.Note;
         _fTagId = e.TagId; _newTagName = null; _tagFiledTo = null;
         _expenseDate = _dayView ?? ClampToPeriod(DateOnly.FromDateTime(DateTime.Today));
+        // A repeat is a NEW purchase happening now — deliberately not the old row's time, which would date the
+        // fresh entry to whenever the original one was bought.
+        _expenseTime = _expenseDate == State.TodayDate ? TimeOnly.FromDateTime(DateTime.Now) : null;
+        _expenseHadTime = false;
         _fundId = State.SelectableFunds.Any(f => f.Id == e.FundId) ? e.FundId : DefaultFundForCategory(e.CategoryId);
         _modal = Modal.AddExpense;
     }
@@ -10572,7 +10823,10 @@ else
     // the trip id rides along only to attach the row, never to re-convert it.
     // TypedAmount is the pre-conversion figure; ForeignCurrency names what it was typed in (null on an ordinary
     // wallet). Both ride the draft so a staged row saves with the same "€14.63 · £12.50" pair as a direct one.
-    private sealed record ExpenseDraft(Guid CategoryId, decimal Amount, Guid FundId, string? Note, DateOnly Date, Guid? TagId, Guid? TripId, decimal TypedAmount, string? ForeignCurrency);
+    private sealed record ExpenseDraft(Guid CategoryId, decimal Amount, Guid FundId, string? Note, DateOnly Date, Guid? TagId, Guid? TripId, decimal TypedAmount, string? ForeignCurrency,
+        // Each staged row keeps the clock it was staged at, so three expenses parked over ten minutes save in the
+        // order they happened rather than all sharing the moment ✓ was finally pressed.
+        TimeOnly? Time);
     private readonly List<ExpenseDraft> _expenseDrafts = new();
 
     /// <summary>Park the current editor entry as a staged draft row, then clear the per-item fields (keeping
@@ -10581,8 +10835,10 @@ else
     {
         if (_amount <= 0) return;
         _expenseDrafts.Add(new ExpenseDraft(_categoryId, ExpenseAmountToLog(_amount), _fundId, _note, _expenseDate, _fTagId,
-            _expTripId == Guid.Empty ? null : _expTripId, _amount, FormForeignFund?.Currency));
+            _expTripId == Guid.Empty ? null : _expTripId, _amount, FormForeignFund?.Currency, _expenseTime));
         _amount = 0; _note = null; _fTagId = null; _newTagName = null; _tagFiledTo = null;
+        // The next row in a run is a fresh moment — re-stamp it, but only on a form that is about today.
+        if (_expenseDate == State.TodayDate) _expenseTime = TimeOnly.FromDateTime(DateTime.Now);
     }
 
     /// <summary>Pull a staged draft back into the editor to fix it (removing it from the list). If the editor already
@@ -10594,6 +10850,7 @@ else
         _categoryId = d.CategoryId; _fundId = d.FundId; _note = d.Note; _expenseDate = d.Date;
         _fTagId = d.TagId; _newTagName = null; _tagFiledTo = null;
         _expTripId = d.TripId ?? Guid.Empty;
+        _expenseTime = d.Time;
         // Back into the editor as the figure that was TYPED, not the converted one — otherwise pulling a draft back
         // on a foreign-currency trip re-converts it on the next save and the amount climbs every round trip.
         _amount = d.TypedAmount;
@@ -10610,7 +10867,7 @@ else
         foreach (var d in _expenseDrafts)
         {
             await State.AddExpense(d.CategoryId, d.Amount, d.FundId, d.Note, d.Date, tagId: d.TagId, tripId: d.TripId,
-                foreignAmount: d.ForeignCurrency is null ? null : d.TypedAmount, foreignCurrency: d.ForeignCurrency);
+                foreignAmount: d.ForeignCurrency is null ? null : d.TypedAmount, foreignCurrency: d.ForeignCurrency, time: d.Time);
             lastDate = d.Date;
         }
         _dayView = ClampToPeriod(lastDate); // keep the Expenses tab on the day just used (feature 6)
@@ -10633,7 +10890,10 @@ else
     /// (moving spend between budgets) as a side effect of labelling it.</summary>
     private void ApplyTagBinding(Guid tagId)
     {
-        if (_modal != Modal.AddExpense) return;
+        // Both the ADD paths — the manual form and the imported-transaction review. Not the edit form: that row
+        // already has a category the user chose, and re-filing it off a tap meant for labelling would move stored
+        // spend between budgets as a side effect.
+        if (_modal is not (Modal.AddExpense or Modal.BankConfirm)) return;
         // ★ On a trip the TRIP owns the filing, so its labels tag without re-filing — every label on the trip lands
         // in the trip's one category. Letting the binding fire would undo that on every tap: pick "Stay" and the
         // expense jumps out of the trip's category into Housing, which is exactly the spread this replaced.
@@ -10652,7 +10912,9 @@ else
     private void OnExpenseTripPicked(Guid tripId)
     {
         _expTripId = tripId;
-        if (_modal != Modal.AddExpense) return;
+        // The category follows the trip on the two paths that are CREATING an expense. On the edit form it must not:
+        // re-filing a stored row because someone attached it to a trip would move money between budgets.
+        if (_modal is not (Modal.AddExpense or Modal.BankConfirm)) return;
         if (tripId == Guid.Empty) return;   // "Not a trip" leaves the category alone — see the note on clearing
         ApplyTripCategoryDefault();
         _tagFiledTo = null;   // not a tag's doing, so the "filed under" note would misattribute it
@@ -10672,7 +10934,11 @@ else
         var keepCat = _categoryId; var keepFund = _fundId;
         // If a tag by that name already exists (active or archived), just select it rather than erroring.
         var existing = State.AllTags.FirstOrDefault(t => string.Equals(t.Name, name, StringComparison.CurrentCultureIgnoreCase));
-        var id = existing?.Id ?? await State.AddTag(name);
+        // ★ A tag created while filing against a trip is born a TRIP label. The trip picker shows only trip labels,
+        // so an everyday tag made here was created, selected, and immediately invisible — which read as "you can't
+        // add your own labels on a trip". The six seeded ones are a starting point, not the whole vocabulary:
+        // "Diving", "Gifts home", "That one restaurant" are exactly what a real trip wants to split by.
+        var id = existing?.Id ?? await State.AddTag(name, isTripTag: _expTripId != Guid.Empty);
         if (id != Guid.Empty) _fTagId = id;
         _newTagName = null;
         _tagNewOpen = false;   // made it — the box folds away rather than sitting open for a second one
@@ -10752,15 +11018,38 @@ else
         _editExpenseId = expenseId;
         _categoryId = e.CategoryId; _amount = e.Amount.Amount; _fundId = e.FundId; _note = e.Note; _expenseDate = e.Date;
         _fTagId = e.TagId; _newTagName = null; _tagFiledTo = null;
+        _expenseTime = e.Time; _expenseHadTime = e.Time is not null;
+        _expTripId = e.TripId ?? Guid.Empty;   // the trip is editable here — see the picker in the modal
         _modal = Modal.EditExpense;
     }
 
     private Task SaveEditExpense() => RunModal(async () =>
     {
         if (_amount <= 0) return;
-        await State.EditExpense(_editExpenseId, _categoryId, _amount, _fundId, _note, _expenseDate, tagId: _fTagId);
+        var expenseId = _editExpenseId;
+        // ★ The trip goes FIRST, on the id we still hold. EditExpense is append-only — it mints a new id and carries
+        // the stored trip across — so setting the trip afterwards would be aimed at an expense that no longer exists.
+        // Doing it first means the edit copies the link the user just chose, and one refetch settles both.
+        if ((State.FindExpense(expenseId)?.TripId ?? Guid.Empty) != _expTripId)
+            await State.SetExpenseTrip(expenseId, _expTripId == Guid.Empty ? null : _expTripId);
+        // A blanked box means "clear it" only if there was something to clear; otherwise it is simply saying nothing.
+        await State.EditExpense(expenseId, _categoryId, _amount, _fundId, _note, _expenseDate, tagId: _fTagId,
+            time: _expenseTime, clearTime: _expenseTime is null && _expenseHadTime);
         CloseModal();
     });
+
+    /// <summary>Trips offered by the EDIT form: every one, newest departure first. Unlike the add form this keeps
+    /// finished trips — attaching a forgotten booking to a journey that is over is the main reason to be here.</summary>
+    private IReadOnlyList<FinApp.Domain.Budgeting.Trip> EditTripOptions =>
+        State.AllTrips.OrderByDescending(t => t.From).ToList();
+
+    /// <summary>Moving the date off today drops an auto-stamped time: "now" describes the moment the form is open,
+    /// which says nothing about a purchase being back-dated to last Tuesday. Moving it back onto today re-stamps it.</summary>
+    private void OnExpenseDateChanged()
+    {
+        if (_modal != Modal.AddExpense) return;
+        _expenseTime = _expenseDate == State.TodayDate ? TimeOnly.FromDateTime(DateTime.Now) : null;
+    }
 
     /// <summary>Label for one row of a logged installment: which part it is, and which loan it serviced.</summary>
     private string InstallmentPartLabel(FinApp.Domain.Budgeting.Expense e)

@@ -71,7 +71,8 @@ public static class SpendingMap
         e.TripId,
         // Only tags that still exist: a deleted tag leaves its id behind on old rows (see Account.RemoveTag), and a
         // client that rendered those would show a label with no name.
-        e.TagIds.Where(t => account.FindTag(t) is not null).ToList());
+        e.TagIds.Where(t => account.FindTag(t) is not null).ToList(),
+        e.Time);
 
     /// <summary>The full Spending surface for <paramref name="viewPeriod"/> (the current period when null; empty
     /// currency-only view when the account has no period).</summary>
@@ -80,8 +81,11 @@ public static class SpendingMap
         if ((viewPeriod ?? account.CurrentPeriod) is not { } period)
             return SpendingViewDto.Empty with { Version = version, Currency = account.Currency };
 
+        // Newest first, and within a day newest-on-the-clock first. Untimed rows report TimeOnly.MinValue, so they
+        // fall to the bottom of their own day rather than jumping to the top of it (see Expense.SortTime).
         var expenses = period.Expenses
             .OrderByDescending(e => e.Date)
+            .ThenByDescending(e => e.SortTime)
             .Select(e => ToDto(account, e))
             .ToList();
 

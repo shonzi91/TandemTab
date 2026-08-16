@@ -32,9 +32,9 @@ public sealed class SavingsReportService
     public decimal? PeriodSavingsRate(Period period)
     {
         ArgumentNullException.ThrowIfNull(period);
-        // SavingsNetTotal includes disbursement drawdowns (negative); subtracting them (also negative) adds them back.
-        var savedForRate = period.SavingsNetTotal - period.SavingsDisbursedTotal;
-        return savedForRate.RatioOf(period.ContributionsPaidTotal);
+        // Deliberately the same figure the "Saved" card shows — see Period.SavingsSetAsideTotal for why a drawdown
+        // never counts against it. Re-deriving it here is how the card and the rate would come to disagree.
+        return period.SavingsSetAsideTotal.RatioOf(period.ContributionsPaidTotal);
     }
 
     /// <summary>The money you had to work with this period = fresh income (paid contributions) + free cash carried in.
@@ -66,8 +66,7 @@ public sealed class SavingsReportService
     {
         ArgumentNullException.ThrowIfNull(account);
         ArgumentNullException.ThrowIfNull(period);
-        var saved = period.SavingsNetTotal - period.SavingsDisbursedTotal;
-        return saved.RatioOf(MoneyIn(account, period));
+        return period.SavingsSetAsideTotal.RatioOf(MoneyIn(account, period));
     }
 
     /// <summary>
@@ -121,20 +120,42 @@ public sealed class SavingsReportService
             .Aggregate(Money.Zero(account.Currency), (acc, m) => acc + m);
     }
 
-    /// <summary>Lifetime disbursed to goals (deployed savings) across every period — a negative figure.</summary>
-    public Money DisbursedTotal(Account account)
+    // NB: there was a DisbursedTotal here, and a Period.SavingsDisbursedTotal beside it. Both existed solely to
+    // implement "saved = allocated, with disbursements added back" — the rule that has been replaced by counting
+    // deposits (see Period.SavingsSetAsideTotal). They are gone rather than left unreferenced, because a helper
+    // shaped exactly like the old rule is an invitation to rebuild it. SavingAllocation.IsDisbursement is still
+    // there for anyone who genuinely needs to ask which drawdowns were deployments.
+
+    /// <summary>
+    /// Everything ever set aside from contributions, for display — the sum of each period's own
+    /// <see cref="Period.SavingsSetAsideTotal"/>. Excludes pre-existing initial balances (see
+    /// <see cref="LifetimeSaved"/>, which adds them).
+    /// <para>
+    /// <b>★ Deliberately built by summing the per-period figure rather than re-deriving it here.</b> This used to be
+    /// "everything allocated, with disbursements added back", which is the same idea stated a second way — and the
+    /// two came apart the moment the period figure learned that <i>no</i> drawdown is un-saving: a sinking fund
+    /// paying the bill it existed for left the month's card reading "€600 set aside" while this one read "€0 ever
+    /// saved". Two figures over the same events cannot be allowed to answer differently, so there is now one rule
+    /// and one place to change it.
+    /// </para>
+    /// </summary>
+    public Money LifetimeSetAside(Account account)
     {
         ArgumentNullException.ThrowIfNull(account);
         return account.Periods
-            .SelectMany(p => p.SavingAllocations)
-            .Where(a => a.IsDisbursement)
-            .Select(a => a.Amount)
+            .Select(p => p.SavingsSetAsideTotal)
             .Aggregate(Money.Zero(account.Currency), (acc, m) => acc + m);
     }
 
-    /// <summary>Lifetime <b>saved</b> for display: total accumulated with disbursements added back — deploying a save to
-    /// its goal counts as saved, not un-saved. (Use <see cref="AccumulatedTotal"/> for the money model.)</summary>
-    public Money LifetimeSaved(Account account) => AccumulatedTotal(account) - DisbursedTotal(account);
+    /// <summary>Lifetime <b>saved</b> for display: everything set aside, plus the balances brought in at setup.
+    /// (Use <see cref="AccumulatedTotal"/> for the money model — that one falls when money leaves.)</summary>
+    public Money LifetimeSaved(Account account)
+    {
+        ArgumentNullException.ThrowIfNull(account);
+        return LifetimeSetAside(account)
+            + account.SavingCategories.Select(s => new Money(s.InitialAmount, account.Currency))
+                .Aggregate(Money.Zero(account.Currency), (acc, m) => acc + m);
+    }
 
     /// <summary>
     /// Savings rate across the whole account history: total set aside ÷ total contributions paid (null if
@@ -147,8 +168,8 @@ public sealed class SavingsReportService
         var contributed = account.Periods
             .Select(p => p.ContributionsPaidTotal)
             .Aggregate(Money.Zero(account.Currency), (acc, m) => acc + m);
-        // Disbursements (deployed to goals) are added back — deploying a save isn't un-saving.
-        return (AllocatedTotal(account) - DisbursedTotal(account)).RatioOf(contributed);
+        // The same numerator the per-period rate uses, summed — see LifetimeSetAside for why it is not re-derived.
+        return LifetimeSetAside(account).RatioOf(contributed);
     }
 
     /// <summary>Progress of a bucket (and its sub-buckets) toward its goal, across the whole account history.</summary>

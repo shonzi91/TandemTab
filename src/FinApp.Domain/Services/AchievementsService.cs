@@ -212,7 +212,10 @@ public sealed class AchievementsService
         for (var i = 1; i < periods.Count; i++)
         {
             var prev = periods[i - 1];
-            var prevDeficit = prev.SavingsSetAsideTotal.Amount < 0m || prev.ExpensesTotal.Amount > prev.ContributionsPaidTotal.Amount;
+            // A bad month is one that set nothing aside, or one that spent more than came in. It used to also test
+            // SavingsSetAsideTotal < 0, which can no longer happen — that figure counts deposits and floors at zero
+            // by construction now (see Period.SavingsSetAsideTotal); "set nothing aside" is what that case meant.
+            var prevDeficit = prev.SavingsSetAsideTotal.Amount <= 0m || prev.ExpensesTotal.Amount > prev.ContributionsPaidTotal.Amount;
             if (prevDeficit && periods[i].SavingsSetAsideTotal.Amount > 0m) return true;
         }
         return false;

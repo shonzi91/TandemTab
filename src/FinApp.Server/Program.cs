@@ -1188,6 +1188,7 @@ accounts.MapPost("/{id:guid}/expenses", async (Guid id, AddExpenseRequest req, C
         // What was typed before conversion. Display only — Amount is still the single figure every total is built
         // from, and the server does not re-convert: the client already did, once, at entry.
         expense.SetForeign(req.ForeignAmount, req.ForeignCurrency);
+        expense.SetTime(req.Time);
         period.AddExpense(expense);
         // F4 round-ups. Same service the web client runs in its optimistic apply, so the two can't produce different
         // savings rows — the config lives on the aggregate, so nothing about it needs to travel in the request.
@@ -1214,6 +1215,10 @@ accounts.MapPut("/{id:guid}/expenses/{expenseId:guid}", async (Guid id, Guid exp
         edited.SetBankLink(before?.BankExternalId, autoFiled: false);   // keep provenance, clear the auto-filed badge
         // The edit UI always sends the desired tag, so this is authoritative: a valid id sets it, null clears it.
         edited.SetTag(req.TagId is { } editTag && account.FindTag(editTag) is not null ? editTag : null);
+        // The time is NOT authoritative-by-omission — EditExpense already carried the stored one across, so only an
+        // explicit value or an explicit clear touches it. See EditExpenseRequest.
+        if (req.ClearTime) edited.SetTime(null);
+        else if (req.Time is { } editTime) edited.SetTime(editTime);
 
         // Edit is append-only (a new id), so the delta carries the NEW row for the client to swap in.
         return (edited.Id, SpendingMap.ToDto(account, edited), SpendingMap.Overview(account, period, bank.Balance, bank.BalanceCurrency));
@@ -1898,7 +1903,7 @@ accounts.MapPost("/{id:guid}/tags", async (Guid id, CreateTagRequest req, Claims
     var userId = user.UserId();
     var (version, tagId) = await svc.MutateAsync(userId, id, account =>
     {
-        var tag = account.AddTag(req.Name, req.Icon);   // 400 on duplicate name
+        var tag = account.AddTag(req.Name, req.Icon, req.IsTripTag);   // 400 on duplicate name
         return tag.Id;
     }, ct);
     await notifier.AccountChangedAsync(id, userId, version);

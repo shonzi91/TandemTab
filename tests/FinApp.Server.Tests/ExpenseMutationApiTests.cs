@@ -179,6 +179,56 @@ public class ExpenseMutationApiTests : IClassFixture<FinAppServerFactory>
     }
 
     [Fact]
+    public async Task Expense_time_is_stored_and_orders_a_day_newest_first()
+    {
+        var (client, auth) = await _factory.RegisterAndAuthAsync("exp_time");
+        var account = await CreateAccount(client, "Clock");
+        var (cat, fund) = await SeedAsync(client, account.Id, auth.UserId);
+
+        // Same day, logged out of order, one of them with no time at all (the bank-import case).
+        (await client.PostAsJsonAsync($"/accounts/{account.Id}/expenses",
+            new AddExpenseRequest(cat, 5m, fund, When, "Coffee", Time: new TimeOnly(8, 15)))).EnsureSuccessStatusCode();
+        (await client.PostAsJsonAsync($"/accounts/{account.Id}/expenses",
+            new AddExpenseRequest(cat, 9m, fund, When, "Untimed"))).EnsureSuccessStatusCode();
+        (await client.PostAsJsonAsync($"/accounts/{account.Id}/expenses",
+            new AddExpenseRequest(cat, 20m, fund, When, "Dinner", Time: new TimeOnly(20, 30)))).EnsureSuccessStatusCode();
+
+        var spending = (await client.GetFromJsonAsync<SpendingViewDto>($"/accounts/{account.Id}/spending"))!;
+        var sameDay = spending.Expenses.Where(e => e.Date == When).ToList();
+
+        Assert.Equal(new[] { "Dinner", "Coffee", "Untimed" }, sameDay.Select(e => e.Note));
+        Assert.Equal(new TimeOnly(20, 30), sameDay[0].Time);
+        Assert.Null(sameDay[2].Time);   // never invented as midnight, and last rather than first
+    }
+
+    /// <summary>An older client's edit request carries no Time. That must leave the stored one alone rather than
+    /// stripping it — correcting an amount from a phone should not silently blank the clock. Clearing is explicit.</summary>
+    [Fact]
+    public async Task Editing_without_a_time_keeps_it_and_clearing_is_explicit()
+    {
+        var (client, auth) = await _factory.RegisterAndAuthAsync("exp_time_edit");
+        var account = await CreateAccount(client, "Clock2");
+        var (cat, fund) = await SeedAsync(client, account.Id, auth.UserId);
+
+        var added = (await (await client.PostAsJsonAsync($"/accounts/{account.Id}/expenses",
+            new AddExpenseRequest(cat, 12m, fund, When, "Lunch", Time: new TimeOnly(13, 42))))
+            .Content.ReadFromJsonAsync<ExpenseMutationDto>())!;
+
+        // Edit with no Time at all — the shape an app that predates the field sends.
+        var kept = (await (await client.PutAsJsonAsync($"/accounts/{account.Id}/expenses/{added.EntityId}",
+            new EditExpenseRequest(cat, 14m, fund, When, "Lunch")))
+            .Content.ReadFromJsonAsync<ExpenseMutationDto>())!;
+        Assert.Equal(new TimeOnly(13, 42), kept.Expense!.Time);
+        Assert.Equal(14m, kept.Expense.Amount);
+
+        // ...and the deliberate "I don't actually know when" edit does blank it.
+        var cleared = (await (await client.PutAsJsonAsync($"/accounts/{account.Id}/expenses/{kept.EntityId}",
+            new EditExpenseRequest(cat, 14m, fund, When, "Lunch", ClearTime: true)))
+            .Content.ReadFromJsonAsync<ExpenseMutationDto>())!;
+        Assert.Null(cleared.Expense!.Time);
+    }
+
+    [Fact]
     public async Task Stranger_cannot_add_an_expense()
     {
         var (owner, auth) = await _factory.RegisterAndAuthAsync("exp_owner");

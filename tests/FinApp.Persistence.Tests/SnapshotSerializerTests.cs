@@ -196,6 +196,33 @@ public class SnapshotSerializerTests
     }
 
     [Fact]
+    public void An_expense_time_round_trips_and_stays_null_when_nothing_recorded_one()
+    {
+        var owner = Guid.NewGuid();
+        var account = new Account("Home", "EUR");
+        account.AssignOwner(owner, "Me");
+        account.AddDefaultFunds();
+        var bank = account.FundId("Bank");
+        var food = account.AddCategory("Food");
+
+        var p = account.StartPeriod(new DateOnly(2026, 1, 1), new DateOnly(2026, 1, 31));
+        var timed = new Expense(food.Id, Eur(12), new DateOnly(2026, 1, 4), owner, bank, "Lunch");
+        timed.SetTime(new TimeOnly(13, 42));
+        p.AddExpense(timed);
+        // The ordinary case: a bank feed that reports a date only. It must stay null rather than becoming 00:00,
+        // which would print a time nobody reported and sort the row above everything logged that morning.
+        p.AddExpense(new Expense(food.Id, Eur(9), new DateOnly(2026, 1, 4), owner, bank, "Coffee"));
+
+        var copy = AccountSnapshotSerializer.Deserialize(AccountSnapshotSerializer.Serialize(account));
+
+        var copied = copy.Periods.Single().Expenses.ToList();
+        Assert.Equal(new TimeOnly(13, 42), copied.Single(e => e.Note == "Lunch").Time);
+        Assert.Null(copied.Single(e => e.Note == "Coffee").Time);
+        // ...and an untimed row sorts last within its day under a newest-first sort, rather than first.
+        Assert.Equal("Coffee", copied.OrderByDescending(e => e.Date).ThenByDescending(e => e.SortTime).Last().Note);
+    }
+
+    [Fact]
     public void Category_essential_flag_round_trips()
     {
         var account = new Account("Home", "EUR");

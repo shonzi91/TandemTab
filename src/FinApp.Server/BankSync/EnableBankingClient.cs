@@ -155,10 +155,52 @@ public sealed class EnableBankingClient(IHttpClientFactory httpFactory, IConfigu
             if (date is null) continue;
             var description = Describe(t);
             var id = Str(t, "transactionId", "entry_reference", "internalTransactionId")
-                     ?? $"{date}:{raw}:{description}".GetHashCode().ToString("x");   // stable synthetic id for dedupe
-            result.Add(new BankTransaction(id, DateOnly.Parse(date), amount, description));
+                     ?? SyntheticId(date, raw, description);
+            result.Add(new BankTransaction(id, DateOnly.Parse(date[..10]), amount, description, TimeOf(t, date)));
         }
         return result;
+    }
+
+    /// <summary>
+    /// The dedupe key for a transaction the provider gave no id for: a deterministic hash of the fields that
+    /// identify it.
+    /// <para>
+    /// ⚠️ <b>This must not be <c>string.GetHashCode()</c>, which is what it used to be.</b> String hashing is
+    /// randomized per process on .NET Core, so the "stable synthetic id" was stable only within one server
+    /// process: every restart — and, on a multi-instance deployment, every request that landed on a different
+    /// instance — minted a fresh id for the same transaction. <see cref="BankSyncService.GetPendingAsync"/>
+    /// filters on <c>Status = 'Pending'</c> and the insert is keyed on (account, external id), so a re-hashed
+    /// transaction no longer collided with the row the user had already Confirmed or Dismissed: it came back as
+    /// a brand-new pending row. That is the "transactions I already X'd keep reappearing" bug, and it got worse
+    /// the more the service scaled.
+    /// </para>
+    /// SHA-256 is not for secrecy here — it is simply a hash whose value is fixed by its input and nothing else.
+    /// Public for the same reason as <see cref="BuildJwt(string, string)"/>: so a test can pin the value.
+    /// </summary>
+    public static string SyntheticId(string date, decimal amount, string description)
+    {
+        var raw = $"{date}:{amount.ToString(System.Globalization.CultureInfo.InvariantCulture)}:{description}";
+        var hash = SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(raw));
+        return "syn-" + Convert.ToHexString(hash)[..24].ToLowerInvariant();
+    }
+
+    /// <summary>The time of day the transaction was booked, when the provider states one. Banks vary: some carry a
+    /// full timestamp in the booking date itself, others put it in a separate field, and plenty give only a date —
+    /// which stays null rather than being invented as midnight (see <c>Expense.Time</c>).</summary>
+    private static TimeOnly? TimeOf(JsonElement t, string date)
+    {
+        foreach (var candidate in new[]
+                 {
+                     Str(t, "bookingDateTime", "booking_date_time", "transactionDateTime", "transaction_date_time"),
+                     date.Length > 10 ? date : null,   // "2026-08-14T19:42:00Z" arriving in the date field
+                 })
+        {
+            if (candidate is null) continue;
+            if (DateTimeOffset.TryParse(candidate, System.Globalization.CultureInfo.InvariantCulture,
+                    System.Globalization.DateTimeStyles.None, out var stamp))
+                return TimeOnly.FromTimeSpan(stamp.TimeOfDay);
+        }
+        return null;
     }
 
     private static string Describe(JsonElement t)
@@ -237,4 +279,6 @@ public sealed class EnableBankingClient(IHttpClientFactory httpFactory, IConfigu
 }
 
 public record BankInstitution(string Name, string Country, string? Logo = null);
-public record BankTransaction(string ExternalId, DateOnly Date, decimal Amount, string Description);
+/// <summary><paramref name="Time"/> is the booking time of day when the bank states one, else null — most give a
+/// date only, and midnight is a fact nobody reported.</summary>
+public record BankTransaction(string ExternalId, DateOnly Date, decimal Amount, string Description, TimeOnly? Time = null);

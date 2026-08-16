@@ -214,13 +214,10 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     /// better than a guess). Hours and minutes only: days would need a working-day length this app has no business
     /// assuming, and an hourly rate is an estimate that shouldn't be dressed up in precision it doesn't have.
     /// </summary>
-    public string? TimeCostLabel(decimal amount)
-    {
-        if (Account.TimeCostOf(amount) is not { } span || span.TotalMinutes < 1) return null;
-        var hours = (int)span.TotalHours;
-        var minutes = span.Minutes;
-        return hours == 0 ? $"{minutes}m" : minutes == 0 ? $"{hours}h" : $"{hours}h {minutes}m";
-    }
+    /// <summary>What an amount costs in working time — "35m", "6h 20m", "2d 4h" — or null with no rate set.
+    /// The arithmetic (including the roll-up into working days) lives on the aggregate: see
+    /// <c>Account.TimeCostText</c>.</summary>
+    public string? TimeCostLabel(decimal amount) => Account.TimeCostText(amount);
 
     /// <summary>F7 — "your week in money" for the last completed week, or null when there's nothing to report.</summary>
     public WeeklyRecap? WeeklyRecap() => _recap.Build(Account, Today());
@@ -793,18 +790,21 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     /// <summary>The most a single category's budget can be set to (Current − savings + spent, minus other budgets). Caps budgeting.</summary>
     public Money MaxBudgetFor(Guid categoryId) => Period.MaxBudgetFor(categoryId, PriorSaved);
 
-    public IReadOnlyList<Expense> AllExpenses =>
-        Period.Expenses.OrderByDescending(e => e.Date).ToList();
+    /// <summary>Newest first, and newest-on-the-clock first within a day. One helper so every list of expenses in the
+    /// app agrees on the order — an untimed row reports <c>TimeOnly.MinValue</c>, so it sits at the bottom of its own
+    /// day instead of being treated as a midnight entry and jumping to the top (see <c>Expense.SortTime</c>).</summary>
+    public static IReadOnlyList<Expense> Newest(IEnumerable<Expense> expenses) =>
+        expenses.OrderByDescending(e => e.Date).ThenByDescending(e => e.SortTime).ToList();
+
+    public IReadOnlyList<Expense> AllExpenses => Newest(Period.Expenses);
 
     public IReadOnlyList<Expense> ExpensesFor(Guid categoryId) =>
-        Period.Expenses.Where(e => e.CategoryId == categoryId).OrderByDescending(e => e.Date).ToList();
+        Newest(Period.Expenses.Where(e => e.CategoryId == categoryId));
 
     /// <summary>Every expense across ALL periods whose date falls in [from, to] — the basis for the Breakdown view's
     /// multi-period windows (3/6/12 months, all-time, custom). Newest first.</summary>
     public IReadOnlyList<Expense> ExpensesInRange(DateOnly from, DateOnly to) =>
-        Account.Periods.SelectMany(p => p.Expenses)
-            .Where(e => e.Date >= from && e.Date <= to)
-            .OrderByDescending(e => e.Date).ToList();
+        Newest(Account.Periods.SelectMany(p => p.Expenses).Where(e => e.Date >= from && e.Date <= to));
 
     /// <summary>Every out-transfer to another account across ALL periods in [from, to] — money that left the account,
     /// so the Breakdown view can show it alongside expenses as part of total outflow. Newest first.</summary>
@@ -1146,14 +1146,17 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     /// the weekly shop still happens on the day you fly home.</summary>
     /// <param name="foreignAmount">What the user actually typed, when the fund holds foreign cash and
     /// <paramref name="amount"/> is the converted figure. Display only — see <c>Expense.ForeignAmount</c>.</param>
+    /// <param name="time">The time of day it was spent, when anything knows one. Null stays null — see
+    /// <c>Expense.Time</c> for why an unknown time is not recorded as midnight.</param>
     public Task AddExpense(Guid categoryId, decimal amount, Guid fundId, string? note, DateOnly date, bool onBehalfOfOtherAccount = false, Guid? tagId = null, Guid? tripId = null,
-        decimal? foreignAmount = null, string? foreignCurrency = null) =>
+        decimal? foreignAmount = null, string? foreignCurrency = null, TimeOnly? time = null) =>
         ExecuteOptimisticAsync(() =>
         {
             var expense = new Expense(categoryId, Money(amount), date, CurrentMemberId, fundId, note, onBehalfOfOtherAccount: onBehalfOfOtherAccount);
             expense.SetFundSynced(FundIsSynced(fundId));
             expense.SetTag(tagId);
             expense.SetTrip(tripId);
+            expense.SetTime(time);
             // Remember what was typed before conversion, so the row can show "€14.63 · £12.50" for ever after. The
             // caller passes the pre-conversion figure; deriving it later from the wallet's rate would restate old
             // expenses every time that wallet is reloaded at a new rate.
@@ -1163,22 +1166,30 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
             // so the optimistic paint matches what the refetch brings back.
             _roundUps.Sweep(Account, Period, expense.Amount, expense.Date);
         },
-        id => api.AddExpenseAsync(id, new AddExpenseRequest(categoryId, amount, fundId, date, note, onBehalfOfOtherAccount, tagId, tripId, foreignAmount, foreignCurrency)),
+        id => api.AddExpenseAsync(id, new AddExpenseRequest(categoryId, amount, fundId, date, note, onBehalfOfOtherAccount, tagId, tripId, foreignAmount, foreignCurrency, time)),
         refetchAfter: true);
 
     // Bank-confirm flows only — bank provenance (externalId + auto-filed badge) isn't in the command API yet.
     // TODO(cutover): fold into POST /expenses once AddExpenseRequest carries bankExternalId/autoFiled.
     private Task AddExpenseWithBankLink(Guid categoryId, decimal amount, Guid fundId, string? note, DateOnly date,
-        string? bankExternalId, bool autoFiled)
+        string? bankExternalId, bool autoFiled, Guid? tagId = null, Guid? tripId = null, TimeOnly? time = null)
     {
         var expense = new Expense(categoryId, Money(amount), date, CurrentMemberId, fundId, note);
         expense.SetFundSynced(FundIsSynced(fundId));   // synced funds aren't debited (real bank balance handles it)
         expense.SetBankLink(bankExternalId, autoFiled);
+        // An imported expense can carry a label, a trip and a booking time like any other — the review modal asks
+        // for the first two, and the bank supplies the third when it states one.
+        expense.SetTag(tagId);
+        expense.SetTrip(tripId);
+        expense.SetTime(time);
         Period.AddExpense(expense);
         return SaveAsync();
     }
 
-    public async Task EditExpense(Guid expenseId, Guid categoryId, decimal amount, Guid fundId, string? note, DateOnly date, Guid? tagId = null)
+    /// <param name="time">The desired time, or null to leave the stored one alone. Pass <paramref name="clearTime"/>
+    /// to blank it — null can't say "I don't know when" and "don't touch it" at once. See <c>EditExpenseRequest</c>.</param>
+    public async Task EditExpense(Guid expenseId, Guid categoryId, decimal amount, Guid fundId, string? note, DateOnly date, Guid? tagId = null,
+        TimeOnly? time = null, bool clearTime = false)
     {
         var before = Period.Expenses.FirstOrDefault(e => e.Id == expenseId);
         await ExecuteOptimisticAsync(() =>
@@ -1187,8 +1198,11 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
             edited.SetFundSynced(FundIsSynced(fundId));
             edited.SetBankLink(before?.BankExternalId, autoFiled: false);   // keep provenance, clear the auto-filed badge
             edited.SetTag(tagId);   // the edit UI always sends the desired tag (null clears it)
+            // EditExpense already carried the stored time across, so only an explicit value or clear touches it.
+            if (clearTime) edited.SetTime(null);
+            else if (time is { } t) edited.SetTime(t);
         },
-        id => api.EditExpenseAsync(id, expenseId, new EditExpenseRequest(categoryId, amount, fundId, date, note, tagId)),
+        id => api.EditExpenseAsync(id, expenseId, new EditExpenseRequest(categoryId, amount, fundId, date, note, tagId, time, clearTime)),
         refetchAfter: true);   // EditExpense is append-only (mints a new id) — reconcile to adopt the server's
         // Editing a settlement-destination expense mirrors the new amount back to the source expense.
         if (before is { IsSettlementDestination: true, SettlementId: { } sid, SettledFromAccountId: { } sourceAccount })
@@ -2325,9 +2339,10 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
 
     /// <summary>Turn a staged bank transaction into an expense in the given category/fund, then mark it handled.</summary>
     // TODO(cutover): rides the local bank-provenance path until AddExpenseRequest carries bankExternalId/autoFiled.
-    public async Task ConfirmBankTransaction(string externalId, Guid categoryId, decimal amount, Guid fundId, string? note, DateOnly date, bool autoFiled = false)
+    public async Task ConfirmBankTransaction(string externalId, Guid categoryId, decimal amount, Guid fundId, string? note, DateOnly date, bool autoFiled = false,
+        Guid? tagId = null, Guid? tripId = null, TimeOnly? time = null)
     {
-        await AddExpenseWithBankLink(categoryId, amount, fundId, note, date, externalId, autoFiled);
+        await AddExpenseWithBankLink(categoryId, amount, fundId, note, date, externalId, autoFiled, tagId, tripId, time);
         await api.AckBankTransactionAsync(CurrentAccountId, externalId, confirmed: true);
     }
 
@@ -2632,10 +2647,12 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     public IReadOnlyList<Tag> ExpenseTags(FinApp.Domain.Budgeting.Expense expense) =>
         expense.TagIds.Select(id => Account.FindTag(id)).Where(t => t is not null).Select(t => t!).ToList();
 
-    public async Task<Guid> AddTag(string name, string? icon = null)
+    /// <param name="isTripTag">Create it on the trip-label axis — what the expense form passes when it is filing
+    /// against a trip, since that picker shows only trip labels.</param>
+    public async Task<Guid> AddTag(string name, string? icon = null, bool isTripTag = false)
     {
-        var result = await ExecuteOptimisticAsync(() => { Account.AddTag(name, icon); },
-            id => api.CreateTagAsync(id, new CreateTagRequest(name, icon)), refetchAfter: true);
+        var result = await ExecuteOptimisticAsync(() => { Account.AddTag(name, icon, isTripTag); },
+            id => api.CreateTagAsync(id, new CreateTagRequest(name, icon, isTripTag)), refetchAfter: true);
         return result.EntityId ?? Guid.Empty;
     }
     /// <summary>The id of the tag called <paramref name="name"/>, creating it if there isn't one (case-insensitive, and
@@ -2828,21 +2845,21 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
         int take = 60, string? search = null, Guid? alwaysInclude = null)
     {
         var all = Account.Periods.SelectMany(p => p.Expenses)
-            .OrderByDescending(e => e.Date).ThenByDescending(e => e.Id);
+            .OrderByDescending(e => e.Date).ThenByDescending(e => e.SortTime).ThenByDescending(e => e.Id);
 
         var term = search?.Trim();
         if (!string.IsNullOrEmpty(term))
             all = all.Where(e =>
                 (e.Note ?? "").Contains(term, StringComparison.CurrentCultureIgnoreCase)
                 || CategoryName(e.CategoryId).Contains(term, StringComparison.CurrentCultureIgnoreCase))
-                .OrderByDescending(e => e.Date).ThenByDescending(e => e.Id);
+                .OrderByDescending(e => e.Date).ThenByDescending(e => e.SortTime).ThenByDescending(e => e.Id);
 
         var page = all.Take(take).ToList();
         if (alwaysInclude is { } tripId)
         {
             var pinned = Account.Periods.SelectMany(p => p.Expenses)
                 .Where(e => e.TripId == tripId && page.All(x => x.Id != e.Id));
-            page = page.Concat(pinned).OrderByDescending(e => e.Date).ThenByDescending(e => e.Id).ToList();
+            page = page.Concat(pinned).OrderByDescending(e => e.Date).ThenByDescending(e => e.SortTime).ThenByDescending(e => e.Id).ToList();
         }
         return page;
     }

@@ -263,6 +263,42 @@ public sealed class Account : Entity
             ? TimeSpan.FromMinutes(Math.Round((double)(amount / rate) * 60d))
             : null;
 
+    /// <summary>
+    /// <see cref="TimeCostOf"/> written the way a person thinks about it — "35m", "6h 20m", "2d 4h" — or null when
+    /// there is no rate to price time with.
+    /// <para>
+    /// <b>★ It rolls up into working DAYS, measured in the user's own working day, not in 24 hours.</b> "160h" is a
+    /// number nobody can feel; "20d" is a month of your life, and making the figure felt is the only reason it is
+    /// shown at all. The day length comes from <see cref="WorkingHoursPerDay"/> — the same pattern the derived rate
+    /// is built from — falling back to 8 when only a manual <see cref="HourlyRate"/> was typed, since a rate can be
+    /// set without ever stating a pattern.
+    /// </para>
+    /// <para>
+    /// Minutes are dropped once days are involved: "2d 4h 37m" is precision an estimated rate does not have.
+    /// </para>
+    /// Lives here rather than in the client so the arithmetic has one home and can be tested; the unit letters are
+    /// the same in every language the app ships.
+    /// </summary>
+    public string? TimeCostText(decimal amount)
+    {
+        if (TimeCostOf(amount) is not { } span || span.TotalMinutes < 1) return null;
+        var dayHours = WorkingHoursPerDay is { } h && h > 0m ? (double)h : 8d;
+        var totalHours = span.TotalHours;
+
+        if (totalHours >= dayHours)
+        {
+            var days = (int)(totalHours / dayHours);
+            var restHours = (int)Math.Round(totalHours - days * dayHours);
+            // Rounding the remainder up can land on a whole day ("2d 8h" on an 8-hour day) — carry it instead.
+            if (restHours >= (int)Math.Round(dayHours)) { days++; restHours = 0; }
+            return restHours == 0 ? $"{days}d" : $"{days}d {restHours}h";
+        }
+
+        var hours = (int)totalHours;
+        var minutes = span.Minutes;
+        return hours == 0 ? $"{minutes}m" : minutes == 0 ? $"{hours}h" : $"{hours}h {minutes}m";
+    }
+
     /// <summary>Anchor achievement tracking to <paramref name="onDate"/> the first time only (idempotent).</summary>
     public void SetAchievementsAnchor(DateOnly onDate) => AchievementsAnchor ??= onDate;
 
@@ -465,12 +501,17 @@ public sealed class Account : Entity
     public IEnumerable<Tag> ActiveTags => _tags.Where(t => !t.IsArchived);
 
     /// <summary>Add a tag. Rejects a duplicate name (case-insensitive) within the account.</summary>
-    public Tag AddTag(string name, string? icon = null)
+    /// <param name="isTripTag">Mark it as one of the trip labels (see <see cref="Tag.IsTripTag"/>). The everyday
+    /// picker hides those and the trip form shows only those, so a tag created <i>while filing against a trip</i>
+    /// has to be born on the trip axis — otherwise it is made, selected, and instantly invisible in the row that
+    /// made it.</param>
+    public Tag AddTag(string name, string? icon = null, bool isTripTag = false)
     {
         if (_tags.Any(t => NameEquals(t.Name, name)))
             throw new InvalidOperationException($"A tag named “{name.Trim()}” already exists.");
         var tag = new Tag(name);
         tag.SetIcon(icon);
+        tag.SetTripTag(isTripTag);
         _tags.Add(tag);
         return tag;
     }
@@ -692,10 +733,15 @@ public sealed class Account : Entity
         _trips.Remove(trip);
     }
 
-    /// <summary>Every expense attached to a trip, across all periods, newest first. The recap's whole input — note
-    /// it spans periods by nature, because the booking and the holiday rarely sit in the same month.</summary>
+    /// <summary>Every expense attached to a trip, across all periods, newest first — and within a day, newest on the
+    /// clock first (an untimed row reports <see cref="Expense.SortTime"/> = midnight, so it settles at the bottom of
+    /// its own day rather than the top). A trip's ledger is the one list where a single day holds a dozen entries,
+    /// so the clock is what makes it read as a day rather than a heap.
+    /// <para>The recap's whole input — note it spans periods by nature, because the booking and the holiday rarely
+    /// sit in the same month.</para></summary>
     public IEnumerable<Expense> TripExpenses(Guid tripId) =>
-        _periods.SelectMany(p => p.Expenses).Where(e => e.TripId == tripId).OrderByDescending(e => e.Date);
+        _periods.SelectMany(p => p.Expenses).Where(e => e.TripId == tripId)
+            .OrderByDescending(e => e.Date).ThenByDescending(e => e.SortTime);
 
     /// <summary>
     /// Create the trip label set once, the first time it's needed. Each seed carries the category it files into, so

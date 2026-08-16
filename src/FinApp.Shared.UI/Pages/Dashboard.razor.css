@@ -994,6 +994,10 @@ html.dark .acct-chip-label { color: #9aa4b2; }
 }
 
 /* Tags — flat cross-cutting labels on expenses. A small pill on the row's sub-line; toggle chips in the modal. */
+/* The clock on an expense row. Tabular figures so a column of times lines up, and deliberately quiet — it orders
+   the day and jogs the memory; it is not a number anyone is reading the row for. */
+.exp-time { font-variant-numeric: tabular-nums; font-size: .72rem; font-weight: 600; color: #8a93a0; letter-spacing: .01em; }
+html.dark .exp-time { color: #7e8a99; }
 .exp-tag { display: inline-flex; align-items: center; gap: 3px; padding: 1px 8px; border-radius: 999px;
     background: #eef2f7; color: #5b6470; font-size: .72rem; font-weight: 600; white-space: nowrap; }
 .exp-tag .tag-emoji { font-size: .95em; }
@@ -1877,7 +1881,10 @@ html.dark .cal-cell.cal-out .cal-trip-band { background: #1a2233; color: #5f6b79
 /* .modal-field is a plain <div> used where a field's control isn't a native input (so wrapping it in a <label>
    would forward stray clicks to the "+" button inside the label) — same column layout as .modal label. */
 .modal label, .modal .modal-field { display: flex; flex-direction: column; gap: 4px; font-size: .82rem; color: #6b7280; }
-.modal label input[type=text], .modal label input[type=number], .modal label input[type=date], .modal label select {
+/* ⚠️ input[type=time] belongs in this list, not just date. Left out, a time field renders as raw browser chrome —
+   23px tall, no padding, no border — sitting beside a 42px styled date input on the same row, which is exactly as
+   mismatched as it sounds. Any new input type added to a modal needs adding here too. */
+.modal label input[type=text], .modal label input[type=number], .modal label input[type=date], .modal label input[type=time], .modal label select {
     padding: 9px 10px; border: 1px solid #dde6e1; border-radius: 10px; font-size: .95rem; background: #ffffff;
 }
 /* Amount fields are <DecimalInput>, whose <input> belongs to that component's CSS scope — the rule above cannot
@@ -1896,12 +1903,17 @@ html.dark .cal-cell.cal-out .cal-trip-band { background: #1a2233; color: #5f6b79
 .modal label select:hover, .form select:hover { border-color: #12b29a; }
 .modal label select:focus, .form select:focus { outline: none; border-color: #12b29a; box-shadow: 0 0 0 3px rgba(18,178,154,.16); }
 
-/* Date pickers: consistent field height + a tidy, brand-tinted calendar button. */
-input[type=date] { color-scheme: light; accent-color: #13a06e; font-family: inherit; min-height: 38px; }
-input[type=date]::-webkit-calendar-picker-indicator {
+/* Date and time pickers: consistent field height + a tidy, brand-tinted picker button. Time rides the same rules —
+   the two sit side by side on the expense form, so any difference between them reads as a mistake. */
+input[type=date], input[type=time] { color-scheme: light; accent-color: #13a06e; font-family: inherit; min-height: 38px; }
+input[type=date]::-webkit-calendar-picker-indicator,
+input[type=time]::-webkit-calendar-picker-indicator {
     cursor: pointer; opacity: .55; padding: 3px; border-radius: 6px;
 }
-input[type=date]::-webkit-calendar-picker-indicator:hover { opacity: 1; background: #e4f6ee; }
+input[type=date]::-webkit-calendar-picker-indicator:hover,
+input[type=time]::-webkit-calendar-picker-indicator:hover { opacity: 1; background: #e4f6ee; }
+/* The clock field is narrower than a date by nature — let it be, rather than stretching it to match. */
+.field-row > label:has(input[type=time]) { flex: 0 1 132px; }
 .modal .check { flex-direction: row; align-items: center; color: #1f2430; }
 /* Modal header: title sits top-left, the Cancel/confirm buttons float in the top-right corner as ✕/✓
    (a natural dialog header).
@@ -2841,6 +2853,15 @@ html.dark .rule-chip.on { background: #14352a; border-color: #2bbd86; color: #6f
    `title` tooltip — which a phone cannot show at all. It wraps now; nothing here is worth hiding. */
 .bank-tx-desc { font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
 .bank-tx .amt { white-space: nowrap; font-variant-numeric: tabular-nums; }
+/* The confirm modal's header block: the bank's own facts, stated once at the top, so everything below it reads as
+   the questions being asked rather than a mix of the two. */
+.bank-confirm-head { display: flex; align-items: baseline; gap: 8px; padding: 10px 12px; margin-bottom: 4px;
+    background: #f5f8fa; border: 1px solid #e3eaef; border-radius: 11px; }
+.bank-confirm-desc { font-weight: 600; min-width: 0; overflow-wrap: anywhere; flex: 1 1 auto; }
+.bank-confirm-head .amt { white-space: nowrap; font-variant-numeric: tabular-nums; font-weight: 700; }
+.bank-confirm-when { margin-top: 0; }
+.bank-rule-known { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+html.dark .bank-confirm-head { background: #161d26; border-color: #2a3441; }
 .bank-tx .amt.credit { color: #0e9e6d; }
 /* De-duplication hint: this bank debit looks like a manual entry the user already logged. */
 .dup-hint { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 6px 0 2px; padding: 7px 10px; background: #fff8ed; border: 1px solid #f3d9a8; border-radius: 9px; }
@@ -3248,6 +3269,9 @@ html.dark .trips-sort .chip.on { background: var(--tm-mint); border-color: var(-
 .trip-budget.under { color: #0e7c55; }
 .trip-funded { margin: 0; font-size: .74rem; color: #0e7c55; display: flex; align-items: center; gap: 6px; }
 .trip-biggest { margin: 0; font-size: .72rem; color: #64748b; }
+/* What the trip cost in working time — a quiet aside under the split, not a headline figure. */
+.trip-timecost { margin: 0; font-size: .74rem; color: #64748b; display: flex; align-items: center; gap: 6px; }
+html.dark .trip-timecost { color: #8c99a8; }
 
 .trip-split { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
 .trip-donut { width: 116px; height: 116px; flex: 0 0 auto; }

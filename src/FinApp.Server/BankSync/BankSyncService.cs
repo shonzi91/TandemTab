@@ -86,6 +86,10 @@ public sealed class BankSyncService(FinAppDbContext db, EnableBankingClient eb, 
             try { await db.Database.ExecuteSqlRawAsync($"ALTER TABLE \"BankConnections\" ADD COLUMN {col}", ct); }
             catch { /* column already exists */ }
         }
+        // The booking time of day, when the bank states one. Same idempotent-ALTER trick as above; null on every
+        // row staged before this existed and on every bank that reports a date only.
+        try { await db.Database.ExecuteSqlRawAsync("ALTER TABLE \"PendingBankTransactions\" ADD COLUMN \"Time\" text NULL", ct); }
+        catch { /* column already exists */ }
     }
 
     /// <summary>Normalized merchant key used to match a transaction description to a saved rule.</summary>
@@ -285,8 +289,8 @@ public sealed class BankSyncService(FinAppDbContext db, EnableBankingClient eb, 
         try
         {
             await using var cmd = conn.CreateCommand();
-            cmd.CommandText = "SELECT \"ExternalId\", \"Date\", \"Amount\", \"Description\" FROM \"PendingBankTransactions\" " +
-                              "WHERE \"AccountId\" = @acc AND \"Status\" = 'Pending' ORDER BY \"Date\" DESC";
+            cmd.CommandText = "SELECT \"ExternalId\", \"Date\", \"Amount\", \"Description\", \"Time\" FROM \"PendingBankTransactions\" " +
+                              "WHERE \"AccountId\" = @acc AND \"Status\" = 'Pending' ORDER BY \"Date\" DESC, \"Time\" DESC";
             AddParam(cmd, "@acc", accountId.ToString());
             await using var reader = await cmd.ExecuteReaderAsync(ct);
             while (await reader.ReadAsync(ct))
@@ -295,7 +299,8 @@ public sealed class BankSyncService(FinAppDbContext db, EnableBankingClient eb, 
                     reader.GetString(0),
                     decimal.Parse(protector.Unprotect(reader.GetString(2))!, CultureInfo.InvariantCulture),
                     DateOnly.Parse(reader.GetString(1), CultureInfo.InvariantCulture),
-                    protector.Unprotect(reader.GetString(3)) ?? ""));
+                    protector.Unprotect(reader.GetString(3)) ?? "",
+                    reader.IsDBNull(4) || !TimeOnly.TryParse(reader.GetString(4), CultureInfo.InvariantCulture, out var time) ? null : time));
             }
         }
         finally { if (opened) await conn.CloseAsync(); }
@@ -439,12 +444,13 @@ public sealed class BankSyncService(FinAppDbContext db, EnableBankingClient eb, 
         {
             await using var cmd = conn.CreateCommand();
             cmd.CommandText =
-                "INSERT INTO \"PendingBankTransactions\" (\"AccountId\", \"ExternalId\", \"Date\", \"Amount\", \"Description\", \"Status\") " +
-                "VALUES (@acc, @ext, @date, @amount, @desc, 'Pending') " +
+                "INSERT INTO \"PendingBankTransactions\" (\"AccountId\", \"ExternalId\", \"Date\", \"Amount\", \"Description\", \"Status\", \"Time\") " +
+                "VALUES (@acc, @ext, @date, @amount, @desc, 'Pending', @time) " +
                 "ON CONFLICT (\"AccountId\", \"ExternalId\") DO NOTHING";
             AddParam(cmd, "@acc", accountId.ToString());
             AddParam(cmd, "@ext", t.ExternalId);
             AddParam(cmd, "@date", t.Date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
+            AddParam(cmd, "@time", (object?)t.Time?.ToString("HH:mm:ss", CultureInfo.InvariantCulture) ?? DBNull.Value);
             AddParam(cmd, "@amount", protector.Protect(t.Amount.ToString(CultureInfo.InvariantCulture))!);
             AddParam(cmd, "@desc", protector.Protect(t.Description) ?? "");
             await cmd.ExecuteNonQueryAsync(ct);

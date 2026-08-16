@@ -195,6 +195,39 @@ public class HourlyRateTests
         Assert.ThrowsAny<ArgumentOutOfRangeException>(() => account.SetWorkingPattern(days, hours));
     }
 
+    /// <summary>
+    /// A time cost only lands if it is in units a person can feel. "160h" is arithmetic; "20d" is a month of your
+    /// life. The roll-up is measured in the user's OWN working day, never in 24 hours.
+    /// </summary>
+    [Fact]
+    public void A_long_time_cost_rolls_up_into_working_days()
+    {
+        var account = new Account("Personal", Eur);
+        account.SetHourlyRate(10m);
+        account.SetWorkingPattern(20, 8m);   // an 8-hour day
+
+        Assert.Equal("30m", account.TimeCostText(5m));
+        Assert.Equal("2h 30m", account.TimeCostText(25m));
+        Assert.Equal("1d", account.TimeCostText(80m));       // exactly one working day, not "8h"
+        Assert.Equal("2d 4h", account.TimeCostText(200m));   // 20h → 2 days and a half-day, not "20h"
+        Assert.Equal("20d", account.TimeCostText(1600m));    // a month of work, not "160h"
+        Assert.Null(account.TimeCostText(0m));
+    }
+
+    [Fact]
+    public void The_working_day_is_the_users_own_and_defaults_to_eight_without_a_pattern()
+    {
+        var shortDay = new Account("Part time", Eur);
+        shortDay.SetHourlyRate(10m);
+        shortDay.SetWorkingPattern(20, 4m);                  // a 4-hour day
+        Assert.Equal("2d", shortDay.TimeCostText(80m));      // same €80 — twice as many of THEIR days
+
+        // A rate can be typed without ever stating a pattern; 8h is the fallback day rather than 24.
+        var noPattern = new Account("Rate only", Eur);
+        noPattern.SetHourlyRate(10m);
+        Assert.Equal("1d 2h", noPattern.TimeCostText(100m)); // 10h → 1d 2h, not "10h"
+    }
+
     /// <summary>The rate rides in the snapshot; an account saved before the feature existed must load with it unset.</summary>
     [Fact]
     public void The_rate_survives_a_snapshot_round_trip_and_a_legacy_snapshot_loads_without_one()

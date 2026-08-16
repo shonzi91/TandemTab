@@ -1,6 +1,37 @@
 # TandemTab (FinApp) — session handoff
 
-Last updated: 2026-08-12 (Session 103 — **the Android parity gap re-measured, and what the measurement found.**
+Last updated: 2026-08-16 (Session 104 — **six findings from the owner's own trip, and the one my own fix created.**
+A real journey was taken and reviewed; everything here comes from that.
+★★ **Dismissed bank transactions kept coming back, and the guard written for it had always passed.** The synthetic
+id for a transaction the bank gives no reference for was `string.GetHashCode()` — **randomized per process** on
+.NET Core. Stable inside one test run, fresh on every restart and every Cloud Run instance, so an acked row no
+longer collided with its own id and re-staged as new. Now a SHA-256; the test pins a **literal**, which is the only
+thing a per-process hash cannot satisfy. ⚠️ Synthetic-id rows already staged resurface **once**, under new ids.
+✅ **The bank confirm is a real form now** (`Modal.BankConfirm`): category, the auto-file rule + its word chooser,
+the tag picker, and a trip row **defaulted from the transaction's own date, not today** — you read a statement
+after you are home, so "is a trip active now" answered a question nobody asked and left every holiday card charge
+unattachable. ✅ **Trip is editable on an expense** (finished trips included — that is the point), and the edit
+modal wears the trip's badge and rail like the add form. ✅ **A tag created on a trip is born a trip label** —
+before, it was created, selected and instantly invisible, which read as "you can't add your own labels".
+★ **The Saved card read −€620 when a sinking fund paid the bill it existed for.** `SavingsSetAsideTotal` added
+*disbursements* back but no other drawdown; it counts deposits now and cannot go negative.
+★★ **…and the audit the owner asked for caught what that fix broke:** `LifetimeSaved`/`AccountSavingsRate` still
+used the old rule, so the month's card said "€600 set aside" while the lifetime figure said **€0 ever saved**.
+Both now sum the per-period figure — one rule, one place. `DisbursedTotal` and `Period.SavingsDisbursedTotal` are
+**deleted**: zero callers, and a helper shaped like the superseded rule is an invitation to rebuild it.
+✅ **Expenses carry a time** (body data, no migration) — manual and bank-supplied, `null` stays null and never
+becomes midnight; a day sorts newest-on-the-clock first, untimed last.
+✅ Owner follow-ups: trip ledger ordered by date+time; **time cost rolls up into working DAYS** using *your* working
+day (€2,000 read "200h", now "25d"); it appears on the **trip recap** as its second home; trips list runs
+**ascending ahead / descending behind** (next departure first).
+★ The time input was rendering as raw browser chrome (23px, no border) beside a 42px date field — `input[type=time]`
+was missing from the modal input rule. `app.css?v=42 → 43`.
+**469 + 49 + 353 green** (from 454 + 48 + 350; 15 + 1 + 3 new).
+✅ **Everything is BROWSER-VERIFIED** on a purpose-built fixture, including the bank flow against staged rows.
+⚠️ **NOT DEPLOYED — and neither was Session 103**, so prod is two batches behind. Owner deploys next session.
+⚠️ **Android has none of any of this.**)
+
+Previously: 2026-08-12 (Session 103 — **the Android parity gap re-measured, and what the measurement found.**
 Android calls **61 of 99** account paths. The count isn't the finding: **trips were write-only over the API** —
 five commands, no `GET`, because the thick client reads them out of the snapshot it carries — and `ExpenseDto`
 carried neither `TripId` nor `TagIds`. So R2's two biggest remaining rows were **not client work at all**;
@@ -154,6 +185,152 @@ a separate balance axis — because flows and a stock were sharing one scale. **
 ✅ **Committed and the web half is DEPLOYED** (Session 93 catch-up): Android sharing as `596eea5`, the web batch
 as `de51071`, now live on **`finapp-00280-4s8`** (traffic forced `--to-latest`; run URL + tandemtab.com 200; 5
 `secretKeyRef`s; no WARNING+ logs). Prior context below is Session 91.)
+
+## Session 104 (2026-08-16) — **Six things a real trip found, and the one my own fix broke.**
+
+The owner came back from a journey and reported six defects from using the app on it. Everything below is that
+list plus four follow-ups raised mid-session. No Android work.
+
+### ★★ Dismissed bank transactions came back — and the test written for it had passed all along
+
+`EnableBankingClient.ParseTransactions` falls back to a synthetic id when the provider gives no reference. That
+fallback was `$"{date}:{raw}:{description}".GetHashCode()`, commented "stable synthetic id for dedupe".
+
+**`string.GetHashCode()` is randomized per process on .NET Core.** It is perfectly stable within one process and
+different in the next. So every server restart — and on a multi-instance Cloud Run deployment, every request that
+landed on a different instance — minted a new id for the same transaction. `GetPendingAsync` filters
+`Status = 'Pending'` and the insert is keyed `(account, external id)`, so a re-hashed transaction never collided
+with the row the user had Confirmed or Dismissed: it came back as brand-new pending. It got worse the more the
+service scaled.
+
+- Now `SyntheticId()` → SHA-256 of the same fields, `"syn-"` + 24 hex chars. Not for secrecy — just a hash whose
+  value is fixed by its input and nothing else.
+- ★ **The existing guard asserted only that two parses agree, and it passed throughout the bug it existed for** —
+  because both parses ran in one process. It now also asserts a **hard-coded literal**, which is the only thing a
+  per-process hash cannot satisfy. Generalised: *a test for "stable across restarts" that never restarts anything
+  is testing nothing.*
+- ⚠️ **One-off consequence:** synthetic-id rows already staged resurface once under their new ids. Rows from banks
+  that supply a real reference are unaffected. That is the honest price of changing a dedupe key.
+
+### ✅ Confirming an imported transaction is a form now, not a dropdown on a list row
+
+The row could set exactly one thing, the category. So a card charge picked up during a trip could not be attached
+to that trip, could not be labelled, and could not teach the app anything about the merchant without a separate
+tap. `Modal.BankConfirm` asks everything the manual add-expense form asks, in the same order, with the bank's own
+facts (merchant, amount, date, time) **stated rather than requested**.
+
+- ★ **The trip defaults from the TRANSACTION's date, not today.** Statements are reviewed days later, usually once
+  you are home, so defaulting off "is a trip active now" answers a question nobody asked. Same shape as the S103
+  finding about deriving state the client can't see: *default from the fact the row carries, not from the clock.*
+- The auto-file rule moved into the form as a switch that reveals the word chooser — "remember this" and "remember
+  it by WHICH words" are one decision, and a rule keyed on the whole description matches one transaction for ever.
+- Confirm/dismiss return to the **review list**, not out of it: a statement is read a transaction at a time.
+- ★ **"Not an expense" started life as a `.ghost.danger` button and looked wrong, for a reason worth writing down.**
+  `.modal-actions` is a sticky *title bar* that collapses its buttons to ✕/✓ glyphs; `.ghost.danger` is the single
+  slot that keeps its text and pins it left of the heading. That is right for a one-word "Unsettle" and wrong for a
+  sentence. It is a link in the body now, using the same verb as the row's ✗.
+
+### ✅ Trip on edit, and custom trip labels
+
+- The edit modal leads with the trip picker and offers **finished** trips — attaching a forgotten booking to a
+  journey that is over is the main reason to be there. It wears the trip badge + blue rail like the add form
+  (owner's clarification), and the control case was checked: an unbound expense shows neither.
+- ★ **The trip is applied BEFORE the edit.** `EditExpense` is append-only — it mints a new id and carries the
+  stored trip across — so setting it afterwards would aim at an expense that no longer exists.
+- ★ **A tag created while filing against a trip is born a trip label.** The trip picker shows only trip labels, so
+  an everyday tag made there was created, selected, and instantly invisible — which reads as "you can't add your
+  own labels on a trip". The six seeded ones are a starting point, not the vocabulary. The picker also now always
+  includes whatever is *selected*, so a tag from the other axis can never be attached-but-unseen.
+
+### ★★ The Saved card went negative — and fixing it exposed a second copy of the same mistake
+
+A sinking fund paying the insurance bill it had been filling for a year made Home read **−€620**. Nothing was
+un-saved that month; money set aside in *earlier* months was spent on the thing it was set aside for.
+
+`Period.SavingsSetAsideTotal` was "net, with **disbursements** added back". That reasoning — deploying a save is
+not un-saving — was never specific to a disbursement. It now counts the deposits (positive allocations, excluding
+bucket-transfer halves, which are the same money relabelled) and **cannot go negative by construction**.
+
+- ⚠️ Then the owner asked for a full audit of the sinking-fund maths, and it caught the rest of it:
+  **`LifetimeSaved` and `AccountSavingsRate` still used the old rule**, so the month's card said "€600 set aside"
+  while the lifetime figure said **€0 ever saved**. Two figures over the same events answering differently.
+  Both now sum the per-period figure rather than re-deriving it. ★ *When a rule changes, grep for its second
+  implementation — there usually is one.*
+- `DisbursedTotal` and `Period.SavingsDisbursedTotal` are **deleted**. After the rewrite they had zero callers and
+  existed only to implement the superseded rule; a helper shaped exactly like it is an invitation to rebuild the
+  bug. `SavingAllocation.IsDisbursement` stays for anyone who genuinely needs that query.
+- ⚠️ **Scope, honestly:** those two lifetime figures are exposed on `BudgetingState` but no `.razor` renders them
+  today, and Goals' "Total saved" is a different calculation (closing − free-to-allocate, the money model, which
+  correctly shows €0 reserved after a payout). So it was **latent**, not on-screen — but live the moment either
+  figure is used.
+- `AchievementsService.Comeback` tested `SavingsSetAsideTotal < 0`, now unreachable; it reads `<= 0` ("set nothing
+  aside"), which is what that case meant.
+- **`tests/FinApp.Domain.Tests/SinkingFundLifecycleTests.cs` is new** — 11 tests pinning *both* sides (bucket
+  balance and reported set-aside) across: allocate, over-fund, overdue target, pay the bill, pay it in a month that
+  saved nothing, **edit** the payment, **remove** it, skip a month, multi-period, and the free-cash earmark. Checked
+  and already correct: `AllocateToSavings` rejects negatives (so "positive allocations" can't be fooled),
+  `RemoveExpense` clears the paired drawdown by `SourceExpenseId`, `EditExpense` removes-then-recreates (one
+  drawdown, never two), `TransferSavings` puts both halves in one period, and `MonthsUntil` floors at 1 so an
+  overdue target asks for the whole remainder instead of dividing by zero.
+
+### ✅ Expenses carry a time
+
+`Expense.Time` (`TimeOnly?`) — body data, settable prop + `SetTime`, `Ignore()`d in EF, trailing optional on the
+snapshot node. **No migration.** Captured on manual entry (stamped "now" only when the form is really about today,
+cleared when the date moves off it) and parsed from the provider when the bank states one.
+
+- ★ **Null is a real answer and must never become midnight.** Most feeds report a booking date only. Defaulting to
+  00:00 would sort a whole day's imports above everything genuinely logged that morning and print a time nobody
+  reported. Untimed rows expose `SortTime = TimeOnly.MinValue` so they settle at the **bottom** of their own day.
+- `EditExpenseRequest` carries `Time` **plus an explicit `ClearTime`**: `Period.EditExpense` carries the stored time
+  across, so an omitted value means "leave it alone" — an older client correcting an amount can't strip the clock —
+  and "I don't know when" needs a way to say itself that `null` can't.
+- ⚠️ `PendingBankTransactions` gained a `Time` column via the same idempotent `ALTER … ADD COLUMN` trick the
+  connection table uses (prod Postgres builds its schema with `EnsureCreated`, which never alters).
+
+### ✅ Four follow-ups the owner raised mid-session
+
+- **Trip ledger** ordered by date **and time** descending — a trip is the one list where a single day holds a dozen
+  entries, so the clock is what makes it read as a day rather than a heap.
+- ★ **Time cost rolls up into working DAYS**, measured in the user's own `WorkingHoursPerDay` (8h fallback when only
+  a manual rate is typed), not 24h. €2,000 read **"200h"**; it reads **"25d"**. "160h" is a number nobody can feel;
+  "20d" is a month of your life, which is the entire reason the figure is shown. Moved to `Account.TimeCostText` so
+  it is testable — it had been living in the UI layer, which no test project reaches.
+- **Second home for the time cost: the trip recap** ("That's about 1h 44m of work"). A trip is a single finished
+  total the reader deliberately opened, so it is a sentence; the same figure on every ledger row would be nagging.
+  One line in a card that is already open — no new section.
+- **Trips list runs ascending ahead, descending behind.** The two halves answer opposite questions: the future is
+  read forwards (the trip you are on, then the one you leave for next), the past backwards. Sorting both the same
+  way put the journey furthest away above the one you were packing for.
+
+### ★ A time input with no styling at all
+
+The new field rendered as raw browser chrome — 23px tall, no padding, no border, 13px font — beside a properly
+styled 42px date input on the same row. `.modal label input[…]` **enumerates types**, and `time` was not among
+them, so nothing styled it. Added to that rule, to the height/picker-button rule beside `date`, and to the dark
+override in the global `app.css` (→ `?v=43`, or returning users keep the stale sheet). Worth knowing: *any new
+input type added to a modal needs adding to that list* — it fails silently and looks like a layout bug.
+
+**469 + 49 + 353 green** (from 454 + 48 + 350).
+
+✅ **Everything is BROWSER-VERIFIED** in a running app on a purpose-built fixture: the three-expense day ordering
+(20:30 → 08:15 → untimed), the trip bound on edit with its badge and the control case without it, the custom label
+"Pastéis" landing in the recap split, the sinking-fund payout reading **€0 not −€620**, the confirm modal
+defaulting to Lisbon for a 16 Aug charge and to "Not a trip" for a 12 Aug one, the saved rule (`padaria cafe`) and
+the dismissal both persisting to the DB, `≈ 25d of work`, and the five-trip ordering (Lisbon → Vienna → Tokyo,
+then Porto → Berlin) with Tokyo deliberately created first to prove it was the sort and not insertion order.
+
+⚠️ The bank half needed a local fixture, since Enable Banking isn't credentialed locally: a throwaway RSA key in
+**user-secrets** (removed afterwards, never in the repo), a `Linked` connection + pending rows inserted straight
+into SQLite, and the email marked verified. ★ Two traps if you do this again: the pending amount/description are
+encrypted but `Unprotect` is **tolerant of plaintext**, so plain values round-trip fine — and **the app writes GUIDs
+lowercase while `sqlite3` prints them uppercase**, so a hand-inserted row silently matches nothing.
+
+⚠️ **NOT DEPLOYED. Session 103 was not deployed either**, so production is two batches behind — the trip endpoints
+Android needs still do not exist live. Owner is deploying next session; mind the standing unguarded-purge boot race
+before doing so (see the ⛔ block in Session 96).
+⚠️ **Android has none of this.** `ExpenseDto.Time` is trailing-optional so it deserializes unchanged, but native
+shows no times, has no trip binding on edit and no confirm modal.
 
 ## Session 103 (2026-08-12) — **The Android parity gap, re-measured — and the thing the measurement found.**
 

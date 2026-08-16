@@ -326,6 +326,9 @@ public sealed class FinAppDbContext(DbContextOptions<FinAppDbContext> options) :
             e.Ignore(x => x.ForeignAmount);
             e.Ignore(x => x.ForeignCurrency);
             e.Ignore(x => x.HasForeign);
+            // Body data — the time of day rides in the snapshot; Date stays the mapped ledger column.
+            e.Ignore(x => x.Time);
+            e.Ignore(x => x.SortTime);
             e.Ignore(x => x.FundSynced);       // body data — synced-fund marker rides in the snapshot
             e.Ignore(x => x.BankExternalId);   // body data — bank provenance rides in the snapshot
             e.Ignore(x => x.AutoFiled);        // body data — auto-filed marker rides in the snapshot

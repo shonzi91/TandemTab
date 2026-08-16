@@ -402,6 +402,7 @@ public sealed class Period : Entity
         edited.SetInstallmentLink(old.InstallmentGroupId, old.Part, old.DebtBucketId);
         edited.SetTags(old.TagIds);   // tags survive an edit (edit mints a new id, so re-apply them)
         edited.SetTrip(old.TripId);   // and so does the trip — otherwise correcting an amount drops it from the recap
+        edited.SetTime(old.Time);     // and the clock time, so a caller that says nothing about it changes nothing
         return edited;
     }
 
@@ -699,14 +700,31 @@ public sealed class Period : Entity
         return transfer;
     }
 
-    /// <summary>Total drawn down this period as savings <b>disbursements</b> (deployed to goals) — a negative figure.
-    /// Included in the earmark (<see cref="SavingsNetTotal"/>) but added back for the savings rate.</summary>
-    public Money SavingsDisbursedTotal => Sum(_savingAllocations.Where(a => a.IsDisbursement).Select(a => a.Amount));
-
-    /// <summary>Net <b>set aside</b> this period for the saved figures/rate: like <see cref="SavingsNetTotal"/> but with
-    /// disbursements added back — deploying a save to its goal is a success, not un-saving. (The earmark/money-model
-    /// still uses <see cref="SavingsNetTotal"/>, which drops when money leaves.)</summary>
-    public Money SavingsSetAsideTotal => SavingsNetTotal - SavingsDisbursedTotal;
+    /// <summary>
+    /// What was <b>set aside</b> this period, for the saved figures and the savings rate: the money actually put into
+    /// buckets. (The earmark/money-model still uses <see cref="SavingsNetTotal"/>, which drops when money leaves.)
+    /// <para>
+    /// <b>★ No drawdown is negative saving.</b> This began as "net, with disbursements added back", because deploying a
+    /// save to its goal is a success rather than un-saving. But that reasoning was never specific to a disbursement —
+    /// it is true of <i>every</i> way money leaves a bucket, and leaving the others in produced a "Saved" card that
+    /// read <b>−€620</b> when a sinking fund paid the insurance bill it had been filling up for a year. Nothing was
+    /// un-saved that month; money set aside in earlier months was spent on the thing it was set aside for. A figure
+    /// labelled "set aside this period" cannot go negative because an earlier period's earmark was released, so the
+    /// rule is now stated once, at the top: count the deposits.
+    /// </para>
+    /// <para>
+    /// <b>Bucket-to-bucket transfers are excluded on both halves</b> — moving the holiday pot into the car pot is the
+    /// same money wearing a different label, and counting the incoming half would report it as freshly saved.
+    /// </para>
+    /// <para>
+    /// <b>Known over-count, deliberately kept:</b> setting €100 aside and spending it out of the bucket in the same
+    /// period still reports €100. That is the existing disbursement behaviour, it is bounded by what actually went in,
+    /// and the alternative — attributing each drawdown to the period its money was deposited in — is bookkeeping the
+    /// user never asked for.
+    /// </para>
+    /// </summary>
+    public Money SavingsSetAsideTotal =>
+        Sum(_savingAllocations.Where(a => !a.Amount.IsNegative && a.TransferPairId is null).Select(a => a.Amount));
 
     /// <summary>
     /// Mature a saving into a spendable budget for this period: release the saving earmark and add the

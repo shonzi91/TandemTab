@@ -34,7 +34,10 @@ public record ExpenseDto(
     Guid? TripId = null,
     // The labels on it. A list because the field has always been one (see Expense.TagIds), though the UI has
     // settled on at most one; a client that assumes a scalar here would break the day that changes back.
-    IReadOnlyList<Guid>? TagIds = null);
+    IReadOnlyList<Guid>? TagIds = null,
+    // The time of day, when anything recorded one. Null on most rows — a bank that reports a booking date only, or
+    // an entry typed days later — and null must stay null on the client too, not become midnight.
+    TimeOnly? Time = null);
 
 /// <summary>A spend category as a picker option — id, label, stored icon, and parent for indentation. No money.</summary>
 public record CategoryOptionDto(Guid Id, string Name, string? Icon, Guid? ParentId);

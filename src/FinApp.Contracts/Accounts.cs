@@ -61,7 +61,10 @@ public record AddExpenseRequest(Guid CategoryId, decimal Amount, Guid FundId, Da
     Guid? TripId = null,
     // What was typed before conversion, when the fund holds foreign cash — Amount is already the converted figure.
     // Display only: see Expense.ForeignAmount for why it is recorded rather than derived from the wallet's rate.
-    decimal? ForeignAmount = null, string? ForeignCurrency = null);
+    decimal? ForeignAmount = null, string? ForeignCurrency = null,
+    // The time of day, when the client knows one (it stamps "now" on an expense being logged for today). Null is a
+    // real answer and stays null — see Expense.Time for why it is never defaulted to midnight.
+    TimeOnly? Time = null);
 
 /// <summary>Replace an existing expense's category/amount/fund/note/date (an append-only edit — see
 /// <c>Period.EditExpense</c>). The expense id travels in the route. <see cref="TagId"/> sets the expense's single
@@ -73,7 +76,14 @@ public record AddExpenseRequest(Guid CategoryId, decimal Amount, Guid FundId, Da
 /// its recap, with nothing to notice. <c>Period.EditExpense</c> carries the link across the edit instead, and
 /// changing it has its own endpoint (<see cref="SetExpenseTripRequest"/>).
 /// </para></summary>
-public record EditExpenseRequest(Guid CategoryId, decimal Amount, Guid FundId, DateOnly Date, string? Note = null, Guid? TagId = null);
+/// <para>
+/// <see cref="Time"/> follows the same care as the trip, in a cheaper way: <c>Period.EditExpense</c> carries the
+/// stored time across, so an omitted value means "leave it alone" rather than "clear it" — an older client
+/// correcting an amount can't silently strip the clock off a row. Clearing is therefore explicit
+/// (<see cref="ClearTime"/>), because "I don't actually know when" is a real edit and a null can't say it.
+/// </para>
+public record EditExpenseRequest(Guid CategoryId, decimal Amount, Guid FundId, DateOnly Date, string? Note = null, Guid? TagId = null,
+    TimeOnly? Time = null, bool ClearTime = false);
 
 /// <summary>
 /// Record income (a deposit) for the caller in the open period, computed server-side. The member is the caller and
@@ -224,7 +234,9 @@ public record EditContributionCategoryRequest(string Name, string? Icon = null);
 
 /// <summary>Add a cross-cutting tag (a flat label attached to expenses, alongside sub-categories). Rejects a duplicate
 /// name. Mirrors <c>BudgetingState.AddTag</c>.</summary>
-public record CreateTagRequest(string Name, string? Icon = null);
+/// <summary><see cref="IsTripTag"/> puts the new label on the trip axis rather than the everyday one — set when the
+/// tag is created from a form that is filing against a trip. See <c>Tag.IsTripTag</c>.</summary>
+public record CreateTagRequest(string Name, string? Icon = null, bool IsTripTag = false);
 
 /// <summary>Rename a tag, set its icon (a null icon clears it) and bind the category it files into (F2 — a null
 /// <see cref="CategoryId"/> clears the binding). A full replace, like every other edit request here: the caller sends

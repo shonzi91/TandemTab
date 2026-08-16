@@ -29,8 +29,11 @@ public record StartBankLinkRequest(string InstitutionName, string Country, strin
 /// <summary>Where to send the browser to complete the bank's consent flow.</summary>
 public record StartBankLinkResponse(string LinkUrl);
 
-/// <summary>A bank transaction fetched but not yet turned into (or dismissed from becoming) a FinApp expense.</summary>
-public record PendingBankTransactionDto(string ExternalId, decimal Amount, DateOnly Date, string Description);
+/// <summary>A bank transaction fetched but not yet turned into (or dismissed from becoming) a FinApp expense.
+/// <see cref="Time"/> is the booking time of day when the bank reports one — trailing and optional, so an older
+/// client deserializes the same response unchanged.</summary>
+public record PendingBankTransactionDto(string ExternalId, decimal Amount, DateOnly Date, string Description,
+    TimeOnly? Time = null);
 
 /// <summary>Mark a staged transaction as handled: <see cref="Confirmed"/> = turned into an expense, else dismissed.</summary>
 public record BankTransactionAck(string ExternalId, bool Confirmed);
