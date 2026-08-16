@@ -28,7 +28,8 @@ day (€2,000 read "200h", now "25d"); it appears on the **trip recap** as its s
 was missing from the modal input rule. `app.css?v=42 → 43`.
 **469 + 49 + 353 green** (from 454 + 48 + 350; 15 + 1 + 3 new).
 ✅ **Everything is BROWSER-VERIFIED** on a purpose-built fixture, including the bank flow against staged rows.
-⚠️ **NOT DEPLOYED — and neither was Session 103**, so prod is two batches behind. Owner deploys next session.
+✅ **DEPLOYED 2026-08-16 as `finapp-00307-g24`** (image tag `61cefc1`) — both S103 and S104 in one roll, so prod is
+current again and the trip endpoints Android needs are finally live. See the Session 104 deploy note.
 ⚠️ **Android has none of any of this.**)
 
 Previously: 2026-08-12 (Session 103 — **the Android parity gap re-measured, and what the measurement found.**
@@ -326,9 +327,23 @@ into SQLite, and the email marked verified. ★ Two traps if you do this again: 
 encrypted but `Unprotect` is **tolerant of plaintext**, so plain values round-trip fine — and **the app writes GUIDs
 lowercase while `sqlite3` prints them uppercase**, so a hand-inserted row silently matches nothing.
 
-⚠️ **NOT DEPLOYED. Session 103 was not deployed either**, so production is two batches behind — the trip endpoints
-Android needs still do not exist live. Owner is deploying next session; mind the standing unguarded-purge boot race
-before doing so (see the ⛔ block in Session 96).
+### ✅ DEPLOYED — `finapp-00307-g24`, carrying S103 and S104 together
+
+Prod had been two batches behind. Built as `…/finapp:61cefc1` (digest `sha256:e864d894…`), deployed, then
+`update-traffic --to-latest` because traffic is pinned to a revision and `run deploy` prints the *old* one.
+**469 + 49 + 353 green locally first.**
+
+Verified at the bytes, not the revision name: `app.css?v=43` present **once** on both tandemtab.com and the run
+URL and `?v=42` **absent** (0) — that absence is what proves a fresh build rather than a cache — and the served
+`css/app.css` carries **2** `type=time` rules, which is S104's fix itself. 5 `secretKeyRef`s. Both hosts 200.
+
+The trip read endpoint is live: `GET /accounts/{guid}/trips` unauthenticated returns **401** on both hosts, while
+the control `/accounts/{guid}/not-a-route` returns **200** HTML — the SPA fallback answers everything unmatched, so
+401 (auth filter ran ⇒ route matched) is the only available proof, not a 404.
+
+The unguarded-purge race fired on this deploy as it does on most multi-instance ones: `DbUpdateConcurrencyException`
+whose stack **ends at `ArchivedAccountsService.PurgeExpiredAsync:103` with no `Program.<Main>$` frame** — caught,
+not the S96 boot crash — and `Default STARTUP TCP probe succeeded after 1 attempt` confirms the container booted.
 ⚠️ **Android has none of this.** `ExpenseDto.Time` is trailing-optional so it deserializes unchanged, but native
 shows no times, has no trip binding on edit and no confirm modal.
 
