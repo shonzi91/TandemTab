@@ -1830,7 +1830,12 @@ accounts.MapDelete("/{id:guid}/savings/movements/{allocationId:guid}", async (Gu
     var (version, _) = await svc.MutateAsync<object?>(userId, id, account =>
     {
         var period = account.CurrentPeriod ?? throw new InvalidOperationException("There's no open period.");
-        period.RemoveSavingMovement(allocationId);   // undoes a to-budget / transfer / disburse (throws if missing)
+        // The bucket travels so a deployed-to-a-loan disbursement can put the principal back as well as the money.
+        // Looked up before the removal, because the movement is gone by the time the call returns.
+        var bucket = period.SavingAllocations.FirstOrDefault(a => a.Id == allocationId) is { } mv
+            ? account.FindSavingCategory(mv.SavingCategoryId)
+            : null;
+        period.RemoveSavingMovement(allocationId, bucket);   // undoes a to-budget / transfer / disburse (throws if missing)
         return null;
     }, ct);
     await notifier.AccountChangedAsync(id, userId, version);

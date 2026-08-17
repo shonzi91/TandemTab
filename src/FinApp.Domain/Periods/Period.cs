@@ -790,7 +790,15 @@ public sealed class Period : Entity
     /// Undo a savings movement. A move-to-budget reduces the funded budget back down; a bucket transfer
     /// drops both halves. Pass either half's id for a transfer.
     /// </summary>
-    public void RemoveSavingMovement(Guid allocationId)
+    /// <param name="bucket">The bucket the movement drew from, needed only to undo a <b>disbursement</b> onto a debt.
+    /// <para>
+    /// ★ Deploying a bucket to a loan does two things — it moves the money, and it takes the amount off the loan's
+    /// principal (<c>Account.RecordSavingDebtPayment</c>). Undoing it used to do only the first: the cash and the
+    /// earmark came back and the debt stayed permanently smaller, so an undone prepayment left the loan reporting a
+    /// balance that no payment had ever produced. Passing the bucket is what lets the second half be reversed too.
+    /// </para>
+    /// Omitted (or null) the balance is left alone, which is right for every movement that is not a debt payoff.</param>
+    public void RemoveSavingMovement(Guid allocationId, SavingCategory? bucket = null)
     {
         EnsureOpen();
         var movement = _savingAllocations.FirstOrDefault(a => a.Id == allocationId)
@@ -811,7 +819,14 @@ public sealed class Period : Entity
         }
         else if (movement.SourceExternalTransferId is { } transferId)
         {
+            var deployed = Math.Abs(movement.Amount.Amount);   // the drawdown is negative; the payment was its size
+            var on = movement.Date;
             RemoveExternalTransfer(transferId);   // also drops this paired drawdown → restores the bucket and the balance
+            // …and put the principal back. Reversed under the same condition it was recorded — the disburse path
+            // records against any debt bucket, so this reverses for any debt bucket. (RemoveInstallmentGroup guards
+            // on DebtPaymentDriven for a different reason: a debt switched back to a schedule has re-anchored its
+            // balance since, and adding principal to a derived figure would invent debt.)
+            if (bucket is { IsDebt: true } && deployed > 0m) bucket.ReverseDebtPayment(deployed, on);
         }
         else
         {
