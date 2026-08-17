@@ -100,6 +100,7 @@ fun SpendingScreen(
     onAttachExpenseToTrip: (expenseId: String, tripId: String?, onDone: () -> Unit) -> Unit,
     onOpenTrip: (tripId: String?) -> Unit,
     onPrepareTrip: () -> Unit,
+    onUseTripSavings: (tripId: String, amount: Double, date: String, onDone: () -> Unit) -> Unit,
     onLoadTags: () -> Unit,
     onPrepareTags: () -> Unit,
     onAddTag: (name: String, onDone: () -> Unit) -> Unit,
@@ -175,6 +176,7 @@ fun SpendingScreen(
                     onFinish = onFinishTrip,
                     onAttachExpense = onAttachExpenseToTrip,
                     onOpen = onOpenTrip,
+                    onUseSavings = onUseTripSavings,
                     onPrepare = onPrepareTrip,
                 )
             }

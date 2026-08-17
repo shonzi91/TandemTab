@@ -21,7 +21,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -77,6 +79,7 @@ fun TripsView(
     onFinish: (tripId: String, finished: Boolean) -> Unit,
     onAttachExpense: (expenseId: String, tripId: String?, onDone: () -> Unit) -> Unit,
     onOpen: (tripId: String?) -> Unit,
+    onUseSavings: ((tripId: String, amount: Double, date: String, onDone: () -> Unit) -> Unit)? = null,
     onPrepare: () -> Unit,
 ) {
     val tandem = LocalTandemColors.current
@@ -84,6 +87,7 @@ fun TripsView(
     var editing by remember { mutableStateOf<TripEdit?>(null) }
     var deleting by remember { mutableStateOf<TripDto?>(null) }
     var attachingTo by remember { mutableStateOf<TripDto?>(null) }
+    var releasingFor by remember { mutableStateOf<TripDto?>(null) }
 
     when {
         trips.loading && trips.trips.isEmpty() ->
@@ -125,6 +129,7 @@ fun TripsView(
                     onEdit = { onPrepare(); editing = TripEdit.of(trip) },
                     onDelete = { onPrepare(); deleting = trip },
                     onAttach = { onPrepare(); attachingTo = trip },
+                    onUseSavings = if (onUseSavings != null) ({ _ -> onPrepare(); releasingFor = trip }) else null,
                 )
             }
             Spacer(Modifier.height(4.dp))
@@ -189,6 +194,78 @@ fun TripsView(
             onDismiss = { attachingTo = null },
         )
     }
+
+    releasingFor?.let { trip ->
+        UseTripSavingsDialog(
+            trip = trip,
+            fmt = fmt,
+            saving = trips.saving,
+            saveError = trips.saveError,
+            onRelease = { amount, date -> onUseSavings?.invoke(trip.id, amount, date) { releasingFor = null } },
+            onDismiss = { releasingFor = null },
+        )
+    }
+}
+
+/**
+ * Release a linked savings pot into a trip's budget, ahead of the journey.
+ *
+ * The money does not leave the account and the trip's total does not move — what changes is that the journey now
+ * has a budget backed by money already set aside, rather than by this month's income. That distinction is the whole
+ * reason to link a pot to a trip, so the dialog says it rather than leaving it to be inferred from a figure.
+ */
+@Composable
+private fun UseTripSavingsDialog(
+    trip: TripDto,
+    fmt: (Double) -> String,
+    saving: Boolean,
+    saveError: String?,
+    onRelease: (amount: Double, date: String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val tandem = LocalTandemColors.current
+    var amountText by remember(trip.id) { mutableStateOf("") }
+    val date = remember { java.time.LocalDate.now().toString() }
+    val amount = amountText.replace(',', '.').toDoubleOrNull()?.takeIf { it > 0 }
+
+    AlertDialog(
+        onDismissRequest = { if (!saving) onDismiss() },
+        title = { Text("Use the saved money") },
+        text = {
+            Column {
+                Text(
+                    "Releases money from ${trip.savingCategoryName} into ${trip.name}'s budget. Nothing leaves the " +
+                        "account and the trip's total doesn't change — the journey is just funded by what you set " +
+                        "aside instead of by this month.",
+                    color = tandem.muted, fontSize = 13.sp,
+                )
+                if (trip.savingsApplied > 0.0) {
+                    Spacer(Modifier.height(8.dp))
+                    Text("${fmt(trip.savingsApplied)} has been released already.", color = tandem.muted, fontSize = 12.sp)
+                }
+                Spacer(Modifier.height(12.dp))
+                OutlinedTextField(
+                    value = amountText,
+                    onValueChange = { amountText = it },
+                    label = { Text("Amount") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                saveError?.let {
+                    Spacer(Modifier.height(10.dp))
+                    Text(it, color = MaterialTheme.colorScheme.error, fontSize = 13.sp)
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = { amount?.let { onRelease(it, date) } }, enabled = !saving && amount != null) {
+                if (saving) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
+                else Text("Release")
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss, enabled = !saving) { Text("Cancel") } },
+    )
 }
 
 // --- The card ---------------------------------------------------------------------------------------
@@ -209,6 +286,7 @@ private fun TripCard(
     onEdit: () -> Unit,
     onDelete: () -> Unit,
     onAttach: () -> Unit,
+    onUseSavings: ((TripDto) -> Unit)? = null,
 ) {
     val tandem = LocalTandemColors.current
     // One mark per state, so the card says which of the three it is before any date is read: a pin for the one
@@ -305,6 +383,17 @@ private fun TripCard(
             if (trip.savingsApplied > 0.0 && trip.savingCategoryName != null) {
                 Spacer(Modifier.height(6.dp))
                 FundedLine(TandemIcons.Coins, "${fmt(trip.savingsApplied)} released from ${trip.savingCategoryName} into this trip's budget.")
+            }
+            // The action those two sentences were missing. A linked pot is money already set aside FOR this journey,
+            // so releasing it into the trip's budget is the point of having linked it — offered while the trip is
+            // still ahead or running, since releasing money into a journey that is over answers nothing.
+            if (trip.savingCategoryName != null && onUseSavings != null && !trip.isFinished) {
+                Spacer(Modifier.height(10.dp))
+                OutlinedButton(onClick = { onUseSavings(trip) }, modifier = Modifier.fillMaxWidth()) {
+                    Icon(TandemIcons.Coins, null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Use the saved money")
+                }
             }
 
             // The split and the ledger arrive on their own read (see openTrip) — the list can't carry every

@@ -1091,6 +1091,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** Clear a stale error before opening the "Add to savings" sheet. */
     fun prepareAllocateSaving() = _state.update { it.copy(goals = it.goals.copy(saveError = null)) }
 
+    /** Re-read Goals only if it has been opened — a write elsewhere shouldn't fetch a tab nobody has looked at. */
+    private suspend fun refreshGoalsIfLoaded() {
+        if (!_state.value.goals.loaded) return
+        val accountId = _state.value.selectedAccountId ?: return
+        runCatching { api.savings(accountId, _state.value.selectedPeriod) }.getOrNull()
+            ?.let { v -> _state.update { it.copy(goals = goalsFrom(v)) } }
+    }
+
     // --- The activity list: editing a deposit, undoing a movement, moving saved money -------------------
 
     fun editSavingDeposit(allocationId: String, amount: Double, onDone: () -> Unit = {}) =
@@ -1118,10 +1126,18 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             api.transferSavings(acct, MoveSavingsRequest(fromBucketId, toBucketId, amount, date, note?.ifBlank { null }))
         }
 
-    /** Release a trip's linked savings pot into its budget, then re-read the trips list the figure lives on. */
+    /**
+     * Release a trip's linked savings pot into its budget.
+     *
+     * ⚠️ Routed through [tripWrite], not [savingsWrite], because the dialog that calls it lives on the Trips
+     * surface and reads its spinner and its error out of `trips` — flagging `goals` instead would leave the button
+     * inert-looking on success and silent on failure. Goals is refreshed afterwards because the pot it drew from is
+     * drawn there.
+     */
     fun useTripSavings(tripId: String, amount: Double, date: String, note: String?, onDone: () -> Unit = {}) =
-        savingsWrite(onDone, "Couldn't release the saved money.") { acct ->
+        tripWrite(onDone, "Couldn't release the saved money.") { acct ->
             api.useTripSavings(acct, tripId, UseTripSavingsRequest(amount, date, note?.ifBlank { null }))
+            refreshGoalsIfLoaded()
         }
 
     /**

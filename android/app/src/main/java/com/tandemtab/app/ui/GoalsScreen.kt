@@ -71,6 +71,9 @@ fun GoalsScreen(
     onSaveBucket: (bucketId: String?, req: com.tandemtab.app.data.SaveSavingBucketRequest, onDone: () -> Unit) -> Unit,
     onArchiveBucket: (bucketId: String, archived: Boolean, onDone: () -> Unit) -> Unit,
     onDeleteBucket: (bucketId: String, onDone: () -> Unit) -> Unit,
+    onDisburse: (bucketId: String, fundId: String, amount: Double, date: String, note: String?, onDone: () -> Unit) -> Unit,
+    onToBudget: (bucketId: String, categoryId: String, amount: Double, date: String, note: String?, onDone: () -> Unit) -> Unit,
+    onTransferSavings: (fromBucketId: String, toBucketId: String, amount: Double, date: String, note: String?, onDone: () -> Unit) -> Unit,
     onEditDeposit: (allocationId: String, amount: Double, onDone: () -> Unit) -> Unit,
     onRemoveDeposit: (allocationId: String, onDone: () -> Unit) -> Unit,
     onUndoMovement: (allocationId: String, onDone: () -> Unit) -> Unit,
@@ -80,6 +83,7 @@ fun GoalsScreen(
     var filter by remember { mutableStateOf(GoalFilter.All) }
     var allocateBucket by remember { mutableStateOf<SavingBucketDto?>(null) }
     var spendBucket by remember { mutableStateOf<SavingBucketDto?>(null) }
+    var movingBucket by remember { mutableStateOf<SavingBucketDto?>(null) }
     var installmentBucket by remember { mutableStateOf<SavingBucketDto?>(null) }
     // null = closed; the Unit-holder distinguishes "new" (editBucket set, value null) from "editing that bucket".
     var editing by remember { mutableStateOf<Pair<Boolean, SavingBucketDto?>?>(null) }
@@ -144,6 +148,8 @@ fun GoalsScreen(
                             canSpend = b.saved > 0 && b.kind != "debt" && b.kind != "investment",
                             onSpend = { onPrepareSpend(); spendBucket = b },
                             onEdit = { onPrepareBucket(); pendingKind = null; editing = false to b },
+                            // Only a bucket that actually holds something has anything to move.
+                            onMove = if (b.saved > 0) ({ onPrepareSpend(); movingBucket = b }) else null,
                             // Only debts take a logged installment; the switch that turns it payment-driven has had
                             // nowhere to land since S91. Offered on every debt (not just payment-driven ones) — the
                             // web does too, since logging the split is useful even when the balance walks a schedule.
@@ -212,6 +218,15 @@ fun GoalsScreen(
             onSubmit = { cat, fund, amt, date, note, onDone -> onSpend(b.id, cat, fund, amt, date, note, onDone) },
         )
     }
+    movingBucket?.let { b ->
+        MoveSavedMoneySheet(
+            bucket = b, goals = goals, spending = spending,
+            onDismiss = { movingBucket = null },
+            onDisburse = { fund, amt, date, note, onDone -> onDisburse(b.id, fund, amt, date, note, onDone) },
+            onToBudget = { cat, amt, date, note, onDone -> onToBudget(b.id, cat, amt, date, note, onDone) },
+            onToBucket = { to, amt, date, note, onDone -> onTransferSavings(b.id, to, amt, date, note, onDone) },
+        )
+    }
     installmentBucket?.let { b ->
         LogInstallmentSheet(
             bucket = b, goals = goals, spending = spending,
@@ -244,6 +259,7 @@ private fun GoalRow(
     canSpend: Boolean,
     onSpend: () -> Unit,
     onEdit: () -> Unit,
+    onMove: (() -> Unit)? = null,
     onLogInstallment: (() -> Unit)? = null,
 ) {
     val tandem = LocalTandemColors.current
@@ -333,6 +349,12 @@ private fun GoalRow(
             }
             if (canSpend) {
                 ActionPill(TandemIcons.Minus, "Spend", tandem.spent, onSpend)
+                Spacer(Modifier.width(8.dp))
+            }
+            // Deploy / mature into a budget / move to another goal, behind one pill: they are three answers to the
+            // same question, and offered separately they would put five pills on every card.
+            onMove?.let {
+                ActionPill(TandemIcons.Rotate, "Move", tandem.muted, it)
                 Spacer(Modifier.width(8.dp))
             }
             ActionPill(TandemIcons.Plus, "Add", MaterialTheme.colorScheme.primary, onAllocate)
