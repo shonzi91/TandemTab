@@ -902,6 +902,11 @@ public sealed class Account : Entity
         (FindSavingCategory(savingCategoryId) ?? throw new InvalidOperationException("Saving category not found."))
             .ConfigureDebt(balance, annualRatePercent, installment, originalBalance, balanceAsOf, installmentDay, startDate);
 
+    /// <summary>Re-price a debt's monthly installment without touching its balance — the "keep the end date" half of
+    /// a lump-sum payment. See <see cref="Savings.SavingCategory.SetDebtInstallment"/>.</summary>
+    public void SetSavingDebtInstallment(Guid savingCategoryId, decimal installment) =>
+        (FindSavingCategory(savingCategoryId) ?? throw new InvalidOperationException("Saving category not found.")).SetDebtInstallment(installment);
+
     /// <summary>Set a debt bucket's residual/balloon — the sum a lease's schedule amortises down to rather than
     /// through. 0 clears it (an ordinary loan).</summary>
     public void SetSavingDebtResidual(Guid savingCategoryId, decimal residual) =>

@@ -757,6 +757,12 @@ html.dark .panel h2 { color: #9aa4b2; }
 html.dark .amt.credit { color: #34d399; }
 html.dark .amt.debit { color: #f87171; }
 
+/* Money DEPLOYED to what it was saved for — a loan prepayment, the bill a sinking fund was filling up for.
+   Amber rather than the debit red: it leaves the account like spending does, but it is the saving working, not a
+   cost, and red is the one colour in this app that means "this hurt you". */
+.amt.deploy { color: #b45309; }
+html.dark .amt.deploy { color: #fbbf24; }
+
 /* Even columns: description (flex) · amount (right, fixed) · actions (fixed), so amounts line up across rows. */
 .list-even li { gap: 8px; align-items: center; }
 .list-even .row-main { flex: 1; min-width: 0; }
@@ -1653,6 +1659,28 @@ html.dark .paydown-preview { background: #16241d; border-color: #2b4438; }
 html.dark .paydown-hero { color: #57d9a3; }
 html.dark .paydown-line { color: #c2cfc7; }
 html.dark .paydown-alt { color: #a9b6ad; border-top-color: #2b4438; }
+
+/* The two outcomes the same money buys, side by side. Presented as a real choice rather than a note, because
+   picking one changes what the app writes: finishing sooner needs no write, keeping the end date re-prices. */
+.paydown-choice { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 9px; padding-top: 9px; border-top: 1px solid #dcece4; }
+.paydown-opt {
+    display: flex; flex-direction: column; gap: 2px; cursor: pointer;
+    padding: 8px 10px; border: 1px solid #cfe9dd; border-radius: 9px; background: #fff;
+}
+.paydown-opt input { position: absolute; opacity: 0; width: 0; height: 0; }
+.paydown-opt.on { border-color: #0f7a54; box-shadow: 0 0 0 1px #0f7a54 inset; }
+.paydown-opt-t { font-size: .8rem; font-weight: 700; color: #24352c; }
+.paydown-opt-s { font-size: .74rem; color: #6b7d72; }
+html.dark .paydown-choice { border-top-color: #2b4438; }
+html.dark .paydown-opt { background: #1b2b23; border-color: #2b4438; }
+html.dark .paydown-opt.on { border-color: #57d9a3; box-shadow: 0 0 0 1px #57d9a3 inset; }
+html.dark .paydown-opt-t { color: #e6efe9; }
+html.dark .paydown-opt-s { color: #a9b6ad; }
+
+/* Two-up is cramped on a phone; the options stack and stay full-width targets. */
+@media (max-width: 420px) {
+    .paydown-choice { grid-template-columns: 1fr; }
+}
 
 /* The receipt after the payment lands. Bottom-centre, above the FAB, below the modal layer. */
 .paydown-toast {

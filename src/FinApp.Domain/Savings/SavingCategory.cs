@@ -357,6 +357,22 @@ public sealed class SavingCategory : Entity
     /// <summary>Restore the schedule anchor verbatim (snapshot round-trip only — see <see cref="DebtBalanceAsOf"/>).</summary>
     public void SetDebtBalanceAsOf(DateOnly? asOf) => DebtBalanceAsOf = asOf;
 
+    /// <summary>
+    /// Change the monthly installment on its own, leaving the balance and the anchor as they are.
+    /// <para>
+    /// This is what "keep the end date" does after a lump-sum payment: the money comes off the principal and the
+    /// payment drops to whatever still clears the loan by the date it would have finished anyway. The alternative —
+    /// keeping the payment and finishing early — needs no write at all, which is why it was the only behaviour for
+    /// so long: it is what happens when nothing is done.
+    /// </para>
+    /// Ignored on a non-debt bucket or a non-positive figure; a loan with no payment is a loan with no schedule.
+    /// </summary>
+    public void SetDebtInstallment(decimal installment)
+    {
+        if (!IsDebt || installment <= 0m) return;
+        DebtInstallment = decimal.Round(installment, 2);
+    }
+
     /// <summary>Set or clear the installment due-day (1–31). Used by the edit form (to change/clear it) and the
     /// snapshot round-trip. Null clears it.</summary>
     public void SetDebtInstallmentDay(int? day)

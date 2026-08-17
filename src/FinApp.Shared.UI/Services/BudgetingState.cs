@@ -1653,6 +1653,35 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
         id => api.DisburseSavingAsync(id, new DisburseSavingRequest(savingCategoryId, fundId, amount, Today(), note)),
         refetchAfter: true);
 
+    /// <summary>
+    /// Re-price a loan's monthly payment — the "keep the end date" outcome of a lump-sum payment.
+    /// <para>
+    /// Deliberately a <b>separate</b> write, run after the payment rather than folded into it. The payment is the
+    /// thing that must not be lost; re-pricing the schedule is a preference about what the payment bought. Folded
+    /// together, a failure re-pricing would have to roll back money that has already left the account.
+    /// </para>
+    /// </summary>
+    public Task SetDebtInstallment(Guid savingCategoryId, decimal installment)
+    {
+        if (FindSavingBucket(savingCategoryId) is not { IsDebt: true } b) return Task.CompletedTask;
+        // ⚠️ The bucket upsert is a FULL replace of eighteen fields, so every one is read back off the live bucket
+        // and handed over unchanged. Building this from anything less would re-price the payment and quietly reset
+        // the loan's rate, its original balance, its due day, or its payment-driven flag along the way.
+        var req = BuildBucketRequest(
+            b.Name, b.GoalAmount, b.AlertThreshold * 100m, b.NotifyOnMilestone, b.InitialAmount, b.Icon,
+            isDebt: true, debtBalance: b.DebtBalance, debtRate: b.DebtAnnualRatePercent, debtInstallment: installment,
+            plannedContribution: b.PlannedContribution,
+            isInvestment: false, invRate: b.InvestmentAnnualRatePercent, invTermYears: b.InvestmentTermYears,
+            invCompounds: b.InvestmentCompoundsPerYear, fundId: b.FundId, costs: b.Costs, isExpensesFund: false,
+            debtOriginalBalance: b.DebtOriginalBalance, debtInstallmentDay: b.DebtInstallmentDay,
+            debtStartDate: b.DebtStartDate, debtPaymentDriven: b.DebtPaymentDriven,
+            isEmergencyFund: b.IsEmergencyFund, debtResidual: b.DebtResidual);
+
+        return ExecuteOptimisticAsync(() => Account.SetSavingDebtInstallment(savingCategoryId, installment),
+            id => api.SaveSavingBucketAsync(id, savingCategoryId, req),
+            refetchAfter: true);
+    }
+
     // --- Bucket lifecycle (archive a paid-off debt / reached goal) ---
     public bool SavingBucketIsArchived(Guid id) => FindSavingBucket(id)?.IsArchived ?? false;
     public bool SavingBucketIsDebtCleared(Guid id) => FindSavingBucket(id)?.IsDebtCleared ?? false;

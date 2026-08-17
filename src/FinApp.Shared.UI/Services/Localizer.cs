@@ -1860,6 +1860,12 @@ public sealed class Localizer(IJSRuntime js)
             "При същата вноска от {0} това спестява {1} лихва.",
         ["Or ask your lender to keep the original end date and drop the installment to {0} a month instead."] =
             "Или помоли кредитора да запази първоначалния краен срок и вместо това да намали вноската до {0} на месец.",
+        ["Keep my installment"] = "Запази вноската",
+        ["Finish {0} sooner"] = "Приключва {0} по-рано",
+        ["Keep the end date"] = "Запази крайния срок",
+        ["Pay {0} a month instead"] = "Плащай по {0} на месец",
+        ["We'll drop the installment here. Your lender has to agree to it too — this doesn't tell them."] =
+            "Ще намалим вноската тук. Кредиторът също трябва да се съгласи — това не го уведомява.",
         ["This clears the loan outright."] = "Това погасява кредита изцяло.",
         ["{0} is paid off."] = "{0} е погасен.",
         ["Paid off {0} instead of {1}"] = "Погасен на {0} вместо на {1}",

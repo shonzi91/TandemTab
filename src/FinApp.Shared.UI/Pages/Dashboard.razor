@@ -2599,17 +2599,10 @@ else
                                         <span title="@Loc["Interest still to pay if you keep to the installment."]"><strong>@Fmt(_remInt)</strong> @Loc["interest left"]</span>
                                     }
                                 </div>
-                                @* "Paid off X of Y (Z%)" is the header's "remaining / initial" inverted — dropped as
-                                   redundant. The shrinking-balance sparkline (progress over time) is kept, with a short
-                                   caption so the line isn't a mystery; only shown when there's real history to plot. *@
-                                var _debtHist = State.SavingBucketDebtHistory(bucketId);
-                                if (_debtHist.Count >= 2)
-                                {
-                                    <div class="debt-progress">
-                                        <span class="debt-prog-cap">@Loc["Balance over time"]</span>
-                                        @DebtSparkline(_debtHist)
-                                    </div>
-                                }
+                                @* "Paid off X of Y (Z%)" was dropped as the header's "remaining / initial" inverted,
+                                   and the balance-over-time sparkline has now gone the same way (owner's call): the
+                                   row head already carries a progress bar with the finish flag on it, so a second
+                                   picture of the same descent was a chart competing with the control beside it. *@
                                 if (!done && payInst > 0m)
                                 {
                                     // Inline payoff projection. The "extra /mo" slider slides the 🏁 finish flag along the
@@ -2953,7 +2946,10 @@ else
                                     <span class="row-title">@MovementIcon(m) <span class="row-title-txt">@State.SavingMovementTarget(m)</span></span>
                                     <span class="row-sub"><span>@m.Date.ToString("dd MMM")</span></span>
                                 </span>
-                                <span class="amt debit">@Fmt(-m.Amount.Amount)</span>
+                                @* A disbursement is the saving doing its job — the loan prepaid, the bill the fund
+                                   was filling up for. It leaves the account like spending, but red is the one
+                                   colour here that means "this hurt you", so it goes amber instead. *@
+                                <span class="amt @(m.IsDisbursement ? "deploy" : "debit")">@Fmt(-m.Amount.Amount)</span>
                                 <span class="row-actions">
                                     @if (State.IsPeriodOpen)
                                     {
@@ -5534,9 +5530,26 @@ else
                                 </div>
                                 @if (_ls.LoweredInstallment is { } _lower && _lower > 0m)
                                 {
-                                    @* The alternative the lender would also offer. Named so the interest figure
-                                       above doesn't silently read as the only option. *@
-                                    <div class="paydown-alt">@string.Format(Loc["Or ask your lender to keep the original end date and drop the installment to {0} a month instead."], Fmt(State.Money(_lower)))</div>
+                                    @* Two different goods bought with the same money, so it is a choice rather than
+                                       a note. Finishing sooner needs no write at all — it is simply what happens —
+                                       which is why it was the only outcome for so long; the other re-prices the
+                                       schedule, and the app can now do that instead of telling you to ask. *@
+                                    <div class="paydown-choice">
+                                        <label class="paydown-opt @(!_disburseKeepEndDate ? "on" : "")">
+                                            <input type="radio" name="paydownmode" checked="@(!_disburseKeepEndDate)" @onchange="() => _disburseKeepEndDate = false" />
+                                            <span class="paydown-opt-t">@Loc["Keep my installment"]</span>
+                                            <span class="paydown-opt-s">@string.Format(Loc["Finish {0} sooner"], MonthsText(_ls.MonthsSaved))</span>
+                                        </label>
+                                        <label class="paydown-opt @(_disburseKeepEndDate ? "on" : "")">
+                                            <input type="radio" name="paydownmode" checked="@_disburseKeepEndDate" @onchange="() => _disburseKeepEndDate = true" />
+                                            <span class="paydown-opt-t">@Loc["Keep the end date"]</span>
+                                            <span class="paydown-opt-s">@string.Format(Loc["Pay {0} a month instead"], Fmt(State.Money(_lower)))</span>
+                                        </label>
+                                    </div>
+                                    @if (_disburseKeepEndDate)
+                                    {
+                                        <div class="paydown-alt">@Loc["We'll drop the installment here. Your lender has to agree to it too — this doesn't tell them."]</div>
+                                    }
                                 }
                             }
                         </div>
@@ -9558,6 +9571,9 @@ else
     private Guid _disburseFundId;
     private decimal _disburseAmount;
     private string? _disburseNote;
+    // Which of the two outcomes the payment buys. False = keep the installment and finish sooner, which needs no
+    // write at all; true = keep the end date and re-price the payment. Reset whenever the modal opens.
+    private bool _disburseKeepEndDate;
 
     private void OpenDisburseSaving(Guid bucketId)
     {
@@ -9567,6 +9583,7 @@ else
             ?? (State.HasSyncedFund ? State.SyncedFundId : State.RootFunds.FirstOrDefault()?.Id ?? Guid.Empty);
         _disburseAmount = 0;
         _disburseNote = null;
+        _disburseKeepEndDate = false;   // every payment is its own decision; last time's must not carry over
         _modal = Modal.DisburseSaving;
     }
 
@@ -9594,8 +9611,15 @@ else
         // report what the NEXT payment of this size would save, not the one just made.
         var outcome = LumpSumOutcome();
         var name = State.SavingBucketName(_disburseBucketId);
-        await State.DisburseSaving(_disburseBucketId, _disburseFundId, _disburseAmount, _disburseNote);
-        _disburseAmount = 0; _disburseNote = null;
+        var bucketId = _disburseBucketId;
+        var keepEndDate = _disburseKeepEndDate;
+        await State.DisburseSaving(bucketId, _disburseFundId, _disburseAmount, _disburseNote);
+        // "Keep the end date" is a SECOND write, deliberately after the payment rather than folded into it: the
+        // money moving is the thing that must not be lost, and re-pricing the schedule is a preference about what
+        // that money bought. Folded together, a failure here would have to roll back cash that has already left.
+        if (keepEndDate && outcome is { LoweredInstallment: { } lowered } && lowered > 0m)
+            await State.SetDebtInstallment(bucketId, lowered);
+        _disburseAmount = 0; _disburseNote = null; _disburseKeepEndDate = false;
         _paydownResult = outcome is { } o ? (name, o) : null;
         CloseModal();
     });
