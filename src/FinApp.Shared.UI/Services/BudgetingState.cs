@@ -790,6 +790,24 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     /// <summary>The most a single category's budget can be set to (Current − savings + spent, minus other budgets). Caps budgeting.</summary>
     public Money MaxBudgetFor(Guid categoryId) => Period.MaxBudgetFor(categoryId, PriorSaved);
 
+    /// <summary>
+    /// "Available to budget" as the modal shows it — the same bank-adjusted basis as the header's free figure.
+    /// <para>
+    /// ★ The ledger holds a synced fund at 0 because the real money is at the bank, so the raw
+    /// <see cref="MaxBudgetFor"/> excludes the entire bank balance. On an account whose money lives in a synced
+    /// fund that made the label read near-zero while the header two panels away read thousands — two figures about
+    /// the same money disagreeing on screen, which is the shape S78 already fixed for the deficit alerts.
+    /// </para>
+    /// Safe to show rather than clamp: a budget is <b>advisory</b> and nothing enforces this ceiling, so the number
+    /// is a statement about your money and not a limit that could be raised past what you hold.
+    /// </summary>
+    public Money MaxBudgetForDisplay(Guid categoryId, decimal? liveBankBalance, string? bankCurrency)
+    {
+        var raw = MaxBudgetFor(categoryId);
+        var adjusted = BankAdjust(raw, liveBankBalance, bankCurrency);
+        return adjusted.IsNegative ? Money(0m) : adjusted;
+    }
+
     /// <summary>Newest first, and newest-on-the-clock first within a day. One helper so every list of expenses in the
     /// app agrees on the order — an untimed row reports <c>TimeOnly.MinValue</c>, so it sits at the bottom of its own
     /// day instead of being treated as a midnight entry and jumping to the top (see <c>Expense.SortTime</c>).</summary>

@@ -887,11 +887,22 @@ public sealed class Period : Entity
 
     /// <summary>
     /// The most that can be budgeted in total this period: <c>Current − savings + already-spent</c>. Spending is the
-    /// realization of a budget, so it shouldn't reduce how much you can budget — adding back <see cref="ExpensesTotal"/>
-    /// undoes the spend already baked into the closing balance, leaving "all your money, minus savings".
+    /// realization of a budget, so it shouldn't reduce how much you can budget — adding the spend back undoes what
+    /// is already baked into the closing balance, leaving "all your money, minus savings".
+    /// <para>
+    /// ★ The add-back deliberately excludes <b>savings-funded</b> expenses. Such an expense was never budget
+    /// spending: it drained an earmark, and that earmark has already fallen by the same amount in
+    /// <see cref="SavingsNetTotal"/>. Adding it back too credits the money twice, and the figure climbs by exactly
+    /// what was spent — €1,000 cash with €200 set aside reads €800 free, then spending €50 out of the bucket read
+    /// €850 when both the cash and the earmark had fallen and the answer had not changed at all.
+    /// </para>
     /// </summary>
     public Money BudgetCeilingAfter(Money priorSaved) =>
-        ExpectedClosingBalance + ExpensesTotal - SavingsNetTotal - priorSaved;
+        ExpectedClosingBalance + BudgetFundedExpensesTotal - SavingsNetTotal - priorSaved;
+
+    /// <summary>Expenses that came out of the budget rather than out of a savings bucket — the ones the ceiling
+    /// adds back. See <see cref="BudgetCeilingAfter"/> for why the distinction matters.</summary>
+    public Money BudgetFundedExpensesTotal => Sum(_expenses.Where(e => !e.IsFromSavings).Select(e => e.Amount));
 
     /// <summary>How much a single category's budget can be set to: the ceiling minus what's budgeted elsewhere (≥ 0).</summary>
     public Money MaxBudgetFor(Guid categoryId, Money priorSaved)

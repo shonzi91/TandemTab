@@ -43,6 +43,46 @@ public class MoneyEnvelopeTests
         Assert.Equal(M(350), period.FreeToAllocateAfter(M(0)));   // 450 cash − 100 saved (budget ignored)
     }
 
+    /// <summary>
+    /// "Available to budget" read too high after spending from a savings bucket.
+    /// <para>
+    /// The ceiling adds <c>ExpensesTotal</c> back because spending is the realization of a budget and shouldn't
+    /// reduce what you may budget. But an expense paid out of savings was never budget spending: it drained an
+    /// earmark. Adding it back credits the same money twice — once as an expense that "doesn't count", and again
+    /// as the earmark that just fell — so the figure climbs by exactly what was spent.
+    /// </para>
+    /// Cash and earmark both fall by the same amount, so the free figure must not move at all.
+    /// </summary>
+    [Fact]
+    public void Spending_from_savings_does_not_raise_what_is_available_to_budget()
+    {
+        var period = PeriodWith(opening: 1000, contributed: 0, out var account, out var fund, out var category);
+        var bucket = account.AddSavingCategory("Car").Id;
+        period.AllocateToSavings(bucket, M(200), new DateOnly(2026, 1, 2));
+
+        // 1000 cash, 200 earmarked → 800 free to budget.
+        Assert.Equal(M(800), period.BudgetCeilingAfter(M(0)));
+
+        period.ConvertSavingToExpense(bucket, category, M(50), new DateOnly(2026, 1, 5), Guid.NewGuid(), fund);
+
+        // 950 cash, 150 earmarked → still 800. It read 850 before this was fixed.
+        Assert.Equal(M(950), period.ExpectedClosingBalance);
+        Assert.Equal(M(800), period.BudgetCeilingAfter(M(0)));
+    }
+
+    /// <summary>The control case: ordinary spending really is the realization of a budget, so the add-back stays
+    /// and the figure is unmoved by it.</summary>
+    [Fact]
+    public void Ordinary_spending_leaves_what_is_available_to_budget_unchanged()
+    {
+        var period = PeriodWith(opening: 1000, contributed: 0, out var account, out var fund, out var category);
+        period.AllocateToSavings(account.AddSavingCategory("Car").Id, M(200), new DateOnly(2026, 1, 2));
+
+        Assert.Equal(M(800), period.BudgetCeilingAfter(M(0)));
+        period.AddExpense(new Expense(category, M(50), new DateOnly(2026, 1, 5), Guid.NewGuid(), fund));
+        Assert.Equal(M(800), period.BudgetCeilingAfter(M(0)));
+    }
+
     [Fact]
     public void Budget_is_advisory_and_uncapped_savings_stays_advisory()
     {

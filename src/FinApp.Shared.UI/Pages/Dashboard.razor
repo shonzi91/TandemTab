@@ -3303,7 +3303,7 @@ else
                     </div>
                     @iconGrid
                     <label>@Loc["Budget for this period (optional)"] <DecimalInput @bind-Value="_fBudget" /></label>
-                    <small class="hint">@Loc["Available to budget:"] <strong>@Fmt(State.MaxBudgetFor(Guid.Empty))</strong></small>
+                    <small class="hint">@Loc["Available to budget:"] <strong>@Fmt(State.MaxBudgetForDisplay(Guid.Empty, _bankStatus?.Balance, _bankStatus?.BalanceCurrency))</strong></small>
                     <Switch @bind-Value="_fEssential">@Loc["Essential spend (rent, groceries, health…)"]</Switch>
                     <small class="hint">@Loc["Essential budgets are never suggested for redirecting toward a debt."]</small>
                     <div class="modal-actions">
@@ -3365,7 +3365,7 @@ else
                     </div>
                     @iconGrid
                     <label>@Loc["Budget amount"] <DecimalInput @bind-Value="_fBudget" /></label>
-                    <small class="hint">@Loc["Available to budget:"] <strong>@Fmt(State.MaxBudgetFor(_modalCatId))</strong></small>
+                    <small class="hint">@Loc["Available to budget:"] <strong>@Fmt(State.MaxBudgetForDisplay(_modalCatId, _bankStatus?.Balance, _bankStatus?.BalanceCurrency))</strong></small>
                     <label>@Loc["Alert at %"] <input type="number" step="1" min="0" max="100" @bind="_fThreshold" /></label>
                     <Switch @bind-Value="_fNotify">@Loc["Notify on every expense"]</Switch>
                     <Switch @bind-Value="_fEssential">@Loc["Essential spend (rent, groceries, health…)"]</Switch>
