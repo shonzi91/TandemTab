@@ -1152,12 +1152,18 @@ html.dark .home-brk-cta { color: var(--tm-mint); }
 .trend-tip-row { display: flex; align-items: center; gap: 6px; font-size: .78rem; white-space: nowrap; }
 .trend-tip-n { color: #6b7280; }
 .trend-tip-v { margin-left: auto; font-weight: 800; }
+/* Why the balance fell that month, when the reason was a loan rather than a bad month. */
+.trend-tip-note { display: block; margin-top: 5px; padding-top: 5px; border-top: 1px solid #e3ece7; font-size: .72rem; color: #0f7a54; line-height: 1.35; }
+html.dark .trend-tip-note { border-top-color: #2b4438; color: #57d9a3; }
+/* The ring around a debt-paying month. Hollow, so the balance dot underneath still reads as the data point. */
+.trend-debt-ring { fill: none; stroke: #13a06e; stroke-width: 1.6; opacity: .85; transition: r .1s ease; }
+html.dark .trend-debt-ring { stroke: #57d9a3; }
 .trend-tip-net .trend-tip-n, .trend-tip-net .trend-tip-v { font-weight: 800; color: #1f2430; }
 /* --- Flow bars ------------------------------------------------------------------------------------------
    In and out are context: same hues as before but held back, so the eye lands on the net bar. Dimming the
    OTHER months on hover (rather than highlighting the hovered one) keeps the chart's overall shape readable
    while you inspect a single column. */
-.trend-bar-in, .trend-bar-out { opacity: .42; }
+.trend-bar-in, .trend-bar-out, .trend-bar-saved { opacity: .42; }
 .trend-bar-net { opacity: 1; }
 .trend-bars { transition: opacity .12s ease; }
 .trend-bar-dim { opacity: .38; }
@@ -1194,7 +1200,7 @@ html.dark .trend-key-net { color: #e8eef0; }
 html.dark .trend-sub-h { color: #8b96a4; }
 /* The flow bars need a touch more presence on a dark canvas — .42 that reads as "held back" on white reads as
    "barely there" on #131a22. */
-html.dark .trend-bar-in, html.dark .trend-bar-out { opacity: .55; }
+html.dark .trend-bar-in, html.dark .trend-bar-out, html.dark .trend-bar-saved { opacity: .55; }
 html.dark .trend-barlbl { color: #57d9a3; }
 html.dark .trend-barlbl.down { color: #f87171; }
 html.dark .trend-bal-fill { opacity: .2; }

@@ -1943,8 +1943,9 @@ else
                         var trSlotW = (TrX1 - TrX0) / Math.Max(1, trRows.Count);
                         // Three bars a month with a little air either side. In and out are context; net is the point,
                         // so it is the widest of the three and the only saturated one.
-                        var trBarW = Math.Max(2.0, trSlotW * 0.22);
-                        var trNetW = Math.Max(3.0, trSlotW * 0.30);
+                        // Four bars now (in · kept · out · saved), so each is narrower than the three-bar layout.
+                        var trBarW = Math.Max(1.8, trSlotW * 0.17);
+                        var trNetW = Math.Max(2.4, trSlotW * 0.23);
                         var trZeroY = TrendY(0m, trSc);
                         // Values sit on the bars themselves at short windows. Hover-only numbers mean the chart can't
                         // be read at a glance at all, and 3 months is the window people actually read.
@@ -1967,6 +1968,7 @@ else
                                     var (inY, inH) = TrendBar(row.Income, trSc);
                                     var (outY, outH) = TrendBar(row.Expenses, trSc);
                                     var (netY, netH) = TrendBar(row.Net, trSc);
+                                    var (savY, savH) = TrendBar(row.Saved, trSc);
                                     var netColor = row.Net < 0m ? TrendNetDownColor : TrendNetUpColor;
                                     var dim = _trendHover is { } hv && hv != i ? "trend-bar-dim" : "";
                                     @* --tb staggers the grow: the months rise left to right, in the order they
@@ -1983,6 +1985,11 @@ else
                                               width="@trNetW.ToString("0.#", trCi)" height="@netH.ToString("0.#", trCi)" fill="@netColor" rx="1.5" />
                                         <rect class="trend-bar trend-bar-out" x="@((cx + trNetW / 2 + 1).ToString("0.#", trCi))" y="@outY.ToString("0.#", trCi)"
                                               width="@trBarW.ToString("0.#", trCi)" height="@outH.ToString("0.#", trCi)" fill="@TrendOutColor" rx="1.5" />
+                                        @* Saved sits on the far right, outside the in/kept/out triple: those three
+                                           are one arithmetic (in − out = kept) and saved is a decision taken out of
+                                           what was kept, not a fourth term in the same sum. *@
+                                        <rect class="trend-bar trend-bar-saved" x="@((cx + trNetW / 2 + trBarW + 2).ToString("0.#", trCi))" y="@savY.ToString("0.#", trCi)"
+                                              width="@trBarW.ToString("0.#", trCi)" height="@savH.ToString("0.#", trCi)" fill="@TrendSavedColor" rx="1.5" />
                                     </g>
                                 }
                                 @* Full-height hit columns, one per month. A column reads the whole month at once,
@@ -2044,10 +2051,21 @@ else
                                         <span class="trend-tip-v">@Fmt(State.Money(tipRow.Net))</span>
                                     </span>
                                     <span class="trend-tip-row">
+                                        <span class="trend-leg-dot" style="background:@TrendSavedColor"></span>
+                                        <span class="trend-tip-n">@Loc["Saved"]</span>
+                                        <span class="trend-tip-v">@Fmt(State.Money(tipRow.Saved))</span>
+                                    </span>
+                                    <span class="trend-tip-row">
                                         <span class="trend-leg-dot" style="background:@TrendBalColor"></span>
                                         <span class="trend-tip-n">@Loc["Balance"]</span>
                                         <span class="trend-tip-v">@Fmt(State.Money(tipRow.Balance))</span>
                                     </span>
+                                    @* The sentence the dip needed. Without it a month that cleared a chunk of a
+                                       loan is indistinguishable from a month that overspent by the same amount. *@
+                                    @if (tipRow.DebtPaid > 0m)
+                                    {
+                                        <span class="trend-tip-note">@string.Format(Loc["{0} of this went onto a loan — the balance fell because the debt did."], Fmt(State.Money(tipRow.DebtPaid)))</span>
+                                    }
                                 </div>
                             }
                             <div class="trend-xaxis">
@@ -2068,6 +2086,7 @@ else
                             <span class="trend-key-item"><span class="trend-leg-dot" style="background:@TrendInColor"></span>@Loc["Money in"]</span>
                             <span class="trend-key-item"><span class="trend-leg-dot" style="background:@TrendOutColor"></span>@Loc["Spent"]</span>
                             <span class="trend-key-item trend-key-net"><span class="trend-leg-dot" style="background:@TrendNetUpColor"></span>@Loc["Kept (what’s left)"]</span>
+                            <span class="trend-key-item"><span class="trend-leg-dot" style="background:@TrendSavedColor"></span>@Loc["Saved"]</span>
                         </div>
 
                         @* The stock, on its own axis. Same slot centres as the bars above, so a month lines up
@@ -2086,6 +2105,14 @@ else
                                     @for (var i = 0; i < trRows.Count; i++)
                                     {
                                         var (bcx, _) = TrendSlot(trRows.Count, i);
+                                        @* A month that paid down a loan wears a ring instead of a plain dot. The dip
+                                           under it is real — the cash did leave — so it is annotated rather than
+                                           flattened: the line keeps telling the truth and the ring says why it fell.
+                                           Green, because the reason is the opposite of a bad month. *@
+                                        @if (trRows[i].DebtPaid > 0m)
+                                        {
+                                            <circle cx="@bcx.ToString("0.#", trCi)" cy="@TrendBalY(trRows[i].Balance, trBal).ToString("0.#", trCi)" r="@(_trendHover == i ? "6.5" : "5.5")" class="trend-debt-ring" />
+                                        }
                                         <circle cx="@bcx.ToString("0.#", trCi)" cy="@TrendBalY(trRows[i].Balance, trBal).ToString("0.#", trCi)" r="@(_trendHover == i ? "4" : "2.4")" fill="@TrendBalColor" class="trend-pt" />
                                     }
                                     @for (var i = 0; i < trRows.Count; i++)
@@ -7014,7 +7041,11 @@ else
     // "Spent" is ALL money out (expenses + account-to-account transfers), matching the Home "Spent" tile
     // (TotalMoneyOut) and the Breakdown's "money out" — a transfer to another account left this account, so a
     // per-account "kept" that ignored it would overstate what the month actually held on to.
-    private sealed record TrendRow(string Label, decimal Income, decimal Expenses, decimal Saved, decimal Balance)
+    /// <param name="DebtPaid">Money deployed at a loan this month. It leaves the balance like spending does, so the
+    /// line dips — but nothing was consumed: the same money came off a debt. The chart marks those months rather
+    /// than hiding the dip, because the cash really did go.</param>
+    private sealed record TrendRow(string Label, decimal Income, decimal Expenses, decimal Saved, decimal Balance,
+        decimal DebtPaid = 0m)
     {
         /// <summary>What the month actually kept. The chart's headline: it is the question the four-line version
         /// made people answer for themselves by eyeballing the gap between two wiggly lines, which nobody can do.</summary>
@@ -7040,7 +7071,12 @@ else
                 // from AccountTransfersOutTotal, since a bucket payout isn't spending).
                 decimal.Round(p.ExpensesTotal.Amount + p.AccountTransfersOutTotal.Amount, 2),
                 decimal.Round(Math.Max(0m, p.SavingsNetTotal.Amount), 2),
-                decimal.Round(p.ExpectedClosingBalance.Amount, 2)));
+                decimal.Round(p.ExpectedClosingBalance.Amount, 2),
+                // Only disbursements onto a DEBT bucket. Deploying a holiday fund at a holiday is spending by
+                // another route; deploying one at a loan is the balance falling because the debt did.
+                decimal.Round(p.SavingAllocations
+                    .Where(a => a.IsDisbursement && State.FindSavingBucket(a.SavingCategoryId) is { IsDebt: true })
+                    .Sum(a => Math.Abs(a.Amount.Amount)), 2)));
         }
         return rows;
     }
@@ -7059,6 +7095,9 @@ else
     // same measurement twice.
     private const string TrendNetUpColor = "#0e7c55";
     private const string TrendNetDownColor = "#dc2626";
+    // Saved gets the savings violet the rest of the app uses for set-aside money, not another green: it is neither
+    // income nor what was kept, and a third green bar in the same group would be unreadable.
+    private const string TrendSavedColor = "#8b7fd4";
 
     // The period column the pointer is over (index into TrendRows). Drives the guide line, the enlarged points and
     // the value tooltip. Click toggles it too, so the numbers are reachable on touch where there is no hover.
