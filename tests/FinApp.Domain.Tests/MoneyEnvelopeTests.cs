@@ -83,6 +83,39 @@ public class MoneyEnvelopeTests
         Assert.Equal(M(800), period.BudgetCeilingAfter(M(0)));
     }
 
+    /// <summary>
+    /// The figure the modal offers must be the largest one that does NOT trip the over-planned warning. They used
+    /// to answer to different measures, so the app offered a number and then objected when it was used.
+    /// <para>
+    /// Reproduces the owner's screen: €1,786.24 free, €1,233.41 spent, €2,900 budgeted of which €600 is this
+    /// category. The old ceiling-based figure offered €804.92; setting it left remaining budgets €85.27 over free.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void The_offered_budget_is_the_largest_that_does_not_trip_the_overplanned_warning()
+    {
+        var period = PeriodWith(opening: 0, contributed: 5000, out var account, out var fund, out var food);
+        var rent = account.AddCategory("Rent").Id;
+        period.SetBudget(food, M(600));
+        period.SetBudget(rent, M(2300));                     // 2,900 budgeted in total
+        period.AddExpense(new Expense(rent, M(1233.41m), new DateOnly(2026, 1, 5), Guid.NewGuid(), fund));
+
+        var free = M(1786.24m);   // what the header says is left, bank-adjusted upstream
+        var offered = period.MaxBudgetWithoutOverplanning(food, free);
+
+        Assert.Equal(M(719.65m), offered);
+
+        // Taking exactly what was offered lands the two figures equal — the warning fires above zero, so this is
+        // the last value that is silent.
+        period.SetBudget(food, offered);
+        var remaining = period.BudgetedTotal - period.ExpensesTotal;
+        Assert.Equal(free, remaining);
+
+        // …and a euro more is the first that warns.
+        period.SetBudget(food, offered + M(1m));
+        Assert.True(period.BudgetedTotal - period.ExpensesTotal > free);
+    }
+
     [Fact]
     public void Budget_is_advisory_and_uncapped_savings_stays_advisory()
     {

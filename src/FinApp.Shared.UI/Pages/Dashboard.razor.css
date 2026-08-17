@@ -912,6 +912,22 @@ html.dark .hint strong { color: #e5e7eb; }
 /* "Available to save" note — legible in both themes (the plain .hint strong was near-black, invisible on dark). */
 .avail-note { margin-top: 8px; font-size: .82rem; line-height: 1.5; color: #4b5563; }
 .avail-note strong { color: #0f7a54; font-weight: 600; }
+
+/* A suggested amount you can take with one tap, in place of a figure to do arithmetic against. The chip carries
+   the number; the note beside it says where the number came from, because an unexplained suggestion in a money
+   app is a number to distrust. */
+.suggest-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+.suggest-chip {
+    display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
+    padding: 5px 11px; border: 1px solid #cfe9dd; border-radius: 999px;
+    background: #f4fbf7; color: #0f7a54; font-size: .82rem; font-weight: 700;
+}
+.suggest-chip:hover { background: #e8f6ef; border-color: #0f7a54; }
+.suggest-chip svg { width: 14px; height: 14px; flex: 0 0 auto; }
+.suggest-why { font-size: .76rem; color: #6b7d72; }
+html.dark .suggest-chip { background: #16241d; border-color: #2b4438; color: #57d9a3; }
+html.dark .suggest-chip:hover { background: #1b2f26; border-color: #57d9a3; }
+html.dark .suggest-why { color: #a9b6ad; }
 html.dark .avail-note { color: #b7c4bd; }
 html.dark .avail-note strong { color: #57d9a3; }
 

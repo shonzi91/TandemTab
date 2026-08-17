@@ -3299,7 +3299,17 @@ else
                     </div>
                     @iconGrid
                     <label>@Loc["Budget for this period (optional)"] <DecimalInput @bind-Value="_fBudget" /></label>
-                    <small class="hint">@Loc["Available to budget:"] <strong>@Fmt(State.MaxBudgetForDisplay(Guid.Empty, _bankStatus?.Balance, _bankStatus?.BalanceCurrency))</strong></small>
+                    @* Same move as the savings box: the most this budget can hold before the app's own over-planned
+                       warning fires, offered as a tap rather than a number to do arithmetic against. *@
+                    @if (State.SuggestedBudget(Guid.Empty, _bankStatus?.Balance, _bankStatus?.BalanceCurrency) is { } _sugNewBudget)
+                    {
+                        <div class="suggest-row">
+                            <button type="button" class="suggest-chip" @onclick="() => _fBudget = _sugNewBudget.Amount">
+                                <Icon Name="bulb" /> @string.Format(Loc["Suggested {0}"], Fmt(_sugNewBudget))
+                            </button>
+                            <span class="suggest-why">@Loc["the most that still fits what you have left"]</span>
+                        </div>
+                    }
                     <Switch @bind-Value="_fEssential">@Loc["Essential spend (rent, groceries, health…)"]</Switch>
                     <small class="hint">@Loc["Essential budgets are never suggested for redirecting toward a debt."]</small>
                     <div class="modal-actions">
@@ -3361,7 +3371,15 @@ else
                     </div>
                     @iconGrid
                     <label>@Loc["Budget amount"] <DecimalInput @bind-Value="_fBudget" /></label>
-                    <small class="hint">@Loc["Available to budget:"] <strong>@Fmt(State.MaxBudgetForDisplay(_modalCatId, _bankStatus?.Balance, _bankStatus?.BalanceCurrency))</strong></small>
+                    @if (State.SuggestedBudget(_modalCatId, _bankStatus?.Balance, _bankStatus?.BalanceCurrency) is { } _sugEditBudget)
+                    {
+                        <div class="suggest-row">
+                            <button type="button" class="suggest-chip" @onclick="() => _fBudget = _sugEditBudget.Amount">
+                                <Icon Name="bulb" /> @string.Format(Loc["Suggested {0}"], Fmt(_sugEditBudget))
+                            </button>
+                            <span class="suggest-why">@Loc["the most that still fits what you have left"]</span>
+                        </div>
+                    }
                     <label>@Loc["Alert at %"] <input type="number" step="1" min="0" max="100" @bind="_fThreshold" /></label>
                     <Switch @bind-Value="_fNotify">@Loc["Notify on every expense"]</Switch>
                     <Switch @bind-Value="_fEssential">@Loc["Essential spend (rent, groceries, health…)"]</Switch>
@@ -5096,7 +5114,19 @@ else
                         <p class="hint">@State.SavingBucketName(_savingBucketId)</p>
                     }
                     <label>@Loc["Amount"] <DecimalInput @bind-Value="_savingAmount" /></label>
-                    <div class="avail-note">@Loc["Available to save:"] <strong>@Fmt(State.AvailableToSaveDisplay(_bankStatus?.Balance, _bankStatus?.BalanceCurrency))</strong> — @Loc["your cash that isn't already set aside for savings"].</div>
+                    @* A figure to read became an amount to take. The old line reported cash "not already set aside
+                       for savings", which still counted money the budgets are relying on — so it read as spare and
+                       taking it was what pushed the budgets over. The chip offers what nothing else is counting on,
+                       and fills the box in one tap. Absent when the answer is nothing: a €0 offer is not an offer. *@
+                    @if (State.SuggestedSaving(_bankStatus?.Balance, _bankStatus?.BalanceCurrency) is { } _sugSave)
+                    {
+                        <div class="suggest-row">
+                            <button type="button" class="suggest-chip" @onclick="() => _savingAmount = _sugSave.Amount">
+                                <Icon Name="coins" /> @string.Format(Loc["Suggested {0}"], Fmt(_sugSave))
+                            </button>
+                            <span class="suggest-why">@Loc["what's left after your budgets"]</span>
+                        </div>
+                    }
                     <div class="modal-actions">
                         <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
                         <button @onclick="AllocateSaving" disabled="@(_savingAmount <= 0)"><Icon Name="coins" /> @Loc["Add"]</button>

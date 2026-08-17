@@ -927,6 +927,29 @@ public sealed class Period : Entity
         return room.IsNegative ? Money.Zero(Currency) : room;
     }
 
+    /// <summary>
+    /// The largest budget this category can hold before the app's own over-planned warning fires — i.e. before
+    /// <c>BudgetedTotal − ExpensesTotal</c> (what your remaining budgets still ask for) exceeds
+    /// <paramref name="freeCash"/> (what you actually have left).
+    /// <para>
+    /// ★ This exists because the figure shown as "available to budget" and the figure the warning judges against
+    /// were two different measures. The ceiling (<see cref="BudgetCeilingAfter"/>) adds <i>all</i> of the period's
+    /// spending back, on the grounds that a budget covers the whole month including what has already gone; the
+    /// warning adds nothing back and asks only whether the cash still in hand covers the budgets still outstanding.
+    /// Each is reasonable alone. Shown together they contradict: the modal offered €804.92 for a category, and
+    /// raising it by €200 was met with "your remaining budgets are €80.35 more than you have left".
+    /// </para>
+    /// <paramref name="freeCash"/> is passed in rather than derived because the honest figure is bank-adjusted, and
+    /// the live bank balance is not something the domain can see. Setting exactly this lands the two figures equal;
+    /// one unit more is the first that warns.
+    /// </summary>
+    public Money MaxBudgetWithoutOverplanning(Guid categoryId, Money freeCash)
+    {
+        var othersBudgeted = BudgetedTotal - (FindBudget(categoryId)?.Allocated ?? Money.Zero(Currency));
+        var room = freeCash + ExpensesTotal - othersBudgeted;
+        return room.IsNegative ? Money.Zero(Currency) : room;
+    }
+
     // --- Lifecycle --------------------------------------------------------
 
     public void Close() => Status = PeriodStatus.Closed;

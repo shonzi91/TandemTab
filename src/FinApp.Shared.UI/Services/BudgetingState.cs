@@ -791,21 +791,59 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     public Money MaxBudgetFor(Guid categoryId) => Period.MaxBudgetFor(categoryId, PriorSaved);
 
     /// <summary>
-    /// "Available to budget" as the modal shows it — the same bank-adjusted basis as the header's free figure.
+    /// "Available to budget" as the modal shows it — <b>the largest budget that will not trip the over-planned
+    /// warning</b>, which is the only definition that makes the two agree.
     /// <para>
-    /// ★ The ledger holds a synced fund at 0 because the real money is at the bank, so the raw
-    /// <see cref="MaxBudgetFor"/> excludes the entire bank balance. On an account whose money lives in a synced
-    /// fund that made the label read near-zero while the header two panels away read thousands — two figures about
-    /// the same money disagreeing on screen, which is the shape S78 already fixed for the deficit alerts.
+    /// ★ They used to answer to different yardsticks, and that is what made the figure look wrong. The label came
+    /// from <see cref="MaxBudgetFor"/>, i.e. the ceiling, which adds ALL of this period's spending back on the
+    /// grounds that a budget covers the whole month including what has already gone. The warning compares remaining
+    /// budgets (<c>budgeted − spent</c>) against the bank-adjusted <i>free cash</i>, which adds nothing back. Each
+    /// is defensible alone; together they told the user a number and then told them off for using it — offering
+    /// €804.92 for a category and answering a €200 rise with "your budgets are €80.35 more than you have left".
     /// </para>
-    /// Safe to show rather than clamp: a budget is <b>advisory</b> and nothing enforces this ceiling, so the number
-    /// is a statement about your money and not a limit that could be raised past what you hold.
+    /// So it is derived from the warning's own two quantities: the most this category can hold before
+    /// <c>TotalBudgeted − TotalSpent</c> exceeds free is <c>free + spent − everyone else's budget</c>. Setting
+    /// exactly this lands the two figures equal, and one euro more is the first that warns.
     /// </summary>
-    public Money MaxBudgetForDisplay(Guid categoryId, decimal? liveBankBalance, string? bankCurrency)
+    public Money MaxBudgetForDisplay(Guid categoryId, decimal? liveBankBalance, string? bankCurrency) =>
+        Period.MaxBudgetWithoutOverplanning(categoryId, DisplayFreeToAllocate(liveBankBalance, bankCurrency));
+
+    /// <summary>
+    /// The budget figure to <b>offer</b>, or null when there is nothing honest to offer.
+    /// <para>
+    /// ⚠️ Gated on free cash being positive, which <see cref="MaxBudgetForDisplay"/> alone does not guarantee: it
+    /// adds this period's spending back, so it stays positive well after the money has run out. Someone already
+    /// overdrawn would otherwise be handed a cheerful suggestion to budget more, computed from what they had
+    /// already spent. Nothing left means no suggestion.
+    /// </para>
+    /// </summary>
+    public Money? SuggestedBudget(Guid categoryId, decimal? liveBankBalance, string? bankCurrency)
     {
-        var raw = MaxBudgetFor(categoryId);
-        var adjusted = BankAdjust(raw, liveBankBalance, bankCurrency);
-        return adjusted.IsNegative ? Money(0m) : adjusted;
+        if (DisplayFreeToAllocate(liveBankBalance, bankCurrency).Amount <= 0m) return null;
+        var room = MaxBudgetForDisplay(categoryId, liveBankBalance, bankCurrency);
+        return room.Amount >= 1m ? room : null;
+    }
+
+    /// <summary>
+    /// What to suggest in the Add-to-savings box: free cash <b>minus what your budgets still expect to spend</b>.
+    /// <para>
+    /// The old line reported "your cash that isn't already set aside for savings", which counts money your budgets
+    /// are already relying on — so it read as spare cash you could safely put away, and putting it away is what
+    /// pushed the budgets over. This subtracts the plans that haven't happened yet, so what is offered is money no
+    /// part of the app is already counting on.
+    /// </para>
+    /// Null when the answer is nothing — the budgets already ask for everything (or more), and a chip reading €0 is
+    /// a suggestion to do nothing dressed up as an offer.
+    /// </summary>
+    public Money? SuggestedSaving(decimal? liveBankBalance, string? bankCurrency)
+    {
+        var free = DisplayFreeToAllocate(liveBankBalance, bankCurrency);
+        // ⚠️ The free check is not redundant. Once budgets are OVERSPENT their remainder goes negative, and
+        // subtracting a negative turns the sum positive again — so an account with no money left could be offered
+        // a saving computed from the size of its own overspend. Nothing left means no suggestion.
+        if (free.Amount <= 0m) return null;
+        var spare = free - (TotalBudgeted - TotalSpent);
+        return spare.Amount >= 1m ? spare : null;
     }
 
     /// <summary>Newest first, and newest-on-the-clock first within a day. One helper so every list of expenses in the
