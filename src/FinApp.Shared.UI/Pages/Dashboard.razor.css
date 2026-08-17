@@ -3368,8 +3368,39 @@ html.dark .trip-timecost { color: #8c99a8; }
 .trip-exps .brk-exp-sub { display: inline-flex; align-items: center; gap: 5px; }
 .brk-exp-when { color: #b3bdc8; }
 .brk-exp-when::before { content: "· "; }
-.trip-acts { display: flex; gap: 14px; padding-top: 2px; flex-wrap: wrap; }
+.trip-acts { display: flex; gap: 8px; padding-top: 4px; flex-wrap: wrap; }
 .trip-acts .link.danger { color: #dc2626; }
+
+/* The remaining trip actions are real buttons now, not bare links: they DO things to money (attach a cost,
+   release a pot, start or end a journey), and a row of underlined words gave no clue which of them was the one
+   you wanted. Edit/delete left the row entirely — see .trip-corner. */
+.btn-soft {
+    display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
+    padding: 6px 12px; border: 1px solid #cfe9dd; border-radius: 999px;
+    background: #f4fbf7; color: #0f7a54; font-size: .82rem; font-weight: 700;
+}
+.btn-soft:hover { background: #e8f6ef; border-color: #0f7a54; }
+.btn-soft svg { width: 14px; height: 14px; flex: 0 0 auto; }
+.btn-soft.primary { background: #0f7a54; border-color: #0f7a54; color: #fff; }
+.btn-soft.primary:hover { background: #0c6746; }
+html.dark .btn-soft { background: #16241d; border-color: #2b4438; color: #57d9a3; }
+html.dark .btn-soft:hover { background: #1b2f26; border-color: #57d9a3; }
+html.dark .btn-soft.primary { background: #0f7a54; border-color: #0f7a54; color: #eafff6; }
+
+/* Edit + delete, pinned to the card's top-right corner. Muted until the card is hovered, so they stay available
+   without competing with the trip's own name and figures. */
+.trip-card { position: relative; }
+.trip-corner { position: absolute; top: 8px; right: 10px; display: flex; gap: 2px; z-index: 2; }
+.trip-corner-b {
+    display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
+    width: 28px; height: 28px; padding: 0; border: 0; border-radius: 8px; background: transparent; color: #8a97a0;
+}
+.trip-corner-b svg { width: 15px; height: 15px; }
+.trip-corner-b:hover { background: #eef3f0; color: #0f7a54; }
+.trip-corner-b.danger:hover { background: #fdecec; color: #dc2626; }
+html.dark .trip-corner-b { color: #93a3ad; }
+html.dark .trip-corner-b:hover { background: #22312a; color: #57d9a3; }
+html.dark .trip-corner-b.danger:hover { background: #3a2222; color: #f87171; }
 .trips-add { align-self: flex-start; }
 
 html.dark .trip-card { border-color: #2a3342; background: #131820; }

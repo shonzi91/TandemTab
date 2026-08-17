@@ -2230,6 +2230,13 @@ else
                         var tTotal = tSlices.Sum(s => s.Amount);
                         double sweepAt = 0;
                         <div class="trip-card @status @(open ? "open" : "")">
+                            @* Edit and delete live as icons in the corner of the card (owner's call), not as two
+                               more words in the action row. They change what the trip IS; the row below acts on the
+                               money. Outside the head button, because a button inside a button is not clickable. *@
+                            <span class="trip-corner">
+                                <button type="button" class="trip-corner-b" title="@Loc["Edit"]" aria-label="@Loc["Edit"]" @onclick="() => OpenEditTrip(tRecap.TripId)"><Icon Name="pencil" /></button>
+                                <button type="button" class="trip-corner-b danger" title="@Loc["Delete"]" aria-label="@Loc["Delete"]" @onclick="() => ConfirmRemoveTrip(tRecap.TripId)"><Icon Name="trash" /></button>
+                            </span>
                             <button type="button" class="trip-head" @onclick="() => _expandedTripId = open ? Guid.Empty : tRecap.TripId">
                                 <span class="trip-mark">@TripMark(trip.Icon)<span class="trip-status" title="@(status == "now" ? Loc["Happening now"] : status == "soon" ? Loc["Still ahead"] : Loc["Finished"])"><Icon Name="@statusIcon" /></span></span>
                                 <span class="trip-id">
@@ -2413,14 +2420,21 @@ else
                                         }
                                     }
                                     <div class="trip-acts">
-                                        <button class="link" @onclick="() => OpenAttachToTrip(tRecap.TripId)"><Icon Name="plus" /> @Loc["Add something already paid"]</button>
+                                        @* Attaching something already paid is a thing you do BEFORE and DURING a
+                                           journey — the flight booked in March, the hotel paid on arrival. Once the
+                                           last day has passed there is nothing left to bring along, so the door
+                                           closes rather than sitting there inviting a late edit to a closed story. *@
+                                        @if (trip.To >= today)
+                                        {
+                                            <button class="btn-soft" @onclick="() => OpenAttachToTrip(tRecap.TripId)"><Icon Name="plus" /> @Loc["Add something already paid"]</button>
+                                        }
                                         @* The action the savings link was missing. Only when there is a pot to draw on and
                                            a category to release it into — without either there is nothing this could do,
                                            and a button that opens a dead end is worse than no button. *@
                                         @if (trip.SavingCategoryId is { } useBkt && trip.CategoryId is not null
                                              && State.SavingBucketSaved(useBkt).Amount > 0m && State.IsPeriodOpen)
                                         {
-                                            <button class="link" @onclick="() => OpenUseTripSavings(tRecap.TripId)"><Icon Name="coins" /> @Loc["Use the saved money"] <ProLock Feature="@PlanFeatures.Trips" Static="true" /></button>
+                                            <button class="btn-soft" @onclick="() => OpenUseTripSavings(tRecap.TripId)"><Icon Name="coins" /> @Loc["Use the saved money"] <ProLock Feature="@PlanFeatures.Trips" Static="true" /></button>
                                         }
                                         @* Finish means OVER, not "ends today": it ends the trip on the day it actually
                                            ended AND records that the traveller said so, because a trip whose last day is
@@ -2430,20 +2444,17 @@ else
                                         @* The opt-in. Trip mode never switches itself on, so the day the dates arrive
                                            this is the tap that does it — the same confirmation the bell and Home
                                            offer, put where someone looking at the trip itself would reach for it. *@
+                                        @* "Not finished after all" is gone entirely (owner's call). Un-finishing a
+                                           journey is a correction, not an action worth a permanent button on every
+                                           finished trip — the dates are editable if one was ended by mistake. *@
                                         @if (awaitingStart)
                                         {
-                                            <button class="link" @onclick="() => StartTrip(tRecap.TripId)"><Icon Name="plane" /> @Loc["Let's go — start the trip"]</button>
+                                            <button class="btn-soft primary" @onclick="() => StartTrip(tRecap.TripId)"><Icon Name="plane" /> @Loc["Let's go — start the trip"]</button>
                                         }
                                         else if (trip.IsActiveOn(today))
                                         {
-                                            <button class="link" @onclick="() => FinishTrip(tRecap.TripId)"><Icon Name="flag" /> @Loc["Finish trip"]</button>
+                                            <button class="btn-soft" @onclick="() => FinishTrip(tRecap.TripId)"><Icon Name="flag" /> @Loc["Finish trip"]</button>
                                         }
-                                        else if (trip.FinishedOn is not null)
-                                        {
-                                            <button class="link" @onclick="() => ReopenTrip(tRecap.TripId)"><Icon Name="rotate" /> @Loc["Not finished after all"]</button>
-                                        }
-                                        <button class="link" @onclick="() => OpenEditTrip(tRecap.TripId)"><Icon Name="pencil" /> @Loc["Edit"]</button>
-                                        <button class="link danger" @onclick="() => ConfirmRemoveTrip(tRecap.TripId)"><Icon Name="trash" /> @Loc["Delete"]</button>
                                     </div>
                                 </div>
                             }
