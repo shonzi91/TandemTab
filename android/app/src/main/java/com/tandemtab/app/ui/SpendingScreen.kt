@@ -704,7 +704,7 @@ private fun shortDate(iso: String): String = runCatching {
     LocalDate.parse(iso).format(DateTimeFormatter.ofPattern("d MMM", Locale.getDefault()))
 }.getOrDefault(iso)
 
-private fun formatDay(iso: String): String = runCatching {
+internal fun formatDay(iso: String): String = runCatching {
     val d = LocalDate.parse(iso)
     val today = LocalDate.now()
     when (d) {

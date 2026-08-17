@@ -39,7 +39,13 @@ import com.tandemtab.app.data.UpdateRecurringRequest
 import com.tandemtab.app.data.SavingsViewDto
 import com.tandemtab.app.data.CreateTripRequest
 import com.tandemtab.app.data.EditTripRequest
+import com.tandemtab.app.data.ConvertSavingToBudgetRequest
+import com.tandemtab.app.data.DisburseSavingRequest
+import com.tandemtab.app.data.MoveSavingsRequest
+import com.tandemtab.app.data.SavingDepositRowDto
+import com.tandemtab.app.data.SavingMovementRowDto
 import com.tandemtab.app.data.TagOptionDto
+import com.tandemtab.app.data.UseTripSavingsRequest
 import com.tandemtab.app.data.TagRowDto
 import com.tandemtab.app.data.TripDetailDto
 import com.tandemtab.app.data.TripDto
@@ -249,6 +255,12 @@ data class GoalsUi(
     val saved: Double = 0.0,
     val savedRate: Double? = null,   // saved-this-period as a share of income (0..1), null if unknown
     val buckets: List<SavingBucketDto> = emptyList(),
+    val availableToSave: Double = 0.0,
+    // This period's activity: money arriving (deposits) and money that was already saved moving (movements).
+    // Both were absent from the Kotlin view DTO entirely, which is why Goals has never shown an activity list —
+    // and why nothing on the phone could edit or undo a saving.
+    val deposits: List<SavingDepositRowDto> = emptyList(),
+    val movements: List<SavingMovementRowDto> = emptyList(),
     val saving: Boolean = false,
     val saveError: String? = null,
 )
@@ -1071,11 +1083,73 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    private fun goalsFrom(v: SavingsViewDto) =
-        GoalsUi(loaded = true, currency = v.currency, saved = v.overview.saved, buckets = v.buckets)
+    private fun goalsFrom(v: SavingsViewDto) = GoalsUi(
+        loaded = true, currency = v.currency, saved = v.overview.saved, buckets = v.buckets,
+        availableToSave = v.availableToSave, deposits = v.deposits, movements = v.movements,
+    )
 
     /** Clear a stale error before opening the "Add to savings" sheet. */
     fun prepareAllocateSaving() = _state.update { it.copy(goals = it.goals.copy(saveError = null)) }
+
+    // --- The activity list: editing a deposit, undoing a movement, moving saved money -------------------
+
+    fun editSavingDeposit(allocationId: String, amount: Double, onDone: () -> Unit = {}) =
+        savingsWrite(onDone, "Couldn't change that saving.") { acct -> api.editSavingDeposit(acct, allocationId, amount) }
+
+    fun removeSavingDeposit(allocationId: String, onDone: () -> Unit = {}) =
+        savingsWrite(onDone, "Couldn't remove that saving.") { acct -> api.deleteSavingDeposit(acct, allocationId) }
+
+    /** Undo a movement. Only offered for rows the SERVER marked undoable — see [SavingMovementRowDto]. */
+    fun undoSavingMovement(allocationId: String, onDone: () -> Unit = {}) =
+        savingsWrite(onDone, "Couldn't undo that.") { acct -> api.removeSavingMovement(acct, allocationId) }
+
+    fun disburseSaving(bucketId: String, fundId: String, amount: Double, date: String, note: String?, onDone: () -> Unit = {}) =
+        savingsWrite(onDone, "Couldn't deploy that saving.") { acct ->
+            api.disburseSaving(acct, DisburseSavingRequest(bucketId, fundId, amount, date, note?.ifBlank { null }))
+        }
+
+    fun savingToBudget(bucketId: String, categoryId: String, amount: Double, date: String, note: String?, onDone: () -> Unit = {}) =
+        savingsWrite(onDone, "Couldn't move that into the budget.") { acct ->
+            api.savingToBudget(acct, ConvertSavingToBudgetRequest(bucketId, categoryId, amount, date, note?.ifBlank { null }))
+        }
+
+    fun transferSavings(fromBucketId: String, toBucketId: String, amount: Double, date: String, note: String?, onDone: () -> Unit = {}) =
+        savingsWrite(onDone, "Couldn't move that between buckets.") { acct ->
+            api.transferSavings(acct, MoveSavingsRequest(fromBucketId, toBucketId, amount, date, note?.ifBlank { null }))
+        }
+
+    /** Release a trip's linked savings pot into its budget, then re-read the trips list the figure lives on. */
+    fun useTripSavings(tripId: String, amount: Double, date: String, note: String?, onDone: () -> Unit = {}) =
+        savingsWrite(onDone, "Couldn't release the saved money.") { acct ->
+            api.useTripSavings(acct, tripId, UseTripSavingsRequest(amount, date, note?.ifBlank { null }))
+        }
+
+    /**
+     * One shape for every savings write that isn't already covered: run it, then re-read the whole Goals view.
+     *
+     * ★ Always a re-read, never a local patch. The deposit edit is append-only server-side — it mints a new
+     * allocation id — so a row patched in place would keep pointing at an allocation that no longer exists, and the
+     * next undo on it would 404. Spending and Home are refreshed too: a disbursement moves the account balance and
+     * a budget move changes what a category has to spend, and both of those are drawn on other screens.
+     */
+    private fun savingsWrite(onDone: () -> Unit, fallback: String, action: suspend (String) -> Any) {
+        val accountId = _state.value.selectedAccountId ?: return
+        _state.update { it.copy(goals = it.goals.copy(saving = true, saveError = null)) }
+        viewModelScope.launch {
+            try {
+                action(accountId)
+                val v = api.savings(accountId, _state.value.selectedPeriod)
+                _state.update { it.copy(goals = goalsFrom(v).copy(saving = false, saveError = null)) }
+                loadSpending(true)
+                runCatching { api.overview(accountId, _state.value.selectedPeriod) }
+                    .getOrNull()?.let { ov -> _state.update { it.copy(overview = ov) } }
+                refreshTripsIfLoaded()
+                onDone()
+            } catch (e: Exception) {
+                _state.update { it.copy(goals = it.goals.copy(saving = false, saveError = e.message ?: fallback)) }
+            }
+        }
+    }
 
     /** The "Spend from savings" sheet needs the spend-category + fund pickers, which ride the /spending payload. */
     fun prepareSpendFromSavings() {

@@ -673,6 +673,36 @@ data class SavingBucketForecastDto(
     val debtStartDate: String? = null,
 )
 
+/** One manual "Add to savings" deposit this period — the rows the activity list can edit or remove. */
+@Serializable
+data class SavingDepositRowDto(
+    val id: String,
+    val bucketId: String,
+    val bucketName: String = "",
+    val amount: Double = 0.0,
+    val date: String = "",
+    val note: String? = null,
+)
+
+/** One movement of money that is ALREADY saved: deployed to a fund, matured into a budget, moved to another bucket,
+ *  or spent through the expense ledger. `amount` is always positive — the direction is `kind`, never the sign.
+ *
+ *  ⚠️ `undoable` is the SERVER's answer, not ours to infer. A "spent" row is a real movement but the undo endpoint
+ *  refuses it (it is undone by deleting the expense), and the incoming half of a transfer is the outgoing half's
+ *  reversal wearing a second button. Rendering an undo off `kind` alone produces controls that only ever 400. */
+@Serializable
+data class SavingMovementRowDto(
+    val id: String,
+    val bucketId: String,
+    val bucketName: String = "",
+    val kind: String = "",
+    val amount: Double = 0.0,
+    val date: String = "",
+    val note: String? = null,
+    val counterpart: String? = null,
+    val undoable: Boolean = false,
+)
+
 @Serializable
 data class SavingsViewDto(
     val version: Long = 0,
@@ -681,6 +711,8 @@ data class SavingsViewDto(
     val availableToSave: Double = 0.0,
     val maxAdditionalSavings: Double = 0.0,
     val buckets: List<SavingBucketDto> = emptyList(),
+    val deposits: List<SavingDepositRowDto> = emptyList(),
+    val movements: List<SavingMovementRowDto> = emptyList(),
 )
 
 // --- Savings (Goals) write flows ---------------------------------------------------------------------
@@ -744,6 +776,44 @@ data class SpendFromSavingsRequest(
     val fundId: String,
     val note: String? = null,
 )
+
+/** PUT /accounts/{id}/savings/deposits/{allocationId} — change a deposit's amount (its date is kept). */
+@Serializable
+data class EditSavingDepositRequest(val amount: Double)
+
+/** POST /accounts/{id}/savings/disburse — deploy a bucket to its purpose via `fundId`. */
+@Serializable
+data class DisburseSavingRequest(
+    val savingCategoryId: String,
+    val fundId: String,
+    val amount: Double,
+    val date: String,
+    val note: String? = null,
+)
+
+/** POST /accounts/{id}/savings/to-budget — mature a bucket into a category's budget this period. */
+@Serializable
+data class ConvertSavingToBudgetRequest(
+    val savingCategoryId: String,
+    val categoryId: String,
+    val amount: Double,
+    val date: String,
+    val note: String? = null,
+)
+
+/** POST /accounts/{id}/savings/transfer — move money between buckets. Total-preserving. */
+@Serializable
+data class MoveSavingsRequest(
+    val fromBucketId: String,
+    val toBucketId: String,
+    val amount: Double,
+    val date: String,
+    val note: String? = null,
+)
+
+/** POST /accounts/{id}/trips/{tripId}/use-savings — release a linked pot into the trip's budget. */
+@Serializable
+data class UseTripSavingsRequest(val amount: Double, val date: String, val note: String? = null)
 
 /** One planned future cost of an expenses (sinking) fund. Pure planning data — it never moves money; the server
  *  turns the list into the monthly set-aside. `cadence` is "one-off"/"monthly"/"quarterly"/"yearly"; `dueDate`

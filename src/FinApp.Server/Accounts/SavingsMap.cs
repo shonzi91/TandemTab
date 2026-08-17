@@ -36,7 +36,56 @@ public static class SavingsMap
             .ToList();
 
         return new SavingsViewDto(version, account.Currency, SpendingMap.Overview(account, period, bankBalance, bankCurrency),
-            availableToSave, maxAdditionalSavings, buckets, deposits);
+            availableToSave, maxAdditionalSavings, buckets, deposits, Movements(account, period));
+    }
+
+    /// <summary>
+    /// This period's movements of already-saved money — everything in the allocation ledger that is not a plain
+    /// deposit, which is exactly the set the deposits list leaves out.
+    /// </summary>
+    private static List<SavingMovementRowDto> Movements(Account account, Period period)
+    {
+        string BucketName(Guid id) => account.FindSavingCategory(id)?.Name ?? "—";
+        var depositIds = period.ManualSavingDeposits().Select(a => a.Id).ToHashSet();
+
+        return period.SavingAllocations
+            .Where(a => !depositIds.Contains(a.Id) && !a.Amount.IsZero)
+            .OrderByDescending(a => a.Date)
+            .Select(a =>
+            {
+                var outgoing = a.Amount.IsNegative;
+                var (kind, counterpart) = a switch
+                {
+                    // A budget move names the category it matured into.
+                    { BudgetCategoryId: { } cat } => ("to-budget", account.FindCategory(cat)?.Name),
+                    // A transfer names the bucket on the other end, found through the pair id it shares.
+                    { TransferPairId: { } pair } => (
+                        outgoing ? "transfer-out" : "transfer-in",
+                        period.SavingAllocations
+                            .Where(o => o.TransferPairId == pair && o.Id != a.Id)
+                            .Select(o => BucketName(o.SavingCategoryId))
+                            .FirstOrDefault()),
+                    // Deploying the bucket to its purpose: paired with an external transfer out.
+                    { SourceExternalTransferId: not null } => ("disbursed", (string?)null),
+                    // Savings spent through the expense ledger — it names the expense's category.
+                    { SourceExpenseId: { } exp } => (
+                        "spent",
+                        period.Expenses.FirstOrDefault(e => e.Id == exp) is { } e
+                            ? account.FindCategory(e.CategoryId)?.Name
+                            : null),
+                    _ => ("disbursed", (string?)null),
+                };
+                return new SavingMovementRowDto(
+                    a.Id, a.SavingCategoryId, BucketName(a.SavingCategoryId), kind,
+                    Math.Abs(a.Amount.Amount), a.Date, a.Note, counterpart,
+                    // ⚠️ Only what RemoveSavingMovement actually accepts. It reverses a budget move, a transfer pair
+                    // and a disbursement; a drawdown linked to an EXPENSE falls through to its throw, because that
+                    // one is undone by deleting the expense that caused it. A "spent" row offering an undo would be
+                    // a control whose only outcome is a 400. The incoming half of a transfer is excluded for a
+                    // different reason — it would work, but it is the same single reversal wearing a second button.
+                    Undoable: kind is "to-budget" or "transfer-out" or "disbursed");
+            })
+            .ToList();
     }
 
     private static SavingBucketDto Bucket(Account account, Period period, SavingsReportService report, SavingCategory b, DateOnly today)

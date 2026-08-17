@@ -182,6 +182,9 @@ fun HomeScreen(
     onAttachExpenseToTrip: (String, String?, () -> Unit) -> Unit,
     onOpenTrip: (String?) -> Unit,
     onPrepareTrip: () -> Unit,
+    onEditSavingDeposit: (allocationId: String, amount: Double, onDone: () -> Unit) -> Unit,
+    onRemoveSavingDeposit: (allocationId: String, onDone: () -> Unit) -> Unit,
+    onUndoSavingMovement: (allocationId: String, onDone: () -> Unit) -> Unit,
     onLoadTags: (Boolean) -> Unit,
     onPrepareTags: () -> Unit,
     onAddTag: (name: String, onDone: () -> Unit) -> Unit,
@@ -400,6 +403,9 @@ fun HomeScreen(
                             onSaveBucket = onSaveBucket,
                             onArchiveBucket = onArchiveBucket,
                             onDeleteBucket = onDeleteBucket,
+                            onEditDeposit = onEditSavingDeposit,
+                            onRemoveDeposit = onRemoveSavingDeposit,
+                            onUndoMovement = onUndoSavingMovement,
                         )
                         NavDest.Wallets -> WalletsScreen(
                             wallets = state.wallets,

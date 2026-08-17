@@ -197,6 +197,9 @@ private fun App(vm: AppViewModel, onGoogle: () -> Unit) {
             onSaveBucket = vm::saveSavingBucket,
             onArchiveBucket = vm::archiveSavingBucket,
             onDeleteBucket = vm::deleteSavingBucket,
+            onEditSavingDeposit = vm::editSavingDeposit,
+            onRemoveSavingDeposit = vm::removeSavingDeposit,
+            onUndoSavingMovement = vm::undoSavingMovement,
         )
     }
 }

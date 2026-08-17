@@ -437,6 +437,37 @@ public class SavingsTests
         Assert.Single(period.ManualSavingDeposits()); // only the AllocateToSavings deposit qualifies
     }
 
+    /// <summary>
+    /// The bug behind "adding to a planned expense bucket isn't logged in the activity, so I can't edit or undo it".
+    /// A deposit used to stop counting as manual the moment it carried a note — and naming what you are saving for
+    /// is the normal case on a sinking fund, so the row vanished exactly where the feature was most used. The sign
+    /// and the structural links are what separate a system allocation from a person's; the note never did.
+    /// </summary>
+    [Fact]
+    public void A_deposit_that_carries_a_note_is_still_editable_and_removable()
+    {
+        var account = new Account("Home", Eur);
+        var insurance = account.AddSavingCategory("Car insurance");
+        var member = account.AddMember(Guid.NewGuid(), "M");
+        var period = account.StartPeriod(new DateOnly(2026, 1, 1), new DateOnly(2026, 1, 31));
+        period.Deposit(member.UserId, M(1000));
+
+        var noted = period.AllocateToSavings(insurance.Id, M(120), new DateOnly(2026, 1, 6), "March renewal");
+
+        var listed = Assert.Single(period.ManualSavingDeposits());
+        Assert.Equal(noted.Id, listed.Id);
+
+        // …and both actions the activity row offers actually reach it. The edit is append-only — it mints a fresh
+        // allocation rather than mutating the old one — so the row has to be re-read before it can be removed.
+        period.EditSavingDeposit(noted.Id, M(150));
+        var edited = Assert.Single(period.ManualSavingDeposits());
+        Assert.Equal(M(150), edited.Amount);
+        Assert.NotEqual(noted.Id, edited.Id);
+
+        period.RemoveSavingAllocation(edited.Id);
+        Assert.Empty(period.ManualSavingDeposits());
+    }
+
     [Fact]
     public void Looking_back_at_a_closed_period_shows_what_the_bucket_held_then()
     {

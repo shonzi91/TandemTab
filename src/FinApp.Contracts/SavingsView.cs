@@ -89,6 +89,38 @@ public record SavingBucketForecastDto(
 /// <summary>One manual "Add to savings" deposit this period (editable/removable), the bucket name resolved.</summary>
 public record SavingDepositRowDto(Guid Id, Guid BucketId, string BucketName, decimal Amount, DateOnly Date, string? Note);
 
+/// <summary>
+/// One movement of money that is already saved: deploying a bucket to a fund, maturing it into a budget, or moving
+/// it to another bucket. Distinct from a <see cref="SavingDepositRowDto"/>, which is money arriving.
+/// <para>
+/// ★ These existed only as commands until this shipped. Three endpoints could create a movement and one could undo
+/// it, but no read returned any — so a thin client had nothing to draw an undo control against, and the delete route
+/// was unreachable by construction. The thick client did not notice because it reads the allocations straight out of
+/// the snapshot it carries.
+/// </para>
+/// </summary>
+/// <param name="Kind">One of <c>disbursed</c>, <c>to-budget</c>, <c>transfer-out</c>, <c>transfer-in</c>,
+/// <c>spent</c>.</param>
+/// <param name="Amount">Always positive — the direction is carried by <paramref name="Kind"/>, not by the sign, so a
+/// client never has to decide whether a minus means "out of this bucket" or "off the total".</param>
+/// <param name="Counterpart">Where it went or came from: the budget category, the other bucket, or null for a
+/// disbursement (which leaves savings altogether).</param>
+/// <param name="Undoable">Whether <c>DELETE /savings/movements/{id}</c> will actually accept it — the server
+/// answers this rather than each client guessing from the kind. A <c>spent</c> row is <b>not</b> undoable here: it
+/// is undone by deleting the expense that caused it, and offering a control whose only outcome is a 400 is worse
+/// than offering none. A <c>transfer-in</c> would succeed, but it is the outgoing half's reversal wearing a second
+/// button, so only one of the pair carries it.</param>
+public record SavingMovementRowDto(
+    Guid Id,
+    Guid BucketId,
+    string BucketName,
+    string Kind,
+    decimal Amount,
+    DateOnly Date,
+    string? Note,
+    string? Counterpart,
+    bool Undoable);
+
 /// <summary>The whole Goals surface in one read: the header figures, the amount still free to set aside
 /// (<see cref="AvailableToSave"/>, the add-to-savings cap), the reallocation cap
 /// (<see cref="MaxAdditionalSavings"/>, the most that can be *moved into* savings without breaking the plan — what
@@ -100,9 +132,15 @@ public record SavingsViewDto(
     decimal AvailableToSave,
     decimal MaxAdditionalSavings,
     IReadOnlyList<SavingBucketDto> Buckets,
-    IReadOnlyList<SavingDepositRowDto> Deposits)
+    IReadOnlyList<SavingDepositRowDto> Deposits,
+    // Trailing-optional so an older client deserializes this payload unchanged.
+    IReadOnlyList<SavingMovementRowDto>? Movements = null)
 {
-    public static readonly SavingsViewDto Empty = new(0, "", AccountOverviewDto.Empty, 0m, 0m, [], []);
+    /// <summary>This period's movements of already-saved money, newest first — never null, because a period with
+    /// no movements is an empty activity list rather than a missing one.</summary>
+    public IReadOnlyList<SavingMovementRowDto> MovementRows => Movements ?? [];
+
+    public static readonly SavingsViewDto Empty = new(0, "", AccountOverviewDto.Empty, 0m, 0m, [], [], []);
 }
 
 /// <summary>The delta a savings mutation returns: new <see cref="Version"/>, affected entity id, and the whole

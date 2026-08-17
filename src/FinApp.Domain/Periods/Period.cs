@@ -614,12 +614,22 @@ public sealed class Period : Entity
     }
 
     /// <summary>
-    /// A plain "Add to savings" deposit: a positive, un-noted allocation not linked to an expense. (Carryover,
-    /// transfers, budget moves and saving→expense drawdowns all carry a note or a source link, so they're excluded.)
+    /// A plain "Add to savings" deposit: a positive allocation carrying none of the structural marks a
+    /// system-generated one does.
+    /// <para>
+    /// ★ The note is deliberately <b>not</b> part of this test, though it used to be. Every allocation the domain
+    /// creates for itself is either negative (a saving→expense drawdown, a move to budget, the outgoing half of a
+    /// transfer) or carries a link (<see cref="SavingAllocation.SourceExpenseId"/>,
+    /// <see cref="SavingAllocation.BudgetCategoryId"/>, <see cref="SavingAllocation.TransferPairId"/>) — so the sign
+    /// and the links already exclude all of them, and the note added nothing. What it <i>did</i> do was exclude a
+    /// real user's deposit the moment they typed a note on it: the row vanished from the activity list, and with it
+    /// the only route to editing or undoing it. Naming the thing you are saving for is the normal case on a
+    /// planned-expense bucket, so the feature was most likely to disappear exactly where it was most used.
+    /// </para>
     /// </summary>
     private static bool IsManualDeposit(SavingAllocation a) =>
         !a.Amount.IsNegative && !a.Amount.IsZero && a.SourceExpenseId is null
-        && a.BudgetCategoryId is null && a.TransferPairId is null && string.IsNullOrEmpty(a.Note);
+        && a.BudgetCategoryId is null && a.TransferPairId is null;
 
     /// <summary>This period's manual savings deposits (the ones a member can edit or remove).</summary>
     public IEnumerable<SavingAllocation> ManualSavingDeposits() => _savingAllocations.Where(IsManualDeposit);

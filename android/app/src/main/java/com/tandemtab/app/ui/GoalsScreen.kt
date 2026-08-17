@@ -71,6 +71,9 @@ fun GoalsScreen(
     onSaveBucket: (bucketId: String?, req: com.tandemtab.app.data.SaveSavingBucketRequest, onDone: () -> Unit) -> Unit,
     onArchiveBucket: (bucketId: String, archived: Boolean, onDone: () -> Unit) -> Unit,
     onDeleteBucket: (bucketId: String, onDone: () -> Unit) -> Unit,
+    onEditDeposit: (allocationId: String, amount: Double, onDone: () -> Unit) -> Unit,
+    onRemoveDeposit: (allocationId: String, onDone: () -> Unit) -> Unit,
+    onUndoMovement: (allocationId: String, onDone: () -> Unit) -> Unit,
 ) {
     val tandem = LocalTandemColors.current
     val fmt = rememberGoalsMoney(goals.currency)
@@ -149,6 +152,8 @@ fun GoalsScreen(
                     }
                 }
             }
+
+            SavingsActivity(goals, fmt, onEditDeposit, onRemoveDeposit, onUndoMovement)
 
             // Archived buckets are kept out of the way but reachable — archiving is the answer when a delete is
             // refused, so hiding them with no way back would make that advice a dead end.

@@ -255,6 +255,37 @@ class TandemTabApi(
     suspend fun allocateSaving(accountId: String, req: AddSavingDepositRequest): SavingsMutationDto =
         authedPost("/accounts/$accountId/savings/deposits", req).body()
 
+    /** Change a deposit's amount. ⚠️ Append-only server-side: it mints a NEW allocation id, so anything holding
+     *  the old one (a row mid-edit, a pending undo) is stale the moment this returns. Re-read, don't patch. */
+    suspend fun editSavingDeposit(accountId: String, allocationId: String, amount: Double): SavingsMutationDto =
+        authedPut("/accounts/$accountId/savings/deposits/$allocationId", EditSavingDepositRequest(amount)).body()
+
+    suspend fun deleteSavingDeposit(accountId: String, allocationId: String): SavingsMutationDto =
+        authedDelete("/accounts/$accountId/savings/deposits/$allocationId").body()
+
+    // --- Movements of money that is already saved ------------------------------------------------------
+
+    /** Deploy a bucket to its purpose (a loan prepayment, the bill it was filling up for). Money leaves the account
+     *  but is NOT consumption, so it never enters the expenses ledger. */
+    suspend fun disburseSaving(accountId: String, req: DisburseSavingRequest): MutationResultDto =
+        authedPost("/accounts/$accountId/savings/disburse", req).body()
+
+    /** Mature a bucket into this period's budget for a category. */
+    suspend fun savingToBudget(accountId: String, req: ConvertSavingToBudgetRequest): MutationResultDto =
+        authedPost("/accounts/$accountId/savings/to-budget", req).body()
+
+    /** Move money from one bucket to another. Total-preserving. */
+    suspend fun transferSavings(accountId: String, req: MoveSavingsRequest): MutationResultDto =
+        authedPost("/accounts/$accountId/savings/transfer", req).body()
+
+    /** Undo a movement. Only call it for a row the server marked `undoable` — the others are refused by design. */
+    suspend fun removeSavingMovement(accountId: String, allocationId: String): MutationResultDto =
+        authedDelete("/accounts/$accountId/savings/movements/$allocationId").body()
+
+    /** Release a linked savings pot into a trip's budget, ahead of the journey. */
+    suspend fun useTripSavings(accountId: String, tripId: String, req: UseTripSavingsRequest): MutationResultDto =
+        authedPost("/accounts/$accountId/trips/$tripId/use-savings", req).body()
+
     /** Draw a bucket down as a real expense (also lands in Spending). Returns version + the new expense id. */
     suspend fun spendFromSavings(accountId: String, req: SpendFromSavingsRequest): MutationResultDto =
         authedPost("/accounts/$accountId/savings/spend", req).body()
