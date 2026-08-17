@@ -81,6 +81,8 @@ private data class ExpenseDraft(
     // Which journey this row is filed to, if any. Carried per staged row rather than per sheet, so a batch can
     // hold both a holiday dinner and the ordinary shopping done the same day.
     val tripId: String? = null,
+    // Its label. Per row for the same reason as the trip — a batch is rarely all one thing.
+    val tagId: String? = null,
 )
 
 private enum class AddMode { Expense, Income }
@@ -164,10 +166,13 @@ fun AddSheet(
     // of departure is not holiday spending until someone says the trip has started.
     var tripId by remember(editing, trips.live?.id) { mutableStateOf(editing?.tripId ?: trips.live?.id) }
 
+    // The row's label. One tag per expense is the model, so this is a single id rather than a set.
+    var tagId by remember(editing) { mutableStateOf(editing?.tagIds?.firstOrNull()) }
+
     val parsed = amountText.replace(',', '.').toDoubleOrNull()?.takeIf { it > 0 }
     val currentValid = parsed != null && categoryId != null && fundId != null
     fun currentDraft(): ExpenseDraft? =
-        if (currentValid) ExpenseDraft(categoryId!!, fundId!!, parsed!!, note.trim(), date, tripId) else null
+        if (currentValid) ExpenseDraft(categoryId!!, fundId!!, parsed!!, note.trim(), date, tripId, tagId) else null
 
     val pendingCount = staged.size + (if (currentValid) 1 else 0)
     val pendingTotal = staged.sumOf { it.amount } + (if (currentValid) parsed!! else 0.0)
@@ -197,13 +202,16 @@ fun AddSheet(
         when {
             editingMode -> {
                 val d = currentDraft() ?: run { hint = "Enter an amount, category and fund."; return }
-                onEditExpense(editing!!.id, AddExpenseRequest(d.categoryId, d.amount, d.fundId, d.date, d.note.ifBlank { null })) { onDismiss() }
+                // ⚠️ tagId MUST be sent back even when unchanged. The server's expense edit clears the tag on an
+                // omitted value (unlike the time, which it deliberately carries across), so the call that used to
+                // omit it was stripping the label off any row whose amount was corrected here.
+                onEditExpense(editing!!.id, AddExpenseRequest(d.categoryId, d.amount, d.fundId, d.date, d.note.ifBlank { null }, tagId = d.tagId)) { onDismiss() }
             }
             mode == AddMode.Expense -> {
                 val batch = buildList {
                     addAll(staged)
                     currentDraft()?.let { add(it) }
-                }.map { AddExpenseRequest(it.categoryId, it.amount, it.fundId, it.date, it.note.ifBlank { null }, tripId = it.tripId) }
+                }.map { AddExpenseRequest(it.categoryId, it.amount, it.fundId, it.date, it.note.ifBlank { null }, tagId = it.tagId, tripId = it.tripId) }
                 if (batch.isEmpty()) { hint = "Enter an amount."; return }
                 onSaveExpenses(batch) { staged = emptyList(); amountText = ""; note = ""; onDismiss() }
             }
@@ -423,6 +431,39 @@ fun AddSheet(
                                     "now counts later.",
                                 fontSize = 12.sp, color = tandem.muted,
                             )
+                        }
+                    }
+
+                    // Label. Offered on the edit form too, unlike the trip row: the server's expense edit DOES
+                    // carry a tag, and the picker is the only way to correct one that was mis-filed.
+                    // Trip labels are left out at home — "Tickets & tours" is noise when you're logging groceries —
+                    // and folded in only once the row is filed to a journey, which is the axis its recap splits on.
+                    run {
+                        val offered = spending.tags.filter { !it.tripTag || tripId != null }
+                        if (offered.isNotEmpty()) {
+                            Spacer(Modifier.height(14.dp))
+                            FieldLabel("Label")
+                            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                PickChip(label = "No label", icon = null, selected = tagId == null) { tagId = null }
+                                offered.forEach { t ->
+                                    PickChip(label = t.name, icon = t.icon ?: "tag", catName = t.name, selected = tagId == t.id) {
+                                        tagId = if (tagId == t.id) null else t.id
+                                        // F2: a bound tag files the expense for you. A DEFAULT at entry time, not a
+                                        // rule — it only fires on adding, so correcting a label can't silently move
+                                        // an already-filed row into a different budget.
+                                        if (!editingMode && tagId == t.id) t.categoryId?.let { categoryId = it }
+                                    }
+                                }
+                            }
+                            val bound = spending.tags.firstOrNull { it.id == tagId }?.categoryId
+                            if (!editingMode && bound != null && bound == categoryId) {
+                                Spacer(Modifier.height(6.dp))
+                                Text(
+                                    "Filed into ${spending.categories.firstOrNull { it.id == bound }?.name ?: "its category"} " +
+                                        "because of this label — change the category above if that's not right.",
+                                    fontSize = 12.sp, color = tandem.muted,
+                                )
+                            }
                         }
                     }
 

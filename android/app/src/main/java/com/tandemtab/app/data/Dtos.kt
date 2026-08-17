@@ -143,6 +143,31 @@ data class TagOptionDto(
     val tripTag: Boolean = false,
 )
 
+/** A tag as the MANAGE surface reads it, which is a different question from the picker's.
+ *  `archived` is the whole reason this is a separate read: the picker's list is built from the server's active tags,
+ *  so a client working only from that could archive a label and never see it again. `uses` is how many expenses
+ *  carry it — removing a tag is a HARD delete, so that number is what makes the confirm a real question. */
+@Serializable
+data class TagRowDto(
+    val id: String,
+    val name: String,
+    val icon: String? = null,
+    val categoryId: String? = null,
+    val categoryName: String? = null,
+    val tripTag: Boolean = false,
+    val archived: Boolean = false,
+    val uses: Int = 0,
+)
+
+/** Every tag in the account, archived included, plus the categories the F2 binding picker needs — so the manage
+ *  sheet is self-sufficient and does not depend on Spending having been loaded first. */
+@Serializable
+data class TagsViewDto(
+    val version: Long = 0,
+    val tags: List<TagRowDto> = emptyList(),
+    val categories: List<CategoryOptionDto> = emptyList(),
+)
+
 @Serializable
 data class SpendingViewDto(
     val version: Long = 0,
@@ -526,9 +551,31 @@ data class EditCategoryRequest(
     val essential: Boolean? = null,
 )
 
-/** Archive (hide) or restore a category/fund/bucket. Reversible; keeps history. */
+/** Archive (hide) or restore a category/fund/bucket/tag. Reversible; keeps history. */
 @Serializable
 data class SetArchivedRequest(val archived: Boolean)
+
+// --- Tag management (mirrors FinApp.Contracts) --------------------------------------------------------
+
+@Serializable
+data class CreateTagRequest(val name: String, val icon: String? = null, val isTripTag: Boolean = false)
+
+/** The tag edit is a FULL replace on the server: an omitted `categoryId` CLEARS the F2 binding rather than
+ *  leaving it alone, so the editor must always send back what it read. */
+@Serializable
+data class EditTagRequest(val name: String, val icon: String? = null, val categoryId: String? = null)
+
+/** Label an expense (null clears it). One tag per expense is the model, though the stored field is a list. */
+@Serializable
+data class SetExpenseTagRequest(val tagId: String? = null)
+
+/** One seeded trip label. The client sends its own localized names; the server ignores the whole call if the set
+ *  already exists, so the split can't fork into two parallel label sets. */
+@Serializable
+data class TripTagSeed(val name: String, val icon: String? = null, val categoryId: String? = null)
+
+@Serializable
+data class SeedTripTagsRequest(val tags: List<TripTagSeed>)
 
 // --- Add-expense write flow (mirrors FinApp.Contracts) ------------------------------------------------
 // POST /accounts/{id}/expenses. The member is the caller and FundSynced is derived server-side, so neither

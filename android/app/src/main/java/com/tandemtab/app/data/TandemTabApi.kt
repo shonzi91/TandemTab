@@ -195,6 +195,37 @@ class TandemTabApi(
     suspend fun setExpenseTrip(accountId: String, expenseId: String, tripId: String?): MutationResultDto =
         authedPut("/accounts/$accountId/expenses/$expenseId/trip", SetExpenseTripRequest(tripId)).body()
 
+    // --- Tags -----------------------------------------------------------------------------------------
+    // Two reads, deliberately: /spending carries the PICKER's list (active tags only), this one carries the
+    // MANAGER's (archived included). Reading the picker's list here would make archiving a one-way door.
+
+    /** Every tag in the account, archived ones last, with its use count and the categories for the F2 picker. */
+    suspend fun tags(accountId: String): TagsViewDto = authedGet("/accounts/$accountId/tags").body()
+
+    suspend fun createTag(accountId: String, name: String, icon: String?, isTripTag: Boolean = false): MutationResultDto =
+        authedPost("/accounts/$accountId/tags", CreateTagRequest(name, icon, isTripTag)).body()
+
+    /** A full replace — pass the binding back even when it is unchanged, or editing a name clears it. */
+    suspend fun editTag(accountId: String, tagId: String, name: String, icon: String?, categoryId: String?): MutationResultDto =
+        authedPut("/accounts/$accountId/tags/$tagId", EditTagRequest(name, icon, categoryId)).body()
+
+    suspend fun setTagArchived(accountId: String, tagId: String, archived: Boolean): MutationResultDto =
+        authedPut("/accounts/$accountId/tags/$tagId/archived", SetArchivedRequest(archived)).body()
+
+    /** Hard delete. Expenses carrying the tag keep a now-dangling id, which is why the UI confirms with the count. */
+    suspend fun deleteTag(accountId: String, tagId: String): MutationResultDto =
+        authedDelete("/accounts/$accountId/tags/$tagId").body()
+
+    /** Label an existing expense (null clears). Its own call, like the trip link, so relabelling never re-posts an
+     *  amount — the full expense edit refuses rows in closed periods. */
+    suspend fun setExpenseTag(accountId: String, expenseId: String, tagId: String?): MutationResultDto =
+        authedPut("/accounts/$accountId/expenses/$expenseId/tag", SetExpenseTagRequest(tagId)).body()
+
+    /** Seed the trip label set once. Idempotent server-side, so a second call (or a second language) is a no-op
+     *  rather than a forked parallel set. */
+    suspend fun seedTripTags(accountId: String, tags: List<TripTagSeed>): MutationResultDto =
+        authedPost("/accounts/$accountId/trip-tags", SeedTripTagsRequest(tags)).body()
+
     /** Per-category budget coverage (allocated / spent / remaining) for the Spending → Categories view. */
     suspend fun budgets(accountId: String, period: Int? = null): BudgetsViewDto = authedGet("/accounts/$accountId/budgets${periodQ(period)}").body()
 

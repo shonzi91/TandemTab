@@ -39,9 +39,12 @@ import com.tandemtab.app.data.UpdateRecurringRequest
 import com.tandemtab.app.data.SavingsViewDto
 import com.tandemtab.app.data.CreateTripRequest
 import com.tandemtab.app.data.EditTripRequest
+import com.tandemtab.app.data.TagOptionDto
+import com.tandemtab.app.data.TagRowDto
 import com.tandemtab.app.data.TripDetailDto
 import com.tandemtab.app.data.TripDto
 import com.tandemtab.app.data.TripTagDto
+import com.tandemtab.app.data.TripTagSeed
 import com.tandemtab.app.data.SpendFromSavingsRequest
 import com.tandemtab.app.data.TransferFundsRequest
 import com.tandemtab.app.data.CreateFundRequest
@@ -118,6 +121,7 @@ data class UiState(
     val alerts: List<NotificationDto> = emptyList(),
     val spending: SpendingUi = SpendingUi(),
     val trips: TripsUi = TripsUi(),
+    val tags: TagsUi = TagsUi(),
     val goals: GoalsUi = GoalsUi(),
     val wallets: WalletsUi = WalletsUi(),
     val health: HealthUi = HealthUi(),
@@ -175,6 +179,10 @@ data class SpendingUi(
     val expenses: List<ExpenseDto> = emptyList(),
     val categories: List<CategoryOptionDto> = emptyList(),
     val funds: List<FundOptionDto> = emptyList(),
+    // The PICKER's tag list — active tags only, as the server builds it. S103 added this to the wire DTO but
+    // nothing ever stored it, so every tag the server sent was parsed and dropped: no chips on a row, no picker.
+    // The manage surface reads its own list instead; see [TagsUi] for why the two must not be shared.
+    val tags: List<TagOptionDto> = emptyList(),
     val recent: List<RecentExpenseDto> = emptyList(),
     // Per-category budget coverage for the Categories view (fetched alongside /spending).
     val budgets: List<BudgetRowDto> = emptyList(),
@@ -214,6 +222,23 @@ data class TripsUi(
     /** Dates arrived, departure unconfirmed — the trip waiting for its one tap. */
     val awaitingStart: TripDto? get() = trips.firstOrNull { it.isAwaitingStart }
 }
+
+/**
+ * Lazy-loaded state for the manage-tags sheet.
+ *
+ * ⚠️ Deliberately its OWN read rather than [SpendingUi.tags]. That list is the picker's, and the server builds it
+ * from active tags only — so a manage sheet fed from it could archive a label and then never see it again, which
+ * makes the archive a delete and leaves Restore with nothing to act on. Two questions, two reads.
+ */
+data class TagsUi(
+    val loading: Boolean = false,
+    val loaded: Boolean = false,
+    val error: String? = null,
+    val tags: List<TagRowDto> = emptyList(),
+    val categories: List<CategoryOptionDto> = emptyList(),
+    val saving: Boolean = false,
+    val saveError: String? = null,
+)
 
 /** Lazy-loaded state for the Goals tab (savings buckets: goals/debts/investments/sinking funds). */
 data class GoalsUi(
@@ -768,7 +793,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     it.copy(spending = it.spending.copy(
                         loading = false, loaded = true, error = null,
                         currency = v.currency, spent = v.overview.spent, expenses = v.expenses,
-                        categories = v.categories, funds = v.funds,
+                        categories = v.categories, funds = v.funds, tags = v.tags,
                     ))
                 }
                 // Budget coverage rides alongside for the Categories view (best-effort — don't fail the tab on it).
@@ -908,7 +933,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         onDone: () -> Unit,
     ) = tripWrite(onDone, "Couldn't save the trip.") { accountId ->
         if (tripId == null) {
-            api.createTrip(accountId, CreateTripRequest(name, from, to, destination?.ifBlank { null }, icon))
+            val created = api.createTrip(accountId, CreateTripRequest(name, from, to, destination?.ifBlank { null }, icon))
+            // Seed the trip label set on the first trip, mirroring the web. The server ignores the call once the
+            // set exists, so this is safe to attempt every time — but it is guarded anyway, because a needless
+            // round trip on every trip creation is a needless round trip.
+            if (_state.value.trips.tripTags.isEmpty()) {
+                runCatching { api.seedTripTags(accountId, tripTagSeeds()) }
+            }
+            created
         } else {
             api.editTrip(accountId, tripId, EditTripRequest(
                 name = name, from = from, to = to, destination = destination?.ifBlank { null }, icon = icon,
@@ -1528,7 +1560,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     _state.update {
                         it.copy(spending = it.spending.copy(
                             loading = false, loaded = true, error = null, currency = v.currency,
-                            spent = v.overview.spent, expenses = v.expenses, categories = v.categories, funds = v.funds,
+                            spent = v.overview.spent, expenses = v.expenses, categories = v.categories, funds = v.funds, tags = v.tags,
                         ))
                     }
                 }
@@ -1721,7 +1753,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 _state.update {
                     it.copy(spending = it.spending.copy(
                         saving = false, saveError = null,
-                        categories = v.categories, expenses = v.expenses, funds = v.funds,
+                        categories = v.categories, expenses = v.expenses, funds = v.funds, tags = v.tags,
                     ))
                 }
                 onDone(mut.entityId)
@@ -1749,12 +1781,135 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 _state.update {
                     it.copy(spending = it.spending.copy(
                         saving = false, saveError = null,
-                        categories = v.categories, expenses = v.expenses, funds = v.funds,
+                        categories = v.categories, expenses = v.expenses, funds = v.funds, tags = v.tags,
                     ))
                 }
                 onDone()
             } catch (e: Exception) {
                 _state.update { it.copy(spending = it.spending.copy(saving = false, saveError = e.message ?: "Couldn't save the category.")) }
+            }
+        }
+    }
+
+    /**
+     * The six trip labels, matching the web's set exactly — a split drawn on a different axis on each surface is
+     * two different recaps of the same journey. Each is bound to a category when the account happens to have one
+     * by that name, so applying "Travel" files into Transport without a second decision.
+     *
+     * Icon names, not emoji: these chips sit beside category chips drawn from the same line-icon set, and a row of
+     * full-colour emoji next to them reads as a different app.
+     */
+    private fun tripTagSeeds(): List<TripTagSeed> {
+        val cats = _state.value.spending.categories
+        fun cat(vararg names: String): String? =
+            cats.firstOrNull { c -> names.any { it.equals(c.name, ignoreCase = true) } }?.id
+        return listOf(
+            TripTagSeed("Stay", "house", cat("Housing", "Home", "Rent")),
+            TripTagSeed("Travel", "plane", cat("Transport", "Travel")),
+            TripTagSeed("Food & drink", "utensils", cat("Food", "Groceries")),
+            TripTagSeed("Tickets & tours", "film", cat("Fun", "Entertainment", "Leisure")),
+            TripTagSeed("Shopping", "bag", cat("Shopping")),
+            TripTagSeed("Other", "tag", null),
+        )
+    }
+
+    // --- Tag management (the Spending ⋯ → "Manage tags" sheet) ------------------------------------------
+
+    /** Load every tag (archived included) the first time the sheet opens, or when forced after a write. */
+    fun loadTags(force: Boolean = false) {
+        val accountId = _state.value.selectedAccountId ?: return
+        if (!force && (_state.value.tags.loaded || _state.value.tags.loading)) return
+        _state.update { it.copy(tags = it.tags.copy(loading = true, error = null)) }
+        viewModelScope.launch {
+            try {
+                val v = api.tags(accountId)
+                _state.update {
+                    it.copy(tags = it.tags.copy(
+                        loading = false, loaded = true, error = null,
+                        tags = v.tags, categories = v.categories,
+                    ))
+                }
+            } catch (e: Exception) {
+                _state.update { it.copy(tags = it.tags.copy(loading = false, error = e.message ?: "Couldn't load your tags.")) }
+            }
+        }
+    }
+
+    /** Clear a stale error before opening the sheet, so last time's failure isn't this time's greeting. */
+    fun prepareTags() = _state.update { it.copy(tags = it.tags.copy(saveError = null)) }
+
+    fun createTag(name: String, icon: String?, onDone: () -> Unit) =
+        tagMutation(onDone, "Couldn't add the tag.") { acct -> api.createTag(acct, name.trim(), icon?.ifBlank { null }) }
+
+    /**
+     * ⚠️ A FULL REPLACE on the server: [icon] and [categoryId] must carry the tag's current values when they
+     * aren't being changed, or renaming a tag silently drops its emoji and its filing binding. Fifth full-replace
+     * trap in this port — the editor reads both out of the row it opened and hands them straight back.
+     */
+    fun editTag(tagId: String, name: String, icon: String?, categoryId: String?, onDone: () -> Unit) =
+        tagMutation(onDone, "Couldn't save the tag.") { acct ->
+            api.editTag(acct, tagId, name.trim(), icon?.ifBlank { null }, categoryId)
+        }
+
+    fun setTagArchived(tagId: String, archived: Boolean, onDone: () -> Unit = {}) =
+        tagMutation(onDone, "Couldn't archive the tag.") { acct -> api.setTagArchived(acct, tagId, archived) }
+
+    fun deleteTag(tagId: String, onDone: () -> Unit) =
+        tagMutation(onDone, "Couldn't remove the tag.") { acct -> api.deleteTag(acct, tagId) }
+
+    /**
+     * One shape for every tag write: flag saving, run it, then re-read BOTH lists.
+     *
+     * ★ /spending has to be re-read as well as /tags. The tags a picker offers and the tag names printed on expense
+     * rows both come from that payload, so renaming a label and refreshing only this sheet leaves the old name on
+     * every row behind it — the same shape as S103's stale trip card, where a screen's inputs are owned elsewhere.
+     */
+    private fun tagMutation(onDone: () -> Unit, fallback: String, action: suspend (String) -> Any) {
+        val accountId = _state.value.selectedAccountId ?: return
+        _state.update { it.copy(tags = it.tags.copy(saving = true, saveError = null)) }
+        viewModelScope.launch {
+            try {
+                action(accountId)
+                val v = api.tags(accountId)
+                val sp = runCatching { api.spending(accountId, _state.value.selectedPeriod) }.getOrNull()
+                _state.update {
+                    it.copy(
+                        tags = it.tags.copy(
+                            saving = false, saveError = null, loaded = true, error = null,
+                            tags = v.tags, categories = v.categories,
+                        ),
+                        // Best-effort: the tag write already succeeded, so a failed refresh of the other list is a
+                        // stale row, not a failed save. Reporting it as a save error would be a lie.
+                        spending = if (sp == null) it.spending else it.spending.copy(
+                            tags = sp.tags, expenses = sp.expenses, categories = sp.categories, funds = sp.funds,
+                        ),
+                    )
+                }
+                onDone()
+            } catch (e: Exception) {
+                _state.update { it.copy(tags = it.tags.copy(saving = false, saveError = e.message ?: fallback)) }
+            }
+        }
+    }
+
+    /** Label an existing expense straight from its row (null clears). Re-reads /spending so the row redraws. */
+    fun setExpenseTag(expenseId: String, tagId: String?, onDone: () -> Unit = {}) {
+        val accountId = _state.value.selectedAccountId ?: return
+        _state.update { it.copy(spending = it.spending.copy(saving = true, saveError = null)) }
+        viewModelScope.launch {
+            try {
+                api.setExpenseTag(accountId, expenseId, tagId)
+                val v = api.spending(accountId, _state.value.selectedPeriod)
+                _state.update {
+                    it.copy(spending = it.spending.copy(
+                        saving = false, saveError = null,
+                        expenses = v.expenses, tags = v.tags, categories = v.categories, funds = v.funds,
+                    ))
+                }
+                refreshTripsIfLoaded()   // a trip's split is drawn on the tag axis
+                onDone()
+            } catch (e: Exception) {
+                _state.update { it.copy(spending = it.spending.copy(saving = false, saveError = e.message ?: "Couldn't label the expense.")) }
             }
         }
     }

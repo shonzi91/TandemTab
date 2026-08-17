@@ -182,6 +182,12 @@ fun HomeScreen(
     onAttachExpenseToTrip: (String, String?, () -> Unit) -> Unit,
     onOpenTrip: (String?) -> Unit,
     onPrepareTrip: () -> Unit,
+    onLoadTags: (Boolean) -> Unit,
+    onPrepareTags: () -> Unit,
+    onAddTag: (name: String, onDone: () -> Unit) -> Unit,
+    onEditTag: (id: String, name: String, icon: String?, categoryId: String?, onDone: () -> Unit) -> Unit,
+    onSetTagArchived: (id: String, archived: Boolean) -> Unit,
+    onDeleteTag: (id: String, onDone: () -> Unit) -> Unit,
     onClearEditing: () -> Unit,
     onAddExpenses: (List<com.tandemtab.app.data.AddExpenseRequest>, () -> Unit) -> Unit,
     onEditExpense: (String, com.tandemtab.app.data.AddExpenseRequest, () -> Unit) -> Unit,
@@ -353,6 +359,7 @@ fun HomeScreen(
                         NavDest.Spending -> SpendingScreen(
                             spending = state.spending,
                             trips = state.trips,
+                            tags = state.tags,
                             onRetry = { onLoadSpending(true) },
                             onEdit = onBeginEditExpense,
                             onDelete = onDeleteExpense,
@@ -369,6 +376,12 @@ fun HomeScreen(
                             onAttachExpenseToTrip = onAttachExpenseToTrip,
                             onOpenTrip = onOpenTrip,
                             onPrepareTrip = onPrepareTrip,
+                            onLoadTags = { onLoadTags(false) },
+                            onPrepareTags = onPrepareTags,
+                            onAddTag = onAddTag,
+                            onEditTag = onEditTag,
+                            onSetTagArchived = onSetTagArchived,
+                            onDeleteTag = onDeleteTag,
                         )
                         NavDest.Goals -> GoalsScreen(
                             goals = state.goals,

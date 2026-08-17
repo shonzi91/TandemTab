@@ -61,9 +61,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.runtime.LaunchedEffect
 import com.tandemtab.app.SpendingUi
+import com.tandemtab.app.TagsUi
 import com.tandemtab.app.TripsUi
 import com.tandemtab.app.data.BudgetRowDto
 import com.tandemtab.app.data.ExpenseDto
+import com.tandemtab.app.data.TagOptionDto
 import com.tandemtab.app.ui.theme.LocalTandemColors
 import com.tandemtab.app.ui.theme.TandemIcons
 import java.time.LocalDate
@@ -80,6 +82,7 @@ private enum class SpendView { Categories, ByDate, Trips }
 fun SpendingScreen(
     spending: SpendingUi,
     trips: TripsUi,
+    tags: TagsUi,
     onRetry: () -> Unit,
     onEdit: (ExpenseDto) -> Unit,
     onDelete: (ExpenseDto) -> Unit,
@@ -97,11 +100,19 @@ fun SpendingScreen(
     onAttachExpenseToTrip: (expenseId: String, tripId: String?, onDone: () -> Unit) -> Unit,
     onOpenTrip: (tripId: String?) -> Unit,
     onPrepareTrip: () -> Unit,
+    onLoadTags: () -> Unit,
+    onPrepareTags: () -> Unit,
+    onAddTag: (name: String, onDone: () -> Unit) -> Unit,
+    onEditTag: (id: String, name: String, icon: String?, categoryId: String?, onDone: () -> Unit) -> Unit,
+    onSetTagArchived: (id: String, archived: Boolean) -> Unit,
+    onDeleteTag: (id: String, onDone: () -> Unit) -> Unit,
 ) {
     val tandem = LocalTandemColors.current
     val fmt = rememberMoney(spending.currency)
     var view by remember { mutableStateOf(SpendView.ByDate) }
     var showManage by remember { mutableStateOf(false) }
+    var showTags by remember { mutableStateOf(false) }
+    var menuOpen by remember { mutableStateOf(false) }
 
     // Trips are their own read (they span periods, so they don't ride along with /spending) — fetched the first
     // time the segment is opened rather than on every visit to the tab.
@@ -121,16 +132,31 @@ fun SpendingScreen(
             }
 
         else -> {
-            // Manage-categories entry (mirrors the web's Spending ⋯), right-aligned above the view toggle.
+            // The Spending ⋯ overflow, mirroring the web's: one entry per manageable list rather than a row of
+            // chips that grows every time another one lands.
             Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Spacer(Modifier.weight(1f))
-                Row(
-                    Modifier.clip(RoundedCornerShape(8.dp)).clickable { showManage = true }.padding(horizontal = 6.dp, vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Icon(TandemIcons.Sliders, contentDescription = null, tint = tandem.muted, modifier = Modifier.size(16.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text("Manage categories", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = tandem.muted)
+                Box {
+                    Row(
+                        Modifier.clip(RoundedCornerShape(8.dp)).clickable { menuOpen = true }.padding(horizontal = 6.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(TandemIcons.Sliders, contentDescription = "More", tint = tandem.muted, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Manage", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = tandem.muted)
+                    }
+                    DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                        DropdownMenuItem(
+                            text = { Text("Manage categories") },
+                            leadingIcon = { Icon(TandemIcons.Sliders, null, modifier = Modifier.size(18.dp)) },
+                            onClick = { menuOpen = false; showManage = true },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Manage tags") },
+                            leadingIcon = { Icon(TandemIcons.Tag, null, modifier = Modifier.size(18.dp)) },
+                            onClick = { menuOpen = false; onPrepareTags(); showTags = true },
+                        )
+                    }
                 }
             }
             ViewToggle(view) { view = it }
@@ -164,6 +190,18 @@ fun SpendingScreen(
             onEdit = onEditCategory,
             onArchive = onArchiveCategory,
             onDismiss = { showManage = false },
+        )
+    }
+
+    if (showTags) {
+        ManageTagsSheet(
+            tags = tags,
+            onLoad = onLoadTags,
+            onAdd = onAddTag,
+            onEdit = onEditTag,
+            onSetArchived = onSetTagArchived,
+            onDelete = onDeleteTag,
+            onDismiss = { showTags = false },
         )
     }
 }
@@ -567,6 +605,8 @@ private fun SummaryHeader(label: String, value: String, suffix: String, fraction
 private fun ByDateView(spending: SpendingUi, fmt: (Double) -> String, onEdit: (ExpenseDto) -> Unit, onDelete: (ExpenseDto) -> Unit) {
     val tandem = LocalTandemColors.current
     val groupSize: (String) -> Int = { g -> spending.expenses.count { it.installmentGroupId == g } }
+    val byId = remember(spending.tags) { spending.tags.associateBy { it.id } }
+    val tagOf: (ExpenseDto) -> TagOptionDto? = { e -> e.tagIds.firstOrNull()?.let { byId[it] } }
     // By date is a ledger — its summary is "spent this period"; the budget-used progress lives in the Categories view.
     SpentHeader(fmt(spending.spent))
     Spacer(Modifier.height(16.dp))
@@ -584,7 +624,7 @@ private fun ByDateView(spending: SpendingUi, fmt: (Double) -> String, onEdit: (E
                 .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(14.dp)),
         ) {
             rows.forEachIndexed { i, e ->
-                ExpenseRow(e, fmt, groupSize, onEdit, onDelete)
+                ExpenseRow(e, fmt, groupSize, tagOf, onEdit, onDelete)
                 if (i < rows.lastIndex) {
                     Box(Modifier.fillMaxWidth().height(1.dp).padding(horizontal = 14.dp).background(tandem.hairline))
                 }
@@ -616,13 +656,34 @@ private fun DayHeader(iso: String) {
 }
 
 @Composable
-private fun ExpenseRow(e: ExpenseDto, fmt: (Double) -> String, groupSize: (String) -> Int, onEdit: (ExpenseDto) -> Unit, onDelete: (ExpenseDto) -> Unit) {
+private fun ExpenseRow(
+    e: ExpenseDto,
+    fmt: (Double) -> String,
+    groupSize: (String) -> Int,
+    tagOf: (ExpenseDto) -> TagOptionDto?,
+    onEdit: (ExpenseDto) -> Unit,
+    onDelete: (ExpenseDto) -> Unit,
+) {
     val tandem = LocalTandemColors.current
     Row(modifier = Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
         CatIcon(e.categoryIcon, e.categoryName)
         Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
-            Text(e.categoryName, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface, maxLines = 1)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(e.categoryName, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface, maxLines = 1)
+                // The label sits beside the category, not under it: a tag cuts ACROSS categories, so it reads as a
+                // second axis rather than as a detail of the first. Resolves to nothing for a deleted tag, whose id
+                // survives on the row — a hard delete leaves the expense pointing at something that is gone.
+                tagOf(e)?.let { t ->
+                    Spacer(Modifier.width(6.dp))
+                    Row(
+                        Modifier.clip(RoundedCornerShape(6.dp)).background(tandem.savingsTileBg).padding(horizontal = 6.dp, vertical = 1.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(t.name, fontSize = 10.sp, fontWeight = FontWeight.Medium, color = tandem.muted, maxLines = 1)
+                    }
+                }
+            }
             val sub = e.note?.takeIf { it.isNotBlank() } ?: e.fundName
             // An installment row names the part it is, so two rows on one date read as one loan payment.
             val part = installmentPartLabel(e)

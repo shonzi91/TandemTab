@@ -1898,6 +1898,18 @@ accounts.MapDelete("/{id:guid}/categories/{categoryId:guid}", async (Guid id, Gu
 
 // Tags — flat, cross-cutting labels attached to expenses (sit alongside sub-categories). Definitions live on the
 // aggregate and travel in the snapshot; attaching a tag to an expense rides the add/edit-expense endpoints.
+
+// The manage read. The picker's list (SpendingViewDto.Tags) is built from ActiveTags, so a thin client working
+// only from that could archive a tag and never see it again — an archive that is really a delete. This one shows
+// archived tags too, which is the only reason it is a separate route rather than a flag on the other one.
+accounts.MapGet("/{id:guid}/tags", async (Guid id, ClaimsPrincipal user, SnapshotService svc, CancellationToken ct) =>
+{
+    var snap = await svc.GetAsync(user.UserId(), id, ct);
+    if (string.IsNullOrEmpty(snap.Payload)) return Results.Ok(TagsViewDto.Empty);
+    var account = AccountSnapshotSerializer.Deserialize(snap.Payload);
+    return Results.Ok(TagsMap.View(account, snap.Version));
+});
+
 accounts.MapPost("/{id:guid}/tags", async (Guid id, CreateTagRequest req, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
 {
     var userId = user.UserId();
