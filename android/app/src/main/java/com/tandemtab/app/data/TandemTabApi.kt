@@ -249,6 +249,31 @@ class TandemTabApi(
     suspend fun archiveCategory(accountId: String, categoryId: String, archived: Boolean): MutationResultDto =
         authedPut("/accounts/$accountId/categories/$categoryId/archived", SetArchivedRequest(archived)).body()
 
+    /** Remove a spend category. With [moveTo] its budget and every expense filed under it move there first; without
+     *  one the server refuses (400) if anything still references it — which is what makes the picker necessary
+     *  rather than optional. */
+    suspend fun deleteCategory(accountId: String, categoryId: String, moveTo: String?): MutationResultDto =
+        authedDelete("/accounts/$accountId/categories/$categoryId" + (moveTo?.let { "?moveTo=$it" } ?: "")).body()
+
+    /** Rename / re-icon an income source. */
+    suspend fun editContributionCategory(accountId: String, catId: String, name: String, icon: String?): MutationResultDto =
+        authedPut("/accounts/$accountId/contribution-categories/$catId", EditContributionCategoryRequest(name, icon)).body()
+
+    suspend fun deleteContributionCategory(accountId: String, catId: String): MutationResultDto =
+        authedDelete("/accounts/$accountId/contribution-categories/$catId").body()
+
+    /** The getting-started checklist, with each step's done-ness resolved server-side. */
+    suspend fun onboarding(accountId: String): OnboardingViewDto =
+        authedGet("/accounts/$accountId/onboarding").body()
+
+    /** Dismiss the getting-started card for good. */
+    suspend fun dismissOnboarding(accountId: String): MutationResultDto =
+        authedPut("/accounts/$accountId/onboarding/dismissed", Unit).body()
+
+    /** Remove a recorded deposit (income row). */
+    suspend fun deleteDeposit(accountId: String, depositId: String): MutationResultDto =
+        authedDelete("/accounts/$accountId/deposits/$depositId").body()
+
     suspend fun savings(accountId: String, period: Int? = null): SavingsViewDto = authedGet("/accounts/$accountId/savings${periodQ(period)}").body()
 
     /** Earmark money into a savings bucket. Returns a refreshed Savings view to reconcile without a re-fetch. */

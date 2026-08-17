@@ -551,6 +551,22 @@ data class EditCategoryRequest(
     val essential: Boolean? = null,
 )
 
+/** One getting-started step. `key` is stable ("income" | "budget" | "expense" | "bucket"); `done` is derived
+ *  server-side from the account, never re-derived here — the four rules for "have they done this yet" are the
+ *  domain's, and a second reading of them in Kotlin is a second place to disagree with the web. */
+@Serializable
+data class OnboardingStepDto(val key: String, val title: String, val desc: String, val done: Boolean = false)
+
+@Serializable
+data class OnboardingViewDto(
+    val dismissed: Boolean = false,
+    val steps: List<OnboardingStepDto> = emptyList(),
+)
+
+/** PUT /accounts/{id}/contribution-categories/{catId} — rename / re-icon an income source. */
+@Serializable
+data class EditContributionCategoryRequest(val name: String, val icon: String? = null)
+
 /** Archive (hide) or restore a category/fund/bucket/tag. Reversible; keeps history. */
 @Serializable
 data class SetArchivedRequest(val archived: Boolean)

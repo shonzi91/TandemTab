@@ -30,6 +30,8 @@ import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.KeyboardArrowUp
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.Button
@@ -108,6 +110,7 @@ fun AddSheet(
     onEditExpense: (String, AddExpenseRequest, onDone: () -> Unit) -> Unit,
     onAddIncome: (fundId: String, categoryId: String, amount: Double, date: String, onDone: () -> Unit) -> Unit,
     onEditDeposit: (depositId: String, fundId: String, categoryId: String, amount: Double, date: String, onDone: () -> Unit) -> Unit,
+    onDeleteDeposit: (depositId: String, onDone: () -> Unit) -> Unit = { _, _ -> },
     onAddCategory: (name: String, parentId: String?, icon: String?, onDone: (String?) -> Unit) -> Unit,
 ) {
     val tandem = LocalTandemColors.current
@@ -266,6 +269,7 @@ fun AddSheet(
                     fundId = incFundId, onFund = { incFundId = it },
                     date = date, onDate = { date = it },
                     hint = hint,
+                    onRemove = editingDeposit?.let { d -> { onDeleteDeposit(d.id) { onDismiss() } } },
                 )
                 return@Column
             }
@@ -649,8 +653,10 @@ private fun IncomeEditor(
     fundId: String?, onFund: (String) -> Unit,
     date: String, onDate: (String) -> Unit,
     hint: String?,
+    onRemove: (() -> Unit)? = null,
 ) {
     val tandem = LocalTandemColors.current
+    var confirmingRemove by remember { mutableStateOf(false) }
     val funds = spending.funds
     if (funds.isEmpty()) {
         Text("Add a fund first, then you can record income here.", color = tandem.muted, modifier = Modifier.padding(vertical = 24.dp))
@@ -687,5 +693,42 @@ private fun IncomeEditor(
 
     FieldLabel("Date")
     DateField(date, onDate)
+
+    // Removing a recorded deposit is only offered while editing one — there is nothing to remove otherwise. It
+    // confirms, like every delete: income is what every other figure on Home is measured against, so dropping a
+    // row moves the whole page.
+    onRemove?.let { remove ->
+        Spacer(Modifier.height(6.dp))
+        TextButton(onClick = { confirmingRemove = true }, enabled = !spending.saving, modifier = Modifier.fillMaxWidth()) {
+            Text("Remove this income", color = tandem.spent)
+        }
+        if (confirmingRemove) {
+            AlertDialog(
+                onDismissRequest = { if (!spending.saving) confirmingRemove = false },
+                title = { Text("Remove this income?") },
+                text = {
+                    Column {
+                        Text("It comes off what you had coming in this period, so everything measured against it moves too.")
+                        spending.saveError?.let {
+                            Spacer(Modifier.height(10.dp))
+                            Text(it, color = MaterialTheme.colorScheme.error, fontSize = 13.sp)
+                        }
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = remove,
+                        enabled = !spending.saving,
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                    ) {
+                        if (spending.saving) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onError)
+                        else Text("Remove")
+                    }
+                },
+                dismissButton = { TextButton(onClick = { confirmingRemove = false }, enabled = !spending.saving) { Text("Cancel") } },
+            )
+        }
+    }
+
     Hints(hint, spending.saveError)
 }

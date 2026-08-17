@@ -91,6 +91,7 @@ fun SpendingScreen(
     onAddCategory: (name: String, parentId: String?, icon: String?, onDone: (String?) -> Unit) -> Unit,
     onEditCategory: (id: String, name: String, icon: String?, onDone: () -> Unit) -> Unit,
     onArchiveCategory: (id: String, onDone: () -> Unit) -> Unit,
+    onDeleteCategory: (id: String, moveTo: String?, onDone: () -> Unit) -> Unit,
     onLoadTrips: () -> Unit,
     onSaveTrip: (tripId: String?, name: String, from: String, to: String, destination: String?, icon: String?,
                  savingCategoryId: String?, budget: Double?, categoryId: String?, onDone: () -> Unit) -> Unit,
@@ -107,12 +108,15 @@ fun SpendingScreen(
     onEditTag: (id: String, name: String, icon: String?, categoryId: String?, onDone: () -> Unit) -> Unit,
     onSetTagArchived: (id: String, archived: Boolean) -> Unit,
     onDeleteTag: (id: String, onDone: () -> Unit) -> Unit,
+    onEditIncomeSource: (id: String, name: String, icon: String?, onDone: () -> Unit) -> Unit,
+    onDeleteIncomeSource: (id: String, onDone: () -> Unit) -> Unit,
 ) {
     val tandem = LocalTandemColors.current
     val fmt = rememberMoney(spending.currency)
     var view by remember { mutableStateOf(SpendView.ByDate) }
     var showManage by remember { mutableStateOf(false) }
     var showTags by remember { mutableStateOf(false) }
+    var showIncomeSources by remember { mutableStateOf(false) }
     var menuOpen by remember { mutableStateOf(false) }
 
     // Trips are their own read (they span periods, so they don't ride along with /spending) — fetched the first
@@ -157,6 +161,11 @@ fun SpendingScreen(
                             leadingIcon = { Icon(TandemIcons.Tag, null, modifier = Modifier.size(18.dp)) },
                             onClick = { menuOpen = false; onPrepareTags(); showTags = true },
                         )
+                        DropdownMenuItem(
+                            text = { Text("Manage income sources") },
+                            leadingIcon = { Icon(TandemIcons.Coins, null, modifier = Modifier.size(18.dp)) },
+                            onClick = { menuOpen = false; showIncomeSources = true },
+                        )
                     }
                 }
             }
@@ -191,6 +200,7 @@ fun SpendingScreen(
             onAdd = onAddCategory,
             onEdit = onEditCategory,
             onArchive = onArchiveCategory,
+            onDelete = onDeleteCategory,
             onDismiss = { showManage = false },
         )
     }
@@ -204,6 +214,15 @@ fun SpendingScreen(
             onSetArchived = onSetTagArchived,
             onDelete = onDeleteTag,
             onDismiss = { showTags = false },
+        )
+    }
+
+    if (showIncomeSources) {
+        ManageIncomeSourcesSheet(
+            spending = spending,
+            onEdit = onEditIncomeSource,
+            onDelete = onDeleteIncomeSource,
+            onDismiss = { showIncomeSources = false },
         )
     }
 }

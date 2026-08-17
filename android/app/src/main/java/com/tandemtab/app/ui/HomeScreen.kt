@@ -142,6 +142,8 @@ fun HomeScreen(
     onTransferOwnership: (String, () -> Unit) -> Unit,
     onAcceptInvitation: (String) -> Unit,
     onDeclineInvitation: (String) -> Unit,
+    onLoadOnboarding: () -> Unit,
+    onDismissOnboarding: () -> Unit,
     onLoadSpending: (Boolean) -> Unit,
     onLoadGoals: (Boolean) -> Unit,
     onLoadWallets: (Boolean) -> Unit,
@@ -166,6 +168,7 @@ fun HomeScreen(
     onPrepareEditLast: () -> Unit,
     onPrepareEditLastIncome: () -> Unit,
     onEditDeposit: (String, String, String, Double, String, () -> Unit) -> Unit,
+    onDeleteDeposit: (depositId: String, onDone: () -> Unit) -> Unit,
     onClearEditingIncome: () -> Unit,
     onBeginEditExpense: (com.tandemtab.app.data.ExpenseDto) -> Unit,
     onDeleteExpense: (com.tandemtab.app.data.ExpenseDto) -> Unit,
@@ -174,6 +177,7 @@ fun HomeScreen(
     onAddCategory: (String, String?, String?, (String?) -> Unit) -> Unit,
     onEditCategory: (String, String, String?, () -> Unit) -> Unit,
     onArchiveCategory: (String, () -> Unit) -> Unit,
+    onDeleteCategory: (id: String, moveTo: String?, onDone: () -> Unit) -> Unit,
     onLoadTrips: (Boolean) -> Unit,
     onSaveTrip: (String?, String, String, String, String?, String?, String?, Double?, String?, () -> Unit) -> Unit,
     onDeleteTrip: (String, () -> Unit) -> Unit,
@@ -195,6 +199,8 @@ fun HomeScreen(
     onEditTag: (id: String, name: String, icon: String?, categoryId: String?, onDone: () -> Unit) -> Unit,
     onSetTagArchived: (id: String, archived: Boolean) -> Unit,
     onDeleteTag: (id: String, onDone: () -> Unit) -> Unit,
+    onEditIncomeSource: (id: String, name: String, icon: String?, onDone: () -> Unit) -> Unit,
+    onDeleteIncomeSource: (id: String, onDone: () -> Unit) -> Unit,
     onClearEditing: () -> Unit,
     onAddExpenses: (List<com.tandemtab.app.data.AddExpenseRequest>, () -> Unit) -> Unit,
     onEditExpense: (String, com.tandemtab.app.data.AddExpenseRequest, () -> Unit) -> Unit,
@@ -309,6 +315,7 @@ fun HomeScreen(
                 onEditExpense = onEditExpense,
                 onAddIncome = onAddIncomeQuick,
                 onEditDeposit = onEditDeposit,
+                onDeleteDeposit = onDeleteDeposit,
                 onAddCategory = onAddCategory,
             )
         }
@@ -317,7 +324,7 @@ fun HomeScreen(
                 NavDest.Spending -> onLoadSpending(false)
                 NavDest.Goals -> onLoadGoals(false)
                 NavDest.Wallets -> { onLoadWallets(false); onLoadBank(false) }
-                NavDest.Home -> { onLoadHealth(false); onLoadRecurring(false); onLoadGoals(false) }
+                NavDest.Home -> { onLoadHealth(false); onLoadRecurring(false); onLoadGoals(false); onLoadOnboarding() }
             }
         }
 
@@ -365,6 +372,7 @@ fun HomeScreen(
                             onOpenRunway = { showRunway = true },
                             onAcceptInvitation = onAcceptInvitation,
                             onDeclineInvitation = onDeclineInvitation,
+                            onDismissOnboarding = onDismissOnboarding,
                         )
                         NavDest.Spending -> SpendingScreen(
                             spending = state.spending,
@@ -378,6 +386,7 @@ fun HomeScreen(
                             onAddCategory = onAddCategory,
                             onEditCategory = onEditCategory,
                             onArchiveCategory = onArchiveCategory,
+                            onDeleteCategory = onDeleteCategory,
                             onLoadTrips = { onLoadTrips(false) },
                             onSaveTrip = onSaveTrip,
                             onDeleteTrip = onDeleteTrip,
@@ -393,6 +402,8 @@ fun HomeScreen(
                             onEditTag = onEditTag,
                             onSetTagArchived = onSetTagArchived,
                             onDeleteTag = onDeleteTag,
+                            onEditIncomeSource = onEditIncomeSource,
+                            onDeleteIncomeSource = onDeleteIncomeSource,
                         )
                         NavDest.Goals -> GoalsScreen(
                             goals = state.goals,
@@ -570,6 +581,7 @@ private fun HomePage(
     onOpenRunway: () -> Unit,
     onAcceptInvitation: (String) -> Unit,
     onDeclineInvitation: (String) -> Unit,
+    onDismissOnboarding: () -> Unit,
 ) {
     val tandem = LocalTandemColors.current
     val overview = state.overview
@@ -592,6 +604,12 @@ private fun HomePage(
             val viewed = state.periods.firstOrNull { it.index == viewedIndex }
             BalanceHero(overview = overview, period = viewed, fmt = fmt, dark = darkTheme)
             Spacer(Modifier.height(14.dp))
+            // Under the money, not above it: someone who has already set up should see their balance first, and
+            // the card removes itself once every step is done anyway.
+            if (state.onboarding?.dismissed == false) {
+                GettingStartedCard(state.onboarding, onDismissOnboarding)
+                Spacer(Modifier.height(14.dp))
+            }
             // Order per the design: health score on top, then bills, then "on track for", and finally the runway.
             HealthCard(health = state.health, onOpen = onOpenHealth)
             // The urgent strip hangs directly off the score, as on web, so "how am I doing" reads as one block.

@@ -47,6 +47,7 @@ import com.tandemtab.app.data.DisburseSavingRequest
 import com.tandemtab.app.data.MoveSavingsRequest
 import com.tandemtab.app.data.SavingDepositRowDto
 import com.tandemtab.app.data.SavingMovementRowDto
+import com.tandemtab.app.data.OnboardingViewDto
 import com.tandemtab.app.data.TagOptionDto
 import com.tandemtab.app.data.UseTripSavingsRequest
 import com.tandemtab.app.data.TagRowDto
@@ -131,6 +132,9 @@ data class UiState(
     val spending: SpendingUi = SpendingUi(),
     val trips: TripsUi = TripsUi(),
     val tags: TagsUi = TagsUi(),
+    // The getting-started checklist. Null until /onboarding answers — which is meaningful: an absent checklist
+    // renders nothing at all rather than four un-ticked steps flashing onto Home before the truth arrives.
+    val onboarding: OnboardingViewDto? = null,
     val goals: GoalsUi = GoalsUi(),
     val wallets: WalletsUi = WalletsUi(),
     val health: HealthUi = HealthUi(),
@@ -1094,6 +1098,27 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         availableToSave = v.availableToSave, deposits = v.deposits, movements = v.movements,
     )
 
+    // --- Getting started ---------------------------------------------------------------------------------
+
+    /**
+     * Load the checklist. Best-effort and silent on failure: it is a first-run nudge on a Home screen that already
+     * renders, so a failed fetch should leave the card absent, not put an error where encouragement was meant to be.
+     */
+    fun loadOnboarding() {
+        val accountId = _state.value.selectedAccountId ?: return
+        viewModelScope.launch {
+            runCatching { api.onboarding(accountId) }.getOrNull()
+                ?.let { v -> _state.update { it.copy(onboarding = v) } }
+        }
+    }
+
+    /** Dismiss it. Hidden immediately — the card is the user's own decision, so it should not wait on a round trip. */
+    fun dismissOnboarding() {
+        val accountId = _state.value.selectedAccountId ?: return
+        _state.update { it.copy(onboarding = it.onboarding?.copy(dismissed = true)) }
+        viewModelScope.launch { runCatching { api.dismissOnboarding(accountId) } }
+    }
+
     /** Clear a stale error before opening the "Add to savings" sheet. */
     fun prepareAllocateSaving() = _state.update { it.copy(goals = it.goals.copy(saveError = null)) }
 
@@ -1747,6 +1772,35 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun clearEditingIncome() = _state.update { it.copy(editingDeposit = null) }
 
     /** Save an edit to an existing deposit; reflects the recomputed overview and invalidates the Wallets cache. */
+    /**
+     * Remove a recorded deposit. Wallets is invalidated rather than patched: income lands in a fund, so its balance
+     * and the account total both move, and a Wallets tab still holding the old figures is the bug this avoids.
+     * Spending is re-read too — the savings caps and the free-to-spend figure are all measured against money in.
+     */
+    fun deleteDeposit(depositId: String, onDone: () -> Unit) {
+        val accountId = _state.value.selectedAccountId ?: return
+        _state.update { it.copy(spending = it.spending.copy(saving = true, saveError = null)) }
+        viewModelScope.launch {
+            try {
+                api.deleteDeposit(accountId, depositId)
+                runCatching { api.overview(accountId, _state.value.selectedPeriod) }
+                    .getOrNull()?.let { ov -> _state.update { it.copy(overview = ov) } }
+                _state.update {
+                    it.copy(
+                        editingDeposit = null,
+                        spending = it.spending.copy(saving = false, saveError = null),
+                        wallets = it.wallets.copy(loaded = false),
+                        goals = it.goals.copy(loaded = false),
+                    )
+                }
+                loadSpending(true)
+                onDone()
+            } catch (e: Exception) {
+                _state.update { it.copy(spending = it.spending.copy(saving = false, saveError = e.message ?: "Couldn't remove that income.")) }
+            }
+        }
+    }
+
     fun editDeposit(depositId: String, fundId: String, categoryId: String, amount: Double, date: String, onDone: () -> Unit) {
         val accountId = _state.value.selectedAccountId ?: return
         _state.update { it.copy(spending = it.spending.copy(saving = true, saveError = null)) }
@@ -1925,6 +1979,43 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun archiveCategory(categoryId: String, onDone: () -> Unit) =
         categoryMutation(onDone) { acct -> api.archiveCategory(acct, categoryId, true) }
+
+    /**
+     * Remove a category. [moveTo] re-files its budget and every expense under it first; without one the server
+     * refuses whenever anything still points at it, so the picker is the difference between the action working and
+     * the action being a dead end. The error the refusal produces is shown rather than swallowed — "you can't
+     * delete this, it still has expenses" is the answer, not a failure.
+     */
+    fun deleteCategory(categoryId: String, moveTo: String?, onDone: () -> Unit) =
+        categoryMutation(onDone) { acct -> api.deleteCategory(acct, categoryId, moveTo) }
+
+    /** ⚠️ Full replace — the icon must be handed back or renaming a source strips it. */
+    fun editIncomeSource(catId: String, name: String, icon: String?, onDone: () -> Unit) =
+        incomeSourceMutation(onDone) { acct -> api.editContributionCategory(acct, catId, name.trim(), icon?.ifBlank { null }) }
+
+    fun deleteIncomeSource(catId: String, onDone: () -> Unit) =
+        incomeSourceMutation(onDone) { acct -> api.deleteContributionCategory(acct, catId) }
+
+    /** Income sources ride the /income read, not /spending — so that is the list to re-pull after changing one. */
+    private fun incomeSourceMutation(onDone: () -> Unit, action: suspend (String) -> Any) {
+        val accountId = _state.value.selectedAccountId ?: return
+        _state.update { it.copy(spending = it.spending.copy(saving = true, saveError = null)) }
+        viewModelScope.launch {
+            try {
+                action(accountId)
+                val cats = runCatching { api.income(accountId).categories }.getOrNull()
+                _state.update {
+                    it.copy(spending = it.spending.copy(
+                        saving = false, saveError = null,
+                        incomeCategories = cats ?: it.spending.incomeCategories,
+                    ))
+                }
+                onDone()
+            } catch (e: Exception) {
+                _state.update { it.copy(spending = it.spending.copy(saving = false, saveError = e.message ?: "Couldn't save that source.")) }
+            }
+        }
+    }
 
     /** Fire a category mutation, then re-fetch /spending so the refreshed category list (and any spend re-bucketing)
      *  shows immediately — the category endpoints return only a version, not a snapshot. */

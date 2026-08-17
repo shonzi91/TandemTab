@@ -19,7 +19,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -65,6 +67,7 @@ fun ManageCategoriesSheet(
     onAdd: (name: String, parentId: String?, icon: String?, onDone: (String?) -> Unit) -> Unit,
     onEdit: (id: String, name: String, icon: String?, onDone: () -> Unit) -> Unit,
     onArchive: (id: String, onDone: () -> Unit) -> Unit,
+    onDelete: (id: String, moveTo: String?, onDone: () -> Unit) -> Unit,
     onDismiss: () -> Unit,
 ) {
     val tandem = LocalTandemColors.current
@@ -109,6 +112,10 @@ fun ManageCategoriesSheet(
                         else onEdit(draft.id, name, icon) { editing = null }
                     },
                     onArchive = { draft.id?.let { id -> onArchive(id) { editing = null } } },
+                    onDelete = { moveTo -> draft.id?.let { id -> onDelete(id, moveTo) { editing = null } } },
+                    // Every other category is a candidate to re-file into — itself excluded, since moving a
+                    // category's contents into the category being removed is not a destination.
+                    others = categories.filter { it.id != draft.id },
                     onCancel = { editing = null },
                 )
             }
@@ -139,9 +146,12 @@ private fun CategoryEditor(
     saveError: String?,
     onSave: (name: String, parentId: String?, icon: String?) -> Unit,
     onArchive: () -> Unit,
+    onDelete: (moveTo: String?) -> Unit,
+    others: List<CategoryOptionDto>,
     onCancel: () -> Unit,
 ) {
     val tandem = LocalTandemColors.current
+    var confirmingDelete by remember(draft) { mutableStateOf(false) }
     var name by remember(draft) { mutableStateOf(draft.name) }
     // The editor works in icon *names* now (matching the migrated data); null = "Auto" (guessed from the name).
     var iconName by remember(draft) { mutableStateOf(draft.icon.takeIf { it.isNotBlank() }?.let { CategoryIcons.effective(it, draft.name) }) }
@@ -191,7 +201,95 @@ private fun CategoryEditor(
         TextButton(onClick = onArchive, enabled = !saving, modifier = Modifier.fillMaxWidth()) {
             Text("Archive category", color = tandem.spent)
         }
+        TextButton(onClick = { confirmingDelete = true }, enabled = !saving, modifier = Modifier.fillMaxWidth()) {
+            Text("Remove category", color = tandem.spent)
+        }
     }
+
+    if (confirmingDelete) {
+        DeleteCategoryDialog(
+            name = draft.name,
+            others = others,
+            saving = saving,
+            saveError = saveError,
+            onDelete = { moveTo -> onDelete(moveTo) },
+            onDismiss = { confirmingDelete = false },
+        )
+    }
+}
+
+/**
+ * Removing a category, with the re-filing picker the server makes necessary.
+ *
+ * A plain removal is refused whenever anything still points at the category — a budget, an expense, a sub-category
+ * — so "move everything to…" is not a convenience, it is the difference between the action working and the action
+ * being a dead end the user meets only after tapping. Offered up front rather than as a retry after a 400.
+ */
+@Composable
+private fun DeleteCategoryDialog(
+    name: String,
+    others: List<CategoryOptionDto>,
+    saving: Boolean,
+    saveError: String?,
+    onDelete: (moveTo: String?) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val tandem = LocalTandemColors.current
+    var moveTo by remember { mutableStateOf<String?>(null) }
+    var menuOpen by remember { mutableStateOf(false) }
+
+    AlertDialog(
+        onDismissRequest = { if (!saving) onDismiss() },
+        title = { Text("Remove $name?") },
+        text = {
+            Column {
+                Text(
+                    "If anything is still filed under it — a budget, an expense — the removal is refused unless you " +
+                        "say where those should go.",
+                    color = tandem.muted, fontSize = 13.sp,
+                )
+                Spacer(Modifier.height(12.dp))
+                Text("MOVE EVERYTHING TO", fontSize = 10.sp, letterSpacing = 1.1.sp, fontWeight = FontWeight.Bold, color = tandem.muted)
+                Spacer(Modifier.height(4.dp))
+                Box {
+                    OutlinedButton(onClick = { menuOpen = true }, modifier = Modifier.fillMaxWidth()) {
+                        Text(
+                            others.firstOrNull { it.id == moveTo }?.name ?: "— nothing, just remove it —",
+                            modifier = Modifier.weight(1f),
+                        )
+                        Icon(TandemIcons.Chevron, null, tint = tandem.muted, modifier = Modifier.size(16.dp))
+                    }
+                    DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                        DropdownMenuItem(
+                            text = { Text("— nothing, just remove it —") },
+                            onClick = { moveTo = null; menuOpen = false },
+                        )
+                        others.forEach { c ->
+                            DropdownMenuItem(
+                                text = { Text("${c.icon.orEmpty()} ${c.name}".trim()) },
+                                onClick = { moveTo = c.id; menuOpen = false },
+                            )
+                        }
+                    }
+                }
+                saveError?.let {
+                    Spacer(Modifier.height(10.dp))
+                    Text(it, color = MaterialTheme.colorScheme.error, fontSize = 13.sp)
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { onDelete(moveTo) },
+                enabled = !saving,
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+            ) {
+                if (saving) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onError)
+                else Text("Remove")
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss, enabled = !saving) { Text("Cancel") } },
+    )
 }
 
 /** A wrapping grid of the line-icon palette (plus an "Auto" chip that guesses from the name). Selected = highlighted.
