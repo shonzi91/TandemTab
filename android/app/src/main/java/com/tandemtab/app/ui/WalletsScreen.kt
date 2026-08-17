@@ -22,6 +22,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -35,6 +36,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.tandemtab.app.WalletsUi
+import com.tandemtab.app.data.AccountSummaryDto
+import com.tandemtab.app.data.AccountTransferRowDto
 import com.tandemtab.app.data.FundRowDto
 import com.tandemtab.app.data.FundTransferRowDto
 import com.tandemtab.app.ui.theme.LocalTandemColors
@@ -63,6 +66,12 @@ fun WalletsScreen(
     onDeleteFund: (fundId: String, moveOpeningBalancesTo: String?, onDone: () -> Unit) -> Unit = { _, _, _ -> },
     onEditTransfer: (transferId: String, fromFundId: String, toFundId: String, amount: Double, note: String?, onDone: () -> Unit) -> Unit = { _, _, _, _, _, _ -> },
     onDeleteTransfer: (transferId: String, onDone: () -> Unit) -> Unit = { _, _ -> },
+    // The other accounts this user belongs to — the destinations for money leaving. Empty means there is nowhere
+    // to send it, and the action is hidden rather than shown leading to an empty picker.
+    otherAccounts: List<AccountSummaryDto> = emptyList(),
+    onTransferToAccount: (destinationAccountId: String, fromFundId: String, amount: Double, date: String, note: String?, onDone: () -> Unit) -> Unit = { _, _, _, _, _, _ -> },
+    onEditAccountTransfer: (pairId: String, destinationAccountId: String, amount: Double, fromFundId: String?, note: String?, date: String?, onDone: () -> Unit) -> Unit = { _, _, _, _, _, _, _ -> },
+    onDeleteAccountTransfer: (pairId: String, destinationAccountId: String, onDone: () -> Unit) -> Unit = { _, _, _ -> },
     bankEnabled: Boolean = false,
     bankConnected: Boolean = false,
     bankReviewCount: Int = 0,
@@ -85,6 +94,9 @@ fun WalletsScreen(
     var deletingFundId by remember { mutableStateOf<String?>(null) }
     var editingTransferId by remember { mutableStateOf<String?>(null) }
     var deletingTransferId by remember { mutableStateOf<String?>(null) }
+    // Same id-not-a-row rule as the fund editor: the list is re-read after every write.
+    var sendingFrom by remember { mutableStateOf<FundRowDto?>(null) }
+    var editingAccountTransferId by remember { mutableStateOf<String?>(null) }
     var showArchived by remember { mutableStateOf(false) }
 
     fun findFund(id: String?): FundRowDto? = id?.let { f ->
@@ -92,6 +104,7 @@ fun WalletsScreen(
     }
     val editingFund = findFund(editingFundId)
     val editingTransfer = editingTransferId?.let { id -> wallets.transfers.firstOrNull { it.id == id } }
+    val editingAccountTransfer = editingAccountTransferId?.let { id -> wallets.accountTransfers.firstOrNull { it.id == id } }
 
     when {
         wallets.loading && wallets.funds.isEmpty() ->
@@ -167,6 +180,43 @@ fun WalletsScreen(
                 BankEntryRow(connected = bankConnected, reviewCount = bankReviewCount, onClick = onOpenBank)
             }
 
+            // One entry rather than a fourth icon on every wallet row — the sheet asks which wallet it comes out
+            // of, which is a question, not a pre-selection worth three more taps' worth of chrome.
+            if (otherAccounts.isNotEmpty()) {
+                Spacer(Modifier.height(12.dp))
+                OutlinedButton(
+                    onClick = { onPrepareTransfer(); sendingFrom = wallets.funds.firstOrNull { !it.synced } },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Icon(TandemIcons.Swap, null, modifier = Modifier.size(17.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Send money to another account")
+                }
+            }
+
+            // Money that LEFT for another account, kept apart from the wallet-to-wallet moves above: one changes
+            // where the money sits, the other changes how much there is, and one list of both explains neither.
+            if (wallets.accountTransfers.isNotEmpty()) {
+                Spacer(Modifier.height(20.dp))
+                Text(
+                    "SENT TO OTHER ACCOUNTS",
+                    fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.8.sp,
+                    color = tandem.muted, modifier = Modifier.padding(start = 4.dp, bottom = 8.dp),
+                )
+                Column(
+                    Modifier.fillMaxWidth()
+                        .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(14.dp))
+                        .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(14.dp)),
+                ) {
+                    wallets.accountTransfers.forEachIndexed { i, t ->
+                        AccountTransferRow(t, fmt) { onPrepareFund(); editingAccountTransferId = t.id }
+                        if (i < wallets.accountTransfers.lastIndex) {
+                            Box(Modifier.fillMaxWidth().height(1.dp).padding(horizontal = 14.dp).background(tandem.hairline))
+                        }
+                    }
+                }
+            }
+
             if (wallets.transfers.isNotEmpty()) {
                 Spacer(Modifier.height(20.dp))
                 Text(
@@ -196,6 +246,33 @@ fun WalletsScreen(
             wallets = wallets,
             onDismiss = { transferFrom = null },
             onSubmit = { to, amt, date, note, onDone -> onTransfer(from.id, to, amt, date, note, onDone) },
+        )
+    }
+    sendingFrom?.let { from ->
+        SendToAccountSheet(
+            from = from,
+            wallets = wallets,
+            otherAccounts = otherAccounts,
+            existing = null,
+            onDismiss = { sendingFrom = null },
+            onSubmit = { dest, src, amt, date, note, onDone -> onTransferToAccount(dest, src, amt, date, note, onDone) },
+            onDelete = null,
+        )
+    }
+    editingAccountTransfer?.let { t ->
+        SendToAccountSheet(
+            from = findFund(t.fromFundId),
+            wallets = wallets,
+            otherAccounts = otherAccounts,
+            existing = t,
+            onDismiss = { editingAccountTransferId = null },
+            onSubmit = { dest, src, amt, date, note, onDone ->
+                // Addressed by the PAIR id, never the row's own id — the edit rewrites the deposit on the far side too.
+                t.pairId?.let { onEditAccountTransfer(it, dest, amt, src, note, date, onDone) }
+            },
+            onDelete = t.pairId?.let { pair ->
+                { onDone: () -> Unit -> onDeleteAccountTransfer(pair, t.toAccountId.orEmpty(), onDone) }
+            },
         )
     }
     incomeTo?.let { to ->
@@ -392,6 +469,34 @@ private fun BankEntryRow(connected: Boolean, reviewCount: Int, onClick: () -> Un
             Spacer(Modifier.width(8.dp))
         }
         Icon(TandemIcons.Chevron, contentDescription = null, tint = tandem.muted, modifier = Modifier.size(16.dp))
+    }
+}
+
+@Composable
+private fun AccountTransferRow(t: AccountTransferRowDto, fmt: (Double) -> String, onEdit: () -> Unit) {
+    val tandem = LocalTandemColors.current
+    Row(
+        // Only an editable row is tappable: a transfer written before the pair link existed has no counterpart the
+        // edit can address, so opening an editor on it would present a form that cannot save.
+        Modifier.fillMaxWidth().then(if (t.editable) Modifier.clickable(onClick = onEdit) else Modifier).padding(14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(
+                "${t.fromFundName} → ${t.toAccountName ?: "another account"}",
+                fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface, maxLines = 1,
+            )
+            val sub = t.note?.takeIf { it.isNotBlank() } ?: formatTransferDate(t.date)
+            Text(sub, fontSize = 12.sp, color = tandem.muted, maxLines = 1)
+        }
+        Spacer(Modifier.width(8.dp))
+        // Money out of this account, so it reads like spending does — the wallet-to-wallet rows above stay neutral
+        // because nothing leaves on those.
+        Text("−${fmt(t.amount)}", fontWeight = FontWeight.Bold, color = tandem.spent)
+        if (t.editable) {
+            Spacer(Modifier.width(6.dp))
+            Icon(TandemIcons.Pencil, contentDescription = "Edit transfer", tint = tandem.muted, modifier = Modifier.size(15.dp))
+        }
     }
 }
 

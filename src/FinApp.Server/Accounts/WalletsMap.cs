@@ -24,7 +24,10 @@ public static class WalletsMap
         f.IsArchived,
         period.AvailableToTransferOutFromFundAfter(f.Id, priorSaved).Amount);
 
-    public static WalletsViewDto View(Account account, long version, decimal? bankBalance = null, string? bankCurrency = null, Period? viewPeriod = null)
+    /// <param name="accountNames">Names of the accounts the caller belongs to, for labelling a transfer's
+    /// destination. The aggregate knows only the id it sent money to, so the name has to come from outside it.</param>
+    public static WalletsViewDto View(Account account, long version, decimal? bankBalance = null, string? bankCurrency = null,
+        Period? viewPeriod = null, IReadOnlyDictionary<Guid, string>? accountNames = null)
     {
         if ((viewPeriod ?? account.CurrentPeriod) is not { } period)
             return WalletsViewDto.Empty with { Version = version, Currency = account.Currency };
@@ -43,6 +46,28 @@ public static class WalletsMap
                 t.Amount.Amount, t.Date, t.Note))
             .ToList();
 
-        return new WalletsViewDto(version, account.Currency, SpendingMap.Overview(account, period, bankBalance, bankCurrency), funds, archived, transfers);
+        // Money sent to ANOTHER account. Only the ones that name a destination: an external transfer with no
+        // ToAccountId is a disbursement or a plain money-out, which belongs to savings or the ledger, not here.
+        var accountTransfers = period.ExternalTransfers
+            .Where(t => t.ToAccountId is not null)
+            .OrderByDescending(t => t.Date)
+            .Select(t => new AccountTransferRowDto(
+                t.Id,
+                t.AccountTransferId,
+                t.FundId,
+                account.FundName(t.FundId),
+                t.ToAccountId,
+                t.ToAccountId is { } to && accountNames is not null && accountNames.TryGetValue(to, out var name) ? name : null,
+                t.Amount.Amount,
+                t.Date,
+                t.Note,
+                // Editing rewrites BOTH halves, which needs the pair id both rows carry. A transfer recorded before
+                // that link existed has no findable counterpart, so it can only be deleted one-sidedly — the server
+                // says which kind this is rather than leaving each client to infer it from a null.
+                Editable: t.AccountTransferId is not null))
+            .ToList();
+
+        return new WalletsViewDto(version, account.Currency, SpendingMap.Overview(account, period, bankBalance, bankCurrency),
+            funds, archived, transfers, accountTransfers);
     }
 }

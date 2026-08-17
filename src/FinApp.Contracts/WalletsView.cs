@@ -33,6 +33,32 @@ public record FundTransferRowDto(
     DateOnly Date,
     string? Note);
 
+/// <summary>
+/// One transfer of money to <b>another account</b> this period — distinct from a <see cref="FundTransferRowDto"/>,
+/// which moves money between wallets inside this account and never changes the total.
+/// <para>
+/// ★ These had no read model at all: three endpoints could create, edit and delete an account transfer, but nothing
+/// returned one, so a thin client had no row to carry the <see cref="PairId"/> the edit and delete are addressed by.
+/// The commands were reachable only by a client that already knew an id it had no way to learn.
+/// </para>
+/// </summary>
+/// <param name="PairId">The link both halves carry, and the id the edit/delete endpoints take. <b>Null for a
+/// transfer recorded before that link existed</b> — those can only be deleted one-sidedly, which is why this is
+/// nullable rather than assumed present.</param>
+/// <param name="ToAccountName">Where it went. Null when the caller can no longer see that account (they left it, or
+/// it was archived) — the transfer still happened, so the row is shown rather than hidden.</param>
+public record AccountTransferRowDto(
+    Guid Id,
+    Guid? PairId,
+    Guid FromFundId,
+    string FromFundName,
+    Guid? ToAccountId,
+    string? ToAccountName,
+    decimal Amount,
+    DateOnly Date,
+    string? Note,
+    bool Editable);
+
 /// <summary>The whole Wallets surface in one read: the balance-header figures, the active + archived funds (each with
 /// its balance), and this period's transfers. Bounded to the current period, so it stays small regardless of history.</summary>
 public record WalletsViewDto(
@@ -41,9 +67,14 @@ public record WalletsViewDto(
     AccountOverviewDto Overview,
     IReadOnlyList<FundRowDto> Funds,
     IReadOnlyList<FundRowDto> ArchivedFunds,
-    IReadOnlyList<FundTransferRowDto> Transfers)
+    IReadOnlyList<FundTransferRowDto> Transfers,
+    // Trailing-optional so an older client deserializes this payload unchanged.
+    IReadOnlyList<AccountTransferRowDto>? AccountTransfers = null)
 {
-    public static readonly WalletsViewDto Empty = new(0, "", AccountOverviewDto.Empty, [], [], []);
+    /// <summary>Money sent to other accounts this period, newest first — never null.</summary>
+    public IReadOnlyList<AccountTransferRowDto> AccountTransferRows => AccountTransfers ?? [];
+
+    public static readonly WalletsViewDto Empty = new(0, "", AccountOverviewDto.Empty, [], [], [], []);
 }
 
 /// <summary>The delta a fund mutation returns: the new <see cref="Version"/>, the affected entity's id, and the whole

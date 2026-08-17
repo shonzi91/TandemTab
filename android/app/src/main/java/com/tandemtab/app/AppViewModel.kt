@@ -39,7 +39,10 @@ import com.tandemtab.app.data.UpdateRecurringRequest
 import com.tandemtab.app.data.SavingsViewDto
 import com.tandemtab.app.data.CreateTripRequest
 import com.tandemtab.app.data.EditTripRequest
+import com.tandemtab.app.data.AccountTransferRowDto
 import com.tandemtab.app.data.ConvertSavingToBudgetRequest
+import com.tandemtab.app.data.EditAccountTransferRequest
+import com.tandemtab.app.data.TransferToAccountRequest
 import com.tandemtab.app.data.DisburseSavingRequest
 import com.tandemtab.app.data.MoveSavingsRequest
 import com.tandemtab.app.data.SavingDepositRowDto
@@ -366,6 +369,9 @@ data class WalletsUi(
     // delete is refused, so a one-way archive would make that advice a dead end.
     val archivedFunds: List<FundRowDto> = emptyList(),
     val transfers: List<FundTransferRowDto> = emptyList(),
+    // Money sent to OTHER accounts this period. Had no read model at all until now, so the three endpoints that
+    // create, edit and delete one were reachable only by a client that already knew an id it couldn't learn.
+    val accountTransfers: List<AccountTransferRowDto> = emptyList(),
     val incomeCategories: List<CategoryOptionDto> = emptyList(),
     val saving: Boolean = false,
     val saveError: String? = null,
@@ -1327,7 +1333,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun walletsFrom(v: WalletsViewDto, incomeCategories: List<CategoryOptionDto>) = WalletsUi(
         loaded = true, currency = v.currency, current = v.overview.current,
-        funds = v.funds, archivedFunds = v.archivedFunds, transfers = v.transfers, incomeCategories = incomeCategories,
+        funds = v.funds, archivedFunds = v.archivedFunds, transfers = v.transfers, accountTransfers = v.accountTransfers, incomeCategories = incomeCategories,
     )
 
     /** Clear any stale write error before opening a Wallets action sheet. */
@@ -1493,6 +1499,67 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 onDone()
             } catch (e: Exception) {
                 _state.update { it.copy(wallets = it.wallets.copy(saving = false, saveError = e.message ?: "Couldn't remove that transfer.")) }
+            }
+        }
+    }
+
+    // --- Money to another account -----------------------------------------------------------------------
+
+    fun transferToAccount(
+        destinationAccountId: String,
+        fromFundId: String,
+        amount: Double,
+        date: String,
+        note: String?,
+        onDone: () -> Unit = {},
+    ) = accountTransferWrite(onDone, "Couldn't send that money.") { acct ->
+        api.transferToAccount(acct, TransferToAccountRequest(
+            destinationAccountId = destinationAccountId, fromFundId = fromFundId,
+            amount = amount, note = note?.ifBlank { null }, date = date,
+        ))
+    }
+
+    /**
+     * ⚠️ Addressed by the PAIR id, not the transfer's own id, and it rewrites the deposit on the other account too.
+     * Only offer it for a row the server marked editable — a transfer written before the link existed has no
+     * findable counterpart and the endpoint cannot address it.
+     */
+    fun editAccountTransfer(
+        pairId: String,
+        destinationAccountId: String,
+        amount: Double,
+        fromFundId: String?,
+        note: String?,
+        date: String?,
+        onDone: () -> Unit = {},
+    ) = accountTransferWrite(onDone, "Couldn't change that transfer.") { acct ->
+        api.editAccountTransfer(acct, pairId, EditAccountTransferRequest(
+            destinationAccountId = destinationAccountId, amount = amount,
+            fromFundId = fromFundId, note = note?.ifBlank { null }, date = date,
+        ))
+    }
+
+    fun deleteAccountTransfer(pairId: String, destinationAccountId: String, onDone: () -> Unit = {}) =
+        accountTransferWrite(onDone, "Couldn't remove that transfer.") { acct ->
+            api.deleteAccountTransfer(acct, pairId, destinationAccountId)
+        }
+
+    /**
+     * One shape for the three. Re-reads Wallets, and then Home — an account transfer moves the balance on BOTH
+     * sides, so the header figure the user is looking at is stale the moment one lands.
+     */
+    private fun accountTransferWrite(onDone: () -> Unit, fallback: String, action: suspend (String) -> Any) {
+        val accountId = _state.value.selectedAccountId ?: return
+        _state.update { it.copy(wallets = it.wallets.copy(saving = true, saveError = null)) }
+        viewModelScope.launch {
+            try {
+                action(accountId)
+                refreshWallets(accountId)
+                runCatching { api.overview(accountId, _state.value.selectedPeriod) }
+                    .getOrNull()?.let { ov -> _state.update { it.copy(overview = ov) } }
+                onDone()
+            } catch (e: Exception) {
+                _state.update { it.copy(wallets = it.wallets.copy(saving = false, saveError = e.message ?: fallback)) }
             }
         }
     }

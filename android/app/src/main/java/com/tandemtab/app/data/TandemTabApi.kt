@@ -335,6 +335,23 @@ class TandemTabApi(
     suspend fun deleteFundTransfer(accountId: String, transferId: String): MutationResultDto =
         authedDelete("/accounts/$accountId/fund-transfers/$transferId").body()
 
+    // --- Money to another account ----------------------------------------------------------------------
+    // Distinct from a fund transfer: this money LEAVES the account. Capped server-side at the source wallet's
+    // balance minus what is already saved, so an earmark can't be sent away by accident.
+
+    suspend fun transferToAccount(accountId: String, req: TransferToAccountRequest): MutationResultDto =
+        authedPost("/accounts/$accountId/transfers-out", req).body()
+
+    /** Rewrite both halves — the outflow here and the deposit it made there. Addressed by the PAIR id, which only
+     *  exists on transfers written since the link did; use [deleteAccountTransfer] for the rest. */
+    suspend fun editAccountTransfer(accountId: String, pairId: String, req: EditAccountTransferRequest): MutationResultDto =
+        authedPut("/accounts/$accountId/account-transfers/$pairId", req).body()
+
+    /** Remove both halves. `destinationAccountId` is a query parameter, not a body — the server needs to know which
+     *  account to reach into, and a DELETE carries no body. */
+    suspend fun deleteAccountTransfer(accountId: String, pairId: String, destinationAccountId: String): MutationResultDto =
+        authedDelete("/accounts/$accountId/account-transfers/$pairId?destinationAccountId=$destinationAccountId").body()
+
     /** The account's editable settings (name, currency, savings-rate target). */
     suspend fun accountSettings(accountId: String): AccountSettingsDto =
         authedGet("/accounts/$accountId/settings").body()

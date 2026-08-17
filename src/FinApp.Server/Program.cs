@@ -920,13 +920,15 @@ accounts.MapGet("/{id:guid}/spending", async (Guid id, int? period, ClaimsPrinci
 
 // Path-B thin-Wallets read: funds + balances + this period's transfers in one call. Paired with the fund writes
 // below, which return a FundMutationDto carrying a refreshed view so the client reconciles with no re-fetch.
-accounts.MapGet("/{id:guid}/wallets", async (Guid id, int? period, ClaimsPrincipal user, SnapshotService svc, BankSyncService bankSvc, CancellationToken ct) =>
+accounts.MapGet("/{id:guid}/wallets", async (Guid id, int? period, ClaimsPrincipal user, SnapshotService svc, AccountService accountSvc, BankSyncService bankSvc, CancellationToken ct) =>
 {
     var snap = await svc.GetAsync(user.UserId(), id, ct);
     if (string.IsNullOrEmpty(snap.Payload)) return Results.Ok(WalletsViewDto.Empty);
     var account = AccountSnapshotSerializer.Deserialize(snap.Payload);
     var bank = await bankSvc.GetStatusAsync(user.UserId(), id, ct);
-    return Results.Ok(WalletsMap.View(account, snap.Version, bank.Balance, bank.BalanceCurrency, ResolvePeriod(account, period)));
+    // The aggregate knows the id it sent money to, never the name — that lives on the caller's other accounts.
+    var names = (await accountSvc.ListForUserAsync(user.UserId(), ct)).ToDictionary(a => a.Id, a => a.Name);
+    return Results.Ok(WalletsMap.View(account, snap.Version, bank.Balance, bank.BalanceCurrency, ResolvePeriod(account, period), names));
 });
 
 // Path-B thin-Goals read: every bucket with its computed figures (goal progress / debt payoff / investment

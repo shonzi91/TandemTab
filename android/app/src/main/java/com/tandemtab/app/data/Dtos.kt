@@ -898,6 +898,27 @@ data class FundTransferRowDto(
     val note: String? = null,
 )
 
+/** One transfer of money to ANOTHER account — distinct from [FundTransferRowDto], which moves money between wallets
+ *  inside this account and never changes the total.
+ *
+ *  `pairId` is the link both halves carry and the id the edit/delete endpoints take; it is null for a transfer
+ *  written before that link existed, which is why `editable` is a separate flag the server answers rather than
+ *  something to infer. `toAccountName` is null when the caller can no longer see that account — the row still shows,
+ *  because the money left either way and hiding it would make the balance unexplainable. */
+@Serializable
+data class AccountTransferRowDto(
+    val id: String,
+    val pairId: String? = null,
+    val fromFundId: String = "",
+    val fromFundName: String = "",
+    val toAccountId: String? = null,
+    val toAccountName: String? = null,
+    val amount: Double = 0.0,
+    val date: String = "",
+    val note: String? = null,
+    val editable: Boolean = false,
+)
+
 @Serializable
 data class WalletsViewDto(
     val version: Long = 0,
@@ -906,6 +927,31 @@ data class WalletsViewDto(
     val funds: List<FundRowDto> = emptyList(),
     val archivedFunds: List<FundRowDto> = emptyList(),
     val transfers: List<FundTransferRowDto> = emptyList(),
+    val accountTransfers: List<AccountTransferRowDto> = emptyList(),
+)
+
+/** POST /accounts/{id}/transfers-out — send money to another account you belong to (same currency).
+ *  Empty `destinationFundId` picks the destination's first unsynced wallet. */
+@Serializable
+data class TransferToAccountRequest(
+    val destinationAccountId: String,
+    val fromFundId: String,
+    val amount: Double,
+    val destinationFundId: String? = null,
+    val note: String? = null,
+    val date: String? = null,
+)
+
+/** PUT /accounts/{id}/account-transfers/{pairId} — rewrite BOTH halves at once. Null fund ids and a null date keep
+ *  what the transfer already has. */
+@Serializable
+data class EditAccountTransferRequest(
+    val destinationAccountId: String,
+    val amount: Double,
+    val fromFundId: String? = null,
+    val destinationFundId: String? = null,
+    val note: String? = null,
+    val date: String? = null,
 )
 
 // --- Wallets write flows: move money between funds, record income into a fund --------------------------
