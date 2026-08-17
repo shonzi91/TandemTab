@@ -75,7 +75,10 @@ public record TripExpenseRowDto(
     Guid? TagId,
     string? TagName,
     string? TagIcon,
-    string When);
+    string When,
+    // The clock, when the row carries one. Trailing-optional; null stays null — an untimed row shows no time
+    // rather than a midnight nobody reported.
+    TimeOnly? Time = null);
 
 /// <summary>
 /// One trip opened up: the card's own figures, the split behind them, and everything attached to it.

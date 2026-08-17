@@ -193,7 +193,12 @@ public class TripsViewApiTests : IClassFixture<FinAppServerFactory>
     }
 
     [Fact]
-    public async Task A_trips_detail_lists_its_expenses_biggest_first_and_says_which_side_of_the_journey_each_falls_on()
+    /// <summary>
+    /// The ledger runs newest first — a trip is read as the days you lived, and a size order turns it into a
+    /// leaderboard. ★ <see cref="TripDetailDto.Biggest"/> is computed on its own rather than taken as the head of
+    /// the list, so re-ordering the ledger can't silently make "biggest single thing" mean "most recent".
+    /// </summary>
+    public async Task A_trips_detail_lists_its_expenses_newest_first_and_says_which_side_of_the_journey_each_falls_on()
     {
         var (client, auth) = await _factory.RegisterAndAuthAsync("tripdetail_rows");
         var account = await CreateAccount(client, "Trips");
@@ -212,9 +217,12 @@ public class TripsViewApiTests : IClassFixture<FinAppServerFactory>
 
         var detail = (await client.GetFromJsonAsync<TripDetailDto>($"/accounts/{account.Id}/trips/{tripId}?today=2026-06-21"))!;
 
-        Assert.Equal(new[] { "Flight", "Dinner", "Late charge" }, detail.Expenses.Select(e => e.Note));
-        Assert.Equal(new[] { "before", "during", "after" }, detail.Expenses.Select(e => e.When));
+        // Newest day first: the late charge (20 Jun), the dinner (12 Jun), then the flight booked back on the 2nd.
+        Assert.Equal(new[] { "Late charge", "Dinner", "Flight" }, detail.Expenses.Select(e => e.Note));
+        Assert.Equal(new[] { "after", "during", "before" }, detail.Expenses.Select(e => e.When));
+        // …and the biggest is still the flight, which is no longer the row the list happens to start with.
         Assert.Equal("Flight", detail.Biggest?.Note);
+        Assert.NotEqual(detail.Expenses[0].Note, detail.Biggest?.Note);
         Assert.Equal(298m, detail.Trip.Spent);   // the card's own figures ride along, so one read draws the whole thing
     }
 

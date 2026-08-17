@@ -68,15 +68,22 @@ public static class TripsMap
             .Where(s => s.Amount > 0m)
             .ToList();
 
-        // Biggest first, matching every other expense list in Spending: the question a recap answers is "what did
-        // this cost", which a date order buries. Date, then id, breaks the ties — a stable order, so the list
-        // can't reshuffle between two renders of the same data.
+        // Newest first, and newest on the clock within a day (owner's call). A trip is the one list where a single
+        // day holds a dozen entries, and a size order turns a journey into a leaderboard — you read a trip as the
+        // days you lived, so the ledger runs backwards through them. `SortTime` puts an untimed row at the bottom
+        // of its own day rather than treating it as midnight; the id breaks the last tie so two renders of the same
+        // data cannot reshuffle.
         var rows = account.TripExpenses(tripId)
-            .OrderByDescending(e => Math.Abs(e.Amount.Amount)).ThenByDescending(e => e.Date).ThenBy(e => e.Id)
+            .OrderByDescending(e => e.Date).ThenByDescending(e => e.SortTime).ThenBy(e => e.Id)
             .Select(e => Row(account, trip, e))
             .ToList();
 
-        var biggest = rows.Count == 0 ? null : rows[0];
+        // ⚠️ Computed on its own now, not taken as rows[0]. It used to be the head of an amount-sorted list, so
+        // re-ordering the ledger by date would silently have made "biggest single thing" mean "most recent".
+        var biggest = account.TripExpenses(tripId)
+            .OrderByDescending(e => Math.Abs(e.Amount.Amount)).ThenByDescending(e => e.Date).ThenBy(e => e.Id)
+            .Select(e => Row(account, trip, e))
+            .FirstOrDefault();
         return new TripDetailDto(
             View(account, version, today).Trips.First(t => t.Id == tripId),
             slices, byTag ? "tag" : "category", recap.TagBreakdown.Count > 0, biggest, rows);
@@ -90,7 +97,8 @@ public static class TripsMap
             e.Id, e.Date, Math.Abs(e.Amount.Amount), e.Note,
             e.CategoryId, category?.Name ?? "—", category?.Icon,
             tag?.Id, tag?.Name, tag?.Icon,
-            e.Date < trip.From ? "before" : e.Date > trip.To ? "after" : "during");
+            e.Date < trip.From ? "before" : e.Date > trip.To ? "after" : "during",
+            e.Time);
     }
 
     /// <summary>

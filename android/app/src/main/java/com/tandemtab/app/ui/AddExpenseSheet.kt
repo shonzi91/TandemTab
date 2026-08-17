@@ -69,6 +69,7 @@ import com.tandemtab.app.ui.theme.LocalTandemColors
 import com.tandemtab.app.ui.theme.TandemIcons
 import java.time.Instant
 import java.time.LocalDate
+import java.time.LocalTime
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -85,9 +86,24 @@ private data class ExpenseDraft(
     val tripId: String? = null,
     // Its label. Per row for the same reason as the trip — a batch is rarely all one thing.
     val tagId: String? = null,
+    // Per row too: a batch staged across an evening should not stamp every row with the moment Save was pressed.
+    val time: String? = null,
 )
 
 private enum class AddMode { Expense, Income }
+
+/** "HH:mm" now when [dateIso] is today, blank otherwise — you know when you bought this morning's coffee, not
+ *  what time you bought one last Tuesday, and inventing a time is worse than leaving it out. */
+private fun defaultTimeFor(dateIso: String): String =
+    if (dateIso == LocalDate.now().toString())
+        LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm"))
+    else ""
+
+/** "HH:mm" → the wire's "HH:mm:00"; anything not a real time (including blank) → null, which the server keeps
+ *  as null rather than turning into midnight. */
+private fun timeForWire(text: String): String? = runCatching {
+    LocalTime.parse(text.trim(), DateTimeFormatter.ofPattern("HH:mm")).format(DateTimeFormatter.ofPattern("HH:mm:ss"))
+}.getOrNull()
 
 /**
  * The unified add sheet — one front door for both money-out and money-in, opened by the centre FAB on every tab.
@@ -172,10 +188,16 @@ fun AddSheet(
     // The row's label. One tag per expense is the model, so this is a single id rather than a set.
     var tagId by remember(editing) { mutableStateOf(editing?.tagIds?.firstOrNull()) }
 
+    // "HH:mm", or blank for none. Editing shows what the row actually carries — including nothing, which most
+    // bank-imported rows carry — rather than stamping "now" onto a row that was never timed.
+    var timeText by remember(editing, spending.loaded) {
+        mutableStateOf(editing?.time?.take(5) ?: if (editing == null) defaultTimeFor(today) else "")
+    }
+
     val parsed = amountText.replace(',', '.').toDoubleOrNull()?.takeIf { it > 0 }
     val currentValid = parsed != null && categoryId != null && fundId != null
     fun currentDraft(): ExpenseDraft? =
-        if (currentValid) ExpenseDraft(categoryId!!, fundId!!, parsed!!, note.trim(), date, tripId, tagId) else null
+        if (currentValid) ExpenseDraft(categoryId!!, fundId!!, parsed!!, note.trim(), date, tripId, tagId, timeForWire(timeText)) else null
 
     val pendingCount = staged.size + (if (currentValid) 1 else 0)
     val pendingTotal = staged.sumOf { it.amount } + (if (currentValid) parsed!! else 0.0)
@@ -208,13 +230,22 @@ fun AddSheet(
                 // ⚠️ tagId MUST be sent back even when unchanged. The server's expense edit clears the tag on an
                 // omitted value (unlike the time, which it deliberately carries across), so the call that used to
                 // omit it was stripping the label off any row whose amount was corrected here.
-                onEditExpense(editing!!.id, AddExpenseRequest(d.categoryId, d.amount, d.fundId, d.date, d.note.ifBlank { null }, tagId = d.tagId)) { onDismiss() }
+                // ⚠️ clearTime is what makes emptying the field mean something. On the edit the server treats an
+                // omitted time as "leave it alone" — so that an older client correcting an amount can't strip the
+                // clock off a row — which means null alone can never say "I don't know when".
+                onEditExpense(
+                    editing!!.id,
+                    AddExpenseRequest(
+                        d.categoryId, d.amount, d.fundId, d.date, d.note.ifBlank { null },
+                        tagId = d.tagId, time = d.time, clearTime = d.time == null && editing.time != null,
+                    ),
+                ) { onDismiss() }
             }
             mode == AddMode.Expense -> {
                 val batch = buildList {
                     addAll(staged)
                     currentDraft()?.let { add(it) }
-                }.map { AddExpenseRequest(it.categoryId, it.amount, it.fundId, it.date, it.note.ifBlank { null }, tagId = it.tagId, tripId = it.tripId) }
+                }.map { AddExpenseRequest(it.categoryId, it.amount, it.fundId, it.date, it.note.ifBlank { null }, tagId = it.tagId, tripId = it.tripId, time = it.time) }
                 if (batch.isEmpty()) { hint = "Enter an amount."; return }
                 onSaveExpenses(batch) { staged = emptyList(); amountText = ""; note = ""; onDismiss() }
             }
@@ -400,9 +431,26 @@ fun AddSheet(
                     }
                     Spacer(Modifier.height(14.dp))
 
-                    // Date + note.
+                    // Date + time + note. The clock is stamped as NOW for something logged today and left empty
+                    // otherwise: you know what time you bought a coffee this morning, not what time you bought one
+                    // last Tuesday, and a made-up midnight would sort ahead of everything real on that day.
                     FieldLabel("Date")
-                    DateField(date) { date = it }
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Box(Modifier.weight(1f)) { DateField(date) { picked -> date = picked; timeText = defaultTimeFor(picked) } }
+                        OutlinedTextField(
+                            value = timeText,
+                            onValueChange = { timeText = it },
+                            label = { Text("Time") },
+                            placeholder = { Text("--:--") },
+                            singleLine = true,
+                            modifier = Modifier.width(112.dp),
+                        )
+                    }
+                    // Empty is a real answer and stays one, so it needs saying rather than looking like an omission.
+                    if (timeText.isBlank()) {
+                        Spacer(Modifier.height(4.dp))
+                        Text("No time — it'll sit at the end of its day.", fontSize = 11.sp, color = tandem.muted)
+                    }
                     Spacer(Modifier.height(14.dp))
 
                     OutlinedTextField(

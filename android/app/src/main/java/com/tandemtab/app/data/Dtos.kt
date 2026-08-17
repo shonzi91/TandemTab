@@ -124,6 +124,10 @@ data class ExpenseDto(
     val tripId: String? = null,
     // Its labels. A list because the server's field has always been one, though the UI settles on at most one.
     val tagIds: List<String> = emptyList(),
+    // The time of day, "HH:mm:ss" or null. ⚠️ Null is a REAL answer and must never become midnight: most bank feeds
+    // report a booking date only, and 00:00 would sort a whole day's imports above everything logged that morning.
+    // Untimed rows belong at the BOTTOM of their own day. (Server-side the same rule lives in Expense.SortTime.)
+    val time: String? = null,
 )
 
 @Serializable
@@ -605,11 +609,16 @@ data class AddExpenseRequest(
     val date: String,
     val note: String? = null,
     val onBehalfOfOtherAccount: Boolean = false,
-    // One tag per expense (the Android add sheet doesn't expose a tag picker yet, so this stays null).
     val tagId: String? = null,
     // File this straight onto a journey. The trip is a LINK, so this doesn't move the expense out of the period
     // it was paid in — which is exactly what lets a flight bought in March count toward a June trip.
     val tripId: String? = null,
+    // "HH:mm" of day, stamped as NOW when logging something for today and left null otherwise. Never midnight —
+    // a made-up 00:00 would sort ahead of everything genuinely logged that morning.
+    val time: String? = null,
+    // ⚠️ Only meaningful on an EDIT. An omitted time means "leave it alone" there, so clearing one needs a way to
+    // say so that null cannot; on an add it is simply ignored.
+    val clearTime: Boolean = false,
 )
 
 /** What POST/PUT/DELETE /expenses returns: the new snapshot version, the row's id, the (added/edited) row for the

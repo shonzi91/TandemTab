@@ -637,7 +637,12 @@ private fun ByDateView(spending: SpendingUi, fmt: (Double) -> String, onEdit: (E
         }
         return
     }
-    val byDay = spending.expenses.sortedByDescending { it.date }.groupBy { it.date }
+    // Newest day first, and within a day newest on the clock first. ⚠️ An untimed row sorts as "" — the LOWEST
+    // key — so it settles at the BOTTOM of its own day rather than being read as midnight and jumping to the top,
+    // which is the same rule the server applies through Expense.SortTime.
+    val byDay = spending.expenses
+        .sortedWith(compareByDescending<ExpenseDto> { it.date }.thenByDescending { it.time.orEmpty() })
+        .groupBy { it.date }
     byDay.forEach { (day, rows) ->
         DayHeader(day)
         Column(
@@ -708,7 +713,10 @@ private fun ExpenseRow(
             val sub = e.note?.takeIf { it.isNotBlank() } ?: e.fundName
             // An installment row names the part it is, so two rows on one date read as one loan payment.
             val part = installmentPartLabel(e)
-            Text(if (part != null) "$sub · $part" else sub, fontSize = 12.sp, color = tandem.muted, maxLines = 1)
+            // The clock leads when there is one — within a day it is the only thing that orders the rows, and a
+            // day with a dozen entries reads as a day rather than a heap. Untimed rows simply omit it.
+            val line = listOfNotNull(e.time?.take(5), sub, part).joinToString(" · ")
+            Text(line, fontSize = 12.sp, color = tandem.muted, maxLines = 1)
         }
         Spacer(Modifier.width(8.dp))
         Column(horizontalAlignment = Alignment.End) {
