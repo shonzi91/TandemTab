@@ -178,6 +178,48 @@ public sealed class SavingCategory : Entity
         return Math.Max(0, months);
     }
 
+    /// <summary>
+    /// Where the original schedule says this loan would stand on <paramref name="asOf"/> if nothing but the
+    /// installment had ever been paid — the counterfactual the "you're ahead" figures are measured against.
+    /// <para>
+    /// Null when there is no schedule to compare against: no origination date, no installment, or nothing borrowed.
+    /// A comparison needs both paths, and inventing the missing one would manufacture progress.
+    /// </para>
+    /// </summary>
+    public decimal? ScheduledBalanceOn(DateOnly asOf)
+    {
+        if (!IsDebt || DebtInstallment <= 0m || DebtOriginalBalance <= 0m) return null;
+        if (DebtStartDate is not { } start) return null;
+        var months = MonthsBetween(start, asOf);
+        return FinApp.Forecasting.LoanForecast.BalanceAfter(
+            DebtOriginalBalance, DebtAnnualRatePercent, DebtInstallment, months);
+    }
+
+    /// <summary>
+    /// How far ahead of the original schedule this loan actually is on <paramref name="asOf"/>: the months knocked
+    /// off the remaining term and the interest that will never be charged because of it.
+    /// <para>
+    /// ★ Distinct from every other "saved" figure in the app, which projects FORWARD at the pace you are currently
+    /// setting aside and answers "what will this be worth if you keep it up". This one is backward-looking and
+    /// already banked — it compares where the schedule said you would be against where you are, so it is the only
+    /// one that can honestly be labelled "already".
+    /// </para>
+    /// Null when there is nothing to celebrate: no schedule, or you are level with it (or behind).
+    /// </summary>
+    public (int MonthsAhead, decimal InterestSaved)? AheadOfScheduleOn(DateOnly asOf)
+    {
+        if (ScheduledBalanceOn(asOf) is not { } scheduled) return null;
+        var actual = DebtBalanceOn(asOf);
+        var extraRepaid = scheduled - actual;
+        if (extraRepaid <= 0m) return null;
+
+        // The same arithmetic as paying that difference off in one go, because that is what it amounts to.
+        var lump = FinApp.Forecasting.LoanForecast.PayLumpSum(
+            scheduled, DebtAnnualRatePercent, DebtInstallment, extraRepaid);
+        if (lump is not { } l) return null;
+        return l.MonthsSaved <= 0 && l.InterestSaved <= 0m ? null : (l.MonthsSaved, l.InterestSaved);
+    }
+
     /// <summary>Debt buckets: how much of the original balance has been paid off on <paramref name="asOf"/> (never
     /// negative). Zero for common buckets.</summary>
     public decimal DebtPaidOffOn(DateOnly asOf) => IsDebt ? Math.Max(0m, DebtOriginalBalance - DebtBalanceOn(asOf)) : 0m;

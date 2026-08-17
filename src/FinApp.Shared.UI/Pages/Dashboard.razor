@@ -871,25 +871,48 @@ else
                 <section class="panel targets-card">
                     <h2 class="targets-h"><Icon Name="target" /> @Loc["You're on track for"]</h2>
                     <div class="targets-list">
-                        @foreach (var t in homeTargets)
+                    @{ var _ahead = State.DebtsAheadOfSchedule(); }
+                    @foreach (var t in homeTargets)
                         {
-                            <div class="target-row">
+                            @* The debt row wears the banked-progress badge, and only that row: it is the one target
+                               with a schedule to be ahead OF. Everything else keeps the plain layout. *@
+                            var _isDebtRow = t.Name == Loc["Debt-free"] && _ahead is not null;
+                            <div class="target-row @(_isDebtRow ? "target-row-won" : "")">
                                 <CatIcon Name="@t.Icon" />
-                                <span class="target-name">@t.Name</span>
-                                @if (t.Reached)
+                                @if (_isDebtRow && _ahead is { } a)
                                 {
-                                    <span class="target-when"><strong class="target-date good-text"><Icon Name="trophy" /> @Loc["reached"]</strong></span>
+                                    @* Left/right split: the projection drops to a subline so the right edge is free
+                                       for what has already been achieved, which is the thing worth landing on. *@
+                                    <span class="target-main">
+                                        <span class="target-name">@t.Name</span>
+                                        <span class="target-sub">@PayoffDate(t.Months) · @MonthsText(t.Months)</span>
+                                    </span>
+                                    <span class="won-badge" title="@Loc["Against the original schedule — money already paid ahead, not a projection."]">
+                                        <span class="won-lead"><Icon Name="trophy" /> @string.Format(Loc["{0} ahead"], MonthsText(a.MonthsAhead))</span>
+                                        @if (a.InterestSaved > 0m)
+                                        {
+                                            <span class="won-sub">@string.Format(Loc["{0} interest saved"], Fmt(State.Money(a.InterestSaved)))</span>
+                                        }
+                                    </span>
                                 }
                                 else
                                 {
-                                    <span class="target-when">
-                                        <strong class="target-date">@PayoffDate(t.Months)</strong>
-                                        <span class="target-mo">@MonthsText(t.Months)</span>
-                                        @if (t.InterestSaved > 0m)
-                                        {
-                                            <span class="target-mo good-text" title="@Loc["Interest you save versus paying only the installments, if you keep this pace."]">· @string.Format(Loc["save {0} interest"], Fmt(t.InterestSaved))</span>
-                                        }
-                                    </span>
+                                    <span class="target-name">@t.Name</span>
+                                    @if (t.Reached)
+                                    {
+                                        <span class="target-when"><strong class="target-date good-text"><Icon Name="trophy" /> @Loc["reached"]</strong></span>
+                                    }
+                                    else
+                                    {
+                                        <span class="target-when">
+                                            <strong class="target-date">@PayoffDate(t.Months)</strong>
+                                            <span class="target-mo">@MonthsText(t.Months)</span>
+                                            @if (t.InterestSaved > 0m)
+                                            {
+                                                <span class="target-mo good-text" title="@Loc["Interest you save versus paying only the installments, if you keep this pace."]">· @string.Format(Loc["save {0} interest"], Fmt(t.InterestSaved))</span>
+                                            }
+                                        </span>
+                                    }
                                 }
                             </div>
                         }

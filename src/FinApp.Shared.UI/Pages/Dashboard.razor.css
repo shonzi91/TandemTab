@@ -2559,6 +2559,30 @@ html.dark .whatif-label, html.dark .whatif-out strong { color: #e8eaf0; }
 .target-when { display: flex; flex-direction: column; align-items: flex-end; line-height: 1.2; text-align: right; }
 .target-date { color: #13a06e; font-size: .92rem; }
 .target-mo { color: #8a97a0; font-size: .76rem; white-space: nowrap; margin-top: 1px; }
+
+/* The debt row when there is banked progress to show: the projection drops to a subline on the left so the right
+   edge is free for what has already been achieved. Green, not gold — gold reads as a warning everywhere else in
+   this app, and this is the opposite of a warning. */
+.target-main { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; }
+.target-main .target-name { font-weight: 700; }
+.target-sub { color: #8a97a0; font-size: .76rem; white-space: nowrap; }
+.won-badge {
+    display: flex; flex-direction: column; align-items: flex-end; text-align: right; line-height: 1.25;
+    background: #eaf7f1; border: 1px solid #cfe9dd; border-radius: 9px; padding: 5px 10px;
+}
+.won-lead { display: flex; align-items: center; gap: 5px; color: #0f7a54; font-weight: 700; font-size: .82rem; white-space: nowrap; }
+.won-lead svg { width: 13px; height: 13px; flex: 0 0 auto; }
+.won-sub { color: #4e7d68; font-size: .74rem; white-space: nowrap; }
+html.dark .target-sub { color: #93a3ad; }
+html.dark .won-badge { background: #16241d; border-color: #2b4438; }
+html.dark .won-lead { color: #57d9a3; }
+html.dark .won-sub { color: #9dc4b3; }
+
+/* On a narrow phone the badge would squeeze the name to two characters; it drops under it instead. */
+@media (max-width: 420px) {
+    .target-row-won { grid-template-columns: auto 1fr; }
+    .target-row-won .won-badge { grid-column: 2; align-items: flex-start; text-align: left; margin-top: 6px; }
+}
 .targets-foot { margin: 0; padding: 10px 16px 12px; border-top: 1px solid #f2efe8; font-size: .74rem; color: #8a97a0; }
 html.dark .targets-h { color: #9aa4b2; }
 html.dark .targets-card > .targets-h { border-bottom-color: #313a45; }

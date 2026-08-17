@@ -2033,6 +2033,31 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     /// <summary>Debt buckets: how much of the original balance has been paid off as of today — measured against the
     /// scheduled balance, so progress moves with the loan rather than only when a payment is recorded here.</summary>
     public decimal SavingBucketDebtPaidOff(Guid id) => FindSavingBucket(id)?.DebtPaidOffOn(Today()) ?? 0m;
+
+    /// <summary>
+    /// How far ahead of schedule the account's debts are <b>already</b>, summed across every live loan: months off
+    /// the term and interest that will never be charged. Null when no loan is ahead, which is the whole condition
+    /// for showing the label at all — a badge that appears only on real progress keeps meaning something.
+    /// <para>
+    /// Not to be confused with <c>DebtInterestSavedAtPace</c>, which projects forward at the pace you are currently
+    /// setting aside. This one is banked.
+    /// </para>
+    /// </summary>
+    public (int MonthsAhead, decimal InterestSaved)? DebtsAheadOfSchedule()
+    {
+        var months = 0;
+        var interest = 0m;
+        foreach (var (bucket, _) in SavingBuckets)
+        {
+            if (!bucket.IsDebt || bucket.IsArchived) continue;
+            if (bucket.AheadOfScheduleOn(Today()) is not { } ahead) continue;
+            // The longest lead is the account's lead — months from different loans run in parallel, so adding them
+            // would claim years nobody gained. Interest genuinely does add up.
+            months = Math.Max(months, ahead.MonthsAhead);
+            interest += ahead.InterestSaved;
+        }
+        return months <= 0 && interest <= 0m ? null : (months, decimal.Round(interest, 2));
+    }
     /// <summary>Debt buckets: fraction (0..1) of the original balance paid off, or null when there's no baseline.</summary>
     public decimal? SavingBucketDebtProgress(Guid id) => FindSavingBucket(id)?.DebtProgressRatioOn(Today());
 
