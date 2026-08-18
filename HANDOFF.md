@@ -2,7 +2,7 @@
 
 Last updated: 2026-08-18 (Session 107b — **an owner report: a loan on "Its own schedule" kept saying no installment
 was logged after its due day had passed — and did anything come off the principal at all?**
-**496 + 49 + 368 green. Browser-verified. DEPLOYED. Everything committed + pushed.**
+**496 + 49 + 368 green. Browser-verified. Live: `finapp-00310-sbt`. Everything committed + pushed.**
 ★★ **The balance walked on the day the number was TYPED, not the day the loan is due.** `DebtBalanceOn` counted
 months from the anchor's own day-of-month; the stated due day drove recurring-bill dates and nothing else. A loan
 due on the **5th** stated on the **18th** did not move on the 5th — **up to four weeks of silent lag**, and it
@@ -419,6 +419,20 @@ The arithmetic was checked by hand against the two-installment walk (50 000 @ 4%
 always anchors to today, so there is no other way to reach the "already counted" branch on a fresh account.
 
 ⚠️ **`app.css` untouched → no cache-bust needed.** No CSS was added at all; the flag reuses `.inst-flag`.
+
+### ✅ DEPLOYED — `finapp-00310-sbt`
+
+Image `97111c8` (the commit sha). Traffic forced `--to-latest` and **confirmed by `describe`**, not by the deploy
+output — that line has named the *old* revision before. 5 `secretKeyRef`s; run URL and tandemtab.com both 200; no
+`severity>=WARNING` on the new revision.
+
+★ **Served-bytes proof, for a change with no CSS in it.** The usual trick (grep the scoped bundle for a new rule)
+was unavailable — this commit adds no CSS, and a `.razor`/domain change leaves `index.html` byte-identical because
+it compiles into a wasm assembly. So the proof is the assembly itself: pull the fingerprinted
+`_framework/FinApp.Domain.<hash>.wasm` off prod and grep it for the new member names. `ScheduleStepOn`,
+`InstallmentsDue`, `ScheduledInstallmentDate` and `DueDateIn` are all present in the 344,853 bytes being served.
+**Worth keeping as the general recipe** — method names survive into the metadata heap, so any C# change can be
+proven this way without needing a CSS rule to ride along.
 
 ### Worth not re-learning
 
