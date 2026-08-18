@@ -1,7 +1,8 @@
 # TandemTab (FinApp) — session handoff
 
-Last updated: 2026-08-18 (Session 106 — **seven owner fixes off the S105 deployment. Two were bigger than they
-looked.**
+Last updated: 2026-08-18 (Session 106 — **seven owner fixes, deployed; then two R2 rows on Android. Two of the
+seven were bigger than they looked, and both R2 rows were bugs the app was telling about itself.**
+**Live: `finapp-00309-lmq`. 485 + 49 + 368 green. R2: 102 of 118 (86%), 16 left. Everything committed + pushed.**
 ★★ **`.chip` had defaulted to the wrong look since it was written.** The Trends and trip-grouping switchers were
 peach *alert* pills, because the base rule was the static orange tag and every toggle row restated the real look
 for itself — so each new control shipped wrong until someone noticed. The finding: **no element in the app uses
@@ -459,27 +460,66 @@ a real zip, so a real xlsx rather than an error page wearing a spreadsheet's nam
 
 **R2 is now 102 of 118 (86%), 16 rows left.**
 
-### ⚠️ Carry-over
+### ⚠️ Carry-over — read this first next session
 
-- ✅ Committed (`fc0e3cb`, `62d9480`), pushed, and **deployed** — see the Verification block above.
-- **Android has none of this**, and now trails by S105's batch as well. The Pro gate is server-side, so native
-  gets the paywall behaviour for free — but it still shows a **New trip** affordance that will now 402, with no
-  upgrade prompt in front of it. That is the one native follow-up this session creates.
-- **`tools/r2scan.js` is new** — the R2 parity measurement as a script rather than a hand count (S105 said the
-  script was the instrument; there wasn't actually one in the repo). **101 of 118 in-scope routes, 86%, 17
-  left**, after the archived-accounts row closed. It excludes `/snapshot` GET+PUT, which a thin client must never
-  call. ⚠️ It proves a path is *built* in Kotlin, not that the feature works — a "called" row means "not
-  blocked", and S103's finding was that two such rows were really missing server reads.
-  ★ **The script's own first two cuts were both wrong, and the first was wrong in the flattering direction** —
-  regex-anywhere matching let `…/tags/$tagId/archived` satisfy the probe for `/{id}/archived`, hiding the very
-  row that turned out to be the most serious one in the backlog. Whole-path equality then over-corrected and
-  read six live routes as gaps (`"…/overview${periodQ(period)}"` is a query builder, not a path segment). Both
-  fixed and commented. **A parity number that goes UP after a scanner change deserves more suspicion than one
-  that goes down.**
-- **`ReopenTrip` still has zero web callers** — it is ungated now, so the only thing left is a place to press it.
-  The trip edit modal is the likely home; ask before removing it, per S105.
-- The pre-S105 carry-over stands: R2's 20 uncalled endpoints, the `ClearTag` contract trap, `.debt-progress`
-  dead CSS.
+**State: everything is committed and pushed** (`fc0e3cb`, `62d9480`, `42350c6`, `d82f013`, `9733cfa`), the tree is
+clean, and the **web is live on `finapp-00309-lmq`**. Nothing is half-finished. Android source is pushed but there
+is no APK pipeline — "Android deploy" is push + the live server it calls.
+
+#### Where to pick up
+
+1. ⚠️ **Android shows a "New trip" button that now 402s**, with no upgrade prompt in front of it. The gate is
+   server-side so the paywall *works*; it just fails rudely. **Small, and this session created it** — the honest
+   first job.
+2. **R2, next row.** Run `node tools/r2scan.js --list` rather than trusting any number written here. My read of
+   what is left, after the trap audit below: **bank's back half** (7 routes) is the only row that changes what
+   the phone can *do* — a mis-mapped connection can currently only be fixed by disconnecting entirely, which is a
+   blunt exit rather than a missing one. **Achievements + milestones** is the best value-per-effort if you want
+   something users see. `structure` is internal; I would leave it.
+3. **The Android UI sweep is still the largest thing outstanding by a wide margin** — native has none of S104,
+   S105 or S106's web work, and it grows every web session. R2 counts *endpoints*; this is the other axis.
+
+#### What the R2 audit concluded (so it isn't re-derived)
+
+**None of the remaining rows is a one-way door.** Settle and the bank mappings look like candidates and are not:
+Android cannot *create* a settlement or a bank mapping, so it cannot be trapped by one, and `disconnectBank` is
+already wired. That means the rest of the table can go back to being sized on **value**, not on rescue.
+
+⚠️ But keep the sizing rule the archived-accounts row taught: **a row's size is the client work; its priority is
+what happens to somebody who never gets it.** Only the first number was ever in that table.
+
+#### The instrument
+
+`tools/r2scan.js` — **102 of 118 in-scope routes, 86%, 16 left.** Excludes `/snapshot` GET+PUT, which a thin
+client must never call. ⚠️ It proves a path is *built* in Kotlin, not that the feature works: read "called" as
+**not blocked**, never as done — S103's whole finding was that two such rows were really missing *server reads*.
+
+★ **Its own first two cuts were both wrong, and the first erred in the flattering direction.** Regex-anywhere
+matching let `…/tags/$tagId/archived` satisfy the probe for `/{id}/archived` — hiding the very row that turned out
+to be the most serious in the backlog. Whole-path equality then over-corrected and read six live routes as gaps
+(`"…/overview${periodQ(period)}"` is a query builder, not a path segment). Both fixed and commented in place.
+**A parity number that goes UP after a scanner change deserves more suspicion than one that goes down.**
+
+#### Still open
+
+- **`ReopenTrip` has zero web callers.** It is ungated now, so all that is missing is somewhere to press it — the
+  trip edit modal is the likely home. Ask before removing it, per S105.
+- **The `ClearTag` contract trap** (S105): the same handler treats an omitted tag and an omitted time by opposite
+  rules, and says so in a comment. Flagged, never fixed.
+- **Dead CSS:** `.debt-progress`, `.debt-prog-cap`.
+- **Two R2 rows are blocked on the SERVER, not Android** — F4 round-ups (no contract field, no endpoint) and the
+  fund↔bank sync toggle (`SetFundSynced`, `TODO(cutover)`). They would batch into one "account settings commands"
+  slice; they cannot be estimated as client work.
+- **Railway migration** (hosting off Cloud Run, DB off Neon) — planned, not started. **Billing provider** is the
+  whole remaining monetization job; the rails are done.
+
+#### Two things worth not re-learning
+
+- **The emulator earned its keep twice this session.** Both Android rows compiled cleanly and then failed at
+  runtime — the export one with *nothing in the server log*. `compileDebugKotlin` proves nothing about a feature.
+- **A JSON-shaped helper is not automatically a client helper.** `authedGet` reads `bodyAsText()` on every
+  response, success included, to have a message ready for the error path — which consumes a binary body. Binary
+  reads go through `authedGetBinary`.
 
 ## Session 105 (2026-08-18) — **R2 re-measured and pushed 23 endpoints; then the owner's ten-item batch. Live: `finapp-00308-jcz`.**
 
