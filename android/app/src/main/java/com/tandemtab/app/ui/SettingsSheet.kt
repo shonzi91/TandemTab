@@ -1,5 +1,7 @@
 package com.tandemtab.app.ui
 
+import android.content.Intent
+import androidx.core.content.FileProvider
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
@@ -264,9 +266,11 @@ fun AccountSheet(
     onTransferOwnership: (String, () -> Unit) -> Unit,
     onLeave: (String?) -> Unit,
     onDelete: () -> Unit,
+    onExport: ((java.io.File) -> Unit) -> Unit,
     onDismiss: () -> Unit,
 ) {
     val tandem = LocalTandemColors.current
+    val context = LocalContext.current
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val account = state.selectedAccount
     val settings = state.settings
@@ -406,6 +410,23 @@ fun AccountSheet(
 
         // Actions.
         ActionRow("Recurring bills & income", TandemIcons.Repeat, tint = MaterialTheme.colorScheme.onSurface) { onOpenRecurring() }
+
+        // ★ Export lives HERE because the web's privacy panel tells people so in as many words: "from the account
+        // menu (⋯) → Export to Excel". Putting it anywhere else would make our own instructions wrong on half our
+        // surfaces — and that panel is where the portability promise is printed, next to the GDPR address.
+        ActionRow("Export to a spreadsheet", TandemIcons.Share, tint = MaterialTheme.colorScheme.onSurface) {
+            onExport { file ->
+                // A per-share content:// grant, not a file path: no storage permission on any api level, and the
+                // receiving app's read access dies with the share.
+                val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+                val send = Intent(Intent.ACTION_SEND).apply {
+                    type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    putExtra(Intent.EXTRA_STREAM, uri)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                context.startActivity(Intent.createChooser(send, "Export account"))
+            }
+        }
 
         settings.error?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 13.sp, modifier = Modifier.padding(top = 8.dp)) }
 

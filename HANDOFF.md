@@ -33,7 +33,12 @@ hosts, and the OLD `.target-main` / absolute `.trip-corner` rules at **0**, whic
 `DELETE /accounts/{id}` — a **soft** delete with a 30-day grace — and could not reach the undo. The confirm dialog
 even promises the grace period. **A write whose undo no client can reach**, exactly the shape S105 hit four times.
 Shipped as a **Deleted accounts** section in the profile (name · N days left · Restore), **emulator-verified end
-to end**. ⚠️ It had been hidden by my own scanner's first cut, which flattered the count. **R2: 101 of 118, 86%.**)
+to end**. ⚠️ It had been hidden by my own scanner's first cut, which flattered the count.
+★ **Then export**, picked by auditing the rest for the same failure mode — **none of them is a one-way door**, so
+the tie-break was the other promise the phone breaks: the privacy panel's "export any account at any time",
+printed next to the GDPR address. Shipped via a FileProvider share sheet. ⚠️ It compiled and failed at runtime —
+`authedGet` reads `bodyAsText()` on every response, which consumes a binary body before it can be read as bytes.
+**R2: 102 of 118, 86%, 16 left.**)
 
 Previously: 2026-08-18 (Session 105 — **R2 measured properly and pushed from 76 to 99 of 119; then the owner's
 whole ten-item batch.** Two halves, and the join between them is that four of the ten turned out to be domain bugs
@@ -425,7 +430,34 @@ found it under *Deleted accounts · 30 days left*, restored it, watched it retur
 overrides (`API_BASE_URL` → `10.0.2.2:5179`, `usesCleartextTraffic`) **reverted**; `git diff` on both files is
 empty and the revert re-compiles.
 
-**R2 is now 101 of 118 (86%), 17 rows left.**
+### ★ R2, second row: export — and the audit that picked it
+
+After archived accounts I re-read the remaining rows for the *same* failure mode rather than by size. **Finding
+worth recording: none of the rest is a one-way door.** Settle and the bank back half look like candidates and
+are not — Android cannot *create* a settlement or a bank mapping, so it cannot be trapped by one; `disconnectBank`
+is already wired, so the bank exit exists. That is a real answer, and it means the remaining table can go back to
+being sized on value.
+
+On that basis the next row is **export**, because it is the one place the app makes a promise the phone breaks.
+The web's privacy panel says, beside the GDPR contact address: *"You can export any account to a spreadsheet at
+any time — from the account menu (⋯) → Export to Excel."* Not true on the phone. Same class as the grace-period
+dialog: **the app saying something it cannot do on this surface.**
+
+Shipped in the Account (⋯) sheet, where the web's own copy points. Fetch → `cacheDir/exports` → share sheet via a
+`FileProvider` grant. ★ Cache+share rather than Downloads: `MediaStore` needs API 29 (minSdk is 26) and the
+fallback wants `WRITE_EXTERNAL_STORAGE` — an app that reads your finances asking for storage access to do a thing
+it can do without it would be its own answer. `file_paths.xml` exposes only `exports/`, never the whole cache.
+
+⚠️ **It compiled and then failed at runtime, with nothing in the server log.** `authedGet` calls `bodyAsText()` on
+**every** response — success included — just to have a message ready for the error path, so asking it for a
+spreadsheet decoded a binary body as UTF-8 and then re-read a consumed channel. Binary now goes through
+`authedGetBinary`. **A JSON-shaped helper is not automatically a client helper.** The emulator was the only thing
+that could have caught this.
+
+✅ Verified: share sheet on `Scratch-20260818.xlsx`, and the file on disk is 7,991 bytes starting `PK\003\004` —
+a real zip, so a real xlsx rather than an error page wearing a spreadsheet's name.
+
+**R2 is now 102 of 118 (86%), 16 rows left.**
 
 ### ⚠️ Carry-over
 

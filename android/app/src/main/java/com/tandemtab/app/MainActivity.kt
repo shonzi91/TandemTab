@@ -116,6 +116,7 @@ private fun App(vm: AppViewModel, onGoogle: () -> Unit) {
             onSetSavingsTarget = vm::setSavingsTarget,
             onLeaveAccount = vm::leaveAccount,
             onDeleteAccount = vm::deleteAccount,
+            onExportAccount = vm::exportAccount,
             onInvite = vm::invite,
             onClearInviteResult = vm::clearInviteResult,
             onRemoveMember = vm::removeMember,

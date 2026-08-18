@@ -2374,6 +2374,38 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun leaveAccount(newOwnerUserId: String? = null, onDone: () -> Unit) =
         accountRemoval(onDone) { api.leaveAccount(it, newOwnerUserId) }
 
+    /**
+     * Export the open account to a spreadsheet and hand the finished file to [onFile], which is where the UI
+     * raises a share sheet.
+     *
+     * ★ The web's privacy panel promises "you can export any account to a spreadsheet at any time" — beside the
+     * GDPR contact address. That was only true in a browser. A portability promise that holds on one surface is
+     * not a portability promise.
+     *
+     * Written into `cacheDir/exports` rather than Downloads deliberately: cache needs no storage permission on
+     * ANY api level (minSdk here is 26, below MediaStore's 29), Android reclaims it on its own, and sharing is
+     * what people actually do with an export on a phone — mail it to yourself, drop it in Drive, open it in
+     * Sheets. The share sheet, not a file path, is the phone's idea of "somewhere else".
+     */
+    fun exportAccount(onFile: (java.io.File) -> Unit) {
+        val accountId = _state.value.selectedAccountId ?: return
+        _state.update { it.copy(settings = it.settings.copy(busy = true, error = null)) }
+        viewModelScope.launch {
+            try {
+                val (bytes, name) = api.exportAccount(accountId)
+                val dir = java.io.File(getApplication<Application>().cacheDir, "exports").apply { mkdirs() }
+                // One file per account name, overwritten each time: a folder that accumulates
+                // "export (1).xlsx … (9).xlsx" is litter the user never asked to manage.
+                val file = java.io.File(dir, name.substringAfterLast('/').substringAfterLast('\\'))
+                file.writeBytes(bytes)
+                _state.update { it.copy(settings = it.settings.copy(busy = false)) }
+                onFile(file)
+            } catch (e: Exception) {
+                _state.update { it.copy(settings = it.settings.copy(busy = false, error = "Couldn't export this account.")) }
+            }
+        }
+    }
+
     fun deleteAccount(onDone: () -> Unit) = accountRemoval(onDone) { api.deleteAccount(it) }
 
     private fun accountRemoval(onDone: () -> Unit, action: suspend (String) -> Unit) {

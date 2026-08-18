@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  What the FileProvider is allowed to hand out. Exactly one directory: the account exports written by
+  AppViewModel.exportAccount.
+
+  ⚠️ Deliberately NOT `<cache-path path="." />`. A provider that shares the whole cache would expose every
+  transient file the app ever writes to whichever app the user picks from the share sheet. This one path is the
+  only thing that is meant to leave.
+-->
+<paths>
+    <cache-path name="exports" path="exports/" />
+</paths>

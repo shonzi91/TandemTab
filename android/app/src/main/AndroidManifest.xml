@@ -35,6 +35,19 @@
                 <data android:scheme="com.tandemtab.app" android:host="bank" />
             </intent-filter>
         </activity>
+
+        <!-- Hands the exported spreadsheet to the share sheet. A content:// URI granted per-share is the only way
+             to pass a file to another app without asking for a storage permission — and an app that reads your
+             finances asking for storage access to do a thing it could do without it would be its own answer. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
     </application>
 
 </manifest>

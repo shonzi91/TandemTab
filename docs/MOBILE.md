@@ -97,7 +97,7 @@ Session 94, **69** after Session 95). It does not call these:
 | **Tags** — incl. **F2** tag→category | `/tags…` | M |
 | Achievements + **F6** goal celebration | `/achievements`, `/milestones` | S–M |
 | Onboarding | `/onboarding`, `/onboarding/dismissed` | S |
-| Export | `/export` | S |
+| ~~Export~~ | ~~`/export`~~ | ✅ **done S106** — the portability promise, which the phone wasn't keeping |
 | Reallocation between budget and savings | `/reallocations/to-budget`, `/reallocations/to-savings` | S |
 | Settling an on-behalf expense | `/expenses/{id}/settle` | S |
 | ~~Contribution (income) categories~~ | ~~`/contribution-categories…`~~ | ✅ **done S91** (create only) |
@@ -115,7 +115,7 @@ client calling it would be carrying the domain it exists not to carry.)*
 
 > ### 📏 Measure it, don't count it — `node tools/r2scan.js --list`
 >
-> **As of Session 106: 101 of 118 in-scope account routes, 86%, 17 rows left.** (`/snapshot` GET+PUT are excluded
+> **As of Session 106: 102 of 118 in-scope account routes, 86%, 16 rows left.** (`/snapshot` GET+PUT are excluded
 > by the script for the reason just above — counting them as gaps overstates the backlog by two.)
 >
 > S103 reported this gap as "61 of 99" from a hand count; run as a script the same day it was 76 of 118. **A hand
@@ -149,6 +149,32 @@ refinements), **tags** incl. F2 (M), **achievements + F6** (S–M), **onboarding
 **F4 round-ups** (no field on any contract *and* no command endpoint) and the **fund↔bank sync toggle**
 (`SetFundSynced`, `TODO(cutover)`). Both are still whole-snapshot pushes in the thick client. They would batch
 naturally into one "account settings commands" server slice.
+
+#### ✅ Export — closed (Session 106, 2026-08-18): a promise the phone wasn't keeping
+
+The web's privacy panel says, beside the GDPR contact address: *"You can export any account to a spreadsheet **at
+any time** — from the account menu (⋯) → Export to Excel."* On the phone that was simply not true. **Portability
+that works on one surface is not portability**, and MONETIZATION.md keeps export free precisely as a trust
+promise.
+
+Shipped in the Account (⋯) sheet — where the web's own copy tells people to look, so our instructions are now
+right on both surfaces. Fetch → write to `cacheDir/exports` → share sheet via a `FileProvider` content:// grant.
+
+★ **Cache + share, not Downloads.** `MediaStore.Downloads` needs API 29 and minSdk here is 26, and the pre-29
+fallback wants `WRITE_EXTERNAL_STORAGE` — an app that reads your finances asking for storage access, to do a
+thing it can do without it, would be its own answer. A per-share grant needs no permission on any API level and
+the receiving app's access dies with the share. `file_paths.xml` exposes **only** `exports/`, never the whole
+cache.
+
+⚠️ **The bug the emulator caught, which nothing else could have.** It compiled, and failed at runtime with
+"Couldn't export this account" and *nothing in the server log*. `authedGet` calls `bodyAsText()` on **every**
+response, success included, just to have a message ready for the error path — so asking it for a spreadsheet
+decoded a binary body as UTF-8 and then tried to read the same consumed channel again. Binary reads now go
+through `authedGetBinary`, which reads the bytes once and only decodes them for a message when the status is
+bad. **A JSON-shaped client helper is not automatically a client helper.**
+
+✅ **EMULATOR-VERIFIED**: the share sheet opened on `Scratch-20260818.xlsx`, and the file on disk is 7,991 bytes
+beginning `PK\003\004` — a real zip, i.e. a real xlsx, not an error page with a spreadsheet's name.
 
 #### ✅ Archived accounts — closed (Session 106, 2026-08-18), and it was never a convenience
 

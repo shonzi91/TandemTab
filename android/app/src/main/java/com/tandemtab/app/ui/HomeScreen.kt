@@ -137,6 +137,7 @@ fun HomeScreen(
     onSetSavingsTarget: (Double, () -> Unit) -> Unit,
     onLeaveAccount: (String?, () -> Unit) -> Unit,
     onDeleteAccount: (() -> Unit) -> Unit,
+    onExportAccount: ((java.io.File) -> Unit) -> Unit,
     onInvite: (String) -> Unit,
     onClearInviteResult: () -> Unit,
     onRemoveMember: (String, () -> Unit) -> Unit,
@@ -513,6 +514,9 @@ fun HomeScreen(
                 onTransferOwnership = onTransferOwnership,
                 onLeave = { newOwner -> onLeaveAccount(newOwner) { showAccount = false } },
                 onDelete = { onDeleteAccount { showAccount = false } },
+                // Deliberately leaves the sheet OPEN: the share chooser comes up over it, and dismissing the
+                // sheet first would drop the user back on Home behind a chooser they hadn't answered yet.
+                onExport = onExportAccount,
                 onDismiss = { showAccount = false },
             )
         }

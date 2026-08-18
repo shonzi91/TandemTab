@@ -653,6 +653,33 @@ class TandemTabApi(
      *  above. Empty for almost everyone, which is why it is fetched with the profile rather than at startup. */
     suspend fun archivedAccounts(): List<ArchivedAccountDto> = authedGet("/accounts/archived").body()
 
+    /**
+     * The whole account as a spreadsheet: the raw bytes and the name the server chose for them.
+     *
+     * ★ Backs a promise the app makes out loud. The web's privacy panel says "you can export any account to a
+     * spreadsheet **at any time**", printed beside the GDPR contact address — and until now that was false on the
+     * phone. Portability that only works on one surface is not portability.
+     *
+     * ⚠️ Returns a `ByteArray`, not a stream: an account export is a few tens of KB (one XLSX of one household's
+     * ledger), and holding it whole is what lets the caller hand a finished file to the share sheet. If exports
+     * ever grow to megabytes this should stream to disk instead.
+     */
+    suspend fun exportAccount(accountId: String): Pair<ByteArray, String> {
+        val (res, bytes) = authedGetBinary("/accounts/$accountId/export")
+        val fallback = "tandemtab-export.xlsx"
+        // Content-Disposition is `attachment; filename=…` and may quote the value. Parsed leniently and always
+        // with a fallback: a missing or odd header is no reason to fail an export the server already produced.
+        val name = res.headers[HttpHeaders.ContentDisposition]
+            ?.split(';')
+            ?.map { it.trim() }
+            ?.firstOrNull { it.startsWith("filename=", ignoreCase = true) }
+            ?.substringAfter('=')
+            ?.trim('"', ' ')
+            ?.takeIf { it.isNotBlank() }
+            ?: fallback
+        return bytes to name
+    }
+
     /** Bring a deleted account back. Returns 204. ⚠️ Only works before the purge — after that the account is gone
      *  and the server 404s, which is exactly the outcome this whole row exists to let a phone user avoid. */
     suspend fun reactivateAccount(accountId: String) {
@@ -683,6 +710,29 @@ class TandemTabApi(
         }
         ensureOk(resp.status, resp.bodyAsText())
         return resp
+    }
+
+    /**
+     * A GET whose body is bytes, not JSON — the account export.
+     *
+     * ⚠️ It exists because [authedGet] **cannot** serve one. That helper reads `bodyAsText()` on every response,
+     * success included, purely so it has a message ready for the error path — which consumes the stream. Asking
+     * it for a spreadsheet decoded a binary body as UTF-8 and then tried to read the same channel a second time,
+     * and the whole export failed with nothing in the server log to explain it. Found on the emulator, which is
+     * the only place it could have been found: it compiles perfectly.
+     *
+     * Here the bytes are read ONCE and only decoded for a message when the status is bad — where the body is a
+     * short JSON error rather than a spreadsheet.
+     */
+    private suspend fun authedGetBinary(path: String): Pair<HttpResponse, ByteArray> {
+        ensureFreshToken()
+        var resp = client.get(path) { header(HttpHeaders.Authorization, "Bearer ${requireToken()}") }
+        if (resp.status == HttpStatusCode.Unauthorized && tryRefresh()) {
+            resp = client.get(path) { header(HttpHeaders.Authorization, "Bearer ${requireToken()}") }
+        }
+        val bytes: ByteArray = resp.body()
+        ensureOk(resp.status, if (resp.status.value in 200..299) "" else String(bytes))
+        return resp to bytes
     }
 
     /** POST an authed endpoint with a JSON body, same stale/401 refresh handling as [authedGet]. */
