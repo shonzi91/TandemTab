@@ -2397,45 +2397,58 @@ else
                                            period, so March's flight is in this list under a June trip. *@
                                         @* ⚠️ No `@{`: this sits inside the `else` of the IsEmpty check, which is already
                                            a code block — inside one, `@` is the switch back to markup, not into code. *@
+                                        @* Newest first, and newest on the clock within a day (owner's call). A trip
+                                           is the one list where a single day holds a dozen entries, and a size
+                                           order turns a journey into a leaderboard — you read a trip as the days
+                                           you lived. SortTime keeps an untimed row at the bottom of its own day
+                                           instead of reading as midnight. *@
                                         var tExps = State.TripExpenses(tRecap.TripId)
-                                            .OrderByDescending(e => Math.Abs(e.Amount.Amount)).ThenByDescending(e => e.Date).ToList();
+                                            .OrderByDescending(e => e.Date).ThenByDescending(e => e.SortTime).ToList();
                                         @if (tExps.Count > 0)
                                         {
                                             <div class="trip-exps">
                                                 <div class="trip-exps-head">
                                                     <span class="trip-exps-lbl">@Loc["Everything on this trip"]</span>
                                                     <span class="trip-exps-n">@tExps.Count</span>
+                                                    @* Two ways to read the same list: down the days, or by what the
+                                                       money was for. Neither is the "right" one — a trip you are
+                                                       recalling reads by day, a trip you are accounting for reads
+                                                       by category. *@
+                                                    <span class="trip-exps-sw">
+                                                        <button type="button" class="chip @(!_tripByCategory ? "on" : "")" @onclick="() => _tripByCategory = false">@Loc["By date"]</button>
+                                                        <button type="button" class="chip @(_tripByCategory ? "on" : "")" @onclick="() => _tripByCategory = true">@Loc["By category"]</button>
+                                                    </span>
                                                 </div>
+                                                @if (_tripByCategory)
+                                                {
+                                                    @* Biggest group first — grouped, the question stops being "when"
+                                                       and becomes "what did most of this go on". *@
+                                                    foreach (var grp in tExps.GroupBy(e => e.CategoryId)
+                                                        .Select(g => (Id: g.Key, Rows: g.ToList(), Total: g.Sum(x => x.Amount.Amount)))
+                                                        .OrderByDescending(g => g.Total))
+                                                    {
+                                                        <div class="trip-grp">
+                                                            <span class="trip-grp-n"><CatIcon Name="@State.CategoryIcon(grp.Id)" /> @State.CategoryName(grp.Id)</span>
+                                                            <span class="trip-grp-c">@grp.Rows.Count</span>
+                                                            <span class="trip-grp-v">@Fmt(State.Money(grp.Total))</span>
+                                                        </div>
+                                                        <ul class="brk-exp-list">
+                                                            @foreach (var te in grp.Rows)
+                                                            {
+                                                                @TripExpRow(trip, te)
+                                                            }
+                                                        </ul>
+                                                    }
+                                                }
+                                                else
+                                                {
                                                 <ul class="brk-exp-list">
                                                     @foreach (var te in tExps)
                                                     {
-                                                        <li class="brk-exp-row">
-                                                            <span class="brk-exp-date"><span class="brk-exp-d">@te.Date.ToString("dd")</span><span class="brk-exp-m">@te.Date.ToString("MMM")</span></span>
-                                                            <span class="brk-exp-main">
-                                                                <span class="brk-exp-title">@(string.IsNullOrEmpty(te.Note) ? State.CategoryName(te.CategoryId) : te.Note)</span>
-                                                                @* The sub-line carries the trip's OWN axis (the label) when there is one,
-                                                                   falling back to the category. On a trip that files into one category the
-                                                                   category is the same word on every row, so printing it there would be a
-                                                                   column of "Entertainment" saying nothing. *@
-                                                                <span class="brk-exp-sub">
-                                                                    @if (te.TagId is { } teTag)
-                                                                    {
-                                                                        @TagMark(State.TagIcon(teTag))<span>@State.TagName(teTag)</span>
-                                                                    }
-                                                                    else
-                                                                    {
-                                                                        <span>@State.CategoryName(te.CategoryId)</span>
-                                                                    }
-                                                                    <span class="brk-exp-when">@TripWhenLabel(trip, te.Date)</span>
-                                                                </span>
-                                                            </span>
-                                                            <span class="brk-exp-amt">@Fmt(te.Amount)@if (te.HasForeign)
-                                                                {
-                                                                    <small class="amt-fx">@CurrencyInfo.Symbol(te.ForeignCurrency)@te.ForeignAmount!.Value.ToString("0.00")</small>
-                                                                }</span>
-                                                        </li>
+                                                        @TripExpRow(trip, te)
                                                     }
                                                 </ul>
+                                                }
                                             </div>
                                         }
                                     }
@@ -7135,6 +7148,77 @@ else
     /// slow question ("is the pile growing?") that the chart was built for; the other three are the same flows the
     /// bars above show, seen as a line over time rather than month by month.
     /// </summary>
+    /// <summary>Whether the trip ledger is grouped by category rather than run down the days. Not per-trip: only
+    /// one card is open at a time, and carrying the choice between them is the less surprising behaviour.</summary>
+    private bool _tripByCategory;
+
+    /// <summary>
+    /// One row of a trip's ledger, shared by both the by-date and by-category renderings so the two cannot drift
+    /// into showing different things about the same expense.
+    /// <para>
+    /// Edit and delete act on the expense itself — the same doors the Spending ledger offers. A trip is where a
+    /// mis-typed holiday total is actually noticed, and until now the only way to correct one was to go and find it
+    /// in the month it was paid.
+    /// </para>
+    /// </summary>
+    private RenderFragment TripExpRow(FinApp.Domain.Budgeting.Trip trip, FinApp.Domain.Budgeting.Expense te) => __builder =>
+    {
+        <li class="brk-exp-row">
+            <span class="brk-exp-date"><span class="brk-exp-d">@te.Date.ToString("dd")</span><span class="brk-exp-m">@te.Date.ToString("MMM")</span></span>
+            <span class="brk-exp-main">
+                <span class="brk-exp-title">@(string.IsNullOrEmpty(te.Note) ? State.CategoryName(te.CategoryId) : te.Note)</span>
+                @* The sub-line carries the trip's OWN axis (the label) when there is one, falling back to the
+                   category. On a trip that files into one category the category is the same word on every row, so
+                   printing it there would be a column of "Entertainment" saying nothing. *@
+                <span class="brk-exp-sub">
+                    @if (te.Time is { } tt)
+                    {
+                        <span class="brk-exp-clock">@tt.ToString("HH:mm")</span>
+                    }
+                    @if (te.TagId is { } teTag)
+                    {
+                        @TagMark(State.TagIcon(teTag))<span>@State.TagName(teTag)</span>
+                    }
+                    else
+                    {
+                        <span>@State.CategoryName(te.CategoryId)</span>
+                    }
+                    <span class="brk-exp-when">@TripWhenLabel(trip, te.Date)</span>
+                </span>
+            </span>
+            <span class="brk-exp-amt">@Fmt(te.Amount)@if (te.HasForeign)
+                {
+                    <small class="amt-fx">@CurrencyInfo.Symbol(te.ForeignCurrency)@te.ForeignAmount!.Value.ToString("0.00")</small>
+                }</span>
+            @* Only while the period the expense lives in is open — a trip spans months, so some of its rows are in
+               closed periods the domain refuses to rewrite. Offering a control that can only fail is worse than
+               offering none. *@
+            @if (State.IsPeriodOpen && State.FindExpense(te.Id) is not null)
+            {
+                <span class="brk-exp-acts">
+                    <button class="exp-edit" title="@Loc["Edit"]" aria-label="@Loc["Edit"]" @onclick="() => TripEditExpense(te.Id)"><Icon Name="pencil" /></button>
+                    <button class="exp-edit" title="@Loc["Remove expense"]" aria-label="@Loc["Remove expense"]" @onclick="() => TripDeleteExpense(te.Id)"><Icon Name="trash" /></button>
+                </span>
+            }
+        </li>
+    };
+
+    /// <summary>Editing or removing from the trip card pushes a return to the Trips tab, so closing the modal lands
+    /// back on the journey rather than dumping the reader on Home.</summary>
+    private void TripEditExpense(Guid id)
+    {
+        var back = _expandedTripId;
+        _modalBack.Push(() => ShowTripsTab(back));
+        OpenEditExpense(id);
+    }
+
+    private void TripDeleteExpense(Guid id)
+    {
+        var back = _expandedTripId;
+        _modalBack.Push(() => ShowTripsTab(back));
+        OpenDeleteExpense(id);
+    }
+
     private enum TrendSeries { Balance, Spent, Saved, Kept }
 
     private TrendSeries _trendSeries = TrendSeries.Balance;

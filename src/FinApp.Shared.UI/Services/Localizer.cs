@@ -1862,6 +1862,7 @@ public sealed class Localizer(IJSRuntime js)
             "Или помоли кредитора да запази първоначалния краен срок и вместо това да намали вноската до {0} на месец.",
         ["{0} went onto a loan this month."] = "{0} отидоха по кредит този месец.",
         ["What the lower chart shows"] = "Какво показва долната графика",
+        ["By category"] = "По категория",
         ["Kept"] = "Задържано",
         ["Spent in each month"] = "Похарчено всеки месец",
         ["Set aside in each month"] = "Заделено всеки месец",

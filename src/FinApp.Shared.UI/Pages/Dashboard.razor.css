@@ -3364,7 +3364,32 @@ html.dark .trip-timecost { color: #8c99a8; }
    the card without limit — a fortnight away is easily fifty rows, and a card that long buries the ✎/🗑 actions
    underneath it. */
 .trip-exps { display: flex; flex-direction: column; gap: 2px; }
-.trip-exps-head { display: flex; align-items: baseline; gap: 6px; }
+.trip-exps-head { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
+/* The by-date / by-category switch sits at the far end of the ledger's own header, not above the whole card:
+   it changes this list and nothing else on the trip. */
+.trip-exps-sw { margin-left: auto; display: flex; gap: 5px; }
+.trip-exps-sw .chip { font-size: .72rem; padding: 3px 9px; }
+
+/* A category group's header inside the grouped ledger — name, count, total. Reads as a subtotal line, not as
+   another expense row, so it takes the muted treatment and a rule above it. */
+.trip-grp { display: flex; align-items: center; gap: 8px; padding: 9px 8px 5px; border-top: 1px solid #eef2f0; margin-top: 4px; }
+.trip-grp:first-of-type { border-top: 0; margin-top: 0; }
+.trip-grp-n { display: flex; align-items: center; gap: 6px; font-size: .78rem; font-weight: 800; color: #24352c; }
+.trip-grp-n svg { width: 14px; height: 14px; }
+.trip-grp-c { font-size: .7rem; color: #97a2ad; }
+.trip-grp-v { margin-left: auto; font-size: .78rem; font-weight: 800; color: #4a5a51; }
+html.dark .trip-grp { border-top-color: #2b3a33; }
+html.dark .trip-grp-n { color: #e6efe9; }
+html.dark .trip-grp-v { color: #c2cfc7; }
+
+/* Edit + delete on a ledger row, revealed on hover so a long list stays a list. Always visible on touch, where
+   there is no hover to reveal them with. */
+.brk-exp-acts { display: flex; gap: 2px; margin-left: 4px; opacity: 0; transition: opacity .12s ease; }
+.brk-exp-row:hover .brk-exp-acts, .brk-exp-row:focus-within .brk-exp-acts { opacity: 1; }
+@media (hover: none) { .brk-exp-acts { opacity: 1; } }
+/* The clock, when a row carries one — first thing on the sub-line, since within a day it is what orders them. */
+.brk-exp-clock { font-variant-numeric: tabular-nums; color: #8a97a0; }
+html.dark .brk-exp-clock { color: #93a3ad; }
 .trip-exps-lbl { font-size: .68rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: #64748b; }
 .trip-exps-n { font-size: .68rem; font-weight: 700; color: #94a3b8; }
 /* Reset the Breakdown list's own indent + rail: there it hangs off a coloured slice, here it is the card's own
