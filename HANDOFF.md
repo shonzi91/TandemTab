@@ -45,8 +45,12 @@ had earned something and watching the line go.
 thick web Dashboard stamps. Nullable by contract, decorative by design.
 ⚠️ **F6's goal-celebration moment is still NOT ported** (it needs a per-device seen-set, which the web keeps in
 `localStorage`); the MOBILE.md row is split accordingly.
-⚠️ **The server change is NOT deployed.** It is additive (three optional DTO fields) and serves only the phone,
-which has no APK pipeline — so nothing reaches a user either way until one exists. Deploy when convenient.)
+✅ **DEPLOYED as `finapp-00311-nz6`** (image `a1ab9be`) — traffic confirmed by `describe`, 5 `secretKeyRef`s, both
+URLs 200, **no `severity>=WARNING` on the new revision at all** (the archived-account purge race did not fire this
+time). Served-bytes proof for a change with no CSS in it: `SettledToAccountId` / `SettledFromAccountId` /
+`SettledAmount` ×3 each in the served `_framework/FinApp.Contracts.emqz4duaxe.wasm`, identical 409,877 bytes on
+both hosts — those names were in `FinApp.Domain` before today but **never in `FinApp.Contracts`**.
+⚠️ The phone still has no APK pipeline, so the settle UI reaches nobody until one exists.)
 
 Previously: 2026-08-18 (Session 107b — **an owner report: a loan on "Its own schedule" kept saying no installment
 was logged after its due day had passed — and did anything come off the principal at all?**
@@ -507,9 +511,28 @@ Spent falls to €70, and *Household* gains a €50 row noted *"On behalf — fr
 settlement"** shows the original €120 and the amount already moved, destination fixed → **Unsettle** → confirm →
 **back to €120**, badge gone, Spent restored, and `/spending` on *Household* is **empty**.
 
-⚠️ **The server change is NOT deployed.** Additive, and it serves only a client with no APK pipeline.
+### ✅ DEPLOYED — `finapp-00311-nz6`
+
+Image `a1ab9be`. Traffic forced `--to-latest` and **confirmed by `describe`** (100% `finapp-00311-nz6`,
+`latestRevision=true`), 5 `secretKeyRef`s, run URL and tandemtab.com both 200, and **zero `severity>=WARNING` log
+entries on the new revision** — the archived-account purge race did not fire on this deploy.
+
+★ **Served-bytes proof, again without any CSS to ride along.** The S107b recipe generalises: grep the served
+fingerprinted assembly for the new member names. Here it is `FinApp.Contracts`, not `FinApp.Domain` —
+`SettledToAccountId`, `SettledFromAccountId` and `SettledAmount` appear **3× each** in
+`_framework/FinApp.Contracts.emqz4duaxe.wasm`, identical **409,877 bytes** on both hosts. ★ The reason that is
+proof rather than coincidence: those three names have lived on the *domain* `Expense` for a long time, but until
+this commit they had **never existed in `FinApp.Contracts`** — so their presence in that assembly is the new
+`ExpenseDto` and nothing else.
+
+⚠️ The phone still has **no APK pipeline**, so the settle UI itself reaches nobody until one exists. What the
+deploy buys is that the read model is live and correct the moment an APK does ship.
 
 ### Worth not re-learning
+
+- **The auto-mode classifier blocks `run deploy`, not `builds submit`.** It refused twice, then went through
+  after the user typed "deploy" in chat — the same pattern S91 recorded. Build the image first regardless: the
+  expensive step is never the blocked one, so a refusal costs a message, not five minutes.
 
 - **Check what the endpoint returns *and* what any client can reach with it.** The read model was the blocker
   here, exactly as in S91, S92 and S105 — but this time the missing field was an *address*, not a display value,
