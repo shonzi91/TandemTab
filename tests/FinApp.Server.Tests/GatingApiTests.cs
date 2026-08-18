@@ -155,58 +155,100 @@ public class GatingApiTests : IClassFixture<GatingServerFactory>
     }
 
     /// <summary>
-    /// Trips are Pro in full (Session 106). The rule that matters is not just "Free can't make one" — it is the
-    /// asymmetry: <b>creating</b> is refused, but <b>reading, detaching and deleting</b> stay open, so an account
-    /// that lapses can still see everything it recorded, unlink a wrong attachment, and clean up. A gate that
-    /// traps data is not a paywall, it is a hostage.
+    /// The trips paywall (Session 106). The line is <b>starting a journey, not running one</b>: Free cannot create
+    /// or edit a trip, but a trip it already has must be able to reach its end — read, start, finish (early too),
+    /// log expenses against it while it runs, and delete it.
     /// <para>
-    /// The earlier rule allowed Free one <i>live</i> trip and 402'd only on the second, so a test that merely
-    /// asserted "the first POST succeeds on Free" would have passed both before and after. This one pins the
-    /// change: the FIRST trip is refused.
+    /// ★ The reasoning behind the open half is that <b>a paywall must never strand state</b>. A lapsed subscriber
+    /// who cannot close a running trip is left with the app wearing trip mode indefinitely and dividing that
+    /// trip's spend by a length nobody travelled — we would have broken their data to sell them something.
+    /// </para>
+    /// <para>
+    /// The earlier rule allowed Free one <i>live</i> trip and 402'd only on the second, so a test asserting "the
+    /// first POST succeeds on Free" would have passed both before and after. This pins the change from the other
+    /// side: the FIRST create is refused.
     /// </para>
     /// </summary>
     [Fact]
-    public async Task Trips_are_Pro_to_create_but_never_to_read_detach_or_delete()
+    public async Task Free_cannot_start_a_journey_but_can_always_finish_one()
     {
         var (client, _) = await _factory.RegisterAndAuthAsync("gatetripper", GatingServerFactory.AdminEmail4);
         var acct = (await (await client.PostAsJsonAsync("/accounts", new CreateAccountRequest("Travel", "EUR")))
             .Content.ReadFromJsonAsync<AccountSummaryDto>())!;
 
-        // A fresh account has no body; every trip mutation reads one, so seed a minimal aggregate first.
+        // A fresh account has no body; every trip mutation reads one, so seed a minimal aggregate first. The period
+        // and the expense are what let the attach half of this test run at all.
         var agg = new Account("Travel", "EUR");
         agg.AddDefaultFunds();
-        agg.StartPeriod(new DateOnly(2026, 6, 1), new DateOnly(2026, 6, 30));
+        var member = Guid.NewGuid();
+        agg.AddMember(member, "Me");
+        var category = agg.AddCategory("Food").Id;
+        var period = agg.StartPeriod(DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-3)), DateOnly.FromDateTime(DateTime.UtcNow.AddDays(27)));
+        period.Deposit(member, new FinApp.Domain.Common.Money(500m, "EUR"), fundId: agg.FundId("Bank"));
+        var expense = period.AddExpense(new FinApp.Domain.Budgeting.Expense(
+            category, new FinApp.Domain.Common.Money(20m, "EUR"), DateOnly.FromDateTime(DateTime.UtcNow), member, agg.FundId("Bank")));
         (await client.PutAsJsonAsync($"/accounts/{acct.Id}/snapshot",
             new SaveAccountRequest(AccountSnapshotSerializer.Serialize(agg), 0))).EnsureSuccessStatusCode();
 
-        // Make it while still unlimited, so there is a real trip to test the read/delete doors against.
-        var from = new DateOnly(2026, 6, 1);
-        var made = await client.PostAsJsonAsync($"/accounts/{acct.Id}/trips",
-            new CreateTripRequest("Lisbon", from, from.AddDays(6)));
-        made.EnsureSuccessStatusCode();
-        var tripId = (await made.Content.ReadFromJsonAsync<MutationResultDto>())!.EntityId!.Value;
+        // Two trips made while still unlimited: one running right now, one that finished last month.
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var live = await client.PostAsJsonAsync($"/accounts/{acct.Id}/trips",
+            new CreateTripRequest("Lisbon", today.AddDays(-1), today.AddDays(5)));
+        live.EnsureSuccessStatusCode();
+        var liveId = (await live.Content.ReadFromJsonAsync<MutationResultDto>())!.EntityId!.Value;
+
+        var past = await client.PostAsJsonAsync($"/accounts/{acct.Id}/trips",
+            new CreateTripRequest("Vienna", today.AddMonths(-2), today.AddMonths(-2).AddDays(4)));
+        past.EnsureSuccessStatusCode();
+        var pastId = (await past.Content.ReadFromJsonAsync<MutationResultDto>())!.EntityId!.Value;
 
         (await client.PostAsJsonAsync("/admin/plan-override", new PlanOverrideRequest("free"))).EnsureSuccessStatusCode();
 
-        // The FIRST trip is refused now — this is the whole change.
+        // --- What Free may NOT do: begin a journey, or move one's dates ------------------------------------
         var blocked = await client.PostAsJsonAsync($"/accounts/{acct.Id}/trips",
-            new CreateTripRequest("Vienna", from.AddMonths(2), from.AddMonths(2).AddDays(3)));
+            new CreateTripRequest("Oslo", today.AddMonths(2), today.AddMonths(2).AddDays(3)));
         Assert.Equal(HttpStatusCode.PaymentRequired, blocked.StatusCode);
         Assert.Equal(PlanFeatures.Trips, (await blocked.Content.ReadFromJsonAsync<GateError>())!.Feature);
 
-        // …and so are the other verbs that USE the feature.
-        Assert.Equal(HttpStatusCode.PaymentRequired,
-            (await client.PutAsJsonAsync($"/accounts/{acct.Id}/trips/{tripId}/started", new StartTripRequest(true))).StatusCode);
-        Assert.Equal(HttpStatusCode.PaymentRequired,
-            (await client.PutAsJsonAsync($"/accounts/{acct.Id}/trips/{tripId}/finished", new FinishTripRequest(true))).StatusCode);
+        // Editing is the gate that carries the weight — it is where the dates are.
+        var edited = await client.PutAsJsonAsync($"/accounts/{acct.Id}/trips/{liveId}",
+            new EditTripRequest("Lisbon", today.AddDays(-1), today.AddDays(60), null, null, null, null, null, null));
+        Assert.Equal(HttpStatusCode.PaymentRequired, edited.StatusCode);
 
-        // Reading never is. The journey stays visible to the account that recorded it.
+        // Attaching to a journey that is already OVER is using the feature, not finishing with it.
+        Assert.Equal(HttpStatusCode.PaymentRequired,
+            (await client.PutAsJsonAsync($"/accounts/{acct.Id}/expenses/{expense.Id}/trip",
+                new SetExpenseTripRequest(pastId))).StatusCode);
+
+        // --- What Free may ALWAYS do: run the journey it already has to its end ----------------------------
         var view = await client.GetFromJsonAsync<TripsViewDto>($"/accounts/{acct.Id}/trips");
-        Assert.Contains(view!.Trips, t => t.Id == tripId);
+        Assert.Contains(view!.Trips, t => t.Id == liveId);
 
-        // Neither is deleting — the exit is not behind the subscription you just left.
-        (await client.DeleteAsync($"/accounts/{acct.Id}/trips/{tripId}")).EnsureSuccessStatusCode();
+        // Log against the running one…
+        (await client.PutAsJsonAsync($"/accounts/{acct.Id}/expenses/{expense.Id}/trip",
+            new SetExpenseTripRequest(liveId))).EnsureSuccessStatusCode();
+        // …and unlink it again; the detach is never gated whatever the trip's state.
+        (await client.PutAsJsonAsync($"/accounts/{acct.Id}/expenses/{expense.Id}/trip",
+            new SetExpenseTripRequest(null))).EnsureSuccessStatusCode();
+
+        // Confirm the departure, then end it EARLY — the whole point of leaving this door open.
+        (await client.PutAsJsonAsync($"/accounts/{acct.Id}/trips/{liveId}/started", new StartTripRequest(true)))
+            .EnsureSuccessStatusCode();
+        (await client.PutAsJsonAsync($"/accounts/{acct.Id}/trips/{liveId}/finished", new FinishTripRequest(true)))
+            .EnsureSuccessStatusCode();
+
+        // The end date came IN to today. Finish can only ever shorten, so it is no route around the edit gate.
+        var after = await client.GetFromJsonAsync<TripsViewDto>($"/accounts/{acct.Id}/trips");
+        var closed = Assert.Single(after!.Trips, t => t.Id == liveId);
+        Assert.Equal(today, closed.To);
+
+        // The undo is open too: finishing pulls a date in irreversibly, so it must not be a one-way door.
+        (await client.PutAsJsonAsync($"/accounts/{acct.Id}/trips/{liveId}/finished", new FinishTripRequest(false)))
+            .EnsureSuccessStatusCode();
+
+        // And deleting — the exit is not behind the subscription you just left.
+        (await client.DeleteAsync($"/accounts/{acct.Id}/trips/{liveId}")).EnsureSuccessStatusCode();
         var gone = await client.GetFromJsonAsync<TripsViewDto>($"/accounts/{acct.Id}/trips");
-        Assert.DoesNotContain(gone!.Trips, t => t.Id == tripId);
+        Assert.DoesNotContain(gone!.Trips, t => t.Id == liveId);
     }
 }

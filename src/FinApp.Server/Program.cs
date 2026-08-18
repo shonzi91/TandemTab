@@ -2015,11 +2015,12 @@ accounts.MapPost("/{id:guid}/trips", async (Guid id, CreateTripRequest req, Clai
 });
 
 // Confirm a departure (or take it back). Trip mode never switches itself on — see Trip.StartedOn.
-accounts.MapPut("/{id:guid}/trips/{tripId:guid}/started", async (Guid id, Guid tripId, StartTripRequest req, ClaimsPrincipal user, SnapshotService svc,
-        EntitlementService entitlements, SyncNotifier notifier, CancellationToken ct) =>
+// ⚠️ NOT gated. Confirming a departure creates nothing and moves no date — it is how a trip that already exists
+// gets under way, and a Free account has to be able to run one it made while it was Pro to the end. See
+// PlanFeatures.Trips for the whole line.
+accounts.MapPut("/{id:guid}/trips/{tripId:guid}/started", async (Guid id, Guid tripId, StartTripRequest req, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
 {
     var userId = user.UserId();
-    await entitlements.RequireAsync(userId, PlanFeatures.Trips, ct);
     var (version, _) = await svc.MutateAsync<object?>(userId, id, account =>
     {
         // Server date, like finishing: "we've left" is a fact about now.
@@ -2032,14 +2033,17 @@ accounts.MapPut("/{id:guid}/trips/{tripId:guid}/started", async (Guid id, Guid t
 });
 
 // Finish / reopen. See FinishTripRequest for why this isn't a field on the edit form's full-replace payload.
-accounts.MapPut("/{id:guid}/trips/{tripId:guid}/finished", async (Guid id, Guid tripId, FinishTripRequest req, ClaimsPrincipal user, SnapshotService svc,
-        EntitlementService entitlements, SyncNotifier notifier, CancellationToken ct) =>
+// ⚠️ NOT gated, in EITHER direction (owner's call). Ending a journey is the exit, and an exit is never sold: a
+// trip left running because the subscription lapsed would go on wearing the app's trip mode and dividing its
+// spend by a length nobody travelled.
+// ★ Finishing early DOES pull `To` in to today — but that is the mechanic of ending early, not an edit: Finish
+// can only ever SHORTEN a trip, never push its end out, so it is no route around the gate on the edit form.
+// Reopen is ungated for the same reason detach is: finishing pulls a date in irreversibly, so a Free account that
+// taps it by accident must be able to undo it. Reopen grants nothing durable either — the trip's own `To` still
+// re-finishes it the moment the day passes.
+accounts.MapPut("/{id:guid}/trips/{tripId:guid}/finished", async (Guid id, Guid tripId, FinishTripRequest req, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
 {
     var userId = user.UserId();
-    // ⚠️ Gated like the rest — but note this is the endpoint that ENDS a trip, so a lapsed subscriber cannot close
-    // the journey they are on. That is deliberate only insofar as the whole feature is Pro; if it bites, this is
-    // the one call worth exempting.
-    await entitlements.RequireAsync(userId, PlanFeatures.Trips, ct);
     var (version, _) = await svc.MutateAsync<object?>(userId, id, account =>
     {
         // The server's own date, not the client's: "over" is a fact about now, and a device with a wrong clock
@@ -2111,10 +2115,22 @@ accounts.MapPut("/{id:guid}/expenses/{expenseId:guid}/trip", async (Guid id, Gui
         EntitlementService entitlements, SyncNotifier notifier, CancellationToken ct) =>
 {
     var userId = user.UserId();
-    // Attaching uses the feature and is gated; DETACHING never is — same rule as a fund's foreign currency below.
-    // A downgrade must always be able to undo what it can no longer do, or a wrong link becomes permanent.
-    if (req.TripId is not null)
-        await entitlements.RequireAsync(userId, PlanFeatures.Trips, ct);
+    // The conditional gate. DETACHING is never gated — a downgrade must always be able to undo what it can no
+    // longer do, or a wrong link becomes permanent. ATTACHING is free while the journey is still running (you can
+    // keep logging a trip you are on right through to its end) and Pro once it is over, because filing a forgotten
+    // booking against a finished trip is using the feature rather than finishing with it.
+    // The plan is checked FIRST so a Pro account never pays for the snapshot read this needs.
+    if (req.TripId is { } wantedTrip && !await entitlements.AllowsAsync(userId, PlanFeatures.Trips, ct))
+    {
+        var snap = await svc.GetAsync(userId, id, ct);
+        var onDay = DateOnly.FromDateTime(DateTime.UtcNow);
+        // A trip we cannot find is left to the mutation below to reject, with the error that actually names the
+        // problem — 402 on a bad id would send the reader off after the wrong thing entirely.
+        if (!string.IsNullOrEmpty(snap.Payload)
+            && AccountSnapshotSerializer.Deserialize(snap.Payload).FindTrip(wantedTrip) is { } t
+            && t.IsFinishedOn(onDay))
+            await entitlements.RequireAsync(userId, PlanFeatures.Trips, ct);
+    }
     var (version, _) = await svc.MutateAsync<object?>(userId, id, account =>
     {
         // Any period, not just the open one: attaching last March's flight to this June's trip is the main reason

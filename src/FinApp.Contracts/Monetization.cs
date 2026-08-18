@@ -85,13 +85,21 @@ public static class PlanFeatures
     public const string History = "history";
     public const string Caps = "caps";
 
-    /// <summary>Trips, whole: creating one, starting/finishing it, attaching a cost, funding it from a savings pot,
-    /// spending it in another currency. Free used to get the one journey it was actually on; from Session 106 the
-    /// gate is on the first trip.
+    /// <summary>
+    /// Trips. The line is <b>starting a journey, not running one</b> — Free cannot create a trip, edit one, fund it
+    /// from a savings pot, or spend it in another currency.
     /// <para>
-    /// ⚠️ <b>Reading is never gated</b>, and neither is undoing: the trip GETs, detaching an expense and deleting a
-    /// trip all stay open, so an account that lapses can still see, unlink and remove everything it recorded. See
-    /// MONETIZATION.md.
+    /// ⚠️ What Free CAN always do, on a trip it already has: <b>read</b> it, <b>start</b> it, <b>finish</b> it
+    /// (including early, and including the undo), <b>attach and detach expenses while it is still running</b>, and
+    /// <b>delete</b> it. A journey somebody is on must be able to reach its end whatever happened to their
+    /// subscription — otherwise a lapse leaves the app wearing trip mode forever and dividing the spend by a length
+    /// nobody travelled. Attaching to a trip that is already <i>over</i> is Pro: that is using the feature rather
+    /// than finishing with it.
+    /// </para>
+    /// <para>
+    /// ★ <b>Editing is where the dates live</b>, and that is the gate that matters — Free must not be able to move
+    /// a trip's window. Finishing early does pull the end date in, but it can only ever SHORTEN, never extend, so
+    /// it is no route around the edit gate. See MONETIZATION.md.
     /// </para></summary>
     public const string Trips = "trips";
 }

@@ -17,9 +17,12 @@ it stands on `DebtExtraPrincipalRepaid` — principal the app actually watched g
 gated to three real cases; the **Trips tab is permanent** (and left the ⋯ menu); the trip ledger groups **by tag**
 (a trip files into one category, so "by category" was one group — a control that could do nothing); the green
 badge and the debt-free date swapped on Home.
-✅ **★ Trips are Pro in full** (#7, mid-session) — the gate is on the FIRST trip now, server and client.
-⚠️ **Reading, detaching and deleting stay open on purpose**: a downgrade must never trap data. A new server test
-pins that asymmetry.
+✅ **★ Trips went Pro (#7) — the gate is on STARTING a journey, not running one.** Pro: create, **edit** (that is
+where the dates are), savings-funding, foreign currency, and attaching to a trip already over. **Free, always, on
+a trip it already has: read · start · finish, early and undo · attach/detach while it still runs · delete.**
+⚠️ **The first cut gated finishing too, and that stranded state** — a lapse would leave the app wearing trip mode
+forever and dividing the spend by a length nobody travelled. **A paywall must never strand state.** Finishing
+early pulls the end date in, but `Finish` can only SHORTEN, never extend, so it is no route around the edit gate.
 **485 + 49 + 368 green.** `pairscan`: 0. `app.css` untouched → no cache-bust needed.
 ✅ **BROWSER-VERIFIED, all seven, both themes + 375px** — the debt one driven both ways (badge absent on the
 untouched loan, present after a real €3,000 prepayment).
@@ -325,19 +328,45 @@ The five S105 tests still pass; the one that set the balance directly now record
 - **The green badge and the debt-free date swapped** on Home's target row. It reads `Debt-free · what you've
   banked · when it lands`, and the projected date is back on the right edge every other target row uses. The
   narrow-screen rule needed explicit grid placement — auto-flow pushed the date onto a third row.
-- **★ Trips are Pro in full** (#7, mid-session). Free used to get one *live* trip. Now the gate is on the first
-  one — server (`POST /trips`, started, finished, edit, attach-expense) and client (`OpenAddTrip`,
-  `OpenEditTrip`, `StartTrip`, `FinishTrip`, `ReopenTrip`, `OpenAttachToTrip`, `OnExpenseTripPicked`).
-  ⚠️ **Reading, detaching and deleting are deliberately NOT gated** — a downgrade must never trap data. New
-  server test pins exactly that asymmetry, and pins it on the FIRST trip (a test asserting "the first POST
-  succeeds" would have passed before and after). `MONETIZATION.md` and both plan blurbs updated.
-  ⚠️ One judgement call worth revisiting: `/trips/{id}/finished` is gated, so a lapsed subscriber cannot close
-  the journey they are on. Flagged in the code.
+### ★ Trips went Pro (#7) — and then the line moved, because the first cut stranded state
+
+Free used to get one *live* trip, with Pro charged only for planning a second alongside it. The owner's #7 moved
+the gate to the first trip. I shipped that, and flagged one consequence: `/trips/{id}/finished` was gated too, so
+a lapsed subscriber could not close the journey they were on.
+
+**The owner's answer was the right one, and it is the rule worth keeping: a paywall must never strand state.**
+The gate is on **starting a journey, not running one**.
+
+- **Pro:** create, **edit** (this is the one that matters — it is where the dates live), fund from savings,
+  foreign currency, and attaching a cost to a trip that is already **over**.
+- **Free, always, on a trip it already has:** read · **start** · **finish, including early, including the undo** ·
+  **attach and detach expenses while it is still running** · delete.
+
+Left as it was, a lapse would leave the app wearing trip mode indefinitely and dividing that trip's spend by a
+length nobody travelled — `PerDay` divides by `To − From + 1`. We would have broken their data to sell them
+something.
+
+★ **Finishing early pulls `To` in to today, and that is fine**: `Finish` can only ever SHORTEN a trip, never push
+its end out (`if (today < To && today >= From) To = today;`), so it is no route around the edit gate. The test
+asserts that pull-in explicitly. Reopen is open for the same reason detach is — finishing loses the old end date
+irreversibly, so it must not be a one-way door; and it grants nothing durable, since the trip's own `To`
+re-finishes it the moment the day passes.
+
+`EntitlementService.AllowsAsync` is new: the attach gate is **conditional** on something only the account body
+knows, so it has to ask rather than throw. The plan is checked first, so Pro never pays for the snapshot read.
+Client mirror: `MayLogAgainstTrip`, one helper for both callers so they cannot drift from the server.
+
+⚠️ **The Pro mark came OFF the Trips tab** and stays only on "New trip". Reading and running a trip are free now,
+so a crown on the tab would tell someone mid-journey they can't use it, which is false.
+
+The server test pins both halves, and pins the create refusal on the **first** trip — a test asserting "the first
+POST succeeds on Free" would have passed before and after the change. `MONETIZATION.md` carries the reasoning.
 
 ### Verification
 
 - **485 + 49 + 368 green** (from 482 + 49 + 367). New: 3 domain (ahead-of-schedule regression, cap, undo),
-  1 server (trip Pro gating + the ungated doors).
+  1 server (`Free_cannot_start_a_journey_but_can_always_finish_one` — both halves of the trips line, including
+  the `To` pull-in on an early finish).
 - `node tools/pairscan.js` → **0** partially-darkened rules.
 - ✅ **BROWSER-VERIFIED, all seven, in both themes and at 375px** on a purpose-built fixture (new account, a
   Lisbon trip started then finished, three labelled/unlabelled expenses, a 20k/9k-paid loan dated Jan 2025).
@@ -345,14 +374,22 @@ The five S105 tests still pass; the one that set the balance directly now record
   ~€3,000 and the old rule would have fired — then `9mo ahead · €566.97 interest saved` after a real €3,000
   prepayment, with the badge in its new position. Trip card head measured at 375px: no overflow.
 - `app.css` untouched, so **no `?v=` bump needed** — worth checking rather than assuming.
+- ⚠️ **The Free branch of the trips gate is server-test-verified, not browser-verified.** The fixture account is
+  beta-cohort → `unlimited`, so every client gate is inert on it; pinning Free in a browser needs the address in
+  `Admin:Emails` (a server config change). What *was* driven in the app is the regression risk from ungating —
+  start, attach-already-paid and finish all still work, and finishing pulled the end date in from 24 Aug to
+  18 Aug, which is the shortening mechanic in the flesh.
 
 ### ⚠️ Carry-over
 
-- **NOT deployed.** Everything is committed-ready in the working tree.
+- **NOT deployed.** Everything is committed.
 - **Android has none of this**, and now trails by S105's batch as well. The Pro gate is server-side, so native
-  gets the paywall behaviour for free — but it still shows the trip UI that will now 402.
-- The pre-S105 carry-over stands: R2's 20 uncalled endpoints, no way to un-finish a trip on web
-  (`ReopenTrip` is gated now but still has zero callers), the `ClearTag` contract trap, `.debt-progress` dead CSS.
+  gets the paywall behaviour for free — but it still shows a **New trip** affordance that will now 402, with no
+  upgrade prompt in front of it. That is the one native follow-up this session creates.
+- **`ReopenTrip` still has zero web callers** — it is ungated now, so the only thing left is a place to press it.
+  The trip edit modal is the likely home; ask before removing it, per S105.
+- The pre-S105 carry-over stands: R2's 20 uncalled endpoints, the `ClearTag` contract trap, `.debt-progress`
+  dead CSS.
 
 ## Session 105 (2026-08-18) — **R2 re-measured and pushed 23 endpoints; then the owner's ten-item batch. Live: `finapp-00308-jcz`.**
 

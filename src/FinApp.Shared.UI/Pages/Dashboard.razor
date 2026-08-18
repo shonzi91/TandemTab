@@ -1235,7 +1235,10 @@ else
                            tucked in the ⋯ menu — so the feature was invisible to exactly the people who had never
                            used it, and the one door to it was behind a dots icon. The empty tab is its own advert:
                            it carries nothing but the New trip button. *@
-                        <button type="button" class="chip @(_spendView == SpendView.Trips ? "on" : "")" @onclick="() => _spendView = SpendView.Trips"><Icon Name="plane" /> @Loc["Trips"] <ProLock Feature="@PlanFeatures.Trips" Static="true" /></button>
+                        @* ⚠️ No Pro mark on the TAB. Reading trips is free, and so is running one you already have
+                           to its end — the crown lives on "New trip", which is the thing Free actually can't do.
+                           A crown here would say "you can't use this" to someone mid-journey, which is false. *@
+                        <button type="button" class="chip @(_spendView == SpendView.Trips ? "on" : "")" @onclick="() => _spendView = SpendView.Trips"><Icon Name="plane" /> @Loc["Trips"]</button>
                     </span>
                     @if (State.IsPeriodOpen)
                     {
@@ -9556,14 +9559,17 @@ else
     /// <summary>End a running trip. "Finish" means OVER, so this is a stored fact and not just a shorter end date —
     /// the hero disappears, the shell drops the trip theme, the expense form stops defaulting to it and the card
     /// moves into the history, all from the moment it's tapped. Reversible from the finished card.</summary>
-    private Task FinishTrip(Guid tripId) => Gate.Require(PlanFeatures.Trips) ? Run(() => State.FinishTrip(tripId)) : Task.CompletedTask;
+    // ⚠️ Ungated, and so are Start and Reopen below — ending a journey is the exit, and an exit is never sold.
+    // See PlanFeatures.Trips: Free cannot CREATE a trip, but must be able to run one it already has to its end.
+    private Task FinishTrip(Guid tripId) => Run(() => State.FinishTrip(tripId));
 
     /// <summary>Confirm a departure — the tap that turns trip mode on. Deliberately the only way in: see
     /// <c>Trip.StartedOn</c> for why a date arriving isn't enough.</summary>
-    private Task StartTrip(Guid tripId) => Gate.Require(PlanFeatures.Trips) ? Run(() => State.StartTrip(tripId)) : Task.CompletedTask;
+    private Task StartTrip(Guid tripId) => Run(() => State.StartTrip(tripId));
 
-    /// <summary>Put a finished trip back on the road (the undo for the above).</summary>
-    private Task ReopenTrip(Guid tripId) => Gate.Require(PlanFeatures.Trips) ? Run(() => State.FinishTrip(tripId, finished: false)) : Task.CompletedTask;
+    /// <summary>Put a finished trip back on the road (the undo for the above). Ungated for the same reason detach
+    /// is: finishing pulls the end date in irreversibly, so tapping it by accident must not be a one-way door.</summary>
+    private Task ReopenTrip(Guid tripId) => Run(() => State.FinishTrip(tripId, finished: false));
 
     // --- Using the money saved for a trip --------------------------------
     private Guid _useSavingsTripId;
@@ -9721,9 +9727,17 @@ else
     // Search text for the attach-to-trip picker. Cleared on open — a stale filter would make the list look empty.
     private string? _attachSearch;
 
+    /// <summary>The conditional half of the trips gate, in one place so the two callers cannot drift from each
+    /// other or from the server (<c>PUT /expenses/{id}/trip</c>). Attaching a cost to a journey that is still
+    /// running is free — you can log a trip you are on right through to its end, whatever your plan. Attaching to
+    /// one that is over is Pro: filing a forgotten booking against a finished trip is using the feature, not
+    /// finishing with it. Returns false having already raised the upgrade prompt, exactly like <c>Gate.Require</c>.</summary>
+    private bool MayLogAgainstTrip(Guid tripId) =>
+        State.FindTrip(tripId)?.IsFinishedOn(State.TodayDate) != true || Gate.Require(PlanFeatures.Trips);
+
     private void OpenAttachToTrip(Guid tripId)
     {
-        if (!Gate.Require(PlanFeatures.Trips)) return;
+        if (!MayLogAgainstTrip(tripId)) return;
         _tripId = tripId; _attachSearch = null; _modal = Modal.AttachToTrip;
     }
 
@@ -11250,9 +11264,9 @@ else
     /// would leave the form showing something other than what it is about to do.</summary>
     private void OnExpenseTripPicked(Guid tripId)
     {
-        // Attaching uses the feature; "Not a trip" is the detach and is never gated — a lapsed subscriber has to be
-        // able to undo a wrong link. Mirrors PUT /expenses/{id}/trip on the server.
-        if (tripId != Guid.Empty && !Gate.Require(PlanFeatures.Trips)) return;
+        // "Not a trip" is the detach and is never gated — a lapsed subscriber has to be able to undo a wrong link.
+        // Attaching goes through MayLogAgainstTrip: free on a running journey, Pro on a finished one.
+        if (tripId != Guid.Empty && !MayLogAgainstTrip(tripId)) return;
         _expTripId = tripId;
         // The category follows the trip on the two paths that are CREATING an expense. On the edit form it must not:
         // re-filing a stored row because someone attached it to a trip would move money between budgets.

@@ -36,12 +36,21 @@ The product's own wedge is **"Free to start · Great solo, better together · Ne
 
 The natural paywall line is **"together + history + intelligence."** Keep single-user, current-month budgeting fully functional so free users stay and invite a partner — the *invite* becomes the upgrade moment.
 
-> **Trips are Pro in full** (owner's call, Session 106). The earlier rule gave Free one *live* trip and charged
-> only for planning a second alongside it, on the reasoning that the app should never refuse to record real life.
-> That reasoning still holds for **reading** — every GET, the detach and the delete stay open, so a lapsed
-> subscriber can always see, unlink and remove what they recorded. What Free cannot do is *create* one. A trip is
-> a want-it-when-you-need-it feature with a clear moment of intent, which makes it a better upgrade prompt than a
+> **Trips: Pro to start one, free to finish one** (owner's call, Session 106). The earlier rule gave Free one
+> *live* trip and charged only for planning a second alongside it. The gate is on **creating** now — a trip is a
+> want-it-when-you-need-it feature with a clear moment of intent, which makes it a better upgrade prompt than a
 > capability someone half-has.
+>
+> **But a journey somebody is on must reach its end.** Free can always **read** its trips, **start** and
+> **finish** one (early too, and undo that), **attach and detach expenses while it is still running**, and
+> **delete** it. Only *creating*, *editing*, *funding from savings*, *foreign currency*, and *attaching to a trip
+> that is already over* are Pro.
+>
+> The reasoning is that a paywall must never strand state. A lapsed subscriber who cannot close a running trip is
+> left with the app wearing trip mode indefinitely and dividing that trip's spend by a length nobody travelled —
+> we would have broken their data to sell them something. **Editing is the gate that carries the weight**, because
+> that is where the dates are: finishing early pulls the end date in, but it can only ever shorten, never extend,
+> so it is no way around it.
 
 ## Packaging
 

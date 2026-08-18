@@ -64,4 +64,14 @@ public sealed class EntitlementService(
         if (!MonetizationService.Allows(await ResolvePlanAsync(userId, ct), featureKey))
             throw new PaymentRequiredException(featureKey, "That's a Pro feature — upgrade to unlock it.");
     }
+
+    /// <summary>The same question as <see cref="RequireAsync"/>, asked rather than enforced — for the few gates
+    /// that are <b>conditional</b> on something only the account body knows, and so must decide before they throw.
+    /// <para>
+    /// Attaching an expense to a trip is the case this exists for: Free may do it while the journey is still
+    /// running and may not once it is over, which cannot be answered without reading the trip. Checking the plan
+    /// first keeps Pro on one cheap read instead of paying for a snapshot fetch it never needed.
+    /// </para></summary>
+    public async Task<bool> AllowsAsync(Guid userId, string featureKey, CancellationToken ct = default) =>
+        MonetizationService.Allows(await ResolvePlanAsync(userId, ct), featureKey);
 }
