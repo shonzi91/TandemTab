@@ -1180,8 +1180,13 @@ html.dark .trend-debt-ring { stroke: #57d9a3; }
 .trend-key-net { font-weight: 700; color: #1f2430; }
 .trend-leg-dot { width: 10px; height: 10px; border-radius: 3px; flex: none; }
 /* --- Balance (the stock), its own chart -------------------------------------------------------------- */
+/* The lower chart's view switcher. Sits above its heading, which names the same thing in a sentence — the chips
+   are the control, the heading is the confirmation. */
+.trend-series-sw { display: flex; gap: 6px; flex-wrap: wrap; margin: 16px 0 0; }
+.trend-series-sw .chip { font-size: .76rem; padding: 4px 10px; }
+
 .trend-sub-h {
-    margin: 18px 0 4px; font-size: .74rem; font-weight: 800; text-transform: uppercase;
+    margin: 8px 0 4px; font-size: .74rem; font-weight: 800; text-transform: uppercase;
     letter-spacing: .05em; color: #8a97a0;
 }
 .trend-bal-fill { opacity: .13; }

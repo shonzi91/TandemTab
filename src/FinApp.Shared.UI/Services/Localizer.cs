@@ -1860,6 +1860,12 @@ public sealed class Localizer(IJSRuntime js)
             "При същата вноска от {0} това спестява {1} лихва.",
         ["Or ask your lender to keep the original end date and drop the installment to {0} a month instead."] =
             "Или помоли кредитора да запази първоначалния краен срок и вместо това да намали вноската до {0} на месец.",
+        ["{0} went onto a loan this month."] = "{0} отидоха по кредит този месец.",
+        ["What the lower chart shows"] = "Какво показва долната графика",
+        ["Kept"] = "Задържано",
+        ["Spent in each month"] = "Похарчено всеки месец",
+        ["Set aside in each month"] = "Заделено всеки месец",
+        ["Kept at the end of each month"] = "Задържано в края на всеки месец",
         ["{0} of this went onto a loan — the balance fell because the debt did."] =
             "{0} от това отиде по кредит — балансът падна, защото падна и дългът.",
         ["{0} ahead"] = "{0} по-рано",
