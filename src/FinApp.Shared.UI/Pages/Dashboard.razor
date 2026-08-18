@@ -1283,27 +1283,19 @@ else
                                     <button class="exp-edit" title="@Loc["Next day"]" @onclick="NextDay" disabled="@(dv >= State.Period.To)">▶</button>
                                 </span>
                             }
-                            @* Tag filter collapses behind an icon; a dot marks an active filter. When open, the chips
-                               reveal on this same row (starting right after the icon), wrapping if there are many. *@
-                            @if (State.ActiveTags.Count > 0)
-                            {
-                                <button type="button" class="view-btn @(_tagFilterOpen ? "active" : "")" title="@Loc["Filter by tag"]" @onclick="() => _tagFilterOpen = !_tagFilterOpen">
-                                    <Icon Name="tag" />@if (_spendTagFilter.Count > 0) { <span class="filter-dot"></span> }
-                                </button>
-                                @if (_tagFilterOpen)
+                            @* One box instead of a row of tag chips. It matches whatever is on the row — the note,
+                               the category, the wallet, the label, the trip, the amount, the date — so the same
+                               keystrokes answer "what did I spend at Lidl" and "where did that 40 euros go", which
+                               chips could never ask. *@
+                            <span class="spend-search">
+                                <Icon Name="search" />
+                                <input type="search" placeholder="@Loc["Search expenses…"]" aria-label="@Loc["Search expenses…"]"
+                                       @bind="_spendSearch" @bind:event="oninput" />
+                                @if (!string.IsNullOrWhiteSpace(_spendSearch))
                                 {
-                                    @foreach (var t in State.ActiveTags)
-                                    {
-                                        var tid = t.Id;
-                                        var on = _spendTagFilter.Contains(tid);
-                                        <button type="button" class="tag-chip @(on ? "tag-chip-on" : "")" @onclick="() => ToggleSpendTag(tid)">@TagMark(t.Icon)@t.Name</button>
-                                    }
-                                    @if (_spendTagFilter.Count > 0)
-                                    {
-                                        <button type="button" class="tag-filter-clear" @onclick="() => _spendTagFilter.Clear()">@Loc["Clear"]</button>
-                                    }
+                                    <button type="button" class="spend-search-x" title="@Loc["Clear"]" aria-label="@Loc["Clear"]" @onclick="() => _spendSearch = string.Empty"><Icon Name="x" /></button>
                                 }
-                            }
+                            </span>
                         </span>
                     </div>
                 }
@@ -1567,7 +1559,7 @@ else
                 }
                 else if (!shown.Any())
                 {
-                    <ul class="list"><li><em>@(_spendTagFilter.Count > 0 ? Loc["No expenses match the selected tags."] : Loc["Nothing’s perched here yet — add your first expense."])</em></li></ul>
+                    <ul class="list"><li><em>@(!string.IsNullOrWhiteSpace(_spendSearch) ? Loc["Nothing matches that search."] : Loc["Nothing’s perched here yet — add your first expense."])</em></li></ul>
                 }
                 else if (_dayView is not null)
                 {
@@ -6754,11 +6746,11 @@ else
     // budget-vs-spent breakdown lives one tap away under "By budgets".
     private SpendView _spendView = SpendView.ByDate;
 
-    // Switching to By budgets drops any active tag filter — the filter UI only lives on By date now, so a lingering
-    // selection would silently narrow the budget drawers with no visible way to clear it.
+    // Switching to By budgets clears the search — the box only lives on By date, so a lingering query would
+    // silently narrow the budget drawers with no visible way to clear it.
     private void SwitchToByBudgets()
     {
-        _spendTagFilter.Clear();
+        _spendSearch = string.Empty;
         _spendView = SpendView.Categories;
     }
 
@@ -7598,16 +7590,45 @@ else
         : BreakByFund ? CategoryIcons.Effective(State.FundIcon(s.Key), s.Label)
         : CategoryIcons.Effective(s.Icon, s.Label);
 
-    // Tag filter for the Spending tab: when any tag is selected, every expense list (the by-date ledger and each
-    // category/sub drawer) narrows to expenses carrying at least one of the chosen tags. Bars/totals stay unfiltered —
-    // this is a "find the tagged expenses" filter, not a re-budgeting view.
-    private readonly HashSet<Guid> _spendTagFilter = new();
-    private bool _tagFilterOpen;   // By-date: the tag chips are collapsed behind a filter icon until opened
-    private void ToggleSpendTag(Guid id) { if (!_spendTagFilter.Remove(id)) _spendTagFilter.Add(id); }
-    private bool ExpenseMatchesTagFilter(FinApp.Domain.Budgeting.Expense e) =>
-        _spendTagFilter.Count == 0 || e.TagIds.Any(_spendTagFilter.Contains);
+    /// <summary>
+    /// One search box over the Spending tab, replacing the tag-chip filter it grew out of.
+    /// <para>
+    /// The chips could only answer "which of my labels is this?", which is the question you can already answer by
+    /// looking — the ones you cannot are "where did that 40 euros at the airport go" and "what have I spent at
+    /// Lidl". A box that matches the note, the category, the wallet, the label, the trip and the amount answers all
+    /// of those with the same keystrokes, and needs no chips on screen to do it.
+    /// </para>
+    /// Bars and totals stay unfiltered: this finds expenses, it does not re-budget the period.
+    /// </summary>
+    private string _spendSearch = "";
+
+    /// <summary>
+    /// Every word must match something on the row, though not all the same thing — "lidl june" finds a June expense
+    /// noted Lidl. Matching the whole phrase against one field instead would fail on exactly the two-word queries
+    /// people actually type.
+    /// </summary>
+    private bool ExpenseMatchesSearch(FinApp.Domain.Budgeting.Expense e)
+    {
+        if (string.IsNullOrWhiteSpace(_spendSearch)) return true;
+        var ci = System.Globalization.CultureInfo.InvariantCulture;
+        // The amount goes in twice: as typed with a decimal point, and as the month name of its date, so "12.5"
+        // and "jun" both reach a row that carries neither as text.
+        var hay = string.Join(' ',
+            e.Note ?? "",
+            State.CategoryName(e.CategoryId),
+            State.FundName(e.FundId),
+            string.Join(' ', e.TagIds.Select(State.TagName)),
+            e.TripId is { } tid ? State.TripName(tid) : "",
+            e.Amount.Amount.ToString("0.##", ci),
+            e.Date.ToString("d MMM yyyy", ci));
+
+        foreach (var word in _spendSearch.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+            if (hay.IndexOf(word, StringComparison.CurrentCultureIgnoreCase) < 0) return false;
+        return true;
+    }
+
     private List<FinApp.Domain.Budgeting.Expense> FilterByTags(IEnumerable<FinApp.Domain.Budgeting.Expense> src) =>
-        _spendTagFilter.Count == 0 ? src.ToList() : src.Where(ExpenseMatchesTagFilter).ToList();
+        string.IsNullOrWhiteSpace(_spendSearch) ? src.ToList() : src.Where(ExpenseMatchesSearch).ToList();
 
     // --- Funds-as-circles: per-fund bubble menu --------------------------
     // Distinguishable colours for fund donut slices / legend swatches (synced=gold, over=red handled separately).

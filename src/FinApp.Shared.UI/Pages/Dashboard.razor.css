@@ -1047,6 +1047,30 @@ html.dark .tag-new-in { background: #171d26; border-color: #2c3644; color: #e8ee
 .tag-filter-lbl svg { width: 14px; height: 14px; }
 .tag-filter-clear { border: none; background: none; color: #0f7a54; font: inherit; font-size: .78rem; font-weight: 700; cursor: pointer; padding: 4px 6px; }
 .tag-filter-clear:hover { text-decoration: underline; }
+
+/* One search box in place of the tag chips. It grows to take the row's spare width, because a query is usually
+   longer than a label and a box you cannot read what you typed into is worse than no box. */
+.spend-search {
+    display: inline-flex; align-items: center; gap: 6px; flex: 1 1 160px; min-width: 130px; max-width: 320px;
+    border: 1px solid #dbe5e0; border-radius: 999px; padding: 0 8px 0 11px; background: #fff;
+}
+.spend-search:focus-within { border-color: #0f7a54; }
+.spend-search > .ic { width: 14px; height: 14px; color: #8a97a0; flex: 0 0 auto; }
+.spend-search input {
+    border: none; outline: none; background: none; font: inherit; font-size: .82rem;
+    padding: 7px 0; min-width: 0; flex: 1 1 auto; color: inherit;
+}
+/* The browser's own clear affordance would sit beside ours and do the same job. */
+.spend-search input::-webkit-search-cancel-button { display: none; }
+.spend-search-x {
+    display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
+    border: 0; background: none; padding: 4px; color: #8a97a0; flex: 0 0 auto;
+}
+.spend-search-x .ic { width: 13px; height: 13px; }
+.spend-search-x:hover { color: #dc2626; }
+html.dark .spend-search { background: #1b2b23; border-color: #2b4438; }
+html.dark .spend-search:focus-within { border-color: #57d9a3; }
+html.dark .spend-search > .ic, html.dark .spend-search-x { color: #93a3ad; }
 html.dark .tag-filter-lbl { color: #8b96a4; }
 html.dark .tag-filter-clear { color: #3fe0c5; }
 
