@@ -19,6 +19,7 @@ import androidx.compose.ui.Modifier
 import com.tandemtab.app.ui.HomeScreen
 import com.tandemtab.app.ui.LogoLoader
 import com.tandemtab.app.ui.LoginScreen
+import com.tandemtab.app.ui.ProGateDialog
 import com.tandemtab.app.ui.TwoFactorScreen
 import com.tandemtab.app.ui.theme.TandemTabTheme
 
@@ -68,6 +69,14 @@ class MainActivity : ComponentActivity() {
 private fun App(vm: AppViewModel, onGoogle: () -> Unit) {
     val state by vm.state.collectAsState()
     val dark by vm.darkTheme.collectAsState()
+
+    // The upgrade prompt lives above the screens, not inside one: a gate can refuse from anywhere (a form, a
+    // sheet, a menu row), and a prompt owned by whichever surface happened to raise it would have to be built
+    // again for the next one. It renders over whatever is open, so nothing the user typed is lost behind it.
+    state.proBlocked?.let { blocked ->
+        ProGateDialog(feature = blocked, plans = state.plans, onDismiss = vm::dismissProBlocked)
+    }
+
     when (state.screen) {
         Screen.Splash -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             LogoLoader()
@@ -145,6 +154,7 @@ private fun App(vm: AppViewModel, onGoogle: () -> Unit) {
             onUpdateRecurring = vm::updateRecurring,
             onSetRecurringActive = vm::setRecurringActive,
             onDeleteRecurring = vm::deleteRecurring,
+            onProBlocked = vm::raiseProBlocked,
             onPrepareAdd = vm::prepareAdd,
             onPrepareEditLast = vm::prepareEditLast,
             onPrepareEditLastIncome = vm::prepareEditLastIncome,

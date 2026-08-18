@@ -1327,3 +1327,49 @@ data class DepositRowDto(
     val amount: Double,
     val date: String,
 )
+
+// --- Plans and the paywall ----------------------------------------------------------------------------
+// The server owns the CATALOGUE (which features exist, and where the Pro line falls); the client owns the
+// WORDING. That split is why these carry stable keys rather than display strings — and it is why the phone must
+// not hard-code the free/pro split: a list written here would drift from the gates the server enforces.
+
+/** One capability and which tiers include it. Mirrors PlanFeatureDto on the server. */
+@Serializable
+data class PlanFeatureDto(val key: String = "", val inFree: Boolean = false, val inPro: Boolean = false)
+
+/** GET /plans — the tier table plus the caller's resolved plan. [enabled] is the global monetization flag: while
+ *  it is off nothing is on sale, which is the state during beta. ⚠️ Gating still follows the PLAN, not this flag —
+ *  a post-cap beta account resolves to "free" and is gated while billing is off. */
+@Serializable
+data class PlansDto(
+    val enabled: Boolean = false,
+    val currentPlan: String = "",
+    val isBetaCohort: Boolean = false,
+    val currency: String = "",
+    val annualPrice: String = "",
+    val monthlyPrice: String = "",
+    val features: List<PlanFeatureDto> = emptyList(),
+    val paymentProvider: String = "",
+    val paymentSandbox: Boolean = false,
+)
+
+/** The feature keys the server gates on (PlanFeatures in FinApp.Contracts). Used to ASK a gate, never to decide
+ *  one — which tier a key belongs to comes from [PlansDto.features]. */
+object PlanFeatures {
+    const val BUDGETS = "budgets"
+    const val GOALS = "goals"
+    const val EXPORT = "export"
+    const val SECURITY = "security"
+    const val SHARE = "share"
+    const val IMPORT = "import"
+    const val DEBT = "debt"
+    const val INSIGHTS = "insights"
+    const val HISTORY = "history"
+    const val CAPS = "caps"
+
+    /** Trips. The line is **starting a journey, not running one**: Free cannot create a trip, edit one, fund it
+     *  from a savings pot, or spend it in another currency — but on a trip it already has it may always read,
+     *  start, finish (early, and undo), attach/detach while it still runs, and delete. A paywall must never
+     *  strand state; see PlanFeatures.Trips on the server for the whole line. */
+    const val TRIPS = "trips"
+}

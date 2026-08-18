@@ -102,6 +102,10 @@ fun SpendingScreen(
     onOpenTrip: (tripId: String?) -> Unit,
     onPrepareTrip: () -> Unit,
     onUseTripSavings: (tripId: String, amount: Double, date: String, onDone: () -> Unit) -> Unit,
+    // Whether STARTING or reshaping a journey is out of this plan's reach, and what to do when one is reached
+    // anyway. Passed down rather than decided here: the plan and the tier table both live in the ViewModel.
+    tripsProLocked: Boolean,
+    onTripsProBlocked: () -> Unit,
     onLoadTags: () -> Unit,
     onPrepareTags: () -> Unit,
     onAddTag: (name: String, onDone: () -> Unit) -> Unit,
@@ -187,6 +191,8 @@ fun SpendingScreen(
                     onOpen = onOpenTrip,
                     onUseSavings = onUseTripSavings,
                     onPrepare = onPrepareTrip,
+                    proLocked = tripsProLocked,
+                    onProBlocked = onTripsProBlocked,
                 )
             }
         }

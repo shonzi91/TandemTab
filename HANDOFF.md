@@ -1,6 +1,39 @@
 # TandemTab (FinApp) — session handoff
 
-Last updated: 2026-08-18 (Session 106 — **seven owner fixes, deployed; then two R2 rows on Android. Two of the
+Last updated: 2026-08-18 (Session 107 — **the paywall Android had was working and rude. It refuses in advance
+now, and it can explain itself from anywhere.**
+**Android only; no server change, no deploy. R2 unchanged at 102 of 118. Everything committed + pushed.**
+★★ **S106 shipped a "New trip" button that 402'd.** Trips went Pro that session and the gate is server-side, so
+the paywall *worked* — a free user could fill in the whole trip form, press Save, and get one line of red text
+under the button. **The refusal was correct and arrived at the worst possible moment.**
+★★ **The fix is the web's own architecture, ported: a gate ahead of the work AND the 402 behind it.** Both raise
+one prompt (`ProGateDialog`, above every screen in `MainActivity.App`), because a gate can refuse from a form, a
+sheet or a menu row and a prompt owned by whichever surface raised it would be rebuilt for the next one.
+★ **The tier table is FETCHED, never written down.** `GET /plans` is new to the client and lazily loaded — only a
+"free" plan can be gated, so only a free plan needs it. A free/pro list hard-coded in Kotlin would drift from what
+the server enforces and the prompt would start promising the wrong things. ⚠️ The gate **fails OPEN** everywhere
+uncertain (plan unknown, catalogue not loaded, unrecognised key): a paywall shown to somebody who has already paid
+is far worse than one that arrives a moment late, and the 402 is the backstop either way.
+★★ **The 402 now carries its feature key into the client.** The server has always named the blocked capability
+beside the message; `ensureOk` was handed a message the caller had already extracted, so **the half the paywall
+needed was thrown away before anything could act on it**. It takes the raw body now. That one change is what lets
+a refusal nobody predicted — a stale plan string, or a gate only the account body can decide — still land as an
+explanation instead of a red line.
+✅ Gated ahead of the work: **new trip · edit · fund-from-a-pot**, and nothing else. Read, start, finish (early,
+and the undo), attach/detach while it runs and delete stay open on every plan — **a paywall must never strand
+state**, which is the line S106 drew and this session had to not re-cross.
+✅ **EMULATOR-VERIFIED both directions, both themes.** Free (`@test.local` → plan "free"): crown on New trip, tap
+raises the prompt with **Trips** picked out. Pro (beta cohort): **no crown anywhere**, and New trip opens the form.
+★ And the backstop proved itself on a path with no local gate at all — **Invite** 402'd and the same prompt came
+up with **Share with your household** highlighted, the key having travelled from the server's JSON through
+`ApiException.feature`.
+⚠️ **The prompt does not sell.** There is no checkout on the phone and none is faked: when billing is live it
+gives the real prices and says to upgrade in the web app; while it is off it says Pro isn't on sale yet. See the
+Session 107 note on why an "Upgrade" button that started nothing would be the same failure in a new coat.
+⚠️ Correction worth carrying: **export is NOT Pro** — the catalogue has it in Free and no handler requires it. I
+had assumed otherwise and wrote it into a comment before checking the catalogue.)
+
+Previously: 2026-08-18 (Session 106 — **seven owner fixes, deployed; then two R2 rows on Android. Two of the
 seven were bigger than they looked, and both R2 rows were bugs the app was telling about itself.**
 **Live: `finapp-00309-lmq`. 485 + 49 + 368 green. R2: 102 of 118 (86%), 16 left. Everything committed + pushed.**
 ★★ **`.chip` had defaulted to the wrong look since it was written.** The Trends and trip-grouping switchers were
@@ -263,6 +296,162 @@ a separate balance axis — because flows and a stock were sharing one scale. **
 ✅ **Committed and the web half is DEPLOYED** (Session 93 catch-up): Android sharing as `596eea5`, the web batch
 as `de51071`, now live on **`finapp-00280-4s8`** (traffic forced `--to-latest`; run URL + tandemtab.com 200; 5
 `secretKeyRef`s; no WARNING+ logs). Prior context below is Session 91.)
+
+## Session 107 (2026-08-18) — **The paywall on the phone worked, and refused rudely. Now it refuses in advance, and can explain itself from anywhere.**
+
+Android only. No server change, no C# file touched, no deploy. **R2 is unchanged at 102 of 118** — `GET /plans` is
+new to the client but it is not account-scoped, so the scanner (which measures `/accounts/{id}/…`) doesn't see it.
+
+### ★★ The bug S106 created, and why it was the honest first job
+
+S106 put trips behind Pro. The gate is server-side, so the paywall *functioned*: a free user on the phone could
+open **New trip**, fill in the name, the dates, the destination, the icon, the budget and the category, press
+**Save**, and get **one line of red text** under the button. Nothing was wrong with the refusal except when it
+arrived and what it looked like.
+
+**The web already had the answer and the phone had none of it.** `PlanGate` refuses *before* the work and
+`FinAppApiClient` turns a 402 into the same prompt; Android had neither, only `plan` as decoration for one crown
+beside Invite, plus a comment in three files saying the server's 402 is the gate. That comment is right, and it
+was being used as a reason not to build the other half.
+
+### ★ Two halves, one prompt — and the prompt lives above the screens
+
+- **Ahead of the work:** `UiState.allowsPro(key)` / `AppViewModel.requirePro(key)`, mirroring `PlanGate`.
+- **Behind it:** any 402 from a write lands in `handledAsPaywall(e)`, which raises the same prompt and tells the
+  caller **not** to also set its error string. Two explanations of one refusal, one of them red, is the thing
+  being fixed.
+
+`ProGateDialog` is rendered in `MainActivity.App`, above the `when (state.screen)`, not inside any screen. A gate
+can refuse from a form, a bottom sheet or a dropdown row; a prompt owned by whichever surface happened to raise it
+would have to be built again for the next one. It draws over whatever is open, so **nothing the user typed is
+lost** — `onDone` is not called on a paywalled write, and the form is still there behind it.
+
+### ★★ The 402 was already carrying its feature key, and the client was throwing it away
+
+The server has always answered a blocked call with `{"error":…,"feature":…}` — the message *and* the key, so a
+client can raise the matching prompt. `ensureOk(status, body)` was being handed `serverMessageOr(body, default)`,
+i.e. a message the caller had already extracted: **the half the paywall needed was gone before anything could act
+on it.** It takes the RAW body now and does both extractions itself, and `ApiException` carries `feature`.
+
+That single change is what makes the backstop general. It covers the refusals no client can predict:
+
+- a **stale plan string** (the phone thinks it is Pro; the subscription lapsed an hour ago),
+- a gate that is **conditional on the account body** — attaching an expense to a trip that is already *over* is
+  Pro while attaching to one still running is free, and `EntitlementService.AllowsAsync` exists precisely because
+  that cannot be answered without reading the trip.
+
+⚠️ Two smaller consequences of the same edit, worth knowing: `authedGet`'s failures used to surface the **raw JSON
+body** as their message, and now go through `serverMessageOr` like every other verb; and `serverMessageOr` is now
+one line over a shared `stringField` helper.
+
+### ✅ What is gated ahead of the work — and what deliberately is not
+
+Gated: **new trip**, **edit** (that is where the dates live), and **fund it from a savings pot**. Exactly the web's
+three call sites, and no more.
+
+Ungated on every plan, on a trip the account already has: **read · start · finish (early, and the undo) ·
+attach/detach while it still runs · delete.** This is S106's line and it is the one thing this session could not
+be allowed to re-cross: **a paywall must never strand state.** A lapse that blocked *finishing* would leave the
+app wearing trip mode forever, dividing the spend by a length nobody travelled.
+
+The crown follows the web's `ProLock` rule: **it renders only when the feature is actually out of reach**, so a Pro
+or beta-cohort account never sees one. It is on **New trip** (and Invite, which already had it) but not on the trip
+card's pencil — same as the web, where `OpenEditTrip` gates on click and wears no lock.
+
+### ★ The tier table is fetched, never written down
+
+`GET /plans` is a new client call, loaded **lazily and only when it can matter**: `ensurePlansLoaded()` returns
+immediately unless the plan is `"free"`, because a `"pro"`/`"unlimited"` account never gates and so never needs the
+catalogue. A 402 forces the load, since a 402 proves gating is on whatever the cached plan says.
+
+**A free/pro list hard-coded in Kotlin was the tempting shortcut and would have been wrong** — it would drift from
+the line the server enforces, and the prompt would start promising things the gates don't give. The server owns the
+catalogue; the client owns the wording (`featureLabel`, ported from `MainLayout`'s map, returning **null** for an
+unknown key so a feature shipped before the app learns its name degrades to a shorter list, not a row reading
+"roundups").
+
+⚠️ **The gate fails OPEN in every uncertain case** — plan unknown, catalogue not loaded, key not in the table.
+A paywall shown to somebody who has already paid is far worse than one that arrives a moment late, and the 402 is
+the backstop either way. One consequence to expect: `shareIsProLocked` now answers from the catalogue rather than
+from `plan == "free"` directly, so on a cold start the Invite crown appears when `/plans` lands rather than when
+`/me` does. That is the correct trade — the alternative is a crown drawn before the app knows anything.
+
+### ⚠️ The prompt does not sell, and that is deliberate
+
+There is **no checkout on the phone**. When billing is live the prompt gives the real prices from the catalogue and
+says Pro can be bought in the web app with the same sign-in; while billing is off it says Pro isn't on sale yet and
+carries the 45-day-trial line — the promise stated **only** on the branch where nothing can be charged, exactly as
+the web does it.
+
+**An "Upgrade to Pro" button that started nothing would be this session's own bug in a new coat**: a control that
+looks like it does something and then doesn't. When billing exists, that is the moment to decide what the phone
+offers — and Play's rules on digital goods are part of that decision, not a detail.
+
+### Verification — the emulator, both directions
+
+The dev config already had the instrument: `Beta:TestEmailPatterns` includes `@test.local`, so a `@test.local`
+signup is stamped the test cohort, skips the beta grandfather and **resolves to plan `"free"`** with
+`Monetization:Enabled` true. Confirmed against `/me` and `/plans` by hand before touching the phone.
+
+- **Free** (`s107free@test.local`, `/me` → `"plan":"free"`): crown on **New trip**; tapping raises the prompt with
+  **Trips — what a journey really cost, flights and all** in bold under an amber crown, the Pro list built from the
+  server's catalogue, the real prices, and no red text anywhere. Checked in **dark and light**.
+- **The 402 backstop, on a path with no local gate at all:** **Invite someone** → *Send invite* → the server 402s →
+  the same prompt, with **Share with your household** highlighted. The key travelled from the server's JSON through
+  `ApiException.feature` into the dialog. This is the half that would have failed silently if `ensureOk` had kept
+  eating the body.
+- **Pro** (`s107pro@example.test`, beta cohort → `"plan":"pro"`, `proBadge` true): **no crown anywhere**, and
+  **New trip opens the form**. The negative control matters more than the positive one here — see the fail-open
+  rule above.
+
+`compileDebugKotlin` clean before and after. Build overrides (`API_BASE_URL` → `10.0.2.2:5179`,
+`usesCleartextTraffic`) **reverted**; `git checkout` on both files, and the reverted tree re-compiles.
+
+⚠️ **The .NET suites were not run** — and did not need to be: `git status` shows **zero** files outside
+`android/` changed. 485 + 49 + 368 stands from S106.
+
+### ⚠️ Correction: export is NOT Pro
+
+I wrote "Export is Pro" into a comment on `exportAccount` before checking. It isn't: the catalogue has
+`export` with `inFree: true`, and **no server handler calls `RequireAsync(PlanFeatures.Export)`** — the key exists
+without a gate behind it. The catch is still wired to the paywall, because that handler flattens *every* failure
+into `"Couldn't export this account."`; if the line ever moves, the paywall would arrive wearing a message that
+reads like a fault in the app. The comment now says the arm is dormant and why it is there anyway.
+
+★ The general lesson, which cost me a wrong comment: **`PlanFeatures.X` existing does not mean X is gated.**
+`/plans` is the only place that answers which tier a feature is in, and `RequireAsync` call sites are the only
+place that answers whether anything enforces it.
+
+### ⚠️ Carry-over — read this first next session
+
+**State: committed and pushed, tree clean.** Web is still live on `finapp-00309-lmq` (untouched this session);
+Android source is pushed and there is still no APK pipeline.
+
+#### Where to pick up
+
+1. **R2, next row.** Run `node tools/r2scan.js --list` — **16 left**, and the audit's conclusion from S106 still
+   holds (none of them is a one-way door, so size on value). **Bank's back half** (7 routes) is the only row that
+   changes what the phone can *do*; **achievements + milestones** is the best value-per-effort for something users
+   see; `structure` is internal.
+2. **The Android UI sweep is still the largest thing outstanding** — native has none of S104/S105/S106's web work,
+   and the gap grows every web session. R2 counts endpoints; this is the other axis.
+3. **`ReopenTrip` still has zero web callers** (ungated; it only needs somewhere to press it — the trip edit modal
+   is the likely home). Ask before removing it, per S105.
+
+#### Still open, unchanged
+
+- The **`ClearTag` contract trap** (S105): one handler, opposite rules for an omitted tag and an omitted time.
+- **Dead CSS:** `.debt-progress`, `.debt-prog-cap`.
+- **Two R2 rows are blocked on the SERVER**, not Android — F4 round-ups and the fund↔bank sync toggle
+  (`SetFundSynced`, `TODO(cutover)`).
+- **Railway migration** — planned, not started. **Billing provider** is the whole remaining monetization job, and
+  it is now also the thing standing between this prompt and an upgrade path on the phone.
+
+#### Two things worth not re-learning
+
+- **A paywall that works is not a paywall that is finished.** The 402 was correct all along; what was missing was
+  the moment it arrived and the shape it arrived in. When gating a feature, ask where the refusal *lands*.
+- **Check the catalogue before believing a feature is gated.** A `PlanFeatures` constant is a key, not a fence.
 
 ## Session 106 (2026-08-18) — **Seven owner fixes off the S105 deployment. One was a paywall move; one was a lie the app had been telling.**
 

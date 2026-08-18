@@ -106,6 +106,14 @@ data class UiState(
     // The resolved plan ("free"/"pro"/"unlimited"). Decoration only — the crown next to Invite. The server's 402
     // is the actual gate, so a stale plan here can never wrongly allow or wrongly block anything.
     val plan: String = "",
+    // The tier table (GET /plans), fetched lazily and only when it can matter — a "pro"/"unlimited" plan never
+    // gates, so it never needs the catalogue. Null means "don't know yet", which every gate reads as ALLOWED.
+    // ⚠️ It is fetched rather than written down here on purpose: a free/pro list hard-coded in the client would
+    // drift from the one the server actually enforces, and the prompt would start promising the wrong things.
+    val plans: com.tandemtab.app.data.PlansDto? = null,
+    // The feature key a gate just refused, or null. Set by requirePro and by any 402 that comes back from a
+    // write; the upgrade prompt is its only reader.
+    val proBlocked: String? = null,
     // External sign-in provider ("google"/"facebook") for the current user, or null for a local password account.
     val provider: String? = null,
     // Profile: data-URL avatar (provider-sourced for external logins), email-verified + 2FA-enabled flags.
@@ -156,10 +164,23 @@ data class UiState(
     val otherMembers: List<com.tandemtab.app.data.MemberDto>
         get() = selectedAccount?.members.orEmpty().filter { it.userId != myUserId }
 
-    /** Whether inviting is out of this plan's reach, i.e. whether to wear the crown. Only "free" is gated; an
-     *  unknown/absent plan is treated as ungated, so a failed /me never invents a paywall that isn't there. */
+    /**
+     * Whether this plan includes [featureKey] — the client half of the paywall, and convenience only: entitlement
+     * is server-side, so a client that skipped this would simply reach an endpoint that refuses it. What it buys
+     * is the prompt arriving BEFORE the work rather than after it.
+     *
+     * ⚠️ Fails OPEN in every uncertain case — plan unknown, catalogue not loaded, or a key the server never sent.
+     * A paywall shown to somebody who has already paid is a far worse failure than one that arrives a moment late.
+     */
+    fun allowsPro(featureKey: String): Boolean {
+        if (plan != "free") return true
+        val f = plans?.features?.firstOrNull { it.key == featureKey } ?: return true
+        return f.inFree
+    }
+
+    /** Whether inviting is out of this plan's reach, i.e. whether to wear the crown. */
     val shareIsProLocked: Boolean
-        get() = plan == "free"
+        get() = !allowsPro(com.tandemtab.app.data.PlanFeatures.SHARE)
 
     /** The period being looked at right now (the open one unless the user has paged back). */
     val viewedPeriod: PeriodRowDto?
@@ -566,11 +587,56 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     username = me.username.ifBlank { it.username }, email = me.email, provider = me.provider,
                     avatar = me.avatar, emailVerified = me.emailVerified, twoFactorEnabled = me.twoFactorEnabled,
                 ) }
+                // The plan is known now, so the tier table can be fetched — if, and only if, it can matter.
+                ensurePlansLoaded()
             }
             loadInvitations()
         } catch (e: Exception) {
             _state.update { it.copy(busy = false, error = e.message ?: "Couldn't load your accounts.") }
         }
+    }
+
+    // --- The paywall, client-side ------------------------------------------------------------------------
+    // Nothing here decides entitlement; the server does, and it 402s. What this buys is that the refusal arrives
+    // as an explanation at the moment somebody reaches for the feature, instead of as a red line under a form
+    // they have already filled in. Both halves matter: the gate ahead of the work, and the 402 behind it for
+    // everything the client couldn't predict.
+
+    /** Load the tier table once, lazily. Only a "free" plan can be gated, so only a free plan needs it; [force]
+     *  is for a 402, which proves gating is on whatever the cached plan string says. Failure is silent and leaves
+     *  it null — which every gate reads as allowed. */
+    private fun ensurePlansLoaded(force: Boolean = false) {
+        if (_state.value.plans != null) return
+        if (!force && _state.value.plan != "free") return
+        viewModelScope.launch {
+            runCatching { api.plans() }.getOrNull()?.let { p -> _state.update { it.copy(plans = p) } }
+        }
+    }
+
+    /** Gate a call site: true to proceed, or false having raised the upgrade prompt. */
+    fun requirePro(featureKey: String): Boolean {
+        if (_state.value.allowsPro(featureKey)) return true
+        raiseProBlocked(featureKey)
+        return false
+    }
+
+    /** Raise the upgrade prompt for [featureKey] — also where a server 402 lands, including the ones no client
+     *  could have predicted (a stale plan string, or a gate only the account body can decide, like attaching an
+     *  expense to a trip that is already over). A blank key still prompts; it just can't name the feature. */
+    fun raiseProBlocked(featureKey: String) {
+        _state.update { it.copy(proBlocked = featureKey) }
+        ensurePlansLoaded(force = true)
+    }
+
+    fun dismissProBlocked() = _state.update { it.copy(proBlocked = null) }
+
+    /** True when [e] is the server's paywall, in which case the prompt has been raised and the caller must NOT
+     *  also set its error string — two explanations of one refusal, one of them red, is the thing being fixed. */
+    private fun handledAsPaywall(e: Exception): Boolean {
+        val err = e as? ApiException ?: return false
+        if (err.status != 402) return false
+        raiseProBlocked(err.feature ?: "")
+        return true
     }
 
     /** Create a new budget account and land in it: create the header, seed it (bootstrap), refresh the list, switch
@@ -586,7 +652,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 onDone()
                 selectAccount(created.id)   // reloads every view for the new account (and sets it selected)
             } catch (e: Exception) {
-                _state.update { it.copy(busy = false, error = e.message ?: "Couldn't create the account.") }
+                val paywalled = handledAsPaywall(e)   // the free plan's one-account cap
+                _state.update { it.copy(busy = false, error = if (paywalled) null else e.message ?: "Couldn't create the account.") }
             }
         }
     }
@@ -939,7 +1006,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 }
                 onDone()
             } catch (e: Exception) {
-                _state.update { it.copy(trips = it.trips.copy(saving = false, saveError = e.message ?: fallback)) }
+                // A 402 gets the upgrade prompt and no red line — the prompt IS the explanation. [onDone] is not
+                // called, so the form stays open behind it and nothing the user typed is thrown away.
+                val paywalled = handledAsPaywall(e)
+                _state.update { it.copy(trips = it.trips.copy(
+                    saving = false, saveError = if (paywalled) null else e.message ?: fallback)) }
             }
         }
     }
@@ -2401,7 +2472,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 _state.update { it.copy(settings = it.settings.copy(busy = false)) }
                 onFile(file)
             } catch (e: Exception) {
-                _state.update { it.copy(settings = it.settings.copy(busy = false, error = "Couldn't export this account.")) }
+                // ⚠️ Export is NOT gated today — the catalogue has it in Free and no server handler requires it —
+                // so this arm is dormant. It is here because this catch flattens EVERY failure into one string:
+                // if the line ever moves, the paywall would arrive as "Couldn't export this account.", which
+                // reads as a fault in the app rather than an answer about the plan.
+                val paywalled = handledAsPaywall(e)
+                _state.update { it.copy(settings = it.settings.copy(
+                    busy = false, error = if (paywalled) null else "Couldn't export this account.")) }
             }
         }
     }
@@ -2474,7 +2551,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 api.invite(accountId, target)
                 _state.update { it.copy(sharing = it.sharing.copy(busy = false, invited = target)) }
             } catch (e: Exception) {
-                _state.update { it.copy(sharing = it.sharing.copy(busy = false, error = e.message ?: "Couldn't send that invitation.")) }
+                val paywalled = handledAsPaywall(e)   // sharing is Pro
+                _state.update { it.copy(sharing = it.sharing.copy(
+                    busy = false, error = if (paywalled) null else e.message ?: "Couldn't send that invitation.")) }
             }
         }
     }

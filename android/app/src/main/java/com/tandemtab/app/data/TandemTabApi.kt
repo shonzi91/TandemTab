@@ -23,8 +23,14 @@ import kotlinx.serialization.json.Json
 import java.time.Instant
 import java.time.OffsetDateTime
 
-/** Raised for a non-2xx response so the UI can show a message instead of crashing. */
-class ApiException(val status: Int, override val message: String) : Exception(message)
+/**
+ * Raised for a non-2xx response so the UI can show a message instead of crashing.
+ *
+ * [feature] is set only on a 402, where the server names the blocked capability alongside the message so the
+ * client can raise the matching upgrade prompt rather than a red line of text. Carrying it here is what lets a
+ * paywall the client never predicted still land as an explanation — see AppViewModel.raiseProBlocked.
+ */
+class ApiException(val status: Int, override val message: String, val feature: String? = null) : Exception(message)
 
 /**
  * Thin HTTP client over the TandemTab server API. Holds the session in memory and mirrors it to a
@@ -566,6 +572,10 @@ class TandemTabApi(
     /** The signed-in user (identity for the profile sheet). */
     suspend fun me(): UserDto = authedGet("/me").body()
 
+    /** The tier table plus this account's resolved plan — what the upgrade prompt is built from, and the only
+     *  honest answer to "is this feature in Free?". Fetched lazily: a Pro account never needs it. */
+    suspend fun plans(): PlansDto = authedGet("/plans").body()
+
     /** Change the signed-in user's password. Returns 204 on success. */
     suspend fun changePassword(req: ChangePasswordRequest) {
         authedPost("/auth/password", req)
@@ -708,7 +718,7 @@ class TandemTabApi(
         if (resp.status == HttpStatusCode.Unauthorized && tryRefresh()) {
             resp = client.get(path) { header(HttpHeaders.Authorization, "Bearer ${requireToken()}") }
         }
-        ensureOk(resp.status, resp.bodyAsText())
+        ensureOk(resp.status, resp.bodyAsText(), "Couldn't load that. Please try again.")
         return resp
     }
 
@@ -731,7 +741,7 @@ class TandemTabApi(
             resp = client.get(path) { header(HttpHeaders.Authorization, "Bearer ${requireToken()}") }
         }
         val bytes: ByteArray = resp.body()
-        ensureOk(resp.status, if (resp.status.value in 200..299) "" else String(bytes))
+        ensureOk(resp.status, if (resp.status.value in 200..299) "" else String(bytes), "Couldn't download that file.")
         return resp to bytes
     }
 
@@ -748,7 +758,7 @@ class TandemTabApi(
                 setBody(body)
             }
         }
-        ensureOk(resp.status, serverMessageOr(resp.bodyAsText(), "That didn't save. Please try again."))
+        ensureOk(resp.status, resp.bodyAsText(), "That didn't save. Please try again.")
         return resp
     }
 
@@ -765,7 +775,7 @@ class TandemTabApi(
                 setBody(body)
             }
         }
-        ensureOk(resp.status, serverMessageOr(resp.bodyAsText(), "That didn't save. Please try again."))
+        ensureOk(resp.status, resp.bodyAsText(), "That didn't save. Please try again.")
         return resp
     }
 
@@ -776,7 +786,7 @@ class TandemTabApi(
         if (resp.status == HttpStatusCode.Unauthorized && tryRefresh()) {
             resp = client.delete(path) { header(HttpHeaders.Authorization, "Bearer ${requireToken()}") }
         }
-        ensureOk(resp.status, serverMessageOr(resp.bodyAsText(), "That didn't work. Please try again."))
+        ensureOk(resp.status, resp.bodyAsText(), "That didn't work. Please try again.")
         return resp
     }
 
@@ -787,7 +797,7 @@ class TandemTabApi(
         if (resp.status == HttpStatusCode.Unauthorized && tryRefresh()) {
             resp = client.post(path) { header(HttpHeaders.Authorization, "Bearer ${requireToken()}") }
         }
-        ensureOk(resp.status, serverMessageOr(resp.bodyAsText(), "That didn't save. Please try again."))
+        ensureOk(resp.status, resp.bodyAsText(), "That didn't save. Please try again.")
         return resp
     }
 
@@ -822,22 +832,27 @@ class TandemTabApi(
 
     private fun requireToken(): String = accessToken ?: throw ApiException(401, "Not signed in.")
 
-    private fun ensureOk(status: HttpStatusCode, body: String) {
+    /**
+     * Turn a non-2xx into an [ApiException] carrying a human message and, on a 402, the blocked feature key.
+     *
+     * ⚠️ It takes the RAW body, never a message the caller extracted first: on a 402 the feature key sits beside
+     * the message in the same JSON, so pulling out only the message threw away the half the paywall needs.
+     */
+    private fun ensureOk(status: HttpStatusCode, body: String, default: String) {
         if (status.value !in 200..299) {
-            throw ApiException(status.value, if (body.isBlank()) status.description else body)
+            throw ApiException(status.value, serverMessageOr(body, default), stringField(body, "feature"))
         }
     }
 
     /** Pull a human message out of the server's error body ({"error":…} or {"title":…}), else a default. */
-    private fun serverMessageOr(body: String, default: String): String {
-        return runCatching {
-            val el = json.parseToJsonElement(body)
-            val obj = (el as? kotlinx.serialization.json.JsonObject) ?: return default
-            (obj["error"] ?: obj["title"] ?: obj["message"])
-                ?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content }
-                ?.takeIf { it.isNotBlank() }
-        }.getOrNull() ?: default
-    }
+    private fun serverMessageOr(body: String, default: String): String =
+        stringField(body, "error") ?: stringField(body, "title") ?: stringField(body, "message") ?: default
+
+    /** One non-blank string field out of a JSON object body, or null for anything else (including no body). */
+    private fun stringField(body: String, name: String): String? = runCatching {
+        val obj = json.parseToJsonElement(body) as? kotlinx.serialization.json.JsonObject ?: return null
+        (obj[name] as? kotlinx.serialization.json.JsonPrimitive)?.content?.takeIf { it.isNotBlank() }
+    }.getOrNull()
 
     private fun loginError(status: HttpStatusCode): String = when (status.value) {
         401, 400 -> "Wrong username/email or password."

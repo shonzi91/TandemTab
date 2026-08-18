@@ -81,6 +81,12 @@ fun TripsView(
     onOpen: (tripId: String?) -> Unit,
     onUseSavings: ((tripId: String, amount: Double, date: String, onDone: () -> Unit) -> Unit)? = null,
     onPrepare: () -> Unit,
+    // ⚠️ Trips are Pro, and the line is STARTING a journey, not running one. Only the three controls that begin
+    // or reshape one are gated here — new, edit (where the dates live), and funding it from a pot. Read, start,
+    // finish (early, and the undo), attach/detach while it runs and delete stay open on any plan, because a
+    // paywall that strands somebody mid-trip leaves the app wearing trip mode forever. See PlanFeatures.TRIPS.
+    proLocked: Boolean = false,
+    onProBlocked: () -> Unit = {},
 ) {
     val tandem = LocalTandemColors.current
     val fmt = rememberTripMoney(trips.currency)
@@ -126,10 +132,12 @@ fun TripsView(
                     onStart = { onStart(trip.id, true) },
                     onFinish = { onFinish(trip.id, true) },
                     onReopen = { onFinish(trip.id, false) },
-                    onEdit = { onPrepare(); editing = TripEdit.of(trip) },
+                    onEdit = { if (proLocked) onProBlocked() else { onPrepare(); editing = TripEdit.of(trip) } },
                     onDelete = { onPrepare(); deleting = trip },
                     onAttach = { onPrepare(); attachingTo = trip },
-                    onUseSavings = if (onUseSavings != null) ({ _ -> onPrepare(); releasingFor = trip }) else null,
+                    onUseSavings = if (onUseSavings != null) ({ _ ->
+                        if (proLocked) onProBlocked() else { onPrepare(); releasingFor = trip }
+                    }) else null,
                 )
             }
             Spacer(Modifier.height(4.dp))
@@ -137,7 +145,7 @@ fun TripsView(
                 Modifier.fillMaxWidth()
                     .clip(RoundedCornerShape(12.dp))
                     .border(1.dp, tandem.hairline, RoundedCornerShape(12.dp))
-                    .clickable { onPrepare(); editing = TripEdit.blank() }
+                    .clickable { if (proLocked) onProBlocked() else { onPrepare(); editing = TripEdit.blank() } }
                     .padding(vertical = 13.dp),
                 horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically,
@@ -145,6 +153,11 @@ fun TripsView(
                 Icon(TandemIcons.Plus, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
                 Spacer(Modifier.width(6.dp))
                 Text("New trip", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                // The crown shows only when the plan actually can't reach this, so a Pro account never sees one.
+                if (proLocked) {
+                    Spacer(Modifier.width(8.dp))
+                    Icon(TandemIcons.Crown, contentDescription = "Part of Pro", tint = tandem.warn, modifier = Modifier.size(14.dp))
+                }
             }
             trips.saveError?.let {
                 Text(it, color = MaterialTheme.colorScheme.error, fontSize = 13.sp, modifier = Modifier.padding(top = 4.dp))

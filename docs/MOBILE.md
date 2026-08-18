@@ -61,6 +61,38 @@ there, because a thin client cannot render what it does not fetch.
 Android calls **37** of the account endpoints (**46** after Session 91, **55** after Session 92, **59** after
 Session 94, **69** after Session 95). It does not call these:
 
+> ### ★ The paywall on the phone (Session 107, 2026-08-18) — a row R2 cannot see
+>
+> **R2 measures whether an endpoint is reachable, not whether a refusal is bearable.** S106 put trips behind Pro;
+> the gate is server-side, so the phone's **New trip** button was reachable, functional and 402'd *after* the user
+> had filled in the whole form — one line of red text under Save. Every endpoint involved counted as "called".
+>
+> Android now carries both halves of the web's `PlanGate`, and one prompt serves them:
+>
+> - **Ahead of the work:** `UiState.allowsPro(key)` / `AppViewModel.requirePro(key)`. Gated call sites are exactly
+>   the web's three — new trip, edit, fund-from-a-pot.
+> - **Behind it:** every 402 lands in `handledAsPaywall(e)` and raises the same prompt instead of an error string.
+>   This is what covers the refusals no client can predict — a stale plan, or a gate that depends on the account
+>   body (attaching to a trip that is already *over* is Pro; while it runs it is free).
+>
+> `ProGateDialog` renders in `MainActivity.App`, above every screen, because a gate can refuse from a form, a sheet
+> or a menu row.
+>
+> ⚠️ **Three rules worth not re-deriving:**
+>
+> 1. **The tier table is fetched (`GET /plans`), never written down.** A free/pro list hard-coded in Kotlin would
+>    drift from what the server enforces, and the prompt would promise the wrong things. Loaded lazily — only a
+>    `"free"` plan can be gated, so only a free plan needs it.
+> 2. **The gate fails OPEN** on every uncertainty (plan unknown, catalogue absent, unrecognised key). A paywall
+>    shown to somebody who has already paid is far worse than one that arrives late; the 402 is the backstop.
+> 3. **A `PlanFeatures` constant is a key, not a fence.** `export` exists as a key, sits in **Free**, and no
+>    handler requires it. Check `/plans` and the `RequireAsync` call sites before believing a feature is gated.
+>
+> ⚠️ **What is still missing is a way to pay.** There is no checkout on the phone and none is faked: the prompt
+> gives real prices and points at the web app when billing is live, and says Pro isn't on sale yet while it is off.
+> An "Upgrade" button that started nothing would be S106's bug in a new coat. That decision belongs with the
+> billing provider (R5), and Play's rules on digital goods are part of it.
+
 > ### ⚠️ Re-measured, Session 103 (2026-08-12) — read this before the table below
 >
 > **The gap did not just grow; its character changed.** Re-running the measurement (every `accounts.Map*` route

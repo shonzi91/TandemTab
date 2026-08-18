@@ -84,6 +84,7 @@ import androidx.compose.foundation.shape.CircleShape
 import com.tandemtab.app.UiState
 import com.tandemtab.app.data.AccountSummaryDto
 import com.tandemtab.app.data.MemberDto
+import com.tandemtab.app.data.PlanFeatures
 import com.tandemtab.app.data.RunwayDto
 import com.tandemtab.app.data.TargetDto
 import com.tandemtab.app.ui.theme.BrandGreen
@@ -188,6 +189,9 @@ fun HomeScreen(
     onAttachExpenseToTrip: (String, String?, () -> Unit) -> Unit,
     onOpenTrip: (String?) -> Unit,
     onPrepareTrip: () -> Unit,
+    // Raise the upgrade prompt for a feature key. One callback for the whole screen — a gate can refuse from any
+    // of its sheets, and the prompt itself lives above every screen (see MainActivity.App).
+    onProBlocked: (String) -> Unit,
     onUseTripSavings: (tripId: String, amount: Double, date: String, onDone: () -> Unit) -> Unit,
     onDisburse: (bucketId: String, fundId: String, amount: Double, date: String, note: String?, onDone: () -> Unit) -> Unit,
     onToBudget: (bucketId: String, categoryId: String, amount: Double, date: String, note: String?, onDone: () -> Unit) -> Unit,
@@ -398,6 +402,8 @@ fun HomeScreen(
                             onOpenTrip = onOpenTrip,
                             onPrepareTrip = onPrepareTrip,
                             onUseTripSavings = onUseTripSavings,
+                            tripsProLocked = !state.allowsPro(PlanFeatures.TRIPS),
+                            onTripsProBlocked = { onProBlocked(PlanFeatures.TRIPS) },
                             onLoadTags = { onLoadTags(false) },
                             onPrepareTags = onPrepareTags,
                             onAddTag = onAddTag,
