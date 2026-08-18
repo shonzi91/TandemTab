@@ -113,6 +113,20 @@ Session 94, **69** after Session 95). It does not call these:
 *(`/snapshot` is deliberately absent from that list: it is the thick client's whole-aggregate channel, and a thin
 client calling it would be carrying the domain it exists not to carry.)*
 
+> ### 📏 Measure it, don't count it — `node tools/r2scan.js --list`
+>
+> **As of Session 106: 100 of 118 in-scope account routes, 85%, 18 rows left.** (`/snapshot` GET+PUT are excluded
+> by the script for the reason just above — counting them as gaps overstates the backlog by two.)
+>
+> S103 reported this gap as "61 of 99" from a hand count; run as a script the same day it was 76 of 118. **A hand
+> count of a hundred routes is wrong every time, and it is wrong in a way that looks authoritative once it's
+> written down.** `tools/r2scan.js` is the instrument now — re-run it rather than re-counting, and paste its
+> output rather than a remembered figure.
+>
+> ⚠️ It is deliberately dumb: it proves a path is *mentioned* in Kotlin, not that the feature works. Read a
+> "called" row as **"not blocked"**, never as "done" — S103's whole finding was that two rows counted as client
+> work were really *missing server reads*, and this script would have called them called.
+
 **Read that table as the R2 backlog.** The four **L** rows are the ones that make Android a *different product*
 rather than a smaller one: a user who only has the phone cannot start next month, cannot create a savings goal,
 has no debt features at all, and cannot share an account — which is the thing Pro is sold on.

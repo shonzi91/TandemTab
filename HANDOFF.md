@@ -26,7 +26,9 @@ early pulls the end date in, but `Finish` can only SHORTEN, never extend, so it 
 **485 + 49 + 368 green.** `pairscan`: 0. `app.css` untouched → no cache-bust needed.
 ✅ **BROWSER-VERIFIED, all seven, both themes + 375px** — the debt one driven both ways (badge absent on the
 untouched loan, present after a real €3,000 prepayment).
-⚠️ **NOT deployed.** ⚠️ Android has none of this, and still trails by S105's batch.)
+✅ **DEPLOYED 2026-08-18 as `finapp-00309-lmq`** (image `62d9480`) — identical 368,404-byte scoped bundles on both
+hosts, and the OLD `.target-main` / absolute `.trip-corner` rules at **0**, which is what proves a fresh build.
+⚠️ Android has none of this, and still trails by S105's batch — plus it now shows a **New trip** button that 402s.)
 
 Previously: 2026-08-18 (Session 105 — **R2 measured properly and pushed from 76 to 99 of 119; then the owner's
 whole ten-item batch.** Two halves, and the join between them is that four of the ten turned out to be domain bugs
@@ -374,6 +376,14 @@ POST succeeds on Free" would have passed before and after the change. `MONETIZAT
   ~€3,000 and the old rule would have fired — then `9mo ahead · €566.97 interest saved` after a real €3,000
   prepayment, with the badge in its new position. Trip card head measured at 375px: no overflow.
 - `app.css` untouched, so **no `?v=` bump needed** — worth checking rather than assuming.
+- ✅ **DEPLOYED 2026-08-18 as `finapp-00309-lmq`** (image `62d9480`, digest `sha256:d95c5315…`). Traffic forced
+  with `--to-latest` → `100% LATEST`. Verified on the **scoped bundle** (`…puwr0ldfxc.bundle.scp.css`), not the
+  revision name: identical **368,404-byte** bodies on the run URL and tandemtab.com, `.trip-top` ×5, `.chip.on`
+  ×5, `.target-row-won` ×5 — and, the part that actually proves a fresh build rather than a cache, the OLD
+  `.target-main` and the OLD absolutely-positioned `.trip-corner` at **0**. 5 `secretKeyRef`s, both hosts 200.
+  Startup probe succeeded ×2, `Now listening` ×2, **zero** `DbUpdateConcurrencyException` and zero
+  `Program.<Main>$` frames — the purge race did not fire this time. The only log noise is two Kestrel
+  heartbeat warnings, which are cold-start thread-pool contention and not ours.
 - ⚠️ **The Free branch of the trips gate is server-test-verified, not browser-verified.** The fixture account is
   beta-cohort → `unlimited`, so every client gate is inert on it; pinning Free in a browser needs the address in
   `Admin:Emails` (a server config change). What *was* driven in the app is the regression risk from ungating —
@@ -382,10 +392,15 @@ POST succeeds on Free" would have passed before and after the change. `MONETIZAT
 
 ### ⚠️ Carry-over
 
-- **NOT deployed.** Everything is committed.
+- ✅ Committed (`fc0e3cb`, `62d9480`), pushed, and **deployed** — see the Verification block above.
 - **Android has none of this**, and now trails by S105's batch as well. The Pro gate is server-side, so native
   gets the paywall behaviour for free — but it still shows a **New trip** affordance that will now 402, with no
   upgrade prompt in front of it. That is the one native follow-up this session creates.
+- **`tools/r2scan.js` is new** — the R2 parity measurement as a script rather than a hand count (S105 said the
+  script was the instrument; there wasn't actually one in the repo). **100 of 118 in-scope routes, 85%, 18
+  left.** It excludes `/snapshot` GET+PUT, which a thin client must never call, so the old "20 uncalled" figure
+  was two too many. ⚠️ It proves a path is *mentioned* in Kotlin, not that the feature works — a "called" row
+  means "not blocked", and S103's finding was that two such rows were really missing server reads.
 - **`ReopenTrip` still has zero web callers** — it is ungated now, so the only thing left is a place to press it.
   The trip edit modal is the likely home; ask before removing it, per S105.
 - The pre-S105 carry-over stands: R2's 20 uncalled endpoints, the `ClearTag` contract trap, `.debt-progress`
