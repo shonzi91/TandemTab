@@ -84,6 +84,7 @@ import androidx.compose.foundation.shape.CircleShape
 import com.tandemtab.app.UiState
 import com.tandemtab.app.data.AccountSummaryDto
 import com.tandemtab.app.data.MemberDto
+import com.tandemtab.app.data.MilestonesDto
 import com.tandemtab.app.data.PlanFeatures
 import com.tandemtab.app.data.RunwayDto
 import com.tandemtab.app.data.TargetDto
@@ -147,6 +148,8 @@ fun HomeScreen(
     onDeclineInvitation: (String) -> Unit,
     onLoadOnboarding: () -> Unit,
     onDismissOnboarding: () -> Unit,
+    onLoadMilestones: () -> Unit,
+    onLoadAchievements: (Boolean) -> Unit,
     onLoadSpending: (Boolean) -> Unit,
     onLoadGoals: (Boolean) -> Unit,
     onLoadWallets: (Boolean) -> Unit,
@@ -246,6 +249,7 @@ fun HomeScreen(
     var showAddExpense by remember { mutableStateOf(false) }
     var showHealth by remember { mutableStateOf(false) }
     var showRunway by remember { mutableStateOf(false) }
+    var showAchievements by remember { mutableStateOf(false) }
     var showRecurring by remember { mutableStateOf(false) }
     var showProfile by remember { mutableStateOf(false) }
     var showAccount by remember { mutableStateOf(false) }
@@ -330,7 +334,7 @@ fun HomeScreen(
                 NavDest.Spending -> onLoadSpending(false)
                 NavDest.Goals -> onLoadGoals(false)
                 NavDest.Wallets -> { onLoadWallets(false); onLoadBank(false) }
-                NavDest.Home -> { onLoadHealth(false); onLoadRecurring(false); onLoadGoals(false); onLoadOnboarding() }
+                NavDest.Home -> { onLoadHealth(false); onLoadRecurring(false); onLoadGoals(false); onLoadOnboarding(); onLoadMilestones() }
             }
         }
 
@@ -376,6 +380,9 @@ fun HomeScreen(
                             onOpenRecurring = { showRecurring = true },
                             onOpenHealth = { showHealth = true },
                             onOpenRunway = { showRunway = true },
+                            // The catalogue is only fetched when it's asked for — the tally on the line is the
+                            // cheap half, and most visits to Home never open this.
+                            onOpenAchievements = { onLoadAchievements(false); showAchievements = true },
                             onAcceptInvitation = onAcceptInvitation,
                             onDeclineInvitation = onDeclineInvitation,
                             onDismissOnboarding = onDismissOnboarding,
@@ -468,6 +475,13 @@ fun HomeScreen(
 
         if (showHealth && state.health.data?.hasData == true) {
             HealthSheet(health = state.health, onDismiss = { showHealth = false })
+        }
+        if (showAchievements) {
+            AchievementsSheet(
+                achievements = state.achievements,
+                onDismiss = { showAchievements = false },
+                onRetry = { onLoadAchievements(true) },
+            )
         }
         state.runway?.let { rw ->
             if (showRunway) {
@@ -593,6 +607,7 @@ private fun HomePage(
     onOpenRecurring: () -> Unit,
     onOpenHealth: () -> Unit,
     onOpenRunway: () -> Unit,
+    onOpenAchievements: () -> Unit,
     onAcceptInvitation: (String) -> Unit,
     onDeclineInvitation: (String) -> Unit,
     onDismissOnboarding: () -> Unit,
@@ -633,7 +648,56 @@ private fun HomePage(
             Spacer(Modifier.height(14.dp))
             TargetsCard(state.targets, fmt)
             RunwayCard(state.runway, fmt, onOpen = onOpenRunway)
+            MilestonesLine(state.milestones, onOpen = onOpenAchievements)
         }
+    }
+}
+
+/**
+ * "🏆 Milestones in progress · 3 ›" — the web's one-line pointer at the Achievements screen, ported.
+ *
+ * A line and not a panel, for the web's own reason: the full progress lives behind it, so Home has no business
+ * stacking a second motivational block under "You're on track for".
+ *
+ * ⚠️ One deliberate departure. The web only draws this line when something is in progress, because the web also
+ * carries a trophy in its header — a phone header with four controls in it has no room for a fifth, so this line
+ * is the only door. It therefore stays put once anything has been earned and says "N of M earned" instead. A
+ * screen reachable only while you happen to be mid-milestone is a screen most people would never find twice.
+ */
+@Composable
+private fun MilestonesLine(milestones: MilestonesDto?, onOpen: () -> Unit) {
+    val tandem = LocalTandemColors.current
+    // Null = /milestones hasn't answered. A brand-new account with nothing earned and nothing started has no
+    // progress to point at, so it gets no line either.
+    val m = milestones ?: return
+    if (m.total == 0 || (m.inProgress == 0 && m.earned == 0)) return
+
+    Spacer(Modifier.height(14.dp))
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(onClick = onOpen)
+            .padding(vertical = 12.dp, horizontal = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(TandemIcons.Trophy, contentDescription = null, tint = tandem.muted, modifier = Modifier.size(17.dp))
+        Spacer(Modifier.width(9.dp))
+        Text(
+            if (m.inProgress > 0) "Milestones in progress" else "Milestones",
+            fontSize = 13.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = tandem.muted,
+        )
+        Spacer(Modifier.width(9.dp))
+        Text(
+            if (m.inProgress > 0) "${m.inProgress}" else "${m.earned} of ${m.total} earned",
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.primary,
+        )
+        Spacer(Modifier.weight(1f))
+        Icon(TandemIcons.Chevron, contentDescription = "Open achievements", tint = tandem.muted, modifier = Modifier.size(15.dp))
     }
 }
 

@@ -1,6 +1,33 @@
 # TandemTab (FinApp) — session handoff
 
-Last updated: 2026-08-18 (Session 107b — **an owner report: a loan on "Its own schedule" kept saying no installment
+Last updated: 2026-08-19 (Session 108 — **R2 continues: the phone can see its own medals. 102 → 104 of 118.**
+**Android only; no server change, no C# touched, no deploy. Everything committed + pushed.**
+★★ **The row was picked by checking what the endpoints RETURN first** — the lesson R2 has taught six times — and
+this time the answer was *everything*: `/achievements` already ships the full catalogue (icon, title, desc,
+earned, percent, tier, earned-on) and `/milestones` the three tallies. **Zero server change**, an afternoon
+instead of a round trip.
+★ **Both endpoints are called, and that is not box-ticking.** Home wants three integers on every visit;
+the catalogue is fetched only when the sheet is opened. That is exactly why the server has two.
+✅ **A Home line + an Achievements sheet**, mirroring the web: earned medals struck in their tier's metal
+(bronze/silver/gold radial coins with a tick), then the locked ones **ordered by how close they are**, each with
+the web's gold progress arc and its percent. The catalogue is never re-judged in Kotlin — "have I earned this"
+stays one domain service, so the phone cannot disagree with the web about an achievement.
+⚠️ **One deliberate departure from the web, and it is about reachability.** The web draws its line only while
+something is in progress, because the web *also* carries a trophy in its header. A phone header with four
+controls has no room for a fifth, so this line is the only door — it stays put once anything is earned and reads
+**"Milestones · 1 of 25 earned"** instead. A screen reachable only while you happen to be mid-milestone is one
+most people would never find twice.
+✅ **EMULATOR-VERIFIED, all four states, both themes**, against a local server seeded to order: **5 in progress**
+(dark), the **earned-only** fallback (light), the **medal grid** with bronze + silver + gold + arcs + locked discs
+in both themes, and **no line at all** on an account with nothing earned — driven by deleting the one bucket that
+had earned something and watching the line go.
+⚠️ **`earnedOn` renders nothing here and that is correct** — the date comes from an achievement log only the
+thick web Dashboard stamps. Nullable by contract, decorative by design.
+⚠️ **F6's goal-celebration moment is still NOT ported** (it needs a per-device seen-set, which the web keeps in
+`localStorage`); the MOBILE.md row is split accordingly. **14 R2 rows left**, and the bank back half is the only
+one that changes what the phone can *do*.)
+
+Previously: 2026-08-18 (Session 107b — **an owner report: a loan on "Its own schedule" kept saying no installment
 was logged after its due day had passed — and did anything come off the principal at all?**
 **496 + 49 + 368 green. Browser-verified. Live: `finapp-00310-sbt`. Everything committed + pushed.**
 ★★ **The balance walked on the day the number was TYPED, not the day the loan is due.** `DebtBalanceOn` counted
@@ -324,6 +351,86 @@ a separate balance axis — because flows and a stock were sharing one scale. **
 ✅ **Committed and the web half is DEPLOYED** (Session 93 catch-up): Android sharing as `596eea5`, the web batch
 as `de51071`, now live on **`finapp-00280-4s8`** (traffic forced `--to-latest`; run URL + tandemtab.com 200; 5
 `secretKeyRef`s; no WARNING+ logs). Prior context below is Session 91.)
+
+## Session 108 (2026-08-19) — **R2's achievements row: the phone can finally see its own medals.**
+
+Android only. No server change, no C# file touched, no deploy. **R2: 102 → 104 of 118 (88%), 14 left.**
+
+### ★★ Sizing the row by what the endpoint returns — for once, the answer was "everything"
+
+The rule R2 has produced six times over is *check what the endpoint RETURNS before sizing the row* (S91's bucket
+upsert, S105's three unreachable undos). Applied here first, before a line of Kotlin:
+
+- `GET /accounts/{id}/achievements` → `AchievementsViewDto`: the **full catalogue** — key, icon, title, desc,
+  earned, locked-progress percent, medal tier, and an earned-on stamp — plus the same three tallies.
+- `GET /accounts/{id}/milestones` → `MilestonesDto(Earned, Total, InProgress)`.
+
+Both are computed by `AchievementsService` **in the domain**, and `AchievementsMap.View` already translates the
+copy to English server-side. So the phone needed no server change and no domain logic: it renders what it is
+handed. **That is the difference between an afternoon and a session with a server round in it.**
+
+★ **Calling both endpoints is not box-ticking.** Home wants three integers on every visit; the catalogue is worth
+fetching only when the sheet is opened. The server offers exactly that split, so the client uses it —
+`loadMilestones()` rides along with Home's existing loads, `loadAchievements(force)` fires on the tap.
+When the catalogue does land it also refreshes the tally from its own three fields, so the line and the sheet
+cannot drift apart while both are on screen.
+
+### ★ What shipped
+
+**The Home line** (`MilestonesLine` in `HomeScreen.kt`) — the web's `home-ms-line`, ported: a trophy, the label,
+the count, a chevron. A line and not a panel, for the web's own stated reason: the progress lives behind it, so
+Home has no business stacking a second motivational block under "You're on track for".
+
+**The sheet** (`AchievementsSheet.kt`) — the web's 🏆 modal: *"N of M earned"*, then earned medals first, then the
+locked ones **sorted by percent descending**, so the next one within reach heads what is left. Three states, the
+web's:
+
+- **earned** → a coin filled with the tier's radial gradient (bronze/silver/gold, ported stop for stop) with a
+  green tick on the rim. Drawn on a `Canvas` rather than as a background brush — a radial highlight can only be
+  placed once the pixel size is known, and off-centre is what makes it read as struck metal rather than a
+  coloured circle;
+- **in progress** → the web's medal-gold arc (`#F5B301`) with the percent underneath;
+- **locked** → a flat muted disc. ⚠️ The icon is dimmed with **alpha** where the web desaturates it: an emoji
+  cannot be greyscaled in Compose without a colour filter, and at this size a half-transparent glyph reads the same.
+
+### ⚠️ One deliberate departure from the web, and it is about reachability
+
+The web only draws its line while something is in progress — but the web **also** has a trophy in its header, so
+the screen is always one tap away. The phone's header already carries four controls and has no room for a fifth,
+which makes this line the only door. So it stays once anything has been earned and reads **"Milestones · 1 of 25
+earned"** instead. A screen you can only reach while you happen to be mid-milestone is one most people would
+never find twice. It hides entirely only when nothing is earned **and** nothing is started — a brand-new account,
+where there is genuinely nothing to point at.
+
+### Verification
+
+✅ **EMULATOR-VERIFIED — all four states, both themes**, against a local server seeded to order (the debug
+`API_BASE_URL` pointed at `10.0.2.2:5179` + `usesCleartextTraffic`; **both reverted before the commit**):
+
+| State | Seeded as | Result |
+|---|---|---|
+| in progress > 0 | 6 expenses, 2 budgets, a funded goal, a small loan | *"Milestones in progress · 5"* (dark) |
+| earned > 0, none in progress | one savings bucket, nothing else | *"Milestones · 1 of 25 earned"* (light) |
+| the grid | 10 earned / 26, spanning all three metals | bronze + **silver** + **gold** coins, ticks, gold arcs at 40/33/22/6%, locked discs — **light and dark** |
+| nothing at all | deleted that one bucket, bounced Home | **no line**, as intended |
+
+★ The seed reached every metal on purpose: a **goal funded past its target** earns the silver per-goal medal, and
+a **€1,200 loan at €150/month** earns the gold *"In sight"* (debt-free within 12 months).
+
+⚠️ **`earnedOn` renders nothing on this data, and that is correct.** The date comes from the account's achievement
+log, which only the thick web Dashboard stamps; the contract says nullable and best-effort, and the cell simply
+omits the line. A phone-first account will show medals with no dates until the web sees it.
+
+### Worth not re-learning
+
+- **`/auth/login` answers `LoginResponse` (`{twoFactorRequired, auth:{token…}}`), not `AuthResponse`.** Reading
+  `.token` off the top level yields null and the next call 401s — which is exactly what stranded
+  `tools/FinApp.Seed`. It cost a round here too, before the body was read.
+- **On a free plan a local seed cannot create a second account or an invitation** — both 402. To reach a
+  particular account state, register another user rather than adding an account to an existing one.
+- **The Bash tool's heredocs are mangled by its shell wrapper** (the same failure as multi-line `git commit -m`):
+  a `python - <<'PY'` block came back with its lines executed as shell commands. Use the file tools to write, and
+  keep Bash for reading.
 
 ## Session 107b (2026-08-18) — **The loan that ignored its own due day, and a flag that asked the wrong question.**
 

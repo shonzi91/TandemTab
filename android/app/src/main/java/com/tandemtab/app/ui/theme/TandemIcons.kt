@@ -87,6 +87,8 @@ object TandemIcons {
     // The Pro crown (web i-crown), marking an entry point this plan doesn't include. Same path as the web's,
     // so the two surfaces mark Pro with the same mark.
     val Crown = icon("M3.5 17.5L2 7l5.5 4L12 4.5l4.5 6.5L22 7l-1.5 10.5zM3.5 20.5h17")
+    // Milestones (web i-trophy) — the mark on the Home line and the Achievements sheet's header.
+    val Trophy = icon("M6 4h12v5a6 6 0 0 1-12 0zM6 6H4a2 2 0 0 0 0 4h2.5M18 6h2a2 2 0 0 0 0 4h-2.5M9 20h6M12 15v5M8.5 20h7")
 
     // Trip status marks (web i-plane / i-pin), one per state: a departing plane for a journey still ahead, a pin
     // for the one you are standing in. The third is Flag, above. Same paths as the web's sprite.

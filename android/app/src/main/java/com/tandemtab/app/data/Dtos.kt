@@ -587,6 +587,37 @@ data class OnboardingViewDto(
     val steps: List<OnboardingStepDto> = emptyList(),
 )
 
+/** GET /accounts/{id}/milestones — the Home tally only (earned / total / in progress). Deliberately separate from
+ *  the full catalogue below: Home wants three integers on every visit, the catalogue only when the sheet opens. */
+@Serializable
+data class MilestonesDto(val earned: Int = 0, val total: Int = 0, val inProgress: Int = 0)
+
+/** One achievement. `percent` is locked-progress (null once earned); `tier` is "Bronze" | "Silver" | "Gold", the
+ *  medal metal; `earnedOn` is a yyyy-MM-dd stamp and is best-effort — null on anything the thick web app has
+ *  never stamped. Title/desc arrive as English from the server (AchievementsView.cs's i18n note applies here too:
+ *  the copy is baked server-side, so localizing it is one change on the server, not two clients). */
+@Serializable
+data class AchievementDto(
+    val key: String,
+    val icon: String = "",
+    val title: String = "",
+    val desc: String = "",
+    val earned: Boolean = false,
+    val percent: Int? = null,
+    val tier: String = "Bronze",
+    val earnedOn: String? = null,
+)
+
+/** GET /accounts/{id}/achievements — the whole catalogue, plus the same tallies the Home line shows. Both come
+ *  from the one domain service, so the sheet and the line cannot disagree about how many are earned. */
+@Serializable
+data class AchievementsViewDto(
+    val earned: Int = 0,
+    val total: Int = 0,
+    val inProgress: Int = 0,
+    val items: List<AchievementDto> = emptyList(),
+)
+
 /** PUT /accounts/{id}/contribution-categories/{catId} — rename / re-icon an income source. */
 @Serializable
 data class EditContributionCategoryRequest(val name: String, val icon: String? = null)

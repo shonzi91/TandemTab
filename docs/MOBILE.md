@@ -61,6 +61,10 @@ there, because a thin client cannot render what it does not fetch.
 Android calls **37** of the account endpoints (**46** after Session 91, **55** after Session 92, **59** after
 Session 94, **69** after Session 95). It does not call these:
 
+> **⚠️ The list below is a snapshot; [tools/r2scan.js](../tools/r2scan.js) is the instrument.** Since S105 the
+> count is produced by script (`node tools/r2scan.js --list`), not by eye — the hand-made count was wrong by 17.
+> **104 of 118 (88%) after Session 108.** Re-run it rather than trusting any number written down here.
+
 > ### ★ The paywall on the phone (Session 107, 2026-08-18) — a row R2 cannot see
 >
 > **R2 measures whether an endpoint is reachable, not whether a refusal is bearable.** S106 put trips behind Pro;
@@ -127,7 +131,7 @@ Session 94, **69** after Session 95). It does not call these:
 | ~~**Fund management** (add/archive/opening balance)~~ | ~~`/funds…`, `/fund-transfers/{id}`~~ | ✅ **done S95** |
 | **Account settings** — the savings target ✅ **done S95**; **F4 round-ups** are ⛔ **not portable** (no contract, no endpoint) | ~~`/settings`, `/savings-target`~~ | M |
 | **Tags** — incl. **F2** tag→category | `/tags…` | M |
-| Achievements + **F6** goal celebration | `/achievements`, `/milestones` | S–M |
+| ~~Achievements~~ — **F6** goal celebration is still open | ~~`/achievements`, `/milestones`~~ | ✅ **done S108** (the read half: Home line + sheet). **F6's celebration moment is not ported** — it needs a per-device seen-set, which the web keeps in `localStorage`, not on the account |
 | Onboarding | `/onboarding`, `/onboarding/dismissed` | S |
 | ~~Export~~ | ~~`/export`~~ | ✅ **done S106** — the portability promise, which the phone wasn't keeping |
 | Reallocation between budget and savings | `/reallocations/to-budget`, `/reallocations/to-savings` | S |
@@ -175,8 +179,8 @@ has no debt features at all, and cannot share an account — which is the thing 
 **What's left in this table is the Tier-2 backlog**, and none of it is a phone-only dead-end — every remaining
 row is something a phone user can live without or reach another way:
 **statement import** (M), **savings/debt money-movements** (M — allocate and spend already work, so these are
-refinements), **tags** incl. F2 (M), **achievements + F6** (S–M), **onboarding** (S), **export** (S),
-**reallocation** (S), **settling an on-behalf expense** (S).
+refinements), **tags** incl. F2 (M), **F6's goal celebration** (S — achievements themselves shipped in S108),
+**onboarding** (S), **export** (S), **reallocation** (S), **settling an on-behalf expense** (S).
 ⛔ Two items are blocked on the **server**, not on Android, and cannot be estimated as client work:
 **F4 round-ups** (no field on any contract *and* no command endpoint) and the **fund↔bank sync toggle**
 (`SetFundSynced`, `TODO(cutover)`). Both are still whole-snapshot pushes in the thick client. They would batch

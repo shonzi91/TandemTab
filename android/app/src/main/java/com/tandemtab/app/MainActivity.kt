@@ -134,6 +134,8 @@ private fun App(vm: AppViewModel, onGoogle: () -> Unit) {
             onDeclineInvitation = vm::declineInvitation,
             onLoadOnboarding = vm::loadOnboarding,
             onDismissOnboarding = vm::dismissOnboarding,
+            onLoadMilestones = vm::loadMilestones,
+            onLoadAchievements = vm::loadAchievements,
             onLoadSpending = vm::loadSpending,
             onLoadGoals = vm::loadGoals,
             onLoadWallets = vm::loadWallets,

@@ -49,6 +49,8 @@ import com.tandemtab.app.data.MoveSavingsRequest
 import com.tandemtab.app.data.SavingDepositRowDto
 import com.tandemtab.app.data.SavingMovementRowDto
 import com.tandemtab.app.data.OnboardingViewDto
+import com.tandemtab.app.data.AchievementsViewDto
+import com.tandemtab.app.data.MilestonesDto
 import com.tandemtab.app.data.TagOptionDto
 import com.tandemtab.app.data.UseTripSavingsRequest
 import com.tandemtab.app.data.TagRowDto
@@ -144,6 +146,10 @@ data class UiState(
     // The getting-started checklist. Null until /onboarding answers — which is meaningful: an absent checklist
     // renders nothing at all rather than four un-ticked steps flashing onto Home before the truth arrives.
     val onboarding: OnboardingViewDto? = null,
+    // The Home milestone tally, and the full catalogue behind it. Null tally = /milestones hasn't answered, which
+    // renders as no line at all rather than a "0 of 0" that would be wrong for one frame on every account.
+    val milestones: MilestonesDto? = null,
+    val achievements: AchievementsUi = AchievementsUi(),
     val goals: GoalsUi = GoalsUi(),
     val wallets: WalletsUi = WalletsUi(),
     val health: HealthUi = HealthUi(),
@@ -321,6 +327,14 @@ data class HealthUi(
     val error: String? = null,
     val currency: String = "",
     val data: InsightsDto? = null,
+)
+
+/** Lazy-loaded state for the Achievements sheet — the catalogue is only worth fetching once it's asked for. */
+data class AchievementsUi(
+    val loading: Boolean = false,
+    val loaded: Boolean = false,
+    val error: String? = null,
+    val data: AchievementsViewDto? = null,
 )
 
 /** Lazy-loaded state for the Bank (External accounts) sheet. `enabled` gates the whole feature (allowlist +
@@ -854,6 +868,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 // are dropped only when the account itself changes.
                 trips = TripsUi(),
                 bank = BankUi(),
+                // Milestones are earned on an account, so both the tally and the catalogue belong to the one being
+                // left. Carrying them over would show the old account's medals under the new account's name.
+                milestones = null, achievements = AchievementsUi(),
                 // Faces belong to the account that was open, not to this one — but the invitations are the user's
                 // own and outlive any account switch, so they stay.
                 sharing = it.sharing.copy(avatars = emptyMap(), error = null, invited = null),
@@ -1192,6 +1209,44 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val accountId = _state.value.selectedAccountId ?: return
         _state.update { it.copy(onboarding = it.onboarding?.copy(dismissed = true)) }
         viewModelScope.launch { runCatching { api.dismissOnboarding(accountId) } }
+    }
+
+    /**
+     * The Home milestone tally. Best-effort and silent, for the same reason as the checklist above: it decorates a
+     * screen that already renders, and an error line where a bit of encouragement was meant to be is worse than the
+     * line simply not appearing. Refetched on every visit to Home rather than cached — three integers that change
+     * whenever money moves, and a stale "2 in progress" is the kind of small lie that costs trust in the rest.
+     */
+    fun loadMilestones() {
+        val accountId = _state.value.selectedAccountId ?: return
+        viewModelScope.launch {
+            runCatching { api.milestones(accountId) }.getOrNull()
+                ?.let { v -> _state.update { it.copy(milestones = v) } }
+        }
+    }
+
+    /**
+     * The full catalogue, for the sheet. Unlike the tally this one DOES surface its error: the user asked for this
+     * screen, so an empty sheet with no explanation would just look broken.
+     */
+    fun loadAchievements(force: Boolean = false) {
+        val accountId = _state.value.selectedAccountId ?: return
+        val cur = _state.value.achievements
+        if (!force && (cur.loaded || cur.loading)) return
+        _state.update { it.copy(achievements = it.achievements.copy(loading = true, error = null)) }
+        viewModelScope.launch {
+            try {
+                val v = api.achievements(accountId)
+                _state.update { it.copy(achievements = AchievementsUi(loaded = true, data = v)) }
+                // The catalogue carries the same three tallies, so keep the Home line in step with what was just
+                // read rather than letting the two drift until Home is next visited.
+                _state.update { it.copy(milestones = MilestonesDto(v.earned, v.total, v.inProgress)) }
+            } catch (e: Exception) {
+                _state.update {
+                    it.copy(achievements = it.achievements.copy(loading = false, error = e.message ?: "Couldn't load your milestones."))
+                }
+            }
+        }
     }
 
     /** Clear a stale error before opening the "Add to savings" sheet. */

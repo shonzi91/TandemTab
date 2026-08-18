@@ -276,6 +276,14 @@ class TandemTabApi(
     suspend fun dismissOnboarding(accountId: String): MutationResultDto =
         authedPut("/accounts/$accountId/onboarding/dismissed", Unit).body()
 
+    /** The milestone tally for the Home line. Three integers — cheap enough to refetch on every visit to Home. */
+    suspend fun milestones(accountId: String): MilestonesDto =
+        authedGet("/accounts/$accountId/milestones").body()
+
+    /** The full achievement catalogue for the sheet. Fetched only when the sheet is opened. */
+    suspend fun achievements(accountId: String): AchievementsViewDto =
+        authedGet("/accounts/$accountId/achievements").body()
+
     /** Remove a recorded deposit (income row). */
     suspend fun deleteDeposit(accountId: String, depositId: String): MutationResultDto =
         authedDelete("/accounts/$accountId/deposits/$depositId").body()
