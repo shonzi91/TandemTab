@@ -1834,7 +1834,13 @@ public sealed class Localizer(IJSRuntime js)
             "Запазването ще превключи остатъка по кредита към плащанията, които записваш, защото ни казваш, че го плащаш оттук. Дължимото днес остава точно същото; променя се само какво го движи оттук нататък — и можеш да го върнеш от кредита.",
         ["The {0} — taken from the loan's installment day. Change it on the loan to move both."] =
             "{0} — взето от деня на вноската по кредита. Смени го при кредита, за да се преместят и двете.",
+        ["This loan's balance follows its own schedule, so logging this records the payment but doesn't move what's owed — the schedule already counts this month's installment. Change that on the loan under “What moves the balance”."] =
+            "Остатъкът по този кредит следва собствения си план, така че записването отчита плащането, но не движи дължимото — планът вече брои вноската за този месец. Смени това при кредита под „Какво движи остатъка“.",
         ["No installment logged this period yet."] = "Още няма записана вноска за този период.",
+        ["Its own schedule: {0}'s installment is already counted — {1} off the principal, {2} interest. Nothing to log. Next on {3}."] =
+            "Собствен погасителен план: вноската за {0} вече е отчетена — {1} от главницата, {2} лихва. Няма нужда да записваш нищо. Следваща на {3}.",
+        ["Its own schedule: the balance moves next on {0}, on its own. Nothing to log."] =
+            "Собствен погасителен план: остатъкът се променя следващия път на {0}, автоматично. Няма нужда да записваш нищо.",
         ["This period's installment is logged — {0} recorded as an expense."] =
             "Вноската за този период е записана — {0} отчетени като разход.",
         ["Nothing is set to log this loan automatically yet — set up a recurring bill for it, or log each installment by hand, or the balance will stop moving."] =

@@ -2619,14 +2619,37 @@ else
                                                should be an expense, so the answer is worth seeing without opening the row —
                                                and it's the only place the app says whether logging is actually happening,
                                                which is what makes "the balance follows my logs" checkable rather than a
-                                               promise. Derived from the rows themselves, so it can't drift. *@
+                                               promise. Derived from the rows themselves, so it can't drift.
+
+                                               ⚠️ Both modes get a flag; they do NOT get the same words, and that is the
+                                               whole point. On a payment-driven loan "nothing logged yet" is a prompt —
+                                               the balance is waiting on the user. On a schedule-driven one nobody is
+                                               meant to do anything: DebtBalanceOn carries the loan forward on the due
+                                               day whether or not a payment is ever recorded here, so the same prompt
+                                               sat there permanently — after the due day and every other day — reporting
+                                               a problem that did not exist. What that mode owes the reader is the
+                                               mechanics: what the schedule already took off, and when it acts next. *@
                                             @if (State.DebtInstallmentLoggedThisPeriod(bucketId) is not null)
                                             {
                                                 <span class="inst-flag inst-flag-on" title="@string.Format(Loc["This period's installment is logged — {0} recorded as an expense."], Fmt(State.DebtPaidThisPeriod(bucketId)))"><Icon Name="check" /></span>
                                             }
-                                            else
+                                            else if (State.SavingBucketDebtPaymentDriven(bucketId))
                                             {
                                                 <span class="inst-flag" title="@Loc["No installment logged this period yet."]"><Icon Name="note" /></span>
+                                            }
+                                            else if (State.SavingBucketScheduleStep(bucketId) is { } step)
+                                            {
+                                                @* Dated from the same counter that moves the balance, so the day named
+                                                   here is the day the figure changes — not an inference from the due day
+                                                   that could disagree with it. *@
+                                                @if (step.LastOn is { } lastOn)
+                                                {
+                                                    <span class="inst-flag inst-flag-on" title="@string.Format(Loc["Its own schedule: {0}'s installment is already counted — {1} off the principal, {2} interest. Nothing to log. Next on {3}."], lastOn.ToString("MMM"), Fmt(State.Money(step.LastPrincipal)), Fmt(State.Money(step.LastInterest)), step.NextOn.ToString("d MMM"))"><Icon Name="calendar" /></span>
+                                                }
+                                                else
+                                                {
+                                                    <span class="inst-flag" title="@string.Format(Loc["Its own schedule: the balance moves next on {0}, on its own. Nothing to log."], step.NextOn.ToString("d MMM"))"><Icon Name="calendar" /></span>
+                                                }
                                             }
                                         }</span>
                                     <span class="cat-row-amt">
@@ -5787,6 +5810,15 @@ else
                         <small class="hint warn-text">@Loc["This payment doesn’t cover the interest, so it clears no principal."]</small>
                     }
                     <small class="hint">@Loc["Posts one row per part so each lands in its own budget and Breakdown slice. The whole payment is money out, counted once."]</small>
+                    @* ⚠️ The split above shows a principal figure, and on a schedule-driven loan that principal does
+                       NOT come off the balance here — the schedule already advanced the loan for this month, so
+                       Period.LogInstallment deliberately skips RecordDebtPayment and doing both would count the month
+                       twice. Said out loud because the read-out invites exactly the wrong conclusion. The recurring
+                       bill's confirm has carried this warning for a while; this door had none. *@
+                    @if (!State.SavingBucketDebtPaymentDriven(_instBucketId))
+                    {
+                        <small class="hint">@Loc["This loan's balance follows its own schedule, so logging this records the payment but doesn't move what's owed — the schedule already counts this month's installment. Change that on the loan under “What moves the balance”."]</small>
+                    }
                     <div class="modal-actions">
                         <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
                         <button @onclick="LogInstallmentFromModal" disabled="@(_instTotal <= 0m || _instOver || _instFundId == Guid.Empty || _instCategoryId == Guid.Empty || _instRows.Any(r => r.Amount > 0m && r.CategoryId == Guid.Empty))"><Icon Name="note" /> @Loc["Log it"]</button>

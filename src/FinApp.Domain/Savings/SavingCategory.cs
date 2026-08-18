@@ -178,19 +178,102 @@ public sealed class SavingCategory : Entity
         // figure in the app (owed, paid-off, progress, projections) reads through this method.
         if (DebtPaymentDriven) return DebtBalance;
         if (!IsDebt || DebtBalanceAsOf is not { } anchor || DebtInstallment <= 0m) return DebtBalance;
-        var months = MonthsBetween(anchor, asOf);
+        var months = InstallmentsDue(anchor, asOf);
         if (months <= 0) return DebtBalance;
         return FinApp.Forecasting.LoanForecast.BalanceAfter(DebtBalance, DebtAnnualRatePercent, DebtInstallment, months);
     }
 
-    /// <summary>Whole installments due between two dates — a payment lands once a month on the anchor's day-of-month,
-    /// so a part-month counts for nothing until its day comes round.</summary>
+    /// <summary>
+    /// Whole installments due in <c>(from, to]</c> — the count behind every balance walk in the app.
+    /// <para>
+    /// ★ Payments land on <see cref="DebtInstallmentDay"/>, the day the contract states. This used to count from the
+    /// <em>anchor's</em> own day-of-month instead, so a balance stated on the 18th advanced on the 18th while the
+    /// loan was due on the 5th: the due day came and went and the figure sat still for another thirteen days, which
+    /// reads as the app having missed the payment. The due day is a fact about the loan; the anchor date is an
+    /// accident of when somebody happened to type a number.
+    /// </para>
+    /// Falls back to the anchor's day-of-month when no due day is known — the old rule, so every bucket stored
+    /// before the day existed keeps behaving exactly as it did.
+    /// </summary>
+    private int InstallmentsDue(DateOnly from, DateOnly to)
+    {
+        if (to <= from) return 0;
+        if (DebtInstallmentDay is not { } day) return MonthsBetween(from, to);
+
+        // Whole months between the two months, then correct for the part-month at each end by asking the only
+        // question that matters: does that month's own due date actually fall inside (from, to]?
+        var months = ((to.Year - from.Year) * 12) + to.Month - from.Month;
+        if (DueDateIn(from.Year, from.Month, day) > from) months++;
+        if (DueDateIn(to.Year, to.Month, day) > to) months--;
+        return Math.Max(0, months);
+    }
+
+    /// <summary>The due date inside one month, with a 29th–31st clamped to the last day — February has no 31st, and a
+    /// contract due "on the 31st" is paid on the last day of the short months.</summary>
+    private static DateOnly DueDateIn(int year, int month, int day) =>
+        new(year, month, Math.Min(day, DateTime.DaysInMonth(year, month)));
+
+    /// <summary>Whole installments due between two dates, counted on the <em>anchor's</em> day-of-month. Only the
+    /// fallback for a loan with no stated due day — see <see cref="InstallmentsDue"/>.</summary>
     private static int MonthsBetween(DateOnly from, DateOnly to)
     {
         if (to <= from) return 0;
         var months = ((to.Year - from.Year) * 12) + to.Month - from.Month;
         if (to.Day < from.Day) months--;      // the day hasn't come round yet this month
         return Math.Max(0, months);
+    }
+
+    /// <summary>
+    /// What the schedule has already done to this loan and when it acts next — the schedule-driven answer to the
+    /// question a payment-driven loan answers with "is this month's installment logged?".
+    /// <para>
+    /// ★ It exists because the two modes deserve the same glance and not the same words. On a payment-driven loan
+    /// "nothing logged yet" is a prompt: the balance is waiting on the user. On a schedule-driven one nobody is
+    /// meant to do anything — the balance moves on the due day whether or not a payment is ever recorded here — so
+    /// the honest report is <em>what the schedule did and when it does it again</em>.
+    /// </para>
+    /// <para>
+    /// <see cref="LastPrincipal"/>/<see cref="LastInterest"/> split the most recent scheduled installment by the
+    /// same rule the ledger uses (this month's interest on what was owed before it, principal is the rest), so the
+    /// figure quoted here and the one a logged installment posts cannot disagree.
+    /// </para>
+    /// Null when there is nothing to describe: a payment-driven loan, or one with no anchor or no installment.
+    /// </summary>
+    /// <param name="LastOn">The most recent scheduled installment on/before <c>asOf</c>, or null if none has come due
+    /// since the balance was stated.</param>
+    /// <param name="NextOn">The next one after <c>asOf</c>.</param>
+    public sealed record ScheduleStep(DateOnly? LastOn, decimal LastPrincipal, decimal LastInterest, DateOnly NextOn);
+
+    /// <summary>See <see cref="ScheduleStep"/>. Uses the stated <see cref="DebtInstallmentDay"/>, falling back to the
+    /// anchor's day-of-month — the same day the walk itself counts on, so the date named here is always the date the
+    /// balance actually moves.</summary>
+    public ScheduleStep? ScheduleStepOn(DateOnly asOf)
+    {
+        if (!IsDebt || DebtPaymentDriven) return null;
+        if (DebtBalanceAsOf is not { } anchor || DebtInstallment <= 0m) return null;
+        var day = DebtInstallmentDay ?? anchor.Day;
+
+        var due = InstallmentsDue(anchor, asOf);
+        var next = ScheduledInstallmentDate(anchor, day, due + 1);
+        if (due <= 0) return new ScheduleStep(null, 0m, 0m, next);
+
+        // The balance the last installment was charged against, then the same split the ledger posts.
+        var before = FinApp.Forecasting.LoanForecast.BalanceAfter(
+            DebtBalance, DebtAnnualRatePercent, DebtInstallment, due - 1);
+        var interest = FinApp.Forecasting.LoanForecast.MonthlyInterest(before, DebtAnnualRatePercent);
+        var paid = Math.Min(DebtInstallment, before + interest);   // a final installment can be smaller than the rest
+        var principal = Math.Max(0m, paid - interest);
+        return new ScheduleStep(ScheduledInstallmentDate(anchor, day, due), principal, interest, next);
+    }
+
+    /// <summary>The <paramref name="index"/>-th scheduled installment date strictly after <paramref name="anchor"/>
+    /// (1 = the first). The anchor's own month counts only when its due date still lies ahead of the anchor — a
+    /// balance stated on the 18th of a month due on the 5th has already had that month's payment reflected in it.</summary>
+    private static DateOnly ScheduledInstallmentDate(DateOnly anchor, int day, int index)
+    {
+        var firstIsThisMonth = DueDateIn(anchor.Year, anchor.Month, day) > anchor;
+        var month = new DateOnly(anchor.Year, anchor.Month, 1).AddMonths(index - (firstIsThisMonth ? 1 : 0));
+        return DueDateIn(month.Year, month.Month, day);
     }
 
     /// <summary>
@@ -205,7 +288,9 @@ public sealed class SavingCategory : Entity
     {
         if (!IsDebt || DebtInstallment <= 0m || DebtOriginalBalance <= 0m) return null;
         if (DebtStartDate is not { } start) return null;
-        var months = MonthsBetween(start, asOf);
+        // Same rule as the live walk: the original schedule's payments land on the same due day the real ones do.
+        // Two walks counting months by two different rules is how a comparison between them invents progress.
+        var months = InstallmentsDue(start, asOf);
         return FinApp.Forecasting.LoanForecast.BalanceAfter(
             DebtOriginalBalance, DebtAnnualRatePercent, DebtInstallment, months);
     }
@@ -302,7 +387,7 @@ public sealed class SavingCategory : Entity
     /// payments).</summary>
     private int DebtMonthsElapsed(DateOnly asOf)
     {
-        if (DebtStartDate is { } start) return MonthsBetween(start, asOf);
+        if (DebtStartDate is { } start) return InstallmentsDue(start, asOf);
         return FinApp.Forecasting.LoanForecast.MonthsToReach(
             DebtOriginalBalance, DebtAnnualRatePercent, DebtInstallment, DebtBalanceOn(asOf));
     }

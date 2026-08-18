@@ -1,6 +1,34 @@
 # TandemTab (FinApp) — session handoff
 
-Last updated: 2026-08-18 (Session 107 — **the paywall Android had was working and rude. It refuses in advance
+Last updated: 2026-08-18 (Session 107b — **an owner report: a loan on "Its own schedule" kept saying no installment
+was logged after its due day had passed — and did anything come off the principal at all?**
+**496 + 49 + 368 green. Browser-verified. DEPLOYED. Everything committed + pushed.**
+★★ **The balance walked on the day the number was TYPED, not the day the loan is due.** `DebtBalanceOn` counted
+months from the anchor's own day-of-month; the stated due day drove recurring-bill dates and nothing else. A loan
+due on the **5th** stated on the **18th** did not move on the 5th — **up to four weeks of silent lag**, and it
+re-randomised every time somebody re-stated the balance. The due day is a fact about the contract; the anchor is an
+accident of when a human typed a number. `InstallmentsDue` now counts **due dates**, with 29th–31st clamped to the
+last day of short months, and **all three walks share it** (live, counterfactual, and months-elapsed) — two walks
+counting by different rules is how S106's badge manufactured progress. ⚠️ **No due day recorded → the old rule,
+untouched**; and loans that DO state one may re-derive by up to one installment on first load (nothing is stored,
+so there is no migration).
+★★ **Yes, the principal comes off — just not from anything you log.** The schedule walks it; `LogInstallment`
+deliberately skips `RecordDebtPayment` on this mode ("advancing it here too would count the month twice"), and two
+tests already pinned that. **What was missing is that the app never said so**: the Log-installment modal shows a
+live Principal figure that moves nothing here, while the *recurring bill's* confirm has warned about exactly this
+all along. One door warned, the other invited the wrong conclusion. Now both do.
+★ **The flag asked the wrong question.** It was ungated by mode and its own comment gave away why that was wrong —
+it exists to make *"the balance follows my logs"* checkable, a promise only payment-driven mode makes. Both modes
+get a flag now; neither gets the other's words. Schedule-driven reads *"Aug's installment is already counted —
+€434.78 off the principal, €165.22 interest. Nothing to log. Next on 5 Sep."* ★★ Computed in the DOMAIN from the
+same counter that moves the balance, so the date named can't be a day the figure doesn't change on — one test walks
+a full year day by day to hold that.
+✅ **All four flag states browser-verified**, both modes, plus the modal warning present on one and absent on the
+other. `app.css` untouched → no cache-bust.
+⚠️ Worth carrying: **a documented decision can still be a bug.** The anchor-day rule was written down and explained.
+The comment made it intentional, not correct.)
+
+Previously: 2026-08-18 (Session 107 — **the paywall Android had was working and rude. It refuses in advance
 now, and it can explain itself from anywhere.**
 **Android only; no server change, no deploy. R2 unchanged at 102 of 118. Everything committed + pushed.**
 ★★ **S106 shipped a "New trip" button that 402'd.** Trips went Pro that session and the gate is server-side, so
@@ -296,6 +324,109 @@ a separate balance axis — because flows and a stock were sharing one scale. **
 ✅ **Committed and the web half is DEPLOYED** (Session 93 catch-up): Android sharing as `596eea5`, the web batch
 as `de51071`, now live on **`finapp-00280-4s8`** (traffic forced `--to-latest`; run URL + tandemtab.com 200; 5
 `secretKeyRef`s; no WARNING+ logs). Prior context below is Session 91.)
+
+## Session 107b (2026-08-18) — **The loan that ignored its own due day, and a flag that asked the wrong question.**
+
+Owner report: on a debt set to **"Its own schedule"**, the row still said *"No installment logged this period yet"*
+after the due day had passed — and, underneath it, *is the principal being deducted at all?*
+
+Three findings, two of them the owner's question and one they had not asked about yet.
+
+### ★★ The balance walked on the day the number was TYPED, not the day the loan is due
+
+`DebtBalanceOn` counted whole months from `DebtBalanceAsOf` — the anchor — using **the anchor's own day-of-month**.
+The stated due day (`DebtInstallmentDay`) drove recurring-bill dates and nothing else; a comment said so outright.
+
+So a loan due on the **5th**, whose balance was stated on the **18th**, did not move on the 5th. The due day came
+and went and the figure sat still for another thirteen days. ★ **The lag is up to four weeks and it is silent** —
+the app looks like it missed the payment, which is exactly what the owner saw. Worse, it re-randomises: every time
+somebody re-states the balance, the day the loan advances moves to whatever day that was.
+
+**The due day is a fact about the contract; the anchor is an accident of when a human typed a number.** New
+`InstallmentsDue(from, to)` counts **due dates in `(from, to]`**:
+
+```
+whole months between the two months
+  +1 if the from-month's due date falls after `from`
+  −1 if the to-month's due date hasn't arrived by `to`
+```
+
+- A 29th–31st due day **clamps to the last day** of short months — February pays on the 28th, not in March.
+- The anchor day's own installment is never counted twice: a balance stated *on* the 5th already contains it.
+- ⚠️ **No due day recorded → the old anchor rule, untouched.** Every bucket saved before the day existed behaves
+  exactly as it did. That fallback is deliberate: this is derived data with no migration, so the only accounts that
+  change are the ones that actually stated a due day.
+
+★ **All three walks now share it** — `DebtBalanceOn`, `ScheduledBalanceOn` and `DebtMonthsElapsed`. The counterfactual
+schedule pays on the same day the real one does; two walks counting months by different rules is precisely how S106's
+debt-free badge manufactured progress out of a rounding difference.
+
+⚠️ **Expect existing loans with a due day to re-derive by up to one installment in either direction.** Nothing is
+stored, so there is no migration and no data to fix — but a balance may visibly shift the first time this deploys.
+
+### ★★ …and yes, the principal comes off. Just not from anything you log.
+
+The owner's second question, answered by two lines that were already right and one that never said so:
+
+- `SavingCategory.DebtBalanceOn` walks the schedule: only `installment − interest` comes off each month (subtracting
+  the whole installment would over-credit by the interest, and the error compounds).
+- `Period.LogInstallment` **deliberately skips** `RecordDebtPayment` unless the loan is payment-driven — *"advancing
+  it here too would count the month twice."* Two tests have pinned that for a while.
+
+So the mechanics were correct. **What was missing is that the app never said so at the one door where it matters.**
+The Log-installment modal shows a live **Principal** figure, and on a schedule-driven loan that figure moves nothing
+— while the *recurring bill's* confirm screen has carried exactly this warning all along. One door warned, the other
+invited the wrong conclusion. The modal now carries it too (new string + BG).
+
+### ★ The flag: both modes get one, neither gets the other's words
+
+The row marker was gated on `isDebt && !done && IsPeriodOpen` — **no mode check, and the due day never entered it**,
+which is why the day of the month made no difference. Its own comment gave away the intent: it exists to make *"the
+balance follows my logs"* checkable, and **that promise only exists in payment-driven mode**.
+
+Gating it there would have been the small fix. The owner asked for the better one: *the same flag, with the
+mechanics*. New `SavingCategory.ScheduleStep(LastOn, LastPrincipal, LastInterest, NextOn)` + `ScheduleStepOn(asOf)`:
+
+| Mode | State | What the flag says |
+|---|---|---|
+| The payments I log | logged | ✓ *This period's installment is logged — €X recorded as an expense.* |
+| The payments I log | not logged | ✎ *No installment logged this period yet.* |
+| Its own schedule | a due day has passed | 📅 *Its own schedule: Aug's installment is already counted — €434.78 off the principal, €165.22 interest. Nothing to log. Next on 5 Sep.* |
+| Its own schedule | none yet | 📅 *Its own schedule: the balance moves next on 5 Sep, on its own. Nothing to log.* |
+
+★★ **It is computed in the domain from the same counter that moves the balance**, not from the due day directly.
+A date derived independently could name a day the figure doesn't change on — and the split is taken by the ledger's
+own rule (this month's interest on what was owed, principal is the rest), so the number quoted here cannot disagree
+with the one a logged installment would post. One test walks a **full year day by day** and asserts the balance only
+ever moves on a day the flag named; that guard is the reason to compute it there rather than in the razor.
+
+### Verification
+
+**496 + 49 + 368 green** (from 485 + 49 + 368 — 11 new domain tests in `DebtScheduleDayTests`).
+
+✅ **BROWSER-VERIFIED, all four flag states in a running app**, on two loans built for it:
+
+- schedule-driven, anchor = today, due 5th → *"the balance moves next on 5 Sep"* (grey);
+- schedule-driven, anchor back-dated to 20 Jun, due 5th → *"Aug's installment is already counted — €434.78 off the
+  principal, €165.22 interest… Next on 5 Sep"* (green). ★ Both dates land on the **5th**, not the 18th or the 20th —
+  the anchoring fix, visible in the UI;
+- the same loan switched to payment-driven → back to *"No installment logged this period yet"*, so the original flag
+  still works;
+- the modal warning appears on the schedule-driven loan and **not** on the payment-driven one.
+
+The arithmetic was checked by hand against the two-installment walk (50 000 @ 4%: 166.67 → 165.22 interest,
+433.33 → 434.78 principal). ⚠️ The back-dated anchor was set by editing the local dev snapshot directly — the API
+always anchors to today, so there is no other way to reach the "already counted" branch on a fresh account.
+
+⚠️ **`app.css` untouched → no cache-bust needed.** No CSS was added at all; the flag reuses `.inst-flag`.
+
+### Worth not re-learning
+
+- **A "documented decision" can still be a bug.** The anchor-day rule was written down, explained, and wrong for the
+  user standing in front of it. The comment made it *intentional*, not *correct*.
+- **Check what the endpoint returns before believing a feature is gated** (S107) has a sibling: **check what a flag
+  is asking before deciding whether it should show.** This one was answering "are you keeping your promise?" on a
+  loan that had never made that promise.
 
 ## Session 107 (2026-08-18) — **The paywall on the phone worked, and refused rudely. Now it refuses in advance, and can explain itself from anywhere.**
 

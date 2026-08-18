@@ -1964,6 +1964,13 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     /// forward over its schedule). Drives the "Log installment" action and the row's "you're tracking payments" note.</summary>
     public bool SavingBucketDebtPaymentDriven(Guid id) => FindSavingBucket(id)?.DebtPaymentDriven ?? false;
 
+    /// <summary>What this loan's own schedule has already taken off it and when it acts next — the schedule-driven
+    /// counterpart to "is this month's installment logged?". Null on a payment-driven loan (nothing to describe) and
+    /// on one with no schedule to walk. Computed in the domain so the date and the split shown here are the same ones
+    /// the balance actually moved by.</summary>
+    public SavingCategory.ScheduleStep? SavingBucketScheduleStep(Guid id) =>
+        FindSavingBucket(id)?.ScheduleStepOn(Today());
+
     /// <summary>A lease's residual/balloon — the sum its schedule amortises down to. 0 for an ordinary loan.</summary>
     public decimal SavingBucketDebtResidual(Guid id) => FindSavingBucket(id)?.DebtResidual ?? 0m;
 
