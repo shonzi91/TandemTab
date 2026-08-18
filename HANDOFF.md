@@ -1,6 +1,40 @@
 # TandemTab (FinApp) — session handoff
 
-Last updated: 2026-08-16 (Session 104 — **six findings from the owner's own trip, and the one my own fix created.**
+Last updated: 2026-08-18 (Session 105 — **R2 measured properly and pushed from 76 to 99 of 119; then the owner's
+whole ten-item batch.** Two halves, and the join between them is that four of the ten turned out to be domain bugs
+rather than polish.
+★★ **The R2 gap count was hand-made and wrong.** S103's "61 of 99" was counted by eye. Run as a script
+(`accounts.Map*` vs every path in `TandemTabApi`) it is **76 of 118**. The script is the instrument now — re-run it
+rather than re-counting. Android ended the session at **99 of 119**.
+★★ **Four rows, four times the same shape, and it is always a MISSING READ.** Tags had no manage read (the picker's
+list is `ActiveTags`, so a client could archive a label and never see it again — an archive that is really a
+delete). Savings **movements** had three write endpoints and one undo but **no read at all**, so the undo was
+unreachable by construction. Account-to-account transfers likewise — the edit is addressed by a pair id no client
+could learn. Sixth instance overall. **Check what the endpoint RETURNS before sizing any R2 row.**
+★★ **Editing an expense on Android had been silently stripping its tag** — the server clears the tag on an omitted
+value, and the native edit omitted it. Fixed client-side; the contract is still a trap (the same handler treats the
+*time* by the opposite rule and says so in a comment), flagged not changed.
+★ **`IsManualDeposit` required an EMPTY NOTE**, so a deposit vanished from the Goals activity the moment anyone
+typed one — un-editable, un-undoable, and worst exactly on a sinking fund where naming the thing is normal. The
+sign and the structural links already excluded every system allocation; the note only ever excluded real users.
+★ **Undoing a loan prepayment gave the money back and kept the debt.** Disburse is two writes (move money, reduce
+principal); the undo lived in `Period` and reversed only the first.
+★ **"Available to budget" was wrong twice, in opposite directions** — and my first fix made the owner's case worse
+(see the Session 105 correction). Savings-funded spending *inflated* it; and it answered to a different measure
+than the over-planned warning, so the app offered €804.92 and then objected at €80.35 over. Both now agree.
+✅ Owner batch, all ten: expense times on Android · trip ledger by date + grouping + row edit/delete · the deposit
+bug · the payment choice (keep the installment **or** keep the end date) · the Home **debt-free badge** (option C,
+green, hidden when not ahead — and the "already saved" figure had to be **built**, since every existing helper
+projects forward) · prepayments annotated in Trends · trip buttons · suggested-amount chips · the budget figure ·
+the Trends saved bar + a four-view switcher. Plus **one search box** replacing the tag chips.
+**482 + 49 + 367 green** (from 469 + 49 + 353).
+✅ **DEPLOYED 2026-08-18 as `finapp-00308-jcz`** (image `a8d0a91`) — served-bytes verified on the scoped bundle.
+⚠️ **NOTHING this session is browser- or emulator-verified.** Every UI change is build-clean, test-green and
+unproven in a running app. That is the single biggest caveat on the batch.
+⚠️ **R2 is NOT finished**: 20 endpoints still uncalled — the bank back half, import, export, reallocation, settle,
+reactivate — and Android has none of the web work from the owner's batch.)
+
+Previously: 2026-08-16 (Session 104 — **six findings from the owner's own trip, and the one my own fix created.**
 A real journey was taken and reviewed; everything here comes from that.
 ★★ **Dismissed bank transactions kept coming back, and the guard written for it had always passed.** The synthetic
 id for a transaction the bank gives no reference for was `string.GetHashCode()` — **randomized per process** on
@@ -186,6 +220,176 @@ a separate balance axis — because flows and a stock were sharing one scale. **
 ✅ **Committed and the web half is DEPLOYED** (Session 93 catch-up): Android sharing as `596eea5`, the web batch
 as `de51071`, now live on **`finapp-00280-4s8`** (traffic forced `--to-latest`; run URL + tandemtab.com 200; 5
 `secretKeyRef`s; no WARNING+ logs). Prior context below is Session 91.)
+
+## Session 105 (2026-08-18) — **R2 re-measured and pushed 23 endpoints; then the owner's ten-item batch. Live: `finapp-00308-jcz`.**
+
+Two halves. The first drove R2 forward on Android; the second worked the owner's list. The join between them is
+that **four of the ten items were domain bugs, not polish** — and one of them (the deposit note) had been quietly
+eating data.
+
+### ★★ The parity count was hand-made, and the script disagrees
+
+S103 reported "61 of 99 account paths". That was counted by eye. Comparing every `accounts.Map*` route in
+`Program.cs` against every path in `TandemTabApi.kt` as a script gives **76 of 118**. Neither figure was a lie —
+the hand count simply drifted, which is what hand counts do.
+
+**Re-run the comparison, don't re-count.** The script lives in the session scratchpad rather than the repo; it is
+twenty lines (extract `accounts.Map<Verb>("/{id:guid}/…")`, normalise `{x:guid}` to `*`, extract
+`authed<Verb>("/accounts/$accountId/…")` plus the two other call shapes, diff). Worth committing to `tools/` next
+time someone needs it.
+
+⚠️ **It measures the DATA LAYER, not reachability.** A call wired to nothing counts as "called". That is exactly
+what S103 recorded as "wired" and what this session had to go back and finish — see the savings row below.
+
+Ended at **99 of 119** (a new endpoint landed mid-session). Still uncalled: the bank back half, `/import`,
+`/export`, the two reallocations, settle, reactivate, `/structure`, and the two snapshot routes (deliberately).
+
+### ★★ Four R2 rows, four times the same shape — and it is always a missing READ
+
+This is now six instances across the port, and the lesson has not changed: **check what the endpoint returns
+before sizing the row.** It is never client work when it looks like client work.
+
+- **Tags** had no manage read. The only tag list a thin client could fetch is `SpendingViewDto.Tags`, built from
+  `ActiveTags` because it is the *picker's* list. A client working from it could archive a label and then never see
+  it again — an archive that is really a delete, with a Restore action that has nothing to act on. New
+  `GET /accounts/{id}/tags` → `TagsViewDto`, archived included, with the F2 binding resolved to a name and a
+  **use count** (removal is a hard delete, so the confirm needs a number to make it a real question).
+- **Savings movements** had three write endpoints and one undo and **no read at all** — the undo was unreachable by
+  construction. `SavingsViewDto.Movements` now carries them, each naming its counterpart and its kind, amount
+  always positive because the direction is the kind. ★ `Undoable` is the **server's** answer: a `spent` row is a
+  genuine movement that `RemoveSavingMovement` refuses (it is undone by deleting the expense), so inferring
+  undoability from "is a movement" renders a control whose only outcome is a 400. A test asserts both halves.
+- **Account transfers** likewise. The edit and delete are addressed by the **pair id both halves carry**, and
+  nothing returned a row that carried it. `PairId` is nullable and `Editable` is a separate flag, because a
+  transfer written before the link existed has no findable counterpart and is delete-only.
+- **Kotlin's `SavingsViewDto` didn't even declare `deposits`**, so Goals has never had an activity list. Nothing
+  was hidden; there was nothing to hide.
+
+### ★★ Editing an expense on Android was stripping its tag
+
+`PUT /expenses/{id}` calls `SetTag(req.TagId ?? null)` — an **omitted** tagId clears the tag. The native edit
+omitted it, so correcting an amount silently removed the label. Presumably since tags shipped. Fixed client-side.
+
+⚠️ **The contract is still a trap.** The same handler treats the *time* by the opposite rule and says so in a
+comment two lines down, because S104 decided an omitted value must mean "leave it alone" so an older client cannot
+strip the clock. The identical argument applies to the tag and was not applied. Flagged (a `ClearTag` flag mirroring
+`ClearTime`), deliberately not changed mid-R2.
+
+### ★ A deposit vanished the moment anyone typed a note on it
+
+Owner item 3. `Period.IsManualDeposit` required `string.IsNullOrEmpty(a.Note)`. Every allocation the domain writes
+for itself is either negative or carries a link (`SourceExpenseId` / `BudgetCategoryId` / `TransferPairId`), so the
+sign and the links already excluded all of them — the note added nothing. What it *did* do was drop a real user's
+deposit out of `ManualSavingDeposits()`, and with it the only route to editing or undoing it. Naming what you are
+saving for is the normal case on a sinking fund, so **the feature disappeared exactly where it was most used.**
+
+### ★ Undoing a prepayment gave the money back and kept the debt
+
+Owner item 4. Disburse is two operations in two places: `Period.DisburseSaving` moves the money, and
+`Account.RecordSavingDebtPayment` takes it off the principal. The undo lived entirely in `Period`, which has no
+reach into the account's saving categories, so it reversed the first and skipped the second. The loan then reported
+a balance no payment had ever produced.
+
+`RemoveSavingMovement` now takes the bucket (as `RemoveInstallmentGroup` already did) and reverses under the same
+condition the record happened — any debt bucket, deliberately **not** the `DebtPaymentDriven` guard the installment
+path uses, which exists for a different reason. Four tests, one of which **omits the bucket and asserts the OLD
+numbers**, so the fix is provably what moves the figure.
+
+### ★ "Available to budget" was wrong twice, in opposite directions — and my first fix made it worse
+
+Owner item 9, and the one worth reading.
+
+**My first diagnosis was wrong.** I guessed the figure read too LOW because a bank-synced fund's balance is held
+out of the ledger (`InitialTotal` excludes informative openings), and bank-adjusted the label upward. The owner's
+screenshot showed the opposite: it offered **€804.92** for a category while the header said €1,786.24 was left, and
+a €200 rise was answered with *"your remaining budgets are €80.35 more than you have left"*. The change pushed the
+number **further above** the threshold that produces that warning.
+
+Two real faults:
+
+1. **Arithmetic.** The ceiling adds spending back (spending realizes a budget), but an expense paid from a savings
+   bucket was never budget spending — it drained an earmark that already fell by the same amount. Adding it back
+   credits the money twice, so the figure *climbs by what you spent*. `BudgetCeilingAfter` now adds back only
+   `BudgetFundedExpensesTotal`.
+2. **Two measures for one decision.** The label came from the ceiling (adds all spending back); the warning
+   compares remaining budgets against bank-adjusted **free cash** (adds nothing back). Each defensible alone;
+   together they told the user a number and then told them off for using it. The label is now derived from the
+   warning's own quantities — `free + spent − everyone else's budget` — which on the owner's figures is **€719.65**.
+
+★ The arithmetic moved into `Period.MaxBudgetWithoutOverplanning` (free cash passed in, since the honest figure is
+bank-adjusted and the domain cannot see a bank) **so it could be tested at all** — the same reason S104 moved the
+time-cost text out of the UI layer, which no test project reaches. A test reproduces the owner's exact numbers and
+pins both edges: exactly the offered figure is silent, one euro more warns.
+
+### ✅ The owner's ten, in full
+
+1. **Expense date/time** — already correct on web (S104); **Android had no `time` field at all**, so every time the
+   server sent was discarded on arrival. Built: stamped as now for today, blank otherwise, `clearTime` on the edit,
+   untimed rows at the bottom of their own day. ⚠️ There is **no creation timestamp** anywhere (`Entity` carries a
+   random Guid), so the "use the creation datetime" half has no data to use.
+2. **Trip ledger** — ordered by date+time on both the server and the web (they had separate sorts, both by amount),
+   grouping by category, and edit/delete per row (only while that row's period is open — a trip spans months).
+   ★ `Biggest` is computed independently now; it had been `rows[0]` of an amount-sorted list, so re-ordering would
+   have silently redefined it as "most recent".
+3. **The deposit note bug** (above).
+4. **Make a payment** — the modal already knew both outcomes (`LoanForecast.PayLumpSum` returns
+   `AfterKeepingInstallment` *and* `LoweredInstallment`); it printed the second as "ask your lender". Now a real
+   choice, with "keep the end date" writing the lowered installment as a **second call after** the payment. Prepaid
+   rows amber not red. Balance-over-time sparkline removed.
+5. **Debt-free badge on Home** — owner picked option C from three mockups; green, hidden when not ahead.
+   ★ The figure had to be **built**: every existing helper (`DebtInterestSavedAtPace`, `SavingBucketMonthsAhead`)
+   projects FORWARD at current pace and cannot honestly be labelled "already". New
+   `SavingCategory.ScheduledBalanceOn` / `AheadOfScheduleOn` walk the original schedule and compare. Across loans
+   the account takes the **longest lead, not the sum** — months run in parallel; interest adds.
+6. **Prepayments in Trends** — the dip is real (the cash left), so it is annotated rather than flattened: a green
+   ring on the month plus a tooltip sentence. Only disbursements onto a **debt** bucket.
+7. **Trip buttons** — edit/delete to corner icons, "Not finished after all" removed entirely, "Add something already
+   paid" hidden once the end date passes, the rest restyled as real buttons.
+8. **Suggested-amount chips** on Add-to-savings *and* (owner follow-up) the budget box. ⚠️ Both gated on free cash
+   being positive, and that check is **not redundant on either**: the budget figure adds spending back so it stays
+   positive after the money is gone, and the savings figure subtracts a budget remainder that goes negative once
+   budgets are overspent, flipping the sum positive.
+9. **Available to budget** (above).
+10. **Trends** — saved bar on chart 1 (violet, outside the in/kept/out triple because those three are one
+    arithmetic), and a four-view switcher on chart 2. ★ The axis is computed **per series**; one shared axis would
+    flatten "saved" beside a balance, which is the mistake the two-chart split exists to avoid.
+
+Plus **one search box** replacing the tag-chip filter — matches note, category, wallet, label, trip, amount, date.
+Every word must match something, not all the same thing, so "lidl june" works.
+
+### Razor detail worth keeping
+
+A `RenderFragment` lambda containing markup **must** name its parameter `__builder`. Any other name compiles the
+lambda and then fails in generated code with "`__builder` does not exist in the current context", pointing at line
+numbers in a file you did not write.
+
+### Verification
+
+- **482 + 49 + 367 green** (from 469 + 49 + 353). New: 6 tags-view, 5 savings-movements, 3 account-transfer-view,
+  4 prepayment-undo, 5 ahead-of-schedule, 2 budget-ceiling, 1 deposit-note, 1 overplanning-coherence.
+- ✅ **DEPLOYED as `finapp-00308-jcz`** (image `a8d0a91`, digest `sha256:f1f66f80…`). Traffic forced with
+  `--to-latest`. Verified on the **scoped bundle**, not the revision name: `spend-search` ×12 plus
+  `trend-series-sw`, `won-badge`, `paydown-choice`, `suggest-chip`, `trip-corner`, `trip-grp`, `brk-exp-acts`,
+  `trend-debt-ring`, `trend-bar-saved`, `btn-soft`, `trip-exps-sw` all present. 5 `secretKeyRef`s, both hosts 200,
+  `GET /accounts/{guid}/tags` → **401** with the SPA control → 200. Startup probe clean; the purge race did not fire.
+- `app.css` was **not** touched (only scoped CSS), so no `?v=` bump was needed — worth checking rather than assuming.
+
+### ⚠️ Carry-over
+
+- **NOTHING this session is browser- or emulator-verified.** Every UI change is build-clean, test-green and unproven
+  in a running app. Likeliest places for trouble: the Trends series switcher (four series through one axis path),
+  the debt-free badge (absent unless a loan is genuinely ahead — absence may be correct), the trip corner icons on a
+  narrow window.
+- **R2 is not finished.** 20 endpoints uncalled: bank's back half (`/bank/accounts`, `/bank/account`, `/bank/fund`,
+  `/bank/mappings` ×3, `/bank/reset`), `/import`, `/export`, `/reallocations` ×2, `/expenses/*/settle` ×2,
+  `/reactivate`, `/structure`, `/achievements`, `/milestones`, `/funds/*/currency`, `/contribution-categories/*`
+  handled. **Android has none of the web work from the owner's batch.**
+- **The web has no way to un-finish a trip** — the button was removed on the owner's instruction and its helper
+  (`ReopenTrip`) now has zero callers. The capability still exists on Android and on the server. Probably belongs in
+  the trip edit modal rather than deleted; ask before removing.
+- **Dead CSS:** `.debt-progress` / `.debt-prog-cap` survive the removed balance-over-time sparkline.
+- **The `ClearTag` contract fix** (above) is flagged, not done.
+- The pre-S104 carry-over still stands.
 
 ## Session 104 (2026-08-16) — **Six things a real trip found, and the one my own fix broke.**
 
