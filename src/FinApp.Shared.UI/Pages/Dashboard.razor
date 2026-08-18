@@ -881,18 +881,21 @@ else
                                 <CatIcon Name="@t.Icon" />
                                 @if (_isDebtRow && _ahead is { } a)
                                 {
-                                    @* Left/right split: the projection drops to a subline so the right edge is free
-                                       for what has already been achieved, which is the thing worth landing on. *@
-                                    <span class="target-main">
-                                        <span class="target-name">@t.Name</span>
-                                        <span class="target-sub">@PayoffDate(t.Months) · @MonthsText(t.Months)</span>
-                                    </span>
+                                    @* ⚠️ Green badge FIRST, the date after it (owner's call). The row reads left to
+                                       right as "Debt-free · what you've already banked · when it lands", and the
+                                       projected date keeps the right edge every other target row puts it on — so
+                                       the debt row stops being the one line whose date is somewhere else. *@
+                                    <span class="target-name">@t.Name</span>
                                     <span class="won-badge" title="@Loc["Against the original schedule — money already paid ahead, not a projection."]">
                                         <span class="won-lead"><Icon Name="trophy" /> @string.Format(Loc["{0} ahead"], MonthsText(a.MonthsAhead))</span>
                                         @if (a.InterestSaved > 0m)
                                         {
                                             <span class="won-sub">@string.Format(Loc["{0} interest saved"], Fmt(State.Money(a.InterestSaved)))</span>
                                         }
+                                    </span>
+                                    <span class="target-when">
+                                        <strong class="target-date">@PayoffDate(t.Months)</strong>
+                                        <span class="target-mo">@MonthsText(t.Months)</span>
                                     </span>
                                 }
                                 else
@@ -1228,12 +1231,11 @@ else
                         <button type="button" class="chip @(_spendView == SpendView.Categories ? "on" : "")" @onclick="SwitchToByBudgets"><Icon Name="chart" /> @Loc["By budgets"]</button>
                         <button type="button" class="chip @(_spendView == SpendView.Breakdown ? "on" : "")" @onclick="() => _spendView = SpendView.Breakdown"><Icon Name="pie" /> @Loc["Breakdown"]</button>
                         <button type="button" class="chip @(_spendView == SpendView.Trends ? "on" : "")" @onclick="ShowTrends"><Icon Name="pulse" /> @Loc["Trends"] <ProLock Feature="@PlanFeatures.Insights" Static="true" /></button>
-                        @* Invisible until useful: the tab only exists once there's a trip. Creating the first one
-                           lives in the ⋯ menu, so an account that never travels never sees any of this. *@
-                        @if (State.AllTrips.Count > 0)
-                        {
-                            <button type="button" class="chip @(_spendView == SpendView.Trips ? "on" : "")" @onclick="() => _spendView = SpendView.Trips"><Icon Name="plane" /> @Loc["Trips"]</button>
-                        }
+                        @* Always here (owner's call). It used to appear only once a trip existed, with "New trip"
+                           tucked in the ⋯ menu — so the feature was invisible to exactly the people who had never
+                           used it, and the one door to it was behind a dots icon. The empty tab is its own advert:
+                           it carries nothing but the New trip button. *@
+                        <button type="button" class="chip @(_spendView == SpendView.Trips ? "on" : "")" @onclick="() => _spendView = SpendView.Trips"><Icon Name="plane" /> @Loc["Trips"] <ProLock Feature="@PlanFeatures.Trips" Static="true" /></button>
                     </span>
                     @if (State.IsPeriodOpen)
                     {
@@ -1255,7 +1257,8 @@ else
                                 <button @onclick="async () => { _spendMenuOpen = false; await OpenImport(); }"><Icon Name="import" /> @Loc["Import statement"] <ProLock Feature="@PlanFeatures.Import" Static="true" /></button>
                                 <button @onclick="() => { _spendMenuOpen = false; OpenManageCats(); }"><Icon Name="tag" /> @Loc["Manage categories"]</button>
                                 <button @onclick="() => { _spendMenuOpen = false; OpenManageTags(); }"><Icon Name="tag" /> @Loc["Manage tags"]</button>
-                                <button @onclick="() => { _spendMenuOpen = false; OpenAddTrip(); }"><Icon Name="plane" /> @Loc["New trip"]</button>
+                                @* "New trip" left this menu — the Trips tab is always on the switcher now and owns
+                                   the button, so a second door here was just a place to lose it. *@
                             </div>
                         }
                     </span>
@@ -2242,37 +2245,42 @@ else
                         var tTotal = tSlices.Sum(s => s.Amount);
                         double sweepAt = 0;
                         <div class="trip-card @status @(open ? "open" : "")">
-                            @* Edit and delete live as icons in the corner of the card (owner's call), not as two
-                               more words in the action row. They change what the trip IS; the row below acts on the
-                               money. Outside the head button, because a button inside a button is not clickable. *@
-                            <span class="trip-corner">
-                                <button type="button" class="trip-corner-b" title="@Loc["Edit"]" aria-label="@Loc["Edit"]" @onclick="() => OpenEditTrip(tRecap.TripId)"><Icon Name="pencil" /></button>
-                                <button type="button" class="trip-corner-b danger" title="@Loc["Delete"]" aria-label="@Loc["Delete"]" @onclick="() => ConfirmRemoveTrip(tRecap.TripId)"><Icon Name="trash" /></button>
-                            </span>
-                            <button type="button" class="trip-head" @onclick="() => _expandedTripId = open ? Guid.Empty : tRecap.TripId">
-                                <span class="trip-mark">@TripMark(trip.Icon)<span class="trip-status" title="@(status == "now" ? Loc["Happening now"] : status == "soon" ? Loc["Still ahead"] : Loc["Finished"])"><Icon Name="@statusIcon" /></span></span>
-                                <span class="trip-id">
-                                    <span class="trip-name">@trip.Name</span>
-                                    <span class="trip-when">
-                                        @trip.From.ToString("d MMM")–@trip.To.ToString("d MMM yyyy")
-                                        @if (trip.IsActiveOn(today))
-                                        {
-                                            <span class="trip-pill now">@string.Format(Loc["Day {0}"], trip.DayOn(today))</span>
-                                        }
-                                        else if (awaitingStart)
-                                        {
-                                            @* The dates have arrived; the traveller hasn't said so. Its own pill,
-                                               because "Day 1" would be a claim and "in 0 days" is not an answer. *@
-                                            <span class="trip-pill soon">@Loc["Ready to go"]</span>
-                                        }
-                                        else if (trip.DaysUntil(today) is { } sleeps)
-                                        {
-                                            <span class="trip-pill soon">@(sleeps == 0 ? Loc["Today"] : string.Format(Loc["in {0} days"], sleeps))</span>
-                                        }
+                            @* Edit and delete are icons rather than two more words in the action row: they change
+                               what the trip IS, where the row below acts on the money.
+                               ⚠️ They sit in the FLOW of the top row, immediately left of the total — they used to be
+                               absolutely positioned in the card's corner, which put them straight on top of the
+                               amount. Three siblings, not one nested block, because a button inside a button is not
+                               clickable: the name and the total are two separate expanders. *@
+                            <div class="trip-top">
+                                <button type="button" class="trip-head" @onclick="() => _expandedTripId = open ? Guid.Empty : tRecap.TripId">
+                                    <span class="trip-mark">@TripMark(trip.Icon)<span class="trip-status" title="@(status == "now" ? Loc["Happening now"] : status == "soon" ? Loc["Still ahead"] : Loc["Finished"])"><Icon Name="@statusIcon" /></span></span>
+                                    <span class="trip-id">
+                                        <span class="trip-name">@trip.Name</span>
+                                        <span class="trip-when">
+                                            @trip.From.ToString("d MMM")–@trip.To.ToString("d MMM yyyy")
+                                            @if (trip.IsActiveOn(today))
+                                            {
+                                                <span class="trip-pill now">@string.Format(Loc["Day {0}"], trip.DayOn(today))</span>
+                                            }
+                                            else if (awaitingStart)
+                                            {
+                                                @* The dates have arrived; the traveller hasn't said so. Its own pill,
+                                                   because "Day 1" would be a claim and "in 0 days" is not an answer. *@
+                                                <span class="trip-pill soon">@Loc["Ready to go"]</span>
+                                            }
+                                            else if (trip.DaysUntil(today) is { } sleeps)
+                                            {
+                                                <span class="trip-pill soon">@(sleeps == 0 ? Loc["Today"] : string.Format(Loc["in {0} days"], sleeps))</span>
+                                            }
+                                        </span>
                                     </span>
+                                </button>
+                                <span class="trip-corner">
+                                    <button type="button" class="trip-corner-b" title="@Loc["Edit"]" aria-label="@Loc["Edit"]" @onclick="() => OpenEditTrip(tRecap.TripId)"><Icon Name="pencil" /></button>
+                                    <button type="button" class="trip-corner-b danger" title="@Loc["Delete"]" aria-label="@Loc["Delete"]" @onclick="() => ConfirmRemoveTrip(tRecap.TripId)"><Icon Name="trash" /></button>
                                 </span>
-                                <span class="trip-total">@Fmt(tRecap.Spent)</span>
-                            </button>
+                                <button type="button" class="trip-total" @onclick="() => _expandedTripId = open ? Guid.Empty : tRecap.TripId">@Fmt(tRecap.Spent)</button>
+                            </div>
                             @if (open)
                             {
                                 <div class="trip-body">
@@ -2405,22 +2413,37 @@ else
                                                     @* Two ways to read the same list: down the days, or by what the
                                                        money was for. Neither is the "right" one — a trip you are
                                                        recalling reads by day, a trip you are accounting for reads
-                                                       by category. *@
+                                                       by what it bought.
+                                                       ★ By TAG, not by category. A trip files into ONE category by
+                                                       design (S101), so grouping by category produced a single group
+                                                       containing everything — a control that could not do anything.
+                                                       The tag is the axis that actually varies on a journey, and it
+                                                       is the one the donut above already splits by. *@
                                                     <span class="trip-exps-sw">
-                                                        <button type="button" class="chip @(!_tripByCategory ? "on" : "")" @onclick="() => _tripByCategory = false">@Loc["By date"]</button>
-                                                        <button type="button" class="chip @(_tripByCategory ? "on" : "")" @onclick="() => _tripByCategory = true">@Loc["By category"]</button>
+                                                        <button type="button" class="chip @(!_tripByTag ? "on" : "")" @onclick="() => _tripByTag = false">@Loc["By date"]</button>
+                                                        <button type="button" class="chip @(_tripByTag ? "on" : "")" @onclick="() => _tripByTag = true">@Loc["By label"]</button>
                                                     </span>
                                                 </div>
-                                                @if (_tripByCategory)
+                                                @if (_tripByTag)
                                                 {
                                                     @* Biggest group first — grouped, the question stops being "when"
-                                                       and becomes "what did most of this go on". *@
-                                                    foreach (var grp in tExps.GroupBy(e => e.CategoryId)
+                                                       and becomes "what did most of this go on". Untagged rows are
+                                                       one group of their own rather than being dropped: a trip is
+                                                       usually only half-labelled, and hiding the other half would
+                                                       make the totals disagree with the header. *@
+                                                    foreach (var grp in tExps.GroupBy(e => e.TagId)
                                                         .Select(g => (Id: g.Key, Rows: g.ToList(), Total: g.Sum(x => x.Amount.Amount)))
-                                                        .OrderByDescending(g => g.Total))
+                                                        .OrderByDescending(g => g.Id is null ? 0 : 1).ThenByDescending(g => g.Total))
                                                     {
                                                         <div class="trip-grp">
-                                                            <span class="trip-grp-n"><CatIcon Name="@State.CategoryIcon(grp.Id)" /> @State.CategoryName(grp.Id)</span>
+                                                            <span class="trip-grp-n">@if (grp.Id is { } gTag)
+                                                                {
+                                                                    <CatIcon Name="@State.TagIcon(gTag)" />@State.TagName(gTag)
+                                                                }
+                                                                else
+                                                                {
+                                                                    <CatIcon Name="tag" />@Loc["No label"]
+                                                                }</span>
                                                             <span class="trip-grp-c">@grp.Rows.Count</span>
                                                             <span class="trip-grp-v">@Fmt(State.Money(grp.Total))</span>
                                                         </div>
@@ -2491,7 +2514,15 @@ else
                     {
                         <ProLock Feature="@PlanFeatures.History" Bar="true" Label="@string.Format(Loc["{0} older trips — see your whole travel history with Pro"], _tripsHidden)" />
                     }
-                    <button class="fund-add trips-add" @onclick="OpenAddTrip"><Icon Name="plus" /> @Loc["New trip"]@if (HasLiveTrip) { <ProLock Feature="@PlanFeatures.Trips" Static="true" /> }</button>
+                    @* The tab is permanent now, so it has to say something when it is empty — otherwise a reader who
+                       taps Trips out of curiosity gets a blank panel and a button, and never learns what the feature
+                       is FOR. One sentence, and it names the thing that makes trips different from a tag: the flight
+                       you paid for in March counts toward the June journey without leaving March's budget. *@
+                    @if (SortedTripRecaps().Count == 0)
+                    {
+                        <p class="hint">@Loc["A trip gathers what a journey cost — even the parts you paid for months before you left. The flight stays in the budget of the month you bought it, and still counts toward the trip."]</p>
+                    }
+                    <button class="fund-add trips-add" @onclick="OpenAddTrip"><Icon Name="plus" /> @Loc["New trip"]<ProLock Feature="@PlanFeatures.Trips" Static="true" /></button>
                 </div>
                 }
             </section>
@@ -4338,7 +4369,10 @@ else
                        and got filed on your return, to a journey that is now over. Until now the only door to that
                        was the trip card's own "add something already paid", which you had to know existed.
                        Unlike the add form it does NOT re-file the category: see OnExpenseTripPicked. *@
-                    @if (EditTripOptions.Count > 0)
+                    @* ⚠️ …but only when a trip is the question being asked — see EditShowsTripPicker. It used to
+                       render whenever the account had EVER had a trip, so every ordinary grocery edit carried a row
+                       of dead trip chips reading "Not a trip", forever. *@
+                    @if (EditShowsTripPicker)
                     {
                         <div class="modal-field trip-pick-field">
                             <span class="lbl-row">@Loc["Part of a trip"]</span>
@@ -7140,9 +7174,9 @@ else
     /// slow question ("is the pile growing?") that the chart was built for; the other three are the same flows the
     /// bars above show, seen as a line over time rather than month by month.
     /// </summary>
-    /// <summary>Whether the trip ledger is grouped by category rather than run down the days. Not per-trip: only
+    /// <summary>Whether the trip ledger is grouped by label rather than run down the days. Not per-trip: only
     /// one card is open at a time, and carrying the choice between them is the less surprising behaviour.</summary>
-    private bool _tripByCategory;
+    private bool _tripByTag;
 
     /// <summary>
     /// One row of a trip's ledger, shared by both the by-date and by-category renderings so the two cannot drift
@@ -7202,6 +7236,7 @@ else
         var back = _expandedTripId;
         _modalBack.Push(() => ShowTripsTab(back));
         OpenEditExpense(id);
+        _editOpenedFromTrip = true;   // ⚠️ after, not before: OpenEditExpense clears it
     }
 
     private void TripDeleteExpense(Guid id)
@@ -9521,14 +9556,14 @@ else
     /// <summary>End a running trip. "Finish" means OVER, so this is a stored fact and not just a shorter end date —
     /// the hero disappears, the shell drops the trip theme, the expense form stops defaulting to it and the card
     /// moves into the history, all from the moment it's tapped. Reversible from the finished card.</summary>
-    private Task FinishTrip(Guid tripId) => Run(() => State.FinishTrip(tripId));
+    private Task FinishTrip(Guid tripId) => Gate.Require(PlanFeatures.Trips) ? Run(() => State.FinishTrip(tripId)) : Task.CompletedTask;
 
     /// <summary>Confirm a departure — the tap that turns trip mode on. Deliberately the only way in: see
     /// <c>Trip.StartedOn</c> for why a date arriving isn't enough.</summary>
-    private Task StartTrip(Guid tripId) => Run(() => State.StartTrip(tripId));
+    private Task StartTrip(Guid tripId) => Gate.Require(PlanFeatures.Trips) ? Run(() => State.StartTrip(tripId)) : Task.CompletedTask;
 
     /// <summary>Put a finished trip back on the road (the undo for the above).</summary>
-    private Task ReopenTrip(Guid tripId) => Run(() => State.FinishTrip(tripId, finished: false));
+    private Task ReopenTrip(Guid tripId) => Gate.Require(PlanFeatures.Trips) ? Run(() => State.FinishTrip(tripId, finished: false)) : Task.CompletedTask;
 
     // --- Using the money saved for a trip --------------------------------
     private Guid _useSavingsTripId;
@@ -9571,16 +9606,15 @@ else
     private string? _tripCurrency;
     private decimal? _tripRate;
 
-    /// <summary>A trip that hasn't been declared over — running or still ahead. The Free cap counts these, so
-    /// finishing a trip always frees the slot and nothing the user has recorded is ever in the way.</summary>
+    /// <summary>A trip that hasn't been declared over — running or still ahead.</summary>
     private bool HasLiveTrip => State.AllTrips.Any(t => !t.IsFinishedOn(State.TodayDate));
 
     private void OpenAddTrip()
     {
-        // Free = one trip on the go. Deliberately a cap on LIVE trips, not trips per year: you can always record the
-        // journey you're actually on, so the app never refuses real life — what Free can't do is plan the next one
-        // while this one runs. The server enforces the same rule (POST /trips).
-        if (HasLiveTrip && !Gate.Require(PlanFeatures.Trips)) return;
+        // ★ Trips are Pro, whole (owner's call). The old rule gave Free one LIVE trip and charged for planning a
+        // second alongside it; the gate is on the first one now. The server enforces the same (POST /trips), and
+        // reading, detaching and deleting stay free there so a downgrade never traps anything.
+        if (!Gate.Require(PlanFeatures.Trips)) return;
         _tripId = Guid.Empty;
         _tripName = null; _tripDestination = null; _tripIcon = null;
         // A week starting today is the shape of most trips and the least typing; both dates are editable anyway.
@@ -9623,6 +9657,7 @@ else
 
     private void OpenEditTrip(Guid tripId)
     {
+        if (!Gate.Require(PlanFeatures.Trips)) return;
         if (State.FindTrip(tripId) is not { } trip) return;
         _tripId = tripId;
         _tripName = trip.Name; _tripDestination = trip.Destination; _tripIcon = trip.Icon;
@@ -9686,7 +9721,11 @@ else
     // Search text for the attach-to-trip picker. Cleared on open — a stale filter would make the list look empty.
     private string? _attachSearch;
 
-    private void OpenAttachToTrip(Guid tripId) { _tripId = tripId; _attachSearch = null; _modal = Modal.AttachToTrip; }
+    private void OpenAttachToTrip(Guid tripId)
+    {
+        if (!Gate.Require(PlanFeatures.Trips)) return;
+        _tripId = tripId; _attachSearch = null; _modal = Modal.AttachToTrip;
+    }
 
     /// <summary>Label an attached booking from inside the picker. Deliberately does NOT close the modal — labelling
     /// a trip's bookings is a run of taps, like attaching them.</summary>
@@ -11211,6 +11250,9 @@ else
     /// would leave the form showing something other than what it is about to do.</summary>
     private void OnExpenseTripPicked(Guid tripId)
     {
+        // Attaching uses the feature; "Not a trip" is the detach and is never gated — a lapsed subscriber has to be
+        // able to undo a wrong link. Mirrors PUT /expenses/{id}/trip on the server.
+        if (tripId != Guid.Empty && !Gate.Require(PlanFeatures.Trips)) return;
         _expTripId = tripId;
         // The category follows the trip on the two paths that are CREATING an expense. On the edit form it must not:
         // re-filing a stored row because someone attached it to a trip would move money between budgets.
@@ -11320,6 +11362,7 @@ else
         _fTagId = e.TagId; _newTagName = null; _tagFiledTo = null;
         _expenseTime = e.Time; _expenseHadTime = e.Time is not null;
         _expTripId = e.TripId ?? Guid.Empty;   // the trip is editable here — see the picker in the modal
+        _editOpenedFromTrip = false;           // TripEditExpense sets it back on, after this call
         _modal = Modal.EditExpense;
     }
 
@@ -11342,6 +11385,23 @@ else
     /// finished trips — attaching a forgotten booking to a journey that is over is the main reason to be here.</summary>
     private IReadOnlyList<FinApp.Domain.Budgeting.Trip> EditTripOptions =>
         State.AllTrips.OrderByDescending(t => t.From).ToList();
+
+    /// <summary>Set while the edit modal was opened from a trip's own ledger — see <see cref="TripEditExpense"/>.
+    /// There the trip IS the context, so the picker belongs even with nothing running.</summary>
+    private bool _editOpenedFromTrip;
+
+    /// <summary>Whether the edit-expense modal asks about a trip at all. Three cases, and only three:
+    /// <list type="bullet">
+    /// <item>trip mode — a trip is running, so "was this part of it?" is a live question about today's spending;</item>
+    /// <item>the row was opened from a trip's ledger, where the trip is the whole context;</item>
+    /// <item>the expense already carries a trip — it has to stay visible, or a wrong link would be unfixable.</item>
+    /// </list>
+    /// Otherwise it renders nothing. The old rule was simply "the account has ever had a trip", which meant one
+    /// finished holiday left a dead chip row on every grocery edit from then on. Attaching a forgotten cost to a
+    /// past trip still has its door: "Add something already paid", on the trip's own card.</summary>
+    private bool EditShowsTripPicker =>
+        EditTripOptions.Count > 0
+        && (State.ActiveTrip is not null || _editOpenedFromTrip || _expTripId != Guid.Empty);
 
     /// <summary>Moving the date off today drops an auto-stamped time: "now" describes the moment the form is open,
     /// which says nothing about a purchase being back-dated to last Tuesday. Moving it back onto today re-stamps it.</summary>

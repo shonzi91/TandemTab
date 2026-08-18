@@ -35,7 +35,7 @@ public static class AccountSnapshotSerializer
             account.Members.Select(m => new MemberNode(m.Id, m.UserId, m.DisplayName)).ToList(),
             account.Funds.Select(f => new FundNode(f.Id, f.Name, f.ParentId, f.Note, f.Icon, f.IsSynced, f.IsArchived, f.Currency, f.Rate)).ToList(),
             account.Categories.Select(c => new CategoryNode(c.Id, c.Name, c.ParentId, c.Icon, c.IsEssential, c.IsArchived)).ToList(),
-            account.SavingCategories.Select(s => new SavingCategoryNode(s.Id, s.Name, s.ParentId, s.GoalAmount, s.AlertThreshold, s.NotifyOnMilestone, s.InitialAmount, s.Icon, s.Kind, s.DebtBalance, s.DebtAnnualRatePercent, s.DebtInstallment, s.IsArchived, s.DebtOriginalBalance, s.PlannedContribution, s.InvestmentAnnualRatePercent, s.InvestmentTermYears, s.InvestmentCompoundsPerYear, s.FundId, s.Costs.Count == 0 ? null : s.Costs.ToList(), s.DebtBalanceAsOf, s.DebtInstallmentDay, s.DebtStartDate, s.DebtPaymentDriven, s.IsEmergencyFund, s.DebtResidual)).ToList(),
+            account.SavingCategories.Select(s => new SavingCategoryNode(s.Id, s.Name, s.ParentId, s.GoalAmount, s.AlertThreshold, s.NotifyOnMilestone, s.InitialAmount, s.Icon, s.Kind, s.DebtBalance, s.DebtAnnualRatePercent, s.DebtInstallment, s.IsArchived, s.DebtOriginalBalance, s.PlannedContribution, s.InvestmentAnnualRatePercent, s.InvestmentTermYears, s.InvestmentCompoundsPerYear, s.FundId, s.Costs.Count == 0 ? null : s.Costs.ToList(), s.DebtBalanceAsOf, s.DebtInstallmentDay, s.DebtStartDate, s.DebtPaymentDriven, s.IsEmergencyFund, s.DebtResidual, s.DebtExtraPrincipalRepaid)).ToList(),
             account.Periods.Select(ToNode).ToList(),
             account.ContributionCategories.Select(c => new ContributionCategoryNode(c.Id, c.Name, c.Icon)).ToList(),
             account.SavingsRateTarget,
@@ -217,6 +217,7 @@ public static class AccountSnapshotSerializer
             // is right for a user flipping the mode and wrong for merely loading the account.
             s.RestorePaymentDriven(n.DebtPaymentDriven);
             s.SetDebtResidual(n.DebtResidual);
+            s.SetDebtExtraPrincipalRepaid(n.DebtExtraPrincipalRepaid);
         }
         if (n.Kind == SavingKind.Investment) s.ConfigureInvestment(n.InvestmentAnnualRatePercent, n.InvestmentTermYears, n.InvestmentCompoundsPerYear);
         // Verbatim, and after the kind is known: SetEmergencyFund gates on kind, which would drop the flag here.
@@ -388,7 +389,12 @@ public static class AccountSnapshotSerializer
         // False on legacy nodes — no account had an emergency fund before this existed.
         bool IsEmergencyFund = false,
         // A lease's residual / balloon. Zero on legacy nodes → amortise to zero, exactly as before.
-        decimal DebtResidual = 0m);
+        decimal DebtResidual = 0m,
+        // Principal prepaid on top of the schedule. Zero on legacy nodes, which is the honest reading: the app has
+        // no record of a prepayment on them, so it must not claim one. Loans that WERE genuinely prepaid before this
+        // existed lose their "ahead of schedule" badge until the next prepayment — the right trade against the badge
+        // appearing on loans that were never prepaid at all.
+        decimal DebtExtraPrincipalRepaid = 0m);
 
     private record PeriodNode(Guid Id, string Currency, DateOnly From, DateOnly To, PeriodStatus Status, decimal CarriedIn,
         List<InitialBalanceNode> InitialBalances, List<ContributionNode> Contributions, List<BudgetNode> Budgets,

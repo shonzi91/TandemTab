@@ -32,8 +32,16 @@ The product's own wedge is **"Free to start · Great solo, better together · Ne
 | **Advanced insights & Breakdown** (trends, % of income, multi-period) | Current period only | Full |
 | Health-score history & achievements depth | Basic | Full |
 | Unlimited accounts, funds, recurring items | Small caps | Yes |
+| **Trips** (what a journey cost, gathered across periods) | — | **Yes — the whole feature** |
 
 The natural paywall line is **"together + history + intelligence."** Keep single-user, current-month budgeting fully functional so free users stay and invite a partner — the *invite* becomes the upgrade moment.
+
+> **Trips are Pro in full** (owner's call, Session 106). The earlier rule gave Free one *live* trip and charged
+> only for planning a second alongside it, on the reasoning that the app should never refuse to record real life.
+> That reasoning still holds for **reading** — every GET, the detach and the delete stay open, so a lapsed
+> subscriber can always see, unlink and remove what they recorded. What Free cannot do is *create* one. A trip is
+> a want-it-when-you-need-it feature with a clear moment of intent, which makes it a better upgrade prompt than a
+> capability someone half-has.
 
 ## Packaging
 

@@ -59,15 +59,86 @@ public class DebtAheadOfScheduleTests
         var (account, loanId) = LoanWith(balanceNow: 0m);
         var scheduled = account.FindSavingCategory(loanId)!.ScheduledBalanceOn(Now)!.Value;
 
-        // Three thousand more repaid than the installments alone would have managed.
-        account.ConfigureSavingDebt(loanId, scheduled - 3_000m, 6m, 400m, originalBalance: 20_000m, startDate: Start);
+        // Sit exactly on the schedule, then make a real prepayment of three thousand — recorded through the same
+        // door the app's disburse flow uses, because that recording is now the whole basis of the claim.
+        account.ConfigureSavingDebt(loanId, scheduled, 6m, 400m, originalBalance: 20_000m, startDate: Start);
         account.SetSavingDebtPaymentDriven(loanId, true, Start);
+        account.RecordSavingDebtPayment(loanId, 3_000m, Now);
 
         var ahead = account.FindSavingCategory(loanId)!.AheadOfScheduleOn(Now);
 
         Assert.NotNull(ahead);
         Assert.True(ahead!.Value.MonthsAhead > 0, "repaying 3,000 early must take months off the remaining term");
         Assert.True(ahead.Value.InterestSaved > 0m, "…and the interest those months would have charged");
+    }
+
+    /// <summary>
+    /// ★ The regression this whole rule exists for. A balance lower than the app's reconstruction of the schedule
+    /// is <b>not</b> evidence of anything: a real contract differs from a flat amortization for a dozen ordinary
+    /// reasons — an arrangement fee, a deferred first month, a rounded original, a lease's residual, a balance
+    /// typed a little low — and every one of them used to surface on Home as "2 months ahead, €752 interest saved"
+    /// on a loan that had never once been prepaid.
+    /// </summary>
+    [Fact]
+    public void A_balance_below_the_reconstructed_schedule_is_not_a_lead_unless_a_prepayment_was_recorded()
+    {
+        var (account, loanId) = LoanWith(balanceNow: 0m);
+        var scheduled = account.FindSavingCategory(loanId)!.ScheduledBalanceOn(Now)!.Value;
+
+        // Three thousand below the model, with nothing recorded to explain it. That is a discrepancy, not a win.
+        account.ConfigureSavingDebt(loanId, scheduled - 3_000m, 6m, 400m, originalBalance: 20_000m, startDate: Start);
+        account.SetSavingDebtPaymentDriven(loanId, true, Start);
+
+        Assert.Null(account.FindSavingCategory(loanId)!.AheadOfScheduleOn(Now));
+    }
+
+    /// <summary>The lead may never exceed what the app can point at. A loan sitting below its schedule for unknown
+    /// reasons AND carrying one small prepayment is ahead by the prepayment — not by the whole gap.</summary>
+    [Fact]
+    public void The_lead_is_capped_at_the_principal_actually_recorded()
+    {
+        var (account, loanId) = LoanWith(balanceNow: 0m);
+        var scheduled = account.FindSavingCategory(loanId)!.ScheduledBalanceOn(Now)!.Value;
+
+        // 3,000 below the model, of which only 500 is a recorded prepayment.
+        account.ConfigureSavingDebt(loanId, scheduled - 2_500m, 6m, 400m, originalBalance: 20_000m, startDate: Start);
+        account.SetSavingDebtPaymentDriven(loanId, true, Start);
+        account.RecordSavingDebtPayment(loanId, 500m, Now);
+
+        var capped = account.FindSavingCategory(loanId)!.AheadOfScheduleOn(Now);
+
+        // …and the same loan with the full 3,000 recorded is ahead by more. If the cap were not applied the two
+        // would be identical, because the balance gap is the same in both.
+        var (other, otherId) = LoanWith(balanceNow: 0m);
+        var otherScheduled = other.FindSavingCategory(otherId)!.ScheduledBalanceOn(Now)!.Value;
+        other.ConfigureSavingDebt(otherId, otherScheduled, 6m, 400m, originalBalance: 20_000m, startDate: Start);
+        other.SetSavingDebtPaymentDriven(otherId, true, Start);
+        other.RecordSavingDebtPayment(otherId, 3_000m, Now);
+        var full = other.FindSavingCategory(otherId)!.AheadOfScheduleOn(Now);
+
+        Assert.NotNull(capped);
+        Assert.NotNull(full);
+        Assert.True(full!.Value.InterestSaved > capped!.Value.InterestSaved,
+            "a 3,000 prepayment must bank more than a 500 one, however wide the unexplained gap is");
+    }
+
+    /// <summary>Undoing a prepayment gives back the lead it bought, not just the money — the loan must stop
+    /// claiming a head start it no longer has.</summary>
+    [Fact]
+    public void Undoing_the_prepayment_takes_the_lead_back_with_it()
+    {
+        var (account, loanId) = LoanWith(balanceNow: 0m);
+        var loan = account.FindSavingCategory(loanId)!;
+        var scheduled = loan.ScheduledBalanceOn(Now)!.Value;
+
+        account.ConfigureSavingDebt(loanId, scheduled, 6m, 400m, originalBalance: 20_000m, startDate: Start);
+        account.SetSavingDebtPaymentDriven(loanId, true, Start);
+        account.RecordSavingDebtPayment(loanId, 3_000m, Now);
+        Assert.NotNull(account.FindSavingCategory(loanId)!.AheadOfScheduleOn(Now));
+
+        account.FindSavingCategory(loanId)!.ReverseDebtPayment(3_000m, Now, isExtraRepayment: true);
+
+        Assert.Null(account.FindSavingCategory(loanId)!.AheadOfScheduleOn(Now));
     }
 
     /// <summary>Without an origination date there is no schedule to compare against, and inventing one would

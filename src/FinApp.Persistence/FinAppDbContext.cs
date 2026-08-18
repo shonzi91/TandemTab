@@ -188,6 +188,7 @@ public sealed class FinAppDbContext(DbContextOptions<FinAppDbContext> options) :
             c.Ignore(x => x.DebtPaymentDriven);    // body data — the payment-driven switch rides in the snapshot
             c.Ignore(x => x.IsEmergencyFund);      // body data — the emergency-fund flag rides in the snapshot
             c.Ignore(x => x.DebtResidual);         // body data — a lease's residual rides in the snapshot
+            c.Ignore(x => x.DebtExtraPrincipalRepaid);  // body data — the banked prepayment total rides in the snapshot
             c.Ignore(x => x.DebtScheduleComplete); // computed over DebtResidual
             c.Ignore(x => x.DebtPaidInterestIsEstimate);  // computed view over DebtStartDate
             c.Ignore(x => x.DebtPaidOff);

@@ -85,8 +85,13 @@ public static class PlanFeatures
     public const string History = "history";
     public const string Caps = "caps";
 
-    /// <summary>Trips beyond the one you're on: planning the next while this one runs, funding a trip from a savings
-    /// pot, and spending it in another currency. The trip you are actually taking — the entry flow, the Home card and
-    /// the recap — is deliberately free; see MONETIZATION.md.</summary>
+    /// <summary>Trips, whole: creating one, starting/finishing it, attaching a cost, funding it from a savings pot,
+    /// spending it in another currency. Free used to get the one journey it was actually on; from Session 106 the
+    /// gate is on the first trip.
+    /// <para>
+    /// ⚠️ <b>Reading is never gated</b>, and neither is undoing: the trip GETs, detaching an expense and deleting a
+    /// trip all stay open, so an account that lapses can still see, unlink and remove everything it recorded. See
+    /// MONETIZATION.md.
+    /// </para></summary>
     public const string Trips = "trips";
 }

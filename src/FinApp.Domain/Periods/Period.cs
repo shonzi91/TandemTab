@@ -826,7 +826,9 @@ public sealed class Period : Entity
             // records against any debt bucket, so this reverses for any debt bucket. (RemoveInstallmentGroup guards
             // on DebtPaymentDriven for a different reason: a debt switched back to a schedule has re-anchored its
             // balance since, and adding principal to a derived figure would invent debt.)
-            if (bucket is { IsDebt: true } && deployed > 0m) bucket.ReverseDebtPayment(deployed, on);
+            // isExtraRepayment mirrors how the disburse path recorded it (Account.RecordSavingDebtPayment) — without
+            // it an undone prepayment gives the money back and the loan goes on claiming the lead that money bought.
+            if (bucket is { IsDebt: true } && deployed > 0m) bucket.ReverseDebtPayment(deployed, on, isExtraRepayment: true);
         }
         else
         {

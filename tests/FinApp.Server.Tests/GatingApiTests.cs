@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using FinApp.Contracts;
+using FinApp.Domain.Accounts;
 using Microsoft.AspNetCore.Hosting;
 
 namespace FinApp.Server.Tests;
@@ -15,13 +16,14 @@ public sealed class GatingServerFactory : FinAppServerFactory
     /// account, and an email can only be registered once.</summary>
     public const string AdminEmail2 = "gate.admin2@example.com";
     public const string AdminEmail3 = "gate.admin3@example.com";
+    public const string AdminEmail4 = "gate.admin4@example.com";
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         base.ConfigureWebHost(builder);
         // One address per test that needs to act as an admin — the host (and its user table) is shared across
         // the class, so re-using an address 409s in whichever test happens to run second.
-        builder.UseSetting("Admin:Emails", $"{AdminEmail},{AdminEmail2},{AdminEmail3}");
+        builder.UseSetting("Admin:Emails", $"{AdminEmail},{AdminEmail2},{AdminEmail3},{AdminEmail4}");
     }
 }
 
@@ -150,5 +152,61 @@ public class GatingApiTests : IClassFixture<GatingServerFactory>
         var after = await client.GetFromJsonAsync<UserDto>("/me");
         Assert.Equal("pro", after!.Plan);
         Assert.True(after.ProBadge);
+    }
+
+    /// <summary>
+    /// Trips are Pro in full (Session 106). The rule that matters is not just "Free can't make one" — it is the
+    /// asymmetry: <b>creating</b> is refused, but <b>reading, detaching and deleting</b> stay open, so an account
+    /// that lapses can still see everything it recorded, unlink a wrong attachment, and clean up. A gate that
+    /// traps data is not a paywall, it is a hostage.
+    /// <para>
+    /// The earlier rule allowed Free one <i>live</i> trip and 402'd only on the second, so a test that merely
+    /// asserted "the first POST succeeds on Free" would have passed both before and after. This one pins the
+    /// change: the FIRST trip is refused.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task Trips_are_Pro_to_create_but_never_to_read_detach_or_delete()
+    {
+        var (client, _) = await _factory.RegisterAndAuthAsync("gatetripper", GatingServerFactory.AdminEmail4);
+        var acct = (await (await client.PostAsJsonAsync("/accounts", new CreateAccountRequest("Travel", "EUR")))
+            .Content.ReadFromJsonAsync<AccountSummaryDto>())!;
+
+        // A fresh account has no body; every trip mutation reads one, so seed a minimal aggregate first.
+        var agg = new Account("Travel", "EUR");
+        agg.AddDefaultFunds();
+        agg.StartPeriod(new DateOnly(2026, 6, 1), new DateOnly(2026, 6, 30));
+        (await client.PutAsJsonAsync($"/accounts/{acct.Id}/snapshot",
+            new SaveAccountRequest(AccountSnapshotSerializer.Serialize(agg), 0))).EnsureSuccessStatusCode();
+
+        // Make it while still unlimited, so there is a real trip to test the read/delete doors against.
+        var from = new DateOnly(2026, 6, 1);
+        var made = await client.PostAsJsonAsync($"/accounts/{acct.Id}/trips",
+            new CreateTripRequest("Lisbon", from, from.AddDays(6)));
+        made.EnsureSuccessStatusCode();
+        var tripId = (await made.Content.ReadFromJsonAsync<MutationResultDto>())!.EntityId!.Value;
+
+        (await client.PostAsJsonAsync("/admin/plan-override", new PlanOverrideRequest("free"))).EnsureSuccessStatusCode();
+
+        // The FIRST trip is refused now — this is the whole change.
+        var blocked = await client.PostAsJsonAsync($"/accounts/{acct.Id}/trips",
+            new CreateTripRequest("Vienna", from.AddMonths(2), from.AddMonths(2).AddDays(3)));
+        Assert.Equal(HttpStatusCode.PaymentRequired, blocked.StatusCode);
+        Assert.Equal(PlanFeatures.Trips, (await blocked.Content.ReadFromJsonAsync<GateError>())!.Feature);
+
+        // …and so are the other verbs that USE the feature.
+        Assert.Equal(HttpStatusCode.PaymentRequired,
+            (await client.PutAsJsonAsync($"/accounts/{acct.Id}/trips/{tripId}/started", new StartTripRequest(true))).StatusCode);
+        Assert.Equal(HttpStatusCode.PaymentRequired,
+            (await client.PutAsJsonAsync($"/accounts/{acct.Id}/trips/{tripId}/finished", new FinishTripRequest(true))).StatusCode);
+
+        // Reading never is. The journey stays visible to the account that recorded it.
+        var view = await client.GetFromJsonAsync<TripsViewDto>($"/accounts/{acct.Id}/trips");
+        Assert.Contains(view!.Trips, t => t.Id == tripId);
+
+        // Neither is deleting — the exit is not behind the subscription you just left.
+        (await client.DeleteAsync($"/accounts/{acct.Id}/trips/{tripId}")).EnsureSuccessStatusCode();
+        var gone = await client.GetFromJsonAsync<TripsViewDto>($"/accounts/{acct.Id}/trips");
+        Assert.DoesNotContain(gone!.Trips, t => t.Id == tripId);
     }
 }

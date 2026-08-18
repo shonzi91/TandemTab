@@ -1,6 +1,31 @@
 # TandemTab (FinApp) — session handoff
 
-Last updated: 2026-08-18 (Session 105 — **R2 measured properly and pushed from 76 to 99 of 119; then the owner's
+Last updated: 2026-08-18 (Session 106 — **seven owner fixes off the S105 deployment. Two were bigger than they
+looked.**
+★★ **`.chip` had defaulted to the wrong look since it was written.** The Trends and trip-grouping switchers were
+peach *alert* pills, because the base rule was the static orange tag and every toggle row restated the real look
+for itself — so each new control shipped wrong until someone noticed. The finding: **no element in the app uses
+`.chip` as a static tag.** All 40 call sites are `<button>` toggles, so the default was wrong for 100% of its
+users. The base IS the toggle now; five restatements deleted. **`.claude/skills/tandemtab-ui/SKILL.md` is new**
+and leads with the rule (*use the class, don't restate its colours*), plus the traps that have each cost a session.
+★★ **The debt-free badge was celebrating money nobody had paid** — "2 mo ahead, €752 saved" on a never-prepaid
+loan. It compared a *rebuilt* schedule against a *typed* balance, two independent sources, so every ordinary
+contract/model discrepancy (fee, deferred month, rounded original, lease residual) read as an achievement. Now
+it stands on `DebtExtraPrincipalRepaid` — principal the app actually watched go in — and is **capped** at it.
+⚠️ Legacy snapshots start at zero, so a genuinely-prepaid loan loses its badge until the next prepayment.
+✅ The rest: trip edit/delete moved out from **on top of** the trip's total; the expense edit's dead trip-chip row
+gated to three real cases; the **Trips tab is permanent** (and left the ⋯ menu); the trip ledger groups **by tag**
+(a trip files into one category, so "by category" was one group — a control that could do nothing); the green
+badge and the debt-free date swapped on Home.
+✅ **★ Trips are Pro in full** (#7, mid-session) — the gate is on the FIRST trip now, server and client.
+⚠️ **Reading, detaching and deleting stay open on purpose**: a downgrade must never trap data. A new server test
+pins that asymmetry.
+**485 + 49 + 368 green.** `pairscan`: 0. `app.css` untouched → no cache-bust needed.
+✅ **BROWSER-VERIFIED, all seven, both themes + 375px** — the debt one driven both ways (badge absent on the
+untouched loan, present after a real €3,000 prepayment).
+⚠️ **NOT deployed.** ⚠️ Android has none of this, and still trails by S105's batch.)
+
+Previously: 2026-08-18 (Session 105 — **R2 measured properly and pushed from 76 to 99 of 119; then the owner's
 whole ten-item batch.** Two halves, and the join between them is that four of the ten turned out to be domain bugs
 rather than polish.
 ★★ **The R2 gap count was hand-made and wrong.** S103's "61 of 99" was counted by eye. Run as a script
@@ -30,7 +55,9 @@ the Trends saved bar + a four-view switcher. Plus **one search box** replacing t
 **482 + 49 + 367 green** (from 469 + 49 + 353).
 ✅ **DEPLOYED 2026-08-18 as `finapp-00308-jcz`** (image `a8d0a91`) — served-bytes verified on the scoped bundle.
 ⚠️ **NOTHING this session is browser- or emulator-verified.** Every UI change is build-clean, test-green and
-unproven in a running app. That is the single biggest caveat on the batch.
+unproven in a running app. That is the single biggest caveat on the batch. → **Partly settled by S106**, which
+drove the Trends switcher, the trip corner icons, the trip ledger and the debt-free badge in a running app and
+found real faults in three of the four. The rest of S105's UI is still unproven.
 ⚠️ **R2 is NOT finished**: 20 endpoints still uncalled — the bank back half, import, export, reallocation, settle,
 reactivate — and Android has none of the web work from the owner's batch.)
 
@@ -220,6 +247,112 @@ a separate balance axis — because flows and a stock were sharing one scale. **
 ✅ **Committed and the web half is DEPLOYED** (Session 93 catch-up): Android sharing as `596eea5`, the web batch
 as `de51071`, now live on **`finapp-00280-4s8`** (traffic forced `--to-latest`; run URL + tandemtab.com 200; 5
 `secretKeyRef`s; no WARNING+ logs). Prior context below is Session 91.)
+
+## Session 106 (2026-08-18) — **Seven owner fixes off the S105 deployment. One was a paywall move; one was a lie the app had been telling.**
+
+A short follow-up session against `finapp-00308-jcz`. Six items came from the owner reading the live app, one
+(#7) arrived mid-session. Two of the seven turned out to be more than the cosmetic they looked like.
+
+### ★★ `.chip` defaulted to the WRONG LOOK, and had done since it was written
+
+The Trends series switcher and the trip grouping switcher "did not follow the app design". They didn't — they
+were **peach alert pills**, because the base `.chip` rule was the static orange tag from the `.alert` block, and
+every toggle row in the app had to restate the real toggle look for itself. Rows that forgot shipped wrong.
+
+**The finding is that the base rule was defending a case that does not exist.** A repo-wide grep for
+`class="…chip…"` on anything other than a `<button>` returns **nothing**: all 40 call sites are toggle buttons,
+and not one is a static tag. So the default was wrong for 100% of its users and the restatements were pure
+tax — the same mistake, six times, in six places, with a ⚠️ comment above one of them warning about it.
+
+`.chip` now **is** the toggle look (pill, border, light + dark palette, filled-green `.on`). A row that adds
+nothing is now correct; rows may still override **size**. The four scoped colour restatements are deleted, and
+`.trips-sort`'s full copy is cut to two size lines. `app.css`'s dark-mode copy is left alone: it is now inert,
+and touching it would force a `?v=` cache-bust for nothing.
+
+⚠️ The rows that *were* restated looked fine all along, which is exactly why this survived — it only ever showed
+up on the newest control, so each session fixed one instance and left the cause.
+
+**`.claude/skills/tandemtab-ui/SKILL.md` is new**, and this is the rule it leads with: *use the class, do not
+restate its colours*. It also carries the control vocabulary (`.chip`, `.btn-soft`, `<Switch>`, `modal-field` /
+`lbl-row`, `ProLock`), the palette, and the traps that have each cost a session — the scoped-CSS child-component
+miss, the `<label>` click trap, `__builder`, the `pairscan` gate, "prove it in a running app".
+
+### ★★ The debt-free badge was celebrating money nobody had paid
+
+Home said **"2 mo ahead · €752 interest saved"** on a loan the owner had never prepaid.
+
+`AheadOfScheduleOn` compared `ScheduledBalanceOn` (rebuild the amortization from the original balance and the
+start date) against `DebtBalanceOn` (the balance the user typed). **Two numbers from independent sources.** Any
+gap read as an achievement — and a real contract differs from a flat amortization for a dozen ordinary reasons:
+an arrangement fee, a deferred first month, a rounded original, a lease's residual, a balance entered a little
+low. The badge fired on the discrepancy, not on progress.
+
+Fixed by giving the claim something to stand on: **`SavingCategory.DebtExtraPrincipalRepaid`**, the running total
+of principal the app has actually watched go in beyond the installment.
+
+- `RecordDebtPayment(amount, asOf, isExtraRepayment)` — `true` from `Account.RecordSavingDebtPayment` (the
+  disburse/prepayment door), **`false`** from `Period`'s logged installment on a payment-driven debt. An
+  installment is the schedule being *kept*, not beaten.
+- `ReverseDebtPayment` mirrors the flag, so undoing a prepayment gives back the lead it bought and not just the
+  cash. (S105 fixed the money half of that same undo; this is the other half.)
+- `AheadOfScheduleOn` returns null when nothing is recorded, and **caps** the lead at what was recorded — the
+  gap may be wider for reasons that are not wins.
+- Body data: `Ignore()` in the DbContext + a trailing optional on `SavingCategoryNode`. No migration.
+
+⚠️ **Legacy snapshots deserialize to zero**, so a loan genuinely prepaid before this existed loses its badge
+until the next prepayment. That is the right side of the trade: silence about a real win beats a fabricated one.
+
+The five S105 tests still pass; the one that set the balance directly now records a real prepayment instead
+(it was asserting the bug). Three new: the regression itself, the cap, and the undo.
+
+### ✅ The other five, and the one that arrived mid-session
+
+- **Trip edit/delete sat ON the trip's total.** `.trip-corner` was `position: absolute; top; right` over a
+  full-width head button. The top row is a real flex row now — name (expands) · edit/delete · amount — and the
+  amount became a `<button>` so it keeps the expand behaviour it always had. Three siblings, because a button
+  inside a button is not clickable.
+- **Every expense edit offered a dead trip chip row.** It rendered whenever the account had *ever* had a trip,
+  so one finished holiday left "Not a trip / ✈ Lisbon" on every grocery edit forever. Now three cases and only
+  three (`EditShowsTripPicker`): trip mode is on, the row was opened from a trip's ledger, or **the expense
+  already carries a trip** — that last one so a wrong link stays fixable. The add form is unchanged: booking
+  ahead is the feature's spine.
+- **The Trips tab is permanent**, and "New trip" left the ⋯ menu. It used to appear only once a trip existed,
+  which hid the feature from exactly the people who had never used it, behind a dots icon. The empty tab is its
+  own advert: one sentence about the March flight counting toward the June trip, and the button.
+- **The trip ledger groups by TAG, not category.** A trip files into ONE category by design (S101), so "By
+  category" produced a single group containing everything — a control that could not do anything. Untagged rows
+  get a "No label" group at the bottom rather than vanishing. Field renamed `_tripByTag`.
+- **The green badge and the debt-free date swapped** on Home's target row. It reads `Debt-free · what you've
+  banked · when it lands`, and the projected date is back on the right edge every other target row uses. The
+  narrow-screen rule needed explicit grid placement — auto-flow pushed the date onto a third row.
+- **★ Trips are Pro in full** (#7, mid-session). Free used to get one *live* trip. Now the gate is on the first
+  one — server (`POST /trips`, started, finished, edit, attach-expense) and client (`OpenAddTrip`,
+  `OpenEditTrip`, `StartTrip`, `FinishTrip`, `ReopenTrip`, `OpenAttachToTrip`, `OnExpenseTripPicked`).
+  ⚠️ **Reading, detaching and deleting are deliberately NOT gated** — a downgrade must never trap data. New
+  server test pins exactly that asymmetry, and pins it on the FIRST trip (a test asserting "the first POST
+  succeeds" would have passed before and after). `MONETIZATION.md` and both plan blurbs updated.
+  ⚠️ One judgement call worth revisiting: `/trips/{id}/finished` is gated, so a lapsed subscriber cannot close
+  the journey they are on. Flagged in the code.
+
+### Verification
+
+- **485 + 49 + 368 green** (from 482 + 49 + 367). New: 3 domain (ahead-of-schedule regression, cap, undo),
+  1 server (trip Pro gating + the ungated doors).
+- `node tools/pairscan.js` → **0** partially-darkened rules.
+- ✅ **BROWSER-VERIFIED, all seven, in both themes and at 375px** on a purpose-built fixture (new account, a
+  Lisbon trip started then finished, three labelled/unlabelled expenses, a 20k/9k-paid loan dated Jan 2025).
+  The debt one was driven **both ways**: zero `.won-badge` on the untouched loan — where the schedule gap was
+  ~€3,000 and the old rule would have fired — then `9mo ahead · €566.97 interest saved` after a real €3,000
+  prepayment, with the badge in its new position. Trip card head measured at 375px: no overflow.
+- `app.css` untouched, so **no `?v=` bump needed** — worth checking rather than assuming.
+
+### ⚠️ Carry-over
+
+- **NOT deployed.** Everything is committed-ready in the working tree.
+- **Android has none of this**, and now trails by S105's batch as well. The Pro gate is server-side, so native
+  gets the paywall behaviour for free — but it still shows the trip UI that will now 402.
+- The pre-S105 carry-over stands: R2's 20 uncalled endpoints, no way to un-finish a trip on web
+  (`ReopenTrip` is gated now but still has zero callers), the `ClearTag` contract trap, `.debt-progress` dead CSS.
 
 ## Session 105 (2026-08-18) — **R2 re-measured and pushed 23 endpoints; then the owner's ten-item batch. Live: `finapp-00308-jcz`.**
 

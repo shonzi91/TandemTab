@@ -71,6 +71,21 @@ public sealed class SavingCategory : Entity
     public decimal DebtOriginalBalance { get; private set; }
 
     /// <summary>
+    /// Debt buckets only: principal this app has actually watched go onto the loan <b>on top of</b> its schedule —
+    /// the running total of every prepayment made through <see cref="RecordDebtPayment"/>'s extra path, less any
+    /// that were undone. Zero for a loan that has only ever been paid its installment.
+    /// <para>
+    /// ★ It exists so <see cref="AheadOfScheduleOn"/> has something to stand on. That figure used to be the gap
+    /// between the reconstructed schedule and the stored balance — two numbers from independent sources — so every
+    /// way a real contract differs from a flat amortization (an arrangement fee, a deferred first month, a rounded
+    /// original, a lease's residual, or simply a balance typed a little low) came out as an achievement. It
+    /// announced "2 months ahead, €752 of interest saved" on a loan that had never been prepaid.
+    /// </para>
+    /// Body data (snapshot, not EF).
+    /// </summary>
+    public decimal DebtExtraPrincipalRepaid { get; private set; }
+
+    /// <summary>
     /// Debt buckets only: a final lump the schedule amortises <b>down to</b> rather than through — a lease's
     /// residual / balloon / buy-out value. Zero (the default) is an ordinary loan that finishes at nothing.
     /// <para>
@@ -208,9 +223,16 @@ public sealed class SavingCategory : Entity
     /// </summary>
     public (int MonthsAhead, decimal InterestSaved)? AheadOfScheduleOn(DateOnly asOf)
     {
+        // ★ Nothing recorded, nothing claimed. Being ahead is a thing you DID, so the only evidence that counts is
+        // principal this app watched go in beyond the installment (see DebtExtraPrincipalRepaid). Comparing the
+        // rebuilt schedule against the stored balance — as this used to — turns every discrepancy between a real
+        // contract and our amortization into a celebration, and there is always some discrepancy.
+        if (DebtExtraPrincipalRepaid <= 0m) return null;
         if (ScheduledBalanceOn(asOf) is not { } scheduled) return null;
         var actual = DebtBalanceOn(asOf);
-        var extraRepaid = scheduled - actual;
+        // Capped at what was recorded: the gap may be wider than the prepayments for reasons that are not wins, and
+        // the badge must never claim more than it can point at.
+        var extraRepaid = Math.Min(scheduled - actual, DebtExtraPrincipalRepaid);
         if (extraRepaid <= 0m) return null;
 
         // The same arithmetic as paying that difference off in one go, because that is what it amounts to.
@@ -399,6 +421,10 @@ public sealed class SavingCategory : Entity
     /// <summary>Restore the schedule anchor verbatim (snapshot round-trip only — see <see cref="DebtBalanceAsOf"/>).</summary>
     public void SetDebtBalanceAsOf(DateOnly? asOf) => DebtBalanceAsOf = asOf;
 
+    /// <summary>Restore the banked extra-repayment total (snapshot round-trip only — see
+    /// <see cref="DebtExtraPrincipalRepaid"/>). Never negative.</summary>
+    public void SetDebtExtraPrincipalRepaid(decimal amount) => DebtExtraPrincipalRepaid = Math.Max(0m, amount);
+
     /// <summary>
     /// Change the monthly installment on its own, leaving the balance and the anchor as they are.
     /// <para>
@@ -508,6 +534,7 @@ public sealed class SavingCategory : Entity
         DebtInstallmentDay = null;
         DebtStartDate = null;
         DebtPaymentDriven = false;
+        DebtExtraPrincipalRepaid = 0m;   // no loan, nothing to be ahead of
     }
 
     private void ClearInvestmentFields()
@@ -576,24 +603,32 @@ public sealed class SavingCategory : Entity
     /// fresh statement of what's owed, and dating it keeps the schedule walking from a point that was actually true.
     /// </para>
     /// </summary>
-    public void RecordDebtPayment(decimal amount, DateOnly? asOf = null)
+    /// <param name="isExtraRepayment">True when this is principal <b>on top of</b> the schedule — a prepayment, a
+    /// pot deployed onto the loan. It is then banked in <see cref="DebtExtraPrincipalRepaid"/>, which is the only
+    /// thing <see cref="AheadOfScheduleOn"/> will claim a lead from. False (the default) for the principal slice of
+    /// an ordinary logged installment on a payment-driven debt: that is the schedule being kept, not beaten.</param>
+    public void RecordDebtPayment(decimal amount, DateOnly? asOf = null, bool isExtraRepayment = false)
     {
         if (!IsDebt || amount <= 0m) return;
         var on = asOf ?? DebtBalanceAsOf;
         var current = on is { } d ? DebtBalanceOn(d) : DebtBalance;
         DebtBalance = Math.Max(0m, current - amount);
         if (on is { } anchor) DebtBalanceAsOf = anchor;
+        if (isExtraRepayment) DebtExtraPrincipalRepaid += amount;
     }
 
     /// <summary>Undo a <see cref="RecordDebtPayment"/> — put <paramref name="amount"/> of principal back on the loan
     /// (a logged installment was removed). Only meaningful while the debt is <see cref="DebtPaymentDriven"/>; the
     /// caller checks that, because on a schedule-driven debt the balance is derived, not stored, and adding to it
     /// would invent debt.</summary>
-    public void ReverseDebtPayment(decimal amount, DateOnly? asOf = null)
+    /// <param name="isExtraRepayment">Mirror of the flag on <see cref="RecordDebtPayment"/> — pass the same value the
+    /// payment was recorded with, or an undone prepayment leaves the loan still claiming the lead it bought.</param>
+    public void ReverseDebtPayment(decimal amount, DateOnly? asOf = null, bool isExtraRepayment = false)
     {
         if (!IsDebt || amount <= 0m) return;
         DebtBalance += amount;
         if (asOf is { } anchor && (DebtBalanceAsOf is null || anchor > DebtBalanceAsOf)) DebtBalanceAsOf = anchor;
+        if (isExtraRepayment) DebtExtraPrincipalRepaid = Math.Max(0m, DebtExtraPrincipalRepaid - amount);
     }
 
     /// <summary>Hide/show this bucket in the main lists (its history is kept regardless).</summary>

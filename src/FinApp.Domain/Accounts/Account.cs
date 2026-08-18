@@ -950,8 +950,12 @@ public sealed class Account : Entity
     /// <summary>Record an extra payment against a debt bucket — lowers its remaining balance (no-op for common
     /// buckets). Pass <paramref name="asOf"/> to date it, which re-anchors the schedule (see
     /// <see cref="Savings.SavingCategory.DebtBalanceOn"/>).</summary>
+    /// <remarks>This is the <b>extra</b> path: money deployed onto a loan over and above its installment, which is
+    /// the only kind of repayment that can put the loan ahead of schedule. Hence <c>isExtraRepayment: true</c> — see
+    /// <see cref="Savings.SavingCategory.DebtExtraPrincipalRepaid"/>.</remarks>
     public void RecordSavingDebtPayment(Guid savingCategoryId, decimal amount, DateOnly? asOf = null) =>
-        (FindSavingCategory(savingCategoryId) ?? throw new InvalidOperationException("Saving category not found.")).RecordDebtPayment(amount, asOf);
+        (FindSavingCategory(savingCategoryId) ?? throw new InvalidOperationException("Saving category not found."))
+            .RecordDebtPayment(amount, asOf, isExtraRepayment: true);
 
     /// <summary>
     /// Make <paramref name="savingCategoryId"/> the emergency fund, clearing the flag from whichever bucket held it —

@@ -676,7 +676,21 @@ html.dark .networth-value.warn-text { color: #ef6f6f; }
     border-radius: 12px; padding: 10px 14px; margin-bottom: 16px;
     display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
 }
-.chip { background: #ffedd5; border-radius: 999px; padding: 3px 10px; font-size: .8rem; }
+/* ★ `.chip` is a TOGGLE BUTTON, everywhere in this app. Every one of its call sites is a `<button class="chip">`;
+   not one is a static tag. It used to default to the peach alert-tag look (#ffedd5), so every toggle row had to
+   restate the real look for itself — and a row that forgot shipped as a peach pill with inherited text, which is
+   white in dark mode and therefore invisible. That happened repeatedly: the Trends series switcher and the trip
+   grouping switcher were both live in production looking nothing like the app.
+   The default IS the toggle now, so a row that adds nothing is already right. Rows may still override SIZE
+   (padding/font-size) — see .trend-series-sw and .trip-exps-sw — but must never need to restate colour again. */
+.chip {
+    display: inline-flex; align-items: center; gap: 5px; cursor: pointer;
+    border: 1px solid #e6ece9; background: #faf8f3; color: #5b6270;
+    border-radius: 999px; padding: 3px 10px; font-size: .8rem; font-weight: 600;
+}
+.chip.on { background: #13a06e; border-color: #13a06e; color: #ffffff; }
+html.dark .chip { background: #1e2330; border-color: #2c3142; color: #aab0c0; }
+html.dark .chip.on { background: var(--tm-mint); border-color: var(--tm-mint); color: #0f1322; }
 
 /* Dismiss (×) on alert banners */
 .alert-x {
@@ -1349,7 +1363,7 @@ html.dark .brk-item-avg { color: #8b96a4; }
    carries the "Chart this" chip in .brk-exp-group; transfers and the other slices just list their rows. */
 .brk-exp { margin: 2px 6px 12px 30px; padding-left: 12px; border-left: 2px solid var(--accent, #dde6e1); }
 .brk-exp-group { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; padding: 4px 2px 6px; }
-.brk-exp-group .chip { border: 1px solid #e6ece9; background: #faf8f3; color: #5b6270; cursor: pointer; font-weight: 600; border-radius: 999px; padding: 3px 10px; font-size: .74rem; }
+.brk-exp-group .chip { font-size: .74rem; }
 html.dark .brk-exp-group .chip { background: #171d26; border-color: #2c3644; color: #c4ccd6; }
 /* A tag section header IS the control that opens it, so it gets the affordances of one: pointer, hover, chevron.
    Its font-size is load-bearing: the tag mark is an <Icon>, sized in em by the global .ic rule, and the header's
@@ -2595,12 +2609,10 @@ html.dark .whatif-label, html.dark .whatif-out strong { color: #e8eaf0; }
 .target-date { color: #13a06e; font-size: .92rem; }
 .target-mo { color: #8a97a0; font-size: .76rem; white-space: nowrap; margin-top: 1px; }
 
-/* The debt row when there is banked progress to show: the projection drops to a subline on the left so the right
-   edge is free for what has already been achieved. Green, not gold — gold reads as a warning everywhere else in
-   this app, and this is the opposite of a warning. */
-.target-main { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; }
-.target-main .target-name { font-weight: 700; }
-.target-sub { color: #8a97a0; font-size: .76rem; white-space: nowrap; }
+/* The debt row when there is banked progress to show. The badge sits BETWEEN the name and the date, so what has
+   already been achieved leads and the projected date still lands on the right edge every other target row uses.
+   Green, not gold — gold reads as a warning everywhere else in this app, and this is the opposite of a warning. */
+.target-row-won { grid-template-columns: auto 1fr auto auto; }
 .won-badge {
     display: flex; flex-direction: column; align-items: flex-end; text-align: right; line-height: 1.25;
     background: #eaf7f1; border: 1px solid #cfe9dd; border-radius: 9px; padding: 5px 10px;
@@ -2608,15 +2620,19 @@ html.dark .whatif-label, html.dark .whatif-out strong { color: #e8eaf0; }
 .won-lead { display: flex; align-items: center; gap: 5px; color: #0f7a54; font-weight: 700; font-size: .82rem; white-space: nowrap; }
 .won-lead svg { width: 13px; height: 13px; flex: 0 0 auto; }
 .won-sub { color: #4e7d68; font-size: .74rem; white-space: nowrap; }
-html.dark .target-sub { color: #93a3ad; }
 html.dark .won-badge { background: #16241d; border-color: #2b4438; }
 html.dark .won-lead { color: #57d9a3; }
 html.dark .won-sub { color: #9dc4b3; }
 
-/* On a narrow phone the badge would squeeze the name to two characters; it drops under it instead. */
+/* On a narrow phone the badge and the date together would squeeze the name to two characters; the badge drops to
+   a line of its own under them instead, with the name and date keeping the row shape every other target has. */
 @media (max-width: 420px) {
-    .target-row-won { grid-template-columns: auto 1fr; }
-    .target-row-won .won-badge { grid-column: 2; align-items: flex-start; text-align: left; margin-top: 6px; }
+    .target-row-won { grid-template-columns: auto 1fr auto; }
+    /* Placed explicitly, not left to auto-flow: the badge spans a second line, and auto-placement would push the
+       date off onto a third row of its own. */
+    .target-row-won .target-name { grid-area: 1 / 2 / 2 / 3; }
+    .target-row-won .target-when { grid-area: 1 / 3 / 2 / 4; }
+    .target-row-won .won-badge { grid-area: 2 / 2 / 3 / 4; align-items: flex-start; text-align: left; margin-top: 6px; }
 }
 .targets-foot { margin: 0; padding: 10px 16px 12px; border-top: 1px solid #f2efe8; font-size: .74rem; color: #8a97a0; }
 html.dark .targets-h { color: #9aa4b2; }
@@ -2852,10 +2868,8 @@ html.dark .inst-tag { background: #23302b; color: #9fb3aa; }
 /* Two form fields side by side (debt due-day + start date); stack on a narrow modal. */
 .field-row { display: flex; gap: 12px; flex-wrap: wrap; }
 .field-row > label { flex: 1 1 140px; }
-/* The toggle look for .chip — the bare .chip is a static peach tag, so anything clickable needs this.
-   .goal-filters shares it so the Goals kind filter and the payoff strategy toggle stay one control. */
-.plan-toggle .chip, .goal-filters .chip, .brk-ranges .chip, .brk-split .chip { border: 1px solid #e6ece9; background: #faf8f3; color: #5b6270; cursor: pointer; font-weight: 600; }
-.plan-toggle .chip.on, .goal-filters .chip.on, .brk-ranges .chip.on, .brk-split .chip.on { background: #13a06e; border-color: #13a06e; color: #ffffff; }
+/* (The colour restatement these four rows used to carry is gone — the .chip base rule IS the toggle look now.
+   app.css still holds a matching dark-mode copy for them; it is inert, and left alone to spare a cache-bust.) */
 /* Bucket type toggle (Savings goal / Debt payoff) in the add-bucket modal — a bit bigger for touch. */
 .bucket-type { flex-wrap: wrap; }
 .bucket-type .chip { padding: 8px 14px; font-size: .88rem; }
@@ -2970,7 +2984,6 @@ html.dark .bank-confirm-head { background: #161d26; border-color: #2a3441; }
 .dup-hint { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 6px 0 2px; padding: 7px 10px; background: #fff8ed; border: 1px solid #f3d9a8; border-radius: 9px; }
 .dup-txt { font-size: .78rem; color: #8a5a12; flex: 1 1 200px; min-width: 0; }
 .dup-actions { display: inline-flex; gap: 6px; flex: 0 0 auto; }
-.dup-actions .chip { cursor: pointer; }
 /* Pin word-chooser: reuses the .rule-chip toggles from the edit-expense rule editor, shown inline under the row. */
 .pin-rule-edit { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 6px 0 2px; padding: 7px 10px; background: #f0faf5; border: 1px solid #cdeadd; border-radius: 9px; }
 .pin-rule-edit .rule-tokens { flex: 1 1 200px; min-width: 0; }
@@ -3317,23 +3330,16 @@ html.dark .exp-settled-txt strong { color: #e6edf5; }
    list as if it ordered everything. */
 .trips-sort { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 2px 0; }
 .trips-sort-lbl { font-size: .68rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: #64748b; margin-right: 2px; }
-/* ⚠️ `.chip` on its own is the ORANGE alert chip (see the .alert block) — every toggle row in the app restates it
-   for its own context, and a row that forgets renders as a peach pill with white text. The other rows are restated
-   in app.css; this one is restated here, in full, so the trips list carries its own light AND dark styling and
-   needs no global-stylesheet edit (and no cache-bust) to look right. */
-.trips-sort .chip {
-    display: inline-flex; align-items: center; gap: 5px;
-    border: 1px solid #e6ece9; background: #faf8f3; color: #5b6270;
-    border-radius: 999px; padding: 5px 12px; font-size: .78rem; font-weight: 600; cursor: pointer;
-}
+/* Size only — the colour, the pill and the .on state all come from the .chip base rule. */
+.trips-sort .chip { padding: 5px 12px; font-size: .78rem; }
 .trips-sort .chip svg { width: 13px; height: 13px; }
-.trips-sort .chip.on { background: #13a06e; border-color: #13a06e; color: #ffffff; }
-html.dark .trips-sort .chip { background: #1e2330; border-color: #2c3142; color: #aab0c0; }
-html.dark .trips-sort .chip.on { background: var(--tm-mint); border-color: var(--tm-mint); color: #0f1322; }
 .trip-card { border: 1px solid #e2e8f0; border-radius: 14px; background: #fff; overflow: hidden; }
 .trip-card.now { border-color: var(--tm-mint); box-shadow: 0 0 0 1px var(--tm-mint) inset; }
-.trip-head { display: flex; align-items: center; gap: 10px; width: 100%; padding: 12px 14px; background: none; border: 0; text-align: left; cursor: pointer; }
-.trip-head:hover { background: #f6faf8; }
+/* The card's top row: name (expands) · edit/delete · total (also expands). One flex row rather than a full-width
+   head with the icons absolutely positioned over it — that old arrangement dropped them straight on the amount. */
+.trip-top { display: flex; align-items: center; }
+.trip-head { display: flex; align-items: center; gap: 10px; flex: 1 1 auto; min-width: 0; padding: 12px 4px 12px 14px; background: none; border: 0; text-align: left; cursor: pointer; }
+.trip-top:hover .trip-head, .trip-top:hover .trip-total { background: #f6faf8; }
 /* The mark is the trip's own flag; the status badge rides its bottom-right, because the two answer different
    questions ("where" and "when") and stacking them keeps the row to one leading object.
    ⚠️ The padding is what stops the badge landing ON the mark. A flag emoji is one glyph on a phone but TWO LETTERS
@@ -3357,7 +3363,8 @@ html.dark .trips-sort .chip.on { background: var(--tm-mint); border-color: var(-
 .trip-pill { border-radius: 999px; padding: 1px 7px; font-size: .65rem; font-weight: 650; }
 .trip-pill.now { background: #d9f5e9; color: #0e7c55; }
 .trip-pill.soon { background: #e8eefc; color: #35538f; }
-.trip-total { font-weight: 700; font-variant-numeric: tabular-nums; color: #0f172a; }
+/* A button now, not a span — the amount stays part of the expand target it always was. */
+.trip-total { font-weight: 700; font-variant-numeric: tabular-nums; color: #0f172a; flex: 0 0 auto; padding: 12px 14px 12px 4px; background: none; border: 0; font-size: inherit; cursor: pointer; }
 .trip-body { padding: 0 14px 14px; display: flex; flex-direction: column; gap: 10px; }
 
 /* Booked ahead / while away / after getting back. The first figure is the whole point of the feature — the
@@ -3441,10 +3448,10 @@ html.dark .btn-soft { background: #16241d; border-color: #2b4438; color: #57d9a3
 html.dark .btn-soft:hover { background: #1b2f26; border-color: #57d9a3; }
 html.dark .btn-soft.primary { background: #0f7a54; border-color: #0f7a54; color: #eafff6; }
 
-/* Edit + delete, pinned to the card's top-right corner. Muted until the card is hovered, so they stay available
-   without competing with the trip's own name and figures. */
+/* Edit + delete, in flow on the top row and immediately left of the total. Muted grey until hovered, so they stay
+   available without competing with the trip's own name and figures. */
 .trip-card { position: relative; }
-.trip-corner { position: absolute; top: 8px; right: 10px; display: flex; gap: 2px; z-index: 2; }
+.trip-corner { display: flex; gap: 2px; flex: 0 0 auto; }
 .trip-corner-b {
     display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
     width: 28px; height: 28px; padding: 0; border: 0; border-radius: 8px; background: transparent; color: #8a97a0;
@@ -3458,7 +3465,7 @@ html.dark .trip-corner-b.danger:hover { background: #3a2222; color: #f87171; }
 .trips-add { align-self: flex-start; }
 
 html.dark .trip-card { border-color: #2a3342; background: #131820; }
-html.dark .trip-head:hover { background: #1b2230; }
+html.dark .trip-top:hover .trip-head, html.dark .trip-top:hover .trip-total { background: #1b2230; }
 html.dark .trip-name,
 html.dark .trip-total,
 html.dark .tws-v,

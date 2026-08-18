@@ -2000,15 +2000,10 @@ accounts.MapPost("/{id:guid}/trips", async (Guid id, CreateTripRequest req, Clai
         EntitlementService entitlements, SyncNotifier notifier, CancellationToken ct) =>
 {
     var userId = user.UserId();
-    // Free = one trip on the go at a time (MONETIZATION.md). The cap is on LIVE trips, not on trips per year: you
-    // can always record the journey you are actually on, so the app never refuses to record real life — what Free
-    // can't do is plan the next one while this one runs. Nothing is ever deleted or hidden by this, and finishing a
-    // trip frees the slot. Inert for unlimited/pro, so it changes nothing until monetization is live.
-    var today = DateOnly.FromDateTime(DateTime.UtcNow);
-    var snap = await svc.GetAsync(userId, id, ct);
-    if (!string.IsNullOrEmpty(snap.Payload)
-        && AccountSnapshotSerializer.Deserialize(snap.Payload).Trips.Any(t => !t.IsFinishedOn(today)))
-        await entitlements.RequireAsync(userId, PlanFeatures.Trips, ct);
+    // ★ Trips are Pro, whole (owner's call — MONETIZATION.md). This used to allow Free one LIVE trip and charge only
+    // for planning a second while the first ran; the feature is now behind the gate from the first one. READING
+    // stays free at the GETs above, always: a downgrade must never hide a journey somebody already recorded.
+    await entitlements.RequireAsync(userId, PlanFeatures.Trips, ct);
 
     var (version, tripId) = await svc.MutateAsync(userId, id, account =>
     {
@@ -2020,9 +2015,11 @@ accounts.MapPost("/{id:guid}/trips", async (Guid id, CreateTripRequest req, Clai
 });
 
 // Confirm a departure (or take it back). Trip mode never switches itself on — see Trip.StartedOn.
-accounts.MapPut("/{id:guid}/trips/{tripId:guid}/started", async (Guid id, Guid tripId, StartTripRequest req, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
+accounts.MapPut("/{id:guid}/trips/{tripId:guid}/started", async (Guid id, Guid tripId, StartTripRequest req, ClaimsPrincipal user, SnapshotService svc,
+        EntitlementService entitlements, SyncNotifier notifier, CancellationToken ct) =>
 {
     var userId = user.UserId();
+    await entitlements.RequireAsync(userId, PlanFeatures.Trips, ct);
     var (version, _) = await svc.MutateAsync<object?>(userId, id, account =>
     {
         // Server date, like finishing: "we've left" is a fact about now.
@@ -2035,9 +2032,14 @@ accounts.MapPut("/{id:guid}/trips/{tripId:guid}/started", async (Guid id, Guid t
 });
 
 // Finish / reopen. See FinishTripRequest for why this isn't a field on the edit form's full-replace payload.
-accounts.MapPut("/{id:guid}/trips/{tripId:guid}/finished", async (Guid id, Guid tripId, FinishTripRequest req, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
+accounts.MapPut("/{id:guid}/trips/{tripId:guid}/finished", async (Guid id, Guid tripId, FinishTripRequest req, ClaimsPrincipal user, SnapshotService svc,
+        EntitlementService entitlements, SyncNotifier notifier, CancellationToken ct) =>
 {
     var userId = user.UserId();
+    // ⚠️ Gated like the rest — but note this is the endpoint that ENDS a trip, so a lapsed subscriber cannot close
+    // the journey they are on. That is deliberate only insofar as the whole feature is Pro; if it bites, this is
+    // the one call worth exempting.
+    await entitlements.RequireAsync(userId, PlanFeatures.Trips, ct);
     var (version, _) = await svc.MutateAsync<object?>(userId, id, account =>
     {
         // The server's own date, not the client's: "over" is a fact about now, and a device with a wrong clock
@@ -2072,9 +2074,11 @@ accounts.MapPost("/{id:guid}/trips/{tripId:guid}/use-savings", async (Guid id, G
     return Results.Ok(new MutationResultDto(version, tripId));
 });
 
-accounts.MapPut("/{id:guid}/trips/{tripId:guid}", async (Guid id, Guid tripId, EditTripRequest req, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
+accounts.MapPut("/{id:guid}/trips/{tripId:guid}", async (Guid id, Guid tripId, EditTripRequest req, ClaimsPrincipal user, SnapshotService svc,
+        EntitlementService entitlements, SyncNotifier notifier, CancellationToken ct) =>
 {
     var userId = user.UserId();
+    await entitlements.RequireAsync(userId, PlanFeatures.Trips, ct);
     var (version, _) = await svc.MutateAsync<object?>(userId, id, account =>
     {
         account.UpdateTrip(tripId, req.Name, req.From, req.To, req.Destination, req.Icon);   // throws if missing / duplicate / end before start
@@ -2088,6 +2092,8 @@ accounts.MapPut("/{id:guid}/trips/{tripId:guid}", async (Guid id, Guid tripId, E
     return Results.Ok(new MutationResultDto(version, tripId));
 });
 
+// ⚠️ Deliberately NOT gated. Deleting is how a downgraded account tidies up, and locking the exit behind the
+// subscription it just left would trap the data — the same reasoning that keeps the GETs and the detach free.
 accounts.MapDelete("/{id:guid}/trips/{tripId:guid}", async (Guid id, Guid tripId, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
 {
     var userId = user.UserId();
@@ -2101,9 +2107,14 @@ accounts.MapDelete("/{id:guid}/trips/{tripId:guid}", async (Guid id, Guid tripId
 });
 
 // Attach/detach one expense. Its own endpoint rather than a field on the expense edit — see EditExpenseRequest.
-accounts.MapPut("/{id:guid}/expenses/{expenseId:guid}/trip", async (Guid id, Guid expenseId, SetExpenseTripRequest req, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
+accounts.MapPut("/{id:guid}/expenses/{expenseId:guid}/trip", async (Guid id, Guid expenseId, SetExpenseTripRequest req, ClaimsPrincipal user, SnapshotService svc,
+        EntitlementService entitlements, SyncNotifier notifier, CancellationToken ct) =>
 {
     var userId = user.UserId();
+    // Attaching uses the feature and is gated; DETACHING never is — same rule as a fund's foreign currency below.
+    // A downgrade must always be able to undo what it can no longer do, or a wrong link becomes permanent.
+    if (req.TripId is not null)
+        await entitlements.RequireAsync(userId, PlanFeatures.Trips, ct);
     var (version, _) = await svc.MutateAsync<object?>(userId, id, account =>
     {
         // Any period, not just the open one: attaching last March's flight to this June's trip is the main reason
