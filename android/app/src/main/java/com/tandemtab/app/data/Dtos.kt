@@ -393,6 +393,26 @@ data class InvitationDto(
 @Serializable
 data class AcceptInvitationDto(val accountId: String = "")
 
+/**
+ * GET /accounts/archived — an account this user deleted, still inside its grace window.
+ *
+ * ★ Deleting an account here is a **soft** delete: the server keeps it for 30 days and then purges it for good.
+ * That undo is the whole reason this read exists on the phone — Android could already call `DELETE /accounts/{id}`
+ * and had no way to reach `POST /accounts/{id}/reactivate`, so a mistake made on a phone could only be taken back
+ * from a browser, and became permanent in silence if nobody did.
+ *
+ * `purgeAt` is an ISO-8601 instant; the UI turns it into "N days left" rather than showing a raw timestamp,
+ * because the number that matters is how long is left to act.
+ */
+@Serializable
+data class ArchivedAccountDto(
+    val id: String,
+    val name: String = "",
+    val currency: String = "",
+    val archivedAt: String = "",
+    val purgeAt: String = "",
+)
+
 /** POST /accounts/{id}/transfer-ownership — hand the account to another current member (the caller stays on). */
 @Serializable
 data class TransferOwnershipRequest(val newOwnerUserId: String)

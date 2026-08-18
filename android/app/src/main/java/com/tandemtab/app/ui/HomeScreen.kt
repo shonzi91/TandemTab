@@ -132,6 +132,7 @@ fun HomeScreen(
     onSetTwoFactorDisabling: (Boolean) -> Unit,
     onCancelTwoFactorSetup: () -> Unit,
     onDismissRecoveryCodes: () -> Unit,
+    onRestoreAccount: (String) -> Unit,
     onRenameAccount: (String, () -> Unit) -> Unit,
     onSetSavingsTarget: (Double, () -> Unit) -> Unit,
     onLeaveAccount: (String?, () -> Unit) -> Unit,
@@ -493,6 +494,9 @@ fun HomeScreen(
                 onSetTwoFactorDisabling = onSetTwoFactorDisabling,
                 onCancelTwoFactorSetup = onCancelTwoFactorSetup,
                 onDismissRecoveryCodes = onDismissRecoveryCodes,
+                // Closes the sheet on the way: the restored account is re-selectable from the account switcher,
+                // and leaving the profile open over a list that just lost its only row reads like nothing happened.
+                onRestoreAccount = { showProfile = false; onRestoreAccount(it) },
                 onSignOut = { showProfile = false; onSignOut() },
                 onDismiss = { showProfile = false },
             )

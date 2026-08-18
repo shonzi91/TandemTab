@@ -86,6 +86,7 @@ fun ProfileSheet(
     onSetTwoFactorDisabling: (Boolean) -> Unit,
     onCancelTwoFactorSetup: () -> Unit,
     onDismissRecoveryCodes: () -> Unit,
+    onRestoreAccount: (String) -> Unit,
     onSignOut: () -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -194,11 +195,55 @@ fun ProfileSheet(
             }
         }
 
+        // Deleted accounts still inside their grace window. Shown only when there ARE any — an empty section
+        // would advertise a state most people never reach, and its whole job is to be found in the one week
+        // somebody needs it.
+        // ★ This closes a real dead-end: the phone could already delete an account, and deleting is a SOFT
+        // delete the server keeps for 30 days. Until now the undo lived only in a browser, so a mistake made
+        // here became permanent by simply being ignored. Placed in the profile to mirror the web exactly.
+        if (settings.archivedAccounts.isNotEmpty()) {
+            SectionDivider()
+            SectionTitle("Deleted accounts")
+            Text(
+                "Deleted accounts are removed for good after 30 days. Restore one to bring it back.",
+                color = tandem.muted, fontSize = 13.sp,
+            )
+            Spacer(Modifier.height(8.dp))
+            settings.archivedAccounts.forEach { archived ->
+                Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(archived.name.ifBlank { "Account" }, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold)
+                        // The number that matters is how long is left to act, not when it was deleted.
+                        Text(daysLeftLabel(archived.purgeAt), color = tandem.muted, fontSize = 13.sp)
+                    }
+                    OutlinedButton(onClick = { onRestoreAccount(archived.id) }, enabled = !settings.busy) {
+                        Text("Restore")
+                    }
+                }
+            }
+            settings.error?.let {
+                Text(it, color = MaterialTheme.colorScheme.error, fontSize = 13.sp, modifier = Modifier.padding(top = 4.dp))
+            }
+        }
+
         SectionDivider()
         OutlinedButton(onClick = onSignOut, modifier = Modifier.fillMaxWidth().padding(top = 4.dp)) {
             Text("Sign out", color = MaterialTheme.colorScheme.error)
         }
     }
+}
+
+/**
+ * "N days left" from an ISO-8601 purge instant, rounded UP so a window with any time left never reads "0 days".
+ * ⚠️ Falls back to a bare "Deleted" if the timestamp won't parse: a restorable account must still be listed and
+ * restorable, and an unparseable date is no reason to hide the button that is the whole point of the row.
+ */
+private fun daysLeftLabel(purgeAt: String): String {
+    val instant = runCatching { java.time.OffsetDateTime.parse(purgeAt).toInstant() }.getOrNull()
+        ?: return "Deleted"
+    val seconds = java.time.Duration.between(java.time.Instant.now(), instant).seconds
+    val days = Math.max(0L, Math.ceil(seconds / 86_400.0).toLong())
+    return if (days == 1L) "1 day left" else "$days days left"
 }
 
 // ── Account ─────────────────────────────────────────────────────────────────────────────────────────

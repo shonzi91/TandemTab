@@ -9,6 +9,7 @@ import com.tandemtab.app.data.AccountSummaryDto
 import com.tandemtab.app.data.AddDepositRequest
 import com.tandemtab.app.data.AddExpenseRequest
 import com.tandemtab.app.data.AddSavingDepositRequest
+import com.tandemtab.app.data.ApiException
 import com.tandemtab.app.data.CreateAccountRequest
 import com.tandemtab.app.data.LogInstallmentRequest
 import com.tandemtab.app.data.BankSyncStatusDto
@@ -341,6 +342,9 @@ data class SettingsUi(
     // it's "we don't know yet", not "0%" — seeding the editor with a default would let a slow read overwrite the
     // user's real target with 20% the moment they touched Save.
     val savingsTarget: Double? = null,
+    // Accounts this user deleted that are still inside the 30-day grace window. Empty for almost everyone, and
+    // an empty list and a failed read are deliberately the same thing here: the section just isn't shown.
+    val archivedAccounts: List<com.tandemtab.app.data.ArchivedAccountDto> = emptyList(),
 )
 
 /**
@@ -2181,6 +2185,45 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         if (accountId != null) viewModelScope.launch {
             runCatching { api.accountSettings(accountId) }.getOrNull()?.let { s ->
                 _state.update { it.copy(settings = it.settings.copy(savingsTarget = s.savingsRateTarget)) }
+            }
+        }
+        // Deleted-but-restorable accounts, fetched here rather than at startup: the list is empty for almost
+        // everyone, and it is only ever looked at from this sheet. A failure leaves it empty and silent — the
+        // section simply doesn't appear, which is the same thing an empty list means.
+        viewModelScope.launch {
+            runCatching { api.archivedAccounts() }.getOrNull()?.let { list ->
+                _state.update { it.copy(settings = it.settings.copy(archivedAccounts = list)) }
+            }
+        }
+    }
+
+    /**
+     * Bring back an account deleted inside its 30-day grace window.
+     *
+     * ★ This is the other half of a delete Android could already do. Without it a mistake made on the phone could
+     * only be undone from a browser, and if nobody did, the purge made it permanent with no further prompt.
+     *
+     * Reloads the account list on success so the restored one is immediately selectable, and drops it from the
+     * archived list — the server would too, but the user should not have to reopen the sheet to believe it.
+     */
+    fun restoreAccount(accountId: String) {
+        _state.update { it.copy(settings = it.settings.copy(busy = true, error = null)) }
+        viewModelScope.launch {
+            try {
+                api.reactivateAccount(accountId)
+                _state.update {
+                    it.copy(settings = it.settings.copy(
+                        busy = false,
+                        archivedAccounts = it.settings.archivedAccounts.filterNot { a -> a.id == accountId },
+                    ))
+                }
+                loadHome()
+            } catch (e: Exception) {
+                // The one failure worth naming: the grace window closed while the sheet was open, so there is
+                // nothing left to restore and "try again" would be a lie.
+                val msg = if (e is ApiException && e.status == 404) "That account has already been deleted for good."
+                          else "Couldn't restore that account."
+                _state.update { it.copy(settings = it.settings.copy(busy = false, error = msg)) }
             }
         }
     }

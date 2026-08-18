@@ -106,7 +106,7 @@ Session 94, **69** after Session 95). It does not call these:
 | **Money to another account** (transfers out + editing the pair) | `/transfers-out`, `/account-transfers/{id}` | M |
 | **A wallet's own currency** (the S~102 multi-currency work) | `/funds/{id}/currency` | S–M |
 | **Bank sync's back half** — Android links and syncs but can't map, re-point or reset a connection | `/bank/accounts`, `/bank/account`, `/bank/fund`, `/bank/mappings`, `/bank/reset` | M |
-| Archived accounts (list + reactivate) | `/archived`, `/reactivate` | S |
+| ~~Archived accounts (list + reactivate)~~ | ~~`/archived`, `/reactivate`~~ | ✅ **done S106** — and it was **not** a convenience row; see below |
 | Editing/removing an income category | `/contribution-categories/{id}` | S |
 | The account structure read (a thicker picker source) | `/structure` | S |
 
@@ -115,7 +115,7 @@ client calling it would be carrying the domain it exists not to carry.)*
 
 > ### 📏 Measure it, don't count it — `node tools/r2scan.js --list`
 >
-> **As of Session 106: 100 of 118 in-scope account routes, 85%, 18 rows left.** (`/snapshot` GET+PUT are excluded
+> **As of Session 106: 101 of 118 in-scope account routes, 86%, 17 rows left.** (`/snapshot` GET+PUT are excluded
 > by the script for the reason just above — counting them as gaps overstates the backlog by two.)
 >
 > S103 reported this gap as "61 of 99" from a hand count; run as a script the same day it was 76 of 118. **A hand
@@ -123,9 +123,17 @@ client calling it would be carrying the domain it exists not to carry.)*
 > written down.** `tools/r2scan.js` is the instrument now — re-run it rather than re-counting, and paste its
 > output rather than a remembered figure.
 >
-> ⚠️ It is deliberately dumb: it proves a path is *mentioned* in Kotlin, not that the feature works. Read a
-> "called" row as **"not blocked"**, never as "done" — S103's whole finding was that two rows counted as client
-> work were really *missing server reads*, and this script would have called them called.
+> ★ **The script's own first cut was wrong in exactly the flattering direction, twice**, which is worth knowing
+> before trusting any number here. It matched a route template as a regex *anywhere* in the Kotlin, so
+> `/{id}/archived` — the archived-**accounts** list, which Android does not have — was satisfied by
+> `…/tags/$tagId/archived`. Then whole-path equality over-corrected and read six routes the app plainly calls as
+> gaps, because `"…/overview${periodQ(period)}"` is a query builder glued to the last segment. Both are fixed and
+> commented in place; the lesson is that **a parity number that goes UP after a scanner change deserves more
+> suspicion than one that goes down.**
+>
+> ⚠️ Still deliberately dumb: it proves a path is *built* in Kotlin, not that the feature works. Read a "called"
+> row as **"not blocked"**, never as "done" — S103's whole finding was that two rows counted as client work were
+> really *missing server reads*, and this script would have called them called.
 
 **Read that table as the R2 backlog.** The four **L** rows are the ones that make Android a *different product*
 rather than a smaller one: a user who only has the phone cannot start next month, cannot create a savings goal,
@@ -141,6 +149,30 @@ refinements), **tags** incl. F2 (M), **achievements + F6** (S–M), **onboarding
 **F4 round-ups** (no field on any contract *and* no command endpoint) and the **fund↔bank sync toggle**
 (`SetFundSynced`, `TODO(cutover)`). Both are still whole-snapshot pushes in the thick client. They would batch
 naturally into one "account settings commands" server slice.
+
+#### ✅ Archived accounts — closed (Session 106, 2026-08-18), and it was never a convenience
+
+★ **This row was mis-sized as "S, a phone user can live without it". It was a one-way door onto permanent data
+loss.** Android could already call `DELETE /accounts/{id}` — and that delete is a **soft** delete the server keeps
+for 30 days before purging. The undo (`GET /accounts/archived` + `POST /accounts/{id}/reactivate`) existed on the
+server and on the web, and was unreachable from the phone. The native confirm dialog even says *"It's removed
+after a 30-day grace period"* — the app promised a grace window and then gave no way to use it. A mistake made on
+a phone could only be taken back from a browser, and if nobody did, it became permanent in silence.
+
+**This is the same shape S105 hit four times and called "always a MISSING READ":** a write whose undo no client
+could reach. It is worth stating as a rule for sizing the rest of this table — **a row's size is the client work;
+its priority is what happens to somebody who never gets it.** Those are different numbers, and only the first one
+was written down here.
+
+Shipped as a **Deleted accounts** section in the profile sheet, mirroring the web's placement exactly: name,
+"N days left" (ceiling, so a window with any time in it never reads "0 days"), and Restore. Hidden when the list
+is empty — it is a state most people never reach, and its job is to be findable in the one week somebody needs
+it. A failed read and an empty list are deliberately the same thing. The one named error is the 404: the grace
+window closed while the sheet was open, so *"That account has already been deleted for good"* rather than a
+"try again" that would be a lie.
+
+✅ **EMULATOR-VERIFIED end to end** on a local server: created a throwaway account, deleted it from the phone,
+found it under *Deleted accounts · 30 days left*, restored it, and watched it come back in the account switcher.
 
 #### ✅ Trips — closed (Session 103, 2026-08-12)
 

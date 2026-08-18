@@ -649,6 +649,16 @@ class TandemTabApi(
         authedDelete("/accounts/$accountId")
     }
 
+    /** Accounts this user has deleted that are still inside the 30-day grace window — the undo list for the call
+     *  above. Empty for almost everyone, which is why it is fetched with the profile rather than at startup. */
+    suspend fun archivedAccounts(): List<ArchivedAccountDto> = authedGet("/accounts/archived").body()
+
+    /** Bring a deleted account back. Returns 204. ⚠️ Only works before the purge — after that the account is gone
+     *  and the server 404s, which is exactly the outcome this whole row exists to let a phone user avoid. */
+    suspend fun reactivateAccount(accountId: String) {
+        authedPostEmpty("/accounts/$accountId/reactivate")
+    }
+
     /** Revoke the refresh token server-side (best-effort) and forget the session locally. */
     suspend fun signOut() {
         val rt = refreshToken

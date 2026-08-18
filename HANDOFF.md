@@ -28,7 +28,12 @@ early pulls the end date in, but `Finish` can only SHORTEN, never extend, so it 
 untouched loan, present after a real €3,000 prepayment).
 ✅ **DEPLOYED 2026-08-18 as `finapp-00309-lmq`** (image `62d9480`) — identical 368,404-byte scoped bundles on both
 hosts, and the OLD `.target-main` / absolute `.trip-corner` rules at **0**, which is what proves a fresh build.
-⚠️ Android has none of this, and still trails by S105's batch — plus it now shows a **New trip** button that 402s.)
+⚠️ Android has none of this, and still trails by S105's batch — plus it now shows a **New trip** button that 402s.
+★★ **Then R2 continued, and the row picked as cheap was the most serious one in the table.** Android could
+`DELETE /accounts/{id}` — a **soft** delete with a 30-day grace — and could not reach the undo. The confirm dialog
+even promises the grace period. **A write whose undo no client can reach**, exactly the shape S105 hit four times.
+Shipped as a **Deleted accounts** section in the profile (name · N days left · Restore), **emulator-verified end
+to end**. ⚠️ It had been hidden by my own scanner's first cut, which flattered the count. **R2: 101 of 118, 86%.**)
 
 Previously: 2026-08-18 (Session 105 — **R2 measured properly and pushed from 76 to 99 of 119; then the owner's
 whole ten-item batch.** Two halves, and the join between them is that four of the ten turned out to be domain bugs
@@ -390,6 +395,38 @@ POST succeeds on Free" would have passed before and after the change. `MONETIZAT
   start, attach-already-paid and finish all still work, and finishing pulled the end date in from 24 Aug to
   18 Aug, which is the shortening mechanic in the flesh.
 
+### ★★ R2: the archived-accounts row was a one-way door onto permanent data loss, not an "S"
+
+Picked as the next R2 row because it was cheap. It turned out to be the most consequential one in the table, and
+**the backlog had it filed under "none of it is a phone-only dead-end — every remaining row is something a phone
+user can live without."** That was wrong about this row.
+
+Android could already call `DELETE /accounts/{id}`. That delete is a **soft** delete the server keeps for 30 days
+before purging for good. `GET /accounts/archived` and `POST /accounts/{id}/reactivate` — the undo — existed on the
+server and on the web, and were unreachable from the phone. **The native confirm dialog even says *"It's removed
+after a 30-day grace period"***: the app promised a grace window and then gave no way to use it. A mistake made on
+a phone could only be taken back from a browser, and if nobody did, it became permanent in silence.
+
+**Same shape S105 hit four times and named "always a MISSING READ": a write whose undo no client could reach.**
+The sizing lesson is worth carrying: **a row's size is the client work; its priority is what happens to somebody
+who never gets it.** Only the first number was in this table.
+
+⚠️ And it was **hidden by my own scanner's first cut** — matching route templates as regexes anywhere in the
+Kotlin let `…/tags/$tagId/archived` satisfy the probe for `/{id}/archived`. The bug flattered the count and
+concealed the worst row in the backlog. Fixed to whole-path equality; see the MOBILE.md box.
+
+Shipped as a **Deleted accounts** section in the profile sheet, mirroring the web's placement: name, "N days
+left" (ceiling, so a live window never reads "0 days"), Restore. Hidden when empty; a failed read and an empty
+list are deliberately the same thing. One named error — the 404 when the window closed mid-sheet, which says
+*"That account has already been deleted for good"* rather than a "try again" that would be a lie.
+
+✅ **EMULATOR-VERIFIED end to end** against a local server: created a throwaway account on the phone, deleted it,
+found it under *Deleted accounts · 30 days left*, restored it, watched it return to the account switcher. Build
+overrides (`API_BASE_URL` → `10.0.2.2:5179`, `usesCleartextTraffic`) **reverted**; `git diff` on both files is
+empty and the revert re-compiles.
+
+**R2 is now 101 of 118 (86%), 17 rows left.**
+
 ### ⚠️ Carry-over
 
 - ✅ Committed (`fc0e3cb`, `62d9480`), pushed, and **deployed** — see the Verification block above.
@@ -397,10 +434,16 @@ POST succeeds on Free" would have passed before and after the change. `MONETIZAT
   gets the paywall behaviour for free — but it still shows a **New trip** affordance that will now 402, with no
   upgrade prompt in front of it. That is the one native follow-up this session creates.
 - **`tools/r2scan.js` is new** — the R2 parity measurement as a script rather than a hand count (S105 said the
-  script was the instrument; there wasn't actually one in the repo). **100 of 118 in-scope routes, 85%, 18
-  left.** It excludes `/snapshot` GET+PUT, which a thin client must never call, so the old "20 uncalled" figure
-  was two too many. ⚠️ It proves a path is *mentioned* in Kotlin, not that the feature works — a "called" row
-  means "not blocked", and S103's finding was that two such rows were really missing server reads.
+  script was the instrument; there wasn't actually one in the repo). **101 of 118 in-scope routes, 86%, 17
+  left**, after the archived-accounts row closed. It excludes `/snapshot` GET+PUT, which a thin client must never
+  call. ⚠️ It proves a path is *built* in Kotlin, not that the feature works — a "called" row means "not
+  blocked", and S103's finding was that two such rows were really missing server reads.
+  ★ **The script's own first two cuts were both wrong, and the first was wrong in the flattering direction** —
+  regex-anywhere matching let `…/tags/$tagId/archived` satisfy the probe for `/{id}/archived`, hiding the very
+  row that turned out to be the most serious one in the backlog. Whole-path equality then over-corrected and
+  read six live routes as gaps (`"…/overview${periodQ(period)}"` is a query builder, not a path segment). Both
+  fixed and commented. **A parity number that goes UP after a scanner change deserves more suspicion than one
+  that goes down.**
 - **`ReopenTrip` still has zero web callers** — it is ungated now, so the only thing left is a place to press it.
   The trip edit modal is the likely home; ask before removing it, per S105.
 - The pre-S105 carry-over stands: R2's 20 uncalled endpoints, the `ClearTag` contract trap, `.debt-progress`
