@@ -128,6 +128,9 @@ fun AddSheet(
     onEditDeposit: (depositId: String, fundId: String, categoryId: String, amount: Double, date: String, onDone: () -> Unit) -> Unit,
     onDeleteDeposit: (depositId: String, onDone: () -> Unit) -> Unit = { _, _ -> },
     onAddCategory: (name: String, parentId: String?, icon: String?, onDone: (String?) -> Unit) -> Unit,
+    // Null when there is nowhere to settle onto (only one account, or none in this currency), which is why the
+    // whole row is absent rather than present-and-disabled — a control that can never work is worse than no control.
+    onSettle: ((ExpenseDto) -> Unit)? = null,
 ) {
     val tandem = LocalTandemColors.current
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -526,6 +529,23 @@ fun AddSheet(
                     spending.saveError?.let {
                         Spacer(Modifier.height(8.dp))
                         Text(it, color = MaterialTheme.colorScheme.error, fontSize = 13.sp)
+                    }
+
+                    // Settling onto another account, reached from the expense being edited — the web's placement
+                    // exactly. Not offered on a row that IS the destination of somebody else's settlement: that
+                    // expense belongs to the account that sent it, and settling it onward would orphan the link.
+                    if (editingMode && onSettle != null && editing != null && !editing.isSettlementDestination) {
+                        Spacer(Modifier.height(10.dp))
+                        TextButton(onClick = { onSettle(editing) }, modifier = Modifier.fillMaxWidth()) {
+                            Icon(TandemIcons.Users, null, tint = MaterialTheme.colorScheme.primary)
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                if (editing.isSettlementSource) "Change the settlement on this expense"
+                                else "Settle onto another account",
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                        }
                     }
 
                     // Multi-add (stage more rows, batch total) — only when adding, not when editing one row.

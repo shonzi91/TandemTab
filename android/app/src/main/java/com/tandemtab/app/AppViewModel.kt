@@ -50,6 +50,7 @@ import com.tandemtab.app.data.SavingDepositRowDto
 import com.tandemtab.app.data.SavingMovementRowDto
 import com.tandemtab.app.data.OnboardingViewDto
 import com.tandemtab.app.data.AchievementsViewDto
+import com.tandemtab.app.data.SettleExpenseRequest
 import com.tandemtab.app.data.MilestonesDto
 import com.tandemtab.app.data.TagOptionDto
 import com.tandemtab.app.data.UseTripSavingsRequest
@@ -162,6 +163,9 @@ data class UiState(
     val editingExpense: ExpenseDto? = null,
     // The deposit the income tab's "Edit last" is currently editing.
     val editingDeposit: DepositRowDto? = null,
+    // The expense the settle sheet is working on. Set from the edit sheet, which closes as this opens — a sheet
+    // raised from inside another sheet is the shape that has produced the floating-action-bar bug three times.
+    val settlingExpense: ExpenseDto? = null,
 ) {
     val selectedAccount: AccountSummaryDto?
         get() = accounts.firstOrNull { it.id == selectedAccountId }
@@ -2036,6 +2040,54 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 onDone()
             } catch (e: Exception) {
                 _state.update { it.copy(spending = it.spending.copy(saving = false, saveError = e.message ?: "Couldn't save the change.")) }
+            }
+        }
+    }
+
+    // --- Settling an expense onto another account ------------------------------------------------------
+    // The only phone flow that writes to TWO accounts. The server does both halves in one save, so there is
+    // nothing to reconcile by hand here — but the source expense is REPLACED (its id changes on settle), so both
+    // of these reload Spending rather than splicing a row back into the list by an id that no longer exists.
+
+    /** Raise the settle sheet for [expense], closing the edit sheet it was reached from (no nested sheets). */
+    fun beginSettle(expense: ExpenseDto) = _state.update { it.copy(settlingExpense = expense, editingExpense = null) }
+
+    fun clearSettling() = _state.update { it.copy(settlingExpense = null) }
+
+    /** Settle (or re-settle) [amount] of an expense onto another account. */
+    fun settleExpense(expenseId: String, destinationAccountId: String, amount: Double, note: String?, onDone: () -> Unit) {
+        val accountId = _state.value.selectedAccountId ?: return
+        _state.update { it.copy(spending = it.spending.copy(saving = true, saveError = null)) }
+        viewModelScope.launch {
+            try {
+                api.settleExpense(accountId, expenseId, SettleExpenseRequest(
+                    destinationAccountId = destinationAccountId,
+                    amount = amount,
+                    note = note?.takeIf { n -> n.isNotBlank() },
+                ))
+                _state.update { it.copy(settlingExpense = null, spending = it.spending.copy(saving = false)) }
+                loadSpending(force = true)
+                runCatching { api.overview(accountId) }.getOrNull()?.let { ov -> _state.update { it.copy(overview = ov) } }
+                onDone()
+            } catch (e: Exception) {
+                _state.update { it.copy(spending = it.spending.copy(saving = false, saveError = e.message ?: "Couldn't settle that expense.")) }
+            }
+        }
+    }
+
+    /** Undo a settlement — reachable only because the row now carries the account it was settled onto. */
+    fun unsettleExpense(expenseId: String, destinationAccountId: String, onDone: () -> Unit) {
+        val accountId = _state.value.selectedAccountId ?: return
+        _state.update { it.copy(spending = it.spending.copy(saving = true, saveError = null)) }
+        viewModelScope.launch {
+            try {
+                api.unsettleExpense(accountId, expenseId, destinationAccountId)
+                _state.update { it.copy(settlingExpense = null, spending = it.spending.copy(saving = false)) }
+                loadSpending(force = true)
+                runCatching { api.overview(accountId) }.getOrNull()?.let { ov -> _state.update { it.copy(overview = ov) } }
+                onDone()
+            } catch (e: Exception) {
+                _state.update { it.copy(spending = it.spending.copy(saving = false, saveError = e.message ?: "Couldn't undo that settlement.")) }
             }
         }
     }

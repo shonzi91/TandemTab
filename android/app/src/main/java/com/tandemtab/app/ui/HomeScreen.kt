@@ -84,6 +84,7 @@ import androidx.compose.foundation.shape.CircleShape
 import com.tandemtab.app.UiState
 import com.tandemtab.app.data.AccountSummaryDto
 import com.tandemtab.app.data.MemberDto
+import com.tandemtab.app.data.ExpenseDto
 import com.tandemtab.app.data.MilestonesDto
 import com.tandemtab.app.data.PlanFeatures
 import com.tandemtab.app.data.RunwayDto
@@ -150,6 +151,10 @@ fun HomeScreen(
     onDismissOnboarding: () -> Unit,
     onLoadMilestones: () -> Unit,
     onLoadAchievements: (Boolean) -> Unit,
+    onBeginSettle: (ExpenseDto) -> Unit,
+    onClearSettling: () -> Unit,
+    onSettleExpense: (expenseId: String, destinationAccountId: String, amount: Double, note: String?, onDone: () -> Unit) -> Unit,
+    onUnsettleExpense: (expenseId: String, destinationAccountId: String, onDone: () -> Unit) -> Unit,
     onLoadSpending: (Boolean) -> Unit,
     onLoadGoals: (Boolean) -> Unit,
     onLoadWallets: (Boolean) -> Unit,
@@ -263,6 +268,13 @@ fun HomeScreen(
     // which we watch here to raise the add sheet in edit mode.
     val editing = state.editingExpense
 
+    // Where an expense could be settled: another account of this user's, in the SAME currency (the server rejects
+    // anything else). Falls back to the overview's currency while the account summary is still loading.
+    val settleCurrency = state.selectedAccount?.currency ?: state.overview?.currency
+    val settleTargets = state.accounts.filter {
+        it.id != state.selectedAccountId && (settleCurrency == null || it.currency.equals(settleCurrency, ignoreCase = true))
+    }
+
     Scaffold(
         modifier = Modifier.fillMaxSize().tandemCanvas(darkTheme, tandem.canvas),
         containerColor = Color.Transparent,
@@ -327,6 +339,19 @@ fun HomeScreen(
                 onEditDeposit = onEditDeposit,
                 onDeleteDeposit = onDeleteDeposit,
                 onAddCategory = onAddCategory,
+                // Only offered when there is somewhere to settle onto. Same currency, because the server refuses
+                // a cross-currency settlement outright — offering it would be a button that always fails.
+                onSettle = if (settleTargets.isEmpty()) null else onBeginSettle,
+            )
+        }
+        state.settlingExpense?.let { se ->
+            SettleExpenseSheet(
+                expense = se,
+                spending = state.spending,
+                otherAccounts = settleTargets,
+                onDismiss = onClearSettling,
+                onSettle = { dest, amount, note, onDone -> onSettleExpense(se.id, dest, amount, note, onDone) },
+                onUnsettle = { dest, onDone -> onUnsettleExpense(se.id, dest, onDone) },
             )
         }
         LaunchedEffect(dest, state.selectedAccountId) {

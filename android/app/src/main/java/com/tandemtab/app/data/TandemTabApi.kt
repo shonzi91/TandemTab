@@ -381,6 +381,16 @@ class TandemTabApi(
     suspend fun transferToAccount(accountId: String, req: TransferToAccountRequest): MutationResultDto =
         authedPost("/accounts/$accountId/transfers-out", req).body()
 
+    /** Settle part of an "on behalf of another account" expense onto that account (or re-settle a different amount:
+     *  the server replaces the linked expense rather than adding a second one). */
+    suspend fun settleExpense(accountId: String, expenseId: String, req: SettleExpenseRequest): MutationResultDto =
+        authedPost("/accounts/$accountId/expenses/$expenseId/settle", req).body()
+
+    /** Undo it: drops the linked expense over there and restores this one to its full amount. The destination
+     *  account travels as a query parameter, which is why the row's `settledToAccountId` had to become readable. */
+    suspend fun unsettleExpense(accountId: String, expenseId: String, destinationAccountId: String): MutationResultDto =
+        authedDelete("/accounts/$accountId/expenses/$expenseId/settle?destinationAccountId=$destinationAccountId").body()
+
     /** Rewrite both halves — the outflow here and the deposit it made there. Addressed by the PAIR id, which only
      *  exists on transfers written since the link did; use [deleteAccountTransfer] for the rest. */
     suspend fun editAccountTransfer(accountId: String, pairId: String, req: EditAccountTransferRequest): MutationResultDto =

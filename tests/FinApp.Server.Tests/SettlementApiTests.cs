@@ -169,6 +169,50 @@ public class SettlementApiTests : IClassFixture<FinAppServerFactory>
         Assert.Empty((await LoadAsync(client, dest.Id)).CurrentPeriod!.Expenses);   // linked expense gone
     }
 
+    /// <summary>
+    /// ★ A THIN client must be able to undo a settlement using only what it can read. The undo route is addressed by
+    /// the destination account id, and until Session 108 the thin <c>ExpenseDto</c> carried the two settlement
+    /// booleans but not <c>SettledToAccountId</c> — so the phone could see that an expense was settled and had no way
+    /// to name the account it was settled onto. The undo was unreachable by construction, the same shape S105 found
+    /// three times. This test walks the whole loop through <c>/spending</c> only, never the snapshot.
+    /// </summary>
+    [Fact]
+    public async Task A_thin_client_can_read_the_settlement_target_and_undo_with_it()
+    {
+        var (client, auth) = await _factory.RegisterAndAuthAsync("st_thin");
+        var source = await CreateAccount(client, "Source");
+        var dest = await CreateAccount(client, "Dest");
+        var (_, _, expenseId) = await SeedAsync(client, source.Id, auth.UserId, expense: 120m);
+        var (destFood, destFund, _) = await SeedAsync(client, dest.Id, auth.UserId);
+
+        await IdOf(await client.PostAsJsonAsync($"/accounts/{source.Id}/expenses/{expenseId}/settle",
+            new SettleExpenseRequest(dest.Id, destFund, destFood, 50m)));
+
+        // The source side, as a thin client sees it: who it is with, and for how much.
+        var sourceRow = (await client.GetFromJsonAsync<SpendingViewDto>($"/accounts/{source.Id}/spending"))!.Expenses.Single();
+        Assert.True(sourceRow.IsSettlementSource);
+        Assert.Equal(dest.Id, sourceRow.SettledToAccountId);
+        Assert.Equal(50m, sourceRow.SettledAmount);
+        Assert.Null(sourceRow.SettledFromAccountId);
+
+        // The destination side names the account the money came from, so its row can label itself too.
+        var destRow = (await client.GetFromJsonAsync<SpendingViewDto>($"/accounts/{dest.Id}/spending"))!.Expenses.Single();
+        Assert.True(destRow.IsSettlementDestination);
+        Assert.Equal(source.Id, destRow.SettledFromAccountId);
+
+        // The undo, addressed purely from the read model — this is the call that was impossible before.
+        (await client.DeleteAsync(
+            $"/accounts/{source.Id}/expenses/{sourceRow.Id}/settle?destinationAccountId={sourceRow.SettledToAccountId}"))
+            .EnsureSuccessStatusCode();
+
+        var restored = (await client.GetFromJsonAsync<SpendingViewDto>($"/accounts/{source.Id}/spending"))!.Expenses.Single();
+        Assert.Equal(120m, restored.Amount);
+        Assert.False(restored.IsSettlementSource);
+        Assert.Null(restored.SettledToAccountId);
+        Assert.Equal(0m, restored.SettledAmount);
+        Assert.Empty((await client.GetFromJsonAsync<SpendingViewDto>($"/accounts/{dest.Id}/spending"))!.Expenses);
+    }
+
     [Fact]
     public async Task Transferring_to_the_same_account_is_rejected()
     {

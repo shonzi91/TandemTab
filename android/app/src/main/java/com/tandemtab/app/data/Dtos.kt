@@ -111,6 +111,13 @@ data class ExpenseDto(
     val onBehalfOfOtherAccount: Boolean = false,
     val isSettlementSource: Boolean = false,
     val isSettlementDestination: Boolean = false,
+    // ★ Who the settlement is with, and how much of this expense has moved. New to the read model in S108: the two
+    // booleans above could mark a row but not act on it, and the undo route is addressed by the destination account
+    // id — so without [settledToAccountId] the phone could see a settled expense and had no way to unsettle it.
+    // Both accounts are ones this user belongs to, so the names come from the account list already in state.
+    val settledToAccountId: String? = null,
+    val settledFromAccountId: String? = null,
+    val settledAmount: Double = 0.0,
     // R2 installment split: rows sharing an `installmentGroupId` are ONE logged loan payment, and the server
     // removes them as a unit. Parsing these is what stops a single-row delete from leaving a half-installment
     // (principal gone, interest kept) that reconciles to nothing. `installmentPart` is
@@ -1016,6 +1023,27 @@ data class TransferToAccountRequest(
     val destinationFundId: String? = null,
     val note: String? = null,
     val date: String? = null,
+)
+
+/** The empty Guid, which several handlers read as "you choose" rather than as a value. */
+const val EMPTY_GUID = "00000000-0000-0000-0000-000000000000"
+
+/**
+ * POST /accounts/{id}/expenses/{expenseId}/settle — push part of an expense you paid on behalf of another account
+ * onto that account: it records a matching expense there and reduces this one by the same amount, atomically.
+ *
+ * ⚠️ The destination **fund and category are sent empty on purpose.** The server falls back to the destination's
+ * first spendable wallet and its first category when they are `Guid.Empty` — the same accommodation
+ * `SpendFromSavingsRequest` documents. The alternative would be for the phone to fetch another account's whole
+ * structure just to fill two pickers, and the web's own defaults are what it would land on anyway.
+ */
+@Serializable
+data class SettleExpenseRequest(
+    val destinationAccountId: String,
+    val destinationFundId: String = EMPTY_GUID,
+    val destinationCategoryId: String = EMPTY_GUID,
+    val amount: Double,
+    val note: String? = null,
 )
 
 /** PUT /accounts/{id}/account-transfers/{pairId} — rewrite BOTH halves at once. Null fund ids and a null date keep

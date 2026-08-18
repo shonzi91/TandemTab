@@ -37,7 +37,16 @@ public record ExpenseDto(
     IReadOnlyList<Guid>? TagIds = null,
     // The time of day, when anything recorded one. Null on most rows — a bank that reports a booking date only, or
     // an entry typed days later — and null must stay null on the client too, not become midnight.
-    TimeOnly? Time = null);
+    TimeOnly? Time = null,
+    // ★ Who the settlement is with, and for how much. The two booleans above are enough to *mark* a row, but not
+    // enough to act on it or to label it the way the thick client does ("🤝 €40 → Household"). More to the point,
+    // `DELETE /expenses/{id}/settle` is addressed by the destination account id — so without SettledToAccountId
+    // here, the undo was unreachable by construction from any thin client. The route's own comment assumed "the
+    // caller holds it as the expense's SettledToAccountId", which was true of the thick client only.
+    // Null/zero on an ordinary expense; the source side fills To + Amount, the destination side fills From.
+    Guid? SettledToAccountId = null,
+    Guid? SettledFromAccountId = null,
+    decimal SettledAmount = 0m);
 
 /// <summary>A spend category as a picker option — id, label, stored icon, and parent for indentation. No money.</summary>
 public record CategoryOptionDto(Guid Id, string Name, string? Icon, Guid? ParentId);

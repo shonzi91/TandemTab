@@ -1,7 +1,27 @@
 # TandemTab (FinApp) — session handoff
 
-Last updated: 2026-08-19 (Session 108 — **R2 continues: the phone can see its own medals. 102 → 104 of 118.**
-**Android only; no server change, no C# touched, no deploy. Everything committed + pushed.**
+Last updated: 2026-08-19 (Session 108 — **two R2 rows and an audit that shrank the backlog. 102 → 106 of 118 (90%).**
+**496 + 49 + 369 green. Emulator-verified. ⚠️ Carries a small SERVER change, NOT deployed. Committed + pushed.**
+★★ **An uncalled endpoint is not automatically a gap.** Auditing the 14 that were left, **three are not gaps at
+all**: `to-budget` has *no client anywhere* (its own comment says "no web UI yet"); `to-savings` backs a bell nudge
+that `NotificationsMap` **deliberately excludes** from the thin set, so the phone has nothing to hang it off; and
+`/structure` is data Android already gets from `/spending` + `/wallets`. **The honest backlog is 9, not 12.**
+★★ **Settling needed a server change, and finding that out first is the whole point of the rule.** The thin
+`ExpenseDto` carried `IsSettlementSource/Destination` as bare booleans — but `DELETE /expenses/{id}/settle` is
+addressed by the **destination account id**, which the read model never sent. **The undo was unreachable by
+construction from any thin client** — the seventh instance of S105's shape. The route's own comment assumed "the
+caller holds it as the expense's SettledToAccountId", true of the thick client only. Three fields added, and a
+server test now walks settle → read `/spending` → undo **using only what a thin client can see**.
+⚠️ **Bank's back half was picked first and put back.** `EnableBankingClient` needs an ApplicationId + PrivateKey,
+so on a dev machine `IsEnabled` is false and all seven routes are unreachable — it could only ever be
+build-verified here. That is a deliberate deferral, not an oversight.
+✅ **Emulator-verified end to end, both accounts:** €120 expense → settle €50 onto Household → source reads €70
+with **"🤝 €50.00 settled"**, destination gains its €50 row, Spent falls to €70 → then **Unsettle** (behind a
+confirm) → back to €120, badge gone, the other account empty again.
+⚠️ **Two honest trims:** the destination fund/category are **the server's choice**, not pickers (the phone would
+have to fetch another account's whole structure for two dropdowns whose default is what the server picks anyway);
+and the row badge names the amount but **not the other account** — it is four composables deep in a screen handed
+no account list, and the first attempt at the fuller label clipped mid-word on a one-line row.
 ★★ **The row was picked by checking what the endpoints RETURN first** — the lesson R2 has taught six times — and
 this time the answer was *everything*: `/achievements` already ships the full catalogue (icon, title, desc,
 earned, percent, tier, earned-on) and `/milestones` the three tallies. **Zero server change**, an afternoon
@@ -24,8 +44,9 @@ had earned something and watching the line go.
 ⚠️ **`earnedOn` renders nothing here and that is correct** — the date comes from an achievement log only the
 thick web Dashboard stamps. Nullable by contract, decorative by design.
 ⚠️ **F6's goal-celebration moment is still NOT ported** (it needs a per-device seen-set, which the web keeps in
-`localStorage`); the MOBILE.md row is split accordingly. **14 R2 rows left**, and the bank back half is the only
-one that changes what the phone can *do*.)
+`localStorage`); the MOBILE.md row is split accordingly.
+⚠️ **The server change is NOT deployed.** It is additive (three optional DTO fields) and serves only the phone,
+which has no APK pipeline — so nothing reaches a user either way until one exists. Deploy when convenient.)
 
 Previously: 2026-08-18 (Session 107b — **an owner report: a loan on "Its own schedule" kept saying no installment
 was logged after its due day had passed — and did anything come off the principal at all?**
@@ -421,8 +442,78 @@ a **€1,200 loan at €150/month** earns the gold *"In sight"* (debt-free withi
 log, which only the thick web Dashboard stamps; the contract says nullable and best-effort, and the cell simply
 omits the line. A phone-first account will show medals with no dates until the web sees it.
 
+## Session 108b — **Settling on the phone, and an audit that took three rows off the backlog.**
+
+### ★★ The audit: an uncalled endpoint is not automatically a gap
+
+R2's scanner answers *"does Kotlin call this route"*. That is not the same question as *"is the phone missing
+something"*, and picking the next row made the difference matter. Of the 14 left after the achievements row:
+
+- **`POST /reallocations/to-budget`** — **no client calls it at all**, web included. Its own comment in
+  `Program.cs` says *"no web UI yet, but the tested domain capability"*. Building it on Android would be inventing
+  product, not closing a gap.
+- **`POST /reallocations/to-savings`** — backs the web's *"Move it to the loan"* bell nudge, computed thick-client
+  from `DiscretionaryLeftovers()`. `NotificationsMap` states plainly that dismissable nudges and inline
+  *"reallocate"* actions are **deliberately out of scope** for the thin set. The phone has nothing to hang the call
+  off; whether it should is a product decision about nudges, not a parity row.
+- **`GET /structure`** — Android already builds its pickers from `/spending` + `/wallets`.
+
+**So the honest remaining backlog is 9, not 12.** ⚠️ And **the bank back half (7 of those 9) cannot be verified on
+this machine**: `EnableBankingClient.IsEnabled` needs an ApplicationId + PrivateKey, so locally every one of those
+routes is unreachable and the row could only be build-verified. It was picked first and put back for that reason.
+
+### ★★ The row that was left needed a SERVER change — and finding that first is the entire rule
+
+`ExpenseDto` (the thin read model) carried `IsSettlementSource` and `IsSettlementDestination` as bare booleans,
+with a comment saying the flags "let the row badge itself without the client knowing the money model". But:
+
+- `DELETE /expenses/{expenseId}/settle` is addressed by the **destination account id**, and
+- nothing in the read model ever sent it.
+
+**The undo was unreachable by construction from any thin client** — the seventh instance of S105's shape (a write
+whose undo no client can reach). The route's own comment gives the assumption away: *"the caller holds it as the
+expense's SettledToAccountId"* — true of the thick client, which holds the whole snapshot, and of nothing else.
+
+Three optional fields added (`SettledToAccountId`, `SettledFromAccountId`, `SettledAmount`), projected in
+`SpendingMap.ToDto`. ★ **The new test is the point**: it settles, reads `/spending`, and performs the undo using
+**only what the DTO gave it**, never the snapshot. **369 server tests** (from 368).
+
+### What shipped on the phone
+
+Reached from the expense being edited, exactly where the web puts it: **"Settle onto another account"**, or
+**"Change the settlement on this expense"** once there is one. The sheet takes an amount and a destination
+account, and carries **Unsettle** behind a confirm — unsettling removes a real expense from the *other* account,
+which should never happen on one tap.
+
+⚠️ **Two deliberate trims from the web's version:**
+
+- **The destination fund and category are the server's choice.** Both handlers already fall back to the
+  destination's first spendable wallet and first category on `Guid.Empty` — the accommodation
+  `SpendFromSavingsRequest` documents. The alternative is the phone fetching another account's entire structure to
+  fill two dropdowns whose sensible default is what the server picks anyway.
+- **The row badge names the amount, not the other account** (*"🤝 €50.00 settled"*). The account list lives in
+  `UiState` and the row is four composables deep in a screen handed none of it. ★ The first attempt put a fuller
+  label on the **destination** side too and it **clipped mid-word** on the one-line sub-line, on the emulator —
+  that side already carries the server's own note *"On behalf — from Mine"*, so the badge was dropped there rather
+  than shipped truncated.
+
+### Verification
+
+**496 + 49 + 369 green.** ✅ **EMULATOR-VERIFIED end to end across both accounts** (local server, a non-`@test.local`
+user so the plan is Pro and a second account is allowed):
+
+€120 "Shared shop" on *Mine* → settle **€50** onto *Household* → source reads **€70** with *"🤝 €50.00 settled"*,
+Spent falls to €70, and *Household* gains a €50 row noted *"On behalf — from Mine"* → reopen → **"Change this
+settlement"** shows the original €120 and the amount already moved, destination fixed → **Unsettle** → confirm →
+**back to €120**, badge gone, Spent restored, and `/spending` on *Household* is **empty**.
+
+⚠️ **The server change is NOT deployed.** Additive, and it serves only a client with no APK pipeline.
+
 ### Worth not re-learning
 
+- **Check what the endpoint returns *and* what any client can reach with it.** The read model was the blocker
+  here, exactly as in S91, S92 and S105 — but this time the missing field was an *address*, not a display value,
+  and the failure mode was an unreachable undo rather than a wrong label.
 - **`/auth/login` answers `LoginResponse` (`{twoFactorRequired, auth:{token…}}`), not `AuthResponse`.** Reading
   `.token` off the top level yields null and the next call 401s — which is exactly what stranded
   `tools/FinApp.Seed`. It cost a round here too, before the body was read.

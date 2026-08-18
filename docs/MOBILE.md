@@ -63,7 +63,27 @@ Session 94, **69** after Session 95). It does not call these:
 
 > **⚠️ The list below is a snapshot; [tools/r2scan.js](../tools/r2scan.js) is the instrument.** Since S105 the
 > count is produced by script (`node tools/r2scan.js --list`), not by eye — the hand-made count was wrong by 17.
-> **104 of 118 (88%) after Session 108.** Re-run it rather than trusting any number written down here.
+> **106 of 118 (90%) after Session 108.** Re-run it rather than trusting any number written down here.
+>
+> ### ★★ But an uncalled endpoint is not automatically a gap (Session 108)
+>
+> The scanner answers "does Kotlin call this route", which is not the same question as "is the phone missing
+> something". Auditing the 14 that were left after the achievements row, **three are not gaps at all**:
+>
+> - **`POST /reallocations/to-budget`** — *no client calls it anywhere*, web included. The endpoint's own comment
+>   says "no web UI yet, but the tested domain capability". Porting it to Android would be inventing a feature the
+>   product does not have, not closing a gap.
+> - **`POST /reallocations/to-savings`** — backs the web's bell nudge *"Move it to the loan"*, which is computed in
+>   the thick client from `DiscretionaryLeftovers()`. `NotificationsMap` states that dismissable nudges and inline
+>   "reallocate" actions are **deliberately out of scope** for the thin notification set, so the phone has nothing
+>   to hang the call off. The row is a *nudge* decision, not a client gap.
+> - **`GET /structure`** — the thin structure editor's read. Android builds its category/fund pickers from
+>   `/spending` and `/wallets`, so it already has this data by another door.
+>
+> **The honest remaining backlog is 9, not 12:** the seven bank-configuration routes, `/import`, and
+> `/funds/{id}/currency`. ⚠️ And the seven bank routes cannot be verified on a dev machine — `EnableBankingClient`
+> needs an ApplicationId + PrivateKey, so locally `IsEnabled` is false and every one of them is unreachable. That
+> row can be *built* here but only *build-verified*, which is the standard S98 warned about.
 
 > ### ★ The paywall on the phone (Session 107, 2026-08-18) — a row R2 cannot see
 >
@@ -135,7 +155,7 @@ Session 94, **69** after Session 95). It does not call these:
 | Onboarding | `/onboarding`, `/onboarding/dismissed` | S |
 | ~~Export~~ | ~~`/export`~~ | ✅ **done S106** — the portability promise, which the phone wasn't keeping |
 | Reallocation between budget and savings | `/reallocations/to-budget`, `/reallocations/to-savings` | S |
-| Settling an on-behalf expense | `/expenses/{id}/settle` | S |
+| ~~Settling an on-behalf expense~~ | ~~`/expenses/{id}/settle`~~ | ✅ **done S108** — needed a **server change first**: the thin `ExpenseDto` carried the two settlement booleans but not `SettledToAccountId`, and the undo route is addressed by it, so the undo was unreachable from any thin client |
 | ~~Contribution (income) categories~~ | ~~`/contribution-categories…`~~ | ✅ **done S91** (create only) |
 | ~~**Trips — the whole feature** (S99–S101)~~ | ~~`/trips`, `/trips/{id}`, `/trips/{id}/started`, `/trips/{id}/finished`, `/expenses/{id}/trip`~~ | ✅ **done S103** — see below. Still open on this row: `/trips/{id}/use-savings` (releasing a savings pot into the trip's budget) and `/trip-tags` (the seeded label set) |
 | **Expense labels** — read ✅ **added S103** (`ExpenseDto.TagIds`, `TagOptionDto`); writing one is still unwired | `/expenses/{id}/tag` | S |
@@ -180,7 +200,8 @@ has no debt features at all, and cannot share an account — which is the thing 
 row is something a phone user can live without or reach another way:
 **statement import** (M), **savings/debt money-movements** (M — allocate and spend already work, so these are
 refinements), **tags** incl. F2 (M), **F6's goal celebration** (S — achievements themselves shipped in S108),
-**onboarding** (S), **export** (S), **reallocation** (S), **settling an on-behalf expense** (S).
+**onboarding** (S), **export** (S). **Reallocation is off this list** — see the audit box above; it is a nudge
+decision, not a client gap. **Settling shipped in S108.**
 ⛔ Two items are blocked on the **server**, not on Android, and cannot be estimated as client work:
 **F4 round-ups** (no field on any contract *and* no command endpoint) and the **fund↔bank sync toggle**
 (`SetFundSynced`, `TODO(cutover)`). Both are still whole-snapshot pushes in the thick client. They would batch

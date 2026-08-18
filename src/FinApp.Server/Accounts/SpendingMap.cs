@@ -72,7 +72,13 @@ public static class SpendingMap
         // Only tags that still exist: a deleted tag leaves its id behind on old rows (see Account.RemoveTag), and a
         // client that rendered those would show a label with no name.
         e.TagIds.Where(t => account.FindTag(t) is not null).ToList(),
-        e.Time);
+        e.Time,
+        // The other half of the settlement flags above: who it is with, and how much of this expense has moved.
+        // Sent as ids — both accounts are ones the caller is a member of, so a client can name them from the
+        // account list it already holds, and the server stays out of the business of labelling other accounts.
+        e.SettledToAccountId,
+        e.SettledFromAccountId,
+        e.SettledAmount);
 
     /// <summary>The full Spending surface for <paramref name="viewPeriod"/> (the current period when null; empty
     /// currency-only view when the account has no period).</summary>

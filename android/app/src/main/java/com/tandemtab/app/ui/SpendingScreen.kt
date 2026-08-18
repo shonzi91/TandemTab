@@ -721,7 +721,16 @@ private fun ExpenseRow(
             val part = installmentPartLabel(e)
             // The clock leads when there is one — within a day it is the only thing that orders the rows, and a
             // day with a dozen entries reads as a day rather than a heap. Untimed rows simply omit it.
-            val line = listOfNotNull(e.time?.take(5), sub, part).joinToString(" · ")
+            // A settled row says so, and says how much moved — otherwise a 120 expense that reads 70 looks like a
+            // typo. ⚠️ It names the amount but not the other ACCOUNT, which the web does: the account list lives in
+            // UiState and this row is four composables deep in a screen that is handed none of it. Opening the row
+            // and tapping Settle names it. Worth revisiting if households with three accounts turn up.
+            // ⚠️ The SOURCE side only. The destination row already carries the server's own note ("On behalf —
+            // from <account>"), and a badge after it simply ran past the end of a one-line sub-line — verified on
+            // the emulator, where it clipped mid-word. The source row is the one that needs explaining: without
+            // this, a €120 expense silently reads €70 and looks like a typo.
+            val settled = if (e.isSettlementSource && e.settledAmount > 0) "🤝 ${fmt(e.settledAmount)} settled" else null
+            val line = listOfNotNull(e.time?.take(5), sub, part, settled).joinToString(" · ")
             Text(line, fontSize = 12.sp, color = tandem.muted, maxLines = 1)
         }
         Spacer(Modifier.width(8.dp))
