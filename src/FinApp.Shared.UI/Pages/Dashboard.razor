@@ -4505,6 +4505,20 @@ else
                                 </button>
                             }
                         </div>
+                        @* The same collapsed ＋ the expense form uses. Filing an old month is exactly when a label
+                           that doesn't exist yet gets invented ("Reimbursable", "That move") — sending the user to
+                           Manage tags and back would lose the row they were standing on. *@
+                        @if (_tagNewOpen)
+                        {
+                            <div class="tag-new-row">
+                                <input type="text" class="tag-new-in" placeholder="@Loc["New tag…"]" maxlength="30" @bind="_newTagName" @bind:event="oninput" @onkeydown="TagOnlyNewKey" />
+                                <button type="button" class="lbl-add" title="@Loc["Add tag"]" disabled="@string.IsNullOrWhiteSpace(_newTagName)" @onclick="AddTagFromTagOnly">+</button>
+                            </div>
+                        }
+                        else
+                        {
+                            <button type="button" class="link tag-new-open" @onclick="() => _tagNewOpen = true"><Icon Name="plus" /> @Loc["New tag"]</button>
+                        }
                     </div>
                     <div class="modal-actions">
                         <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
@@ -4969,19 +4983,24 @@ else
                     }
                     else
                     {
-                        <ul class="list">
+                        @* ★ A grid, not a list. A category IS its icon in this app — the picker leads with it, every
+                           expense row leads with it, the breakdown colours by it — so a list spent a whole row on
+                           each one and still made the icon incidental. The tile itself is the edit affordance (the
+                           pencil was one of two identical grey glyphs); delete keeps its own corner control so a
+                           mis-tap cannot remove a category. *@
+                        <div class="cat-grid">
                             @foreach (var (cat, _) in topCats)
                             {
                                 var catId = cat.Id;
-                                <li>
-                                    <span class="row-lead">
-                                        <button class="exp-edit" title="@Loc["Edit"]" @onclick="() => ManageEditCat(catId)"><Icon Name="pencil" /></button>
-                                        <button class="exp-edit" title="@Loc["Remove"]" @onclick="() => ManageDeleteCat(catId)"><Icon Name="trash" /></button>
-                                        <span><CatIcon Name="@State.CategoryIcon(catId)" /> @cat.Name</span>
-                                    </span>
-                                </li>
+                                <div class="cat-tile">
+                                    <button type="button" class="cat-tile-main" title="@Loc["Edit"]" @onclick="() => ManageEditCat(catId)">
+                                        <CatIcon Name="@State.CategoryIcon(catId)" />
+                                        <span class="cat-tile-name">@cat.Name</span>
+                                    </button>
+                                    <button type="button" class="exp-edit cat-tile-del" title="@Loc["Remove"]" @onclick="() => ManageDeleteCat(catId)"><Icon Name="trash" /></button>
+                                </div>
                             }
-                        </ul>
+                        </div>
                     }
                     break;
 
@@ -11446,7 +11465,28 @@ else
         if (State.FindExpense(expenseId) is not { } e) return;
         _tagExpenseId = expenseId;
         _tagOnlyId = e.TagId;
+        _newTagName = null; _tagNewOpen = false;
         _modal = Modal.TagExpense;
+    }
+
+    /// <summary>Create-and-select from the label modal. Deliberately NOT <see cref="AddTagFromModal"/>: that one
+    /// selects into the expense form's field, restores its category/fund picks around the refetch, and applies the
+    /// F2 tag→category binding — all of which belong to a form that rewrites the whole expense. Here the tag is the
+    /// only thing that may move, and a new tag is never a trip label (there is no trip in this modal).</summary>
+    private Task AddTagFromTagOnly() => RunModal(async () =>
+    {
+        var name = _newTagName?.Trim();
+        if (string.IsNullOrWhiteSpace(name)) return;
+        var existing = State.AllTags.FirstOrDefault(t => string.Equals(t.Name, name, StringComparison.CurrentCultureIgnoreCase));
+        var id = existing?.Id ?? await State.AddTag(name, isTripTag: false);
+        if (id != Guid.Empty) _tagOnlyId = id;
+        _newTagName = null;
+        _tagNewOpen = false;
+    });
+
+    private async Task TagOnlyNewKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await AddTagFromTagOnly();
     }
 
     private Task SaveTagOnly() => RunModal(async () =>

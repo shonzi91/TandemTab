@@ -3603,3 +3603,20 @@ html.dark .attach-cat,
 html.dark .attach-amt { color: #e6edf5; }
 html.dark .attach-when { color: #93a3b5; }
 html.dark .attach-taken { color: #6b7c8f; }
+
+/* Manage-categories grid. A category IS its icon everywhere else in this app, so a one-line-per-row list made the
+   icon incidental and spent a full row saying a single word. Tiles put the icon first and fit four to a screen. */
+.cat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(102px, 1fr)); gap: 9px; margin-top: 10px; }
+.cat-tile { position: relative; }
+.cat-tile-main { width: 100%; display: flex; flex-direction: column; align-items: center; gap: 6px;
+                 padding: 14px 8px 10px; border-radius: 12px; border: 1px solid #cfe9dd; background: #f4fbf7;
+                 font: inherit; color: #0f172a; cursor: pointer; }
+.cat-tile-main:hover { background: #eaf7f1; }
+.cat-tile-name { font-size: .76rem; font-weight: 600; line-height: 1.2; text-align: center; overflow-wrap: anywhere; }
+/* Its own control, in the corner: the tile is the edit affordance, and a delete that shared the tap target would
+   be a mis-tap away from removing a category every expense is filed under. */
+.cat-tile-del { position: absolute; top: 2px; right: 2px; opacity: .5; }
+.cat-tile-del:hover { opacity: 1; }
+
+html.dark .cat-tile-main { border-color: #2c3142; background: #1e2330; color: #e6edf5; }
+html.dark .cat-tile-main:hover { background: #262c3b; }

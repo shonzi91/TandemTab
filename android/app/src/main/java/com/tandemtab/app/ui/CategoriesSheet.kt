@@ -43,6 +43,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.tandemtab.app.data.CategoryOptionDto
@@ -53,8 +54,9 @@ import com.tandemtab.app.ui.theme.TandemIcons
 private data class CatDraft(val id: String?, val name: String, val icon: String, val parentId: String?)
 
 /**
- * "Manage categories" — the native counterpart to the web's category manager: list every category (top-level with
- * its sub-categories indented), edit a name/emoji or archive it, and add a new one (optionally nested). Mirrors the
+ * "Manage categories" — the native counterpart to the web's category manager: list every category (a grid of tiles;
+ * retired sub-categories from older accounts are captioned with their parent), edit a name/emoji or archive it,
+ * and add a new one. Mirrors the
  * web by keeping user emoji as-is and preferring archive over delete. Figures/rows come from /spending; each save
  * re-fetches so the list is always live.
  */
@@ -88,10 +90,24 @@ fun ManageCategoriesSheet(
                 if (tops.isEmpty()) {
                     Text("No categories yet — add your first below.", color = tandem.muted, fontSize = 13.sp)
                 }
-                tops.forEach { c ->
-                    CategoryManageRow(c.icon, c.name, indent = false) { editing = CatDraft(c.id, c.name, c.icon ?: "", null) }
-                    subsByParent[c.id]?.forEach { s ->
-                        CategoryManageRow(s.icon, s.name, indent = true) { editing = CatDraft(s.id, s.name, s.icon ?: "", s.parentId) }
+                // ★ A grid, not a list of rows. A category IS its icon everywhere else in this app — the picker,
+                // every expense row, the breakdown — so a row-per-category made the icon incidental and spent a
+                // whole line on one word.
+                // ⚠️ Sub-categories are RETIRED and nothing creates them any more, but an older account can still
+                // hold some. They appear as tiles captioned with their parent rather than being filtered out: the
+                // editor is only reachable by tapping the category itself, so hiding them would leave a nested row
+                // that cannot be renamed, re-iconed or removed from the phone at all.
+                val tiles = tops.flatMap { c -> listOf(c to null as String?) + (subsByParent[c.id]?.map { it to c.name } ?: emptyList()) }
+                tiles.chunked(3).forEach { row ->
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        row.forEach { (c, parentName) ->
+                            CategoryManageTile(c.icon, c.name, parentName, Modifier.weight(1f)) {
+                                editing = CatDraft(c.id, c.name, c.icon ?: "", c.parentId)
+                            }
+                        }
+                        // Keep the last row's tiles the same width as every other row's rather than stretching
+                        // one lonely category across the sheet.
+                        repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
                     }
                 }
                 Spacer(Modifier.height(4.dp))
@@ -123,17 +139,29 @@ fun ManageCategoriesSheet(
     }
 }
 
+/** One category as a tile: its icon, its name, and — for a sub-category — the parent it files under. The whole
+ *  tile is the edit affordance, so there is no second glyph competing with the icon that identifies it. */
 @Composable
-private fun CategoryManageRow(icon: String?, name: String, indent: Boolean, onEdit: () -> Unit) {
+private fun CategoryManageTile(icon: String?, name: String, parentName: String?, modifier: Modifier = Modifier, onEdit: () -> Unit) {
     val tandem = LocalTandemColors.current
-    Row(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).clickable(onClick = onEdit)
-            .padding(start = if (indent) 20.dp else 0.dp).padding(vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
+    Column(
+        modifier
+            .clip(RoundedCornerShape(12.dp))
+            .background(tandem.hero)
+            .border(1.dp, tandem.hairline, RoundedCornerShape(12.dp))
+            .clickable(onClick = onEdit)
+            .padding(vertical = 12.dp, horizontal = 6.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(5.dp),
     ) {
-        CatIcon(icon, name); Spacer(Modifier.width(10.dp))
-        Text(name, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f), maxLines = 1, fontWeight = if (indent) FontWeight.Normal else FontWeight.Medium)
-        Icon(TandemIcons.Pencil, contentDescription = "Edit ${name}", tint = tandem.muted, modifier = Modifier.size(17.dp))
+        CatIcon(icon, name)
+        Text(
+            name, color = MaterialTheme.colorScheme.onSurface, fontSize = 12.5.sp, fontWeight = FontWeight.Medium,
+            textAlign = TextAlign.Center, maxLines = 2, lineHeight = 14.sp,
+        )
+        if (parentName != null) {
+            Text("in $parentName", color = tandem.muted, fontSize = 10.sp, maxLines = 1, textAlign = TextAlign.Center)
+        }
     }
 }
 
@@ -156,7 +184,6 @@ private fun CategoryEditor(
     // The editor works in icon *names* now (matching the migrated data); null = "Auto" (guessed from the name).
     var iconName by remember(draft) { mutableStateOf(draft.icon.takeIf { it.isNotBlank() }?.let { CategoryIcons.effective(it, draft.name) }) }
     var parentId by remember(draft) { mutableStateOf(draft.parentId) }
-    var parentMenu by remember { mutableStateOf(false) }
     val isNew = draft.id == null
 
     Text(if (isNew) "New category" else "Edit category", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.padding(top = 4.dp, bottom = 4.dp))
@@ -169,23 +196,10 @@ private fun CategoryEditor(
     Text("ICON", fontSize = 10.sp, letterSpacing = 1.1.sp, fontWeight = FontWeight.Bold, color = tandem.muted)
     IconPalette(selected = iconName, name = name, onPick = { iconName = it })
 
-    // Parent — only when creating (the edit endpoint doesn't move a category).
-    if (isNew && parents.isNotEmpty()) {
-        Spacer(Modifier.height(2.dp))
-        Text("PARENT", fontSize = 10.sp, letterSpacing = 1.1.sp, fontWeight = FontWeight.Bold, color = tandem.muted)
-        Box {
-            OutlinedButton(onClick = { parentMenu = true }, modifier = Modifier.fillMaxWidth()) {
-                Text(parents.firstOrNull { it.id == parentId }?.name ?: "Top level", modifier = Modifier.weight(1f))
-                Icon(TandemIcons.Chevron, null, tint = tandem.muted, modifier = Modifier.size(16.dp))
-            }
-            DropdownMenu(expanded = parentMenu, onDismissRequest = { parentMenu = false }) {
-                DropdownMenuItem(text = { Text("Top level") }, onClick = { parentId = null; parentMenu = false })
-                parents.forEach { p ->
-                    DropdownMenuItem(text = { Text("${p.icon.orEmpty()} ${p.name}".trim()) }, onClick = { parentId = p.id; parentMenu = false })
-                }
-            }
-        }
-    }
+    // ⚠️ The PARENT picker is gone (Session 109). Sub-categories were retired from the product — the web has no
+    // "Sub-category" affordance anywhere any more — but this sheet kept offering one, so the phone was still
+    // minting a kind of category the rest of the app had stopped making. The domain field stays (older accounts
+    // still hold nested rows, and the grid above shows them so they remain renameable); nothing creates one now.
 
     saveError?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 13.sp, modifier = Modifier.padding(top = 4.dp)) }
 
