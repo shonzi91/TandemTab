@@ -78,7 +78,8 @@ public static class SpendingMap
         // account list it already holds, and the server stays out of the business of labelling other accounts.
         e.SettledToAccountId,
         e.SettledFromAccountId,
-        e.SettledAmount);
+        e.SettledAmount,
+        e.RefundedAmount);
 
     /// <summary>The full Spending surface for <paramref name="viewPeriod"/> (the current period when null; empty
     /// currency-only view when the account has no period).</summary>

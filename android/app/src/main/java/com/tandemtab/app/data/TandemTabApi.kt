@@ -391,6 +391,18 @@ class TandemTabApi(
     suspend fun unsettleExpense(accountId: String, expenseId: String, destinationAccountId: String): MutationResultDto =
         authedDelete("/accounts/$accountId/expenses/$expenseId/settle?destinationAccountId=$destinationAccountId").body()
 
+    /** Money back on an expense — a refund, or someone paying their share of a bill. The expense shrinks; nothing is
+     *  booked as income. `amount` is what came back NOW, not a running total: the server adds it under its own lock,
+     *  so two devices acking two credits against one dinner both land instead of overwriting each other.
+     *  ⚠️ Returns a NEW expense id (the ledger is append-only) — hold on to it, the old one no longer resolves. */
+    suspend fun refundExpense(accountId: String, expenseId: String, amount: Double): MutationResultDto =
+        authedPost("/accounts/$accountId/expenses/$expenseId/refund", RefundExpenseRequest(amount)).body()
+
+    /** Put the whole charge back. Addressed by the expense's CURRENT id, and mints another new one. The bank
+     *  transaction that prompted the refund stays acknowledged — this undoes the deduction, not the sync. */
+    suspend fun undoRefund(accountId: String, expenseId: String): MutationResultDto =
+        authedDelete("/accounts/$accountId/expenses/$expenseId/refund").body()
+
     /** Rewrite both halves — the outflow here and the deposit it made there. Addressed by the PAIR id, which only
      *  exists on transfers written since the link did; use [deleteAccountTransfer] for the rest. */
     suspend fun editAccountTransfer(accountId: String, pairId: String, req: EditAccountTransferRequest): MutationResultDto =

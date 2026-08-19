@@ -229,6 +229,36 @@ public sealed class Expense : Entity
         ForeignCurrency = currency.Trim().ToUpperInvariant();
     }
 
+    /// <summary>
+    /// How much of this expense has come back — a partial or full refund that landed as money in on the same
+    /// (bank-synced) wallet it was paid from. The classic case is a bill split: you pay the whole restaurant
+    /// tab and a friend transfers their share back the next day.
+    ///
+    /// <para><b>★ It reduces <see cref="Amount"/> rather than being booked as income</b>, and that is the whole
+    /// point of the field. Recording the money back as a contribution would leave "spent" claiming the full tab
+    /// and inflate "money in" by a sum nobody earned — two wrong figures that happen to net to the right balance.
+    /// A refund is not income; it is spending that turned out not to have happened.</para>
+    ///
+    /// <para>Kept alongside the reduced amount rather than folded silently into it so the row can still say what
+    /// the original charge was, and so the refund can be undone — same shape as
+    /// <see cref="SettledAmount"/>. Body data — travels in the account snapshot, not the relational header.</para>
+    /// </summary>
+    public decimal RefundedAmount { get; private set; }
+
+    /// <summary>Record the total refunded against this expense. A setter for the same reason as
+    /// <see cref="SetForeign"/>: EF cannot bind an ignored property to a constructor parameter.</summary>
+    public void SetRefunded(decimal amount) => RefundedAmount = amount;
+
+    /// <summary>The refunded total as <see cref="Money"/> (in this expense's currency).</summary>
+    public Money RefundedMoney => new(RefundedAmount, Amount.Currency);
+
+    /// <summary>Some of this expense has been paid back.</summary>
+    public bool IsRefunded => RefundedAmount != 0m;
+
+    /// <summary>What the charge was before anything came back (= <see cref="Amount"/> + <see cref="RefundedMoney"/>).
+    /// ⚠️ Deliberately separate from <see cref="OriginalAmount"/>, which answers the settlement question instead.</summary>
+    public Money AmountBeforeRefund => Amount + RefundedMoney;
+
     public Expense(
         Guid categoryId,
         Money amount,

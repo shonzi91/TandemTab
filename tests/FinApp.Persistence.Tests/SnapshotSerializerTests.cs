@@ -223,6 +223,34 @@ public class SnapshotSerializerTests
     }
 
     [Fact]
+    public void A_refund_round_trips_and_an_untouched_expense_reports_none()
+    {
+        var owner = Guid.NewGuid();
+        var account = new Account("Home", "EUR");
+        account.AssignOwner(owner, "Me");
+        account.AddDefaultFunds();
+        var bank = account.FundId("Bank");
+        var food = account.AddCategory("Food");
+
+        var p = account.StartPeriod(new DateOnly(2026, 1, 1), new DateOnly(2026, 1, 31));
+        var dinner = p.AddExpense(new Expense(food.Id, Eur(60), new DateOnly(2026, 1, 4), owner, bank, "Dinner"));
+        p.AddExpense(new Expense(food.Id, Eur(9), new DateOnly(2026, 1, 4), owner, bank, "Coffee"));
+        p.SetRefund(dinner.Id, Eur(20));
+
+        var copy = AccountSnapshotSerializer.Deserialize(AccountSnapshotSerializer.Serialize(account));
+
+        var copied = copy.Periods.Single().Expenses.ToList();
+        var back = copied.Single(e => e.Note == "Dinner");
+        Assert.Equal(20m, back.RefundedAmount);
+        Assert.Equal(Eur(40), back.Amount);            // the stored amount is the reduced one
+        Assert.Equal(Eur(60), back.AmountBeforeRefund);
+        Assert.False(copied.Single(e => e.Note == "Coffee").IsRefunded);
+        // The figure every total is built from survives the trip, which is the thing a lost field would break
+        // quietly: the period would keep totalling the charge that was already partly paid back.
+        Assert.Equal(Eur(49), copy.Periods.Single().ExpensesTotal);
+    }
+
+    [Fact]
     public void Category_essential_flag_round_trips()
     {
         var account = new Account("Home", "EUR");

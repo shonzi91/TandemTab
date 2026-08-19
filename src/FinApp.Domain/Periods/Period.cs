@@ -597,6 +597,49 @@ public sealed class Period : Entity
         return updated;
     }
 
+    /// <summary>
+    /// Record money coming back against an expense — a refund, or a share of a split bill paid back into the same
+    /// wallet the expense was paid from. The expense drops to <c>before − totalRefunded</c>; passing zero undoes it
+    /// and restores the full charge.
+    ///
+    /// <para><b>★ The total is passed, not a delta.</b> Two friends paying their halves back on different days are
+    /// two calls, and the second must not have to know what the first did — so the caller states where the running
+    /// total should land and this stays order-independent and re-runnable. It is also what makes undo a normal call
+    /// rather than a second code path, the same reasoning as <see cref="SetSettlement"/>.</para>
+    ///
+    /// <para>⚠️ The rebuild mints a new id (the ledger is append-only), so <b>every</b> piece of body data is carried
+    /// across explicitly. Dropping the bank link here would be the expensive one: the row would stop matching the
+    /// bank transaction it came from, and duplicate detection would offer to log it a second time.</para>
+    /// </summary>
+    public Expense SetRefund(Guid expenseId, Money totalRefunded)
+    {
+        EnsureCurrency(totalRefunded);
+        EnsureOpen();
+        var old = _expenses.FirstOrDefault(e => e.Id == expenseId)
+            ?? throw new InvalidOperationException("Expense not found in this period.");
+        var before = old.AmountBeforeRefund;
+        if (totalRefunded.IsNegative || totalRefunded > before)
+            throw new InvalidOperationException($"You can refund between 0 and the expense amount ({before}).");
+
+        _expenses.Remove(old);
+        var updated = new Expense(old.CategoryId, before - totalRefunded, old.Date, old.MemberId, old.FundId, old.Note,
+            old.SourceSavingCategoryId, onBehalfOfOtherAccount: old.OnBehalfOfOtherAccount,
+            settlementId: old.SettlementId,
+            settledToAccountId: old.SettledToAccountId,
+            settledFromAccountId: old.SettledFromAccountId,
+            settledAmount: old.SettledAmount);
+        updated.SetRefunded(totalRefunded.Amount);
+        updated.SetInstallmentLink(old.InstallmentGroupId, old.Part, old.DebtBucketId);
+        updated.SetTags(old.TagIds);
+        updated.SetTrip(old.TripId);
+        updated.SetTime(old.Time);
+        updated.SetFundSynced(old.FundSynced);
+        updated.SetBankLink(old.BankExternalId, old.AutoFiled);
+        updated.SetForeign(old.ForeignAmount, old.ForeignCurrency);
+        _expenses.Add(updated);
+        return updated;
+    }
+
     public Money ExpensesTotal => Sum(_expenses.Select(e => e.Amount));
 
     // --- Savings ----------------------------------------------------------

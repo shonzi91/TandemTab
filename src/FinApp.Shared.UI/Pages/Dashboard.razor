@@ -1371,6 +1371,13 @@ else
                                 {
                                     <span class="settle-tag" title="@Loc["Settled from another account"]">↩ @Loc["from"] @State.AccountName(ctx.E.SettledFromAccountId!.Value)</span>
                                 }
+                                @* Money that came back. Named on the row rather than folded silently into the amount,
+                                   so a €40 dinner that was €60 says why — otherwise the figure disagrees with the
+                                   receipt and there is nothing to explain it. *@
+                                @if (ctx.E.IsRefunded)
+                                {
+                                    <span class="settle-tag" title="@string.Format(Loc["{0} came back on this — it was {1}"], Fmt(ctx.E.RefundedMoney), Fmt(ctx.E.AmountBeforeRefund))">↩ @Fmt(ctx.E.RefundedMoney) @Loc["back"]</span>
+                                }
                                 @if (ctx.E.AutoFiled) { <span class="row-note" title="@AutoFiledTitle(ctx.E)"><Icon Name="bank" Class="ic-s" /></span> }
                                 @if (ctx.E.IsInstallmentPart)
                                 {
@@ -3330,6 +3337,14 @@ else
                     {
                         <p class="hint">@Loc["All caught up — nothing left to review."]</p>
                     }
+                    @* Every refusal raised while reviewing used to be set and never rendered — `_bankError` was only
+                       drawn by the External-accounts modal. "Pick where this money came from first." and "Pick
+                       something to map to first." have both been invisible here, so the button simply did nothing
+                       and the user had no way to learn why. *@
+                    @if (_bankError is not null)
+                    {
+                        <div class="alert warn-bg"><span>@_bankError</span><button class="alert-x" title="@Loc["Dismiss"]" aria-label="@Loc["Dismiss"]" @onclick="() => _bankError = null"><span aria-hidden="true">×</span></button></div>
+                    }
                     <div class="modal-actions">
                         <button class="ghost" @onclick="DismissBankReview">@Loc["Close"]</button>
                     </div>
@@ -4469,6 +4484,13 @@ else
                     {
                         <button type="button" class="link settle-link" @onclick="() => OpenSettleExpense(_editExpenseId)"><Icon Name="users" /> @(State.FindExpense(_editExpenseId)!.IsSettlementSource ? Loc["Edit settlement onto another account"] : Loc["Settle part onto another account"])</button>
                     }
+                    @* The undo for a refund. It lives here rather than on the row because the bank transaction it
+                       came from is already acknowledged and will not come back — this restores the charge, and the
+                       user needs to see which charge that is while they do it. *@
+                    @if (State.FindExpense(_editExpenseId) is { IsRefunded: true } refExp)
+                    {
+                        <button type="button" class="link settle-link" @onclick="() => OpenUndoRefund(_editExpenseId)"><Icon Name="swap" /> @string.Format(Loc["{0} came back on this — undo"], Fmt(refExp.RefundedMoney))</button>
+                    }
                     <div class="modal-actions">
                         <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
                         <button @onclick="SaveEditExpense" disabled="@(_amount <= 0)">@Loc["Save"]</button>
@@ -4484,6 +4506,22 @@ else
                     <div class="modal-actions">
                         <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
                         <button class="danger-btn" @onclick="ConfirmDeleteExpense">@Loc["Remove"]</button>
+                    </div>
+                    break;
+
+                case Modal.UndoRefund:
+                    <h3>@Loc["Put the money back on this expense?"]</h3>
+                    @if (State.FindExpense(_editExpenseId) is { } rex)
+                    {
+                        <p class="hint">@rex.Date.ToString("dd MMM") · @State.CategoryName(rex.CategoryId) · @Fmt(rex.Amount) → <strong>@Fmt(rex.AmountBeforeRefund)</strong></p>
+                        @* Says plainly what is not undone. The bank row was acknowledged when the refund was
+                           recorded and syncing again will not bring it back, so anyone expecting this to restore
+                           the review row would otherwise be waiting for something that never arrives. *@
+                        <p class="hint">@Loc["The expense goes back to its full amount. The bank transaction stays acknowledged — this doesn't return it to the review list."]</p>
+                    }
+                    <div class="modal-actions">
+                        <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
+                        <button @onclick="ConfirmUndoRefund">@Loc["Put it back"]</button>
                     </div>
                     break;
 
@@ -6813,7 +6851,7 @@ else
 }
 
 @code {
-    private enum Modal { None, BankReview, BankConfirm, BankConsent, AddCat, AddBudget, DisburseSaving, PayoffProjection, GoalProjection, InvestmentProjection, BankTransfer, ExternalAccounts, HealthScore, RunwayMath, EditCat, DeleteCat, DeleteBudget, EditAccountTransfer, DeleteAccountTransfer, CategoryDetail, AddAccount, EditAccount, DeleteAccount, RemoveMember, LeaveAccount, AddExpense, NextPeriod, RemovePeriod, EditExpense, DeleteExpense, SettleExpense, AddBucket, EditBucket, DeleteBucket, EditCost, AddFund, EditFund, DeleteFund, Invite, Transfer, Deposit, EditDeposit, DeleteDeposit, ManageCats, ManageContribCats, ContribCat, DeleteContribCat, AddSaving, BudgetSaving, SpendSaving, EditSavingDeposit, DeleteSavingDeposit, EditTransfer, DeleteTransfer, EditPeriod, EditSavingMovement, DeleteSavingMovement, DeleteExternalTransfer, Achievements, Reallocate, Recurring, RecurringEdit, RecurringConfirm, Import, AddOrImport, ArchiveFund, FundMovements, Archived, ManageTags, EditTag, LogInstallment, DeleteInstallment, WeekRecap, TripEdit, DeleteTrip, AttachToTrip, UseTripSavings, TagExpense }
+    private enum Modal { None, BankReview, BankConfirm, BankConsent, AddCat, AddBudget, DisburseSaving, PayoffProjection, GoalProjection, InvestmentProjection, BankTransfer, ExternalAccounts, HealthScore, RunwayMath, EditCat, DeleteCat, DeleteBudget, EditAccountTransfer, DeleteAccountTransfer, CategoryDetail, AddAccount, EditAccount, DeleteAccount, RemoveMember, LeaveAccount, AddExpense, NextPeriod, RemovePeriod, EditExpense, DeleteExpense, SettleExpense, AddBucket, EditBucket, DeleteBucket, EditCost, AddFund, EditFund, DeleteFund, Invite, Transfer, Deposit, EditDeposit, DeleteDeposit, ManageCats, ManageContribCats, ContribCat, DeleteContribCat, AddSaving, BudgetSaving, SpendSaving, EditSavingDeposit, DeleteSavingDeposit, EditTransfer, DeleteTransfer, EditPeriod, EditSavingMovement, DeleteSavingMovement, DeleteExternalTransfer, Achievements, Reallocate, Recurring, RecurringEdit, RecurringConfirm, Import, AddOrImport, ArchiveFund, FundMovements, Archived, ManageTags, EditTag, LogInstallment, DeleteInstallment, WeekRecap, TripEdit, DeleteTrip, AttachToTrip, UseTripSavings, TagExpense, UndoRefund }
     private enum Tab { Overview, Account, Budgets, Savings }
 
     /// <summary>Which kind of goal the Goals grid is showing. Defaults to All so the filter narrows on request
@@ -8732,6 +8770,19 @@ else
                                 <option value="contributor:@m.UserId">@m.DisplayName</option>
                             }
                         </optgroup>
+                        @* Money back on something already logged — a refund, or a friend's share of a split bill.
+                           Booking that as income would leave "spent" claiming the full charge, so it comes off the
+                           expense instead. Only expenses paid from this same synced wallet are offered: refunding
+                           one paid from another wallet would un-spend money there while the cash arrives here. *@
+                        @if (State.RefundableExpenses.Count > 0)
+                        {
+                            <optgroup label="@Loc["Money back on an expense"]">
+                                @foreach (var e in State.RefundableExpenses)
+                                {
+                                    <option value="refund:@e.Id">@e.Date.ToString("dd MMM") · @State.CategoryName(e.CategoryId) · @Fmt(e.Amount)@(string.IsNullOrEmpty(e.Note) ? "" : " · " + e.Note)</option>
+                                }
+                            </optgroup>
+                        }
                     </select>
                     @if (State.HasSyncedFund)
                     {
@@ -9132,6 +9183,9 @@ else
         string kind; Guid target;
         if (tx.Amount < 0) { kind = "category"; target = RowCat(tx.ExternalId); }
         else { var (k, t) = ParseCredit(RowCredit(tx.ExternalId)); kind = k; target = t; }
+        // A refund points at one expense, so it can never be a standing rule: the next credit from this merchant
+        // would deduct from a charge that has nothing to do with it. Refuse rather than save a rule that misfires.
+        if (kind == "refund") { _bankError = Loc["A refund is tied to one expense, so it can't become a merchant rule."]; return; }
         if (target == Guid.Empty) { _bankError = Loc["Pick something to map to first."]; return; }
 
         _bankBusy = true; _bankError = null;
@@ -11395,6 +11449,19 @@ else
     {
         if (e.Key is "Enter" && !string.IsNullOrWhiteSpace(_newTagName)) await AddTagFromModal();
     }
+
+    // --- Undo a refund recorded against an expense ------------------------
+    private void OpenUndoRefund(Guid expenseId)
+    {
+        _editExpenseId = expenseId;
+        _modal = Modal.UndoRefund;
+    }
+
+    private Task ConfirmUndoRefund() => RunModal(async () =>
+    {
+        await State.UndoRefund(_editExpenseId);
+        CloseModal();
+    });
 
     // --- Settle expense onto another account (feature 1) -----------------
     private async Task OpenSettleExpense(Guid expenseId)

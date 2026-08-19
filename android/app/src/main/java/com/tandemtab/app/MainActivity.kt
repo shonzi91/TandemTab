@@ -149,6 +149,8 @@ private fun App(vm: AppViewModel, onGoogle: () -> Unit) {
             onDisconnectBank = { vm.disconnectBank() },
             onConfirmBankExpense = vm::confirmPendingExpense,
             onConfirmBankIncome = vm::confirmPendingIncome,
+            onConfirmBankRefund = vm::confirmPendingRefund,
+            onUndoRefund = { id -> vm.undoRefund(id) },
             onDismissBankPending = vm::dismissPending,
             onBankLinkUrlHandled = vm::clearBankLinkUrl,
             onLoadHealth = vm::loadHealth,

@@ -1577,6 +1577,51 @@ accounts.MapDelete("/{id:guid}/expenses/{expenseId:guid}/settle", async (Guid id
     return Results.Ok(new MutationResultDto(version, expenseId));
 });
 
+// Money back on an expense — a refund, or a friend's share of a split bill landing as a bank credit. The expense
+// shrinks; nothing is booked as income (see Expense.RefundedAmount for why that distinction is the whole feature).
+//
+// ★ The body carries the amount that came back NOW, not the running total, and the server adds it inside the
+// mutation. The domain takes a total (so it stays order-independent and re-runnable), but making the *client* send
+// one would force a read-modify-write: two phones acking two credits against the same dinner would each compute a
+// total from the figure they last read and the second would erase the first. Deltas make the lock do that work.
+//
+// ⚠️ The expense id CHANGES. The ledger is append-only, so reducing an amount mints a new row — which is why the
+// new id comes back in the response rather than leaving the caller holding one that no longer resolves. The undo
+// below is addressed by the new id; the S108 lesson was an undo unreachable by construction from a thin client, and
+// an id the client cannot learn is the same bug wearing a different hat.
+accounts.MapPost("/{id:guid}/expenses/{expenseId:guid}/refund", async (Guid id, Guid expenseId, RefundExpenseRequest req, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
+{
+    var userId = user.UserId();
+    var (version, newId) = await svc.MutateAsync(userId, id, account =>
+    {
+        if (req.Amount <= 0m) throw new InvalidOperationException("The amount must be positive.");
+        var period = account.CurrentPeriod ?? throw new InvalidOperationException("There's no open period.");
+        var expense = period.Expenses.FirstOrDefault(e => e.Id == expenseId)
+            ?? throw new InvalidOperationException("That expense doesn't exist in this period.");
+        // Domain guards the ceiling (0 ≤ total ≤ the original charge) and says the figure in its message.
+        return period.SetRefund(expenseId, new Money(expense.RefundedAmount + req.Amount, account.Currency)).Id;
+    }, ct);
+    await notifier.AccountChangedAsync(id, userId, version);
+    return Results.Ok(new MutationResultDto(version, newId));
+});
+
+// Undo: put the whole charge back. Addressed by the expense's CURRENT id (the one the last refund returned, or the
+// one /spending reports now) — and it mints another new id, returned the same way.
+accounts.MapDelete("/{id:guid}/expenses/{expenseId:guid}/refund", async (Guid id, Guid expenseId, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
+{
+    var userId = user.UserId();
+    var (version, newId) = await svc.MutateAsync(userId, id, account =>
+    {
+        var period = account.CurrentPeriod ?? throw new InvalidOperationException("There's no open period.");
+        var expense = period.Expenses.FirstOrDefault(e => e.Id == expenseId)
+            ?? throw new InvalidOperationException("That expense doesn't exist in this period.");
+        if (!expense.IsRefunded) throw new InvalidOperationException("Nothing has come back on that expense.");
+        return period.SetRefund(expenseId, new Money(0m, account.Currency)).Id;
+    }, ct);
+    await notifier.AccountChangedAsync(id, userId, version);
+    return Results.Ok(new MutationResultDto(version, newId));
+});
+
 // Budgets — a category's planned allocation for the open period. One idempotent upsert (create-or-update, mirroring
 // BudgetingState.SaveBudget → Period.SetBudget) keyed by category, plus a remove. Budgets are advisory: they don't
 // reserve cash and are never capped, so this never rejects for being "too big" (only a negative amount → 400). The

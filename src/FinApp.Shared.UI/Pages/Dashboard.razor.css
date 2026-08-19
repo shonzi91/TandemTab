@@ -1024,10 +1024,15 @@ html.dark .acct-chip-label { color: #9aa4b2; }
     font-size: .82rem; display: inline-flex; align-items: center; gap: 1px;
 }
 
+/* The small pill on an expense's sub-line that says money moved off this row — settled onto another account,
+   or come back as a refund. One class for all three because they are the same statement in the same place. */
 .settle-tag {
     display: inline-block; margin-left: 6px; padding: 1px 8px; border-radius: 999px;
     background: #e4f6ee; color: #13a06e; font-size: .72rem; font-weight: 600; white-space: nowrap;
 }
+/* Was missing until refunds became a second caller: the light mint pill rode straight into dark mode, where it
+   sat as a pale blob on a near-black row. Same statement, the dark palette's own mint. */
+html.dark .settle-tag { background: #17342c; color: var(--tm-mint); }
 
 /* Tags — flat cross-cutting labels on expenses. A small pill on the row's sub-line; toggle chips in the modal. */
 /* The clock on an expense row. Tabular figures so a column of times lines up, and deliberately quiet — it orders

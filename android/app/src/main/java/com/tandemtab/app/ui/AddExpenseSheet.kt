@@ -131,6 +131,7 @@ fun AddSheet(
     // Null when there is nowhere to settle onto (only one account, or none in this currency), which is why the
     // whole row is absent rather than present-and-disabled — a control that can never work is worse than no control.
     onSettle: ((ExpenseDto) -> Unit)? = null,
+    onUndoRefund: ((ExpenseDto) -> Unit)? = null,
 ) {
     val tandem = LocalTandemColors.current
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -177,6 +178,7 @@ fun AddSheet(
     var note by remember(editing) { mutableStateOf(editing?.note ?: "") }
     var date by remember(spending.loaded, editing, editingDeposit) { mutableStateOf(editing?.date ?: editingDeposit?.date ?: today) }
     var staged by remember { mutableStateOf(listOf<ExpenseDraft>()) }
+    var confirmingUndoRefund by remember { mutableStateOf(false) }
     var catExpanded by remember { mutableStateOf(false) }
     var catSearch by remember { mutableStateOf("") }
     var newCatName by remember { mutableStateOf("") }   // inline "new category" name (empty = the +New row is collapsed)
@@ -544,6 +546,38 @@ fun AddSheet(
                                 else "Settle onto another account",
                                 color = MaterialTheme.colorScheme.primary,
                                 fontWeight = FontWeight.SemiBold,
+                            )
+                        }
+                    }
+
+                    // Undoing money that came back. Here rather than on the row because the bank transaction it came
+                    // from is already acknowledged and will not return — the confirm has to say so while the user is
+                    // looking at which charge is about to grow again.
+                    if (editingMode && onUndoRefund != null && editing != null && editing.refundedAmount > 0) {
+                        Spacer(Modifier.height(10.dp))
+                        TextButton(onClick = { confirmingUndoRefund = true }, modifier = Modifier.fillMaxWidth()) {
+                            Icon(TandemIcons.Swap, null, tint = MaterialTheme.colorScheme.primary)
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                "${fmt(editing.refundedAmount)} came back on this — undo",
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                        }
+                        if (confirmingUndoRefund) {
+                            AlertDialog(
+                                onDismissRequest = { confirmingUndoRefund = false },
+                                title = { Text("Put the money back on this expense?") },
+                                text = {
+                                    Text(
+                                        "It goes back to ${fmt(editing.amount + editing.refundedAmount)}. " +
+                                            "The bank transaction stays acknowledged — this doesn't return it to the review list.",
+                                    )
+                                },
+                                confirmButton = {
+                                    TextButton(onClick = { confirmingUndoRefund = false; onUndoRefund(editing) }) { Text("Put it back") }
+                                },
+                                dismissButton = { TextButton(onClick = { confirmingUndoRefund = false }) { Text("Cancel") } },
                             )
                         }
                     }

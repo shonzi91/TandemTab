@@ -66,6 +66,7 @@ fun BankSheet(
     onDisconnect: () -> Unit,
     onConfirmExpense: (externalId: String, categoryId: String, fundId: String, amount: Double, date: String, note: String?, onDone: () -> Unit) -> Unit,
     onConfirmIncome: (externalId: String, categoryId: String, fundId: String, amount: Double, date: String, onDone: () -> Unit) -> Unit,
+    onConfirmRefund: (externalId: String, expenseId: String, amount: Double, onDone: () -> Unit) -> Unit,
     onDismissPending: (String) -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -134,7 +135,8 @@ fun BankSheet(
                         bank.pending.forEach { tx ->
                             PendingRow(
                                 tx = tx, spending = spending, fmt = fmt, busy = bank.handlingId == tx.externalId,
-                                onConfirmExpense = onConfirmExpense, onConfirmIncome = onConfirmIncome, onDismiss = onDismissPending,
+                                onConfirmExpense = onConfirmExpense, onConfirmIncome = onConfirmIncome,
+                                onConfirmRefund = onConfirmRefund, onDismiss = onDismissPending,
                             )
                         }
                     }
@@ -175,6 +177,7 @@ private fun PendingRow(
     busy: Boolean,
     onConfirmExpense: (String, String, String, Double, String, String?, () -> Unit) -> Unit,
     onConfirmIncome: (String, String, String, Double, String, () -> Unit) -> Unit,
+    onConfirmRefund: (String, String, Double, () -> Unit) -> Unit,
     onDismiss: (String) -> Unit,
 ) {
     val tandem = LocalTandemColors.current
@@ -188,6 +191,17 @@ private fun PendingRow(
     val defaultFund = funds.firstOrNull { it.synced }?.id ?: funds.firstOrNull()?.id
     var categoryId by remember { mutableStateOf(categories.firstOrNull()?.id) }
     var fundId by remember { mutableStateOf(defaultFund) }
+
+    // Money back on something already logged — a refund, or a friend's share of a bill you covered. Offered only on
+    // credits, and only for expenses paid from the SAME synced wallet: refunding one paid from another wallet would
+    // un-spend money there while the cash arrives here. Nothing to refund → the choice never appears.
+    val syncedFundId = funds.firstOrNull { it.synced }?.id
+    val refundable = remember(spending.expenses, syncedFundId) {
+        if (syncedFundId == null) emptyList()
+        else spending.expenses.filter { it.fundId == syncedFundId && it.amount > 0.0 }
+    }
+    var asRefund by remember { mutableStateOf(false) }
+    var refundExpenseId by remember { mutableStateOf<String?>(null) }
 
     Column(
         Modifier.fillMaxWidth()
@@ -207,17 +221,70 @@ private fun PendingRow(
 
         if (expanded) {
             Spacer(Modifier.height(12.dp))
-            FieldLabel(if (isCredit) "Income source" else "Category")
-            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                categories.forEach { c ->
-                    PickChip(c.name, c.icon, selected = c.id == categoryId, catName = c.name) { categoryId = c.id }
+
+            // What KIND of money-in this is. Only shown when there is something it could be money back on, so the
+            // ordinary credit keeps its one-question flow.
+            if (isCredit && refundable.isNotEmpty()) {
+                FieldLabel("What is this?")
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    PickChip("Income", null, selected = !asRefund) { asRefund = false }
+                    PickChip("Money back", "↩", selected = asRefund) { asRefund = true }
                 }
+                Spacer(Modifier.height(10.dp))
             }
-            Spacer(Modifier.height(10.dp))
-            FieldLabel("Fund")
-            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                funds.forEach { f ->
-                    PickChip(f.name, if (f.synced) "🏦" else null, selected = f.id == fundId) { fundId = f.id }
+
+            if (isCredit && asRefund) {
+                FieldLabel("Money back on")
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    refundable.forEach { e ->
+                        val picked = e.id == refundExpenseId
+                        Row(
+                            Modifier.fillMaxWidth()
+                                .background(
+                                    if (picked) tandem.positive.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surface,
+                                    RoundedCornerShape(10.dp),
+                                )
+                                .border(
+                                    1.dp,
+                                    if (picked) tandem.positive else MaterialTheme.colorScheme.outline,
+                                    RoundedCornerShape(10.dp),
+                                )
+                                .clickable { refundExpenseId = e.id }
+                                .padding(horizontal = 10.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text(e.categoryName, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface, maxLines = 1)
+                                Text(
+                                    listOfNotNull(prettyTxDate(e.date), e.note?.takeIf { it.isNotBlank() }).joinToString(" · "),
+                                    fontSize = 11.sp, color = tandem.muted, maxLines = 1,
+                                )
+                            }
+                            Spacer(Modifier.width(8.dp))
+                            Text(fmt(e.amount), fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
+                        }
+                    }
+                }
+                // Says what will happen to the numbers, because "money in stays put" is the non-obvious half and
+                // the reason this is not just income with a different label.
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "Comes off the expense — spending drops, money in doesn't move.",
+                    fontSize = 11.sp, color = tandem.muted,
+                )
+            } else {
+                FieldLabel(if (isCredit) "Income source" else "Category")
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    categories.forEach { c ->
+                        PickChip(c.name, c.icon, selected = c.id == categoryId, catName = c.name) { categoryId = c.id }
+                    }
+                }
+                Spacer(Modifier.height(10.dp))
+                FieldLabel("Fund")
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    funds.forEach { f ->
+                        PickChip(f.name, if (f.synced) "🏦" else null, selected = f.id == fundId) { fundId = f.id }
+                    }
                 }
             }
             Spacer(Modifier.height(14.dp))
@@ -228,15 +295,20 @@ private fun PendingRow(
                 Spacer(Modifier.weight(1f))
                 Button(
                     onClick = {
+                        if (isCredit && asRefund) {
+                            val target = refundExpenseId ?: return@Button
+                            onConfirmRefund(tx.externalId, target, tx.amount) { expanded = false }
+                            return@Button
+                        }
                         val cat = categoryId ?: return@Button
                         val fund = fundId ?: return@Button
                         if (isCredit) onConfirmIncome(tx.externalId, cat, fund, tx.amount, tx.date) { expanded = false }
                         else onConfirmExpense(tx.externalId, cat, fund, tx.amount, tx.date, tx.description) { expanded = false }
                     },
-                    enabled = !busy && categoryId != null && fundId != null,
+                    enabled = !busy && if (isCredit && asRefund) refundExpenseId != null else (categoryId != null && fundId != null),
                 ) {
                     if (busy) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
-                    else Text(if (isCredit) "Add income" else "Add expense")
+                    else Text(if (isCredit && asRefund) "Take it off" else if (isCredit) "Add income" else "Add expense")
                 }
             }
         }

@@ -2519,6 +2519,27 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     /// <summary>Turn a bank money-in into a movement into the synced fund: the destination is the synced fund
     /// (not credited — the real balance handles it); the <paramref name="source"/> ("fund:{id}" or
     /// "contributor:{id}") is where it came from and is the side that actually moves. Then acks the row.</summary>
+    /// <summary>
+    /// Expenses a bank credit could be a refund of: paid from the synced wallet, in this period, still worth
+    /// something, newest first. Deliberately <b>not</b> filtered to those big enough to absorb the credit — an
+    /// over-refund is refused by the domain with a figure in the message, which tells the user which expense they
+    /// picked wrongly. Silently hiding the candidates would leave them staring at a list missing the row they
+    /// remember paying.
+    /// </summary>
+    public IReadOnlyList<Expense> RefundableExpenses =>
+        HasSyncedFund
+            ? Period.Expenses.Where(e => e.FundId == SyncedFundId && e.Amount.Amount > 0m)
+                             .OrderByDescending(e => e.Date).ThenByDescending(e => e.SortTime).ToList()
+            : [];
+
+    /// <summary>Put a refunded expense back to its full charge. The bank row it came from is already acknowledged
+    /// and is not resurrected — this undoes the deduction, not the sync.</summary>
+    public async Task UndoRefund(Guid expenseId)
+    {
+        Period.SetRefund(expenseId, Money(0m));
+        await SaveAsync();
+    }
+
     public async Task ConfirmBankMoneyIn(string externalId, string source, decimal amount, string? note, DateOnly date, bool autoFiled = false)
     {
         if (!HasSyncedFund) throw new InvalidOperationException("Mark a fund as synced to your bank first (Edit fund).");
@@ -2537,6 +2558,18 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
         {
             var deposit = Period.Deposit(targetId, Money(amount), fundId: SyncedFundId, date: date);
             deposit.SetFundSynced(true);   // counts as a contribution, but the synced fund isn't credited
+        }
+        else if (parts[0] == "refund")
+        {
+            // Money back on something already logged — a refund, or a friend's share of a split bill. It is NOT
+            // income: booking it as one would leave "spent" claiming the full charge and inflate "money in" by a
+            // sum nobody earned. The expense it came back on shrinks instead, so the category, the budget and the
+            // period total all correct themselves at once.
+            var expense = Period.Expenses.FirstOrDefault(e => e.Id == targetId)
+                ?? throw new InvalidOperationException("That expense is no longer in this period.");
+            if (expense.FundId != SyncedFundId)
+                throw new InvalidOperationException("Only an expense paid from the synced wallet can be refunded into it.");
+            Period.SetRefund(targetId, Money(expense.RefundedAmount + amount));
         }
         else throw new InvalidOperationException("Unknown money-in source.");
 

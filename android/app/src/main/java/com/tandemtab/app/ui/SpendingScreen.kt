@@ -730,7 +730,10 @@ private fun ExpenseRow(
             // the emulator, where it clipped mid-word. The source row is the one that needs explaining: without
             // this, a €120 expense silently reads €70 and looks like a typo.
             val settled = if (e.isSettlementSource && e.settledAmount > 0) "🤝 ${fmt(e.settledAmount)} settled" else null
-            val line = listOfNotNull(e.time?.take(5), sub, part, settled).joinToString(" · ")
+            // Money that came back. Same reasoning as the settled badge above: without it a €60 dinner that reads
+            // €40 disagrees with the receipt and has nothing to explain it.
+            val refunded = if (e.refundedAmount > 0) "↩ ${fmt(e.refundedAmount)} back" else null
+            val line = listOfNotNull(e.time?.take(5), sub, part, settled, refunded).joinToString(" · ")
             Text(line, fontSize = 12.sp, color = tandem.muted, maxLines = 1)
         }
         Spacer(Modifier.width(8.dp))

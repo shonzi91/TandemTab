@@ -164,6 +164,8 @@ fun HomeScreen(
     onDisconnectBank: () -> Unit,
     onConfirmBankExpense: (String, String, String, Double, String, String?, () -> Unit) -> Unit,
     onConfirmBankIncome: (String, String, String, Double, String, () -> Unit) -> Unit,
+    onConfirmBankRefund: (String, String, Double, () -> Unit) -> Unit,
+    onUndoRefund: (String) -> Unit,
     onDismissBankPending: (String) -> Unit,
     onBankLinkUrlHandled: () -> Unit,
     onLoadHealth: (Boolean) -> Unit,
@@ -342,6 +344,7 @@ fun HomeScreen(
                 // Only offered when there is somewhere to settle onto. Same currency, because the server refuses
                 // a cross-currency settlement outright — offering it would be a button that always fails.
                 onSettle = if (settleTargets.isEmpty()) null else onBeginSettle,
+                onUndoRefund = { e -> onUndoRefund(e.id) },
             )
         }
         state.settlingExpense?.let { se ->
@@ -607,6 +610,7 @@ fun HomeScreen(
                 onDisconnect = onDisconnectBank,
                 onConfirmExpense = onConfirmBankExpense,
                 onConfirmIncome = onConfirmBankIncome,
+                onConfirmRefund = onConfirmBankRefund,
                 onDismissPending = onDismissBankPending,
                 onDismiss = { showBank = false },
             )

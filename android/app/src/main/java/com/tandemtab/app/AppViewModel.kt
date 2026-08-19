@@ -2847,6 +2847,61 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** Turn a pending credit into income (source category + fund), then ack it. */
+    /**
+     * File a bank credit as money back on an expense already logged, rather than as income.
+     *
+     * ★ Why this is not "income with a minus sign": booking a refund as a contribution leaves spending claiming the
+     * full charge and adds money-in nobody earned — two wrong figures that happen to net to the right balance, with
+     * the category's budget still counting the whole bill. The expense shrinks instead, and everything downstream
+     * (the category, the budget, the period total) corrects itself at once.
+     *
+     * ⚠️ Spending is re-fetched rather than patched: the refund mints a NEW expense id server-side, so the row the
+     * list is holding no longer exists and a local edit would leave a ghost that nothing can act on.
+     */
+    fun confirmPendingRefund(externalId: String, expenseId: String, amount: Double, onDone: () -> Unit) {
+        val accountId = _state.value.selectedAccountId ?: return
+        _state.update { it.copy(bank = it.bank.copy(handlingId = externalId, error = null)) }
+        viewModelScope.launch {
+            try {
+                api.refundExpense(accountId, expenseId, kotlin.math.abs(amount))
+                api.ackBank(accountId, externalId, confirmed = true)
+                _state.update {
+                    it.copy(
+                        bank = it.bank.copy(handlingId = null, pending = it.bank.pending.filterNot { p -> p.externalId == externalId }),
+                        spending = it.spending.copy(loaded = false),
+                        wallets = it.wallets.copy(loaded = false),
+                    )
+                }
+                loadSpending(true)
+                runCatching { api.overview(accountId, _state.value.selectedPeriod) }
+                    .getOrNull()?.let { ov -> _state.update { it.copy(overview = ov) } }
+                onDone()
+            } catch (e: Exception) {
+                _state.update { it.copy(bank = it.bank.copy(handlingId = null, error = e.message ?: "Couldn't record that refund.")) }
+            }
+        }
+    }
+
+    /** Put the whole charge back on a refunded expense. The bank row stays acknowledged — syncing again will not
+     *  bring it back, which the confirm says out loud so nobody waits for a review row that never returns. */
+    fun undoRefund(expenseId: String, onDone: () -> Unit = {}) {
+        val accountId = _state.value.selectedAccountId ?: return
+        viewModelScope.launch {
+            try {
+                api.undoRefund(accountId, expenseId)
+                _state.update {
+                    it.copy(spending = it.spending.copy(loaded = false), wallets = it.wallets.copy(loaded = false))
+                }
+                loadSpending(true)
+                runCatching { api.overview(accountId, _state.value.selectedPeriod) }
+                    .getOrNull()?.let { ov -> _state.update { it.copy(overview = ov) } }
+                onDone()
+            } catch (e: Exception) {
+                _state.update { it.copy(bank = it.bank.copy(error = e.message ?: "Couldn't undo that refund.")) }
+            }
+        }
+    }
+
     fun confirmPendingIncome(externalId: String, categoryId: String, fundId: String, amount: Double, date: String, onDone: () -> Unit) {
         val accountId = _state.value.selectedAccountId ?: return
         _state.update { it.copy(bank = it.bank.copy(handlingId = externalId, error = null)) }

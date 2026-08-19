@@ -135,6 +135,10 @@ data class ExpenseDto(
     // report a booking date only, and 00:00 would sort a whole day's imports above everything logged that morning.
     // Untimed rows belong at the BOTTOM of their own day. (Server-side the same rule lives in Expense.SortTime.)
     val time: String? = null,
+    // How much has come back on this expense — a refund, or a friend's share of a bill paid back into the wallet it
+    // was paid from. ⚠️ [amount] above is ALREADY the reduced figure, so totals are right without touching this;
+    // what it buys is the ability to say why the row reads €40 when the receipt said €60, and to offer the undo.
+    val refundedAmount: Double = 0.0,
 )
 
 @Serializable
@@ -1045,6 +1049,16 @@ data class SettleExpenseRequest(
     val amount: Double,
     val note: String? = null,
 )
+
+/**
+ * POST /accounts/{id}/expenses/{expenseId}/refund — money back on an expense.
+ *
+ * ★ [amount] is what came back NOW, not the running total. The server adds it to whatever has already come back,
+ * inside the same lock that writes it, so two phones acking two credits against one bill both land. Sending a total
+ * would mean read-modify-write, and the second phone's stale read would silently erase the first phone's refund.
+ */
+@Serializable
+data class RefundExpenseRequest(val amount: Double)
 
 /** PUT /accounts/{id}/account-transfers/{pairId} — rewrite BOTH halves at once. Null fund ids and a null date keep
  *  what the transfer already has. */

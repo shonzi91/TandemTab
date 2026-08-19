@@ -46,7 +46,13 @@ public record ExpenseDto(
     // Null/zero on an ordinary expense; the source side fills To + Amount, the destination side fills From.
     Guid? SettledToAccountId = null,
     Guid? SettledFromAccountId = null,
-    decimal SettledAmount = 0m);
+    decimal SettledAmount = 0m,
+    // ★ How much has come back on this expense — a refund, or a friend's share of a split bill paid back into the
+    // wallet it was paid from. Amount above is ALREADY the reduced figure, so a client that ignores this still
+    // totals correctly; what it cannot do without it is explain why the row says €40 when the receipt said €60.
+    // Sent for the same reason SettledAmount is: the S108 lesson is that a row you can only *mark* is a row whose
+    // undo is unreachable, and undoing a refund needs to know there is one.
+    decimal RefundedAmount = 0m);
 
 /// <summary>A spend category as a picker option — id, label, stored icon, and parent for indentation. No money.</summary>
 public record CategoryOptionDto(Guid Id, string Name, string? Icon, Guid? ParentId);

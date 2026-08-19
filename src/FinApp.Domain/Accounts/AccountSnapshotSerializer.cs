@@ -190,7 +190,7 @@ public static class AccountSnapshotSerializer
         p.InitialBalances.Select(b => new InitialBalanceNode(b.Id, b.FundId, b.Amount.Amount, b.Informative)).ToList(),
         p.Contributions.Select(c => new ContributionNode(c.Id, c.MemberId, c.Paid.Amount, c.CategoryId, c.FundId, c.Date, c.FundSynced, c.AccountTransferId, c.FromAccountId)).ToList(),
         p.Budgets.Select(b => new BudgetNode(b.Id, b.CategoryId, b.Allocated.Amount, b.AlertThreshold, b.NotifyOnEveryExpense)).ToList(),
-        p.Expenses.Select(e => new ExpenseNode(e.Id, e.CategoryId, e.Amount.Amount, e.Date, e.MemberId, e.FundId, e.Note, e.SourceSavingCategoryId, e.OnBehalfOfOtherAccount, e.SettlementId, e.SettledToAccountId, e.SettledFromAccountId, e.SettledAmount, e.FundSynced, e.BankExternalId, e.AutoFiled, e.TagIds.Count == 0 ? null : e.TagIds.ToList(), e.InstallmentGroupId, e.Part, e.DebtBucketId, e.TripId, e.ForeignAmount, e.ForeignCurrency, e.Time)).ToList(),
+        p.Expenses.Select(e => new ExpenseNode(e.Id, e.CategoryId, e.Amount.Amount, e.Date, e.MemberId, e.FundId, e.Note, e.SourceSavingCategoryId, e.OnBehalfOfOtherAccount, e.SettlementId, e.SettledToAccountId, e.SettledFromAccountId, e.SettledAmount, e.FundSynced, e.BankExternalId, e.AutoFiled, e.TagIds.Count == 0 ? null : e.TagIds.ToList(), e.InstallmentGroupId, e.Part, e.DebtBucketId, e.TripId, e.ForeignAmount, e.ForeignCurrency, e.Time, e.RefundedAmount)).ToList(),
         p.SavingAllocations.Select(a => new SavingAllocationNode(a.Id, a.SavingCategoryId, a.Amount.Amount, a.Date, a.Note, a.SourceExpenseId, a.BudgetCategoryId, a.TransferPairId, a.SourceExternalTransferId)).ToList(),
         p.FundTransfers.Select(t => new FundTransferNode(t.Id, t.FromFundId, t.ToFundId, t.Amount.Amount, t.Date, t.Note, t.FromSynced, t.ToSynced, t.BankExternalId, t.AutoFiled)).ToList(),
         p.ExternalTransfers.Select(t => new ExternalTransferNode(t.Id, t.FundId, t.Amount.Amount, t.Date, t.ToAccountId, t.Note, t.FundSynced, t.AccountTransferId)).ToList());
@@ -268,6 +268,7 @@ public static class AccountSnapshotSerializer
             expense.SetTrip(e.TripId);
             expense.SetForeign(e.ForeignAmount, e.ForeignCurrency);
             expense.SetTime(e.Time);
+            expense.SetRefunded(e.RefundedAmount);
             return expense;
         }).ToList());
         SetField(p, "_savingAllocations", n.SavingAllocations.Select(a =>
@@ -424,7 +425,11 @@ public static class AccountSnapshotSerializer
         decimal? ForeignAmount = null, string? ForeignCurrency = null,
         // The time of day, when anything recorded one. Null on every node written before this existed and on every
         // expense whose source reported only a date — which is most of them. See Expense.Time for why it is not 00:00.
-        TimeOnly? Time = null);
+        TimeOnly? Time = null,
+        // What has come back on this expense — a refund, or a friend paying their share of a split bill. Zero on
+        // every node written before refunds existed and on every expense nobody paid anything back on. Note Amount
+        // above is already the reduced figure, so a reader that ignores this field still reports the right total.
+        decimal RefundedAmount = 0m);
     private record SavingAllocationNode(Guid Id, Guid SavingCategoryId, decimal Amount, DateOnly Date, string? Note, Guid? SourceExpenseId, Guid? BudgetCategoryId = null, Guid? TransferPairId = null, Guid? SourceExternalTransferId = null);
     private record FundTransferNode(Guid Id, Guid FromFundId, Guid ToFundId, decimal Amount, DateOnly Date, string? Note, bool FromSynced = false, bool ToSynced = false, string? BankExternalId = null, bool AutoFiled = false);
     private record ExternalTransferNode(Guid Id, Guid FundId, decimal Amount, DateOnly Date, Guid? ToAccountId, string? Note, bool FundSynced = false,

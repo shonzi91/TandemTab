@@ -91,6 +91,71 @@ public class AccountPeriodTests
     }
 
     [Fact]
+    public void Refunding_an_expense_reduces_it_and_undoing_restores_it()
+    {
+        var account = new Account("Personal", Eur);
+        var food = account.AddCategory("Food");
+        var fund = Guid.NewGuid();
+        var member = Guid.NewGuid();
+
+        var period = account.StartPeriod(new DateOnly(2026, 1, 1), new DateOnly(2026, 1, 31));
+        var expense = period.AddExpense(new Expense(food.Id, M(60), new DateOnly(2026, 1, 5), member, fund, "Dinner"));
+
+        // A friend pays back their share of the bill.
+        var refunded = period.SetRefund(expense.Id, M(20));
+
+        Assert.Equal(M(40), refunded.Amount);
+        Assert.Equal(20m, refunded.RefundedAmount);
+        Assert.Equal(M(60), refunded.AmountBeforeRefund);
+        Assert.True(refunded.IsRefunded);
+        // ★ The point of the feature: the period's spending falls. Booking the €20 as income would have left this
+        // at €60 and added €20 of money-in nobody earned.
+        Assert.Equal(M(40), period.ExpensesTotal);
+
+        // A second friend pays up. The caller states the running total, so this does not have to know about the first.
+        var again = period.SetRefund(refunded.Id, M(35));
+        Assert.Equal(M(25), again.Amount);
+        Assert.Equal(M(60), again.AmountBeforeRefund);
+
+        // Undo restores the whole charge.
+        var restored = period.SetRefund(again.Id, M(0));
+        Assert.Equal(M(60), restored.Amount);
+        Assert.False(restored.IsRefunded);
+        Assert.Equal(M(60), period.ExpensesTotal);
+    }
+
+    [Fact]
+    public void A_refund_cannot_exceed_the_expense_and_keeps_the_rows_links()
+    {
+        var account = new Account("Personal", Eur);
+        var food = account.AddCategory("Food");
+        var trip = account.AddTrip("Lisbon", new DateOnly(2026, 1, 2), new DateOnly(2026, 1, 9));
+        var tag = account.AddTag("Split");
+        var fund = Guid.NewGuid();
+        var period = account.StartPeriod(new DateOnly(2026, 1, 1), new DateOnly(2026, 1, 31));
+        var expense = period.AddExpense(new Expense(food.Id, M(60), new DateOnly(2026, 1, 5), Guid.NewGuid(), fund, "Dinner"));
+        expense.SetTags([tag.Id]);
+        expense.SetTrip(trip.Id);
+        expense.SetTime(new TimeOnly(20, 30));
+        expense.SetFundSynced(true);
+        expense.SetBankLink("bank-tx-1", autoFiled: true);
+
+        Assert.Throws<InvalidOperationException>(() => period.SetRefund(expense.Id, M(61)));
+        Assert.Throws<InvalidOperationException>(() => period.SetRefund(expense.Id, M(-1)));
+
+        // ★ The rebuild mints a new id, so everything hanging off the row has to be carried over by hand. The bank
+        // link is the one that matters most: lose it and the next sync offers to log this expense a second time.
+        var refunded = period.SetRefund(expense.Id, M(20));
+        Assert.Equal("bank-tx-1", refunded.BankExternalId);
+        Assert.True(refunded.AutoFiled);
+        Assert.True(refunded.FundSynced);
+        Assert.Equal(trip.Id, refunded.TripId);
+        Assert.Equal(new TimeOnly(20, 30), refunded.Time);
+        Assert.Equal([tag.Id], refunded.TagIds);
+        Assert.Equal("Dinner", refunded.Note);
+    }
+
+    [Fact]
     public void Duplicate_member_is_rejected()
     {
         var account = new Account("Shared", Eur);

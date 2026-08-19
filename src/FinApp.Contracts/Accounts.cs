@@ -365,6 +365,16 @@ public record EditAccountTransferRequest(Guid DestinationAccountId, decimal Amou
 public record SettleExpenseRequest(Guid DestinationAccountId, Guid DestinationFundId, Guid DestinationCategoryId,
     decimal Amount, string? Note = null);
 
+/// <summary>Record money coming back on an expense — a refund, or someone paying their share of a bill you covered.
+/// The expense shrinks by this amount and nothing is booked as income; see <c>Expense.RefundedAmount</c> for why
+/// treating it as income would report two wrong figures that happen to net out.
+/// <para><b>★ <see cref="Amount"/> is what came back NOW, not the running total.</b> The server adds it to whatever
+/// has already come back, inside the same lock that writes it — so two clients acking two credits against one
+/// expense both land, instead of the second overwriting the first with a total it computed from a stale read.</para>
+/// <para>⚠️ Refunding mints a <b>new expense id</b> (the ledger is append-only). It comes back as the response's
+/// <c>Id</c>; the undo, <c>DELETE …/refund</c>, is addressed by that new id.</para></summary>
+public record RefundExpenseRequest(decimal Amount);
+
 // --- Statement import (reviewed rows -> real expenses & income in one save) -----------------------------------
 
 /// <summary>One reviewed statement row to import. A <b>negative</b> <see cref="Amount"/> posts an expense (its
