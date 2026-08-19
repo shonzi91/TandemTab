@@ -1,6 +1,35 @@
 # TandemTab (FinApp) — session handoff
 
-Last updated: 2026-08-19 (Session 108 — **two R2 rows, and an audit that took three more off the backlog without
+Last updated: 2026-08-19 (Session 109 — **the Android app can now reach a phone that isn't plugged into this
+machine. No feature work; the constraint S108 named was the binding one.**
+**No server change, no deploy. Live is still `finapp-00311-nz6`. Everything committed + pushed.**
+★★ **The app built on exactly one Windows box and had no way out of it.** CI built the .NET solution and never
+once compiled `android/` — nine sessions of R2 parity rows, every one of them unreachable by a real user. The
+parity count measured the wrong thing while the door was shut.
+★ **`.github/workflows/android.yml`** builds an installable APK on every push (artifact) and attaches one to a
+**GitHub Release** on an `android-v*` tag — a release asset is the only link a tester can open without a GitHub
+account, which is what run artifacts require.
+★★ **A missing release keystore signs with the DEBUG key instead of failing**, deliberately: a build nobody can
+produce is the failure mode that got us here. It is never silent — the build warns, CI emits a `::warning::`, the
+artifact is named `-debugkey`, and the release step **refuses to publish** one. The debug key is public, so Play
+rejects it anyway; the honest fallback and the hard stop are the same design.
+✅ **Both signing paths actually exercised, not just written**: with a throwaway keystore the APK comes out
+`CN=Throwaway Pipeline Test`; without one, `CN=Android Debug` plus the warning. `-PversionCode` / `-PversionName`
+verified stamped into the built APK (`aapt dump badging` reads 43 / 0.1.1).
+✅ **Emulator-verified as an artifact, not a build log** — installed, launched, and **signed in against live
+prod**, where a deliberately-wrong password came back *"Wrong username/email or password."* That is the release
+build reaching `tandemtab.com` over HTTPS, which no `assembleRelease` exit code proves.
+★ **`android/gradlew` was mode 100644 in git** — the first Linux runner to try it would have died with "permission
+denied". Fixed with `update-index --chmod=+x`. It could only ever have surfaced by adding CI.
+⚠️ **The path filter is deliberately absent from the push trigger**: a `paths` filter is ANDed with the ref
+filter, and a tag pushed onto an existing commit has no diff to match, so `android-v*` would have silently never
+built. Building on every main push is the cheaper mistake on a public repo.
+⚠️ **Nothing is published and no key exists.** Four secrets (`ANDROID_KEYSTORE_*`) are the owner's to create —
+generating the signing key is a one-way door: lose it and the app can never be updated under `com.tandemtab.app`
+again. Until then every artifact is debug-signed and sideload-only. **The AAB Play wants is still not built**, and
+there is no Play Console account.
+
+Previously: 2026-08-19 (Session 108 — **two R2 rows, and an audit that took three more off the backlog without
 writing any code. 102 → 106 of 118 (90%).**
 **496 + 49 + 369 green. Both rows emulator-verified. Live: `finapp-00311-nz6`. Everything committed + pushed.**
 
@@ -378,6 +407,83 @@ a separate balance axis — because flows and a stock were sharing one scale. **
 ✅ **Committed and the web half is DEPLOYED** (Session 93 catch-up): Android sharing as `596eea5`, the web batch
 as `de51071`, now live on **`finapp-00280-4s8`** (traffic forced `--to-latest`; run URL + tandemtab.com 200; 5
 `secretKeyRef`s; no WARNING+ logs). Prior context below is Session 91.)
+
+## Session 109 (2026-08-19) — **The APK pipeline. The phone app can leave this machine now.**
+
+No feature work, no server change, no deploy. Picked because S108 ended by naming this the binding constraint on
+Android work — *"the phone has no APK pipeline, so neither row reaches a user until one exists"* — and that is
+worth more than a tenth parity row.
+
+### ★★ The gap was bigger than "no pipeline". Nothing built the app at all.
+
+`.github/workflows/ci.yml` builds and tests `FinApp.NoMaui.slnf`; `docker-publish.yml` builds the server image on
+`src/**`. **Neither touches `android/`.** So nine sessions of R2 rows — sharing, trips, the paywall, achievements,
+settling — compiled on one Windows machine, were verified on one emulator, and reached **no user anywhere**. R2's
+number went up the whole time. It measures whether Kotlin calls a route; it cannot see that the front door is shut.
+
+### What shipped
+
+**[`.github/workflows/android.yml`](.github/workflows/android.yml)** — JDK 21 (AGP 8.7 + Gradle 8.10 top out
+there; 21 is the ceiling, not the floor), `android-actions/setup-android`, `assembleRelease`, artifact upload, and
+on an `android-v*` tag a **GitHub Release** with the APK attached. The release matters more than the artifact:
+**run artifacts require a GitHub account to download**, a release asset does not, and the person who needs this
+build is holding a phone.
+
+**Signing, in [`android/app/build.gradle.kts`](android/app/build.gradle.kts)** — a `release` config populated from
+a gitignored `keystore.properties` **or** `TANDEMTAB_KEYSTORE_*` env. CI writes that same file from four secrets,
+so there is one shape of signing config to get right rather than two.
+
+★★ **When no key is configured the release APK is signed with the DEBUG key rather than the build failing.** The
+reasoning is the whole session's: *a build nobody can produce is exactly the failure mode being fixed*, so a
+contributor without the key must still get something installable. It is never silent — the Gradle build warns, CI
+emits a `::warning::`, the uploaded artifact is suffixed **`-debugkey`**, and the release step **exits 1 rather
+than publish one**. The debug key is public and universally known, so Play rejects it regardless: the honest
+fallback and the hard stop are the same decision seen from two sides.
+
+**Versioning** — `versionCode` / `versionName` were hardcoded `1` / `0.1.0`. A build anyone can install needs a
+code that only ever goes up, so both are now `-P` overridable, defaulting to the old values; CI passes
+`github.run_number`, and a tagged build takes its name from the tag. Also `base { archivesName = "tandemtab" }` —
+`app-release.apk` says nothing to somebody about to sideload it.
+
+### ★ The bug only CI could have found
+
+**`android/gradlew` was mode `100644` in git.** On Windows nobody notices; the first `ubuntu-latest` runner to
+call `./gradlew` dies with *permission denied*. Fixed with `git update-index --chmod=+x`. The wrapper has been
+committed since the Android track started and this is the first thing that would ever have executed it on Linux.
+
+### ⚠️ The trigger has no `paths` filter, and that is deliberate
+
+A `paths` filter is **ANDed** with the ref filter, and a tag pushed onto an already-existing commit has no diff
+for it to match — so `android-v*` would have silently never built, which is the one trigger that must work. The
+repo is public (free minutes) and nothing else builds the Android app, so building it on every push to `main` is
+the cheaper mistake. PRs keep the path filter, where the diff is real.
+
+### Verification — the artifact, not the build log
+
+Both signing branches were **exercised**, not merely written:
+
+- **With** a throwaway keystore (generated into the scratchpad, then deleted): `apksigner verify --print-certs`
+  reads `CN=Throwaway Pipeline Test`. **Without**: `CN=Android Debug`, and the warning fires.
+- `-PversionCode=43 -PversionName=0.1.1` → `aapt dump badging` reads exactly that out of the built APK, and
+  `dumpsys package` confirms it again after install.
+- ✅ **Installed and launched on the emulator, both artifacts** (release-key first, then the debug-key fallback so
+  the AVD is left able to take an ordinary `installDebug` again — a phone holding one signature cannot be updated
+  in place by the other). No `AndroidRuntime` errors either time.
+- ★ **Signed in against live prod from the release build**: a deliberately-wrong password came back with the
+  server's own *"Wrong username/email or password."* That proves the shipped artifact reaches `tandemtab.com` over
+  HTTPS — something no `assembleRelease` exit code can tell you, and the thing a release build most plausibly
+  breaks.
+
+⚠️ The workflow itself has **not run on GitHub yet** — it is YAML-validated and every command in it was exercised
+locally, but the first real run is the proof.
+
+### ⚠️ What this does NOT do
+
+- **No key exists and nothing is published.** The four `ANDROID_KEYSTORE_*` secrets are the owner's to create:
+  generating the signing key is a **one-way door** — lose it and the app can never be updated under
+  `com.tandemtab.app` again. Deliberately not done here.
+- **No AAB, no Play Console.** The workflow builds the APK a sideloader installs, not the bundle Play wants.
+- Distribution is sideload-only, which means Android's install-from-unknown-sources prompt for every tester.
 
 ## Session 108 (2026-08-19) — **R2's achievements row: the phone can finally see its own medals.**
 

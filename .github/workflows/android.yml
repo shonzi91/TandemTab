@@ -1,0 +1,117 @@
+name: Android APK
+
+# The Android app had no build outside one Windows machine and no way to reach a phone that isn't
+# plugged into it. This builds an installable APK on every push that touches android/, and attaches
+# one to a GitHub Release when an `android-v*` tag is pushed — a release asset is the only link a
+# tester can open without a GitHub account, which run artifacts require.
+on:
+  # No `paths` on the push trigger deliberately: a path filter is ANDed with the ref filter, and a
+  # tag pushed onto an existing commit has no diff to match, so `android-v*` would silently never
+  # build. The repo is public (free minutes) and nothing else builds the Android app at all, so
+  # building it on every main push is the cheaper mistake.
+  push:
+    branches: [main]
+    tags:
+      - "android-v*"
+  pull_request:
+    paths:
+      - "android/**"
+      - ".github/workflows/android.yml"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    # Needed only by the tag-triggered release step at the bottom; every other run just doesn't use it.
+    permissions:
+      contents: write
+    defaults:
+      run:
+        working-directory: android
+    steps:
+      - uses: actions/checkout@v4
+
+      # AGP 8.7 + Gradle 8.10 support up to JDK 21 — 21 is the ceiling here, not the floor.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Provide the release keystore
+        id: signing
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::No ANDROID_KEYSTORE_BASE64 secret set — this APK is signed with the public debug key. Installable for testing, not publishable."
+            exit 0
+          fi
+          echo "$KEYSTORE_BASE64" | base64 -d > tandemtab-release.jks
+          # Same file a local build reads, so there is one shape of signing config to get right.
+          {
+            echo "storeFile=tandemtab-release.jks"
+            echo "storePassword=$KEYSTORE_PASSWORD"
+            echo "keyAlias=$KEY_ALIAS"
+            echo "keyPassword=$KEY_PASSWORD"
+          } > keystore.properties
+          echo "configured=true" >> "$GITHUB_OUTPUT"
+
+      # versionCode must only ever go up, and the run number is the one counter that does that
+      # without anyone having to remember to bump a file. versionName comes from an `android-v*`
+      # tag when there is one, so a released build is named after the thing that released it.
+      - name: Work out the version
+        id: version
+        run: |
+          name="0.1.0"
+          case "$GITHUB_REF" in
+            refs/tags/android-v*) name="${GITHUB_REF#refs/tags/android-v}" ;;
+          esac
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+
+      - name: Build the release APK
+        run: ./gradlew :app:assembleRelease --no-daemon -PversionCode=${{ github.run_number }} -PversionName=${{ steps.version.outputs.name }}
+
+      # Proof the artifact is signed by whoever we think signed it — the debug-key fallback is
+      # deliberate but must never be silent.
+      - name: Report the signer
+        run: |
+          apksigner=$(find "$ANDROID_HOME/build-tools" -name apksigner | sort | tail -1)
+          "$apksigner" verify --print-certs app/build/outputs/apk/release/tandemtab-release.apk | grep 'certificate DN'
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tandemtab-${{ steps.version.outputs.name }}-${{ github.run_number }}${{ steps.signing.outputs.configured == 'true' && '' || '-debugkey' }}
+          path: android/app/build/outputs/apk/release/tandemtab-release.apk
+          if-no-files-found: error
+
+      # A tag is the deliberate act; everything above runs on every push, this step only on that.
+      - name: Attach the APK to a GitHub Release
+        if: startsWith(github.ref, 'refs/tags/android-v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "${{ steps.signing.outputs.configured }}" != "true" ]; then
+            echo "Refusing to publish a release signed with the public debug key." >&2
+            exit 1
+          fi
+          cp app/build/outputs/apk/release/tandemtab-release.apk \
+             "tandemtab-${{ steps.version.outputs.name }}.apk"
+          gh release create "${GITHUB_REF#refs/tags/}" \
+            "tandemtab-${{ steps.version.outputs.name }}.apk" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "TandemTab for Android ${{ steps.version.outputs.name }}" \
+            --notes "Sideload build ${{ github.run_number }} from ${{ github.sha }}. Android 8.0+."

@@ -11,3 +11,8 @@ captures/
 *.apk
 *.aab
 /build-artifacts/
+
+# Signing material never belongs in the repo.
+keystore.properties
+*.jks
+*.keystore

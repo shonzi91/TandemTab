@@ -850,9 +850,17 @@ out-capture us (Beyond Budget's SMS auto-import, AI receipt scan, AI suggestions
   control, parsed locally — no aggregator, no AI. On-device SMS import is the same principle, made continuous.
 
 ## Phase 5 — distribution
-- Android: signed AAB → Play Console (internal testing first).
+- **Android CI + sideload: DONE (Session 109)** — [`.github/workflows/android.yml`](../.github/workflows/android.yml)
+  builds an installable APK on every push and attaches one to a GitHub Release on an `android-v*` tag. Until
+  Session 109 the app **built on exactly one Windows machine and could not reach a phone that wasn't plugged into
+  it**, which made every R2 parity row unreachable by a real user no matter how many endpoints Kotlin called —
+  a bigger constraint on Android work than the parity count. See [../android/README.md](../android/README.md).
+  ⚠️ **Signing secrets are not set yet**, so today's artifact is signed with the public debug key: fine to
+  sideload, refused by the release step and rejected by Play.
+- Android: signed AAB → Play Console (internal testing first). ⚠️ Still to do — the workflow builds an **APK**
+  (what a sideloader installs), not the **AAB** Play wants, and there is no Play Console account.
 - iOS: Apple Developer account ($99/yr), TestFlight → App Store. **Needs macOS** (cloud is fine).
-- Mobile CI: Gradle for Android; `macos-latest` / Codemagic / Bitrise for iOS.
+- Mobile CI: ~~Gradle for Android~~ ✅; `macos-latest` / Codemagic / Bitrise for iOS.
 
 ---
 
