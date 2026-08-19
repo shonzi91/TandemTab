@@ -8381,29 +8381,33 @@ else
         _ = LoadBankOnEntryAsync();
     }
 
-    /// <summary>The on-entry bank load + OAuth-return handling + review prompt, run off the first paint.</summary>
+    /// <summary>The on-entry bank load + OAuth-return handling + provider sync + review prompt, run off the first
+    /// paint as ONE ordered chain.
+    ///
+    /// <para>★ The order is the whole point. <see cref="SyncOnOpenAsync"/> starts with <c>BankSyncDue</c>, which
+    /// starts with <c>_bankStatus?.Connected == true</c> — so it does nothing at all until the status is loaded.
+    /// These used to be two independent fire-and-forget tasks (this one from <c>OnInitializedAsync</c>, the sync
+    /// from <c>OnAfterRenderAsync(firstRender)</c>) and the first paint beat three network round-trips every time:
+    /// the sync ran with <c>_bankStatus</c> still null, read "not connected", and returned. <b>Opening the app
+    /// never pulled from the bank</b> — you saw only what a previous sync had already staged, which is why
+    /// switching accounts appeared to "fix" it (that path awaits the load before syncing). Reported by the owner;
+    /// confirmed on the wire by the absence of any <c>POST /bank/sync</c> on a fresh load.</para>
+    ///
+    /// <para>Still off the critical path: nothing here is awaited by the caller, so the dashboard paints on its own
+    /// figures and these fill in as they land.</para></summary>
     private async Task LoadBankOnEntryAsync()
     {
         await LoadBankAsync();
         await HandleBankReturnAsync();
+        // Paint what is already staged before waiting on the provider — the badge and the review list should not
+        // sit behind a live bank round-trip that may be slow or may fail.
         if (!_disposed) await InvokeAsync(StateHasChanged);
+        // Now the pull, with a status to test. Silent when not connected, not due, or mid bank-link return.
+        await SyncOnOpenAsync();
+        if (!_disposed) await InvokeAsync(StateHasChanged);
+        // Prompt last, so it opens once with everything — including whatever the sync just brought in — rather
+        // than opening on the stale set and growing under the user.
         await MaybePromptOnEntryAsync();
-    }
-
-    /// <summary>The on-entry bank pull, run off the critical path (see <see cref="OnAfterRenderAsync"/>). Awaiting
-    /// this during initialization put a live provider round-trip — plus the snapshot write auto-filing can trigger —
-    /// in front of the first paint, which is what made opening a bank-linked account feel slow. Nothing here is
-    /// needed to render, so the dashboard paints first and the staged rows appear when they land.</summary>
-    private async Task SyncOnOpenInBackgroundAsync()
-    {
-        await SyncOnOpenAsync();                       // already swallows its own failures
-        if (!_disposed)
-        {
-            await InvokeAsync(StateHasChanged);
-            // The fresh sync may have pulled in transactions that weren't staged when the on-entry review check ran.
-            // Surface them now — respecting dismissal so we don't re-pop a set the user just closed this session.
-            await MaybeOpenBankReviewAsync();
-        }
     }
 
     // Stamp any newly-earned achievement with today's date after each render. Only persists when something changed
@@ -8414,10 +8418,9 @@ else
         // instead of just "the dashboard". Set on every render because it's the cheap way to always be current.
         Errors.Where = _modal == Modal.None ? _tab.ToString() : $"{_tab}/{_modal}";
 
-        // Fire-and-forget: only bank-connected accounts reach the provider (and only once every BankSyncFreshFor),
-        // so this is a no-op for everyone else. Mutually exclusive with HandleBankReturnAsync — SyncOnOpenAsync
-        // bails out when the URL carries a bank= return, which is the only case that flow runs.
-        if (firstRender) _ = SyncOnOpenInBackgroundAsync();
+        // ⚠️ The on-open provider sync is NOT started here any more. It used to be, and it could never work: it
+        // ran before OnInitializedAsync's bank load had returned, so BankSyncDue tested a null status and said no.
+        // It is now the third link of LoadBankOnEntryAsync's chain, after the status it depends on.
 
         // Hook the browser Back button up to our layer stack (see finappBack in index.html).
         if (firstRender)
