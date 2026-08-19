@@ -2,7 +2,11 @@
 
 Last updated: 2026-08-19 (Session 109 — **the Android app can now reach a phone that isn't plugged into this
 machine. No feature work; the constraint S108 named was the binding one.**
-**No server change, no deploy. Live is still `finapp-00311-nz6`. Everything committed + pushed.**
+**No server change, no deploy. Live is still `finapp-00311-nz6`. Committed — ⚠️ NOT PUSHED, and it needs the
+owner: `git push` was rejected with *"refusing to allow a Personal Access Token to create or update workflow
+`.github/workflows/android.yml` without `workflow` scope"*. The stored PAT can write code but not workflows.
+Regenerate it with the `workflow` scope (or push with a credential that has it) and the commit goes up as-is.
+See S84 on why local-only commits are the real risk.**
 ★★ **The app built on exactly one Windows box and had no way out of it.** CI built the .NET solution and never
 once compiled `android/` — nine sessions of R2 parity rows, every one of them unreachable by a real user. The
 parity count measured the wrong thing while the door was shut.
@@ -476,6 +480,19 @@ Both signing branches were **exercised**, not merely written:
 
 ⚠️ The workflow itself has **not run on GitHub yet** — it is YAML-validated and every command in it was exercised
 locally, but the first real run is the proof.
+
+### ⚠️ The push is blocked on a token scope, and only the owner can clear it
+
+```
+! [remote rejected] main -> main (refusing to allow a Personal Access Token to create or update
+  workflow .github/workflows/android.yml without `workflow` scope)
+```
+
+The credential helper is `store`, holding a PAT that can write code but **not workflow files** — GitHub gates
+those behind a separate `workflow` scope precisely because a workflow file is code that runs with repository
+credentials. Nothing about the commit is wrong; it simply cannot go up on this token. **Regenerate the PAT with
+`workflow` ticked** (Settings → Developer settings → Personal access tokens) and re-run `git push origin main`.
+Minting a token is not something to hand to an assistant, so it was left here.
 
 ### ⚠️ What this does NOT do
 
