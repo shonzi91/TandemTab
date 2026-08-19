@@ -1159,6 +1159,10 @@ public sealed class Localizer(IJSRuntime js)
         ["What this period closed with — carried into the next."] = "С колко приключи този период — прехвърля се в следващия.",
         ["Edit expense"] = "Редактирай разход",
         ["Remove this expense?"] = "Премахване на този разход?",
+        ["Label this expense"] = "Етикет на този разход",
+        ["Label expense"] = "Етикет на разхода",
+        ["This month is closed, so the money can't change — but what it's called still can."] =
+            "Този месец е приключен, така че сумите не могат да се променят — но етикетът може.",
         ["Remove this savings deposit?"] = "Премахване на тази спестовна вноска?",
         ["Edit transfer"] = "Редактирай прехвърляне",
         ["Remove this transfer?"] = "Премахване на това прехвърляне?",
@@ -1669,7 +1673,7 @@ public sealed class Localizer(IJSRuntime js)
             "Избери каквото вече си платил/а за това пътуване — самолетни билети, хотел, входове. Остава в месеца, в който си платил/а; просто започва да се брои към пътуването.",
         ["Nothing logged yet."] = "Още няма нищо записано.",
         ["Nothing matches that."] = "Нищо не съвпада.",
-        ["Search every month — “flight”, “hotel”…"] = "Търси във всички месеци — „самолет“, „хотел“…",
+        ["Search every month — “flight”, “hotel”, 46.80…"] = "Търси във всички месеци — „самолет“, „хотел“, 46.80…",
         ["Showing the most recent {0} of {1}. Search to reach anything older."] =
             "Показани са последните {0} от {1}. Търси, за да стигнеш до по-стари.",
         ["on {0}"] = "към {0}",

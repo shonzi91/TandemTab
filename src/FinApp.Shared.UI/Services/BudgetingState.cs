@@ -2953,11 +2953,15 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     /// only writes the link — so a closed period is no obstacle.
     /// </para>
     /// </summary>
-    /// <param name="search">Free text matched against the note and the category name. Null/blank returns the most
+    /// <param name="search">Free text matched against the note, the category name <b>and the amount</b> — "46.8"
+    /// finds the €46.80 row, which is often the only thing you remember about a booking. Null/blank returns the most
     /// recent <paramref name="take"/>; a search runs over <b>every</b> period first and only then takes the cap, so
     /// a flight bought last winter is reachable by typing "flight" rather than by scrolling to it.</param>
-    /// <param name="alwaysInclude">A trip whose rows must never fall off the end — the ones already attached to the
-    /// trip being edited. Without this, ticking a row could make it vanish from the list you ticked it in.</param>
+    /// <param name="alwaysInclude">A trip whose rows are exempt from the <paramref name="take"/> cap — the ones
+    /// already attached to the trip being edited, so ticking a row can't push it off the end of the list you ticked
+    /// it in. ⚠️ They are <b>not</b> exempt from the search: pinning them through a filter buried the matches under
+    /// rows the user had just told the box to hide, and a row that matched when you ticked it still matches after.
+    /// </param>
     public IReadOnlyList<FinApp.Domain.Budgeting.Expense> RecentExpensesAcrossPeriods(
         int take = 60, string? search = null, Guid? alwaysInclude = null)
     {
@@ -2965,20 +2969,36 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
             .OrderByDescending(e => e.Date).ThenByDescending(e => e.SortTime).ThenByDescending(e => e.Id);
 
         var term = search?.Trim();
+        var matches = (FinApp.Domain.Budgeting.Expense e) =>
+            string.IsNullOrEmpty(term)
+            || (e.Note ?? "").Contains(term, StringComparison.CurrentCultureIgnoreCase)
+            || CategoryName(e.CategoryId).Contains(term, StringComparison.CurrentCultureIgnoreCase)
+            || MatchesAmount(e.Amount, term);
+
         if (!string.IsNullOrEmpty(term))
-            all = all.Where(e =>
-                (e.Note ?? "").Contains(term, StringComparison.CurrentCultureIgnoreCase)
-                || CategoryName(e.CategoryId).Contains(term, StringComparison.CurrentCultureIgnoreCase))
+            all = all.Where(matches)
                 .OrderByDescending(e => e.Date).ThenByDescending(e => e.SortTime).ThenByDescending(e => e.Id);
 
         var page = all.Take(take).ToList();
         if (alwaysInclude is { } tripId)
         {
             var pinned = Account.Periods.SelectMany(p => p.Expenses)
-                .Where(e => e.TripId == tripId && page.All(x => x.Id != e.Id));
+                .Where(e => e.TripId == tripId && matches(e) && page.All(x => x.Id != e.Id));
             page = page.Concat(pinned).OrderByDescending(e => e.Date).ThenByDescending(e => e.SortTime).ThenByDescending(e => e.Id).ToList();
         }
         return page;
+    }
+
+    /// <summary>Does a typed search term look like this amount? Matched on the digits rather than parsed exactly, so
+    /// a half-typed "46.8" still finds €46.80 while the user is still typing. A comma is accepted for the decimal
+    /// point because half of Europe types it that way, and the row's own currency symbol is never part of the match.</summary>
+    private static bool MatchesAmount(Money amount, string term)
+    {
+        var wanted = term.Replace(',', '.').TrimStart('€', '$', '£').Trim();
+        if (wanted.Length == 0 || !wanted.All(c => char.IsDigit(c) || c == '.')) return false;
+        var exact = amount.Amount.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture);
+        var trimmed = amount.Amount.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+        return exact.Contains(wanted, StringComparison.Ordinal) || trimmed.Contains(wanted, StringComparison.Ordinal);
     }
 
     /// <summary>How many expenses exist in total — so the attach list can say what it is NOT showing rather than

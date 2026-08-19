@@ -1397,6 +1397,15 @@ else
                                 <button class="exp-edit" title="@Loc["Edit expense"]" @onclick="() => OpenEditExpense(ctx.E.Id)"><Icon Name="pencil" /></button>
                                 <button class="exp-edit" title="@Loc["Remove expense"]" @onclick="() => OpenDeleteExpense(ctx.E.Id)"><Icon Name="trash" /></button>
                             }
+                            else
+                            {
+                                @* ★ A closed month is closed for the MONEY, not for what a row is called. Labels are
+                                   the axis Breakdown-by-tag and the trip recap read history on, and both are done
+                                   long after the period shut — the trip's own attach list already carries a tag row
+                                   for exactly this reason. This writes ONLY the tag: no amount, date, category or
+                                   fund, so nothing a closed period settled can move. *@
+                                <button class="exp-edit" title="@Loc["Label expense"]" @onclick="() => OpenTagExpense(ctx.E.Id)"><Icon Name="tag" /></button>
+                            }
                         </span>
                     </li>;
 
@@ -4478,6 +4487,31 @@ else
                     </div>
                     break;
 
+                case Modal.TagExpense:
+                    <h3>@Loc["Label this expense"]</h3>
+                    @if (State.FindExpense(_tagExpenseId) is { } tex)
+                    {
+                        <p class="hint">@tex.Date.ToString("dd MMM yyyy") · @State.CategoryName(tex.CategoryId) · @Fmt(tex.Amount)</p>
+                    }
+                    <p class="hint">@Loc["This month is closed, so the money can't change — but what it's called still can."]</p>
+                    <div class="modal-field">
+                        <div class="tag-pick">
+                            @foreach (var t in State.ActiveTags)
+                            {
+                                var ttid = t.Id;
+                                var ton = _tagOnlyId == ttid;
+                                <button type="button" class="tag-chip @(ton ? "tag-chip-on" : "")" @onclick="() => _tagOnlyId = ton ? null : ttid">
+                                    @TagMark(t.Icon)@t.Name
+                                </button>
+                            }
+                        </div>
+                    </div>
+                    <div class="modal-actions">
+                        <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
+                        <button @onclick="SaveTagOnly">@Loc["Save"]</button>
+                    </div>
+                    break;
+
                 case Modal.DeleteInstallment:
                     <h3>@Loc["Remove this installment?"]</h3>
                     <p class="hint">@string.Format(Loc["All {0} rows of this payment will be removed."], _instDeleteCount)</p>
@@ -5165,11 +5199,12 @@ else
                     @* ★ Search, because a cap is not a history. The list shows the most recent 60, which on an active
                        account is about two months — and a flight for a June trip is routinely bought in January. The
                        search runs over EVERY period before the cap is applied, so anything is reachable by typing;
-                       and rows already on this trip are pinned in regardless, or ticking one could make it vanish
-                       from the list you ticked it in. *@
+                       and rows already on this trip are exempt from the CAP — but not from the search, or ticking a
+                       row buries the next match under the rows you just filtered out. Amounts match too: what you
+                       remember about a booking is often the number and nothing else. *@
                     <label class="attach-search">
                         <Icon Name="search" />
-                        <input type="text" placeholder="@Loc["Search every month — “flight”, “hotel”…"]" @bind="_attachSearch" @bind:event="oninput" />
+                        <input type="text" placeholder="@Loc["Search every month — “flight”, “hotel”, 46.80…"]" @bind="_attachSearch" @bind:event="oninput" />
                     </label>
                     var attachable = State.RecentExpensesAcrossPeriods(60, _attachSearch, _tripId);
                     @if (attachable.Count == 0)
@@ -6759,7 +6794,7 @@ else
 }
 
 @code {
-    private enum Modal { None, BankReview, BankConfirm, BankConsent, AddCat, AddBudget, DisburseSaving, PayoffProjection, GoalProjection, InvestmentProjection, BankTransfer, ExternalAccounts, HealthScore, RunwayMath, EditCat, DeleteCat, DeleteBudget, EditAccountTransfer, DeleteAccountTransfer, CategoryDetail, AddAccount, EditAccount, DeleteAccount, RemoveMember, LeaveAccount, AddExpense, NextPeriod, RemovePeriod, EditExpense, DeleteExpense, SettleExpense, AddBucket, EditBucket, DeleteBucket, EditCost, AddFund, EditFund, DeleteFund, Invite, Transfer, Deposit, EditDeposit, DeleteDeposit, ManageCats, ManageContribCats, ContribCat, DeleteContribCat, AddSaving, BudgetSaving, SpendSaving, EditSavingDeposit, DeleteSavingDeposit, EditTransfer, DeleteTransfer, EditPeriod, EditSavingMovement, DeleteSavingMovement, DeleteExternalTransfer, Achievements, Reallocate, Recurring, RecurringEdit, RecurringConfirm, Import, AddOrImport, ArchiveFund, FundMovements, Archived, ManageTags, EditTag, LogInstallment, DeleteInstallment, WeekRecap, TripEdit, DeleteTrip, AttachToTrip, UseTripSavings }
+    private enum Modal { None, BankReview, BankConfirm, BankConsent, AddCat, AddBudget, DisburseSaving, PayoffProjection, GoalProjection, InvestmentProjection, BankTransfer, ExternalAccounts, HealthScore, RunwayMath, EditCat, DeleteCat, DeleteBudget, EditAccountTransfer, DeleteAccountTransfer, CategoryDetail, AddAccount, EditAccount, DeleteAccount, RemoveMember, LeaveAccount, AddExpense, NextPeriod, RemovePeriod, EditExpense, DeleteExpense, SettleExpense, AddBucket, EditBucket, DeleteBucket, EditCost, AddFund, EditFund, DeleteFund, Invite, Transfer, Deposit, EditDeposit, DeleteDeposit, ManageCats, ManageContribCats, ContribCat, DeleteContribCat, AddSaving, BudgetSaving, SpendSaving, EditSavingDeposit, DeleteSavingDeposit, EditTransfer, DeleteTransfer, EditPeriod, EditSavingMovement, DeleteSavingMovement, DeleteExternalTransfer, Achievements, Reallocate, Recurring, RecurringEdit, RecurringConfirm, Import, AddOrImport, ArchiveFund, FundMovements, Archived, ManageTags, EditTag, LogInstallment, DeleteInstallment, WeekRecap, TripEdit, DeleteTrip, AttachToTrip, UseTripSavings, TagExpense }
     private enum Tab { Overview, Account, Budgets, Savings }
 
     /// <summary>Which kind of goal the Goals grid is showing. Defaults to All so the filter narrows on request
@@ -11397,6 +11432,26 @@ else
     private Task UnsettleFromModal() => RunModal(async () =>
     {
         await State.UnsettleExpense(_settleExpenseId);
+        CloseModal();
+    });
+
+    // Tag-only editing of an expense in a CLOSED period. Its own id and its own selection field rather than
+    // borrowing the edit form's: sharing them would make a modal that writes one field look like the one that
+    // rewrites all six, which is the difference this whole path exists to keep.
+    private Guid _tagExpenseId;
+    private Guid? _tagOnlyId;
+
+    private void OpenTagExpense(Guid expenseId)
+    {
+        if (State.FindExpense(expenseId) is not { } e) return;
+        _tagExpenseId = expenseId;
+        _tagOnlyId = e.TagId;
+        _modal = Modal.TagExpense;
+    }
+
+    private Task SaveTagOnly() => RunModal(async () =>
+    {
+        await State.SetExpenseTag(_tagExpenseId, _tagOnlyId);
         CloseModal();
     });
 
