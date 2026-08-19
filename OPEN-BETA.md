@@ -231,12 +231,12 @@ against a moving feature set is work that gets redone. R4 lands before R7 for th
 | # | Phase | Ends when | Size |
 |---|-------|-----------|------|
 | **R1** | Clear the feature backlog | The feature set is declared **frozen** | L · ✅ **done 2026-08-05** |
-| **R2** | Android catch-up + theme verification **+ a build a user can install** | Android at web parity; light/dark swept on **both** surfaces; **and the app reaches a phone that isn't plugged into the dev machine** | L · web half ✅ · **90% of the endpoint gap closed** · pipeline ✅ |
+| **R2** | Android catch-up + theme verification **+ an APK pipeline** | Android at web parity; light/dark swept on **both** surfaces; **and CI can produce a release APK that runs on a real device** | L · web half ✅ · **90%** · pipeline ✅ · **2 rows open** (`/import`, `/funds/{id}/currency`) |
 | **R3** | AI assistant | See the scoping note — the whole of it is not one phase | L+ |
 | **R4** | Railway migration (hosting **and** DB) | Serving from Railway, Neon + Cloud Run retired | M–L |
 | **R5** | Landing, terms, privacy + Pro-split final verification **+ billing go-live** | The page describes the real product; the paywall is settled **and can actually take money** | M–L |
 | **R6** | SEO | Indexed, measurable, bilingual | S–M |
-| **R7** | Promote | The door is open | — |
+| **R7** | Promote **+ ship the Android app** | The door is open — on the web, and (owner's call, S110) on a phone | — |
 
 ### R1 — Clear the feature backlog
 - **[FEATURE-BACKLOG.md](FEATURE-BACKLOG.md) F1–F7**: quick add (S), tag→category (S–M), left-to-spend-today (S),
@@ -321,9 +321,19 @@ against a moving feature set is work that gets redone. R4 lands before R7 for th
     at all: `reallocations/to-budget` has **no client anywhere**, web included (its own comment says so);
     `reallocations/to-savings` backs a bell nudge `NotificationsMap` **deliberately excludes** from the thin set;
     `/structure` is data Android already assembles from `/spending` + `/wallets`. **The honest backlog is 9.**
-  - ⚠️ **7 of those 9 are bank's back half, and they cannot be verified on this machine at all.**
-    `EnableBankingClient.IsEnabled` needs an ApplicationId + PrivateKey, so locally every one of those routes is
-    unreachable and the row could only ever be *build*-verified. Picked first in S108 and put back for that reason.
+  - ⛔ **7 of those 9 are bank's back half, and they are DEFERRED past R2 as of S110** — written up, with their
+    costs, in [docs/MOBILE.md](docs/MOBILE.md#-banks-back-half--deferred-past-r2-and-this-is-the-decision-session-110-2026-08-19).
+    ★★ **The reason recorded in S108 and S109 was wrong and is worth not repeating.** Both said the seven cannot
+    be verified without Enable Banking credentials; that is true of **one** (`GET /bank/accounts`, the only route
+    that calls the aggregator). `EnsureBankAllowedAsync` skips the provider check on purpose — its comment says
+    "so the DB-backed endpoints still work in environments without Open Banking credentials" — so the mapping
+    routes, `/bank/reset` and `PUT /bank/fund` are all exercisable here. **The deferral rests on the audience
+    instead:** bank sync is gated to a two-email MVP allowlist (`BankSync:AllowedEmails`), all of whom have the
+    web app, where these settings already live and are stored server-side. It expires when the allowlist widens.
+    ⚠️ **The cost is real and named:** a phone-linked connection tracks whichever account the aggregator listed
+    first — `CompleteLinkAsync` takes `AccountIds[0]` — and that **cannot be changed from the phone, not even by
+    disconnecting and re-linking**. Plus: no wallet binding, no merchant mappings, and `POST /bank/ack` shipped
+    without its undo (`/bank/reset`).
   - ★★ **"Check what the endpoint returns before sizing a row" has now been paid for seven times.** The newest
     instance (S108) is the sharpest: `DELETE /expenses/{id}/settle` is addressed by the destination account id,
     and the thin `ExpenseDto` never sent it — **the undo was unreachable by construction from every thin client**,
@@ -348,6 +358,9 @@ against a moving feature set is work that gets redone. R4 lands before R7 for th
     app can never be updated under `com.tandemtab.app` again. Four `ANDROID_KEYSTORE_*` secrets, then it is live.
   - ⚠️ **No AAB and no Play Console**, so distribution is sideload-only — an unknown-sources prompt for every
     tester. Play is a separate decision, not a leftover.
+  - ➡️ **Both of those moved to [R7](#r7--promote) by the owner (S110):** finalize the app, then distribute it.
+    R2 keeps the pipeline (built and proven); R7 owns the key, the release and the Play decision. **Read S109's
+    finding as still true, not cancelled** — until R7, Android work is measured on readiness and reaches nobody.
 - **Sweep light/dark on the web too, not just Android.** S88 shipped a dark-theme crown colour that silently
   never applied (a leading `::deep` compiles to a selector nothing matches). The web half is the cheaper half
   and has already produced one real bug.
@@ -364,19 +377,31 @@ against a moving feature set is work that gets redone. R4 lands before R7 for th
 
 > **Exit (written down at last, Session 109 — R1's lesson was that a phase which trails off gives the next one no
 > ground to stand on).** R2 ends when **all four** hold:
-> 1. **`node tools/r2scan.js --list` has no row left that is a real gap** — with the three audited-away routes
+> 1. ✅ **`node tools/r2scan.js --list` has no row left that is a real gap** — with the three audited-away routes
 >    (`to-budget`, `to-savings`, `/structure`) recorded as *not gaps* rather than quietly counted as done, and
 >    the **bank back half** either built-and-verified against real credentials or **explicitly deferred in
->    writing**. It cannot be verified on the dev machine, so "we'll check later" is not an exit.
-> 2. **Light/dark swept on both surfaces** — web ✅ (S89); Android's sweep found a real bug (the `error` slot) as
->    late as S92, so it is re-swept over everything built since.
-> 3. **★ A build a user can install.** A signed release APK, produced by CI, downloaded from a link, installed on
->    a phone that is not this one. **Parity with a build nobody can install is not parity** — that is the whole
->    finding of S109, and it is why this criterion is here rather than assumed.
+>    writing**. ~~It cannot be verified on the dev machine, so "we'll check later" is not an exit.~~
+>    **Done S110: deferred in writing** in [docs/MOBILE.md](docs/MOBILE.md), on the audience (a two-email
+>    allowlist) — *not* on verifiability, which turned out to be true of one route rather than seven. **`/import`
+>    and `/funds/{id}/currency` remain the two open rows.**
+> 2. ✅ **Light/dark swept on both surfaces** — web ✅ (S89); Android's sweep found a real bug (the `error` slot) as
+>    late as S92, so it is re-swept over everything built since. Re-swept S109.
+> 3. **★ A build that CI can produce and a phone can run** — the *pipeline*, not the distribution.
+>    ⚠️ **Narrowed by the owner (S110): shipping the app to real users moves to [R7](#r7--promote).** The
+>    reasoning is the owner's and it is sound — *finalize, then distribute*; testers on a half-finished build
+>    spend their one first impression on it. What stays in R2 is what S109 actually paid for: CI compiles
+>    `android/`, produces a release APK, and that APK installs and signs in against live prod on a device that
+>    isn't the IDE. ✅ **All of that is done** (S109 exercised both signing paths and verified the release build
+>    against `tandemtab.com`). **What moved out:** the signing key, the GitHub Release, the AAB, and any tester.
+>    ⚠️ **The keystore is worth generating early even though distribution is late — it is a lead-time item, not a
+>    distribution item.** An app installed with key A **cannot be updated by an APK signed with key B**: Android
+>    refuses, and the only fix is uninstall-and-reinstall, which drops the app's local state. Every debug-signed
+>    APK produced between now and the real key is therefore a throwaway. Generating the key obliges you to
+>    distribute nothing — it just means the first build you *do* hand out is the last one anybody has to uninstall.
 > 4. **The stated lag is written down.** Anything deliberately not ported — i18n, F6's celebration, the Breakdown
->    donut pending `GET /breakdown` — is named in [docs/MOBILE.md](docs/MOBILE.md) as a decision, not left to be
->    rediscovered as a gap. The parity rule this roadmap set (freeze web work, or accept a *stated* lag) only
->    works if the lag is actually stated.
+>    donut pending `GET /breakdown`, and now the **bank back half** — is named in [docs/MOBILE.md](docs/MOBILE.md)
+>    as a decision, not left to be rediscovered as a gap. The parity rule this roadmap set (freeze web work, or
+>    accept a *stated* lag) only works if the lag is actually stated.
 
 ### R3 — AI assistant — ⚠️ scope this before starting
 **Two different assistants are specced in this repo, and only one of them is a pre-promotion-sized job.**
@@ -428,6 +453,25 @@ go-live**. Added here:
 - **Preconditions:** R4 done (capacity), R5 done (the page is honest and the paywall is settled), and the
   **intake decision** made — staged invites vs a public link. That decision is still the last open owner call;
   [Capacity](#capacity) argues for staged.
+- **★ Android distribution lives here now (moved out of R2 by the owner, S110).** The call: *finalize the app,
+  then hand it to people* — a tester's first impression is spent once, and spending it on a build that is still
+  changing wastes it. Everything under this heading was previously R2's third exit criterion:
+  - **Generate the signing key** — four `ANDROID_KEYSTORE_*` secrets. ⚠️ A **one-way door**: lose it and the app
+    can never be updated under `com.tandemtab.app` again. ⚠️ And a **lead-time item, not a distribution item** —
+    an app installed with one key cannot be updated by an APK signed with another, so every debug-signed build
+    handed to anyone before the key exists is one they must uninstall later, losing local state. Generating it
+    early commits you to nothing; it only decides which build is the last throwaway one.
+  - **Publish a release.** The pipeline already attaches an APK to a GitHub Release on an `android-v*` tag, and
+    refuses to publish a debug-signed one. A release asset is the only link a tester can open without a GitHub
+    account.
+  - **Decide Play, separately.** The **AAB Play wants is not built** and there is no Play Console account.
+    Sideloading means an unknown-sources prompt for every tester; Play means a review queue, a developer account,
+    and its rules on digital goods — which interact with R5's billing decision. This is its own call, not a
+    leftover of the pipeline.
+  - ⚠️ **The consequence to hold onto, from S109:** while this is unbuilt, **every Android parity row reaches no
+    user**. That was the finding that put a distribution criterion into R2 in the first place. Moving it here is
+    a decision about *when*, and it means the parity number stays a measure of readiness, not of reach — read it
+    that way until this ships.
 - ⚠️ **Do not promote while checkout is dead.** Today the first 100 sign-ups get lifetime Pro and **everyone
   after them is a genuinely gated Free account** told *"Pro isn't on sale yet."* Promotion is the traffic spike;
   the spike is what fills the 100 and then keeps going. Opening the door without billing means the users past

@@ -84,6 +84,64 @@ Session 94, **69** after Session 95). It does not call these:
 > `/funds/{id}/currency`. ⚠️ And the seven bank routes cannot be verified on a dev machine — `EnableBankingClient`
 > needs an ApplicationId + PrivateKey, so locally `IsEnabled` is false and every one of them is unreachable. That
 > row can be *built* here but only *build-verified*, which is the standard S98 warned about.
+> **⛔ Corrected and settled in the box below (S110): that last sentence is true of ONE of the seven, and the
+> seven are now deferred past R2 in writing, for a different reason.**
+
+> ### ⛔ Bank's back half — DEFERRED past R2, and this is the decision (Session 110, 2026-08-19)
+>
+> **The seven routes:** `GET /bank/accounts`, `PUT /bank/account`, `PUT /bank/fund`,
+> `GET` / `PUT` / `DELETE /bank/mappings`, `POST /bank/reset`.
+>
+> R2's exit criterion is that the bank rows are either built and verified against real credentials **or deferred
+> in writing**. This is the writing. They are **not built**, and they are **not** non-gaps like the three above —
+> they are real gaps, accepted. They will keep appearing in `node tools/r2scan.js --list` forever, which is
+> correct: the parity number should show the lag, not launder it.
+>
+> ★★ **First, the reason that has been given for it twice is wrong.** S108 and S109 both recorded *"the seven bank
+> routes cannot be verified on a dev machine"*. **That is true of one of them.** `EnsureBankAllowedAsync`'s own
+> comment says so outright — it checks the allowlist and *deliberately not* whether the provider is configured,
+> "so the DB-backed endpoints still work in environments without Open Banking credentials":
+>
+> | Route | What it actually needs to run here |
+> |---|---|
+> | `GET /bank/accounts` | **The aggregator.** `ListAccountsAsync` calls `eb.GetBalanceAsync` + `GetAccountLabelAsync` per ref. The one genuinely unverifiable route. |
+> | `PUT /bank/account` | A `Linked` connection row (fakeable in the DB). Its balance refresh is best-effort and swallows the failure. |
+> | `PUT /bank/fund` | A connection row — it is a one-column `UPDATE`. No provider. |
+> | `GET`/`PUT`/`DELETE /bank/mappings` | Nothing. `BankMappings` is keyed by account id; no connection, no provider. |
+> | `POST /bank/reset` | Nothing. One `UPDATE` over `PendingBankTransactions`. |
+>
+> **Six of the seven are buildable and testable on this machine today.** "We can't verify it" was the wrong reason,
+> and it is the kind of wrong reason that never expires — which is how a row gets deferred *by default* instead of
+> *by decision*, session after session.
+>
+> **The real reason to defer: the audience is an allowlist.** `BankAccessPolicy` gates the entire feature on
+> `BankSync:AllowedEmails` (an env var on the host, never in this repo), and during the beta that list is **two
+> operator emails** — both of whom have the web app, on the same account, where every one of these settings
+> already exists and is stored **server-side**. A phone screen for mapping merchants would ship to nobody. That is
+> the argument, and it **expires the moment the allowlist widens**.
+>
+> ⚠️ **What a phone-only user loses by this decision.** Written down so it is a known cost, not a rediscovery:
+>
+> 1. ★ **Which bank account gets tracked is chosen for them, and cannot be changed.** `CompleteLinkAsync` takes
+>    `session.AccountIds[0]`, and its own comment reads *"default to the first; the user can switch in the UI"* —
+>    on the phone there is no such UI. At a bank with a current *and* a savings account, whichever the aggregator
+>    lists first is what syncs, permanently. **Disconnecting and re-linking does not help**: it takes the first
+>    again. This is the sharpest of the five and the one to fix first if the row is ever picked up.
+> 2. **The connection is bound to no wallet.** `FundId` is written by `PUT /bank/fund` and by nothing else, so a
+>    phone-linked account carries a balance that belongs to no fund — the web's `SyncedFundId` (the 🏦 badge, the
+>    transfer destinations that exclude it) has nothing to key off.
+> 3. **Merchant mappings never learn.** Every synced transaction stays a manual categorisation. Degrades, doesn't break.
+> 4. **An acked row cannot be brought back.** `/bank/reset` is the undo for a mis-tap, and the phone *does* have
+>    the ack (`POST /bank/ack`) — so a semi-destructive action shipped without its undo. Same shape as S108's
+>    settle/unsettle finding, one row earlier in the list.
+> 5. **Nothing is permanently lost** — the settings live on the server, so the honest instruction is *link on the
+>    phone, configure once on the web*. That is what makes this row deferrable at all, and it is exactly what
+>    separates it from R2's four Tier-1 rows, which were phone-only dead ends.
+>
+> **Un-defer when either happens:** the allowlist widens beyond the MVP pair, or real Enable Banking credentials
+> exist in a non-prod environment. **Pick it up in this order** — cost 1 first, because it is the one that leaves a
+> user stuck: `PUT /bank/account` + `GET /bank/accounts` (one screen, and the pair is useless split), then
+> `PUT /bank/fund`, then `/bank/reset`, then the three mapping routes.
 
 > ### ★ The paywall on the phone (Session 107, 2026-08-18) — a row R2 cannot see
 >
@@ -161,7 +219,7 @@ Session 94, **69** after Session 95). It does not call these:
 | **Expense labels** — read ✅ **added S103** (`ExpenseDto.TagIds`, `TagOptionDto`); writing one is still unwired | `/expenses/{id}/tag` | S |
 | **Money to another account** (transfers out + editing the pair) | `/transfers-out`, `/account-transfers/{id}` | M |
 | **A wallet's own currency** (the S~102 multi-currency work) | `/funds/{id}/currency` | S–M |
-| **Bank sync's back half** — Android links and syncs but can't map, re-point or reset a connection | `/bank/accounts`, `/bank/account`, `/bank/fund`, `/bank/mappings`, `/bank/reset` | M |
+| **Bank sync's back half** — Android links and syncs but can't map, re-point or reset a connection | `/bank/accounts`, `/bank/account`, `/bank/fund`, `/bank/mappings`, `/bank/reset` | ⛔ **DEFERRED past R2 (S110)** — a stated lag, not a non-gap. The audience is the two-email MVP allowlist, who all have the web app; the five costs (starting with *the tracked bank account is the aggregator's first and cannot be changed on the phone*) are written out in the box above |
 | ~~Archived accounts (list + reactivate)~~ | ~~`/archived`, `/reactivate`~~ | ✅ **done S106** — and it was **not** a convenience row; see below |
 | Editing/removing an income category | `/contribution-categories/{id}` | S |
 | The account structure read (a thicker picker source) | `/structure` | S |
@@ -202,6 +260,9 @@ row is something a phone user can live without or reach another way:
 refinements), **tags** incl. F2 (M), **F6's goal celebration** (S — achievements themselves shipped in S108),
 **onboarding** (S), **export** (S). **Reallocation is off this list** — see the audit box above; it is a nudge
 decision, not a client gap. **Settling shipped in S108.**
+⛔ **Bank's back half is off this list too, but not for the same reason** — it is a **deferral**, decided and
+written up in the S110 box above. It stays counted as 7 uncalled routes; what changed is that the lag is now
+stated, with its costs named, rather than carried as an open row nobody could size.
 ⛔ Two items are blocked on the **server**, not on Android, and cannot be estimated as client work:
 **F4 round-ups** (no field on any contract *and* no command endpoint) and the **fund↔bank sync toggle**
 (`SetFundSynced`, `TODO(cutover)`). Both are still whole-snapshot pushes in the thick client. They would batch

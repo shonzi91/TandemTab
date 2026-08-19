@@ -106,6 +106,9 @@ so the phone has nothing to hang it off; `/structure` is data Android already ge
 ⚠️ **Bank's back half (7 of those 9) was picked first and put back.** `EnableBankingClient` needs an
 ApplicationId + PrivateKey, so on a dev machine `IsEnabled` is false and all seven routes are unreachable — that
 row can only ever be *build-verified* here. A deliberate deferral, not an oversight.
+⛔ **Wrong, corrected S110: that is true of one route, not seven** — only `GET /bank/accounts` touches the
+aggregator. The deferral is now written properly in [docs/MOBILE.md](docs/MOBILE.md) and rests on the **audience**
+(the feature is gated to a two-email allowlist who all have the web app), not on verifiability.
 
 **Row 2 — settling an expense onto another account, which needed a SERVER change first.**
 ★★ The thin `ExpenseDto` carried `IsSettlementSource/Destination` as bare booleans, but
@@ -787,6 +790,16 @@ something"*, and picking the next row made the difference matter. Of the 14 left
 this machine**: `EnableBankingClient.IsEnabled` needs an ApplicationId + PrivateKey, so locally every one of those
 routes is unreachable and the row could only be build-verified. It was picked first and put back for that reason.
 
+⛔ **Corrected in Session 110 — the claim above is true of ONE route.** `EnsureBankAllowedAsync` checks the
+allowlist and *deliberately not* whether the provider is configured, with a comment saying why: "so the DB-backed
+endpoints still work in environments without Open Banking credentials". Only `GET /bank/accounts` calls the
+aggregator (`eb.GetBalanceAsync` + `GetAccountLabelAsync` per ref). `PUT /bank/account` and `PUT /bank/fund` need
+a connection row and no provider; the three mapping routes and `/bank/reset` are plain SQL. **Six of the seven are
+testable here.** The row is still deferred past R2 — see [docs/MOBILE.md](docs/MOBILE.md) — but on the audience
+(a two-email allowlist, all of whom have the web app), and the box there names the five costs a phone-only user
+pays, the worst being that **the tracked bank account is whichever the aggregator listed first and cannot be
+changed from the phone, not even by re-linking**.
+
 ### ★★ The row that was left needed a SERVER change — and finding that first is the entire rule
 
 `ExpenseDto` (the thin read model) carried `IsSettlementSource` and `IsSettlementDestination` as bare booleans,
@@ -878,10 +891,21 @@ there is still **no APK pipeline**.
    session and **neither reaches a user**, on top of everything S105–S107 built. R2 is at 90% and the number is
    getting less meaningful every session it rises without a build anyone can install. **Decide this before
    picking another R2 row** — even a signed debug APK the owner can sideload would end the drought.
+   ✅ **Decided S110 by the owner: distribution moves to R7** — *finalize the app, then hand it to people*, so a
+   tester's one first impression isn't spent on a build that is still changing. R2 keeps the **pipeline** (done,
+   both signing paths exercised); R7 owns the **key, the release and the Play decision**. The finding above is
+   not cancelled by this — until R7, **read the parity number as readiness, never as reach.**
+   ⚠️ **One thing still worth doing early: generate the keystore.** It is a lead-time item, not a distribution
+   item. An app installed with key A cannot be updated by an APK signed with key B — Android refuses, and the fix
+   is uninstall-and-reinstall, which drops local state. Generating it commits you to distributing nothing.
 2. **R2's honest remainder is 9, not 12** (`node tools/r2scan.js --list` still prints 12 — the audit in this
    session's second half explains which three are not gaps; the scanner has not been taught the distinction).
    Of the 9: **bank's back half is 7 and cannot be verified here** (no Enable Banking credentials → `IsEnabled`
    is false). That leaves **`/import`** (M) and **`/funds/{id}/currency`** (S) as the only verifiable rows left.
+   ⛔ **Corrected S110 — that parenthesis is true of ONE of the seven** (`GET /bank/accounts`, the only one that
+   calls the aggregator); the other six are DB-backed and testable here. **The seven are now deferred past R2 in
+   writing** — for the audience, not the credentials — in [docs/MOBILE.md](docs/MOBILE.md). So the rows still
+   genuinely open are `/import` and `/funds/{id}/currency`, but not for the reason given here.
 3. **The Android UI sweep is still the largest thing outstanding** — native has none of S104/S105/S106's web
    work, and R2 does not measure that axis at all.
 4. **`ReopenTrip` still has zero web callers** (ungated; it only needs somewhere to press it). Ask before removing.
@@ -903,6 +927,12 @@ there is still **no APK pipeline**.
 - **A row that cannot be verified is not the cheapest row, whatever its size.** Bank's back half is the biggest
   remaining item and was still the wrong pick today, because this machine cannot exercise a single one of its
   seven routes.
+  ⛔ **The example was wrong, S110 — and the wrong example taught the wrong lesson.** This machine can exercise
+  **six** of the seven; only `GET /bank/accounts` needs the aggregator, and `EnsureBankAllowedAsync`'s own comment
+  says the guard skips the provider check precisely "so the DB-backed endpoints still work in environments without
+  Open Banking credentials". The principle stands; **the real lesson is the one underneath it — an unverifiable
+  reason never expires, so a row deferred on one gets deferred by default every session instead of decided once.**
+  It took three sessions here. Deferred properly in [docs/MOBILE.md](docs/MOBILE.md), on the audience.
 
 ## Session 107b (2026-08-18) — **The loan that ignored its own due day, and a flag that asked the wrong question.**
 
