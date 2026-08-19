@@ -1,12 +1,49 @@
 # TandemTab (FinApp) — session handoff
 
-Last updated: 2026-08-19 (Session 109 — **the Android app can now reach a phone that isn't plugged into this
-machine. No feature work; the constraint S108 named was the binding one.**
-**No server change, no deploy. Live is still `finapp-00311-nz6`. Committed — ⚠️ NOT PUSHED, and it needs the
-owner: `git push` was rejected with *"refusing to allow a Personal Access Token to create or update workflow
-`.github/workflows/android.yml` without `workflow` scope"*. The stored PAT can write code but not workflows.
-Regenerate it with the `workflow` scope (or push with a credential that has it) and the commit goes up as-is.
-See S84 on why local-only commits are the real risk.**
+Last updated: 2026-08-19 (Session 109 — **the APK pipeline, the Android theme sweep owed since S92, and four
+owner items — one of which was a domain bug telling the user the opposite of the truth.**
+**499 + 49 + 369 green. Live: `finapp-00312-qwd`. ⚠️ NOT PUSHED — see the token note below.**
+
+★★ **The APK pipeline.** `.github/workflows/android.yml` builds an installable APK on every push and attaches
+one to a **GitHub Release** on an `android-v*` tag. Until now CI built the .NET solution and **never once
+compiled `android/`** — every parity row since S90 reached no user anywhere while R2's number climbed. A missing
+release keystore signs with the DEBUG key rather than failing (a build nobody can produce is the failure mode
+being fixed) and is never silent: the build warns, CI warns, the artifact is named `-debugkey`, and the release
+step refuses to publish one. ★ `android/gradlew` was mode **100644** in git — the first Linux runner would have
+died with "permission denied", and only adding CI could ever have surfaced it.
+
+★★ **The theme sweep, owed since Session 92 and never done** (last named in S100, then it survived only inside
+"the pre-S104 carry-over still stands" — a reference to a reference). Dark measured **≥5.12:1 on every token
+pair**; all three findings were light. **(1) Coral was the only accent without a darkened light variant** and it
+is the colour of every money-out figure and every destructive label — **2.55:1 on white**, below AA *and*
+AA-large, on 13sp amounts and on Spending's two 26sp hero numbers. `CoralDeep #B93A28`: same hue, 5.68:1.
+**(2) The login AlertBox asked `isSystemInDarkTheme()`** — this app follows its own preference, so when the two
+disagreed (the default, since the preference defaults to dark) it painted the light palette on the dark card:
+**1.92:1 on the one message a user who cannot get in has to read.** The colours were right all along (7.51 /
+7.98 correctly paired); only the selector was. **(3) Home painted "safe to spend" the positive accent
+unconditionally**, so **−€1,221.54** arrived in the colour reserved for good news.
+
+★★ **"No savings set aside" was said to someone who had just saved.** The signal asked `SavingsNetTotal`
+(allocations **minus** drawdowns) while the Saved card asks `SavingsSetAsideTotal` — so a period that set money
+aside **and** deployed an older earmark (a debt bucket prepaying a loan, the owner's own case) nets negative and
+the app announced the opposite of the truth. `SavingsSetAsideTotal`'s own doc already argued this at length
+("no drawdown is negative saving", written after the card once read −€620); the card was moved onto it and
+**this signal was left behind**. The savings paragraph had the same fault in a second form — decided purely by
+the *rate*, which is null when no income exists, so saving €420 out of carried-over cash read as "no savings
+rate to measure yet". It takes the amount now, with the invariant in one place.
+
+✅ **Three more owner items:** the trip picker's attached rows are exempt from the **cap** but no longer from the
+**search** (and amounts match now — "46.8" finds €46.80); expenses in **closed periods** get a tag-only Label
+modal with the create-and-select ＋ (the server route never blocked this, it was a client gap); and **Manage
+categories is a grid** on web and Android. ⚠️ **That last one found a divergence:** Android still offered a
+**parent picker**, so the phone was minting sub-categories the web had retired entirely. Removed; existing
+nested rows still render (captioned with their parent) or they would be unreachable to rename.
+
+⚠️ **THE PUSH IS STILL BLOCKED and only the owner can clear it.** `git push` is rejected with *"refusing to
+allow a Personal Access Token to create or update workflow `.github/workflows/android.yml` without `workflow`
+scope"*. **Eight commits are local-only while prod runs them** — the S84 risk, now with prod ahead of origin.
+Regenerate the PAT with `workflow` ticked and push. I did **not** rewrite history to route around it: dropping
+the workflow from the chain would silently delete the thing the session was asked to build.
 ★★ **The app built on exactly one Windows box and had no way out of it.** CI built the .NET solution and never
 once compiled `android/` — nine sessions of R2 parity rows, every one of them unreachable by a real user. The
 parity count measured the wrong thing while the door was shut.
@@ -501,6 +538,136 @@ Minting a token is not something to hand to an assistant, so it was left here.
   `com.tandemtab.app` again. Deliberately not done here.
 - **No AAB, no Play Console.** The workflow builds the APK a sideloader installs, not the bundle Play wants.
 - Distribution is sideload-only, which means Android's install-from-unknown-sources prompt for every tester.
+
+## Session 109 (cont.) — **The Android theme sweep, owed since Session 92.**
+
+### ★★ It was never done, and it stopped being tracked rather than getting done
+
+S92 found it (Material's `error` slot was the warning amber, so "Delete account" wore the "you're over budget"
+colour). S93/S94/S95 carried it explicitly — *"half of R2's exit condition"*. S96/S97 folded it into "the
+pre-S96 carry-over". **S100 is the last session that names it**; after that it survives only inside *"the
+pre-S104 carry-over still stands"*, a reference to a reference. Seventeen sessions.
+
+⚠️ Every session since has verified **its own new surfaces** in both themes. None of that touches what came
+before — and both Android theme bugs ever found were found **incidentally**, which S93 already called the tell.
+
+### The instrument: Android has no pairscan, so the sweep was static + measured + driven
+
+**Static pass — and it came back clean, which is worth knowing.** All 29 `Color(0x…)` literals outside
+`theme/` are either brand marks (the Google G, the logo), categorical palettes (avatars, trip slices, the
+budget ramp) or explicitly `if (dark)`-branched. No unguarded single-theme literal, no light-only token used
+in a screen. **Compose forces colours through a theme object, so the CSS class of bug pairscan exists to catch
+cannot happen here.** The risk lives one level up: which token a surface chose.
+
+**Measured pass — WCAG over every token pair.** Dark is uniformly strong (**≥5.12:1**, nothing below AA).
+Light carries the weak ones, and most are the *known* palette findings the web sweep deferred to
+[UX-BACKLOG #11](UX-BACKLOG.md) (brand green 3.34, muted greys 4.3–4.5). **One was not:**
+
+### ★★ Finding 1 — coral is used as TEXT, and measures 2.55:1 on white
+
+`tandem.spent` is the colour of every money-out figure and every destructive label: expense amounts at 13sp
+SemiBold, Spending's two **26sp** hero numbers, "Remove"/"Delete"/"Archive"/"Unsettle", the trash tints. On
+white that is **2.55:1 — below AA and below AA-large.** In dark it is 6.70 and was never the problem.
+
+★ **Coral was the only accent in the file without a darkened light variant.** BrandGreen→PositiveGreen, the
+amber pair — every other accent has one. `CoralDeep #B93A28` is the same hue (7 vs 8) taken down in lightness:
+**5.68:1** on a card, ≥5.0 on every other light surface. ⚠️ Worth knowing: **the web colours these same
+figures `#dc2626`** (`.amt.debit`), so coral-as-money-out was never mirrored from the web at all.
+
+### ★★ Finding 2 — the login error box asked the SYSTEM which theme it was
+
+`LoginScreen.AlertBox` called `isSystemInDarkTheme()`. **This app carries its own preference**
+(`AppViewModel.darkTheme`, mirroring the web's `localStorage 'finapp-theme'`) and deliberately does not follow
+the system — so when the two disagreed it painted the light palette onto the dark card: **1.92:1** (and 1.60
+in the mirror case). They disagree **by default**, since the preference defaults to dark on a phone that is
+usually light. ★ **The colours were never wrong** — 7.51 and 7.98 when correctly paired. Only the selector
+was. They live in `TandemColors` now, where they cannot be mismatched. **Captured before and after** on an
+emulator with the system light and the app dark.
+
+### ★ Finding 3 — a negative "safe to spend" in the positive colour
+
+`HeroPart("Safe to spend", …, valueColor = tandem.positive)`, unconditional — so **−€1,221.54** arrived in
+mint/green. The web branches this exact figure (`State.IsOverAllocated ? "warn-text" : "bal-free-v"`), and the
+sub-line one row below has branched on its own sign since it was written. ⚠️ The thin overview carries no
+`isOverAllocated`, so Android catches the subset it can see: a figure that has actually gone negative.
+
+### Plus one non-colour defect the sweep walked into
+
+The Insights **spending trend** drew a full-width block of accent colour for a single month — directly above
+the server's own caption saying there is not enough history to spot a trend. One `Column` at `weight(1f)` fills
+the row. Two points minimum now; the caption stays.
+
+### Verification
+
+Every surface driven on the emulator in **both themes** against a seeded local account (income, budgets with
+one deliberately blown, a goal, a debt, a recurring bill, a running trip). The fixture is `sweep109` /
+"Sweep Budget" in `src/FinApp.Server/finapp-server.db` — ⚠️ it now also holds a **closed August**, from the
+tag-editing verification below.
+
+## Session 109 (cont.) — **Four owner items, and the one that was telling the user the opposite of the truth.**
+
+### ★★ "No savings set aside", said to someone who had just saved
+
+Owner-reported mid-session, with a screenshot: **SAVED €1,350.00** and, directly under it, *"No savings set
+aside."* They asked specifically whether a **debt-bucket disbursement prepaying a loan** could be the cause.
+
+**It could.** `BuildSignals` asked `p.SavingsNetTotal` — allocations **minus** drawdowns — while the Saved card
+asks `p.SavingsSetAsideTotal`. Set €400 aside, deploy €1,500 against the loan, and the period nets negative.
+
+★★ **The domain had already settled this and one call site never moved.** `SavingsSetAsideTotal`'s doc comment
+argues it at length — *"no drawdown is negative saving"* — written after the Saved card itself once read
+**−€620** when a sinking fund paid the bill it had spent a year filling. The card was fixed onto the honest
+measure; **the signal was left on the other one.** Two measures answering one question is how they disagree
+out loud. Pinned by a test using a real debt bucket and a real prepayment, checked against the unfixed code
+first (it fails there — the only thing that makes it a regression test).
+
+★ **The savings paragraph had the same fault in a second form.** Its branches were decided purely by the
+**rate**, and a rate is a ratio: a period funded entirely from carried-over cash has no denominator, so
+`RatioOf` returns null and the paragraph read *"No contributions recorded this period, so there's no savings
+rate to measure yet"* to someone who had just set aside €420. It takes the amount as well now, with the
+invariant stated once: **no branch may claim nothing was set aside while something was.** The null-rate case
+names the amount instead (new `critique.aside_no_income`, EN + BG + the Kotlin narrator).
+
+⚠️ **And a third reason the pair reads as a contradiction, which is not a bug.** The thin Home header prints
+`Overview.Saved`, defined in the contract as *"savings earmarked, this period **AND prior**"*; the signal asks
+only about **this** period. €1,350 standing with nothing added this month makes both lines correct. The title
+now says what it always meant — **"Nothing set aside this period"** — since the *description* has carried
+"this period" all along and the Home strip shows only the title.
+
+### The other three
+
+★ **The trip picker.** Rows already on the trip were pinned past the **search** as well as past the 60-row cap,
+so typing buried the next match under rows the user had just filtered out. Exempt from the **cap** only now —
+and the old justification ("ticking one could make it vanish") does not survive contact: a row that matched
+when you ticked it still matches after. **Browser-proved both ways**: `46.8` keeps the attached row, `121.5`
+drops it. **Amounts match too**, on the digits rather than parsed exactly, so a half-typed "46.8" finds €46.80.
+
+★ **Labelling an expense in a closed month.** A closed month is closed for the **money**, not for what a row is
+called — and labels are the axis Breakdown-by-tag and the trip recap read history on, both done long after the
+period shut. Closed rows get a **Label** button opening a tag-only modal (with the create-and-select ＋), which
+writes **only** the tag. ⚠️ **The server never blocked this**: `PUT /expenses/{id}/tag` searches every period
+and has no open-period guard. It was a client gap the whole time, and the trip's own attach list had carried a
+per-row tag control for exactly this reason since trips shipped.
+
+★ **Manage categories is a grid** on both surfaces — a category IS its icon everywhere else in this app, so a
+row-per-category made the icon incidental. On web the tile is the edit affordance (the pencil was one of two
+identical grey glyphs); delete keeps its own corner control.
+⚠️ **Tags stay a list, and not for the reason assumed** — tags *do* have an icon field (it backs the chips), it
+is simply never rendered on that surface. The real blocker is that each tag row carries a category binding
+("→ Food") and an archived state, which a tile would have to cram or drop.
+★★ **The grid work found a divergence: Android still offered a PARENT picker when creating a category.**
+Sub-categories were retired and the web has no such affordance anywhere, but the phone was still minting a kind
+of category the rest of the app had stopped making. Removed. Existing nested rows from older accounts still
+render as tiles captioned with their parent — the editor is only reachable by tapping the category itself, so
+hiding them would leave a row that cannot be renamed or removed from the phone at all.
+
+### Deploy
+
+✅ **DEPLOYED 2026-08-19 as `finapp-00312-qwd`** (image `3852b97`) — traffic forced `--to-latest` and confirmed,
+both hosts 200, **5 `secretKeyRef`s**, and **no `severity>=WARNING` on the new revision at all**. Served-bytes
+verified on the scoped bundle: identical **369,805 bytes** on the run URL and tandemtab.com, with
+`.cat-tile-main` ×4 and `.cat-grid` ×1 — rules that did not exist before this session. `app.css` untouched, so
+no cache-bust. **499 + 49 + 369 green. `pairscan`: 0.**
 
 ## Session 108 (2026-08-19) — **R2's achievements row: the phone can finally see its own medals.**
 
