@@ -166,6 +166,30 @@ public class InsightsServiceTests
     }
 
     [Fact]
+    public void Prepaying_a_loan_out_of_a_debt_bucket_does_not_trigger_the_no_savings_warning()
+    {
+        // The owner's own case, asked by name: money set aside this period, then a chunk of a DEBT bucket
+        // disbursed to prepay the loan. Deploying an earmark toward the very thing it was earmarked for is the
+        // success case, so it must not read back as "you saved nothing".
+        var account = new Account("Home", Eur);
+        account.AddDefaultFunds();
+        var fund = account.FundId("Bank");
+        var me = account.AddMember(Guid.NewGuid(), "Me");
+        var loan = account.AddSavingCategory("Car loan");
+
+        var p = account.StartPeriod(new DateOnly(2026, 3, 1), new DateOnly(2026, 3, 31));
+        p.Deposit(me.UserId, M(3000), fundId: fund);
+        p.AllocateToSavings(loan.Id, M(400), new DateOnly(2026, 3, 4));
+        p.DisburseSaving(loan.Id, fund, M(1500), new DateOnly(2026, 3, 18), "Loan prepayment");
+
+        Assert.True(p.SavingsNetTotal.Amount < 0m);    // the prepayment took more out than went in this month
+        Assert.Equal(M(400), p.SavingsSetAsideTotal);  // but €400 was set aside, and that is what "saved" means
+
+        var report = new InsightsService().Build(account, 0);
+        Assert.DoesNotContain(report.Signals, s => s.Title.Code == InsightCodes.SigNoSavingsTitle);
+    }
+
+    [Fact]
     public void Saving_out_of_carried_over_cash_names_the_amount_instead_of_claiming_there_is_nothing_to_measure()
     {
         // No income at all this period, so the savings RATE has no denominator and is null. That is not the same

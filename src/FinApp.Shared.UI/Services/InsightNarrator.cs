@@ -56,7 +56,11 @@ public static class InsightNarrator
 
         InsightCodes.SigCatHighTitle => "{0} is running high",
         InsightCodes.SigCatHighDesc => "You've spent {0} on {1} — {2} ({3}%) above your recent average of {4}.",
-        InsightCodes.SigNoSavingsTitle => "No savings set aside",
+        // "This period" is load-bearing: the Home header's "Saved" is the standing earmark (this period AND
+        // prior), so an unqualified "No savings set aside" sits directly under a four-figure Saved total and
+        // reads as a flat contradiction even when both are right. The description always said "this period";
+        // the strip on Home shows only the title.
+        InsightCodes.SigNoSavingsTitle => "Nothing set aside this period",
         InsightCodes.SigNoSavingsDesc => "You haven't moved anything into savings this period. Even a small amount keeps the habit alive.",
         InsightCodes.SigSavingsOkTitle => "Savings on track",
         InsightCodes.SigSavingsOkDesc => "You set aside {0} of what came in — at or above your {1} goal.",

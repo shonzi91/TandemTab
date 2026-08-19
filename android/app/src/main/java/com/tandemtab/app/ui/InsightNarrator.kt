@@ -53,7 +53,7 @@ object InsightNarrator {
 
         "signal.cat_high.title" -> "{0} is running high"
         "signal.cat_high.desc" -> "You've spent {0} on {1} — {2} ({3}%) above your recent average of {4}."
-        "signal.no_savings.title" -> "No savings set aside"
+        "signal.no_savings.title" -> "Nothing set aside this period"
         "signal.no_savings.desc" -> "You haven't moved anything into savings this period. Even a small amount keeps the habit alive."
         "signal.savings_ok.title" -> "Savings on track"
         "signal.savings_ok.desc" -> "You set aside {0} of what came in — at or above your {1} goal."

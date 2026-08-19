@@ -357,7 +357,7 @@ public sealed class Localizer(IJSRuntime js)
         ["{0} is running high"] = "{0} е завишен",
         ["You've spent {0} on {1} — {2} ({3}%) above your recent average of {4}."] =
             "Похарчили сте {0} за {1} — {2} ({3}%) над скорошното ви средно от {4}.",
-        ["No savings set aside"] = "Няма заделени спестявания",
+        ["Nothing set aside this period"] = "Нищо заделено този период",
         ["You haven't moved anything into savings this period. Even a small amount keeps the habit alive."] =
             "Не сте заделили нищо за спестявания този период. Дори малка сума поддържа навика.",
         ["Savings on track"] = "Спестяванията са в час",
