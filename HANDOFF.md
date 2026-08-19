@@ -1,6 +1,104 @@
 # TandemTab (FinApp) — session handoff
 
-Last updated: 2026-08-19 (Session 109 — **the APK pipeline, the Android theme sweep owed since S92, and four
+Last updated: 2026-08-19 (Session 110 — **R2's last two open decisions closed, a feature the owner asked for
+shipped, and a bug that had been silently disabling the bank sync on every app open since it was written.**
+**501 + 50 + 376 green. Live: `finapp-00314-bw8`. Everything committed + pushed.**
+
+★★ **A reason that never expires is how a row gets deferred by default instead of decided once.** S108 and S109
+both recorded that bank's back half "cannot be verified on this machine" — **true of one of the seven routes.**
+`EnsureBankAllowedAsync` checks the allowlist and *deliberately not* whether the provider is configured; its own
+comment says why ("so the DB-backed endpoints still work in environments without Open Banking credentials"). Only
+`GET /bank/accounts` calls the aggregator. **Six of the seven are testable here** — and the session went on to
+prove it by driving the whole bank-review flow locally with no aggregator at all (see the fixture note below).
+The row is still deferred, now **in writing in [docs/MOBILE.md](docs/MOBILE.md) and on the audience**: bank sync
+is gated to a two-email allowlist who all have the web app, so a phone screen for mapping merchants ships to
+nobody. It expires when the allowlist widens. ⚠️ **The cost is named rather than left to be rediscovered** — the
+worst being that a phone-linked connection tracks whichever account the aggregator listed first
+(`CompleteLinkAsync` takes `AccountIds[0]`, its comment reading *"the user can switch in the UI"*, and on the
+phone there is none) and **cannot be changed from the phone, not even by disconnecting and re-linking**.
+
+★★ **Owner call: Android distribution moves out of R2 and into R7** — finalize the app, then hand it to people,
+because a tester's first impression is spent once. R2 keeps the pipeline; R7 takes the release and the Play
+decision. **The keystore was generated anyway, the same day**, on the argument that it is a *lead-time* item, not
+a distribution one: an app installed with one key cannot be updated by an APK signed with another, so any build
+handed out before the key existed would have had to be uninstalled. RSA 4096 / PKCS12 / 10,000 days, alias
+`tandemtab`, four secrets set. ✅ **Verified the way S109 said to verify it — on the artifact, not the config:** a
+`workflow_dispatch` run's *Report the signer* step printed the owner's DN instead of `CN=Android Debug`. Secrets
+existing is not proof; a signer DN is. ⚠️ **R2's exit criteria 1–3 are now met; only #4 (the stated lag written
+down) is outstanding** — bank is named, i18n / F6's celebration / the Breakdown donut still are not.
+
+★★ **"Money back on an expense" — the owner's feature, and the reason it is not just income.** A bank credit
+could already be filed as a transfer in or as somebody's contribution; neither fits paying a whole restaurant
+bill and having a friend send their share back. Filed as income that reads **spent €60 and money-in €20** — two
+wrong figures that happen to net to the right balance, with the category's budget still counting the whole tab.
+So the money comes off the expense instead: `Expense.RefundedAmount` + `Period.SetRefund`, mirroring
+`SetSettlement`'s "reduce the amount, remember what came off, pass zero to undo". Browser-verified: **€60 → €40
+with money-in unmoved at €0.00.**
+★ **The total is passed, not a delta** (two friends paying on different days are two calls, neither needing to
+know the other), and **undo is the same call with zero** rather than a second code path.
+⚠️ **The rebuild mints a new id, so every piece of body data is carried by hand** and pinned by a test — the bank
+link most of all, since losing it makes the next sync offer to log the expense again. **`SetSettlement` does NOT
+do this**: it carries only the installment link, so settling an expense today drops its tags, trip, time and bank
+provenance. Left alone deliberately; it is a real bug and its own change.
+
+★★ **Opening the app never actually pulled from the bank — an owner report, and it was right.** Two
+fire-and-forget tasks started independently: `OnInitializedAsync` began the bank load,
+`OnAfterRenderAsync(firstRender)` began the sync. `SyncOnOpenAsync` opens with `if (!BankSyncDue) return`, and
+`BankSyncDue` opens with `_bankStatus?.Connected == true` — so the first paint beat three round-trips **every
+time**, the sync read a null status as "not connected", and returned. On open you saw only what an earlier sync
+had staged. Switching accounts worked because that path *awaits* the load before syncing, which is exactly what
+the report described. Now one ordered chain — load → OAuth return → paint → sync → paint → prompt — still
+fire-and-forget as a whole, so nothing sits in front of first paint. ★ **Diagnosed and proven on the wire, not by
+reading:** no `POST /bank/sync` on a fresh load with `LastSyncedAt` 18 days stale, then present after the fix.
+⚠️ **Still true and unchanged:** there is **no background check**. New transactions are learned on open and on
+account switch only, throttled to 15 minutes (`BankSyncFreshFor`, server-side so it counts across devices), plus
+the manual refresh. Opening twice inside 15 minutes will not re-check.
+
+✅ **Two deploys, both verified the way the recipe insists** — served bytes, not revision names.
+**`finapp-00313-2nn`** (refunds): the new `html.dark .settle-tag` rule in the served CSS, identical 370,315 bytes
+on both hosts, and `POST …/refund` unauthenticated → **401** (a missing route falls through to the SPA and
+returns 200, so the 401 *is* the proof the route matched). **`finapp-00314-bw8`** (the sync fix): a `.razor`-only
+change, so the fingerprint is the opposite pair — **wasm hash moved** (`FinApp.Shared.UI.7fyj8hpsuc.wasm`) while
+the **CSS bundle stayed** `xjev80mpsb`. 5 `secretKeyRef` both times; **0** `severity>=WARNING` on `00314`.
+
+★ **A local fixture that needs no aggregator, worth not re-deriving.** The whole bank-review flow was driven on
+the dev box: `BankDataProtector.Unprotect` passes through anything without the `enc1:` envelope, so **plaintext
+rows can be inserted straight into `PendingBankTransactions`**; a `BankConnections` row with `Status='Linked'`
+fabricates a connection; `EnableBankingClient.IsEnabled` is only a **config-presence check**, so two dummy
+strings in `appsettings.Development.json` turn the whole bank UI on. ⚠️ **Every hand-written SQL id must be
+lowercase** — those services compare against `Guid.ToString()` and SQLite's `=` is case-sensitive, so an
+uppercase id silently matches nothing. ⚠️ The account also needs a row in `EmailVerifications`, or every bank
+surface stays hidden.
+
+✅ **Also fixed, found on the way:** every refusal raised in the **bank review window was invisible** —
+`_bankError` was only rendered by the External-accounts modal, so *"Pick where this money came from first."* and
+*"Pick something to map to first."* had both been setting an error nobody could see and a button that did
+nothing. And **`.settle-tag` had no dark twin**, riding the light mint pill into dark mode as a pale blob;
+refunds made it a second caller, so it got one (8.1:1, pairscan clean).
+
+⚠️ **Android is built, NOT verified, and reaches nobody.** The refund picker, the row badge, the undo, the two
+API calls and the `POST`/`DELETE …/refund` routes are all in and Kotlin compiles clean — **nothing beyond that is
+claimed.** The emulator run stopped at the sign-in screen: going further needed an account created or a password
+typed, which I don't do. ⚠️ The emulator had the **release APK from S109's pipeline test (versionCode 44)**
+installed, and the debug build is 1, so Gradle refused with `INSTALL_FAILED_VERSION_DOWNGRADE` — the same shape
+as the signing-key argument, and it had to be uninstalled to proceed. ⚠️ **Verifying against the local server
+needs two temporary edits** (`debug` `API_BASE_URL` → `http://10.0.2.2:5179`, plus `usesCleartextTraffic`); both
+were reverted and are **not** in the commit.
+
+#### Next session — R3 (the owner's call)
+1. **★ Scope R3 before writing any of it.** Two different assistants are specced in this repo and only one is a
+   pre-promotion-sized job — see [OPEN-BETA.md](OPEN-BETA.md#r3--ai-assistant--️-scope-this-before-starting).
+   The recommendation there stands: ship **BACKLOG #17's "narrate, don't compute"** layer first (cross-surface,
+   safe by construction — the model emits no figures, so it cannot invent one), then the action schema +
+   name→entity resolver + confirm/undo chip, and leave the on-device LLM for last or for after promotion.
+   ⛔ **Red line:** any capture/categorisation using ML runs **strictly on-device with zero raw-data egress**.
+2. **R3 is what draws R1's freeze line.** Everything in R5 — the landing rewrite, the Free/Pro re-validation,
+   billing go-live — is waiting on the feature set being declared frozen, and that declaration is R3's exit.
+3. **R2 needs one paragraph to close**, not a session: criterion #4, the stated lag (i18n, F6's celebration, the
+   Breakdown donut pending `GET /breakdown`) written into MOBILE.md the way bank's back half now is.
+4. **The Android refund row is unverified** — if it matters before R3, it is an emulator session, not a build.
+
+Previously: 2026-08-19 (Session 109 — **the APK pipeline, the Android theme sweep owed since S92, and four
 owner items — one of which was a domain bug telling the user the opposite of the truth.**
 **499 + 49 + 369 green. Live: `finapp-00312-qwd`. Everything committed + pushed, and the APK workflow's first
 real run came back green.**
