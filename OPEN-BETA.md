@@ -6,7 +6,7 @@ after Debt R2 shipped and BUG-1 was fixed.*
 | | |
 |---|---|
 | **Application** | TandemTab (https://tandemtab.com) |
-| **Live revision** | `finapp-00277-p5t` (2026-08-05) — B1–B4 + P1/P2/P3/P4 shipped; **lifetime-Pro allowance of 100**, real Free/Pro gating (post-cap users gated during beta), Pro crowns + plan comparison; **R1 feature backlog cleared** |
+| **Live revision** | `finapp-00311-nz6` (2026-08-19). *The beta machinery landed on `finapp-00277-p5t` (2026-08-05):* B1–B4 + P1/P2/P3/P4 shipped; **lifetime-Pro allowance of 100**, real Free/Pro gating (post-cap users gated during beta), Pro crowns + plan comparison; **R1 feature backlog cleared**. Everything since is R2 and owner batches |
 | **Scope of this doc** | Open **public** beta — an unrestricted sign-up link, not a handful of invited friends |
 | **Effort key** | S = hours · M = a day · L = multi-day |
 
@@ -231,7 +231,7 @@ against a moving feature set is work that gets redone. R4 lands before R7 for th
 | # | Phase | Ends when | Size |
 |---|-------|-----------|------|
 | **R1** | Clear the feature backlog | The feature set is declared **frozen** | L · ✅ **done 2026-08-05** |
-| **R2** | Android catch-up + theme verification | Android at web parity; light/dark swept on **both** surfaces | L · web half ✅ |
+| **R2** | Android catch-up + theme verification **+ a build a user can install** | Android at web parity; light/dark swept on **both** surfaces; **and the app reaches a phone that isn't plugged into the dev machine** | L · web half ✅ · **90% of the endpoint gap closed** · pipeline ✅ |
 | **R3** | AI assistant | See the scoping note — the whole of it is not one phase | L+ |
 | **R4** | Railway migration (hosting **and** DB) | Serving from Railway, Neon + Cloud Run retired | M–L |
 | **R5** | Landing, terms, privacy + Pro-split final verification **+ billing go-live** | The page describes the real product; the paywall is settled **and can actually take money** | M–L |
@@ -263,7 +263,7 @@ against a moving feature set is work that gets redone. R4 lands before R7 for th
 > **Verification debt closed:** none. The S88 chart animations and F6's shared-account "together" line are both
 > still **unseen with real data** and carry forward.
 
-### R2 — Android catch-up + theme verification
+### R2 — Android catch-up + theme verification + a build a user can install
 - Android's last commit is **2026-07-30**; the web has had **S74–S89** since. That's a diff-driven catch-up
   against the web's session log, not a rewrite. Debt R2's grouped *edit* is still unbuilt there.
 - Mirror the web's section layouts, cards and colours; differ only in **nav (bottom bar)** and **floating buttons**.
@@ -306,6 +306,48 @@ against a moving feature set is work that gets redone. R4 lands before R7 for th
     in the same colour as *"you're over budget"*. Now the web's danger red (`#DC2626` / `#F87171` dark); warnings
     keep the amber via `LocalTandemColors.warn`. **Android's theme pass is not "no fixes needed" after all** — S90
     checked only the surfaces it had just built.
+- **Sessions 93–108 worked through most of what was left** (this doc had stopped at S92): debt **installments** —
+  the last of the four L rows — plus fund management and the savings target (S93/S95), **trips** and the
+  expense-label read (S103), a 23-endpoint push in S105, **export** and **archived accounts + reactivate** (S106),
+  the **paywall port** (S107), and **achievements + settling an on-behalf expense** (S108). **106 of 118 in-scope
+  routes, 90%.**
+  - ★★ **The gap is measured by a script now, not by eye.** S103 reported "61 of 99" from a hand count; run the
+    same day as [`tools/r2scan.js`](tools/r2scan.js) it was **76 of 118**. A hand count of a hundred routes is
+    wrong every time, and wrong in a way that looks authoritative once written down. **Re-run it rather than
+    re-counting**, and paste its output rather than a remembered figure. ⚠️ Its own first cut was wrong in the
+    *flattering* direction twice — **a parity number that goes UP after a scanner change deserves more suspicion
+    than one that goes down.**
+  - ★★ **An uncalled endpoint is not automatically a gap (the S108 audit).** Of the 12 left, three are not gaps
+    at all: `reallocations/to-budget` has **no client anywhere**, web included (its own comment says so);
+    `reallocations/to-savings` backs a bell nudge `NotificationsMap` **deliberately excludes** from the thin set;
+    `/structure` is data Android already assembles from `/spending` + `/wallets`. **The honest backlog is 9.**
+  - ⚠️ **7 of those 9 are bank's back half, and they cannot be verified on this machine at all.**
+    `EnableBankingClient.IsEnabled` needs an ApplicationId + PrivateKey, so locally every one of those routes is
+    unreachable and the row could only ever be *build*-verified. Picked first in S108 and put back for that reason.
+  - ★★ **"Check what the endpoint returns before sizing a row" has now been paid for seven times.** The newest
+    instance (S108) is the sharpest: `DELETE /expenses/{id}/settle` is addressed by the destination account id,
+    and the thin `ExpenseDto` never sent it — **the undo was unreachable by construction from every thin client**,
+    with the route's own comment giving the assumption away (*"the caller holds it as the expense's
+    SettledToAccountId"* — true of the thick client and nothing else). Several rows that looked like Kotlin work
+    were **missing server reads**.
+  - ⚠️ **R2's instrument cannot see a whole class of gap: it measures whether an endpoint is reachable, not
+    whether a refusal is bearable.** S106 put trips behind Pro and S107 found a free user could fill in the entire
+    trip form and get a 402 on Save. Every endpoint involved was "called". **A paywall must never strand state**
+    is the rule that came out of it, and no scanner will ever report it.
+  - ⬜ **Still open beyond the endpoint table:** Android **i18n (en/bg)** is deferred and is its own session;
+    **F6's goal-celebration moment** needs a per-device seen-set the web keeps in `localStorage`; and
+    **`GET /accounts/{id}/breakdown`** does not exist, which is what blocks the native Breakdown donut.
+- **★ Distribution — the constraint the parity count could not see (Session 109).** Until S109 the Android app
+  **built on exactly one Windows machine and had no way to reach a phone that wasn't plugged into it**: CI built
+  the .NET solution and never once compiled `android/`. **Every parity row this phase has closed since S90
+  reached no user anywhere** while the number climbed. Now [`.github/workflows/android.yml`](.github/workflows/android.yml)
+  builds an installable APK on every push and attaches one to a **GitHub Release** on an `android-v*` tag — a
+  release asset is the only link a tester can open without a GitHub account.
+  - ⚠️ **No signing key exists yet**, so every artifact is signed with the public debug key: sideloadable, and
+    the release step refuses to publish it. Generating the key is the owner's **one-way door** — lose it and the
+    app can never be updated under `com.tandemtab.app` again. Four `ANDROID_KEYSTORE_*` secrets, then it is live.
+  - ⚠️ **No AAB and no Play Console**, so distribution is sideload-only — an unknown-sources prompt for every
+    tester. Play is a separate decision, not a leftover.
 - **Sweep light/dark on the web too, not just Android.** S88 shipped a dark-theme crown colour that silently
   never applied (a leading `::deep` compiles to a selector nothing matches). The web half is the cheaper half
   and has already produced one real bug.
@@ -319,6 +361,22 @@ against a moving feature set is work that gets redone. R4 lands before R7 for th
     that is the product's visual language and belongs to **[UX-BACKLOG #11](UX-BACKLOG.md)** (accessibility), not
     to a theme sweep. Decide it there.
 - iOS stays **ON HOLD**.
+
+> **Exit (written down at last, Session 109 — R1's lesson was that a phase which trails off gives the next one no
+> ground to stand on).** R2 ends when **all four** hold:
+> 1. **`node tools/r2scan.js --list` has no row left that is a real gap** — with the three audited-away routes
+>    (`to-budget`, `to-savings`, `/structure`) recorded as *not gaps* rather than quietly counted as done, and
+>    the **bank back half** either built-and-verified against real credentials or **explicitly deferred in
+>    writing**. It cannot be verified on the dev machine, so "we'll check later" is not an exit.
+> 2. **Light/dark swept on both surfaces** — web ✅ (S89); Android's sweep found a real bug (the `error` slot) as
+>    late as S92, so it is re-swept over everything built since.
+> 3. **★ A build a user can install.** A signed release APK, produced by CI, downloaded from a link, installed on
+>    a phone that is not this one. **Parity with a build nobody can install is not parity** — that is the whole
+>    finding of S109, and it is why this criterion is here rather than assumed.
+> 4. **The stated lag is written down.** Anything deliberately not ported — i18n, F6's celebration, the Breakdown
+>    donut pending `GET /breakdown` — is named in [docs/MOBILE.md](docs/MOBILE.md) as a decision, not left to be
+>    rediscovered as a gap. The parity rule this roadmap set (freeze web work, or accept a *stated* lag) only
+>    works if the lag is actually stated.
 
 ### R3 — AI assistant — ⚠️ scope this before starting
 **Two different assistants are specced in this repo, and only one of them is a pre-promotion-sized job.**
