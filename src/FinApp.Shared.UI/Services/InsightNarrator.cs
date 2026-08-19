@@ -77,6 +77,7 @@ public static class InsightNarrator
         InsightCodes.BadgeDash => "—",
 
         InsightCodes.CritNoContrib => "No contributions recorded this period, so there's no savings rate to measure yet.",
+        InsightCodes.CritAsideNoIncome => "You set aside {0} this period. Nothing has come in yet, so there's no rate to measure it against.",
         InsightCodes.CritAtTarget => "You saved {0} this period — at or above your {1} goal. Keep that rhythm.",
         InsightCodes.CritNoneYet => "You haven't set anything aside this period yet — your goal is {0}.",
         InsightCodes.CritShort => "You saved {0} this period — a start, but short of your {1} goal.",

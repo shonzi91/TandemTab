@@ -115,7 +115,7 @@ public sealed class InsightsService
             var gap = (target - (savingsRate ?? 0m)) * income.Amount;
             if (gap > 0m) shortfall = new Money(decimal.Round(gap, 2), currency);
         }
-        var savingsCritique = SavingsCritique(savingsRate, shortfall, target);
+        var savingsCritique = SavingsCritique(p.SavingsSetAsideTotal, savingsRate, shortfall, target);
 
         var signals = BuildSignals(account, periods, periodIndex, savingsRate, target);
         var miniTrends = BuildMiniTrends(account, periods, periodIndex, currency);
@@ -449,7 +449,13 @@ public sealed class InsightsService
         // (Overspent budgets are surfaced as always-visible rings in the Overview, not as a signal here.)
 
         // No savings set aside.
-        if (p.SavingsNetTotal.Amount <= 0m)
+        // ★ SavingsSetAsideTotal, not SavingsNetTotal — the same figure the Saved card shows. Net subtracts
+        // drawdowns, so a period that set €300 aside AND spent €500 out of a sinking fund nets −€200 and this
+        // signal announced "No savings set aside" beside a Saved card reading €300. Period.SavingsSetAsideTotal
+        // already argues the case at length ("no drawdown is negative saving" — the card itself once read −€620
+        // when a sinking fund paid the bill it had spent a year filling); the card was moved onto it and this
+        // signal was left behind. Two measures answering one question is how they come to disagree.
+        if (p.SavingsSetAsideTotal.Amount <= 0m)
             warn.Add(new Signal(SignalKind.Warn,
                 InsightMessage.Plain(InsightCodes.SigNoSavingsTitle),
                 InsightMessage.Plain(InsightCodes.SigNoSavingsDesc),
@@ -624,16 +630,26 @@ public sealed class InsightsService
         return wins.Take(3).ToList();
     }
 
-    private static IReadOnlyList<InsightMessage> SavingsCritique(decimal? rate, Money? shortfall, decimal target)
+    /// <summary>
+    /// The savings paragraph. ★ <paramref name="setAside"/> is what makes it honest: the rate alone cannot tell
+    /// "saved nothing" from "saved, but there is no income to divide by", and the second case says the first thing.
+    /// The invariant is that <b>no branch may claim nothing was set aside while something was</b> — the figure here
+    /// is the same one the Saved card shows (<see cref="Period.SavingsSetAsideTotal"/>), so the two cannot disagree.
+    /// </summary>
+    private static IReadOnlyList<InsightMessage> SavingsCritique(Money setAside, decimal? rate, Money? shortfall, decimal target)
     {
+        var savedSomething = setAside.Amount > 0m;
         if (rate is null)
-            return [InsightMessage.Plain(InsightCodes.CritNoContrib)];
+            return savedSomething
+                // No income this period, so no rate exists — but money did go in, from cash carried over.
+                ? [InsightMessage.Of(InsightCodes.CritAsideNoIncome, InsightArg.Cash(setAside))]
+                : [InsightMessage.Plain(InsightCodes.CritNoContrib)];
         if (rate.Value >= target)
             return [InsightMessage.Of(InsightCodes.CritAtTarget, InsightArg.Ratio(rate.Value), InsightArg.Ratio(target))];
 
         var parts = new List<InsightMessage>
         {
-            rate.Value <= 0m
+            !savedSomething
                 ? InsightMessage.Of(InsightCodes.CritNoneYet, InsightArg.Ratio(target))
                 : InsightMessage.Of(InsightCodes.CritShort, InsightArg.Ratio(rate.Value), InsightArg.Ratio(target))
         };

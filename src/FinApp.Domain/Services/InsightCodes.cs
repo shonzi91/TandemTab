@@ -55,6 +55,10 @@ public static class InsightCodes
 
     // --- Savings critique (base [+ optional shortfall tail]) ------------------------------------
     public const string CritNoContrib = "critique.no_contrib"; // "No contributions recorded this period, so there's no savings rate to measure yet."
+    // ★ The savings rate is a ratio, and a ratio needs a denominator — so a period funded entirely from carried-over
+    // cash has NO rate however much was set aside. Reporting that as "nothing to measure" in the savings slot reads
+    // as "you saved nothing", next to a Saved card showing what they did save. Name the amount instead.
+    public const string CritAsideNoIncome = "critique.aside_no_income"; // "You set aside {0} this period. Nothing has come in yet, so there's no rate to measure it against."  {Money setAside}
     public const string CritAtTarget = "critique.at_target";   // "You saved {0} this period — at or above your {1} goal. Keep that rhythm."  {Percent rate, Percent target}
     public const string CritNoneYet = "critique.none_yet";     // "You haven't set anything aside this period yet — your goal is {0}."  {Percent target}
     public const string CritShort = "critique.short";          // "You saved {0} this period — a start, but short of your {1} goal."  {Percent rate, Percent target}

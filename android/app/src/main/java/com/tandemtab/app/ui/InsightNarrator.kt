@@ -74,6 +74,7 @@ object InsightNarrator {
         "badge.dash" -> "—"
 
         "critique.no_contrib" -> "No contributions recorded this period, so there's no savings rate to measure yet."
+        "critique.aside_no_income" -> "You set aside {0} this period. Nothing has come in yet, so there's no rate to measure it against."
         "critique.at_target" -> "You saved {0} this period — at or above your {1} goal. Keep that rhythm."
         "critique.none_yet" -> "You haven't set anything aside this period yet — your goal is {0}."
         "critique.short" -> "You saved {0} this period — a start, but short of your {1} goal."

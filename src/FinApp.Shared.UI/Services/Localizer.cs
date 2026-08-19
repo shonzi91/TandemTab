@@ -376,6 +376,8 @@ public sealed class Localizer(IJSRuntime js)
         ["Give {0} a budget — you've spent {1} with no plan in place."] = "Задайте бюджет за {0} — похарчили сте {1} без план.",
         ["No contributions recorded this period, so there's no savings rate to measure yet."] =
             "Няма записани вноски за този период, така че още няма норма на спестяване.",
+        ["You set aside {0} this period. Nothing has come in yet, so there's no rate to measure it against."] =
+            "Заделили сте {0} този период. Още няма постъпления, така че няма спрямо какво да се измери норма.",
         ["You saved {0} this period — at or above your {1} goal. Keep that rhythm."] =
             "Спестихте {0} този период — на или над целта ви от {1}. Запазете темпото.",
         ["That's about {0} short of your goal this period."] = "Това е около {0} под целта ви за този период.",

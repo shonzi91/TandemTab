@@ -137,4 +137,53 @@ public class InsightsServiceTests
         var report = SpikeReport(foodBudget: 200m);
         Assert.DoesNotContain(report.Signals, s => s.Title.Code == InsightCodes.SigCatHighTitle);
     }
+
+    [Fact]
+    public void Spending_a_sinking_fund_does_not_make_the_app_say_nothing_was_set_aside()
+    {
+        // Owner-reported: "no savings set aside" while the period plainly had savings. The signal asked
+        // SavingsNetTotal (allocations MINUS drawdowns) while the Saved card asks SavingsSetAsideTotal, so a
+        // period that saved AND deployed an older earmark nets negative and the two disagree out loud.
+        var account = new Account("Home", Eur);
+        account.AddDefaultFunds();
+        var fund = account.FundId("Bank");
+        var me = account.AddMember(Guid.NewGuid(), "Me");
+        var insurance = account.AddSavingCategory("Insurance");
+
+        var p = account.StartPeriod(new DateOnly(2026, 1, 1), new DateOnly(2026, 1, 31));
+        p.Deposit(me.UserId, M(2000), fundId: fund);
+        p.AllocateToSavings(insurance.Id, M(300), new DateOnly(2026, 1, 5));
+        // The sinking fund pays the bill it had been filling for a year — more leaves than went in this month.
+        p.DisburseSaving(insurance.Id, fund, M(500), new DateOnly(2026, 1, 20), "Insurance");
+
+        Assert.True(p.SavingsNetTotal.Amount < 0m);        // the money model is net-negative...
+        Assert.Equal(M(300), p.SavingsSetAsideTotal);      // ...but €300 was genuinely set aside
+
+        var report = new InsightsService().Build(account, 0);
+
+        Assert.DoesNotContain(report.Signals, s => s.Title.Code == InsightCodes.SigNoSavingsTitle);
+        Assert.DoesNotContain(report.SavingsCritique, m => m.Code == InsightCodes.CritNoneYet);
+    }
+
+    [Fact]
+    public void Saving_out_of_carried_over_cash_names_the_amount_instead_of_claiming_there_is_nothing_to_measure()
+    {
+        // No income at all this period, so the savings RATE has no denominator and is null. That is not the same
+        // as saving nothing, and the savings paragraph must not read as though it were.
+        var account = new Account("Home", Eur);
+        account.AddDefaultFunds();
+        var food = account.AddCategory("Food").Id;
+        var fund = account.FundId("Bank");
+        var laptop = account.AddSavingCategory("New laptop");
+
+        var p = account.StartPeriod(new DateOnly(2026, 2, 1), new DateOnly(2026, 2, 28));
+        p.AddExpense(new Expense(food, M(50), new DateOnly(2026, 2, 3), Guid.NewGuid(), fund));  // gives the report data
+        p.AllocateToSavings(laptop.Id, M(420), new DateOnly(2026, 2, 2));
+
+        var report = new InsightsService().Build(account, 0);
+
+        Assert.Equal(InsightCodes.CritAsideNoIncome, report.SavingsCritique[0].Code);
+        Assert.Equal(InsightArgKind.Money, report.SavingsCritique[0].Args[0].Kind);
+        Assert.DoesNotContain(report.SavingsCritique, m => m.Code == InsightCodes.CritNoContrib);
+    }
 }
