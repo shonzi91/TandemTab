@@ -934,7 +934,14 @@ private fun BalanceHero(
     Column(modifier = heroMod) {
         Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
             if (open) {
-                HeroPart("Safe to spend", fmt(overview.free), main = true, valueColor = tandem.positive) {
+                // The web switches this figure to warn-text when the account is over-allocated (Dashboard.razor:
+                // `State.IsOverAllocated ? "warn-text" : "bal-free-v"`); Android painted it the positive accent
+                // unconditionally, so "-€1,221.54" — the largest number on the screen a user lands on — arrived in
+                // the colour reserved for good news. ⚠️ The thin overview carries no `isOverAllocated`, so this
+                // catches the subset it can see: a figure that has actually gone negative. The sub-line below has
+                // branched on its own sign since it was written, which is what makes the headline stand out.
+                val freeShort = overview.free < 0.0
+                HeroPart("Safe to spend", fmt(overview.free), main = true, valueColor = if (freeShort) tandem.warn else tandem.positive) {
                     // At most two context lines, in the order they answer "can I spend this?": what stays free once
                     // the bills already known about are paid, then that headroom spread over the days still to go.
                     if (overview.billsDue > 0.0) {

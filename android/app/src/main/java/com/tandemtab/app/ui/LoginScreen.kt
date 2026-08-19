@@ -3,7 +3,6 @@ package com.tandemtab.app.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -326,10 +325,13 @@ private fun ForgotLink(onClick: () -> Unit) {
 
 @Composable
 private fun AlertBox(message: String) {
-    val dark = isSystemInDarkTheme()
-    val bg = if (dark) Color(0x21EF4444) else Color(0x14EF4444)
-    val border = if (dark) Color(0x61EF4444) else Color(0x33EF4444)
-    val fg = if (dark) Color(0xFFFCA5A5) else Color(0xFF991B1B)
+    // NOT isSystemInDarkTheme(): this app follows its own theme preference, not the phone's, so asking the system
+    // painted the light palette onto the dark card whenever the two disagreed — 1.92:1 on the one message a user
+    // who cannot get in has to be able to read. Same colours, taken from the theme that is actually on screen.
+    val tandem = LocalTandemColors.current
+    val bg = tandem.dangerBg
+    val border = tandem.dangerBorder
+    val fg = tandem.dangerText
     Box(
         modifier = Modifier
             .fillMaxWidth()

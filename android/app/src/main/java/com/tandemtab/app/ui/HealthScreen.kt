@@ -173,21 +173,27 @@ fun HealthSheet(health: HealthUi, onDismiss: () -> Unit) {
             // Outgoings trend.
             if (d.trend.isNotEmpty()) {
                 SectionLabel("Spending trend")
-                Row(
-                    Modifier.fillMaxWidth().height(96.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.Bottom,
-                ) {
-                    d.trend.forEach { p ->
-                        Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Bottom) {
-                            Box(
-                                Modifier
-                                    .fillMaxWidth()
-                                    .height((8 + 70 * p.barFraction).dp.coerceAtLeast(4.dp))
-                                    .background(if (p.isCurrent) accent else tandem.segmentTrack, RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp)),
-                            )
-                            Spacer(Modifier.height(4.dp))
-                            Text(p.label, fontSize = 9.sp, color = tandem.muted, maxLines = 1)
+                // ⚠️ TWO points minimum. A single month is one Column at weight 1f, so it fills the entire row
+                // with a full-width block of accent colour — printed directly above the server's own caption
+                // saying there is not enough history to spot a trend. A trend needs something to compare
+                // against; with one month there is only the caption to show.
+                if (d.trend.size >= 2) {
+                    Row(
+                        Modifier.fillMaxWidth().height(96.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.Bottom,
+                    ) {
+                        d.trend.forEach { p ->
+                            Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Bottom) {
+                                Box(
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .height((8 + 70 * p.barFraction).dp.coerceAtLeast(4.dp))
+                                        .background(if (p.isCurrent) accent else tandem.segmentTrack, RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp)),
+                                )
+                                Spacer(Modifier.height(4.dp))
+                                Text(p.label, fontSize = 9.sp, color = tandem.muted, maxLines = 1)
+                            }
                         }
                     }
                 }
