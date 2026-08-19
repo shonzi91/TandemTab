@@ -1,56 +1,58 @@
 # TandemTab (FinApp) — session handoff
 
-Last updated: 2026-08-19 (Session 108 — **two R2 rows and an audit that shrank the backlog. 102 → 106 of 118 (90%).**
-**496 + 49 + 369 green. Emulator-verified. ⚠️ Carries a small SERVER change, NOT deployed. Committed + pushed.**
-★★ **An uncalled endpoint is not automatically a gap.** Auditing the 14 that were left, **three are not gaps at
-all**: `to-budget` has *no client anywhere* (its own comment says "no web UI yet"); `to-savings` backs a bell nudge
-that `NotificationsMap` **deliberately excludes** from the thin set, so the phone has nothing to hang it off; and
-`/structure` is data Android already gets from `/spending` + `/wallets`. **The honest backlog is 9, not 12.**
-★★ **Settling needed a server change, and finding that out first is the whole point of the rule.** The thin
-`ExpenseDto` carried `IsSettlementSource/Destination` as bare booleans — but `DELETE /expenses/{id}/settle` is
-addressed by the **destination account id**, which the read model never sent. **The undo was unreachable by
-construction from any thin client** — the seventh instance of S105's shape. The route's own comment assumed "the
-caller holds it as the expense's SettledToAccountId", true of the thick client only. Three fields added, and a
-server test now walks settle → read `/spending` → undo **using only what a thin client can see**.
-⚠️ **Bank's back half was picked first and put back.** `EnableBankingClient` needs an ApplicationId + PrivateKey,
-so on a dev machine `IsEnabled` is false and all seven routes are unreachable — it could only ever be
-build-verified here. That is a deliberate deferral, not an oversight.
-✅ **Emulator-verified end to end, both accounts:** €120 expense → settle €50 onto Household → source reads €70
-with **"🤝 €50.00 settled"**, destination gains its €50 row, Spent falls to €70 → then **Unsettle** (behind a
-confirm) → back to €120, badge gone, the other account empty again.
-⚠️ **Two honest trims:** the destination fund/category are **the server's choice**, not pickers (the phone would
-have to fetch another account's whole structure for two dropdowns whose default is what the server picks anyway);
-and the row badge names the amount but **not the other account** — it is four composables deep in a screen handed
-no account list, and the first attempt at the fuller label clipped mid-word on a one-line row.
-★★ **The row was picked by checking what the endpoints RETURN first** — the lesson R2 has taught six times — and
-this time the answer was *everything*: `/achievements` already ships the full catalogue (icon, title, desc,
-earned, percent, tier, earned-on) and `/milestones` the three tallies. **Zero server change**, an afternoon
-instead of a round trip.
-★ **Both endpoints are called, and that is not box-ticking.** Home wants three integers on every visit;
-the catalogue is fetched only when the sheet is opened. That is exactly why the server has two.
-✅ **A Home line + an Achievements sheet**, mirroring the web: earned medals struck in their tier's metal
-(bronze/silver/gold radial coins with a tick), then the locked ones **ordered by how close they are**, each with
-the web's gold progress arc and its percent. The catalogue is never re-judged in Kotlin — "have I earned this"
-stays one domain service, so the phone cannot disagree with the web about an achievement.
-⚠️ **One deliberate departure from the web, and it is about reachability.** The web draws its line only while
-something is in progress, because the web *also* carries a trophy in its header. A phone header with four
-controls has no room for a fifth, so this line is the only door — it stays put once anything is earned and reads
-**"Milestones · 1 of 25 earned"** instead. A screen reachable only while you happen to be mid-milestone is one
-most people would never find twice.
-✅ **EMULATOR-VERIFIED, all four states, both themes**, against a local server seeded to order: **5 in progress**
-(dark), the **earned-only** fallback (light), the **medal grid** with bronze + silver + gold + arcs + locked discs
-in both themes, and **no line at all** on an account with nothing earned — driven by deleting the one bucket that
-had earned something and watching the line go.
-⚠️ **`earnedOn` renders nothing here and that is correct** — the date comes from an achievement log only the
-thick web Dashboard stamps. Nullable by contract, decorative by design.
-⚠️ **F6's goal-celebration moment is still NOT ported** (it needs a per-device seen-set, which the web keeps in
+Last updated: 2026-08-19 (Session 108 — **two R2 rows, and an audit that took three more off the backlog without
+writing any code. 102 → 106 of 118 (90%).**
+**496 + 49 + 369 green. Both rows emulator-verified. Live: `finapp-00311-nz6`. Everything committed + pushed.**
+
+**Row 1 — achievements: the phone can see its own medals.**
+★★ **Picked by checking what the endpoints RETURN first** — the lesson R2 has taught six times — and this time the
+answer was *everything*: `/achievements` already ships the full catalogue (icon, title, desc, earned, percent,
+tier, earned-on) and `/milestones` the three tallies, both from one domain service. **Zero server change.**
+★ **Both endpoints are called, and that is not box-ticking:** Home wants three integers on every visit, the
+catalogue only when the sheet opens. That split is exactly why the server has two.
+✅ A Home line + an Achievements sheet mirroring the web — earned medals struck in their tier's metal
+(bronze/silver/gold coins with a tick), then the locked ones **ordered by how close they are**, each with the web's
+gold arc and its percent. "Have I earned this" is never re-judged in Kotlin.
+⚠️ **One deliberate departure, and it is about reachability.** The web draws its line only while something is in
+progress — because the web *also* has a trophy in its header. A phone header with four controls has no room for a
+fifth, so this line is the only door: it stays once anything is earned and reads **"Milestones · 1 of 25 earned"**.
+✅ **All four states verified, both themes** — 5 in progress, the earned-only fallback, the medal grid, and **no
+line at all** once the single earned bucket was deleted.
+⚠️ `earnedOn` renders nothing here and that is correct — only the thick web Dashboard stamps that log.
+⚠️ **F6's goal-celebration moment is still NOT ported** (it needs a per-device seen-set the web keeps in
 `localStorage`); the MOBILE.md row is split accordingly.
-✅ **DEPLOYED as `finapp-00311-nz6`** (image `a1ab9be`) — traffic confirmed by `describe`, 5 `secretKeyRef`s, both
-URLs 200, **no `severity>=WARNING` on the new revision at all** (the archived-account purge race did not fire this
-time). Served-bytes proof for a change with no CSS in it: `SettledToAccountId` / `SettledFromAccountId` /
+
+**The audit — an uncalled endpoint is not automatically a gap.**
+★★ Of the 14 rows left, **three are not gaps at all**: `to-budget` has *no client anywhere* (its own comment says
+"no web UI yet"); `to-savings` backs a bell nudge `NotificationsMap` **deliberately excludes** from the thin set,
+so the phone has nothing to hang it off; `/structure` is data Android already gets from `/spending` + `/wallets`.
+**The honest backlog is 9, not 12.**
+⚠️ **Bank's back half (7 of those 9) was picked first and put back.** `EnableBankingClient` needs an
+ApplicationId + PrivateKey, so on a dev machine `IsEnabled` is false and all seven routes are unreachable — that
+row can only ever be *build-verified* here. A deliberate deferral, not an oversight.
+
+**Row 2 — settling an expense onto another account, which needed a SERVER change first.**
+★★ The thin `ExpenseDto` carried `IsSettlementSource/Destination` as bare booleans, but
+`DELETE /expenses/{id}/settle` is addressed by the **destination account id**, which the read model never sent.
+**The undo was unreachable by construction from any thin client** — the seventh instance of S105's shape. The
+route's own comment gave the assumption away ("the caller holds it as the expense's SettledToAccountId"), true of
+the thick client and nothing else. Three optional fields added; a new server test walks settle → read `/spending`
+→ undo **using only what a thin client can see**.
+✅ **Emulator-verified across both accounts:** €120 → settle €50 onto Household → source reads €70 with
+**"🤝 €50.00 settled"**, destination gains its row, Spent falls to €70 → **Unsettle** (behind a confirm) → back to
+€120, badge gone, the other account empty.
+⚠️ **Two honest trims:** destination fund/category are **the server's choice**, not pickers (the phone would have
+to fetch another account's whole structure for two dropdowns whose default is what the server picks anyway); and
+the row badge names the amount but **not the other account** — the first attempt at the fuller label clipped
+mid-word on a one-line row, so it was dropped on the destination side rather than shipped truncated.
+
+✅ **DEPLOYED as `finapp-00311-nz6`** (image `a1ab9be`) — traffic **confirmed by `describe`**, 5 `secretKeyRef`s,
+both URLs 200, and **no `severity>=WARNING` on the new revision at all** (the archived-account purge race did not
+fire this time). Served-bytes proof for a commit with no CSS in it: `SettledToAccountId` / `SettledFromAccountId` /
 `SettledAmount` ×3 each in the served `_framework/FinApp.Contracts.emqz4duaxe.wasm`, identical 409,877 bytes on
-both hosts — those names were in `FinApp.Domain` before today but **never in `FinApp.Contracts`**.
-⚠️ The phone still has no APK pipeline, so the settle UI reaches nobody until one exists.)
+both hosts — those names had been on the *domain* `Expense` for a long time but **never in `FinApp.Contracts`**.
+⚠️ **The phone has no APK pipeline**, so neither row reaches a user until one exists. That is now the binding
+constraint on Android work — more than the parity count is.)
 
 Previously: 2026-08-18 (Session 107b — **an owner report: a loan on "Its own schedule" kept saying no installment
 was logged after its due day had passed — and did anything come off the principal at all?**
@@ -379,7 +381,12 @@ as `de51071`, now live on **`finapp-00280-4s8`** (traffic forced `--to-latest`; 
 
 ## Session 108 (2026-08-19) — **R2's achievements row: the phone can finally see its own medals.**
 
-Android only. No server change, no C# file touched, no deploy. **R2: 102 → 104 of 118 (88%), 14 left.**
+**The first of two rows this session** — the settle row and the deploy that carried both are in
+[Session 108 (cont.)](#session-108-cont--settling-on-the-phone-and-an-audit-that-took-three-rows-off-the-backlog)
+below.
+
+This half is Android only: no server change, no C# file touched, nothing to deploy for it.
+**R2: 102 → 104 of 118 (88%), 14 left at this point** (the audit in the second half then re-reads that 14).
 
 ### ★★ Sizing the row by what the endpoint returns — for once, the answer was "everything"
 
@@ -446,7 +453,9 @@ a **€1,200 loan at €150/month** earns the gold *"In sight"* (debt-free withi
 log, which only the thick web Dashboard stamps; the contract says nullable and best-effort, and the cell simply
 omits the line. A phone-first account will show medals with no dates until the web sees it.
 
-## Session 108b — **Settling on the phone, and an audit that took three rows off the backlog.**
+## Session 108 (cont.) — **Settling on the phone, and an audit that took three rows off the backlog.**
+
+**The second of two rows**, continuing directly from the achievements row above. **R2: 104 → 106 of 118 (90%).**
 
 ### ★★ The audit: an uncalled endpoint is not automatically a gap
 
@@ -545,6 +554,43 @@ deploy buys is that the read model is live and correct the moment an APK does sh
 - **The Bash tool's heredocs are mangled by its shell wrapper** (the same failure as multi-line `git commit -m`):
   a `python - <<'PY'` block came back with its lines executed as shell commands. Use the file tools to write, and
   keep Bash for reading.
+
+### ⚠️ Carry-over — read this first next session
+
+**State: committed and pushed, tree clean.** Web is live on **`finapp-00311-nz6`**. Android source is pushed and
+there is still **no APK pipeline**.
+
+#### Where to pick up
+
+1. ⛔ **The APK pipeline is now the binding constraint, and it outranks the parity count.** Two rows shipped this
+   session and **neither reaches a user**, on top of everything S105–S107 built. R2 is at 90% and the number is
+   getting less meaningful every session it rises without a build anyone can install. **Decide this before
+   picking another R2 row** — even a signed debug APK the owner can sideload would end the drought.
+2. **R2's honest remainder is 9, not 12** (`node tools/r2scan.js --list` still prints 12 — the audit in this
+   session's second half explains which three are not gaps; the scanner has not been taught the distinction).
+   Of the 9: **bank's back half is 7 and cannot be verified here** (no Enable Banking credentials → `IsEnabled`
+   is false). That leaves **`/import`** (M) and **`/funds/{id}/currency`** (S) as the only verifiable rows left.
+3. **The Android UI sweep is still the largest thing outstanding** — native has none of S104/S105/S106's web
+   work, and R2 does not measure that axis at all.
+4. **`ReopenTrip` still has zero web callers** (ungated; it only needs somewhere to press it). Ask before removing.
+
+#### Still open, unchanged
+
+- The **`ClearTag` contract trap** (S105): one handler, opposite rules for an omitted tag and an omitted time.
+- **Dead CSS:** `.debt-progress`, `.debt-prog-cap`.
+- **Two R2 rows are blocked on the SERVER**, not Android — F4 round-ups and the fund↔bank sync toggle
+  (`SetFundSynced`, `TODO(cutover)`).
+- **Railway migration** — planned, not started. **Billing provider** is the whole remaining monetization job.
+- **F6's goal celebration** on Android (needs a per-device seen-set, as the web keeps in `localStorage`).
+
+#### Two things worth not re-learning
+
+- **An uncalled endpoint is not automatically a gap.** Three of the 14 were product decisions or data the client
+  already had by another door. Audit before building; it cost an hour and saved a row that would have been
+  inventing product.
+- **A row that cannot be verified is not the cheapest row, whatever its size.** Bank's back half is the biggest
+  remaining item and was still the wrong pick today, because this machine cannot exercise a single one of its
+  seven routes.
 
 ## Session 107b (2026-08-18) — **The loan that ignored its own due day, and a flag that asked the wrong question.**
 
