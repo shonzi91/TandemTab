@@ -2,7 +2,8 @@
 
 Last updated: 2026-08-19 (Session 109 — **the APK pipeline, the Android theme sweep owed since S92, and four
 owner items — one of which was a domain bug telling the user the opposite of the truth.**
-**499 + 49 + 369 green. Live: `finapp-00312-qwd`. ⚠️ NOT PUSHED — see the token note below.**
+**499 + 49 + 369 green. Live: `finapp-00312-qwd`. Everything committed + pushed, and the APK workflow's first
+real run came back green.**
 
 ★★ **The APK pipeline.** `.github/workflows/android.yml` builds an installable APK on every push and attaches
 one to a **GitHub Release** on an `android-v*` tag. Until now CI built the .NET solution and **never once
@@ -39,11 +40,16 @@ categories is a grid** on web and Android. ⚠️ **That last one found a diverg
 **parent picker**, so the phone was minting sub-categories the web had retired entirely. Removed; existing
 nested rows still render (captioned with their parent) or they would be unreachable to rename.
 
-⚠️ **THE PUSH IS STILL BLOCKED and only the owner can clear it.** `git push` is rejected with *"refusing to
-allow a Personal Access Token to create or update workflow `.github/workflows/android.yml` without `workflow`
-scope"*. **Eight commits are local-only while prod runs them** — the S84 risk, now with prod ahead of origin.
-Regenerate the PAT with `workflow` ticked and push. I did **not** rewrite history to route around it: dropping
-the workflow from the chain would silently delete the thing the session was asked to build.
+★ **The push was blocked for most of the session, and the reason is worth keeping.** `git push` was rejected —
+*"refusing to allow a Personal Access Token to create or update workflow `.github/workflows/android.yml`
+without `workflow` scope"* — because GitHub gates workflow files behind a scope ordinary `repo` does not carry.
+**Nothing about the token had changed; the content had.** The previous workflow edit was `6161151`, **5 July**,
+so forty-odd sessions pushed cleanly by never touching `.github/workflows/`. ⚠️ **"Regenerate token" does not
+fix it** — regenerating a classic PAT reissues the *value* and keeps the *scopes*; the scope must be ticked and
+the token **updated**, which leaves the value alone (so nothing on this machine needed re-entering). Diagnosed
+without ever printing the secret, by reading `x-oauth-scopes` off an API call: it said `repo`, twice, which is
+what proved the edit had not landed. **I did not rewrite history to route around it** — dropping the workflow
+from the chain would have pushed everything else at the cost of silently deleting the thing the session built.
 ★★ **The app built on exactly one Windows box and had no way out of it.** CI built the .NET solution and never
 once compiled `android/` — nine sessions of R2 parity rows, every one of them unreachable by a real user. The
 parity count measured the wrong thing while the door was shut.
@@ -515,21 +521,37 @@ Both signing branches were **exercised**, not merely written:
   HTTPS — something no `assembleRelease` exit code can tell you, and the thing a release build most plausibly
   breaks.
 
-⚠️ The workflow itself has **not run on GitHub yet** — it is YAML-validated and every command in it was exercised
-locally, but the first real run is the proof.
+✅ **RUN #1 IS GREEN** (`facbf9e`, [run 32256499547](https://github.com/shonzi91/TandemTab/actions/runs/32256499547)),
+fired by the session's own push once the token scope was fixed. Artifact **`tandemtab-0.1.0-1-debugkey`,
+13,064,661 bytes** — the `-debugkey` suffix proves the naming logic saw that no signing secret exists.
+★ **"Build the release APK" passing is the `gradlew` mode fix confirmed**: that step is the first thing ever to
+execute `./gradlew` on Linux, and a `100644` wrapper dies there in seconds. **"Report the signer"** passing means
+`apksigner` was found under `$ANDROID_HOME/build-tools` and AGP 8.7 got what it needs on JDK 21.
+**"Attach the APK to a GitHub Release" — skipped**, correctly: it is gated on an `android-v*` tag and this was a
+push to `main`.
 
-### ⚠️ The push is blocked on a token scope, and only the owner can clear it
+### ★ The push was blocked on a token scope — RESOLVED, and the diagnosis is the reusable part
 
 ```
 ! [remote rejected] main -> main (refusing to allow a Personal Access Token to create or update
   workflow .github/workflows/android.yml without `workflow` scope)
 ```
 
-The credential helper is `store`, holding a PAT that can write code but **not workflow files** — GitHub gates
-those behind a separate `workflow` scope precisely because a workflow file is code that runs with repository
-credentials. Nothing about the commit is wrong; it simply cannot go up on this token. **Regenerate the PAT with
-`workflow` ticked** (Settings → Developer settings → Personal access tokens) and re-run `git push origin main`.
-Minting a token is not something to hand to an assistant, so it was left here.
+GitHub gates workflow files behind a scope ordinary `repo` does not carry, because a workflow file is code that
+runs with repository credentials. **The token had not changed — the content of the push had.** The previous
+workflow edit was `6161151` on **5 July 2026**, so ~40 sessions pushed cleanly by simply never touching
+`.github/workflows/`. It also blocks the *whole* push, not just the offending commit: a push is one ref update
+and the server inspects every new commit reaching `main`.
+
+⚠️ **The trap: "Regenerate token" does not add a scope.** Regenerating a classic PAT reissues the *value* and
+keeps the *scopes* — it is the button for "this secret leaked". The scope must be ticked and the token
+**Updated**, which leaves the value unchanged (so nothing on the machine needs re-entering).
+
+★ **How to tell which it is without ever seeing the secret:** read `x-oauth-scopes` off an authenticated API
+call (`git credential fill` → `curl -D -` → grep the header). It reported `repo` twice across two attempts,
+which is what proved the edit had not landed rather than leaving it to guesswork. Worth knowing too:
+`~/.git-credentials` held **270 lines, all the same token** — the `store` helper appends on every successful
+auth instead of replacing, so a large file there is not evidence of multiple competing credentials.
 
 ### ⚠️ What this does NOT do
 
