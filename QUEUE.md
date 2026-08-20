@@ -24,13 +24,13 @@ found the code disagreeing with the report I have said so rather than smoothing 
 | O3 | Rework the **transaction review** flow (keep-both / replace / pin / ✕ / accept is too complicated) + **duplicate detection is over-eager** (two €10 spends two days apart) | Rework | ✅ S112 |
 | O4 | Show **money-out transfers** in the expense list — and consider them in budgets, since they lower the balance | Feature | ✅ S111 |
 | O5 | Split the **recurring list** into past (newest→oldest) and future (soonest→latest) | S | ⬜ |
-| O6 | **"Saved toward goals" should name its bucket** everywhere it appears; savings in the Breakdown pie; move **Breakdown + Trends** off the Spending tab onto the Home chart; mobile Trends hover is awkward | Rework | ⬜ |
-| O7 | New savings-bucket modal: when **Debt** is picked, two more chips appear — separate them from the bucket-type row | S | ⬜ |
-| O8 | Move the **"ahead / interest saved"** chip off the debt-free Home section onto the bucket, next to interest left, with the prepaid principal in it | S–M | ⬜ |
+| O6 | **"Saved toward goals" should name its bucket** everywhere it appears; savings in the Breakdown pie; move **Breakdown + Trends** off the Spending tab onto the Home chart; mobile Trends hover is awkward | Rework | ✅ S112 |
+| O7 | New savings-bucket modal: when **Debt** is picked, two more chips appear — separate them from the bucket-type row | S | ✅ S112 |
+| O8 | Move the **"ahead / interest saved"** chip off the debt-free Home section onto the bucket, next to interest left, with the prepaid principal in it | S–M | ✅ S112 |
 | O9 | Rename **Home → Dashboard**, and let users choose which tab the app opens on | S | ⬜ |
 | O10 | **Confirmation prompts on every delete**, web and mobile | S–M | ⬜ |
 | O11 | Money moved from a bucket **into a budget** still counts as saved — €500 in, €200 budgeted out, card still says €500 | Bug | ✅ S111 |
-| O12 | Make **"Total saved X (this period · % of money in)"** prettier | S | ⬜ |
+| O12 | Make **"Total saved X (this period · % of money in)"** prettier | S | ✅ S112 |
 | O13 | **Debt owed in Trends** disagrees with the debt bucket | Bug | ✅ S111 |
 | O14 | Trends' **Spent** and **Set aside** charts should be switchable to a **category** / a **bucket** and drawn for it | M | ⬜ |
 
@@ -135,6 +135,18 @@ A traffic spike fans Cloud Run instances out into Neon's connection limit, and *
 `max-instances` cap, before R7.
 
 ---
+
+## Closed on the way through the owner's list (Session 112, batch 4)
+
+- **The Home donut's centre said "spent" over a figure that now includes savings.** The ring is the sum of its own
+  slices, so the moment set-aside money joined the chart (O6b) the word under the total was calling €300 of savings
+  spending. It reads *"used"*. The figure and its label have to move together or the chart argues with its title.
+- ⚠️ **`BudgetingState.DebtsAheadOfSchedule()` has no caller** now that O8 moved the badge onto the bucket. Left in
+  place with a warning on it rather than deleted: it takes `Math.Max` of the months and **sums** the interest, which
+  is honest for a whole account and a lie beside any single loan. If it is ever wanted again, read that first.
+- ⚠️ **Scrubbing the Trends readout by dragging is NOT implemented** (the tap bug in O6d is). Touch pointers are
+  implicitly captured by the element the press began on, so a `pointermove` over the next column never arrives —
+  freeing it needs `releasePointerCapture` via JS interop plus hit-testing by coordinate.
 
 ## Closed on the way through the owner's list (Session 112, batch 3)
 

@@ -901,6 +901,56 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
             .Where(t => t.Date >= from && t.Date <= to)
             .OrderByDescending(t => t.Date).ToList();
 
+    /// <summary>
+    /// Which bucket a disbursement paid out of, or null when the link is missing. The payout's own
+    /// <see cref="ExternalTransfer"/> carries no bucket — the paired <see cref="SavingAllocation"/> does, through
+    /// <c>SourceExternalTransferId</c> — so every screen that wanted to name it fell back to "a goal".
+    /// </summary>
+    public Guid? DisbursementBucketId(Guid transferId) =>
+        Account.Periods.SelectMany(p => p.SavingAllocations)
+            .FirstOrDefault(a => a.SourceExternalTransferId == transferId)?.SavingCategoryId;
+
+    /// <summary>The bucket a disbursement paid out of, by name, or null when it can't be resolved.</summary>
+    public string? DisbursementBucketName(Guid transferId) =>
+        DisbursementBucketId(transferId) is { } id ? FindSavingBucket(id)?.Name : null;
+
+    /// <summary>
+    /// The single bucket every disbursement in [from, to] paid out of — or null when there are none, or when more
+    /// than one bucket is involved and no one name would be true of all of them.
+    /// </summary>
+    public string? SoleDisbursementBucketName(DateOnly from, DateOnly to)
+    {
+        var ids = DisbursementsInRange(from, to).Select(t => DisbursementBucketId(t.Id)).Distinct().ToList();
+        return ids is [{ } only] ? FindSavingBucket(only)?.Name : null;
+    }
+
+    /// <summary>
+    /// What each bucket <b>net</b> took in over [from, to] — every allocation summed, so a deposit adds and any
+    /// drawdown (spent, released to a budget, or paid out to the goal) takes away. Only buckets that ended the
+    /// window up, biggest first.
+    /// <para>
+    /// ★ This is the unit that makes the Breakdown a full account of the money that came in (O6b), and the reason
+    /// it has to be <i>net</i> is a double count: setting €500 aside and then paying €500 of it to the loan is one
+    /// €500 leaving your income, not two. The payout is already inside this figure as the negative half — which is
+    /// why goal payouts stopped being slices of their own the moment this became the unit.
+    /// </para>
+    /// </summary>
+    public IReadOnlyList<(Guid BucketId, string Name, decimal Net)> NetSetAsideByBucket(DateOnly from, DateOnly to) =>
+        Account.Periods.SelectMany(p => p.SavingAllocations)
+            .Where(a => a.Date >= from && a.Date <= to)
+            .GroupBy(a => a.SavingCategoryId)
+            .Select(g => (BucketId: g.Key, Name: FindSavingBucket(g.Key)?.Name ?? "", Net: g.Sum(a => a.Amount.Amount)))
+            .Where(x => x.Net > 0m && x.Name.Length > 0)
+            .OrderByDescending(x => x.Net)
+            .ToList();
+
+    /// <summary>Everything set aside net across all buckets in [from, to] — the size of the Breakdown's savings
+    /// slice. ⚠️ Buckets that ended the window down are excluded rather than netted against the others: money
+    /// coming back out of savings is not a negative slice of where income went, it is income for the window that
+    /// gets spent (and counted) somewhere else in this same chart.</summary>
+    public decimal NetSetAsideTotal(DateOnly from, DateOnly to) =>
+        NetSetAsideByBucket(from, to).Sum(x => x.Net);
+
     /// <summary>The top-level category an expense rolls up to (a sub-category's parent, else the category itself).
     /// Categories are capped at one level deep, so parent-or-self is enough.</summary>
     public Guid RootCategoryId(Guid categoryId) => Account.FindCategory(categoryId)?.ParentId ?? categoryId;
@@ -2068,6 +2118,10 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     /// Not to be confused with <c>DebtInterestSavedAtPace</c>, which projects forward at the pace you are currently
     /// setting aside. This one is banked.
     /// </para>
+    /// <para>⚠️ <b>No caller since O8</b> moved the badge onto the bucket
+    /// (<see cref="SavingBucketDebtAhead"/>). Kept because an account-level statement is a reasonable thing to want
+    /// again — but if you reach for it, read the summing rule above first: it is only honest about a whole account,
+    /// never beside one loan.</para>
     /// </summary>
     public (int MonthsAhead, decimal InterestSaved)? DebtsAheadOfSchedule()
     {
@@ -2084,6 +2138,20 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
         }
         return months <= 0 && interest <= 0m ? null : (months, decimal.Round(interest, 2));
     }
+    /// <summary>
+    /// How far ahead of schedule <b>this one loan</b> is already — the same banked figure
+    /// <see cref="DebtsAheadOfSchedule"/> aggregates, but for the bucket it belongs to.
+    /// <para>★ The aggregate takes <c>Math.Max</c> of the months and <b>sums</b> the interest, which is right for a
+    /// single account-level statement and wrong beside any individual loan: with two debts it would tell both of
+    /// them the other one's numbers. A fact shown next to a thing has to be about that thing.</para>
+    /// </summary>
+    public (int MonthsAhead, decimal InterestSaved)? SavingBucketDebtAhead(Guid id) =>
+        FindSavingBucket(id) is { IsDebt: true, IsArchived: false } b ? b.AheadOfScheduleOn(Today()) : null;
+
+    /// <summary>Principal this app watched go in <b>beyond</b> the installment — the prepayment that earns the
+    /// "ahead" figure above, and the only evidence <see cref="SavingCategory.AheadOfScheduleOn"/> will accept.</summary>
+    public decimal SavingBucketDebtExtraRepaid(Guid id) => FindSavingBucket(id)?.DebtExtraPrincipalRepaid ?? 0m;
+
     /// <summary>Debt buckets: fraction (0..1) of the original balance paid off, or null when there's no baseline.</summary>
     public decimal? SavingBucketDebtProgress(Guid id) => FindSavingBucket(id)?.DebtProgressRatioOn(Today());
 

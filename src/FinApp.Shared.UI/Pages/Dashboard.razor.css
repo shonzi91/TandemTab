@@ -1400,6 +1400,9 @@ html.dark .brk-exp-row:hover { background: #191e27; }
 .brk-exp-d { font-size: .92rem; font-weight: 800; color: #384250; font-variant-numeric: tabular-nums; }
 .brk-exp-m { font-size: .58rem; font-weight: 700; text-transform: uppercase; letter-spacing: .3px; color: #a0abb6; }
 .brk-exp-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+/* A savings row is one bucket's NET for the whole window, not a dated movement — so it has no date column to sit
+   beside and takes the space one would have used. Layout only. */
+.brk-exp-main-wide { padding-left: 2px; }
 .brk-exp-title { font-size: .85rem; font-weight: 600; color: #313a45; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .brk-exp-sub { font-size: .72rem; color: #97a2ad; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .brk-exp-amt { font-weight: 800; font-size: .9rem; white-space: nowrap; color: #1f2430; }
@@ -1682,6 +1685,10 @@ html.dark .goal-stat { background: #14231d; border-color: #24463a; }
    and below 560px the switch takes a row of its own so the add-action and the ⋯ menu drop to the next one
    together rather than being squeezed against the edge by the chips beside them. */
 .spend-view-toggle { flex-wrap: wrap; }
+/* The way out of the analysis views (O6c). There is no left-arrow in the sprite, so the right one is turned —
+   cheaper than a new icon for one control, and it stays in step if the sprite's arrow is ever redrawn. The span
+   is what carries this component's scope; the <svg> inside it belongs to <Icon> and cannot be selected here. */
+.chip-back-ic { display: inline-flex; transform: rotate(180deg); }
 
 /* Breakdown drilled into one category: the way back, then which category is being split. The back chip leads the
    row because leaving is the action — the label beside it is a statement, not a control. */
@@ -1704,6 +1711,18 @@ html.dark .goal-stat-v { color: #3fe0c5; }
 html.dark .goal-stat-v-period { color: #e8eef0; }
 .goal-stat-pct { font-size: .7rem; font-weight: 600; color: #6b7d72; }
 html.dark .goal-stat-pct { color: #9fb0a6; }
+/* O12 — the Goals tile only. `.goal-stat` is shared with the Spending view switcher, so everything here hangs off
+   a modifier and the base rules are untouched. Layout and size only: the figure keeps `.goal-stat-v`'s green and
+   the pill keeps `.settle-tag`'s, both already correct in dark mode. */
+.goal-stat-hero { flex-flow: column nowrap; align-items: flex-start; gap: 1px; padding: 10px 16px; }
+.goal-stat-hero .goal-stat-v { font-size: 1.62rem; }
+/* The two facts sit on their own line, separated by space rather than by a middot inside a bracket — one is an
+   amount and the other a ratio, and reading them as a single parenthetical made neither land. */
+.goal-stat-sub { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; margin-top: 3px; }
+.goal-stat-add { font-size: .74rem; font-weight: 600; color: #6b7d72; }
+html.dark .goal-stat-add { color: #9fb0a6; }
+/* The pill is already spaced by the flex gap; its own left margin would double it. */
+.goal-stat-sub .settle-tag { margin-left: 0; }
 .goal-done-badge { margin-left: 5px; }
 
 /* "The periods that cost you most" — a factual read-out inside Trends. Rows, not cards: it is a short ranked
@@ -1789,6 +1808,13 @@ html.dark .inst-flag-on { color: #57d9a3; }
 .goal-facts strong { color: #16202b; font-weight: 700; }
 html.dark .goal-facts { color: #a9b6ad; }
 html.dark .goal-facts strong { color: #e8eef0; }
+/* The banked "ahead of schedule" fact, sitting in the debt bucket's facts row next to "interest left" (O8, moved
+   off Home). Green, not gold — gold reads as a warning everywhere else in this app, and this is the opposite of
+   one. It is a fact among facts here rather than a badge, so it takes the row's size and only claims the colour. */
+.goal-ahead { display: inline-flex; align-items: center; gap: 5px; color: #0f7a54; }
+.goal-ahead strong { color: #0f7a54; }
+.goal-ahead svg { width: 13px; height: 13px; flex: 0 0 auto; }
+html.dark .goal-ahead, html.dark .goal-ahead strong { color: #57d9a3; }
 .goal-held { display: flex; align-items: center; gap: 6px; font-size: .8rem; color: #8a97a0; margin-bottom: 10px; }
 /* Inline projection result lines (payoff / growth / goal-reach) — replace the old projection modals. */
 .goal-proj { margin: 0 0 10px; font-size: .86rem; font-weight: 600; color: #0f7a54; }
@@ -2621,31 +2647,9 @@ html.dark .whatif-label, html.dark .whatif-out strong { color: #e8eaf0; }
 .target-date { color: #13a06e; font-size: .92rem; }
 .target-mo { color: #8a97a0; font-size: .76rem; white-space: nowrap; margin-top: 1px; }
 
-/* The debt row when there is banked progress to show. The badge sits BETWEEN the name and the date, so what has
-   already been achieved leads and the projected date still lands on the right edge every other target row uses.
-   Green, not gold — gold reads as a warning everywhere else in this app, and this is the opposite of a warning. */
-.target-row-won { grid-template-columns: auto 1fr auto auto; }
-.won-badge {
-    display: flex; flex-direction: column; align-items: flex-end; text-align: right; line-height: 1.25;
-    background: #eaf7f1; border: 1px solid #cfe9dd; border-radius: 9px; padding: 5px 10px;
-}
-.won-lead { display: flex; align-items: center; gap: 5px; color: #0f7a54; font-weight: 700; font-size: .82rem; white-space: nowrap; }
-.won-lead svg { width: 13px; height: 13px; flex: 0 0 auto; }
-.won-sub { color: #4e7d68; font-size: .74rem; white-space: nowrap; }
-html.dark .won-badge { background: #16241d; border-color: #2b4438; }
-html.dark .won-lead { color: #57d9a3; }
-html.dark .won-sub { color: #9dc4b3; }
-
-/* On a narrow phone the badge and the date together would squeeze the name to two characters; the badge drops to
-   a line of its own under them instead, with the name and date keeping the row shape every other target has. */
-@media (max-width: 420px) {
-    .target-row-won { grid-template-columns: auto 1fr auto; }
-    /* Placed explicitly, not left to auto-flow: the badge spans a second line, and auto-placement would push the
-       date off onto a third row of its own. */
-    .target-row-won .target-name { grid-area: 1 / 2 / 2 / 3; }
-    .target-row-won .target-when { grid-area: 1 / 3 / 2 / 4; }
-    .target-row-won .won-badge { grid-area: 2 / 2 / 3 / 4; align-items: flex-start; text-align: left; margin-top: 6px; }
-}
+/* (`.target-row-won` / `.won-badge` and their narrow-phone placement are gone with the badge itself — it moved to
+   the debt bucket in O8, where `.goal-ahead` above draws it beside "interest left". Every target row on Home has
+   one shape again, so none of that grid re-plumbing is needed.) */
 .targets-foot { margin: 0; padding: 10px 16px 12px; border-top: 1px solid #f2efe8; font-size: .74rem; color: #8a97a0; }
 html.dark .targets-h { color: #9aa4b2; }
 html.dark .targets-card > .targets-h { border-bottom-color: #313a45; }
@@ -2882,6 +2886,11 @@ html.dark .inst-tag { background: #23302b; color: #9fb3aa; }
 .field-row > label { flex: 1 1 140px; }
 /* (The colour restatement these four rows used to carry is gone — the .chip base rule IS the toggle look now.
    app.css still holds a matching dark-mode copy for them; it is inert, and left alone to spare a cache-bust.) */
+/* A bare <label> heading a row of .chip toggles in a modal (the bucket type, how the balance is stated, what moves
+   it). Spacing only — .modal label already carries the colour, in both themes. The gap is what separates one
+   question from the next: .bucket-type wraps onto two lines, so without it the balance-entry chips ran straight on
+   from the type chips and the two questions read as one row of six answers. */
+.chip-row-lbl { margin-top: 12px; }
 /* Bucket type toggle (Savings goal / Debt payoff) in the add-bucket modal — a bit bigger for touch. */
 .bucket-type { flex-wrap: wrap; }
 .bucket-type .chip { padding: 8px 14px; font-size: .88rem; }

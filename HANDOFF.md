@@ -1,13 +1,70 @@
 # TandemTab (FinApp) — session handoff
 
-Last updated: 2026-08-20 (Session 112 — **batch 3: the bank review flow stops asking, the duplicate check stops
-guessing, and a merchant rule can name a label as well as a category.**
-**518 + 50 + 379 green. Live is still `finapp-00315-77v` (batch 1) — batches 2 AND 3 are committed, pushed and NOT
-deployed.**)
+Last updated: 2026-08-20 (Session 112 — **batches 3 and 4. The bank review stops asking and the duplicate check
+stops guessing; a merchant rule can name a label; and the money chart, the debt bucket and the savings header all
+say what they mean.**
+**518 + 50 + 379 green. Live is still `finapp-00315-77v` (batch 1) — batches 2, 3 AND 4 are committed and pushed;
+see the deploy note below.**)
 
 #### ⭐ The owner's list — where it stands
-**Done: O11, O2 (a+b), O13, O1, O4, O3** (+ O5–O10, O12, O14 open). Order and readings in [QUEUE.md](QUEUE.md);
-plan at `~/.claude/plans/rosy-dazzling-kay.md`.
+**Done: O11, O2 (a+b), O13, O1, O4, O3, O6, O7, O8, O12.** **Left: O5, O9, O10 (batch 5, all needing Android too)
+and O14.** Order and readings in [QUEUE.md](QUEUE.md); plan at `~/.claude/plans/rosy-dazzling-kay.md`.
+
+#### Batch 4 (O6 + O7 + O8 + O12) — committed, pushed, browser-verified
+
+★★ **O6(b) is the one that changed a meaning, not a layout.** The pie is *"where the money that came in went"* now,
+and the unit for savings is what each bucket **net** took in — not what was paid out of it. ★ **That is the whole
+design:** setting €500 aside and later paying it to the loan is one €500 leaving your income, not two, and the
+payout is already the negative half of the net figure. So **goal payouts stopped being slices at all**; counting
+both would be the double count. ⚠️ **The "Spent" line beside it is deliberately no longer the ring's total** — the
+ring says where income went (including what you kept), that line says what you spent, and the savings slice is
+exactly the difference. ⚠️ **Two figures had to follow the unit:** the Home donut's centre said *"spent"* over a
+total that now includes savings — it reads *"used"*.
+★ **O6(a):** the slice names its bucket when one bucket is involved (*"Saved toward Holiday"*), and the expanded
+rows name every bucket when several are. Both slice builders — the Breakdown's and Home's, always separate copies —
+read one helper, so they cannot disagree about the same period.
+★ **O6(c):** Breakdown and Trends left the Spending switcher. They are month-window *analysis* views among three
+views of this period's ledger, and the row was carrying five chips (six with a trip) on a phone. The Home chart
+card is the door; inside, the row becomes their own two-chip header with the way back leading it.
+★★ **O6(d) was a real bug and invisible with a mouse.** The readout was `mouseover` + `mouseout` + `click` on one
+rect: a touchscreen synthesises a compatibility `mouseover` **before** the click, so mouseover opened the column
+and the click that followed saw it open and shut it again — **the tooltip opened and closed on the first tap,
+every time.** Pointer events branch on `PointerType`: a mouse hovers, a finger taps, and tapping the same column
+again closes it (the dismissal touch never had; `mouseout` does not fire reliably after a tap).
+⚠️ **Dragging to scrub is NOT implemented** — touch pointers are implicitly captured by the element the press began
+on, so a `pointermove` over the next column never arrives. Freeing that needs `releasePointerCapture` via JS.
+
+★ **O8 — the badge moved because it was about the wrong thing.** Home's *"3mo ahead · €65 interest saved"* read the
+**account-level** aggregate, which takes `Math.Max` of the months and **sums** the interest across every loan — so
+with two debts it stated a pair of numbers belonging to neither. It now sits in the debt bucket's own facts row
+next to *"interest left"*, per loan, and carries **the prepaid principal that earned it** (owner's ask): without
+that figure, "3 months ahead" is a claim with nothing behind it. ⚠️ `DebtsAheadOfSchedule()` has no caller now —
+kept, with a warning on it rather than deleted.
+★ **O7** — the balance-entry chips got a label of their own (*"How you'll state the balance"*). Without one they
+appeared directly under the four wrapping type chips and the two questions read as one row of six answers.
+★ **O12** — the total is a hero figure with a quiet two-part sub-line; the rate is a `.settle-tag` pill. ⚠️ Done as
+a **modifier** on the Goals instance: `.goal-summary`/`.goal-stat` are shared with the Spending view switcher, so
+restyling the base rules would have silently redrawn a second screen.
+
+✅ **Browser-verified on a local fixture** (a 4-period account with a prepaid car loan, hand-written into the
+snapshot — see the fixture note below):
+- Pie reads **Food** + **Saved toward Holiday €300.00**, expanding to *"Saved toward Holiday €300.00"*, while the
+  summary keeps **Spent €103.30** — the two questions, visibly separate.
+- Debt bucket: *"€320.00/mo · due on the 5 · €954.46 interest paid · €152.43 interest left · **3mo ahead · €65.84
+  interest saved · €900.00 paid ahead**"*, and Home's target row is back to the plain shape with no badge.
+- **O6(d) exercised on a 375px touch-emulating viewport with synthetic pointer events**, all four cases: touch
+  `pointerenter` opens nothing; touch `pointerdown` opens Jun; touch `pointerleave` **leaves it open**; a second
+  `pointerdown` closes it. Mouse enter/leave still hover as before.
+- O7's label renders between the two chip rows with its 12px gap; O12's hero is a column with a 25.92px figure and
+  a themed pill. `pairscan` **0**, both themes checked by computed style.
+⚠️ **Still no screenshots** — the Browser pane would not composite frames all session.
+
+★ **Fixture note worth keeping: periods and buckets can be hand-written straight into `AccountSnapshots.Payload`.**
+Trends needs several periods and there is no UI to create one, so three closed months were written as JSON. Two
+traps cost a reload each: **every hand-made GUID must be a real 8-4-4-4-12** (a malformed one fails the whole
+snapshot with `Periods[0].Id`), and **`AlertThreshold` is a 0–1 fraction, not a percent** (80 throws
+`ArgumentOutOfRangeException` from `SetGoal`). Also `sqlite3` needs `CAST(readfile(...) AS TEXT)` and a **Windows**
+path — a `/tmp` path is invisible to it and to node.
 
 ★★ **O3, the duplicate half — the fix was to let the descriptions have a say, and then to use two thresholds
 rather than one.** `BankDuplicateMatcher` paired on **amount and date and nothing else**, so €10 on Tuesday and
@@ -60,12 +117,13 @@ visual check above is a computed style or a measured rect, not an eye. **Android
 has no mapping DTOs and no review flow).
 
 #### Next session
-1. **Deploy batches 2 AND 3 together.** Live is `finapp-00315-77v`. `.gcloudignore` **does** already exclude
-   `bin`/`obj`/`.git`/`*.db` (tracked since `c240882`) — so S111's "394 MB, 6m14s" warning may have been measured
-   from somewhere it didn't apply. Watch the upload size rather than assuming either way.
-2. **Batch 4 = O6 + O12 + O7 + O8 + O14.** ⚠️ **O6(d) must be checked on a touch viewport** — the tooltip bug (a
-   compatibility `mouseover` firing before `click`) is invisible with a mouse.
-3. **Batch 5 = O5 + O9 + O10**, all needing Android too.
+1. **Batch 5 = O5 + O9 + O10**, the three that need matching web **and** Android work. O10's inventory (every
+   unguarded delete, per platform, and the ones deliberately left alone) is written out in the plan file.
+2. **O14** — Trends' *Spent* / *Set aside* charts switchable to a category / a bucket. Moved out of batch 4: it is
+   a feature, not a layout pass, and batch 4 was already five surfaces.
+3. ⚠️ **The deploy is the outstanding item.** `.gcloudignore` **does** already exclude `bin`/`obj`/`.git`/`*.db`
+   (tracked since `c240882`), so S111's "394 MB, 6m14s" warning may have been measured from somewhere it did not
+   apply — watch the upload size rather than assuming either way.
 
 Previously: 2026-08-20 (Session 111 — **R2 closed; a bug sweep over the standing feedback; then the owner's own
 list of 13 (now 14) items from daily use, of which six are done.**

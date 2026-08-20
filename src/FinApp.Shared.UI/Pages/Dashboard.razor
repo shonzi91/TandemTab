@@ -776,7 +776,7 @@ else
                 <section class="panel home-brk-card">
                     <button class="home-brk-hit" @onclick="OpenBreakdown">
                         <span class="home-brk-donut-wrap">
-                            <svg class="home-brk-donut" viewBox="0 0 120 120" role="img" aria-label="@Loc["Where your money went"]">
+                            <svg class="home-brk-donut" viewBox="0 0 120 120" role="img" aria-label="@Loc["Where the money that came in went"]">
                                 @if (homeSlices.Count == 1)
                                 {
                                     <circle cx="60" cy="60" r="47" fill="none" stroke="@homeSlices[0].Color" stroke-width="18" />
@@ -793,11 +793,15 @@ else
                                     }
                                 }
                                 <text x="60" y="59" text-anchor="middle" class="home-brk-total">@Fmt(State.Money(homeSpendTotal))</text>
-                                <text x="60" y="73" text-anchor="middle" class="home-brk-sub">@Loc["spent"]</text>
+                                @* ⚠️ Not "spent" any more (O6b). The ring is the sum of its own slices, and those now
+                                   include what was set aside — so the word under the figure was calling €300 of
+                                   savings "spent" the moment savings joined the chart. The figure and its label
+                                   have to move together or the chart contradicts its own title. *@
+                                <text x="60" y="73" text-anchor="middle" class="home-brk-sub">@Loc["used"]</text>
                             </svg>
                         </span>
                         <span class="home-brk-body">
-                            <span class="home-brk-title">@Loc["Where your money went"]</span>
+                            <span class="home-brk-title">@Loc["Where the money that came in went"]</span>
                             <span class="home-brk-legend">
                                 @foreach (var s in homeSlices.Take(4))
                                 {
@@ -871,51 +875,31 @@ else
                 <section class="panel targets-card">
                     <h2 class="targets-h"><Icon Name="target" /> @Loc["You're on track for"]</h2>
                     <div class="targets-list">
-                    @{ var _ahead = State.DebtsAheadOfSchedule(); }
+                    @* ★ The banked "ahead / interest saved" badge used to live on the debt row here (O8). It now sits
+                       on the debt bucket itself, beside "interest left" — the loan it is about, with the prepaid
+                       principal that earned it. Home keeps what Home is for: the projected debt-free DATE. That also
+                       ends a quiet lie: this row's badge read the account-level aggregate, which sums interest over
+                       every loan and takes the longest lead, so with two debts it stated a pair of numbers that
+                       belonged to neither of them. Every target row now has one shape. *@
                     @foreach (var t in homeTargets)
                         {
-                            @* The debt row wears the banked-progress badge, and only that row: it is the one target
-                               with a schedule to be ahead OF. Everything else keeps the plain layout. *@
-                            var _isDebtRow = t.Name == Loc["Debt-free"] && _ahead is not null;
-                            <div class="target-row @(_isDebtRow ? "target-row-won" : "")">
+                            <div class="target-row">
                                 <CatIcon Name="@t.Icon" />
-                                @if (_isDebtRow && _ahead is { } a)
+                                <span class="target-name">@t.Name</span>
+                                @if (t.Reached)
                                 {
-                                    @* ⚠️ Green badge FIRST, the date after it (owner's call). The row reads left to
-                                       right as "Debt-free · what you've already banked · when it lands", and the
-                                       projected date keeps the right edge every other target row puts it on — so
-                                       the debt row stops being the one line whose date is somewhere else. *@
-                                    <span class="target-name">@t.Name</span>
-                                    <span class="won-badge" title="@Loc["Against the original schedule — money already paid ahead, not a projection."]">
-                                        <span class="won-lead"><Icon Name="trophy" /> @string.Format(Loc["{0} ahead"], MonthsText(a.MonthsAhead))</span>
-                                        @if (a.InterestSaved > 0m)
-                                        {
-                                            <span class="won-sub">@string.Format(Loc["{0} interest saved"], Fmt(State.Money(a.InterestSaved)))</span>
-                                        }
-                                    </span>
-                                    <span class="target-when">
-                                        <strong class="target-date">@PayoffDate(t.Months)</strong>
-                                        <span class="target-mo">@MonthsText(t.Months)</span>
-                                    </span>
+                                    <span class="target-when"><strong class="target-date good-text"><Icon Name="trophy" /> @Loc["reached"]</strong></span>
                                 }
                                 else
                                 {
-                                    <span class="target-name">@t.Name</span>
-                                    @if (t.Reached)
-                                    {
-                                        <span class="target-when"><strong class="target-date good-text"><Icon Name="trophy" /> @Loc["reached"]</strong></span>
-                                    }
-                                    else
-                                    {
-                                        <span class="target-when">
-                                            <strong class="target-date">@PayoffDate(t.Months)</strong>
-                                            <span class="target-mo">@MonthsText(t.Months)</span>
-                                            @if (t.InterestSaved > 0m)
-                                            {
-                                                <span class="target-mo good-text" title="@Loc["Interest you save versus paying only the installments, if you keep this pace."]">· @string.Format(Loc["save {0} interest"], Fmt(t.InterestSaved))</span>
-                                            }
-                                        </span>
-                                    }
+                                    <span class="target-when">
+                                        <strong class="target-date">@PayoffDate(t.Months)</strong>
+                                        <span class="target-mo">@MonthsText(t.Months)</span>
+                                        @if (t.InterestSaved > 0m)
+                                        {
+                                            <span class="target-mo good-text" title="@Loc["Interest you save versus paying only the installments, if you keep this pace."]">· @string.Format(Loc["save {0} interest"], Fmt(t.InterestSaved))</span>
+                                        }
+                                    </span>
                                 }
                             </div>
                         }
@@ -1226,20 +1210,39 @@ else
                     @* The view switch leads this row on EVERY view (no per-view stat ahead of it) so it stays fixed in
                        place as you switch tabs; the add-action + ⋯ stay pinned to its right. The By-date period-spend
                        total moved down onto the By-date controls row. *@
-                    <span class="plan-toggle bview-toggle spend-view-toggle" role="group">
-                        <button type="button" class="chip @(_spendView == SpendView.ByDate ? "on" : "")" @onclick="() => _spendView = SpendView.ByDate"><Icon Name="list" /> @Loc["By date"]</button>
-                        <button type="button" class="chip @(_spendView == SpendView.Categories ? "on" : "")" @onclick="SwitchToByBudgets"><Icon Name="chart" /> @Loc["By budgets"]</button>
-                        <button type="button" class="chip @(_spendView == SpendView.Breakdown ? "on" : "")" @onclick="() => _spendView = SpendView.Breakdown"><Icon Name="pie" /> @Loc["Breakdown"]</button>
-                        <button type="button" class="chip @(_spendView == SpendView.Trends ? "on" : "")" @onclick="ShowTrends"><Icon Name="pulse" /> @Loc["Trends"] <ProLock Feature="@PlanFeatures.Insights" Static="true" /></button>
-                        @* Always here (owner's call). It used to appear only once a trip existed, with "New trip"
-                           tucked in the ⋯ menu — so the feature was invisible to exactly the people who had never
-                           used it, and the one door to it was behind a dots icon. The empty tab is its own advert:
-                           it carries nothing but the New trip button. *@
-                        @* ⚠️ No Pro mark on the TAB. Reading trips is free, and so is running one you already have
-                           to its end — the crown lives on "New trip", which is the thing Free actually can't do.
-                           A crown here would say "you can't use this" to someone mid-journey, which is false. *@
-                        <button type="button" class="chip @(_spendView == SpendView.Trips ? "on" : "")" @onclick="() => _spendView = SpendView.Trips"><Icon Name="plane" /> @Loc["Trips"]</button>
-                    </span>
+                    @* ★ O6(c): Breakdown and Trends are no longer chips in this row. They are the two ANALYSIS views
+                       — a window over months, with their own range chips — sitting among three views of the current
+                       period's ledger, and the switcher was carrying five (six with a trip) on a phone. The door is
+                       the Home chart card, which already lands here (`OpenBreakdown`); while you are in one of them
+                       the row becomes their own two-chip header with the way back leading it, the same shape
+                       `.brk-drill` uses to get out of a drilled category. *@
+                    @{ var _analysing = _spendView is SpendView.Breakdown or SpendView.Trends; }
+                    @if (_analysing)
+                    {
+                        <span class="plan-toggle bview-toggle spend-view-toggle" role="group">
+                            @* The arrow is wrapped in a span THIS component owns: scoped CSS stamps its attribute on
+                               the last element of a selector, and an <Icon>'s <svg> carries Icon's scope, not the
+                               Dashboard's — `.chip-back svg` would match nothing at all. *@
+                            <button type="button" class="chip" @onclick="() => _spendView = SpendView.ByDate"><span class="chip-back-ic"><Icon Name="arrow-right" /></span> @Loc["Spending"]</button>
+                            <button type="button" class="chip @(_spendView == SpendView.Breakdown ? "on" : "")" @onclick="() => _spendView = SpendView.Breakdown"><Icon Name="pie" /> @Loc["Breakdown"]</button>
+                            <button type="button" class="chip @(_spendView == SpendView.Trends ? "on" : "")" @onclick="ShowTrends"><Icon Name="pulse" /> @Loc["Trends"] <ProLock Feature="@PlanFeatures.Insights" Static="true" /></button>
+                        </span>
+                    }
+                    else
+                    {
+                        <span class="plan-toggle bview-toggle spend-view-toggle" role="group">
+                            <button type="button" class="chip @(_spendView == SpendView.ByDate ? "on" : "")" @onclick="() => _spendView = SpendView.ByDate"><Icon Name="list" /> @Loc["By date"]</button>
+                            <button type="button" class="chip @(_spendView == SpendView.Categories ? "on" : "")" @onclick="SwitchToByBudgets"><Icon Name="chart" /> @Loc["By budgets"]</button>
+                            @* Always here (owner's call). It used to appear only once a trip existed, with "New trip"
+                               tucked in the ⋯ menu — so the feature was invisible to exactly the people who had never
+                               used it, and the one door to it was behind a dots icon. The empty tab is its own advert:
+                               it carries nothing but the New trip button. *@
+                            @* ⚠️ No Pro mark on the TAB. Reading trips is free, and so is running one you already have
+                               to its end — the crown lives on "New trip", which is the thing Free actually can't do.
+                               A crown here would say "you can't use this" to someone mid-journey, which is false. *@
+                            <button type="button" class="chip @(_spendView == SpendView.Trips ? "on" : "")" @onclick="() => _spendView = SpendView.Trips"><Icon Name="plane" /> @Loc["Trips"]</button>
+                        </span>
+                    }
                     @if (State.IsPeriodOpen)
                     {
                         @if (_spendView == SpendView.Categories)
@@ -1684,9 +1687,12 @@ else
                         // hero's "Money in" (fresh income + free carry-over) — IncomeInRange alone is fresh income only.
                         var brkIncome = State.IncomeInRange(brkFrom, brkTo)
                             + (_breakRange == BreakRange.ThisPeriod ? State.CarriedInThisPeriod.Amount : 0m);
-                        // "Spent" = all money out for the window: expenses + account transfers. Disbursements (savings
-                        // payouts) are excluded so this agrees with the Home "Spent" tile. From the raw rows, not the
-                        // slices, so it's identical across the category/tag/fund toggles.
+                        // "Spent" = all money out for the window: expenses + account transfers. Money set aside is
+                        // excluded so this agrees with the Home "Spent" tile. From the raw rows, not the slices, so
+                        // it's identical across the category/tag/fund toggles.
+                        // ⚠️ Since O6(b) this is deliberately NOT the donut's total — the ring answers "where did the
+                        // money that came in go", which includes what you kept, and this line answers "what did you
+                        // spend". Two different questions, and the savings slice is exactly the difference.
                         var brkMoneyOut = State.ExpensesInRange(brkFrom, brkTo).Sum(e => Math.Abs(e.Amount.Amount))
                             + State.AccountTransfersInRange(brkFrom, brkTo).Sum(t => Math.Abs(t.Amount.Amount));
                         // One expense row, reused by the flat list and the grouped-by-sub/tag lists in an expanded slice.
@@ -1863,14 +1869,31 @@ else
                                            has to be applied to an element this component owns. *@
                                         <span class="brk-item-chev"><Icon Name="chevron" /></span>
                                     </div>
-                                    @if (expanded && (s.Key == TransfersKey || s.Key == SavedKey))
+                                    @* ★ O6(a/b): the savings slice opens into its BUCKETS, not into a list of payout
+                                       transfers. The slice is now what each bucket net took in, so the rows have to
+                                       be the same thing or the parts would not add up to the whole above them —
+                                       and this is where a mixed window names every bucket, which the one-line slice
+                                       label above can only do when there is a single one. *@
+                                    @if (expanded && s.Key == SavedKey)
+                                    {
+                                        var (sFrom, sTo) = BreakWindow();
+                                        <ul class="brk-exp-list" style="--accent:@s.Color">
+                                            @foreach (var b in State.NetSetAsideByBucket(sFrom, sTo))
+                                            {
+                                                <li class="brk-exp-row">
+                                                    <span class="brk-exp-main brk-exp-main-wide">
+                                                        <span class="brk-exp-title">@string.Format(Loc["Saved toward {0}"], b.Name)</span>
+                                                    </span>
+                                                    <span class="brk-exp-amt">@Fmt(State.Money(b.Net))</span>
+                                                </li>
+                                            }
+                                        </ul>
+                                    }
+                                    else if (expanded && s.Key == TransfersKey)
                                     {
                                         var (xFrom, xTo) = BreakWindow();
-                                        // Both slices list external-transfer rows; the source + the note-less fallback title
-                                        // differ (a plain transfer vs. a disbursement of set-aside money toward a goal).
-                                        var isSaved = s.Key == SavedKey;
                                         // Biggest first, like every expense list in this view (date breaks ties).
-                                        var xfers = (isSaved ? State.DisbursementsInRange(xFrom, xTo) : State.AccountTransfersInRange(xFrom, xTo))
+                                        var xfers = State.AccountTransfersInRange(xFrom, xTo)
                                             .OrderByDescending(t => Math.Abs(t.Amount.Amount)).ThenByDescending(t => t.Date).ToList();
                                         <ul class="brk-exp-list" style="--accent:@s.Color">
                                             @foreach (var t in xfers)
@@ -1878,7 +1901,7 @@ else
                                                 <li class="brk-exp-row">
                                                     <span class="brk-exp-date"><span class="brk-exp-d">@t.Date.ToString("dd")</span><span class="brk-exp-m">@t.Date.ToString("MMM")</span></span>
                                                     <span class="brk-exp-main">
-                                                        <span class="brk-exp-title">@(string.IsNullOrEmpty(t.Note) ? (isSaved ? Loc["Saved toward a goal"] : Loc["Transfer to another account"]) : t.Note)</span>
+                                                        <span class="brk-exp-title">@(string.IsNullOrEmpty(t.Note) ? Loc["Transfer to another account"] : t.Note)</span>
                                                         <span class="brk-exp-sub">@State.FundName(t.FundId)</span>
                                                     </span>
                                                     <span class="brk-exp-amt">@Fmt(t.Amount)</span>
@@ -2052,7 +2075,7 @@ else
                                     var hi = i;
                                     var (hcx, hw) = TrendSlot(trRows.Count, i);
                                     <rect x="@((hcx - hw / 2).ToString("0.#", trCi))" y="@TrY0.ToString("0.#", trCi)" width="@hw.ToString("0.#", trCi)" height="@((TrY1 - TrY0).ToString("0.#", trCi))"
-                                          class="trend-hit" @onmouseover="() => _trendHover = hi" @onmouseout="() => _trendHover = null" @onclick="() => _trendHover = _trendHover == hi ? null : hi" />
+                                          class="trend-hit" @onpointerenter="e => TrendPointerEnter(e, hi)" @onpointerleave="TrendPointerLeave" @onpointerdown="e => TrendPointerDown(e, hi)" />
                                 }
                             </svg>
                             <div class="trend-ylabels" aria-hidden="true">
@@ -2190,7 +2213,7 @@ else
                                         var hi = i;
                                         var (hcx, hw) = TrendSlot(trRows.Count, i);
                                         <rect x="@((hcx - hw / 2).ToString("0.#", trCi))" y="@BalY0.ToString("0.#", trCi)" width="@hw.ToString("0.#", trCi)" height="@((BalY1 - BalY0).ToString("0.#", trCi))"
-                                              class="trend-hit" @onmouseover="() => _trendHover = hi" @onmouseout="() => _trendHover = null" @onclick="() => _trendHover = _trendHover == hi ? null : hi" />
+                                              class="trend-hit" @onpointerenter="e => TrendPointerEnter(e, hi)" @onpointerleave="TrendPointerLeave" @onpointerdown="e => TrendPointerDown(e, hi)" />
                                     }
                                 </svg>
                                 <div class="trend-ylabels" aria-hidden="true">
@@ -2793,6 +2816,25 @@ else
                                     {
                                         <span title="@Loc["Interest still to pay if you keep to the installment."]"><strong>@Fmt(_remInt)</strong> @Loc["interest left"]</span>
                                     }
+                                    @* ★ The banked "ahead" figure lives here now (O8), next to interest left, because
+                                       it is a fact about THIS loan — and because Home's version summed interest
+                                       across every debt and took the longest lead, so with two loans it told the
+                                       reader a number belonging to neither. It carries the prepaid principal that
+                                       earned it: without that, "3 months ahead" is a claim with nothing behind it. *@
+                                    @if (State.SavingBucketDebtAhead(bucketId) is { } _bAhead)
+                                    {
+                                        <span class="goal-ahead" title="@Loc["Against this loan’s original schedule — money already paid ahead, not a projection."]">
+                                            <Icon Name="trophy" /> <strong>@MonthsText(_bAhead.MonthsAhead)</strong> @Loc["ahead"]
+                                            @if (_bAhead.InterestSaved > 0m)
+                                            {
+                                                <span class="cat-row-nb"> · @string.Format(Loc["{0} interest saved"], Fmt(State.Money(_bAhead.InterestSaved)))</span>
+                                            }
+                                            @if (State.SavingBucketDebtExtraRepaid(bucketId) is > 0m and var _bExtra)
+                                            {
+                                                <span class="cat-row-nb"> · @string.Format(Loc["{0} paid ahead"], Fmt(State.Money(_bExtra)))</span>
+                                            }
+                                        </span>
+                                    }
                                 </div>
                                 @* "Paid off X of Y (Z%)" was dropped as the header's "remaining / initial" inverted,
                                    and the balance-over-time sparkline has now gone the same way (owner's call): the
@@ -3020,11 +3062,28 @@ else
                     var _savedTotal = State.DisplayClosingBalance(_bankStatus?.Balance, _bankStatus?.BalanceCurrency)
                                     - State.DisplayFreeToAllocate(_bankStatus?.Balance, _bankStatus?.BalanceCurrency);
                 }
-                <div class="goal-summary">
-                    <div class="goal-stat">
+                @* ★ O12: the figure leads, and the two facts about it stop sharing one parenthesis. It read
+                   "TOTAL SAVED €1,240.00 (+€120.00 this period · 18% of money in)" on a single baseline — a number
+                   the reader wants and two qualifiers of different kinds crammed after it in brackets. The total is
+                   a hero now, with a quiet sub-line under it: what went in this period, and the rate as a
+                   `.settle-tag` pill (the app's existing "quiet green statement" vocabulary, already themed).
+                   ⚠️ `.goal-summary` and `.goal-stat` are SHARED with the Spending tab's view switcher
+                   (`.goal-summary.spend-summary`), so this is a modifier on the Goals instance — restyling the base
+                   rules would silently redraw a second screen. *@
+                <div class="goal-summary goal-summary-hero">
+                    <div class="goal-stat goal-stat-hero">
                         <span class="goal-stat-k">@Loc["Total saved"]</span>
                         <span class="goal-stat-v">@Fmt(_savedTotal)</span>
-                        @if (State.SavingsThisPeriod.Amount > 0m) { <span class="goal-stat-pct" title="@string.Format(Loc["Money in this period: {0} came in, plus {1} carried over from before."], Fmt(State.FreshInThisPeriod), Fmt(State.CarriedInThisPeriod))">(+@Fmt(State.SavingsThisPeriod) @Loc["this period"]@if (State.PeriodMoneyInRate is { } prate && prate > 0m) { <text> · @(Math.Round(prate * 100m).ToString("0", System.Globalization.CultureInfo.InvariantCulture))% @Loc["of money in"]</text>})</span> }
+                        @if (State.SavingsThisPeriod.Amount > 0m)
+                        {
+                            <span class="goal-stat-sub">
+                                <span class="goal-stat-add">+@Fmt(State.SavingsThisPeriod) @Loc["this period"]</span>
+                                @if (State.PeriodMoneyInRate is { } prate && prate > 0m)
+                                {
+                                    <span class="settle-tag" title="@string.Format(Loc["Money in this period: {0} came in, plus {1} carried over from before."], Fmt(State.FreshInThisPeriod), Fmt(State.CarriedInThisPeriod))">@(Math.Round(prate * 100m).ToString("0", System.Globalization.CultureInfo.InvariantCulture))% @Loc["of money in"]</span>
+                                }
+                            </span>
+                        }
                     </div>
                     <button class="fund-add" @onclick="AddGoalForFilter"><Icon Name="plus" /> @Loc["Add goal"]</button>
                 </div>
@@ -4720,7 +4779,12 @@ else
                     @if (_bucketKind == SavingKind.Debt)
                     {
                         @* Two ways to state the balance: what's owed now, or the original principal + how much of it you've
-                           already cleared (the app derives what's owed). The latter gives an honest progress baseline. *@
+                           already cleared (the app derives what's owed). The latter gives an honest progress baseline.
+                           ★ It has a label of its own now (O7). Without one it appeared directly under the four wrapping
+                           type chips and the two rows read as a single band of six — as if "Debt payoff" and "What's
+                           owed now" were alternatives to each other. The third chip row in this modal ("What moves the
+                           balance") always had its label; this is the same shape, said the same way. *@
+                        <label class="chip-row-lbl">@Loc["How you'll state the balance"]</label>
                         <div class="plan-toggle" role="group">
                             <button type="button" class="chip @(!_debtEnterInitial ? "on" : "")" @onclick="() => _debtEnterInitial = false">@Loc["What's owed now"]</button>
                             <button type="button" class="chip @(_debtEnterInitial ? "on" : "")" @onclick="() => _debtEnterInitial = true">@Loc["Original + already paid"]</button>
@@ -4754,7 +4818,7 @@ else
                            decides which source of truth owns the balance. Stated as a two-way choice with the
                            consequence of each, because both are right in different situations and the trade-off
                            (a stale balance vs. an assumed one) is the whole decision. *@
-                        <label>@Loc["What moves the balance"]</label>
+                        <label class="chip-row-lbl">@Loc["What moves the balance"]</label>
                         <div class="plan-toggle" role="group">
                             <button type="button" class="chip @(!_debtPayDriven ? "on" : "")" @onclick="() => _debtPayDriven = false"><Icon Name="calendar" /> @Loc["Its own schedule"]</button>
                             <button type="button" class="chip @(_debtPayDriven ? "on" : "")" @onclick="() => _debtPayDriven = true"><Icon Name="note" /> @Loc["The payments I log"]</button>
@@ -7250,12 +7314,25 @@ else
         // drill-down list stays well-defined.
         var xfer = State.AccountTransfersInRange(from, to).Sum(t => Math.Abs(t.Amount.Amount));
         if (xfer > 0m) InsertByAmount(slices, new BreakSlice(TransfersKey, Loc["Transfers out"], null, xfer, TransfersColor));
-        // Savings disbursements are shown as a positive "Saved toward goals" slice — money put to work, not spent
-        // (kept out of "Spent"; see brkMoneyOut). Last so it reads as the rewarding coda to the outflow story.
-        var saved = State.DisbursementsInRange(from, to).Sum(t => Math.Abs(t.Amount.Amount));
-        if (saved > 0m) slices.Add(new BreakSlice(SavedKey, Loc["Saved toward goals"], null, saved, SavedColor));
+        // The savings slice is positively framed, never lumped with spending, and stays out of the "Spent" figure
+        // above (see brkMoneyOut). Last, so it reads as the rewarding coda to the outflow story.
+        // ★ O6(b), the owner's call: this chart answers "where did the money that came in go?", so what is set
+        // aside belongs in it — and the unit is what each bucket NET took in, not what was paid out of it. Paying
+        // €500 of an earmark to the loan is not a second €500 leaving your income; the payout is already the
+        // negative half of the net figure. That is why goal payouts are no longer slices of their own: counting
+        // both would have been the double count that decided this whole design.
+        var saved = State.NetSetAsideTotal(from, to);
+        if (saved > 0m) slices.Add(new BreakSlice(SavedKey, SavedSliceLabel(from, to), null, saved, SavedColor));
         return slices;
     }
+
+    /// <summary>The savings slice's label: the bucket's own name when exactly one bucket ended the window up, the
+    /// plural fallback otherwise. ⚠️ Used by BOTH slice builders — the Breakdown's and Home's — which have always
+    /// been separate copies of this decision and would otherwise disagree about the same period.</summary>
+    private string SavedSliceLabel(DateOnly from, DateOnly to) =>
+        State.NetSetAsideByBucket(from, to) is [var only]
+            ? string.Format(Loc["Saved toward {0}"], only.Name)
+            : Loc["Saved toward goals"];
 
     /// <summary>
     /// The chart drilled into one category: the same window, re-sliced by the tags used INSIDE that category, with
@@ -7502,8 +7579,43 @@ else
     };
 
     // The period column the pointer is over (index into TrendRows). Drives the guide line, the enlarged points and
-    // the value tooltip. Click toggles it too, so the numbers are reachable on touch where there is no hover.
+    // the value tooltip.
     private int? _trendHover;
+
+    /// <summary>
+    /// ★ The readout used to be wired as <c>mouseover</c> + <c>mouseout</c> + <c>click</c> on the same rect, and on
+    /// a touchscreen that combination cannot work: the browser synthesises a compatibility <c>mouseover</c>
+    /// <b>before</b> the click, so mouseover opened the column and the click that followed saw it already open and
+    /// toggled it straight back shut. <b>The tooltip opened and closed on the first tap</b>, every time, and it was
+    /// invisible to anyone testing with a mouse. <c>mouseout</c> also never fires reliably after a tap, so one that
+    /// did open could stick with no way to dismiss it.
+    /// <para>Pointer events say which device is asking, so each gets the interaction it actually has: a mouse
+    /// hovers, a finger taps — and tapping the same column again closes it, which is the dismissal touch was
+    /// missing. One event per gesture, so nothing can toggle itself.</para>
+    /// <para>⚠️ Dragging along the chart to scrub the readout is <b>not</b> implemented. Touch pointers are
+    /// implicitly captured by the element the press started on, so a <c>pointermove</c> over the next column never
+    /// reaches it — freeing that needs <c>releasePointerCapture</c> through JS interop plus hit-testing by
+    /// coordinate, which is a bigger change than the bug being fixed here.</para>
+    /// </summary>
+    private static bool IsMousePointer(PointerEventArgs e) =>
+        string.Equals(e.PointerType, "mouse", StringComparison.OrdinalIgnoreCase);
+
+    private void TrendPointerEnter(PointerEventArgs e, int column)
+    {
+        if (IsMousePointer(e)) _trendHover = column;
+    }
+
+    private void TrendPointerLeave(PointerEventArgs e)
+    {
+        // Touch keeps its readout until it is tapped away — there is no "moving off" a finger already lifted.
+        if (IsMousePointer(e)) _trendHover = null;
+    }
+
+    private void TrendPointerDown(PointerEventArgs e, int column)
+    {
+        if (IsMousePointer(e)) return;             // the mouse already answered on enter
+        _trendHover = _trendHover == column ? null : column;
+    }
 
     // Plot area inside the 340×152 viewBox (leaves a left gutter for the value scale + a bottom strip for months).
     private const double TrX0 = 40, TrX1 = 312, TrY0 = 12, TrY1 = 132;
@@ -7689,8 +7801,11 @@ else
         // was invisible here entirely, however much money it moved.
         var xfer = State.Period.AccountTransfersOut.Sum(t => Math.Abs(t.Amount.Amount));
         if (xfer > 0m) InsertByAmount(slices, new BreakSlice(TransfersKey, Loc["Transfers out"], null, xfer, TransfersColor));
-        var saved = State.Period.ExternalTransfers.Except(State.Period.AccountTransfersOut).Sum(t => Math.Abs(t.Amount.Amount));
-        if (saved > 0m) slices.Add(new BreakSlice(SavedKey, Loc["Saved toward goals"], null, saved, SavedColor));
+        // Same unit and same label rule as the Breakdown's slice, through the same helpers — this donut is a second
+        // copy of that logic and the two must not disagree about the period they are both drawing. (It used to sum
+        // the disbursements; see the note on NetSetAsideTotal for why that double-counted.)
+        var saved = State.NetSetAsideTotal(State.Period.From, State.Period.To);
+        if (saved > 0m) slices.Add(new BreakSlice(SavedKey, SavedSliceLabel(State.Period.From, State.Period.To), null, saved, SavedColor));
         return slices;
     }
 
