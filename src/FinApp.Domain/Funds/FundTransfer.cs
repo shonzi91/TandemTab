@@ -40,7 +40,11 @@ public sealed class FundTransfer : Entity
     public string? BankExternalId { get; private set; }
 
     /// <summary>True when this transfer was created automatically by a saved money-in rule on bank sync (not
-    /// individually reviewed), so the UI can badge it. Cleared once the user edits it.</summary>
+    /// individually reviewed), so the UI can badge it.
+    /// <para>★ It <b>survives an edit</b> (S111). It used to be cleared on one, which meant correcting an amount
+    /// erased the row's provenance badge and, with it, the edit form's shortcut to the rule that filed it — at
+    /// exactly the moment you are correcting what that rule got wrong. What is true is that the row arrived
+    /// automatically; editing it does not change where it came from.</para></summary>
     public bool AutoFiled { get; private set; }
 
     /// <summary>Record (or clear) this transfer's bank origin. See <see cref="BankExternalId"/> and <see cref="AutoFiled"/>.</summary>

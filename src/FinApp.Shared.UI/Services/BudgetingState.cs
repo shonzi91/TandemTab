@@ -1255,7 +1255,7 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
         {
             var edited = Period.EditExpense(expenseId, categoryId, Money(amount), fundId, note, date);
             edited.SetFundSynced(FundIsSynced(fundId));
-            edited.SetBankLink(before?.BankExternalId, autoFiled: false);   // keep provenance, clear the auto-filed badge
+            edited.SetBankLink(before?.BankExternalId, before?.AutoFiled ?? false);   // provenance AND badge survive — see the server handler
             // EditExpense already carried the stored tag and time across, so only an explicit value or an explicit
             // clear touches either. Same rule for both, which is the point — see EditExpenseRequest.
             if (clearTag) edited.SetTag(null);
@@ -2278,7 +2278,7 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
             var before = FindFundTransfer(id);
             var transfer = Period.EditFundTransfer(id, fromFundId, toFundId, Money(amount), note);
             transfer.SetSyncedSides(FundIsSynced(fromFundId), FundIsSynced(toFundId));
-            transfer.SetBankLink(before?.BankExternalId, autoFiled: false);
+            transfer.SetBankLink(before?.BankExternalId, before?.AutoFiled ?? false);   // badge survives — see the server handler
         },
         acct => api.EditFundTransferAsync(acct, id, new EditFundTransferRequest(fromFundId, toFundId, amount, note)),
         refetchAfter: true);   // EditFundTransfer is append-only (mints a new id)

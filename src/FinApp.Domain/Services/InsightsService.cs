@@ -359,16 +359,30 @@ public sealed class InsightsService
             result.Add(new TrendSeries(InsightMessage.Plain(InsightCodes.MtLabelSavings), "💰", rates, curText, note, dir));
         }
 
-        // 2) Total debt owed per period, reconstructed from payment (disbursement) history — lower is better.
+        // 2) Total debt owed per period — lower is better.
+        //
+        // ★★ Read through SavingCategory.DebtBalanceOn, the same method the bucket card, the payoff projection and
+        // every other debt figure in this app read. This used to reconstruct its own figure as
+        // "DebtOriginalBalance − Σ disbursements", which disagreed with the bucket the owner was looking at, in four
+        // separate ways: it started from the ORIGINAL principal rather than the anchored balance; it took whole
+        // payments off the principal, which over-credits by the interest and compounds (the exact error
+        // DebtBalanceOn's own comment exists to prevent); it counted only savings-bucket disbursements, so a loan
+        // whose payments are logged as installments drew a FLAT LINE at the original balance; and it ignored
+        // DebtPaymentDriven entirely. A second model of a number the app already computes is a second answer.
+        //
+        // The as-of date is the period's end, clamped to today so the newest point is what the bucket shows now
+        // rather than a month of schedule the calendar has not reached.
         var debts = account.SavingCategories.Where(s => s.IsDebt && s.DebtOriginalBalance > 0m).ToList();
         if (debts.Count > 0)
         {
+            var today = DateOnly.FromDateTime(DateTime.Today);
             var owed = new List<decimal>();
             for (var i = start; i <= idx; i++)
             {
+                var asOf = periods[i].To < today ? periods[i].To : today;
                 var total = 0m;
                 foreach (var b in debts)
-                    total += Math.Max(0m, b.DebtOriginalBalance - DisbursedThroughPeriod(account, periods, b.Id, i));
+                    total += Math.Max(0m, b.DebtBalanceOn(asOf));
                 owed.Add(decimal.Round(total, 2));
             }
             var cur = owed[^1];
@@ -412,18 +426,6 @@ public sealed class InsightsService
         }
 
         return result;
-    }
-
-    /// <summary>Cumulative payments (disbursements out) made to a debt bucket through <paramref name="throughIdx"/>.</summary>
-    private static decimal DisbursedThroughPeriod(Account account, IReadOnlyList<Period> periods, Guid bucketId, int throughIdx)
-    {
-        var ids = account.SavingCategoryWithDescendantIds(bucketId).ToHashSet();
-        var paid = 0m;
-        for (var i = 0; i <= throughIdx; i++)
-            paid += periods[i].SavingAllocations
-                .Where(a => ids.Contains(a.SavingCategoryId) && a.IsDisbursement)
-                .Sum(a => -a.Amount.Amount);
-        return paid;
     }
 
     // --- Signals --------------------------------------------------------------------------------

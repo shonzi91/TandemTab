@@ -769,14 +769,38 @@ public sealed class Period : Entity
     /// same money wearing a different label, and counting the incoming half would report it as freshly saved.
     /// </para>
     /// <para>
-    /// <b>Known over-count, deliberately kept:</b> setting €100 aside and spending it out of the bucket in the same
-    /// period still reports €100. That is the existing disbursement behaviour, it is bounded by what actually went in,
-    /// and the alternative — attributing each drawdown to the period its money was deposited in — is bookkeeping the
-    /// user never asked for.
+    /// <b>★ Except money released back into a budget, which really is un-saving.</b> "Count the deposits" was right
+    /// about every way money *leaves for its purpose* — a sinking fund paying its bill, a saving deployed to a goal —
+    /// because in those the money did what it was set aside to do. <see cref="ConvertSavingToBudget"/> is the one
+    /// drawdown that does the opposite: it hands the money back to the spendable pot, undoing the earmark. Set €500
+    /// aside and move €200 of it to a budget and only €300 is still set aside — the card said €500, which is the
+    /// figure the owner reported. Those drawdowns are identified by <see cref="SavingAllocation.BudgetCategoryId"/>
+    /// and are the <i>only</i> ones subtracted here.
+    /// </para>
+    /// <para>
+    /// <b>Floored at zero</b>, so releasing an <i>earlier</i> period's earmark can never drive this period's "set
+    /// aside" negative — that is the −€620 bug the paragraph above exists to prevent, and it is why this is a floor
+    /// rather than a plain net.
+    /// </para>
+    /// <para>
+    /// <b>Known over-count, still deliberately kept:</b> setting €100 aside and <i>spending</i> it out of the bucket
+    /// in the same period still reports €100. That is the disbursement behaviour above, it is bounded by what
+    /// actually went in, and the alternative — attributing each drawdown to the period its money was deposited in —
+    /// is bookkeeping the user never asked for.
     /// </para>
     /// </summary>
-    public Money SavingsSetAsideTotal =>
-        Sum(_savingAllocations.Where(a => !a.Amount.IsNegative && a.TransferPairId is null).Select(a => a.Amount));
+    public Money SavingsSetAsideTotal
+    {
+        get
+        {
+            var deposits = Sum(_savingAllocations.Where(a => !a.Amount.IsNegative && a.TransferPairId is null).Select(a => a.Amount));
+            var releasedToBudget = Sum(_savingAllocations
+                .Where(a => a.Amount.IsNegative && a.BudgetCategoryId is not null && a.TransferPairId is null)
+                .Select(a => -a.Amount));
+            var net = deposits - releasedToBudget;
+            return net.IsNegative ? Money.Zero(Currency) : net;
+        }
+    }
 
     /// <summary>
     /// Mature a saving into a spendable budget for this period: release the saving earmark and add the

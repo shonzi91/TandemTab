@@ -342,6 +342,58 @@ public class SavingsTests
         Assert.Equal(M(300), p.SavingsSetAsideTotal);
     }
 
+    /// <summary>
+    /// ★ Owner report: €500 into an expenses fund, €200 of it moved to a budget, and the Saved card still read €500.
+    /// Moving money back to a budget is the one drawdown that really is <b>un-saving</b> — it hands the money back to
+    /// the spendable pot — unlike a sinking fund paying its bill or a saving deployed to its goal, which are the
+    /// cases "count the deposits" was written for. See <see cref="Period.SavingsSetAsideTotal"/>.
+    /// </summary>
+    [Fact]
+    public void Money_released_back_into_a_budget_stops_counting_as_set_aside()
+    {
+        var account = new Account("Personal", Eur);
+        var member = account.AddMember(Guid.NewGuid(), "Stoyan");
+        var food = account.AddCategory("Food");
+        var pot = account.AddSavingCategory("Expenses fund");
+
+        var p = account.StartPeriod(new DateOnly(2026, 3, 1), new DateOnly(2026, 3, 31));
+        p.Deposit(member.UserId, M(1000));
+        p.AllocateToSavings(pot.Id, M(500), new DateOnly(2026, 3, 5));
+        Assert.Equal(M(500), p.SavingsSetAsideTotal);
+
+        p.ConvertSavingToBudget(pot.Id, food.Id, M(200), new DateOnly(2026, 3, 20));
+
+        Assert.Equal(M(300), p.SavingsSetAsideTotal);   // was €500 — the reported bug
+        Assert.Equal(M(300), p.SavingsNetTotal);        // the earmark model always agreed; the two now match
+    }
+
+    /// <summary>
+    /// The floor, and why it is a floor rather than a plain net: releasing an <b>earlier</b> period's earmark must
+    /// not drive this period's "set aside" negative. That was the −€620 bug the "count the deposits" rule fixed, and
+    /// subtracting to-budget moves must not bring it back.
+    /// </summary>
+    [Fact]
+    public void Releasing_an_older_periods_earmark_floors_at_zero_rather_than_going_negative()
+    {
+        var account = new Account("Personal", Eur);
+        var member = account.AddMember(Guid.NewGuid(), "Stoyan");
+        var food = account.AddCategory("Food");
+        var pot = account.AddSavingCategory("Insurance");
+
+        var jan = account.StartPeriod(new DateOnly(2026, 1, 1), new DateOnly(2026, 1, 31));
+        jan.Deposit(member.UserId, M(1000));
+        jan.AllocateToSavings(pot.Id, M(620), new DateOnly(2026, 1, 5));
+
+        var feb = account.StartPeriod(new DateOnly(2026, 2, 1), new DateOnly(2026, 2, 28));
+        feb.Deposit(member.UserId, M(1000));
+        feb.AllocateToSavings(pot.Id, M(50), new DateOnly(2026, 2, 3));
+        feb.ConvertSavingToBudget(pot.Id, food.Id, M(620), new DateOnly(2026, 2, 10));
+
+        // Not −€570. February set aside €50 and then released more than it put in; "set aside this period" floors.
+        Assert.Equal(M(0), feb.SavingsSetAsideTotal);
+        Assert.False(feb.SavingsSetAsideTotal.IsNegative);
+    }
+
     [Fact]
     public void Removing_a_disbursement_transfer_restores_the_bucket()
     {

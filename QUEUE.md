@@ -8,7 +8,32 @@ checked against the code, not carried forward from an older write-up.*
 | **Opened** | 2026-08-20 (Session 111) |
 | **Sources** | [BETA-FINDINGS.md](BETA-FINDINGS.md), [UX-BACKLOG.md](UX-BACKLOG.md), [BACKLOG.md](BACKLOG.md), [docs/MOBILE.md](docs/MOBILE.md), the carried "still open" lists in [HANDOFF.md](HANDOFF.md) |
 | **Not in here** | Anything a roadmap phase already owns — R3's assistant, R4's migration, R5's billing. See [OPEN-BETA.md](OPEN-BETA.md) |
-| **Status** | ⏸️ **On hold — the owner has their own list, which goes first.** |
+| **Status** | ⏸️ **On hold — the owner's list below goes first.** |
+
+---
+
+# ⭐ The owner's list (2026-08-20) — this goes first
+
+*From personal daily use. Verbatim intent kept; the reading and the plan under each row are mine, and where I
+found the code disagreeing with the report I have said so rather than smoothing it over.*
+
+| # | Item | Kind | State |
+|---|---|---|---|
+| O1 | Refund into a **non-synced** fund — deduct from the expense, and credit the fund that actually received the money | Feature | ⬜ |
+| O2 | Tagging an auto-filed expense **loses its 🏦 badge**; and rules should be able to set a **tag**, not just a category | Bug + feature | ⬜ |
+| O3 | Rework the **transaction review** flow (keep-both / replace / pin / ✕ / accept is too complicated) + **duplicate detection is over-eager** (two €10 spends two days apart) | Rework | ⬜ |
+| O4 | Show **money-out transfers** in the expense list — and consider them in budgets, since they lower the balance | Feature | ⬜ |
+| O5 | Split the **recurring list** into past (newest→oldest) and future (soonest→latest) | S | ⬜ |
+| O6 | **"Saved toward goals" should name its bucket** everywhere it appears; savings in the Breakdown pie; move **Breakdown + Trends** off the Spending tab onto the Home chart; mobile Trends hover is awkward | Rework | ⬜ |
+| O7 | New savings-bucket modal: when **Debt** is picked, two more chips appear — separate them from the bucket-type row | S | ⬜ |
+| O8 | Move the **"ahead / interest saved"** chip off the debt-free Home section onto the bucket, next to interest left, with the prepaid principal in it | S–M | ⬜ |
+| O9 | Rename **Home → Dashboard**, and let users choose which tab the app opens on | S | ⬜ |
+| O10 | **Confirmation prompts on every delete**, web and mobile | S–M | ⬜ |
+| O11 | Money moved from a bucket **into a budget** still counts as saved — €500 in, €200 budgeted out, card still says €500 | Bug | ⬜ |
+| O12 | Make **"Total saved X (this period · % of money in)"** prettier | S | ⬜ |
+| O13 | **Debt owed in Trends** disagrees with the debt bucket | Bug | ⬜ |
+
+---
 
 > **How to read the order.** The top three are wrong numbers or lost data; below them it is polish and product
 > judgement. A row marked ⛔ is *deliberately* waiting on something — don't "clear" it by building it.

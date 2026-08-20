@@ -129,6 +129,77 @@ public class InsightsServiceTests
         Assert.Contains(report.Signals, s => s.Kind == SignalKind.Warn && s.Title.Code == InsightCodes.SigCatHighTitle);
     }
 
+    /// <summary>
+    /// ★ Owner report: the "Debt owed" line in Trends did not match the figure on the debt bucket. It had its own
+    /// model — original principal minus disbursements — instead of reading
+    /// <see cref="FinApp.Domain.Savings.SavingCategory.DebtBalanceOn"/>, the method every other debt figure in the
+    /// app goes through. Two models of one number is two answers.
+    /// </summary>
+    [Fact]
+    public void The_debt_trend_ends_on_the_same_figure_the_bucket_card_shows()
+    {
+        var account = new Account("Home", Eur);
+        account.AddDefaultFunds();
+        var fund = account.FundId("Bank");
+        var me = account.AddMember(Guid.NewGuid(), "Me");
+        var loan = account.AddSavingCategory("Car loan");
+        var today = DateOnly.FromDateTime(DateTime.Today);
+
+        // A scheduled loan: the balance walks by (installment − interest) each month, whether or not anything is logged.
+        account.ConfigureSavingDebt(loan.Id, balance: 10000m, annualRatePercent: 6m, installment: 300m,
+            originalBalance: 12000m, balanceAsOf: today.AddMonths(-6), installmentDay: 5);
+
+        // Three periods so the window has something to draw (BuildMiniTrends needs at least two points).
+        for (var back = 2; back >= 0; back--)
+        {
+            var from = new DateOnly(today.AddMonths(-back).Year, today.AddMonths(-back).Month, 1);
+            var p = account.StartPeriod(from, from.AddMonths(1).AddDays(-1));
+            p.Deposit(me.UserId, M(3000), fundId: fund);
+        }
+
+        var report = new InsightsService().Build(account, account.Periods.Count - 1);
+        var debtLine = report.MiniTrends.Single(t => t.Label.Code == InsightCodes.MtLabelDebt);
+
+        // The number the bucket card shows, from the one method that owns it.
+        var onTheCard = decimal.Round(loan.DebtBalanceOn(today), 2);
+        Assert.Equal(onTheCard, debtLine.Points[^1]);
+        // ...and it is genuinely below the original, i.e. the series is not just echoing DebtOriginalBalance.
+        Assert.True(debtLine.Points[^1] < 12000m);
+    }
+
+    /// <summary>
+    /// The sharpest case of the same bug: a payment-driven loan's balance moves only when a payment is logged, and
+    /// installments are logged as expenses rather than bucket disbursements. The old reconstruction counted only
+    /// disbursements, so this drew a flat line at the original principal while the bucket showed the real figure.
+    /// </summary>
+    [Fact]
+    public void A_payment_driven_debt_does_not_draw_a_flat_line_at_its_original_balance()
+    {
+        var account = new Account("Home", Eur);
+        account.AddDefaultFunds();
+        var fund = account.FundId("Bank");
+        var me = account.AddMember(Guid.NewGuid(), "Me");
+        var loan = account.AddSavingCategory("Phone plan");
+        var today = DateOnly.FromDateTime(DateTime.Today);
+
+        account.ConfigureSavingDebt(loan.Id, balance: 900m, annualRatePercent: 0m, installment: 100m,
+            originalBalance: 1200m, balanceAsOf: today.AddMonths(-3));
+        loan.SetPaymentDriven(true, today);
+
+        for (var back = 2; back >= 0; back--)
+        {
+            var from = new DateOnly(today.AddMonths(-back).Year, today.AddMonths(-back).Month, 1);
+            var p = account.StartPeriod(from, from.AddMonths(1).AddDays(-1));
+            p.Deposit(me.UserId, M(2000), fundId: fund);
+        }
+
+        var report = new InsightsService().Build(account, account.Periods.Count - 1);
+        var debtLine = report.MiniTrends.Single(t => t.Label.Code == InsightCodes.MtLabelDebt);
+
+        Assert.Equal(decimal.Round(loan.DebtBalanceOn(today), 2), debtLine.Points[^1]);
+        Assert.NotEqual(1200m, debtLine.Points[^1]);   // the old code printed the original principal here
+    }
+
     [Fact]
     public void A_spiking_category_that_is_over_budget_does_not_also_signal_running_high()
     {

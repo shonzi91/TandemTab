@@ -1214,7 +1214,11 @@ accounts.MapPut("/{id:guid}/expenses/{expenseId:guid}", async (Guid id, Guid exp
         var before = period.Expenses.FirstOrDefault(e => e.Id == expenseId);
         var edited = period.EditExpense(expenseId, req.CategoryId, new Money(req.Amount, account.Currency), req.FundId, req.Note, req.Date);
         edited.SetFundSynced(fund.IsSynced);            // recompute at edit time (moving to/from a synced fund)
-        edited.SetBankLink(before?.BankExternalId, autoFiled: false);   // keep provenance, clear the auto-filed badge
+        // ★ Provenance survives an edit, badge included (S111, owner report: tagging an auto-filed row lost its 🏦).
+        // The badge answers "where did this row come from", which editing does not change — and its tooltip resolves
+        // the responsible rule live, so it never goes stale. Clearing it also hid the edit modal's rule shortcut at
+        // exactly the moment it is most wanted: you are correcting a row the rule mis-filed.
+        edited.SetBankLink(before?.BankExternalId, before?.AutoFiled ?? false);
         // The tag follows the same rule as the time below, and for the same reason: EditExpense carried the stored
         // one across, so an omitted value leaves it alone and clearing is explicit. It did NOT until S111 — an
         // omitted tag cleared the label, which is how the native edit stripped tags for as long as it existed.
@@ -2348,7 +2352,7 @@ accounts.MapPut("/{id:guid}/fund-transfers/{transferId:guid}", async (Guid id, G
         var before = period.FundTransfers.FirstOrDefault(t => t.Id == transferId);
         var transfer = period.EditFundTransfer(transferId, req.FromFundId, req.ToFundId, new Money(req.Amount, account.Currency), req.Note);
         transfer.SetSyncedSides(from.IsSynced, to.IsSynced);
-        transfer.SetBankLink(before?.BankExternalId, autoFiled: false);   // keep provenance, clear the auto-filed badge
+        transfer.SetBankLink(before?.BankExternalId, before?.AutoFiled ?? false);   // provenance AND badge survive — same rule as the expense edit
         return null;
     }, ct);
     await notifier.AccountChangedAsync(id, userId, version);

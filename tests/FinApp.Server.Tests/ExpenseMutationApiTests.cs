@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using FinApp.Contracts;
 using FinApp.Domain.Accounts;
+using FinApp.Domain.Budgeting;
 using FinApp.Domain.Common;
 
 namespace FinApp.Server.Tests;
@@ -226,6 +227,46 @@ public class ExpenseMutationApiTests : IClassFixture<FinAppServerFactory>
             new EditExpenseRequest(cat, 14m, fund, When, "Lunch", ClearTime: true)))
             .Content.ReadFromJsonAsync<ExpenseMutationDto>())!;
         Assert.Null(cleared.Expense!.Time);
+    }
+
+    /// <summary>
+    /// ★ Owner report: putting a label on an auto-filed row made its 🏦 badge disappear. Editing an expense used to
+    /// keep <c>BankExternalId</c> but deliberately clear <c>AutoFiled</c>. The badge answers "where did this row come
+    /// from", which an edit does not change — and clearing it also hid the edit modal's rule shortcut at exactly the
+    /// moment it is most wanted, when you are correcting a row the rule mis-filed.
+    /// </summary>
+    [Fact]
+    public async Task Editing_an_auto_filed_expense_keeps_its_bank_badge()
+    {
+        var (client, auth) = await _factory.RegisterAndAuthAsync("exp_autofiled");
+        var account = await CreateAccount(client, "Bank");
+
+        // Seed a row that came in from the bank: an external id AND the auto-filed marker.
+        var agg = new Account("Seed", "EUR");
+        agg.AddDefaultFunds();
+        var cat = agg.AddCategory("Food").Id;
+        var fund = agg.FundId("Bank");
+        agg.AddMember(auth.UserId, "Me");
+        var seeded = agg.StartPeriod(new DateOnly(2026, 1, 1), new DateOnly(2026, 1, 31));
+        seeded.Deposit(auth.UserId, new Money(1000m, "EUR"), fundId: fund);
+        var imported = seeded.AddExpense(new Expense(cat, new Money(30m, "EUR"), When, auth.UserId, fund, "TESCO"));
+        imported.SetBankLink("bank-tx-77", autoFiled: true);
+        (await client.PutAsJsonAsync($"/accounts/{account.Id}/snapshot",
+            new SaveAccountRequest(AccountSnapshotSerializer.Serialize(agg), 0))).EnsureSuccessStatusCode();
+
+        var tag = (await (await client.PostAsJsonAsync($"/accounts/{account.Id}/tags", new CreateTagRequest("Weekly")))
+            .Content.ReadFromJsonAsync<MutationResultDto>())!.EntityId!.Value;
+
+        // Label it through the edit form — the path the report came from.
+        (await client.PutAsJsonAsync($"/accounts/{account.Id}/expenses/{imported.Id}",
+            new EditExpenseRequest(cat, 30m, fund, When, "TESCO", TagId: tag))).EnsureSuccessStatusCode();
+
+        var after = AccountSnapshotSerializer.Deserialize(
+            (await client.GetFromJsonAsync<AccountSnapshot>($"/accounts/{account.Id}/snapshot"))!.Payload)
+            .Periods[0].Expenses.Single();
+        Assert.True(after.AutoFiled);                     // the badge — this is the bug
+        Assert.Equal("bank-tx-77", after.BankExternalId); // provenance, which already survived
+        Assert.Equal(tag, after.TagId);
     }
 
     [Fact]
