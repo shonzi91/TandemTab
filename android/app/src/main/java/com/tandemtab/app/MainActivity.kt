@@ -69,6 +69,7 @@ class MainActivity : ComponentActivity() {
 private fun App(vm: AppViewModel, onGoogle: () -> Unit) {
     val state by vm.state.collectAsState()
     val dark by vm.darkTheme.collectAsState()
+    val landingTab by vm.landingTab.collectAsState()
 
     // The upgrade prompt lives above the screens, not inside one: a gate can refuse from anywhere (a form, a
     // sheet, a menu row), and a prompt owned by whichever surface happened to raise it would have to be built
@@ -102,6 +103,8 @@ private fun App(vm: AppViewModel, onGoogle: () -> Unit) {
             state = state,
             darkTheme = dark,
             onToggleTheme = vm::toggleTheme,
+            landingTab = landingTab,
+            onSetLandingTab = vm::setLandingTab,
             onSelectAccount = vm::selectAccount,
             onSelectPeriod = vm::selectPeriod,
             onPrepareStartNextPeriod = vm::prepareStartNextPeriod,

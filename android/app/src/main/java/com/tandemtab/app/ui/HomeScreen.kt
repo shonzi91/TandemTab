@@ -103,8 +103,10 @@ import java.util.Locale
 
 // Mirrors the thick prod Dashboard's 4 tabs (Dashboard.razor: Overview/Budgets/Savings/Account),
 // in the same order and labels.
+// ⚠️ "Dashboard" is a LABEL change (O9) — the enum entry stays `Home`, which is also the string the landing-tab
+// preference stores on both platforms. Renaming the entry would rewrite every saved preference for no visible gain.
 private enum class NavDest(val label: String, val icon: ImageVector) {
-    Home("Home", TandemIcons.House),
+    Home("Dashboard", TandemIcons.House),
     Spending("Spending", TandemIcons.Receipt),
     Goals("Goals", TandemIcons.Flag),
     Wallets("Wallets", TandemIcons.Wallet),
@@ -116,6 +118,8 @@ fun HomeScreen(
     state: UiState,
     darkTheme: Boolean,
     onToggleTheme: () -> Unit,
+    landingTab: String,
+    onSetLandingTab: (String) -> Unit,
     onSelectAccount: (String) -> Unit,
     onCreateAccount: (String, String, () -> Unit) -> Unit,
     onSelectPeriod: (Int?) -> Unit,
@@ -250,7 +254,10 @@ fun HomeScreen(
     // Tabs are the bottom bar's job; the horizontal swipe now moves between PERIODS. The four tabs are always one
     // tap away on a bar that is permanently on screen, so spending the only full-width gesture on them bought
     // nothing — while stepping through months previously needed the period chip, a menu and a tap.
-    var dest by remember { mutableStateOf(NavDest.Home) }
+    // Opens on the user's chosen tab (O9). `remember` with the preference as its key so changing the setting in the
+    // profile sheet moves you there at once — the web's twin only applies next launch, and the reason is the same
+    // one either way: the tab state belongs to the screen, and here the screen can see the preference change.
+    var dest by remember(landingTab) { mutableStateOf(NavDest.entries.firstOrNull { it.name == landingTab } ?: NavDest.Home) }
 
     val snackbar = remember { SnackbarHostState() }
     var showAddExpense by remember { mutableStateOf(false) }
@@ -534,6 +541,8 @@ fun HomeScreen(
                 state = state,
                 darkTheme = darkTheme,
                 onToggleTheme = onToggleTheme,
+                landingTab = landingTab,
+                onSetLandingTab = onSetLandingTab,
                 onChangePassword = onChangePassword,
                 onResendVerification = onResendVerification,
                 onUploadAvatar = onUploadAvatar,

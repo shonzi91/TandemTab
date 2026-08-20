@@ -200,6 +200,15 @@ html.dark .pm-badge { background: rgba(63,224,197,.14); color: var(--tm-mint); }
 html.dark .pm > button { background: #16281f; border-color: #2b4438; color: #57d9a3; }
 html.dark .pm > button.danger { background: #2a1717; border-color: #532a2a; color: #f0a3a3; }
 .pm-theme-row { display: flex; align-items: center; justify-content: space-between; font-size: .9rem; }
+/* The landing-tab picker (O9), sharing the theme row's shape. Its own colours, because this layout has no styled
+   <select> to inherit from — hence a dark twin right beside it. */
+.pm-landing {
+    padding: 7px 11px; border: 1px solid #d6f0e3; border-radius: 11px; background: #f4f7f6; color: #1f2430;
+    font-size: .85rem; font-weight: 600; cursor: pointer;
+}
+.pm-landing:hover { border-color: #13a06e; }
+html.dark .pm-landing { background: #1b2230; border-color: #2c3142; color: #e6edf3; }
+html.dark .pm-landing:hover { border-color: var(--tm-mint); }
 /* Sun/moon theme switch, matching the landing page's toggle. */
 .pm-theme-toggle {
     display: inline-flex; align-items: center; justify-content: center; width: 38px; height: 38px;
@@ -379,6 +388,9 @@ html.dark .pm-exit-test:hover { color: #2ee59d; }
 /* White quiet-zone around the QR so it scans reliably on any theme. */
 .pm-2fa-qr { display: block; margin: 8px 0; padding: 8px; background: #ffffff; border-radius: 8px; }
 .pm-avatar-row { display: flex; align-items: center; gap: 12px; }
+/* The inline "Remove your picture?" ask (O10) — the question and its two answers, in the row the button was in.
+   Layout only; .pm-hint and the two .ghost buttons keep the colours they already have in both themes. */
+.pm-confirm { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .pm-avatar {
     width: 56px; height: 56px; border-radius: 50%; overflow: hidden; flex-shrink: 0;
     background: #e4f6ee; color: #0e7c55; display: inline-flex; align-items: center; justify-content: center;

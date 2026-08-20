@@ -444,6 +444,18 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         _darkTheme.value = next
     }
 
+    // Which tab the app opens on (O9), beside the theme in the same prefs and for the same reason: it is a
+    // per-device display preference and there is no user-settings endpoint to put it behind. The web keeps the
+    // twin of this in localStorage under 'finapp-landing-tab'; the values are the same four names, so a person
+    // reading the two side by side sees one setting rather than two that happen to rhyme.
+    private val _landingTab = MutableStateFlow(uiPrefs.getString("landing_tab", "Home") ?: "Home")
+    val landingTab: StateFlow<String> = _landingTab.asStateFlow()
+
+    fun setLandingTab(tab: String) {
+        uiPrefs.edit().putString("landing_tab", tab).apply()
+        _landingTab.value = tab
+    }
+
     init {
         // Discover which external providers to show (best-effort — button stays hidden if unreachable).
         viewModelScope.launch {

@@ -1199,6 +1199,9 @@ data class RecurringRowDto(
     // Deliberately skipped this period rather than posted — the only state /unskip will undo. A skip removes the
     // bill from "still due", which moves safe-to-spend, so it stays visible with a way back.
     val skippedThisPeriod: Boolean = false,
+    // Still expected this period. NOT derivable from `due`/`upcoming` — an item due in three weeks is pending but
+    // neither, so without this the list cannot tell "not yet" from "already done" (O5).
+    val pending: Boolean = false,
 )
 
 /** A debt bucket a bill can be linked to. `paymentDriven` mirrors the bucket's "I log each installment here"

@@ -1392,6 +1392,29 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     /// <summary>How many days until a recurring item is due, within the current period.</summary>
     public int RecurringDaysUntilDue(RecurringItem r) => r.DaysUntilDue(Period.From, Period.To, Today());
 
+    /// <summary>
+    /// The recurring list split the way it is read (O5): what is <b>still expected</b> this period, soonest first,
+    /// and what is <b>behind you</b>, most recent first. The web list had no ordering at all — it rendered raw
+    /// storage order, so "what's left to pay this month" meant reading every row and doing the arithmetic yourself.
+    /// <para>
+    /// ⚠️ A <b>paused</b> item is not pending, so it sits in the lower group. That is the honest place for it — it
+    /// is not coming — and the row already says "paused" beside its name, so nothing is claimed that isn't true.
+    /// </para>
+    /// <para>Overdue items are pending with a <i>negative</i> days-until-due, which sorts them to the very top of
+    /// "coming up" — where something you have missed belongs.</para>
+    /// </summary>
+    public (IReadOnlyList<RecurringItem> Coming, IReadOnlyList<RecurringItem> Past) RecurringSections()
+    {
+        if (!IsPeriodOpen) return (Account.RecurringItems, []);
+        var (from, to, today) = (Period.From, Period.To, Today());
+        var coming = Account.RecurringItems.Where(r => r.IsPending(from, to))
+            .OrderBy(r => r.DaysUntilDue(from, to, today)).ThenBy(r => r.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
+        // Most recent first: a due date further in the past is a *more* negative gap, so descending is newest-first.
+        var past = Account.RecurringItems.Where(r => !r.IsPending(from, to))
+            .OrderByDescending(r => r.DaysUntilDue(from, to, today)).ThenBy(r => r.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
+        return (coming, past);
+    }
+
     /// <summary>Total of the known-amount recurring <b>bills</b> still expected (unhandled) this period — money that's
     /// effectively already spoken for, even though it hasn't been logged yet. Reminder-only items are excluded (no
     /// predictable amount). Keeps "free to allocate" honest.</summary>

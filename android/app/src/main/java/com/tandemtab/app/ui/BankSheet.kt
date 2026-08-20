@@ -17,7 +17,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -73,6 +75,11 @@ fun BankSheet(
     val tandem = LocalTandemColors.current
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val fmt = sheetMoney(bank.balanceCurrency ?: spending.currency)
+    // ★ O10 reaches the phone here. These are the two most destructive unguarded actions in the app and they were
+    // unguarded on BOTH platforms: disconnecting takes every staged transaction with it, and a dismissed row does
+    // not come back on the next sync. One tap each, on a screen you scroll with your thumb.
+    var disconnecting by remember { mutableStateOf(false) }
+    var dismissing by remember { mutableStateOf<PendingBankTransactionDto?>(null) }
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState, containerColor = MaterialTheme.colorScheme.surface) {
         Column(
@@ -117,7 +124,7 @@ fun BankSheet(
                             Text("Sync now")
                         }
                     }
-                    OutlinedButton(onClick = onDisconnect, enabled = !bank.busy) { Text("Disconnect", color = MaterialTheme.colorScheme.error) }
+                    OutlinedButton(onClick = { disconnecting = true }, enabled = !bank.busy) { Text("Disconnect", color = MaterialTheme.colorScheme.error) }
                 }
 
                 Spacer(Modifier.height(18.dp))
@@ -136,13 +143,50 @@ fun BankSheet(
                             PendingRow(
                                 tx = tx, spending = spending, fmt = fmt, busy = bank.handlingId == tx.externalId,
                                 onConfirmExpense = onConfirmExpense, onConfirmIncome = onConfirmIncome,
-                                onConfirmRefund = onConfirmRefund, onDismiss = onDismissPending,
+                                onConfirmRefund = onConfirmRefund, onDismiss = { id -> dismissing = bank.pending.firstOrNull { it.externalId == id } },
                             )
                         }
                     }
                 }
             }
         }
+    }
+
+    // Each says what is actually lost — a bare "Are you sure?" is a speed bump, not an answer.
+    if (disconnecting) {
+        AlertDialog(
+            onDismissRequest = { if (!bank.busy) disconnecting = false },
+            title = { Text("Disconnect your bank?") },
+            text = {
+                Text(
+                    "New transactions stop arriving, and anything still waiting to be reviewed is discarded. " +
+                        "Your logged expenses are untouched. You can reconnect later — you'll be asked to consent again.",
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = { disconnecting = false; onDisconnect() },
+                    enabled = !bank.busy,
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                ) { Text("Disconnect") }
+            },
+            dismissButton = { TextButton(onClick = { disconnecting = false }, enabled = !bank.busy) { Text("Cancel") } },
+        )
+    }
+
+    dismissing?.let { tx ->
+        AlertDialog(
+            onDismissRequest = { dismissing = null },
+            title = { Text("Not an expense?") },
+            text = { Text("“${tx.description}” is dropped from the review and won't come back on the next sync.") },
+            confirmButton = {
+                Button(
+                    onClick = { dismissing = null; onDismissPending(tx.externalId) },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                ) { Text("Dismiss") }
+            },
+            dismissButton = { TextButton(onClick = { dismissing = null }) { Text("Cancel") } },
+        )
     }
 }
 

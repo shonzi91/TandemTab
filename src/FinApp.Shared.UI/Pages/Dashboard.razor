@@ -407,7 +407,9 @@ else
     }
 
     <nav class="tabs">
-        <button class="tab @(_tab == Tab.Overview ? "active" : "")" @onclick="() => _tab = Tab.Overview">@Loc["Home"]</button>
+        @* ⚠️ "Dashboard" is a LABEL change (O9). Tab.Overview and this file's name stay as they are — renaming the
+           enum would touch every switch and every saved preference string for no gain the user can see. *@
+        <button class="tab @(_tab == Tab.Overview ? "active" : "")" @onclick="() => _tab = Tab.Overview">@Loc["Dashboard"]</button>
         <button class="tab @(_tab == Tab.Budgets ? "active" : "")" @onclick="ShowExpensesTab">@Loc["Spending"]</button>
         <button class="tab @(_tab == Tab.Savings ? "active" : "")" @onclick="() => _tab = Tab.Savings">@Loc["Goals"]</button>
         <button class="tab @(_tab == Tab.Account ? "active" : "")" @onclick="() => _tab = Tab.Account">@Loc["Wallets"]</button>
@@ -2993,7 +2995,7 @@ else
                                                     <span class="goal-cost-name">@cost.Label</span>
                                                     <span class="goal-cost-amt">@Fmt(new Money(cost.Amount, State.Currency))<span class="goal-cost-cad"> · @CadenceLabel(cost.Cadence)</span></span>
                                                 </button>
-                                                <button type="button" class="goal-cost-del" title="@Loc["Remove"]" @onclick="() => DeleteCost(bucketId, idx)"><Icon Name="trash" /></button>
+                                                <button type="button" class="goal-cost-del" title="@Loc["Remove"]" @onclick="() => ConfirmDeleteCost(bucketId, idx)"><Icon Name="trash" /></button>
                                             </div>
                                         }
                                     </div>
@@ -3505,7 +3507,7 @@ else
                         {
                             <div class="modal-field bank-rule-known">
                                 <small class="hint"><Icon Name="pin" /> @string.Format(Loc["Auto-files to {0} from now on."], bcMapped)</small>
-                                <button type="button" class="link" @onclick="() => ForgetMapping(bc)" disabled="@_busy">@Loc["Forget this rule"]</button>
+                                <button type="button" class="link" @onclick="() => ConfirmForgetMapping(bc)" disabled="@_busy">@Loc["Forget this rule"]</button>
                             </div>
                         }
                         else
@@ -3532,7 +3534,7 @@ else
                            which is right for a one-word "Unsettle" and wrong for a sentence. As a link in the body
                            it reads as what it is: a secondary path, next to the thing it is an alternative to.
                            Same verb as the ✗ on the review row, so it is one action with one name. *@
-                        <button type="button" class="link settle-link" @onclick="DismissFromBankConfirm" disabled="@_busy">
+                        <button type="button" class="link settle-link" @onclick="ConfirmDismissFromBankConfirm" disabled="@_busy">
                             <Icon Name="x" /> @Loc["Not an expense — dismiss it"]
                         </button>
                         <div class="modal-actions">
@@ -4696,6 +4698,22 @@ else
                     </div>
                     break;
 
+                @* ★ O10: one confirm modal for every destructive action that never had one, instead of a
+                   twenty-first bespoke case in this switch. The twenty that exist are each a *different question*
+                   with its own fields (which category do the expenses move to? which member?); these are all the
+                   same question — "this cannot be undone, do it?" — and writing them out one by one is how eight of
+                   them came to be missing in the first place. ⚠️ Deliberately NOT a native window.confirm: the app
+                   has exactly one of those, browsers style it as a page-level alert, and it cannot carry the
+                   sentence that says what will actually be lost. *@
+                case Modal.Confirm:
+                    <h3>@_confirmTitle</h3>
+                    @if (_confirmBody is { } confBody) { <p class="hint">@confBody</p> }
+                    <div class="modal-actions">
+                        <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
+                        <button class="danger-btn" @onclick="ConfirmAndRun" disabled="@_busy">@_confirmVerb</button>
+                    </div>
+                    break;
+
                 case Modal.DeleteInstallment:
                     <h3>@Loc["Remove this installment?"]</h3>
                     <p class="hint">@string.Format(Loc["All {0} rows of this payment will be removed."], _instDeleteCount)</p>
@@ -4748,7 +4766,7 @@ else
                         <div class="modal-actions">
                             @if (_settleIsEdit)
                             {
-                                <button class="ghost danger" @onclick="UnsettleFromModal">@Loc["Unsettle"]</button>
+                                <button class="ghost danger" @onclick="ConfirmUnsettle">@Loc["Unsettle"]</button>
                             }
                             <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
                             <button @onclick="ConfirmSettleExpense" disabled="@(_settleAmount <= 0 || _settleDestId == Guid.Empty)"><Icon Name="users" /> @(_settleIsEdit ? Loc["Save"] : Loc["Settle"])</button>
@@ -4984,7 +5002,7 @@ else
                     <div class="modal-actions">
                         @if (_editCostIndex >= 0)
                         {
-                            <button class="ghost danger" @onclick="() => DeleteCost(_costBucketId, _editCostIndex)"><Icon Name="trash" /> @Loc["Remove"]</button>
+                            <button class="ghost danger" @onclick="() => ConfirmDeleteCost(_costBucketId, _editCostIndex)"><Icon Name="trash" /> @Loc["Remove"]</button>
                         }
                         <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
                         <button @onclick="SaveCost" disabled="@(string.IsNullOrWhiteSpace(_editCost.Label) || _editCost.Amount <= 0m)">@(_editCostIndex >= 0 ? Loc["Save"] : Loc["Add"])</button>
@@ -5247,7 +5265,7 @@ else
                                     <span class="row-actions">
                                         <button class="exp-edit" title="@Loc["Edit"]" @onclick="() => OpenEditTag(tid)"><Icon Name="pencil" /></button>
                                         <button class="exp-edit" title="@(archived ? Loc["Restore"] : Loc["Archive"])" @onclick="() => (archived ? State.RestoreTag(tid) : State.ArchiveTag(tid))"><Icon Name="@(archived ? "rotate" : "archive")" /></button>
-                                        <button class="exp-edit" title="@Loc["Remove"]" @onclick="() => State.RemoveTag(tid)"><Icon Name="trash" /></button>
+                                        <button class="exp-edit" title="@Loc["Remove"]" @onclick="() => ConfirmRemoveTag(tid)"><Icon Name="trash" /></button>
                                     </span>
                                 </li>
                             }
@@ -5551,29 +5569,42 @@ else
                     }
                     else
                     {
-                        <ul class="list">
-                            @foreach (var r in State.RecurringItems)
-                            {
+                        @* ★ O5: two sections, because the list is read as two questions — "what is still coming?"
+                           and "what has already gone through?" — and it used to render in raw storage order, which
+                           answers neither. Soonest first above (an overdue item has a negative gap, so it leads),
+                           most recent first below. Android sorted but never sectioned; it does now too. *@
+                        RenderFragment<RecurringItem> recRow = r =>
+                        @<li>
+                            @{
                                 var rid = r.Id;
                                 var amountText = r.AmountMode == RecurringAmountMode.ReminderOnly
                                     ? Loc["reminder only"]
                                     : (r.AmountMode == RecurringAmountMode.Typical ? "~" : "") + Fmt(r.ExpectedAmount);
-                                <li>
-                                    <span class="row-main">
-                                        <span class="cat-ico">@IconOrEmoji(r.Icon ?? (r.Kind == RecurringKind.Income ? "note" : "repeat"))</span> @r.Name
-                                        <span class="row-note">· @amountText · @Loc["day"] @r.DayOfMonth@(r.AutoPost ? " · ⚡" + @Loc["auto"] : "")@(r.Active ? "" : " · " + @Loc["paused"])</span>
-                                        @if (r.LinkedDebtBucketId is { } rdebt)
-                                        {
-                                            <span class="inst-tag" title="@Loc["Each payment will be split into interest and principal rows against that loan, instead of one lump expense."]">🧾 @State.SavingBucketName(rdebt)</span>
-                                        }
-                                    </span>
-                                    <span class="row-actions">
-                                        <button class="exp-edit" title="@Loc["Edit"]" @onclick="() => OpenEditRecurring(rid)"><Icon Name="pencil" /></button>
-                                        <button class="exp-edit" title="@Loc["Remove"]" @onclick="() => RemoveRecurringItem(rid)"><Icon Name="trash" /></button>
-                                    </span>
-                                </li>
                             }
-                        </ul>
+                            <span class="row-main">
+                                <span class="cat-ico">@IconOrEmoji(r.Icon ?? (r.Kind == RecurringKind.Income ? "note" : "repeat"))</span> @r.Name
+                                <span class="row-note">· @amountText · @Loc["day"] @r.DayOfMonth@(r.AutoPost ? " · ⚡" + @Loc["auto"] : "")@(r.Active ? "" : " · " + @Loc["paused"])</span>
+                                @if (r.LinkedDebtBucketId is { } rdebt)
+                                {
+                                    <span class="inst-tag" title="@Loc["Each payment will be split into interest and principal rows against that loan, instead of one lump expense."]">🧾 @State.SavingBucketName(rdebt)</span>
+                                }
+                            </span>
+                            <span class="row-actions">
+                                <button class="exp-edit" title="@Loc["Edit"]" @onclick="() => OpenEditRecurring(rid)"><Icon Name="pencil" /></button>
+                                <button class="exp-edit" title="@Loc["Remove"]" @onclick="() => ConfirmRemoveRecurring(rid)"><Icon Name="trash" /></button>
+                            </span>
+                        </li>;
+                        var (recComing, recPast) = State.RecurringSections();
+                        @if (recComing.Count > 0)
+                        {
+                            <h4 class="detail-sub">@Loc["Coming up"] <span class="pm-hint">· @recComing.Count</span></h4>
+                            <ul class="list">@foreach (var r in recComing) { @recRow(r) }</ul>
+                        }
+                        @if (recPast.Count > 0)
+                        {
+                            <h4 class="detail-sub">@Loc["Already this period"] <span class="pm-hint">· @recPast.Count</span></h4>
+                            <ul class="list">@foreach (var r in recPast) { @recRow(r) }</ul>
+                        }
                     }
                     break;
 
@@ -5838,7 +5869,7 @@ else
                                 {
                                     <span class="row-note">· @Loc["last synced"] @synced.LocalDateTime.ToString("dd MMM HH:mm")</span>
                                 }
-                                <button class="link danger bank-disconnect" @onclick="DisconnectBankAsync" disabled="@_bankBusy">@Loc["Disconnect"]</button>
+                                <button class="link danger bank-disconnect" @onclick="ConfirmDisconnectBank" disabled="@_bankBusy">@Loc["Disconnect"]</button>
                             </p>
                             <p class="hint">@Loc["Map a fund to one of this bank's accounts by editing the fund and turning on sync."]</p>
                             @if (_bankStatus.ConsentExpiresAt is { } exp && exp <= DateTimeOffset.UtcNow)
@@ -7002,7 +7033,7 @@ else
 }
 
 @code {
-    private enum Modal { None, BankReview, BankConfirm, BankConsent, AddCat, AddBudget, DisburseSaving, PayoffProjection, GoalProjection, InvestmentProjection, BankTransfer, ExternalAccounts, HealthScore, RunwayMath, EditCat, DeleteCat, DeleteBudget, EditAccountTransfer, DeleteAccountTransfer, CategoryDetail, AddAccount, EditAccount, DeleteAccount, RemoveMember, LeaveAccount, AddExpense, NextPeriod, RemovePeriod, EditExpense, DeleteExpense, SettleExpense, AddBucket, EditBucket, DeleteBucket, EditCost, AddFund, EditFund, DeleteFund, Invite, Transfer, Deposit, EditDeposit, DeleteDeposit, ManageCats, ManageContribCats, ContribCat, DeleteContribCat, AddSaving, BudgetSaving, SpendSaving, EditSavingDeposit, DeleteSavingDeposit, EditTransfer, DeleteTransfer, EditPeriod, EditSavingMovement, DeleteSavingMovement, DeleteExternalTransfer, Achievements, Reallocate, Recurring, RecurringEdit, RecurringConfirm, Import, AddOrImport, ArchiveFund, FundMovements, Archived, ManageTags, EditTag, LogInstallment, DeleteInstallment, WeekRecap, TripEdit, DeleteTrip, AttachToTrip, UseTripSavings, TagExpense, UndoRefund, RecordRefund }
+    private enum Modal { None, Confirm, BankReview, BankConfirm, BankConsent, AddCat, AddBudget, DisburseSaving, PayoffProjection, GoalProjection, InvestmentProjection, BankTransfer, ExternalAccounts, HealthScore, RunwayMath, EditCat, DeleteCat, DeleteBudget, EditAccountTransfer, DeleteAccountTransfer, CategoryDetail, AddAccount, EditAccount, DeleteAccount, RemoveMember, LeaveAccount, AddExpense, NextPeriod, RemovePeriod, EditExpense, DeleteExpense, SettleExpense, AddBucket, EditBucket, DeleteBucket, EditCost, AddFund, EditFund, DeleteFund, Invite, Transfer, Deposit, EditDeposit, DeleteDeposit, ManageCats, ManageContribCats, ContribCat, DeleteContribCat, AddSaving, BudgetSaving, SpendSaving, EditSavingDeposit, DeleteSavingDeposit, EditTransfer, DeleteTransfer, EditPeriod, EditSavingMovement, DeleteSavingMovement, DeleteExternalTransfer, Achievements, Reallocate, Recurring, RecurringEdit, RecurringConfirm, Import, AddOrImport, ArchiveFund, FundMovements, Archived, ManageTags, EditTag, LogInstallment, DeleteInstallment, WeekRecap, TripEdit, DeleteTrip, AttachToTrip, UseTripSavings, TagExpense, UndoRefund, RecordRefund }
     private enum Tab { Overview, Account, Budgets, Savings }
 
     /// <summary>Which kind of goal the Goals grid is showing. Defaults to All so the filter narrows on request
@@ -8575,6 +8606,7 @@ else
         Auth.Changed += OnLocChanged;
         await State.InitializeAsync();
         ResetPickers();
+        await LoadLandingTabAsync();
 
         // No "which account?" prompt on entry any more. BudgetingState.InitializeAsync already restores the
         // last-open account from local storage, so the modal was asking a question that had just been answered —
@@ -8679,9 +8711,32 @@ else
     public void OnBrowserBack()
     {
         if (_modal != Modal.None) Back();
-        else if (_tab != Tab.Overview) _tab = Tab.Overview;
+        // ⚠️ Back goes to the LANDING tab, not to Overview (O9). It was hard-coded, and once the landing tab became
+        // a preference that turned Back into a control that fought the setting: someone who opens on Spending would
+        // press Back, land on Dashboard, press Back again, and leave the app from a tab they never chose.
+        else if (_tab != _landingTab) _tab = _landingTab;
         StateHasChanged();
     }
+
+    // --- Which tab the app opens on (O9) -------------------------------------------------------
+    // Per device, in localStorage, exactly like the theme — there is no user-settings endpoint and UserDto carries
+    // nothing preference-shaped, so this needs no contract, no server change and no migration. Default is the tab
+    // it always opened on.
+    private Tab _landingTab = Tab.Overview;
+
+    private async Task LoadLandingTabAsync()
+    {
+        string? saved = null;
+        try { saved = await JS.InvokeAsync<string?>("finappGetLandingTab"); } catch { /* host without the helper */ }
+        if (Enum.TryParse<Tab>(saved, ignoreCase: true, out var t)) _landingTab = t;
+        // Only on entry: this runs before the first paint, so it decides where the app opens rather than yanking
+        // the user off a tab they have already reached.
+        _tab = _landingTab;
+    }
+
+    // ⚠️ The picker that WRITES this lives in MainLayout's Appearance block, beside the theme — same shape of
+    // preference, same storage, one place to look for "how this app is set up". This component only reads it, and
+    // only on entry, so a change made mid-session applies the next time the app opens (the picker says so).
 
     /// <summary>The compact Home strip: only the milestones you're actively making progress on (not yet earned, but
     /// above 0%), closest first. Earned medals and not-started ones live in the Achievements modal (🏆 in the header).</summary>
@@ -9040,7 +9095,7 @@ else
                         <button class="icon-btn pin @(mappedLabel is not null ? "on" : "")" title="@pinTitle" @onclick="() => TogglePin(t)" disabled="@_bankBusy"><Icon Name="pin" /></button>
                         <button class="icon-btn ok" title="@Loc["Add movement"]" @onclick="() => ConfirmMoneyInRow(t)" disabled="@(_bankBusy || !State.HasSyncedFund)"><Icon Name="check" /></button>
                     }
-                    <button class="icon-btn x" title="@Loc["Dismiss"]" @onclick="() => DismissBankRow(t)" disabled="@_bankBusy"><Icon Name="x" /></button>
+                    <button class="icon-btn x" title="@Loc["Dismiss"]" @onclick="() => ConfirmDismissBankRow(t)" disabled="@_bankBusy"><Icon Name="x" /></button>
                 </span>
             </div>
             @* Pinning opens an inline word-chooser (same chips as the edit-expense rule editor): pick which words
@@ -9111,7 +9166,7 @@ else
             {
                 <span class="row-actions">
                     <button class="exp-edit" title="@Loc["Edit rule: where it files and which words match"]" @onclick="() => BeginRuleEdit(ctx.Key)" disabled="@_bankBusy"><Icon Name="pencil" /></button>
-                    <button class="exp-edit" title="@Loc["Remove"]" @onclick="() => RemoveBankRuleKey(ctx.Key)" disabled="@_bankBusy"><Icon Name="trash" /></button>
+                    <button class="exp-edit" title="@Loc["Remove"]" @onclick="() => ConfirmRemoveBankRule(ctx.Key)" disabled="@_bankBusy"><Icon Name="trash" /></button>
                 </span>
             }
         </li>;
@@ -9772,6 +9827,94 @@ else
 
     /// <summary>Like <see cref="Run"/>, but routes failures to the open modal (<c>_modalError</c>) so the
     /// validation message shows inside the popup and the modal stays open instead of closing.</summary>
+    // --- The shared confirm (O10) -------------------------------------------------------------
+    private string _confirmTitle = "", _confirmVerb = "";
+    private string? _confirmBody;
+    private Func<Task>? _confirmAct;
+
+    /// <summary>
+    /// Ask before doing something that cannot be undone, then do it. The owner's standing rule is that <b>deletes
+    /// always confirm and archive/edit never do</b>, and eight web controls were quietly outside it — including the
+    /// two most destructive of the lot, disconnecting the bank (which also drops every staged import) and
+    /// dismissing a pending bank row.
+    /// </summary>
+    /// <para>Cancel returns to whatever was open when it was asked — captured here rather than passed in, so no
+    /// call site can forget it. A confirm that costs you your place teaches people to avoid the button rather than
+    /// to read the question.</para>
+    private void AskConfirm(string title, string? body, string verb, Func<Task> act)
+    {
+        var cameFrom = _modal;
+        _confirmTitle = title;
+        _confirmBody = body;
+        _confirmVerb = verb;
+        _confirmAct = act;
+        _modalError = null;
+        if (cameFrom != Modal.None) _modalBack.Push(() => _modal = cameFrom);
+        _modal = Modal.Confirm;
+    }
+
+    /// <summary>Yes: run the action, then go back the way Cancel would. The action is cleared before it runs so a
+    /// double-tap on a slow request cannot fire it twice (<see cref="RunModal"/>'s <c>_busy</c> guard covers the
+    /// same window, and neither is worth relying on alone for something irreversible).</summary>
+    private Task ConfirmAndRun() => RunModal(async () =>
+    {
+        if (_confirmAct is not { } act) { Back(); return; }
+        _confirmAct = null;
+        await act();
+        Back();
+    });
+
+    // The eight web controls that were doing something irreversible on one tap. Each says what will be lost, in
+    // its own words — a generic "Are you sure?" is a speed bump, not an answer, and the sentence is the whole point.
+    private void ConfirmRemoveTag(Guid tagId) => AskConfirm(
+        Loc["Remove this label?"],
+        string.Format(Loc["“{0}” comes off every expense that carries it. The expenses themselves are untouched."], State.AllTags.FirstOrDefault(t => t.Id == tagId)?.Name ?? ""),
+        Loc["Remove"], () => State.RemoveTag(tagId));
+
+    private void ConfirmRemoveRecurring(Guid id) => AskConfirm(
+        Loc["Remove this recurring item?"],
+        Loc["It stops reminding you. Anything already logged from it stays where it is."],
+        Loc["Remove"], () => State.RemoveRecurring(id));
+
+    private void ConfirmDeleteCost(Guid bucketId, int index) => AskConfirm(
+        Loc["Remove this cost?"],
+        Loc["It comes off the fund's plan straight away."],
+        Loc["Remove"], () => DeleteCost(bucketId, index));
+
+    private void ConfirmUnsettle() => AskConfirm(
+        Loc["Unsettle this expense?"],
+        Loc["The expense on the other account is removed and this one goes back to its full amount."],
+        Loc["Unsettle"], UnsettleFromModal);
+
+    // ★ The two the plan called the most destructive unguarded actions in the app, and they were unguarded on both
+    // platforms. Disconnecting takes the staged imports with it; a dismissed transaction does not come back.
+    private void ConfirmDisconnectBank() => AskConfirm(
+        Loc["Disconnect your bank?"],
+        Loc["New transactions stop arriving, and anything still waiting to be reviewed is discarded. Your logged expenses are untouched. You can reconnect later — you'll be asked to consent again."],
+        Loc["Disconnect"], DisconnectBankAsync);
+
+    private void ConfirmDismissBankRow(PendingBankTransactionDto tx) => AskConfirm(
+        Loc["Not an expense?"],
+        string.Format(Loc["“{0}” is dropped from the review and won't come back on the next sync."], tx.Description),
+        Loc["Dismiss"], () => DismissBankRow(tx));
+
+    private void ConfirmDismissFromBankConfirm() => AskConfirm(
+        Loc["Not an expense?"],
+        _bcTx is { } bc
+            ? string.Format(Loc["“{0}” is dropped from the review and won't come back on the next sync."], bc.Description)
+            : null,
+        Loc["Dismiss"], DismissFromBankConfirm);
+
+    private void ConfirmForgetMapping(PendingBankTransactionDto tx) => AskConfirm(
+        Loc["Forget this rule?"],
+        Loc["Transactions from this merchant go back to being reviewed by hand. Expenses already filed by the rule stay as they are."],
+        Loc["Forget"], () => ForgetMapping(tx));
+
+    private void ConfirmRemoveBankRule(string matchKey) => AskConfirm(
+        Loc["Forget this rule?"],
+        string.Format(Loc["“{0}” goes back to being reviewed by hand. Expenses already filed by the rule stay as they are."], matchKey),
+        Loc["Forget"], () => RemoveBankRuleKey(matchKey));
+
     private async Task RunModal(Func<Task> action)
     {
         if (_busy) return;

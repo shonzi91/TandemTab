@@ -71,6 +71,16 @@ import kotlin.math.roundToInt
 
 // ── Profile (personal) ──────────────────────────────────────────────────────────────────────────────
 
+/** The landing-tab choices (O9). The stored values are the NavDest entry names, which are also what the web stores
+ *  under `finapp-landing-tab` — one preference, spelled the same on both platforms, so a person who uses both sees
+ *  one setting rather than two that happen to rhyme. `Home` keeps its name; only the label reads "Dashboard". */
+private val LANDING_TABS = listOf(
+    "Home" to "Dashboard",
+    "Spending" to "Spending",
+    "Goals" to "Goals",
+    "Wallets" to "Wallets",
+)
+
 /** The personal Profile sheet (top-bar gear): identity, change-password (hidden for external sign-in), sign out.
  *  Account-level actions live in [AccountSheet]. */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -79,6 +89,8 @@ fun ProfileSheet(
     state: UiState,
     darkTheme: Boolean,
     onToggleTheme: () -> Unit,
+    landingTab: String,
+    onSetLandingTab: (String) -> Unit,
     onChangePassword: (String, String) -> Unit,
     onResendVerification: () -> Unit,
     onUploadAvatar: (String) -> Unit,
@@ -194,6 +206,26 @@ fun ProfileSheet(
                 contentAlignment = Alignment.Center,
             ) {
                 Text(if (darkTheme) "☀️" else "🌙", fontSize = 18.sp)
+            }
+        }
+
+        // Which tab the app opens on (O9) — the same preference the web keeps beside its theme, offered here in the
+        // same place for the same reason: it is how the app is set up, not what it is showing you right now.
+        Text("Open the app on", color = tandem.muted, fontSize = 13.sp, modifier = Modifier.padding(top = 6.dp))
+        Row(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            LANDING_TABS.forEach { (value, label) ->
+                val on = landingTab == value
+                Text(
+                    label,
+                    color = if (on) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
+                    fontSize = 13.sp,
+                    fontWeight = if (on) FontWeight.Bold else FontWeight.Normal,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(999.dp))
+                        .background(if (on) MaterialTheme.colorScheme.primary else tandem.hero)
+                        .clickable { onSetLandingTab(value) }
+                        .padding(horizontal = 12.dp, vertical = 7.dp),
+                )
             }
         }
 

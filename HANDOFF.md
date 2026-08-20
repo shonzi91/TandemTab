@@ -1,14 +1,62 @@
 # TandemTab (FinApp) — session handoff
 
-Last updated: 2026-08-20 (Session 112 — **batches 3 and 4. The bank review stops asking and the duplicate check
-stops guessing; a merchant rule can name a label; and the money chart, the debt bucket and the savings header all
-say what they mean.**
-**518 + 50 + 379 green. DEPLOYED: `finapp-00316-vj7`, 100% LATEST — batches 2, 3 and 4 all went out together,
-verified on the served bytes (both hosts), 5 `secretKeyRef`s intact, no WARNING+ on the new revision.**)
+Last updated: 2026-08-20 (Session 112 — **batches 3, 4 and 5: thirteen of the owner's fourteen items are done.**
+The bank review stops asking and the duplicate check stops guessing; a rule can name a label; the money chart, the
+debt bucket and the savings header say what they mean; and every delete now asks first.
+**518 + 50 + 380 green. Batches 2–4 are DEPLOYED as `finapp-00316-vj7` (100% LATEST, verified on the served bytes
+on both hosts, 5 `secretKeyRef`s, no WARNING+). Batch 5 is committed — see its deploy line below.**)
 
 #### ⭐ The owner's list — where it stands
-**Done: O11, O2 (a+b), O13, O1, O4, O3, O6, O7, O8, O12.** **Left: O5, O9, O10 (batch 5, all needing Android too)
-and O14.** Order and readings in [QUEUE.md](QUEUE.md); plan at `~/.claude/plans/rosy-dazzling-kay.md`.
+**Thirteen of fourteen done: O1–O13 (O2 both halves).** **Left: O14** — Trends' *Spent* / *Set aside* charts
+switchable to a category / a bucket. Order and readings in [QUEUE.md](QUEUE.md); plan at
+`~/.claude/plans/rosy-dazzling-kay.md`.
+
+#### Batch 5 (O5 + O9 + O10) — web verified, Android compiled only
+
+★★ **O10's real problem was not the eight missing prompts, it was that there was no way to ask.** The web had
+twenty bespoke confirm modals, each a `Modal` enum case with its own markup — which is *why* eight deletes had
+none: adding one meant writing a twenty-first. Those twenty are each a **different question** (which category do
+the expenses move to? which member?); these eight are the same one — "this cannot be undone, do it?" — so they
+share one `Modal.Confirm` and an `AskConfirm(title, body, verb, act)`. ★ **Cancel is captured, not passed:**
+`AskConfirm` reads the modal it was called from and pushes it onto the back-stack itself, so no call site can
+forget to return the user where they were. A confirm that costs you your place teaches people to avoid the
+button rather than to read the question.
+⚠️ **Each says what is actually lost** — "Are you sure?" is a speed bump, not an answer. The bank two got the
+longest sentences because they are the worst: disconnecting discards every staged transaction, and a dismissed
+row does not come back on the next sync. **Both were unguarded on both platforms**; Android now raises an
+`AlertDialog` for each.
+★ **MainLayout is the exception, on purpose.** "Remove profile picture" lives in a component with no modal
+machinery of its own, so the ask is inline — the button becomes the question in the row it was already in.
+Building a second modal system there to honour the rule would have been the more expensive way to obey it.
+
+★ **O5 — the recurring list is two questions, so it is two sections.** *Coming up* (soonest first) and *Already
+this period* (most recent first). The web had **no ordering at all** — raw storage order — and Android sorted
+but never sectioned. ⚠️ **The phone needed a new contract field to do it:** `RecurringRowDto.Pending`. It is not
+derivable from `Due`/`Upcoming` — an item due in three weeks is pending but neither, and so is one posted this
+morning — so without it the two states were indistinguishable on the wire. Trailing and optional; an older server
+sends false, which lands every row in the lower section rather than misfiling any of them.
+★ Overdue items have a *negative* days-until-due and therefore lead "Coming up", where something missed belongs.
+A **paused** item is not pending and sits below; its row already says "paused", so nothing untrue is claimed.
+
+★ **O9 — a label change, not a rename.** `Tab.Overview`, `NavDest.Home` and the file names stay; only the word
+the user reads is "Dashboard". The landing tab mirrors the theme preference exactly — a localStorage key on the
+web, a `tandem_ui` pref on Android, **the same four strings on both** — because there is no user-settings endpoint
+and `UserDto` carries nothing preference-shaped. No contract, no server, no migration.
+⚠️ **`OnBrowserBack` had `Tab.Overview` hard-coded**, which would have turned Back into a control that fights the
+setting: open on Spending, press Back, land on Dashboard, press Back again, leave the app from a tab you never
+chose. It follows the preference now.
+⚠️ **The web picker applies next launch; Android's applies at once.** Not an inconsistency for its own sake — on
+Android the screen that owns the tab can see the preference change, on the web the picker lives in a different
+component from the tabs. The web hint says so in as many words.
+
+✅ **Browser-verified:** the tab bar reads **Dashboard**; setting the picker to Goals and reloading **opens on
+Goals**; the recurring modal shows *Coming up · 1 → Rent day 28* and *Already this period · 1 → Netflix day 5*;
+"Remove this recurring item?" cancels back to Recurring and confirms to a list with the row gone; "Remove this
+label?" names the label and cancels back to Tags. **518 + 50 + 380 green, pairscan 0.**
+⚠️ **Not verified, stated plainly:** the other six confirms (same shared pair, but the bank ones need the local
+allowlist that fails five server tests, and the avatar one needs an uploaded picture); `OnBrowserBack` (tab changes
+push no history entry, so a scripted `history.back()` leaves the app); and **all of Android** —
+`:app:compileDebugKotlin` is clean and **nothing more is claimed**.
 
 #### Batch 4 (O6 + O7 + O8 + O12) — committed, pushed, browser-verified
 
@@ -117,11 +165,14 @@ visual check above is a computed style or a measured rect, not an eye. **Android
 has no mapping DTOs and no review flow).
 
 #### Next session
-1. **Batch 5 = O5 + O9 + O10**, the three that need matching web **and** Android work. O10's inventory (every
-   unguarded delete, per platform, and the ones deliberately left alone) is written out in the plan file.
-2. **O14** — Trends' *Spent* / *Set aside* charts switchable to a category / a bucket. Moved out of batch 4: it is
-   a feature, not a layout pass, and batch 4 was already five surfaces.
-3. ★ **The next deploy should be much faster, and it is worth checking that it is.** S111's "394 MB" warning was
+1. ⚠️ **An emulator session, and it is now the biggest single gap.** Batch 5 put two new dialogs, a sectioned
+   recurring list and the landing-tab chips on the phone, and **none of it has been seen running** — plus S110's
+   refund row and S111's `clearTag` are still unexercised. The recipe and its traps (JBR 21, AVD `tandemtab_test`,
+   the `versionCode` downgrade, the two temporary edits for a local server) are in the S110/S111 notes below.
+2. **O14** — Trends' *Spent* / *Set aside* charts switchable to a category / a bucket. The last of the owner's
+   fourteen, and a feature rather than a layout pass.
+3. **Then [QUEUE.md](QUEUE.md) is live again** — its ranked rows have been on hold behind the owner's list.
+4. ★ **The next deploy should be much faster, and it is worth checking that it is.** S111's "394 MB" warning was
    exactly right — this session measured **394.8 MiB / 7326 files**, and I had wrongly guessed the existing
    `.gcloudignore` explained it away. It excluded `bin`/`obj` and always had; the weight was somewhere nobody had
    looked: **`android/app/build` alone is 383 MB.** The Dockerfile copies only `NuGet.config` and `src/`, so

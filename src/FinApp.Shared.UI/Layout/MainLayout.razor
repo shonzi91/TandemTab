@@ -469,6 +469,19 @@
                     <span>@Loc[_dark ? "Dark theme" : "Light theme"]</span>
                     <button type="button" class="pm-theme-toggle" title="@Loc[_dark ? "Light theme" : "Dark theme"]" @onclick="ToggleTheme"><Icon Name="@(_dark ? "sun" : "moon")" /></button>
                 </div>
+                @* ★ O9: which tab the app opens on. Here rather than in the app itself because it is the same shape
+                   of thing as the theme — a per-device display preference — and lives in the same storage, so there
+                   is one place to look for "how this app is set up". *@
+                <div class="pm-theme-row">
+                    <span>@Loc["Open the app on"]</span>
+                    <select class="pm-landing" value="@_landingTab" @onchange="OnLandingTabChanged">
+                        @foreach (var (v, label) in LandingTabs)
+                        {
+                            <option value="@v">@Loc[label]</option>
+                        }
+                    </select>
+                </div>
+                <p class="pm-hint">@Loc["Takes effect the next time you open the app."]</p>
                 <h4>@Loc["Profile picture"]</h4>
                 <div class="pm-avatar-row">
                     <span class="pm-avatar">
@@ -485,9 +498,24 @@
                     @if (!Auth.CurrentUser!.IsExternal)
                     {
                         <button class="ghost" @onclick="PickAvatar" disabled="@_avatarBusy">@Loc["Upload"]</button>
+                        @* ★ O10 reaches here too: removing a picture was a one-tap delete. This layout has no modal
+                           machinery of its own (the Dashboard's shared confirm lives in that component), so the ask
+                           is inline — the button becomes the question, in the row it was already in. Same rule,
+                           smallest thing that honours it. *@
                         @if (Auth.CurrentUser?.Avatar is not null)
                         {
-                            <button class="ghost danger" @onclick="RemoveAvatar" disabled="@_avatarBusy">@Loc["Remove"]</button>
+                            @if (_avatarConfirm)
+                            {
+                                <span class="pm-confirm">
+                                    <span class="pm-hint">@Loc["Remove your picture?"]</span>
+                                    <button class="ghost danger" @onclick="RemoveAvatar" disabled="@_avatarBusy">@Loc["Remove"]</button>
+                                    <button class="ghost" @onclick="() => _avatarConfirm = false" disabled="@_avatarBusy">@Loc["Cancel"]</button>
+                                </span>
+                            }
+                            else
+                            {
+                                <button class="ghost danger" @onclick="() => _avatarConfirm = true" disabled="@_avatarBusy">@Loc["Remove"]</button>
+                            }
                         }
                     }
                     else
@@ -748,6 +776,19 @@
 @code {
     private bool _restored;
     private bool _avatarBusy;
+    private bool _avatarConfirm;   // the Remove button has become "Remove your picture?" and is waiting for an answer
+
+    // Which tab the app opens on (O9), stored as the Dashboard's Tab enum NAME so the two sides agree without a
+    // shared type — this layout has no business knowing what a Tab is beyond the four strings it offers.
+    private string _landingTab = "Overview";
+    private static readonly (string Value, string Label)[] LandingTabs =
+        [("Overview", "Dashboard"), ("Budgets", "Spending"), ("Savings", "Goals"), ("Account", "Wallets")];
+
+    private async Task OnLandingTabChanged(ChangeEventArgs e)
+    {
+        _landingTab = e.Value?.ToString() is { Length: > 0 } v ? v : "Overview";
+        try { await JS.InvokeVoidAsync("finappSetLandingTab", _landingTab); } catch { /* ignore */ }
+    }
     private bool _dark;
     private string? _avatarError;
     // Account deletion (danger zone + the "keep my account" gate shown when signing in during the grace period).
@@ -1202,6 +1243,8 @@
         }
         _restored = true;
         try { _dark = (await JS.InvokeAsync<string>("finappGetTheme")) == "dark"; } catch { /* host without the helper */ }
+        try { _landingTab = await JS.InvokeAsync<string>("finappGetLandingTab") is { Length: > 0 } lt ? lt : "Overview"; }
+        catch { /* host without the helper */ }
         await LoadFeedbackDoneAsync();
         await LoadLoginConsentAsync();
     }
@@ -1284,7 +1327,7 @@
         }
         catch (ApiException ex) { _avatarError = ex.Message; }
         catch { _avatarError = Loc["Couldn’t reach the server. Check your connection and try again."]; }
-        finally { _avatarBusy = false; }
+        finally { _avatarBusy = false; _avatarConfirm = false; }
     }
 
     private async Task SignOut()

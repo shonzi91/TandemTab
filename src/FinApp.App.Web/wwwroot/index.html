@@ -93,6 +93,11 @@
             document.documentElement.classList.toggle('dark', dark);
             try { localStorage.setItem('finapp-theme', dark ? 'dark' : 'light'); } catch (e) { }
         };
+        // Which tab the app opens on (O9). Mirrors the theme preference exactly, and for the same reason: there is
+        // no user-settings endpoint and UserDto carries nothing preference-shaped, so a per-device localStorage key
+        // is the whole mechanism — no contract, no server, no migration. Unset means "Dashboard", the old fixed one.
+        window.finappGetLandingTab = () => { try { return localStorage.getItem('finapp-landing-tab') || ''; } catch (e) { return ''; } };
+        window.finappSetLandingTab = (tab) => { try { localStorage.setItem('finapp-landing-tab', tab || ''); } catch (e) { } };
         window.finappPickImage = () => new Promise(resolve => {
             const input = document.createElement('input');
             input.type = 'file'; input.accept = 'image/*';

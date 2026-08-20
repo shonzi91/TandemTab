@@ -367,6 +367,45 @@ public class RecurringApiTests : IClassFixture<FinAppServerFactory>
     }
 
     [Fact]
+    public async Task A_row_reports_whether_it_is_still_expected_this_period()
+    {
+        // O5 splits the list into "coming up" and "already this period", and Due/Upcoming cannot make that split:
+        // an item due in three weeks is neither, and so is one that was posted this morning. Pending tells them apart.
+        var (client, auth) = await _factory.RegisterAndAuthAsync("rc_pending");
+        var account = await CreateAccount(client, "Pending");
+
+        // ⚠️ Its own seed, on the CURRENT month, not SeedAsync's fixed Jan 2026. A new item records the day it was
+        // created, and an item whose due date fell before it existed is not expected that period at all — so in a
+        // period that is already in the past, nothing is ever pending and this test would assert on the calendar
+        // rather than on the field. The due day is the last of the month, so "not yet due" holds on any run date.
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var from = new DateOnly(today.Year, today.Month, 1);
+        var to = from.AddMonths(1).AddDays(-1);
+        var agg = new Account("Seed", "EUR");
+        agg.AddDefaultFunds();
+        var rent = agg.AddCategory("Rent").Id;
+        var fund = agg.FundId("Bank");
+        agg.AddMember(auth.UserId, "Me");
+        agg.StartPeriod(from, to);
+        (await client.PutAsJsonAsync($"/accounts/{account.Id}/snapshot",
+            new SaveAccountRequest(AccountSnapshotSerializer.Serialize(agg), 0))).EnsureSuccessStatusCode();
+
+        var recId = await IdOf(await client.PostAsJsonAsync($"/accounts/{account.Id}/recurring",
+            new AddRecurringRequest("Rent", "expense", "fixed", 500m, to.Day, rent, fund)));
+
+        var before = (await client.GetFromJsonAsync<RecurringViewDto>($"/accounts/{account.Id}/recurring"))!
+            .Items.Single(r => r.Id == recId);
+        Assert.True(before.Pending);
+
+        (await client.PostAsJsonAsync($"/accounts/{account.Id}/recurring/{recId}/confirm",
+            new ConfirmRecurringRequest(500m))).EnsureSuccessStatusCode();
+
+        var after = (await client.GetFromJsonAsync<RecurringViewDto>($"/accounts/{account.Id}/recurring"))!
+            .Items.Single(r => r.Id == recId);
+        Assert.False(after.Pending);   // handled — it belongs in the lower section now
+    }
+
+    [Fact]
     public async Task Stranger_cannot_create_a_recurring_item()
     {
         var (owner, auth) = await _factory.RegisterAndAuthAsync("rc_owner");

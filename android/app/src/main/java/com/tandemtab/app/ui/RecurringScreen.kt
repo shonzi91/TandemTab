@@ -52,11 +52,21 @@ import com.tandemtab.app.data.UpdateRecurringRequest
 import com.tandemtab.app.ui.theme.LocalTandemColors
 import com.tandemtab.app.ui.theme.TandemIcons
 
-/** Sort: due first, then upcoming, then the rest; paused (inactive) sink to the bottom. */
-private fun ordered(items: List<RecurringRowDto>): List<RecurringRowDto> =
-    items.sortedWith(compareByDescending<RecurringRowDto> { it.active && it.due }
-        .thenByDescending { it.active && it.upcoming }
-        .thenBy { it.daysUntilDue })
+/**
+ * The list in two sections (O5), the same split the web list uses: what is still expected this period, soonest
+ * first, and what is behind you, most recent first. It used to be one flat sorted list here (and no ordering at all
+ * on the web) — sorting answers "which is next", sectioning answers "is there anything left", which is the question
+ * people actually open this sheet with.
+ *
+ * An overdue item is pending with a negative `daysUntilDue`, so it leads "Coming up" — where something missed
+ * belongs. A **paused** item is not pending and sits below; its row already says so, and it is not coming.
+ */
+private fun sections(items: List<RecurringRowDto>): Pair<List<RecurringRowDto>, List<RecurringRowDto>> {
+    val coming = items.filter { it.pending }.sortedWith(compareBy({ it.daysUntilDue }, { it.name.lowercase() }))
+    // Most recent first: a due date further in the past is a *more* negative gap, so descending is newest-first.
+    val past = items.filterNot { it.pending }.sortedWith(compareByDescending<RecurringRowDto> { it.daysUntilDue }.thenBy { it.name.lowercase() })
+    return coming to past
+}
 
 /** The three ways a recurring amount can be stated, as the wire strings the server maps to its enums. */
 private val MODES = listOf(
@@ -161,15 +171,32 @@ fun RecurringSheet(
                         color = tandem.muted, fontSize = 13.sp,
                     )
                 }
-                ordered(recurring.items).forEach { item ->
-                    RecurringRow(
-                        item, money,
-                        busy = recurring.busyId == item.id,
-                        onConfirm = { onConfirm(item.id, item.expected) },
-                        onSkip = { onSkip(item.id) },
-                        onUnskip = { onUnskip(item.id) },
-                        onEdit = { mode = RecurringMode.Edit(item.id) },
-                    )
+                val (coming, past) = sections(recurring.items)
+                if (coming.isNotEmpty()) {
+                    RecurringSectionHeading("Coming up", coming.size, tandem.muted)
+                    coming.forEach { item ->
+                        RecurringRow(
+                            item, money,
+                            busy = recurring.busyId == item.id,
+                            onConfirm = { onConfirm(item.id, item.expected) },
+                            onSkip = { onSkip(item.id) },
+                            onUnskip = { onUnskip(item.id) },
+                            onEdit = { mode = RecurringMode.Edit(item.id) },
+                        )
+                    }
+                }
+                if (past.isNotEmpty()) {
+                    RecurringSectionHeading("Already this period", past.size, tandem.muted)
+                    past.forEach { item ->
+                        RecurringRow(
+                            item, money,
+                            busy = recurring.busyId == item.id,
+                            onConfirm = { onConfirm(item.id, item.expected) },
+                            onSkip = { onSkip(item.id) },
+                            onUnskip = { onUnskip(item.id) },
+                            onEdit = { mode = RecurringMode.Edit(item.id) },
+                        )
+                    }
                 }
             }
 
@@ -440,6 +467,17 @@ private fun RecurringEditor(
             modifier = Modifier.align(Alignment.BottomCenter),
             saveLabel = if (existing == null) "Add" else "Save",
         )
+    }
+}
+
+/** A section heading over one half of the split list (O5) — the label and how many rows are under it, so the count
+ *  answers "is there anything left this month" without reading the rows. Mirrors the web's `.detail-sub`. */
+@Composable
+private fun RecurringSectionHeading(label: String, count: Int, muted: androidx.compose.ui.graphics.Color) {
+    Row(Modifier.fillMaxWidth().padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(label, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+        Spacer(Modifier.width(6.dp))
+        Text("· $count", fontSize = 12.sp, color = muted)
     }
 }
 

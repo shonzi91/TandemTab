@@ -29,7 +29,12 @@ public record RecurringRowDto(
     Guid? LinkedDebtBucketId = null,
     string? LinkedDebtName = null,
     // Deliberately skipped in the open period (as opposed to posted) — the only state an un-skip may undo.
-    bool SkippedThisPeriod = false);
+    bool SkippedThisPeriod = false,
+    // Still expected this period: active, started, and neither posted nor skipped. ⚠️ NOT derivable from Due and
+    // Upcoming — an item due in three weeks is pending but neither, so a client splitting the list into "coming"
+    // and "done" had no way to tell it from one already handled. Trailing and optional; false on an older server,
+    // which lands every row in the lower section rather than misfiling any of them (O5).
+    bool Pending = false);
 
 /// <summary>A debt bucket a bill can be linked to. <see cref="PaymentDriven"/> mirrors the bucket's "I log each
 /// installment here" switch — a linked bill only drives the balance when it's on, which is the user's call, so the

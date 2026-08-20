@@ -8,7 +8,7 @@ checked against the code, not carried forward from an older write-up.*
 | **Opened** | 2026-08-20 (Session 111) |
 | **Sources** | [BETA-FINDINGS.md](BETA-FINDINGS.md), [UX-BACKLOG.md](UX-BACKLOG.md), [BACKLOG.md](BACKLOG.md), [docs/MOBILE.md](docs/MOBILE.md), the carried "still open" lists in [HANDOFF.md](HANDOFF.md) |
 | **Not in here** | Anything a roadmap phase already owns — R3's assistant, R4's migration, R5's billing. See [OPEN-BETA.md](OPEN-BETA.md) |
-| **Status** | ⏸️ **On hold — the owner's list below goes first.** |
+| **Status** | ▶️ **Live again.** The owner's list is down to **O14** (S112 closed the other thirteen), so the ranked rows below are next. |
 
 ---
 
@@ -23,12 +23,12 @@ found the code disagreeing with the report I have said so rather than smoothing 
 | O2 | Tagging an auto-filed expense **loses its 🏦 badge** (✅ S111); and rules should be able to set a **tag**, not just a category (✅ S112) | Bug + feature | ✅ S112 |
 | O3 | Rework the **transaction review** flow (keep-both / replace / pin / ✕ / accept is too complicated) + **duplicate detection is over-eager** (two €10 spends two days apart) | Rework | ✅ S112 |
 | O4 | Show **money-out transfers** in the expense list — and consider them in budgets, since they lower the balance | Feature | ✅ S111 |
-| O5 | Split the **recurring list** into past (newest→oldest) and future (soonest→latest) | S | ⬜ |
+| O5 | Split the **recurring list** into past (newest→oldest) and future (soonest→latest) | S | ✅ S112 |
 | O6 | **"Saved toward goals" should name its bucket** everywhere it appears; savings in the Breakdown pie; move **Breakdown + Trends** off the Spending tab onto the Home chart; mobile Trends hover is awkward | Rework | ✅ S112 |
 | O7 | New savings-bucket modal: when **Debt** is picked, two more chips appear — separate them from the bucket-type row | S | ✅ S112 |
 | O8 | Move the **"ahead / interest saved"** chip off the debt-free Home section onto the bucket, next to interest left, with the prepaid principal in it | S–M | ✅ S112 |
-| O9 | Rename **Home → Dashboard**, and let users choose which tab the app opens on | S | ⬜ |
-| O10 | **Confirmation prompts on every delete**, web and mobile | S–M | ⬜ |
+| O9 | Rename **Home → Dashboard**, and let users choose which tab the app opens on | S | ✅ S112 |
+| O10 | **Confirmation prompts on every delete**, web and mobile | S–M | ✅ S112 |
 | O11 | Money moved from a bucket **into a budget** still counts as saved — €500 in, €200 budgeted out, card still says €500 | Bug | ✅ S111 |
 | O12 | Make **"Total saved X (this period · % of money in)"** prettier | S | ✅ S112 |
 | O13 | **Debt owed in Trends** disagrees with the debt bucket | Bug | ✅ S111 |
@@ -135,6 +135,21 @@ A traffic spike fans Cloud Run instances out into Neon's connection limit, and *
 `max-instances` cap, before R7.
 
 ---
+
+## Batch 5 (Session 112) — and what it did NOT verify
+
+- ⚠️ **Six of the eight web confirms are verified by construction, not by hand.** *Remove recurring* and *Remove
+  tag* were driven in the browser (ask → Cancel returns you where you were; ask → Remove deletes and returns).
+  The other six go through the **same** `AskConfirm`/`ConfirmAndRun` pair, which is why it exists — but the bank
+  ones could not be reached: the local fixture's `BankSync:AllowedEmails` had to be reverted (it fails five server
+  tests), and the avatar one needs an uploaded picture.
+- ⚠️ **`OnBrowserBack` following the landing tab is code-verified only.** Tab changes push no history entry, so a
+  scripted `history.back()` leaves the app rather than firing the handler.
+- ⚠️ **Android is compiled, not run.** `:app:compileDebugKotlin` is clean and nothing more is claimed — the two new
+  dialogs, the sectioned recurring list and the landing-tab chips have not been seen on a device. That is the
+  emulator session O10's Android half was always going to need.
+- ★ `RecurringRowDto` gained a trailing optional **`Pending`**. It is not derivable from `Due`/`Upcoming` — an item
+  due in three weeks is pending but neither — so without it the phone could not tell "not yet" from "already done".
 
 ## Closed on the way through the owner's list (Session 112, batch 4)
 
