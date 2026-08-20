@@ -2595,6 +2595,26 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
         _cache.Remove(destination);   // its deposit changed server-side — a switch must refetch
     }
 
+    /// <summary>
+    /// Edit a transfer-out that has <b>no linked counterpart</b> — one recorded before the two halves were paired.
+    /// <para>⚠️ This exists because <see cref="EditAccountTransfer"/> silently <c>return</c>s when there is no pair
+    /// id, while the ledger row offers a pencil regardless: the user edited the row, pressed Save, and nothing
+    /// happened and nothing said so. Reported as "assigning transfer to a category does not work", and it was every
+    /// field, not just the category.</para>
+    /// <para>The two-sided server route is right for a linked transfer precisely because a second account must move
+    /// with it. With no counterpart there is nothing to keep in step, so this is an ordinary client-owned edit on
+    /// the snapshot — the same spine every local row edit uses.</para>
+    /// </summary>
+    public Task EditUnlinkedTransfer(ExternalTransfer transfer, decimal amount, DateOnly date, Guid fromFundId,
+        string? note, Guid? categoryId)
+    {
+        if (amount <= 0m) return Task.CompletedTask;
+        transfer.Update(Money(amount), date, fromFundId, note);
+        transfer.SetFundSynced(FundIsSynced(fromFundId));
+        transfer.SetCategory(categoryId);
+        return SaveAsync();
+    }
+
     /// <summary>Remove both halves: the outflow here and the deposit it created in the other account.</summary>
     public async Task RemoveAccountTransfer(ExternalTransfer transfer)
     {

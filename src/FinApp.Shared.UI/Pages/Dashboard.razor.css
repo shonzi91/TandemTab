@@ -891,6 +891,14 @@ html.dark .fund-move-summary { border-bottom-color: #2a3550; }
     display: inline-grid; place-items: center;
 }
 .exp-edit:hover { background: #e4f6ee; }
+/* An empty slot in the actions column, same box as a button. Ledger rows carry different numbers of actions — an
+   expense has edit + delete, a transfer only edit, a goal payout none at all — and because `.row-actions` is
+   `justify-content: flex-end`, a lone pencil landed in the DELETE column, directly under a pencil in the edit
+   column. A payout row rendered no actions element whatever, so its amount slid into the reserved space too.
+   Reserving the missing slots keeps every icon, and the amount beside them, in one column down the whole list.
+   Layout only — no colour, so there is nothing to darken. */
+.exp-edit-slot { min-width: 32px; min-height: 32px; display: inline-block; }
+@media (pointer: coarse), (max-width: 560px) { .exp-edit-slot { min-width: 44px; min-height: 44px; } }
 /* Both conditions on purpose: `pointer: coarse` is the honest test for a touchscreen, but it never matches an
    emulated mobile viewport in a desktop browser — so on its own this rule would ship unverified. The width clause
    makes it reachable in testing and is right anyway, since a 560px-wide window is almost always a phone. */
@@ -1648,6 +1656,15 @@ html.dark .fund-row-name, html.dark .fund-row-amt { color: #e8eaf0; }
 html.dark .fund-add { border-color: #2b3648; }
 html.dark .period-next { background: rgba(63,224,197,.10); color: var(--tm-mint); border-color: rgba(63,224,197,.35); }
 html.dark .period-next:hover:not(:disabled) { background: rgba(63,224,197,.18); border-color: var(--tm-mint); }
+
+/* O14 — narrowing the lower Trends line to one category / one bucket. Sits between the series switcher and the
+   heading, because it modifies what the heading says. Layout and size only: the chip keeps `.chip`'s palette and
+   the select keeps the app's native-control styling, so both are already correct in dark mode. */
+.trend-focus { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 6px 0 0; }
+.trend-focus-lbl { display: inline-flex; align-items: center; gap: 6px; font-size: .72rem; font-weight: 700;
+    letter-spacing: .04em; text-transform: uppercase; }
+.trend-focus-sel { font-size: .8rem; padding: 3px 8px; text-transform: none; letter-spacing: 0; font-weight: 600; }
+.trend-focus-clear { font-size: .7rem; padding: 3px 9px; }
 
 /* Milestones in progress: ranked thin progress bars (Home) */
 .ms-bars { display: flex; flex-direction: column; gap: 14px; padding-top: 4px; }

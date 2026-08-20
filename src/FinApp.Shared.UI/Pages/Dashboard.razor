@@ -1519,9 +1519,7 @@ else
                        and has its own Breakdown slice, so leaving it out of the ledger made the one view that is
                        supposed to show every outflow the only one that hid some. Searching filters it by note. *@
                     var xfers = State.AccountTransfersOutThisPeriod
-                        .Where(t => string.IsNullOrWhiteSpace(_spendSearch)
-                                 || (t.Note ?? "").Contains(_spendSearch, StringComparison.OrdinalIgnoreCase)
-                                 || State.AccountName(t.ToAccountId ?? Guid.Empty).Contains(_spendSearch, StringComparison.OrdinalIgnoreCase))
+                        .Where(t => TransferMatchesSearch(t, isPayout: false))
                         .ToList();
                     var shownXfers = _dayView is { } dvx ? xfers.Where(t => t.Date == dvx).ToList() : xfers;
                     @* ★ Goal payouts belong here for the same reason account transfers do, and were missing for a
@@ -1530,9 +1528,7 @@ else
                        largest thing that can happen to a balance in a month, and the one list that promises every
                        outflow showed nothing. Searched by note and by the bucket's name. *@
                     var payouts = State.DisbursementsThisPeriod
-                        .Where(t => string.IsNullOrWhiteSpace(_spendSearch)
-                                 || (t.Note ?? "").Contains(_spendSearch, StringComparison.OrdinalIgnoreCase)
-                                 || (State.DisbursementBucketName(t.Id) ?? "").Contains(_spendSearch, StringComparison.OrdinalIgnoreCase))
+                        .Where(t => TransferMatchesSearch(t, isPayout: true))
                         .ToList();
                     var shownPayouts = _dayView is { } dvp ? payouts.Where(t => t.Date == dvp).ToList() : payouts;
                     @* Day totals and calendar counts are built from ALL THREE, so a day header can never disagree
@@ -1559,6 +1555,8 @@ else
         <span class="amt">@Fmt(t.Amount)</span>
         <span class="row-actions">
             <button class="exp-edit" title="@Loc["Edit"]" aria-label="@Loc["Edit"]" @onclick="() => OpenEditAccountTransfer(t.Id)"><Icon Name="pencil" /></button>
+            @* Holds the delete column open — a transfer is removed from its wallet's list, not from here. *@
+            <span class="exp-edit-slot" aria-hidden="true"></span>
         </span>
     </li>;
                     @* A payout row names the GOAL, not a destination account — that is the fact the reader wants, and
@@ -1577,6 +1575,12 @@ else
             </span>
         </div>
         <span class="amt">@Fmt(t.Amount)</span>
+        @* Both slots empty: a payout has no actions here at all (see above), but the amount still has to line up
+           with every other row's. *@
+        <span class="row-actions">
+            <span class="exp-edit-slot" aria-hidden="true"></span>
+            <span class="exp-edit-slot" aria-hidden="true"></span>
+        </span>
     </li>;
                     var calToday = DateOnly.FromDateTime(DateTime.Today);
                 }
@@ -2229,6 +2233,45 @@ else
                                 <button type="button" class="chip @(_trendSeries == s ? "on" : "")" @onclick="() => { _trendSeries = ss; _trendHover = null; }">@TrendSeriesLabel(s)</button>
                             }
                         </div>
+                        @* ★ O14 — the same line, narrowed to ONE category or ONE bucket. It appears only under the
+                           two series it can narrow: Balance and Kept are account-wide by definition, and a picker
+                           offering to filter them would be promising something it cannot do.
+                           A native <select>, not CategoryPicker: this is a chart control on a dense analysis screen,
+                           not a modal field, and it sits inline with a label rather than opening an overlay over
+                           the chart it is filtering. "Everything" is the first option and the default — the whole
+                           account is what every other figure on this screen means. *@
+                        @if (_trendSeries is TrendSeries.Spent or TrendSeries.Saved)
+                        {
+                            <div class="trend-focus">
+                                <label class="trend-focus-lbl">
+                                    @(_trendSeries == TrendSeries.Spent ? Loc["Category"] : Loc["Bucket"])
+                                    @if (_trendSeries == TrendSeries.Spent)
+                                    {
+                                        <select class="trend-focus-sel" @bind="_trendCatId" @bind:after="() => _trendHover = null">
+                                            <option value="@Guid.Empty">@Loc["Everything"]</option>
+                                            @foreach (var c in State.CategoryOptions.Where(c => c.Category.ParentId is null))
+                                            {
+                                                <option value="@c.Category.Id">@c.Category.Name</option>
+                                            }
+                                        </select>
+                                    }
+                                    else
+                                    {
+                                        <select class="trend-focus-sel" @bind="_trendBucketId" @bind:after="() => _trendHover = null">
+                                            <option value="@Guid.Empty">@Loc["Everything"]</option>
+                                            @foreach (var (b, _) in State.SavingBuckets)
+                                            {
+                                                <option value="@b.Id">@b.Name</option>
+                                            }
+                                        </select>
+                                    }
+                                </label>
+                                @if (TrendFocused)
+                                {
+                                    <button type="button" class="chip trend-focus-clear" @onclick="() => { _trendCatId = Guid.Empty; _trendBucketId = Guid.Empty; _trendHover = null; }"><Icon Name="x" /> @Loc["Clear"]</button>
+                                }
+                            </div>
+                        }
                         <h5 class="trend-sub-h">@TrendSeriesHeading()</h5>
                         <div class="trend-chart-wrap trend-bal-wrap">
                             <div class="trend-plot-area trend-bal-area">
@@ -7046,7 +7089,16 @@ else
                             <CategoryPicker @bind-Value="_extCategoryId" Options="State.CategoryOptions"
                                             AllowNone="true" NoneLabel="@Loc["Not budgeted"]" />
                         </div>
-                        <small class="hint">@string.Format(Loc["The deposit this created in {0} is updated to match."], State.AccountName(aet.ToAccountId ?? Guid.Empty))</small>
+                        @* Only true of a linked transfer. An unlinked one has no deposit to update, and promising to
+                           update one would be the second untrue thing this modal said about that case. *@
+                        @if (State.IsLinkedAccountTransfer(aet))
+                        {
+                            <small class="hint">@string.Format(Loc["The deposit this created in {0} is updated to match."], State.AccountName(aet.ToAccountId ?? Guid.Empty))</small>
+                        }
+                        else
+                        {
+                            <small class="hint">@Loc["This transfer has no linked counterpart, so only this side changes."]</small>
+                        }
                     }
                     <div class="modal-actions">
                         <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
@@ -7692,11 +7744,18 @@ else
         _ => Loc["Balance"],
     };
 
-    /// <summary>The heading under the switcher — it names the same thing the buttons do, in a sentence.</summary>
+    /// <summary>The heading under the switcher — it names the same thing the buttons do, in a sentence.
+    /// <para>★ When the line is narrowed (O14) it says so <b>here</b>, not only in the picker above: the heading is
+    /// what a reader glancing at the chart reads, and a line labelled "Spent in each month" that is actually one
+    /// category's spending is the chart telling them something untrue.</para></summary>
     private string TrendSeriesHeading() => _trendSeries switch
     {
-        TrendSeries.Spent => Loc["Spent in each month"],
-        TrendSeries.Saved => Loc["Set aside in each month"],
+        TrendSeries.Spent => TrendFocused
+            ? string.Format(Loc["{0} spent in each month"], TrendFocusName)
+            : Loc["Spent in each month"],
+        TrendSeries.Saved => TrendFocused
+            ? string.Format(Loc["Set aside toward {0} in each month"], TrendFocusName)
+            : Loc["Set aside in each month"],
         TrendSeries.Kept => Loc["Kept at the end of each month"],
         _ => Loc["Balance at the end of each month"],
     };
@@ -8112,6 +8171,33 @@ else
             e.TripId is { } tid ? State.TripName(tid) : "",
             e.Amount.Amount.ToString("0.##", ci),
             e.Date.ToString("d MMM yyyy", ci));
+
+        foreach (var word in _spendSearch.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+            if (hay.IndexOf(word, StringComparison.CurrentCultureIgnoreCase) < 0) return false;
+        return true;
+    }
+
+    /// <summary>
+    /// The same search over a transfer-out or a goal payout as <see cref="ExpenseMatchesSearch"/> runs over an
+    /// expense — every word must appear somewhere in the row, and the haystack carries the amount and the date.
+    /// <para>⚠️ These rows used to run their own one-line <c>Note.Contains(query)</c>, which broke two ways: a
+    /// two-word search matched nothing at all (it looked for the whole phrase as one literal), and neither the
+    /// amount, the date, the wallet, nor — since transfers gained one — the CATEGORY was searchable. Typing
+    /// "rent 275" filtered the expenses and left the transfers sitting there.</para>
+    /// </summary>
+    private bool TransferMatchesSearch(FinApp.Domain.Funds.ExternalTransfer t, bool isPayout)
+    {
+        if (string.IsNullOrWhiteSpace(_spendSearch)) return true;
+        var ci = System.Globalization.CultureInfo.InvariantCulture;
+        var hay = string.Join(' ',
+            t.Note ?? "",
+            State.FundName(t.FundId),
+            isPayout
+                ? string.Join(' ', State.DisbursementBucketName(t.Id) ?? "", Loc["paid to goal"])
+                : State.AccountName(t.ToAccountId ?? Guid.Empty),
+            t.CategoryId is { } c ? State.CategoryName(c) : "",
+            t.Amount.Amount.ToString("0.##", ci),
+            t.Date.ToString("d MMM yyyy", ci));
 
         foreach (var word in _spendSearch.Split(' ', StringSplitOptions.RemoveEmptyEntries))
             if (hay.IndexOf(word, StringComparison.CurrentCultureIgnoreCase) < 0) return false;
@@ -12683,9 +12769,16 @@ else
     private Task SaveAccountTransfer() => RunModal(async () =>
     {
         if (_extAmount <= 0 || State.FindExternalTransfer(_extTransferId) is not { } t) return;
-        // Always sent, never omitted: the modal renders the current value, so what it holds IS the user's answer —
-        // including Guid.Empty, which is how a category gets cleared. Omitting is reserved for clients with no field.
-        await State.EditAccountTransfer(t, _extAmount, _extDate, _extFundId, _extNote, _extCategoryId);
+        // ⚠️ Two spines, chosen by whether this transfer has a counterpart to keep in step. The linked case must go
+        // through the server so both accounts move together; the unlinked case has no other side and would be
+        // silently dropped by that route — see EditUnlinkedTransfer for the bug that caused.
+        // The category is always SENT, never omitted: the modal renders the current value, so what it holds IS the
+        // user's answer — including Guid.Empty, which is how a category gets cleared.
+        if (State.IsLinkedAccountTransfer(t))
+            await State.EditAccountTransfer(t, _extAmount, _extDate, _extFundId, _extNote, _extCategoryId);
+        else
+            await State.EditUnlinkedTransfer(t, _extAmount, _extDate, _extFundId, _extNote,
+                _extCategoryId == Guid.Empty ? null : _extCategoryId);
         CloseModal();
     });
 
