@@ -959,16 +959,27 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     public decimal DisbursedTotal(DateOnly from, DateOnly to) => DisbursementsByBucket(from, to).Sum(x => x.Amount);
 
     /// <summary>
-    /// What the savings earmark did over [from, to], <b>signed and un-floored</b> — positive when more went in than
-    /// came out, negative in the month a bucket is emptied at its goal.
-    /// <para>⚠️ Deliberately not <see cref="NetSetAsideTotal"/>, which floors each bucket at zero and would report
-    /// "nothing set aside" for the very month that matters most. This is a statement about the earmark, not a slice
-    /// of a pie — a pie has no negative wedge, a sentence does.</para>
+    /// What was <b>set aside</b> in [from, to] — the same "count the deposits" rule as
+    /// <see cref="FinApp.Domain.Periods.Period.SavingsSetAsideTotal"/>, so a window that is one period agrees with
+    /// the hero tile exactly rather than merely resembling it.
+    /// <para>⚠️ <b>It cannot go negative, on purpose.</b> A signed version of this figure was tried and reverted:
+    /// it printed "Set aside −€3,320" beside a hero reading "Saved €450" on the same screen. Nothing is un-saved
+    /// when an earlier month's earmark reaches the thing it was for — see the rule written out on
+    /// <c>SavingsSetAsideTotal</c>, which had already settled this once. Money leaving buckets is a different fact
+    /// with its own slot: <see cref="DisbursedTotal"/>, shown as "Paid to goals".</para>
     /// </summary>
-    public decimal SetAsideNetSigned(DateOnly from, DateOnly to) =>
-        Account.Periods.SelectMany(p => p.SavingAllocations)
-            .Where(a => a.Date >= from && a.Date <= to)
+    public decimal SetAsideInRange(DateOnly from, DateOnly to)
+    {
+        var allocs = Account.Periods.SelectMany(p => p.SavingAllocations)
+            .Where(a => a.Date >= from && a.Date <= to).ToList();
+        // Bucket-to-bucket transfers are excluded on both halves: the same money wearing a different label.
+        var deposits = allocs.Where(a => a.Amount.Amount > 0m && a.TransferPairId is null)
             .Sum(a => a.Amount.Amount);
+        // Released back into a budget is the one drawdown that really is un-saving — it undoes the earmark.
+        var released = allocs.Where(a => a.Amount.Amount < 0m && a.BudgetCategoryId is not null && a.TransferPairId is null)
+            .Sum(a => -a.Amount.Amount);
+        return Math.Max(0m, deposits - released);
+    }
 
     /// <summary>
     /// What each bucket <b>net</b> took in over [from, to] — every allocation summed, so a deposit adds and any

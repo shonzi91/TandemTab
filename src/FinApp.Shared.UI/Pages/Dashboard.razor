@@ -1735,10 +1735,12 @@ else
                         // which question either was answering. Now both answer the same one.
                         var brkMoneyOut = State.ExpensesInRange(brkFrom, brkTo).Sum(e => Math.Abs(e.Amount.Amount))
                             + State.AccountTransfersInRange(brkFrom, brkTo).Sum(t => Math.Abs(t.Amount.Amount));
-                        // Signed on purpose — see SetAsideNetSigned. The earmark story is told here rather than in
-                        // the ring, and in the month a bucket is emptied at its goal the true answer is a negative
-                        // number, not the zero a floored total would print.
-                        var brkSetAside = State.SetAsideNetSigned(brkFrom, brkTo);
+                        // ⚠️ The hero's OWN figure when the window is the period — the same discipline as brkIncome
+                        // above, and for the same reason: a look-alike recomputation is how two tiles about one
+                        // number come to disagree. Never negative; see SetAsideInRange.
+                        var brkSetAside = _breakRange == BreakRange.ThisPeriod
+                            ? State.SavingsThisPeriod.Amount
+                            : State.SetAsideInRange(brkFrom, brkTo);
                         // Money deployed at a goal. A REAL outflow (ExpectedClosingBalance subtracts it) and stated
                         // as its own figure — but deliberately not a slice; see the note above BreakSlices for why.
                         var brkPaidOut = State.DisbursedTotal(brkFrom, brkTo);
@@ -1792,12 +1794,14 @@ else
                            two numbers already sitting beside it is the least a slot could carry, and these are the
                            two facts the ring deliberately does NOT draw. Together the four reconcile to what the
                            balance did, without any of them distorting the chart.
-                           "Set aside" is signed, so the month a goal is paid reads −€12,000; "Paid to goals" is the
-                           money that actually left on the way out, and appears only when there is some. *@
+                           ⚠️ They are two SEPARATE figures because they are two separate facts: what went into
+                           buckets, and what left them for its purpose. Folding both into one signed "Set aside" was
+                           tried and reverted — it printed −€3,320 beside a hero reading "Saved €450". "Paid to
+                           goals" appears only when there is some. *@
                         <div class="brk-summary">
                             <span class="brk-sum"><span class="brk-sum-lbl">@Loc["Income"]</span><span class="brk-sum-val good-text">@Fmt(brkIncome)</span></span>
                             <span class="brk-sum"><span class="brk-sum-lbl">@Loc["Spent"]</span><span class="brk-sum-val">@Fmt(brkMoneyOut)</span></span>
-                            <span class="brk-sum"><span class="brk-sum-lbl">@Loc["Set aside"]</span><span class="brk-sum-val @(brkSetAside > 0m ? "good-text" : "")">@(brkSetAside > 0m ? "+" : brkSetAside < 0m ? "−" : "")@Fmt(State.Money(Math.Abs(brkSetAside)))</span></span>
+                            <span class="brk-sum"><span class="brk-sum-lbl">@Loc["Set aside"]</span><span class="brk-sum-val @(brkSetAside > 0m ? "good-text" : "")">@(brkSetAside > 0m ? "+" : "")@Fmt(State.Money(brkSetAside))</span></span>
                             @if (brkPaidOut > 0m)
                             {
                                 @* Named in the tooltip: "paid to goals" is the fact, "which goals" is the follow-up,
