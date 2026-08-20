@@ -934,12 +934,15 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
 
     /// <summary>
     /// Money deployed <b>out of</b> savings buckets in [from, to], grouped by the bucket it left, biggest first.
-    /// <para>★ This is what the Breakdown ring draws for a payout, and it is a real movement of the balance —
-    /// <c>Period.ExpectedClosingBalance</c> subtracts <c>ExternalOutTotal</c>, which includes disbursements. Twelve
-    /// months of setting €1,000 aside move nothing (the money is still in the account); the month you send €12,000
-    /// at the loan, €12,000 leaves. A chart of what left your balance has to show the second one, and the ring
-    /// showed neither before this existed: <see cref="AccountTransfersInRange"/> filters disbursements out, and
-    /// <see cref="NetSetAsideByBucket"/> drops any bucket that ended the window down.</para>
+    /// <para>★ A real movement of the balance — <c>Period.ExpectedClosingBalance</c> subtracts
+    /// <c>ExternalOutTotal</c>, which includes disbursements. Twelve months of setting €1,000 aside move nothing
+    /// (the money is still in the account); the month you send €12,000 at the loan, €12,000 leaves. Before this
+    /// existed the Breakdown could see neither: <see cref="AccountTransfersInRange"/> filters disbursements out,
+    /// and <see cref="NetSetAsideByBucket"/> drops any bucket that ended the window down — so the largest thing
+    /// that happened to the balance all month appeared nowhere on the screen about the balance.</para>
+    /// <para>⚠️ It feeds the "Paid to goals" <b>figure</b> and its tooltip, not a pie slice. A €12,000 one-off in a
+    /// ring of €30 groceries takes 93% of the area and destroys the chart for everything the reader can act on; the
+    /// same number in a sentence costs nothing. The per-payout detail lives in the ledger and in Trends.</para>
     /// <para>An unresolvable bucket keeps its money under an empty name rather than being dropped — the caller
     /// labels it; losing the biggest figure on the screen to a dangling id is the worse failure.</para>
     /// </summary>
@@ -950,13 +953,6 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
                           Amount: g.Sum(t => Math.Abs(t.Amount.Amount))))
             .Where(x => x.Amount > 0m)
             .OrderByDescending(x => x.Amount)
-            .ToList();
-
-    /// <summary>Every disbursement in [from, to] that paid out of the given bucket, newest first — the rows behind
-    /// one payout slice.</summary>
-    public IReadOnlyList<ExternalTransfer> DisbursementsForBucket(DateOnly from, DateOnly to, Guid bucketId) =>
-        DisbursementsInRange(from, to)
-            .Where(t => (DisbursementBucketId(t.Id) ?? Guid.Empty) == bucketId)
             .ToList();
 
     /// <summary>Everything deployed out of savings in [from, to], across every bucket.</summary>
