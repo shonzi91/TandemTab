@@ -3,8 +3,9 @@
 Last updated: 2026-08-20 (Session 112 — **batches 3, 4 and 5: thirteen of the owner's fourteen items are done.**
 The bank review stops asking and the duplicate check stops guessing; a rule can name a label; the money chart, the
 debt bucket and the savings header say what they mean; and every delete now asks first.
-**518 + 50 + 380 green. Batches 2–4 are DEPLOYED as `finapp-00316-vj7` (100% LATEST, verified on the served bytes
-on both hosts, 5 `secretKeyRef`s, no WARNING+). Batch 5 is committed — see its deploy line below.**)
+**518 + 50 + 380 green. LIVE: `finapp-00317-crx`, 100% LATEST — batches 2–5 all deployed, verified on the served
+bytes on both hosts, 5 `secretKeyRef`s, no WARNING+ on the new revision.**
+★ **And the `.gcloudignore` fix is proven: the upload went from 394.8 MiB / 7326 files to 5.6 MiB / 297.**)
 
 #### ⭐ The owner's list — where it stands
 **Thirteen of fourteen done: O1–O13 (O2 both halves).** **Left: O14** — Trends' *Spent* / *Set aside* charts
@@ -172,13 +173,12 @@ has no mapping DTOs and no review flow).
 2. **O14** — Trends' *Spent* / *Set aside* charts switchable to a category / a bucket. The last of the owner's
    fourteen, and a feature rather than a layout pass.
 3. **Then [QUEUE.md](QUEUE.md) is live again** — its ranked rows have been on hold behind the owner's list.
-4. ★ **The next deploy should be much faster, and it is worth checking that it is.** S111's "394 MB" warning was
-   exactly right — this session measured **394.8 MiB / 7326 files**, and I had wrongly guessed the existing
-   `.gcloudignore` explained it away. It excluded `bin`/`obj` and always had; the weight was somewhere nobody had
-   looked: **`android/app/build` alone is 383 MB.** The Dockerfile copies only `NuGet.config` and `src/`, so
-   `.gcloudignore` now also drops `android/`, `tests/`, `tools/`, `docs/` and `deploy/`. **Untested — the fix
-   landed after the deploy it would have sped up.** If the next `builds submit` still reports ~400 MB, the file is
-   not being read at all and that is the thing to chase.
+4. ✅ **The slow upload is fixed and measured, not assumed.** S111's "394 MB" warning was exactly right — batch 4's
+   deploy uploaded **394.8 MiB over 7326 files** — and my first guess at why (that `.gcloudignore` already handled
+   it) was wrong. It excluded `bin`/`obj` and always had; the weight was somewhere nobody had looked:
+   **`android/app/build` alone is 383 MB.** The Dockerfile copies only `NuGet.config` and `src/`, so the ignore
+   file now drops `android/`, `tests/`, `tools/`, `docs/` and `deploy/` as well. **Batch 5's upload: 5.6 MiB over
+   297 files.** The remaining ~5 minutes is the container build itself, not the transfer.
 
 Previously: 2026-08-20 (Session 111 — **R2 closed; a bug sweep over the standing feedback; then the owner's own
 list of 13 (now 14) items from daily use, of which six are done.**
