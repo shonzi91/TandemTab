@@ -1,12 +1,39 @@
 # TandemTab (FinApp) — session handoff
 
-Last updated: 2026-08-21 (Session 113 — **five items of fresh daily-use feedback; the Breakdown ring changed its
-question, and two figures that contradicted each other on screen were traced to real bugs.**
-**518 + 50 + 380 green, pairscan 0. LIVE: `finapp-00318-mr9`, 100% LATEST** — image `finapp:bd49006`
-(digest `sha256:f29d9d1f…`, build 4m51s, upload **5.6 MiB / 297 files**), served-bytes verified on both hosts,
-5 `secretKeyRef`s, no app WARNING+ on the new revision.)
+Last updated: 2026-08-21 (Session 113 — **the owner's list is DONE (O14 closed); the Breakdown was rebuilt then
+half-reverted after pushback; and five figures that contradicted each other on screen were traced to real bugs.**
+**518 + 50 + 380 green, pairscan 0. LIVE: `finapp-00321-q89`, 100% LATEST** — image `finapp:9593134`
+(digest `sha256:7e2240fd…`), bundle `FinApp.Shared.UI.yqq40lfj7n.bundle.scp.css` identical at 377,016 B on both
+hosts carrying `trend-focus`×4 + `exp-edit-slot`×2, 5 `secretKeyRef`s.
+⚠️ **Five deploys this session** — `bd49006`→00318, `8167869`→00319, `bd9d476`→00320, `9593134`→00321. Three of
+those are corrections to the first, and **the shape of the corrections is the lesson**, below.)
 
-#### ★★ The Breakdown ring answers a different question now
+#### ⭐ The owner's fourteen are done — O14 closed
+
+Trends' lower line narrows to one **category** (Spent) or one **bucket** (Set aside). The data layer had shipped
+half-built; this session added the picker, and **the compiler had been naming the gap the whole time**
+(`CS0649: '_trendCatId' is never assigned to` ×2 — both gone now, the tidiest possible proof it is wired).
+★ It appears only under Spent and Set aside — Balance and Kept are account-wide by definition. ⚠️ **The heading
+names the focus, not just the picker**: a line labelled "Spent in each month" that is actually one category's
+spending is the chart telling the reader something untrue. It reads *"Food spent in each month"*.
+
+#### ⚠️ STILL OPEN — "Debt owed" in Trends over time is FLAT
+
+The owner's screenshot: a dead-straight line and *"No change over this window."* **Diagnosed, not fixed.**
+`SavingCategory.DebtBalanceOn(asOf)` only walks **forward** from `DebtBalanceAsOf` (`if (months <= 0) return
+DebtBalance`), and `RecordDebtPayment` **re-anchors** that date to the payment. So every period earlier than the
+anchor returns *today's* balance — the history is flat by construction. `InsightsService.cs:380` builds the series
+as `DebtBalanceOn(periods[i].To)`, so it inherits this exactly.
+★ **A correct fix is two parts, and both are needed:** (1) reverse amortisation — `b_prev = (b_next + P) / (1+r)` —
+so `DebtBalanceOn` can answer before the anchor; (2) **dated prepayment reconstruction**, because `SavingCategory`
+only keeps `DebtExtraPrincipalRepaid` as an *undated running total*. The dated facts exist as disbursement
+`SavingAllocation`s but live on the periods, which the bucket cannot see — so the add-back belongs in
+`InsightsService`, which has the `Account`.
+⚠️ **Do not ship half of it.** A curve reconstructed without the prepayments looks authoritative and is wrong;
+a flat line at least reads as "no data". Also note `DebtSparkline`/`.debt-spark` exist and have **zero callers** —
+there is no debt-over-time chart anywhere else to fix.
+
+#### ★★ The Breakdown ring: what it took three tries to get right
 
 The owner asked for "all movements of the entire balance for the given period" and gave the case that proves it:
 **accumulate €1,000/mo for a year, then prepay €12,000 at the loan — what does that look like?** Under O6b it
@@ -14,15 +41,46 @@ looked like *nothing*: the bucket's net was −€12,000, `NetSetAsideByBucket` 
 `AccountTransfersOut` excludes disbursements by design. **The single biggest movement of the balance was invisible
 on the chart of the balance**, while the twelve accumulation months each drew a €1,000 wedge.
 
-★ **The ring now means "what left your balance".** Money set aside is **not** a wedge (it never left the account);
-money deployed at a goal **is**, one slice per bucket via `AddPaidOutSlices` (violet family, ranked with
-`InsertByAmount`, capped at 3 + a "Paid to other goals" tail). ⚠️ **Neither unit double counts** — the old one
-counted at earmark time, this one at spend time — but only this one makes the month the money actually moved
-legible. Both slice builders go through the one helper, so Home's donut and the Breakdown cannot disagree.
-★ **Summary is Income / Money out / Set aside**, and "Money out" now **equals the ring total**; those two silently
-differed by the savings slice with nothing on screen reconciling them. "Set aside" is **signed**
-(`SetAsideNetSigned`, un-floored) so the payout month reads **−€3,320** — a statement can go negative, a wedge
-cannot. The donut centre says what its total *is* ("left your balance") instead of counting categories.
+⚠️ **The first fix (`bd49006`) made payouts pie slices, and that was wrong.** It closed the hole and opened a
+worse one. **A pie is a COMPOSITION chart** — it works only when the parts are the same kind of thing at
+comparable scale, and a €12,000 one-off against €30 of groceries is neither. Measured: the payout took **77.5%**
+of the ring and squeezed Food, the only slice a reader can act on, to **2.7%**; the total swung €275 / €378 /
+€3,873 across three months so no two could be compared. **The month a payout lands is exactly the month the
+Breakdown must still work as a breakdown.** Same Food slice after the revert: **27.3%**.
+
+★ **Final position (`8167869`): the ring is SPENDING.** Neither savings nor payouts are slices — savings because
+the money never left the account, payouts because of the scale argument. Nothing is hidden; the summary carries
+**four figures that reconcile to what the balance did and cannot distort a chart**: *Income · Spent · Set aside ·
+Paid to goals* (the last naming its buckets in a tooltip, shown only when non-zero). The centre says "spent" and
+**equals** the Spent figure beside it.
+
+⚠️ **`bd9d476` — "Set aside" must never be negative, and the domain had already said so.** The signed version
+printed **−€3,320 beside a hero reading €450** on the same screen. `Period.SavingsSetAsideTotal` settled this long
+ago in as many words: *"No drawdown is negative saving… count the deposits"* — it even names the same symptom
+(−€620 when a sinking fund paid its bill). The sign existed only because one figure was carrying two facts, and
+that reason evaporated the moment "Paid to goals" got its own slot. `SetAsideInRange` mirrors the domain rule, and
+when the window IS the period it takes the hero's own figure rather than a look-alike recomputation.
+
+★★ **Where a payout's effect on the balance belongs is TRENDS, which already did it properly and needed no
+change** — the balance line dips and the month wears a ring saying *"X of this went onto a loan."* **A time axis
+absorbs a one-off spike; a pie never could.** Reach for the right instrument before redesigning the wrong one.
+
+#### ★ Ledger fixes that came out of actually using it
+
+★★ **"Assigning transfer to a category does not work" — and it was every field, not just the category.**
+`EditAccountTransfer` **silently returns** when a transfer has no pair id, while the ledger row offers a pencil
+regardless: you edit, press Save, nothing happens and nothing says so. The two-sided server route is right for a
+*linked* transfer because a second account must move with it; with **no counterpart there is nothing to keep in
+step**, so `EditUnlinkedTransfer` applies it on the ordinary client-owned snapshot spine. The modal also stopped
+promising to update a deposit that does not exist.
+★ **Search:** transfers and payouts ran their own `Note.Contains(query)`, which broke two ways — a **two-word
+search matched nothing** (the whole phrase as one literal), and neither amount, date, wallet nor (now that
+transfers have one) **category** was searchable. `TransferMatchesSearch` mirrors `ExpenseMatchesSearch`'s word-AND
+rule. Verified: *"car loan"* reaches a payout whose note is "Loan prepayment"; *"275"* reaches a transfer by amount.
+★ **Column alignment:** `.row-actions` is `justify-content: flex-end`, so a transfer's lone pencil sat in the
+**delete** column directly under an expense's pencil in the **edit** column, and a payout rendered no actions
+element at all so its amount slid into the reserved 58px. Rows reserve their empty slots (`.exp-edit-slot`, layout
+only). Measured identical across all three kinds: amount right 463, actions left 471, width 70, icon 471.
 ★ **Goal payouts joined the expense ledger** (`DisbursementsThisPeriod`, `payout-row`, no edit button — a payout is
 half a pair and the bucket's screen owns undoing it). ⚠️ Day headers needed `grpP` too: the header total is
 computed inline from `grp` + `grpX`, **not** from `byDay`, so fixing only `byDay` left 18 Aug reading €24.50 over
