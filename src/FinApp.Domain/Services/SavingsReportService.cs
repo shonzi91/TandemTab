@@ -45,7 +45,7 @@ public sealed class SavingsReportService
     {
         ArgumentNullException.ThrowIfNull(account);
         ArgumentNullException.ThrowIfNull(period);
-        var priorSaved = AccumulatedTotal(account) - period.SavingsNetTotal;   // savings held from before, still earmarked
+        var priorSaved = SavedBefore(account, period);                          // savings held from before, still earmarked
         var carriedFree = period.InitialTotal - priorSaved;
         if (carriedFree.IsNegative) carriedFree -= carriedFree;                 // deficit carried in adds no spendable money
         // A synced (bank) fund's opening is stored informative-only (kept out of InitialTotal so the ledger holds it
@@ -239,6 +239,30 @@ public sealed class SavingsReportService
 
     /// <param name="upToPeriodFrom">When given, only periods starting on or before this date count — the balance
     /// "as of" that period rather than today. Omit for the all-time total.</param>
+    /// <summary>
+    /// Everything still earmarked as savings when <paramref name="period"/> <b>opened</b>: allocations made in
+    /// strictly earlier periods, plus each bucket's initial amount.
+    /// <para>⚠️ This exists because the obvious expression — <c>AccumulatedTotal(account) - period.SavingsNetTotal</c> —
+    /// is only correct for the <i>latest</i> period. <see cref="AllocatedTotal"/> sums every period, as of today, so
+    /// for a closed period it folds in allocations made <i>after</i> it and calls them "held from before". The two
+    /// agree exactly when the period is the last one, and diverge the moment savings move afterwards: a bucket
+    /// emptied at its goal in August collapses the figure for July, which inflates July's carried-in cash by the
+    /// same amount. That was reported as "money in is a huge number on previous periods" — €10,382 carried into a
+    /// period that closed with €18,160 and handed on €1,004.</para>
+    /// <para>Same trap, same fix as <see cref="ForBucket"/>'s <c>upToPeriodFrom</c>: read a past period as of when it
+    /// was live, never as of now. Strictly earlier here, where <c>ForBucket</c> is inclusive — it asks what the
+    /// bucket held at the period's END, this asks what was already earmarked at its START.</para>
+    /// </summary>
+    private static Money SavedBefore(Account account, Period period) =>
+        account.Periods
+            .Where(p => p.From < period.From)
+            .SelectMany(p => p.SavingAllocations)
+            .Select(a => a.Amount)
+            .Aggregate(Money.Zero(account.Currency), (acc, m) => acc + m)
+        + account.SavingCategories
+            .Select(s => new Money(s.InitialAmount, account.Currency))
+            .Aggregate(Money.Zero(account.Currency), (acc, m) => acc + m);
+
     private static Money AllocationsFor(Account account, IReadOnlySet<Guid> bucketIds, DateOnly? upToPeriodFrom = null) =>
         account.Periods
             .Where(p => upToPeriodFrom is not { } cut || p.From <= cut)

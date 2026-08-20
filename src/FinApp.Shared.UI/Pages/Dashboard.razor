@@ -778,7 +778,7 @@ else
                 <section class="panel home-brk-card">
                     <button class="home-brk-hit" @onclick="OpenBreakdown">
                         <span class="home-brk-donut-wrap">
-                            <svg class="home-brk-donut" viewBox="0 0 120 120" role="img" aria-label="@Loc["Where the money that came in went"]">
+                            <svg class="home-brk-donut" viewBox="0 0 120 120" role="img" aria-label="@Loc["Where your money went"]">
                                 @if (homeSlices.Count == 1)
                                 {
                                     <circle cx="60" cy="60" r="47" fill="none" stroke="@homeSlices[0].Color" stroke-width="18" />
@@ -795,15 +795,16 @@ else
                                     }
                                 }
                                 <text x="60" y="59" text-anchor="middle" class="home-brk-total">@Fmt(State.Money(homeSpendTotal))</text>
-                                @* ⚠️ Not "spent" any more (O6b). The ring is the sum of its own slices, and those now
-                                   include what was set aside — so the word under the figure was calling €300 of
-                                   savings "spent" the moment savings joined the chart. The figure and its label
-                                   have to move together or the chart contradicts its own title. *@
-                                <text x="60" y="73" text-anchor="middle" class="home-brk-sub">@Loc["used"]</text>
+                                @* The ring is the sum of its own slices, and those are now the things that actually
+                                   left the account — expenses, transfers out, and goal payouts. "Out" is the word
+                                   that covers all three: a loan prepayment was not "used" and certainly not "spent",
+                                   but it did leave. The figure and its label have to move together or the chart
+                                   contradicts its own title. *@
+                                <text x="60" y="73" text-anchor="middle" class="home-brk-sub">@Loc["out"]</text>
                             </svg>
                         </span>
                         <span class="home-brk-body">
-                            <span class="home-brk-title">@Loc["Where the money that came in went"]</span>
+                            <span class="home-brk-title">@Loc["Where your money went"]</span>
                             <span class="home-brk-legend">
                                 @foreach (var s in homeSlices.Take(4))
                                 {
@@ -1524,10 +1525,22 @@ else
                                  || State.AccountName(t.ToAccountId ?? Guid.Empty).Contains(_spendSearch, StringComparison.OrdinalIgnoreCase))
                         .ToList();
                     var shownXfers = _dayView is { } dvx ? xfers.Where(t => t.Date == dvx).ToList() : xfers;
-                    @* Day totals and calendar counts are built from BOTH, so a day header can never disagree with
-                       the rows sitting under it. *@
+                    @* ★ Goal payouts belong here for the same reason account transfers do, and were missing for a
+                       worse one: they are excluded from AccountTransfersOut by design (a payout isn't spending), and
+                       that exclusion quietly kept them out of the ledger too. Deploying €12,000 at a loan is the
+                       largest thing that can happen to a balance in a month, and the one list that promises every
+                       outflow showed nothing. Searched by note and by the bucket's name. *@
+                    var payouts = State.DisbursementsThisPeriod
+                        .Where(t => string.IsNullOrWhiteSpace(_spendSearch)
+                                 || (t.Note ?? "").Contains(_spendSearch, StringComparison.OrdinalIgnoreCase)
+                                 || (State.DisbursementBucketName(t.Id) ?? "").Contains(_spendSearch, StringComparison.OrdinalIgnoreCase))
+                        .ToList();
+                    var shownPayouts = _dayView is { } dvp ? payouts.Where(t => t.Date == dvp).ToList() : payouts;
+                    @* Day totals and calendar counts are built from ALL THREE, so a day header can never disagree
+                       with the rows sitting under it. *@
                     var byDay = ledger.Select(e => (e.Date, Amt: e.Amount.Amount))
                         .Concat(xfers.Select(t => (t.Date, Amt: t.Amount.Amount)))
+                        .Concat(payouts.Select(t => (t.Date, Amt: t.Amount.Amount)))
                         .GroupBy(x => x.Date)
                         .ToDictionary(g => g.Key, g => (Count: g.Count(), Total: g.Aggregate(0m, (s, x) => s + x.Amt)));
                     @* A transfer row deliberately looks like an expense row and is not one: same columns, but the
@@ -1548,6 +1561,23 @@ else
         <span class="row-actions">
             <button class="exp-edit" title="@Loc["Edit"]" aria-label="@Loc["Edit"]" @onclick="() => OpenEditAccountTransfer(t.Id)"><Icon Name="pencil" /></button>
         </span>
+    </li>;
+                    @* A payout row names the GOAL, not a destination account — that is the fact the reader wants, and
+                       the bucket is the only thing distinguishing it from a plain transfer. No edit button: a
+                       disbursement is one half of a pair (the drawdown that drained the earmark is the other), and
+                       the bucket's own screen is where it is undone. Offering a pencil that edits only the visible
+                       half would leave the earmark wrong. *@
+                    RenderFragment<FinApp.Domain.Funds.ExternalTransfer> payoutRow = t =>
+    @<li class="xfer-row payout-row">
+        <div class="row-main row-stack">
+            <span class="row-title"><span class="row-title-txt"><Icon Name="target" class="ic-s" /> @(State.DisbursementBucketName(t.Id) ?? Loc["A goal"])</span></span>
+            <span class="row-sub">
+                <span class="sub-to">@State.FundName(t.FundId)</span>
+                @if (!string.IsNullOrWhiteSpace(t.Note)) { <span class="sub-note">@t.Note</span> }
+                <span class="settle-tag">@Loc["paid to goal"]</span>
+            </span>
+        </div>
+        <span class="amt">@Fmt(t.Amount)</span>
     </li>;
                     var calToday = DateOnly.FromDateTime(DateTime.Today);
                 }
@@ -1616,22 +1646,24 @@ else
                         }
                     </div>
                 }
-                else if (!shown.Any() && !shownXfers.Any())
+                else if (!shown.Any() && !shownXfers.Any() && !shownPayouts.Any())
                 {
                     <ul class="list"><li><em>@(!string.IsNullOrWhiteSpace(_spendSearch) ? Loc["Nothing matches that search."] : Loc["Nothing’s perched here yet — add your first expense."])</em></li></ul>
                 }
                 else if (_dayView is not null)
                 {
-                    <ul class="list list-even">@foreach (var e in shown) { @row(e) }@foreach (var t in shownXfers) { @xferRow(t) }</ul>
+                    <ul class="list list-even">@foreach (var e in shown) { @row(e) }@foreach (var t in shownXfers) { @xferRow(t) }@foreach (var t in shownPayouts) { @payoutRow(t) }</ul>
                 }
                 else
                 {
-                    @* Days come from expenses AND transfers, so a day whose only outflow was money sent to another
-                       account still gets a header instead of vanishing from the ledger. *@
-                    @foreach (var day in shown.Select(e => e.Date).Concat(shownXfers.Select(t => t.Date)).Distinct().OrderByDescending(d => d))
+                    @* Days come from expenses AND transfers AND payouts, so a day whose only outflow was money sent
+                       to another account — or deployed at a goal — still gets a header instead of vanishing. *@
+                    @foreach (var day in shown.Select(e => e.Date).Concat(shownXfers.Select(t => t.Date))
+                        .Concat(shownPayouts.Select(t => t.Date)).Distinct().OrderByDescending(d => d))
                     {
                         var grp = shown.Where(e => e.Date == day).ToList();
                         var grpX = shownXfers.Where(t => t.Date == day).ToList();
+                        var grpP = shownPayouts.Where(t => t.Date == day).ToList();
                         @* A day inside a trip says so, in the trip's own colour — the same lookup and the same
                            palette index the calendar band uses, so the two views agree about which journey a day
                            belongs to. It answers "why was this Tuesday expensive" without opening anything. *@
@@ -1646,10 +1678,10 @@ else
                             }
                             @* The day's spend, in the amount column — a running read of "what did today cost". Widths
                                match the row's amt (88) + actions (58) so it sits directly over the expense amounts. *@
-                            <span class="date-sep-tot">@Fmt(State.Money(grp.Sum(e => e.Amount.Amount) + grpX.Sum(t => t.Amount.Amount)))</span>
+                            <span class="date-sep-tot">@Fmt(State.Money(grp.Sum(e => e.Amount.Amount) + grpX.Sum(t => t.Amount.Amount) + grpP.Sum(t => t.Amount.Amount)))</span>
                             <span class="date-sep-pad" aria-hidden="true"></span>
                         </button>
-                        <ul class="list list-even">@foreach (var e in grp) { @row(e) }@foreach (var t in grpX) { @xferRow(t) }</ul>
+                        <ul class="list list-even">@foreach (var e in grp) { @row(e) }@foreach (var t in grpX) { @xferRow(t) }@foreach (var t in grpP) { @payoutRow(t) }</ul>
                     }
                 }
                 </div>
@@ -1685,18 +1717,31 @@ else
                         var brkPeriods = BreakPeriodCount();                                            // >1 → rows also carry a per-period average
                         var brkCi = System.Globalization.CultureInfo.InvariantCulture;
                         var (brkFrom, brkTo) = BreakWindow();
-                        // Income for the window. For the current period, include the carried-in money so it matches the
-                        // hero's "Money in" (fresh income + free carry-over) — IncomeInRange alone is fresh income only.
-                        var brkIncome = State.IncomeInRange(brkFrom, brkTo)
-                            + (_breakRange == BreakRange.ThisPeriod ? State.CarriedInThisPeriod.Amount : 0m);
-                        // "Spent" = all money out for the window: expenses + account transfers. Money set aside is
-                        // excluded so this agrees with the Home "Spent" tile. From the raw rows, not the slices, so
-                        // it's identical across the category/tag/fund toggles.
-                        // ⚠️ Since O6(b) this is deliberately NOT the donut's total — the ring answers "where did the
-                        // money that came in go", which includes what you kept, and this line answers "what did you
-                        // spend". Two different questions, and the savings slice is exactly the difference.
+                        // ⚠️ When the window IS the selected period, this must be the hero's OWN figure, not a
+                        // date-filtered rebuild of it. The old line mixed the two rules — a date-based IncomeInRange
+                        // plus a membership-based CarriedInThisPeriod — so it could equal neither: any contribution
+                        // dated inside the window but owned by a different period was counted here and not up there,
+                        // and the two tiles contradicted each other on the same screen (observed: €5,421.77 against
+                        // €5,344.38, a €77.39 gap with no way for the reader to tell which was lying).
+                        // This is the same trap HomePeriodSlices documents for expenses; membership keeps them in
+                        // lockstep. Over a multi-period window there is no single period to take membership from, so
+                        // the date-based sum is the right tool and carry-in is not added to it.
+                        var brkIncome = _breakRange == BreakRange.ThisPeriod
+                            ? State.MoneyInThisPeriod.Amount
+                            : State.IncomeInRange(brkFrom, brkTo);
+                        // "Money out" = everything that LEFT the balance in the window: expenses + account transfers
+                        // + goal payouts. From the raw rows, not the slices, so it's identical across the
+                        // category/tag/fund toggles — and it is exactly the donut's total.
+                        // ★ Those two agreeing is the fix. They used to differ by the savings slice, silently: the
+                        // ring counted money you had merely earmarked, this line didn't, and nothing on screen said
+                        // which question either was answering. Now both answer the same one.
                         var brkMoneyOut = State.ExpensesInRange(brkFrom, brkTo).Sum(e => Math.Abs(e.Amount.Amount))
-                            + State.AccountTransfersInRange(brkFrom, brkTo).Sum(t => Math.Abs(t.Amount.Amount));
+                            + State.AccountTransfersInRange(brkFrom, brkTo).Sum(t => Math.Abs(t.Amount.Amount))
+                            + State.DisbursedTotal(brkFrom, brkTo);
+                        // Signed on purpose — see SetAsideNetSigned. This is the one place the earmark story is told
+                        // now that it has no wedge, and in the month a bucket is emptied at its goal the true answer
+                        // is a negative number, not the zero a floored total would print.
+                        var brkSetAside = State.SetAsideNetSigned(brkFrom, brkTo);
                         // One expense row, reused by the flat list and the grouped-by-sub/tag lists in an expanded slice.
                         RenderFragment<FinApp.Domain.Budgeting.Expense> brkExpRow = e =>
                         @<li class="brk-exp-row">
@@ -1743,15 +1788,20 @@ else
                     }
                     else
                     {
+                        @* Income · Money out · Set aside. The third figure replaces "% of income": a ratio of two
+                           numbers already sitting beside it is the least each slot could carry, and with savings off
+                           the ring this is the only place the earmark is stated at all. It is signed, so the month a
+                           goal is paid reads −€12,000 — the money left savings, which is exactly why the ring beside
+                           it grew by the same amount. *@
                         <div class="brk-summary">
                             <span class="brk-sum"><span class="brk-sum-lbl">@Loc["Income"]</span><span class="brk-sum-val good-text">@Fmt(brkIncome)</span></span>
-                            <span class="brk-sum"><span class="brk-sum-lbl">@Loc["Spent"]</span><span class="brk-sum-val">@Fmt(brkMoneyOut)</span></span>
-                            <span class="brk-sum"><span class="brk-sum-lbl">@Loc["of income"]</span><span class="brk-sum-val">@(brkIncome > 0m ? (brkMoneyOut / brkIncome * 100).ToString("0.#", brkCi) + "%" : "—")</span></span>
+                            <span class="brk-sum"><span class="brk-sum-lbl">@Loc["Money out"]</span><span class="brk-sum-val">@Fmt(brkMoneyOut)</span></span>
+                            <span class="brk-sum"><span class="brk-sum-lbl">@Loc["Set aside"]</span><span class="brk-sum-val @(brkSetAside > 0m ? "good-text" : "")">@(brkSetAside > 0m ? "+" : brkSetAside < 0m ? "−" : "")@Fmt(State.Money(Math.Abs(brkSetAside)))</span></span>
                         </div>
                     }
                     @if (brkSlices.Count == 0 || brkTotal <= 0m)
                     {
-                        <p class="brk-empty"><Icon Name="pie" /> @Loc["No expenses in this window yet."]</p>
+                        <p class="brk-empty"><Icon Name="pie" /> @Loc["Nothing has left your balance in this window yet."]</p>
                     }
                     else
                     {
@@ -1822,7 +1872,13 @@ else
                                 @* Counts to the new figure when the window or axis changes, so the centre number
                                    settles with the slices instead of snapping while they animate. *@
                                 <text x="100" y="94" class="brk-donut-tot" text-anchor="middle"><Rolling Value="@brkTotal" Format="@(v => Fmt(State.Money(v)))" /></text>
-                                <text x="100" y="112" class="brk-donut-sub" text-anchor="middle">@(brkSlices.Count == 1 ? brkSlices[0].Label : string.Format(BreakByFund ? Loc["{0} funds"] : BreakByTag || _breakDrill is not null ? Loc["{0} tags"] : Loc["{0} categories"], brkSlices.Count))</text>
+                                @* ★ The caption says what the figure IS, not how many pieces it came in. A count of
+                                   categories describes the legend, which is directly below and can be counted; what
+                                   the reader could not tell was whether the centre meant income, spending, or
+                                   something else — and it disagreed with the "Spent" line beside it. Inside a drill
+                                   the count is still the useful thing: there the total is one category's, and the
+                                   question is how many tags split it. *@
+                                <text x="100" y="112" class="brk-donut-sub" text-anchor="middle">@(_breakDrill is not null ? string.Format(Loc["{0} tags"], brkSlices.Count) : Loc["left your balance"])</text>
                             </svg>
                         </div>
                         <ul class="brk-list">
@@ -1839,7 +1895,7 @@ else
                                             {
                                                 <Icon Name="swap" />
                                             }
-                                            else if (s.Key == SavedKey)
+                                            else if (s.Kind == SliceKind.PaidOut)
                                             {
                                                 <Icon Name="target" />
                                             }
@@ -1871,22 +1927,29 @@ else
                                            has to be applied to an element this component owns. *@
                                         <span class="brk-item-chev"><Icon Name="chevron" /></span>
                                     </div>
-                                    @* ★ O6(a/b): the savings slice opens into its BUCKETS, not into a list of payout
-                                       transfers. The slice is now what each bucket net took in, so the rows have to
-                                       be the same thing or the parts would not add up to the whole above them —
-                                       and this is where a mixed window names every bucket, which the one-line slice
-                                       label above can only do when there is a single one. *@
-                                    @if (expanded && s.Key == SavedKey)
+                                    @* A payout slice opens into the individual payments that made it up — the same
+                                       shape as the transfers slice below, because they are the same kind of thing:
+                                       dated movements of money out of the account. The tail slice covers several
+                                       buckets, so its rows name each one. *@
+                                    @if (expanded && s.Kind == SliceKind.PaidOut)
                                     {
                                         var (sFrom, sTo) = BreakWindow();
+                                        var payouts = (s.Key == PaidOutTailKey
+                                                ? State.DisbursementsInRange(sFrom, sTo)
+                                                    .Where(t => !brkSlices.Any(o => o.Kind == SliceKind.PaidOut && o.Key != PaidOutTailKey
+                                                                                    && o.Key == (State.DisbursementBucketId(t.Id) ?? Guid.Empty)))
+                                                : State.DisbursementsForBucket(sFrom, sTo, s.Key))
+                                            .OrderByDescending(t => Math.Abs(t.Amount.Amount)).ThenByDescending(t => t.Date).ToList();
                                         <ul class="brk-exp-list" style="--accent:@s.Color">
-                                            @foreach (var b in State.NetSetAsideByBucket(sFrom, sTo))
+                                            @foreach (var t in payouts)
                                             {
                                                 <li class="brk-exp-row">
-                                                    <span class="brk-exp-main brk-exp-main-wide">
-                                                        <span class="brk-exp-title">@string.Format(Loc["Saved toward {0}"], b.Name)</span>
+                                                    <span class="brk-exp-date"><span class="brk-exp-d">@t.Date.ToString("dd")</span><span class="brk-exp-m">@t.Date.ToString("MMM")</span></span>
+                                                    <span class="brk-exp-main">
+                                                        <span class="brk-exp-title">@(State.DisbursementBucketName(t.Id) ?? Loc["A goal"])</span>
+                                                        <span class="brk-exp-sub">@(string.IsNullOrWhiteSpace(t.Note) ? State.FundName(t.FundId) : t.Note)</span>
                                                     </span>
-                                                    <span class="brk-exp-amt">@Fmt(State.Money(b.Net))</span>
+                                                    <span class="brk-exp-amt">@Fmt(t.Amount)</span>
                                                 </li>
                                             }
                                         </ul>
@@ -3078,7 +3141,7 @@ else
                         <span class="goal-stat-v">@Fmt(_savedTotal)</span>
                         @if (State.SavingsThisPeriod.Amount > 0m)
                         {
-                            <span class="goal-stat-sub">
+                            <span class="goal-stat-sub goal-stat-sub-end">
                                 <span class="goal-stat-add">+@Fmt(State.SavingsThisPeriod) @Loc["this period"]</span>
                                 @if (State.PeriodMoneyInRate is { } prate && prate > 0m)
                                 {
@@ -3087,7 +3150,6 @@ else
                             </span>
                         }
                     </div>
-                    <button class="fund-add" @onclick="AddGoalForFilter"><Icon Name="plus" /> @Loc["Add goal"]</button>
                 </div>
                 @* F4 round-ups live with savings — this is where the mind is on setting money aside, not the spending
                    Breakdown. Only the cumulative painless total, and only once there IS one: it's a reward for using
@@ -3098,9 +3160,12 @@ else
                 {
                     <div class="brk-roundup"><Icon Name="coins" /> @string.Format(Loc["{0} saved this way so far."], Fmt(State.RoundUpsSweptTotal))</div>
                 }
-                @if (goalKindsPresent > 1)
-                {
-                    <div class="goal-filters" role="group">
+                @* The row is unconditional now because "Add goal" lives in it: the chips still need two kinds to be
+                   worth showing, but the action must not disappear on an account that has only one. *@
+                <div class="goal-filters">
+                    @if (goalKindsPresent > 1)
+                    {
+                        <span class="goal-filter-chips" role="group">
                         <button type="button" class="chip @(goalFilter == GoalFilter.All ? "on" : "")" @onclick="() => _goalFilter = GoalFilter.All">@Loc["All"] <span class="chip-n">@goalTotal</span></button>
                         @if (debtBuckets.Count > 0)
                         {
@@ -3118,8 +3183,10 @@ else
                         {
                             <button type="button" class="chip @(goalFilter == GoalFilter.Expenses ? "on" : "")" @onclick="() => _goalFilter = GoalFilter.Expenses"><Icon Name="calendar" /> @Loc["Expenses"] <span class="chip-n">@expenseBuckets.Count</span></button>
                         }
-                    </div>
-                }
+                        </span>
+                    }
+                    <button class="fund-add" @onclick="AddGoalForFilter"><Icon Name="plus" /> @Loc["Add goal"]</button>
+                </div>
                 @if (goalBuckets.Count == 0)
                 {
                     <p class="hint">
@@ -5078,14 +5145,11 @@ else
                            budget caps a category and this had none. Naming one lets a standing household transfer
                            be planned for; leaving it blank keeps the old behaviour exactly. *@
                         <div class="modal-field">
-                            <span class="lbl-row">@Loc["Count against a budget"] <small class="hint">@Loc["optional"]</small></span>
-                            <select @bind="_mTransferCategoryId">
-                                <option value="@Guid.Empty">@Loc["Not budgeted"]</option>
-                                @foreach (var c in State.CategoryOptions)
-                                {
-                                    <option value="@c.Category.Id">@c.Category.Name</option>
-                                }
-                            </select>
+                            <span class="lbl-row">@Loc["Count against a budget"] <small class="hint">@Loc["optional"]</small>
+                                <button type="button" class="lbl-add" title="@Loc["Add category"]" @onclick="TransferAddCategory">+</button></span>
+                            @* Not a <label>: it would trap this picker's clicks and pin the menu open. *@
+                            <CategoryPicker @bind-Value="_mTransferCategoryId" Options="State.CategoryOptions"
+                                            AllowNone="true" NoneLabel="@Loc["Not budgeted"]" />
                         </div>
                         <small class="hint @(MTransferDipsSavings ? "warn-text" : "")">@Loc["In this fund:"] <strong>@Fmt(State.FundBalance(_mTransferFromId))</strong>. @(MTransferDipsSavings ? Loc["⚠ This dips into money earmarked for savings."] : "")</small>
                     }
@@ -6993,6 +7057,15 @@ else
                             </select>
                         </label>
                         <label>@Loc["Note (optional)"] <input type="text" @bind="_extNote" /></label>
+                        @* The same optional budget the create modal offers — but this is the only way to name one on a
+                           transfer that already exists, which until now meant deleting and re-entering it to fix a
+                           missed category. Not a <label>: it would trap the picker's clicks and pin the menu open. *@
+                        <div class="modal-field">
+                            <span class="lbl-row">@Loc["Count against a budget"] <small class="hint">@Loc["optional"]</small>
+                                <button type="button" class="lbl-add" title="@Loc["Add category"]" @onclick="EditTransferAddCategory">+</button></span>
+                            <CategoryPicker @bind-Value="_extCategoryId" Options="State.CategoryOptions"
+                                            AllowNone="true" NoneLabel="@Loc["Not budgeted"]" />
+                        </div>
                         <small class="hint">@string.Format(Loc["The deposit this created in {0} is updated to match."], State.AccountName(aet.ToAccountId ?? Guid.Empty))</small>
                     }
                     <div class="modal-actions">
@@ -7243,9 +7316,15 @@ else
         }).OrderByDescending(g => g.Total).ToList();
     }
 
+    // What a slice IS, as opposed to what its key happens to be. A payout slice is keyed by its savings bucket, which
+    // is a real Guid indistinguishable from a category's — so presentation (icon, legend row, what expanding shows)
+    // branches on this rather than on the key. Category is the default, so every existing call site is unchanged.
+    private enum SliceKind { Category, PaidOut }
+
     // A single pie/list entry: a stable key (category or tag id, or Guid.Empty for the "untagged/other" bucket),
     // its label + icon, the summed amount, and the slice colour.
-    private record BreakSlice(Guid Key, string Label, string? Icon, decimal Amount, string Color);
+    private record BreakSlice(Guid Key, string Label, string? Icon, decimal Amount, string Color,
+        SliceKind Kind = SliceKind.Category);
 
     // A curated categorical palette — mint/coral/amber/blue/violet first (on-brand), then five more distinct hues.
     // Reads as one system with the app rather than a raw HSL rainbow; cycles if a window has more than ten slices.
@@ -7265,11 +7344,22 @@ else
     // sentinel + a distinct slate colour). Skipped in tag/drill views — transfers carry no category or tag.
     private static readonly Guid TransfersKey = new("00000000-0000-0000-0000-0000000000fd");
     private const string TransfersColor = "#7c8a99";
-    // Savings disbursements (set-aside money deployed toward a goal/debt) get their OWN slice — positively framed, not
-    // lumped with spending or plain transfers. Distinct sentinel + a positive green so it reads as "money you put to
-    // work", not an outflow you should feel bad about. Excluded from "Spent"; see DisbursementsInRange.
-    private static readonly Guid SavedKey = new("00000000-0000-0000-0000-0000000000fc");
-    private const string SavedColor = "#2f9e44";
+    // ★★ The ring answers "what LEFT your balance this window" — not "where the money that came in went" (O6b).
+    // The difference only shows up over time, and it is the whole reason this changed: set €1,000 aside a month for a
+    // year and nothing has left the account, so those months draw no savings wedge at all; send the €12,000 at the
+    // loan and €12,000 leaves, so that month draws one big wedge. The old unit reported the mirror image — twelve
+    // €1,000 wedges and then NOTHING in the month of the payout, because the bucket's net was −€12,000 and a floored
+    // net has no wedge for that. Neither unit double counts (one counts at earmark time, one at spend time); only
+    // this one makes the month the money actually moved legible.
+    // ⚠️ Money set aside is therefore NOT a slice any more. It is still on the screen — as the "Set aside" figure in
+    // the summary line, which is signed and so can say −€12,000. A statement can go negative; a wedge cannot.
+    // Payout slices are keyed by their BUCKET, one each, so "which goal" is answered by the ring rather than by
+    // expanding a lump. Violet is already this app's savings-movement hue (TrendSavedColor, .debt-progress), and it
+    // deliberately isn't coral: nothing was consumed, the money reached what it was for.
+    private static readonly string[] PaidOutPalette = { "#6366f1", "#8b7fd4", "#a78bfa" };
+    private const int MaxPaidOutSlices = 3;
+    // The tail's sentinel, when more than MaxPaidOutSlices buckets paid out in one window.
+    private static readonly Guid PaidOutTailKey = new("00000000-0000-0000-0000-0000000000fc");
 
     // Build the slices for the current window + drill state, largest first. Amounts use the absolute expense value.
     /// <summary>Put <paramref name="slice"/> where its size says it belongs, ahead of the first slice it outranks —
@@ -7345,25 +7435,37 @@ else
         // drill-down list stays well-defined.
         var xfer = State.AccountTransfersInRange(from, to).Sum(t => Math.Abs(t.Amount.Amount));
         if (xfer > 0m) InsertByAmount(slices, new BreakSlice(TransfersKey, Loc["Transfers out"], null, xfer, TransfersColor));
-        // The savings slice is positively framed, never lumped with spending, and stays out of the "Spent" figure
-        // above (see brkMoneyOut). Last, so it reads as the rewarding coda to the outflow story.
-        // ★ O6(b), the owner's call: this chart answers "where did the money that came in go?", so what is set
-        // aside belongs in it — and the unit is what each bucket NET took in, not what was paid out of it. Paying
-        // €500 of an earmark to the loan is not a second €500 leaving your income; the payout is already the
-        // negative half of the net figure. That is why goal payouts are no longer slices of their own: counting
-        // both would have been the double count that decided this whole design.
-        var saved = State.NetSetAsideTotal(from, to);
-        if (saved > 0m) slices.Add(new BreakSlice(SavedKey, SavedSliceLabel(from, to), null, saved, SavedColor));
+        AddPaidOutSlices(slices, from, to);
         return slices;
     }
 
-    /// <summary>The savings slice's label: the bucket's own name when exactly one bucket ended the window up, the
-    /// plural fallback otherwise. ⚠️ Used by BOTH slice builders — the Breakdown's and Home's — which have always
-    /// been separate copies of this decision and would otherwise disagree about the same period.</summary>
-    private string SavedSliceLabel(DateOnly from, DateOnly to) =>
-        State.NetSetAsideByBucket(from, to) is [var only]
-            ? string.Format(Loc["Saved toward {0}"], only.Name)
-            : Loc["Saved toward goals"];
+    /// <summary>
+    /// Rank one slice per savings bucket that paid out during the window into <paramref name="slices"/>.
+    /// <para>⚠️ Used by BOTH slice builders — the Breakdown's and Home's, always separate copies — so they cannot
+    /// disagree about the same period. Ranked with <see cref="InsertByAmount"/> rather than appended, because a
+    /// payout is routinely the largest single thing that happened to the balance all month and belongs where its
+    /// size puts it. Not eligible for the "Everything else" rollup: that bucket is category-only.</para>
+    /// </summary>
+    private void AddPaidOutSlices(List<BreakSlice> slices, DateOnly from, DateOnly to)
+    {
+        var byBucket = State.DisbursementsByBucket(from, to);
+        if (byBucket.Count == 0) return;
+        var head = byBucket.Count > MaxPaidOutSlices ? byBucket.Take(MaxPaidOutSlices - 1).ToList() : byBucket.ToList();
+        for (var i = 0; i < head.Count; i++)
+        {
+            var label = head[i].Name.Length > 0
+                ? string.Format(Loc["Paid to {0}"], head[i].Name)
+                : Loc["Paid to a goal"];
+            InsertByAmount(slices, new BreakSlice(head[i].BucketId, label, null, head[i].Amount,
+                PaidOutPalette[i % PaidOutPalette.Length], SliceKind.PaidOut));
+        }
+        if (byBucket.Count > MaxPaidOutSlices)
+        {
+            var tail = byBucket.Skip(MaxPaidOutSlices - 1).Sum(x => x.Amount);
+            InsertByAmount(slices, new BreakSlice(PaidOutTailKey, Loc["Paid to other goals"], null, tail,
+                PaidOutPalette[^1], SliceKind.PaidOut));
+        }
+    }
 
     /// <summary>
     /// The chart drilled into one category: the same window, re-sliced by the tags used INSIDE that category, with
@@ -7436,8 +7538,14 @@ else
     /// <param name="DebtPaid">Money deployed at a loan this month. It leaves the balance like spending does, so the
     /// line dips — but nothing was consumed: the same money came off a debt. The chart marks those months rather
     /// than hiding the dip, because the cash really did go.</param>
+    /// <param name="Focus">The same month narrowed to <b>one</b> category or one bucket (O14) — whichever the
+    /// lower chart is currently focused on, zero when it is focused on nothing. One field rather than two because
+    /// only one series is drawn at a time, and a per-series copy would be two chances to draw the wrong one.
+    /// <para>⚠️ It deliberately does NOT narrow <see cref="Expenses"/> or <see cref="Saved"/>. Those feed the bar
+    /// chart above, where "money in" and "kept" sit beside them — and a filtered Spent bar next to a whole-account
+    /// Income bar would make Kept read as a subtraction nobody performed.</para></param>
     private sealed record TrendRow(string Label, decimal Income, decimal Expenses, decimal Saved, decimal Balance,
-        decimal DebtPaid = 0m)
+        decimal DebtPaid = 0m, decimal Focus = 0m)
     {
         /// <summary>What the month actually kept. The chart's headline: it is the question the four-line version
         /// made people answer for themselves by eyeballing the gap between two wiggly lines, which nobody can do.</summary>
@@ -7468,10 +7576,54 @@ else
                 // another route; deploying one at a loan is the balance falling because the debt did.
                 decimal.Round(p.SavingAllocations
                     .Where(a => a.IsDisbursement && State.FindSavingBucket(a.SavingCategoryId) is { IsDebt: true })
-                    .Sum(a => Math.Abs(a.Amount.Amount)), 2)));
+                    .Sum(a => Math.Abs(a.Amount.Amount)), 2),
+                TrendFocusValue(p)));
         }
         return rows;
     }
+
+    /// <summary>
+    /// One month narrowed to the focused category or bucket (O14). Zero when nothing is focused — the caller only
+    /// reads it when something is.
+    /// <para>★ <b>Spending counts a categorised transfer out</b>, exactly as the budget rings and the By-budgets
+    /// header do since O4. If it didn't, the trend for "Food" would quietly disagree with the Food budget on the
+    /// screen next door, and the reader would have no way to tell which one was lying.</para>
+    /// <para>★ <b>Set aside is the bucket's NET</b> for the month, floored at zero — the same rule the account-wide
+    /// "Saved" uses, so focusing one bucket narrows the question without changing it. A month in which a sinking
+    /// fund paid the bill it had been filling reads as nothing set aside, not as negative saving.</para>
+    /// </summary>
+    private decimal TrendFocusValue(FinApp.Domain.Periods.Period p)
+    {
+        if (_trendSeries == TrendSeries.Spent && _trendCatId != Guid.Empty)
+        {
+            var spent = p.Expenses.Where(e => State.RootCategoryId(e.CategoryId) == _trendCatId)
+                            .Sum(e => Math.Abs(e.Amount.Amount))
+                      + p.AccountTransfersOut.Where(t => t.CategoryId is { } c && State.RootCategoryId(c) == _trendCatId)
+                            .Sum(t => Math.Abs(t.Amount.Amount));
+            return decimal.Round(spent, 2);
+        }
+        if (_trendSeries == TrendSeries.Saved && _trendBucketId != Guid.Empty)
+        {
+            var net = p.SavingAllocations.Where(a => a.SavingCategoryId == _trendBucketId).Sum(a => a.Amount.Amount);
+            return decimal.Round(Math.Max(0m, net), 2);
+        }
+        return 0m;
+    }
+
+    // Which category the Spent line is narrowed to, and which bucket the Set-aside line is (O14). Empty = the whole
+    // account, which is where both start and what every other figure on the screen means.
+    private Guid _trendCatId;
+    private Guid _trendBucketId;
+
+    /// <summary>True when the lower chart is drawing one category or one bucket rather than the account.</summary>
+    private bool TrendFocused =>
+        (_trendSeries == TrendSeries.Spent && _trendCatId != Guid.Empty)
+        || (_trendSeries == TrendSeries.Saved && _trendBucketId != Guid.Empty);
+
+    /// <summary>The focused thing's name, for the heading and the empty state.</summary>
+    private string TrendFocusName => _trendSeries == TrendSeries.Spent
+        ? State.CategoryName(_trendCatId)
+        : State.SavingBucketName(_trendBucketId);
 
     // ★ Two charts, not four lines on one axis. Money in / spent / net are FLOWS (what moved during a month);
     // balance is a STOCK (what was left standing at the end of it) and is routinely an order of magnitude bigger.
@@ -7576,8 +7728,11 @@ else
     /// tooltip cannot disagree about which number is being drawn.</summary>
     private Func<TrendRow, decimal> TrendPick => _trendSeries switch
     {
-        TrendSeries.Spent => r => r.Expenses,
-        TrendSeries.Saved => r => r.Saved,
+        // The focus is read here and nowhere else, for the same reason this selector exists at all: the axis, the
+        // line, the fill, the points and the tooltip all go through it, so they cannot disagree about whether they
+        // are drawing a category or an account.
+        TrendSeries.Spent => TrendFocused ? r => r.Focus : r => r.Expenses,
+        TrendSeries.Saved => TrendFocused ? r => r.Focus : r => r.Saved,
         TrendSeries.Kept => r => r.Net,
         _ => r => r.Balance,
     };
@@ -7832,11 +7987,9 @@ else
         // was invisible here entirely, however much money it moved.
         var xfer = State.Period.AccountTransfersOut.Sum(t => Math.Abs(t.Amount.Amount));
         if (xfer > 0m) InsertByAmount(slices, new BreakSlice(TransfersKey, Loc["Transfers out"], null, xfer, TransfersColor));
-        // Same unit and same label rule as the Breakdown's slice, through the same helpers — this donut is a second
-        // copy of that logic and the two must not disagree about the period they are both drawing. (It used to sum
-        // the disbursements; see the note on NetSetAsideTotal for why that double-counted.)
-        var saved = State.NetSetAsideTotal(State.Period.From, State.Period.To);
-        if (saved > 0m) slices.Add(new BreakSlice(SavedKey, SavedSliceLabel(State.Period.From, State.Period.To), null, saved, SavedColor));
+        // Through the same helper as the Breakdown's — this donut is a second copy of that logic and the two must not
+        // disagree about the period they are both drawing.
+        AddPaidOutSlices(slices, State.Period.From, State.Period.To);
         return slices;
     }
 
@@ -7980,7 +8133,8 @@ else
     /// name: <c>CategoryIcons.Effective</c> falls back rather than returning nothing.</summary>
     private string SliceSprite(BreakSlice s) =>
         s.Key == TransfersKey ? "swap"
-        : s.Key == SavedKey ? "target"
+        // Kind, not key: a payout is keyed by its bucket, which is a Guid like any category's.
+        : s.Kind == SliceKind.PaidOut ? "target"
         : s.Key == OtherKey ? "list"
         : BreakByFund ? CategoryIcons.Effective(State.FundIcon(s.Key), s.Label)
         : CategoryIcons.Effective(s.Icon, s.Label);
@@ -12573,19 +12727,23 @@ else
     private DateOnly _extDate;
     private Guid _extFundId;
     private string? _extNote;
+    private Guid _extCategoryId;
 
     private void OpenEditAccountTransfer(Guid id)
     {
         if (State.FindExternalTransfer(id) is not { } t) return;
         _extTransferId = id;
         _extAmount = t.Amount.Amount; _extDate = t.Date; _extFundId = t.FundId; _extNote = t.Note;
+        _extCategoryId = t.CategoryId ?? Guid.Empty;
         _modal = Modal.EditAccountTransfer;
     }
 
     private Task SaveAccountTransfer() => RunModal(async () =>
     {
         if (_extAmount <= 0 || State.FindExternalTransfer(_extTransferId) is not { } t) return;
-        await State.EditAccountTransfer(t, _extAmount, _extDate, _extFundId, _extNote);
+        // Always sent, never omitted: the modal renders the current value, so what it holds IS the user's answer —
+        // including Guid.Empty, which is how a category gets cleared. Omitting is reserved for clients with no field.
+        await State.EditAccountTransfer(t, _extAmount, _extDate, _extFundId, _extNote, _extCategoryId);
         CloseModal();
     });
 
@@ -12725,6 +12883,10 @@ else
     // Add-budget modal → inline-create a category (then return to the budget, with it selected).
     private void BudgetAddCategory() { _afterCreate = id => _budgetCatId = id; _modalBack.Push(() => _modal = Modal.AddBudget); OpenAdd(); }
     private void ExpenseAddFund() { _afterCreate = id => _fundId = id; _modalBack.Push(() => _modal = Modal.AddExpense); OpenAddFund(); }
+    // Both transfer modals. `_extTransferId` survives OpenAdd() — nothing clears it — so the edit modal re-renders
+    // against the right transfer when SaveAddCat's Back() returns here.
+    private void TransferAddCategory() { _afterCreate = id => _mTransferCategoryId = id; _modalBack.Push(() => _modal = Modal.Transfer); OpenAdd(); }
+    private void EditTransferAddCategory() { _afterCreate = id => _extCategoryId = id; _modalBack.Push(() => _modal = Modal.EditAccountTransfer); OpenAdd(); }
 
     // Modal navigation stack: opening a modal from inside another pushes a "reopen the parent" action,
     // so Cancel/Close steps back to the parent modal instead of closing everything.

@@ -367,9 +367,16 @@ public record TransferToAccountRequest(Guid DestinationAccountId, Guid FromFundI
 /// created in <see cref="DestinationAccountId"/>. Addressed by the pair id both rows carry, so a transfer recorded
 /// before that link existed can't be edited (it has no findable counterpart); the UI offers those the old one-sided
 /// delete instead. Empty <see cref="FromFundId"/>/<see cref="DestinationFundId"/> and a null <see cref="Date"/> keep
-/// what the transfer already has. Mirrors <c>BudgetingState.EditAccountTransfer</c>.</summary>
+/// what the transfer already has. Mirrors <c>BudgetingState.EditAccountTransfer</c>.
+/// <para><b>★ <see cref="CategoryId"/> carries three states, not two</b>, and the middle one is the point:
+/// <c>null</c> (the field absent) leaves the category alone, <see cref="Guid.Empty"/> clears it, and a real id sets
+/// it. A two-state "written whole" field — the rule <c>SetBankMappingRequest.TagId</c> uses — would be wrong here
+/// because there IS an older client for this route: a cached web build editing a transfer's amount omits the field,
+/// and under write-whole that would silently wipe a category the user had chosen. An unknown id clears rather than
+/// stores a dangling reference, mirroring the create path's guard.</para></summary>
 public record EditAccountTransferRequest(Guid DestinationAccountId, decimal Amount,
-    Guid FromFundId = default, Guid DestinationFundId = default, string? Note = null, DateOnly? Date = null);
+    Guid FromFundId = default, Guid DestinationFundId = default, string? Note = null, DateOnly? Date = null,
+    Guid? CategoryId = null);
 
 /// <summary>Settle (or re-settle) part of an "on behalf of another account" expense onto another account: the amount
 /// becomes that account's own expense (in the picked fund + category) and this expense is reduced by it, the two linked

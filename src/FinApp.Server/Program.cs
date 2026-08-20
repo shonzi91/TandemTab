@@ -1494,6 +1494,11 @@ accounts.MapPut("/{id:guid}/account-transfers/{pairId:guid}", async (Guid id, Gu
 
         outgoing.Transfer.Update(new Money(req.Amount, from.Currency), date, fundId, req.Note);
         outgoing.Transfer.SetFundSynced(fund.IsSynced);
+        // Only when the field is present: absent means "leave it alone", so an older client editing the amount can't
+        // silently wipe a category. Guid.Empty and an id this account doesn't own both clear it — the same guard the
+        // create path uses, rather than storing a dangling reference. Idempotent, as MutateTwoAsync requires.
+        if (req.CategoryId is { } cat)
+            outgoing.Transfer.SetCategory(from.FindCategory(cat) is not null ? cat : null);
         var destFundId = req.DestinationFundId != Guid.Empty && to.RootFunds.Any(f => f.Id == req.DestinationFundId)
             ? req.DestinationFundId
             : incoming.Deposit.FundId;

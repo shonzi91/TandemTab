@@ -685,6 +685,14 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     public IReadOnlyList<ExternalTransfer> AccountTransfersOutThisPeriod =>
         Period.AccountTransfersOut.OrderByDescending(t => t.Date).ToList();
 
+    /// <summary>This period's savings disbursements — the money-out leg of a goal payout. Period membership, not a
+    /// date window, so the ledger agrees with the tiles above it (see <c>HomePeriodSlices</c> for that trap).
+    /// <para>These are real outflows: <c>ExpectedClosingBalance</c> subtracts them. They belong in the expense list
+    /// for exactly the reason plain transfers do — a ledger that hides some of what left the account is the one view
+    /// that must not.</para></summary>
+    public IReadOnlyList<ExternalTransfer> DisbursementsThisPeriod =>
+        Period.ExternalTransfers.Except(Period.AccountTransfersOut).OrderByDescending(t => t.Date).ToList();
+
     // --- Category tree & budgets (reads) ----------------------------------
 
     // Pickers and the budget tree show only active (non-archived) categories; archived ones stay resolvable by
@@ -923,6 +931,48 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
         var ids = DisbursementsInRange(from, to).Select(t => DisbursementBucketId(t.Id)).Distinct().ToList();
         return ids is [{ } only] ? FindSavingBucket(only)?.Name : null;
     }
+
+    /// <summary>
+    /// Money deployed <b>out of</b> savings buckets in [from, to], grouped by the bucket it left, biggest first.
+    /// <para>★ This is what the Breakdown ring draws for a payout, and it is a real movement of the balance —
+    /// <c>Period.ExpectedClosingBalance</c> subtracts <c>ExternalOutTotal</c>, which includes disbursements. Twelve
+    /// months of setting €1,000 aside move nothing (the money is still in the account); the month you send €12,000
+    /// at the loan, €12,000 leaves. A chart of what left your balance has to show the second one, and the ring
+    /// showed neither before this existed: <see cref="AccountTransfersInRange"/> filters disbursements out, and
+    /// <see cref="NetSetAsideByBucket"/> drops any bucket that ended the window down.</para>
+    /// <para>An unresolvable bucket keeps its money under an empty name rather than being dropped — the caller
+    /// labels it; losing the biggest figure on the screen to a dangling id is the worse failure.</para>
+    /// </summary>
+    public IReadOnlyList<(Guid BucketId, string Name, decimal Amount)> DisbursementsByBucket(DateOnly from, DateOnly to) =>
+        DisbursementsInRange(from, to)
+            .GroupBy(t => DisbursementBucketId(t.Id) ?? Guid.Empty)
+            .Select(g => (BucketId: g.Key, Name: FindSavingBucket(g.Key)?.Name ?? "",
+                          Amount: g.Sum(t => Math.Abs(t.Amount.Amount))))
+            .Where(x => x.Amount > 0m)
+            .OrderByDescending(x => x.Amount)
+            .ToList();
+
+    /// <summary>Every disbursement in [from, to] that paid out of the given bucket, newest first — the rows behind
+    /// one payout slice.</summary>
+    public IReadOnlyList<ExternalTransfer> DisbursementsForBucket(DateOnly from, DateOnly to, Guid bucketId) =>
+        DisbursementsInRange(from, to)
+            .Where(t => (DisbursementBucketId(t.Id) ?? Guid.Empty) == bucketId)
+            .ToList();
+
+    /// <summary>Everything deployed out of savings in [from, to], across every bucket.</summary>
+    public decimal DisbursedTotal(DateOnly from, DateOnly to) => DisbursementsByBucket(from, to).Sum(x => x.Amount);
+
+    /// <summary>
+    /// What the savings earmark did over [from, to], <b>signed and un-floored</b> — positive when more went in than
+    /// came out, negative in the month a bucket is emptied at its goal.
+    /// <para>⚠️ Deliberately not <see cref="NetSetAsideTotal"/>, which floors each bucket at zero and would report
+    /// "nothing set aside" for the very month that matters most. This is a statement about the earmark, not a slice
+    /// of a pie — a pie has no negative wedge, a sentence does.</para>
+    /// </summary>
+    public decimal SetAsideNetSigned(DateOnly from, DateOnly to) =>
+        Account.Periods.SelectMany(p => p.SavingAllocations)
+            .Where(a => a.Date >= from && a.Date <= to)
+            .Sum(a => a.Amount.Amount);
 
     /// <summary>
     /// What each bucket <b>net</b> took in over [from, to] — every allocation summed, so a deposit adds and any
@@ -2526,11 +2576,15 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
 
     /// <summary>Edit both halves of an account-to-account transfer. Two accounts change, so this uses the
     /// no-optimism spine: the other account isn't loaded here, and the server's result is the only truth.</summary>
-    public async Task EditAccountTransfer(ExternalTransfer transfer, decimal amount, DateOnly date, Guid fromFundId, string? note)
+    /// <param name="categoryId">The budget this outflow counts against. <see cref="Guid.Empty"/> clears it; null
+    /// leaves it untouched — see <see cref="EditAccountTransferRequest.CategoryId"/> for why that distinction exists.
+    /// The edit modal always passes one of the first two, since it renders the current value.</param>
+    public async Task EditAccountTransfer(ExternalTransfer transfer, decimal amount, DateOnly date, Guid fromFundId, string? note,
+        Guid? categoryId = null)
     {
         if (amount <= 0m || transfer.AccountTransferId is not { } pairId || transfer.ToAccountId is not { } destination) return;
         await ExecuteAsync(id => api.EditAccountTransferAsync(id, pairId,
-            new EditAccountTransferRequest(destination, amount, fromFundId, default, note, date)));
+            new EditAccountTransferRequest(destination, amount, fromFundId, default, note, date, categoryId)));
         _cache.Remove(destination);   // its deposit changed server-side — a switch must refetch
     }
 

@@ -1713,16 +1713,27 @@ html.dark .goal-stat-v-period { color: #e8eef0; }
 html.dark .goal-stat-pct { color: #9fb0a6; }
 /* O12 — the Goals tile only. `.goal-stat` is shared with the Spending view switcher, so everything here hangs off
    a modifier and the base rules are untouched. Layout and size only: the figure keeps `.goal-stat-v`'s green and
-   the pill keeps `.settle-tag`'s, both already correct in dark mode. */
-.goal-stat-hero { flex-flow: column nowrap; align-items: flex-start; gap: 1px; padding: 10px 16px; }
-.goal-stat-hero .goal-stat-v { font-size: 1.62rem; }
+   the pill keeps `.settle-tag`'s, both already correct in dark mode.
+   ★ It is a BAR, not a tile: it takes the whole row and puts the three facts on one baseline. As a column it was
+   three stacked lines occupying a third of the width, which made a summary read as tall as the rows it summarises. */
+.goal-stat-hero { flex: 1 1 100%; flex-flow: row wrap; align-items: baseline; gap: 2px 10px; padding: 7px 14px; }
+.goal-stat-hero .goal-stat-v { font-size: 1.3rem; }
 /* The two facts sit on their own line, separated by space rather than by a middot inside a bracket — one is an
    amount and the other a ratio, and reading them as a single parenthetical made neither land. */
 .goal-stat-sub { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; margin-top: 3px; }
+/* In the bar they ride at the far end of the same line as the figure, not on a line of their own. */
+.goal-stat-sub-end { margin-left: auto; margin-top: 0; }
 .goal-stat-add { font-size: .74rem; font-weight: 600; color: #6b7d72; }
 html.dark .goal-stat-add { color: #9fb0a6; }
 /* The pill is already spaced by the flex gap; its own left margin would double it. */
 .goal-stat-sub .settle-tag { margin-left: 0; }
+/* ⚠️ Must sit AFTER .goal-stat-sub-end, not in the 560px block further up: same specificity, so the later rule
+   wins whatever the media query says. On a phone the facts wrap under the figure and align left with it — an
+   auto margin there would strand them against the right edge on a line of their own. */
+@media (max-width: 560px) {
+    .goal-stat-sub-end { margin-left: 0; margin-top: 2px; }
+    .goal-filters .fund-add { margin-left: 0; }
+}
 .goal-done-badge { margin-left: 5px; }
 
 /* "The periods that cost you most" — a factual read-out inside Trends. Rows, not cards: it is a short ranked
@@ -3113,6 +3124,10 @@ html.dark .spend-menu > .link:hover { background: #1b2230; color: var(--tm-mint)
 
 /* Goals: kind is a filter over one grid, not a section each. */
 .goal-filters { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 0 0 14px; }
+/* "Add goal" moved off the summary bar onto this row — the chips answer "which goals", the button acts on them,
+   and the bar above is left as a statement with no control in it. */
+.goal-filter-chips { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.goal-filters .fund-add { margin-left: auto; margin-top: 0; align-self: center; }
 .goal-filters .chip-n { opacity: .6; font-variant-numeric: tabular-nums; margin-left: 3px; }
 /* (The on-entry account picker was removed — the last-open account is restored from storage instead, so the
    modal only ever re-asked a question already answered. Switching lives in the top-bar dropdown, .acct-drop.) */

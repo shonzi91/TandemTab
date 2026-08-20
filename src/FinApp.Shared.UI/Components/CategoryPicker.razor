@@ -32,6 +32,19 @@
                        @bind="_filter" @bind:event="oninput" @onclick:stopPropagation="true" />
             }
             <ul class="cat-picker-opts">
+                @* The "none" row leads the list and is not filtered out by the search box: it is the way to UNDO a
+                   choice, and having it vanish the moment the user types would make clearing a category require
+                   emptying the box first. Off by default, so the four expense call sites are unchanged. *@
+                @if (AllowNone)
+                {
+                    <li>
+                        <button type="button" class="cat-picker-opt cat-picker-none @(Value == Guid.Empty ? "sel" : "")"
+                                @onclick="() => Pick(Guid.Empty)" @onclick:preventDefault="true">
+                            <CatIcon Name="@CategoryIcons.Fallback" />
+                            <span class="cat-picker-opt-lbl">@NoneText</span>
+                        </button>
+                    </li>
+                }
                 @foreach (var (cat, depth) in Filtered)
                 {
                     <li>
@@ -59,6 +72,17 @@
     [Parameter] public string? Class { get; set; }
     [Parameter] public bool Disabled { get; set; }
 
+    /// <summary>Offer an explicit "no category" row, and read <see cref="Guid.Empty"/> as that rather than as
+    /// "nothing picked yet". For fields where a category is genuinely optional — an account transfer counts as money
+    /// out whether or not it names a budget — so the empty state is an answer, not an unfinished form.</summary>
+    [Parameter] public bool AllowNone { get; set; }
+
+    /// <summary>What the "none" row says. Defaults to "None"; call sites name the absence in their own terms
+    /// ("Not budgeted"), which is more use than a generic word.</summary>
+    [Parameter] public string? NoneLabel { get; set; }
+
+    private string NoneText => NoneLabel ?? Loc["None"];
+
     private bool _open;
     private string _filter = "";
 
@@ -79,5 +103,6 @@
 
     private Category? Selected => Options.FirstOrDefault(o => o.Category.Id == Value).Category;
     private string SelectedIcon => Selected is { } c ? CategoryIcons.Effective(c.Icon, c.Name) : CategoryIcons.Fallback;
-    private string SelectedName => Selected?.Name ?? Loc["Choose…"];
+    // With AllowNone, empty is a stated answer ("Not budgeted") rather than an unanswered question ("Choose…").
+    private string SelectedName => Selected?.Name ?? (AllowNone ? NoneText : Loc["Choose…"]);
 }
