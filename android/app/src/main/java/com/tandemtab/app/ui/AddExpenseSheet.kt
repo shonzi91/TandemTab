@@ -232,17 +232,17 @@ fun AddSheet(
         when {
             editingMode -> {
                 val d = currentDraft() ?: run { hint = "Enter an amount, category and fund."; return }
-                // ⚠️ tagId MUST be sent back even when unchanged. The server's expense edit clears the tag on an
-                // omitted value (unlike the time, which it deliberately carries across), so the call that used to
-                // omit it was stripping the label off any row whose amount was corrected here.
-                // ⚠️ clearTime is what makes emptying the field mean something. On the edit the server treats an
-                // omitted time as "leave it alone" — so that an older client correcting an amount can't strip the
-                // clock off a row — which means null alone can never say "I don't know when".
+                // ⚠️ clearTime and clearTag are what make emptying either field mean something. On the edit the
+                // server treats an omitted value as "leave it alone" — so an older client correcting an amount
+                // can't strip the clock or the label off a row — which means null alone can never say "none".
+                // The tag followed the opposite rule until S111 and silently cleared on omission; both are the
+                // same rule now, and the sheet still sends the current tag back either way.
                 onEditExpense(
                     editing!!.id,
                     AddExpenseRequest(
                         d.categoryId, d.amount, d.fundId, d.date, d.note.ifBlank { null },
                         tagId = d.tagId, time = d.time, clearTime = d.time == null && editing.time != null,
+                        clearTag = d.tagId == null && editing.tagIds.isNotEmpty(),
                     ),
                 ) { onDismiss() }
             }

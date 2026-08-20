@@ -259,6 +259,38 @@ public sealed class Expense : Entity
     /// ⚠️ Deliberately separate from <see cref="OriginalAmount"/>, which answers the settlement question instead.</summary>
     public Money AmountBeforeRefund => Amount + RefundedMoney;
 
+    /// <summary>
+    /// Carry every piece of <b>body data</b> from this expense onto <paramref name="rebuilt"/>: the installment
+    /// link, tags, trip, clock time, synced flag, bank provenance, foreign figures and refund total.
+    ///
+    /// <para><b>★ Why this exists.</b> Editing, settling and refunding all work by removing the row and building a
+    /// new one — the ledger is append-only, so each mints a new id — and each of them used to re-list what it
+    /// carried by hand. They disagreed, and silently: <c>SetSettlement</c> carried the installment link and nothing
+    /// else, so settling an expense dropped its label, its trip, its time and its <b>bank link</b>, which is what
+    /// stops the next sync offering to log the same transaction a second time. <c>EditExpense</c> carried three of
+    /// the eight, so correcting an amount erased what you had typed in a foreign currency and any refund recorded
+    /// against the row. Every new body field has had to be remembered in three places, and twice it was not — so
+    /// there is now one place, and <c>ExpenseBodyDataTests</c> fails the moment a new field is not added to it.</para>
+    ///
+    /// <para>The ledger fields — amount, category, date, member, fund, note, and the settlement trio — are
+    /// deliberately <b>not</b> here. They are constructor arguments precisely because they are what those
+    /// operations legitimately change; body data is what has to survive them. <see cref="FundSynced"/> is the one
+    /// borderline case: it is carried, but both edit callers recompute it immediately afterwards because an edit
+    /// can move the row to a different wallet.</para>
+    /// </summary>
+    public void CopyBodyDataTo(Expense rebuilt)
+    {
+        ArgumentNullException.ThrowIfNull(rebuilt);
+        rebuilt.SetInstallmentLink(InstallmentGroupId, Part, DebtBucketId);
+        rebuilt.SetTags(_tagIds);
+        rebuilt.SetTrip(TripId);
+        rebuilt.SetTime(Time);
+        rebuilt.SetFundSynced(FundSynced);
+        rebuilt.SetBankLink(BankExternalId, AutoFiled);
+        rebuilt.SetForeign(ForeignAmount, ForeignCurrency);
+        rebuilt.SetRefunded(RefundedAmount);
+    }
+
     public Expense(
         Guid categoryId,
         Money amount,

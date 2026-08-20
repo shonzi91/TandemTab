@@ -231,7 +231,7 @@ against a moving feature set is work that gets redone. R4 lands before R7 for th
 | # | Phase | Ends when | Size |
 |---|-------|-----------|------|
 | **R1** | Clear the feature backlog | The feature set is declared **frozen** | L · ✅ **done 2026-08-05** |
-| **R2** | Android catch-up + theme verification **+ an APK pipeline** | Android at web parity; light/dark swept on **both** surfaces; **and CI can produce a release APK that runs on a real device** | L · web half ✅ · **90%** · pipeline ✅ · **2 rows open** (`/import`, `/funds/{id}/currency`) |
+| **R2** | Android catch-up + theme verification **+ an APK pipeline** | Android at web parity; light/dark swept on **both** surfaces; **and CI can produce a release APK that runs on a real device** | L · ✅ **done 2026-08-20 (S111)** — all four exit criteria met. **108/120 (90%)**, and every one of the 12 remaining routes is *decided*: 7 deferred, 3 non-gaps, 2 stated lags |
 | **R3** | AI assistant | See the scoping note — the whole of it is not one phase | L+ |
 | **R4** | Railway migration (hosting **and** DB) | Serving from Railway, Neon + Cloud Run retired | M–L |
 | **R5** | Landing, terms, privacy + Pro-split final verification **+ billing go-live** | The page describes the real product; the paywall is settled **and can actually take money** | M–L |
@@ -344,9 +344,12 @@ against a moving feature set is work that gets redone. R4 lands before R7 for th
     whether a refusal is bearable.** S106 put trips behind Pro and S107 found a free user could fill in the entire
     trip form and get a 402 on Save. Every endpoint involved was "called". **A paywall must never strand state**
     is the rule that came out of it, and no scanner will ever report it.
-  - ⬜ **Still open beyond the endpoint table:** Android **i18n (en/bg)** is deferred and is its own session;
+  - ~~⬜ **Still open beyond the endpoint table:** Android **i18n (en/bg)** is deferred and is its own session;
     **F6's goal-celebration moment** needs a per-device seen-set the web keeps in `localStorage`; and
-    **`GET /accounts/{id}/breakdown`** does not exist, which is what blocks the native Breakdown donut.
+    **`GET /accounts/{id}/breakdown`** does not exist, which is what blocks the native Breakdown donut.~~
+    ✅ **All three are now decided in writing (S111)**, together with `/import`, `/funds/{id}/currency`, the two
+    server-blocked rows and the visual drift, in MOBILE.md's **stated lag** box. They are still *not built* —
+    what changed is that each one is a decision with a named cost and an expiry, which is exit criterion #4.
 - **★ Distribution — the constraint the parity count could not see (Session 109).** Until S109 the Android app
   **built on exactly one Windows machine and had no way to reach a phone that wasn't plugged into it**: CI built
   the .NET solution and never once compiled `android/`. **Every parity row this phase has closed since S90
@@ -379,14 +382,16 @@ against a moving feature set is work that gets redone. R4 lands before R7 for th
 - iOS stays **ON HOLD**.
 
 > **Exit (written down at last, Session 109 — R1's lesson was that a phase which trails off gives the next one no
-> ground to stand on).** R2 ends when **all four** hold:
+> ground to stand on).** ✅ **All four hold as of Session 111 (2026-08-20). R2 is closed.** R2 ended when:
 > 1. ✅ **`node tools/r2scan.js --list` has no row left that is a real gap** — with the three audited-away routes
 >    (`to-budget`, `to-savings`, `/structure`) recorded as *not gaps* rather than quietly counted as done, and
 >    the **bank back half** either built-and-verified against real credentials or **explicitly deferred in
 >    writing**. ~~It cannot be verified on the dev machine, so "we'll check later" is not an exit.~~
 >    **Done S110: deferred in writing** in [docs/MOBILE.md](docs/MOBILE.md), on the audience (a two-email
->    allowlist) — *not* on verifiability, which turned out to be true of one route rather than seven. **`/import`
->    and `/funds/{id}/currency` remain the two open rows.**
+>    allowlist) — *not* on verifiability, which turned out to be true of one route rather than seven. ~~**`/import`
+>    and `/funds/{id}/currency` remain the two open rows.**~~ **Both are now stated lags (S111)** — decided, costed
+>    and given an expiry in MOBILE.md, which is what this criterion asks for. Neither is built, and the scanner
+>    will keep printing them: the parity number should show the lag, not launder it.
 > 2. ✅ **Light/dark swept on both surfaces** — web ✅ (S89); Android's sweep found a real bug (the `error` slot) as
 >    late as S92, so it is re-swept over everything built since. Re-swept S109.
 > 3. **★ A build that CI can produce and a phone can run** — the *pipeline*, not the distribution.
@@ -401,10 +406,20 @@ against a moving feature set is work that gets redone. R4 lands before R7 for th
 >    refuses, and the only fix is uninstall-and-reinstall, which drops the app's local state. Doing it now means no
 >    build anyone is ever handed has to be uninstalled later. It obliged us to distribute nothing, and nothing was
 >    distributed. **The signer DN on a CI run is the proof**, not the fact that secrets exist.
-> 4. **The stated lag is written down.** Anything deliberately not ported — i18n, F6's celebration, the Breakdown
->    donut pending `GET /breakdown`, and now the **bank back half** — is named in [docs/MOBILE.md](docs/MOBILE.md)
->    as a decision, not left to be rediscovered as a gap. The parity rule this roadmap set (freeze web work, or
->    accept a *stated* lag) only works if the lag is actually stated.
+> 4. ✅ **The stated lag is written down (Session 111, 2026-08-20).** Everything deliberately not ported is named
+>    in [docs/MOBILE.md](docs/MOBILE.md#-the-stated-lag--everything-android-deliberately-does-not-have-session-111-2026-08-20)
+>    with its cost and the condition that expires it: **i18n (en/bg)**, **F6's celebration**, the **Breakdown
+>    donut**, **`/import`**, **`/funds/{id}/currency`**, the two **server-blocked** rows (F4 round-ups, the
+>    fund↔bank toggle), the **bank back half** (its own box), and the one axis no scanner sees — **the web's
+>    S104–S110 visual work**. The parity rule this roadmap set (freeze web work, or accept a *stated* lag) only
+>    works if the lag is actually stated.
+>    ★ **Two of them were mis-sized until they were written up.** The Breakdown donut is not a client row at all
+>    — `GET /breakdown` **does not exist** on the server. And `/funds/{id}/currency` is a **server-read** row: no
+>    thin contract carries a fund's currency or rate, so the phone converts nothing and an expense from a
+>    foreign-cash wallet is stored **at face value in the account currency**. Writing the lag down found a wrong
+>    number, which is the argument for the criterion.
+>    ⚠️ **The parity table in MOBILE.md was also reconciled against `r2scan` the same day** — seven rows had been
+>    sitting there as open backlog long after the path was wired. A backlog nobody re-measures overstates itself.
 
 ### R3 — AI assistant — ⚠️ scope this before starting
 **Two different assistants are specced in this repo, and only one of them is a pre-promotion-sized job.**

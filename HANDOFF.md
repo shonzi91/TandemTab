@@ -1,6 +1,70 @@
 # TandemTab (FinApp) — session handoff
 
-Last updated: 2026-08-19 (Session 110 — **R2's last two open decisions closed, a feature the owner asked for
+Last updated: 2026-08-20 (Session 111 — **R2 is closed, and writing down what it deliberately skipped found two
+rows that were mis-sized and one wrong number. Then a bug sweep over the standing feedback: three rebuild paths
+that each carried a different subset of an expense's data, and a contract whose two neighbouring fields meant
+opposite things.**
+**504 + 50 + 377 green. NOT deployed — live is still `finapp-00314-bw8`.**
+
+★★ **R2's fourth exit criterion, which is a paragraph and was worth more than a paragraph.** The rule this
+roadmap set was *freeze web work, or accept a **stated** lag* — and a lag stated only as a number in a scanner is
+not stated. Everything the phone deliberately does not have is now a row in **MOBILE.md's stated-lag box** with a
+cost and an expiry: i18n, F6's celebration, the Breakdown donut, `/import`, `/funds/{id}/currency`, the two
+server-blocked rows, bank's back half (its own box), and **the one axis no scanner sees — the web's S104–S110
+visual work**. R2's other three criteria were already met, so **R2 is done.**
+★★ **Writing it down was not bookkeeping — it re-sized two rows and found a live bug.**
+- **The Breakdown donut is not a client row at all.** `GET /accounts/{id}/breakdown` **does not exist** on the
+  server. It has been carried as blocked-on-a-backend-endpoint since S90 without anyone saying the endpoint was
+  never written.
+- ⚠️ **`/funds/{id}/currency` is a SERVER-READ row, and it hides a wrong number.** No thin contract carries a
+  fund's currency or rate — `FundRowDto` has neither, and `Currency` appears in `FinApp.Contracts` only as the
+  *account's*. On the web, picking a foreign-cash wallet changes what the Amount field **means** (the modal says
+  so: *"Amounts spent from this wallet are typed in {CUR} and stored in {account currency}"*), the client converts
+  once at entry, and the server stores what it is given without re-converting. **Android has neither figure, so
+  100 kr typed on the phone is stored as €100** — in the one situation the feature exists for. Verified by
+  construction (the fields are absent from the contract, the DTO and the sheet), **not** on a device.
+★ **The parity table was reconciled against the scanner and seven rows had gone stale** — tags, onboarding,
+transfers-out, savings movements, expense labels, income-category edits and two trip routes were all still listed
+as open backlog long after the path was wired. **108 of 120 (90%), and all 12 remaining routes are decided:** 7
+deferred, 3 audited non-gaps, 2 stated lags. A backlog nobody re-measures overstates itself in the direction that
+looks like work left to do.
+
+★★ **The bug sweep: three ways to change an expense, three different ideas of what an expense is.** Every one of
+them rebuilds the row (the ledger is append-only, so each mints a new id) and each re-listed by hand what it
+carried across. They disagreed, silently:
+- **`SetSettlement` carried the installment link and nothing else** — settling an expense dropped its label, its
+  trip, its clock time, its synced flag and **its bank link**. That last one is the expensive one: the row stops
+  matching the transaction it came from, so **the next sync offers to log the same expense again.** Named as a
+  real bug in S110 and left alone deliberately; this is that change.
+- **`EditExpense` carried three of the eight** — so correcting an amount erased **what you typed in a foreign
+  currency** and **any refund recorded against the row**, taking the refund's undo with it. *That second one was
+  new: the refund shipped in S110 and never reached the edit path.* Found this session, not previously known.
+- **Fixed by construction, not by adding two more hand-copies:** one `Expense.CopyBodyDataTo`, called by all
+  three. ★ The guard is **`ExpenseBodyDataTests`, written by reflection** — it walks every public property of
+  `Expense` and fails unless each survives the rebuild, with a per-path allow-list of what that operation is
+  *supposed* to change. **A new body field now fails the test until it is carried.** Proven by reverting the
+  settle fix: `FundSynced was not carried across the rebuild`.
+
+★★ **The `ClearTag` contract trap, closed (flagged in S105, deferred through the whole of R2).** On the same
+request, an omitted `TagId` **cleared** the label while an omitted `Time` was **left alone** — and the reasoning
+written beside the time (*an older client correcting an amount must not silently strip the row*) applies to the
+tag word for word. It had already cost the real bug it predicts: the native edit omitted the tag, so correcting an
+amount on the phone stripped the label, probably from the day tags shipped. Both fields now follow the same rule;
+clearing is `ClearTag`, wired through the contract, the server, the web modal (`_expenseHadTag`, mirroring
+`_expenseHadTime`) and the Android sheet. **A request where two neighbouring fields read the same and mean
+opposite things is a trap for whoever writes the next client.**
+
+⚠️ **Verification status, stated plainly.** Domain + server + persistence: **504 + 50 + 377 green**, including
+three new reflection tests and a server test that edits an expense *without* mentioning its tag. Android **compiles
+clean** (`:app:compileDebugKotlin`). **Not** done: the web modal's clear-a-label path is not browser-verified, the
+Android sheet is not emulator-verified, and **nothing is deployed** — live is still S110's `finapp-00314-bw8`.
+
+#### Next session
+1. **Deploy** — this is a server + client change and it is sitting in the working tree.
+2. **The rest of the feedback sweep** is listed and prioritised in the session log below; the top open item is the
+   Android foreign-wallet wrong number, which starts with two fields on `FundRowDto`.
+
+Previously: 2026-08-19 (Session 110 — **R2's last two open decisions closed, a feature the owner asked for
 shipped, and a bug that had been silently disabling the bank sync on every app open since it was written.**
 **501 + 50 + 376 green. Live: `finapp-00314-bw8`. Everything committed + pushed.**
 
@@ -85,7 +149,7 @@ as the signing-key argument, and it had to be uninstalled to proceed. ⚠️ **V
 needs two temporary edits** (`debug` `API_BASE_URL` → `http://10.0.2.2:5179`, plus `usesCleartextTraffic`); both
 were reverted and are **not** in the commit.
 
-#### Next session — R3 (the owner's call)
+#### Next session — R3 (the owner's call) — *as written in S110; item 3 was done in S111*
 1. **★ Scope R3 before writing any of it.** Two different assistants are specced in this repo and only one is a
    pre-promotion-sized job — see [OPEN-BETA.md](OPEN-BETA.md#r3--ai-assistant--️-scope-this-before-starting).
    The recommendation there stands: ship **BACKLOG #17's "narrate, don't compute"** layer first (cross-surface,
@@ -562,6 +626,80 @@ a separate balance axis — because flows and a stock were sharing one scale. **
 ✅ **Committed and the web half is DEPLOYED** (Session 93 catch-up): Android sharing as `596eea5`, the web batch
 as `de51071`, now live on **`finapp-00280-4s8`** (traffic forced `--to-latest`; run URL + tandemtab.com 200; 5
 `secretKeyRef`s; no WARNING+ logs). Prior context below is Session 91.)
+
+## Session 111 (2026-08-20) — **R2 closed, and the standing feedback swept into one list — with three of it fixed.**
+
+Owner ask, in two halves: *close R2*, and *collect the issues and bugs from feedback so they can be resolved
+before R3 starts.*
+
+### ★★ The open-issue sweep — one list, from every place feedback has been landing
+
+Sources: [BETA-FINDINGS.md](BETA-FINDINGS.md), [UX-BACKLOG.md](UX-BACKLOG.md), [BACKLOG.md](BACKLOG.md),
+[FEATURE-BACKLOG.md](FEATURE-BACKLOG.md), the carried "still open" lists in this file, and a read of the code
+behind each claim. **Every row below was checked against the code this session, not copied forward** — which is
+how two of them turned out to be worse than their write-ups and several turned out to be already done.
+
+**Fixed this session (3):**
+
+| | Issue | Was |
+|---|---|---|
+| ✅ | `SetSettlement` dropped a settled expense's label, trip, time, synced flag and **bank link** | A real bug, named in S110 and deliberately left for its own change |
+| ✅ | `EditExpense` dropped the **foreign figures** and **any refund** — correcting an amount erased both, and the refund's undo with it | **New**; the refund landed in S110 and never reached the edit path |
+| ✅ | The **`ClearTag` contract trap** — an omitted tag cleared the label, an omitted time did not | Flagged S105, deferred through R2 |
+
+**Open, ranked. The top three are wrong numbers or lost data; the rest is polish and product judgement:**
+
+1. ⚠️ **Android stores the wrong figure for a foreign-cash wallet.** See the stated-lag box in MOBILE.md. **Starts
+   on the server:** `currency` + `rate` onto `FundRowDto`/`FundOptionDto`, then the sheet labels the Amount field
+   and converts the way the web does. Until then the phone has no way to know what a wallet's amounts mean.
+2. ⚠️ **A phone-linked bank connection tracks `AccountIds[0]` and cannot be re-pointed from the phone**, not even
+   by disconnecting and re-linking. Deferred with bank's back half, on the audience; it is the sharpest of the
+   five costs written up in that box and the first to pick up when the allowlist widens.
+3. ⚠️ **`POST /bank/ack` shipped to Android without its undo** (`/bank/reset`) — a semi-destructive action with no
+   way back on the surface that offers it. Same shape as S108's settle/unsettle finding. In the bank deferral.
+4. **There is no background bank check at all** — new transactions are learned on open, on account switch and by
+   manual refresh only, throttled 15 minutes server-side. Opening twice inside 15 minutes will not re-check. By
+   design, but it is a *user-visible* design and nobody has decided it deliberately.
+5. **UX-BACKLOG #11 — accessibility.** Control accessible names are still icon glyphs and `title`-only in places;
+   marked "in progress" since S81. The only item from the original beta report that is neither shipped nor closed
+   as stale. ⚠️ It also owns the **32 sub-4.5:1 light-theme findings** the S89 sweep deliberately did not touch
+   (brand green at 3.34:1) — that is a product-palette decision, not a theme bug, and it belongs to this row.
+6. **Verification debt, unchanged since S88/S89:** the chart animations and F6's shared-account "together" line
+   have **never been seen with real data**. Both are cheap to check and have been carried for twenty sessions.
+7. **The Android refund row is built and compiles but was never exercised** (S110's emulator run stopped at the
+   sign-in screen). An emulator session, not a build.
+8. **BACKLOG #16 — audit the fourth savings-bucket kind (`Investment`).** A permanent extra toggle on the
+   add/edit modal plus a Goals filter chip, and it is not clear it earns them. ⛔ **Deliberately blocked on real
+   usage data** — removing a `SavingKind` burns the value, as the reverted `PlannedExpense` kind did.
+9. **UX-BACKLOG #10 — pin/sort a focus debt.** Deferred on purpose until someone actually has a long goal list.
+10. **Housekeeping:** dead CSS `.debt-progress` / `.debt-prog-cap`; `ReopenTrip` still has zero callers (it works,
+    it just has nowhere to be pressed — ask before removing rather than deleting a working path).
+11. ⛔ **Production risk, not a bug:** a traffic spike fans Cloud Run instances into **Neon's connection ceiling**.
+    R4 retires it; if R4 slips, the pooled connection string + a `max-instances` cap become mandatory before R7.
+
+★ **Three things the sweep took OFF the list**, because reading the code beat trusting the write-up: BETA-FINDINGS'
+two "lower-severity" items (money overview on Home, next-period discoverability) both shipped in S74–S79 and were
+never ticked; UX #12 was already closed as stale; and the FEATURE-BACKLOG is entirely cleared (F5 dropped by the
+owner, F3 shipped long before anyone marked it).
+
+### R2 — the fourth criterion, and what writing it down cost the two rows it named
+
+See the top-of-file entry for the findings. The mechanical part: MOBILE.md gained the **stated-lag box**,
+OPEN-BETA.md's criterion #4 is ticked with the two re-sizings recorded, the phase table marks **R2 done**, and the
+parity table was reconciled against `node tools/r2scan.js --list` (**108 of 120**, pasted from the run rather than
+remembered, per the rule that document sets for itself).
+
+### The expense-rebuild fix, in one place
+
+`Expense.CopyBodyDataTo` carries the installment link, tags, trip, time, synced flag, bank link, foreign figures
+and refund total. The ledger fields — amount, category, date, member, fund, note, the settlement trio — are
+deliberately **not** in it: they are constructor arguments because they are what these operations legitimately
+change. Body data is what has to survive them.
+★ **The guard is reflection, not a list.** `ExpenseBodyDataTests` walks every public property of `Expense` and
+asserts it survives each rebuild, minus a per-path allow-list of what that path really does change. Listing the
+fields by hand is precisely what failed three times; a test that lists them by hand would fail the same way.
+⚠️ **`FundSynced` is the one borderline field** — it is carried, but both edit callers recompute it immediately
+afterwards, because an edit can move the row to a different wallet.
 
 ## Session 109 (2026-08-19) — **The APK pipeline. The phone app can leave this machine now.**
 

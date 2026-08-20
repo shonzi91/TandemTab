@@ -681,6 +681,10 @@ data class AddExpenseRequest(
     // ⚠️ Only meaningful on an EDIT. An omitted time means "leave it alone" there, so clearing one needs a way to
     // say so that null cannot; on an add it is simply ignored.
     val clearTime: Boolean = false,
+    // ⚠️ The same, for the label, and for the same reason — since S111 the server treats an omitted tag on an edit
+    // as "leave it alone" (it used to CLEAR it, which is what stripped labels off rows edited from this app). So
+    // "No label" now has to be said out loud.
+    val clearTag: Boolean = false,
 )
 
 /** What POST/PUT/DELETE /expenses returns: the new snapshot version, the row's id, the (added/edited) row for the

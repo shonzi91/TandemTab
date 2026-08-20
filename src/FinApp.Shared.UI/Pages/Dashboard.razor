@@ -8103,6 +8103,9 @@ else
     // Set when the edit form opened on an expense that already had a time, so blanking the box is understood as a
     // deliberate clear rather than as "said nothing" — the two mean different things on the edit request.
     private bool _expenseHadTime;
+    // The same, for the label: emptying the picker on a row that had one is a clear; on a row that never had one it
+    // is saying nothing. Since S111 the tag follows the time's rule on the wire instead of clearing on omission.
+    private bool _expenseHadTag;
     private DateOnly? _dayView;   // when set, the Expenses tab focuses a single day
     private bool _calendar;       // Expenses tab: month-grid view instead of the list
 
@@ -11570,7 +11573,7 @@ else
         if (State.FindExpense(expenseId) is not { } e) return;
         _editExpenseId = expenseId;
         _categoryId = e.CategoryId; _amount = e.Amount.Amount; _fundId = e.FundId; _note = e.Note; _expenseDate = e.Date;
-        _fTagId = e.TagId; _newTagName = null; _tagFiledTo = null;
+        _fTagId = e.TagId; _newTagName = null; _tagFiledTo = null; _expenseHadTag = e.TagId is not null;
         _expenseTime = e.Time; _expenseHadTime = e.Time is not null;
         _expTripId = e.TripId ?? Guid.Empty;   // the trip is editable here — see the picker in the modal
         _editOpenedFromTrip = false;           // TripEditExpense sets it back on, after this call
@@ -11588,7 +11591,8 @@ else
             await State.SetExpenseTrip(expenseId, _expTripId == Guid.Empty ? null : _expTripId);
         // A blanked box means "clear it" only if there was something to clear; otherwise it is simply saying nothing.
         await State.EditExpense(expenseId, _categoryId, _amount, _fundId, _note, _expenseDate, tagId: _fTagId,
-            time: _expenseTime, clearTime: _expenseTime is null && _expenseHadTime);
+            time: _expenseTime, clearTime: _expenseTime is null && _expenseHadTime,
+            clearTag: _fTagId is null && _expenseHadTag);   // same rule as the time, deliberately — see EditExpenseRequest
         CloseModal();
     });
 

@@ -68,7 +68,8 @@ public record AddExpenseRequest(Guid CategoryId, decimal Amount, Guid FundId, Da
 
 /// <summary>Replace an existing expense's category/amount/fund/note/date (an append-only edit — see
 /// <c>Period.EditExpense</c>). The expense id travels in the route. <see cref="TagId"/> sets the expense's single
-/// tag (null clears it). One tag per expense. Mirrors <c>BudgetingState.EditExpense</c>.
+/// tag; an <b>omitted</b> tag leaves the stored one alone and clearing is explicit (<see cref="ClearTag"/>).
+/// One tag per expense. Mirrors <c>BudgetingState.EditExpense</c>.
 /// <para>
 /// <b>★ There is deliberately no TripId here.</b> Every other field on this request is authoritative — an omitted
 /// value means "no longer set" — and a trip link that behaved the same way would be destroyed by any client that
@@ -82,8 +83,16 @@ public record AddExpenseRequest(Guid CategoryId, decimal Amount, Guid FundId, Da
 /// correcting an amount can't silently strip the clock off a row. Clearing is therefore explicit
 /// (<see cref="ClearTime"/>), because "I don't actually know when" is a real edit and a null can't say it.
 /// </para>
+/// <para>
+/// <b>⚠️ <see cref="TagId"/> used to break that rule, on the same request, two lines up</b> — an omitted tag
+/// <i>cleared</i> the label while an omitted time left the clock alone, and the identical argument applies to both.
+/// It cost exactly what the trip paragraph predicts: the native edit omitted the tag, so correcting an amount on
+/// the phone silently stripped the label, probably from the day tags shipped. Both now follow the same rule, and
+/// clearing a tag is <see cref="ClearTag"/>. <b>A request where two neighbouring fields read the same but mean
+/// opposite things is a trap whoever writes the next client falls into.</b>
+/// </para>
 public record EditExpenseRequest(Guid CategoryId, decimal Amount, Guid FundId, DateOnly Date, string? Note = null, Guid? TagId = null,
-    TimeOnly? Time = null, bool ClearTime = false);
+    TimeOnly? Time = null, bool ClearTime = false, bool ClearTag = false);
 
 /// <summary>
 /// Record income (a deposit) for the caller in the open period, computed server-side. The member is the caller and

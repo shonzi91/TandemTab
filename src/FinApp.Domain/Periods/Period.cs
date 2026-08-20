@@ -397,12 +397,13 @@ public sealed class Period : Entity
                 settledToAccountId: old.SettledToAccountId,
                 settledFromAccountId: old.SettledFromAccountId,
                 settledAmount: old.SettledAmount));
-        // An installment row keeps its group on edit — an edit mints a new id, and dropping the link would strand
-        // the row's siblings and leave a half-installment that can't be removed as one.
-        edited.SetInstallmentLink(old.InstallmentGroupId, old.Part, old.DebtBucketId);
-        edited.SetTags(old.TagIds);   // tags survive an edit (edit mints a new id, so re-apply them)
-        edited.SetTrip(old.TripId);   // and so does the trip — otherwise correcting an amount drops it from the recap
-        edited.SetTime(old.Time);     // and the clock time, so a caller that says nothing about it changes nothing
+        // An edit mints a new id, so everything hanging off the row is carried across — the installment group (or
+        // its siblings are stranded in a half-installment that can't be removed as one), the tag and trip (or
+        // correcting an amount drops the row out of its recap), the clock time, the bank link, what was typed in a
+        // foreign currency, and any refund already recorded against it. One list, in Expense.CopyBodyDataTo, because
+        // three hand-written copies of it disagreed. Callers may still override afterwards — both of them recompute
+        // FundSynced, since an edit can move the row to a different wallet, and the tag is authoritative on the wire.
+        old.CopyBodyDataTo(edited);
         return edited;
     }
 
@@ -592,7 +593,11 @@ public sealed class Period : Entity
             settlementId: settled ? settlementId : null,
             settledToAccountId: settled ? toAccountId : null,
             settledAmount: settled ? settledAmount.Amount : 0m);
-        updated.SetInstallmentLink(old.InstallmentGroupId, old.Part, old.DebtBucketId);
+        // ⚠️ This used to carry the installment link alone, so settling an expense quietly dropped its label, its
+        // trip, its time and its bank provenance — and losing the bank link is the expensive one: the row stops
+        // matching the transaction it came from, and the next sync offers to log it again. Same list as the edit and
+        // the refund now, by construction.
+        old.CopyBodyDataTo(updated);
         _expenses.Add(updated);
         return updated;
     }
@@ -628,14 +633,8 @@ public sealed class Period : Entity
             settledToAccountId: old.SettledToAccountId,
             settledFromAccountId: old.SettledFromAccountId,
             settledAmount: old.SettledAmount);
-        updated.SetRefunded(totalRefunded.Amount);
-        updated.SetInstallmentLink(old.InstallmentGroupId, old.Part, old.DebtBucketId);
-        updated.SetTags(old.TagIds);
-        updated.SetTrip(old.TripId);
-        updated.SetTime(old.Time);
-        updated.SetFundSynced(old.FundSynced);
-        updated.SetBankLink(old.BankExternalId, old.AutoFiled);
-        updated.SetForeign(old.ForeignAmount, old.ForeignCurrency);
+        old.CopyBodyDataTo(updated);                  // the whole list, in one place — see Expense.CopyBodyDataTo
+        updated.SetRefunded(totalRefunded.Amount);    // then the one field this operation actually sets
         _expenses.Add(updated);
         return updated;
     }

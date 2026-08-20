@@ -94,12 +94,47 @@ public class TagApiTests : IClassFixture<FinAppServerFactory>
         var expense = (await LoadAsync(client, account.Id)).Periods[0].Expenses.Single();
         Assert.Equal(trip, expense.TagId);
 
-        // Editing with a different tag replaces it; a bogus id is filtered out server-side (clears the tag).
+        // Editing with a different tag replaces it. (A bogus id is ignored rather than obeyed — and since S111 that
+        // means the stored tag stays, instead of the row being stripped by a client that got the id wrong.)
         var work = await IdOf(await client.PostAsJsonAsync($"/accounts/{account.Id}/tags", new CreateTagRequest("Work")));
         (await client.PutAsJsonAsync($"/accounts/{account.Id}/expenses/{expenseId}",
             new EditExpenseRequest(food, 22m, bank, When, TagId: work))).EnsureSuccessStatusCode();
 
         var edited = (await LoadAsync(client, account.Id)).Periods[0].Expenses.Single();
         Assert.Equal(work, edited.TagId);
+    }
+
+    /// <summary>
+    /// ★ The trap this closes: the same request treated an omitted <c>TagId</c> and an omitted <c>Time</c> by
+    /// opposite rules — the tag cleared, the time was left alone — and the reasoning written next to the time
+    /// applies word for word to the tag. It cost a real bug: the native edit omitted the tag, so correcting an
+    /// amount on the phone silently stripped the label. Both fields now mean "leave it alone" when omitted, and
+    /// clearing either is explicit.
+    /// </summary>
+    [Fact]
+    public async Task An_omitted_tag_on_an_edit_keeps_the_label_and_clearing_it_is_explicit()
+    {
+        var (client, auth) = await _factory.RegisterAndAuthAsync("tag_edit_omit");
+        var account = await CreateAccount(client, "Tags");
+        var (food, bank) = await SeedAsync(client, account.Id, auth.UserId);
+        var label = await IdOf(await client.PostAsJsonAsync($"/accounts/{account.Id}/tags", new CreateTagRequest("Split")));
+
+        var addResp = await client.PostAsJsonAsync($"/accounts/{account.Id}/expenses",
+            new AddExpenseRequest(food, 20m, bank, When, TagId: label));
+        var expenseId = (await addResp.Content.ReadFromJsonAsync<ExpenseMutationDto>())!.EntityId;
+
+        // Correct the amount and say nothing about the label — exactly what an older client does.
+        (await client.PutAsJsonAsync($"/accounts/{account.Id}/expenses/{expenseId}",
+            new EditExpenseRequest(food, 25m, bank, When))).EnsureSuccessStatusCode();
+
+        var kept = (await LoadAsync(client, account.Id)).Periods[0].Expenses.Single();
+        Assert.Equal(label, kept.TagId);
+        Assert.Equal(25m, kept.Amount.Amount);
+
+        // Saying so out loud still clears it.
+        (await client.PutAsJsonAsync($"/accounts/{account.Id}/expenses/{kept.Id}",
+            new EditExpenseRequest(food, 25m, bank, When, ClearTag: true))).EnsureSuccessStatusCode();
+
+        Assert.Null((await LoadAsync(client, account.Id)).Periods[0].Expenses.Single().TagId);
     }
 }

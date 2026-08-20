@@ -143,6 +143,35 @@ Session 94, **69** after Session 95). It does not call these:
 > user stuck: `PUT /bank/account` + `GET /bank/accounts` (one screen, and the pair is useless split), then
 > `PUT /bank/fund`, then `/bank/reset`, then the three mapping routes.
 
+> ### ⬜ The stated lag — everything Android deliberately does NOT have (Session 111, 2026-08-20)
+>
+> **This box is R2's fourth exit criterion.** The parity rule this roadmap set was: *freeze web work, or accept a
+> stated lag* — and a lag stated only as a number in a scanner is not stated at all. Below is every item the phone
+> does not have **by decision**, each with its cost and the condition that expires it. Bank's back half has its own
+> box above; it is listed here only so the list is complete.
+>
+> ⚠️ **Read these as decisions, not as a backlog.** None of them is waiting on an estimate — each was looked at and
+> put down for the reason written next to it.
+>
+> | Not ported | Why | What it costs a phone-only user | Expires when |
+> |---|---|---|---|
+> | **i18n (en/bg)** | The web keys translations off the English string itself (`Localizer.Bg`, ~1,900 entries). Android has **one** string in `strings.xml` — `app_name`; every other word is a Kotlin literal. The port is a full string extraction *before* any translating starts: an **L and its own session**, not a resource-file drop. | The app is English-only. Bulgarian is first-class on the web and picked from the profile; on the phone it cannot be picked at all. | A Bulgarian-speaking tester is handed the APK — i.e. at **R7**, not before. |
+> | **F6's goal-celebration moment** | Needs a **per-device** seen-set. The web keeps it in `localStorage` on purpose: the achievement log lives in the shared snapshot, so driving the moment off "newly stamped" hands it to whichever member opened the app first and silently robs the other. Android has no equivalent store wired. | Shared-goal milestones pass silently on the phone. The medals themselves (`/achievements`, `/milestones`) shipped in S108 — nothing is *unknowable*, only uncelebrated. | Someone wires a device-local seen-set. **S**, and the only real design work is the first-run adopt-everything-already-earned rule. |
+> | **The Breakdown donut** | ⛔ **Not a client row at all.** `GET /accounts/{id}/breakdown` **does not exist** — no server read stands behind it. (`Program.cs` has no such route; the only "breakdown" in it is a word in the Insights health read's comment.) | Spending answers "where did it go" with *By date* and *By budgets* only; the budget-free multi-period pie is web-only. | The endpoint gets written. Until it does, sizing this as Kotlin work is the mistake this document has now recorded eight times. |
+> | **`POST /import`** (statement import) | The route is the small half. The row is a file picker, a column mapper, a duplicate preview and a review list — and the parse has to stay **on-device**, that being the privacy promise, so none of the web's work comes across as a service call. **M–L.** | A phone-only user cannot import a statement. Softened by where statements actually are: a CSV downloaded from a bank is on the computer that downloaded it. | A tester asks for it on the phone, or bank sync widens far enough that import stops being how rows arrive. |
+> | **`PUT /funds/{fundId}/currency`** (a wallet's own currency) | ★★ **A SERVER-READ row before it is a Kotlin row** — the eighth instance of *check what the endpoint returns first.* **No thin contract carries a fund's currency or rate anywhere.** `FundRowDto` is id/name/icon/note/balance/openingBalance/synced/archived/availableToTransferOut, and `Currency` appears in `FinApp.Contracts` only as the *account's*. The phone cannot render, let alone set, what it is never sent. | ⚠️ **Worse than a missing setting — see the warning below.** | Two fields are added to the wallets read. Do that **before** anyone sizes this row as S–M. |
+> | **F4 round-ups**, **the fund↔bank sync toggle** | ⛔ Blocked on the **server**, not on Android: round-ups have no field on any contract *and* no command endpoint, and `SetFundSynced` is still `TODO(cutover)`. Both are whole-snapshot pushes in the thick client. | Round-ups can only be switched on from the web; a wallet cannot be marked as the bank-synced one from the phone. | Someone writes the "account settings commands" server slice both rows want. They batch naturally into one. |
+> | **The web's S104–S110 visual work** | R2's instrument measures **whether an endpoint is reachable**, never whether the screen around it looks like this year's app. Android tracks the web's design by rule, and the web has had six sessions of layout work the phone has not seen. | Drift, not absence: every figure is fetchable, some screens are last season's arrangement of it. | The next Android session that is a *sweep* rather than a row. It is the largest thing outstanding on the native side, and no scanner will ever print it. |
+>
+> ⚠️ **The wallet-currency row hides a wrong number, which is why it is also first on the issues list.** On the web,
+> picking a foreign-cash wallet changes what the Amount field *means* — the modal says so outright: *"Amounts spent
+> from this wallet are typed in {CUR} and stored in {account currency}."* The client converts once at entry and
+> sends both figures, and the server stores what it is given and **does not re-convert** (`POST /expenses` says so
+> in a comment: *"the client already did, once, at entry"*). Android has neither the wallet's currency nor its rate,
+> so the same expense typed on the phone is stored **at face value in the account currency** — 100 kr becomes €100,
+> in the one situation the feature exists for: standing in another country with the phone in your hand.
+> **Verified by construction, not on a device** — the fields are absent from the contract, from `FundRowDto` and
+> from the add-expense sheet; reproducing it needs a Pro account with a foreign-cash wallet.
 > ### ★ The paywall on the phone (Session 107, 2026-08-18) — a row R2 cannot see
 >
 > **R2 measures whether an endpoint is reachable, not whether a refusal is bearable.** S106 put trips behind Pro;
@@ -199,38 +228,48 @@ Session 94, **69** after Session 95). It does not call these:
 > **The remaining server-blocked rows** are unchanged: **F4 round-ups** (no contract field, no command endpoint)
 > and the **fund↔bank sync toggle** (`SetFundSynced`, `TODO(cutover)`).
 
+> **⚠️ Reconciled against the scanner on 2026-08-20 (Session 111).** Every row below whose routes no longer appear
+> in `node tools/r2scan.js --list` is now struck through — several had been sitting here as open backlog long after
+> the path was wired. **Struck means *called*, never *good*:** the scanner proves a path exists in Kotlin, and the
+> whole S103 finding was that two rows counted as client work were really missing server reads. The only rows left
+> unstruck are the three audited non-gaps, the two stated-lag rows, and bank's deferred back half.
+
 | Missing capability | Endpoints never called | Weight |
 |---|---|---|
-| **Savings/debt bucket money-movements** (CRUD ✅ **done S91**) | ~~`/savings/buckets…`~~, `/savings/disburse`, `/savings/to-budget`, `/savings/transfer`, `/savings/movements/…` | M |
+| ~~**Savings/debt bucket money-movements** (CRUD ✅ **done S91**)~~ | ~~`/savings/buckets…`, `/savings/disburse`, `/savings/to-budget`, `/savings/transfer`, `/savings/movements/…`~~ | ✅ **called** (S111 reconcile) |
 | ~~**Debt entirely** (R1 informative debt + R2 installments)~~ | ~~`/installments`~~ (S93), ~~`/installments/{groupId}`~~ (S95) | ✅ **done** |
 | ~~**Sharing — the hero Pro feature**~~ | ~~`/invitations`, `/members/{id}`, `/transfer-ownership`~~ | ✅ **done S92** |
 | ~~**Period lifecycle**~~ | ~~`/periods/start-next`, `/periods/latest`, `/periods/{i}/schedule`~~ | ✅ **done S91** |
-| **Statement import** | `/import` | M |
+| **Statement import** | `/import` | ⬜ **STATED LAG (S111)** — M–L, and the row is the wizard, not the route; see the stated-lag box above |
 | ~~**Fund management** (add/archive/opening balance)~~ | ~~`/funds…`, `/fund-transfers/{id}`~~ | ✅ **done S95** |
-| **Account settings** — the savings target ✅ **done S95**; **F4 round-ups** are ⛔ **not portable** (no contract, no endpoint) | ~~`/settings`, `/savings-target`~~ | M |
-| **Tags** — incl. **F2** tag→category | `/tags…` | M |
+| **Account settings** — the savings target ✅ **done S95**; **F4 round-ups** are ⛔ **not portable** (no contract, no endpoint) | ~~`/settings`, `/savings-target`~~ | ⛔ **SERVER-BLOCKED** — round-ups and the fund↔bank toggle both wait on the "account settings commands" slice |
+| ~~**Tags** — incl. **F2** tag→category~~ | ~~`/tags…`~~ | ✅ **called** (S111 reconcile) |
 | ~~Achievements~~ — **F6** goal celebration is still open | ~~`/achievements`, `/milestones`~~ | ✅ **done S108** (the read half: Home line + sheet). **F6's celebration moment is not ported** — it needs a per-device seen-set, which the web keeps in `localStorage`, not on the account |
-| Onboarding | `/onboarding`, `/onboarding/dismissed` | S |
+| ~~Onboarding~~ | ~~`/onboarding`, `/onboarding/dismissed`~~ | ✅ **called** (S111 reconcile) |
 | ~~Export~~ | ~~`/export`~~ | ✅ **done S106** — the portability promise, which the phone wasn't keeping |
-| Reallocation between budget and savings | `/reallocations/to-budget`, `/reallocations/to-savings` | S |
+| Reallocation between budget and savings | `/reallocations/to-budget`, `/reallocations/to-savings` | ⛔ **NOT A GAP** (S108 audit) — `to-budget` has no client anywhere, web included; `to-savings` backs a bell nudge `NotificationsMap` deliberately excludes from the thin set |
 | ~~Settling an on-behalf expense~~ | ~~`/expenses/{id}/settle`~~ | ✅ **done S108** — needed a **server change first**: the thin `ExpenseDto` carried the two settlement booleans but not `SettledToAccountId`, and the undo route is addressed by it, so the undo was unreachable from any thin client |
 | ~~Contribution (income) categories~~ | ~~`/contribution-categories…`~~ | ✅ **done S91** (create only) |
-| ~~**Trips — the whole feature** (S99–S101)~~ | ~~`/trips`, `/trips/{id}`, `/trips/{id}/started`, `/trips/{id}/finished`, `/expenses/{id}/trip`~~ | ✅ **done S103** — see below. Still open on this row: `/trips/{id}/use-savings` (releasing a savings pot into the trip's budget) and `/trip-tags` (the seeded label set) |
-| **Expense labels** — read ✅ **added S103** (`ExpenseDto.TagIds`, `TagOptionDto`); writing one is still unwired | `/expenses/{id}/tag` | S |
-| **Money to another account** (transfers out + editing the pair) | `/transfers-out`, `/account-transfers/{id}` | M |
-| **A wallet's own currency** (the S~102 multi-currency work) | `/funds/{id}/currency` | S–M |
+| ~~**Trips — the whole feature** (S99–S101)~~ | ~~`/trips`, `/trips/{id}`, `/trips/{id}/started`, `/trips/{id}/finished`, `/expenses/{id}/trip`, `/trips/{id}/use-savings`, `/trip-tags`~~ | ✅ **done S103** — see below. The two that were still open on this row (`use-savings`, `/trip-tags`) are **called** as of the S111 reconcile |
+| ~~**Expense labels** — read ✅ **added S103** (`ExpenseDto.TagIds`, `TagOptionDto`)~~ | ~~`/expenses/{id}/tag`~~ | ✅ **called** — the write landed with S110's closed-period label modal |
+| ~~**Money to another account** (transfers out + editing the pair)~~ | ~~`/transfers-out`, `/account-transfers/{id}`~~ | ✅ **called** (S111 reconcile) |
+| **A wallet's own currency** (the S~102 multi-currency work) | `/funds/{id}/currency` | ⬜ **STATED LAG (S111)** — ⚠️ **a server-read row first** (no thin contract carries a fund's currency or rate), and it hides a **wrong number** on the phone; see the stated-lag box above |
 | **Bank sync's back half** — Android links and syncs but can't map, re-point or reset a connection | `/bank/accounts`, `/bank/account`, `/bank/fund`, `/bank/mappings`, `/bank/reset` | ⛔ **DEFERRED past R2 (S110)** — a stated lag, not a non-gap. The audience is the two-email MVP allowlist, who all have the web app; the five costs (starting with *the tracked bank account is the aggregator's first and cannot be changed on the phone*) are written out in the box above |
 | ~~Archived accounts (list + reactivate)~~ | ~~`/archived`, `/reactivate`~~ | ✅ **done S106** — and it was **not** a convenience row; see below |
-| Editing/removing an income category | `/contribution-categories/{id}` | S |
-| The account structure read (a thicker picker source) | `/structure` | S |
+| ~~Editing/removing an income category~~ | ~~`/contribution-categories/{id}`~~ | ✅ **called** (S111 reconcile) |
+| The account structure read (a thicker picker source) | `/structure` | ⛔ **NOT A GAP** (S108 audit) — Android assembles the same data from `/spending` + `/wallets` |
 
 *(`/snapshot` is deliberately absent from that list: it is the thick client's whole-aggregate channel, and a thin
 client calling it would be carrying the domain it exists not to carry.)*
 
 > ### 📏 Measure it, don't count it — `node tools/r2scan.js --list`
 >
-> **As of Session 106: 102 of 118 in-scope account routes, 86%, 16 rows left.** (`/snapshot` GET+PUT are excluded
-> by the script for the reason just above — counting them as gaps overstates the backlog by two.)
+> **As of Session 111 (2026-08-20): 108 of 120 in-scope account routes, 90%, 12 rows left** — pasted from the run,
+> not remembered. (`/snapshot` GET+PUT are excluded by the script for the reason just above; counting them as gaps
+> overstates the backlog by two. The denominator moved 118 → 120 because S110 added the two refund routes, and
+> Android calls both.) **All 12 are decided:** 7 deferred (bank), 3 audited non-gaps, 2 stated lags. Nothing in
+> that list is an open row any more — which is what closes R2's first exit criterion honestly.
+> *Was, Session 106: 102 of 118, 86%, 16 rows left.*
 >
 > S103 reported this gap as "61 of 99" from a hand count; run as a script the same day it was 76 of 118. **A hand
 > count of a hundred routes is wrong every time, and it is wrong in a way that looks authoritative once it's
@@ -612,7 +651,8 @@ estimating any of them as "just UI".
 
 Plus three standing gaps: **Breakdown** is blocked on the `[BACKEND] GET /breakdown` endpoint; **i18n (en/bg)**
 is deferred and is its own session; and the Android **write paths are wired but never click-fired** against a
-real account.
+real account. *(The first two are now written up properly as decisions in the **stated lag** box above — S111.
+The third stopped being true from S91 onward, as each row was emulator-verified end to end.)*
 
 That is weeks, not days. Two honest consequences:
 

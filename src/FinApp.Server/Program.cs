@@ -1215,8 +1215,11 @@ accounts.MapPut("/{id:guid}/expenses/{expenseId:guid}", async (Guid id, Guid exp
         var edited = period.EditExpense(expenseId, req.CategoryId, new Money(req.Amount, account.Currency), req.FundId, req.Note, req.Date);
         edited.SetFundSynced(fund.IsSynced);            // recompute at edit time (moving to/from a synced fund)
         edited.SetBankLink(before?.BankExternalId, autoFiled: false);   // keep provenance, clear the auto-filed badge
-        // The edit UI always sends the desired tag, so this is authoritative: a valid id sets it, null clears it.
-        edited.SetTag(req.TagId is { } editTag && account.FindTag(editTag) is not null ? editTag : null);
+        // The tag follows the same rule as the time below, and for the same reason: EditExpense carried the stored
+        // one across, so an omitted value leaves it alone and clearing is explicit. It did NOT until S111 — an
+        // omitted tag cleared the label, which is how the native edit stripped tags for as long as it existed.
+        if (req.ClearTag) edited.SetTag(null);
+        else if (req.TagId is { } editTag && account.FindTag(editTag) is not null) edited.SetTag(editTag);
         // The time is NOT authoritative-by-omission — EditExpense already carried the stored one across, so only an
         // explicit value or an explicit clear touches it. See EditExpenseRequest.
         if (req.ClearTime) edited.SetTime(null);

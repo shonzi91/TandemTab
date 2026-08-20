@@ -1244,8 +1244,11 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
 
     /// <param name="time">The desired time, or null to leave the stored one alone. Pass <paramref name="clearTime"/>
     /// to blank it — null can't say "I don't know when" and "don't touch it" at once. See <c>EditExpenseRequest</c>.</param>
+    /// <param name="clearTag">Explicit "no label any more". The edit form knows the desired tag either way, so it
+    /// passes this whenever the picker is empty; an omitted tag now means "leave it alone" on the wire, the same as
+    /// the time — see <see cref="FinApp.Contracts.EditExpenseRequest"/> for the trap that rule closes.</param>
     public async Task EditExpense(Guid expenseId, Guid categoryId, decimal amount, Guid fundId, string? note, DateOnly date, Guid? tagId = null,
-        TimeOnly? time = null, bool clearTime = false)
+        TimeOnly? time = null, bool clearTime = false, bool clearTag = false)
     {
         var before = Period.Expenses.FirstOrDefault(e => e.Id == expenseId);
         await ExecuteOptimisticAsync(() =>
@@ -1253,12 +1256,14 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
             var edited = Period.EditExpense(expenseId, categoryId, Money(amount), fundId, note, date);
             edited.SetFundSynced(FundIsSynced(fundId));
             edited.SetBankLink(before?.BankExternalId, autoFiled: false);   // keep provenance, clear the auto-filed badge
-            edited.SetTag(tagId);   // the edit UI always sends the desired tag (null clears it)
-            // EditExpense already carried the stored time across, so only an explicit value or clear touches it.
+            // EditExpense already carried the stored tag and time across, so only an explicit value or an explicit
+            // clear touches either. Same rule for both, which is the point — see EditExpenseRequest.
+            if (clearTag) edited.SetTag(null);
+            else if (tagId is { } tg) edited.SetTag(tg);
             if (clearTime) edited.SetTime(null);
             else if (time is { } t) edited.SetTime(t);
         },
-        id => api.EditExpenseAsync(id, expenseId, new EditExpenseRequest(categoryId, amount, fundId, date, note, tagId, time, clearTime)),
+        id => api.EditExpenseAsync(id, expenseId, new EditExpenseRequest(categoryId, amount, fundId, date, note, tagId, time, clearTime, clearTag)),
         refetchAfter: true);   // EditExpense is append-only (mints a new id) — reconcile to adopt the server's
         // Editing a settlement-destination expense mirrors the new amount back to the source expense.
         if (before is { IsSettlementDestination: true, SettlementId: { } sid, SettledFromAccountId: { } sourceAccount })
