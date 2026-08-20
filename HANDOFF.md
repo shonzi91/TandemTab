@@ -1,6 +1,96 @@
 # TandemTab (FinApp) — session handoff
 
-Last updated: 2026-08-20 (Session 112 — **batches 3, 4 and 5: thirteen of the owner's fourteen items are done.**
+Last updated: 2026-08-21 (Session 113 — **five items of fresh daily-use feedback; the Breakdown ring changed its
+question, and two figures that contradicted each other on screen were traced to real bugs.**
+**518 + 50 + 380 green, pairscan 0. LIVE: `finapp-00318-mr9`, 100% LATEST** — image `finapp:bd49006`
+(digest `sha256:f29d9d1f…`, build 4m51s, upload **5.6 MiB / 297 files**), served-bytes verified on both hosts,
+5 `secretKeyRef`s, no app WARNING+ on the new revision.)
+
+#### ★★ The Breakdown ring answers a different question now
+
+The owner asked for "all movements of the entire balance for the given period" and gave the case that proves it:
+**accumulate €1,000/mo for a year, then prepay €12,000 at the loan — what does that look like?** Under O6b it
+looked like *nothing*: the bucket's net was −€12,000, `NetSetAsideByBucket` floors each bucket at zero, and
+`AccountTransfersOut` excludes disbursements by design. **The single biggest movement of the balance was invisible
+on the chart of the balance**, while the twelve accumulation months each drew a €1,000 wedge.
+
+★ **The ring now means "what left your balance".** Money set aside is **not** a wedge (it never left the account);
+money deployed at a goal **is**, one slice per bucket via `AddPaidOutSlices` (violet family, ranked with
+`InsertByAmount`, capped at 3 + a "Paid to other goals" tail). ⚠️ **Neither unit double counts** — the old one
+counted at earmark time, this one at spend time — but only this one makes the month the money actually moved
+legible. Both slice builders go through the one helper, so Home's donut and the Breakdown cannot disagree.
+★ **Summary is Income / Money out / Set aside**, and "Money out" now **equals the ring total**; those two silently
+differed by the savings slice with nothing on screen reconciling them. "Set aside" is **signed**
+(`SetAsideNetSigned`, un-floored) so the payout month reads **−€3,320** — a statement can go negative, a wedge
+cannot. The donut centre says what its total *is* ("left your balance") instead of counting categories.
+★ **Goal payouts joined the expense ledger** (`DisbursementsThisPeriod`, `payout-row`, no edit button — a payout is
+half a pair and the bucket's screen owns undoing it). ⚠️ Day headers needed `grpP` too: the header total is
+computed inline from `grp` + `grpX`, **not** from `byDay`, so fixing only `byDay` left 18 Aug reading €24.50 over
+a day holding €3,024.50. Caught in the browser, not by a test.
+
+#### ★ Two figures that contradicted each other, both real bugs
+
+⚠️ **Breakdown "Income" vs the hero "Money in" (€5,421.77 against €5,344.38).** `brkIncome` mixed a **date-based**
+`IncomeInRange` with a **membership-based** `CarriedInThisPeriod`, so it could equal neither tile: any contribution
+dated inside the window but owned by another period counted in one and not the other. It takes the hero's own
+`MoneyInThisPeriod` when the window *is* the period. Same trap `HomePeriodSlices` already documents for expenses.
+
+⚠️⚠️ **`SavingsReportService.MoneyIn` read history as of TODAY.** `priorSaved = AccumulatedTotal(account) −
+period.SavingsNetTotal` — but `AllocatedTotal` sums **every** period, so for a closed period it folds in
+allocations made *after* it. When savings are drawn down later, `priorSaved` goes **NEGATIVE** ("savings held from
+before" cannot be negative) and every past period's carried-in cash inflates. That was the owner's "why is money in
+such a huge number on previous periods". Fixed with `SavedBefore(account, period)` — strictly earlier periods +
+bucket initials — the same `upToPeriodFrom` discipline `ForBucket` already had.
+★ **Measured on the fixture, old → new:** May €2,800→€1,800, Jun €3,050→€2,000, Jul €2,870→€1,900, and the
+**current period byte-identical at €7,530.00** — the two formulas agree exactly when the period is the last one,
+so this corrects history and cannot regress the live view. ⚠️ It also moves `PeriodMoneyInRate`'s denominator on
+closed periods, so historical savings rates read differently than before.
+
+#### ★ Transfers, and the Goals bar
+
+★ **A transfer's budget category can be set after the fact.** `EditAccountTransferRequest` gains `CategoryId` with
+**three** states: absent = leave alone, `Guid.Empty` = clear, an id = set. ⚠️ **Deliberately not** the "written
+whole" rule O2b used for bank mappings — there IS an older client on this route, and a cached build editing an
+amount would have silently wiped a category. One guarded line on the server; **no migration** (`CategoryId` already
+rides in the snapshot and is `Ignore()`d in EF). Both transfer modals swapped the bare `<select>` for
+`CategoryPicker`, which gains additive `AllowNone`/`NoneLabel` (default off → the four expense call sites are
+untouched) plus a `.lbl-add` "+" through the existing `_afterCreate`/`_modalBack` back-stack.
+★ **Goals' "Total saved" is a bar, not a tile** — full row, one baseline, **41px** instead of three stacked lines,
+with "Add goal" moved onto the filter-chip row. ⚠️ That row renders **unconditionally** now, or the action would
+vanish on an account with one kind of goal.
+
+#### ✅ Browser-verified on a purpose-built fixture
+
+Hand-built **4 periods / 4 buckets / 4 payouts** (`Pie fixture`, `pie…@test.local`), cloned from S112's Batch3
+snapshot and written straight into `AccountSnapshots.Payload`:
+- Ring **€3,873.30** = *Paid to Car loan €3,000 (77.5%) · Paid to Holiday €400 · Paid to other goals €370 · Food
+  €103.30*; the **tail expands to only the buckets without their own wedge** (New laptop, Roof repair).
+- **Jul (accumulating): Set aside +€1,120.00, no payout wedge. Aug (the payout month): −€3,320.00.** The design's
+  whole point, visible across two periods.
+- Income €7,530.00 **matches the hero exactly**; day totals 18 Aug **€3,024.50**, 14 Aug €418.20.
+- Transfer category **round-tripped both ways** against the stored snapshot: set → `CategoryId → Bills`, cleared →
+  `null`. Picker seeds from the existing value; not wrapped in a `<label>`.
+- Goals bar 854px × 41px, facts right-aligned on the figure's baseline; both themes swap correctly.
+
+⚠️ **Fixture traps worth keeping:** `AchievementLog` is a **`Dictionary<string,DateOnly>`** — a `[]` stub makes the
+whole snapshot fail to deserialize with a `JsonException` that surfaces as a generic 500. A **second account is
+Pro-gated** (`PlanOverrides` row = `pro`), and a transfer destination **needs an open period** or you get "The
+other account hasn't been opened yet". `node` on this box is **v10 — no `flatMap`**. The Bash tool mangles
+heredocs with `$VAR` expansion; write generator scripts with the Write tool instead.
+
+#### Next session
+1. **O14 is still the only one left** on the owner's list — Trends' *Spent* / *Set aside* switchable to a category
+   / a bucket. ⚠️ Its **data layer was already half-built and is now committed**: `TrendRow.Focus`,
+   `TrendFocusValue`, `_trendCatId`/`_trendBucketId`, `TrendFocused`, `TrendPick` wiring. **The picker UI is what's
+   missing** — the compiler says so directly (`CS0649: '_trendCatId' is never assigned to`, ×2).
+2. ⚠️ **The emulator session is still the biggest untouched gap** — batch 5's dialogs, the sectioned recurring list
+   and the landing-tab chips have never been seen running. This session's work is web-only; Android has no transfer
+   category UI and no account-transfer edit screen, so the contract change is additive and inert there.
+3. **Possible polish:** with three violet payout shades the ring can read as one mass when goals dominate a month
+   (97.5% here). Faithful, and the leader labels disambiguate — but widening the palette's hue spread is the fix if
+   it bothers anyone. Don't "fix" it by changing the unit.
+
+Previously: 2026-08-20 (Session 112 — **batches 3, 4 and 5: thirteen of the owner's fourteen items are done.**
 The bank review stops asking and the duplicate check stops guessing; a rule can name a label; the money chart, the
 debt bucket and the savings header say what they mean; and every delete now asks first.
 **518 + 50 + 380 green. LIVE: `finapp-00317-crx`, 100% LATEST — batches 2–5 all deployed, verified on the served
