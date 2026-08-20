@@ -8,6 +8,7 @@ after Debt R2 shipped and BUG-1 was fixed.*
 | **Application** | TandemTab (https://tandemtab.com) |
 | **Live revision** | `finapp-00311-nz6` (2026-08-19). *The beta machinery landed on `finapp-00277-p5t` (2026-08-05):* B1–B4 + P1/P2/P3/P4 shipped; **lifetime-Pro allowance of 100**, real Free/Pro gating (post-cap users gated during beta), Pro crowns + plan comparison; **R1 feature backlog cleared**. Everything since is R2 and owner batches |
 | **Scope of this doc** | Open **public** beta — an unrestricted sign-up link, not a handful of invited friends |
+| **Open issues** | [QUEUE.md](QUEUE.md) — the bugs and issues outside any phase, ranked (opened S111) |
 | **Effort key** | S = hours · M = a day · L = multi-day |
 
 ## The headline

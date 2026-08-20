@@ -54,15 +54,23 @@ clearing is `ClearTag`, wired through the contract, the server, the web modal (`
 `_expenseHadTime`) and the Android sheet. **A request where two neighbouring fields read the same and mean
 opposite things is a trap for whoever writes the next client.**
 
-⚠️ **Verification status, stated plainly.** Domain + server + persistence: **504 + 50 + 377 green**, including
-three new reflection tests and a server test that edits an expense *without* mentioning its tag. Android **compiles
-clean** (`:app:compileDebugKotlin`). **Not** done: the web modal's clear-a-label path is not browser-verified, the
-Android sheet is not emulator-verified, and **nothing is deployed** — live is still S110's `finapp-00314-bw8`.
+✅ **Browser-verified, both halves of both fixes, on a seeded local account.**
+- **Clearing still clears:** deselect the label chip in the edit modal → save → `tagIds: []` on the refetched row.
+  (The risk the `ClearTag` change introduced, and the reason it needed a UI check rather than a test.)
+- **Omission no longer strips:** change only the amount (€42.50 → €55.25) → the label survives.
+- **The refund survives an edit:** €55.25 with €20 back, note edited to "Dinner, corrected" → the row still reads
+  **"↩ €20.00 back"** and still carries its label. ★ **And the undo still works, which is the real proof:**
+  `DELETE …/refund` restored **€55.25**, the whole charge. Before this fix it would have restored €35.25 — a
+  no-op that silently ate €20 of the record.
 
-#### Next session
-1. **Deploy** — this is a server + client change and it is sitting in the working tree.
-2. **The rest of the feedback sweep** is listed and prioritised in the session log below; the top open item is the
-   Android foreign-wallet wrong number, which starts with two fields on `FundRowDto`.
+⚠️ **Verification status, stated plainly.** Domain + server + persistence: **504 + 50 + 377 green**, including
+three new reflection tests and a server test that edits an expense *without* mentioning its tag. Web:
+browser-verified as above. Android: **compiles clean** (`:app:compileDebugKotlin`) and **nothing more is claimed**
+— the sheet's `clearTag` was not exercised on the emulator.
+
+★ **The remaining issues are now a queue, not a paragraph:** [QUEUE.md](QUEUE.md) — eleven rows, ranked, each with
+its first concrete step and, where it is deliberately waiting, what it is waiting for. **⏸️ On hold: the owner has
+their own list, which goes first.**
 
 Previously: 2026-08-19 (Session 110 — **R2's last two open decisions closed, a feature the owner asked for
 shipped, and a bug that had been silently disabling the bank sync on every app open since it was written.**
@@ -633,6 +641,9 @@ Owner ask, in two halves: *close R2*, and *collect the issues and bugs from feed
 before R3 starts.*
 
 ### ★★ The open-issue sweep — one list, from every place feedback has been landing
+
+**The list lives in [QUEUE.md](QUEUE.md)** and is maintained there, not here. What follows is the reasoning behind
+its order.
 
 Sources: [BETA-FINDINGS.md](BETA-FINDINGS.md), [UX-BACKLOG.md](UX-BACKLOG.md), [BACKLOG.md](BACKLOG.md),
 [FEATURE-BACKLOG.md](FEATURE-BACKLOG.md), the carried "still open" lists in this file, and a read of the code
