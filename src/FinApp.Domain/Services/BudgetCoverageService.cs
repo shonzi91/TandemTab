@@ -39,11 +39,36 @@ public sealed class BudgetCoverageService
 
         var categoryIds = account.CategoryWithDescendantIds(categoryId).ToHashSet();
 
-        var spent = period.Expenses
+        var spent = SpentIn(period, categoryIds);
+
+        return new BudgetCoverage(budget.Allocated, spent, budget.AlertThreshold);
+    }
+
+    /// <summary>
+    /// What has gone out against a set of categories this period: expenses, plus any money sent to another account
+    /// that the user filed under one of them.
+    ///
+    /// <para><b>★ Transfers count only when they are categorised</b> (S111, owner ask). This money was already in
+    /// every "money out" total the app shows — <c>Period.AccountTransfersOutTotal</c> is added to the Home "Spent"
+    /// tile and the Breakdown gives it a slice — but it reached no budget, because a budget is a per-category cap
+    /// and a transfer had no category. So a standing €400 to the household account sat inside "Spent" while
+    /// belonging to no plan. An uncategorised transfer still behaves exactly as it did.</para>
+    ///
+    /// <para>⚠️ Every figure that answers "what went on this category" has to use this, or one screen will hold
+    /// two answers. <c>BudgetingState.SpentInCategory</c> is the other caller.</para>
+    /// </summary>
+    public static Money SpentIn(Period period, IReadOnlySet<Guid> categoryIds)
+    {
+        ArgumentNullException.ThrowIfNull(period);
+        ArgumentNullException.ThrowIfNull(categoryIds);
+        var expenses = period.Expenses
             .Where(e => categoryIds.Contains(e.CategoryId))
             .Select(e => e.Amount)
             .Aggregate(Money.Zero(period.Currency), (acc, m) => acc + m);
-
-        return new BudgetCoverage(budget.Allocated, spent, budget.AlertThreshold);
+        var sentOut = period.AccountTransfersOut
+            .Where(t => t.CategoryId is { } c && categoryIds.Contains(c))
+            .Select(t => t.Amount)
+            .Aggregate(Money.Zero(period.Currency), (acc, m) => acc + m);
+        return expenses + sentOut;
     }
 }

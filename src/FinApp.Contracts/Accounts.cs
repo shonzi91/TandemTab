@@ -356,8 +356,12 @@ public record ConfirmRecurringRequest(decimal ActualAmount);
 /// outflow (external transfer) here and a matching deposit there, in one atomic two-account save. Capped at the source
 /// fund's balance. <see cref="DestinationFundId"/> empty picks the destination's first unsynced fund; <see cref="Date"/>
 /// defaults to the server date. Mirrors <c>BudgetingState.TransferToAccount</c>.</summary>
+/// <para><b>★ <see cref="CategoryId"/> is optional and only about budgets.</b> This money already counts as money
+/// out everywhere the app totals it; naming a category is what lets it count against a <i>plan</i> as well, since a
+/// budget is a per-category cap and a transfer used to have no category to be capped under. Omit it and the transfer
+/// behaves exactly as it always has — in "Spent", in no budget.</para>
 public record TransferToAccountRequest(Guid DestinationAccountId, Guid FromFundId, decimal Amount,
-    Guid DestinationFundId = default, string? Note = null, DateOnly? Date = null);
+    Guid DestinationFundId = default, string? Note = null, DateOnly? Date = null, Guid? CategoryId = null);
 
 /// <summary>Change an account-to-account transfer — <b>both halves at once</b>: the outflow here and the deposit it
 /// created in <see cref="DestinationAccountId"/>. Addressed by the pair id both rows carry, so a transfer recorded
@@ -381,8 +385,16 @@ public record SettleExpenseRequest(Guid DestinationAccountId, Guid DestinationFu
 /// has already come back, inside the same lock that writes it — so two clients acking two credits against one
 /// expense both land, instead of the second overwriting the first with a total it computed from a stale read.</para>
 /// <para>⚠️ Refunding mints a <b>new expense id</b> (the ledger is append-only). It comes back as the response's
-/// <c>Id</c>; the undo, <c>DELETE …/refund</c>, is addressed by that new id.</para></summary>
-public record RefundExpenseRequest(decimal Amount);
+/// <c>Id</c>; the undo, <c>DELETE …/refund</c>, is addressed by that new id.</para>
+/// <para>
+/// <b>★ <see cref="ToFundId"/> is where the money actually arrived</b>, and it only matters when that is a
+/// different wallet from the one the expense was paid from. Shrinking the expense already credits its own wallet
+/// (a non-synced expense is part of that fund's spending position), so same-wallet refunds need nothing more and
+/// leave this null. Paid by card and handed back in cash is the case this exists for: the refund then also records
+/// an intra-account transfer, which is total-preserving because the money re-entered the account when the expense
+/// shrank. A synced source is not debited by it — the real bank balance already accounts for that side.
+/// </para></summary>
+public record RefundExpenseRequest(decimal Amount, Guid? ToFundId = null);
 
 // --- Statement import (reviewed rows -> real expenses & income in one save) -----------------------------------
 

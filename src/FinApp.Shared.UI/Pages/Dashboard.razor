@@ -1510,8 +1510,40 @@ else
                     var shown = _dayView is { } dvf
                         ? ledger.Where(e => e.Date == dvf).ToList()
                         : ledger;
-                    var byDay = ledger.GroupBy(e => e.Date)
-                        .ToDictionary(g => g.Key, g => (Count: g.Count(), Total: g.Aggregate(0m, (s, e) => s + e.Amount.Amount)));
+                    @* ★ Money sent to another account belongs in this list. It already counts in the "Spent" tile
+                       and has its own Breakdown slice, so leaving it out of the ledger made the one view that is
+                       supposed to show every outflow the only one that hid some. Searching filters it by note. *@
+                    var xfers = State.AccountTransfersOutThisPeriod
+                        .Where(t => string.IsNullOrWhiteSpace(_spendSearch)
+                                 || (t.Note ?? "").Contains(_spendSearch, StringComparison.OrdinalIgnoreCase)
+                                 || State.AccountName(t.ToAccountId ?? Guid.Empty).Contains(_spendSearch, StringComparison.OrdinalIgnoreCase))
+                        .ToList();
+                    var shownXfers = _dayView is { } dvx ? xfers.Where(t => t.Date == dvx).ToList() : xfers;
+                    @* Day totals and calendar counts are built from BOTH, so a day header can never disagree with
+                       the rows sitting under it. *@
+                    var byDay = ledger.Select(e => (e.Date, Amt: e.Amount.Amount))
+                        .Concat(xfers.Select(t => (t.Date, Amt: t.Amount.Amount)))
+                        .GroupBy(x => x.Date)
+                        .ToDictionary(g => g.Key, g => (Count: g.Count(), Total: g.Aggregate(0m, (s, x) => s + x.Amt)));
+                    @* A transfer row deliberately looks like an expense row and is not one: same columns, but the
+                       title names the account the money went to and there is no category unless the user filed it
+                       under one. Editing stays on the two-sided editor it already has — a transfer has a counterpart
+                       deposit in the other account, so it must never be edited as if it were a local row. *@
+                    RenderFragment<FinApp.Domain.Funds.ExternalTransfer> xferRow = t =>
+    @<li class="xfer-row">
+        <div class="row-main row-stack">
+            <span class="row-title"><span class="row-title-txt"><Icon Name="swap" class="ic-s" /> @State.AccountName(t.ToAccountId ?? Guid.Empty)</span></span>
+            <span class="row-sub">
+                <span class="sub-to">@State.FundName(t.FundId)</span>
+                @if (!string.IsNullOrWhiteSpace(t.Note)) { <span class="sub-note">@t.Note</span> }
+                @if (t.CategoryId is { } xc) { <span class="settle-tag">@State.CategoryName(xc)</span> }
+            </span>
+        </div>
+        <span class="amt">@Fmt(t.Amount)</span>
+        <span class="row-actions">
+            <button class="exp-edit" title="@Loc["Edit"]" aria-label="@Loc["Edit"]" @onclick="() => OpenEditAccountTransfer(t.Id)"><Icon Name="pencil" /></button>
+        </span>
+    </li>;
                     var calToday = DateOnly.FromDateTime(DateTime.Today);
                 }
                 @if (_calendar)
@@ -1579,24 +1611,28 @@ else
                         }
                     </div>
                 }
-                else if (!shown.Any())
+                else if (!shown.Any() && !shownXfers.Any())
                 {
                     <ul class="list"><li><em>@(!string.IsNullOrWhiteSpace(_spendSearch) ? Loc["Nothing matches that search."] : Loc["Nothing’s perched here yet — add your first expense."])</em></li></ul>
                 }
                 else if (_dayView is not null)
                 {
-                    <ul class="list list-even">@foreach (var e in shown) { @row(e) }</ul>
+                    <ul class="list list-even">@foreach (var e in shown) { @row(e) }@foreach (var t in shownXfers) { @xferRow(t) }</ul>
                 }
                 else
                 {
-                    @foreach (var grp in shown.GroupBy(e => e.Date).OrderByDescending(g => g.Key))
+                    @* Days come from expenses AND transfers, so a day whose only outflow was money sent to another
+                       account still gets a header instead of vanishing from the ledger. *@
+                    @foreach (var day in shown.Select(e => e.Date).Concat(shownXfers.Select(t => t.Date)).Distinct().OrderByDescending(d => d))
                     {
+                        var grp = shown.Where(e => e.Date == day).ToList();
+                        var grpX = shownXfers.Where(t => t.Date == day).ToList();
                         @* A day inside a trip says so, in the trip's own colour — the same lookup and the same
                            palette index the calendar band uses, so the two views agree about which journey a day
                            belongs to. It answers "why was this Tuesday expensive" without opening anything. *@
-                        var sepTrip = State.AllTrips.FirstOrDefault(t => grp.Key >= t.From && grp.Key <= t.To);
-                        <button class="date-sep" @onclick="() => GoToDay(grp.Key)">
-                            <span class="date-sep-lbl">@DateSepLabel(grp.Key)</span>
+                        var sepTrip = State.AllTrips.FirstOrDefault(t => day >= t.From && day <= t.To);
+                        <button class="date-sep" @onclick="() => GoToDay(day)">
+                            <span class="date-sep-lbl">@DateSepLabel(day)</span>
                             @if (sepTrip is not null)
                             {
                                 <span class="date-sep-trip cal-trip-c@(TripColourIndex(sepTrip.Id))">
@@ -1605,10 +1641,10 @@ else
                             }
                             @* The day's spend, in the amount column — a running read of "what did today cost". Widths
                                match the row's amt (88) + actions (58) so it sits directly over the expense amounts. *@
-                            <span class="date-sep-tot">@Fmt(State.Money(grp.Sum(e => e.Amount.Amount)))</span>
+                            <span class="date-sep-tot">@Fmt(State.Money(grp.Sum(e => e.Amount.Amount) + grpX.Sum(t => t.Amount.Amount)))</span>
                             <span class="date-sep-pad" aria-hidden="true"></span>
                         </button>
-                        <ul class="list list-even">@foreach (var e in grp) { @row(e) }</ul>
+                        <ul class="list list-even">@foreach (var e in grp) { @row(e) }@foreach (var t in grpX) { @xferRow(t) }</ul>
                     }
                 }
                 </div>
@@ -4491,6 +4527,13 @@ else
                     {
                         <button type="button" class="link settle-link" @onclick="() => OpenUndoRefund(_editExpenseId)"><Icon Name="swap" /> @string.Format(Loc["{0} came back on this — undo"], Fmt(refExp.RefundedMoney))</button>
                     }
+                    @* Recording a refund by hand. It used to be reachable only by matching a bank credit in the
+                       review list, which made "money came back" a feature of having a synced wallet — no help at
+                       all when a friend hands you cash for their share. *@
+                    @if (State.FindExpense(_editExpenseId) is { } refundable && refundable.Amount.Amount > 0m)
+                    {
+                        <button type="button" class="link settle-link" @onclick="() => OpenRecordRefund(_editExpenseId)"><Icon Name="swap" /> @Loc["Money came back on this"]</button>
+                    }
                     <div class="modal-actions">
                         <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
                         <button @onclick="SaveEditExpense" disabled="@(_amount <= 0)">@Loc["Save"]</button>
@@ -4506,6 +4549,36 @@ else
                     <div class="modal-actions">
                         <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
                         <button class="danger-btn" @onclick="ConfirmDeleteExpense">@Loc["Remove"]</button>
+                    </div>
+                    break;
+
+                case Modal.RecordRefund:
+                    <h3>@Loc["Money came back"]</h3>
+                    @if (State.FindExpense(_editExpenseId) is { } rfx)
+                    {
+                        <p class="hint">@rfx.Date.ToString("dd MMM") · @State.CategoryName(rfx.CategoryId) · @Fmt(rfx.Amount)</p>
+                        <label>@Loc["How much came back"] <DecimalInput @bind-Value="_refundAmount" /></label>
+                        @* Which wallet actually received it. Defaulting to the expense's own wallet is the common
+                           case and needs no movement at all — shrinking the expense already credits it. Naming a
+                           different one is what makes "paid by card, handed back in cash" expressible. *@
+                        <div class="modal-field">
+                            <span class="lbl-row">@Loc["Into which wallet"]</span>
+                            <select @bind="_refundFundId">
+                                @foreach (var f in State.ExpensableFunds)
+                                {
+                                    <option value="@f.Id">@f.Name@(f.Id == rfx.FundId ? $" ({Loc["where it was paid from"]})" : "")</option>
+                                }
+                            </select>
+                        </div>
+                        <small class="hint">@Loc["The expense shrinks by this much — it is not logged as income, so \"money in\" stays honest and the category's budget corrects itself."]</small>
+                        @if (_refundAmount > rfx.AmountBeforeRefund.Amount - rfx.RefundedAmount)
+                        {
+                            <small class="hint warn-text">@string.Format(Loc["That is more than the {0} still on this expense."], Fmt(rfx.Amount))</small>
+                        }
+                    }
+                    <div class="modal-actions">
+                        <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
+                        <button @onclick="ConfirmRecordRefund" disabled="@(_refundAmount <= 0)">@Loc["Take it off"]</button>
                     </div>
                     break;
 
@@ -4918,6 +4991,20 @@ else
                     }
                     @if (MTransferDestIsAccount)
                     {
+                        @* Optional, and only about budgets. Money sent to another account already counts in "Spent"
+                           and gets its own Breakdown slice — the one place it went missing was budgets, because a
+                           budget caps a category and this had none. Naming one lets a standing household transfer
+                           be planned for; leaving it blank keeps the old behaviour exactly. *@
+                        <div class="modal-field">
+                            <span class="lbl-row">@Loc["Count against a budget"] <small class="hint">@Loc["optional"]</small></span>
+                            <select @bind="_mTransferCategoryId">
+                                <option value="@Guid.Empty">@Loc["Not budgeted"]</option>
+                                @foreach (var c in State.CategoryOptions)
+                                {
+                                    <option value="@c.Category.Id">@c.Category.Name</option>
+                                }
+                            </select>
+                        </div>
                         <small class="hint @(MTransferDipsSavings ? "warn-text" : "")">@Loc["In this fund:"] <strong>@Fmt(State.FundBalance(_mTransferFromId))</strong>. @(MTransferDipsSavings ? Loc["⚠ This dips into money earmarked for savings."] : "")</small>
                     }
                     else
@@ -6851,7 +6938,7 @@ else
 }
 
 @code {
-    private enum Modal { None, BankReview, BankConfirm, BankConsent, AddCat, AddBudget, DisburseSaving, PayoffProjection, GoalProjection, InvestmentProjection, BankTransfer, ExternalAccounts, HealthScore, RunwayMath, EditCat, DeleteCat, DeleteBudget, EditAccountTransfer, DeleteAccountTransfer, CategoryDetail, AddAccount, EditAccount, DeleteAccount, RemoveMember, LeaveAccount, AddExpense, NextPeriod, RemovePeriod, EditExpense, DeleteExpense, SettleExpense, AddBucket, EditBucket, DeleteBucket, EditCost, AddFund, EditFund, DeleteFund, Invite, Transfer, Deposit, EditDeposit, DeleteDeposit, ManageCats, ManageContribCats, ContribCat, DeleteContribCat, AddSaving, BudgetSaving, SpendSaving, EditSavingDeposit, DeleteSavingDeposit, EditTransfer, DeleteTransfer, EditPeriod, EditSavingMovement, DeleteSavingMovement, DeleteExternalTransfer, Achievements, Reallocate, Recurring, RecurringEdit, RecurringConfirm, Import, AddOrImport, ArchiveFund, FundMovements, Archived, ManageTags, EditTag, LogInstallment, DeleteInstallment, WeekRecap, TripEdit, DeleteTrip, AttachToTrip, UseTripSavings, TagExpense, UndoRefund }
+    private enum Modal { None, BankReview, BankConfirm, BankConsent, AddCat, AddBudget, DisburseSaving, PayoffProjection, GoalProjection, InvestmentProjection, BankTransfer, ExternalAccounts, HealthScore, RunwayMath, EditCat, DeleteCat, DeleteBudget, EditAccountTransfer, DeleteAccountTransfer, CategoryDetail, AddAccount, EditAccount, DeleteAccount, RemoveMember, LeaveAccount, AddExpense, NextPeriod, RemovePeriod, EditExpense, DeleteExpense, SettleExpense, AddBucket, EditBucket, DeleteBucket, EditCost, AddFund, EditFund, DeleteFund, Invite, Transfer, Deposit, EditDeposit, DeleteDeposit, ManageCats, ManageContribCats, ContribCat, DeleteContribCat, AddSaving, BudgetSaving, SpendSaving, EditSavingDeposit, DeleteSavingDeposit, EditTransfer, DeleteTransfer, EditPeriod, EditSavingMovement, DeleteSavingMovement, DeleteExternalTransfer, Achievements, Reallocate, Recurring, RecurringEdit, RecurringConfirm, Import, AddOrImport, ArchiveFund, FundMovements, Archived, ManageTags, EditTag, LogInstallment, DeleteInstallment, WeekRecap, TripEdit, DeleteTrip, AttachToTrip, UseTripSavings, TagExpense, UndoRefund, RecordRefund }
     private enum Tab { Overview, Account, Budgets, Savings }
 
     /// <summary>Which kind of goal the Goals grid is showing. Defaults to All so the filter narrows on request
@@ -8146,6 +8233,9 @@ else
     private Guid _mTransferFromId;
     private Guid _mTransferDestId;
     private Guid _mTransferDestFundId;
+    // Optional budget category for money sent to ANOTHER account — see ExternalTransfer.CategoryId. Empty = the
+    // ordinary case, counted in money out and against no plan.
+    private Guid _mTransferCategoryId;
     private decimal _mTransferAmount;
     // What the exchange office actually handed over, in the destination wallet's currency. Optional: blank keeps
     // the wallet's existing rate. See the Transfer modal for why the rate is derived here rather than typed.
@@ -11463,6 +11553,24 @@ else
         _modal = Modal.UndoRefund;
     }
 
+    private decimal _refundAmount;
+    private Guid _refundFundId;
+
+    private void OpenRecordRefund(Guid expenseId)
+    {
+        _editExpenseId = expenseId;
+        _refundAmount = 0m;
+        // The wallet it was paid from is the answer nine times out of ten, and it is the one that needs no movement.
+        _refundFundId = State.FindExpense(expenseId)?.FundId ?? Guid.Empty;
+        _modal = Modal.RecordRefund;
+    }
+
+    private Task ConfirmRecordRefund() => RunModal(async () =>
+    {
+        await State.RecordRefund(_editExpenseId, _refundAmount, _refundFundId == Guid.Empty ? null : _refundFundId);
+        CloseModal();
+    });
+
     private Task ConfirmUndoRefund() => RunModal(async () =>
     {
         await State.UndoRefund(_editExpenseId);
@@ -12024,6 +12132,7 @@ else
         _mTransferAmount = 0;
         _mTransferReceived = null;
         _mTransferDestFundId = Guid.Empty;
+        _mTransferCategoryId = Guid.Empty;   // "not budgeted" is the default; naming one is the deliberate act
         _modal = Modal.Transfer;
         if (MTransferDestIsAccount) await OnModalDestChanged();
     }
@@ -12043,7 +12152,8 @@ else
     {
         if (_mTransferAmount <= 0 || _mTransferDestId == Guid.Empty || _mTransferDestId == _mTransferFromId) return;
         if (MTransferDestIsAccount)
-            await State.TransferToAccount(_mTransferDestId, _mTransferFromId, _mTransferAmount, null, _mTransferDestFundId);
+            await State.TransferToAccount(_mTransferDestId, _mTransferFromId, _mTransferAmount, null, _mTransferDestFundId,
+                _mTransferCategoryId == Guid.Empty ? null : _mTransferCategoryId);
         else
         {
             await State.TransferFunds(_mTransferFromId, _mTransferDestId, _mTransferAmount, null);

@@ -250,6 +250,7 @@ public sealed class FinAppDbContext(DbContextOptions<FinAppDbContext> options) :
             t.Property(x => x.Note);
             t.Ignore(x => x.FundSynced);         // body data — synced-fund marker rides in the snapshot
             t.Ignore(x => x.AccountTransferId);  // body data — the two-sided transfer link rides in the snapshot
+            t.Ignore(x => x.CategoryId);         // body data — the optional budget category rides in the snapshot
         });
 
         b.Entity<InitialBalance>(i =>

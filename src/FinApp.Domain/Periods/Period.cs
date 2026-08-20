@@ -641,6 +641,16 @@ public sealed class Period : Entity
 
     public Money ExpensesTotal => Sum(_expenses.Select(e => e.Amount));
 
+    /// <summary>
+    /// Money sent to another account that the user filed under a budget category — the transfers that now count
+    /// against a budget (see <see cref="Funds.ExternalTransfer.CategoryId"/>).
+    /// <para>⚠️ It exists so the <b>budgeted</b> totals can include exactly what the per-category rings include.
+    /// The rows and the header they sum to must be built from the same rule, or one screen holds two answers —
+    /// which is the whole reason a transfer was invisible to budgets in the first place.</para>
+    /// </summary>
+    public Money CategorisedTransfersOutTotal =>
+        Sum(AccountTransfersOut.Where(t => t.CategoryId is not null).Select(t => t.Amount));
+
     // --- Savings ----------------------------------------------------------
 
     public SavingAllocation AllocateToSavings(Guid savingCategoryId, Money amount, DateOnly date, string? note = null, Money? priorSaved = null)

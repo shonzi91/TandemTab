@@ -90,6 +90,111 @@ public class AccountPeriodTests
         Assert.Equal(M(100), period.ExpensesTotal);
     }
 
+    /// <summary>
+    /// ★ Owner ask: a refund had to be matched to a bank credit, so an expense paid from a wallet this app tracks
+    /// itself could not be refunded at all. Shrinking such an expense already credits its own wallet — that is what
+    /// <see cref="Period.FundBalance"/> does — so the ordinary case needs no movement and must not invent one.
+    /// </summary>
+    [Fact]
+    public void A_refund_into_the_same_wallet_credits_it_without_inventing_a_transfer()
+    {
+        var account = new Account("Personal", Eur);
+        account.AddDefaultFunds();
+        var cash = account.FundId("Cash");
+        var food = account.AddCategory("Food");
+        var me = account.AddMember(Guid.NewGuid(), "Me");
+
+        var p = account.StartPeriod(new DateOnly(2026, 1, 1), new DateOnly(2026, 1, 31));
+        p.Deposit(me.UserId, M(500), fundId: cash);
+        var dinner = p.AddExpense(new Expense(food.Id, M(60), new DateOnly(2026, 1, 5), me.UserId, cash, "Dinner"));
+
+        Assert.Equal(M(440), p.FundBalance(cash));
+
+        account.RefundExpense(dinner.Id, M(20));   // no wallet named — the money went back where it came from
+
+        Assert.Equal(M(460), p.FundBalance(cash));   // €20 back in the wallet, by the expense shrinking alone
+        Assert.Empty(p.FundTransfers);               // and nothing invented to do it
+        Assert.Equal(M(40), p.ExpensesTotal);
+    }
+
+    /// <summary>
+    /// The case the wallet argument exists for: paid by card, handed back in cash. The expense's own wallet must not
+    /// keep the money, and the wallet that received it must gain it.
+    /// </summary>
+    [Fact]
+    public void A_refund_into_a_different_wallet_moves_the_money_there()
+    {
+        var account = new Account("Personal", Eur);
+        account.AddDefaultFunds();
+        var bank = account.FundId("Bank");
+        var cash = account.FundId("Cash");
+        var food = account.AddCategory("Food");
+        var me = account.AddMember(Guid.NewGuid(), "Me");
+
+        var p = account.StartPeriod(new DateOnly(2026, 1, 1), new DateOnly(2026, 1, 31));
+        p.Deposit(me.UserId, M(500), fundId: bank);
+        var dinner = p.AddExpense(new Expense(food.Id, M(60), new DateOnly(2026, 1, 5), me.UserId, bank, "Dinner"));
+
+        account.RefundExpense(dinner.Id, M(20), cash);
+
+        // The card is back where it was — the €20 it regained by the expense shrinking went straight out again.
+        Assert.Equal(M(440), p.FundBalance(bank));
+        Assert.Equal(M(20), p.FundBalance(cash));
+        Assert.Equal(M(20), p.FundTransfers.Single().Amount);
+        Assert.Equal(M(40), p.ExpensesTotal);   // and the spend still corrected itself
+    }
+
+    /// <summary>
+    /// A synced wallet's real balance is the bank's, not the ledger's, so it is never debited by our own bookkeeping.
+    /// The destination still gains. Same rule the bank money-in confirm follows.
+    /// </summary>
+    [Fact]
+    public void A_refund_off_a_synced_wallet_does_not_debit_it()
+    {
+        var account = new Account("Personal", Eur);
+        account.AddDefaultFunds();
+        var bank = account.FindFund(account.FundId("Bank"))!;
+        bank.SetSynced(true);
+        var cash = account.FundId("Cash");
+        var food = account.AddCategory("Food");
+        var me = account.AddMember(Guid.NewGuid(), "Me");
+
+        var p = account.StartPeriod(new DateOnly(2026, 1, 1), new DateOnly(2026, 1, 31));
+        p.Deposit(me.UserId, M(500), fundId: cash);
+        var card = p.AddExpense(new Expense(food.Id, M(60), new DateOnly(2026, 1, 5), me.UserId, bank.Id, "Dinner"));
+        card.SetFundSynced(true);
+
+        var before = p.FundBalance(bank.Id);
+        account.RefundExpense(card.Id, M(20), cash);
+
+        Assert.Equal(before, p.FundBalance(bank.Id));   // untouched — the bank's own balance carries that side
+        Assert.Equal(M(520), p.FundBalance(cash));
+    }
+
+    /// <summary>Restating a running total that has already been part-moved must not move the same euros twice.</summary>
+    [Fact]
+    public void A_second_refund_moves_only_what_is_newly_back()
+    {
+        var account = new Account("Personal", Eur);
+        account.AddDefaultFunds();
+        var bank = account.FundId("Bank");
+        var cash = account.FundId("Cash");
+        var food = account.AddCategory("Food");
+        var me = account.AddMember(Guid.NewGuid(), "Me");
+
+        var p = account.StartPeriod(new DateOnly(2026, 1, 1), new DateOnly(2026, 1, 31));
+        p.Deposit(me.UserId, M(500), fundId: bank);
+        var dinner = p.AddExpense(new Expense(food.Id, M(60), new DateOnly(2026, 1, 5), me.UserId, bank, "Dinner"));
+
+        var after1 = account.RefundExpense(dinner.Id, M(20), cash);
+        account.RefundExpense(after1.Id, M(35), cash);   // the running TOTAL, not a second €35
+
+        Assert.Equal(M(35), p.FundBalance(cash));
+        Assert.Equal(2, p.FundTransfers.Count);
+        Assert.Equal(M(15), p.FundTransfers.Last().Amount);   // only the newly-returned €15 moved
+        Assert.Equal(M(25), p.ExpensesTotal);
+    }
+
     [Fact]
     public void Refunding_an_expense_reduces_it_and_undoing_restores_it()
     {

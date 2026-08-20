@@ -1,10 +1,45 @@
 # TandemTab (FinApp) — session handoff
 
-Last updated: 2026-08-20 (Session 111 — **R2 is closed, and writing down what it deliberately skipped found two
-rows that were mis-sized and one wrong number. Then a bug sweep over the standing feedback: three rebuild paths
-that each carried a different subset of an expense's data, and a contract whose two neighbouring fields meant
-opposite things.**
-**504 + 50 + 377 green. NOT deployed — live is still `finapp-00314-bw8`.**
+Last updated: 2026-08-20 (Session 111 — **R2 closed; a bug sweep over the standing feedback; then the owner's own
+list of 13 (now 14) items from daily use, of which six are done.**
+**513 + 50 + 378 green. Live: `finapp-00315-77v` (batch 1). Batch 2 is committed and pushed but NOT deployed.**
+
+#### ⭐ The owner's list — where it stands
+The list, its reading and its order live in **[QUEUE.md](QUEUE.md)**; the approved plan is at
+`~/.claude/plans/rosy-dazzling-kay.md`. **Done: O11, O2a, O13, O1, O4** (+ O2b/O3/O5–O10/O12/O14 open).
+⚠️ **O14 arrived mid-session and is only recorded, not started:** Trends' *Spent* / *Set aside* charts should be
+switchable to a **category** / a **bucket** and drawn for it.
+
+**Batch 2 (O1 + O4), this session's last work — committed, pushed, tests green, browser-verified, NOT deployed.**
+
+★★ **O1 — a refund could only be recorded by matching a bank credit.** `RefundableExpenses` returned nothing
+without a synced wallet and offered only expenses paid *from* it, so an expense paid in cash could not be refunded
+from any client — while the REST route would have accepted it all along. ★ **The insight that made this small:**
+shrinking a non-synced expense **already credits its own wallet** (it is part of that fund's spending position), so
+the ordinary case needs no movement and must not invent one. What could not be expressed was *paid by card, handed
+back in cash* — so `Account.RefundExpense(expenseId, total, toFundId)` adds an intra-account transfer only when the
+destination differs, and only for the **newly** returned amount (restating a running total must not move the same
+euros twice). A synced source is not debited by it, the same rule the bank money-in confirm follows.
+✅ **Browser-verified:** €60 → €40 with `refunded: 20`, **Bank unchanged at €1,540**, **Cash +€20**, and one
+transfer row reading *"Refund · Dinner out"*. Four domain tests, including the synced-source and second-refund cases.
+★ **The bank path now shares it** rather than refusing: a credit that refunds a cash-paid expense used to throw
+*"Only an expense paid from the synced wallet can be refunded into it."*
+
+★★ **O4 — half the report was already true, which is what made it cheap.** `AccountTransfersOutTotal`'s own comment
+says it is *"the outflow the Home 'Spent' tile adds on top of expenses"*, and the Breakdown already gave it a slice.
+**The totals were never missing it — the ledger and the budgets were.**
+✅ **Transfers now appear as rows in the By-date list**, quieter than an expense row and keeping their two-sided
+editor (a transfer has a counterpart deposit in the other account and must never be edited as a local row). Days are
+built from expenses **and** transfers, so a day whose only outflow was a transfer no longer vanishes.
+✅ **A transfer can carry an optional category** (owner's call) — body data, `Ignore()`d, zero migration — and
+`BudgetCoverageService.SpentIn` counts categorised ones. ⚠️ **The trap this created and closed: every figure on that
+screen had to move together.** `SpentInCategory`, the "All expenses" header (`TotalSpent`) and the row's item count
+now all read through the same rule; the count was caught in verification reading *"Food 1 · €460"* for two things.
+✅ **Browser-verified on a two-account seed:** the ledger shows *Joint · Household share · **Food** · €400* under a
+day header of **€460.00** that matches its rows, and By-budgets reads **Food €460.00**.
+⚠️ **An UNcategorised transfer behaves exactly as before** — in money out, in no budget. That is the default.
+
+#### Batch 1 (deployed, verified)
 
 ★★ **R2's fourth exit criterion, which is a paragraph and was worth more than a paragraph.** The rule this
 roadmap set was *freeze web work, or accept a **stated** lag* — and a lag stated only as a number in a scanner is
@@ -69,8 +104,20 @@ browser-verified as above. Android: **compiles clean** (`:app:compileDebugKotlin
 — the sheet's `clearTag` was not exercised on the emulator.
 
 ★ **The remaining issues are now a queue, not a paragraph:** [QUEUE.md](QUEUE.md) — eleven rows, ranked, each with
-its first concrete step and, where it is deliberately waiting, what it is waiting for. **⏸️ On hold: the owner has
-their own list, which goes first.**
+its first concrete step and, where it is deliberately waiting, what it is waiting for. **⏸️ On hold: the owner's
+own list goes first, and is at the top of the same file.**
+
+#### Next session — pick up at batch 3
+1. **Deploy batch 2 first.** It is committed and pushed but not built or deployed; live is `finapp-00315-77v`,
+   which is batch 1. ⚠️ **`builds submit` uploads a 394 MB archive** (bin/obj are not excluded) and took 6m14s —
+   an earlier attempt stalled for ~50 minutes and had to be killed. Consider a `.gcloudignore` before the next one.
+2. **Batch 3 = O3 + O2b** (the review flow and bank rules). The owner chose the **full** simplification: ✓ accepts
+   inline when a category is already known, the modal becomes an explicit "More…", pin folds into it, and the
+   duplicate hint becomes one line whose dismissal persists. The matcher fix is the clearer half — it compares
+   amount and date only, with **no merchant at all**, and the two `windowDays: 4` literals need collapsing into one.
+3. **Then batch 4** (O6 + O12 + O7 + O8 + the new **O14**) and **batch 5** (O5 + O9 + O10, all needing Android too).
+4. ⚠️ **O6(d) must be checked on a touch viewport** — the tooltip bug (a compatibility `mouseover` firing before
+   `click`, so the first tap opens and immediately shuts it) is invisible with a mouse.
 
 Previously: 2026-08-19 (Session 110 — **R2's last two open decisions closed, a feature the owner asked for
 shipped, and a bug that had been silently disabling the bank sync on every app open since it was written.**

@@ -683,6 +683,46 @@ public sealed class Account : Entity
     public void FinishTrip(Guid tripId, DateOnly today) =>
         (FindTrip(tripId) ?? throw new InvalidOperationException("Trip not found.")).Finish(today);
 
+    /// <summary>
+    /// Record money coming back on an expense, and put it in the wallet that actually received it.
+    /// <paramref name="totalRefunded"/> is the running total (see <see cref="Period.SetRefund"/>); zero undoes.
+    ///
+    /// <para><b>★ Why a wallet argument at all.</b> Shrinking the expense is already a credit to the wallet it was
+    /// paid from — a non-synced expense is part of that fund's spending position, so removing €20 of it puts €20
+    /// back. That covers the ordinary case and needs no movement. What it cannot express is <b>paid by card,
+    /// handed back in cash</b>: there the expense's wallet must not keep the money and another one must gain it.
+    /// So when <paramref name="toFundId"/> names a different wallet, this also records an intra-account transfer
+    /// for the refunded amount. It is total-preserving, which is exactly right — the money re-entered the account
+    /// when the expense shrank; this only says where it sits.</para>
+    ///
+    /// <para>⚠️ A <b>synced</b> source is not debited by that transfer (<see cref="FundTransfer.SetSyncedSides"/>) —
+    /// the real bank balance already accounts for that side, the same rule the bank money-in confirm follows.</para>
+    ///
+    /// <para>⚠️ Only the <i>added</i> amount moves. Restating a running total that has already been part-moved
+    /// would transfer the same euros twice, so the transfer is for the delta against what had come back before.</para>
+    /// </summary>
+    /// <returns>The rebuilt expense — its id is new, the ledger being append-only.</returns>
+    public Expense RefundExpense(Guid expenseId, Money totalRefunded, Guid? toFundId = null)
+    {
+        var period = CurrentPeriod ?? throw new InvalidOperationException("There's no open period.");
+        var before = period.Expenses.FirstOrDefault(e => e.Id == expenseId)
+            ?? throw new InvalidOperationException("That expense doesn't exist in this period.");
+        var sourceFundId = before.FundId;
+        var added = totalRefunded.Amount - before.RefundedAmount;
+
+        var refunded = period.SetRefund(expenseId, totalRefunded);
+
+        if (toFundId is { } destination && destination != sourceFundId && added > 0m)
+        {
+            var from = FindFund(sourceFundId) ?? throw new InvalidOperationException("The expense's wallet doesn't exist in this account.");
+            var to = FindFund(destination) ?? throw new InvalidOperationException("That wallet doesn't exist in this account.");
+            var transfer = period.TransferFunds(sourceFundId, destination, new Money(added, Currency), refunded.Date,
+                $"Refund · {before.Note}".TrimEnd(' ', '·'));
+            transfer.SetSyncedSides(from.IsSynced, to.IsSynced);
+        }
+        return refunded;
+    }
+
     /// <summary>Put a finished trip back on the road.</summary>
     public void ReopenTrip(Guid tripId) =>
         (FindTrip(tripId) ?? throw new InvalidOperationException("Trip not found.")).Reopen();

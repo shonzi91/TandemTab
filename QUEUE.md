@@ -19,19 +19,20 @@ found the code disagreeing with the report I have said so rather than smoothing 
 
 | # | Item | Kind | State |
 |---|---|---|---|
-| O1 | Refund into a **non-synced** fund — deduct from the expense, and credit the fund that actually received the money | Feature | ⬜ |
-| O2 | Tagging an auto-filed expense **loses its 🏦 badge**; and rules should be able to set a **tag**, not just a category | Bug + feature | ⬜ |
+| O1 | Refund into a **non-synced** fund — deduct from the expense, and credit the fund that actually received the money | Feature | ✅ S111 |
+| O2 | Tagging an auto-filed expense **loses its 🏦 badge** (✅ S111); and rules should be able to set a **tag**, not just a category (⬜) | Bug + feature | 🔨 |
 | O3 | Rework the **transaction review** flow (keep-both / replace / pin / ✕ / accept is too complicated) + **duplicate detection is over-eager** (two €10 spends two days apart) | Rework | ⬜ |
-| O4 | Show **money-out transfers** in the expense list — and consider them in budgets, since they lower the balance | Feature | ⬜ |
+| O4 | Show **money-out transfers** in the expense list — and consider them in budgets, since they lower the balance | Feature | ✅ S111 |
 | O5 | Split the **recurring list** into past (newest→oldest) and future (soonest→latest) | S | ⬜ |
 | O6 | **"Saved toward goals" should name its bucket** everywhere it appears; savings in the Breakdown pie; move **Breakdown + Trends** off the Spending tab onto the Home chart; mobile Trends hover is awkward | Rework | ⬜ |
 | O7 | New savings-bucket modal: when **Debt** is picked, two more chips appear — separate them from the bucket-type row | S | ⬜ |
 | O8 | Move the **"ahead / interest saved"** chip off the debt-free Home section onto the bucket, next to interest left, with the prepaid principal in it | S–M | ⬜ |
 | O9 | Rename **Home → Dashboard**, and let users choose which tab the app opens on | S | ⬜ |
 | O10 | **Confirmation prompts on every delete**, web and mobile | S–M | ⬜ |
-| O11 | Money moved from a bucket **into a budget** still counts as saved — €500 in, €200 budgeted out, card still says €500 | Bug | ⬜ |
+| O11 | Money moved from a bucket **into a budget** still counts as saved — €500 in, €200 budgeted out, card still says €500 | Bug | ✅ S111 |
 | O12 | Make **"Total saved X (this period · % of money in)"** prettier | S | ⬜ |
-| O13 | **Debt owed in Trends** disagrees with the debt bucket | Bug | ⬜ |
+| O13 | **Debt owed in Trends** disagrees with the debt bucket | Bug | ✅ S111 |
+| O14 | Trends' **Spent** and **Set aside** charts should be switchable to a **category** / a **bucket** and drawn for it | M | ⬜ |
 
 ---
 

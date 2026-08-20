@@ -193,7 +193,7 @@ public static class AccountSnapshotSerializer
         p.Expenses.Select(e => new ExpenseNode(e.Id, e.CategoryId, e.Amount.Amount, e.Date, e.MemberId, e.FundId, e.Note, e.SourceSavingCategoryId, e.OnBehalfOfOtherAccount, e.SettlementId, e.SettledToAccountId, e.SettledFromAccountId, e.SettledAmount, e.FundSynced, e.BankExternalId, e.AutoFiled, e.TagIds.Count == 0 ? null : e.TagIds.ToList(), e.InstallmentGroupId, e.Part, e.DebtBucketId, e.TripId, e.ForeignAmount, e.ForeignCurrency, e.Time, e.RefundedAmount)).ToList(),
         p.SavingAllocations.Select(a => new SavingAllocationNode(a.Id, a.SavingCategoryId, a.Amount.Amount, a.Date, a.Note, a.SourceExpenseId, a.BudgetCategoryId, a.TransferPairId, a.SourceExternalTransferId)).ToList(),
         p.FundTransfers.Select(t => new FundTransferNode(t.Id, t.FromFundId, t.ToFundId, t.Amount.Amount, t.Date, t.Note, t.FromSynced, t.ToSynced, t.BankExternalId, t.AutoFiled)).ToList(),
-        p.ExternalTransfers.Select(t => new ExternalTransferNode(t.Id, t.FundId, t.Amount.Amount, t.Date, t.ToAccountId, t.Note, t.FundSynced, t.AccountTransferId)).ToList());
+        p.ExternalTransfers.Select(t => new ExternalTransferNode(t.Id, t.FundId, t.Amount.Amount, t.Date, t.ToAccountId, t.Note, t.FundSynced, t.AccountTransferId, t.CategoryId)).ToList());
 
     // --- node -> domain ---------------------------------------------------
 
@@ -289,6 +289,7 @@ public static class AccountSnapshotSerializer
             var transfer = Build(new ExternalTransfer(t.FundId, M(t.Amount), t.Date, t.ToAccountId, t.Note), t.Id);
             transfer.SetFundSynced(t.FundSynced);
             transfer.SetAccountTransferLink(t.AccountTransferId);
+            transfer.SetCategory(t.CategoryId);
             return transfer;
         }).ToList());
         return p;
@@ -435,5 +436,8 @@ public static class AccountSnapshotSerializer
     private record ExternalTransferNode(Guid Id, Guid FundId, decimal Amount, DateOnly Date, Guid? ToAccountId, string? Note, bool FundSynced = false,
         // R2: the shared id of the deposit this created in the other account. Null on legacy transfers, which stay
         // one-sided on purpose — see ExternalTransfer.AccountTransferId.
-        Guid? AccountTransferId = null);
+        Guid? AccountTransferId = null,
+        // S111: the budget category this outflow is planned under, when the user names one. Null on every transfer
+        // written before this existed, which reads as "counted in Spent, in no budget" — exactly the old behaviour.
+        Guid? CategoryId = null);
 }

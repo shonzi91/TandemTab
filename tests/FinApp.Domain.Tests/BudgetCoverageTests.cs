@@ -12,6 +12,46 @@ public class BudgetCoverageTests
     private const string Eur = "EUR";
     private static Money M(decimal v) => new(v, Eur);
 
+    /// <summary>
+    /// ★ Owner ask: money sent to another account already counted in every "money out" total the app shows, but it
+    /// reached no budget — a budget caps a category and a transfer had none. So a standing household transfer sat
+    /// inside "Spent" while belonging to no plan. Naming a category is what makes it plannable; leaving it unnamed
+    /// must keep the old behaviour exactly.
+    /// </summary>
+    [Fact]
+    public void A_categorised_transfer_out_counts_against_that_budget_and_an_uncategorised_one_does_not()
+    {
+        var account = new Account("Personal", Eur);
+        account.AddDefaultFunds();
+        var bank = account.FundId("Bank");
+        var household = account.AddCategory("Household");
+        var me = account.AddMember(Guid.NewGuid(), "Me");
+
+        var p = account.StartPeriod(new DateOnly(2026, 4, 1), new DateOnly(2026, 4, 30));
+        p.Deposit(me.UserId, M(2000), fundId: bank);
+        p.AddBudget(household.Id, M(500));
+        p.AddExpense(new Expense(household.Id, M(120), new DateOnly(2026, 4, 3), me.UserId, bank, "Cleaning"));
+
+        var svc = new BudgetCoverageService();
+        Assert.Equal(M(120), svc.ForCategory(account, p, household.Id).Spent);
+
+        // Uncategorised: money out, but nobody planned it — the budget must not move.
+        p.TransferOut(bank, M(80), new DateOnly(2026, 4, 5), Guid.NewGuid(), "Pocket money");
+        Assert.Equal(M(120), svc.ForCategory(account, p, household.Id).Spent);
+
+        // Filed under Household: now it is spending against that plan.
+        var planned = p.TransferOut(bank, M(400), new DateOnly(2026, 4, 10), Guid.NewGuid(), "To the joint account");
+        planned.SetCategory(household.Id);
+
+        Assert.Equal(M(520), svc.ForCategory(account, p, household.Id).Spent);
+        Assert.True(svc.ForCategory(account, p, household.Id).IsOverBudget);
+
+        // ⚠️ And the header the rows sum to has to move with them, or one screen holds two answers.
+        Assert.Equal(M(400), p.CategorisedTransfersOutTotal);
+        Assert.Equal(M(120), p.ExpensesTotal);
+        Assert.Equal(M(480), p.AccountTransfersOutTotal);   // every transfer, categorised or not, still counts as money out
+    }
+
     [Fact]
     public void Coverage_is_unchanged_when_an_old_sub_category_is_flattened_into_its_parent()
     {

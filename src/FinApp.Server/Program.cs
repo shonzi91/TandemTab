@@ -1442,6 +1442,9 @@ accounts.MapPost("/{id:guid}/transfers-out", async (Guid id, TransferToAccountRe
         // because this is the only place a pair is created — see ExternalTransfer.AccountTransferId.
         var pairId = Guid.NewGuid();
         outflow.SetAccountTransferLink(pairId);
+        // Optional, and only about budgets — see TransferToAccountRequest. Guarded like the expense tag: a category
+        // that isn't in this account is dropped rather than stored as a dangling id.
+        if (req.CategoryId is { } outCat && source.FindCategory(outCat) is not null) outflow.SetCategory(outCat);
 
         // Deposit there, into the resolved destination fund (empty → first unsynced, else first fund).
         var destFundId = req.DestinationFundId != Guid.Empty && dest.RootFunds.Any(f => f.Id == req.DestinationFundId)
@@ -1605,8 +1608,9 @@ accounts.MapPost("/{id:guid}/expenses/{expenseId:guid}/refund", async (Guid id, 
         var period = account.CurrentPeriod ?? throw new InvalidOperationException("There's no open period.");
         var expense = period.Expenses.FirstOrDefault(e => e.Id == expenseId)
             ?? throw new InvalidOperationException("That expense doesn't exist in this period.");
-        // Domain guards the ceiling (0 ≤ total ≤ the original charge) and says the figure in its message.
-        return period.SetRefund(expenseId, new Money(expense.RefundedAmount + req.Amount, account.Currency)).Id;
+        // Domain guards the ceiling (0 ≤ total ≤ the original charge) and says the figure in its message. ToFundId is
+        // where the money actually arrived — only meaningful when that is a different wallet; see Account.RefundExpense.
+        return account.RefundExpense(expenseId, new Money(expense.RefundedAmount + req.Amount, account.Currency), req.ToFundId).Id;
     }, ct);
     await notifier.AccountChangedAsync(id, userId, version);
     return Results.Ok(new MutationResultDto(version, newId));

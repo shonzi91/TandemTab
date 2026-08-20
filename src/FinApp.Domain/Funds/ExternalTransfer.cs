@@ -50,6 +50,24 @@ public sealed class ExternalTransfer : Entity
     /// <summary>Body data, so a setter rather than a ctor parameter — see <see cref="AccountTransferId"/>.</summary>
     public void SetAccountTransferLink(Guid? transferId) => AccountTransferId = transferId;
 
+    /// <summary>
+    /// Optionally, the budget category this outflow is planned under. Null — the default and the ordinary case —
+    /// means it counts in "money out" but against no budget, exactly as before.
+    ///
+    /// <para><b>★ Why a category on a transfer at all.</b> This money already counts as spending everywhere the
+    /// app totals it: <c>Period.AccountTransfersOutTotal</c> is added to the Home "Spent" tile, and the Breakdown
+    /// gives it a slice. Budgets were the one place it went missing, because a budget is a per-category cap and a
+    /// transfer had no category — so a standing €400 to the household account sat inside "Spent" while belonging to
+    /// no plan. Naming a category is what lets it be planned for, and it stays optional because most transfers
+    /// (moving your own money about) are not spending anyone budgets.</para>
+    ///
+    /// Body data — rides in the account snapshot, no schema change.
+    /// </summary>
+    public Guid? CategoryId { get; private set; }
+
+    /// <summary>Set (or clear, with null) the budget category this outflow is planned under.</summary>
+    public void SetCategory(Guid? categoryId) => CategoryId = categoryId is { } c && c != Guid.Empty ? c : null;
+
     /// <summary>Overwrite the editable fields of a transfer (both sides are edited together — see the
     /// <c>transfers-out</c> PUT endpoint, which keeps this and its counterpart deposit in step).</summary>
     public void Update(Money amount, DateOnly date, Guid fundId, string? note)

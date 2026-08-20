@@ -679,6 +679,12 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     public IReadOnlyList<ExternalTransfer> ExternalTransfers =>
         Period.ExternalTransfers.OrderByDescending(t => t.Date).ToList();
 
+    /// <summary>Money sent to another account this period, newest first — the rows the spending ledger shows
+    /// alongside expenses. Savings disbursements are excluded for the same reason they are excluded from the
+    /// "Spent" tile: deploying a bucket to its goal is not spending.</summary>
+    public IReadOnlyList<ExternalTransfer> AccountTransfersOutThisPeriod =>
+        Period.AccountTransfersOut.OrderByDescending(t => t.Date).ToList();
+
     // --- Category tree & budgets (reads) ----------------------------------
 
     // Pickers and the budget tree show only active (non-archived) categories; archived ones stay resolvable by
@@ -706,30 +712,38 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     public IEnumerable<Category> BudgetedCategories =>
         Period.Budgets.Select(b => Account.FindCategory(b.CategoryId)!).Where(c => c is not null);
 
-    /// <summary>Total spent in a category this period (works without a budget).</summary>
+    /// <summary>Total spent in a category this period (works without a budget). Shares
+    /// <see cref="BudgetCoverageService.SpentIn"/> with the budget ring, so a category cannot show one figure in the
+    /// row and another in its bar — including the money-out transfers filed under it.</summary>
     public Money SpentInCategory(Guid categoryId)
     {
         var ids = Account.CategoryWithDescendantIds(categoryId).ToHashSet();
-        return Period.Expenses.Where(e => ids.Contains(e.CategoryId))
-            .Select(e => e.Amount)
-            .Aggregate(Money(0), (acc, m) => acc + m);
+        return BudgetCoverageService.SpentIn(Period, ids);
     }
 
-    /// <summary>How many expenses were logged in a category and its sub-categories this period.</summary>
+    /// <summary>How many rows a category and its sub-categories account for this period — expenses plus the
+    /// money-out transfers filed under them. It has to match what <see cref="SpentInCategory"/> adds up, or a row
+    /// reads "1 · €460" while two things made that €460.</summary>
     public int ExpenseCountInCategory(Guid categoryId)
     {
         var ids = Account.CategoryWithDescendantIds(categoryId).ToHashSet();
-        return Period.Expenses.Count(e => ids.Contains(e.CategoryId));
+        return Period.Expenses.Count(e => ids.Contains(e.CategoryId))
+             + Period.AccountTransfersOut.Count(t => t.CategoryId is { } c && ids.Contains(c));
     }
 
     // --- Totals & reports -------------------------------------------------
 
     public Money TotalBudgeted => Period.BudgetedTotal;
-    public Money TotalSpent => Period.ExpensesTotal;
+
+    /// <summary>What the budget rings sum to: expenses, plus the money-out transfers filed under a category.
+    /// <para>★ It has to include them, because the per-category rings do (see
+    /// <see cref="BudgetCoverageService.SpentIn"/>). A header that left them out would disagree with the rows
+    /// directly beneath it. An <b>un</b>categorised transfer is still absent from both.</para></summary>
+    public Money TotalSpent => Period.ExpensesTotal + Period.CategorisedTransfersOutTotal;
 
     /// <summary>All money that left the account this period for the Home "Spent" tile: expenses plus plain
-    /// account-to-account transfers (excludes savings disbursements). <see cref="TotalSpent"/> stays expenses-only
-    /// for budget contexts — a transfer isn't budget spend.</summary>
+    /// account-to-account transfers (excludes savings disbursements). <see cref="TotalSpent"/> counts only the
+    /// transfers somebody budgeted for; this counts every one of them.</summary>
     public Money TotalMoneyOut => Period.ExpensesTotal + Period.AccountTransfersOutTotal;
 
     /// <summary>The transfer half of <see cref="TotalMoneyOut"/> on its own, so the hero "Spent" card can break
@@ -2317,11 +2331,13 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     /// Send money from one of this account's funds to another account: the server applies the outflow here and the
     /// matching deposit there in one atomic two-account save (same currency, capped at the source fund's balance).
     /// </summary>
-    public async Task TransferToAccount(Guid destinationAccountId, Guid fromFundId, decimal amount, string? note, Guid destinationFundId = default)
+    /// <param name="categoryId">Optional budget category this outflow is planned under — see
+    /// <see cref="ExternalTransfer.CategoryId"/>. Null keeps the old behaviour: counted in money out, in no budget.</param>
+    public async Task TransferToAccount(Guid destinationAccountId, Guid fromFundId, decimal amount, string? note, Guid destinationFundId = default, Guid? categoryId = null)
     {
         if (amount <= 0m) return;
         await ExecuteAsync(id => api.TransferToAccountAsync(id, new TransferToAccountRequest(
-            destinationAccountId, fromFundId, amount, destinationFundId, note, Today())));
+            destinationAccountId, fromFundId, amount, destinationFundId, note, Today(), categoryId)));
         _cache.Remove(destinationAccountId); // its snapshot changed server-side — a switch must refetch
     }
 
@@ -2531,11 +2547,27 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     /// picked wrongly. Silently hiding the candidates would leave them staring at a list missing the row they
     /// remember paying.
     /// </summary>
+    /// <para>★ No longer gated on a synced wallet (S111, owner ask). It used to return nothing without one, and to
+    /// offer only expenses paid from it — which made a refund a bank-only feature and left money handed back in cash
+    /// with nowhere to go. Where the money arrived is now an argument (see <see cref="Account.RefundExpense"/>)
+    /// rather than an assumption.</para>
     public IReadOnlyList<Expense> RefundableExpenses =>
-        HasSyncedFund
-            ? Period.Expenses.Where(e => e.FundId == SyncedFundId && e.Amount.Amount > 0m)
-                             .OrderByDescending(e => e.Date).ThenByDescending(e => e.SortTime).ToList()
-            : [];
+        Period.Expenses.Where(e => e.Amount.Amount > 0m)
+                       .OrderByDescending(e => e.Date).ThenByDescending(e => e.SortTime).ToList();
+
+    /// <summary>
+    /// Money came back on an expense, recorded by hand rather than spotted in a bank feed. <paramref name="amount"/>
+    /// is what came back now; <paramref name="toFundId"/> is the wallet it arrived in, which only needs stating when
+    /// that is not the wallet the expense was paid from.
+    /// </summary>
+    public async Task RecordRefund(Guid expenseId, decimal amount, Guid? toFundId = null)
+    {
+        if (amount <= 0m) throw new InvalidOperationException("Enter how much came back.");
+        var expense = Period.Expenses.FirstOrDefault(e => e.Id == expenseId)
+            ?? throw new InvalidOperationException("That expense is no longer in this period.");
+        Account.RefundExpense(expenseId, Money(expense.RefundedAmount + amount), toFundId);
+        await SaveAsync();
+    }
 
     /// <summary>Put a refunded expense back to its full charge. The bank row it came from is already acknowledged
     /// and is not resurrected — this undoes the deduction, not the sync.</summary>
@@ -2572,9 +2604,10 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
             // period total all correct themselves at once.
             var expense = Period.Expenses.FirstOrDefault(e => e.Id == targetId)
                 ?? throw new InvalidOperationException("That expense is no longer in this period.");
-            if (expense.FundId != SyncedFundId)
-                throw new InvalidOperationException("Only an expense paid from the synced wallet can be refunded into it.");
-            Period.SetRefund(targetId, Money(expense.RefundedAmount + amount));
+            // ★ The credit landed in the SYNCED wallet — that is what a bank feed means — so that is the wallet
+            // named here. When the expense was paid from a different one (bought in cash, refunded to the card),
+            // RefundExpense also moves the money across; it used to simply refuse the case.
+            Account.RefundExpense(targetId, Money(expense.RefundedAmount + amount), SyncedFundId);
         }
         else throw new InvalidOperationException("Unknown money-in source.");
 
