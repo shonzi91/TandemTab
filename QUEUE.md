@@ -147,6 +147,10 @@ A traffic spike fans Cloud Run instances out into Neon's connection limit, and *
 - ⚠️ **Scrubbing the Trends readout by dragging is NOT implemented** (the tap bug in O6d is). Touch pointers are
   implicitly captured by the element the press began on, so a `pointermove` over the next column never arrives —
   freeing it needs `releasePointerCapture` via JS interop plus hit-testing by coordinate.
+- ★ **The Cloud Build upload was 394.8 MiB because of `android/app/build` (383 MB), not `bin`/`obj`.**
+  `.gcloudignore` had been excluding the .NET outputs all along; the Dockerfile copies only `NuGet.config` and
+  `src/`, so it now drops `android/`, `tests/`, `tools/`, `docs/` and `deploy/` too. **Untested** — it landed after
+  the deploy it would have sped up.
 
 ## Closed on the way through the owner's list (Session 112, batch 3)
 

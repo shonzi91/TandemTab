@@ -1,4 +1,10 @@
 # Keep the Cloud Build upload lean and free of local state.
+#
+# ★ The Dockerfile copies exactly two things — NuGet.config and src/ — so everything else here is upload time
+#   spent on files the build never opens. This list had been trimming bin/obj since it was written and the upload
+#   was still 394.8 MiB / 7326 files (S112), because the weight was somewhere nobody had looked: the ANDROID
+#   Gradle output, 383 MB of it in android/app/build alone. Excluding a build's own outputs is not enough when a
+#   second toolchain in the same repo keeps its own.
 .git/
 **/bin/
 **/obj/
@@ -9,3 +15,12 @@
 .vs/
 .idea/
 scratchpad/
+
+# The native app: its own toolchain, never built by the container.
+android/
+
+# Not copied by the Dockerfile either — tests, dev tooling, docs and deploy scripts.
+tests/
+tools/
+docs/
+deploy/

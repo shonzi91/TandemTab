@@ -3,8 +3,8 @@
 Last updated: 2026-08-20 (Session 112 — **batches 3 and 4. The bank review stops asking and the duplicate check
 stops guessing; a merchant rule can name a label; and the money chart, the debt bucket and the savings header all
 say what they mean.**
-**518 + 50 + 379 green. Live is still `finapp-00315-77v` (batch 1) — batches 2, 3 AND 4 are committed and pushed;
-see the deploy note below.**)
+**518 + 50 + 379 green. DEPLOYED: `finapp-00316-vj7`, 100% LATEST — batches 2, 3 and 4 all went out together,
+verified on the served bytes (both hosts), 5 `secretKeyRef`s intact, no WARNING+ on the new revision.**)
 
 #### ⭐ The owner's list — where it stands
 **Done: O11, O2 (a+b), O13, O1, O4, O3, O6, O7, O8, O12.** **Left: O5, O9, O10 (batch 5, all needing Android too)
@@ -121,9 +121,13 @@ has no mapping DTOs and no review flow).
    unguarded delete, per platform, and the ones deliberately left alone) is written out in the plan file.
 2. **O14** — Trends' *Spent* / *Set aside* charts switchable to a category / a bucket. Moved out of batch 4: it is
    a feature, not a layout pass, and batch 4 was already five surfaces.
-3. ⚠️ **The deploy is the outstanding item.** `.gcloudignore` **does** already exclude `bin`/`obj`/`.git`/`*.db`
-   (tracked since `c240882`), so S111's "394 MB, 6m14s" warning may have been measured from somewhere it did not
-   apply — watch the upload size rather than assuming either way.
+3. ★ **The next deploy should be much faster, and it is worth checking that it is.** S111's "394 MB" warning was
+   exactly right — this session measured **394.8 MiB / 7326 files**, and I had wrongly guessed the existing
+   `.gcloudignore` explained it away. It excluded `bin`/`obj` and always had; the weight was somewhere nobody had
+   looked: **`android/app/build` alone is 383 MB.** The Dockerfile copies only `NuGet.config` and `src/`, so
+   `.gcloudignore` now also drops `android/`, `tests/`, `tools/`, `docs/` and `deploy/`. **Untested — the fix
+   landed after the deploy it would have sped up.** If the next `builds submit` still reports ~400 MB, the file is
+   not being read at all and that is the thing to chase.
 
 Previously: 2026-08-20 (Session 111 — **R2 closed; a bug sweep over the standing feedback; then the owner's own
 list of 13 (now 14) items from daily use, of which six are done.**
