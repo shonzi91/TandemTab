@@ -142,4 +142,30 @@ public class BankSyncApiTests : IClassFixture<FinAppServerFactory>
         Assert.Equal(HttpStatusCode.NoContent, del.StatusCode);
         Assert.Empty((await client.GetFromJsonAsync<List<BankMappingDto>>($"/accounts/{accountId}/bank/mappings"))!);
     }
+
+    [Fact]
+    public async Task A_merchant_rule_can_carry_a_label_as_well_as_a_category()
+    {
+        var (client, accountId) = await AccountAsync("bankMapTag");
+        var category = Guid.NewGuid();
+        var tag = Guid.NewGuid();
+
+        // No label: the column is null, not empty-guid — "no label" and "a label that happens to be all zeroes"
+        // must not be the same answer to the client.
+        (await client.PutAsJsonAsync($"/accounts/{accountId}/bank/mappings",
+            new SetBankMappingRequest("Tesco Stores", "category", category))).EnsureSuccessStatusCode();
+        Assert.Null(Assert.Single((await client.GetFromJsonAsync<List<BankMappingDto>>($"/accounts/{accountId}/bank/mappings"))!).TagId);
+
+        // With one: the same rule, re-saved whole, now labels too.
+        (await client.PutAsJsonAsync($"/accounts/{accountId}/bank/mappings",
+            new SetBankMappingRequest("Tesco Stores", "category", category, tag))).EnsureSuccessStatusCode();
+        var labelled = Assert.Single((await client.GetFromJsonAsync<List<BankMappingDto>>($"/accounts/{accountId}/bank/mappings"))!);
+        Assert.Equal(category, labelled.TargetId);
+        Assert.Equal(tag, labelled.TagId);
+
+        // And dropping the label clears it — the rule is written whole, so an omitted tag is a removed tag.
+        (await client.PutAsJsonAsync($"/accounts/{accountId}/bank/mappings",
+            new SetBankMappingRequest("Tesco Stores", "category", category))).EnsureSuccessStatusCode();
+        Assert.Null(Assert.Single((await client.GetFromJsonAsync<List<BankMappingDto>>($"/accounts/{accountId}/bank/mappings"))!).TagId);
+    }
 }

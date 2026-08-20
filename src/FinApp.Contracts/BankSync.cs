@@ -39,11 +39,15 @@ public record PendingBankTransactionDto(string ExternalId, decimal Amount, DateO
 public record BankTransactionAck(string ExternalId, bool Confirmed);
 
 /// <summary>A learned merchant rule. <see cref="Kind"/> is "category" (debits), "fund" or "contributor" (credits);
-/// <see cref="MatchKey"/> is the normalized description the server matches against.</summary>
-public record BankMappingDto(string MatchKey, string Kind, Guid TargetId);
+/// <see cref="MatchKey"/> is the normalized description the server matches against. <see cref="TagId"/> is an
+/// optional label the rule also applies (debit rules only) — trailing and optional, so an older client deserializes
+/// the same response unchanged.</summary>
+public record BankMappingDto(string MatchKey, string Kind, Guid TargetId, Guid? TagId = null);
 
-/// <summary>Save a merchant rule from a transaction's <see cref="Description"/>.</summary>
-public record SetBankMappingRequest(string Description, string Kind, Guid TargetId);
+/// <summary>Save a merchant rule from a transaction's <see cref="Description"/>. A null <see cref="TagId"/> means
+/// "no label" — unlike a tag omitted from an expense edit, there is no older client to protect here: the rule is
+/// written whole every time, so an absent tag is a cleared tag.</summary>
+public record SetBankMappingRequest(string Description, string Kind, Guid TargetId, Guid? TagId = null);
 
 /// <summary>Bind the connection to a fund (the synced fund), or unbind with a null <see cref="FundId"/>.</summary>
 public record SetBankFundRequest(Guid? FundId);

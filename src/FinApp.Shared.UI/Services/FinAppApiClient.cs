@@ -500,8 +500,8 @@ public sealed class FinAppApiClient(HttpClient http)
         SendAsync(HttpMethod.Put, $"/accounts/{accountId}/bank/fund", new SetBankFundRequest(fundId), ct);
     public Task<List<BankMappingDto>> GetBankMappingsAsync(Guid accountId, CancellationToken ct = default) =>
         SendAsync<List<BankMappingDto>>(HttpMethod.Get, $"/accounts/{accountId}/bank/mappings", null, ct);
-    public Task SetBankMappingAsync(Guid accountId, string description, string kind, Guid targetId, CancellationToken ct = default) =>
-        SendAsync(HttpMethod.Put, $"/accounts/{accountId}/bank/mappings", new SetBankMappingRequest(description, kind, targetId), ct);
+    public Task SetBankMappingAsync(Guid accountId, string description, string kind, Guid targetId, Guid? tagId = null, CancellationToken ct = default) =>
+        SendAsync(HttpMethod.Put, $"/accounts/{accountId}/bank/mappings", new SetBankMappingRequest(description, kind, targetId, tagId), ct);
     public Task RemoveBankMappingAsync(Guid accountId, string description, CancellationToken ct = default) =>
         SendAsync(HttpMethod.Delete, $"/accounts/{accountId}/bank/mappings?description={Uri.EscapeDataString(description)}", null, ct);
 

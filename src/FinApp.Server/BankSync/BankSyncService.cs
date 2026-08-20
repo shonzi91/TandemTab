@@ -90,6 +90,10 @@ public sealed class BankSyncService(FinAppDbContext db, EnableBankingClient eb, 
         // row staged before this existed and on every bank that reports a date only.
         try { await db.Database.ExecuteSqlRawAsync("ALTER TABLE \"PendingBankTransactions\" ADD COLUMN \"Time\" text NULL", ct); }
         catch { /* column already exists */ }
+        // An optional label the rule applies alongside its category, so "always file Tesco under Food" can also say
+        // "and label it Weekly shop". Null on every rule written before this existed. Same idempotent ALTER.
+        try { await db.Database.ExecuteSqlRawAsync("ALTER TABLE \"BankMappings\" ADD COLUMN \"TagId\" text NULL", ct); }
+        catch { /* column already exists */ }
     }
 
     /// <summary>Normalized merchant key used to match a transaction description to a saved rule.</summary>
@@ -383,19 +387,22 @@ public sealed class BankSyncService(FinAppDbContext db, EnableBankingClient eb, 
         try
         {
             await using var cmd = conn.CreateCommand();
-            cmd.CommandText = "SELECT \"MatchKey\", \"Kind\", \"TargetId\" FROM \"BankMappings\" WHERE \"AccountId\" = @acc";
+            cmd.CommandText = "SELECT \"MatchKey\", \"Kind\", \"TargetId\", \"TagId\" FROM \"BankMappings\" WHERE \"AccountId\" = @acc";
             AddParam(cmd, "@acc", accountId.ToString());
             await using var reader = await cmd.ExecuteReaderAsync(ct);
             while (await reader.ReadAsync(ct))
                 if (Guid.TryParse(reader.GetString(2), out var target))
-                    result.Add(new BankMappingDto(reader.GetString(0), reader.GetString(1), target));
+                    result.Add(new BankMappingDto(reader.GetString(0), reader.GetString(1), target,
+                        !reader.IsDBNull(3) && Guid.TryParse(reader.GetString(3), out var tag) ? tag : null));
         }
         finally { if (opened) await conn.CloseAsync(); }
         return result;
     }
 
-    /// <summary>Save (or replace) the rule for a merchant: kind is "category", "fund" or "contributor".</summary>
-    public async Task SetMappingAsync(Guid userId, Guid accountId, string description, string kind, Guid targetId, CancellationToken ct = default)
+    /// <summary>Save (or replace) the rule for a merchant: kind is "category", "fund" or "contributor".
+    /// <paramref name="tagId"/> is an optional label the rule also applies; null clears it, because the rule is
+    /// written whole rather than patched.</summary>
+    public async Task SetMappingAsync(Guid userId, Guid accountId, string description, string kind, Guid targetId, Guid? tagId = null, CancellationToken ct = default)
     {
         await EnsureContributorAsync(userId, accountId, ct);
         await EnsureBankAllowedAsync(userId, ct);
@@ -407,12 +414,13 @@ public sealed class BankSyncService(FinAppDbContext db, EnableBankingClient eb, 
         {
             await using var cmd = conn.CreateCommand();
             cmd.CommandText =
-                "INSERT INTO \"BankMappings\" (\"AccountId\", \"MatchKey\", \"Kind\", \"TargetId\") VALUES (@acc, @key, @kind, @target) " +
-                "ON CONFLICT (\"AccountId\", \"MatchKey\") DO UPDATE SET \"Kind\" = @kind, \"TargetId\" = @target";
+                "INSERT INTO \"BankMappings\" (\"AccountId\", \"MatchKey\", \"Kind\", \"TargetId\", \"TagId\") VALUES (@acc, @key, @kind, @target, @tag) " +
+                "ON CONFLICT (\"AccountId\", \"MatchKey\") DO UPDATE SET \"Kind\" = @kind, \"TargetId\" = @target, \"TagId\" = @tag";
             AddParam(cmd, "@acc", accountId.ToString());
             AddParam(cmd, "@key", key);
             AddParam(cmd, "@kind", kind);
             AddParam(cmd, "@target", targetId.ToString());
+            AddParam(cmd, "@tag", (object?)tagId?.ToString() ?? DBNull.Value);
             await cmd.ExecuteNonQueryAsync(ct);
         }
         finally { if (opened) await conn.CloseAsync(); }

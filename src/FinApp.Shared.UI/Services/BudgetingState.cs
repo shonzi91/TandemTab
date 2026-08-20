@@ -2500,12 +2500,12 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
         // expense must still be offered as a "you already logged this" match. Disbursements (savings payouts) excluded.
         var entries = Period.Expenses
             .Where(e => e.SourceSavingCategoryId is null)
-            .Select(e => new BankDuplicateMatcher.Entry(e.Id, e.Amount.Amount, e.Date));
+            .Select(e => new BankDuplicateMatcher.Entry(e.Id, e.Amount.Amount, e.Date, e.Note));
         var debits = pendingDebits.Where(t => t.Amount < 0m)
-            .Select(t => new BankDuplicateMatcher.Pending(t.ExternalId, t.Amount, t.Date));
+            .Select(t => new BankDuplicateMatcher.Pending(t.ExternalId, t.Amount, t.Date, t.Description));
 
         var map = new Dictionary<string, DuplicateSuggestion>();
-        foreach (var s in BankDuplicateMatcher.Suggest(debits, entries, windowDays: 4))
+        foreach (var s in BankDuplicateMatcher.Suggest(debits, entries))
         {
             var e = Period.Expenses.First(x => x.Id == s.ExpenseId);
             map[s.ExternalId] = new DuplicateSuggestion(e.Id, e.Amount, e.CategoryId,
@@ -2515,15 +2515,18 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     }
 
     /// <summary>True when this period already holds an expense that looks like the same transaction as an incoming
-    /// bank debit (same absolute amount, within a few days). Used to hold a mapped <b>auto-file</b> back into manual
-    /// review instead of silently double-posting over a recurring-posted or already-imported entry — auto-file is the
-    /// one path that otherwise never sees the duplicate matcher. Disbursements (savings payouts) are excluded.</summary>
-    public bool HasLikelyDuplicateExpense(decimal amount, DateOnly date, int windowDays = 4)
-    {
-        var abs = Math.Abs(amount);
-        return Period.Expenses.Any(e => e.SourceSavingCategoryId is null && e.Amount.Amount == abs
-            && Math.Abs(e.Date.DayNumber - date.DayNumber) <= windowDays);
-    }
+    /// bank debit. Used to hold a mapped <b>auto-file</b> back into manual review instead of silently double-posting
+    /// over a recurring-posted or already-imported entry — auto-file is the one path that otherwise never sees the
+    /// duplicate matcher. Disbursements (savings payouts) are excluded.
+    /// <para>★ This one runs on the <b>tight</b> window (<see cref="BankDuplicateMatcher.AutoFileWindowDays"/>). It
+    /// used to share the review hint's four days, which meant a merchant rule quietly stopped working for four days
+    /// after every charge: the second €10 coffee that week dropped back into manual review with no explanation. The
+    /// hint is a suggestion the user can dismiss; this is a silent behaviour change, and has to be surer of itself.
+    /// </para></summary>
+    public bool HasLikelyDuplicateExpense(decimal amount, DateOnly date, string? description = null,
+        int windowDays = BankDuplicateMatcher.AutoFileWindowDays) =>
+        Period.Expenses.Any(e => e.SourceSavingCategoryId is null
+            && BankDuplicateMatcher.CouldBeSame(amount, date, description, e.Amount.Amount, e.Date, e.Note, windowDays));
 
     /// <summary>The incoming bank debit is the same as a manual entry: drop the manual (often mis-filed) expense and
     /// confirm the bank row into that entry's category on the synced fund — one clean, bank-linked expense, no double.</summary>
@@ -2532,9 +2535,15 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
         var exp = Period.Expenses.FirstOrDefault(e => e.Id == manualExpenseId);
         var categoryId = exp?.CategoryId ?? AllCategories.FirstOrDefault()?.Id ?? Guid.Empty;
         var fund = HasSyncedFund ? SyncedFundId : (exp?.FundId ?? Guid.Empty);
+        // ★ The label and the trip come across with the category. "Same — replace" means *this is that transaction*,
+        // so everything the user said about it should survive being re-linked to the bank; only the row's provenance
+        // changes. It used to carry the category alone, which quietly stripped the label off — and now that a
+        // merchant rule can set one (O2b), replacing a row would undo the rule that had just filed it.
+        var tagId = exp?.TagIds.FirstOrDefault() is { } t && t != Guid.Empty ? t : (Guid?)null;
+        var tripId = exp?.TripId;
         if (exp is not null) Period.RemoveExpense(manualExpenseId);
         // ConfirmBankTransaction's AddExpense does the single SaveAsync (covering the removal too) then acks the row.
-        await ConfirmBankTransaction(externalId, categoryId, amount, fund, note, date);
+        await ConfirmBankTransaction(externalId, categoryId, amount, fund, note, date, tagId: tagId, tripId: tripId);
     }
 
     /// <summary>Turn a bank money-in into a movement into the synced fund: the destination is the synced fund
@@ -2660,8 +2669,10 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     public Task ResetBankRange(DateOnly from, DateOnly to) => api.ResetBankRangeAsync(CurrentAccountId, from, to);
 
     public Task<List<BankMappingDto>> GetBankMappings() => api.GetBankMappingsAsync(CurrentAccountId);
-    public Task SetBankMapping(string description, string kind, Guid targetId) =>
-        api.SetBankMappingAsync(CurrentAccountId, description, kind, targetId);
+    /// <summary>Save a merchant rule. <paramref name="tagId"/> is an optional label the rule applies alongside its
+    /// category (debit rules only — a credit becomes a transfer or a contribution, neither of which carries one).</summary>
+    public Task SetBankMapping(string description, string kind, Guid targetId, Guid? tagId = null) =>
+        api.SetBankMappingAsync(CurrentAccountId, description, kind, targetId, tagId);
     public Task RemoveBankMapping(string description) => api.RemoveBankMappingAsync(CurrentAccountId, description);
 
     /// <summary>Normalize a bank description to the same key the server matches rules against (MatchKeyOf).</summary>
@@ -2677,15 +2688,6 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
             .Split((s ?? "").ToLowerInvariant(), @"[^\p{L}\p{N}]+")
             .Where(t => t.Length > 0).ToList();
 
-    // Words that carry no merchant identity — legal suffixes, payment noise, common stopwords — dropped when
-    // reducing a description to its stem so store numbers and legal forms don't split one merchant into many rules.
-    private static readonly HashSet<string> BankStemStop = new(StringComparer.Ordinal)
-    {
-        "the", "and", "for", "ltd", "ltda", "llc", "inc", "gmbh", "plc", "corp", "llp", "group",
-        "ad", "ead", "ood", "eood", "jsc", "sa", "bv", "oy", "ab", "co", "com",
-        "card", "payment", "pos", "purchase", "pmt", "trans", "www",
-    };
-
     /// <summary>An aggressive merchant "stem": the first significant word of a description (letters only, 3+ chars, not
     /// a legal suffix / payment stopword), lowercased. Lets variants like "Fantastico 30" and "Fantastico Group Ltd"
     /// share one auto-map rule. Empty when there's no significant word (then only exact matching applies).</summary>
@@ -2694,7 +2696,7 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
         foreach (var raw in (description ?? "").ToLowerInvariant().Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries))
         {
             var tok = new string(raw.Where(char.IsLetter).ToArray());
-            if (tok.Length >= 3 && !BankStemStop.Contains(tok)) return tok;
+            if (tok.Length >= 3 && !MerchantText.NoiseWords.Contains(tok)) return tok;
         }
         return "";
     }

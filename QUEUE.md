@@ -20,8 +20,8 @@ found the code disagreeing with the report I have said so rather than smoothing 
 | # | Item | Kind | State |
 |---|---|---|---|
 | O1 | Refund into a **non-synced** fund — deduct from the expense, and credit the fund that actually received the money | Feature | ✅ S111 |
-| O2 | Tagging an auto-filed expense **loses its 🏦 badge** (✅ S111); and rules should be able to set a **tag**, not just a category (⬜) | Bug + feature | 🔨 |
-| O3 | Rework the **transaction review** flow (keep-both / replace / pin / ✕ / accept is too complicated) + **duplicate detection is over-eager** (two €10 spends two days apart) | Rework | ⬜ |
+| O2 | Tagging an auto-filed expense **loses its 🏦 badge** (✅ S111); and rules should be able to set a **tag**, not just a category (✅ S112) | Bug + feature | ✅ S112 |
+| O3 | Rework the **transaction review** flow (keep-both / replace / pin / ✕ / accept is too complicated) + **duplicate detection is over-eager** (two €10 spends two days apart) | Rework | ✅ S112 |
 | O4 | Show **money-out transfers** in the expense list — and consider them in budgets, since they lower the balance | Feature | ✅ S111 |
 | O5 | Split the **recurring list** into past (newest→oldest) and future (soonest→latest) | S | ⬜ |
 | O6 | **"Saved toward goals" should name its bucket** everywhere it appears; savings in the Breakdown pie; move **Breakdown + Trends** off the Spending tab onto the Home chart; mobile Trends hover is awkward | Rework | ⬜ |
@@ -135,6 +135,19 @@ A traffic spike fans Cloud Run instances out into Neon's connection limit, and *
 `max-instances` cap, before R7.
 
 ---
+
+## Closed on the way through the owner's list (Session 112, batch 3)
+
+Not on this list when it opened — found while doing O2b and O3, and fixed with them:
+
+- **The duplicate hint printed an icon's NAME as text** — `CategoryIcons.Effective` returns `"utensils"` for the
+  built-in set, and the hint interpolated it raw, so it has read *"utensils Food"* since the hint shipped.
+- **"Same — replace" dropped the label and the trip.** It carried the category and nothing else, so replacing a row
+  un-labelled it. Harmless-looking until O2b, where the rule that had just labelled the row would be undone by
+  accepting the bank's copy of it. Both now come across; only the row's provenance changes.
+- ⚠️ **A `BankSync:AllowedEmails` value in `appsettings.Development.json` fails five server tests** (403 on every
+  bank route). The test factory reads Development settings, and an allowlist that names anyone excludes the tests'
+  own users. Worth knowing before adding one for a local bank fixture — the failures look nothing like the cause.
 
 ## Closed by the sweep that opened this file (Session 111)
 

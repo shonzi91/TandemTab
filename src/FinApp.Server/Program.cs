@@ -2693,7 +2693,7 @@ accounts.MapGet("/{id:guid}/bank/mappings", async (Guid id, ClaimsPrincipal user
 
 accounts.MapPut("/{id:guid}/bank/mappings", async (Guid id, SetBankMappingRequest req, ClaimsPrincipal user, BankSyncService svc, CancellationToken ct) =>
 {
-    await svc.SetMappingAsync(user.UserId(), id, req.Description, req.Kind, req.TargetId, ct);
+    await svc.SetMappingAsync(user.UserId(), id, req.Description, req.Kind, req.TargetId, req.TagId, ct);
     return Results.NoContent();
 });
 

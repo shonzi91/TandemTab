@@ -8176,7 +8176,7 @@ else
     private bool _resendBusy, _resendOk, _2faRecDismissed;
     private bool _bankSharedAck, _bankSharedAckKnown;   // has this member acknowledged seeing a shared account's real bank data
     // Merchant rules + per-row picks (feature 2.3). Rules keyed by normalized merchant; picks keyed by transaction id.
-    private Dictionary<string, (string Kind, Guid TargetId)> _bankMappings = new();
+    private Dictionary<string, (string Kind, Guid TargetId, Guid? TagId)> _bankMappings = new();
     private List<BankAccountDto> _bankAccounts = [];
     private readonly Dictionary<string, Guid> _bankRowCat = new();      // debit → category
     private readonly Dictionary<string, Guid> _bankRowFund = new();     // debit → fund
@@ -8685,9 +8685,10 @@ else
             if (_bankStatus.Connected)
             {
                 _bankPending = await State.GetPendingBankTransactions();
-                _bankMappings = (await State.GetBankMappings()).ToDictionary(m => m.MatchKey, m => (m.Kind, m.TargetId));
+                _bankMappings = (await State.GetBankMappings()).ToDictionary(m => m.MatchKey, m => (m.Kind, m.TargetId, m.TagId));
                 DefaultBankPickers();
                 await AutoHandleMappedDebitsAsync();
+                await LoadDupDismissedAsync();   // after auto-filing, so the prune only keeps ids still on screen
                 // Invited members see one-time "this shows real bank data" acknowledgment until they confirm it.
                 if (!State.IsOwnerOfCurrent)
                 {
@@ -8755,19 +8756,21 @@ else
 
     private void DefaultBankPickers()
     {
-        var firstCat = State.CategoryOptions.FirstOrDefault().Category?.Id ?? Guid.Empty;
         var firstFund = State.SelectableFunds.FirstOrDefault()?.Id ?? Guid.Empty;
         _bankRowCat.Clear(); _bankRowFund.Clear(); _bankRowCredit.Clear();
         foreach (var t in _bankPending)
         {
             var mapped = MappingFor(t.Description);
-            _bankRowCat[t.ExternalId] = mapped is { Kind: "category" } m && State.CategoryOptions.Any(c => c.Category.Id == m.TargetId) ? m.TargetId : firstCat;
+            // ★ Unmapped rows start on NO category, not on the first one in the list. The row's ✓ now files the
+            // transaction where the select says, so a pre-filled guess is no longer a harmless default — it is a
+            // wrong answer sitting under a one-tap button. A rule's answer is a real answer and still fills in.
+            _bankRowCat[t.ExternalId] = mapped is { Kind: "category" } m && State.CategoryOptions.Any(c => c.Category.Id == m.TargetId) ? m.TargetId : Guid.Empty;
             _bankRowFund[t.ExternalId] = firstFund;
             _bankRowCredit[t.ExternalId] = mapped is { Kind: "fund" or "contributor" } cm ? $"{cm.Kind}:{cm.TargetId}" : "";
         }
     }
 
-    private (string Kind, Guid TargetId)? MappingFor(string description)
+    private (string Kind, Guid TargetId, Guid? TagId)? MappingFor(string description)
     {
         // Token-subset matching: a rule applies when every one of its tokens is present in this description's tokens
         // (the user curates which tokens identify the merchant — see BankTokens). The most-specific rule wins (most
@@ -8775,7 +8778,7 @@ else
         // payees no longer collapse onto a shared first word the way the old merchant-stem fallback did.
         var descTokens = BudgetingState.BankTokens(description).ToHashSet(StringComparer.Ordinal);
         if (descTokens.Count == 0) return null;
-        (string Kind, Guid TargetId)? best = null;
+        (string Kind, Guid TargetId, Guid? TagId)? best = null;
         var bestCount = 0;
         foreach (var (key, val) in _bankMappings)
         {
@@ -8813,16 +8816,32 @@ else
                 <span class="bank-tx-desc" title="@t.Description"><span class="vendor-badge" style="background:@VendorColor(t.Description)">@VendorInitial(t.Description)</span>@t.Description</span>
                 <span class="amt @(isDebit ? "" : "credit")">@(isDebit ? "−" : "+")@Fmt(new Money(Math.Abs(t.Amount), State.Currency))</span>
             </div>
+            @* A debit's rule is read-only here — it is written, changed and forgotten in the review form behind
+               "More…", where the words it matches are shown alongside it. A credit has no such form, so its rows
+               keep the pin and the inline word-chooser below. *@
+            @if (isDebit && mappedLabel is not null)
+            {
+                <div class="bank-tx-rule" title="@string.Format(Loc["Auto-fills {0}. Change it under More…"], mappedLabel)">
+                    <Icon Name="pin" /> <span>@mappedLabel</span>
+                </div>
+            }
             @* While a row is being confirmed the new expense is posted before this pending row is removed, so it
                would momentarily match itself and flash "you already logged this". Suppress the hint mid-save —
-               including while pinning (the rule auto-files matching rows, which briefly self-matches too). *@
-            @if (isDebit && !_bankBusy && !_dupDismissed.Contains(id) && !_rowSaving.Contains(id) && DupSuggestions.TryGetValue(id, out var dup))
+               including while pinning (the rule auto-files matching rows, which briefly self-matches too).
+               ★ One line now, and the dismissal outlives the page (see DismissDupRow). It used to restate the
+               amount the row is already showing and the fund it was paid from, then forget the answer on reload —
+               so the same wrong guess greeted the user every time they opened the review. *@
+            @if (isDebit && !_bankBusy && !_dupDismissed.Contains(id) && DupSuggestions.TryGetValue(id, out var dup))
             {
                 <div class="dup-hint">
-                    <span class="dup-txt">🔁 @string.Format(Loc["Looks like you already logged this: {0} · {1} {2} · {3} · {4}"], Fmt(dup.Amount), dup.CategoryIcon, dup.Category, dup.Fund, dup.Date.ToString("dd MMM"))</span>
+                    <span class="dup-txt" title="@string.Format(Loc["{0} · {1} · {2}"], Fmt(dup.Amount), dup.Fund, dup.Date.ToString("dd MMM yyyy"))">
+                        @* IconOrEmoji, not the raw string: CategoryIcons.Effective returns an icon NAME for the
+                           built-in set, so this line has been reading "utensils Food" since the hint shipped. *@
+                        🔁 @Loc["Already logged?"] @IconOrEmoji(dup.CategoryIcon) @dup.Category · @dup.Date.ToString("dd MMM")
+                    </span>
                     <span class="dup-actions">
-                        <button class="chip on" @onclick="() => ReplaceDupRow(t, dup)" disabled="@_bankBusy">@Loc["Same — replace"]</button>
-                        <button class="chip" @onclick="() => { _dupDismissed.Add(id); }">@Loc["Keep both"]</button>
+                        <button class="chip on" @onclick="() => ReplaceDupRow(t, dup)" disabled="@_bankBusy">@Loc["Replace"]</button>
+                        <button class="chip" @onclick="() => DismissDupRow(id)">@Loc["Not a duplicate"]</button>
                     </span>
                 </div>
             }
@@ -8830,7 +8849,8 @@ else
                 <span class="bank-tx-date">@t.Date.ToString("dd MMM")</span>
                 @if (isDebit)
                 {
-                    <select class="bank-sel" value="@RowCat(id)" @onchange="e => _bankRowCat[id] = Guid.Parse(e.Value?.ToString() ?? Guid.Empty.ToString())">
+                    <select class="bank-sel" value="@RowCat(id)" @onchange="e => _bankRowCat[id] = Guid.TryParse(e.Value?.ToString(), out var rc) ? rc : Guid.Empty">
+                        <option value="@Guid.Empty">@Loc["Category…"]</option>
                         @foreach (var (cat, depth) in State.CategoryOptions)
                         {
                             <option value="@cat.Id">@CatOption(cat.Id, cat.Name, depth)</option>
@@ -8886,25 +8906,32 @@ else
                     }
                 }
                 <span class="bank-tx-icons">
-                    <button class="icon-btn pin @(mappedLabel is not null ? "on" : "")" title="@pinTitle" @onclick="() => TogglePin(t)" disabled="@_bankBusy"><Icon Name="pin" /></button>
                     @if (isDebit)
                     {
+                        @* ★ ✓ files the expense from this row, and only opens something when it genuinely can't.
+                           It used to open the full form every single time — the owner's complaint — because the row
+                           could set exactly one thing and the form had to be asked for the rest. The rest is
+                           optional, so it moves behind "More…" and the common charge is one tap. *@
+                        <button class="icon-btn ok" title="@(RowCat(id) == Guid.Empty ? Loc["Pick a category first"] : Loc["Add as an expense"])"
+                                @onclick="() => AcceptBankRow(t)" disabled="@(_bankBusy || RowCat(id) == Guid.Empty)"><Icon Name="check" /></button>
+                        <button type="button" class="chip" title="@Loc["Trip, label, note and the auto-file rule"]" @onclick="() => OpenBankConfirm(t)" disabled="@_bankBusy">@Loc["More…"]</button>
                         @if (State.HasSyncedFund)
                         {
                             <button class="icon-btn" title="@Loc["Record as a transfer to another fund/account"]" @onclick="() => OpenBankTransfer(t)" disabled="@_bankBusy">⇄</button>
                         }
-                        <button class="icon-btn ok" title="@Loc["Review and add"]" @onclick="() => OpenBankConfirm(t)" disabled="@_bankBusy"><Icon Name="check" /></button>
                     }
                     else
                     {
+                        <button class="icon-btn pin @(mappedLabel is not null ? "on" : "")" title="@pinTitle" @onclick="() => TogglePin(t)" disabled="@_bankBusy"><Icon Name="pin" /></button>
                         <button class="icon-btn ok" title="@Loc["Add movement"]" @onclick="() => ConfirmMoneyInRow(t)" disabled="@(_bankBusy || !State.HasSyncedFund)"><Icon Name="check" /></button>
                     }
                     <button class="icon-btn x" title="@Loc["Dismiss"]" @onclick="() => DismissBankRow(t)" disabled="@_bankBusy"><Icon Name="x" /></button>
                 </span>
             </div>
             @* Pinning opens an inline word-chooser (same chips as the edit-expense rule editor): pick which words
-               identify this merchant, then save the auto-file rule. *@
-            @if (_pinEditId == id)
+               identify this merchant, then save the auto-file rule. Credits only — a debit's rule lives in the
+               review form, where the category it files to is being chosen anyway. *@
+            @if (!isDebit && _pinEditId == id)
             {
                 <div class="pin-rule-edit">
                     <span class="rule-tokens" title="@Loc["Tap a word to include or exclude it from matching. A transaction matches when all the highlighted words appear in it."]">
@@ -9011,6 +9038,7 @@ else
             _bankPending = await State.GetPendingBankTransactions();
             DefaultBankPickers();
             await AutoHandleMappedDebitsAsync();
+            await LoadDupDismissedAsync();
         }
         catch (Exception ex) { _bankError = ex.Message; }
         finally { _bankBusy = false; }
@@ -9030,10 +9058,14 @@ else
             if (!State.CategoryOptions.Any(c => c.Category.Id == m.TargetId)) continue;
             // Don't auto-post over a likely duplicate (a recurring-posted or already-imported expense of the same
             // amount): leave it pending so the review screen surfaces the "you already logged this" suggestion.
-            if (State.HasLikelyDuplicateExpense(tx.Amount, tx.Date)) continue;
+            // ★ On the tight window now, and reading the merchant text — a rule that stops firing for four days
+            // after each charge looks broken, and the user never learns why. See HasLikelyDuplicateExpense.
+            if (State.HasLikelyDuplicateExpense(tx.Amount, tx.Date, tx.Description)) continue;
+            // The rule's label, if it still exists — a tag deleted since the rule was written just doesn't apply.
+            var ruleTag = m.TagId is { } rt && State.AllTags.Any(t => t.Id == rt) ? rt : (Guid?)null;
             try
             {
-                await State.ConfirmBankTransaction(tx.ExternalId, m.TargetId, Math.Abs(tx.Amount), State.SyncedFundId, tx.Description, ClampToPeriod(tx.Date), autoFiled: true);
+                await State.ConfirmBankTransaction(tx.ExternalId, m.TargetId, Math.Abs(tx.Amount), State.SyncedFundId, tx.Description, ClampToPeriod(tx.Date), autoFiled: true, tagId: ruleTag);
                 _bankPending.RemoveAll(p => p.ExternalId == tx.ExternalId);
             }
             catch { /* leave it in the list for manual handling */ }
@@ -9075,13 +9107,39 @@ else
         finally { _bankBusy = false; }
     }
 
-    // Bank de-duplication: suggestions for the current debits, and the set the user chose to "keep both" on.
+    // Bank de-duplication: suggestions for the current debits, and the set the user has answered "not a duplicate"
+    // on. ★ That answer is kept in localStorage per account (below): the hint is a guess about rows that stay
+    // pending for days, and a guess the user has already corrected must not come back every time the app loads.
     private readonly HashSet<string> _dupDismissed = new();
-    // Rows whose confirm is in flight — the dup-hint is suppressed for them so it can't flash against the
-    // expense they're in the middle of posting (which isn't removed from the pending list until the await returns).
-    private readonly HashSet<string> _rowSaving = new();
     private IReadOnlyDictionary<string, BudgetingState.DuplicateSuggestion> DupSuggestions =>
         State.BankDuplicateSuggestions(BankDebits());
+
+    private string BankDupKey() => $"finapp_bankdup_{State.CurrentAccountId}";
+
+    /// <summary>"Not a duplicate" — hide the hint for this row and remember that, across reloads.</summary>
+    private async Task DismissDupRow(string externalId)
+    {
+        _dupDismissed.Add(externalId);
+        await SaveDupDismissedAsync();
+    }
+
+    private async Task SaveDupDismissedAsync()
+    {
+        try { await JS.InvokeVoidAsync("localStorage.setItem", BankDupKey(), string.Join('\n', _dupDismissed)); }
+        catch { /* no storage — the dismissal still holds for this session */ }
+    }
+
+    /// <summary>Restore the "not a duplicate" answers for this account, dropping any whose transaction is no longer
+    /// pending — otherwise the list would grow for ever on ids nothing will ever ask about again.</summary>
+    private async Task LoadDupDismissedAsync()
+    {
+        _dupDismissed.Clear();
+        string? raw = null;
+        try { raw = await JS.InvokeAsync<string?>("localStorage.getItem", BankDupKey()); } catch { /* no storage */ }
+        foreach (var xid in (raw ?? "").Split('\n', StringSplitOptions.RemoveEmptyEntries)) _dupDismissed.Add(xid);
+        if (_dupDismissed.RemoveWhere(xid => !_bankPending.Any(p => p.ExternalId == xid)) > 0)
+            await SaveDupDismissedAsync();
+    }
 
     /// <summary>Replace a manual entry with the incoming bank transaction (drops the duplicate, keeps the bank one).</summary>
     private async Task ReplaceDupRow(PendingBankTransactionDto tx, BudgetingState.DuplicateSuggestion dup)
@@ -9091,7 +9149,36 @@ else
         {
             await State.ReplaceWithBankTransaction(tx.ExternalId, dup.ExpenseId, Math.Abs(tx.Amount), ClampToPeriod(tx.Date), tx.Description);
             _bankPending.RemoveAll(p => p.ExternalId == tx.ExternalId);
-            _dupDismissed.Remove(tx.ExternalId);
+            if (_dupDismissed.Remove(tx.ExternalId)) await SaveDupDismissedAsync();
+        }
+        catch (Exception ex) { _bankError = ex.Message; }
+        finally { _bankBusy = false; }
+    }
+
+    /// <summary>
+    /// ✓ on a review row: file this debit as an expense, here, without opening anything. The row already carries
+    /// every answer the app needs — the category (from the merchant's rule or the select beside it), the wallet, the
+    /// merchant as the note, and the bank's own date and time.
+    /// <para>★ The trip is attached the same way the review form attaches it — from the <b>transaction's</b> date,
+    /// not today's. Card charges are reviewed after you are home, and an inline ✓ that quietly dropped the holiday
+    /// off every charge would be a worse answer than the modal it replaces, not a faster one.</para>
+    /// </summary>
+    private async Task AcceptBankRow(PendingBankTransactionDto tx)
+    {
+        var category = RowCat(tx.ExternalId);
+        if (category == Guid.Empty) { _bankError = Loc["Pick a category first."]; return; }
+        var fund = State.HasSyncedFund ? State.SyncedFundId : RowFund(tx.ExternalId);
+        if (fund == Guid.Empty) { _bankError = Loc["Pick a wallet first."]; return; }
+        var trip = State.AllTrips.FirstOrDefault(tr => tx.Date >= tr.From && tx.Date <= tr.To)?.Id;
+        // A rule that also names a label applies it here too, exactly as it does when auto-filing (O2b).
+        var tag = MappingFor(tx.Description) is { Kind: "category" } m && m.TagId is { } rt && State.AllTags.Any(t => t.Id == rt) ? rt : (Guid?)null;
+
+        _bankBusy = true; _bankError = null;
+        try
+        {
+            await State.ConfirmBankTransaction(tx.ExternalId, category, Math.Abs(tx.Amount), fund, tx.Description,
+                ClampToPeriod(tx.Date), tagId: tag, tripId: trip, time: tx.Time);
+            _bankPending.RemoveAll(p => p.ExternalId == tx.ExternalId);
         }
         catch (Exception ex) { _bankError = ex.Message; }
         finally { _bankBusy = false; }
@@ -9163,8 +9250,12 @@ else
         {
             var key = string.Join(' ', _pinTokens.Where(_pinOn.Contains));
             if (key.Length == 0) key = string.Join(' ', _pinTokens);
-            await State.SetBankMapping(key, "category", _categoryId);
-            _bankMappings[key] = ("category", _categoryId);
+            // ★ The rule remembers the label as well as the category (O2b). Nothing extra is asked for it: the tag
+            // picker is right there in this form, and "always file this merchant here" plainly means *here* — the
+            // category and the label the user just chose. A merchant filed under Food and labelled "Weekly shop"
+            // stops needing the second half typed out every week.
+            await State.SetBankMapping(key, "category", _categoryId, _fTagId);
+            _bankMappings[key] = ("category", _categoryId, _fTagId);
         }
 
         await State.ConfirmBankTransaction(tx.ExternalId, _categoryId, Math.Abs(tx.Amount), fund, _note,
@@ -9288,7 +9379,7 @@ else
         try
         {
             await State.SetBankMapping(newKey, kind, target);
-            _bankMappings[newKey] = (kind, target);
+            _bankMappings[newKey] = (kind, target, null);
             _pinEditId = null;
             // The new rule covers this merchant's pending rows in the current period — auto-file those so the review
             // list clears itself. Prior-period rows stay pending until their own period is viewed.
@@ -9318,13 +9409,18 @@ else
     private string? MappedLabel(string description)
     {
         if (MappingFor(description) is not { } m) return null;
-        return m.Kind switch
+        var target = m.Kind switch
         {
             "category" => State.CategoryName(m.TargetId),
             "fund" => State.FundName(m.TargetId),
             "contributor" => State.MemberName(m.TargetId),
             _ => null,
         };
+        // A rule that also labels says so wherever it names itself — otherwise the tag it applies arrives on the
+        // expense with nothing on screen accounting for it.
+        if (target is not null && m.TagId is { } tag && State.AllTags.FirstOrDefault(t => t.Id == tag) is { } tagRow)
+            target = $"{target} · {tagRow.Name}";
+        return target;
     }
 
     /// <summary>Tooltip for the 🏦 auto-filed badge: names the responsible rule if it still exists.</summary>
@@ -9405,8 +9501,10 @@ else
                 var idx = _editCatVendors.IndexOf(key);
                 if (idx >= 0) _editCatVendors[idx] = newKey;
             }
-            await State.SetBankMapping(newKey, existing.Kind, target);
-            _bankMappings[newKey] = (existing.Kind, target);
+            // The rule's label is not editable here (this row edits where it files and which words match), so it is
+            // carried across rather than dropped — SetBankMapping writes the rule whole, and an omitted tag clears it.
+            await State.SetBankMapping(newKey, existing.Kind, target, existing.TagId);
+            _bankMappings[newKey] = (existing.Kind, target, existing.TagId);
             // A category rule re-pointed elsewhere no longer belongs to the category being edited.
             if (existing.Kind == "category" && _modal == Modal.EditCat && target != _modalCatId)
                 _editCatVendors.Remove(newKey);
@@ -11016,7 +11114,7 @@ else
         _importFund = State.SelectableFunds.FirstOrDefault()?.Id ?? State.RootFunds.FirstOrDefault()?.Id ?? Guid.Empty;
         _modal = Modal.Import;
         // Load saved merchant→category rules so imports can auto-map (and the 📌 pin reflects existing rules).
-        try { _bankMappings = (await State.GetBankMappings()).ToDictionary(m => m.MatchKey, m => (m.Kind, m.TargetId)); }
+        try { _bankMappings = (await State.GetBankMappings()).ToDictionary(m => m.MatchKey, m => (m.Kind, m.TargetId, m.TagId)); }
         catch { /* mappings are a nicety for import auto-map; ignore if unavailable */ }
     }
 
@@ -11123,7 +11221,7 @@ else
         try
         {
             if (_bankMappings.ContainsKey(key)) { _bankMappings.Remove(key); await State.RemoveBankMapping(r.Tx.Description); }
-            else { _bankMappings[key] = ("category", r.CategoryId); await State.SetBankMapping(r.Tx.Description, "category", r.CategoryId); }
+            else { _bankMappings[key] = ("category", r.CategoryId, null); await State.SetBankMapping(r.Tx.Description, "category", r.CategoryId); }
         }
         catch (Exception ex) { _importError = Describe(ex); }
     }

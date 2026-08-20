@@ -1,6 +1,73 @@
 # TandemTab (FinApp) — session handoff
 
-Last updated: 2026-08-20 (Session 111 — **R2 closed; a bug sweep over the standing feedback; then the owner's own
+Last updated: 2026-08-20 (Session 112 — **batch 3: the bank review flow stops asking, the duplicate check stops
+guessing, and a merchant rule can name a label as well as a category.**
+**518 + 50 + 379 green. Live is still `finapp-00315-77v` (batch 1) — batches 2 AND 3 are committed, pushed and NOT
+deployed.**)
+
+#### ⭐ The owner's list — where it stands
+**Done: O11, O2 (a+b), O13, O1, O4, O3** (+ O5–O10, O12, O14 open). Order and readings in [QUEUE.md](QUEUE.md);
+plan at `~/.claude/plans/rosy-dazzling-kay.md`.
+
+★★ **O3, the duplicate half — the fix was to let the descriptions have a say, and then to use two thresholds
+rather than one.** `BankDuplicateMatcher` paired on **amount and date and nothing else**, so €10 on Tuesday and
+€10 on Thursday were "the same transaction" — the owner's report, and unavoidable for round numbers. The rows
+carry their text now (`Pending.Description`, `Entry.Text`, both optional): when the words name the same merchant
+the full four-day window applies — *that is the case the feature exists for*, the same row reaching the app twice,
+where the second copy carries the bank's own wording — and when they don't, or one side is silent, the pair has to
+be within a day. ★ **The second threshold is the one that matters more.** `HasLikelyDuplicateExpense` silently
+holds an **auto-filed** row back into manual review, and it shared the four days: a merchant rule therefore stopped
+working for four days after every charge, with nothing on screen to explain it. It runs on the tight window now.
+**A suggestion the user can dismiss and a silent behaviour change do not deserve the same confidence**, and the two
+constants say so by name. ⚠️ `MerchantText` is new and holds the noise-word list (`card`, `payment`, `ltd`, …) that
+`BankMatchStem` used to keep privately — **one definition of "these two rows are the same shop"**, not two.
+
+★★ **O3, the flow half — ✓ files the expense now, and "More…" is the way to everything else.** The complaint was
+*"accept opens a modal regardless"*, and the reason it did is that the row could set exactly one thing. ✓ takes the
+row's category (from the merchant's rule, or the select beside it), the wallet, the merchant as the note, the
+bank's date **and its booking time**, and — ★ the part that would have been a regression if missed — **the trip
+running on the transaction's own date**, the same rule the form uses. **The pin and its inline word-chooser are
+gone from debit rows** (they live in the form, next to the category the rule files to); a mapped merchant shows a
+read-only *"Food · Weekly shop"* line instead. Credits keep the pin — they have no form. **The duplicate block is
+one line with a persisted dismissal** (localStorage per account, pruned to still-pending ids): "Keep both" used to
+be a field on the page, so every reload greeted the user with the same wrong guess. **The dead `_rowSaving` guard
+is deleted** rather than wired — read in the markup, never written, since it shipped.
+⚠️ **Unmapped rows now start on NO category** rather than the first one in the list. With ✓ filing what the select
+says, a pre-filled guess stops being harmless; ✓ is disabled and reads *"Pick a category first"* until it is.
+
+★★ **O2b — a rule remembers the label, and nothing extra is asked for it.** `BankMappingDto`/`SetBankMappingRequest`
+gain a trailing optional `TagId`; the server gains one idempotent `ALTER TABLE`. The rule is written **whole**, so
+an omitted tag is a *cleared* tag — the opposite of the `ClearTag` rule for expenses, and deliberate: there is no
+older client patching a mapping. The tag it saves is simply the one already picked in the review form, because
+*"always file this merchant here"* plainly means the category **and** the label the user just chose.
+
+✅ **Browser-verified end to end on a local bank fixture** (no aggregator — see the S110 recipe below).
+- **The owner's case, gone:** a €10 COSTA COFFEE row against a €10 "Pharmacy" expense two days earlier shows **no
+  hint**; a €32.40 SUMUP row against a same-day €32.40 "Dinner" still does.
+- **Inline ✓:** TESCO €24.50 → one tap, no modal, list stays open; the expense carries `BankExternalId: b3-tx-1`
+  and `Time 17:42:00`.
+- **O2b end to end:** filing one TESCO row through More… with tag *Weekly shop* + "always file" wrote
+  `tesco stores 4471 london | category | Food | TagId 89037e1f…`, and **the second TESCO row auto-filed with the
+  tag on it** (`AutoFiled: true`, `TagIds: [89037e1f…]`).
+- ★ **That second row is also the auto-file-guard proof:** €18.20 two days from the first €18.20 at the *same*
+  merchant. Under the old four-day, text-blind guard it would have dropped into manual review instead.
+- **Dismissal survives a reload** (`finapp_bankdup_{account}` = `b3-tx-3`, hint still gone after F5).
+- **Both themes and 375px:** More… is a `.chip` and takes the chip palette (light 6.2:1, dark 7.7:1); the rule line
+  uses the app's muted token; `pairscan` 0; no horizontal scroll at mobile width.
+
+⚠️ **Not claimed:** nothing was screenshotted — the Browser pane would not composite frames this session, so every
+visual check above is a computed style or a measured rect, not an eye. **Android is untouched and unaffected** (it
+has no mapping DTOs and no review flow).
+
+#### Next session
+1. **Deploy batches 2 AND 3 together.** Live is `finapp-00315-77v`. `.gcloudignore` **does** already exclude
+   `bin`/`obj`/`.git`/`*.db` (tracked since `c240882`) — so S111's "394 MB, 6m14s" warning may have been measured
+   from somewhere it didn't apply. Watch the upload size rather than assuming either way.
+2. **Batch 4 = O6 + O12 + O7 + O8 + O14.** ⚠️ **O6(d) must be checked on a touch viewport** — the tooltip bug (a
+   compatibility `mouseover` firing before `click`) is invisible with a mouse.
+3. **Batch 5 = O5 + O9 + O10**, all needing Android too.
+
+Previously: 2026-08-20 (Session 111 — **R2 closed; a bug sweep over the standing feedback; then the owner's own
 list of 13 (now 14) items from daily use, of which six are done.**
 **513 + 50 + 378 green. Live: `finapp-00315-77v` (batch 1). Batch 2 is committed and pushed but NOT deployed.**
 

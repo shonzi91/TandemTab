@@ -2981,6 +2981,12 @@ html.dark .rule-chip.on { background: #14352a; border-color: #2bbd86; color: #6f
    ("TRANSFER TO PERSON X REF 12345"). It used to be clipped to one ellipsised line with the full text only in a
    `title` tooltip — which a phone cannot show at all. It wraps now; nothing here is worth hiding. */
 .bank-tx-desc { font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
+/* The merchant's saved rule, stated on the row but not operated from it — a debit's rule is written, changed and
+   forgotten inside the review form, where the category it files to is being chosen anyway. Muted, so it reads as a
+   fact about the transaction rather than another control competing with the ones below. */
+.bank-tx-rule { display: flex; align-items: center; gap: 5px; margin-top: 4px; font-size: .76rem; color: #8a97a0; }
+.bank-tx-rule > span { min-width: 0; overflow-wrap: anywhere; }
+html.dark .bank-tx-rule { color: #93a3ad; }
 .bank-tx .amt { white-space: nowrap; font-variant-numeric: tabular-nums; }
 /* The confirm modal's header block: the bank's own facts, stated once at the top, so everything below it reads as
    the questions being asked rather than a mix of the two. */
@@ -3057,7 +3063,11 @@ html.dark .bank-sel:focus-visible { border-color: var(--tm-mint); box-shadow: 0 
 .fund-synced { font-size: .78rem; margin-left: 4px; opacity: .75; }
 .bank-logo-img { height: 16px; width: auto; max-width: 40px; vertical-align: middle; border-radius: 3px; object-fit: contain; margin-right: 2px; }
 .fund-logo { height: 22px; width: 22px; object-fit: contain; border-radius: 5px; background: #ffffff; padding: 1px; vertical-align: middle; }
-.bank-tx-icons { display: inline-flex; gap: 6px; justify-self: end; }
+.bank-tx-icons { display: inline-flex; gap: 6px; justify-self: end; align-items: center; }
+/* "More…" — the way into the full review form, now that ✓ files the row without one. It is a .chip and takes the
+   chip's colours in both themes; only its size is set here, to stand the same height as the icon buttons beside it. */
+.bank-tx-icons .chip { height: 30px; padding: 0 10px; font-size: .74rem; }
+.bank-tx-icons .chip:disabled { opacity: .5; cursor: not-allowed; }
 .icon-btn { width: 30px; height: 30px; border-radius: 8px; border: 1px solid #e3e6ec; background: #ffffff; cursor: pointer; font-size: .95rem; line-height: 1; display: inline-grid; place-items: center; padding: 0; }
 .icon-btn:hover { border-color: #cfd4dd; }
 .icon-btn:disabled { opacity: .5; cursor: not-allowed; }
