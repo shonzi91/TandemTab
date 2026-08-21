@@ -213,6 +213,8 @@ private fun App(vm: AppViewModel, onGoogle: () -> Unit) {
             onPrepareFund = vm::prepareFund,
             onSaveFund = vm::saveFund,
             onImportTransactions = vm::importTransactions,
+            onLoadBankMappings = vm::loadBankMappings,
+            onPinMerchant = vm::pinMerchant,
             onArchiveFund = vm::archiveFund,
             onDeleteFund = vm::deleteFund,
             onEditTransfer = vm::editFundTransfer,

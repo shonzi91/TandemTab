@@ -1202,6 +1202,28 @@ data class EditFundRequest(
 @Serializable
 data class SetFundOpeningBalanceRequest(val amount: Double)
 
+/** A saved "always file this merchant here" rule. `matchKey` is the normalized description the rule is stored
+ *  under; `kind` is "category" (file it as spending) or "fund" (it came from one of your own wallets, so it is a
+ *  transfer). `tagId` is an optional label the rule also applies — debit rules only. */
+@Serializable
+data class BankMappingDto(
+    val matchKey: String,
+    val kind: String,
+    val targetId: String,
+    val tagId: String? = null,
+)
+
+/** PUT /accounts/{id}/bank/mappings — save a rule from a transaction's description. ⚠️ The rule is written WHOLE
+ *  every time, so an absent tag is a CLEARED tag, not an untouched one. That is the opposite of the expense-edit
+ *  rule and it is deliberate: there is no older client to protect on this route. */
+@Serializable
+data class SetBankMappingRequest(
+    val description: String,
+    val kind: String,
+    val targetId: String,
+    val tagId: String? = null,
+)
+
 /** One reviewed statement row, ready to post. `amount` is SIGNED — negative books an expense against a spend
  *  category, positive books income against a contribution category — and the server validates the category against
  *  the sign, so the two must be chosen together. */

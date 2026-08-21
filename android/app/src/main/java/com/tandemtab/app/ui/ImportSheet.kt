@@ -38,6 +38,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.tandemtab.app.data.BankFileParser
+import com.tandemtab.app.data.BankMappingDto
+import com.tandemtab.app.data.MerchantRules
 import com.tandemtab.app.data.CategoryOptionDto
 import com.tandemtab.app.data.FundOptionDto
 import com.tandemtab.app.data.ImportRowDto
@@ -83,8 +85,13 @@ fun ImportSheet(
     periodTo: String?,
     saving: Boolean,
     saveError: String?,
+    // The saved "always file this merchant here" rules, keyed by match key. Empty until they load; an import can
+    // proceed without them, it just files everything on the default until the user picks.
+    rules: Map<String, BankMappingDto>,
     onDismiss: () -> Unit,
     onImport: (rows: List<ImportRowDto>, skipDuplicates: Boolean, onDone: (Int, Int) -> Unit) -> Unit,
+    // Pin/unpin this merchant to a category. Debit rows only — see the pin control below.
+    onPinMerchant: (description: String, categoryId: String, pinned: Boolean) -> Unit,
 ) {
     val tandem = LocalTandemColors.current
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -121,11 +128,15 @@ fun ImportSheet(
             .sortedBy { it.date }
         outOfPeriod = txns.size - inPeriod.size
         rows = inPeriod.map {
+            // A saved merchant rule files the row before anyone looks at it — that is the point of having said
+            // "always file this here" once. Only for money OUT: a rule is a spending decision, and income has no
+            // merchant in the same sense.
+            // ⚠️ Signed: an expense needs a spend category, income needs a contribution one. Getting this pair
+            // wrong is a 400 for the WHOLE batch, so the fallback has to respect the sign from the start.
+            val ruled = if (it.amount < 0) MerchantRules.categoryFor(rules, it.description) else null
             ReviewRow(
                 tx = it,
-                // Signed: an expense needs a spend category, income needs a contribution one. Getting this pair
-                // wrong is a 400 for the WHOLE batch, so the default has to respect the sign from the start.
-                categoryId = (if (it.amount < 0) defaultExpense else defaultIncome).orEmpty(),
+                categoryId = ruled ?: (if (it.amount < 0) defaultExpense else defaultIncome).orEmpty(),
                 include = true,
             )
         }
@@ -338,8 +349,27 @@ fun ImportSheet(
                         row = r,
                         currency = currency,
                         options = if (r.tx.amount < 0) categories else incomeCategories,
+                        // Pinned when a rule already matches this description. Read live off `rules` so the pin
+                        // reflects what is SAVED rather than what was tapped — a failed write must not leave a row
+                        // claiming a rule that does not exist.
+                        pinned = r.tx.amount < 0 && MerchantRules.categoryFor(rules, r.tx.description) != null,
                         onToggle = { rows = rows.toMutableList().also { l -> l[i] = r.copy(include = !r.include) } },
                         onCategory = { id -> rows = rows.toMutableList().also { l -> l[i] = r.copy(categoryId = id) } },
+                        onPin = { pinned ->
+                            onPinMerchant(r.tx.description, r.categoryId, pinned)
+                            // Re-file every OTHER row this rule now covers, so one tap does what it says on all of
+                            // them rather than only the row it was tapped on.
+                            if (!pinned && r.categoryId.isNotBlank()) {
+                                val key = MerchantRules.matchKey(r.tx.description)
+                                rows = rows.map { other ->
+                                    if (other.tx.amount < 0 && MerchantRules.matchKey(other.tx.description) == key) {
+                                        other.copy(categoryId = r.categoryId)
+                                    } else {
+                                        other
+                                    }
+                                }
+                            }
+                        },
                     )
                 }
             }
@@ -389,8 +419,10 @@ private fun ImportReviewRow(
     row: ReviewRow,
     currency: String,
     options: List<CategoryOptionDto>,
+    pinned: Boolean,
     onToggle: () -> Unit,
     onCategory: (String) -> Unit,
+    onPin: (currentlyPinned: Boolean) -> Unit,
 ) {
     val tandem = LocalTandemColors.current
     var open by remember { mutableStateOf(false) }
@@ -422,6 +454,17 @@ private fun ImportReviewRow(
                     }
                 }
             }
+        }
+        // "Always file this merchant here." Debit rows only, and only once a category is actually chosen — a rule
+        // pointing at nothing would file every future match nowhere.
+        if (isExpense && row.tx.description.isNotBlank() && row.categoryId.isNotBlank()) {
+            Icon(
+                TandemIcons.Pin,
+                contentDescription = if (pinned) "Stop always filing this merchant here" else "Always file this merchant here",
+                tint = if (pinned) MaterialTheme.colorScheme.primary else tandem.muted,
+                modifier = Modifier.size(16.dp).clickable { onPin(pinned) },
+            )
+            Spacer(Modifier.width(8.dp))
         }
         Text(
             (if (isExpense) "−" else "+") + currencySymbol(currency) + trimAmount(kotlin.math.abs(row.tx.amount)),

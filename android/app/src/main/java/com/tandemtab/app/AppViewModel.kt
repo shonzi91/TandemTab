@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import com.tandemtab.app.data.AccountOverviewDto
 import com.tandemtab.app.data.AccountSummaryDto
 import com.tandemtab.app.data.AddDepositRequest
+import com.tandemtab.app.data.BankMappingDto
 import com.tandemtab.app.data.FundCurrencyEdit
 import com.tandemtab.app.data.ImportRowDto
 import com.tandemtab.app.data.ImportTransactionsRequest
@@ -134,6 +135,9 @@ data class UiState(
     val overview: AccountOverviewDto? = null,
     val periodLabel: String? = null,
     // Period navigation: the account's periods, its open/current index, and which one is being viewed (null = current).
+    // Saved merchant rules, keyed by the server's match key. Read by statement import; shared with bank sync,
+    // because a rule is the user's filing decision about a merchant rather than a property of a connection.
+    val bankMappings: Map<String, BankMappingDto> = emptyMap(),
     val periods: List<PeriodRowDto> = emptyList(),
     val currentPeriodIndex: Int = -1,
     val selectedPeriod: Int? = null,
@@ -1590,6 +1594,43 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
      * is the right trade for an import (half a statement is worse than none), and it means the error string is
      * worth showing verbatim rather than replacing with a generic one.
      */
+    /** Load the saved merchant rules so an import can file rows before anyone looks at them. Best-effort: an
+     *  import without rules still works, it just starts every row on the default. */
+    fun loadBankMappings() {
+        val accountId = _state.value.selectedAccountId ?: return
+        viewModelScope.launch {
+            runCatching { api.bankMappings(accountId) }.getOrNull()?.let { list ->
+                _state.update { it.copy(bankMappings = list.associateBy { m -> m.matchKey }) }
+            }
+        }
+    }
+
+    /**
+     * Pin or unpin "always file this merchant here".
+     *
+     * ⚠️ The local map is updated only AFTER the write succeeds. Optimism is wrong here specifically: the pin is a
+     * claim that a rule exists, and a row showing a pin for a rule the server never stored would file the next
+     * statement somewhere the user was told it would not go.
+     */
+    fun pinMerchant(description: String, categoryId: String, currentlyPinned: Boolean) {
+        val accountId = _state.value.selectedAccountId ?: return
+        if (description.isBlank() || categoryId.isBlank()) return
+        viewModelScope.launch {
+            try {
+                if (currentlyPinned) {
+                    api.removeBankMapping(accountId, description)
+                } else {
+                    api.setBankMapping(accountId, description, "category", categoryId)
+                }
+                runCatching { api.bankMappings(accountId) }.getOrNull()?.let { list ->
+                    _state.update { it.copy(bankMappings = list.associateBy { m -> m.matchKey }) }
+                }
+            } catch (e: Exception) {
+                _state.update { it.copy(spending = it.spending.copy(saveError = e.message ?: "Couldn't save that merchant rule.")) }
+            }
+        }
+    }
+
     fun importTransactions(rows: List<ImportRowDto>, skipDuplicates: Boolean, onDone: (imported: Int, duplicates: Int) -> Unit) {
         val accountId = _state.value.selectedAccountId ?: return
         if (rows.isEmpty()) return

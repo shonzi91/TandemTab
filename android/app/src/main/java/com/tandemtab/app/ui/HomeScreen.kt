@@ -234,6 +234,8 @@ fun HomeScreen(
     onPrepareFund: () -> Unit,
     onSaveFund: (String?, String, String?, String?, Double?, FundCurrencyEdit?, () -> Unit) -> Unit,
     onImportTransactions: (List<ImportRowDto>, Boolean, (Int, Int) -> Unit) -> Unit,
+    onLoadBankMappings: () -> Unit,
+    onPinMerchant: (description: String, categoryId: String, currentlyPinned: Boolean) -> Unit,
     onArchiveFund: (String, Boolean, String?, Double, () -> Unit) -> Unit,
     onDeleteFund: (String, String?, () -> Unit) -> Unit,
     onEditTransfer: (String, String, String, Double, String?, () -> Unit) -> Unit,
@@ -497,7 +499,9 @@ fun HomeScreen(
                             canHoldForeignCash = state.allowsPro(PlanFeatures.TRIPS),
                             onProBlocked = { onProBlocked(PlanFeatures.TRIPS) },
                             canImport = state.allowsPro(PlanFeatures.IMPORT),
-                            onOpenImport = { showImport = true },
+                            // Rules are fetched when the sheet opens, not on every Wallets render — they only
+                            // matter to this one flow, and an import is rare.
+                            onOpenImport = { onLoadBankMappings(); showImport = true },
                             onImportProBlocked = { onProBlocked(PlanFeatures.IMPORT) },
                             onArchiveFund = onArchiveFund,
                             onDeleteFund = onDeleteFund,
@@ -645,8 +649,10 @@ fun HomeScreen(
                 periodTo = state.viewedPeriod?.to,
                 saving = state.spending.saving,
                 saveError = state.spending.saveError,
+                rules = state.bankMappings,
                 onDismiss = { showImport = false },
                 onImport = onImportTransactions,
+                onPinMerchant = onPinMerchant,
             )
         }
         // The bank-link URL is a one-shot: open the bank's consent page in a browser, then clear it. The result
