@@ -119,6 +119,42 @@ public sealed class Trip : Entity
     /// </summary>
     public decimal SavingsApplied { get; private set; }
 
+    private readonly List<Guid> _sourceAccountIds = [];
+
+    /// <summary>
+    /// Other accounts holding expenses attached to this trip (D1). Empty for a trip nobody has shared into.
+    /// <para>
+    /// ★ <b>A directory, not a total.</b> The money stays where it was paid — see
+    /// <see cref="Budgeting.Expense.TripAccountId"/> — and no figure is stored here. This list exists because the
+    /// recap otherwise has no way to know <i>which</i> accounts to look in: without it, building one trip's total
+    /// means deserializing every account the viewer contributes to, on every view, growing with their account
+    /// count. With it the fan-out is bounded and known before it starts, so the card can say "includes spend from
+    /// two other accounts" while the figures are still loading.
+    /// </para>
+    /// <para>⚠️ Written by the attach, which is therefore a two-account write — one small idempotent fact each
+    /// side. It is a hint, never authority: a stale entry costs one wasted read and a missing one under-reports,
+    /// so the recap must survive both rather than trusting the list to be exact.</para>
+    /// </summary>
+    public IReadOnlyList<Guid> SourceAccountIds => _sourceAccountIds;
+
+    /// <summary>Note that <paramref name="accountId"/> holds expenses on this trip. Idempotent — the attach route
+    /// runs inside <c>MutateTwoAsync</c>, which may replay its mutation after losing a concurrency race.</summary>
+    public void AddSourceAccount(Guid accountId)
+    {
+        if (accountId == Guid.Empty || _sourceAccountIds.Contains(accountId)) return;
+        _sourceAccountIds.Add(accountId);
+    }
+
+    /// <summary>Forget an account, once nothing in it is attached to this trip any more. Idempotent, same reason.</summary>
+    public void RemoveSourceAccount(Guid accountId) => _sourceAccountIds.Remove(accountId);
+
+    /// <summary>Restore the directory verbatim (snapshot path).</summary>
+    public void SetSourceAccounts(IEnumerable<Guid>? accountIds)
+    {
+        _sourceAccountIds.Clear();
+        foreach (var id in accountIds ?? []) AddSourceAccount(id);
+    }
+
     public Trip(string name, DateOnly from, DateOnly to)
     {
         Name = Clean(name);

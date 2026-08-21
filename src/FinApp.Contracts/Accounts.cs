@@ -287,7 +287,12 @@ public record EditTripRequest(string Name, DateOnly From, DateOnly To, string? D
 
 /// <summary>Attach an expense to a trip, or detach it with a null <see cref="TripId"/>. Separate from the expense's
 /// own edit so that changing what a trip contains never has to re-post its amount, category or date.</summary>
-public record SetExpenseTripRequest(Guid? TripId);
+/// <param name="TripAccountId">The account that owns <paramref name="TripId"/>, when the trip lives in a
+/// <b>different</b> account (D1). Absent — the ordinary case — means one of this account's own trips.
+/// <para>★ The expense does not move: it stays in this account's period, spending and budgets, because this
+/// account paid. Only the other account's trip recap gathers it, labelled with where it came from. Trailing
+/// optional, so an older client simply never asks for it.</para></param>
+public record SetExpenseTripRequest(Guid? TripId, Guid? TripAccountId = null);
 
 /// <summary>Set (or clear) one expense's tag without touching anything else about it. Its own endpoint for the same
 /// reason as <see cref="SetExpenseTripRequest"/>: labelling a trip's bookings means reaching into periods that are

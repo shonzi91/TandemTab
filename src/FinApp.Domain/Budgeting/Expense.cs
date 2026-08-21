@@ -156,10 +156,40 @@ public sealed class Expense : Entity
     /// </summary>
     public Guid? TripId { get; private set; }
 
-    /// <summary>Attach this expense to a trip (or detach with null / <see cref="Guid.Empty"/>). A setter rather
-    /// than a constructor argument because this is snapshot body data, and EF cannot bind an ignored property to a
-    /// constructor parameter — the ledger fields it *does* map must stay the whole ctor.</summary>
-    public void SetTrip(Guid? tripId) => TripId = tripId is { } t && t != Guid.Empty ? t : null;
+    /// <summary>
+    /// The account that owns <see cref="TripId"/>, when the trip belongs to a <b>different</b> account than this
+    /// expense. Null — the ordinary case — means the trip is one of this account's own.
+    /// <para>
+    /// ★ <b>The money never moves.</b> This expense stays in this account's period, this account's spending and this
+    /// account's budgets, because this account paid. Only the trip's recap reaches across to gather it, and it says
+    /// where it came from when it does. Qualifying the id rather than copying the row is what keeps one figure
+    /// single-sourced: a mirrored copy would have to be kept in step through every edit, refund and removal, and
+    /// each of those is a way for the two to drift apart.
+    /// </para>
+    /// <para>
+    /// ⚠️ <b>A dangling pointer here is harmless by design.</b> Deleting a trip detaches its own account's expenses
+    /// and cannot reach this one, so this row can end up naming a trip that no longer exists — it then renders as
+    /// an ordinary expense with no trip. Safe because ids are freshly minted Guids and never reused, so a new trip
+    /// in that account can never accidentally adopt the orphan. Cascading the delete instead would need an
+    /// unbounded write across accounts the deleting side cannot even enumerate.
+    /// </para>
+    /// Body data — travels in the account snapshot, EF-ignored like <see cref="TripId"/> itself.
+    /// </summary>
+    public Guid? TripAccountId { get; private set; }
+
+    /// <summary>Attach this expense to a trip (or detach with null / <see cref="Guid.Empty"/>), optionally naming
+    /// the account that owns it when the trip is not this account's. A setter rather than a constructor argument
+    /// because this is snapshot body data, and EF cannot bind an ignored property to a constructor parameter — the
+    /// ledger fields it *does* map must stay the whole ctor.
+    /// <para>★ One setter for both, not two: a trip id and the account that owns it are a single fact, and two
+    /// setters would be two chances to store half of it.</para></summary>
+    public void SetTrip(Guid? tripId, Guid? tripAccountId = null)
+    {
+        TripId = tripId is { } t && t != Guid.Empty ? t : null;
+        // Clearing the trip clears its account: an account id left on an unattached expense is a fact about
+        // nothing, and the next reader would have to guess whether it once meant something.
+        TripAccountId = TripId is null || tripAccountId is not { } a || a == Guid.Empty ? null : a;
+    }
 
     /// <summary>
     /// What time of day the money was spent, or null when nothing recorded one.
@@ -283,7 +313,9 @@ public sealed class Expense : Entity
         ArgumentNullException.ThrowIfNull(rebuilt);
         rebuilt.SetInstallmentLink(InstallmentGroupId, Part, DebtBucketId);
         rebuilt.SetTags(_tagIds);
-        rebuilt.SetTrip(TripId);
+        // ⚠️ The account too. Drop it and correcting an amount, settling or refunding silently unlinks a
+        // cross-account trip attachment — the row keeps its trip id, pointing at a trip in the wrong account.
+        rebuilt.SetTrip(TripId, TripAccountId);
         rebuilt.SetTime(Time);
         rebuilt.SetFundSynced(FundSynced);
         rebuilt.SetBankLink(BankExternalId, AutoFiled);

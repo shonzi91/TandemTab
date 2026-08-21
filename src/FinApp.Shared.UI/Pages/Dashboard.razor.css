@@ -3460,6 +3460,10 @@ html.dark .exp-settled-txt strong { color: #e6edf5; }
 .trip-budget.over { color: #dc2626; }
 .trip-budget.under { color: #0e7c55; }
 .trip-funded { margin: 0; font-size: .74rem; color: #0e7c55; display: flex; align-items: center; gap: 6px; }
+/* D1 — the cross-account bits. Both are labels on rows that already carry their own palette (.lbl-row inside the
+   trip field, .brk-exp-when on a ledger row), so these set spacing only and inherit both themes for free. */
+.trip-other-lbl { margin-top: 8px; }
+.trip-from-acct { display: inline-flex; align-items: center; gap: 3px; }
 .trip-biggest { margin: 0; font-size: .72rem; color: #64748b; }
 /* What the trip cost in working time — a quiet aside under the split, not a headline figure. */
 .trip-timecost { margin: 0; font-size: .74rem; color: #64748b; display: flex; align-items: center; gap: 6px; }

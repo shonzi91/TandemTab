@@ -17,14 +17,24 @@ public static class TripsMap
     /// <summary>Every trip in the account, newest departure first, with its state resolved against
     /// <paramref name="today"/> — the caller's own local date, since "is this trip running?" is a question about
     /// the traveller's day, not the server's.</summary>
-    public static TripsViewDto View(Account account, long version, DateOnly today)
+    /// <param name="foreignByTrip">Other accounts' expenses attached to these trips (D1), keyed by trip id. Null
+    /// for an account nobody has shared a trip into, which keeps every existing caller unchanged.</param>
+    /// <param name="accountId">The route's account id (D1). ⚠️ Not the aggregate's own — see
+    /// <see cref="TripRecapService.Build"/>. Defaults to the aggregate's when the caller has no cross-account
+    /// rows to reconcile, which is every existing call site.</param>
+    public static TripsViewDto View(Account account, long version, DateOnly today,
+        IReadOnlyDictionary<Guid, IReadOnlyList<ForeignTripExpense>>? foreignByTrip = null, Guid? accountId = null)
     {
-        var recaps = new TripRecapService().BuildAll(account).ToDictionary(r => r.TripId);
+        var ownId = accountId ?? account.Id;
+        var recaps = new TripRecapService().BuildAll(account, foreignByTrip, ownId).ToDictionary(r => r.TripId);
         var trips = account.TripsByDeparture.Select(t =>
         {
             var r = recaps.GetValueOrDefault(t.Id);
             var category = t.CategoryId is { } cid ? account.FindCategory(cid) : null;
             var bucket = t.SavingCategoryId is { } sid ? account.FindSavingCategory(sid) : null;
+            // ★ `Spent` is this account's own; the combined figure travels beside it. See TripDto's comment for
+            // why an older client must be left consistent rather than half-updated.
+            var ownSpent = (r?.Spent.Amount ?? 0m) - (r?.PaidFromOtherAccounts.Amount ?? 0m);
             return new TripDto(
                 t.Id, t.Name, t.Destination, t.From, t.To, t.Icon,
                 t.SavingCategoryId, bucket?.Name,
@@ -33,9 +43,17 @@ public static class TripsMap
                 t.StartedOn, t.FinishedOn, t.SavingsApplied,
                 State(t, today),
                 t.LengthInDays, t.DayOn(today), t.DaysUntil(today),
-                r?.Spent.Amount ?? 0m, r?.ExpenseCount ?? 0,
+                ownSpent, r?.ExpenseCount ?? 0,
                 r?.PrePaid.Amount ?? 0m, r?.OnTrip.Amount ?? 0m, r?.AfterReturn.Amount ?? 0m,
-                r?.FundedFromSavings.Amount ?? 0m, r?.PerDay.Amount ?? 0m);
+                r?.FundedFromSavings.Amount ?? 0m, r?.PerDay.Amount ?? 0m,
+                r?.Spent.Amount ?? 0m,
+                r?.PaidFromOtherAccounts.Amount ?? 0m,
+                r is null || r.SourceAccountBreakdown.Count == 0
+                    ? null
+                    : r.SourceAccountBreakdown
+                        .Select(s => new TripSliceDto(s.Id,
+                            s.Id == ownId ? account.Name : r.ForeignName(s.Id) ?? "—", null, s.Total.Amount, s.Count))
+                        .ToList());
         }).ToList();
 
         var tripTags = account.TripTags
@@ -55,16 +73,23 @@ public static class TripsMap
     /// separately is two chances to lead with a different chart for the same trip.
     /// </para>
     /// </summary>
-    public static TripDetailDto? Detail(Account account, long version, Guid tripId, DateOnly today)
+    /// <param name="foreign">Other accounts' expenses attached to this trip (D1). Null on an ordinary trip.</param>
+    public static TripDetailDto? Detail(Account account, long version, Guid tripId, DateOnly today,
+        IReadOnlyList<ForeignTripExpense>? foreign = null, Guid? accountId = null)
     {
         if (account.FindTrip(tripId) is not { } trip) return null;
-        var recap = new TripRecapService().Build(account, tripId);
+        var ownId = accountId ?? account.Id;
+        var recap = new TripRecapService().Build(account, tripId, foreign, ownId);
         if (recap is null) return null;
+        var foreignById = (foreign ?? []).ToDictionary(f => f.Expense.Id);
 
+        // ⚠️ ForeignName before the placeholder. A slice keyed on a category minted in ANOTHER account resolves to
+        // nothing here, so without this every foreign wedge renders literally as "—" — a breakdown that looks
+        // broken while being perfectly correct underneath.
         var byTag = recap.TagsAreRepresentative && recap.TagBreakdown.Count > 0;
         var slices = (byTag
-                ? recap.TagBreakdown.Select(s => new TripSliceDto(s.Id, account.FindTag(s.Id)?.Name ?? "—", account.FindTag(s.Id)?.Icon, s.Total.Amount, s.Count))
-                : recap.CategoryBreakdown.Select(s => new TripSliceDto(s.Id, account.FindCategory(s.Id)?.Name ?? "—", account.FindCategory(s.Id)?.Icon, s.Total.Amount, s.Count)))
+                ? recap.TagBreakdown.Select(s => new TripSliceDto(s.Id, account.FindTag(s.Id)?.Name ?? recap.ForeignName(s.Id) ?? "—", account.FindTag(s.Id)?.Icon, s.Total.Amount, s.Count))
+                : recap.CategoryBreakdown.Select(s => new TripSliceDto(s.Id, account.FindCategory(s.Id)?.Name ?? recap.ForeignName(s.Id) ?? "—", account.FindCategory(s.Id)?.Icon, s.Total.Amount, s.Count)))
             .Where(s => s.Amount > 0m)
             .ToList();
 
@@ -73,32 +98,41 @@ public static class TripsMap
         // days you lived, so the ledger runs backwards through them. `SortTime` puts an untimed row at the bottom
         // of its own day rather than treating it as midnight; the id breaks the last tie so two renders of the same
         // data cannot reshuffle.
-        var rows = account.TripExpenses(tripId)
+        // The trip's ledger holds every row on the journey, whoever paid — each foreign one labelled with the
+        // account it came from, so the list never quietly claims another household's card as this one's.
+        var all = account.TripExpenses(tripId).Concat((foreign ?? []).Select(f => f.Expense)).ToList();
+        var rows = all
             .OrderByDescending(e => e.Date).ThenByDescending(e => e.SortTime).ThenBy(e => e.Id)
-            .Select(e => Row(account, trip, e))
+            .Select(e => Row(account, trip, e, foreignById))
             .ToList();
 
         // ⚠️ Computed on its own now, not taken as rows[0]. It used to be the head of an amount-sorted list, so
         // re-ordering the ledger by date would silently have made "biggest single thing" mean "most recent".
-        var biggest = account.TripExpenses(tripId)
+        var biggest = all
             .OrderByDescending(e => Math.Abs(e.Amount.Amount)).ThenByDescending(e => e.Date).ThenBy(e => e.Id)
-            .Select(e => Row(account, trip, e))
+            .Select(e => Row(account, trip, e, foreignById))
             .FirstOrDefault();
         return new TripDetailDto(
-            View(account, version, today).Trips.First(t => t.Id == tripId),
+            View(account, version, today, foreign is null ? null : new Dictionary<Guid, IReadOnlyList<ForeignTripExpense>> { [tripId] = foreign }, ownId)
+                .Trips.First(t => t.Id == tripId),
             slices, byTag ? "tag" : "category", recap.TagBreakdown.Count > 0, biggest, rows);
     }
 
-    private static TripExpenseRowDto Row(Account account, FinApp.Domain.Budgeting.Trip trip, FinApp.Domain.Budgeting.Expense e)
+    private static TripExpenseRowDto Row(Account account, FinApp.Domain.Budgeting.Trip trip, FinApp.Domain.Budgeting.Expense e,
+        IReadOnlyDictionary<Guid, ForeignTripExpense>? foreignById = null)
     {
-        var category = account.FindCategory(e.CategoryId);
-        var tag = e.TagId is { } tid ? account.FindTag(tid) : null;
+        // A foreign row's ids belong to the account that paid, so its names travel with it — looking them up here
+        // finds nothing and prints "—" on every field.
+        var from = foreignById is { } map && map.TryGetValue(e.Id, out var f) ? f : null;
+        var category = from is null ? account.FindCategory(e.CategoryId) : null;
+        var tag = from is null && e.TagId is { } tid ? account.FindTag(tid) : null;
         return new TripExpenseRowDto(
             e.Id, e.Date, Math.Abs(e.Amount.Amount), e.Note,
-            e.CategoryId, category?.Name ?? "—", category?.Icon,
-            tag?.Id, tag?.Name, tag?.Icon,
+            e.CategoryId, from?.CategoryName ?? category?.Name ?? "—", category?.Icon,
+            from is null ? tag?.Id : e.TagId, from is null ? tag?.Name : from.TagName, tag?.Icon,
             e.Date < trip.From ? "before" : e.Date > trip.To ? "after" : "during",
-            e.Time);
+            e.Time,
+            from?.AccountId, from?.AccountName);
     }
 
     /// <summary>

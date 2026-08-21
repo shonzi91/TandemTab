@@ -60,7 +60,10 @@ public class ExpenseBodyDataTests
         var period = account.StartPeriod(new DateOnly(2026, 1, 1), new DateOnly(2026, 1, 31));
         var expense = period.AddExpense(new Expense(food.Id, M(60), new DateOnly(2026, 1, 5), Guid.NewGuid(), fund, "Dinner"));
         expense.SetTags([tag.Id]);
-        expense.SetTrip(trip.Id);
+        // ⚠️ With the owning account too (D1): the reflection sweep only catches TripAccountId being dropped if the
+        // fixture actually carries one. Left null here, an edit could silently unlink every cross-account
+        // attachment and these tests would stay green.
+        expense.SetTrip(trip.Id, Guid.NewGuid());
         expense.SetTime(new TimeOnly(20, 30));
         expense.SetFundSynced(true);
         expense.SetBankLink("bank-tx-1", autoFiled: true);

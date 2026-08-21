@@ -2041,7 +2041,8 @@ accounts.MapGet("/{id:guid}/trips", async (Guid id, DateOnly? today, ClaimsPrinc
     var snap = await svc.GetAsync(user.UserId(), id, ct);
     if (string.IsNullOrEmpty(snap.Payload)) return Results.Ok(TripsViewDto.Empty);
     var account = AccountSnapshotSerializer.Deserialize(snap.Payload);
-    return Results.Ok(TripsMap.View(account, snap.Version, today ?? DateOnly.FromDateTime(DateTime.UtcNow)));
+    return Results.Ok(TripsMap.View(account, snap.Version, today ?? DateOnly.FromDateTime(DateTime.UtcNow),
+        await TripFanOutAsync(svc, account, id, null, ct), id));
 });
 
 // One trip opened up — the split behind its total, and every expense linked to it. Its own read rather than
@@ -2052,10 +2053,37 @@ accounts.MapGet("/{id:guid}/trips/{tripId:guid}", async (Guid id, Guid tripId, D
     var snap = await svc.GetAsync(user.UserId(), id, ct);
     if (string.IsNullOrEmpty(snap.Payload)) return Results.NotFound();
     var account = AccountSnapshotSerializer.Deserialize(snap.Payload);
-    return TripsMap.Detail(account, snap.Version, tripId, today ?? DateOnly.FromDateTime(DateTime.UtcNow)) is { } detail
+    var detailFanOut = await TripFanOutAsync(svc, account, id, tripId, ct) is { } fan ? fan.GetValueOrDefault(tripId) : null;
+    return TripsMap.Detail(account, snap.Version, tripId, today ?? DateOnly.FromDateTime(DateTime.UtcNow), detailFanOut, id) is { } detail
         ? Results.Ok(detail)
         : Results.NotFound();
 });
+
+// D1: gather the expenses other accounts hold against this account's trips.
+// ★ Bounded by each trip's own SourceAccountIds directory, which the attach writes — without it, building one
+// trip's total would mean deserializing every account the viewer contributes to, on every view, growing with
+// their account count. Almost every account has an empty directory and does no extra work at all.
+// ⚠️ The read deliberately does NOT check the viewer's membership of the source account — see
+// SnapshotService.GetTripFanOutAsync for the argument. Pass `onlyTrip` to fan out for a single trip.
+// ⚠️ `accountId` is the ROUTE's id, never the deserialized aggregate's. The two agree in practice — the client
+// serializes the account it loaded — but the aggregate's Id comes out of the payload, and every cross-account
+// link in this file (transfer pairs, settlements, and the trip link itself) is written with the route id. Reading
+// with a different one finds nothing, silently, and the trip just looks like it has no shared spend.
+static async Task<IReadOnlyDictionary<Guid, IReadOnlyList<ForeignTripExpense>>?> TripFanOutAsync(
+    SnapshotService svc, Account account, Guid accountId, Guid? onlyTrip, CancellationToken ct)
+{
+    var trips = account.Trips.Where(t => t.SourceAccountIds.Count > 0 && (onlyTrip is not { } o || t.Id == o)).ToList();
+    if (trips.Count == 0) return null;
+    var map = new Dictionary<Guid, IReadOnlyList<ForeignTripExpense>>();
+    foreach (var trip in trips)
+    {
+        var rows = new List<ForeignTripExpense>();
+        foreach (var sourceId in trip.SourceAccountIds)
+            rows.AddRange(await svc.GetTripFanOutAsync(sourceId, trip.Id, accountId, ct));
+        if (rows.Count > 0) map[trip.Id] = rows;
+    }
+    return map.Count == 0 ? null : map;
+}
 
 accounts.MapPost("/{id:guid}/trips", async (Guid id, CreateTripRequest req, ClaimsPrincipal user, SnapshotService svc,
         EntitlementService entitlements, SyncNotifier notifier, CancellationToken ct) =>
@@ -2183,7 +2211,11 @@ accounts.MapPut("/{id:guid}/expenses/{expenseId:guid}/trip", async (Guid id, Gui
     // The plan is checked FIRST so a Pro account never pays for the snapshot read this needs.
     if (req.TripId is { } wantedTrip && !await entitlements.AllowsAsync(userId, PlanFeatures.Trips, ct))
     {
-        var snap = await svc.GetAsync(userId, id, ct);
+        // ⚠️ The finished-trip test must read the account that OWNS the trip. Looking a foreign trip up in this
+        // account's snapshot finds nothing and silently skips the gate — a hole that opens the moment the trip
+        // lives elsewhere, which is exactly what D1 introduced.
+        var gateAccountId = req.TripAccountId is { } ga && ga != Guid.Empty ? ga : id;
+        var snap = await svc.GetAsync(userId, gateAccountId, ct);
         var onDay = DateOnly.FromDateTime(DateTime.UtcNow);
         // A trip we cannot find is left to the mutation below to reject, with the error that actually names the
         // problem — 402 on a bad id would send the reader off after the wrong thing entirely.
@@ -2192,6 +2224,49 @@ accounts.MapPut("/{id:guid}/expenses/{expenseId:guid}/trip", async (Guid id, Gui
             && t.IsFinishedOn(onDay))
             await entitlements.RequireAsync(userId, PlanFeatures.Trips, ct);
     }
+
+    // ★ Attaching to ANOTHER account's trip (D1). Two accounts change — this one gains the qualified link, the
+    // other gains this account in the trip's SourceAccountIds directory — so it goes on the two-account spine,
+    // which commits both or neither. The MONEY still moves nowhere: the expense stays in this account's period,
+    // spending and budgets, because this account paid it. Only the other account's recap reaches across to gather
+    // it, and it says where it came from when it does.
+    if (req.TripAccountId is { } foreignAccountId && foreignAccountId != Guid.Empty && foreignAccountId != id
+        && req.TripId is { } foreignTripId)
+    {
+        var (srcVersion, dstVersion, _) = await svc.MutateTwoAsync<object?>(userId, id, foreignAccountId, (source, dest) =>
+        {
+            // Same currency, and a hard gate rather than a display choice: Money's + throws on a mismatch, and
+            // that sum feeds the destination's whole Trips screen server-side. Same rule as a settlement.
+            if (!string.Equals(source.Currency, dest.Currency, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("Both accounts must use the same currency.");
+            var expense = source.Periods.SelectMany(p => p.Expenses).FirstOrDefault(e => e.Id == expenseId)
+                ?? throw new InvalidOperationException("That expense doesn't exist in this account.");
+            var trip = dest.FindTrip(foreignTripId)
+                ?? throw new InvalidOperationException("That trip doesn't exist in the other account.");
+            expense.SetTrip(foreignTripId, foreignAccountId);
+            trip.AddSourceAccount(id);   // idempotent, as MutateTwoAsync requires
+            return null;
+        }, ct);
+        await notifier.AccountChangedAsync(id, userId, srcVersion);
+        await notifier.AccountChangedAsync(foreignAccountId, userId, dstVersion);
+        return Results.Ok(new MutationResultDto(srcVersion, expenseId));
+    }
+
+    // Detaching a row that was on a foreign trip has to tidy the other side's directory too — but only once
+    // nothing here still points at that trip, or one detach would hide every other attachment from the recap.
+    // Read before the mutation, so the single-account path below stays exactly what it was.
+    Guid? tidyAccountId = null, tidyTripId = null;
+    if (req.TripId is null)
+    {
+        var snap = await svc.GetAsync(userId, id, ct);
+        if (!string.IsNullOrEmpty(snap.Payload)
+            && AccountSnapshotSerializer.Deserialize(snap.Payload).Periods.SelectMany(p => p.Expenses)
+                .FirstOrDefault(e => e.Id == expenseId) is { TripAccountId: { } wasAccount, TripId: { } wasTrip })
+        {
+            tidyAccountId = wasAccount; tidyTripId = wasTrip;
+        }
+    }
+
     var (version, _) = await svc.MutateAsync<object?>(userId, id, account =>
     {
         // Any period, not just the open one: attaching last March's flight to this June's trip is the main reason
@@ -2204,6 +2279,24 @@ accounts.MapPut("/{id:guid}/expenses/{expenseId:guid}/trip", async (Guid id, Gui
         return null;
     }, ct);
     await notifier.AccountChangedAsync(id, userId, version);
+
+    if (tidyAccountId is { } tidyAcct && tidyTripId is { } tidyTrip)
+    {
+        // Best effort, and deliberately after the detach has already committed: a stale entry in the directory
+        // costs one wasted snapshot read on the other account's next Trips view, while failing the user's detach
+        // because the other account was busy would cost them the thing they actually asked for.
+        try
+        {
+            var (_, tidyVersion, _) = await svc.MutateTwoAsync<object?>(userId, id, tidyAcct, (source, dest) =>
+            {
+                if (!source.ExpensesOnForeignTrip(tidyTrip, tidyAcct).Any())
+                    dest.FindTrip(tidyTrip)?.RemoveSourceAccount(id);
+                return null;
+            }, ct);
+            await notifier.AccountChangedAsync(tidyAcct, userId, tidyVersion);
+        }
+        catch (Exception ex) when (ex is NotFoundException or ConflictException or BadRequestException) { /* directory is a hint, not authority */ }
+    }
     return Results.Ok(new MutationResultDto(version, expenseId));
 });
 

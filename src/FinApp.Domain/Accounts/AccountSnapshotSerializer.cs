@@ -49,7 +49,8 @@ public static class AccountSnapshotSerializer
             account.WorkingDaysPerMonth, account.WorkingHoursPerDay,
             account.Trips.Count == 0 ? null : account.Trips.Select(t => new TripNode(
                 t.Id, t.Name, t.From, t.To, t.Destination, t.Icon, t.SavingCategoryId, t.Budget, t.SpendCurrency, t.Rate,
-                t.CategoryId, t.FinishedOn, t.SavingsApplied, t.StartedOn)).ToList());
+                t.CategoryId, t.FinishedOn, t.SavingsApplied, t.StartedOn,
+                t.SourceAccountIds.Count == 0 ? null : t.SourceAccountIds.ToList())).ToList());
         return JsonSerializer.Serialize(node, Json);
     }
 
@@ -123,6 +124,7 @@ public static class AccountSnapshotSerializer
             if (t.FinishedOn is { } finished) SetAuto(trip, nameof(Trip.FinishedOn), finished);
             if (t.StartedOn is { } started) SetAuto(trip, nameof(Trip.StartedOn), started);
             trip.AddSavingsApplied(t.SavingsApplied);
+            trip.SetSourceAccounts(t.SourceAccountIds);
             return trip;
         }).ToList());
         SetField(account, "_savingCategories", node.SavingCategories.Select(ToEntity).ToList());
@@ -192,7 +194,7 @@ public static class AccountSnapshotSerializer
         p.InitialBalances.Select(b => new InitialBalanceNode(b.Id, b.FundId, b.Amount.Amount, b.Informative)).ToList(),
         p.Contributions.Select(c => new ContributionNode(c.Id, c.MemberId, c.Paid.Amount, c.CategoryId, c.FundId, c.Date, c.FundSynced, c.AccountTransferId, c.FromAccountId)).ToList(),
         p.Budgets.Select(b => new BudgetNode(b.Id, b.CategoryId, b.Allocated.Amount, b.AlertThreshold, b.NotifyOnEveryExpense)).ToList(),
-        p.Expenses.Select(e => new ExpenseNode(e.Id, e.CategoryId, e.Amount.Amount, e.Date, e.MemberId, e.FundId, e.Note, e.SourceSavingCategoryId, e.OnBehalfOfOtherAccount, e.SettlementId, e.SettledToAccountId, e.SettledFromAccountId, e.SettledAmount, e.FundSynced, e.BankExternalId, e.AutoFiled, e.TagIds.Count == 0 ? null : e.TagIds.ToList(), e.InstallmentGroupId, e.Part, e.DebtBucketId, e.TripId, e.ForeignAmount, e.ForeignCurrency, e.Time, e.RefundedAmount)).ToList(),
+        p.Expenses.Select(e => new ExpenseNode(e.Id, e.CategoryId, e.Amount.Amount, e.Date, e.MemberId, e.FundId, e.Note, e.SourceSavingCategoryId, e.OnBehalfOfOtherAccount, e.SettlementId, e.SettledToAccountId, e.SettledFromAccountId, e.SettledAmount, e.FundSynced, e.BankExternalId, e.AutoFiled, e.TagIds.Count == 0 ? null : e.TagIds.ToList(), e.InstallmentGroupId, e.Part, e.DebtBucketId, e.TripId, e.ForeignAmount, e.ForeignCurrency, e.Time, e.RefundedAmount, e.TripAccountId)).ToList(),
         p.SavingAllocations.Select(a => new SavingAllocationNode(a.Id, a.SavingCategoryId, a.Amount.Amount, a.Date, a.Note, a.SourceExpenseId, a.BudgetCategoryId, a.TransferPairId, a.SourceExternalTransferId)).ToList(),
         p.FundTransfers.Select(t => new FundTransferNode(t.Id, t.FromFundId, t.ToFundId, t.Amount.Amount, t.Date, t.Note, t.FromSynced, t.ToSynced, t.BankExternalId, t.AutoFiled)).ToList(),
         p.ExternalTransfers.Select(t => new ExternalTransferNode(t.Id, t.FundId, t.Amount.Amount, t.Date, t.ToAccountId, t.Note, t.FundSynced, t.AccountTransferId, t.CategoryId)).ToList());
@@ -267,7 +269,7 @@ public static class AccountSnapshotSerializer
             expense.SetFundSynced(e.FundSynced);
             expense.SetBankLink(e.BankExternalId, e.AutoFiled);
             if (e.TagIds is { Count: > 0 }) expense.SetTags(e.TagIds);
-            expense.SetTrip(e.TripId);
+            expense.SetTrip(e.TripId, e.TripAccountId);
             expense.SetForeign(e.ForeignAmount, e.ForeignCurrency);
             expense.SetTime(e.Time);
             expense.SetRefunded(e.RefundedAmount);
@@ -356,7 +358,11 @@ public static class AccountSnapshotSerializer
         // before opt-in start has no confirmation, so a trip that is running right now reads as "awaiting start" on
         // the first load after this ships. That is a one-tap prompt, not lost data — and the alternative (defaulting
         // it to "started") would silently re-introduce the automatic trip mode this exists to remove.
-        DateOnly? StartedOn = null);
+        DateOnly? StartedOn = null,
+        // D1: other accounts holding expenses attached to this trip. Null on every node written before this
+        // existed — i.e. "nobody has shared into it", which is what was true of all of them. A directory of where
+        // to look, not a total: see Trip.SourceAccountIds.
+        IReadOnlyList<Guid>? SourceAccountIds = null);
 
     private record RecurringItemNode(Guid Id, string Name, RecurringKind Kind, RecurringAmountMode AmountMode,
         decimal ExpectedAmount, int DayOfMonth, Guid CategoryId, Guid FundId, bool Active, string? Icon, DateOnly? LastHandledPeriodFrom,
@@ -436,7 +442,11 @@ public static class AccountSnapshotSerializer
         // What has come back on this expense — a refund, or a friend paying their share of a split bill. Zero on
         // every node written before refunds existed and on every expense nobody paid anything back on. Note Amount
         // above is already the reduced figure, so a reader that ignores this field still reports the right total.
-        decimal RefundedAmount = 0m);
+        decimal RefundedAmount = 0m,
+        // The account that owns TripId, when the trip belongs to ANOTHER account (D1). Null on every node written
+        // before this existed and on every ordinary attachment — i.e. "the trip is this account's own", which is
+        // what they all were. See Expense.TripAccountId: the money stays here, only the recap reaches across.
+        Guid? TripAccountId = null);
     private record SavingAllocationNode(Guid Id, Guid SavingCategoryId, decimal Amount, DateOnly Date, string? Note, Guid? SourceExpenseId, Guid? BudgetCategoryId = null, Guid? TransferPairId = null, Guid? SourceExternalTransferId = null);
     private record FundTransferNode(Guid Id, Guid FromFundId, Guid ToFundId, decimal Amount, DateOnly Date, string? Note, bool FromSynced = false, bool ToSynced = false, string? BankExternalId = null, bool AutoFiled = false);
     private record ExternalTransferNode(Guid Id, Guid FundId, decimal Amount, DateOnly Date, Guid? ToAccountId, string? Note, bool FundSynced = false,

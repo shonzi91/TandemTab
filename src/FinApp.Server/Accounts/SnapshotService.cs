@@ -1,5 +1,6 @@
 using FinApp.Contracts;
 using FinApp.Domain.Accounts;
+using FinApp.Domain.Services;
 using FinApp.Persistence;
 using FinApp.Server.Infrastructure;
 using Microsoft.EntityFrameworkCore;
@@ -241,6 +242,51 @@ public sealed class SnapshotService(FinAppDbContext db, ISnapshotCipher cipher, 
             row.Payload = await cipher.ProtectAsync(row.Payload, ct);
         if (rows.Count > 0) await db.SaveChangesAsync(ct);
         return rows.Count;
+    }
+
+    /// <summary>
+    /// The rows one source account holds against a trip in another account, with their names resolved (D1).
+    /// <para>
+    /// ⚠️⚠️ <b>This is the one read path in this service that does NOT check the caller's membership of the account
+    /// it reads, and it is a deliberate exception in an otherwise universal discipline.</b> The alternative was
+    /// gating the fan-out on the viewer: two people looking at the same shared trip would then see different
+    /// totals — €1,200 for one partner and €900 for the other — which is precisely the class of "two figures about
+    /// one number disagree" this codebase keeps having to fix. A trip total has to be a fact about the trip.
+    /// </para>
+    /// <para>
+    /// What makes it acceptable is the shape, so keep the shape: the <c>Account</c> is deserialized inside this
+    /// method and <b>never escapes it</b>. What comes back is only the expenses somebody in the source account
+    /// deliberately attached to this exact trip, carrying only the fields a recap already renders — amount, date,
+    /// category name, tag name, note. Never funds, members, balances or anything else in that snapshot. One call
+    /// site (<c>TripsMap</c>); do not add a second without re-arguing the above.
+    /// </para>
+    /// <para>Returns empty rather than throwing for a source account that has gone, or holds nothing on this trip —
+    /// the trip's directory of source accounts is a hint about where to look, never an authority.</para>
+    /// </summary>
+    public async Task<IReadOnlyList<ForeignTripExpense>> GetTripFanOutAsync(
+        Guid sourceAccountId, Guid tripId, Guid tripAccountId, CancellationToken ct = default)
+    {
+        var header = await db.Accounts.FirstOrDefaultAsync(a => a.Id == sourceAccountId, ct);
+        var row = await db.AccountSnapshots.FindAsync([sourceAccountId], ct);
+        if (header is null || row is null || string.IsNullOrEmpty(row.Payload)) return [];
+
+        Account source;
+        try { source = AccountSnapshotSerializer.Deserialize(await cipher.UnprotectAsync(row.Payload, ct)); }
+        catch (Exception ex)
+        {
+            // One unreadable source account must not take down the whole Trips screen of the account it fed.
+            log.LogWarning(ex, "Trip fan-out: could not read source account {AccountId}", sourceAccountId);
+            return [];
+        }
+
+        return source.ExpensesOnForeignTrip(tripId, tripAccountId)
+            .Select(e => new ForeignTripExpense(
+                sourceAccountId,
+                header.Name,
+                e,
+                source.FindCategory(e.CategoryId)?.Name ?? "—",
+                e.TagId is { } t ? source.FindTag(t)?.Name : null))
+            .ToList();
     }
 
     private async Task EnsureContributorAsync(Guid userId, Guid accountId, CancellationToken ct)

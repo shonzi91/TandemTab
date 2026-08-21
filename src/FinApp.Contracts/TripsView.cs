@@ -47,7 +47,18 @@ public record TripDto(
     decimal OnTrip,
     decimal AfterReturn,
     decimal FundedFromSavings,
-    decimal PerDay);
+    decimal PerDay,
+    // ⚠️ `Spent` above deliberately stays THIS account's own spend. The combined figure is a separate trailing
+    // field, so a client that has never heard of cross-account trips shows a total its own ledger adds up to,
+    // rather than one it cannot reconcile against the rows it can see. Same discipline as RecurringRowDto.Pending:
+    // an older client must end up CONSISTENT, not partially updated.
+    // Equal to `Spent` on an ordinary trip, so a new client can simply always read this one.
+    decimal SpentIncludingOtherAccounts = 0m,
+    // How much of the combined figure was paid from another account. Zero on an ordinary trip. Non-zero means the
+    // UI must SAY so beside the total — see TripRecap.PaidFromOtherAccounts.
+    decimal PaidFromOtherAccounts = 0m,
+    // What each contributing account put in, this one included, largest first. Empty on an ordinary trip.
+    IReadOnlyList<TripSliceDto>? BySourceAccount = null);
 
 /// <summary>A trip label (Stay, Travel, Food &amp; drink…) as a picker option. <see cref="CategoryId"/> is the
 /// category it files an expense into when picked, which is what makes the label a filing decision rather than a
@@ -78,7 +89,12 @@ public record TripExpenseRowDto(
     string When,
     // The clock, when the row carries one. Trailing-optional; null stays null — an untimed row shows no time
     // rather than a midnight nobody reported.
-    TimeOnly? Time = null);
+    TimeOnly? Time = null,
+    // The account this row was paid from, when it wasn't this one (D1). Null on an ordinary row. ⚠️ The UI must
+    // show it: an unlabelled row on a shared trip reads as this account's spending, which is the one thing a
+    // cross-account link must never be able to claim.
+    Guid? PaidFromAccountId = null,
+    string? PaidFromAccountName = null);
 
 /// <summary>
 /// One trip opened up: the card's own figures, the split behind them, and everything attached to it.

@@ -3173,13 +3173,27 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
 
     /// <summary>Attach an expense to a trip, or detach it with null. Works on any period's expense — attaching last
     /// March's flight to this June's trip is the point.</summary>
-    public Task SetExpenseTrip(Guid expenseId, Guid? tripId) =>
-        ExecuteOptimisticAsync(() =>
+    /// <param name="tripAccountId">Set when the trip lives in ANOTHER account (D1). The expense does not move: it
+    /// stays in this account's period, spending and budgets, because this account paid. ⚠️ That write touches two
+    /// accounts (the other one gains this account in the trip's source directory), so it drops off the optimistic
+    /// spine — the other account isn't loaded here and the server's result is the only truth. Same reasoning as
+    /// <see cref="EditAccountTransfer"/>.</param>
+    public async Task SetExpenseTrip(Guid expenseId, Guid? tripId, Guid? tripAccountId = null)
+    {
+        if (tripAccountId is { } foreign && foreign != Guid.Empty && foreign != CurrentAccountId && tripId is not null)
+        {
+            await ExecuteAsync(id => api.SetExpenseTripAsync(id, expenseId, tripId, foreign));
+            _cache.Remove(foreign);   // its trip gained a source account server-side — a switch must refetch
+            _foreignTripExpenses.Clear();
+            return;
+        }
+        await ExecuteOptimisticAsync(() =>
         {
             var expense = Account.Periods.SelectMany(p => p.Expenses).FirstOrDefault(e => e.Id == expenseId);
             expense?.SetTrip(tripId);
         },
             id => api.SetExpenseTripAsync(id, expenseId, tripId), refetchAfter: true);
+    }
 
     /// <summary>Label one expense (or clear it) in any period — the trip labels are applied to bookings that sit in
     /// months closed long before the trip is reviewed. Writes only the tag; nothing about the money changes.</summary>
@@ -3197,15 +3211,146 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
         ExecuteOptimisticAsync(() => Account.EnsureTripTags(seeds.Select(s => (s.Name, s.Icon, s.CategoryId))),
             id => api.SeedTripTagsAsync(id, new SeedTripTagsRequest(seeds)), refetchAfter: true);
 
+    // D1: other accounts' expenses attached to this account's trips, keyed by trip id. Loaded on demand (see
+    // LoadForeignTripExpensesAsync) and read synchronously by the recaps below, which render.
+    private readonly Dictionary<Guid, IReadOnlyList<ForeignTripExpense>> _foreignTripExpenses = new();
+
     /// <summary>What a trip cost, split by where it went — see <c>TripRecapService</c>.</summary>
-    public TripRecap? TripRecap(Guid tripId) => new TripRecapService().Build(Account, tripId);
+    public TripRecap? TripRecap(Guid tripId) =>
+        new TripRecapService().Build(Account, tripId, _foreignTripExpenses.GetValueOrDefault(tripId));
 
     /// <summary>Every trip's recap, newest departure first — the trips list.</summary>
-    public IReadOnlyList<TripRecap> TripRecaps() => new TripRecapService().BuildAll(Account);
+    public IReadOnlyList<TripRecap> TripRecaps() => new TripRecapService().BuildAll(Account, _foreignTripExpenses);
 
-    /// <summary>The expenses attached to a trip, newest first.</summary>
+    /// <summary>
+    /// Gather the expenses other accounts hold against this account's trips (D1), so the recaps above can include
+    /// them. Bounded by each trip's own <c>SourceAccountIds</c> directory, so an account nobody has shared into
+    /// does no work at all.
+    /// <para>
+    /// ★ <b>Called when the Trips surface opens, never per render.</b> The recaps are read from markup and cannot
+    /// be async; making them so would put a network round-trip inside a render pass.
+    /// </para>
+    /// <para>
+    /// ⚠️ <b>The staleness story, stated rather than hidden:</b> a trip left open while the other account changes
+    /// elsewhere is one refresh behind. That is why the own-account figure renders immediately and the foreign part
+    /// arrives as its own visible line — a total that silently grew under the reader would be worse than one that
+    /// is a minute old and says where each part came from.
+    /// </para>
+    /// </summary>
+    public async Task LoadForeignTripExpensesAsync()
+    {
+        var trips = Account.Trips.Where(t => t.SourceAccountIds.Count > 0).ToList();
+        if (trips.Count == 0) { _foreignTripExpenses.Clear(); return; }
+
+        var sources = trips.SelectMany(t => t.SourceAccountIds).Distinct().ToList();
+        var loaded = new Dictionary<Guid, Account>();
+        foreach (var sourceId in sources)
+        {
+            if (sourceId == Account.Id) continue;   // our own rows are already in the recap
+            // A source account that has gone, or that this user can no longer read, simply contributes nothing —
+            // the directory is a hint about where to look, never an authority about what is there.
+            try
+            {
+                if (_cache.TryGetValue(sourceId, out var hit)) loaded[sourceId] = hit.Account;
+                else if (await DeserializeAccountAsync(sourceId) is { } acct) loaded[sourceId] = acct;
+            }
+            catch { /* unreachable source: the trip still renders, with what it can see */ }
+        }
+
+        _foreignTripExpenses.Clear();
+        foreach (var trip in trips)
+        {
+            var rows = new List<ForeignTripExpense>();
+            foreach (var sourceId in trip.SourceAccountIds)
+            {
+                if (!loaded.TryGetValue(sourceId, out var src)) continue;
+                rows.AddRange(src.ExpensesOnForeignTrip(trip.Id, Account.Id).Select(e => new ForeignTripExpense(
+                    sourceId,
+                    AccountName(sourceId),
+                    e,
+                    // Resolved in the account that OWNS the ids — looking them up here finds nothing, and the
+                    // slice renders as "—".
+                    src.FindCategory(e.CategoryId)?.Name ?? "—",
+                    e.TagId is { } t ? src.FindTag(t)?.Name : null)));
+            }
+            if (rows.Count > 0) _foreignTripExpenses[trip.Id] = rows;
+        }
+    }
+
+    /// <summary>The expenses attached to a trip, newest first — including any paid from another account (D1),
+    /// which the caller must label with <see cref="TripExpensePaidFrom"/>. A trip's ledger holds every row on the
+    /// journey, whoever paid; leaving the others out would make the list disagree with the total above it.</summary>
     public IReadOnlyList<FinApp.Domain.Budgeting.Expense> TripExpenses(Guid tripId) =>
-        Account.TripExpenses(tripId).ToList();
+        Account.TripExpenses(tripId)
+            .Concat(_foreignTripExpenses.GetValueOrDefault(tripId, []).Select(f => f.Expense))
+            .OrderByDescending(e => e.Date).ThenByDescending(e => e.SortTime)
+            .ToList();
+
+    /// <summary>One of another account's trips, offered as somewhere this account's expense can be counted (D1).</summary>
+    public record ForeignTripOption(Guid AccountId, string AccountName, Trip Trip);
+
+    private List<ForeignTripOption>? _foreignTripOptions;
+
+    /// <summary>
+    /// Trips in the user's <b>other</b> accounts that an expense here could be counted toward.
+    /// <para>★ Same currency only, and the filter is <see cref="TransferableAccounts"/>'s — reused rather than
+    /// rewritten. Money's <c>+</c> throws on a mismatch and that sum feeds the other account's whole Trips screen,
+    /// so offering a euro expense a leva trip would be a control whose only possible outcome is a 400.</para>
+    /// <para>★ Finished trips are excluded, exactly as this account's own add-form picker excludes them: reaching
+    /// across accounts is a deliberate act, and the honest default is a journey that is still going.</para>
+    /// <para>Loaded on demand and cached for the session; a single-account user gets an empty list for free,
+    /// because <see cref="TransferableAccounts"/> is already empty.</para>
+    /// </summary>
+    public async Task<IReadOnlyList<ForeignTripOption>> ForeignTripOptionsAsync()
+    {
+        if (_foreignTripOptions is { } cached) return cached;
+        var options = new List<ForeignTripOption>();
+        foreach (var summary in TransferableAccounts)
+        {
+            try
+            {
+                var acct = _cache.TryGetValue(summary.Id, out var hit) ? hit.Account : await DeserializeAccountAsync(summary.Id);
+                if (acct is null) continue;
+                options.AddRange(acct.TripsByDeparture
+                    .Where(t => !t.IsFinishedOn(TodayDate))
+                    .Select(t => new ForeignTripOption(summary.Id, summary.Name, t)));
+            }
+            catch { /* an unreadable account simply offers no trips */ }
+        }
+        _foreignTripOptions = options;
+        return options;
+    }
+
+    /// <summary>Forget the cached list — after attaching, or after switching account.</summary>
+    public void ResetForeignTripOptions() => _foreignTripOptions = null;
+
+    /// <summary>The name of the account a trip row was paid from, or null when this account paid it. ⚠️ A UI
+    /// rendering trip rows must show this: an unlabelled foreign row reads as this account's spending, which is
+    /// the one claim a cross-account link must never be able to make.</summary>
+    public string? TripExpensePaidFrom(Guid tripId, Guid expenseId) =>
+        ForeignTripRow(tripId, expenseId)?.AccountName;
+
+    private ForeignTripExpense? ForeignTripRow(Guid tripId, Guid expenseId) =>
+        _foreignTripExpenses.GetValueOrDefault(tripId, []).FirstOrDefault(f => f.Expense.Id == expenseId);
+
+    /// <summary>The category and tag names for one trip row, resolved in whichever account minted the ids.
+    /// ⚠️ A foreign row's ids belong to the account that paid, so the plain lookups return "—" for every field.</summary>
+    public (string Category, string? Tag) TripRowNames(Guid tripId, FinApp.Domain.Budgeting.Expense expense)
+    {
+        ArgumentNullException.ThrowIfNull(expense);
+        return ForeignTripRow(tripId, expense.Id) is { } f
+            ? (f.CategoryName, f.TagName)
+            : (CategoryName(expense.CategoryId), expense.TagId is { } t ? TagName(t) : null);
+    }
+
+    /// <summary>A category or tag name for a trip slice, resolving ids that came from another account. ⚠️ Plain
+    /// <see cref="CategoryName"/>/<see cref="TagName"/> return "—" for those, because the id was minted elsewhere.</summary>
+    public string TripSliceName(TripRecap recap, Guid id, bool isTag)
+    {
+        ArgumentNullException.ThrowIfNull(recap);
+        var own = isTag ? Account.FindTag(id)?.Name : Account.FindCategory(id)?.Name;
+        return own ?? recap.ForeignName(id) ?? "—";
+    }
 
     /// <summary>
     /// Expenses across <b>every</b> period, newest first — the pool the "attach something you've already paid"

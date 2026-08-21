@@ -1925,6 +1925,10 @@ public sealed class Localizer(IJSRuntime js)
         ["{0} of this {1} is above the {2} installment and goes onto the loan as extra payment. Name a category if it's something else."] = "{0} от тези {1} са над вноската от {2} и отиват по кредита като допълнително плащане. Посочи категория, ако са нещо друго.",
         ["This is at or under the {0} installment, so all of it goes onto the loan."] = "Това е равно или под вноската от {0}, така че всичко отива по кредита.",
         ["{0} onto the loan · {1} as {2}"] = "{0} по кредита · {1} като {2}",
+        // D1 — an expense here counted toward a trip that lives in another account.
+        ["Or a trip in another account"] = "Или пътуване в друга сметка",
+        ["This stays in {0}'s spending and budgets — it just counts toward that trip's total too."] = "Разходът си остава в разходите и бюджетите на {0} — просто се брои и към общата сума на онова пътуване.",
+        ["{0} of this was paid from {1}."] = "{0} от това е платено от {1}.",
         ["Kept at the end of each month"] = "Задържано в края на всеки месец",
         ["{0} of this went onto a loan — the balance fell because the debt did."] =
             "{0} от това отиде по кредит — балансът падна, защото падна и дългът.",

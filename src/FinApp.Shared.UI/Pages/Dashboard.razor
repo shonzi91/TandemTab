@@ -1242,7 +1242,7 @@ else
                             @* ⚠️ No Pro mark on the TAB. Reading trips is free, and so is running one you already have
                                to its end — the crown lives on "New trip", which is the thing Free actually can't do.
                                A crown here would say "you can't use this" to someone mid-journey, which is false. *@
-                            <button type="button" class="chip @(_spendView == SpendView.Trips ? "on" : "")" @onclick="() => _spendView = SpendView.Trips"><Icon Name="plane" /> @Loc["Trips"]</button>
+                            <button type="button" class="chip @(_spendView == SpendView.Trips ? "on" : "")" @onclick="ShowTripsView"><Icon Name="plane" /> @Loc["Trips"]</button>
                         </span>
                     }
                     @if (State.IsPeriodOpen)
@@ -2454,9 +2454,12 @@ else
                         // Lead with tags when enough of the trip is labelled; otherwise categories, the axis every
                         // expense always carries. A pie that is mostly one grey "untagged" wedge tells nobody anything.
                         var byTag = tRecap.TagsAreRepresentative && tRecap.TagBreakdown.Count > 0;
+                        @* ⚠️ TripSliceName, not TagName/CategoryName: a slice keyed on an id minted in ANOTHER
+                           account resolves to nothing here, so a foreign wedge would be labelled "—" while being
+                           perfectly correct underneath. *@
                         var tSlices = (byTag
-                                ? tRecap.TagBreakdown.Select(s => (Key: s.Id, Label: State.TagName(s.Id), Icon: State.TagIcon(s.Id), Amt: s.Total.Amount))
-                                : tRecap.CategoryBreakdown.Select(s => (Key: s.Id, Label: State.CategoryName(s.Id), Icon: State.CategoryStoredIcon(s.Id), Amt: s.Total.Amount)))
+                                ? tRecap.TagBreakdown.Select(s => (Key: s.Id, Label: State.TripSliceName(tRecap, s.Id, true), Icon: State.TagIcon(s.Id), Amt: s.Total.Amount))
+                                : tRecap.CategoryBreakdown.Select(s => (Key: s.Id, Label: State.TripSliceName(tRecap, s.Id, false), Icon: State.CategoryStoredIcon(s.Id), Amt: s.Total.Amount)))
                             .Where(s => s.Amt > 0m)
                             .Take(MaxSlices)
                             .Select((s, i) => new BreakSlice(s.Key, s.Label, s.Icon, s.Amt, SliceColor(i)))
@@ -2539,6 +2542,16 @@ else
                                                     ? string.Format(Loc["{0} over the {1} you planned."], Fmt(State.Money(Math.Abs(delta.Amount))), Fmt(State.Money(tRecap.Budget!.Value)))
                                                     : string.Format(Loc["{0} under the {1} you planned."], Fmt(State.Money(Math.Abs(delta.Amount))), Fmt(State.Money(tRecap.Budget!.Value))))
                                             </p>
+                                        }
+                                        @* ⚠️ D1 — say it, always. The total above folds in spend from another
+                                           account, and a combined figure with nothing naming its parts is one
+                                           nobody can reconcile against their own ledger. Same discipline as the
+                                           savings line below: counted in the total AND reported separately. *@
+                                        @if (tRecap.HasOtherAccountSpend)
+                                        {
+                                            <p class="trip-funded"><Icon Name="swap" /> @string.Format(Loc["{0} of this was paid from {1}."],
+                                                Fmt(tRecap.PaidFromOtherAccounts),
+                                                string.Join(" · ", tRecap.SourceAccountBreakdown.Where(s => s.Id != State.CurrentAccountId).Select(s => tRecap.ForeignName(s.Id) ?? "—")))</p>
                                         }
                                         @if (!tRecap.FundedFromSavings.IsZero && trip.SavingCategoryId is { } bkt)
                                         {
@@ -4686,11 +4699,34 @@ else
                                 @foreach (var t in EditTripOptions)
                                 {
                                     var editTripOpt = t;
-                                    <button type="button" class="tag-chip @(_expTripId == editTripOpt.Id ? "tag-chip-on" : "")" @onclick="() => OnExpenseTripPicked(editTripOpt.Id)">
+                                    <button type="button" class="tag-chip @(_expTripId == editTripOpt.Id && _expTripAccountId == Guid.Empty ? "tag-chip-on" : "")" @onclick="() => OnExpenseTripPicked(editTripOpt.Id)">
                                         @TripMark(editTripOpt.Icon)@editTripOpt.Name
                                     </button>
                                 }
                             </div>
+                            @* ★ D1 — a journey the household is taking together, where the trip lives in the other
+                               account and this card paid for part of it. The expense does NOT move: it stays in
+                               this account's period, spending and budgets, because this account paid. It simply
+                               starts counting toward that trip's total, labelled with where it came from.
+                               ⚠️ Same-currency accounts only (ForeignTripOptionsAsync), and each chip names its
+                               account — two households can easily both have a "Rome". *@
+                            @if (_foreignTrips.Count > 0)
+                            {
+                                <span class="lbl-row trip-other-lbl">@Loc["Or a trip in another account"]</span>
+                                <div class="qp-row">
+                                    @foreach (var ft in _foreignTrips)
+                                    {
+                                        var fTrip = ft;
+                                        <button type="button" class="tag-chip @(_expTripId == fTrip.Trip.Id && _expTripAccountId == fTrip.AccountId ? "tag-chip-on" : "")" @onclick="() => OnForeignTripPicked(fTrip)">
+                                            @TripMark(fTrip.Trip.Icon)@fTrip.Trip.Name <span class="fund-chip-ccy">@fTrip.AccountName</span>
+                                        </button>
+                                    }
+                                </div>
+                                @if (_expTripAccountId != Guid.Empty)
+                                {
+                                    <small class="hint"><Icon Name="swap" /> @string.Format(Loc["This stays in {0}'s spending and budgets — it just counts toward that trip's total too."], State.AccountName(State.CurrentAccountId))</small>
+                                }
+                            }
                         </div>
                     }
                     @* NOT a <label> — see CategoryPicker: a label re-dispatches every click inside it onto the
@@ -7782,10 +7818,16 @@ else
     /// </summary>
     private RenderFragment TripExpRow(FinApp.Domain.Budgeting.Trip trip, FinApp.Domain.Budgeting.Expense te) => __builder =>
     {
+        @* ⚠️ Names resolved through TripRowNames, not the plain lookups: a row paid from another account carries
+           THAT account's category and tag ids, which resolve to "—" here. And `paidFrom` is not decoration — an
+           unlabelled foreign row reads as this account's spending, the one thing a cross-account link must never
+           be able to claim. *@
+        var (teCat, teTag) = State.TripRowNames(trip.Id, te);
+        var tePaidFrom = State.TripExpensePaidFrom(trip.Id, te.Id);
         <li class="brk-exp-row">
             <span class="brk-exp-date"><span class="brk-exp-d">@te.Date.ToString("dd")</span><span class="brk-exp-m">@te.Date.ToString("MMM")</span></span>
             <span class="brk-exp-main">
-                <span class="brk-exp-title">@(string.IsNullOrEmpty(te.Note) ? State.CategoryName(te.CategoryId) : te.Note)</span>
+                <span class="brk-exp-title">@(string.IsNullOrEmpty(te.Note) ? teCat : te.Note)</span>
                 @* The sub-line carries the trip's OWN axis (the label) when there is one, falling back to the
                    category. On a trip that files into one category the category is the same word on every row, so
                    printing it there would be a column of "Entertainment" saying nothing. *@
@@ -7794,15 +7836,19 @@ else
                     {
                         <span class="brk-exp-clock">@tt.ToString("HH:mm")</span>
                     }
-                    @if (te.TagId is { } teTag)
+                    @if (teTag is { } teTagName)
                     {
-                        @TagMark(State.TagIcon(teTag))<span>@State.TagName(teTag)</span>
+                        @TagMark(te.TagId is { } tid ? State.TagIcon(tid) : null)<span>@teTagName</span>
                     }
                     else
                     {
-                        <span>@State.CategoryName(te.CategoryId)</span>
+                        <span>@teCat</span>
                     }
                     <span class="brk-exp-when">@TripWhenLabel(trip, te.Date)</span>
+                    @if (tePaidFrom is { } paidFrom)
+                    {
+                        <span class="brk-exp-when trip-from-acct"><Icon Name="swap" /> @paidFrom</span>
+                    }
                 </span>
             </span>
             <span class="brk-exp-amt">@Fmt(te.Amount)@if (te.HasForeign)
@@ -9734,6 +9780,7 @@ else
         _fTagId = null; _newTagName = null; _tagFiledTo = null; _tagNewOpen = false;
         // Defaulted, never enforced: the weekly shop still happens on the day you fly home, so "Not a trip" is one tap.
         _expTripId = State.AllTrips.FirstOrDefault(t => tx.Date >= t.From && tx.Date <= t.To)?.Id ?? Guid.Empty;
+        _expTripAccountId = Guid.Empty;   // the bank form never reaches across accounts — see OnForeignTripPicked
         ApplyTripCategoryDefault();
         // Pre-load the rule's word chooser so flipping the switch has something to show immediately.
         _pinTokens = BudgetingState.BankTokens(tx.Description).ToList();
@@ -10068,6 +10115,27 @@ else
         ShowExpensesTab();
         _spendView = SpendView.Trips;
         _expandedTripId = tripId;
+        _ = LoadForeignTripsAsync();
+    }
+
+    /// <summary>Open the Trips view and gather any spend other accounts hold against these trips (D1).
+    /// <para>★ Fired on OPEN, not per render: the recaps are read from markup and cannot be async, so the fetch has
+    /// to happen before them. The view renders immediately from what this account knows and re-renders when the
+    /// rest lands — which is also why the foreign share is its own visible line rather than a total that grows
+    /// under the reader a second after they read it.</para>
+    /// <para>Costs nothing at all on an account nobody has shared a trip into: the load is bounded by each trip's
+    /// own source-account directory, and almost every trip's is empty.</para></summary>
+    private void ShowTripsView()
+    {
+        _spendView = SpendView.Trips;
+        _ = LoadForeignTripsAsync();
+    }
+
+    private async Task LoadForeignTripsAsync()
+    {
+        try { await State.LoadForeignTripExpensesAsync(); }
+        catch { /* the trips still render with what this account can see — see the method's own note */ }
+        StateHasChanged();
     }
 
     private DateOnly ClampToPeriod(DateOnly d) =>
@@ -10136,6 +10204,7 @@ else
         // Keyed off the DAY being logged, not today: opening the 12th from the calendar while a trip covers it
         // should default to that trip even if you're back home when you enter it.
         _expTripId = State.AllTrips.FirstOrDefault(t => t.IsActiveOn(_expenseDate))?.Id ?? Guid.Empty;
+        _expTripAccountId = Guid.Empty;
         ApplyTripCategoryDefault();
     }
 
@@ -10377,8 +10446,20 @@ else
     // the day you fly home, and a mode that insisted otherwise would quietly corrupt the recap.
     private Guid _expTripId;
 
-    /// <summary>The trip currently picked on the expense form, when there is one.</summary>
-    private FinApp.Domain.Budgeting.Trip? FormTrip => _expTripId == Guid.Empty ? null : State.FindTrip(_expTripId);
+    // D1: set when the picked trip lives in ANOTHER account. Guid.Empty — the ordinary case — means one of this
+    // account's own. Kept beside _expTripId rather than folded into it because a trip id alone cannot say which
+    // account minted it, and every read of the pair has to agree about that.
+    private Guid _expTripAccountId;
+
+    // The other accounts' trips this form may offer. Loaded when the edit modal opens (see OpenEditExpense) and
+    // empty for a single-account user, so the row simply doesn't render.
+    private IReadOnlyList<BudgetingState.ForeignTripOption> _foreignTrips = [];
+
+    /// <summary>The trip currently picked on the expense form, when there is one <b>in this account</b>. A trip in
+    /// another account is deliberately not resolved here: every caller of this uses it to read this account's own
+    /// trip settings (its category, its labels), none of which apply across the boundary.</summary>
+    private FinApp.Domain.Budgeting.Trip? FormTrip =>
+        _expTripId == Guid.Empty || _expTripAccountId != Guid.Empty ? null : State.FindTrip(_expTripId);
 
     /// <summary>The fund being paid from, when it holds foreign money — null for an ordinary fund, which is nearly
     /// always. This is what decides whether the Amount field converts.</summary>
@@ -12030,6 +12111,7 @@ else
         _expShowCategory = false; _expShowDate = false; _expShowNote = false; _tagNewOpen = false;
         _focusAmount = focusAmount;
         _expTripId = State.ActiveTrip?.Id ?? Guid.Empty;   // trip mode: default it, don't enforce it
+        _expTripAccountId = Guid.Empty;
         // ★ And take the trip's category with it. Applying this only when a trip CHIP is tapped meant the form
         // opened on the running trip while still showing the last-used everyday category — the setting looked
         // broken precisely for the person who never touches the trip row because it is already correct.
@@ -12158,6 +12240,7 @@ else
         _categoryId = d.CategoryId; _fundId = d.FundId; _note = d.Note; _expenseDate = d.Date;
         _fTagId = d.TagId; _newTagName = null; _tagFiledTo = null;
         _expTripId = d.TripId ?? Guid.Empty;
+        _expTripAccountId = Guid.Empty;   // drafts are this account's own; a cross-account link is set on the edit form
         _expenseTime = d.Time;
         // Back into the editor as the figure that was TYPED, not the converted one — otherwise pulling a draft back
         // on a foreign-currency trip re-converts it on the next save and the amount climbs every round trip.
@@ -12223,6 +12306,7 @@ else
         // Attaching goes through MayLogAgainstTrip: free on a running journey, Pro on a finished one.
         if (tripId != Guid.Empty && !MayLogAgainstTrip(tripId)) return;
         _expTripId = tripId;
+        _expTripAccountId = Guid.Empty;   // picking one of OUR trips clears any cross-account link (D1)
         // Arming the rule and THEN picking a trip must not leave a rule armed that the form has stopped offering
         // (see BankRuleOffered). Cleared unconditionally rather than only under Modal.BankConfirm: _bcRemember is
         // read nowhere else, so clearing it on the add/edit forms costs nothing, and a condition here would be one
@@ -12408,8 +12492,36 @@ else
         _fTagId = e.TagId; _newTagName = null; _tagFiledTo = null; _expenseHadTag = e.TagId is not null;
         _expenseTime = e.Time; _expenseHadTime = e.Time is not null;
         _expTripId = e.TripId ?? Guid.Empty;   // the trip is editable here — see the picker in the modal
+        _expTripAccountId = e.TripAccountId ?? Guid.Empty;
         _editOpenedFromTrip = false;           // TripEditExpense sets it back on, after this call
         _modal = Modal.EditExpense;
+        // Fired here, not per render: the other accounts' trips need a fetch, and the picker is markup. The modal
+        // opens immediately without the row and grows it when the list lands — which is the right way round, since
+        // the overwhelmingly common edit has nothing to do with another account's journey.
+        _ = LoadForeignTripOptionsAsync();
+    }
+
+    private async Task LoadForeignTripOptionsAsync()
+    {
+        try { _foreignTrips = await State.ForeignTripOptionsAsync(); }
+        catch { _foreignTrips = []; }   // an unreadable account offers no trips; the rest of the form is unaffected
+        StateHasChanged();
+    }
+
+    /// <summary>Pick a trip that lives in another account (D1). Deliberately does <b>not</b> run
+    /// <see cref="ApplyTripCategoryDefault"/> or swap the tag chips: that trip's category and labels are ids in
+    /// <i>its</i> account, and filing this expense under one of them would put it in a category this account does
+    /// not have. The link is a reporting fact; nothing about where the money sits changes.</summary>
+    private void OnForeignTripPicked(BudgetingState.ForeignTripOption option)
+    {
+        if (_expTripId == option.Trip.Id && _expTripAccountId == option.AccountId)
+        {
+            _expTripId = Guid.Empty; _expTripAccountId = Guid.Empty;   // tapping the chip again detaches
+            return;
+        }
+        _expTripId = option.Trip.Id;
+        _expTripAccountId = option.AccountId;
+        _bcRemember = false;   // same rule as any other trip — see BankRuleOffered
     }
 
     private Task SaveEditExpense() => RunModal(async () =>
@@ -12419,8 +12531,11 @@ else
         // ★ The trip goes FIRST, on the id we still hold. EditExpense is append-only — it mints a new id and carries
         // the stored trip across — so setting the trip afterwards would be aimed at an expense that no longer exists.
         // Doing it first means the edit copies the link the user just chose, and one refetch settles both.
-        if ((State.FindExpense(expenseId)?.TripId ?? Guid.Empty) != _expTripId)
-            await State.SetExpenseTrip(expenseId, _expTripId == Guid.Empty ? null : _expTripId);
+        var storedExpense = State.FindExpense(expenseId);
+        if ((storedExpense?.TripId ?? Guid.Empty) != _expTripId
+            || (storedExpense?.TripAccountId ?? Guid.Empty) != _expTripAccountId)
+            await State.SetExpenseTrip(expenseId, _expTripId == Guid.Empty ? null : _expTripId,
+                _expTripAccountId == Guid.Empty ? null : _expTripAccountId);
         // A blanked box means "clear it" only if there was something to clear; otherwise it is simply saying nothing.
         await State.EditExpense(expenseId, _categoryId, _amount, _fundId, _note, _expenseDate, tagId: _fTagId,
             time: _expenseTime, clearTime: _expenseTime is null && _expenseHadTime,
@@ -12446,9 +12561,14 @@ else
     /// Otherwise it renders nothing. The old rule was simply "the account has ever had a trip", which meant one
     /// finished holiday left a dead chip row on every grocery edit from then on. Attaching a forgotten cost to a
     /// past trip still has its door: "Add something already paid", on the trip's own card.</summary>
+    /// <summary>Whether the edit form asks about a trip at all — it used to render whenever the account had EVER
+    /// had one, so every ordinary grocery edit carried a row of dead trip chips reading "Not a trip", forever.
+    /// <para>⚠️ <c>_foreignTrips</c> counts too (D1): a household whose journeys live in the joint account has no
+    /// running trip of its own, and without this the row that would let them count this card's share never
+    /// appears.</para></summary>
     private bool EditShowsTripPicker =>
-        EditTripOptions.Count > 0
-        && (State.ActiveTrip is not null || _editOpenedFromTrip || _expTripId != Guid.Empty);
+        (EditTripOptions.Count > 0 || _foreignTrips.Count > 0)
+        && (State.ActiveTrip is not null || _editOpenedFromTrip || _expTripId != Guid.Empty || _foreignTrips.Count > 0);
 
     /// <summary>Moving the date off today drops an auto-stamped time: "now" describes the moment the form is open,
     /// which says nothing about a purchase being back-dated to last Tuesday. Moving it back onto today re-stamps it.</summary>

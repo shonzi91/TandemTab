@@ -768,7 +768,11 @@ public sealed class Account : Entity
     public void RemoveTrip(Guid tripId)
     {
         var trip = FindTrip(tripId) ?? throw new InvalidOperationException("Trip not found.");
-        foreach (var expense in _periods.SelectMany(p => p.Expenses).Where(e => e.TripId == tripId))
+        // ⚠️ OwnTripExpenses, not every row carrying this id: a row linked to ANOTHER account's trip that happens
+        // to share nothing but a Guid is not this trip's, and detaching it here would unlink someone else's
+        // attachment. Expenses in other accounts pointing at this trip cannot be reached at all — deliberately;
+        // see Expense.TripAccountId for why a dangling pointer there is the safe outcome.
+        foreach (var expense in OwnTripExpenses(tripId))
             expense.SetTrip(null);
         _trips.Remove(trip);
     }
@@ -779,8 +783,23 @@ public sealed class Account : Entity
     /// so the clock is what makes it read as a day rather than a heap.
     /// <para>The recap's whole input — note it spans periods by nature, because the booking and the holiday rarely
     /// sit in the same month.</para></summary>
-    public IEnumerable<Expense> TripExpenses(Guid tripId) =>
-        _periods.SelectMany(p => p.Expenses).Where(e => e.TripId == tripId)
+    public IEnumerable<Expense> TripExpenses(Guid tripId) => OwnTripExpenses(tripId);
+
+    /// <summary>This account's own expenses attached to <paramref name="tripId"/>, in ledger order.
+    /// <para>⚠️ <c>TripAccountId is null</c> is the load-bearing half. An expense in THIS account attached to
+    /// ANOTHER account's trip carries that trip's id, and without the guard it would surface in this account's
+    /// own trip lists the moment two accounts minted trips whose ids collided — vanishingly unlikely, but the
+    /// guard makes the safety local rather than a coincidence.</para></summary>
+    private IEnumerable<Expense> OwnTripExpenses(Guid tripId) =>
+        _periods.SelectMany(p => p.Expenses).Where(e => e.TripId == tripId && e.TripAccountId is null)
+            .OrderByDescending(e => e.Date).ThenByDescending(e => e.SortTime);
+
+    /// <summary>This account's expenses attached to a trip that lives in <b>another</b> account — the rows the
+    /// other account's recap will gather. Used by the server to build the fan-out; nothing here counts them, since
+    /// this account's own totals already do (this account paid).</summary>
+    public IEnumerable<Expense> ExpensesOnForeignTrip(Guid tripId, Guid tripAccountId) =>
+        _periods.SelectMany(p => p.Expenses)
+            .Where(e => e.TripId == tripId && e.TripAccountId == tripAccountId)
             .OrderByDescending(e => e.Date).ThenByDescending(e => e.SortTime);
 
     /// <summary>

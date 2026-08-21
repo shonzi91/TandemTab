@@ -228,6 +228,13 @@ data class TripDto(
     val afterReturn: Double = 0.0,
     val fundedFromSavings: Double = 0.0,
     val perDay: Double = 0.0,
+    // D1 — spend on this trip paid from ANOTHER account. `spent` above stays this account's own, deliberately, so
+    // a screen that hasn't been taught about this shows a total its own row list adds up to; `spentIncludingOtherAccounts`
+    // is the combined figure and equals `spent` on an ordinary trip. Show `paidFromOtherAccounts` beside any total
+    // that uses the combined one — an unlabelled shared figure is one nobody can reconcile.
+    val spentIncludingOtherAccounts: Double = 0.0,
+    val paidFromOtherAccounts: Double = 0.0,
+    val bySourceAccount: List<TripSliceDto>? = null,
 ) {
     val isActive: Boolean get() = state == TripState.ACTIVE
     val isAwaitingStart: Boolean get() = state == TripState.AWAITING_START
@@ -273,6 +280,10 @@ data class TripExpenseRowDto(
     val tagName: String? = null,
     val tagIcon: String? = null,
     val `when`: String = "during",
+    // D1 — the account this row was paid from, when it was not this one. Null on an ordinary row. Show it: an
+    // unlabelled foreign row reads as this account's spending, which is the one thing the link must never claim.
+    val paidFromAccountId: String? = null,
+    val paidFromAccountName: String? = null,
 )
 
 /** One trip opened up. `sliceAxis` ("tag" | "category") is the server's call, not ours: the tag split leads only
@@ -325,7 +336,12 @@ data class EditTripRequest(
 
 /** Attach an expense to a trip, or detach it with a null id. */
 @Serializable
-data class SetExpenseTripRequest(val tripId: String? = null)
+data class SetExpenseTripRequest(
+    val tripId: String? = null,
+    // D1 — the account that owns the trip, when it lives elsewhere. The expense does NOT move: it stays in this
+    // account's period, spending and budgets. Trailing optional; nothing in the Compose UI sets it yet.
+    val tripAccountId: String? = null,
+)
 
 /** Declare a trip over, or put it back on the road. */
 @Serializable

@@ -359,6 +359,48 @@ public class SnapshotSerializerTests
     }
 
     [Fact]
+    public void An_expenses_cross_account_trip_link_round_trips()
+    {
+        // Lose the account half and the row keeps a trip id pointing into the wrong account — which resolves to
+        // nothing, so the attachment silently disappears from the trip that was counting it.
+        var account = new Account("Mine", "EUR");
+        account.AssignOwner(Guid.NewGuid(), "Me");
+        account.AddDefaultFunds();
+        var category = account.AddCategory("Flights").Id;
+        var period = account.StartPeriod(new DateOnly(2026, 6, 1), new DateOnly(2026, 6, 30));
+        period.SetInitialBalance(account.FundId("Bank"), new FinApp.Domain.Common.Money(3000m, "EUR"));
+        var tripId = Guid.NewGuid();
+        var hostAccountId = Guid.NewGuid();
+        var expense = period.AddExpense(new FinApp.Domain.Budgeting.Expense(category,
+            new FinApp.Domain.Common.Money(480m, "EUR"), new DateOnly(2026, 5, 20), Guid.NewGuid(),
+            account.FundId("Bank"), "Flights"));
+        expense.SetTrip(tripId, hostAccountId);
+
+        var copied = AccountSnapshotSerializer.Deserialize(AccountSnapshotSerializer.Serialize(account))
+            .CurrentPeriod!.Expenses.Single();
+
+        Assert.Equal(tripId, copied.TripId);
+        Assert.Equal(hostAccountId, copied.TripAccountId);
+    }
+
+    [Fact]
+    public void A_trips_source_account_directory_round_trips()
+    {
+        // Lose it and the recap has no idea which accounts to look in — the trip renders as this account's spend
+        // alone, which is a total that quietly shrank.
+        var account = new Account("Joint", "EUR");
+        account.AssignOwner(Guid.NewGuid(), "Me");
+        account.AddDefaultFunds();
+        var trip = account.AddTrip("Rome", new DateOnly(2026, 6, 1), new DateOnly(2026, 6, 7));
+        var payerId = Guid.NewGuid();
+        trip.AddSourceAccount(payerId);
+
+        var copied = AccountSnapshotSerializer.Deserialize(AccountSnapshotSerializer.Serialize(account)).Trips.Single();
+
+        Assert.Equal([payerId], copied.SourceAccountIds);
+    }
+
+    [Fact]
     public void A_recurring_bills_excess_line_round_trips()
     {
         // Lose it and next month's €700 quietly goes back to being €700 of loan servicing, dropping ~€100 more
