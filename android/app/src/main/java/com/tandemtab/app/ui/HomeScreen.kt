@@ -239,6 +239,8 @@ fun HomeScreen(
     onPinMerchant: (description: String, categoryId: String, currentlyPinned: Boolean) -> Unit,
     onOpenPayoff: (bucketId: String, bucketName: String) -> Unit,
     onClosePayoff: () -> Unit,
+    onOpenBreakdown: (String?) -> Unit,
+    onCloseBreakdown: () -> Unit,
     onArchiveFund: (String, Boolean, String?, Double, () -> Unit) -> Unit,
     onDeleteFund: (String, String?, () -> Unit) -> Unit,
     onEditTransfer: (String, String, String, Double, String?, () -> Unit) -> Unit,
@@ -400,14 +402,15 @@ fun HomeScreen(
                 // "swipe right for trips" is honestly "swipe right to the screen holding them".
                 // Month stepping did not simply vanish with it — the period chip grew prev/next arrows (see
                 // PeriodSwitcher), because it was given the gesture originally for costing chip + menu + tap.
-                // ★ Left is deliberately UNASSIGNED for now. It is meant for the Breakdown, and no server read
-                // stands behind that yet — a swipe that does nothing teaches people the gesture is broken, which
-                // is harder to undo than a gesture that does not exist.
+                // Left opens the Breakdown, which now has a server read behind it (GET /breakdown, added S115 —
+                // before that there was nothing for this gesture to open, which is why it was left unassigned).
                 .pointerInput(Unit) {
                     detectHorizontalDragGestures(
                         onDragStart = { dragX = 0f },
                         onDragEnd = {
-                            if (dragX >= 96.dp.toPx()) dest = NavDest.Spending
+                            val threshold = 96.dp.toPx()
+                            if (dragX >= threshold) dest = NavDest.Spending
+                            else if (dragX <= -threshold) onOpenBreakdown(null)
                             dragX = 0f
                         },
                         onDragCancel = { dragX = 0f },
@@ -658,6 +661,14 @@ fun HomeScreen(
                 onConfirmRefund = onConfirmBankRefund,
                 onDismissPending = onDismissBankPending,
                 onDismiss = { showBank = false },
+            )
+        }
+        if (state.breakdownOpen) {
+            BreakdownSheet(
+                breakdown = state.breakdown,
+                loading = state.breakdownLoading,
+                onDismiss = onCloseBreakdown,
+                onGroupBy = { onOpenBreakdown(it) },
             )
         }
         if (showNotifications) {

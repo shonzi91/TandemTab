@@ -449,6 +449,14 @@ class TandemTabApi(
     suspend fun setFundOpeningBalance(accountId: String, fundId: String, amount: Double): MutationResultDto =
         authedPut("/accounts/$accountId/funds/$fundId/opening-balance", SetFundOpeningBalanceRequest(amount)).body()
 
+    /** Where the money went: the ring's slices and the four figures beside it. `groupBy` is category (default),
+     *  tag or fund. ⚠️ Until S115 no server read stood behind this chart at all. */
+    suspend fun breakdown(accountId: String, period: Int? = null, groupBy: String? = null): BreakdownViewDto =
+        authedGet(
+            "/accounts/$accountId/breakdown${periodQ(period)}" +
+                (groupBy?.let { (if (period == null) "?" else "&") + "groupBy=$it" } ?: ""),
+        ).body()
+
     /** One debt bucket's payoff forecast — schedule, the lump-sum case, the bank's alternatives and the
      *  extra-per-month curve, all computed server-side. Never a 402: a Free plan gets the schedule with the
      *  modelling blocks empty. */

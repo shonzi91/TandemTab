@@ -1202,6 +1202,44 @@ data class EditFundRequest(
 @Serializable
 data class SetFundOpeningBalanceRequest(val amount: Double)
 
+/** One wedge of the Breakdown ring. `key` is the category/tag/fund id, or one of two sentinels — `…00fe` is the
+ *  "Everything else" rollup and `…00fd` is "Transfers out". `color` is chosen server-side so both clients draw the
+ *  same category in the same colour. */
+@Serializable
+data class BreakdownSliceDto(
+    val key: String = "",
+    val label: String = "",
+    val icon: String? = null,
+    val amount: Double = 0.0,
+    val color: String = "",
+)
+
+/** A bucket that received money in the window, so "Paid to goals" can name where it went. */
+@Serializable
+data class BreakdownPayoutDto(val bucketId: String = "", val name: String = "", val amount: Double = 0.0)
+
+/** GET /accounts/{id}/breakdown — where the money went, plus the four figures that reconcile to what the balance
+ *  did.
+ *
+ *  ★★ THE RING IS SPENDING. Savings are not slices (the money never left) and goal payouts are not slices (a pie is
+ *  a composition chart, and a 12,000 prepayment beside 30 of groceries is not one — measured, the payout took 77.5%
+ *  of the ring and squeezed the only actionable slice to 2.7%). Both are stated as figures instead, so nothing is
+ *  hidden. `spent` EQUALS the sum of `slices`; if a client ever draws a total that disagrees with its own wedges,
+ *  that is the bug those two agreeing was meant to prevent. */
+@Serializable
+data class BreakdownViewDto(
+    val currency: String = "",
+    val from: String = "",
+    val to: String = "",
+    val groupBy: String = "category",
+    val income: Double = 0.0,
+    val spent: Double = 0.0,
+    val setAside: Double = 0.0,
+    val paidToGoals: Double = 0.0,
+    val slices: List<BreakdownSliceDto> = emptyList(),
+    val payouts: List<BreakdownPayoutDto> = emptyList(),
+)
+
 /** One alternative a bank might offer after a lump payment. `kind` is "shorter" (same installment, finishes
  *  sooner) or "lower" (same end date, pay less each month). */
 @Serializable

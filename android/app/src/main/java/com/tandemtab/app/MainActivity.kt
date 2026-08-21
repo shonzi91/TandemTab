@@ -217,6 +217,8 @@ private fun App(vm: AppViewModel, onGoogle: () -> Unit) {
             onPinMerchant = vm::pinMerchant,
             onOpenPayoff = vm::openPayoff,
             onClosePayoff = vm::closePayoff,
+            onOpenBreakdown = vm::openBreakdown,
+            onCloseBreakdown = vm::closeBreakdown,
             onArchiveFund = vm::archiveFund,
             onDeleteFund = vm::deleteFund,
             onEditTransfer = vm::editFundTransfer,

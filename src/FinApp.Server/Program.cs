@@ -943,6 +943,18 @@ accounts.MapGet("/{id:guid}/savings", async (Guid id, int? period, ClaimsPrincip
     return Results.Ok(SavingsMap.View(account, snap.Version, bank.Balance, bank.BalanceCurrency, ResolvePeriod(account, period)));
 });
 
+// The Breakdown ring + the four figures beside it. ★ Until now NO server read stood behind this chart at all, so
+// every attempt to size it as client work was sizing the wrong half — the rules are the expensive part and they
+// live in BreakdownMap. `from`/`to` default to the viewed period; `groupBy` is category (default), tag or fund.
+accounts.MapGet("/{id:guid}/breakdown", async (Guid id, int? period, DateOnly? from, DateOnly? to, string? groupBy,
+        ClaimsPrincipal user, SnapshotService svc, CancellationToken ct) =>
+{
+    var snap = await svc.GetAsync(user.UserId(), id, ct);
+    if (string.IsNullOrEmpty(snap.Payload)) return Results.Ok(BreakdownViewDto.Empty);
+    var account = AccountSnapshotSerializer.Deserialize(snap.Payload);
+    return Results.Ok(BreakdownMap.View(account, ResolvePeriod(account, period), from, to, groupBy));
+});
+
 // The debt-payoff forecast for one bucket. ★ Its own read rather than a fatter /savings: it is only ever wanted
 // for the ONE debt somebody has opened, it runs an amortisation per call, and folding it into the list read would
 // make every Goals render pay for a schedule nobody is looking at.
