@@ -998,6 +998,37 @@ public sealed class Account : Entity
             .RecordDebtPayment(amount, asOf, isExtraRepayment: true);
 
     /// <summary>
+    /// Principal deployed at <paramref name="savingCategoryId"/> <b>after</b> <paramref name="asOf"/>, over and
+    /// above its installments — the dated half of the story <see cref="Savings.SavingCategory"/> cannot tell.
+    /// <para>
+    /// ★ The bucket keeps only <c>DebtExtraPrincipalRepaid</c>, an <b>undated running total</b>, which is enough to
+    /// say "you are ahead" and useless for saying "you were ahead by this much in June". The dated facts are the
+    /// disbursement allocations, and they live on the periods — so the reconstruction has to happen here.
+    /// </para>
+    /// <para>⚠️ Disbursements only. A logged installment also lowers the balance, but the schedule walk already
+    /// accounts for it, and adding it back here would count that month's payment twice.</para>
+    /// </summary>
+    public decimal ExtraRepaidAfter(Guid savingCategoryId, DateOnly asOf) =>
+        Periods.SelectMany(p => p.SavingAllocations)
+            .Where(a => a.IsDisbursement && a.SavingCategoryId == savingCategoryId && a.Date > asOf)
+            .Sum(a => Math.Abs(a.Amount.Amount));
+
+    /// <summary>
+    /// Total owed across every live debt bucket on <paramref name="asOf"/>, reconstructed for past dates — the
+    /// series behind "Debt owed" in Trends over time.
+    /// <para>
+    /// ★ This is the whole fix for a chart that used to read <i>"No change over this window"</i> on an account that
+    /// had just paid a loan down: it walks each bucket's schedule backward AND restores the prepayments made since,
+    /// which are the two halves that were both missing. Either alone is wrong — the schedule alone draws a curve
+    /// that never shows the payment, and the prepayments alone ignore the interest that was accruing.
+    /// </para>
+    /// </summary>
+    public decimal DebtOwedOn(DateOnly asOf) =>
+        SavingCategories
+            .Where(s => s.IsDebt && s.DebtOriginalBalance > 0m)
+            .Sum(s => Math.Max(0m, s.DebtOwedOn(asOf, ExtraRepaidAfter(s.Id, asOf))));
+
+    /// <summary>
     /// Make <paramref name="savingCategoryId"/> the emergency fund, clearing the flag from whichever bucket held it —
     /// there is one answer to "how long could I last", so two funds claiming it would both be measuring the same
     /// expenses. Pass <c>false</c> to simply clear it.

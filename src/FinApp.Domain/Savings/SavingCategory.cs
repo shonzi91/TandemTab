@@ -331,6 +331,42 @@ public sealed class SavingCategory : Entity
     /// negative). Zero for common buckets.</summary>
     public decimal DebtPaidOffOn(DateOnly asOf) => IsDebt ? Math.Max(0m, DebtOriginalBalance - DebtBalanceOn(asOf)) : 0m;
 
+    /// <summary>
+    /// What was owed on <paramref name="asOf"/>, including dates <b>before</b> <see cref="DebtBalanceAsOf"/> —
+    /// the question <see cref="DebtBalanceOn"/> cannot answer.
+    /// <para>
+    /// ★ <see cref="DebtBalanceOn"/> only walks forward from the anchor and returns the stored balance for anything
+    /// earlier, which is right for "what is owed now" and useless for history. Worse, recording a payment
+    /// <b>re-anchors</b> to the payment date, so after any payment every earlier date returned today's figure and a
+    /// debt-over-time chart was flat by construction.
+    /// </para>
+    /// <para>
+    /// ⚠️ <b><paramref name="extraRepaidSince"/> is not optional in spirit.</b> Reversing the schedule alone
+    /// reconstructs a past balance that is too low by whatever was later thrown at the loan on top of its
+    /// installments — a smooth, authoritative, wrong curve, which is worse than the flat line it replaces. Only the
+    /// account can see those dated prepayments, so it passes them in; see <c>Account.DebtOwedOn</c>.
+    /// </para>
+    /// <para>
+    /// A separate method rather than a smarter <see cref="DebtBalanceOn"/> on purpose: every existing caller asks
+    /// about today, and none of them should quietly start reconstructing history.
+    /// </para>
+    /// </summary>
+    /// <param name="extraRepaidSince">Principal thrown at this loan after <paramref name="asOf"/> over and above
+    /// its installments — added back, because on that date the loan had not yet received it.</param>
+    public decimal DebtOwedOn(DateOnly asOf, decimal extraRepaidSince)
+    {
+        if (!IsDebt) return 0m;
+        var restored = DebtBalance + Math.Max(0m, extraRepaidSince);
+        // Payment-driven loans have no schedule to walk — the balance is whatever logged payments left it at — so
+        // undoing the prepayments is the whole of what can be reconstructed here.
+        if (DebtPaymentDriven) return Math.Max(0m, restored);
+        if (DebtBalanceAsOf is not { } anchor || asOf >= anchor) return DebtBalanceOn(asOf);
+        var months = InstallmentsDue(asOf, anchor);
+        if (DebtInstallment <= 0m || months <= 0) return Math.Max(0m, restored);
+        return Math.Max(0m, FinApp.Forecasting.LoanForecast.BalanceBefore(
+            restored, DebtAnnualRatePercent, DebtInstallment, months));
+    }
+
     /// <summary>Debt buckets: how much of the original balance has been paid off (never negative). Zero for common buckets.</summary>
     public decimal DebtPaidOff => IsDebt ? Math.Max(0m, DebtOriginalBalance - DebtBalance) : 0m;
 

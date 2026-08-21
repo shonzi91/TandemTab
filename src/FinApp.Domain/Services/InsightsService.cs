@@ -380,10 +380,13 @@ public sealed class InsightsService
             for (var i = start; i <= idx; i++)
             {
                 var asOf = periods[i].To < today ? periods[i].To : today;
-                var total = 0m;
-                foreach (var b in debts)
-                    total += Math.Max(0m, b.DebtBalanceOn(asOf));
-                owed.Add(decimal.Round(total, 2));
+                // ⚠️ Account.DebtOwedOn, not SavingCategory.DebtBalanceOn. The latter only walks FORWARD from the
+                // bucket's anchor and returns the stored balance for anything earlier — and recording a payment
+                // re-anchors to the payment date, so every point before the last payment was today's figure and
+                // this series was a dead-straight line reading "No change over this window" on an account that had
+                // just paid a loan down. The account-level call reverses the schedule and restores the dated
+                // prepayments, which are the two halves that were both missing.
+                owed.Add(decimal.Round(account.DebtOwedOn(asOf), 2));
             }
             var cur = owed[^1];
             var diff = cur - owed[0];

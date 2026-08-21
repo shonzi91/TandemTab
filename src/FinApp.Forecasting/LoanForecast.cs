@@ -95,6 +95,37 @@ public static class LoanForecast
     }
 
     /// <summary>
+    /// Walk <paramref name="balance"/> <b>backward</b> <paramref name="months"/> scheduled installments — what a
+    /// lender's table showed that many payments ago. The exact algebraic inverse of <see cref="BalanceAfter"/>:
+    /// where forward does <c>b = b(1+r) − P</c>, this does <c>b = (b + P) / (1 + r)</c>.
+    /// <para>
+    /// ★ It exists because a debt's history was otherwise unanswerable. The stored balance is true at one anchor
+    /// date and every walk ran forward from it, so any question about an <i>earlier</i> date got today's number —
+    /// which drew a debt-over-time chart as a dead-straight line.
+    /// </para>
+    /// <para>
+    /// ⚠️ <b>Schedule only.</b> It reverses installments, and knows nothing about extra repayments — a caller that
+    /// has dated prepayments must add them back before calling, or it will reconstruct a past balance that is too
+    /// low by exactly the amount that was later thrown at the loan. See <c>Account.DebtOwedOn</c>.
+    /// </para>
+    /// <para>
+    /// ⚠️ Not a perfect round-trip through a <i>cleared</i> loan: <see cref="BalanceAfter"/> clamps at zero and
+    /// forgets the overshoot, so reversing out of 0 gives a plausible earlier balance rather than the original one.
+    /// </para>
+    /// </summary>
+    public static decimal BalanceBefore(decimal balance, decimal annualRatePercent, decimal installment, int months)
+    {
+        if (months <= 0) return Math.Max(0m, balance);
+        if (installment <= 0m) return Math.Max(0m, balance);
+
+        var monthlyRate = annualRatePercent / 100m / 12m;
+        var remaining = balance;
+        for (var m = 0; m < Math.Min(months, MaxMonths); m++)
+            remaining = (remaining + installment) / (1m + monthlyRate);
+        return decimal.Round(Math.Max(0m, remaining), 2, MidpointRounding.AwayFromZero);
+    }
+
+    /// <summary>
     /// How many scheduled installments bring <paramref name="from"/> down to <paramref name="target"/> — the inverse
     /// of <see cref="BalanceAfter"/>. Used to <b>estimate</b> how long a loan has been running (original → current
     /// balance) when no origination date was recorded, so "interest paid so far" can be reconstructed on the
