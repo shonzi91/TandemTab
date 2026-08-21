@@ -800,6 +800,7 @@ public sealed class Localizer(IJSRuntime js)
         ["reminder only"] = "само напомняне",
         ["day"] = "ден",
         ["paused"] = "на пауза",
+        ["starts next period"] = "започва следващия период",
         ["Bill"] = "Сметка",
         ["Income"] = "Доход",
         ["Fixed"] = "Фиксирана",

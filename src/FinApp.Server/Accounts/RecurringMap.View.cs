@@ -66,7 +66,8 @@ public static class RecurringView
             open && r.IsPending(period.From, period.To),
             r.ExcessCategoryId,
             r.ExcessCategoryId is { } ec ? account.FindCategory(ec)?.Name : null,
-            r.ExcessLabel)).ToList();
+            r.ExcessLabel,
+            open && r.StartsLater(period.From, period.To))).ToList();
 
         // Known bills still expected (unhandled) this period — the same rule as BudgetingState.BillsDueThisPeriod.
         var billsDue = open

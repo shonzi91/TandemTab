@@ -530,6 +530,52 @@ public class RecurringApiTests : IClassFixture<FinAppServerFactory>
     }
 
     [Fact]
+    public async Task A_row_that_has_not_started_yet_reports_it_separately_from_one_already_handled()
+    {
+        // Both are Pending=false, Active=true, SkippedThisPeriod=false — so on those three flags alone a bill that
+        // has NEVER been paid is indistinguishable from one paid this morning, and both clients file it under
+        // "already this period". StartsLater is the fourth flag that separates them.
+        // ★ Fixed dates, not the current month: `open` is the period's status, not a comparison with today, so the
+        // whole case can be pinned to the calendar instead of to the run date.
+        var (client, auth) = await _factory.RegisterAndAuthAsync("rc_startslater");
+        var account = await CreateAccount(client, "StartsLater");
+
+        var from = new DateOnly(2026, 1, 1);
+        var to = new DateOnly(2026, 1, 31);
+        var agg = new Account("Seed", "EUR");
+        agg.AddDefaultFunds();
+        var rent = agg.AddCategory("Rent").Id;
+        var fund = agg.FundId("Bank");
+        agg.AddMember(auth.UserId, "Me");
+        agg.StartPeriod(from, to);
+
+        // Rent on the 10th, written down on the 19th — an arrangement going forward, not a payment missed.
+        var late = agg.AddRecurring(new RecurringItem("Rent", RecurringKind.Expense, RecurringAmountMode.Fixed, 500m, 10, rent, fund));
+        late.SetCreatedOn(new DateOnly(2026, 1, 19));
+        // Its twin: same day, present from the start, and actually paid.
+        var paid = agg.AddRecurring(new RecurringItem("Internet", RecurringKind.Expense, RecurringAmountMode.Fixed, 40m, 10, rent, fund));
+        paid.SetCreatedOn(from);
+        paid.MarkHandled(from);
+
+        (await client.PutAsJsonAsync($"/accounts/{account.Id}/snapshot",
+            new SaveAccountRequest(AccountSnapshotSerializer.Serialize(agg), 0))).EnsureSuccessStatusCode();
+
+        var items = (await client.GetFromJsonAsync<RecurringViewDto>($"/accounts/{account.Id}/recurring"))!.Items;
+        var notStarted = items.Single(r => r.Id == late.Id);
+        var handled = items.Single(r => r.Id == paid.Id);
+
+        // The three flags that cannot tell them apart, agreeing — which is the whole problem.
+        Assert.False(notStarted.Pending);
+        Assert.False(handled.Pending);
+        Assert.True(notStarted.Active && handled.Active);
+        Assert.False(notStarted.SkippedThisPeriod || handled.SkippedThisPeriod);
+
+        // And the one that can.
+        Assert.True(notStarted.StartsLater);
+        Assert.False(handled.StartsLater);
+    }
+
+    [Fact]
     public async Task Stranger_cannot_create_a_recurring_item()
     {
         var (owner, auth) = await _factory.RegisterAndAuthAsync("rc_owner");

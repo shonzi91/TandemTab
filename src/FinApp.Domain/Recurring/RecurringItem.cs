@@ -236,8 +236,16 @@ public sealed class RecurringItem : Entity
 
     /// <summary>False when this period's due date falls before the item existed — the first period is skipped and it
     /// begins with the next one.</summary>
-    private bool HasStartedBy(DateOnly from, DateOnly to) =>
+    public bool HasStartedBy(DateOnly from, DateOnly to) =>
         CreatedOn is not { } created || DueDateWithin(from, to) >= created;
+
+    /// <summary>Active, unhandled, and its first due date is still ahead of this period — add rent due on the 1st on
+    /// the 20th and this is what you have until next month begins.
+    /// <para>⚠️ Its own state, not a shade of "handled". Such an item is <b>not</b> <see cref="IsPending(DateOnly,
+    /// DateOnly)"/> — correctly, because it must not nag — but a list that reads <c>!IsPending</c> as "behind you"
+    /// files it under a heading claiming it already happened, beside bills that really were paid. The two are
+    /// indistinguishable on the row otherwise: both render as plain "Day N · bill".</para></summary>
+    public bool StartsLater(DateOnly from, DateOnly to) => IsPending(from) && !HasStartedBy(from, to);
 
     /// <summary>Active and not yet handled this period (whether or not its day has arrived) — i.e. still expected.
     /// An item whose day already passed before it was created isn't expected this period, so it doesn't nag either.

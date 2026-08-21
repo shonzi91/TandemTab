@@ -1224,6 +1224,10 @@ data class RecurringRowDto(
     val excessCategoryId: String? = null,
     val excessCategoryName: String? = null,
     val excessLabel: String? = null,
+    // Active and unhandled, but its first due date is still ahead of this period — added after this month's day had
+    // already gone by. NOT derivable here: `pending` is false as on a posted bill, `active` true unlike a paused one,
+    // `skippedThisPeriod` false like both. Without it such a row is identical to one already paid.
+    val startsLater: Boolean = false,
 )
 
 /** A debt bucket a bill can be linked to. `paymentDriven` mirrors the bucket's "I log each installment here"

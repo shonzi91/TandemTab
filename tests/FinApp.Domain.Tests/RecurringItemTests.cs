@@ -227,4 +227,73 @@ public class RecurringItemTests
         Assert.True(item.IsDue(PFrom, PTo, new DateOnly(2026, 7, 19)));
         Assert.True(item.IsPending(PFrom, PTo));
     }
+
+    // ── StartsLater: the third population of the "already this period" section ───────────────────
+    // Both list clients split on !IsPending, so a not-yet-started item lands under a heading claiming it has
+    // happened. These pin the one fact that separates it from a bill that really was paid.
+
+    [Fact]
+    public void An_item_that_has_not_started_yet_says_so()
+    {
+        var item = Make(day: 10);
+        item.SetCreatedOn(new DateOnly(2026, 7, 19));
+
+        Assert.False(item.IsPending(PFrom, PTo));      // why it sits in the lower section at all
+        Assert.True(item.StartsLater(PFrom, PTo));     // and why it must not read as handled there
+    }
+
+    [Fact]
+    public void A_bill_actually_handled_this_period_is_not_starting_later()
+    {
+        // The case the marker exists to be distinguishable from: same section, same !IsPending, opposite meaning.
+        var item = Make(day: 10);
+        item.SetCreatedOn(new DateOnly(2026, 7, 1));
+        item.MarkHandled(PFrom);
+
+        Assert.False(item.IsPending(PFrom, PTo));
+        Assert.False(item.StartsLater(PFrom, PTo));
+    }
+
+    [Fact]
+    public void A_skipped_bill_is_not_starting_later()
+    {
+        var item = Make(day: 10);
+        item.SetCreatedOn(new DateOnly(2026, 7, 1));
+        item.MarkHandled(PFrom, skipped: true);
+
+        Assert.True(item.SkippedIn(PFrom));
+        Assert.False(item.StartsLater(PFrom, PTo));
+    }
+
+    [Fact]
+    public void A_paused_item_is_not_starting_later_even_when_it_has_not_started()
+    {
+        // Both would be true of it, and the row can only say one thing. "Paused" is the more actionable of the
+        // two — it names something the user did and can undo — so it wins, and this keeps the marker out of its way.
+        var item = Make(day: 10);
+        item.SetCreatedOn(new DateOnly(2026, 7, 19));
+        item.SetActive(false);
+
+        Assert.False(item.StartsLater(PFrom, PTo));
+    }
+
+    [Fact]
+    public void The_marker_clears_once_the_item_has_started()
+    {
+        var item = Make(day: 10);
+        item.SetCreatedOn(new DateOnly(2026, 7, 19));
+
+        var augFrom = new DateOnly(2026, 8, 1);
+        var augTo = new DateOnly(2026, 8, 31);
+        Assert.True(item.IsPending(augFrom, augTo));
+        Assert.False(item.StartsLater(augFrom, augTo));
+    }
+
+    [Fact]
+    public void An_ordinary_pending_bill_is_not_starting_later()
+    {
+        var item = Make(day: 25);
+        item.SetCreatedOn(new DateOnly(2026, 7, 5));
+        Assert.False(item.StartsLater(PFrom, PTo));
+    }
 }

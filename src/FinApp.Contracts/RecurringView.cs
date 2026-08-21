@@ -39,7 +39,12 @@ public record RecurringRowDto(
     // so all of it services the loan (the pre-C behaviour). The name is resolved here, like LinkedDebtName.
     Guid? ExcessCategoryId = null,
     string? ExcessCategoryName = null,
-    string? ExcessLabel = null);
+    string? ExcessLabel = null,
+    // Active and unhandled, but its first due date is still ahead of this period (added after this month's day had
+    // passed). ⚠️ NOT derivable client-side: it is Pending=false like a posted bill, Active=true unlike a paused one,
+    // and SkippedThisPeriod=false like both — three flags that cannot separate "never happened yet" from "already
+    // done". Trailing and optional; false on an older server, which is exactly today's behaviour (no marker).
+    bool StartsLater = false);
 
 /// <summary>A debt bucket a bill can be linked to. <see cref="PaymentDriven"/> mirrors the bucket's "I log each
 /// installment here" switch — a linked bill only drives the balance when it's on, which is the user's call, so the

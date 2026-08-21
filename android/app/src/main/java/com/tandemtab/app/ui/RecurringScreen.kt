@@ -60,6 +60,12 @@ import com.tandemtab.app.ui.theme.TandemIcons
  *
  * An overdue item is pending with a negative `daysUntilDue`, so it leads "Coming up" — where something missed
  * belongs. A **paused** item is not pending and sits below; its row already says so, and it is not coming.
+ *
+ * ⚠️ The lower section holds THREE populations, not one, and the heading is only literally true of the first:
+ * handled, paused, and **not yet started** (`startsLater` — added after this month's day had passed). The design
+ * that settles this is "loose heading, precise row": each of the other two names itself in `stateLine`, which is
+ * why neither may be filed here silently. The third had no marker until this was written, so a bill that has never
+ * been paid rendered identically to one that had.
  */
 private fun sections(items: List<RecurringRowDto>): Pair<List<RecurringRowDto>, List<RecurringRowDto>> {
     val coming = items.filter { it.pending }.sortedWith(compareBy({ it.daysUntilDue }, { it.name.lowercase() }))
@@ -576,6 +582,10 @@ private fun stateLine(item: RecurringRowDto): String {
     val linked = item.linkedDebtName?.let { " · 🧾 $it" } ?: ""
     return when {
         !item.active -> "Paused"
+        // Sits under "Already this period" because it is not pending — so the row has to be the thing that says it
+        // never happened, exactly as a paused one does. Without this it reads "Day N · bill", the same as a bill
+        // that really was paid this month.
+        item.startsLater -> "Starts next period · day ${item.dayOfMonth}"
         item.due -> "Due now · $what$linked"
         item.upcoming -> if (item.daysUntilDue <= 0) "Due today" else "In ${item.daysUntilDue} day${if (item.daysUntilDue == 1) "" else "s"}"
         item.dayOfMonth > 0 -> "Day ${item.dayOfMonth} · $what$linked"
