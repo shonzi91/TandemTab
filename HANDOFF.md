@@ -2,11 +2,12 @@
 
 Last updated: 2026-08-21 (Session 113 — **the owner's list is DONE (O14 closed); the Breakdown was rebuilt then
 half-reverted after pushback; and five figures that contradicted each other on screen were traced to real bugs.**
-**518 + 50 + 380 green, pairscan 0. LIVE: `finapp-00321-q89`, 100% LATEST** — image `finapp:9593134`
-(digest `sha256:7e2240fd…`), bundle `FinApp.Shared.UI.yqq40lfj7n.bundle.scp.css` identical at 377,016 B on both
-hosts carrying `trend-focus`×4 + `exp-edit-slot`×2, 5 `secretKeyRef`s.
-⚠️ **Five deploys this session** — `bd49006`→00318, `8167869`→00319, `bd9d476`→00320, `9593134`→00321. Three of
-those are corrections to the first, and **the shape of the corrections is the lesson**, below.)
+**524 + 50 + 380 green, pairscan 0. LIVE: `finapp-00322-dh6`, 100% LATEST** — image `finapp:8df7dd7`
+(digest `sha256:6f02ded8…`); the served WASM carries `BalanceBefore`×1, `DebtOwedOn`×3 and `ExtraRepaidAfter`×4,
+roots 200 on both hosts, 5 `secretKeyRef`s.
+⚠️ **Six deploys this session** — `bd49006`→00318, `8167869`→00319, `bd9d476`→00320, `9593134`→00321,
+`8df7dd7`→00322. Three of those are corrections to the first, and **the shape of the corrections is the lesson**,
+below.)
 
 #### ⭐ The owner's fourteen are done — O14 closed
 
@@ -17,21 +18,38 @@ half-built; this session added the picker, and **the compiler had been naming th
 names the focus, not just the picker**: a line labelled "Spent in each month" that is actually one category's
 spending is the chart telling the reader something untrue. It reads *"Food spent in each month"*.
 
-#### ⚠️ STILL OPEN — "Debt owed" in Trends over time is FLAT
+#### ★★ A debt can be read backwards now — the flat "Debt owed" history is fixed
 
-The owner's screenshot: a dead-straight line and *"No change over this window."* **Diagnosed, not fixed.**
-`SavingCategory.DebtBalanceOn(asOf)` only walks **forward** from `DebtBalanceAsOf` (`if (months <= 0) return
-DebtBalance`), and `RecordDebtPayment` **re-anchors** that date to the payment. So every period earlier than the
-anchor returns *today's* balance — the history is flat by construction. `InsightsService.cs:380` builds the series
-as `DebtBalanceOn(periods[i].To)`, so it inherits this exactly.
-★ **A correct fix is two parts, and both are needed:** (1) reverse amortisation — `b_prev = (b_next + P) / (1+r)` —
-so `DebtBalanceOn` can answer before the anchor; (2) **dated prepayment reconstruction**, because `SavingCategory`
-only keeps `DebtExtraPrincipalRepaid` as an *undated running total*. The dated facts exist as disbursement
-`SavingAllocation`s but live on the periods, which the bucket cannot see — so the add-back belongs in
-`InsightsService`, which has the `Account`.
-⚠️ **Do not ship half of it.** A curve reconstructed without the prepayments looks authoritative and is wrong;
-a flat line at least reads as "no data". Also note `DebtSparkline`/`.debt-spark` exist and have **zero callers** —
-there is no debt-over-time chart anywhere else to fix.
+The owner's screenshot: a dead-straight line and *"No change over this window"* on an account that had just paid a
+loan down. **Two causes, and both had to go.**
+⚠️ `SavingCategory.DebtBalanceOn` only ever walked **forward** from `DebtBalanceAsOf` (`if (months <= 0) return
+DebtBalance`), and `RecordDebtPayment` **re-anchors** to the payment date — so the moment you pay anything, every
+point in the history collapses onto the current balance. **Flat by construction, not by coincidence.**
+⚠️ The bucket keeps `DebtExtraPrincipalRepaid` as an **undated running total** — enough to say "you are ahead",
+useless for "you were ahead by this much in June". The dated facts are the disbursement allocations, and they live
+on the periods, which the bucket cannot see.
+
+★ `LoanForecast.BalanceBefore` is the exact algebraic inverse of `BalanceAfter`: forward is `b(1+r) − P`, backward
+is `(b + P) / (1 + r)`. `SavingCategory.DebtOwedOn(asOf, extraRepaidSince)` reverses the schedule;
+`Account.DebtOwedOn(asOf)` is the half that knows the dates, summing disbursements after `asOf` and handing them
+down. `InsightsService` calls the account-level one.
+★ **Deliberately a NEW method rather than a smarter `DebtBalanceOn`.** Every existing caller asks about *today*,
+and none of them should quietly start reconstructing history — so the previously-green tests stayed green for the
+right reason rather than by luck.
+⚠️ **Either half alone is wrong, which is why this waited for both.** Reversing the schedule without restoring the
+prepayments draws a smooth, authoritative curve that never shows the payment — **worse than the flat line it
+replaces**, because a flat line at least reads as "no data". Restoring the prepayments without reversing the
+schedule ignores the interest that was accruing the whole time.
+⚠️ **Known limits, stated not hidden:** a `DebtPaymentDriven` loan has no schedule to walk, so only the prepayments
+are undone; and `BalanceAfter` clamps at zero, so reversing out of a *cleared* loan gives a plausible earlier
+balance rather than the original one.
+
+✅ **6 new tests** (`DebtHistoryTests`, → **524** + 50 + 380 green) including the `BalanceAfter`/`BalanceBefore`
+round-trip and an end-to-end `Account` case: a loan, a bucket deployed at it in March, January correctly still
+owing the pre-prepayment figure. Browser-verified on the fixture: *"Down €298.85 since May"* became **"Down
+€3,865.72 since May"**, and the sparkline that read three identical points now descends
+`2,2 → 40.7,3.6 → 79.3,5.2 → 118,24` — three months of amortisation, then the month the money landed.
+⚠️ `DebtSparkline` / `.debt-spark` still have **zero callers**; the mini-trend is the only debt-over-time chart.
 
 #### ★★ The Breakdown ring: what it took three tries to get right
 
