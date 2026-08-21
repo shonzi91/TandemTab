@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -276,6 +277,7 @@ fun HomeScreen(
     var showAccount by remember { mutableStateOf(false) }
     var showBank by remember { mutableStateOf(false) }
     var showImport by remember { mutableStateOf(false) }
+    var showNotifications by remember { mutableStateOf(false) }
     var showNextPeriod by remember { mutableStateOf(false) }
     var showEditPeriod by remember { mutableStateOf(false) }
     var showRemovePeriod by remember { mutableStateOf(false) }
@@ -385,35 +387,51 @@ fun HomeScreen(
         // gesture rather than a pager because the app holds ONE period's data at a time: a pager would have to
         // render pages it has no content for, and a swipe that briefly shows the wrong month's figures is worse
         // than no animation. Nothing happens at either end of the list, and a drag under the threshold is a scroll.
-        val periodIdx = state.selectedPeriod ?: state.currentPeriodIndex
-        val firstIdx = state.periods.firstOrNull()?.index
-        val lastIdx = state.periods.lastOrNull()?.index
         var dragX by remember { mutableStateOf(0f) }
+        var dragY by remember { mutableStateOf(0f) }
+        // Hoisted so the pull-down gesture can ask whether the page is actually at the top before claiming a drag.
+        val homeScroll = rememberScrollState()
         Box(
             Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .pointerInput(periodIdx, state.periods.size) {
+                // ⚠️ The horizontal swipe used to step PERIODS. Owner's call to reassign it. Right opens
+                // SPENDING, which is where trips live — trips is a section of that tab, not a tab of its own, so
+                // "swipe right for trips" is honestly "swipe right to the screen holding them".
+                // Month stepping did not simply vanish with it — the period chip grew prev/next arrows (see
+                // PeriodSwitcher), because it was given the gesture originally for costing chip + menu + tap.
+                // ★ Left is deliberately UNASSIGNED for now. It is meant for the Breakdown, and no server read
+                // stands behind that yet — a swipe that does nothing teaches people the gesture is broken, which
+                // is harder to undo than a gesture that does not exist.
+                .pointerInput(Unit) {
                     detectHorizontalDragGestures(
                         onDragStart = { dragX = 0f },
                         onDragEnd = {
-                            val threshold = 96.dp.toPx()
-                            if (dragX <= -threshold && lastIdx != null && periodIdx < lastIdx) {
-                                onSelectPeriod(periodIdx + 1)
-                            } else if (dragX >= threshold && firstIdx != null && periodIdx > firstIdx) {
-                                onSelectPeriod(periodIdx - 1)
-                            }
+                            if (dragX >= 96.dp.toPx()) dest = NavDest.Spending
                             dragX = 0f
                         },
                         onDragCancel = { dragX = 0f },
                     ) { _, delta -> dragX += delta }
+                }
+                // Pull down for the full notification list. ⚠️ Only from the very top: this Box wraps a
+                // verticalScroll column, and an ungated vertical gesture would swallow ordinary scrolling. The
+                // scroll position is the gate, the way pull-to-refresh does it.
+                .pointerInput(Unit) {
+                    detectVerticalDragGestures(
+                        onDragStart = { dragY = 0f },
+                        onDragEnd = {
+                            if (dragY >= 110.dp.toPx() && homeScroll.value == 0) showNotifications = true
+                            dragY = 0f
+                        },
+                        onDragCancel = { dragY = 0f },
+                    ) { _, delta -> if (homeScroll.value == 0) dragY += delta }
                 },
         ) {
             run {
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
-                        .verticalScroll(rememberScrollState())
+                        .verticalScroll(homeScroll)
                         .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 24.dp),
                 ) {
                     when (dest) {
@@ -640,6 +658,16 @@ fun HomeScreen(
                 onConfirmRefund = onConfirmBankRefund,
                 onDismissPending = onDismissBankPending,
                 onDismiss = { showBank = false },
+            )
+        }
+        if (showNotifications) {
+            NotificationsSheet(
+                alerts = state.alerts,
+                onDismiss = { showNotifications = false },
+                onOpenTab = { tab ->
+                    showNotifications = false
+                    NavDest.entries.firstOrNull { it.name.equals(tab, ignoreCase = true) }?.let { dest = it }
+                },
             )
         }
         state.payoffBucketId?.let {
@@ -1297,16 +1325,46 @@ private fun PeriodSwitcher(
     var open by remember { mutableStateOf(false) }
     val viewing = state.selectedPeriod ?: state.currentPeriodIndex
     val onLatest = viewing == state.periods.lastOrNull()?.index
-    Row(
-        Modifier.clip(RoundedCornerShape(999.dp)).clickable(enabled = state.periods.isNotEmpty()) { open = true }
-            .padding(horizontal = 8.dp, vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(label, fontSize = 13.sp, color = tandem.muted, fontWeight = FontWeight.Medium, maxLines = 1)
-        if (state.periods.size > 1) {
-            Spacer(Modifier.width(2.dp))
-            Icon(TandemIcons.Chevron, null, tint = tandem.muted, modifier = Modifier.size(14.dp).rotate(90f))
+    // ⚠️ Arrows, because the horizontal swipe no longer steps months. Stepping used to cost chip + menu + tap,
+    // which is why it was given the gesture in the first place; handing the gesture to the breakdown without
+    // putting stepping back within one tap would trade one complaint for another.
+    val firstIdx = state.periods.firstOrNull()?.index
+    val lastIdx = state.periods.lastOrNull()?.index
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        val canBack = firstIdx != null && viewing > firstIdx
+        Icon(
+            TandemIcons.Chevron,
+            contentDescription = "Previous month",
+            tint = if (canBack) tandem.muted else tandem.muted.copy(alpha = 0.3f),
+            modifier = Modifier
+                .size(26.dp)
+                .clip(RoundedCornerShape(999.dp))
+                .clickable(enabled = canBack) { onSelectPeriod(viewing - 1) }
+                .padding(6.dp)
+                .rotate(180f),
+        )
+        Row(
+            Modifier.clip(RoundedCornerShape(999.dp)).clickable(enabled = state.periods.isNotEmpty()) { open = true }
+                .padding(horizontal = 8.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(label, fontSize = 13.sp, color = tandem.muted, fontWeight = FontWeight.Medium, maxLines = 1)
+            if (state.periods.size > 1) {
+                Spacer(Modifier.width(2.dp))
+                Icon(TandemIcons.Chevron, null, tint = tandem.muted, modifier = Modifier.size(14.dp).rotate(90f))
+            }
         }
+        val canForward = lastIdx != null && viewing < lastIdx
+        Icon(
+            TandemIcons.Chevron,
+            contentDescription = "Next month",
+            tint = if (canForward) tandem.muted else tandem.muted.copy(alpha = 0.3f),
+            modifier = Modifier
+                .size(26.dp)
+                .clip(RoundedCornerShape(999.dp))
+                .clickable(enabled = canForward) { onSelectPeriod(viewing + 1) }
+                .padding(6.dp),
+        )
     }
     DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
         state.periods.sortedByDescending { it.index }.forEach { p ->
