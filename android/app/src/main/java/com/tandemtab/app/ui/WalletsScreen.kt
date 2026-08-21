@@ -651,7 +651,7 @@ private fun formatTransferDate(iso: String): String = runCatching {
     LocalDate.parse(iso).format(DateTimeFormatter.ofPattern("d MMM", Locale.getDefault()))
 }.getOrDefault(iso)
 
-private fun rememberWalletsMoney(currencyCode: String): (Double) -> String {
+internal fun rememberWalletsMoney(currencyCode: String): (Double) -> String {
     val nf = java.text.NumberFormat.getCurrencyInstance(Locale.getDefault())
     runCatching { nf.currency = java.util.Currency.getInstance(currencyCode) }
     return { amount -> nf.format(amount) }

@@ -1202,6 +1202,48 @@ data class EditFundRequest(
 @Serializable
 data class SetFundOpeningBalanceRequest(val amount: Double)
 
+/** One alternative a bank might offer after a lump payment. `kind` is "shorter" (same installment, finishes
+ *  sooner) or "lower" (same end date, pay less each month). */
+@Serializable
+data class PayoffOfferDto(
+    val kind: String,
+    val perMonth: Double = 0.0,
+    val months: Int = 0,
+    val newInterest: Double = 0.0,
+    val savedInterest: Double = 0.0,
+)
+
+/** One point on the "extra per month" curve. ⚠️ The curve is a handful of precomputed steps, and the slider SNAPS
+ *  to them — the maths stays on the server (where the amortisation is tested) without the slider needing a
+ *  round-trip per drag. */
+@Serializable
+data class PayoffCurvePointDto(val extra: Double = 0.0, val monthsSaved: Int = 0, val interestSaved: Double = 0.0)
+
+/** GET /accounts/{id}/savings/{bucketId}/payoff — what a loan's future looks like, computed server-side.
+ *
+ *  ⚠️ `available` false means there is NO schedule to walk: a payment-driven loan, or an installment that cannot
+ *  out-run the interest. Every figure is then zero and the screen must say so rather than draw a payoff date that
+ *  will never arrive. `offers`/`curve` are empty on a Free plan — the read still succeeds, because taking the
+ *  payoff date away from a Free user is not what Pro is selling. */
+@Serializable
+data class DebtPayoffDto(
+    val available: Boolean = false,
+    val currency: String = "",
+    val balance: Double = 0.0,
+    val installment: Double = 0.0,
+    val annualRatePercent: Double = 0.0,
+    val months: Int = 0,
+    val payoffOn: String? = null,
+    val totalInterest: Double = 0.0,
+    val setAside: Double = 0.0,
+    val lumpBalanceAfter: Double = 0.0,
+    val lumpMonthsSaved: Int = 0,
+    val lumpInterestSaved: Double = 0.0,
+    val lumpClearsTheLoan: Boolean = false,
+    val offers: List<PayoffOfferDto> = emptyList(),
+    val curve: List<PayoffCurvePointDto> = emptyList(),
+)
+
 /** A saved "always file this merchant here" rule. `matchKey` is the normalized description the rule is stored
  *  under; `kind` is "category" (file it as spending) or "fund" (it came from one of your own wallets, so it is a
  *  transfer). `tagId` is an optional label the rule also applies — debit rules only. */

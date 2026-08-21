@@ -943,6 +943,21 @@ accounts.MapGet("/{id:guid}/savings", async (Guid id, int? period, ClaimsPrincip
     return Results.Ok(SavingsMap.View(account, snap.Version, bank.Balance, bank.BalanceCurrency, ResolvePeriod(account, period)));
 });
 
+// The debt-payoff forecast for one bucket. ★ Its own read rather than a fatter /savings: it is only ever wanted
+// for the ONE debt somebody has opened, it runs an amortisation per call, and folding it into the list read would
+// make every Goals render pay for a schedule nobody is looking at.
+// ⚠️ Gated INSIDE the map, not at the door: the schedule and the lump-sum figures are Free (the web shows those
+// too), and only the modelling of the bank's alternatives is withheld. A 402 here would withhold the whole screen.
+accounts.MapGet("/{id:guid}/savings/{bucketId:guid}/payoff", async (Guid id, Guid bucketId, int? period,
+        ClaimsPrincipal user, SnapshotService svc, EntitlementService entitlements, CancellationToken ct) =>
+{
+    var snap = await svc.GetAsync(user.UserId(), id, ct);
+    if (string.IsNullOrEmpty(snap.Payload)) return Results.Ok(DebtPayoffDto.None);
+    var account = AccountSnapshotSerializer.Deserialize(snap.Payload);
+    var proDebt = await entitlements.AllowsAsync(user.UserId(), PlanFeatures.Debt, ct);
+    return Results.Ok(SavingsMap.Payoff(account, bucketId, proDebt, ResolvePeriod(account, period)));
+});
+
 // Path-B thin-Budgets read: every budgeted category with its coverage. Paired with the budget writes (delta below).
 accounts.MapGet("/{id:guid}/budgets", async (Guid id, int? period, ClaimsPrincipal user, SnapshotService svc, CancellationToken ct) =>
 {

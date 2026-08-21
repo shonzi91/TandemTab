@@ -146,3 +146,61 @@ public record SavingsViewDto(
 /// <summary>The delta a savings mutation returns: new <see cref="Version"/>, affected entity id, and the whole
 /// refreshed <see cref="View"/> the client reconciles from. A superset of <see cref="MutationResultDto"/>.</summary>
 public record SavingsMutationDto(long Version, Guid? EntityId, SavingsViewDto View);
+
+// --- Debt payoff: the forecast figures a thin client cannot compute --------------------------------------------
+
+/// <summary>One offer a bank might make after a lump payment. <see cref="PerMonth"/> is the installment it implies
+/// and <see cref="Months"/> how long it then runs; <see cref="NewInterest"/> is what that costs in total and
+/// <see cref="SavedInterest"/> what it saves against carrying on unchanged.</summary>
+public record PayoffOfferDto(string Kind, decimal PerMonth, int Months, decimal NewInterest, decimal SavedInterest);
+
+/// <summary>
+/// One point on the "extra per month" curve: paying <see cref="Extra"/> more each month saves
+/// <see cref="MonthsSaved"/> months and <see cref="InterestSaved"/> in interest.
+/// <para>
+/// ⚠️ <b>The curve is precomputed as a handful of points on purpose.</b> The slider that reads it has to move
+/// under a finger: a client that re-fetched per drag step would be unusable, and one that computed the maths
+/// locally would be a second, untested implementation of compound interest — the thing the whole thin-client rule
+/// exists to prevent. So the server does the arithmetic once, for a fixed set of steps, and the slider snaps to
+/// them.
+/// </para>
+/// </summary>
+public record PayoffCurvePointDto(decimal Extra, int MonthsSaved, decimal InterestSaved);
+
+/// <summary>
+/// What a debt bucket's future looks like, computed server-side from <c>FinApp.Forecasting.LoanForecast</c>.
+/// <para>
+/// This read exists because Android is a thin client that holds no domain logic: without it the phone has the
+/// loan's <i>inputs</i> (balance, rate, installment) and no honest way to turn them into a payoff date. Porting
+/// the amortisation into Kotlin would put a second, untested implementation of compound interest in front of
+/// somebody's mortgage.
+/// </para>
+/// <para>
+/// <see cref="Offers"/> and <see cref="Curve"/> are the <b>Pro</b> half (<c>PlanFeatures.Debt</c>) and come back
+/// empty on Free — mirroring the web, where the header and the lump-sum explanation stay on Free and only the
+/// modelling of the bank's alternatives is withheld. <see cref="Available"/> is false when there is no schedule to
+/// walk at all (a payment-driven loan, or an installment that cannot out-run the interest), in which case every
+/// figure here is zero and the client must say so rather than draw a flat line.
+/// </para>
+/// </summary>
+public record DebtPayoffDto(
+    bool Available,
+    string Currency,
+    decimal Balance,
+    decimal Installment,
+    decimal AnnualRatePercent,
+    int Months,
+    DateOnly? PayoffOn,
+    decimal TotalInterest,
+    // The one-off: "pay the X you have set aside now". Zero when nothing is set aside against this bucket.
+    decimal SetAside,
+    decimal LumpBalanceAfter,
+    int LumpMonthsSaved,
+    decimal LumpInterestSaved,
+    bool LumpClearsTheLoan,
+    IReadOnlyList<PayoffOfferDto> Offers,
+    IReadOnlyList<PayoffCurvePointDto> Curve)
+{
+    public static readonly DebtPayoffDto None =
+        new(false, "", 0m, 0m, 0m, 0, null, 0m, 0m, 0m, 0, 0m, false, [], []);
+}

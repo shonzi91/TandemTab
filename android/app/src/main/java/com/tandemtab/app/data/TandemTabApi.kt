@@ -449,6 +449,12 @@ class TandemTabApi(
     suspend fun setFundOpeningBalance(accountId: String, fundId: String, amount: Double): MutationResultDto =
         authedPut("/accounts/$accountId/funds/$fundId/opening-balance", SetFundOpeningBalanceRequest(amount)).body()
 
+    /** One debt bucket's payoff forecast — schedule, the lump-sum case, the bank's alternatives and the
+     *  extra-per-month curve, all computed server-side. Never a 402: a Free plan gets the schedule with the
+     *  modelling blocks empty. */
+    suspend fun debtPayoff(accountId: String, bucketId: String, period: Int? = null): DebtPayoffDto =
+        authedGet("/accounts/$accountId/savings/$bucketId/payoff${periodQ(period)}").body()
+
     /** The saved merchant rules. Used by statement import as well as by bank sync — a rule is the user's filing
      *  decision about a merchant, not a property of the connection, which is why this read is NOT part of the
      *  deferred bank-connection back half. */

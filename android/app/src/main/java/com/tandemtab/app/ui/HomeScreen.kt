@@ -236,6 +236,8 @@ fun HomeScreen(
     onImportTransactions: (List<ImportRowDto>, Boolean, (Int, Int) -> Unit) -> Unit,
     onLoadBankMappings: () -> Unit,
     onPinMerchant: (description: String, categoryId: String, currentlyPinned: Boolean) -> Unit,
+    onOpenPayoff: (bucketId: String, bucketName: String) -> Unit,
+    onClosePayoff: () -> Unit,
     onArchiveFund: (String, Boolean, String?, Double, () -> Unit) -> Unit,
     onDeleteFund: (String, String?, () -> Unit) -> Unit,
     onEditTransfer: (String, String, String, Double, String?, () -> Unit) -> Unit,
@@ -465,6 +467,7 @@ fun HomeScreen(
                             goals = state.goals,
                             spending = state.spending,
                             onRetry = { onLoadGoals(true) },
+                            onOpenPayoff = onOpenPayoff,
                             onPrepareAllocate = onPrepareAllocate,
                             onPrepareSpend = onPrepareSpend,
                             onAllocate = onAllocate,
@@ -637,6 +640,15 @@ fun HomeScreen(
                 onConfirmRefund = onConfirmBankRefund,
                 onDismissPending = onDismissBankPending,
                 onDismiss = { showBank = false },
+            )
+        }
+        state.payoffBucketId?.let {
+            PayoffSheet(
+                bucketName = state.payoffBucketName,
+                payoff = state.payoff,
+                loading = state.payoffLoading,
+                onDismiss = onClosePayoff,
+                onProBlocked = { onProBlocked(PlanFeatures.DEBT) },
             )
         }
         if (showImport) {

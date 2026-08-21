@@ -185,4 +185,90 @@ public static class SavingsMap
         var sim = LoanForecast.SimulateExtra(b.DebtOriginalBalance, b.DebtAnnualRatePercent, b.DebtInstallment, extra);
         return sim is { MonthsSaved: > 0 } s ? s.MonthsSaved : null;
     }
+
+    /// <summary>
+    /// The debt-payoff read (<see cref="DebtPayoffDto"/>): the schedule, the one-off lump, the two offers a bank
+    /// might make, and a small curve for the "extra per month" slider.
+    /// <para>
+    /// ★ Every figure comes from <see cref="LoanForecast"/>, here, for the reason this whole class exists: the
+    /// thin client must render the forecast rather than compute it. A payoff date is exactly the kind of number
+    /// that looks plausible when it is wrong.
+    /// </para>
+    /// </summary>
+    /// <param name="proDebt">Whether the caller's plan includes the debt feature. Free gets the schedule and the
+    /// lump-sum figures; the modelling of the bank's alternatives is the withheld part, mirroring the web.</param>
+    public static DebtPayoffDto Payoff(Account account, Guid bucketId, bool proDebt, Period? viewPeriod = null)
+    {
+        if (account.FindSavingCategory(bucketId) is not { IsDebt: true } b) return DebtPayoffDto.None;
+        var period = viewPeriod ?? account.CurrentPeriod;
+        var balance = b.DebtBalance;
+        var basics = DebtPayoffDto.None with
+        {
+            Currency = account.Currency,
+            Balance = balance,
+            Installment = b.DebtInstallment,
+            AnnualRatePercent = b.DebtAnnualRatePercent,
+        };
+
+        // ⚠️ No schedule to walk: a payment-driven loan states no installment, and an installment that cannot
+        // out-run the monthly interest never clears. Both are honest "we can't say" answers, and PayOff returns
+        // null for each — better than a date nobody will see.
+        if (LoanForecast.PayOff(balance, b.DebtAnnualRatePercent, b.DebtInstallment, b.DebtResidual) is not { } payoff)
+            return basics;
+
+        var report = new SavingsReportService();
+        var setAside = period is null ? 0m : report.ForBucket(account, period, b.Id).AccumulatedTotal.Amount;
+        var lump = setAside > 0m
+            ? LoanForecast.PayLumpSum(balance, b.DebtAnnualRatePercent, b.DebtInstallment, setAside)
+            : null;
+
+        var offers = new List<PayoffOfferDto>();
+        var curve = new List<PayoffCurvePointDto>();
+        if (proDebt && lump is { } l)
+        {
+            var after = Math.Max(0m, balance - setAside);
+            // Shorter term: keep paying the same installment, finish sooner.
+            offers.Add(new PayoffOfferDto("shorter", b.DebtInstallment, l.AfterKeepingInstallment.Months,
+                l.AfterKeepingInstallment.TotalInterest,
+                decimal.Round(payoff.TotalInterest - l.AfterKeepingInstallment.TotalInterest, 2)));
+            // Lower installment: keep the original end date, pay less each month. Null when the remaining term is
+            // zero — there is no "same term" left to spread anything over.
+            if (LoanForecast.PaymentFor(after, b.DebtAnnualRatePercent, payoff.Months) is { } lower && payoff.Months > 0)
+            {
+                var lowerInterest = decimal.Round(lower * payoff.Months - after, 2);
+                offers.Add(new PayoffOfferDto("lower", lower, payoff.Months, lowerInterest,
+                    decimal.Round(payoff.TotalInterest - lowerInterest, 2)));
+            }
+        }
+        if (proDebt)
+        {
+            // A fixed ladder of steps rather than a continuous function — see PayoffCurvePointDto for why the
+            // slider snaps to server-computed points. Steps scale with the installment so the ladder means the
+            // same thing on a €120 phone contract and a €900 mortgage.
+            var step = decimal.Round(Math.Max(5m, b.DebtInstallment / 10m), 0);
+            for (var i = 1; i <= 10; i++)
+            {
+                var extra = step * i;
+                if (LoanForecast.SimulateExtra(balance, b.DebtAnnualRatePercent, b.DebtInstallment, extra) is { } sim)
+                    curve.Add(new PayoffCurvePointDto(extra, sim.MonthsSaved, sim.InterestSaved));
+            }
+        }
+
+        return basics with
+        {
+            Available = true,
+            Months = payoff.Months,
+            // The date the schedule runs out, counted from the period we are looking at rather than from "now" —
+            // the rest of this read is period-scoped and a payoff date that ignored that would disagree with it.
+            PayoffOn = (period?.From ?? DateOnly.FromDateTime(DateTime.UtcNow)).AddMonths(payoff.Months),
+            TotalInterest = payoff.TotalInterest,
+            SetAside = setAside,
+            LumpBalanceAfter = Math.Max(0m, balance - setAside),
+            LumpMonthsSaved = lump?.MonthsSaved ?? 0,
+            LumpInterestSaved = lump?.InterestSaved ?? 0m,
+            LumpClearsTheLoan = lump?.ClearsTheLoan ?? false,
+            Offers = offers,
+            Curve = curve,
+        };
+    }
 }

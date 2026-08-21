@@ -8,6 +8,7 @@ import com.tandemtab.app.data.AccountOverviewDto
 import com.tandemtab.app.data.AccountSummaryDto
 import com.tandemtab.app.data.AddDepositRequest
 import com.tandemtab.app.data.BankMappingDto
+import com.tandemtab.app.data.DebtPayoffDto
 import com.tandemtab.app.data.FundCurrencyEdit
 import com.tandemtab.app.data.ImportRowDto
 import com.tandemtab.app.data.ImportTransactionsRequest
@@ -135,6 +136,12 @@ data class UiState(
     val overview: AccountOverviewDto? = null,
     val periodLabel: String? = null,
     // Period navigation: the account's periods, its open/current index, and which one is being viewed (null = current).
+    // The debt-payoff drawer: which bucket is open, and what the server said about it. Held here rather than in
+    // the bucket row so the row stays a pure render of the list read — the forecast is a second, slower call.
+    val payoffBucketId: String? = null,
+    val payoffBucketName: String = "",
+    val payoffLoading: Boolean = false,
+    val payoff: DebtPayoffDto? = null,
     // Saved merchant rules, keyed by the server's match key. Read by statement import; shared with bank sync,
     // because a rule is the user's filing decision about a merchant rather than a property of a connection.
     val bankMappings: Map<String, BankMappingDto> = emptyMap(),
@@ -1594,6 +1601,32 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
      * is the right trade for an import (half a statement is worse than none), and it means the error string is
      * worth showing verbatim rather than replacing with a generic one.
      */
+    /**
+     * Open the payoff drawer for one debt bucket and fetch its forecast.
+     *
+     * ⚠️ Its own call, not part of the Goals list read: it runs an amortisation per bucket, and folding it into
+     * `/savings` would make every Goals render pay for schedules nobody has opened.
+     */
+    fun openPayoff(bucketId: String, bucketName: String) {
+        val accountId = _state.value.selectedAccountId ?: return
+        _state.update {
+            it.copy(payoffBucketId = bucketId, payoffBucketName = bucketName, payoffLoading = true, payoff = null)
+        }
+        viewModelScope.launch {
+            val result = runCatching { api.debtPayoff(accountId, bucketId, _state.value.selectedPeriod) }.getOrNull()
+            _state.update {
+                // Only apply if this is still the bucket that is open — tapping two loans quickly must not land
+                // the first one's schedule under the second one's name.
+                if (it.payoffBucketId != bucketId) it
+                else it.copy(payoffLoading = false, payoff = result)
+            }
+        }
+    }
+
+    fun closePayoff() = _state.update {
+        it.copy(payoffBucketId = null, payoffBucketName = "", payoffLoading = false, payoff = null)
+    }
+
     /** Load the saved merchant rules so an import can file rows before anyone looks at them. Best-effort: an
      *  import without rules still works, it just starts every row on the default. */
     fun loadBankMappings() {
