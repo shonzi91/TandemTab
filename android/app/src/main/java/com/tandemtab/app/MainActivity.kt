@@ -212,6 +212,7 @@ private fun App(vm: AppViewModel, onGoogle: () -> Unit) {
             onAddIncome = vm::addIncome,
             onPrepareFund = vm::prepareFund,
             onSaveFund = vm::saveFund,
+            onImportTransactions = vm::importTransactions,
             onArchiveFund = vm::archiveFund,
             onDeleteFund = vm::deleteFund,
             onEditTransfer = vm::editFundTransfer,

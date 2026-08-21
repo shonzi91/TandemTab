@@ -8,6 +8,8 @@ import com.tandemtab.app.data.AccountOverviewDto
 import com.tandemtab.app.data.AccountSummaryDto
 import com.tandemtab.app.data.AddDepositRequest
 import com.tandemtab.app.data.FundCurrencyEdit
+import com.tandemtab.app.data.ImportRowDto
+import com.tandemtab.app.data.ImportTransactionsRequest
 import com.tandemtab.app.data.AddExpenseRequest
 import com.tandemtab.app.data.AddSavingDepositRequest
 import com.tandemtab.app.data.ApiException
@@ -1580,6 +1582,35 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
      * it on if the second call fails — a fund with the wrong opening balance is visible and fixable; an opening
      * balance with no fund is nothing.
      */
+    /**
+     * Post a batch of reviewed statement rows. The file was parsed on the device — see [ImportSheet] — so what
+     * travels here is only what the user kept.
+     *
+     * ⚠️ All-or-nothing server-side: a row naming a category or fund that doesn't exist 400s the whole batch. That
+     * is the right trade for an import (half a statement is worse than none), and it means the error string is
+     * worth showing verbatim rather than replacing with a generic one.
+     */
+    fun importTransactions(rows: List<ImportRowDto>, skipDuplicates: Boolean, onDone: (imported: Int, duplicates: Int) -> Unit) {
+        val accountId = _state.value.selectedAccountId ?: return
+        if (rows.isEmpty()) return
+        _state.update { it.copy(spending = it.spending.copy(saving = true, saveError = null)) }
+        viewModelScope.launch {
+            try {
+                val result = api.importTransactions(accountId, ImportTransactionsRequest(rows, skipDuplicates))
+                _state.update { it.copy(spending = it.spending.copy(saving = false)) }
+                loadSpending(force = true)
+                runCatching { api.overview(accountId) }.getOrNull()?.let { ov -> _state.update { it.copy(overview = ov) } }
+                onDone(result.imported, result.duplicates)
+            } catch (e: Exception) {
+                if (handledAsPaywall(e)) {
+                    _state.update { it.copy(spending = it.spending.copy(saving = false)) }
+                } else {
+                    _state.update { it.copy(spending = it.spending.copy(saving = false, saveError = e.message ?: "Couldn't import that statement.")) }
+                }
+            }
+        }
+    }
+
     fun saveFund(
         fundId: String?, name: String, icon: String?, note: String?, openingBalance: Double?,
         currency: FundCurrencyEdit? = null,

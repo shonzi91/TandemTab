@@ -84,6 +84,7 @@ import androidx.compose.foundation.shape.CircleShape
 import com.tandemtab.app.UiState
 import com.tandemtab.app.data.AccountSummaryDto
 import com.tandemtab.app.data.FundCurrencyEdit
+import com.tandemtab.app.data.ImportRowDto
 import com.tandemtab.app.data.MemberDto
 import com.tandemtab.app.data.ExpenseDto
 import com.tandemtab.app.data.MilestonesDto
@@ -232,6 +233,7 @@ fun HomeScreen(
     onAddIncome: (String, String, Double, String, () -> Unit) -> Unit,
     onPrepareFund: () -> Unit,
     onSaveFund: (String?, String, String?, String?, Double?, FundCurrencyEdit?, () -> Unit) -> Unit,
+    onImportTransactions: (List<ImportRowDto>, Boolean, (Int, Int) -> Unit) -> Unit,
     onArchiveFund: (String, Boolean, String?, Double, () -> Unit) -> Unit,
     onDeleteFund: (String, String?, () -> Unit) -> Unit,
     onEditTransfer: (String, String, String, Double, String?, () -> Unit) -> Unit,
@@ -269,6 +271,7 @@ fun HomeScreen(
     var showProfile by remember { mutableStateOf(false) }
     var showAccount by remember { mutableStateOf(false) }
     var showBank by remember { mutableStateOf(false) }
+    var showImport by remember { mutableStateOf(false) }
     var showNextPeriod by remember { mutableStateOf(false) }
     var showEditPeriod by remember { mutableStateOf(false) }
     var showRemovePeriod by remember { mutableStateOf(false) }
@@ -493,6 +496,9 @@ fun HomeScreen(
                             // a trip abroad spends from, so the two are one entitlement.
                             canHoldForeignCash = state.allowsPro(PlanFeatures.TRIPS),
                             onProBlocked = { onProBlocked(PlanFeatures.TRIPS) },
+                            canImport = state.allowsPro(PlanFeatures.IMPORT),
+                            onOpenImport = { showImport = true },
+                            onImportProBlocked = { onProBlocked(PlanFeatures.IMPORT) },
                             onArchiveFund = onArchiveFund,
                             onDeleteFund = onDeleteFund,
                             onEditTransfer = onEditTransfer,
@@ -627,6 +633,20 @@ fun HomeScreen(
                 onConfirmRefund = onConfirmBankRefund,
                 onDismissPending = onDismissBankPending,
                 onDismiss = { showBank = false },
+            )
+        }
+        if (showImport) {
+            ImportSheet(
+                currency = state.spending.currency,
+                funds = state.spending.funds,
+                categories = state.spending.categories,
+                incomeCategories = state.spending.incomeCategories,
+                periodFrom = state.viewedPeriod?.from,
+                periodTo = state.viewedPeriod?.to,
+                saving = state.spending.saving,
+                saveError = state.spending.saveError,
+                onDismiss = { showImport = false },
+                onImport = onImportTransactions,
             )
         }
         // The bank-link URL is a one-shot: open the bank's consent page in a browser, then clear it. The result

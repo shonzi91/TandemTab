@@ -448,6 +448,11 @@ class TandemTabApi(
     suspend fun setFundOpeningBalance(accountId: String, fundId: String, amount: Double): MutationResultDto =
         authedPut("/accounts/$accountId/funds/$fundId/opening-balance", SetFundOpeningBalanceRequest(amount)).body()
 
+    /** Post a batch of reviewed statement rows. Pro-gated (402). ⚠️ The FILE never comes here — it is parsed on the
+     *  device and only the rows the user kept are sent, which is the whole privacy argument for statement import. */
+    suspend fun importTransactions(accountId: String, req: ImportTransactionsRequest): ImportResultDto =
+        authedPost("/accounts/$accountId/import", req).body()
+
     /** Hold this wallet in another currency at a fixed rate, or pass nulls to put it back to the account's own.
      *  Setting one is Pro-gated server-side (402); clearing never is — see [SetFundCurrencyRequest]. */
     suspend fun setFundCurrency(accountId: String, fundId: String, currency: String?, rate: Double?): MutationResultDto =

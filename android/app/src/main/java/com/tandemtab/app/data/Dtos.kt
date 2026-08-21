@@ -1202,6 +1202,37 @@ data class EditFundRequest(
 @Serializable
 data class SetFundOpeningBalanceRequest(val amount: Double)
 
+/** One reviewed statement row, ready to post. `amount` is SIGNED — negative books an expense against a spend
+ *  category, positive books income against a contribution category — and the server validates the category against
+ *  the sign, so the two must be chosen together. */
+@Serializable
+data class ImportRowDto(
+    val amount: Double,
+    val date: String,
+    val categoryId: String,
+    val fundId: String,
+    val note: String? = null,
+)
+
+/** POST /accounts/{id}/import — a batch of reviewed rows in ONE save, all-or-nothing: a row naming a category or
+ *  fund that doesn't exist fails the whole batch with 400 rather than importing most of a statement.
+ *
+ *  `skipDuplicates` compares each row against what is ALREADY in the period (same date + amount + fund), so
+ *  re-importing the same statement is safe. ⚠️ Duplicates *within* one batch still post — two identical coffees on
+ *  one day are a real thing that happens, and the check is against pre-existing data only. */
+@Serializable
+data class ImportTransactionsRequest(val rows: List<ImportRowDto>, val skipDuplicates: Boolean = true)
+
+/** What an import did: how many rows posted, how many were dropped as unusable, and how many the server recognised
+ *  as already present. All three are reported — "imported 12" alone leaves the other rows unaccounted for. */
+@Serializable
+data class ImportResultDto(
+    val version: Long = 0,
+    val imported: Int = 0,
+    val skipped: Int = 0,
+    val duplicates: Int = 0,
+)
+
 /** PUT /accounts/{id}/funds/{fundId}/currency — make this wallet a pile of foreign cash, or put it back to the
  *  account's own currency.
  *

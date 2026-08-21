@@ -67,6 +67,11 @@ fun WalletsScreen(
     // fields; clearing an existing one is never gated, which is why the editor still sends a cleared pair.
     canHoldForeignCash: Boolean = true,
     onProBlocked: () -> Unit = {},
+    // Statement import is its own Pro feature, separate from the wallet-currency one above — so it raises its own
+    // prompt. A gate that names the wrong feature explains the wrong refusal.
+    canImport: Boolean = true,
+    onOpenImport: () -> Unit = {},
+    onImportProBlocked: () -> Unit = {},
     onArchiveFund: (fundId: String, archived: Boolean, moveBalanceTo: String?, amount: Double, onDone: () -> Unit) -> Unit = { _, _, _, _, _ -> },
     onDeleteFund: (fundId: String, moveOpeningBalancesTo: String?, onDone: () -> Unit) -> Unit = { _, _, _ -> },
     onEditTransfer: (transferId: String, fromFundId: String, toFundId: String, amount: Double, note: String?, onDone: () -> Unit) -> Unit = { _, _, _, _, _, _ -> },
@@ -183,6 +188,10 @@ fun WalletsScreen(
             if (bankEnabled) {
                 Spacer(Modifier.height(12.dp))
                 BankEntryRow(connected = bankConnected, reviewCount = bankReviewCount, onClick = onOpenBank)
+                Spacer(Modifier.height(10.dp))
+                // Next to the bank row on purpose: both answer "money that happened elsewhere", and import is the
+                // one that works at every bank rather than only the connected ones.
+                ImportEntryRow(proLocked = !canImport, onClick = { if (canImport) onOpenImport() else onImportProBlocked() })
             }
 
             // One entry rather than a fourth icon on every wallet row — the sheet asks which wallet it comes out
@@ -450,6 +459,32 @@ private fun FundRow(
 }
 
 /** The "External accounts" row that opens the Bank sheet. Shows a review badge when imports are pending. */
+@Composable
+private fun ImportEntryRow(proLocked: Boolean, onClick: () -> Unit) {
+    val tandem = LocalTandemColors.current
+    Row(
+        Modifier.fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(14.dp))
+            .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(14.dp))
+            .clickable(onClick = onClick)
+            .padding(14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(TandemIcons.Receipt, contentDescription = null, tint = tandem.catAccent, modifier = Modifier.size(20.dp))
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text("Import a statement", fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
+            Text("CSV, OFX or QIF — read on this phone", fontSize = 12.sp, color = tandem.muted)
+        }
+        // The crown appears only where the plan can't reach, so a Pro account never sees one.
+        if (proLocked) {
+            Icon(TandemIcons.Crown, contentDescription = "Part of Pro", tint = tandem.warn, modifier = Modifier.size(14.dp))
+            Spacer(Modifier.width(8.dp))
+        }
+        Icon(TandemIcons.Chevron, contentDescription = null, tint = tandem.muted, modifier = Modifier.size(16.dp))
+    }
+}
+
 @Composable
 private fun BankEntryRow(connected: Boolean, reviewCount: Int, onClick: () -> Unit) {
     val tandem = LocalTandemColors.current
