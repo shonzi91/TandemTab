@@ -1,5 +1,6 @@
 package com.tandemtab.app.ui
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -32,6 +33,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -132,6 +138,15 @@ fun WalletsScreen(
         else -> {
             TotalHeader(fmt(wallets.current))
             Spacer(Modifier.height(14.dp))
+
+            // "Where your money is" (the web's .fund-donut). It lives on THIS tab only: the web's Home donut is a
+            // different chart — the expense breakdown — and the phone reaches that by swiping, so a ring whose job
+            // was to promote it has no job left there. Here it describes the very list underneath it.
+            FundDonut(
+                funds = wallets.funds,
+                syncedBalance = syncedBalance,
+                total = fmt(wallets.current),
+            )
 
             AddFundButton { onPrepareFund(); creatingFund = true }
             Spacer(Modifier.height(12.dp))
@@ -392,6 +407,75 @@ private fun ArchivedFundRow(f: FundRowDto, fmt: (Double) -> String, onRestore: (
             Icon(TandemIcons.Trash, "Remove ${f.name}", tint = tandem.spent, modifier = Modifier.size(18.dp))
         }
     }
+}
+
+// The web's FundPalette, verbatim — greens that stay distinguishable side by side. A synced fund is amber and a
+// negative one red, both outside the rotation, because those two say something the hue is carrying rather than
+// just separating one wallet from the next.
+private val fundPalette = listOf(
+    Color(0xFF1D9E75), Color(0xFF5DCAA5), Color(0xFF0F6E56),
+    Color(0xFF37B6A0), Color(0xFF8FD9C4), Color(0xFF2A8F6B),
+)
+private val fundSyncedColor = Color(0xFFEAB308)
+
+/**
+ * "Where your money is": one arc per wallet, sized by its share of the total, with the total in the middle.
+ *
+ * ⚠️ **Only positive balances get an arc**, and that is not a rounding convenience — a donut is a part-to-whole
+ * chart, and a negative balance is not a part of a total it reduces. An overdrawn wallet is named in the list
+ * below with its own colour; drawing it as a slice would make the ring add up to something no figure on screen
+ * agrees with. Hidden entirely when nothing is positive, rather than drawing an empty track that reads as a bug.
+ */
+@Composable
+private fun FundDonut(funds: List<FundRowDto>, syncedBalance: Double?, total: String) {
+    val tandem = LocalTandemColors.current
+    // A synced wallet's app-internal balance is 0 — the real figure comes from the bank — so use the live one when
+    // it has loaded, exactly as the rows below do. Without this the bank wallet silently vanishes from the ring.
+    val slices = remember(funds, syncedBalance) {
+        var i = 0
+        funds.mapNotNull { f ->
+            val amount = if (f.synced) (syncedBalance ?: 0.0) else f.balance
+            if (amount <= 0.0) null
+            else Triple(f.id, amount, if (f.synced) fundSyncedColor else fundPalette[i++ % fundPalette.size])
+        }
+    }
+    val sum = slices.sumOf { it.second }
+    if (slices.isEmpty() || sum <= 0.0) return
+
+    Box(Modifier.fillMaxWidth().height(200.dp), contentAlignment = Alignment.Center) {
+        val trackColor = MaterialTheme.colorScheme.outline
+        Canvas(Modifier.size(180.dp)) {
+            val stroke = Stroke(width = 26.dp.toPx(), cap = StrokeCap.Butt)
+            val inset = 26.dp.toPx() / 2f
+            val arcSize = Size(size.width - inset * 2, size.height - inset * 2)
+            val topLeft = Offset(inset, inset)
+            drawArc(trackColor, 0f, 360f, false, topLeft, arcSize, style = stroke)
+            if (slices.size == 1) {
+                // A full ring, not a 360° arc: an arc that starts and ends at the same angle leaves a visible seam
+                // where its two butt caps meet. The web does the same, for the same reason.
+                drawCircle(slices[0].third, radius = arcSize.width / 2f, style = stroke)
+            } else {
+                var start = -90f
+                slices.forEach { (_, amount, color) ->
+                    val sweep = (amount / sum * 360.0).toFloat()
+                    drawArc(color, start, sweep, false, topLeft, arcSize, style = stroke)
+                    start += sweep
+                }
+            }
+        }
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text("TOTAL BALANCE", fontSize = 9.sp, letterSpacing = 1.2.sp, fontWeight = FontWeight.Bold, color = tandem.muted)
+            Spacer(Modifier.height(2.dp))
+            Text(total, fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.onBackground)
+            Spacer(Modifier.height(2.dp))
+            Text(
+                "across ${slices.size} " + if (slices.size == 1) "fund" else "funds",
+                fontSize = 11.sp,
+                color = tandem.muted,
+            )
+        }
+    }
+    Spacer(Modifier.height(14.dp))
 }
 
 @Composable
