@@ -57,8 +57,13 @@ public record ExpenseDto(
 /// <summary>A spend category as a picker option — id, label, stored icon, and parent for indentation. No money.</summary>
 public record CategoryOptionDto(Guid Id, string Name, string? Icon, Guid? ParentId);
 
-/// <summary>A fund as a picker option. <see cref="Synced"/> funds are bank-driven and excluded from manual pickers.</summary>
-public record FundOptionDto(Guid Id, string Name, bool Synced);
+/// <summary>A fund as a picker option. <see cref="Synced"/> funds are bank-driven and excluded from manual pickers.
+/// <para><see cref="Currency"/>/<see cref="Rate"/> carry the foreign cash a wallet holds and what one unit of it is
+/// worth in the <b>account's</b> currency. Both null on an ordinary wallet. ⚠️ They mean nothing apart — check for
+/// both, as <c>Fund.HasRate</c> does — and they are on the <b>option</b>, not only the wallets row, because picking
+/// the wallet is what changes the meaning of the Amount field on the entry form. A picker that cannot see them
+/// cannot label the field or convert what is typed.</para></summary>
+public record FundOptionDto(Guid Id, string Name, bool Synced, string? Currency = null, decimal? Rate = null);
 
 /// <summary>A tag as a picker option — the flat, cross-cutting label axis that sits alongside categories.
 /// <see cref="CategoryId"/> is the category picking it files the expense into (F2), and <see cref="TripTag"/> marks

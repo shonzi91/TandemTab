@@ -20,7 +20,15 @@ public record FundRowDto(
     decimal OpeningBalance,
     bool Synced,
     bool Archived,
-    decimal AvailableToTransferOut = 0m);
+    decimal AvailableToTransferOut = 0m,
+    // The foreign cash this wallet holds, and what one unit of it is worth in the ACCOUNT's currency (1 GBP =
+    // 1.17 EUR → 1.17). Both null on an ordinary wallet, which is nearly always. ⚠️ They only mean anything
+    // together: a currency without a rate cannot convert, and a rate without a currency cannot be labelled — so a
+    // client must check for both, exactly as the domain's Fund.HasRate does.
+    // ★ Until these shipped, no thin contract carried a fund's currency anywhere, and a client that is never sent
+    // the rate cannot convert by it: the phone stored 100 kr as 100 of the account currency.
+    string? Currency = null,
+    decimal? Rate = null);
 
 /// <summary>One intra-account fund transfer this period, with both fund names resolved for display.</summary>
 public record FundTransferRowDto(

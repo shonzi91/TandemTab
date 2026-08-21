@@ -22,7 +22,9 @@ public static class WalletsMap
         period.InitialBalances.FirstOrDefault(b => b.FundId == f.Id)?.Amount.Amount ?? 0m,
         f.IsSynced,
         f.IsArchived,
-        period.AvailableToTransferOutFromFundAfter(f.Id, priorSaved).Amount);
+        period.AvailableToTransferOutFromFundAfter(f.Id, priorSaved).Amount,
+        f.Currency,
+        f.Rate);
 
     /// <param name="accountNames">Names of the accounts the caller belongs to, for labelling a transfer's
     /// destination. The aggregate knows only the id it sent money to, so the name has to come from outside it.</param>

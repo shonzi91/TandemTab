@@ -104,7 +104,7 @@ public static class SpendingMap
             .ToList();
         var funds = account.RootFunds
             .Where(f => !f.IsArchived)
-            .Select(f => new FundOptionDto(f.Id, f.Name, f.IsSynced))
+            .Select(f => new FundOptionDto(f.Id, f.Name, f.IsSynced, f.Currency, f.Rate))
             .ToList();
         var tags = account.ActiveTags
             .Select(t => new TagOptionDto(t.Id, t.Name, t.Icon, t.CategoryId, t.IsTripTag))

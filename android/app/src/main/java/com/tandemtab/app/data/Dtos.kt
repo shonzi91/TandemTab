@@ -2,6 +2,8 @@ package com.tandemtab.app.data
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import java.math.BigDecimal
+import java.math.RoundingMode
 
 /**
  * Wire models mirroring FinApp.Contracts. The server serializes records with camelCase property names
@@ -144,8 +146,29 @@ data class ExpenseDto(
 @Serializable
 data class CategoryOptionDto(val id: String, val name: String, val icon: String? = null, val parentId: String? = null)
 
+/** `currency`/`rate` describe a wallet holding FOREIGN cash: what it is denominated in, and what one unit of it is
+ *  worth in the ACCOUNT's currency (1 SEK = 0.087 EUR → 0.087). Both null on an ordinary wallet, which is nearly
+ *  always. They mean nothing apart — see [hasRate]. */
 @Serializable
-data class FundOptionDto(val id: String, val name: String, val synced: Boolean = false)
+data class FundOptionDto(
+    val id: String,
+    val name: String,
+    val synced: Boolean = false,
+    val currency: String? = null,
+    val rate: Double? = null,
+) {
+    /** Mirrors the domain's `Fund.HasRate`. A currency with no rate is a labelled wallet nobody has priced yet:
+     *  it must NOT convert, because converting by a missing rate is how face value gets stored as if it had been
+     *  through the arithmetic. */
+    val hasRate: Boolean get() = !currency.isNullOrBlank() && (rate ?: 0.0) > 0.0
+
+    /** What `typed` (in this wallet's currency) is worth in the account's — the same round-half-away-from-zero to
+     *  two places the server's `Fund.ToAccountCurrency` applies, so both clients store the identical figure. */
+    fun toAccountCurrency(typed: Double): Double =
+        if (hasRate) BigDecimal.valueOf(typed).multiply(BigDecimal.valueOf(rate!!))
+            .setScale(2, RoundingMode.HALF_UP).toDouble()
+        else typed
+}
 
 /** A tag as a picker option. `categoryId` is the category picking it files the expense into (so a label is a filing
  *  decision, not a note); `tripTag` marks the seeded trip label set, which only the trip entry form offers. */
@@ -701,6 +724,13 @@ data class AddExpenseRequest(
     // as "leave it alone" (it used to CLEAR it, which is what stripped labels off rows edited from this app). So
     // "No label" now has to be said out loud.
     val clearTag: Boolean = false,
+    // What was TYPED, before conversion, when the wallet holds foreign cash — `amount` is already the converted
+    // figure. Display only: the row renders "€8.70 · 100.00 kr" from these, and they are recorded rather than
+    // re-derived so editing the wallet's rate later can never rewrite what a past expense cost.
+    // ⚠️ Meaningful on an ADD only. The edit route does not carry them; the server keeps the stored pair across an
+    // edit, which is also why this sheet must not re-convert an amount it pre-filled.
+    val foreignAmount: Double? = null,
+    val foreignCurrency: String? = null,
 )
 
 /** What POST/PUT/DELETE /expenses returns: the new snapshot version, the row's id, the (added/edited) row for the
@@ -991,6 +1021,9 @@ data class FundRowDto(
     val synced: Boolean = false,
     val archived: Boolean = false,
     val availableToTransferOut: Double = 0.0,
+    // The foreign cash this wallet holds and its rate into the account's currency — see FundOptionDto.
+    val currency: String? = null,
+    val rate: Double? = null,
 )
 
 @Serializable

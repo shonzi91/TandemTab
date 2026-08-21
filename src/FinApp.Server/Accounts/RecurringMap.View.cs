@@ -26,7 +26,7 @@ public static class RecurringView
             .ToList();
         var funds = account.RootFunds
             .Where(f => !f.IsArchived)
-            .Select(f => new FundOptionDto(f.Id, f.Name, f.IsSynced))
+            .Select(f => new FundOptionDto(f.Id, f.Name, f.IsSynced, f.Currency, f.Rate))
             .ToList();
         var debts = account.SavingCategories
             .Where(s => s.IsDebt && !s.IsArchived)
