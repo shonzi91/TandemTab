@@ -2437,6 +2437,8 @@ accounts.MapPost("/{id:guid}/recurring", async (Guid id, AddRecurringRequest req
         item.SetCreatedOn(today);   // can't fall due before it existed
         RecurringMap.ValidateDebtLink(account, req.LinkedDebtBucketId);
         item.SetLinkedDebtBucket(req.LinkedDebtBucketId);
+        RecurringMap.ValidateExcessCategory(account, req.ExcessCategoryId);
+        item.SetExcess(req.ExcessCategoryId, req.ExcessLabel);   // after the link — SetExcess self-clears without one
         RecurringMap.SyncLoanDueDay(account, item);   // a linked loan owns the due date
         // A brand-new bill is always a fresh link, so the loan starts following what gets logged here.
         RecurringMap.DefaultLoanToPaymentDriven(account, item, wasLinkedToSameBucket: false, today);
@@ -2461,6 +2463,14 @@ accounts.MapPut("/{id:guid}/recurring/{recurringId:guid}", async (Guid id, Guid 
         item.Update(req.Name, RecurringMap.Mode(req.Mode), req.Expected, req.DayOfMonth, req.CategoryId, req.FundId, req.Icon, req.AutoPost);
         RecurringMap.ValidateDebtLink(account, req.LinkedDebtBucketId);
         item.SetLinkedDebtBucket(req.LinkedDebtBucketId);   // authoritative: null unlinks
+        // ⚠️ Deliberately NOT authoritative, unlike the line above. Absent leaves it as it was, Guid.Empty clears
+        // it — see UpdateRecurringRequest.ExcessCategoryId. There is a live older Android client on this route,
+        // and null-means-clear would have it wipe the excess configuration on every unrelated bill edit.
+        if (req.ExcessCategoryId is { } reqExcess)
+        {
+            RecurringMap.ValidateExcessCategory(account, reqExcess);
+            item.SetExcess(reqExcess == Guid.Empty ? null : reqExcess, req.ExcessLabel);
+        }
         RecurringMap.SyncLoanDueDay(account, item);         // a linked loan owns the due date
         RecurringMap.DefaultLoanToPaymentDriven(account, item, previousLink == item.LinkedDebtBucketId, today);
         return null;

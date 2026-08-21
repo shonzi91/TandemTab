@@ -43,6 +43,16 @@ public static class RecurringMap
             throw new InvalidOperationException("That debt doesn't exist in this account.");
     }
 
+    /// <summary>The excess line has to file somewhere real — a spend category that exists here. Null (never told)
+    /// and <see cref="Guid.Empty"/> (explicitly cleared) are both fine; see
+    /// <see cref="RecurringItem.ExcessCategoryId"/> for why "never told" is not an error.</summary>
+    public static void ValidateExcessCategory(Account account, Guid? categoryId)
+    {
+        if (categoryId is not { } id || id == Guid.Empty) return;
+        if (account.FindCategory(id) is null)
+            throw new InvalidOperationException("That category doesn't exist in this account.");
+    }
+
     /// <summary>
     /// One due date for a loan and the bill that services it. A loan's installment day is a contractual fact, so
     /// when the bucket states one it wins and the bill is moved onto it; when the bucket doesn't, the bill's day

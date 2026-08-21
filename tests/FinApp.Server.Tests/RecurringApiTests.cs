@@ -307,6 +307,130 @@ public class RecurringApiTests : IClassFixture<FinAppServerFactory>
         Assert.False((await LoadAsync(client, account.Id)).FindSavingCategory(loanId)!.DebtPaymentDriven);
     }
 
+    // --- C: the part of a debt-linked bill above the loan's contractual installment ---------------------
+
+    [Fact]
+    public async Task An_excess_category_round_trips_through_the_view_with_its_name_resolved()
+    {
+        var (client, auth) = await _factory.RegisterAndAuthAsync("rc_excess");
+        var account = await CreateAccount(client, "Excess");
+        var (rent, _, fund) = await SeedAsync(client, account.Id, auth.UserId);
+        var insurance = await IdOf(await client.PostAsJsonAsync($"/accounts/{account.Id}/categories",
+            new CreateCategoryRequest("Insurance")));
+
+        var loanId = await IdOf(await client.PostAsJsonAsync($"/accounts/{account.Id}/savings/buckets",
+            new SaveSavingBucketRequest("Car loan", IsDebt: true, DebtBalance: 20000m, DebtRate: 6m, DebtInstallment: 600m)));
+        var recId = await IdOf(await client.PostAsJsonAsync($"/accounts/{account.Id}/recurring",
+            new AddRecurringRequest("Car loan", "expense", "fixed", 700m, 10, rent, fund,
+                LinkedDebtBucketId: loanId, ExcessCategoryId: insurance, ExcessLabel: "Health + property")));
+
+        var row = (await client.GetFromJsonAsync<RecurringViewDto>($"/accounts/{account.Id}/recurring"))!
+            .Items.Single(i => i.Id == recId);
+        Assert.Equal(insurance, row.ExcessCategoryId);
+        Assert.Equal("Insurance", row.ExcessCategoryName);   // resolved server-side, like LinkedDebtName
+        Assert.Equal("Health + property", row.ExcessLabel);
+    }
+
+    [Fact]
+    public async Task An_edit_that_omits_the_excess_category_leaves_it_alone()
+    {
+        // ★ The whole reason UpdateRecurringRequest.ExcessCategoryId is NOT authoritative. Android writes this
+        // route, and an older build that has never heard of the field sends null on every bill edit — which under
+        // the authoritative rule would silently wipe the configuration and put €100 back onto the loan next month.
+        var (client, auth) = await _factory.RegisterAndAuthAsync("rc_excess_keep");
+        var account = await CreateAccount(client, "ExcessKeep");
+        var (rent, _, fund) = await SeedAsync(client, account.Id, auth.UserId);
+        var insurance = await IdOf(await client.PostAsJsonAsync($"/accounts/{account.Id}/categories",
+            new CreateCategoryRequest("Insurance")));
+
+        var loanId = await IdOf(await client.PostAsJsonAsync($"/accounts/{account.Id}/savings/buckets",
+            new SaveSavingBucketRequest("Car loan", IsDebt: true, DebtBalance: 20000m, DebtRate: 6m, DebtInstallment: 600m)));
+        var recId = await IdOf(await client.PostAsJsonAsync($"/accounts/{account.Id}/recurring",
+            new AddRecurringRequest("Car loan", "expense", "fixed", 700m, 10, rent, fund,
+                LinkedDebtBucketId: loanId, ExcessCategoryId: insurance, ExcessLabel: "Health + property")));
+
+        // An old client's edit: every field it knows about, nothing it doesn't.
+        (await client.PutAsJsonAsync($"/accounts/{account.Id}/recurring/{recId}",
+            new UpdateRecurringRequest("Car loan (renamed)", "fixed", 700m, 10, rent, fund, null, false, loanId)))
+            .EnsureSuccessStatusCode();
+
+        var item = (await LoadAsync(client, account.Id)).FindRecurring(recId)!;
+        Assert.Equal(insurance, item.ExcessCategoryId);
+        Assert.Equal("Health + property", item.ExcessLabel);
+    }
+
+    [Fact]
+    public async Task An_edit_sending_the_empty_guid_clears_the_excess_category()
+    {
+        // The other half of the three-state field: the web form says Guid.Empty when the user picks
+        // "extra payment onto the loan", and that must actually clear it.
+        var (client, auth) = await _factory.RegisterAndAuthAsync("rc_excess_clear");
+        var account = await CreateAccount(client, "ExcessClear");
+        var (rent, _, fund) = await SeedAsync(client, account.Id, auth.UserId);
+        var insurance = await IdOf(await client.PostAsJsonAsync($"/accounts/{account.Id}/categories",
+            new CreateCategoryRequest("Insurance")));
+
+        var loanId = await IdOf(await client.PostAsJsonAsync($"/accounts/{account.Id}/savings/buckets",
+            new SaveSavingBucketRequest("Car loan", IsDebt: true, DebtBalance: 20000m, DebtRate: 6m, DebtInstallment: 600m)));
+        var recId = await IdOf(await client.PostAsJsonAsync($"/accounts/{account.Id}/recurring",
+            new AddRecurringRequest("Car loan", "expense", "fixed", 700m, 10, rent, fund,
+                LinkedDebtBucketId: loanId, ExcessCategoryId: insurance)));
+
+        (await client.PutAsJsonAsync($"/accounts/{account.Id}/recurring/{recId}",
+            new UpdateRecurringRequest("Car loan", "fixed", 700m, 10, rent, fund, null, false, loanId, Guid.Empty)))
+            .EnsureSuccessStatusCode();
+
+        Assert.Null((await LoadAsync(client, account.Id)).FindRecurring(recId)!.ExcessCategoryId);
+    }
+
+    [Fact]
+    public async Task An_excess_category_that_doesnt_exist_is_rejected()
+    {
+        var (client, auth) = await _factory.RegisterAndAuthAsync("rc_excess_badcat");
+        var account = await CreateAccount(client, "ExcessBadCat");
+        var (rent, _, fund) = await SeedAsync(client, account.Id, auth.UserId);
+
+        var loanId = await IdOf(await client.PostAsJsonAsync($"/accounts/{account.Id}/savings/buckets",
+            new SaveSavingBucketRequest("Car loan", IsDebt: true, DebtBalance: 20000m, DebtRate: 6m, DebtInstallment: 600m)));
+
+        var response = await client.PostAsJsonAsync($"/accounts/{account.Id}/recurring",
+            new AddRecurringRequest("Car loan", "expense", "fixed", 700m, 10, rent, fund,
+                LinkedDebtBucketId: loanId, ExcessCategoryId: Guid.NewGuid()));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Confirming_a_bill_over_the_installment_posts_three_rows()
+    {
+        // End to end, through the server's own confirm route: €600 services the loan (interest + principal) and
+        // the €100 that is really insurance stands as its own line under its own category.
+        var (client, auth) = await _factory.RegisterAndAuthAsync("rc_excess_confirm");
+        var account = await CreateAccount(client, "ExcessConfirm");
+        var (rent, _, fund) = await SeedAsync(client, account.Id, auth.UserId);
+        var insurance = await IdOf(await client.PostAsJsonAsync($"/accounts/{account.Id}/categories",
+            new CreateCategoryRequest("Insurance")));
+
+        var loanId = await IdOf(await client.PostAsJsonAsync($"/accounts/{account.Id}/savings/buckets",
+            new SaveSavingBucketRequest("Car loan", IsDebt: true, DebtBalance: 20000m, DebtRate: 6m, DebtInstallment: 600m)));
+        var recId = await IdOf(await client.PostAsJsonAsync($"/accounts/{account.Id}/recurring",
+            new AddRecurringRequest("Car loan", "expense", "fixed", 700m, 10, rent, fund,
+                LinkedDebtBucketId: loanId, ExcessCategoryId: insurance, ExcessLabel: "Health + property")));
+
+        (await client.PostAsJsonAsync($"/accounts/{account.Id}/recurring/{recId}/confirm",
+            new ConfirmRecurringRequest(700m))).EnsureSuccessStatusCode();
+
+        var period = (await LoadAsync(client, account.Id)).CurrentPeriod!;
+        var rows = period.Expenses.ToList();
+        Assert.Equal(3, rows.Count);
+        var extra = rows.Single(r => r.Part == FinApp.Domain.Budgeting.InstallmentPart.Additional);
+        Assert.Equal(100m, extra.Amount.Amount);
+        Assert.Equal(insurance, extra.CategoryId);
+        // The loan was serviced at exactly the contractual figure, not at what left the account.
+        Assert.Equal(600m, rows.Where(r => r.Part != FinApp.Domain.Budgeting.InstallmentPart.Additional)
+            .Sum(r => r.Amount.Amount));
+    }
+
     [Fact]
     public async Task Create_with_an_unknown_category_is_rejected()
     {

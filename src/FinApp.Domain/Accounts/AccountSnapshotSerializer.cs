@@ -42,7 +42,7 @@ public static class AccountSnapshotSerializer
             account.AchievementsAnchor,
             account.AchievementLog.Count == 0 ? null : new Dictionary<string, DateOnly>(account.AchievementLog),
             account.RecurringItems.Count == 0 ? null : account.RecurringItems.Select(r => new RecurringItemNode(
-                r.Id, r.Name, r.Kind, r.AmountMode, r.ExpectedAmount, r.DayOfMonth, r.CategoryId, r.FundId, r.Active, r.Icon, r.LastHandledPeriodFrom, r.AutoPost, r.CreatedOn, r.LinkedDebtBucketId, r.LastHandledWasSkip)).ToList(),
+                r.Id, r.Name, r.Kind, r.AmountMode, r.ExpectedAmount, r.DayOfMonth, r.CategoryId, r.FundId, r.Active, r.Icon, r.LastHandledPeriodFrom, r.AutoPost, r.CreatedOn, r.LinkedDebtBucketId, r.LastHandledWasSkip, r.ExcessCategoryId, r.ExcessLabel)).ToList(),
             account.OnboardingDismissed,
             account.Tags.Count == 0 ? null : account.Tags.Select(t => new TagNode(t.Id, t.Name, t.Icon, t.IsArchived, t.CategoryId, t.IsTripTag)).ToList(),
             account.RoundUpTo, account.RoundUpBucketId, account.HourlyRate,
@@ -154,6 +154,8 @@ public static class AccountSnapshotSerializer
             // suppress it for a period it should genuinely fire in.
             item.SetCreatedOn(r.CreatedOn);
             item.SetLinkedDebtBucket(r.LinkedDebtBucketId);
+            // ⚠️ After the link, never before: SetExcess self-clears on an item that is not debt-linked.
+            item.SetExcess(r.ExcessCategoryId, r.ExcessLabel);
             account.AddRecurring(item);
         }
         CollapseMultiTags(account);
@@ -363,7 +365,11 @@ public static class AccountSnapshotSerializer
         Guid? LinkedDebtBucketId = null,
         // False on every item stored before skips were told apart from postings — see RecurringItem.LastHandledWasSkip
         // for why "posted" is the safe reading of a legacy handled item.
-        bool LastHandledWasSkip = false);
+        bool LastHandledWasSkip = false,
+        // C: where the part of a debt-linked bill ABOVE the contractual installment is filed (insurance, a fee).
+        // Null on every item written before this existed — i.e. "we were never told", which is exactly the old
+        // behaviour: the whole payment services the loan. See RecurringItem.ExcessCategoryId.
+        Guid? ExcessCategoryId = null, string? ExcessLabel = null);
 
     private record MemberNode(Guid Id, Guid UserId, string DisplayName);
     private record ContributionCategoryNode(Guid Id, string Name, string? Icon = null);

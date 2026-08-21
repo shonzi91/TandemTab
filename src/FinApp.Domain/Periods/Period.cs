@@ -428,8 +428,22 @@ public sealed class Period : Entity
                 // or no longer a debt): losing the split is better than losing the payment.
                 if (item.IsLoanInstallment && linkedDebt is { IsDebt: true })
                 {
+                    // ★ The CONTRACTUAL installment services the loan; anything above it rides on the same direct
+                    // debit but is not loan money — insurance, a servicing fee — and gets its own ledger line under
+                    // its own category. Deliberately NOT booked as extra principal: crediting a loan with money
+                    // that never touched it moves the balance and the payoff date on the strength of a guess.
+                    // ⚠️ Zero — and therefore the pre-existing behaviour, where the whole payment services the loan
+                    // — whenever no excess category was configured, the loan states no installment, or the payment
+                    // is at or under it. See RecurringItem.ExcessOn for why silence must not change money here.
+                    var excess = item.ExcessOn(amount, linkedDebt.DebtInstallment);
+                    var extras = excess > 0m && item.ExcessCategoryId is { } excessCat
+                        ? new[] { new InstallmentExtra(new Money(excess, Currency), excessCat, null, item.ExcessLabel ?? item.Name) }
+                        : null;
+                    // LogInstallment carves the extras out FIRST, so `servicing` below it is exactly the
+                    // installment; its extrasTotal > total guard cannot fire here, since excess < amount by
+                    // construction.
                     LogInstallment(linkedDebt, new Money(amount, Currency), date, memberId, item.FundId,
-                        item.CategoryId, item.CategoryId, additional: null,
+                        item.CategoryId, item.CategoryId, additional: extras,
                         principalTagId: principalTagId, interestTagId: interestTagId,
                         note: item.Name, fundSynced: fundSynced);
                     item.MarkHandled(From);
@@ -530,6 +544,12 @@ public sealed class Period : Entity
             rows.Add(PostInstallmentRow(extra.CategoryId, extra.Amount, date, memberId, fundId, extra.Note ?? note,
                 groupId, InstallmentPart.Additional, bucket.Id, extra.TagId, fundSynced));
 
+        // ★ isExtraRepayment stays FALSE, and a linked bill's excess line is why that is now right rather than
+        // merely tolerated. With `servicing` capped at the contractual installment (see PostRecurring), principal
+        // here is by construction the SCHEDULED principal, so DebtExtraPrincipalRepaid correctly stays at zero and
+        // AheadOfScheduleOn correctly reports nothing. Before the excess line existed, a €700 bill on a €600 loan
+        // really did push unscheduled principal in every month and never banked it — the same bug from the other
+        // end. A deliberate overpayment still says so by leaving the excess category unset.
         if (bucket.DebtPaymentDriven)
             bucket.RecordDebtPayment(principal.Amount, date);
 

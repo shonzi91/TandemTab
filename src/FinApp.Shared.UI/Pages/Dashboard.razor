@@ -2063,7 +2063,12 @@ else
                         var trPick = TrendPick;
                         var trBal = TrendBalanceScale(trRows, trPick);
                         var trSeriesColor = TrendSeriesColor();
-                        var trStride = Math.Max(1, (trRows.Count + 5) / 6);   // cap x-axis labels at ~6 to avoid crowding
+                        // Does this window straddle a year? Decides whether the axis says "Jan" or "Jan 24" — on
+                        // BOTH charts, because two axes over the same months formatted differently would be worse
+                        // than the repeated-"Jan" bug being fixed. See TrendLabel.
+                        var trMultiYear = trRows.Select(r => r.From.Year).Distinct().Count() > 1;
+                        // Cap x-axis labels to avoid crowding — five when the year rides along, six without it.
+                        var trStride = Math.Max(1, (trRows.Count + (trMultiYear ? 4 : 5)) / (trMultiYear ? 5 : 6));
                         var trSlotW = (TrX1 - TrX0) / Math.Max(1, trRows.Count);
                         // Three bars a month with a little air either side. In and out are context; net is the point,
                         // so it is the widest of the three and the only saturated one.
@@ -2094,7 +2099,7 @@ else
                                     var (netY, netH) = TrendBar(row.Net, trSc);
                                     var (savY, savH) = TrendBar(row.Saved, trSc);
                                     var netColor = row.Net < 0m ? TrendNetDownColor : TrendNetUpColor;
-                                    var dim = _trendHover is { } hv && hv != i ? "trend-bar-dim" : "";
+                                    var dim = _trendFlowHover is { } hv && hv != i ? "trend-bar-dim" : "";
                                     @* --tb staggers the grow: the months rise left to right, in the order they
                                        happened, so the entrance reads as the story the chart is telling rather than
                                        as everything twitching at once. *@
@@ -2124,7 +2129,7 @@ else
                                     var hi = i;
                                     var (hcx, hw) = TrendSlot(trRows.Count, i);
                                     <rect x="@((hcx - hw / 2).ToString("0.#", trCi))" y="@TrY0.ToString("0.#", trCi)" width="@hw.ToString("0.#", trCi)" height="@((TrY1 - TrY0).ToString("0.#", trCi))"
-                                          class="trend-hit" @onpointerenter="e => TrendPointerEnter(e, hi)" @onpointerleave="TrendPointerLeave" @onpointerdown="e => TrendPointerDown(e, hi)" />
+                                          class="trend-hit" @onpointerenter="e => TrendPointerEnter(e, TrendChartId.Flows, hi)" @onpointerleave="e => TrendPointerLeave(e, TrendChartId.Flows)" @onpointerdown="e => TrendPointerDown(e, TrendChartId.Flows, hi)" />
                                 }
                             </svg>
                             <div class="trend-ylabels" aria-hidden="true">
@@ -2153,12 +2158,12 @@ else
                                 </div>
                             }
                         </div>
-                            @if (_trendHover is { } tp && tp >= 0 && tp < trRows.Count)
+                            @if (_trendFlowHover is { } tp && tp >= 0 && tp < trRows.Count)
                             {
                                 var tipX = TrendSlot(trRows.Count, tp).Centre / 340.0 * 100.0;
                                 var tipRow = trRows[tp];
                                 <div class="trend-tip @(tipX > 60 ? "left" : "")" style="left:@tipX.ToString("0.#", trCi)%">
-                                    <span class="trend-tip-h">@tipRow.Label</span>
+                                    <span class="trend-tip-h">@TrendLabel(tipRow, trMultiYear)</span>
                                     <span class="trend-tip-row">
                                         <span class="trend-leg-dot" style="background:@TrendInColor"></span>
                                         <span class="trend-tip-n">@Loc["Money in"]</span>
@@ -2204,7 +2209,7 @@ else
                                     @if (i % trStride == 0 || i == trRows.Count - 1)
                                     {
                                         var lx = TrendSlot(trRows.Count, i).Centre / 340.0 * 100.0;
-                                        <span class="trend-xlbl @(_trendHover == i ? "on" : "")" style="left:@lx.ToString("0.#", trCi)%">@trRows[i].Label</span>
+                                        <span class="trend-xlbl @(_trendFlowHover == i ? "on" : "")" style="left:@lx.ToString("0.#", trCi)%">@TrendLabel(trRows[i], trMultiYear)</span>
                                     }
                                 }
                             </div>
@@ -2226,11 +2231,14 @@ else
                            balance. The debt ring stays on whichever series is shown: the month a loan was paid down
                            is worth marking whether you are looking at the balance that fell or the spending that
                            did not rise. *@
+                        @* ⚠️ These four (and the focus pickers below) clear the LOWER chart's readout only. They
+                           change what this line draws, so a readout of the old series would be stale — but the bar
+                           chart above did not change, and closing its tooltip would be an unexplained loss. *@
                         <div class="trend-series-sw" role="group" aria-label="@Loc["What the lower chart shows"]">
                             @foreach (var s in new[] { TrendSeries.Balance, TrendSeries.Spent, TrendSeries.Saved, TrendSeries.Kept })
                             {
                                 var ss = s;
-                                <button type="button" class="chip @(_trendSeries == s ? "on" : "")" @onclick="() => { _trendSeries = ss; _trendHover = null; }">@TrendSeriesLabel(s)</button>
+                                <button type="button" class="chip @(_trendSeries == s ? "on" : "")" @onclick="() => { _trendSeries = ss; _trendSeriesHover = null; }">@TrendSeriesLabel(s)</button>
                             }
                         </div>
                         @* ★ O14 — the same line, narrowed to ONE category or ONE bucket. It appears only under the
@@ -2247,7 +2255,7 @@ else
                                     @(_trendSeries == TrendSeries.Spent ? Loc["Category"] : Loc["Bucket"])
                                     @if (_trendSeries == TrendSeries.Spent)
                                     {
-                                        <select class="trend-focus-sel" @bind="_trendCatId" @bind:after="() => _trendHover = null">
+                                        <select class="trend-focus-sel" @bind="_trendCatId" @bind:after="() => _trendSeriesHover = null">
                                             <option value="@Guid.Empty">@Loc["Everything"]</option>
                                             @foreach (var c in State.CategoryOptions.Where(c => c.Category.ParentId is null))
                                             {
@@ -2257,7 +2265,7 @@ else
                                     }
                                     else
                                     {
-                                        <select class="trend-focus-sel" @bind="_trendBucketId" @bind:after="() => _trendHover = null">
+                                        <select class="trend-focus-sel" @bind="_trendBucketId" @bind:after="() => _trendSeriesHover = null">
                                             <option value="@Guid.Empty">@Loc["Everything"]</option>
                                             @foreach (var (b, _) in State.SavingBuckets)
                                             {
@@ -2268,14 +2276,17 @@ else
                                 </label>
                                 @if (TrendFocused)
                                 {
-                                    <button type="button" class="chip trend-focus-clear" @onclick="() => { _trendCatId = Guid.Empty; _trendBucketId = Guid.Empty; _trendHover = null; }"><Icon Name="x" /> @Loc["Clear"]</button>
+                                    <button type="button" class="chip trend-focus-clear" @onclick="() => { _trendCatId = Guid.Empty; _trendBucketId = Guid.Empty; _trendSeriesHover = null; }"><Icon Name="x" /> @Loc["Clear"]</button>
                                 }
                             </div>
                         }
                         <h5 class="trend-sub-h">@TrendSeriesHeading()</h5>
                         <div class="trend-chart-wrap trend-bal-wrap">
                             <div class="trend-plot-area trend-bal-area">
-                                <svg class="trend-chart" @key="(_breakRange, trRows.Count, 'b')" viewBox="0 0 340 92" role="img" aria-label="@Loc["Balance at the end of each month"]">
+                                @* The label tracks the series AND the focus, exactly as the visible heading above
+                                   does. It used to say "Balance at the end of each month" whatever was drawn, so a
+                                   screen-reader user was told the one thing sighted users had just been corrected on. *@
+                                <svg class="trend-chart" @key="(_breakRange, trRows.Count, 'b')" viewBox="0 0 340 92" role="img" aria-label="@TrendSeriesHeading()">
                                     @foreach (var tv in trBal.Ticks)
                                     {
                                         var gy = TrendBalY(tv, trBal);
@@ -2292,16 +2303,16 @@ else
                                            Green, because the reason is the opposite of a bad month. *@
                                         @if (trRows[i].DebtPaid > 0m)
                                         {
-                                            <circle cx="@bcx.ToString("0.#", trCi)" cy="@TrendBalY(trPick(trRows[i]), trBal).ToString("0.#", trCi)" r="@(_trendHover == i ? "6.5" : "5.5")" class="trend-debt-ring" />
+                                            <circle cx="@bcx.ToString("0.#", trCi)" cy="@TrendBalY(trPick(trRows[i]), trBal).ToString("0.#", trCi)" r="@(_trendSeriesHover == i ? "6.5" : "5.5")" class="trend-debt-ring" />
                                         }
-                                        <circle cx="@bcx.ToString("0.#", trCi)" cy="@TrendBalY(trPick(trRows[i]), trBal).ToString("0.#", trCi)" r="@(_trendHover == i ? "4" : "2.4")" fill="@trSeriesColor" class="trend-pt" />
+                                        <circle cx="@bcx.ToString("0.#", trCi)" cy="@TrendBalY(trPick(trRows[i]), trBal).ToString("0.#", trCi)" r="@(_trendSeriesHover == i ? "4" : "2.4")" fill="@trSeriesColor" class="trend-pt" />
                                     }
                                     @for (var i = 0; i < trRows.Count; i++)
                                     {
                                         var hi = i;
                                         var (hcx, hw) = TrendSlot(trRows.Count, i);
                                         <rect x="@((hcx - hw / 2).ToString("0.#", trCi))" y="@BalY0.ToString("0.#", trCi)" width="@hw.ToString("0.#", trCi)" height="@((BalY1 - BalY0).ToString("0.#", trCi))"
-                                              class="trend-hit" @onpointerenter="e => TrendPointerEnter(e, hi)" @onpointerleave="TrendPointerLeave" @onpointerdown="e => TrendPointerDown(e, hi)" />
+                                              class="trend-hit" @onpointerenter="e => TrendPointerEnter(e, TrendChartId.Series, hi)" @onpointerleave="e => TrendPointerLeave(e, TrendChartId.Series)" @onpointerdown="e => TrendPointerDown(e, TrendChartId.Series, hi)" />
                                     }
                                 </svg>
                                 <div class="trend-ylabels" aria-hidden="true">
@@ -2311,6 +2322,48 @@ else
                                         <span class="trend-ylbl" style="top:@ly.ToString("0.##", trCi)%">@TrendTick(tv)</span>
                                     }
                                 </div>
+                            </div>
+                            @* This chart's own readout. ONE row, not a copy of the five above: the bars answer
+                               "what happened in May?" and want every term of the arithmetic, while this line draws
+                               a single series — restating four numbers already on screen would bury the one the
+                               reader came for. That one is trPick(row), the same focus-aware selector the line
+                               itself is drawn from, so the tooltip cannot disagree with the shape it annotates:
+                               narrowed to Food it says "Food €412", not "Spent €412".
+                               No new CSS — .trend-tip is absolute and .trend-chart-wrap is already relative. *@
+                            @if (_trendSeriesHover is { } sp && sp >= 0 && sp < trRows.Count)
+                            {
+                                var sTipX = TrendSlot(trRows.Count, sp).Centre / 340.0 * 100.0;
+                                var sTipRow = trRows[sp];
+                                <div class="trend-tip @(sTipX > 60 ? "left" : "")" style="left:@sTipX.ToString("0.#", trCi)%">
+                                    <span class="trend-tip-h">@TrendLabel(sTipRow, trMultiYear)</span>
+                                    <span class="trend-tip-row">
+                                        <span class="trend-leg-dot" style="background:@trSeriesColor"></span>
+                                        <span class="trend-tip-n">@(TrendFocused ? TrendFocusName : TrendSeriesLabel(_trendSeries))</span>
+                                        <span class="trend-tip-v">@Fmt(State.Money(trPick(sTipRow)))</span>
+                                    </span>
+                                    @* The ring's own sentence, on the chart that draws the ring. Same wording as
+                                       the bar chart's, because it is the same fact. *@
+                                    @if (sTipRow.DebtPaid > 0m)
+                                    {
+                                        <span class="trend-tip-note">
+                                            @(_trendSeries == TrendSeries.Balance
+                                                ? string.Format(Loc["{0} of this went onto a loan — the balance fell because the debt did."], Fmt(State.Money(sTipRow.DebtPaid)))
+                                                : string.Format(Loc["{0} went onto a loan this month."], Fmt(State.Money(sTipRow.DebtPaid))))
+                                        </span>
+                                    }
+                                </div>
+                            }
+                            @* Owner ask: the periods, on the axis. Same stride and same wording as the chart above
+                               — one month is one column across both, so they must read the same. *@
+                            <div class="trend-xaxis">
+                                @for (var i = 0; i < trRows.Count; i++)
+                                {
+                                    @if (i % trStride == 0 || i == trRows.Count - 1)
+                                    {
+                                        var slx = TrendSlot(trRows.Count, i).Centre / 340.0 * 100.0;
+                                        <span class="trend-xlbl @(_trendSeriesHover == i ? "on" : "")" style="left:@slx.ToString("0.#", trCi)%">@TrendLabel(trRows[i], trMultiYear)</span>
+                                    }
+                                }
                             </div>
                         </div>
                     }
@@ -3597,23 +3650,38 @@ else
                         {
                             <div class="modal-field bank-rule-known">
                                 <small class="hint"><Icon Name="pin" /> @string.Format(Loc["Auto-files to {0} from now on."], bcMapped)</small>
+                                @* Without this line the screen contradicts itself: it says "auto-files to Groceries"
+                                   while the category above reads *Rome* because the trip settled it. Nothing on this
+                                   branch writes a rule, so the rule really is untouched — say so rather than leaving
+                                   the reader to work out which of the two statements is about this row. *@
+                                @if (_expTripId != Guid.Empty)
+                                {
+                                    <small class="hint">@string.Format(Loc["This one is going to {0} instead. The rule isn't changed."], State.TripName(_expTripId))</small>
+                                }
                                 <button type="button" class="link" @onclick="() => ConfirmForgetMapping(bc)" disabled="@_busy">@Loc["Forget this rule"]</button>
                             </div>
                         }
                         else
                         {
                             <div class="modal-field">
-                                <Switch Value="_bcRemember" ValueChanged="OnBankRememberChanged" Label="@Loc["Always file this merchant here"]" />
-                                @if (_bcRemember)
+                                @if (BankRuleOffered)
                                 {
-                                    <span class="rule-tokens" title="@Loc["Tap a word to include or exclude it from matching. A transaction matches when all the highlighted words appear in it."]">
-                                        @foreach (var tok in _pinTokens)
-                                        {
-                                            var bcTok = tok;
-                                            <button type="button" class="rule-chip @(_pinOn.Contains(bcTok) ? "on" : "")" @onclick="() => TogglePinToken(bcTok)">@bcTok</button>
-                                        }
-                                    </span>
-                                    <small class="hint">@Loc["Future transactions matching the highlighted words file themselves here."]</small>
+                                    <Switch Value="_bcRemember" ValueChanged="OnBankRememberChanged" Label="@Loc["Always file this merchant here"]" />
+                                    @if (_bcRemember)
+                                    {
+                                        <span class="rule-tokens" title="@Loc["Tap a word to include or exclude it from matching. A transaction matches when all the highlighted words appear in it."]">
+                                            @foreach (var tok in _pinTokens)
+                                            {
+                                                var bcTok = tok;
+                                                <button type="button" class="rule-chip @(_pinOn.Contains(bcTok) ? "on" : "")" @onclick="() => TogglePinToken(bcTok)">@bcTok</button>
+                                            }
+                                        </span>
+                                        <small class="hint">@Loc["Future transactions matching the highlighted words file themselves here."]</small>
+                                    }
+                                }
+                                else
+                                {
+                                    <small class="hint"><Icon Name="note" /> @Loc["No merchant rule while a trip is picked — a trip's category and labels belong to the trip, not to the shop. File it here, and reach for the trip's own “attach something you've already paid” when an auto-filed expense turns out to belong to a journey."]</small>
                                 }
                             </div>
                         }
@@ -5782,6 +5850,41 @@ else
                             {
                                 <small class="hint">@Loc["That loan's balance follows its own schedule by your choice, so confirming this bill will log the payment but won't move the balance. Change it on the loan under “What moves the balance”."]</small>
                             }
+                            @* ★ The bill can be bigger than the loan, and the gap is usually not an overpayment —
+                               a bank commonly bundles health or property insurance into the same direct debit. So
+                               it gets its own ledger line under its own category rather than being credited to a
+                               loan it never touched. Leaving this on "extra payment onto the loan" keeps exactly
+                               what happened before this existed, which is why the null state is written as a
+                               CHOICE: the option says what it does, so nobody has to read silence as an omission.
+                               Offered whenever the loan states an installment, including while the amount is
+                               under it — a field that appears and disappears as a number is typed reads as a bug,
+                               and the amount can be raised at confirm time anyway. *@
+                            var _recInst = State.SavingBucketDebtInstallment(_recDebtId);
+                            @if (_recInst > 0m)
+                            {
+                                <label>@Loc["Anything above the installment is"]
+                                    <select @bind="_recExcessCatId">
+                                        <option value="@Guid.Empty">@Loc["Extra payment onto the loan"]</option>
+                                        @foreach (var (cat, depth) in State.CategoryOptions) { <option value="@cat.Id">@CatOption(cat.Id, cat.Name, depth)</option> }
+                                    </select>
+                                </label>
+                                @if (_recExcessCatId != Guid.Empty)
+                                {
+                                    <label>@Loc["Call it (optional)"] <input type="text" maxlength="40" @bind="_recExcessLabel" placeholder="@Loc["Insurance"]" /></label>
+                                }
+                                @* The live sentence, read off the same rule the post uses, so it cannot promise a
+                                   split that doesn't happen. *@
+                                <small class="hint">
+                                    @(_recAmount > _recInst && _recExcessCatId != Guid.Empty
+                                        ? string.Format(Loc["{0} of this {1} will be filed as {2}; {3} services the loan."],
+                                            Fmt(State.Money(_recAmount - _recInst)), Fmt(State.Money(_recAmount)),
+                                            string.IsNullOrWhiteSpace(_recExcessLabel) ? State.CategoryName(_recExcessCatId) : _recExcessLabel!, Fmt(State.Money(_recInst)))
+                                      : _recAmount > _recInst
+                                        ? string.Format(Loc["{0} of this {1} is above the {2} installment and goes onto the loan as extra payment. Name a category if it's something else."],
+                                            Fmt(State.Money(_recAmount - _recInst)), Fmt(State.Money(_recAmount)), Fmt(State.Money(_recInst)))
+                                        : string.Format(Loc["This is at or under the {0} installment, so all of it goes onto the loan."], Fmt(State.Money(_recInst))))
+                                </small>
+                            }
                         }
                     }
                     <div class="modal-actions">
@@ -5800,6 +5903,14 @@ else
                             : string.Format(Loc["Expected about {0}. Adjust to the real amount if it differs."], Fmt(rc.ExpectedAmount)))</p>
                     }
                     <label>@Loc["Actual amount"] <DecimalInput @bind-Value="_recConfirmAmount" /></label>
+                    @* What this amount is about to become, before it becomes it. Read off State.RecurringExcessOn,
+                       which is the domain's own rule — the preview and the post cannot disagree. *@
+                    @if (rc is not null && State.RecurringExcessOn(rc, _recConfirmAmount) is var rcExcess && rcExcess > 0m)
+                    {
+                        <small class="hint"><Icon Name="card" /> @string.Format(Loc["{0} onto the loan · {1} as {2}"],
+                            Fmt(State.Money(_recConfirmAmount - rcExcess)), Fmt(State.Money(rcExcess)),
+                            string.IsNullOrWhiteSpace(rc.ExcessLabel) ? State.CategoryName(rc.ExcessCategoryId!.Value) : rc.ExcessLabel!)</small>
+                    }
                     <div class="modal-actions">
                         <button class="ghost" @onclick="DoSkipRecurring">@Loc["Skip this month"]</button>
                         <button @onclick="DoConfirmRecurring" disabled="@(_recConfirmAmount <= 0)">@Loc["Confirm"]</button>
@@ -7288,7 +7399,14 @@ else
 
     // Fold everything back up. Called whenever the window or the axis changes: the keys mean something different
     // after that (a tag id where a category id was), so a carried-over expansion would point at the wrong row.
-    private void BreakCollapseAll() { _breakExpanded.Clear(); _brkGrpExpanded.Clear(); }
+    // ⚠️ The trend hovers go too. A column index means a different month once the window changes, so a readout left
+    // open on column 9 of twelve points at nothing after a switch to three — the tooltip's `< trRows.Count` guard
+    // hides it, so on touch it vanishes with no tap having dismissed it and no way to get it back.
+    private void BreakCollapseAll()
+    {
+        _breakExpanded.Clear(); _brkGrpExpanded.Clear();
+        _trendFlowHover = null; _trendSeriesHover = null;
+    }
 
     // The expenses behind one slice, for the expand-in-place list — honouring the window + the active axis.
     private IReadOnlyList<FinApp.Domain.Budgeting.Expense> BreakSliceExpenses(Guid key)
@@ -7543,7 +7661,10 @@ else
     /// <para>⚠️ It deliberately does NOT narrow <see cref="Expenses"/> or <see cref="Saved"/>. Those feed the bar
     /// chart above, where "money in" and "kept" sit beside them — and a filtered Spent bar next to a whole-account
     /// Income bar would make Kept read as a subtraction nobody performed.</para></param>
-    private sealed record TrendRow(string Label, decimal Income, decimal Expenses, decimal Saved, decimal Balance,
+    /// <param name="From">The period's first day. ★ The DATE, not a pre-formatted label: how a month is written
+    /// depends on the window it is being drawn in (see <see cref="TrendLabel"/>), and carrying both a date and a
+    /// string would be two chances for the axis and the tooltip to word the same month differently.</param>
+    private sealed record TrendRow(DateOnly From, decimal Income, decimal Expenses, decimal Saved, decimal Balance,
         decimal DebtPaid = 0m, decimal Focus = 0m)
     {
         /// <summary>What the month actually kept. The chart's headline: it is the question the four-line version
@@ -7554,7 +7675,6 @@ else
     private List<TrendRow> TrendRows()
     {
         var (from, to) = BreakWindow();
-        var ci = System.Globalization.CultureInfo.InvariantCulture;
         var rows = new List<TrendRow>();
         foreach (var p in State.Account.Periods)
         {
@@ -7563,7 +7683,7 @@ else
             // which may sit inside a later period if dates were edited.)
             if (_breakRange != BreakRange.All && (p.To < from || p.From > to)) continue;
             rows.Add(new TrendRow(
-                p.From.ToString("MMM", ci),
+                p.From,
                 decimal.Round(p.ContributionsPaidTotal.Amount, 2),
                 // Expenses + transfers OUT to other accounts = all money out, so "Spent"/"Kept" agree with the hero
                 // and the Breakdown (both count an out-transfer as money that left; disbursements are already excluded
@@ -7760,6 +7880,19 @@ else
         _ => Loc["Balance at the end of each month"],
     };
 
+    /// <summary>How one period is written on the x-axis and in the tooltip header.
+    /// <para>★ The year rides along only when the window straddles one. A 12-month or All-time window used to print
+    /// three columns all reading "Jan" — a chart lying about its own axis — while "Jan 24" in every slot of a
+    /// three-month window is width spent restating a fact the reader already has.</para>
+    /// <para>⚠️ Decided over the ROWS, not the window: <see cref="BreakRange.All"/> ignores the window entirely
+    /// (see <see cref="TrendRows"/>), so asking the window would get the wrong answer on the one range where the
+    /// years are most likely to differ.</para>
+    /// <para>⚠️ <see cref="System.Globalization.CultureInfo.InvariantCulture"/>, so a Bulgarian reader sees "Jan"
+    /// rather than "яну" — pre-existing, kept deliberately for now because month-name width differs between the
+    /// two languages and the stride cap is tuned to these.</para></summary>
+    private static string TrendLabel(TrendRow r, bool multiYear) =>
+        r.From.ToString(multiYear ? "MMM yy" : "MMM", System.Globalization.CultureInfo.InvariantCulture);
+
     /// <summary>Each series keeps the colour it already wears on the bars above, so switching the line doesn't
     /// re-teach the reader what a colour means. Balance keeps its own blue.</summary>
     private string TrendSeriesColor() => _trendSeries switch
@@ -7770,9 +7903,26 @@ else
         _ => TrendBalColor,
     };
 
-    // The period column the pointer is over (index into TrendRows). Drives the guide line, the enlarged points and
-    // the value tooltip.
-    private int? _trendHover;
+    /// <summary>Which of the two Trends charts a readout belongs to.
+    /// <para>★ They answer different questions over the same months, so each carries its own open column. Sharing
+    /// one field is how hovering the LOWER chart came to pop the UPPER chart's five numbers, above the upper chart,
+    /// dim the upper chart's bars — and show nothing at all on the chart the pointer was actually over. Worst
+    /// exactly where it mattered most: with a category or bucket focused (O14), the focused number was the one
+    /// figure missing from the screen.</para></summary>
+    private enum TrendChartId { Flows, Series }
+
+    // The period column each chart has open (index into TrendRows). Drives the dimming, the enlarged points and the
+    // value tooltip. ★ Two fields rather than one keyed pair: every read site is a plain `== i` comparison the
+    // compiler checks, and neither chart can leak a highlight into the other by omission — "no cross-highlight" is
+    // structural here rather than a rule someone has to remember at five call sites.
+    private int? _trendFlowHover;
+    private int? _trendSeriesHover;
+
+    private int? TrendHover(TrendChartId c) => c == TrendChartId.Flows ? _trendFlowHover : _trendSeriesHover;
+    private void SetTrendHover(TrendChartId c, int? column)
+    {
+        if (c == TrendChartId.Flows) _trendFlowHover = column; else _trendSeriesHover = column;
+    }
 
     /// <summary>
     /// ★ The readout used to be wired as <c>mouseover</c> + <c>mouseout</c> + <c>click</c> on the same rect, and on
@@ -7792,21 +7942,24 @@ else
     private static bool IsMousePointer(PointerEventArgs e) =>
         string.Equals(e.PointerType, "mouse", StringComparison.OrdinalIgnoreCase);
 
-    private void TrendPointerEnter(PointerEventArgs e, int column)
+    private void TrendPointerEnter(PointerEventArgs e, TrendChartId chart, int column)
     {
-        if (IsMousePointer(e)) _trendHover = column;
+        if (IsMousePointer(e)) SetTrendHover(chart, column);
     }
 
-    private void TrendPointerLeave(PointerEventArgs e)
+    private void TrendPointerLeave(PointerEventArgs e, TrendChartId chart)
     {
         // Touch keeps its readout until it is tapped away — there is no "moving off" a finger already lifted.
-        if (IsMousePointer(e)) _trendHover = null;
+        if (IsMousePointer(e)) SetTrendHover(chart, null);
     }
 
-    private void TrendPointerDown(PointerEventArgs e, int column)
+    private void TrendPointerDown(PointerEventArgs e, TrendChartId chart, int column)
     {
         if (IsMousePointer(e)) return;             // the mouse already answered on enter
-        _trendHover = _trendHover == column ? null : column;
+        // ⚠️ Toggles on THIS chart's open column. With one shared field, tapping column 3 on the lower chart while
+        // column 3 was open on the upper one closed the upper one and opened nothing — a tap that made the screen
+        // emptier, which reads as the control being broken rather than as a dismissal.
+        SetTrendHover(chart, TrendHover(chart) == column ? null : column);
     }
 
     // Plot area inside the 340×152 viewBox (leaves a left gutter for the value scale + a bottom strip for months).
@@ -9540,6 +9693,22 @@ else
     private PendingBankTransactionDto? _bcTx;   // the row being reviewed
     private bool _bcRemember;                   // write an auto-file rule for this merchant on confirm
 
+    /// <summary>Whether the "always file this merchant here" rule may be offered at all.
+    /// <para>
+    /// ★ <b>Never on a trip.</b> Picking a trip settles the category (<see cref="ApplyTripCategoryDefault"/>) and
+    /// swaps the tag chips to the trip labels, so a rule written from this form would remember the <i>trip's</i>
+    /// category and a <i>trip</i> tag — and then file next month's supermarket run under "Travel / Tickets &amp;
+    /// tours". The trip id itself never leaked (auto-filing passes none, see
+    /// <see cref="AutoHandleMappedDebitsAsync"/>); its influence did, through the two fields the rule copies.
+    /// </para>
+    /// <para>
+    /// The reverse need is already served and needs nothing here: an expense that auto-filed and then turns out to
+    /// belong to a journey is attached from the trip's own screen (<see cref="OpenAttachToTrip"/>).
+    /// </para>
+    /// <para>One predicate, read by both the markup and <see cref="ConfirmBankFromModal"/>, so the two cannot
+    /// drift into disagreeing about when a rule gets written.</para></summary>
+    private bool BankRuleOffered => _expTripId == Guid.Empty;
+
     /// <summary>
     /// Open the review modal for a pending debit, pre-answered as far as the app honestly can: the merchant's saved
     /// rule (or the row's pick) chooses the category, and the trip is the one running <b>on the transaction's own
@@ -9596,9 +9765,13 @@ else
         var fund = State.HasSyncedFund ? State.SyncedFundId : RowFund(tx.ExternalId);
         if (_categoryId == Guid.Empty || fund == Guid.Empty) { _modalError = Loc["Pick a category first."]; return; }
 
+        // The invariant, not a second copy of the UI's condition: whatever the form happened to show, a row filed
+        // to a trip never teaches the merchant rule anything. See BankRuleOffered for why.
+        var writeRule = _bcRemember && BankRuleOffered;
+
         // The rule goes first: writing it after the confirm would have nothing left to match, and if the rule write
         // fails the expense should still not be posted twice by a retry.
-        if (_bcRemember)
+        if (writeRule)
         {
             var key = string.Join(' ', _pinTokens.Where(_pinOn.Contains));
             if (key.Length == 0) key = string.Join(' ', _pinTokens);
@@ -9615,7 +9788,7 @@ else
         _bankPending.RemoveAll(p => p.ExternalId == tx.ExternalId);
         // A new rule usually covers other rows waiting in the same review list — clear those rather than making the
         // user confirm the same merchant five more times.
-        if (_bcRemember) await AutoHandleMappedDebitsAsync();
+        if (writeRule) await AutoHandleMappedDebitsAsync();
         BackToBankReview();
     });
 
@@ -11440,6 +11613,8 @@ else
     private Guid _recCategoryId, _recFundId;
     private bool _recAutoPost;
     private Guid _recDebtId;   // the loan this bill services (Guid.Empty = an ordinary bill)
+    private Guid _recExcessCatId;      // where the part above the installment files (Guid.Empty = onto the loan)
+    private string? _recExcessLabel;   // what that line is called on the ledger (null = the bill's own name)
     private Guid _recConfirmId;
     private decimal _recConfirmAmount;
     // Recurring items auto-posted this session — shown once in the bell so the money move isn't silent.
@@ -11451,6 +11626,7 @@ else
     {
         _recEditId = Guid.Empty; _recName = ""; _recIcon = null; _recKind = RecurringKind.Expense;
         _recMode = RecurringAmountMode.Fixed; _recAmount = 0; _recDay = 1; _recAutoPost = false; _recDebtId = Guid.Empty;
+        _recExcessCatId = Guid.Empty; _recExcessLabel = null;
         _recFundId = State.SelectableFunds.FirstOrDefault()?.Id ?? State.RootFunds.FirstOrDefault()?.Id ?? Guid.Empty;
         ResetRecurringCategory();
         _modal = Modal.RecurringEdit;
@@ -11462,6 +11638,7 @@ else
         _recEditId = r.Id; _recName = r.Name; _recIcon = r.Icon; _recKind = r.Kind; _recMode = r.AmountMode;
         _recAmount = r.ExpectedAmount; _recDay = r.DayOfMonth; _recCategoryId = r.CategoryId; _recFundId = r.FundId; _recAutoPost = r.AutoPost;
         _recDebtId = r.LinkedDebtBucketId ?? Guid.Empty;
+        _recExcessCatId = r.ExcessCategoryId ?? Guid.Empty; _recExcessLabel = r.ExcessLabel;
         _modal = Modal.RecurringEdit;
     }
 
@@ -11477,10 +11654,14 @@ else
         if (string.IsNullOrWhiteSpace(_recName) || _recCategoryId == Guid.Empty || _recFundId == Guid.Empty) return;
         // Only an expense can service a loan; switching the kind to income drops any stale link rather than sending it.
         Guid? debtId = _recKind == RecurringKind.Expense && _recDebtId != Guid.Empty ? _recDebtId : null;
+        // ★ Guid.Empty, never null, on both paths: the update route reads null as "leave it alone" (for the older
+        // Android client) and Guid.Empty as "clear it". This form always knows the answer, so it always says it —
+        // otherwise turning the picker back to "extra payment onto the loan" would save nothing.
+        var excessCat = debtId is not null && _recExcessCatId != Guid.Empty ? _recExcessCatId : Guid.Empty;
         if (_recEditId == Guid.Empty)
-            await State.AddRecurring(_recName, _recKind, _recMode, _recAmount, _recDay, _recCategoryId, _recFundId, _recIcon, _recAutoPost, debtId);
+            await State.AddRecurring(_recName, _recKind, _recMode, _recAmount, _recDay, _recCategoryId, _recFundId, _recIcon, _recAutoPost, debtId, excessCat, _recExcessLabel);
         else
-            await State.UpdateRecurring(_recEditId, _recName, _recMode, _recAmount, _recDay, _recCategoryId, _recFundId, _recIcon, _recAutoPost, debtId);
+            await State.UpdateRecurring(_recEditId, _recName, _recMode, _recAmount, _recDay, _recCategoryId, _recFundId, _recIcon, _recAutoPost, debtId, excessCat, _recExcessLabel);
         _modal = Modal.Recurring;
     });
 
@@ -12042,6 +12223,11 @@ else
         // Attaching goes through MayLogAgainstTrip: free on a running journey, Pro on a finished one.
         if (tripId != Guid.Empty && !MayLogAgainstTrip(tripId)) return;
         _expTripId = tripId;
+        // Arming the rule and THEN picking a trip must not leave a rule armed that the form has stopped offering
+        // (see BankRuleOffered). Cleared unconditionally rather than only under Modal.BankConfirm: _bcRemember is
+        // read nowhere else, so clearing it on the add/edit forms costs nothing, and a condition here would be one
+        // more thing to keep in step with the predicate.
+        if (tripId != Guid.Empty) _bcRemember = false;
         // The category follows the trip on the two paths that are CREATING an expense. On the edit form it must not:
         // re-filing a stored row because someone attached it to a trip would move money between budgets.
         if (_modal is not (Modal.AddExpense or Modal.BankConfirm)) return;

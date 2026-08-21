@@ -1190,8 +1190,8 @@ html.dark .home-brk-cta { color: var(--tm-mint); }
     position: absolute; left: 0; width: 10.5%; text-align: right; transform: translateY(-50%);
     font-size: 9px; line-height: 1; color: #9aa0ad; font-weight: 700; white-space: nowrap;
 }
-/* Vertical guide at the hovered column, plus its invisible hit target. */
-.trend-guide { stroke: #b7c0cc; stroke-width: 1; stroke-dasharray: 2 3; }
+/* The invisible per-column hit target. (A `.trend-guide` vertical rule was styled here and in the dark block but
+   never rendered by any markup — removed rather than left as a rule nobody can see the effect of.) */
 .trend-hit { fill: transparent; cursor: pointer; }
 .trend-pt { transition: r .1s ease; }
 .trend-xaxis { position: relative; height: 15px; margin-top: 1px; }
@@ -1252,8 +1252,15 @@ html.dark .trend-debt-ring { stroke: #57d9a3; }
 html.dark .trend-axis { stroke: rgba(255,255,255,.22); }
 html.dark .trend-grid { stroke: rgba(255,255,255,.09); }
 html.dark .trend-ylbl { color: #7c8a94; }
-html.dark .trend-guide { stroke: rgba(255,255,255,.28); }
 html.dark .trend-xlbl { color: #7c8a94; }
+/* ⚠️ app.css's `html.dark select` sets `background` (the SHORTHAND), which wipes background-image — and its
+   chevron re-application names only the five selectors in the shared list, which this class is not one of. Put
+   back here rather than by editing app.css: a scoped rule needs no `?v=` cache-bust in index.html, and it keeps
+   both halves of this control's dark styling in the file that owns it. */
+html.dark .trend-focus .trend-focus-sel {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.5 6 8l3.5-3.5' fill='none' stroke='%233fe0c5' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 12px center;
+}
 html.dark .trend-xlbl.on { color: #34d399; }
 html.dark .trend-tip { background: #1d2530; border-color: rgba(255,255,255,.16); box-shadow: 0 6px 18px rgba(0,0,0,.45); }
 html.dark .trend-tip-h, html.dark .trend-tip-n { color: #9aa8b4; }
@@ -1658,12 +1665,22 @@ html.dark .period-next { background: rgba(63,224,197,.10); color: var(--tm-mint)
 html.dark .period-next:hover:not(:disabled) { background: rgba(63,224,197,.18); border-color: var(--tm-mint); }
 
 /* O14 — narrowing the lower Trends line to one category / one bucket. Sits between the series switcher and the
-   heading, because it modifies what the heading says. Layout and size only: the chip keeps `.chip`'s palette and
-   the select keeps the app's native-control styling, so both are already correct in dark mode. */
+   heading, because it modifies what the heading says. The chip keeps `.chip`'s palette.
+   ⚠️ `.trend-focus-sel` must stay in BOTH shared select lists below — the field rule (`.modal label select, …`)
+   and the chevron rule right under it. It shipped in neither, so the picker rendered as a raw browser dropdown in
+   light mode and as a dark box with no chevron in dark. A class is not "already styled by the app's native-control
+   styling"; those rules are selector lists, and a control is in them or it is not. */
 .trend-focus { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 6px 0 0; }
 .trend-focus-lbl { display: inline-flex; align-items: center; gap: 6px; font-size: .72rem; font-weight: 700;
     letter-spacing: .04em; text-transform: uppercase; }
-.trend-focus-sel { font-size: .8rem; padding: 3px 8px; text-transform: none; letter-spacing: 0; font-weight: 600; }
+/* Size and typography ONLY — the field look, the hidden native arrow and the chevron come from the shared lists.
+   ⚠️ Scoped to the row so it wins regardless of source order: this block sits ABOVE those lists and both are
+   single-class selectors, so a bare `.trend-focus-sel` here loses to them and silently does nothing. And
+   padding-right is left alone deliberately — overriding it drops the chevron's gutter on top of the text. */
+.trend-focus .trend-focus-sel {
+    font-size: .8rem; font-weight: 600; text-transform: none; letter-spacing: 0;
+    padding-top: 3px; padding-bottom: 3px; padding-left: 8px;
+}
 .trend-focus-clear { font-size: .7rem; padding: 3px 9px; }
 
 /* Milestones in progress: ranked thin progress bars (Home) */
@@ -2043,7 +2060,8 @@ html.dark .cal-cell.cal-out .cal-trip-band { background: #1a2233; color: #5f6b79
 /* ⚠️ input[type=time] belongs in this list, not just date. Left out, a time field renders as raw browser chrome —
    23px tall, no padding, no border — sitting beside a 42px styled date input on the same row, which is exactly as
    mismatched as it sounds. Any new input type added to a modal needs adding here too. */
-.modal label input[type=text], .modal label input[type=number], .modal label input[type=date], .modal label input[type=time], .modal label select {
+.modal label input[type=text], .modal label input[type=number], .modal label input[type=date], .modal label input[type=time], .modal label select,
+.trend-focus-sel {
     padding: 9px 10px; border: 1px solid #dde6e1; border-radius: 10px; font-size: .95rem; background: #ffffff;
 }
 /* Amount fields are <DecimalInput>, whose <input> belongs to that component's CSS scope — the rule above cannot
@@ -2053,7 +2071,8 @@ html.dark .cal-cell.cal-out .cal-trip-band { background: #1a2233; color: #5f6b79
     padding: 9px 10px; border: 1px solid #dde6e1; border-radius: 10px; font-size: .95rem; background: #ffffff;
 }
 /* Prettier dropdowns everywhere: drop the native arrow for a tidy chevron + room to breathe. */
-.modal label select, .form select, .contrib-actions select, .import-list select, select.acct-select {
+.modal label select, .form select, .contrib-actions select, .import-list select, select.acct-select,
+.trend-focus-sel {
     appearance: none; -webkit-appearance: none; -moz-appearance: none;
     padding-right: 34px; cursor: pointer; font-weight: 600;
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.5 6 8l3.5-3.5' fill='none' stroke='%2312b29a' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");

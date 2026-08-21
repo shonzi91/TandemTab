@@ -63,7 +63,10 @@ public static class RecurringView
             r.LinkedDebtBucketId,
             r.LinkedDebtBucketId is { } lb ? account.FindSavingCategory(lb)?.Name : null,
             open && r.SkippedIn(period.From),
-            open && r.IsPending(period.From, period.To))).ToList();
+            open && r.IsPending(period.From, period.To),
+            r.ExcessCategoryId,
+            r.ExcessCategoryId is { } ec ? account.FindCategory(ec)?.Name : null,
+            r.ExcessLabel)).ToList();
 
         // Known bills still expected (unhandled) this period — the same rule as BudgetingState.BillsDueThisPeriod.
         var billsDue = open

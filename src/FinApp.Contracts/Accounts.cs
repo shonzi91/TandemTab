@@ -334,13 +334,23 @@ public record TripTagSeed(string Name, string? Icon = null, Guid? CategoryId = n
 public record AddRecurringRequest(string Name, string Kind, string Mode, decimal Expected, int DayOfMonth,
     Guid CategoryId, Guid FundId, string? Icon = null, bool AutoPost = false,
     // R2: link an expense item to a debt bucket so posting it logs a split installment rather than a lump expense.
-    Guid? LinkedDebtBucketId = null);
+    Guid? LinkedDebtBucketId = null,
+    // C: file the part of the payment ABOVE the loan's contractual installment here — insurance, a servicing fee,
+    // whatever the bank bundled into the mandate — instead of onto the loan as principal. Trailing optional: an
+    // older client sends nothing and gets the pre-C behaviour, which is the whole payment servicing the loan.
+    Guid? ExcessCategoryId = null, string? ExcessLabel = null);
 
 /// <summary>Edit a recurring item (its kind can't change). Fields as in <see cref="AddRecurringRequest"/>. Mirrors
 /// <c>BudgetingState.UpdateRecurring</c>.</summary>
 public record UpdateRecurringRequest(string Name, string Mode, decimal Expected, int DayOfMonth,
     Guid CategoryId, Guid FundId, string? Icon = null, bool AutoPost = false,
-    Guid? LinkedDebtBucketId = null);
+    Guid? LinkedDebtBucketId = null,
+    // ⚠️ NOT authoritative, unlike LinkedDebtBucketId directly above. Three states: absent/null leaves it alone,
+    // Guid.Empty clears it, an id sets it — the same distinction EditAccountTransferRequest.CategoryId draws, and
+    // for the same reason. Android WRITES this endpoint, so a null-means-clear field would have an older app
+    // silently wipe the excess configuration every time someone edited an unrelated field on the bill, and the
+    // next €700 would quietly go back to being €700 of loan servicing.
+    Guid? ExcessCategoryId = null, string? ExcessLabel = null);
 
 /// <summary>Pause or resume a recurring item (a paused item never falls due).</summary>
 public record SetActiveRequest(bool Active);

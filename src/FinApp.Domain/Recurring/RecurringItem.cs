@@ -175,6 +175,59 @@ public sealed class RecurringItem : Entity
     /// <summary>True when posting this item should log an installment rather than a plain expense.</summary>
     public bool IsLoanInstallment => LinkedDebtBucketId is not null;
 
+    /// <summary>
+    /// Where the part of this bill that is <b>above</b> the loan's contractual installment gets filed. Set it, and
+    /// posting a €700 direct debit against a €600 installment books €600 of loan servicing plus one €100 line under
+    /// this category — health insurance, property insurance, a servicing fee, whatever the bank bundled into the
+    /// same mandate.
+    /// <para>
+    /// ⚠️ Null does <b>not</b> mean "there is no excess". It means "we were never told what the excess is", and the
+    /// behaviour that shipped before this existed stands: the whole payment services the loan and the remainder
+    /// lands as principal. Moving money under a user who never opened the field is not a fix — it is a silent
+    /// restatement of their history, on the first post after a deploy, with nothing having been touched.
+    /// </para>
+    /// <para>
+    /// <b>One line, not a list</b>, though <see cref="Periods.Period.LogInstallment"/> takes several. The bank
+    /// states one number; splitting it into "health €60 / property €40" would ask the user to keep two figures in
+    /// step with a total the bank can change without telling them — and the month a premium moves, the split is
+    /// quietly wrong while the total is still right. The month someone wants that detail, the manual "log
+    /// installment" form already takes as many lines as they like. If this ever does become a list, nothing
+    /// downstream changes: <c>LogInstallment</c> already accepts one.
+    /// </para>
+    /// <para>Only meaningful on a debt-linked <see cref="RecurringKind.Expense"/>. Body data (snapshot, not EF —
+    /// <see cref="Accounts.Account.RecurringItems"/> is ignored wholesale by the DbContext).</para>
+    /// </summary>
+    public Guid? ExcessCategoryId { get; private set; }
+
+    /// <summary>What the excess line is called on the ledger. Null falls back to the bill's own name — which is not
+    /// ideal ("Car loan" on a row that is plainly not the car loan) but is exactly what the row says today, so it
+    /// is the honest default rather than a new claim.</summary>
+    public string? ExcessLabel { get; private set; }
+
+    /// <summary>Set (or clear) the excess line. ⚠️ Call <b>after</b> <see cref="SetLinkedDebtBucket"/> — it
+    /// self-clears when the item isn't a debt-linked expense, and the link is what decides that.</summary>
+    public void SetExcess(Guid? categoryId, string? label)
+    {
+        ExcessCategoryId = IsLoanInstallment && categoryId is { } c && c != Guid.Empty ? c : null;
+        ExcessLabel = ExcessCategoryId is null || string.IsNullOrWhiteSpace(label) ? null : label!.Trim();
+    }
+
+    /// <summary>How much of <paramref name="amount"/> is <b>not</b> loan servicing, given the loan's contractual
+    /// installment.
+    /// <para>The single rule — read by the post, by the bill editor's hint and by the confirm modal's preview. Three
+    /// readers, one arithmetic, so a preview can never promise a split the post won't perform.</para>
+    /// <para>★ Reckoned from the amount actually being paid, never from <see cref="ExpectedAmount"/>: the
+    /// installment is a fact about the loan and the amount is a fact about what left the account, and capping
+    /// servicing at the installment is the only combination in which both stay true. Flexing servicing instead
+    /// would let a typo at confirm time silently re-amortise the loan.</para>
+    /// <para>Zero when no category was configured, when the loan states no installment (a payment-driven loan
+    /// often doesn't), or when the payment is at or under the installment — an under-payment has no excess, and
+    /// <c>LogInstallment</c> rightly books all of it as interest.</para></summary>
+    public decimal ExcessOn(decimal amount, decimal contractualInstallment) =>
+        ExcessCategoryId is null || contractualInstallment <= 0m || amount <= contractualInstallment
+            ? 0m
+            : amount - contractualInstallment;
+
     /// <summary>Due (and not yet handled) within period [from, to] as of <paramref name="today"/> — i.e. its day has
     /// arrived, it hasn't been posted or skipped this period, and the due date isn't earlier than
     /// <see cref="CreatedOn"/>.</summary>

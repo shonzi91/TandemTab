@@ -1202,6 +1202,12 @@ data class RecurringRowDto(
     // Still expected this period. NOT derivable from `due`/`upcoming` — an item due in three weeks is pending but
     // neither, so without this the list cannot tell "not yet" from "already done" (O5).
     val pending: Boolean = false,
+    // Where the part of this bill ABOVE the loan's contractual installment is filed — insurance, a servicing fee.
+    // Null means nowhere was named, so all of it services the loan (what happened before this existed). Read-only
+    // here for now: nothing in the Compose editor sets it yet, and an older server simply sends nothing.
+    val excessCategoryId: String? = null,
+    val excessCategoryName: String? = null,
+    val excessLabel: String? = null,
 )
 
 /** A debt bucket a bill can be linked to. `paymentDriven` mirrors the bucket's "I log each installment here"
@@ -1249,6 +1255,9 @@ data class AddRecurringRequest(
     val icon: String? = null,
     val autoPost: Boolean = false,
     val linkedDebtBucketId: String? = null,
+    // File the part above the loan's contractual installment here instead of onto the loan as principal.
+    val excessCategoryId: String? = null,
+    val excessLabel: String? = null,
 )
 
 /** PUT /accounts/{id}/recurring/{recurringId} — edit an item (its kind can't change). A null
@@ -1264,6 +1273,11 @@ data class UpdateRecurringRequest(
     val icon: String? = null,
     val autoPost: Boolean = false,
     val linkedDebtBucketId: String? = null,
+    // NOT authoritative, unlike `linkedDebtBucketId` above: null leaves the excess configuration alone, the empty
+    // GUID clears it, an id sets it. That asymmetry exists FOR this client — sending null here (which is what an
+    // editor that doesn't know about the field does) must not wipe a setting made on the web.
+    val excessCategoryId: String? = null,
+    val excessLabel: String? = null,
 )
 
 /** PUT /accounts/{id}/recurring/{recurringId}/active — pause or resume (a paused item never falls due). */

@@ -359,6 +359,57 @@ public class SnapshotSerializerTests
     }
 
     [Fact]
+    public void A_recurring_bills_excess_line_round_trips()
+    {
+        // Lose it and next month's €700 quietly goes back to being €700 of loan servicing, dropping ~€100 more
+        // principal than the schedule says — silently, on the next post, with nobody having touched anything.
+        var account = new Account("Home", "EUR");
+        account.AssignOwner(Guid.NewGuid(), "Me");
+        account.AddDefaultFunds();
+        var category = account.AddCategory("Loan").Id;
+        var insurance = account.AddCategory("Insurance").Id;
+        var loan = account.AddSavingCategory("Car loan");
+        account.ConfigureSavingDebt(loan.Id, 20_000m, 6m, 600m, balanceAsOf: new DateOnly(2026, 1, 1));
+        var bill = new FinApp.Domain.Recurring.RecurringItem("Car loan", FinApp.Domain.Recurring.RecurringKind.Expense,
+            FinApp.Domain.Recurring.RecurringAmountMode.Fixed, 700m, 15, category, account.FundId("Bank"));
+        bill.SetLinkedDebtBucket(loan.Id);
+        bill.SetExcess(insurance, "Health + property");
+        account.AddRecurring(bill);
+
+        var copied = AccountSnapshotSerializer.Deserialize(AccountSnapshotSerializer.Serialize(account)).RecurringItems.Single();
+
+        Assert.Equal(insurance, copied.ExcessCategoryId);
+        Assert.Equal("Health + property", copied.ExcessLabel);
+        Assert.Equal(100m, copied.ExcessOn(700m, 600m));
+    }
+
+    [Fact]
+    public void A_bill_written_before_the_excess_line_existed_loads_with_none()
+    {
+        // The trailing-optional contract, from the other end: a legacy node carries no excess fields, and "we were
+        // never told" must load as "all of it services the loan" — the behaviour that snapshot was written under.
+        var account = new Account("Home", "EUR");
+        account.AssignOwner(Guid.NewGuid(), "Me");
+        account.AddDefaultFunds();
+        var category = account.AddCategory("Loan").Id;
+        var loan = account.AddSavingCategory("Car loan");
+        account.ConfigureSavingDebt(loan.Id, 20_000m, 6m, 600m, balanceAsOf: new DateOnly(2026, 1, 1));
+        var bill = new FinApp.Domain.Recurring.RecurringItem("Car loan", FinApp.Domain.Recurring.RecurringKind.Expense,
+            FinApp.Domain.Recurring.RecurringAmountMode.Fixed, 700m, 15, category, account.FundId("Bank"));
+        bill.SetLinkedDebtBucket(loan.Id);
+        account.AddRecurring(bill);
+
+        // Strip the two fields from the payload the way a pre-C server would never have written them.
+        var payload = AccountSnapshotSerializer.Serialize(account)
+            .Replace(",\"ExcessCategoryId\":null", "").Replace(",\"ExcessLabel\":null", "");
+        var copied = AccountSnapshotSerializer.Deserialize(payload).RecurringItems.Single();
+
+        Assert.Null(copied.ExcessCategoryId);
+        Assert.Null(copied.ExcessLabel);
+        Assert.Equal(0m, copied.ExcessOn(700m, 600m));
+    }
+
+    [Fact]
     public void An_ordinary_expense_round_trips_with_no_installment_fields()
     {
         // Legacy snapshots carry no installment fields at all; they must load as plain expenses, not empty groups.

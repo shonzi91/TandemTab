@@ -1481,26 +1481,35 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
             .Where(r => r.Kind == RecurringKind.Expense && r.HasKnownAmount && r.IsPending(Period.From, Period.To))
             .Sum(r => r.ExpectedAmount));
 
-    public Task AddRecurring(string name, RecurringKind kind, RecurringAmountMode mode, decimal expected, int dayOfMonth, Guid categoryId, Guid fundId, string? icon, bool autoPost = false, Guid? linkedDebtBucketId = null) =>
+    public Task AddRecurring(string name, RecurringKind kind, RecurringAmountMode mode, decimal expected, int dayOfMonth, Guid categoryId, Guid fundId, string? icon, bool autoPost = false, Guid? linkedDebtBucketId = null,
+        Guid? excessCategoryId = null, string? excessLabel = null) =>
         ExecuteOptimisticAsync(() =>
         {
             var item = new RecurringItem(name, kind, mode, expected, dayOfMonth, categoryId, fundId, icon, autoPost);
             item.SetCreatedOn(Today());
             item.SetLinkedDebtBucket(linkedDebtBucketId);
+            item.SetExcess(excessCategoryId, excessLabel);   // after the link — SetExcess self-clears without one
             SyncLoanDueDay(item);
             DefaultLoanToPaymentDriven(item, wasLinkedToSameBucket: false);
             Account.AddRecurring(item);
         },
         id => api.AddRecurringAsync(id, new AddRecurringRequest(name, RecurringKindString(kind), RecurringModeString(mode),
-            expected, dayOfMonth, categoryId, fundId, icon, autoPost, linkedDebtBucketId)),
+            expected, dayOfMonth, categoryId, fundId, icon, autoPost, linkedDebtBucketId, excessCategoryId, excessLabel)),
         refetchAfter: true);
 
-    public Task UpdateRecurring(Guid id, string name, RecurringAmountMode mode, decimal expected, int dayOfMonth, Guid categoryId, Guid fundId, string? icon, bool autoPost = false, Guid? linkedDebtBucketId = null) =>
+    /// <param name="excessCategoryId">⚠️ Three states on the wire, unlike <paramref name="linkedDebtBucketId"/>:
+    /// null leaves it alone, <see cref="Guid.Empty"/> clears it, an id sets it. This client always sends one of the
+    /// latter two — it has the whole form in hand — but the route must keep honouring null for the older Android
+    /// build. See <c>UpdateRecurringRequest.ExcessCategoryId</c>.</param>
+    public Task UpdateRecurring(Guid id, string name, RecurringAmountMode mode, decimal expected, int dayOfMonth, Guid categoryId, Guid fundId, string? icon, bool autoPost = false, Guid? linkedDebtBucketId = null,
+        Guid? excessCategoryId = null, string? excessLabel = null) =>
         ExecuteOptimisticAsync(() =>
         {
             var previousLink = Account.FindRecurring(id)?.LinkedDebtBucketId;
             Account.FindRecurring(id)?.Update(name, mode, expected, dayOfMonth, categoryId, fundId, icon, autoPost);
             Account.FindRecurring(id)?.SetLinkedDebtBucket(linkedDebtBucketId);   // authoritative: null unlinks
+            if (excessCategoryId is { } localExcess)
+                Account.FindRecurring(id)?.SetExcess(localExcess == Guid.Empty ? null : localExcess, excessLabel);
             if (Account.FindRecurring(id) is { } updated)
             {
                 SyncLoanDueDay(updated);
@@ -1508,8 +1517,15 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
             }
         },
             acct => api.UpdateRecurringAsync(acct, id, new UpdateRecurringRequest(name, RecurringModeString(mode),
-                expected, dayOfMonth, categoryId, fundId, icon, autoPost, linkedDebtBucketId)),
+                expected, dayOfMonth, categoryId, fundId, icon, autoPost, linkedDebtBucketId, excessCategoryId, excessLabel)),
             refetchAfter: true);
+
+    /// <summary>How much of <paramref name="amount"/> would be filed as the excess line rather than servicing the
+    /// loan. Delegates to <see cref="RecurringItem.ExcessOn"/> so the editor's hint and the confirm modal's preview
+    /// read the same arithmetic the post does — a preview that computes its own would eventually promise a split
+    /// the post doesn't perform.</summary>
+    public decimal RecurringExcessOn(RecurringItem item, decimal amount) =>
+        item.ExcessOn(amount, SavingBucketDebtInstallment(item.LinkedDebtBucketId ?? Guid.Empty));
 
     /// <summary>Mirror of the server's <c>RecurringMap.SyncLoanDueDay</c> for the optimistic local aggregate: a linked
     /// loan's stated installment day wins; when the loan has none, the bill's day fills it in. Without this the
@@ -1587,6 +1603,8 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
         return ExecuteOptimisticAsync(() =>
         {
             var item = Account.FindRecurring(id)!;
+            // Learns the WHOLE amount, including any excess line — the direct debit really is €700, and a "typical"
+            // estimate that drifted toward the installment would under-predict the money leaving the account.
             if (actualAmount > 0m) item.LearnFromActual(actualAmount);
             PostRecurringItem(item, actualAmount, principalTagName, interestTagName);
         },

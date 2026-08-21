@@ -34,7 +34,12 @@ public record RecurringRowDto(
     // Upcoming — an item due in three weeks is pending but neither, so a client splitting the list into "coming"
     // and "done" had no way to tell it from one already handled. Trailing and optional; false on an older server,
     // which lands every row in the lower section rather than misfiling any of them (O5).
-    bool Pending = false);
+    bool Pending = false,
+    // C: where the part of this bill above the loan's contractual installment is filed. Null = nowhere was named,
+    // so all of it services the loan (the pre-C behaviour). The name is resolved here, like LinkedDebtName.
+    Guid? ExcessCategoryId = null,
+    string? ExcessCategoryName = null,
+    string? ExcessLabel = null);
 
 /// <summary>A debt bucket a bill can be linked to. <see cref="PaymentDriven"/> mirrors the bucket's "I log each
 /// installment here" switch — a linked bill only drives the balance when it's on, which is the user's call, so the

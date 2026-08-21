@@ -782,6 +782,8 @@ public sealed class Localizer(IJSRuntime js)
         ["pin a merchant to auto-file it (and similar names) here next time"] = "закачи търговец, за да се въвеждат той (и подобни имена) тук автоматично следващия път",
         ["Always file this merchant here in future"] = "Винаги въвеждай този търговец тук занапред",
         ["Auto-files this merchant here — click to forget"] = "Въвежда този търговец тук автоматично — щракни, за да забравиш",
+        ["No merchant rule while a trip is picked — a trip's category and labels belong to the trip, not to the shop. File it here, and reach for the trip's own “attach something you've already paid” when an auto-filed expense turns out to belong to a journey."] = "Няма правило за търговец, докато е избрано пътуване — категорията и етикетите на пътуването са на пътуването, не на магазина. Въведи разхода тук, а когато автоматично въведен разход се окаже част от пътуване, използвай „прикачи нещо, което вече си платил“ на самото пътуване.",
+        ["This one is going to {0} instead. The rule isn't changed."] = "Този отива в {0} вместо това. Правилото не се променя.",
         ["({0} dated outside this period were skipped.)"] = "({0} с дати извън този период бяха пропуснати.)",
         ["All {0} transactions are dated outside this period — nothing to import here."] = "Всички {0} транзакции са с дати извън този период — няма какво да се импортира тук.",
         ["Import {0}"] = "Импортирай {0}",
@@ -1909,6 +1911,20 @@ public sealed class Localizer(IJSRuntime js)
         ["Kept"] = "Задържано",
         ["Spent in each month"] = "Похарчено всеки месец",
         ["Set aside in each month"] = "Заделено всеки месец",
+        // O14's focused variants — the unfocused pair above shipped translated and these two did not, so a
+        // Bulgarian reader narrowing the line got an English heading back.
+        ["{0} spent in each month"] = "Похарчено за {0} всеки месец",
+        ["Set aside toward {0} in each month"] = "Заделено за {0} всеки месец",
+        ["Everything"] = "Всичко",
+        // C — the part of a debt-linked bill above the loan's contractual installment.
+        ["Anything above the installment is"] = "Всичко над вноската е",
+        ["Extra payment onto the loan"] = "Допълнително плащане по кредита",
+        ["Call it (optional)"] = "Наречи го (по избор)",
+        ["Insurance"] = "Застраховка",
+        ["{0} of this {1} will be filed as {2}; {3} services the loan."] = "{0} от тези {1} ще се впишат като {2}; {3} обслужват кредита.",
+        ["{0} of this {1} is above the {2} installment and goes onto the loan as extra payment. Name a category if it's something else."] = "{0} от тези {1} са над вноската от {2} и отиват по кредита като допълнително плащане. Посочи категория, ако са нещо друго.",
+        ["This is at or under the {0} installment, so all of it goes onto the loan."] = "Това е равно или под вноската от {0}, така че всичко отива по кредита.",
+        ["{0} onto the loan · {1} as {2}"] = "{0} по кредита · {1} като {2}",
         ["Kept at the end of each month"] = "Задържано в края на всеки месец",
         ["{0} of this went onto a loan — the balance fell because the debt did."] =
             "{0} от това отиде по кредит — балансът падна, защото падна и дългът.",
