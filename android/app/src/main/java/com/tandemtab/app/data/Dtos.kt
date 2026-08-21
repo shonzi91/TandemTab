@@ -1202,6 +1202,24 @@ data class EditFundRequest(
 @Serializable
 data class SetFundOpeningBalanceRequest(val amount: Double)
 
+/** PUT /accounts/{id}/funds/{fundId}/currency — make this wallet a pile of foreign cash, or put it back to the
+ *  account's own currency.
+ *
+ *  ⚠️ Both null CLEARS it, and clearing is deliberately NOT Pro-gated on the server: a downgrade has to be able to
+ *  return a wallet to the account currency. Setting one is gated on the trips feature.
+ *
+ *  ⚠️ Its own endpoint, separate from [EditFundRequest] — which is a full overwrite of (name, note, icon), so
+ *  folding the currency into it would mean every rename re-stated the rate, and a client that had not learned
+ *  about currencies yet would wipe it. Write this only when it actually changed, or a Free user renaming an
+ *  ordinary wallet trips a paywall over a field they never touched. */
+@Serializable
+data class SetFundCurrencyRequest(val currency: String? = null, val rate: Double? = null)
+
+/** What a wallet editor decided about the currency — both null meaning "an ordinary wallet in the account's own
+ *  money". Distinct from the request because the ABSENCE of one of these means "not touched, don't write", which
+ *  is the state that keeps a rename off a Pro-gated endpoint. */
+data class FundCurrencyEdit(val currency: String?, val rate: Double?)
+
 /** POST /accounts/{id}/deposits — record income into a fund. `categoryId` empty = general income; deposits with
  *  the same (member, category, fund) merge server-side. `date` is an ISO yyyy-MM-dd string. */
 @Serializable

@@ -17,13 +17,14 @@ public sealed class GatingServerFactory : FinAppServerFactory
     public const string AdminEmail2 = "gate.admin2@example.com";
     public const string AdminEmail3 = "gate.admin3@example.com";
     public const string AdminEmail4 = "gate.admin4@example.com";
+    public const string AdminEmail5 = "gate.admin5@example.com";
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         base.ConfigureWebHost(builder);
         // One address per test that needs to act as an admin — the host (and its user table) is shared across
         // the class, so re-using an address 409s in whichever test happens to run second.
-        builder.UseSetting("Admin:Emails", $"{AdminEmail},{AdminEmail2},{AdminEmail3},{AdminEmail4}");
+        builder.UseSetting("Admin:Emails", $"{AdminEmail},{AdminEmail2},{AdminEmail3},{AdminEmail4},{AdminEmail5}");
     }
 }
 
@@ -152,6 +153,53 @@ public class GatingApiTests : IClassFixture<GatingServerFactory>
         var after = await client.GetFromJsonAsync<UserDto>("/me");
         Assert.Equal("pro", after!.Plan);
         Assert.True(after.ProBadge);
+    }
+
+    /// <summary>
+    /// <summary>
+    /// The wallet-currency gate, which is the same "never strand state" rule as the trips one above, applied to a
+    /// setting rather than an action: <b>setting</b> a foreign currency is Pro, <b>clearing</b> it never is.
+    /// <para>A lapsed subscriber whose holiday wallet is stuck in kronor has an account that converts every
+    /// expense from it by a rate they can no longer reach — we would have broken their ledger to sell them
+    /// something. The route says so in as many words; nothing pinned it until this, and both clients now build UI
+    /// on the asymmetry (the phone keeps the fields visible on a downgraded plan when a currency is already set,
+    /// precisely so the way back is not behind the paywall it is trying to leave).</para>
+    /// </summary>
+    [Fact]
+    public async Task Free_cannot_set_a_wallets_currency_but_can_always_clear_one()
+    {
+        var (client, _) = await _factory.RegisterAndAuthAsync("gatewallet", GatingServerFactory.AdminEmail5);
+        var acct = (await (await client.PostAsJsonAsync("/accounts", new CreateAccountRequest("Holiday", "EUR")))
+            .Content.ReadFromJsonAsync<AccountSummaryDto>())!;
+
+        var agg = new Account("Holiday", "EUR");
+        agg.AddDefaultFunds();
+        agg.AddMember(Guid.NewGuid(), "Me");
+        agg.StartPeriod(new DateOnly(2026, 1, 1), new DateOnly(2026, 1, 31));
+        var cash = agg.FundId("Cash");
+        (await client.PutAsJsonAsync($"/accounts/{acct.Id}/snapshot",
+            new SaveAccountRequest(AccountSnapshotSerializer.Serialize(agg), 0))).EnsureSuccessStatusCode();
+
+        // Set while still unlimited — this is the wallet the downgrade will strand.
+        (await client.PutAsJsonAsync($"/accounts/{acct.Id}/funds/{cash}/currency",
+            new SetFundCurrencyRequest("SEK", 0.087m))).EnsureSuccessStatusCode();
+
+        (await client.PostAsJsonAsync("/admin/plan-override", new PlanOverrideRequest("free"))).EnsureSuccessStatusCode();
+
+        // Free may not set one — not even re-stating the rate on the wallet it already has.
+        var blocked = await client.PutAsJsonAsync($"/accounts/{acct.Id}/funds/{cash}/currency",
+            new SetFundCurrencyRequest("SEK", 0.09m));
+        Assert.Equal(HttpStatusCode.PaymentRequired, blocked.StatusCode);
+        Assert.Equal(PlanFeatures.Trips, (await blocked.Content.ReadFromJsonAsync<GateError>())!.Feature);
+
+        // But it may always put the wallet back to the account's own money.
+        (await client.PutAsJsonAsync($"/accounts/{acct.Id}/funds/{cash}/currency",
+            new SetFundCurrencyRequest(null, null))).EnsureSuccessStatusCode();
+
+        var fund = (await client.GetFromJsonAsync<WalletsViewDto>($"/accounts/{acct.Id}/wallets"))!
+            .Funds.Single(f => f.Id == cash);
+        Assert.Null(fund.Currency);
+        Assert.Null(fund.Rate);
     }
 
     /// <summary>

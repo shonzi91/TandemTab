@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -38,14 +40,17 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.tandemtab.app.WalletsUi
 import com.tandemtab.app.data.CategoryOptionDto
+import com.tandemtab.app.data.FundCurrencyEdit
 import com.tandemtab.app.data.FundRowDto
 import com.tandemtab.app.data.FundTransferRowDto
 import com.tandemtab.app.ui.theme.LocalTandemColors
+import com.tandemtab.app.ui.theme.TandemIcons
 import java.time.LocalDate
 
 /**
@@ -206,8 +211,18 @@ fun FundEditorSheet(
     existing: FundRowDto?,
     wallets: WalletsUi,
     onDismiss: () -> Unit,
-    onSave: (fundId: String?, name: String, icon: String?, note: String?, openingBalance: Double?, onDone: () -> Unit) -> Unit,
+    onSave: (
+        fundId: String?, name: String, icon: String?, note: String?, openingBalance: Double?,
+        // null = the currency was not touched, so don't write it at all. A present pair is authoritative, and
+        // (null, null) inside it means "put this back to an ordinary wallet".
+        currency: FundCurrencyEdit?,
+        onDone: () -> Unit,
+    ) -> Unit,
     onArchive: (() -> Unit)?,
+    // True when this account may hold foreign cash. False shows the locked row instead of the fields — the gate is
+    // named where the feature is, rather than letting someone fill the form in and be refused on Save.
+    canHoldForeignCash: Boolean = true,
+    onProLocked: () -> Unit = {},
 ) {
     val tandem = LocalTandemColors.current
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -222,9 +237,14 @@ fun FundEditorSheet(
     var openingText by remember(existing?.id) {
         mutableStateOf(existing?.openingBalance?.takeIf { it != 0.0 }?.let { trimAmount(it) } ?: "")
     }
+    // A three-letter code, upper-cased as it is typed. Blank = an ordinary wallet.
+    var ccyText by remember(existing?.id) { mutableStateOf(existing?.currency.orEmpty()) }
+    var rateText by remember(existing?.id) { mutableStateOf(existing?.rate?.let { trimAmount(it) } ?: "") }
     var hint by remember { mutableStateOf<String?>(null) }
 
     val opening = openingText.replace(',', '.').toDoubleOrNull()
+    val ccy = ccyText.trim().uppercase().takeIf { it.isNotBlank() }
+    val rate = rateText.replace(',', '.').toDoubleOrNull()?.takeIf { it > 0.0 }
     // A synced fund's balance is the real bank account's, so its opening balance isn't the user's to set.
     val showOpening = existing?.synced != true
 
@@ -238,6 +258,14 @@ fun FundEditorSheet(
                 hint = "Give the fund a name."
             } else if (openingText.isNotBlank() && opening == null) {
                 hint = "That opening balance isn't a number."
+            } else if (ccy != null && ccy.length != 3) {
+                hint = "A currency is a three-letter code, like SEK or GBP."
+            } else if (ccy != null && rate == null) {
+                // Refused rather than stored half-set: a currency with no rate cannot convert, and the entry form
+                // would go on taking the amount at face value while the wallet claims to hold something else.
+                hint = "Say what one $ccy is worth in ${wallets.currency}, or clear the currency."
+            } else if (ccy == null && rateText.isNotBlank()) {
+                hint = "A rate needs a currency to be a rate of."
             } else {
                 // Only write an opening balance when there's something to say: on create when one was typed, on
                 // edit when it actually changed. Sending an unchanged value would overwrite the period for nothing.
@@ -249,7 +277,11 @@ fun FundEditorSheet(
                     kotlin.math.abs(wanted - current) >= 0.005 -> wanted
                     else -> null
                 }
-                onSave(existing?.id, name, iconName, note.ifBlank { null }, send) { onDismiss() }
+                // Written only when it actually changed. The endpoint is Pro-gated on SETTING a currency, so a
+                // Free user renaming an ordinary wallet must not trip that gate over a field they never touched.
+                val ccyChanged = ccy != existing?.currency || rate != existing?.rate
+                val currencyEdit = if (ccyChanged) FundCurrencyEdit(ccy, rate) else null
+                onSave(existing?.id, name, iconName, note.ifBlank { null }, send, currencyEdit) { onDismiss() }
             }
         },
         sheetState = sheetState,
@@ -275,6 +307,58 @@ fun FundEditorSheet(
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
         )
+
+        // ── Foreign cash ────────────────────────────────────────────────────────────────────────
+        // A holiday wallet: a pile of kronor bought at one rate. Everything spent from it is typed in that
+        // currency and stored in the account's, so this is the setting that decides what the Amount field on the
+        // add-expense sheet even means.
+        Spacer(Modifier.height(16.dp))
+        FieldLabel("Currency")
+        if (!canHoldForeignCash) {
+            // The crown shows only where the plan actually can't reach — a Pro account never sees one. Named here
+            // rather than on Save, so nobody fills the pair in and is refused afterwards.
+            Row(
+                Modifier.fillMaxWidth().clickable { onProLocked() }.padding(vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(TandemIcons.Crown, contentDescription = "Part of Pro", tint = tandem.warn, modifier = Modifier.size(14.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Hold a wallet in another currency — with Pro", color = tandem.muted, fontSize = 13.sp)
+            }
+        } else {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedTextField(
+                    value = ccyText,
+                    onValueChange = { ccyText = it.uppercase().filter { c -> c.isLetter() }.take(3); hint = null },
+                    label = { Text("Code") },
+                    placeholder = { Text(wallets.currency) },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Characters),
+                    modifier = Modifier.weight(1f),
+                )
+                OutlinedTextField(
+                    value = rateText,
+                    onValueChange = { rateText = it; hint = null },
+                    // The label carries the direction. "Rate" alone is the field people invert — 1 SEK = 0.087 EUR
+                    // and 1 EUR = 11.5 SEK are both "the rate", and one of them silently multiplies by 130x.
+                    label = { Text(if (ccy != null) "1 $ccy is" else "Rate") },
+                    prefix = { Text(currencySymbol(wallets.currency)) },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    modifier = Modifier.weight(1f),
+                )
+            }
+            Text(
+                if (ccy == null)
+                    "Leave this empty for an ordinary wallet. Set it for a pile of foreign cash — a holiday " +
+                        "wallet — and everything you spend from it converts at the rate you bought it at."
+                else
+                    "Amounts spent from this wallet are typed in $ccy and stored in ${wallets.currency}. Card " +
+                        "payments don't come through here — they leave your bank already converted.",
+                fontSize = 12.sp, color = tandem.muted,
+                modifier = Modifier.padding(top = 6.dp),
+            )
+        }
 
         if (showOpening) {
             Spacer(Modifier.height(14.dp))

@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import com.tandemtab.app.data.AccountOverviewDto
 import com.tandemtab.app.data.AccountSummaryDto
 import com.tandemtab.app.data.AddDepositRequest
+import com.tandemtab.app.data.FundCurrencyEdit
 import com.tandemtab.app.data.AddExpenseRequest
 import com.tandemtab.app.data.AddSavingDepositRequest
 import com.tandemtab.app.data.ApiException
@@ -1579,7 +1580,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
      * it on if the second call fails — a fund with the wrong opening balance is visible and fixable; an opening
      * balance with no fund is nothing.
      */
-    fun saveFund(fundId: String?, name: String, icon: String?, note: String?, openingBalance: Double?, onDone: () -> Unit) {
+    fun saveFund(
+        fundId: String?, name: String, icon: String?, note: String?, openingBalance: Double?,
+        currency: FundCurrencyEdit? = null,
+        onDone: () -> Unit,
+    ) {
         val accountId = _state.value.selectedAccountId ?: return
         _state.update { it.copy(wallets = it.wallets.copy(saving = true, saveError = null)) }
         viewModelScope.launch {
@@ -1591,10 +1596,21 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     fundId
                 }
                 if (openingBalance != null && id != null) api.setFundOpeningBalance(accountId, id, openingBalance)
+                // Last, and only when the editor said it changed. It rides its own endpoint so a rename cannot
+                // wipe it, and it is the one call here that can be refused by the paywall — putting it after the
+                // rest means a Free user who somehow reaches it still keeps every other edit they just made.
+                if (currency != null && id != null) api.setFundCurrency(accountId, id, currency.currency, currency.rate)
                 refreshWallets(accountId)
                 onDone()
             } catch (e: Exception) {
-                _state.update { it.copy(wallets = it.wallets.copy(saving = false, saveError = e.message ?: "Couldn't save that fund.")) }
+                // A 402 here raises the upgrade prompt instead of a red line — the wallet was still created or
+                // renamed, so the only thing that failed is the currency, and saying so twice would be worse.
+                if (handledAsPaywall(e)) {
+                    refreshWallets(accountId)
+                    _state.update { it.copy(wallets = it.wallets.copy(saving = false)) }
+                } else {
+                    _state.update { it.copy(wallets = it.wallets.copy(saving = false, saveError = e.message ?: "Couldn't save that fund.")) }
+                }
             }
         }
     }

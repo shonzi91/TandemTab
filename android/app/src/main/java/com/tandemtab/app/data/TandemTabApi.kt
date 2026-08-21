@@ -448,6 +448,11 @@ class TandemTabApi(
     suspend fun setFundOpeningBalance(accountId: String, fundId: String, amount: Double): MutationResultDto =
         authedPut("/accounts/$accountId/funds/$fundId/opening-balance", SetFundOpeningBalanceRequest(amount)).body()
 
+    /** Hold this wallet in another currency at a fixed rate, or pass nulls to put it back to the account's own.
+     *  Setting one is Pro-gated server-side (402); clearing never is — see [SetFundCurrencyRequest]. */
+    suspend fun setFundCurrency(accountId: String, fundId: String, currency: String?, rate: Double?): MutationResultDto =
+        authedPut("/accounts/$accountId/funds/$fundId/currency", SetFundCurrencyRequest(currency, rate)).body()
+
     /** Record income into a fund (a deposit). Returns the recomputed overview. */
     suspend fun addDeposit(accountId: String, req: AddDepositRequest): DepositMutationDto =
         authedPost("/accounts/$accountId/deposits", req).body()

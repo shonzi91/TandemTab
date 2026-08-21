@@ -38,6 +38,7 @@ import androidx.compose.ui.unit.sp
 import com.tandemtab.app.WalletsUi
 import com.tandemtab.app.data.AccountSummaryDto
 import com.tandemtab.app.data.AccountTransferRowDto
+import com.tandemtab.app.data.FundCurrencyEdit
 import com.tandemtab.app.data.FundRowDto
 import com.tandemtab.app.data.FundTransferRowDto
 import com.tandemtab.app.ui.theme.LocalTandemColors
@@ -61,7 +62,11 @@ fun WalletsScreen(
     onTransfer: (fromFundId: String, toFundId: String, amount: Double, date: String, note: String?, onDone: () -> Unit) -> Unit,
     onAddIncome: (fundId: String, categoryId: String, amount: Double, date: String, onDone: () -> Unit) -> Unit,
     onPrepareFund: () -> Unit = {},
-    onSaveFund: (fundId: String?, name: String, icon: String?, note: String?, openingBalance: Double?, onDone: () -> Unit) -> Unit = { _, _, _, _, _, _ -> },
+    onSaveFund: (fundId: String?, name: String, icon: String?, note: String?, openingBalance: Double?, currency: FundCurrencyEdit?, onDone: () -> Unit) -> Unit = { _, _, _, _, _, _, _ -> },
+    // Holding a wallet in another currency is the Pro half of trips. False draws the crowned row instead of the
+    // fields; clearing an existing one is never gated, which is why the editor still sends a cleared pair.
+    canHoldForeignCash: Boolean = true,
+    onProBlocked: () -> Unit = {},
     onArchiveFund: (fundId: String, archived: Boolean, moveBalanceTo: String?, amount: Double, onDone: () -> Unit) -> Unit = { _, _, _, _, _ -> },
     onDeleteFund: (fundId: String, moveOpeningBalancesTo: String?, onDone: () -> Unit) -> Unit = { _, _, _ -> },
     onEditTransfer: (transferId: String, fromFundId: String, toFundId: String, amount: Double, note: String?, onDone: () -> Unit) -> Unit = { _, _, _, _, _, _ -> },
@@ -295,6 +300,10 @@ fun WalletsScreen(
             onArchive = editingFund?.takeIf { !it.synced && !it.archived }?.let { f ->
                 { editingFundId = null; archivingFundId = f.id }
             },
+            // A wallet that ALREADY holds foreign cash keeps its fields on a downgraded plan — otherwise the only
+            // way back to an ordinary wallet would be hidden behind the paywall it is trying to leave.
+            canHoldForeignCash = canHoldForeignCash || editingFund?.currency != null,
+            onProLocked = onProBlocked,
         )
     }
     findFund(archivingFundId)?.let { f ->

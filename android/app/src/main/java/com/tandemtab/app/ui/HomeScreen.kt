@@ -83,6 +83,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import com.tandemtab.app.UiState
 import com.tandemtab.app.data.AccountSummaryDto
+import com.tandemtab.app.data.FundCurrencyEdit
 import com.tandemtab.app.data.MemberDto
 import com.tandemtab.app.data.ExpenseDto
 import com.tandemtab.app.data.MilestonesDto
@@ -230,7 +231,7 @@ fun HomeScreen(
     onTransfer: (String, String, Double, String, String?, () -> Unit) -> Unit,
     onAddIncome: (String, String, Double, String, () -> Unit) -> Unit,
     onPrepareFund: () -> Unit,
-    onSaveFund: (String?, String, String?, String?, Double?, () -> Unit) -> Unit,
+    onSaveFund: (String?, String, String?, String?, Double?, FundCurrencyEdit?, () -> Unit) -> Unit,
     onArchiveFund: (String, Boolean, String?, Double, () -> Unit) -> Unit,
     onDeleteFund: (String, String?, () -> Unit) -> Unit,
     onEditTransfer: (String, String, String, Double, String?, () -> Unit) -> Unit,
@@ -488,6 +489,10 @@ fun HomeScreen(
                             onAddIncome = onAddIncome,
                             onPrepareFund = onPrepareFund,
                             onSaveFund = onSaveFund,
+                            // Same feature as trips, and deliberately the same gate: a foreign-cash wallet is what
+                            // a trip abroad spends from, so the two are one entitlement.
+                            canHoldForeignCash = state.allowsPro(PlanFeatures.TRIPS),
+                            onProBlocked = { onProBlocked(PlanFeatures.TRIPS) },
                             onArchiveFund = onArchiveFund,
                             onDeleteFund = onDeleteFund,
                             onEditTransfer = onEditTransfer,
