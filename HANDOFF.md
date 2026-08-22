@@ -1,6 +1,52 @@
 # TandemTab (FinApp) — session handoff
 
-Last updated: 2026-08-21 (Session 113 — **the owner's list is DONE (O14 closed); the Breakdown was rebuilt then
+Last updated: 2026-08-22 (Session 115 — **the Android session. Both of R2's stated lags are closed, the phone stops
+storing 100 kr as €100, and the module has its first tests.** **546 + 54 + 414 green, 28 Kotlin green, pairscan 0.
+Parity 108/120 → 115/122 (94%).**
+⚠️ **NOTHING FROM THIS SESSION IS DEPLOYED OR ON MAIN.** Nine commits sit on the pushed branch
+`fix/wallet-currency`, one more on `fix/recurring-not-started`, both branched off `0ae94e9`. **LIVE is still
+`finapp-00322-dh6` (`finapp:8df7dd7`)** — and `origin/main` is still `8252785`, so the *previous* session's two
+commits (`60bb66d`, `0ae94e9`) are not pushed either; they ride along as ancestors of these branches.
+⚠️ **Not one line of this session was seen running.** Everything is compiled, unit-tested and reasoned about; the
+emulator boots and installs but stops at a sign-in the agent cannot complete. Read every "verified" below as
+"tested", never as "observed".)
+
+#### ⭐ Session 115 — what landed, on branches
+
+| Commit | What |
+|---|---|
+| `5d7f9ee` | **100 kr stopped being stored as €100.** The write side always carried `ForeignAmount`; the gap was the READ — no thin contract carried a fund's currency or rate anywhere, so a client never told the rate cannot convert by it. `Currency`/`Rate` added to `FundRowDto` **and** `FundOptionDto` (the option is the one that matters — picking the wallet is what changes the Amount field's meaning). ⚠️ **Conversion is on the ADD path only**: an edit is pre-filled with the stored, already-converted figure, so treating it as foreign would divide a real expense. One predicate drives both the prefix and the conversion so they cannot disagree. The web draws the same line. |
+| `5ff77b1` | **A wallet's currency can be set from the phone** — closes stated lag #1. Written only when it changed (the endpoint is Pro-gated on *setting*, so folding it into every save would 402 a Free user for renaming an ordinary wallet). ⚠️ **An already-foreign wallet keeps its fields on a downgraded plan**, or the way back sits behind the paywall it is trying to leave. The server already drew that line and **nothing pinned it** — the gating suite does now. |
+| `a9175d1` | **Statement import** — closes stated lag #2 — **and the Android module's first tests.** ★ The file never leaves the device; only reviewed rows are posted. That is why there are now two parsers, and why `BankFileParserTest` copies the C# fixtures **verbatim**: a European date read as American files rent in April. XML/HTML are detected but unported, and the sheet says so rather than showing an empty list. ⚠️ Rows dated outside the period are dropped with a count — the server has no opinion about dates, so this guard exists only if the client writes it. |
+| `470797c` | **Merchant rules** — imported rows file themselves; the pin teaches new ones. Token-subset, most-specific-wins, ported. ⚠️ **The pin is not optimistic**: it updates only after the write lands, because a pin is a claim that a rule *exists*. The three `/bank/mappings` routes are **not** part of bank's deferred back half — a rule is a filing decision about a merchant, read here with no bank linked at all. |
+| `0b5dc2f` | **The wallets ring** (Wallets tab only — owner's call: no chart on Home, since the breakdown gets its own swipe) **and trip flags.** ⚠️ Only positive balances get an arc; a single fund draws a full circle, not a 360° arc with a seam; a synced wallet uses its live bank balance or it vanishes from a chart of where the money is. ⚠️ The trip card was **not** missing actions — only chrome; `TripAction` is a `.btn-soft` pill now. |
+| `743ec4a` | **Debt payoff**, as a server read. ★ The precedent already existed (`SavingsMap` has called `LoanForecast` since the thin Goals read shipped). ⚠️ **The gate is inside the response, not a 402**: Free keeps the payoff date, only the modelling is withheld. **The slider snaps to server-computed points** — interpolating would invent figures nothing calculated. `available:false` is a real state and the sheet says so in words. |
+| `49febf3` | **Gestures.** Pull down (only at scroll-top, or it eats the scroll) for the full notification list — ⚠️ the phone had been computing notifications and rendering only the *urgent* subset, so the rest were unreachable. Right → Spending (where trips live). ★ **Period stepping did not vanish with the gesture**: the chip grew prev/next arrows, because it was given the swipe originally for costing chip + menu + tap. |
+| `9666fde` | **`GET /breakdown` exists at last** — no route stood behind that chart, which is why `docs/MOBILE.md` records the same mis-sizing eight times. **Ported, not redesigned**, with a test per rule: the ring is spending; **Spent equals the sum of the slices**; Set aside never negative; Income/Set aside take the period's own hero figures when the window *is* the period; a transfer is **ranked in**, not appended. Left swipe wired to it. |
+| `c8c4d16` | **`AddCategory` stops offering a parent it was always going to drop.** The ignoring was deliberate and tested; the *parameter* was the trap. Honouring it would be worse — `FlattenCategoryTree` runs inside `Deserialize`, so a sub-category becomes a Tag on the first read back. Tolerating one is now pinned at the **wire**. ⚠️ Removing it exposed **four silent callers**, two of them tests whose comments claimed nesting that never happened. |
+
+#### ⚠️ Corrections to things said out loud this session
+
+- **The phone's category editor does NOT offer a parent picker.** It was removed in S109 and the comment there says
+  so; a new draft always carries `null`. The trap was the domain parameter plus two comments describing behaviour
+  that did not exist — not a live user-facing bug. Stated wrongly first, corrected on inspection.
+- **The two donuts are different charts.** `home-brk-donut` is the expense breakdown; `fund-donut` is "where your
+  money is". They were conflated in planning and the owner corrected it.
+- **The roadmap artifact in memory had been deleted** — an artifact URL can go stale, so check it resolves before
+  promising an in-place update. Republished: `https://claude.ai/code/artifact/b546fe9d-fc1f-4816-bfb6-275a120ef543`.
+
+#### Next session
+1. ⭐ **Sign in on the emulator and drive all of it.** This is the whole outstanding risk of the session: a swipe
+   that fights the scroll view, a ring with a seam, a slider that snaps wrong, and a column mapper on a real bank
+   CSV all look perfectly fine in code. The emulator is booted and the APK installed.
+2. **Merge and deploy.** Both branches are pushed and green; main and origin/main are behind. Note the previous
+   session's two commits are still undeployed as well.
+3. **Left over from the owner's batch:** the debt web-vs-phone diff beyond payoff ("maybe other stuff too I don't
+   know") was deliberately not guessed at — worth listing now that the payoff read exists.
+4. ⚠️ **`AddCategory`'s sibling traps are worth a look**: `AccountRoundTripTests` was preserving a structure it had
+   never created. Where else does a test's *comment* assert something its code does not?
+
+Previously: 2026-08-21 (Session 113 — **the owner's list is DONE (O14 closed); the Breakdown was rebuilt then
 half-reverted after pushback; and five figures that contradicted each other on screen were traced to real bugs.**
 **524 + 50 + 380 green, pairscan 0. LIVE: `finapp-00322-dh6`, 100% LATEST** — image `finapp:8df7dd7`
 (digest `sha256:6f02ded8…`); the served WASM carries `BalanceBefore`×1, `DebtOwedOn`×3 and `ExtraRepaidAfter`×4,
