@@ -9,16 +9,17 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Quicksand:wght@400;500;600;700&display=swap" />
     <link rel="stylesheet" href="css/bootstrap/bootstrap.min.css" />
-    <link rel="stylesheet" href="css/app.css?v=44" />
+    <link rel="stylesheet" href="css/app.css?v=45" />
     <link rel="stylesheet" href="FinApp.App.Web.styles.css" />
     <link rel="icon" type="image/svg+xml" href="favicon.svg">
     <script>
         // Apply the saved theme before first paint to avoid a flash. Default is dark (the "Tandem × Midnight"
         // direction) — only an explicit 'light' choice opts out.
         try { if (localStorage.getItem('finapp-theme') !== 'light') document.documentElement.classList.add('dark'); } catch (e) { }
-        // Privacy mode, applied before first paint for the same reason as the theme and a sharper one: a reload
-        // in a café must not flash every figure on screen before Blazor has booted.
-        try { if (localStorage.getItem('finapp-private') === '1') document.documentElement.classList.add('private'); } catch (e) { }
+        // ⚠️ Privacy mode used to add a `private` class here, before first paint, so the charts were blurred by CSS
+        // the moment the document existed. The charts are no longer covered (numbers only — see app.css), so the
+        // class had nothing left to style and is gone. Masking is now entirely FmtCurrency's, which means it
+        // begins when Blazor boots; there is nothing to paint before then, because the figures do not exist yet.
     </script>
 </head>
 
@@ -102,10 +103,15 @@
         window.finappGetLandingTab = () => { try { return localStorage.getItem('finapp-landing-tab') || ''; } catch (e) { return ''; } };
         window.finappSetLandingTab = (tab) => { try { localStorage.setItem('finapp-landing-tab', tab || ''); } catch (e) { } };
         // --- Privacy mode (Ctrl/Cmd+Shift+H) -------------------------------------------------------------
-        // The class on <html> does the CSS half — masking the charts — with no round trip; Blazor is told
-        // separately so FmtCurrency can mask the text. Two halves because neither can do the other's job: CSS
-        // cannot rewrite a formatted string, and Blazor cannot blur an SVG it does not own the geometry of.
-        window.finappIsPrivate = () => { try { return localStorage.getItem('finapp-private') === '1'; } catch (e) { return false; } };
+        // JS owns only the SHORTCUT and the persistence; the masking itself is all C# (FmtCurrency). This lives
+        // here rather than in Blazor because a document-level keydown is the one thing a component cannot bind
+        // without owning focus.
+        // ⚠️ The live flag is a VARIABLE that localStorage merely seeds and mirrors — not localStorage itself.
+        // The class on <html> used to hold this state; reading the store in its place looks equivalent until the
+        // store throws (private browsing, storage disabled), where every read answers false and the shortcut can
+        // then only ever turn masking ON. A variable degrades to "works, just doesn't survive a reload".
+        let finappPrivate = (() => { try { return localStorage.getItem('finapp-private') === '1'; } catch (e) { return false; } })();
+        window.finappIsPrivate = () => finappPrivate;
         window.finappPrivacy = {
             dotnet: null,
             init(ref) {
@@ -122,11 +128,11 @@
                 const t = e.target;
                 if (t && (t.isContentEditable || /^(input|textarea|select)$/i.test(t.tagName))) return;
                 e.preventDefault();
-                window.finappSetPrivate(!document.documentElement.classList.contains('private'));
+                window.finappSetPrivate(!window.finappIsPrivate());
             },
         };
         window.finappSetPrivate = (on) => {
-            document.documentElement.classList.toggle('private', !!on);
+            finappPrivate = !!on;
             try { localStorage.setItem('finapp-private', on ? '1' : '0'); } catch (e) { }
             const ref = window.finappPrivacy.dotnet;
             if (ref) ref.invokeMethodAsync('OnPrivacyChanged', !!on);

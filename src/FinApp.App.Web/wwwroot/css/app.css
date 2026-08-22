@@ -432,26 +432,16 @@ html.dark .alert-inline-link:hover { background: #f0c069; border-color: #f0c069;
 html.dark .alert-inline-link:focus-visible { outline-color: #f0c069; }
 
 /* --- Privacy mode (Ctrl/⌘ + Shift + H) ---------------------------------------------------------------
-   Shoulder-surfing cover. The figures themselves are masked in C# (Dashboard.FmtCurrency, the single place
-   every money string in the app is built), so this sheet carries the other half: the SHAPES.
-   ★ Masking the text alone would be a half-measure that reads as full cover — a Breakdown ring or a Trends
-   line tells the story without a single digit, and a user who believes they are covered is worse off than one
-   who knows they are not. The two halves ship together or the mode promises more than it delivers.
-   ⚠️ Lives in app.css, not a scoped sheet: `html.private` has to reach INTO component scopes (the progress
-   ring is its own component), and a scoped rule cannot select an ancestor outside its own scope.
-   ⚠️ Names are deliberately untouched. What leaks a life is the amounts; leaving categories, buckets and
-   merchants readable is what keeps the screen navigable while the mode is on. */
-html.private svg.trend-chart,
-html.private .brk-chart,
-html.private .cbar-track,
-html.private .pring,
-html.private .mini-trend svg,
-html.private .ms-bar {
-    filter: blur(6px);
-    /* The blur is the point, so it must not be defeatable by dragging over the text nodes underneath it. */
-    user-select: none;
-    pointer-events: none;
-}
+   Shoulder-surfing cover. The figures are masked in C# (Dashboard.FmtCurrency, the single place every money
+   string in the app is built), and that is the WHOLE mode — this sheet only styles the indicator.
+   ⚠️ It shipped with the charts blurred too: `html.private` put a blur(6px) on the Trends chart, the Breakdown
+   ring, the progress rings and the bars, on the argument that a ring tells the story without a single digit.
+   The owner used it and the blur read as damage rather than as cover, so the shapes are left alone. The honest
+   cost, so nobody has to rediscover it: a masked screen still shows the PROPORTIONS — which category is the big
+   one, how full a goal is. That is what the indicator's wording is for. It says "Figures hidden", which is now
+   exactly and only what the mode does; do not let it drift into "Private mode".
+   ⚠️ Names are deliberately untouched either way. What leaks a life is the amounts; leaving categories, buckets
+   and merchants readable is what keeps the screen navigable while the mode is on. */
 /* The header indicator. A full-width bar above everything, because the one thing worse than a masked screen is
    a masked screen with no explanation — and it names the shortcut, so the way out is always on screen.
    It is also the ONLY visible control for the mode, and it only ever turns masking OFF: a button that could
