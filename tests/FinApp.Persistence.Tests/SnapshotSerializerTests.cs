@@ -30,7 +30,10 @@ public class SnapshotSerializerTests
         account.SetContributionCategoryIcon(salary.Id, "💼");
 
         var food = account.AddCategory("Food", icon: "🍽️");
-        account.AddCategory("Groceries", food.Id); // nested, no explicit icon
+        // ⚠️ Was written as "Groceries nested under Food" and never was: AddCategory took a parent id and dropped
+        // it. Top-level, like every category since the tree was flattened; what this row actually exercises is a
+        // category with no explicit icon, which is the fallback the assertions below care about.
+        account.AddCategory("Groceries");
         var fun = account.AddCategory("Fun");
 
         var vacations = account.AddSavingCategory("Vacations");

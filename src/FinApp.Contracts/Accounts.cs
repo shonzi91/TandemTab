@@ -212,8 +212,13 @@ public record MoveSavingsRequest(Guid FromBucketId, Guid ToBucketId, decimal Amo
 
 // --- Account structure: spend categories, funds, contribution categories ------------------------------------
 
-/// <summary>Add a spend category. <see cref="ParentId"/> nests it under another; <see cref="Essential"/> marks it an
-/// essential spend (advisory). Mirrors <c>BudgetingState.AddCategory</c>.</summary>
+/// <summary>Add a spend category. <see cref="Essential"/> marks it an essential spend (advisory).
+/// Mirrors <c>BudgetingState.AddCategory</c>.
+/// <para>⚠️ <b><see cref="ParentId"/> is IGNORED and always was.</b> It is kept only so an older client that still
+/// sends one is not rejected; the category it gets back is top-level. Nesting cannot be created — the tree is
+/// flattened into tags on every load (<c>Account.FlattenCategoryTree</c>), so a sub-category would not survive to
+/// be read back. It documented itself as "nests it under another" for as long as it did nothing, which is how the
+/// phone's category editor came to offer a parent picker that quietly changed nothing.</para></summary>
 public record CreateCategoryRequest(string Name, Guid? ParentId = null, string? Icon = null, bool Essential = false);
 
 /// <summary>Edit a spend category's name and icon (a null icon clears it). <see cref="Essential"/> is applied only when

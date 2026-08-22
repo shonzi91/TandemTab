@@ -1941,7 +1941,10 @@ accounts.MapPost("/{id:guid}/categories", async (Guid id, CreateCategoryRequest 
     var userId = user.UserId();
     var (version, categoryId) = await svc.MutateAsync(userId, id, account =>
     {
-        var category = account.AddCategory(req.Name, req.ParentId, req.Icon);   // validates parent + unique name
+        // ⚠️ req.ParentId is deliberately NOT passed: nesting cannot be created (see Account.AddCategory), and the
+        // old comment here claimed this call "validates parent", which it never did. The field stays on the wire
+        // for older clients that still send one — it is ignored, and the category comes back top-level.
+        var category = account.AddCategory(req.Name, req.Icon);   // validates the unique name
         if (req.Essential) account.SetCategoryEssential(category.Id, true);
         return category.Id;
     }, ct);

@@ -44,11 +44,12 @@ public class CategoryAdminTests
     public void Categories_are_flat_so_nothing_can_be_created_under_another()
     {
         // Sub-categories were removed — see CategoryFlattenTests for what happens to the ones already out there.
-        // A parent id is ignored rather than rejected so an older client's create still succeeds.
+        // ⚠️ AddCategory no longer takes a parent id at all: it used to, and dropped it, which reads as an offer.
+        // Tolerating one from an older client is a wire concern now — see CategoryApiTests.
         var account = new Account("Personal", Eur);
         var kids = account.AddCategory("Kids");
 
-        var kid1 = account.AddCategory("Kid1", kids.Id);
+        var kid1 = account.AddCategory("Kid1");
 
         Assert.True(kid1.IsRoot);
         Assert.DoesNotContain(account.Categories, c => !c.IsRoot);

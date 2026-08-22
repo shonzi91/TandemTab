@@ -370,7 +370,20 @@ public sealed class Account : Entity
     /// Ignored. Kept on the signature so an older client posting a parent still gets its category created —
     /// filed at the top level — instead of a 400 it can't act on. Nothing in the app sends one any more.
     /// </param>
-    public Category AddCategory(string name, Guid? parentId = null, string? icon = null)
+    /// <summary>
+    /// Add a top-level spend category.
+    /// <para>
+    /// ⚠️ <b>There is deliberately no <c>parentId</c>.</b> It used to take one and silently drop it, which is worse
+    /// than not offering it: a caller could pick a parent, get no error, and end up with a top-level category —
+    /// which is exactly what the phone's category editor was doing. Nesting cannot be created at all, because
+    /// <see cref="FlattenCategoryTree"/> runs inside <c>AccountSnapshotSerializer.Deserialize</c>, so a
+    /// sub-category would be turned into a <see cref="Tag"/> the first time the account was loaded. The parameter
+    /// is gone so the impossibility is a compile error rather than a surprise.
+    /// </para>
+    /// <para>Tags are the axis sub-categories used to be — and a better one, since a tag can span two categories,
+    /// which a sub-category never could.</para>
+    /// </summary>
+    public Category AddCategory(string name, string? icon = null)
     {
         if (_categories.Any(c => NameEquals(c.Name, name)))
             throw new InvalidOperationException($"A category named “{name.Trim()}” already exists.");
