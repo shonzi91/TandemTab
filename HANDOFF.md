@@ -1,6 +1,130 @@
 # TandemTab (FinApp) — session handoff
 
-Last updated: 2026-08-22 (Session 114 — **five items from the owner's daily use. Two of the five turned out to be
+Last updated: 2026-08-22 (Session 114, second half — **D2 shipped after all, the tag box was three bugs wearing
+one coat, and the Goals tab got a real money column plus a shoulder-surfing toggle.**
+**550 + 56 + 407 green, pairscan 0.** Commits `94d898f` (D2), `9e87e5f` (tags), `dce266e` (Goals + privacy).
+⚠️ **Deploy status is at the end of this entry** — check it before assuming what is live.)
+
+#### ★★ D2 — a bill in one account can service a loan in another
+
+The half deliberately left unbuilt earlier the same session. Unlike the cross-account trip — where the write stays
+one-sided and only the read fans out — **this is a genuine two-account WRITE on every post**: the expense rows land
+in the account that paid, the balance moves in the account that owes. Three routes moved onto `MutateTwoAsync`
+(create, edit, confirm) plus the installment undo, each with **one body run against `(billAccount, debtAccount)`**
+so the cross-account path cannot drift from the ordinary one.
+
+★ **Even LINKING is two-account** — `SyncLoanDueDay` and `DefaultLoanToPaymentDriven` both write to the bucket's own
+side. Easy to miss because on a same-account bill they touch the same aggregate.
+★ **`Expense.DebtBucketAccountId` is what makes the undo work.** Removing an installment reverses the principal
+against whichever bucket the caller hands it, and a caller that only looks in this account finds nothing for a
+foreign loan — the rows would vanish while the balance kept the payment. That half-undo is the exact state
+`RemoveInstallmentGroup` exists to prevent.
+★ **The degrade is now VISIBLE.** `PostRecurring` already fell back to a plain lump when the bucket was missing —
+right for "the other account is unreachable", wrong to leave silent, because the ledger then looks correct while
+the loan quietly stalls. It reports `LastPostDegradedToLump`, the route returns `LoanUnreachable`, and the client
+raises an urgent dismissible notice. **Counted, not a bool**, so the second month re-raises it.
+⚠️ **`UpdateRecurringRequest.LinkedDebtAccountId` is NOT authoritative and its rule is subtler than the excess
+field's**: absent LEAVES THE OWNER AS IT WAS when the bucket id is unchanged, and otherwise means "this account".
+Android re-sends the bucket id alone on every unrelated edit; read plainly that would silently re-home a working
+link. Changing the BUCKET does restate the pair, because bucket and owner are one fact.
+⚠️ **`Period.LastPostDegradedToLump` needed `p.Ignore()`** — a new public property on an EF-mapped entity, which
+failed every persistence and server test at once with `PendingModelChangesWarning` until it was ignored.
+✅ **11 new server tests** covering both-sides-commit, the capped split across the boundary, the undo, the
+non-authoritative edit, the currency gate, 404 on a foreign account, and the degrade path.
+
+#### ★★ The tag box was three bugs wearing one coat
+
+The owner reported them separately — "sometimes it does not save the tag", duplicate-name validation, and wanting
+a search box. They are one thing: **the field had no single answer to "what does this text mean?"** It meant
+"nothing until you press ＋" (so typing and saving lost it), it meant "create, never select" (so an existing name
+was an error), and its refusal was silent (so a duplicate looked like a success).
+
+★ The field has one meaning now — **the text is both a query and a name, resolved once, at save**. The bug fix and
+the new box are literally the same code path (`EnsureTypedTagAsync` / `commitTypedTag`).
+⚠️ **Three save paths had to commit it**, and two are easy to miss because they snapshot the tag id into a draft
+first: "+ Add another expense" and pulling a staged row back to edit.
+★ Off a trip the picker is now **the five most-used chips + one find-or-add box**; suggestions from two characters
+(one letter matches most of the list); a prefix match ranks above a contains; no match says the tag will be created
+on save. On a trip the six predefined labels all stay — each is bound to a category, so one tap files and labels,
+and a search box over six chips is furniture.
+★ **Ranking is `TagOptionDto.UseCount`, computed server-side across every period.** Android holds only the current
+month's rows and would otherwise answer "most used this month" — empty on the 1st, reshuffling all month.
+⚠️ **The domain always rejected duplicates** (`AddTag` / `RenameTag`, case-insensitive) — the gap was the UI
+swallowing the refusal. The manage sheet's add box cleared itself and returned; the rename box had no check at all.
+Both now share one predicate that **names the clash**, and says when the clash is an ARCHIVED tag — the case that
+produces "but I don't have one!".
+⚠️ Android's new callback is **`onAddExpenseTag`, not `onAddTag`** — HomeScreen already had an `onAddTag` with a
+different signature, and two callbacks one letter apart on the same screen is how the wrong one gets wired.
+
+#### ★★ Goals — one money column, and a header that totals it
+
+`.cat-row-amt` was just the last flex item on a `space-between` row, so its right edge only lined up when the
+trailing icon cluster happened to match — and it doesn't (an expenses fund gets a `plus`, an open bucket `coins`, a
+done one neither). **Ragged by 32px.** Worse, the slot meant a different thing per kind: three kinds showed the
+money set aside, a debt showed the balance owed, so **the column summed to nothing**.
+
+★ **One figure per row, always the set-aside.** Everything that shared the slot — a debt's owed/original + APR, a
+goal's target, the "· saved" qualifier, the done badge — moved to a new `.goal-sub` line under the NAME. Under the
+name, not the figure: a right-aligned second line would make the column two lines tall on some rows and one on
+others, which is the raggedness being removed.
+★ **Two custom properties on the section** carry the geometry. ⚠️ On the SECTION, not `.goal-list` — the header is
+the list's SIBLING and would not inherit. The payoff is the breakpoint: below 560px the cluster drops to its own
+line, so re-declaring `--goal-acts-w: 0` moves the rows AND the header together.
+⚠️⚠️ **I broke the column mid-verification by "tightening" 135px to a computed 132**, having dropped the 3×1px gaps
+from the arithmetic — and the browser had already measured 135. At 132 the four-button rows overflowed to their
+natural width while three-button rows stayed pinned, splitting the column into two edges 3px apart. **The comment
+now says to re-measure with `min-width: 0`, not to recompute.** Measurement beat arithmetic; it usually does.
+★ **The header total is Σ of the column**, so header and rows cannot disagree by construction. **4 Domain tests**
+pin it — and the first one matters most: the new figure **equals** the old `ClosingBalance − FreeToAllocate` on the
+latest period (the bank adjustment cancels, making that expression exactly `AccumulatedTotal`), so this is a
+*guarantee*, not a change of number. The other three document the three divergences — archived buckets, closed
+periods, latent nested buckets — in each of which the column is the honest figure.
+⚠️ **Known edge, deliberately not chased:** line two ("saved this period") is a period delta and cannot be a column
+sum, so it still counts archived buckets. Fund a bucket and archive it in the same period and line two reads higher
+than line one. Fixing it means reopening what S113 settled about drawdowns.
+⚠️ **A debt with nothing staged reads €0.00** where it used to show the balance owed. Deliberate, balance one line
+below — worth the owner's eye.
+★ **Revert point for the goal target** (the owner's "let's try 1, if I don't like it we can go back to 2") is one
+hunk, marked in the code: `.cat-row-amt`'s content plus the `g is not null` branch of `.goal-sub`.
+✅ Measured live: **all six rows and both header figures at right = 902** (334 at 375px), header €5,760.00 against
+€5,760.00 of visible rows with an archived €275 correctly excluded, long name ellipsised with the figure holding.
+
+#### ★ Privacy mode — Ctrl/⌘ + Shift + H
+
+★ Masks at **`FmtCurrency`**, the single place every money string in the app is built (~260 call sites), so nothing
+added later can escape it — plus `TrendTick` (abbreviated axis money that never touches `Fmt`) and a new `FmtPct`.
+★ **Chart SHAPES blur too.** Text-only masking is a half-measure that reads as full cover: a Breakdown ring or a
+Trends line tells the story without a single digit, and a user who believes they are covered is worse off than one
+who knows they are not. `html.private` lives in `app.css` because it must reach into component scopes.
+★ **Names stay readable** — what leaks a life is the amounts, and leaving categories and merchants legible keeps
+the screen navigable while it is on.
+⚠️ The indicator is **mandatory**: a masked app with no explanation reads as broken. It names the shortcut and is
+the only visible control — and it only ever turns masking OFF.
+⚠️ The shortcut is ignored while typing, or pressing H in a note toggles the whole UI.
+⚠️ **`app.css` changed → `index.html`'s `?v=` went 43 → 44**, or returning users keep the stale sheet and get no blur.
+✅ Verified both themes at 1280 and 375: masking covers rows, header, sub-lines, APR and axis labels; ring and bars
+blur; survives a server restart + reload; typing "h" in an input does not toggle; the indicator restores everything.
+
+#### Next session
+1. **Android's flip-to-hide is designed but NOT built.** `TYPE_ACCELEROMETER`, `z < -9`, ~1s debounce, foreground
+   only. ★ **One-directional — face-down turns masking ON, never off**: a toggle would mean putting the phone down
+   face-up in a café *unmasks* it, and people put phones face-down constantly. Opt-in in Settings, off by default.
+   Design is in the session plan at `~/.claude/plans/sequential-greeting-frog.md`.
+2. ⚠️ **The emulator session is now the blocker for three things**, not one: batch 5's dialogs (S112), the tag
+   picker rework, and flip-to-hide. Android gained real UI this round (the find-or-add tag box), so it is no longer
+   only DTO drift. `:app:compileDebugKotlin` is clean and **nothing more is claimed**.
+3. **Item A (the bank-confirm merchant rule) is still unverified in a browser** — it needs a connected bank.
+4. **Then the ranked queue**: the foreign-cash wallet figure on Android, the phone-linked bank connection, and
+   `POST /bank/ack` without its undo.
+
+⚠️ **Verification-fixture notes:** `SaveSavingBucketRequest` has no `kind` field — it is `IsDebt` / `IsInvestment` /
+`IsExpensesFund` booleans, and a wrong guess silently creates a plain savings bucket. Savings are funded through
+`POST /savings/deposits` (`AddSavingDepositRequest`), not an `/allocations` route. The rest of the fixture traps are
+in [[reference-fixture-snapshot-traps]].
+
+---
+
+Previously: 2026-08-22 (Session 114 — **five items from the owner's daily use. Two of the five turned out to be
 the same root cause; one was a money bug that had been mis-splitting a real loan payment every month; and the
 cross-account ask got the half that is safe to build.**
 **546 + 54 + 395 green, pairscan 0. LIVE: `finapp-00323-2mn`, 100% LATEST** — image `finapp:f1e0b90`
