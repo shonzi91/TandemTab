@@ -3269,53 +3269,6 @@ else
             @* `.goal-panel` carries the money column's two custom properties. On the SECTION, not on `.goal-list`,
                because the header below is the list's sibling and would not inherit from it. *@
             <section class="panel goal-panel">
-                @* The summary header, aligned to the rows' money column. Shown only under the All filter: beneath a
-                   kind chip it would be summing a subset while calling itself "Total saved".
-                   ⚠️ Reads the LOCAL `goalFilter`, not `_goalFilter` — an account whose last debt was removed while
-                   filtered to Debts falls back to All, and must get its header back along with the list.
-                   ⚠️ With only one kind present the chip row is hidden but `goalFilter` is still All, so a
-                   single-kind account does show these. Correct: All is genuinely the active filter. *@
-                @if (goalFilter == GoalFilter.All)
-                {
-                    @* ★ The total is Σ OF THE COLUMN beneath it, so the header and the rows cannot disagree — a
-                       header that totals something other than the list under it is the "two figures about one
-                       number" trap this codebase keeps having to fix.
-                       It used to be DisplayClosingBalance − DisplayFreeToAllocate. The bank adjustment cancels in
-                       that subtraction, so that expression was exactly SavingsReportService.AccumulatedTotal —
-                       account-wide and as-of-TODAY, where this is per-bucket and as-of-THIS-PERIOD. They agree
-                       on the latest period with nothing archived (pinned by
-                       SavingsTests.Column_sum_equals_the_all_time_total_on_the_latest_period), and where they
-                       diverge this one is the honest answer: it drops archived buckets the list no longer shows,
-                       and on a closed period it reports what was held THEN.
-                       ⚠️ Money has operator+ but no LINQ Sum overload — sum `.Amount`, then re-stamp the currency. *@
-                    var _savedTotal = State.Money(goalBuckets.Sum(b => b.Total.Amount));
-                    @* ⚠️ `.goal-summary` is SHARED with the Spending tab's view switcher (`.goal-summary.spend-summary`),
-                       so all the layout hangs off the `-hero` modifier — restyling the base rules would silently
-                       redraw a second screen. *@
-                    <div class="goal-summary goal-summary-hero">
-                        <div class="goal-stat goal-stat-hero">
-                            <span class="goal-stat-k">@Loc["Total saved"]</span>
-                            <span class="goal-stat-v goal-stat-fig">@Fmt(_savedTotal)</span>
-                            @if (State.SavingsThisPeriod.Amount > 0m)
-                            {
-                                @* Line two of the same grid, so this figure lands directly under the total and both
-                                   land over the rows' figures. The rate rides the LABEL cell because it qualifies
-                                   the words, not the number.
-                                   ⚠️ This one CANNOT be a column sum: SavingsThisPeriod is a period delta while the
-                                   column holds accumulated balances. Under the All filter it is the same population
-                                   as the column apart from archived buckets — said here rather than implied. *@
-                                <span class="goal-stat-k goal-stat-k2">
-                                    @Loc["saved this period"]
-                                    @if (State.PeriodMoneyInRate is { } prate && prate > 0m)
-                                    {
-                                        <span class="settle-tag" title="@string.Format(Loc["Money in this period: {0} came in, plus {1} carried over from before."], Fmt(State.FreshInThisPeriod), Fmt(State.CarriedInThisPeriod))">@FmtPct(Math.Round(prate * 100m))% @Loc["of money in"]</span>
-                                    }
-                                </span>
-                                <span class="goal-stat-fig goal-stat-v2">+@Fmt(State.SavingsThisPeriod)</span>
-                            }
-                        </div>
-                    </div>
-                }
                 @* F4 round-ups live with savings — this is where the mind is on setting money aside, not the spending
                    Breakdown. Only the cumulative painless total, and only once there IS one: it's a reward for using
                    round-ups. The "would have set aside X at step 1 or 5" what-if that used to sit here was retired —
@@ -3364,6 +3317,37 @@ else
                         })
                     </p>
                 }
+                @* ★ The total sits directly ON TOP OF the first goal, not in a header tile at the top of the panel.
+                   The figure's whole claim is "this is the sum of the column below it", and a tile separated from
+                   the list by the round-ups line, the filter chips and possibly an empty-state hint asks the reader
+                   to hold that claim across three unrelated things. Touching the list is what makes it read as the
+                   column's total rather than as one more headline number.
+                   ⚠️ Shown only under the All filter — beneath a kind chip it would be summing a subset while
+                   calling itself "Total saved". Reads the LOCAL `goalFilter`, not `_goalFilter`: an account whose
+                   last debt was removed while filtered to Debts falls back to All and must get this back with the
+                   list. With one kind present the chip row is hidden but `goalFilter` is still All, so a
+                   single-kind account does show it — correct, All is genuinely the active filter.
+                   ⚠️ And only with rows to total: "Total saved €0.00" above the "nothing here yet" hint is a
+                   figure about nothing. *@
+                @if (goalFilter == GoalFilter.All && goalBuckets.Count > 0)
+                {
+                    @* ★ Σ OF THE COLUMN beneath it, so this and the rows cannot disagree — a total that sums
+                       something other than the list under it is the "two figures about one number" trap this
+                       codebase keeps having to fix.
+                       It used to be DisplayClosingBalance − DisplayFreeToAllocate. The bank adjustment cancels in
+                       that subtraction, so that expression was exactly SavingsReportService.AccumulatedTotal —
+                       account-wide and as-of-TODAY, where this is per-bucket and as-of-THIS-PERIOD. They agree
+                       on the latest period with nothing archived (pinned by
+                       SavingsTests.Column_sum_equals_the_all_time_total_on_the_latest_period), and where they
+                       diverge this one is the honest answer: it drops archived buckets the list no longer shows,
+                       and on a closed period it reports what was held THEN.
+                       ⚠️ Money has operator+ but no LINQ Sum overload — sum `.Amount`, then re-stamp the currency. *@
+                    var _savedTotal = State.Money(goalBuckets.Sum(b => b.Total.Amount));
+                    <div class="goal-total-line">
+                        <span class="goal-stat-k">@Loc["Total saved"]</span>
+                        <span class="goal-stat-v goal-stat-fig">@Fmt(_savedTotal)</span>
+                    </div>
+                }
                 <div class="cat-list goal-list">
                     @foreach (var b in goalBuckets) { @goalRow(b) }
                 </div>
@@ -3405,10 +3389,35 @@ else
                     }
                 </section>
             }
-            @if (State.SavingDepositsThisPeriod.Any() || State.SavingMovementsThisPeriod.Any())
+            @* ⚠️ The third condition is not padding. `SavingsSetAsideTotal` counts every non-transfer positive
+               allocation INCLUDING round-up sweeps, while `ManualSavingDeposits` excludes anything with a
+               SourceExpenseId — so a period funded only by round-ups has a figure and no rows, and without this
+               the figure would have nowhere to live and simply vanish. *@
+            @if (State.SavingDepositsThisPeriod.Any() || State.SavingMovementsThisPeriod.Any() || State.SavingsThisPeriod.Amount > 0m)
             {
                 <section class="panel">
                     <h2>@Loc["Goals activity"]</h2>
+                    @* ★ The period figure lives HERE, with the movements, and deliberately not with the goals.
+                       It is a period delta; the column above is a set of accumulated balances. Sitting it under
+                       the goals' total invited exactly the reading it cannot support — that the two are the same
+                       population measured twice — when in fact it does not contain the goals' figures at all.
+                       ⚠️ It is NOT a sum of the rows below it either, and is styled as a caption rather than
+                       aligned into their amount column for that reason: `SavingsSetAsideTotal` is deposits minus
+                       what was released to a budget, while this list also shows bucket-to-bucket movements the
+                       total ignores. Right-aligning it into the column would promise an addition that fails. *@
+                    @if (State.SavingsThisPeriod.Amount > 0m)
+                    {
+                        <p class="goal-period-line">
+                            <span class="goal-stat-k2">
+                                @Loc["saved this period"]
+                                @if (State.PeriodMoneyInRate is { } prate && prate > 0m)
+                                {
+                                    <span class="settle-tag" title="@string.Format(Loc["Money in this period: {0} came in, plus {1} carried over from before."], Fmt(State.FreshInThisPeriod), Fmt(State.CarriedInThisPeriod))">@FmtPct(Math.Round(prate * 100m))% @Loc["of money in"]</span>
+                                }
+                            </span>
+                            <span class="goal-stat-v2">+@Fmt(State.SavingsThisPeriod)</span>
+                        </p>
+                    }
                     <ul class="list list-even">
                         @foreach (var d in State.SavingDepositsThisPeriod)
                         {
@@ -9211,8 +9220,8 @@ else
         {
             _backRef = DotNetObjectReference.Create(this);
             try { await JS.InvokeVoidAsync("finappBack.init", _backRef); } catch { /* host without the shim */ }
-            // Privacy mode. The class on <html> was already applied before first paint (index.html), so this only
-            // catches the C# side up with what the DOM has been showing since load, and registers the shortcut.
+            // Privacy mode: register the document-level shortcut and read back the persisted flag. Masking is
+            // entirely C#'s now, so this is the moment it begins — there is nothing on screen before it.
             try
             {
                 await JS.InvokeVoidAsync("finappPrivacy.init", _backRef);
@@ -13761,14 +13770,15 @@ else
     }
 
     /// <summary>
-    /// Shoulder-surfing mode: every figure the app renders becomes <see cref="MaskedFigure"/> and the charts are
-    /// blurred by CSS. Toggled with Ctrl/Cmd+Shift+H and persisted, so a reload in a café does not undress the
-    /// screen.
+    /// Shoulder-surfing mode: every figure the app renders becomes <see cref="MaskedFigure"/>. Toggled with
+    /// Ctrl/Cmd+Shift+H and persisted, so a reload in a café does not undress the screen.
     /// <para>★ Names are deliberately NOT masked — categories, buckets and merchants stay readable so the screen is
     /// still navigable while it is on. What leaks a life is the amounts.</para>
-    /// <para>⚠️ Masking the text alone would be a half-measure that reads as full cover: a Breakdown ring or a
-    /// Trends line tells the story without a single digit. The shapes are blurred by `html.private` in app.css, and
-    /// the two halves must ship together or the mode promises more than it does.</para>
+    /// <para>⚠️ Figures ONLY. It shipped with the charts blurred as well, arguing that a Breakdown ring tells the
+    /// story without a single digit; the owner used it and the blur read as damage rather than as cover, so the
+    /// shapes were let alone. The cost is real and is stated rather than hidden: a masked screen still shows the
+    /// proportions. That is what the indicator's wording carries — it says "Figures hidden", which is exactly and
+    /// only what this does. Do not let it drift into "Private mode".</para>
     /// </summary>
     private static bool PrivacyMode { get; set; }
 

@@ -1787,37 +1787,49 @@ html.dark .goal-sub-done { color: #57d9a3; }
 .goal-row .cat-row-hit { padding-top: 9px; padding-bottom: 9px; }
 .goal-row .cbar-track { margin-top: 4px; }
 
-/* O12 → the two-line summary bar. `.goal-stat` is shared with the Spending view switcher, so everything here
-   still hangs off the `-hero` modifier and the base rules keep their background, border and radius.
-   ★ A 2-column GRID, not flex: the figures must land in the same column as the rows' amounts below, and only a
-   grid gives two rows one shared right-hand track. The old flex + `margin-left:auto` put each line's tail
-   wherever its own content happened to end — precisely the drift this removes.
-   The right padding IS the money column: the cluster the rows must clear, plus the row's own hit padding. Both
-   read the properties, so the header cannot drift from the rows — including at 560px, where re-declaring
-   `--goal-acts-w` moves this padding too.
-   ⚠️ Sub-pixel: the tile has a 1px border and `.cat-row` has 0.5px, so the column is half a pixel off. Not
-   chased — a 0.5px fudge inside this calc() is something nobody could later justify. */
-.goal-stat-hero {
-    flex: 1 1 100%;
+/* O12 → the column's total, as a caption sitting directly on top of the first goal row.
+   ★ A 2-column GRID, not flex: the figure must land in the same column as the rows' amounts below it, and the
+   right padding IS that column — the action cluster the rows must clear, plus the row's own hit padding. It reads
+   the same two properties the rows do, so it cannot drift from them, including at 560px where re-declaring
+   `--goal-acts-w` moves this padding too. Flex + `margin-left:auto` would put the tail wherever the content
+   happened to end, which is the drift this exists to remove.
+   ⚠️ NO tile background or border, unlike the `.goal-stat` card this replaced. It is not a header any more; it is
+   the last line before the list, and a tinted card there competes with the rows it is totalling. It keeps the
+   eyebrow and the brand green — the typography is what carries "this belongs to the column", not a box.
+   ⚠️ Sub-pixel: `.cat-row` has a border this line does not, so the two right edges differ by exactly its rendered
+   width — measured at 0.8px here (0.5px authored, rounded up by the device pixel ratio). Both edges are otherwise
+   the same arithmetic off the same panel edge, so the gap is that border and nothing else. Not chased: a sub-pixel
+   fudge inside this calc() is something nobody could later justify, and it moves with the display anyway.
+   ⚠️ `margin-bottom` is deliberately tight. The gap between this and the first row is the only thing saying the
+   two belong together; open it up and it becomes a floating headline again. */
+.goal-total-line {
     display: grid; grid-template-columns: 1fr auto; align-items: baseline;
-    gap: 2px 10px;
-    padding: 7px calc(var(--goal-acts-w) + var(--goal-row-pad)) 7px 14px;
+    gap: 10px;
+    padding: 0 calc(var(--goal-acts-w) + var(--goal-row-pad)) 0 14px;
+    margin: 4px 0 5px;
 }
-.goal-stat-hero .goal-stat-v { font-size: 1.3rem; }
-/* Both figures share the right track. Alignment only — `.goal-stat-v` keeps its own green (dark pair above) and
-   `.goal-stat-v2` declares its own quieter one. */
+/* Smaller than the 1.3rem it was as a header: it is now a caption on the list rather than the panel's headline,
+   and at the old size it out-shouted every row it totals. The colour is untouched (`.goal-stat-v` and its dark
+   pair above) — this is a demotion in scale, not in meaning. */
+.goal-total-line .goal-stat-v { font-size: .95rem; }
 .goal-stat-fig { justify-self: end; text-align: right; white-space: nowrap; }
-/* Line two's label: lower-case running text rather than line one's upper-case eyebrow, and it carries the rate
-   pill inline because the rate qualifies the WORDS, not the number. */
+/* "saved this period", now a caption under the Goals-activity heading rather than line two of the goals header.
+   ★ Left-aligned, NOT in the rows' amount column, and that is a statement rather than laziness: the figure is
+   neither a sum of the goal column (it is a period delta over accumulated balances) nor a sum of the movements
+   listed under it (it nets deposits against releases to budget and ignores bucket-to-bucket transfers). Putting
+   it at the head of a column of numbers would promise an addition that does not work out. */
+.goal-period-line { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 8px; margin: 2px 0 10px; }
+/* Lower-case running text rather than the total's upper-case eyebrow, and it carries the rate pill inline
+   because the rate qualifies the WORDS, not the number. */
 .goal-stat-k2 { text-transform: none; letter-spacing: 0; font-size: .74rem; font-weight: 600; color: #6b7d72;
     display: inline-flex; align-items: center; flex-wrap: wrap; gap: 4px 6px; }
 html.dark .goal-stat-k2 { color: #9fb0a6; }
-/* A supporting fact under the hero, so muted body colour rather than the hero's brand green — two greens of
-   different weights on adjacent lines read as two unrelated statements. */
+/* Muted body colour rather than the total's brand green — this is a different measurement of a different
+   population, and painting it the same green would say it was the same kind of fact. */
 .goal-stat-v2 { font-size: .84rem; font-weight: 700; color: #6b7d72; }
 html.dark .goal-stat-v2 { color: #9fb0a6; }
-/* The pill is already spaced by the grid gap; its own left margin would double it. */
-.goal-stat-hero .settle-tag { margin-left: 0; }
+/* The pill is already spaced by the flex gap; its own left margin would double it. */
+.goal-period-line .settle-tag { margin-left: 0; }
 @media (max-width: 560px) {
     /* ★ Below 560 the base rule drops `.cat-row-acts` onto a full-width line of its own, so there is no cluster
        left to clear and the column's only inset is the hit button's padding. Re-declaring the property moves the
