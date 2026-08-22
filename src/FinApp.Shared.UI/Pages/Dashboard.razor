@@ -55,6 +55,18 @@ else
         var bellCount = bellDue.Count(n => !n.Settled) + bellSuggest.Count(n => !n.Settled);
     }
     <header class="dash-head">
+        @* ⚠️ The indicator is mandatory, not decoration. An app that has hidden its own numbers with no
+           explanation reads as broken — and the person most likely to hit Ctrl+Shift+H is the one who did not
+           know it existed. It names the shortcut so the way out is on screen, and it is the ONLY visible control
+           for the mode: a button that could turn masking ON would be one more thing to hit by accident on a
+           screen full of money. *@
+        @if (PrivacyMode)
+        {
+            <button type="button" class="privacy-bar" @onclick="ExitPrivacyMode">
+                <Icon Name="lock" /> <span>@Loc["Figures hidden"]</span>
+                <span class="privacy-bar-key">@Loc["Ctrl/⌘ + Shift + H to show"]</span>
+            </button>
+        }
         <div class="hdr-top">
             <div class="acct-wrap">
                 <button class="acct-chip" title="@Loc["Switch account"]" @onclick="() => _acctDropOpen = !_acctDropOpen">
@@ -372,7 +384,7 @@ else
                     <strong class="bal-alloc-v" title="@Loc["Set aside for savings this period — reserved, not spent."]">@Fmt(_savedPeriod)</strong>
                     @if (_savedRate is { } _sr && _sr > 0m)
                     {
-                        <small class="bal-sub" title="@_moneyInTip">@(Math.Round(_sr * 100m).ToString("0", System.Globalization.CultureInfo.InvariantCulture))% @Loc["of money in"]</small>
+                        <small class="bal-sub" title="@_moneyInTip">@FmtPct(Math.Round(_sr * 100m))% @Loc["of money in"]</small>
                     }
                 </div>
                 <div class="bal-part">
@@ -2881,14 +2893,51 @@ else
                                                 }
                                             }
                                         }</span>
-                                    <span class="cat-row-amt">
-                                        @if (done) { <span class="good-text">@(isDebt ? Loc["Paid off"] : Loc["Goal reached"])</span> }
-                                        else if (isDebt) { var _apr = State.SavingBucketDebtRate(bucketId); <text>@Fmt(debtOwed)<span class="cat-row-nb"> / @Fmt(debtOrig) @Loc["left"]@if (_apr > 0m) { <text> · @_apr.ToString("0.##")% APR</text> }</span></text> }
-                                        else if (isInvestment) { <text>@Fmt(total)<span class="cat-row-nb"> · @Loc["invested"]</span></text> }
-                                        else if (g is not null) { <text>@Fmt(total) / @Fmt(g.Goal!.Value)</text> }
-                                        else { <text>@Fmt(total)<span class="cat-row-nb"> · @Loc["saved"]</span></text> }
-                                    </span>
+                                    @* ★ ONE figure, and on every kind of goal it is the same fact: what is currently
+                                       set aside in this bucket. Everything that used to share this slot — a debt's
+                                       owed/original, a goal's target, the "· saved" qualifier, the done badge — has
+                                       moved to `.goal-sub` below.
+                                       That is what makes the column summable: the header total is literally Σ of
+                                       these, so the two cannot disagree. A column that showed "owed" on debt rows
+                                       and "saved" everywhere else added up to nothing, which is why a debt now
+                                       reports its set-aside like every other kind.
+                                       ⚠️ A debt with nothing staged therefore reads €0.00 where it used to show the
+                                       balance owed — deliberate, with the balance one line beneath it. *@
+                                    <span class="cat-row-amt">@Fmt(total)</span>
                                 </span>
+                                @* The qualifier line: what the figure above MEANS for this kind of goal. Left-aligned
+                                   under the name rather than under the figure — a right-aligned second line would
+                                   make the money column two lines tall on some rows and one on others, which is the
+                                   exact raggedness this redesign removes. Rendered only when there is something to
+                                   say, so no row gains an empty line. *@
+                                @if (done)
+                                {
+                                    @* The done statement lives here now instead of REPLACING the figure. A word in a
+                                       number column breaks the alignment the column exists for, and it demoted the
+                                       figure the reader came for. The 🎉 badge stays beside the name, so "finished"
+                                       still reads without the eye travelling. *@
+                                    <span class="goal-sub"><span class="goal-sub-done">@(isDebt ? Loc["Paid off"] : Loc["Goal reached"])</span></span>
+                                }
+                                else if (isDebt)
+                                {
+                                    var _apr = State.SavingBucketDebtRate(bucketId);
+                                    <span class="goal-sub">@string.Format(Loc["{0} of {1} left"], Fmt(debtOwed), Fmt(debtOrig))@if (_apr > 0m) { <text> · @FmtPct(_apr, "0.##")% APR</text> }</span>
+                                }
+                                else if (isInvestment)
+                                {
+                                    <span class="goal-sub">@Loc["invested"]</span>
+                                }
+                                else if (g is not null)
+                                {
+                                    @* ⚠️ REVERT POINT. To go back to "€120 / €500" in the column: restore
+                                       `@Fmt(total) / @Fmt(g.Goal!.Value)` in `.cat-row-amt` above and delete this
+                                       branch. Nothing else in the redesign depends on it. *@
+                                    <span class="goal-sub">@string.Format(Loc["of {0} goal"], Fmt(g.Goal!.Value))</span>
+                                }
+                                else
+                                {
+                                    <span class="goal-sub">@Loc["saved"]</span>
+                                }
                                 @* When a debt row is open, the payoff finish flag rides this same progress bar and slides
                                    left as the drawer's "extra /mo" slider goes up — the bucket bar doubles as the payoff
                                    timeline, so there's no second bar. *@
@@ -3056,7 +3105,16 @@ else
                                         @* Pro: the one-off comparison. Header (and the tooltip explaining what a
                                            lump payment does) stays on Free — the modelling of the bank's two
                                            offers is the part that's withheld. *@
-                                        <h4 class="detail-sub"><Icon Name="note" /> @string.Format(Loc["One-off — pay your {0} set aside now"], Fmt(payNow))
+                                        @* The set-aside figure came out of this heading: the row's money column now
+                                           carries it four lines above, and the same number twice within a hand's
+                                           width is part of what made an open debt read as a wall.
+                                           ⚠️ payNow is min(setAside, debtOwed) — it differs from the row's figure
+                                           ONLY when the bucket holds more than the debt still owes, so the figure
+                                           survives in exactly the case where the two are not the same number. *@
+                                        <h4 class="detail-sub"><Icon Name="note" />
+                                            @(payNow < setAside
+                                                ? string.Format(Loc["One-off — pay your {0} set aside now"], Fmt(payNow))
+                                                : Loc["One-off — pay what you've set aside now"])
                                             @infoTip(("pp-partial", Loc["A payment lowers the balance right away, so the interest you're charged each period drops from then on. This is a single payment out of what you've already set aside — not a new monthly commitment."]))
                                             <ProLock Feature="@PlanFeatures.Debt" /></h4>
                                         if (!Gate.Allows(PlanFeatures.Debt))
@@ -3208,38 +3266,56 @@ else
                 var goalKindsPresent = (debtBuckets.Count > 0 ? 1 : 0) + (plainBuckets.Count > 0 ? 1 : 0)
                                      + (investmentBuckets.Count > 0 ? 1 : 0) + (expenseBuckets.Count > 0 ? 1 : 0);
             }
-            <section class="panel">
-                @* Saved-summary header: the running TOTAL set aside across all buckets (this figure used to live in the
-                   header hero, which now shows only this period's contribution + rate). The "+X this period" tag keeps
-                   the period contribution visible here too. *@
-                @{
-                    var _savedTotal = State.DisplayClosingBalance(_bankStatus?.Balance, _bankStatus?.BalanceCurrency)
-                                    - State.DisplayFreeToAllocate(_bankStatus?.Balance, _bankStatus?.BalanceCurrency);
-                }
-                @* ★ O12: the figure leads, and the two facts about it stop sharing one parenthesis. It read
-                   "TOTAL SAVED €1,240.00 (+€120.00 this period · 18% of money in)" on a single baseline — a number
-                   the reader wants and two qualifiers of different kinds crammed after it in brackets. The total is
-                   a hero now, with a quiet sub-line under it: what went in this period, and the rate as a
-                   `.settle-tag` pill (the app's existing "quiet green statement" vocabulary, already themed).
-                   ⚠️ `.goal-summary` and `.goal-stat` are SHARED with the Spending tab's view switcher
-                   (`.goal-summary.spend-summary`), so this is a modifier on the Goals instance — restyling the base
-                   rules would silently redraw a second screen. *@
-                <div class="goal-summary goal-summary-hero">
-                    <div class="goal-stat goal-stat-hero">
-                        <span class="goal-stat-k">@Loc["Total saved"]</span>
-                        <span class="goal-stat-v">@Fmt(_savedTotal)</span>
-                        @if (State.SavingsThisPeriod.Amount > 0m)
-                        {
-                            <span class="goal-stat-sub goal-stat-sub-end">
-                                <span class="goal-stat-add">+@Fmt(State.SavingsThisPeriod) @Loc["this period"]</span>
-                                @if (State.PeriodMoneyInRate is { } prate && prate > 0m)
-                                {
-                                    <span class="settle-tag" title="@string.Format(Loc["Money in this period: {0} came in, plus {1} carried over from before."], Fmt(State.FreshInThisPeriod), Fmt(State.CarriedInThisPeriod))">@(Math.Round(prate * 100m).ToString("0", System.Globalization.CultureInfo.InvariantCulture))% @Loc["of money in"]</span>
-                                }
-                            </span>
-                        }
+            @* `.goal-panel` carries the money column's two custom properties. On the SECTION, not on `.goal-list`,
+               because the header below is the list's sibling and would not inherit from it. *@
+            <section class="panel goal-panel">
+                @* The summary header, aligned to the rows' money column. Shown only under the All filter: beneath a
+                   kind chip it would be summing a subset while calling itself "Total saved".
+                   ⚠️ Reads the LOCAL `goalFilter`, not `_goalFilter` — an account whose last debt was removed while
+                   filtered to Debts falls back to All, and must get its header back along with the list.
+                   ⚠️ With only one kind present the chip row is hidden but `goalFilter` is still All, so a
+                   single-kind account does show these. Correct: All is genuinely the active filter. *@
+                @if (goalFilter == GoalFilter.All)
+                {
+                    @* ★ The total is Σ OF THE COLUMN beneath it, so the header and the rows cannot disagree — a
+                       header that totals something other than the list under it is the "two figures about one
+                       number" trap this codebase keeps having to fix.
+                       It used to be DisplayClosingBalance − DisplayFreeToAllocate. The bank adjustment cancels in
+                       that subtraction, so that expression was exactly SavingsReportService.AccumulatedTotal —
+                       account-wide and as-of-TODAY, where this is per-bucket and as-of-THIS-PERIOD. They agree
+                       on the latest period with nothing archived (pinned by
+                       SavingsTests.Column_sum_equals_the_all_time_total_on_the_latest_period), and where they
+                       diverge this one is the honest answer: it drops archived buckets the list no longer shows,
+                       and on a closed period it reports what was held THEN.
+                       ⚠️ Money has operator+ but no LINQ Sum overload — sum `.Amount`, then re-stamp the currency. *@
+                    var _savedTotal = State.Money(goalBuckets.Sum(b => b.Total.Amount));
+                    @* ⚠️ `.goal-summary` is SHARED with the Spending tab's view switcher (`.goal-summary.spend-summary`),
+                       so all the layout hangs off the `-hero` modifier — restyling the base rules would silently
+                       redraw a second screen. *@
+                    <div class="goal-summary goal-summary-hero">
+                        <div class="goal-stat goal-stat-hero">
+                            <span class="goal-stat-k">@Loc["Total saved"]</span>
+                            <span class="goal-stat-v goal-stat-fig">@Fmt(_savedTotal)</span>
+                            @if (State.SavingsThisPeriod.Amount > 0m)
+                            {
+                                @* Line two of the same grid, so this figure lands directly under the total and both
+                                   land over the rows' figures. The rate rides the LABEL cell because it qualifies
+                                   the words, not the number.
+                                   ⚠️ This one CANNOT be a column sum: SavingsThisPeriod is a period delta while the
+                                   column holds accumulated balances. Under the All filter it is the same population
+                                   as the column apart from archived buckets — said here rather than implied. *@
+                                <span class="goal-stat-k goal-stat-k2">
+                                    @Loc["saved this period"]
+                                    @if (State.PeriodMoneyInRate is { } prate && prate > 0m)
+                                    {
+                                        <span class="settle-tag" title="@string.Format(Loc["Money in this period: {0} came in, plus {1} carried over from before."], Fmt(State.FreshInThisPeriod), Fmt(State.CarriedInThisPeriod))">@FmtPct(Math.Round(prate * 100m))% @Loc["of money in"]</span>
+                                    }
+                                </span>
+                                <span class="goal-stat-fig goal-stat-v2">+@Fmt(State.SavingsThisPeriod)</span>
+                            }
+                        </div>
                     </div>
-                </div>
+                }
                 @* F4 round-ups live with savings — this is where the mind is on setting money aside, not the spending
                    Breakdown. Only the cumulative painless total, and only once there IS one: it's a reward for using
                    round-ups. The "would have set aside X at step 1 or 5" what-if that used to sit here was retired —
@@ -8141,6 +8217,11 @@ else
     // carry the exact formatted amount, so nothing is lost to the abbreviation.
     private static string TrendTick(decimal v)
     {
+        // ⚠️ Money that does NOT go through Fmt — the axis ticks are abbreviated ("1.2k") rather than formatted as
+        // currency, so privacy mode has to mask them here as well. And they must: the y-labels are HTML overlaid
+        // beside the chart, not inside the SVG the blur covers, so a masked screen would otherwise still print the
+        // scale of everything down its left edge.
+        if (PrivacyMode) return MaskedFigure;
         var ci = System.Globalization.CultureInfo.InvariantCulture;
         var a = Math.Abs(v);
         if (a >= 1_000_000m) return (v / 1_000_000m).ToString("0.#", ci) + "M";
@@ -9130,6 +9211,15 @@ else
         {
             _backRef = DotNetObjectReference.Create(this);
             try { await JS.InvokeVoidAsync("finappBack.init", _backRef); } catch { /* host without the shim */ }
+            // Privacy mode. The class on <html> was already applied before first paint (index.html), so this only
+            // catches the C# side up with what the DOM has been showing since load, and registers the shortcut.
+            try
+            {
+                await JS.InvokeVoidAsync("finappPrivacy.init", _backRef);
+                PrivacyMode = await JS.InvokeAsync<bool>("finappIsPrivate");
+                StateHasChanged();
+            }
+            catch { /* host without the shim */ }
         }
         await SyncBackDepthAsync();
         await FocusAmountIfRequestedAsync();
@@ -9181,6 +9271,23 @@ else
         // press Back, land on Dashboard, press Back again, and leave the app from a tab they never chose.
         else if (_tab != _landingTab) _tab = _landingTab;
         StateHasChanged();
+    }
+
+    /// <summary>Invoked from JS when privacy mode is toggled (Ctrl/Cmd+Shift+H, or the indicator's own button).
+    /// The DOM class is already set by then — this is only how <see cref="FmtCurrency"/> learns to mask.</summary>
+    [JSInvokable]
+    public void OnPrivacyChanged(bool on)
+    {
+        PrivacyMode = on;
+        StateHasChanged();
+    }
+
+    /// <summary>Turn privacy mode off from the indicator. Deliberately one-way: the only way IN is the shortcut or
+    /// (on a phone) the flip gesture, and the only visible control is the way OUT — a button that could turn it on
+    /// would be one more thing to hit by accident on a screen full of money.</summary>
+    private async Task ExitPrivacyMode()
+    {
+        try { await JS.InvokeVoidAsync("finappSetPrivate", false); } catch { PrivacyMode = false; }
     }
 
     // --- Which tab the app opens on (O9) -------------------------------------------------------
@@ -13642,10 +13749,40 @@ else
     // share one core, so the rendered string is byte-identical however a figure is sourced.
     private static string FmtCurrency(decimal amount, string currency)
     {
+        // ★ Privacy mode masks HERE, at the one place every money string in the app is built. 260-odd call sites
+        // in this file alone route through Fmt(decimal)/Fmt(Money), so one branch covers every figure on every
+        // screen — and, more importantly, nothing can be added later that quietly escapes it.
+        // ⚠️ Static, so the flag has to be static too. That is fine: it is a property of the SCREEN, not of an
+        // account or a component instance, and it is exactly what makes this reachable from here at all.
+        if (PrivacyMode) return MaskedFigure;
         // The three-symbol switch that used to live here moved to CurrencyInfo, which knows the ~35 a traveller is
         // likely to meet and keeps the same "CODE " fallback for everything else.
         return $"{CurrencyInfo.Symbol(currency)}{amount:N2}";
     }
+
+    /// <summary>
+    /// Shoulder-surfing mode: every figure the app renders becomes <see cref="MaskedFigure"/> and the charts are
+    /// blurred by CSS. Toggled with Ctrl/Cmd+Shift+H and persisted, so a reload in a café does not undress the
+    /// screen.
+    /// <para>★ Names are deliberately NOT masked — categories, buckets and merchants stay readable so the screen is
+    /// still navigable while it is on. What leaks a life is the amounts.</para>
+    /// <para>⚠️ Masking the text alone would be a half-measure that reads as full cover: a Breakdown ring or a
+    /// Trends line tells the story without a single digit. The shapes are blurred by `html.private` in app.css, and
+    /// the two halves must ship together or the mode promises more than it does.</para>
+    /// </summary>
+    private static bool PrivacyMode { get; set; }
+
+    /// <summary>Five dots — a fixed width regardless of the figure, so the layout does not twitch as values change
+    /// behind the mask, and no digit count leaks (a masked "€1,234.56" of a different length than "€9.99" would
+    /// tell a watcher the order of magnitude).</summary>
+    private const string MaskedFigure = "•••••";
+
+    /// <summary>A percentage, masked with the rest under privacy mode.
+    /// <para>⚠️ Percentages are not currency, so they never touch <see cref="FmtCurrency"/> and were the one class
+    /// of figure still legible on a masked screen. They are not harmless: a savings rate and a loan's APR are both
+    /// facts about the money the mode exists to hide, and "3%" beside a blurred chart is an invitation to ask.</para></summary>
+    private static string FmtPct(decimal percent, string format = "0") =>
+        PrivacyMode ? MaskedFigure : percent.ToString(format, System.Globalization.CultureInfo.InvariantCulture);
 
     private string Fmt(decimal amount) => FmtCurrency(amount, State.Currency);
 

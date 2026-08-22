@@ -1745,31 +1745,84 @@ html.dark .brk-drill-cat { color: #e6edf3; }
 .goal-stat-k { font-size: .63rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: #8a97a0; }
 .goal-stat-v { font-size: 1.18rem; font-weight: 800; color: #13a06e; line-height: 1.15; letter-spacing: -.01em; }
 html.dark .goal-stat-v { color: #3fe0c5; }
-.goal-stat-v-period { color: #16202b; }
-html.dark .goal-stat-v-period { color: #e8eef0; }
-.goal-stat-pct { font-size: .7rem; font-weight: 600; color: #6b7d72; }
-html.dark .goal-stat-pct { color: #9fb0a6; }
-/* O12 — the Goals tile only. `.goal-stat` is shared with the Spending view switcher, so everything here hangs off
-   a modifier and the base rules are untouched. Layout and size only: the figure keeps `.goal-stat-v`'s green and
-   the pill keeps `.settle-tag`'s, both already correct in dark mode.
-   ★ It is a BAR, not a tile: it takes the whole row and puts the three facts on one baseline. As a column it was
-   three stacked lines occupying a third of the width, which made a summary read as tall as the rows it summarises. */
-.goal-stat-hero { flex: 1 1 100%; flex-flow: row wrap; align-items: baseline; gap: 2px 10px; padding: 7px 14px; }
+/* ★ THE MONEY COLUMN. Every figure on the Goals tab — the two header totals and one per goal row — has its right
+   edge at the same x, and the two properties below are the ONLY place that x is authored.
+     --goal-acts-w   the widest the row's action cluster ever gets. It VARIES by row (an expenses fund gets a
+                     `plus`, an open non-done bucket a `coins`, a done or closed-period one neither), and that —
+                     not the digits, which are already tabular from `.dash` — is what made the amounts ragged.
+                     Pinning the cluster to its own maximum is what turns the figures into a column.
+                     ⚠️ MEASURED in the browser, not derived — 4 × `.row-ico` (31) + 3 × gap (1) + 2px left and
+                     6px right padding = 135. Deriving it is exactly how it goes wrong: dropping the gaps gives
+                     132, and at 132 the four-button rows overflow to their natural width while the three-button
+                     ones stay pinned, which splits the column into two edges 3px apart. If a fifth action is
+                     ever added here, RE-MEASURE with min-width temporarily set to 0 rather than recomputing.
+     --goal-row-pad  `.cat-row-hit`'s horizontal padding. The amount lives INSIDE the hit button, so its right
+                     edge sits this much further left than the cluster; the header has to clear both.
+   ⚠️ Declared on the SECTION, not on `.goal-list` — the header is the list's SIBLING and would not inherit from
+   it. Custom properties cross Blazor's scope attribute fine, so one declaration reaches both. */
+.goal-panel { --goal-acts-w: 135px; --goal-row-pad: 14px; }
+/* Scoped to `.goal-row`: `.cat-row-acts` is also every Spending-tab budget row and sub-row, whose cluster is
+   already uniform and must not be padded out. Same for every rule below. */
+.goal-row .cat-row-acts { min-width: var(--goal-acts-w); justify-content: flex-end; }
+/* ⚠️ `flex-end` is not optional. `min-width` alone leaves the icons at the LEFT of the widened box, so you get a
+   straight column of numbers above a ragged column of icons — worse than what we started with. */
+.goal-row .cat-row-hit { padding-left: var(--goal-row-pad); padding-right: var(--goal-row-pad); }
+/* `.cat-row-top` is space-between so the figure is already pushed right; `text-align` states it, and `flex:none`
+   stops a long name squeezing it. */
+.goal-row .cat-row-amt { flex: none; text-align: right; }
+/* ⚠️ Without this a long bucket name pushes the figure out of its column: space-between only distributes SLACK,
+   and a long enough name leaves none. The name yields first. */
+.goal-row .cat-row-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The row's qualifier line — what the figure above means for this kind of goal. Left-aligned under the NAME, not
+   under the figure: a right-aligned second line would make the money column two lines tall on some rows and one
+   on others, which is the exact raggedness this exists to remove. Same volume as the `.cat-row-nb` text it
+   succeeds; it needs its own dark pair because unlike that one it is a block, not a child of `.cat-row-amt`. */
+.goal-sub { display: block; font-size: .72rem; color: #94a3b8; margin-top: 1px; }
+html.dark .goal-sub { color: #7f8b9a; }
+.goal-sub-done { color: #13a06e; font-weight: 600; }
+html.dark .goal-sub-done { color: #57d9a3; }
+/* The sub-line costs the collapsed row ~15px; buy most of it back from padding the row can spare, so the net is
+   ≈ +7px rather than +15px. Scoped, because these are also every Spending row and this is not a judgement about
+   those. ⚠️ Pure taste — tuned in the browser against a real list, not derived. */
+.goal-row .cat-row-hit { padding-top: 9px; padding-bottom: 9px; }
+.goal-row .cbar-track { margin-top: 4px; }
+
+/* O12 → the two-line summary bar. `.goal-stat` is shared with the Spending view switcher, so everything here
+   still hangs off the `-hero` modifier and the base rules keep their background, border and radius.
+   ★ A 2-column GRID, not flex: the figures must land in the same column as the rows' amounts below, and only a
+   grid gives two rows one shared right-hand track. The old flex + `margin-left:auto` put each line's tail
+   wherever its own content happened to end — precisely the drift this removes.
+   The right padding IS the money column: the cluster the rows must clear, plus the row's own hit padding. Both
+   read the properties, so the header cannot drift from the rows — including at 560px, where re-declaring
+   `--goal-acts-w` moves this padding too.
+   ⚠️ Sub-pixel: the tile has a 1px border and `.cat-row` has 0.5px, so the column is half a pixel off. Not
+   chased — a 0.5px fudge inside this calc() is something nobody could later justify. */
+.goal-stat-hero {
+    flex: 1 1 100%;
+    display: grid; grid-template-columns: 1fr auto; align-items: baseline;
+    gap: 2px 10px;
+    padding: 7px calc(var(--goal-acts-w) + var(--goal-row-pad)) 7px 14px;
+}
 .goal-stat-hero .goal-stat-v { font-size: 1.3rem; }
-/* The two facts sit on their own line, separated by space rather than by a middot inside a bracket — one is an
-   amount and the other a ratio, and reading them as a single parenthetical made neither land. */
-.goal-stat-sub { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; margin-top: 3px; }
-/* In the bar they ride at the far end of the same line as the figure, not on a line of their own. */
-.goal-stat-sub-end { margin-left: auto; margin-top: 0; }
-.goal-stat-add { font-size: .74rem; font-weight: 600; color: #6b7d72; }
-html.dark .goal-stat-add { color: #9fb0a6; }
-/* The pill is already spaced by the flex gap; its own left margin would double it. */
-.goal-stat-sub .settle-tag { margin-left: 0; }
-/* ⚠️ Must sit AFTER .goal-stat-sub-end, not in the 560px block further up: same specificity, so the later rule
-   wins whatever the media query says. On a phone the facts wrap under the figure and align left with it — an
-   auto margin there would strand them against the right edge on a line of their own. */
+/* Both figures share the right track. Alignment only — `.goal-stat-v` keeps its own green (dark pair above) and
+   `.goal-stat-v2` declares its own quieter one. */
+.goal-stat-fig { justify-self: end; text-align: right; white-space: nowrap; }
+/* Line two's label: lower-case running text rather than line one's upper-case eyebrow, and it carries the rate
+   pill inline because the rate qualifies the WORDS, not the number. */
+.goal-stat-k2 { text-transform: none; letter-spacing: 0; font-size: .74rem; font-weight: 600; color: #6b7d72;
+    display: inline-flex; align-items: center; flex-wrap: wrap; gap: 4px 6px; }
+html.dark .goal-stat-k2 { color: #9fb0a6; }
+/* A supporting fact under the hero, so muted body colour rather than the hero's brand green — two greens of
+   different weights on adjacent lines read as two unrelated statements. */
+.goal-stat-v2 { font-size: .84rem; font-weight: 700; color: #6b7d72; }
+html.dark .goal-stat-v2 { color: #9fb0a6; }
+/* The pill is already spaced by the grid gap; its own left margin would double it. */
+.goal-stat-hero .settle-tag { margin-left: 0; }
 @media (max-width: 560px) {
-    .goal-stat-sub-end { margin-left: 0; margin-top: 2px; }
+    /* ★ Below 560 the base rule drops `.cat-row-acts` onto a full-width line of its own, so there is no cluster
+       left to clear and the column's only inset is the hit button's padding. Re-declaring the property moves the
+       rows AND the header at once — the whole reason the x lives in a property rather than two hard-coded rules. */
+    .goal-panel { --goal-acts-w: 0px; }
     .goal-filters .fund-add { margin-left: 0; }
 }
 .goal-done-badge { margin-left: 5px; }

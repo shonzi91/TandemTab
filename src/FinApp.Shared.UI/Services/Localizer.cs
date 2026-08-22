@@ -1937,6 +1937,14 @@ public sealed class Localizer(IJSRuntime js)
         ["No tag matches — “{0}” will be created and attached."] = "Няма съвпадащ етикет — „{0}“ ще бъде създаден и прикачен.",
         ["“{0}” already exists."] = "„{0}“ вече съществува.",
         ["“{0}” already exists but is archived — restore it instead of making a second one."] = "„{0}“ вече съществува, но е архивиран — възстанови го, вместо да правиш втори.",
+        // Goals: the row's qualifier line under the name, now that the money column holds only the set-aside.
+        ["{0} of {1} left"] = "{0} от {1} остават",
+        ["of {0} goal"] = "от целта {0}",
+        ["saved this period"] = "заделено този период",
+        ["One-off — pay what you've set aside now"] = "Еднократно — плати заделеното сега",
+        // Privacy mode — the shoulder-surfing toggle's indicator.
+        ["Figures hidden"] = "Сумите са скрити",
+        ["Ctrl/⌘ + Shift + H to show"] = "Ctrl/⌘ + Shift + H за показване",
         ["The loan it services couldn't be reached — its bucket may have been removed, or it lives in an account this one can no longer open. The money is recorded; the loan's balance hasn't moved. Re-point the bill on the loan, or relink it under Recurring."] = "Кредитът, който обслужва, не беше достъпен — кутията му може да е премахната или е в сметка, която вече не може да бъде отворена. Парите са записани; салдото на кредита не е променено. Насочи сметката към кредита отново или я свържи наново в „Повтарящи се“.",
         ["Kept at the end of each month"] = "Задържано в края на всеки месец",
         ["{0} of this went onto a loan — the balance fell because the debt did."] =

@@ -547,4 +547,124 @@ public class SavingsTests
         // The all-time total is unchanged — it deliberately has no "as of".
         Assert.Equal(M(350), svc.AccumulatedTotal(account));
     }
+
+    // --- The Goals header total is Σ of the column beneath it -----------------------------------------
+    //
+    // The Goals tab's "Total saved" used to be derived independently (closing balance − free-to-allocate) from
+    // the per-bucket figures listed under it. The bank adjustment cancels in that subtraction, so that expression
+    // was exactly AccumulatedTotal(account): account-wide and as-of-TODAY. The column is per-bucket and
+    // as-of-THIS-PERIOD. These four pin where the two agree, and — where they don't — which one is honest.
+
+    /// <summary>What the Goals list renders: one accumulated figure per non-archived bucket, as of the period
+    /// being viewed. Mirrors <c>BudgetingState.SavingBuckets</c> + the tab's own archived filter.</summary>
+    private static Money ColumnSum(Account account, Period period)
+    {
+        var svc = new SavingsReportService();
+        return account.SavingCategories
+            .Where(b => !b.IsArchived)
+            .Select(b => svc.ForBucket(account, period, b.Id).AccumulatedTotal)
+            .Aggregate(Money.Zero(account.Currency), (acc, m) => acc + m);
+    }
+
+    private static (Account Account, Guid Member) FourKinds(out Period latest)
+    {
+        var account = new Account("Family", Eur);
+        var member = account.AddMember(Guid.NewGuid(), "Stoyan").UserId;
+
+        var car = account.AddSavingCategory("Car loan");
+        account.ConfigureSavingDebt(car.Id, 8_000m, 5m, 200m, balanceAsOf: new DateOnly(2026, 1, 1));
+        var holiday = account.AddSavingCategory("Holiday");
+        var fund = account.AddSavingCategory("Roof");
+        // An initial balance: AccumulatedTotal folds InitialAmount in, so a bucket that has never been allocated
+        // to still has to appear in the column at the right figure.
+        account.SetSavingInitialAmount(fund.Id, 500m);
+
+        var jan = account.StartPeriod(new DateOnly(2026, 1, 1), new DateOnly(2026, 1, 31));
+        jan.Deposit(member, M(1_000));
+        jan.AllocateToSavings(car.Id, M(200), new DateOnly(2026, 1, 10));
+        jan.AllocateToSavings(holiday.Id, M(150), new DateOnly(2026, 1, 12));
+        jan.Close();
+
+        latest = account.StartPeriod(new DateOnly(2026, 2, 1), new DateOnly(2026, 2, 28));
+        latest.Deposit(member, M(1_000));
+        latest.AllocateToSavings(car.Id, M(200), new DateOnly(2026, 2, 10));
+        latest.AllocateToSavings(holiday.Id, M(300), new DateOnly(2026, 2, 12));
+        return (account, member);
+    }
+
+    /// <summary>★ The guard for the header decision: on the latest period, with nothing archived, the header and
+    /// the column are the same number. It fails the moment anything makes them disagree in the normal case.</summary>
+    [Fact]
+    public void Column_sum_equals_the_all_time_total_on_the_latest_period()
+    {
+        var (account, _) = FourKinds(out var latest);
+
+        Assert.Equal(new SavingsReportService().AccumulatedTotal(account), ColumnSum(account, latest));
+    }
+
+    /// <summary>
+    /// Divergence A, documented as intended rather than left to be rediscovered as a bug report: archiving a
+    /// bucket does not drain it, so the all-time total still counts money the Goals list no longer shows.
+    /// <para>★ The column is the honest figure — a header must not claim money that is not in the list under it.</para>
+    /// </summary>
+    [Fact]
+    public void Column_sum_drops_an_archived_bucket_and_the_all_time_total_does_not()
+    {
+        var (account, _) = FourKinds(out var latest);
+        var holiday = account.SavingCategories.Single(s => s.Name == "Holiday");
+        var held = new SavingsReportService().ForBucket(account, latest, holiday.Id).AccumulatedTotal;
+        Assert.Equal(M(450), held);   // 150 + 300, still sitting in the bucket
+
+        account.SetSavingArchived(holiday.Id, true);
+
+        var all = new SavingsReportService().AccumulatedTotal(account);
+        Assert.Equal(all - held, ColumnSum(account, latest));
+    }
+
+    /// <summary>
+    /// Divergence B: on a CLOSED period the column reports what was held then, while the all-time total reports
+    /// today. ★ The column is right, and this is the same trap <c>ForBucket</c>'s own comment was written about —
+    /// "a closed period showed a total that its own numbers couldn't add up to".
+    /// </summary>
+    [Fact]
+    public void Column_sum_on_a_closed_period_reads_as_of_that_period()
+    {
+        var (account, _) = FourKinds(out _);
+        var jan = account.Periods.First();
+
+        // January held 200 + 150, plus the Roof bucket's 500 opening balance.
+        Assert.Equal(M(850), ColumnSum(account, jan));
+        // February's allocations have happened since, so the all-time figure is higher.
+        Assert.Equal(M(1_350), new SavingsReportService().AccumulatedTotal(account));
+    }
+
+    /// <summary>
+    /// ⚠️ A tripwire, not a live bug. <c>ForBucket</c> rolls a bucket's descendants into its total, so a parent and
+    /// a child rendered as two rows would double-count in the column. Nothing produces a nested savings bucket
+    /// today — <c>AddSavingCategory</c>'s parentId is never passed by any route — so this asserts the arithmetic
+    /// rather than a defect.
+    /// <para>★ Written instead of a defensive <c>Where(ParentId is null)</c> filter in the UI: that would be dead
+    /// code with no way to tell whether it was still needed. This tells the next reader exactly what to handle on
+    /// the day nesting gets a producer.</para>
+    /// </summary>
+    [Fact]
+    public void A_nested_bucket_is_rolled_into_its_parent_so_rendering_both_would_double_count()
+    {
+        var account = new Account("Family", Eur);
+        var member = account.AddMember(Guid.NewGuid(), "Stoyan").UserId;
+        var parent = account.AddSavingCategory("House");
+        var child = account.AddSavingCategory("Roof", parent.Id);
+
+        var p = account.StartPeriod(new DateOnly(2026, 1, 1), new DateOnly(2026, 1, 31));
+        p.Deposit(member, M(500));
+        p.AllocateToSavings(child.Id, M(500), new DateOnly(2026, 1, 10));
+
+        var svc = new SavingsReportService();
+        Assert.Equal(M(500), svc.ForBucket(account, p, child.Id).AccumulatedTotal);
+        Assert.Equal(M(500), svc.ForBucket(account, p, parent.Id).AccumulatedTotal);   // the SAME money
+        // So a flat list of both rows sums to 1,000 against an all-time total of 500 — the day nesting ships,
+        // the Goals list has to render children inside their parent rather than beside it.
+        Assert.Equal(M(1_000), ColumnSum(account, p));
+        Assert.Equal(M(500), svc.AccumulatedTotal(account));
+    }
 }

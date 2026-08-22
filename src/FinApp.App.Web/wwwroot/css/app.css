@@ -1,4 +1,4 @@
-﻿/*#if (SampleContent)*/
+/*#if (SampleContent)*/
 html, body {
     font-family: 'Quicksand', system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
@@ -430,3 +430,54 @@ html.dark .modal-actions button.ghost, html.dark button.ghost { color: #7bf0d8; 
 html.dark .alert-inline-link { background: rgba(240,192,105,.14); border-color: rgba(240,192,105,.38); color: #f0c069; }
 html.dark .alert-inline-link:hover { background: #f0c069; border-color: #f0c069; color: #2a2000; }
 html.dark .alert-inline-link:focus-visible { outline-color: #f0c069; }
+
+/* --- Privacy mode (Ctrl/⌘ + Shift + H) ---------------------------------------------------------------
+   Shoulder-surfing cover. The figures themselves are masked in C# (Dashboard.FmtCurrency, the single place
+   every money string in the app is built), so this sheet carries the other half: the SHAPES.
+   ★ Masking the text alone would be a half-measure that reads as full cover — a Breakdown ring or a Trends
+   line tells the story without a single digit, and a user who believes they are covered is worse off than one
+   who knows they are not. The two halves ship together or the mode promises more than it delivers.
+   ⚠️ Lives in app.css, not a scoped sheet: `html.private` has to reach INTO component scopes (the progress
+   ring is its own component), and a scoped rule cannot select an ancestor outside its own scope.
+   ⚠️ Names are deliberately untouched. What leaks a life is the amounts; leaving categories, buckets and
+   merchants readable is what keeps the screen navigable while the mode is on. */
+html.private svg.trend-chart,
+html.private .brk-chart,
+html.private .cbar-track,
+html.private .pring,
+html.private .mini-trend svg,
+html.private .ms-bar {
+    filter: blur(6px);
+    /* The blur is the point, so it must not be defeatable by dragging over the text nodes underneath it. */
+    user-select: none;
+    pointer-events: none;
+}
+/* The header indicator. A full-width bar above everything, because the one thing worse than a masked screen is
+   a masked screen with no explanation — and it names the shortcut, so the way out is always on screen.
+   It is also the ONLY visible control for the mode, and it only ever turns masking OFF: a button that could
+   turn it on would be one more thing to hit by accident on a screen full of money. */
+.privacy-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 6px 14px;
+    border: 0;
+    border-radius: 0;
+    cursor: pointer;
+    background: #efe7fb;
+    color: #5b3fa8;
+    font: inherit;
+    font-size: .76rem;
+    font-weight: 700;
+    text-align: left;
+}
+.privacy-bar:hover { background: #e5d9f8; }
+.privacy-bar-key { margin-left: auto; font-weight: 600; opacity: .75; white-space: nowrap; }
+html.dark .privacy-bar { background: #241d37; color: #c4b5fd; }
+html.dark .privacy-bar:hover { background: #2e2545; }
+@media (max-width: 560px) {
+    /* The shortcut is unreachable on a phone keyboard anyway, and the bar itself is the tap target — drop the
+       hint rather than let it wrap the bar onto two lines. */
+    .privacy-bar-key { display: none; }
+}
