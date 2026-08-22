@@ -2,8 +2,13 @@
 
 Last updated: 2026-08-22 (Session 114, second half — **D2 shipped after all, the tag box was three bugs wearing
 one coat, and the Goals tab got a real money column plus a shoulder-surfing toggle.**
-**550 + 56 + 407 green, pairscan 0.** Commits `94d898f` (D2), `9e87e5f` (tags), `dce266e` (Goals + privacy).
-⚠️ **Deploy status is at the end of this entry** — check it before assuming what is live.)
+**550 + 56 + 407 green, pairscan 0. LIVE: `finapp-00324-ghp`, 100% LATEST** — image `finapp:c2e7c08`
+(digest `sha256:b29747be…`); roots 200 on both hosts, 5 `secretKeyRef`s, no WARNING+ on the new revision.
+Commits `94d898f` (D2), `9e87e5f` (tags), `dce266e` (Goals + privacy).
+★ **One deploy this half.** ✅ Proven on the served bytes, not just the tag: `app.css?v=44` carries 7 `html.private`
+rules and the `.privacy-bar` styles, and the scoped bundle carries `--goal-acts-w: 135px`, its `0px` override
+inside the 560px block, the four `.goal-sub` rules and `.goal-stat-fig` — while the deleted `.goal-stat-pct`
+returns **zero** hits, which is the half that proves the deletions shipped too.)
 
 #### ★★ D2 — a bill in one account can service a loan in another
 
