@@ -291,9 +291,13 @@ fun HomeScreen(
         modifier = Modifier.fillMaxSize().tandemCanvas(darkTheme, tandem.canvas),
         containerColor = Color.Transparent,
         topBar = {
+          Column(Modifier.fillMaxWidth().statusBarsPadding()) {
+            // Privacy mode's indicator, above the header exactly as the web puts it above .hdr-top. It renders
+            // only while masking is on, and it is the only way to turn masking off — see PrivacyBar.
+            PrivacyBar()
             // Compact one-row header (no logo): account switcher · period · account-actions · profile.
             Row(
-                Modifier.fillMaxWidth().statusBarsPadding().padding(start = 14.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
+                Modifier.fillMaxWidth().padding(start = 14.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 // Keep the brand mark (icon only, no wordmark) to anchor the compact header.
@@ -314,6 +318,7 @@ fun HomeScreen(
                     Icon(TandemIcons.User, contentDescription = "Profile", tint = tandem.muted)
                 }
             }
+          }
         },
         // Custom bottom bar with the add-FAB cradled in the centre (tabs split 2-and-2). The FAB opens a speed-dial.
         bottomBar = {
@@ -325,6 +330,11 @@ fun HomeScreen(
         },
         snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
+        // Flip-to-hide. Mounted here, under the signed-in screen, so the gesture exists exactly where there are
+        // figures to hide: nothing is registered on Login or Splash, and signing out tears it down with the screen.
+        FlipToHideWatcher()
+        FlipExplainerDialog()
+
         // The add / edit sheet. The FAB opens it in add mode; the in-sheet "Edit last" pulls in the last expense
         // (via the VM's editingExpense), which switches this same sheet into edit mode.
         val editingIncome = state.editingDeposit
@@ -524,7 +534,7 @@ fun HomeScreen(
         }
         state.runway?.let { rw ->
             if (showRunway) {
-                RunwaySheet(runway = rw, fmt = rememberCurrency(rw.currency), onDismiss = { showRunway = false })
+                RunwaySheet(runway = rw, fmt = moneyFormatter(rw.currency), onDismiss = { showRunway = false })
             }
         }
         if (showRecurring) {
@@ -669,7 +679,7 @@ private fun HomePage(
         overview == null -> Text("No overview to show.", color = tandem.muted)
 
         else -> {
-            val fmt = rememberCurrency(overview.currency)
+            val fmt = moneyFormatter(overview.currency)
             // The period being viewed, which decides both the hero's shape (open vs closed) and F3's day count.
             val viewedIndex = state.selectedPeriod ?: state.currentPeriodIndex
             val viewed = state.periods.firstOrNull { it.index == viewedIndex }
@@ -892,9 +902,11 @@ private fun AlertStrip(alerts: List<com.tandemtab.app.data.NotificationDto>) {
                 Text("⚠️", fontSize = 15.sp)
                 Spacer(Modifier.width(10.dp))
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text(item.text, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                    // ⚠️ Server-formatted prose with the amount baked in ("overspent by €4,760.00") — the money
+                    // formatters never see it, so privacy mode has to mask it here. See maskServerText.
+                    Text(maskServerText(item.text), fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.onSurface)
-                    item.desc?.let { Text(it, fontSize = 11.sp, color = tandem.muted) }
+                    item.desc?.let { Text(maskServerText(it), fontSize = 11.sp, color = tandem.muted) }
                 }
                 if (group.size > 1) {
                     Spacer(Modifier.width(8.dp))
@@ -1379,13 +1391,6 @@ private fun AccountChip(name: String, selected: Boolean, onClick: () -> Unit) {
             .clickable(onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 8.dp),
     )
-}
-
-/** Currency formatter for the account's ISO code, matching the web app's money formatting. */
-private fun rememberCurrency(currencyCode: String): (Double) -> String {
-    val nf = NumberFormat.getCurrencyInstance(Locale.getDefault())
-    runCatching { nf.currency = Currency.getInstance(currencyCode) }
-    return { amount -> nf.format(amount) }
 }
 
 /** The app canvas: a flat base in light; in dark, the web's two corner glows (mint top-left, coral top-right) over

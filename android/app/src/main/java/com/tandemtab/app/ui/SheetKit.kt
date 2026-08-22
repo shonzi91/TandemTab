@@ -162,13 +162,6 @@ internal fun currencySymbol(code: String): String = runCatching {
     Currency.getInstance(code).symbol
 }.getOrDefault(code)
 
-/** Currency formatter for the account's ISO code (device locale for grouping/decimals). */
-internal fun sheetMoney(currencyCode: String): (Double) -> String {
-    val nf = java.text.NumberFormat.getCurrencyInstance(Locale.getDefault())
-    runCatching { nf.currency = Currency.getInstance(currencyCode) }
-    return { amount -> nf.format(amount) }
-}
-
 /** Shared chrome for the write sheets: a full-screen sheet with a title, a scrollable body, and Cancel / Save as
  *  floating buttons pinned to the bottom (swipe-down still dismisses). */
 @OptIn(ExperimentalMaterial3Api::class)

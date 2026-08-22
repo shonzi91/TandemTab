@@ -55,7 +55,7 @@ fun SettleExpenseSheet(
 ) {
     val tandem = LocalTandemColors.current
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    val fmt = sheetMoney(spending.currency)
+    val fmt = moneyFormatter(spending.currency)
 
     // Already settled? Then this is an edit of that settlement, and the destination is fixed to the account it is
     // already on — re-settling somewhere else would leave the first account holding an expense nobody can see here.

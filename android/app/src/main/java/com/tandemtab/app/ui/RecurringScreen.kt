@@ -137,7 +137,7 @@ fun RecurringSheet(
     onDismiss: () -> Unit,
 ) {
     val tandem = LocalTandemColors.current
-    val money = sheetMoney(recurring.currency)
+    val money = moneyFormatter(recurring.currency)
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var mode by remember { mutableStateOf<RecurringMode>(RecurringMode.List) }
     var deleting by remember { mutableStateOf<RecurringRowDto?>(null) }

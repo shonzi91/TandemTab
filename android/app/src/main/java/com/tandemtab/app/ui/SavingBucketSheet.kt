@@ -85,7 +85,7 @@ fun SavingBucketSheet(
 ) {
     val tandem = LocalTandemColors.current
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    val fmt = sheetMoney(goals.currency)
+    val fmt = moneyFormatter(goals.currency)
     // The synced fund is bank-driven, so it isn't offered as a bucket's home (mirrors web's SelectableFunds).
     val pickableFunds = remember(funds) { funds.filter { !it.synced } }
     val fc = existing?.forecast

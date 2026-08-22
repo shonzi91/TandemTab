@@ -89,7 +89,7 @@ fun TripsView(
     onProBlocked: () -> Unit = {},
 ) {
     val tandem = LocalTandemColors.current
-    val fmt = rememberTripMoney(trips.currency)
+    val fmt = moneyFormatter(trips.currency)
     var editing by remember { mutableStateOf<TripEdit?>(null) }
     var deleting by remember { mutableStateOf<TripDto?>(null) }
     var attachingTo by remember { mutableStateOf<TripDto?>(null) }
@@ -850,10 +850,3 @@ private fun dayOfMonth(iso: String): String = runCatching { LocalDate.parse(iso)
 private fun monthShort(iso: String): String = runCatching {
     LocalDate.parse(iso).format(DateTimeFormatter.ofPattern("MMM", Locale.getDefault()))
 }.getOrDefault("")
-
-@Composable
-private fun rememberTripMoney(currencyCode: String): (Double) -> String {
-    val nf = java.text.NumberFormat.getCurrencyInstance(Locale.getDefault())
-    runCatching { nf.currency = java.util.Currency.getInstance(currencyCode) }
-    return { amount -> nf.format(amount) }
-}

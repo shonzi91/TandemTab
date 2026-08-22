@@ -81,7 +81,7 @@ fun StartNextPeriodSheet(
 ) {
     val tandem = LocalTandemColors.current
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    val fmt = sheetMoney(wallets.currency)
+    val fmt = moneyFormatter(wallets.currency)
     val funds = remember(wallets.funds) { wallets.funds.filter { !it.synced } }
 
     // Prefilled with the computed balance: the honest default is "nothing has gone unlogged", and typing over it

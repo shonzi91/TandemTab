@@ -62,7 +62,7 @@ fun TransferSheet(
 ) {
     val tandem = LocalTandemColors.current
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    val fmt = sheetMoney(wallets.currency)
+    val fmt = moneyFormatter(wallets.currency)
     val targets = remember(wallets.funds, from.id) { wallets.funds.filter { it.id != from.id } }
 
     var toFundId by remember { mutableStateOf(targets.firstOrNull()?.id) }
@@ -324,7 +324,7 @@ fun ArchiveFundDialog(
     onDismiss: () -> Unit,
     onConfirm: (moveBalanceTo: String?) -> Unit,
 ) {
-    val fmt = sheetMoney(wallets.currency)
+    val fmt = moneyFormatter(wallets.currency)
     // A synced fund can't receive the money: its balance is the bank's, so a transfer in wouldn't move anything.
     val targets = remember(wallets.funds, fund.id) { wallets.funds.filter { it.id != fund.id && !it.synced } }
     var moveTo by remember(fund.id) { mutableStateOf(targets.firstOrNull()?.id) }
@@ -390,7 +390,7 @@ fun DeleteFundDialog(
     onRestore: () -> Unit,
     onDelete: (moveOpeningBalancesTo: String?) -> Unit,
 ) {
-    val fmt = sheetMoney(wallets.currency)
+    val fmt = moneyFormatter(wallets.currency)
     val targets = remember(wallets.funds, fund.id) { wallets.funds.filter { it.id != fund.id } }
     var moveTo by remember(fund.id) { mutableStateOf<String?>(null) }   // default: don't move, as on the web
 
@@ -530,7 +530,7 @@ fun DeleteTransferDialog(
     onDismiss: () -> Unit,
     onDelete: () -> Unit,
 ) {
-    val fmt = sheetMoney(wallets.currency)
+    val fmt = moneyFormatter(wallets.currency)
     AlertDialog(
         onDismissRequest = { if (!wallets.saving) onDismiss() },
         title = { Text("Remove this transfer?") },

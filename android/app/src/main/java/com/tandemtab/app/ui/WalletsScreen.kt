@@ -82,7 +82,7 @@ fun WalletsScreen(
     onOpenBank: () -> Unit = {},
 ) {
     val tandem = LocalTandemColors.current
-    val fmt = rememberWalletsMoney(wallets.currency)
+    val fmt = moneyFormatter(wallets.currency)
     var transferFrom by remember { mutableStateOf<FundRowDto?>(null) }
     var incomeTo by remember { mutableStateOf<FundRowDto?>(null) }
     // ⚠️ The editor holds an **id**, not a captured row (the S94 lesson). Editing refreshes the list, and a
@@ -132,7 +132,7 @@ fun WalletsScreen(
                 }
             } else {
                 val bankFmt = remember(syncedBalanceCurrency, wallets.currency) {
-                    rememberWalletsMoney(syncedBalanceCurrency ?: wallets.currency)
+                    moneyFormatter(syncedBalanceCurrency ?: wallets.currency)
                 }
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     wallets.funds.forEach { f ->
@@ -522,9 +522,3 @@ private fun TransferRow(t: FundTransferRowDto, fmt: (Double) -> String, onEdit: 
 private fun formatTransferDate(iso: String): String = runCatching {
     LocalDate.parse(iso).format(DateTimeFormatter.ofPattern("d MMM", Locale.getDefault()))
 }.getOrDefault(iso)
-
-private fun rememberWalletsMoney(currencyCode: String): (Double) -> String {
-    val nf = java.text.NumberFormat.getCurrencyInstance(Locale.getDefault())
-    runCatching { nf.currency = java.util.Currency.getInstance(currencyCode) }
-    return { amount -> nf.format(amount) }
-}

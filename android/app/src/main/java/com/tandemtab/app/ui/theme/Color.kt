@@ -75,6 +75,11 @@ data class TandemColors(
     val dangerBg: Color,
     val dangerBorder: Color,
     val dangerText: Color,
+    // Privacy mode's indicator bar (the web's .privacy-bar, same two pairs). A violet that belongs to no money
+    // state: the bar must not read as a warning (amber), an error (red) or a success (green) — it announces a
+    // MODE, not a verdict on anyone's money.
+    val privacyBg: Color,
+    val privacyFg: Color,
 )
 
 val LightTandemColors = TandemColors(
@@ -95,6 +100,8 @@ val LightTandemColors = TandemColors(
     dangerBg = Color(0x14EF4444),
     dangerBorder = Color(0x33EF4444),
     dangerText = Color(0xFF991B1B),
+    privacyBg = Color(0xFFEFE7FB),
+    privacyFg = Color(0xFF5B3FA8),
 )
 
 val DarkTandemColors = TandemColors(
@@ -115,6 +122,8 @@ val DarkTandemColors = TandemColors(
     dangerBg = Color(0x21EF4444),
     dangerBorder = Color(0x61EF4444),
     dangerText = Color(0xFFFCA5A5),
+    privacyBg = Color(0xFF241D37),
+    privacyFg = Color(0xFFC4B5FD),
 )
 
 val LocalTandemColors = staticCompositionLocalOf { LightTandemColors }

@@ -116,7 +116,7 @@ fun SpendingScreen(
     onDeleteIncomeSource: (id: String, onDone: () -> Unit) -> Unit,
 ) {
     val tandem = LocalTandemColors.current
-    val fmt = rememberMoney(spending.currency)
+    val fmt = moneyFormatter(spending.currency)
     var view by remember { mutableStateOf(SpendView.ByDate) }
     var showManage by remember { mutableStateOf(false) }
     var showTags by remember { mutableStateOf(false) }
@@ -760,9 +760,3 @@ internal fun formatDay(iso: String): String = runCatching {
         else -> d.format(DateTimeFormatter.ofPattern("EEE, d MMM", Locale.getDefault())).uppercase()
     }
 }.getOrDefault(iso)
-
-private fun rememberMoney(currencyCode: String): (Double) -> String {
-    val nf = java.text.NumberFormat.getCurrencyInstance(Locale.getDefault())
-    runCatching { nf.currency = java.util.Currency.getInstance(currencyCode) }
-    return { amount -> nf.format(amount) }
-}

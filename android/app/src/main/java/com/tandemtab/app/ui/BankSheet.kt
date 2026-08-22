@@ -74,7 +74,7 @@ fun BankSheet(
 ) {
     val tandem = LocalTandemColors.current
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    val fmt = sheetMoney(bank.balanceCurrency ?: spending.currency)
+    val fmt = moneyFormatter(bank.balanceCurrency ?: spending.currency)
     // ★ O10 reaches the phone here. These are the two most destructive unguarded actions in the app and they were
     // unguarded on BOTH platforms: disconnecting takes every staged transaction with it, and a dismissed row does
     // not come back on the next sync. One tap each, on a screen you scroll with your thumb.

@@ -61,7 +61,7 @@ fun LogInstallmentSheet(
 ) {
     val tandem = LocalTandemColors.current
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    val fmt = sheetMoney(goals.currency)
+    val fmt = moneyFormatter(goals.currency)
     val cats = spending.categories
     val funds = spending.funds
 

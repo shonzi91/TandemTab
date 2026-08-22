@@ -141,7 +141,7 @@ fun AddSheet(
 ) {
     val tandem = LocalTandemColors.current
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    val fmt = sheetMoney(spending.currency)
+    val fmt = moneyFormatter(spending.currency)
     val editingMode = editing != null
     val incomeEdit = editingDeposit != null
 

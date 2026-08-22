@@ -57,7 +57,7 @@ fun SendToAccountSheet(
 ) {
     val tandem = LocalTandemColors.current
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    val fmt = sheetMoney(wallets.currency)
+    val fmt = moneyFormatter(wallets.currency)
     val editing = existing != null
 
     var destinationId by remember(existing) {

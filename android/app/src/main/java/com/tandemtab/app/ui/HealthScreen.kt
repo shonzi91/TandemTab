@@ -64,7 +64,7 @@ private fun bandLabel(band: String): String = when (band) {
 @Composable
 fun HealthCard(health: HealthUi, onOpen: () -> Unit) {
     val tandem = LocalTandemColors.current
-    val money = sheetMoney(health.currency)
+    val money = moneyFormatter(health.currency)
 
     when {
         health.loading && health.data == null ->
@@ -126,7 +126,7 @@ fun HealthCard(health: HealthUi, onOpen: () -> Unit) {
 @Composable
 fun HealthSheet(health: HealthUi, onDismiss: () -> Unit) {
     val tandem = LocalTandemColors.current
-    val money = sheetMoney(health.currency)
+    val money = moneyFormatter(health.currency)
     val d = health.data ?: return
     val accent = bandColor(d.band, tandem)
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -161,8 +161,8 @@ fun HealthSheet(health: HealthUi, onDismiss: () -> Unit) {
             d.savingsRate?.let { rate ->
                 SectionLabel("Savings rate")
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("${(rate * 100).toInt()}%", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = tandem.saved)
-                    Text("  target ${(d.savingsTarget * 100).toInt()}%", fontSize = 13.sp, color = tandem.muted)
+                    Text(maskPct("${(rate * 100).toInt()}%"), fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = tandem.saved)
+                    Text("  target ${maskPct("${(d.savingsTarget * 100).toInt()}%")}", fontSize = 13.sp, color = tandem.muted)
                 }
                 Meter(fraction = (rate / d.savingsTarget.coerceAtLeast(0.0001)).toFloat().coerceIn(0f, 1f), color = tandem.saved)
             }

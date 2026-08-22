@@ -27,7 +27,9 @@ object InsightNarrator {
 
     private fun arg(a: InsightArgDto, money: (Double) -> String): String = when (a.kind) {
         "money" -> money(a.number)
-        "percent" -> "${(a.number * 100.0).roundToLong()}%"
+        // Money args arrive already masked (the caller's formatter does it); a percent arg has no formatter of its
+        // own, so it would be the one figure left readable inside an otherwise masked sentence.
+        "percent" -> maskPct("${(a.number * 100.0).roundToLong()}%")
         "int" -> a.number.roundToLong().toString()
         else -> a.text ?: ""
     }

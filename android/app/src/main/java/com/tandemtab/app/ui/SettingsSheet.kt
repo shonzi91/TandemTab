@@ -41,6 +41,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -226,6 +227,28 @@ fun ProfileSheet(
                         .clickable { onSetLandingTab(value) }
                         .padding(horizontal = 12.dp, vertical = 7.dp),
                 )
+            }
+        }
+
+        // Flip-to-hide — the phone's version of the web's Ctrl/⌘+Shift+H.
+        // ⚠️ OFF by default, and offered only where there is an accelerometer to read. An app that starts hiding
+        // its own numbers because the phone was laid on a table, with no setting the user remembers turning on,
+        // reads as a bug rather than as a feature — and a switch for a sensor the device does not have is a
+        // promise it cannot keep.
+        if (Privacy.hasFlipSensor(context)) {
+            Row(Modifier.fillMaxWidth().padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Hide figures when face-down", color = MaterialTheme.colorScheme.onSurface)
+                    // Says the asymmetry out loud, because it is the part nobody expects: the gesture is not a
+                    // toggle. Turning the phone back over on purpose is not the same as leaving it face-up on a
+                    // table, and only the first should uncover a screen full of money.
+                    Text(
+                        "Turning the phone face-down hides every amount. Turning it back over doesn't show them — tap the bar at the top.",
+                        color = tandem.muted, fontSize = 12.sp,
+                    )
+                }
+                Spacer(Modifier.width(12.dp))
+                Switch(checked = Privacy.flipToHide, onCheckedChange = { Privacy.flipToHide = it })
             }
         }
 

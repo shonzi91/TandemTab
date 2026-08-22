@@ -14,6 +14,7 @@ import com.tandemtab.app.data.CreateAccountRequest
 import com.tandemtab.app.data.LogInstallmentRequest
 import com.tandemtab.app.data.BankSyncStatusDto
 import com.tandemtab.app.data.PendingBankTransactionDto
+import com.tandemtab.app.ui.Privacy
 import com.tandemtab.app.data.RecordConsentRequest
 import com.tandemtab.app.data.StartBankLinkRequest
 import com.tandemtab.app.data.ChangePasswordRequest
@@ -455,6 +456,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         uiPrefs.edit().putString("landing_tab", tab).apply()
         _landingTab.value = tab
     }
+
+    // Privacy mode (shoulder-surfing cover) keeps its state in the same prefs file, for the third time and the
+    // same reason: it is how this device is set up, not anything about an account. It is NOT exposed as a
+    // StateFlow here — Privacy is a global the money formatters read directly, because those are plain functions
+    // on a dozen screens and a flag threaded through the UI would be one forgotten screen away from rendering
+    // real figures under a bar that says they are hidden. This line is only the ownership of the prefs file.
+    init { Privacy.attach(uiPrefs) }
 
     init {
         // Discover which external providers to show (best-effort — button stays hidden if unreachable).

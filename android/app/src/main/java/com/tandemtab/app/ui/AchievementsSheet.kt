@@ -143,13 +143,13 @@ private fun AchievementCell(a: AchievementDto) {
         AchievementBadge(a)
         Spacer(Modifier.height(8.dp))
         Text(
-            a.title,
+            maskServerText(a.title),
             fontSize = 12.sp,
             fontWeight = FontWeight.Bold,
             textAlign = TextAlign.Center,
             color = if (a.earned) MaterialTheme.colorScheme.onSurface else tandem.muted,
         )
-        Text(a.desc, fontSize = 10.sp, textAlign = TextAlign.Center, color = tandem.muted)
+        Text(maskServerText(a.desc), fontSize = 10.sp, textAlign = TextAlign.Center, color = tandem.muted)
         val sub = when {
             a.earned -> a.earnedOn?.let { prettyEarnedOn(it) }
             (a.percent ?: 0) > 0 -> "${a.percent}%"

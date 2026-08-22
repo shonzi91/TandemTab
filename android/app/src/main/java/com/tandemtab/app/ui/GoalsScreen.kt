@@ -79,7 +79,7 @@ fun GoalsScreen(
     onUndoMovement: (allocationId: String, onDone: () -> Unit) -> Unit,
 ) {
     val tandem = LocalTandemColors.current
-    val fmt = rememberGoalsMoney(goals.currency)
+    val fmt = moneyFormatter(goals.currency)
     var filter by remember { mutableStateOf(GoalFilter.All) }
     var allocateBucket by remember { mutableStateOf<SavingBucketDto?>(null) }
     var spendBucket by remember { mutableStateOf<SavingBucketDto?>(null) }
@@ -367,7 +367,7 @@ private fun bucketDetails(b: SavingBucketDto, fmt: (Double) -> String): List<Pai
     when (b.kind) {
         "debt" -> {
             add("Owed today" to fmt(b.debtBalance ?: 0.0))
-            b.debtProgress?.let { add("Paid off" to "${(it * 100).toInt()}%") }
+            b.debtProgress?.let { add("Paid off" to maskPct("${(it * 100).toInt()}%")) }
             b.debtMonthsAhead?.takeIf { it > 0 }?.let { add("Ahead of schedule" to "$it mo") }
             b.monthlySetAside?.takeIf { it > 0 }?.let { add("Paying" to "${fmt(it)}/mo") }
         }
@@ -385,7 +385,7 @@ private fun bucketDetails(b: SavingBucketDto, fmt: (Double) -> String): List<Pai
         else -> {
             add("Saved" to fmt(b.saved))
             b.goalTarget?.let { add("Target" to fmt(it)) }
-            b.goalProgress?.let { add("Progress" to "${(it * 100).toInt()}%") }
+            b.goalProgress?.let { add("Progress" to maskPct("${(it * 100).toInt()}%")) }
             b.targetShortfall?.takeIf { it > 0 }?.let { add("Still to save" to fmt(it)) }
             b.monthlySetAside?.takeIf { it > 0 }?.let { add("Set aside" to "${fmt(it)}/mo") }
         }
@@ -477,10 +477,4 @@ private fun FilterChip(label: String, count: Int, selected: Boolean, onClick: ()
         Text(label, color = fg, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
         Text(count.toString(), color = fg, fontSize = 11.sp, fontWeight = FontWeight.Bold)
     }
-}
-
-private fun rememberGoalsMoney(currencyCode: String): (Double) -> String {
-    val nf = java.text.NumberFormat.getCurrencyInstance(Locale.getDefault())
-    runCatching { nf.currency = java.util.Currency.getInstance(currencyCode) }
-    return { amount -> nf.format(amount) }
 }
