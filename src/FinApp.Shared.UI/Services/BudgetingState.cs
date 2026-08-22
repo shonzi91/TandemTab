@@ -3296,8 +3296,12 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     /// <para>★ Same currency only, and the filter is <see cref="TransferableAccounts"/>'s — reused rather than
     /// rewritten. Money's <c>+</c> throws on a mismatch and that sum feeds the other account's whole Trips screen,
     /// so offering a euro expense a leva trip would be a control whose only possible outcome is a 400.</para>
-    /// <para>★ Finished trips are excluded, exactly as this account's own add-form picker excludes them: reaching
-    /// across accounts is a deliberate act, and the honest default is a journey that is still going.</para>
+    /// <para>★ <b>Finished trips are offered</b>, matching the edit form's own trip row (<c>EditTripOptions</c>)
+    /// rather than the add form's. That is the whole point of editing: attaching the flight you booked in March, or
+    /// the card charge that landed while you were away and got filed on your return. Excluding them here — as a
+    /// first cut did — put a stricter rule on the foreign row than on the row directly above it, on the same form,
+    /// for the same act. The Pro gate on a finished trip still applies; the server enforces it against the account
+    /// that owns the trip.</para>
     /// <para>Loaded on demand and cached for the session; a single-account user gets an empty list for free,
     /// because <see cref="TransferableAccounts"/> is already empty.</para>
     /// </summary>
@@ -3312,7 +3316,6 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
                 var acct = _cache.TryGetValue(summary.Id, out var hit) ? hit.Account : await DeserializeAccountAsync(summary.Id);
                 if (acct is null) continue;
                 options.AddRange(acct.TripsByDeparture
-                    .Where(t => !t.IsFinishedOn(TodayDate))
                     .Select(t => new ForeignTripOption(summary.Id, summary.Name, t)));
             }
             catch { /* an unreadable account simply offers no trips */ }

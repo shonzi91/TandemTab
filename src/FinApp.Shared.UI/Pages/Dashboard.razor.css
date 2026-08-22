@@ -1253,11 +1253,15 @@ html.dark .trend-axis { stroke: rgba(255,255,255,.22); }
 html.dark .trend-grid { stroke: rgba(255,255,255,.09); }
 html.dark .trend-ylbl { color: #7c8a94; }
 html.dark .trend-xlbl { color: #7c8a94; }
-/* ⚠️ app.css's `html.dark select` sets `background` (the SHORTHAND), which wipes background-image — and its
-   chevron re-application names only the five selectors in the shared list, which this class is not one of. Put
-   back here rather than by editing app.css: a scoped rule needs no `?v=` cache-bust in index.html, and it keeps
-   both halves of this control's dark styling in the file that owns it. */
+/* ⚠️ The whole dark treatment, not just the chevron, and both halves are load-bearing.
+   app.css darkens form controls with `html.dark select` (0,1,1) — but this class picked up the shared LIGHT field
+   rule below as a bare class, so the scoped `.trend-focus-sel[b-x]` (0,2,0) outranks it and the picker rendered
+   white-on-#e8eaf0 text: invisible. (The app's other selects escape it because app.css names each of them
+   specifically.) And `background` there is the SHORTHAND, so setting it wipes background-image — hence the chevron
+   is re-applied here too. Scoped rather than added to app.css's lists: no `?v=` cache-bust needed in index.html,
+   and both themes for this control stay in the file that owns it. */
 html.dark .trend-focus .trend-focus-sel {
+    background-color: #1e2330; color: #e8eaf0; border-color: #2c3142;
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.5 6 8l3.5-3.5' fill='none' stroke='%233fe0c5' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
     background-repeat: no-repeat; background-position: right 12px center;
 }
