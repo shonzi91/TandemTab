@@ -106,8 +106,13 @@ public static class SpendingMap
             .Where(f => !f.IsArchived)
             .Select(f => new FundOptionDto(f.Id, f.Name, f.IsSynced))
             .ToList();
+        // ⚠️ Counted across EVERY period, not just this one: "most used" is a fact about the user's habits, and a
+        // shortlist rebuilt from a fresh month would be empty on the 1st and reshuffle all through it.
+        var tagUse = new Dictionary<Guid, int>();
+        foreach (var e in account.Periods.SelectMany(p => p.Expenses))
+            if (e.TagId is { } tid) tagUse[tid] = tagUse.GetValueOrDefault(tid) + 1;
         var tags = account.ActiveTags
-            .Select(t => new TagOptionDto(t.Id, t.Name, t.Icon, t.CategoryId, t.IsTripTag))
+            .Select(t => new TagOptionDto(t.Id, t.Name, t.Icon, t.CategoryId, t.IsTripTag, tagUse.GetValueOrDefault(t.Id)))
             .ToList();
 
         return new SpendingViewDto(version, account.Currency, Overview(account, period, bankBalance, bankCurrency), expenses, categories, funds, tags);

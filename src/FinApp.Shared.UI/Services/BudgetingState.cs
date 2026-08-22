@@ -3252,6 +3252,67 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     /// when you're logging groceries. Inside trip mode the caller shows <see cref="TripTags"/> instead.</summary>
     public IReadOnlyList<Tag> EverydayTags => ActiveTags.Where(t => !t.IsTripTag).ToList();
 
+    /// <summary>How many expenses carry each tag, across every period. The ranking behind
+    /// <see cref="MostUsedEverydayTags"/>.</summary>
+    private Dictionary<Guid, int> TagUsageCounts()
+    {
+        var counts = new Dictionary<Guid, int>();
+        foreach (var expense in Account.Periods.SelectMany(p => p.Expenses))
+            if (expense.TagId is { } id)
+                counts[id] = counts.GetValueOrDefault(id) + 1;
+        return counts;
+    }
+
+    /// <summary>
+    /// The everyday tags worth offering as chips — the <paramref name="take"/> most-used, commonest first.
+    /// <para>
+    /// ★ A shortlist, not the whole vocabulary. Every tag as a chip is a wall that grows until nobody reads it, and
+    /// the long tail is reached by typing instead (<see cref="SearchEverydayTags"/>). Ranking by USE rather than by
+    /// name or recency is what makes the shortlist stable: the five you actually reach for stay where your thumb
+    /// expects them, instead of reshuffling every time you log something.
+    /// </para>
+    /// <para>⚠️ Never-used tags are included after the used ones rather than hidden — on a fresh account nothing has
+    /// a count yet, and an empty row would read as "you have no tags" to someone who just made three.</para>
+    /// </summary>
+    public IReadOnlyList<Tag> MostUsedEverydayTags(int take = 5)
+    {
+        var counts = TagUsageCounts();
+        return EverydayTags
+            .OrderByDescending(t => counts.GetValueOrDefault(t.Id))
+            .ThenBy(t => t.Name, StringComparer.CurrentCultureIgnoreCase)
+            .Take(take)
+            .ToList();
+    }
+
+    /// <summary>
+    /// Everyday tags whose name contains <paramref name="query"/> — the suggestions under the tag box.
+    /// <para>⚠️ Below <see cref="TagSearchMinimum"/> characters this returns nothing on purpose: one letter matches
+    /// most of the list, so suggesting on it is the same wall of chips the shortlist exists to avoid.</para>
+    /// </summary>
+    public IReadOnlyList<Tag> SearchEverydayTags(string? query, int take = 6)
+    {
+        var q = query?.Trim();
+        if (q is null || q.Length < TagSearchMinimum) return [];
+        return EverydayTags
+            .Where(t => t.Name.Contains(q, StringComparison.CurrentCultureIgnoreCase))
+            // A name that STARTS with what was typed is the likelier target than one that merely contains it.
+            .OrderByDescending(t => t.Name.StartsWith(q, StringComparison.CurrentCultureIgnoreCase))
+            .ThenBy(t => t.Name, StringComparer.CurrentCultureIgnoreCase)
+            .Take(take)
+            .ToList();
+    }
+
+    /// <summary>How many characters before the tag box starts suggesting. Two: one letter matches almost
+    /// everything, and three is past the point where a short tag ("Gas", "Vet") can be found by prefix.</summary>
+    public const int TagSearchMinimum = 2;
+
+    /// <summary>An everyday tag with exactly this name, if there is one — case-insensitively, so typing "food"
+    /// finds "Food" rather than trying to create a second one the domain would reject.</summary>
+    public Tag? FindEverydayTagByName(string? name) =>
+        name?.Trim() is { Length: > 0 } n
+            ? ActiveTags.FirstOrDefault(t => string.Equals(t.Name, n, StringComparison.CurrentCultureIgnoreCase))
+            : null;
+
     public async Task<Guid> AddTrip(string name, DateOnly from, DateOnly to, string? destination = null, string? icon = null)
     {
         var result = await ExecuteOptimisticAsync(() => { Account.AddTrip(name, from, to, destination, icon); },

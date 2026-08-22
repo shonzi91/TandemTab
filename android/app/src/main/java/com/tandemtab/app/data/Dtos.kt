@@ -156,6 +156,10 @@ data class TagOptionDto(
     val icon: String? = null,
     val categoryId: String? = null,
     val tripTag: Boolean = false,
+    // How many expenses carry this tag, across EVERY period — the ranking behind the picker's "most used"
+    // shortlist. Computed server-side because this client holds only the current month's rows and would otherwise
+    // be ordering by a different question. Zero from an older server, which just sorts the shortlist by name.
+    val useCount: Int = 0,
 )
 
 /** A tag as the MANAGE surface reads it, which is a different question from the picker's.

@@ -65,6 +65,7 @@ import com.tandemtab.app.data.CategoryOptionDto
 import com.tandemtab.app.data.DepositRowDto
 import com.tandemtab.app.data.ExpenseDto
 import com.tandemtab.app.data.FundOptionDto
+import com.tandemtab.app.data.TagOptionDto
 import com.tandemtab.app.ui.theme.LocalTandemColors
 import com.tandemtab.app.ui.theme.TandemIcons
 import java.time.Instant
@@ -128,6 +129,11 @@ fun AddSheet(
     onEditDeposit: (depositId: String, fundId: String, categoryId: String, amount: Double, date: String, onDone: () -> Unit) -> Unit,
     onDeleteDeposit: (depositId: String, onDone: () -> Unit) -> Unit = { _, _ -> },
     onAddCategory: (name: String, parentId: String?, icon: String?, onDone: (String?) -> Unit) -> Unit,
+    // Create a tag and hand back its id. Same shape as onAddCategory; used by the find-or-add box when what was
+    // typed matches nothing that exists.
+    // ⚠️ Named onAddExpenseTag, not onAddTag: the tags-MANAGEMENT sheet already has an onAddTag with a different
+    // signature (no id back), and two callbacks one letter apart on the same screen is how the wrong one gets wired.
+    onAddExpenseTag: (name: String, isTripTag: Boolean, onDone: (String?) -> Unit) -> Unit = { _, _, done -> done(null) },
     // Null when there is nowhere to settle onto (only one account, or none in this currency), which is why the
     // whole row is absent rather than present-and-disabled — a control that can never work is worse than no control.
     onSettle: ((ExpenseDto) -> Unit)? = null,
@@ -192,6 +198,9 @@ fun AddSheet(
 
     // The row's label. One tag per expense is the model, so this is a single id rather than a set.
     var tagId by remember(editing) { mutableStateOf(editing?.tagIds?.firstOrNull()) }
+    // What is typed in the find-or-add tag box. Doubles as the search query and as the name of a tag about to be
+    // created — see commitTypedTag.
+    var tagQuery by remember(editing) { mutableStateOf("") }
 
     // "HH:mm", or blank for none. Editing shows what the row actually carries — including nothing, which most
     // bank-imported rows carry — rather than stamping "now" onto a row that was never timed.
@@ -228,6 +237,35 @@ fun AddSheet(
         mode == AddMode.Expense -> pendingCount > 0
         else -> incParsed != null && incFundId != null
     }
+    /**
+     * Resolve whatever is sitting in the find-or-add tag box, then run [then].
+     *
+     * ⚠️ This is the "sometimes it does not save the tag" bug: typing a name and pressing Save — without picking a
+     * suggestion first — dropped the text silently, and the expense saved untagged with nothing said. A field the
+     * user has typed into is a stated intention.
+     *
+     * An existing name SELECTS rather than creating: the domain rejects duplicate tag names, so "create anyway"
+     * would surface as an error on a save that looks routine. Matching is case-insensitive, so "food" finds "Food".
+     * A creation that fails leaves the expense untagged rather than unsaved — losing the label is better than
+     * losing the entry.
+     */
+    fun commitTypedTag(then: () -> Unit) {
+        val name = tagQuery.trim()
+        if (name.isEmpty()) { then(); return }
+        val existing = spending.tags.firstOrNull { it.name.equals(name, ignoreCase = true) }
+        if (existing != null) {
+            tagId = existing.id
+            tagQuery = ""
+            then()
+            return
+        }
+        onAddExpenseTag(name, tripId != null) { newId ->
+            if (newId != null) tagId = newId
+            tagQuery = ""
+            then()
+        }
+    }
+
     fun doSave() {
         when {
             editingMode -> {
@@ -496,20 +534,75 @@ fun AddSheet(
                     // Trip labels are left out at home — "Tickets & tours" is noise when you're logging groceries —
                     // and folded in only once the row is filed to a journey, which is the axis its recap splits on.
                     run {
-                        val offered = spending.tags.filter { !it.tripTag || tripId != null }
-                        if (offered.isNotEmpty()) {
+                        val onTrip = tripId != null
+                        val offered = spending.tags.filter { !it.tripTag || onTrip }
+                        // ★ On a trip the predefined labels ARE the vocabulary and all of them show — each is bound
+                        // to a category, so one tap files and labels at once. Off a trip the everyday list grows
+                        // for ever, so only the five most-used are chips and the rest is reached by typing.
+                        // ⚠️ Ranked by useCount, which the SERVER computes across every period: this client holds
+                        // only the current month's rows and would otherwise order by a different question.
+                        val shortlist =
+                            if (onTrip) offered
+                            else offered.sortedWith(compareByDescending<TagOptionDto> { it.useCount }.thenBy { it.name.lowercase() }).take(5)
+                        // Whatever is selected is always a chip, even when it is outside the shortlist — otherwise
+                        // the form shows no label while the expense carries one.
+                        val chips = (shortlist + offered.filter { it.id == tagId }).distinctBy { it.id }
+                        val matches =
+                            if (onTrip || tagQuery.trim().length < 2) emptyList()
+                            else offered.filter {
+                                it.name.contains(tagQuery.trim(), ignoreCase = true) && chips.none { c -> c.id == it.id }
+                            }.sortedWith(
+                                compareByDescending<TagOptionDto> { it.name.startsWith(tagQuery.trim(), ignoreCase = true) }
+                                    .thenBy { it.name.lowercase() },
+                            ).take(6)
+                        val exactExists = offered.any { it.name.equals(tagQuery.trim(), ignoreCase = true) }
+
+                        if (offered.isNotEmpty() || !onTrip) {
                             Spacer(Modifier.height(14.dp))
                             FieldLabel("Label")
                             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 PickChip(label = "No label", icon = null, selected = tagId == null) { tagId = null }
-                                offered.forEach { t ->
+                                chips.forEach { t ->
                                     PickChip(label = t.name, icon = t.icon ?: "tag", catName = t.name, selected = tagId == t.id) {
                                         tagId = if (tagId == t.id) null else t.id
+                                        tagQuery = ""
                                         // F2: a bound tag files the expense for you. A DEFAULT at entry time, not a
                                         // rule — it only fires on adding, so correcting a label can't silently move
                                         // an already-filed row into a different budget.
                                         if (!editingMode && tagId == t.id) t.categoryId?.let { categoryId = it }
                                     }
+                                }
+                            }
+                            // One box that both FINDS and MAKES: off a trip the chips are only a shortlist, so the
+                            // rest of the vocabulary has to be typeable — and the same gesture invents a new label.
+                            // ⚠️ Nothing has to be pressed: doSave commits whatever is in here (see commitTypedTag),
+                            // because a field the user has typed into is a stated intention.
+                            if (!onTrip) {
+                                Spacer(Modifier.height(8.dp))
+                                OutlinedTextField(
+                                    value = tagQuery,
+                                    onValueChange = { tagQuery = it.take(30) },
+                                    placeholder = { Text("Find or add a tag…") },
+                                    singleLine = true,
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                                if (matches.isNotEmpty()) {
+                                    Spacer(Modifier.height(8.dp))
+                                    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        matches.forEach { m ->
+                                            PickChip(label = m.name, icon = m.icon ?: "tag", catName = m.name, selected = tagId == m.id) {
+                                                tagId = m.id
+                                                tagQuery = ""
+                                                if (!editingMode) m.categoryId?.let { categoryId = it }
+                                            }
+                                        }
+                                    }
+                                } else if (tagQuery.trim().length >= 2 && !exactExists) {
+                                    Spacer(Modifier.height(6.dp))
+                                    Text(
+                                        "No tag matches — \"${tagQuery.trim()}\" will be created and attached.",
+                                        fontSize = 12.sp, color = tandem.muted,
+                                    )
                                 }
                             }
                             val bound = spending.tags.firstOrNull { it.id == tagId }?.categoryId
@@ -586,7 +679,9 @@ fun AddSheet(
                     if (!editingMode) {
                         Spacer(Modifier.height(14.dp))
                         // "+ Add another expense" — parks the current row.
-                        TextButton(onClick = { stageCurrent() }, modifier = Modifier.fillMaxWidth()) {
+                        // Through commitTypedTag: staging snapshots the tag id into the draft, so a name still
+                        // sitting in the box would be lost with the row.
+                        TextButton(onClick = { commitTypedTag { stageCurrent() } }, modifier = Modifier.fillMaxWidth()) {
                             Icon(TandemIcons.Plus, null, tint = MaterialTheme.colorScheme.primary)
                             Spacer(Modifier.width(6.dp))
                             Text("Add another expense", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
@@ -632,7 +727,7 @@ fun AddSheet(
             saving = spending.saving,
             canSave = canSave,
             onDismiss = onDismiss,
-            onSave = { doSave() },
+            onSave = { commitTypedTag { doSave() } },
             modifier = Modifier.align(Alignment.BottomCenter),
             saveLabel = if (editingMode) "Save changes" else "Save",
         )

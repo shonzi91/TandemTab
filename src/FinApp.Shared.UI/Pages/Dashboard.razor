@@ -3456,7 +3456,10 @@ else
                 // category, so here one tap does both, and the recap gets its axis for free.
                 // Off a trip the trip labels are hidden, because "Tickets & tours" is noise at the supermarket.
                 var onTrip = _expTripId != Guid.Empty && State.TripTags.Count > 0;
-                var pickTags = onTrip ? State.TripTags : State.EverydayTags;
+                // ★ On a trip the predefined labels are the WHOLE point and they all show — six of them, each bound
+                // to a category, so one tap files and labels at once. Off a trip the everyday list is unbounded and
+                // grows for ever, so only the five most-used are chips and the rest is reached by typing.
+                var pickTags = onTrip ? State.TripTags : State.MostUsedEverydayTags();
                 // ★ Whatever is selected is always in the row, even when it belongs to the other axis. The two lists
                 // are disjoint by design, so without this a tag picked before the trip was chosen — or an everyday
                 // tag reached by typing its name into the "new tag" box — stays attached to the expense while its
@@ -3575,20 +3578,48 @@ else
                             }
                         </div>
                     }
-                    @* ★ The "new tag" box is behind the ＋ now. Creating a tag is the rare case — the chips above
-                       cover almost every entry — and an always-open text field read as something that wanted
-                       filling in, on a form whose whole job this round was to stop asking. The ＋ keeps it one tap
-                       away and the row collapses back once the tag is made. *@
-                    @if (_tagNewOpen)
+                    @* ★ One box that both FINDS and MAKES. Off a trip the chips above are only the five most-used,
+                       so the rest of the vocabulary has to be reachable — and the same box is how a new label is
+                       born, because "search" and "create" are the same gesture here: you type what you mean, and
+                       either it exists or it is about to.
+                       ⚠️ Nothing has to be pressed. Typing a name and hitting Save on the expense used to drop the
+                       text silently — reported as "sometimes it does not save the tag". The save paths now commit
+                       whatever is in this box (see EnsureTypedTagAsync), so the field cannot lie about what it is
+                       going to do. On a trip it stays behind the ＋: the predefined labels are the whole intended
+                       vocabulary there, and a search box over six chips is furniture. *@
+                    @if (onTrip && !_tagNewOpen)
                     {
-                        <div class="tag-new-row">
-                            <input type="text" class="tag-new-in" placeholder="@Loc["New tag…"]" maxlength="30" @bind="_newTagName" @bind:event="oninput" @onkeydown="TagNewKey" />
-                            <button type="button" class="lbl-add" title="@Loc["Add tag"]" disabled="@string.IsNullOrWhiteSpace(_newTagName)" @onclick="AddTagFromModal">+</button>
-                        </div>
+                        <button type="button" class="link tag-new-open" @onclick="() => _tagNewOpen = true"><Icon Name="plus" /> @Loc["New tag"]</button>
                     }
                     else
                     {
-                        <button type="button" class="link tag-new-open" @onclick="() => _tagNewOpen = true"><Icon Name="plus" /> @Loc["New tag"]</button>
+                        <div class="tag-new-row">
+                            <input type="text" class="tag-new-in" placeholder="@(onTrip ? Loc["New tag…"] : Loc["Find or add a tag…"])" maxlength="30"
+                                   @bind="_newTagName" @bind:event="oninput" @onkeydown="TagNewKey" />
+                            <button type="button" class="lbl-add" title="@Loc["Add tag"]" disabled="@string.IsNullOrWhiteSpace(_newTagName)" @onclick="AddTagFromModal">+</button>
+                        </div>
+                        @* Suggestions from two letters in. Any tag already selected is excluded — it is already a
+                           chip above, and offering it again would read as a second, different one. *@
+                        var tagMatches = onTrip ? [] : State.SearchEverydayTags(_newTagName)
+                            .Where(t => !pickTags.Any(p => p.Id == t.Id)).ToList();
+                        @if (tagMatches.Count > 0)
+                        {
+                            <div class="tag-pick tag-suggest">
+                                @foreach (var m in tagMatches)
+                                {
+                                    var mid = m.Id;
+                                    <button type="button" class="tag-chip @(_fTagId == mid ? "tag-chip-on" : "")" @onclick="() => PickSuggestedTag(mid)">
+                                        @TagMark(m.Icon)@m.Name
+                                    </button>
+                                }
+                            </div>
+                        }
+                        else if (!string.IsNullOrWhiteSpace(_newTagName) && _newTagName!.Trim().Length >= BudgetingState.TagSearchMinimum
+                                 && State.FindEverydayTagByName(_newTagName) is null)
+                        {
+                            @* Says what Save will do, so creating a tag is never a surprise. *@
+                            <small class="hint"><Icon Name="plus" /> @string.Format(Loc["No tag matches — “{0}” will be created and attached."], _newTagName!.Trim())</small>
+                        }
                     }
                     @* F2: say it out loud when a tag moved the category — the category chips above do update, but a
                        silent change to where money is filed is exactly the kind of "helpful" nobody asked for. *@
@@ -4642,7 +4673,9 @@ else
                     {
                         @tagPicker
                     }
-                    <button type="button" class="add-another" @onclick="StageCurrentExpense" disabled="@(_amount <= 0)"><Icon Name="plus" /> @Loc["Add another expense"]</button>
+                    @* ⚠️ Through StageWithTypedTagAsync, not StageCurrentExpense directly: staging snapshots the tag
+                       id into the draft, so a name still sitting in the box would be lost with the entry. *@
+                    <button type="button" class="add-another" @onclick="StageWithTypedTagAsync" disabled="@(_amount <= 0)"><Icon Name="plus" /> @Loc["Add another expense"]</button>
                     <div class="modal-actions">
                         <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
                         <button @onclick="AddExpenseFromModal" disabled="@(_expenseDrafts.Count == 0 && _amount <= 0)">@Loc["Add"]</button>
@@ -5447,9 +5480,13 @@ else
                     </div>
                     <p class="hint">@Loc["Flat labels you attach to expenses alongside categories — to track things that cut across them (a trip, work, reimbursable)."]</p>
                     <div class="tag-new-row">
-                        <input type="text" class="tag-new-in grow" placeholder="@Loc["New tag…"]" maxlength="30" @bind="_manageTagName" @bind:event="oninput" @onkeydown="ManageTagKey" />
+                        <input type="text" class="tag-new-in grow" placeholder="@Loc["New tag…"]" maxlength="30" @bind="_manageTagName" @bind:event="oninput" @bind:after="() => _tagNameError = null" @onkeydown="ManageTagKey" />
                         <button class="fund-add" disabled="@string.IsNullOrWhiteSpace(_manageTagName)" @onclick="AddTagFromManage"><Icon Name="plus" /> @Loc["Add tag"]</button>
                     </div>
+                    @if (_tagNameError is { } addTagErr)
+                    {
+                        <small class="hint warn-text">@addTagErr</small>
+                    }
                     var allTags = State.AllTags;
                     @if (allTags.Count == 0)
                     {
@@ -5480,7 +5517,11 @@ else
 
                 case Modal.EditTag:
                     <h3>@Loc["Edit tag"]</h3>
-                    <label>@Loc["Name"] <input type="text" maxlength="30" @bind="_editTagName" @bind:event="oninput" @onkeydown="EditTagKey" /></label>
+                    <label>@Loc["Name"] <input type="text" maxlength="30" @bind="_editTagName" @bind:event="oninput" @bind:after="() => _tagNameError = null" @onkeydown="EditTagKey" /></label>
+                    @if (_tagNameError is { } editTagErr)
+                    {
+                        <small class="hint warn-text">@editTagErr</small>
+                    }
                     @* F2: bind the tag to a category so applying it files the expense automatically. Optional and
                        off by default — a tag with no binding behaves exactly as it always has. *@
                     <label>@Loc["Files into"]
@@ -9859,6 +9900,8 @@ else
         // to a trip never teaches the merchant rule anything. See BankRuleOffered for why.
         var writeRule = _bcRemember && BankRuleOffered;
 
+        await EnsureTypedTagAsync();   // so the rule below remembers the label the user actually typed
+
         // The rule goes first: writing it after the confirm would have nothing left to match, and if the rule write
         // fails the expense should still not be posted twice by a retry.
         if (writeRule)
@@ -10450,15 +10493,41 @@ else
     private string? _manageTagName;
     private Guid _editTagId;
     private string? _editTagName;
-    private void OpenManageTags() { _manageTagName = null; _modal = Modal.ManageTags; }
+    private void OpenManageTags() { _manageTagName = null; _tagNameError = null; _modal = Modal.ManageTags; }
+
+    /// <summary>Why the typed tag name can't be used, or null when it can. One rule, read by both the add and the
+    /// rename box, so they cannot disagree about what counts as a duplicate.
+    /// <para>⚠️ Case-insensitive and trimmed, matching <c>Account.AddTag</c> / <c>Account.RenameTag</c> exactly —
+    /// a client check that is laxer than the domain's just moves the refusal to after the save, and one that is
+    /// stricter refuses names the domain would have taken.</para>
+    /// <para>★ It names the clash. "That name is taken" leaves the user hunting for a tag that may be ARCHIVED and
+    /// therefore invisible in the list they are looking at, which is the case that produces "but I don't have
+    /// one!".</para></summary>
+    private string? TagNameProblem(string? name, Guid? exceptId = null)
+    {
+        var trimmed = name?.Trim();
+        if (string.IsNullOrWhiteSpace(trimmed)) return null;
+        var clash = State.AllTags.FirstOrDefault(t =>
+            t.Id != exceptId && string.Equals(t.Name, trimmed, StringComparison.CurrentCultureIgnoreCase));
+        if (clash is null) return null;
+        return clash.IsArchived
+            ? string.Format(Loc["“{0}” already exists but is archived — restore it instead of making a second one."], clash.Name)
+            : string.Format(Loc["“{0}” already exists."], clash.Name);
+    }
+
+    // The message under whichever tag-name box is open. Cleared as soon as the text changes, so a stale refusal
+    // never sits under a name the user has already fixed.
+    private string? _tagNameError;
 
     private Task AddTagFromManage() => RunModal(async () =>
     {
         var name = _manageTagName?.Trim();
         if (string.IsNullOrWhiteSpace(name)) return;
-        if (State.AllTags.Any(t => string.Equals(t.Name, name, StringComparison.CurrentCultureIgnoreCase))) { _manageTagName = null; return; }
+        // ⚠️ It used to clear the box and return: you typed "Food", pressed Add, and the field emptied with no tag
+        // made and no reason given. A refusal that looks like a success is worse than an error.
+        if (TagNameProblem(name) is { } problem) { _tagNameError = problem; return; }
         await State.AddTag(name);
-        _manageTagName = null;
+        _manageTagName = null; _tagNameError = null;
     });
     private async Task ManageTagKey(KeyboardEventArgs e) { if (e.Key is "Enter" && !string.IsNullOrWhiteSpace(_manageTagName)) await AddTagFromManage(); }
 
@@ -10468,7 +10537,7 @@ else
 
     private void OpenEditTag(Guid tagId)
     {
-        _editTagId = tagId; _editTagName = State.TagName(tagId);
+        _editTagId = tagId; _editTagName = State.TagName(tagId); _tagNameError = null;
         _editTagCatId = State.TagCategory(tagId) ?? Guid.Empty;
         _modalBack.Push(OpenManageTags); _modal = Modal.EditTag;
     }
@@ -10476,7 +10545,12 @@ else
     {
         var name = _editTagName?.Trim();
         if (string.IsNullOrWhiteSpace(name)) return;
+        // Excluding itself, or re-saving a tag without touching its name would refuse to save it. The domain draws
+        // the same exception (Account.RenameTag), but reaching it means a round trip and a raw server error where
+        // an inline sentence beside the field would do.
+        if (TagNameProblem(name, _editTagId) is { } problem) { _tagNameError = problem; return; }
         await State.SaveTag(_editTagId, name, State.TagIcon(_editTagId), _editTagCatId == Guid.Empty ? null : _editTagCatId);
+        _tagNameError = null;
         Back();
     });
     private async Task EditTagKey(KeyboardEventArgs e) { if (e.Key is "Enter" && !string.IsNullOrWhiteSpace(_editTagName)) await SaveEditTag(); }
@@ -12329,6 +12403,15 @@ else
 
     /// <summary>Park the current editor entry as a staged draft row, then clear the per-item fields (keeping
     /// category/fund/date, and the trip — a staged row is usually one of several from the same day away).</summary>
+    /// <summary>Stage the editor's entry, committing any tag name still sitting in the box first. Every path that
+    /// stages goes through here or awaits <see cref="EnsureTypedTagAsync"/> itself — staging copies the tag ID into
+    /// the draft, so a name committed afterwards would attach to nothing.</summary>
+    private async Task StageWithTypedTagAsync()
+    {
+        await EnsureTypedTagAsync();
+        StageCurrentExpense();
+    }
+
     private void StageCurrentExpense()
     {
         if (_amount <= 0) return;
@@ -12341,9 +12424,9 @@ else
 
     /// <summary>Pull a staged draft back into the editor to fix it (removing it from the list). If the editor already
     /// holds a valid entry, stage that first so it isn't lost.</summary>
-    private void EditDraft(ExpenseDraft d)
+    private async Task EditDraft(ExpenseDraft d)
     {
-        if (_amount > 0) StageCurrentExpense();
+        if (_amount > 0) await StageWithTypedTagAsync();
         _expenseDrafts.Remove(d);
         _categoryId = d.CategoryId; _fundId = d.FundId; _note = d.Note; _expenseDate = d.Date;
         _fTagId = d.TagId; _newTagName = null; _tagFiledTo = null;
@@ -12360,6 +12443,9 @@ else
     /// <summary>Save everything: the staged drafts plus the in-progress editor entry (if it has an amount).</summary>
     private Task AddExpenseFromModal() => RunModal(async () =>
     {
+        // ⚠️ BEFORE staging: StageCurrentExpense snapshots _fTagId into the draft, so a tag committed after it
+        // would land on nothing. See EnsureTypedTagAsync.
+        await EnsureTypedTagAsync();
         if (_amount > 0) StageCurrentExpense();
         if (_expenseDrafts.Count == 0) { CloseModal(); return; }
         var lastDate = _expenseDate;
@@ -12460,6 +12546,51 @@ else
     private async Task TagNewKey(KeyboardEventArgs e)
     {
         if (e.Key is "Enter" && !string.IsNullOrWhiteSpace(_newTagName)) await AddTagFromModal();
+    }
+
+    /// <summary>Take one of the suggestions under the tag box: select it and clear the query, since the box's job
+    /// is done. Clearing matters — leaving the text sitting there would have the save path try to commit it again
+    /// on top of the selection the user just made.</summary>
+    private void PickSuggestedTag(Guid tagId)
+    {
+        _fTagId = tagId;
+        _newTagName = null;
+        _tagFiledTo = null;
+        ApplyTagBinding(tagId);
+    }
+
+    /// <summary>
+    /// Commit whatever is sitting in the tag box before an expense is saved: select an existing tag of that name,
+    /// or create one and select it.
+    /// <para>
+    /// ⚠️ <b>This is the "sometimes it does not save the tag" bug.</b> Typing a name and pressing Save — without
+    /// pressing ＋ or Enter first — dropped the text silently: the expense saved untagged and nothing said why.
+    /// A field the user has typed into is a stated intention, and a form that ignores it is lying about what the
+    /// button does.
+    /// </para>
+    /// <para>★ An existing name SELECTS rather than creating — the domain rejects duplicates
+    /// (<c>Account.AddTag</c>), so "create anyway" would surface as an error on a save the user thinks is routine.
+    /// Case-insensitively, so typing "food" finds "Food".</para>
+    /// <para>Called from every expense save path. Returns once the box is empty, so it is safe to call twice.</para>
+    /// </summary>
+    private async Task EnsureTypedTagAsync()
+    {
+        var name = _newTagName?.Trim();
+        if (string.IsNullOrWhiteSpace(name)) return;
+        if (State.FindEverydayTagByName(name) is { } existing)
+        {
+            _fTagId = existing.Id;
+        }
+        else
+        {
+            // Born on the axis the form is filing against — see AddTagFromModal for why a tag made on a trip must
+            // be a trip label or it is created, selected and instantly invisible.
+            var id = await State.AddTag(name, isTripTag: _expTripId != Guid.Empty);
+            if (id != Guid.Empty) _fTagId = id;
+        }
+        _newTagName = null;
+        _tagNewOpen = false;
+        if (_fTagId is { } picked) ApplyTagBinding(picked);
     }
 
     // --- Undo a refund recorded against an expense ------------------------
@@ -12635,6 +12766,7 @@ else
     private Task SaveEditExpense() => RunModal(async () =>
     {
         if (_amount <= 0) return;
+        await EnsureTypedTagAsync();   // a typed-but-uncommitted tag is an intention, not noise
         var expenseId = _editExpenseId;
         // ★ The trip goes FIRST, on the id we still hold. EditExpense is append-only — it mints a new id and carries
         // the stored trip across — so setting the trip afterwards would be aimed at an expense that no longer exists.

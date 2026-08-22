@@ -63,7 +63,11 @@ public record FundOptionDto(Guid Id, string Name, bool Synced);
 /// <summary>A tag as a picker option — the flat, cross-cutting label axis that sits alongside categories.
 /// <see cref="CategoryId"/> is the category picking it files the expense into (F2), and <see cref="TripTag"/> marks
 /// the seeded trip label set, which the trip entry form offers and the everyday one does not.</summary>
-public record TagOptionDto(Guid Id, string Name, string? Icon, Guid? CategoryId, bool TripTag);
+/// <param name="UseCount">How many expenses carry this tag, across every period — the ranking behind the picker's
+/// "most used" shortlist. ⚠️ Computed server-side so both clients rank identically: a thin client has only the
+/// current period's rows and would otherwise order by a different question. Trailing and zero by default, which
+/// leaves an older client sorting as it always did.</param>
+public record TagOptionDto(Guid Id, string Name, string? Icon, Guid? CategoryId, bool TripTag, int UseCount = 0);
 
 /// <summary>The whole Spending surface in one read — the thin client's initial load: the current period's expenses,
 /// the balance-header figures, and the category/fund options its pickers need. <see cref="Version"/> is the account

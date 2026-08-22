@@ -165,4 +165,35 @@ public class TagsViewApiTests : IClassFixture<FinAppServerFactory>
         Assert.True(view.Tags.Single(t => t.Id == stay).TripTag);
         Assert.False(view.Tags.Single(t => t.Id == work).TripTag);
     }
+
+    /// <summary>
+    /// The Spending view's tag options carry a use count — the ranking behind the expense picker's "most used"
+    /// shortlist.
+    /// <para>⚠️ Computed SERVER-side on purpose: a thin client holds only the current period's rows, so ranking
+    /// there would answer "most used this month", and the shortlist would be empty on the 1st and reshuffle all
+    /// through it. This pins that the figure travels, and that an unused tag reads zero rather than being
+    /// dropped — a fresh account has no counts at all and its picker must still offer something.</para>
+    /// </summary>
+    [Fact]
+    public async Task Spending_tag_options_carry_how_often_each_is_used()
+    {
+        var (client, auth) = await _factory.RegisterAndAuthAsync("tagsview_usecount");
+        var account = await CreateAccount(client, "Tags");
+        var (cat, fund) = await SeedAsync(client, account.Id, auth.UserId);
+        var shop = await CreateTag(client, account.Id, "Shop");
+        var rare = await CreateTag(client, account.Id, "Rare");
+        var never = await CreateTag(client, account.Id, "Never");
+
+        foreach (var amount in new[] { 10m, 20m, 30m })
+            (await client.PostAsJsonAsync($"/accounts/{account.Id}/expenses",
+                new AddExpenseRequest(cat, amount, fund, When, "Shop", TagId: shop))).EnsureSuccessStatusCode();
+        (await client.PostAsJsonAsync($"/accounts/{account.Id}/expenses",
+            new AddExpenseRequest(cat, 5m, fund, When, "Once", TagId: rare))).EnsureSuccessStatusCode();
+
+        var spending = (await client.GetFromJsonAsync<SpendingViewDto>($"/accounts/{account.Id}/spending"))!;
+
+        Assert.Equal(3, spending.TagOptions.Single(t => t.Id == shop).UseCount);
+        Assert.Equal(1, spending.TagOptions.Single(t => t.Id == rare).UseCount);
+        Assert.Equal(0, spending.TagOptions.Single(t => t.Id == never).UseCount);
+    }
 }

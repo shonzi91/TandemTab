@@ -1932,6 +1932,11 @@ public sealed class Localizer(IJSRuntime js)
         // D2 — a bill here servicing a loan in another account.
         ["The payment is recorded here, in {0}; the loan it pays down lives in {1}."] = "Плащането се записва тук, в {0}; кредитът, който то погасява, е в {1}.",
         ["A loan payment posted as one expense, not a split."] = "Вноска по кредит беше вписана като един разход, не разделена.",
+        // Tags: the find-or-add box, its suggestions, and the duplicate-name refusals.
+        ["Find or add a tag…"] = "Намери или добави етикет…",
+        ["No tag matches — “{0}” will be created and attached."] = "Няма съвпадащ етикет — „{0}“ ще бъде създаден и прикачен.",
+        ["“{0}” already exists."] = "„{0}“ вече съществува.",
+        ["“{0}” already exists but is archived — restore it instead of making a second one."] = "„{0}“ вече съществува, но е архивиран — възстанови го, вместо да правиш втори.",
         ["The loan it services couldn't be reached — its bucket may have been removed, or it lives in an account this one can no longer open. The money is recorded; the loan's balance hasn't moved. Re-point the bill on the loan, or relink it under Recurring."] = "Кредитът, който обслужва, не беше достъпен — кутията му може да е премахната или е в сметка, която вече не може да бъде отворена. Парите са записани; салдото на кредита не е променено. Насочи сметката към кредита отново или я свържи наново в „Повтарящи се“.",
         ["Kept at the end of each month"] = "Задържано в края на всеки месец",
         ["{0} of this went onto a loan — the balance fell because the debt did."] =

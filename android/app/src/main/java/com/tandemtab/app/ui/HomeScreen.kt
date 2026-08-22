@@ -192,6 +192,9 @@ fun HomeScreen(
     onSetBudget: (String, Double, () -> Unit) -> Unit,
     onRemoveBudget: (String, () -> Unit) -> Unit,
     onAddCategory: (String, String?, String?, (String?) -> Unit) -> Unit,
+    // The expense sheet's find-or-add tag box. Distinct from onAddTag below, which is the tags-MANAGEMENT sheet's
+    // and hands back no id — see AddSheet.onAddExpenseTag.
+    onAddExpenseTag: (String, Boolean, (String?) -> Unit) -> Unit = { _, _, done -> done(null) },
     onEditCategory: (String, String, String?, () -> Unit) -> Unit,
     onArchiveCategory: (String, () -> Unit) -> Unit,
     onDeleteCategory: (id: String, moveTo: String?, onDone: () -> Unit) -> Unit,
@@ -348,6 +351,7 @@ fun HomeScreen(
                 onEditDeposit = onEditDeposit,
                 onDeleteDeposit = onDeleteDeposit,
                 onAddCategory = onAddCategory,
+                onAddExpenseTag = onAddExpenseTag,
                 // Only offered when there is somewhere to settle onto. Same currency, because the server refuses
                 // a cross-currency settlement outright — offering it would be a button that always fails.
                 onSettle = if (settleTargets.isEmpty()) null else onBeginSettle,

@@ -182,6 +182,7 @@ private fun App(vm: AppViewModel, onGoogle: () -> Unit) {
             onSetBudget = vm::setBudget,
             onRemoveBudget = vm::removeBudget,
             onAddCategory = vm::addCategory,
+            onAddExpenseTag = vm::addTagForExpense,
             onEditCategory = vm::editCategory,
             onArchiveCategory = vm::archiveCategory,
             onDeleteCategory = vm::deleteCategory,

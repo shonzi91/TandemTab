@@ -2168,6 +2168,37 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /**
+     * Create a tag from the expense sheet's find-or-add box and hand back its id, refreshing /spending so the
+     * picker's chips (and their use counts) include it immediately.
+     *
+     * Mirrors [addCategory] rather than [createTag], which reports success but not the new id — and the id is the
+     * whole point here: the expense about to be saved has to carry it.
+     *
+     * ⚠️ A failure calls back with null rather than aborting. The caller then saves the expense untagged, because
+     * losing the label is better than losing the entry.
+     */
+    fun addTagForExpense(name: String, isTripTag: Boolean, onDone: (String?) -> Unit = {}) {
+        val accountId = _state.value.selectedAccountId ?: return onDone(null)
+        _state.update { it.copy(spending = it.spending.copy(saving = true, saveError = null)) }
+        viewModelScope.launch {
+            try {
+                val mut = api.createTag(accountId, name.trim(), null, isTripTag)
+                val v = api.spending(accountId)
+                _state.update {
+                    it.copy(spending = it.spending.copy(
+                        saving = false, saveError = null,
+                        categories = v.categories, expenses = v.expenses, funds = v.funds, tags = v.tags,
+                    ))
+                }
+                onDone(mut.entityId)
+            } catch (e: Exception) {
+                _state.update { it.copy(spending = it.spending.copy(saving = false, saveError = e.message ?: "Couldn't add the tag.")) }
+                onDone(null)
+            }
+        }
+    }
+
     fun editCategory(categoryId: String, name: String, icon: String?, onDone: () -> Unit) =
         categoryMutation(onDone) { acct -> api.editCategory(acct, categoryId, EditCategoryRequest(name.trim(), icon?.ifBlank { null })) }
 
