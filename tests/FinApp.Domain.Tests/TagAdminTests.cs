@@ -130,6 +130,53 @@ public class TagAdminTests
     }
 
     [Fact]
+    public void An_unbound_tag_learns_the_category_it_is_first_used_with()
+    {
+        var account = new Account("Personal", Eur);
+        var food = account.AddCategory("Food");
+        var supermarket = account.AddTag("supermarket");
+
+        account.LearnTagCategory(supermarket.Id, food.Id);
+
+        Assert.Equal(food.Id, supermarket.CategoryId);
+    }
+
+    [Fact]
+    public void Learning_never_overwrites_a_binding_that_is_already_there()
+    {
+        // ★ The guard that makes this safe to run on every add. A tag the user relies on to file into Food must not
+        // re-point itself because one shop got booked under Household — a default nobody chose, quietly changed by
+        // an unrelated entry, is worse than no default at all. Hand-set bindings outrank anything inferred.
+        var account = new Account("Personal", Eur);
+        var food = account.AddCategory("Food");
+        var household = account.AddCategory("Household");
+        var supermarket = account.AddTag("supermarket");
+        account.SetTagCategory(supermarket.Id, food.Id);
+
+        account.LearnTagCategory(supermarket.Id, household.Id);
+
+        Assert.Equal(food.Id, supermarket.CategoryId);
+    }
+
+    [Fact]
+    public void Learning_is_silent_about_a_tag_or_a_category_that_is_not_here()
+    {
+        // It is a side effect of adding an expense, so it may never throw: the caller has already validated the
+        // real inputs, and failing an expense over a filing hint would be absurd.
+        var account = new Account("Personal", Eur);
+        var food = account.AddCategory("Food");
+        var tag = account.AddTag("supermarket");
+        var elsewhere = new Account("Other", Eur);
+
+        account.LearnTagCategory(Guid.NewGuid(), food.Id);
+        account.LearnTagCategory(tag.Id, Guid.NewGuid());
+        account.LearnTagCategory(tag.Id, Guid.Empty);
+        account.LearnTagCategory(tag.Id, elsewhere.AddCategory("Food").Id);
+
+        Assert.Null(tag.CategoryId);
+    }
+
+    [Fact]
     public void Binding_a_tag_to_a_category_that_is_not_in_this_account_is_rejected()
     {
         var account = new Account("Personal", Eur);

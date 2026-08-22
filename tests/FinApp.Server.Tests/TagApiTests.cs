@@ -137,4 +137,54 @@ public class TagApiTests : IClassFixture<FinAppServerFactory>
 
         Assert.Null((await LoadAsync(client, account.Id)).Periods[0].Expenses.Single().TagId);
     }
+
+    /// <summary>
+    /// F2, learned: tagging a new expense teaches the tag where it files, so the next one is pre-filled.
+    /// Both clients already read <c>Tag.CategoryId</c> at entry; until now nothing wrote one except a deliberate
+    /// trip to the manage-tags sheet, so for anyone who tags as they go the feature never fired at all.
+    /// </summary>
+    [Fact]
+    public async Task Tagging_a_new_expense_teaches_the_tag_its_category_but_never_re_teaches_it()
+    {
+        var (client, auth) = await _factory.RegisterAndAuthAsync("tag_learn");
+        var account = await CreateAccount(client, "Learn");
+        var (food, bank) = await SeedAsync(client, account.Id, auth.UserId);
+        var household = await IdOf(await client.PostAsJsonAsync($"/accounts/{account.Id}/categories", new CreateCategoryRequest("Household")));
+        var supermarket = await IdOf(await client.PostAsJsonAsync($"/accounts/{account.Id}/tags", new CreateTagRequest("supermarket")));
+
+        Assert.Null((await LoadAsync(client, account.Id)).FindTag(supermarket)!.CategoryId);
+
+        (await client.PostAsJsonAsync($"/accounts/{account.Id}/expenses",
+            new AddExpenseRequest(food, 20m, bank, When, TagId: supermarket))).EnsureSuccessStatusCode();
+
+        Assert.Equal(food, (await LoadAsync(client, account.Id)).FindTag(supermarket)!.CategoryId);
+
+        // ★ The guard. One shop booked under Household must not silently re-point a tag the user relies on — a
+        // default nobody chose, changed by an unrelated entry, is worse than no default at all.
+        (await client.PostAsJsonAsync($"/accounts/{account.Id}/expenses",
+            new AddExpenseRequest(household, 12m, bank, When, TagId: supermarket))).EnsureSuccessStatusCode();
+
+        Assert.Equal(food, (await LoadAsync(client, account.Id)).FindTag(supermarket)!.CategoryId);
+    }
+
+    /// <summary>
+    /// ⚠️ A trip expense teaches nothing. On a trip the TRIP owns the filing — every label lands in the trip's one
+    /// category — so learning there would teach "Stay files into the holiday category" and then apply it at home,
+    /// which is exactly the spread trip-filing was built to stop.
+    /// </summary>
+    [Fact]
+    public async Task A_trip_expense_does_not_teach_its_tag_anything()
+    {
+        var (client, auth) = await _factory.RegisterAndAuthAsync("tag_learn_trip");
+        var account = await CreateAccount(client, "LearnTrip");
+        var (food, bank) = await SeedAsync(client, account.Id, auth.UserId);
+        var stay = await IdOf(await client.PostAsJsonAsync($"/accounts/{account.Id}/tags", new CreateTagRequest("Stay")));
+        var trip = await IdOf(await client.PostAsJsonAsync($"/accounts/{account.Id}/trips",
+            new CreateTripRequest("Japan", new DateOnly(2026, 1, 5), new DateOnly(2026, 1, 20))));
+
+        (await client.PostAsJsonAsync($"/accounts/{account.Id}/expenses",
+            new AddExpenseRequest(food, 90m, bank, When, TagId: stay, TripId: trip))).EnsureSuccessStatusCode();
+
+        Assert.Null((await LoadAsync(client, account.Id)).FindTag(stay)!.CategoryId);
+    }
 }

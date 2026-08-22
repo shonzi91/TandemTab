@@ -573,6 +573,36 @@ public sealed class Account : Entity
         tag.SetCategory(categoryId);
     }
 
+    /// <summary>
+    /// F2, learned: the first time a tag is used on a new expense, it takes that expense's category as its binding.
+    /// <para>
+    /// Both clients already <i>apply</i> a binding at entry — the gap was that nothing ever <i>made</i> one except a
+    /// deliberate trip to the manage-tags sheet, and a tag typed into the add-expense box is born with none. So the
+    /// feature existed and, for anyone who tags as they go, never once fired. Using the two together is the teaching.
+    /// </para>
+    /// <para>
+    /// ⚠️ Only when the tag has NO binding — the same "fill in the blank, never overwrite" rule the sub-category
+    /// flatten and the trip-tag seed already use. One odd filing must not silently re-point a tag the user relies on,
+    /// and a binding they set by hand outranks anything inferred from a tap.
+    /// </para>
+    /// <para>
+    /// ⚠️ Silent and never throws: this is a side effect of adding an expense, and a bad category id or a missing tag
+    /// is the caller's problem to have already rejected — failing the expense over a filing hint would be absurd.
+    /// </para>
+    /// <para>
+    /// ⚠️ Known consequence, deliberately not chased: clearing a binding by hand and then tagging one more expense
+    /// re-teaches it, because "never taught" and "deliberately taught nothing" are the same null. Separating them
+    /// costs a new field on the tag, and both existing auto-binds above have the same blind spot — worth fixing all
+    /// three together, or not at all.
+    /// </para>
+    /// </summary>
+    public void LearnTagCategory(Guid tagId, Guid categoryId)
+    {
+        if (FindTag(tagId) is not { CategoryId: null } tag) return;
+        if (categoryId == Guid.Empty || FindCategory(categoryId) is null) return;
+        tag.SetCategory(categoryId);
+    }
+
     /// <summary>Remove a tag outright. Unlike archiving this drops it for good; callers that want to keep the
     /// tag on historical expenses should archive instead. (Expense→tag references are pruned in <c>SetExpenseTags</c>
     /// time; a hard remove here simply deletes the definition.)</summary>

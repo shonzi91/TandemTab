@@ -1187,6 +1187,14 @@ accounts.MapPost("/{id:guid}/expenses", async (Guid id, AddExpenseRequest req, C
         if (req.TagId is { } addTag && account.FindTag(addTag) is not null) expense.SetTag(addTag);
         // Guarded like the tag: a trip that isn't in this account is dropped rather than stored as a dangling id.
         if (req.TripId is { } addTrip && account.FindTrip(addTrip) is not null) expense.SetTrip(addTrip);
+        // F2, learned: the tag takes this expense's category as its binding, if it has none yet. On the ADD route
+        // only — the edit route deliberately does not re-file an existing row off a tap meant for labelling, and
+        // teaching from one would make the same tap change every FUTURE row instead.
+        // ⚠️ Never on a trip expense. On a trip the TRIP owns the filing, so every label lands in the trip's one
+        // category; learning there would teach "Stay files into Japan-holiday" and then apply it at home. This is
+        // the same guard both clients already apply before pre-selecting a bound category.
+        if (expense.TagIds.Count > 0 && expense.TripId is null)
+            account.LearnTagCategory(expense.TagIds[0], expense.CategoryId);
         // What was typed before conversion. Display only — Amount is still the single figure every total is built
         // from, and the server does not re-convert: the client already did, once, at entry.
         expense.SetForeign(req.ForeignAmount, req.ForeignCurrency);
