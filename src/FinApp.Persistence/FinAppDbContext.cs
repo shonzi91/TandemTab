@@ -213,6 +213,10 @@ public sealed class FinAppDbContext(DbContextOptions<FinAppDbContext> options) :
             p.Property(x => x.Status);
             p.Property(x => x.CarriedIn).HasConversion(money).IsRequired();
 
+            // Not a fact about the period at all — it describes the LAST PostRecurring call (D2), so it must not
+            // become a column. Left mapped it fails every persistence and server test at once with
+            // PendingModelChangesWarning, which is the model's way of saying a new public property appeared.
+            p.Ignore(x => x.LastPostDegradedToLump);
             p.Ignore(x => x.InitialTotal);
             p.Ignore(x => x.ContributionsPaidTotal);
             p.Ignore(x => x.ExpensesTotal);
@@ -340,6 +344,7 @@ public sealed class FinAppDbContext(DbContextOptions<FinAppDbContext> options) :
             e.Ignore(x => x.IsInstallmentPart);   // computed from InstallmentGroupId
             e.Ignore(x => x.TripId);              // body data — the trip link rides in the snapshot
             e.Ignore(x => x.TripAccountId);       // ...and so does the account that owns it (D1)
+            e.Ignore(x => x.DebtBucketAccountId); // ...and the account that owns a foreign loan (D2)
             e.Ignore(x => x.RefundedAmount);      // body data — what came back on this expense rides in the snapshot
             e.Ignore(x => x.RefundedMoney);       // computed
             e.Ignore(x => x.IsRefunded);          // computed

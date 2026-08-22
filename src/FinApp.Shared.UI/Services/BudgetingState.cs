@@ -127,6 +127,13 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
         var index = _summaries.FindIndex(a => a.Id == accountId);
         if (index < 0 || index == _accountIndex) return;
         _accountIndex = index;
+        // ⚠️ Both "other accounts' …" lists are computed against whichever account was current when they were
+        // built, so carrying them across a switch offers THIS account's own trips and loans as if they were
+        // somebody else's — which is exactly how it was reported. They are per-account facts wearing a
+        // session-shaped cache; clear them with the account.
+        ResetForeignTripOptions();
+        _linkableForeignDebts = null;
+        _foreignTripExpenses.Clear();
         await LoadSelectedAccountAsync();
         await RememberSelectedAccountAsync();
         RaiseChanged();
@@ -1481,9 +1488,19 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
             .Where(r => r.Kind == RecurringKind.Expense && r.HasKnownAmount && r.IsPending(Period.From, Period.To))
             .Sum(r => r.ExpectedAmount));
 
+    /// <param name="linkedDebtAccountId">D2 — set when the loan lives in ANOTHER account. ⚠️ That makes even
+    /// creating the bill a two-account write (the loan's due day and payment-driven flag are set on its own side),
+    /// so it drops off the optimistic spine.</param>
     public Task AddRecurring(string name, RecurringKind kind, RecurringAmountMode mode, decimal expected, int dayOfMonth, Guid categoryId, Guid fundId, string? icon, bool autoPost = false, Guid? linkedDebtBucketId = null,
-        Guid? excessCategoryId = null, string? excessLabel = null) =>
-        ExecuteOptimisticAsync(() =>
+        Guid? excessCategoryId = null, string? excessLabel = null, Guid? linkedDebtAccountId = null)
+    {
+        var request = new AddRecurringRequest(name, RecurringKindString(kind), RecurringModeString(mode),
+            expected, dayOfMonth, categoryId, fundId, icon, autoPost, linkedDebtBucketId, excessCategoryId, excessLabel,
+            linkedDebtAccountId);
+        if (IsForeignDebtAccount(linkedDebtAccountId))
+            return ExecuteForeignDebtAsync(id => api.AddRecurringAsync(id, request), linkedDebtAccountId!.Value);
+
+        return ExecuteOptimisticAsync(() =>
         {
             var item = new RecurringItem(name, kind, mode, expected, dayOfMonth, categoryId, fundId, icon, autoPost);
             item.SetCreatedOn(Today());
@@ -1493,17 +1510,42 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
             DefaultLoanToPaymentDriven(item, wasLinkedToSameBucket: false);
             Account.AddRecurring(item);
         },
-        id => api.AddRecurringAsync(id, new AddRecurringRequest(name, RecurringKindString(kind), RecurringModeString(mode),
-            expected, dayOfMonth, categoryId, fundId, icon, autoPost, linkedDebtBucketId, excessCategoryId, excessLabel)),
+        id => api.AddRecurringAsync(id, request),
         refetchAfter: true);
+    }
+
+    /// <summary>Is this bill's loan in a different account? <see cref="Guid.Empty"/> and this account's own id both
+    /// mean "here" — the same normalisation the server's <c>ForeignDebtAccount</c> applies.</summary>
+    private bool IsForeignDebtAccount(Guid? debtAccountId) =>
+        debtAccountId is { } a && a != Guid.Empty && a != CurrentAccountId;
+
+    /// <summary>The no-optimism spine for a bill whose loan lives elsewhere: the server writes both accounts and its
+    /// result is the only truth, so this refetches rather than mirroring and drops the other account from the cache.</summary>
+    private async Task ExecuteForeignDebtAsync(Func<Guid, Task<MutationResultDto>> command, Guid debtAccountId)
+    {
+        await ExecuteAsync(command);
+        _cache.Remove(debtAccountId);   // its bucket's due day / payment-driven flag may have moved
+        _linkableForeignDebts = null;   // and so may its installment, which the editor's hint reads
+    }
 
     /// <param name="excessCategoryId">⚠️ Three states on the wire, unlike <paramref name="linkedDebtBucketId"/>:
     /// null leaves it alone, <see cref="Guid.Empty"/> clears it, an id sets it. This client always sends one of the
     /// latter two — it has the whole form in hand — but the route must keep honouring null for the older Android
     /// build. See <c>UpdateRecurringRequest.ExcessCategoryId</c>.</param>
     public Task UpdateRecurring(Guid id, string name, RecurringAmountMode mode, decimal expected, int dayOfMonth, Guid categoryId, Guid fundId, string? icon, bool autoPost = false, Guid? linkedDebtBucketId = null,
-        Guid? excessCategoryId = null, string? excessLabel = null) =>
-        ExecuteOptimisticAsync(() =>
+        Guid? excessCategoryId = null, string? excessLabel = null, Guid? linkedDebtAccountId = null)
+    {
+        var request = new UpdateRecurringRequest(name, RecurringModeString(mode),
+            expected, dayOfMonth, categoryId, fundId, icon, autoPost, linkedDebtBucketId, excessCategoryId, excessLabel,
+            linkedDebtAccountId);
+        // Either side of the move needs the server: linking TO another account writes there, and unlinking FROM one
+        // leaves a stored owner this client would have to reason about. Both go down the same honest path.
+        var previousOwner = Account.FindRecurring(id)?.LinkedDebtAccountId;
+        if (IsForeignDebtAccount(linkedDebtAccountId) || IsForeignDebtAccount(previousOwner))
+            return ExecuteForeignDebtAsync(acct => api.UpdateRecurringAsync(acct, id, request),
+                (IsForeignDebtAccount(linkedDebtAccountId) ? linkedDebtAccountId : previousOwner)!.Value);
+
+        return ExecuteOptimisticAsync(() =>
         {
             var previousLink = Account.FindRecurring(id)?.LinkedDebtBucketId;
             Account.FindRecurring(id)?.Update(name, mode, expected, dayOfMonth, categoryId, fundId, icon, autoPost);
@@ -1516,9 +1558,9 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
                 DefaultLoanToPaymentDriven(updated, previousLink == updated.LinkedDebtBucketId);
             }
         },
-            acct => api.UpdateRecurringAsync(acct, id, new UpdateRecurringRequest(name, RecurringModeString(mode),
-                expected, dayOfMonth, categoryId, fundId, icon, autoPost, linkedDebtBucketId, excessCategoryId, excessLabel)),
+            acct => api.UpdateRecurringAsync(acct, id, request),
             refetchAfter: true);
+    }
 
     /// <summary>How much of <paramref name="amount"/> would be filed as the excess line rather than servicing the
     /// loan. Delegates to <see cref="RecurringItem.ExcessOn"/> so the editor's hint and the confirm modal's preview
@@ -1596,11 +1638,24 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     /// Typical estimate toward the actual, and marks it handled for this period — all in a single save.</summary>
     /// <param name="principalTagName">Localized fallback names for the split tags when the bill is debt-linked. The
     /// caller supplies them because only the UI knows the language; existing tags on the loan still win.</param>
-    public Task ConfirmRecurring(Guid id, decimal actualAmount,
+    /// <returns>True when the loan could not be reached and the payment posted as a plain lump — the caller must
+    /// say so. See <c>RecurringMutationDto.LoanUnreachable</c>.</returns>
+    public async Task<bool> ConfirmRecurring(Guid id, decimal actualAmount,
         string principalTagName = "Loan principal", string interestTagName = "Loan interest")
     {
-        if (Account.FindRecurring(id) is null) return Task.CompletedTask;
-        return ExecuteOptimisticAsync(() =>
+        if (Account.FindRecurring(id) is not { } stored) return false;
+
+        // ⚠️ D2 — a bill servicing another account's loan changes TWO accounts, so it drops off the optimistic
+        // spine: this client holds only one aggregate, cannot move the other balance, and would render a split it
+        // has no authority for. The server's result is the only truth. Same reasoning as EditAccountTransfer.
+        if (stored.IsCrossAccountInstallment)
+        {
+            var result = await ExecuteRecurringAsync(acct => api.ConfirmRecurringAsync(acct, id, actualAmount));
+            if (stored.LinkedDebtAccountId is { } debtAccount) _cache.Remove(debtAccount);   // its balance moved
+            return result;
+        }
+
+        await ExecuteOptimisticAsync(() =>
         {
             var item = Account.FindRecurring(id)!;
             // Learns the WHOLE amount, including any excess line — the direct debit really is €700, and a "typical"
@@ -1608,8 +1663,25 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
             if (actualAmount > 0m) item.LearnFromActual(actualAmount);
             PostRecurringItem(item, actualAmount, principalTagName, interestTagName);
         },
-        acct => api.ConfirmRecurringAsync(acct, id, actualAmount),
+        // Narrowed to what the optimistic spine takes; the extra LoanUnreachable field cannot be set on this path
+        // anyway — a same-account bill's loan is right here.
+        async acct =>
+        {
+            var r = await api.ConfirmRecurringAsync(acct, id, actualAmount);
+            return new MutationResultDto(r.Version, r.EntityId);
+        },
         refetchAfter: true);   // posts a real expense/income (mints an id) — reconcile
+        return false;
+    }
+
+    /// <summary>The no-optimism spine for a recurring write, returning the server's <c>LoanUnreachable</c> flag.
+    /// Refetches rather than mirroring, because the mutation touched an account this client isn't holding.</summary>
+    private async Task<bool> ExecuteRecurringAsync(Func<Guid, Task<RecurringMutationDto>> command)
+    {
+        var accountId = CurrentAccountId;
+        var result = await command(accountId);
+        await RefreshFromServerAsync(accountId);
+        return result.LoanUnreachable;
     }
 
     /// <summary>
@@ -1635,6 +1707,55 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     /// installment for…" picker.</summary>
     public IReadOnlyList<SavingCategory> LinkableDebts =>
         Account.SavingCategories.Where(s => s.IsDebt && !s.IsArchived).OrderBy(s => s.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
+
+    /// <summary>A debt bucket in one of the user's OTHER accounts, offered to a bill here (D2).</summary>
+    public record ForeignDebtOption(Guid AccountId, string AccountName, SavingCategory Bucket);
+
+    private List<ForeignDebtOption>? _linkableForeignDebts;
+
+    /// <summary>
+    /// Debt buckets in the user's <b>other</b> accounts that a bill here could service — the household case: the
+    /// mortgage is tracked in the joint account and paid by one person's direct debit.
+    /// <para>★ Same currency only, reusing <see cref="TransferableAccounts"/>'s filter. The installment rows are
+    /// posted in this account's currency and the principal comes off a balance denominated in the other's, so a
+    /// mismatch would move a figure by a number that means something else — the server refuses it outright.</para>
+    /// <para>Loaded on demand and cached for the session; a single-account user gets an empty list for free.</para>
+    /// </summary>
+    public async Task<IReadOnlyList<ForeignDebtOption>> LinkableForeignDebtsAsync()
+    {
+        if (_linkableForeignDebts is { } cached) return cached;
+        var options = new List<ForeignDebtOption>();
+        foreach (var summary in TransferableAccounts)
+        {
+            try
+            {
+                var acct = _cache.TryGetValue(summary.Id, out var hit) ? hit.Account : await DeserializeAccountAsync(summary.Id);
+                if (acct is null) continue;
+                options.AddRange(acct.SavingCategories
+                    .Where(s => s.IsDebt && !s.IsArchived)
+                    .OrderBy(s => s.Name, StringComparer.CurrentCultureIgnoreCase)
+                    .Select(s => new ForeignDebtOption(summary.Id, summary.Name, s)));
+            }
+            catch { /* an unreadable account simply offers no loans */ }
+        }
+        _linkableForeignDebts = options;
+        return options;
+    }
+
+    /// <summary>Find one of the offered foreign loans by id — the bill editor reads its installment for the excess
+    /// hint, which otherwise cannot be computed at all for a loan in another account.</summary>
+    public ForeignDebtOption? FindForeignDebt(Guid bucketId) =>
+        _linkableForeignDebts?.FirstOrDefault(o => o.Bucket.Id == bucketId);
+
+    /// <summary>The loan a bill services, wherever it lives — this account's own, or a foreign one already loaded
+    /// for the picker. Null when it cannot be resolved from here, which the caller must render as such rather than
+    /// as "no loan".</summary>
+    public SavingCategory? BillDebtBucket(RecurringItem item)
+    {
+        ArgumentNullException.ThrowIfNull(item);
+        if (item.LinkedDebtBucketId is not { } bucketId) return null;
+        return item.LinkedDebtAccountId is null ? FindSavingBucket(bucketId) : FindForeignDebt(bucketId)?.Bucket;
+    }
 
     // --- Statement file import (CSV/OFX/QIF → real expenses & income) ------
 
@@ -1702,6 +1823,11 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     /// so the UI can show a "posted automatically" notice.</summary>
     private bool _autoPosting;
 
+    /// <summary>True when the last auto-post run had at least one debt-linked bill post as a plain lump because its
+    /// loan could not be reached. The caller surfaces it beside the "posted automatically" notice — an auto-post
+    /// nobody watched is the worst place for a silent degrade.</summary>
+    public bool LastAutoPostLoanUnreachable { get; private set; }
+
     public async Task<IReadOnlyList<(string Name, Money Amount, RecurringKind Kind)>> AutoPostDueRecurringAsync()
     {
         if (!IsPeriodOpen || _autoPosting) return [];
@@ -1713,9 +1839,14 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
         {
             var posted = new List<(string, Money, RecurringKind)>();
             var accountId = CurrentAccountId;
+            LastAutoPostLoanUnreachable = false;
             foreach (var item in due)
             {
-                await api.ConfirmRecurringAsync(accountId, item.Id, item.ExpectedAmount);
+                // ⚠️ Already server-authoritative — this loop never mirrored locally, so a cross-account bill
+                // (D2) needs nothing special here beyond noticing when its loan could not be reached.
+                var result = await api.ConfirmRecurringAsync(accountId, item.Id, item.ExpectedAmount);
+                if (result.LoanUnreachable) LastAutoPostLoanUnreachable = true;
+                if (item.LinkedDebtAccountId is { } debtAccount) _cache.Remove(debtAccount);
                 posted.Add((item.Name, Money(item.ExpectedAmount), item.Kind));
             }
             await RefreshFromServerAsync(accountId);
@@ -2175,11 +2306,22 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     }
 
     /// <summary>Remove a whole logged installment (every row of it), restoring the balance on a payment-driven bucket.</summary>
-    public Task RemoveInstallment(Guid groupId)
+    public async Task RemoveInstallment(Guid groupId)
     {
-        var bucketId = Period.InstallmentGroup(groupId).FirstOrDefault()?.DebtBucketId;
-        var bucket = bucketId is { } bid ? FindSavingBucket(bid) : null;
-        return ExecuteOptimisticAsync(() => Period.RemoveInstallmentGroup(groupId, bucket),
+        var row = Period.InstallmentGroup(groupId).FirstOrDefault();
+        // ⚠️ D2 — the principal has to be reversed in the account that owns the loan, which this client is not
+        // holding. Mirroring locally would drop the rows and leave that balance keeping the payment: a half-undo,
+        // the exact state RemoveInstallmentGroup exists to prevent. Server-only, then refetch.
+        if (row?.DebtBucketAccountId is { } debtAccount && debtAccount != CurrentAccountId)
+        {
+            var accountId = CurrentAccountId;
+            await api.RemoveInstallmentAsync(accountId, groupId);
+            _cache.Remove(debtAccount);   // its balance moved back
+            await RefreshFromServerAsync(accountId);
+            return;
+        }
+        var bucket = row?.DebtBucketId is { } bid ? FindSavingBucket(bid) : null;
+        await ExecuteOptimisticAsync(() => Period.RemoveInstallmentGroup(groupId, bucket),
             id => api.RemoveInstallmentAsync(id, groupId), refetchAfter: true);
     }
 

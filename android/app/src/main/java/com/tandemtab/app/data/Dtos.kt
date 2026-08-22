@@ -1224,6 +1224,9 @@ data class RecurringRowDto(
     val excessCategoryId: String? = null,
     val excessCategoryName: String? = null,
     val excessLabel: String? = null,
+    // D2 — set when the loan this bill services lives in ANOTHER account. `linkedDebtName` above is resolved in
+    // THIS account, so it is null for a foreign loan: say "a loan in another account" rather than nothing at all.
+    val linkedDebtAccountId: String? = null,
 )
 
 /** A debt bucket a bill can be linked to. `paymentDriven` mirrors the bucket's "I log each installment here"
@@ -1251,6 +1254,10 @@ data class RecurringMutationDto(
     val version: Long = 0,
     val entityId: String? = null,
     val view: RecurringViewDto,
+    // D2 — true when a debt-linked bill had to post as a plain lump because its loan could not be reached. The
+    // PAYMENT is still recorded; the loan's balance did not move. ⚠️ Show it: left silent, the ledger looks right
+    // while the balance quietly stalls, and it surfaces a quarter later as "why is this still owed?".
+    val loanUnreachable: Boolean = false,
 )
 
 /** POST /accounts/{id}/recurring/{id}/confirm — post the bill/income with its actual amount. */
@@ -1274,6 +1281,9 @@ data class AddRecurringRequest(
     // File the part above the loan's contractual installment here instead of onto the loan as principal.
     val excessCategoryId: String? = null,
     val excessLabel: String? = null,
+    // D2 — the account that owns `linkedDebtBucketId`, when the loan lives in another one. Posting such a bill
+    // writes BOTH accounts; both must use the same currency. Nothing in the Compose UI sets it yet.
+    val linkedDebtAccountId: String? = null,
 )
 
 /** PUT /accounts/{id}/recurring/{recurringId} — edit an item (its kind can't change). A null
@@ -1294,6 +1304,10 @@ data class UpdateRecurringRequest(
     // editor that doesn't know about the field does) must not wipe a setting made on the web.
     val excessCategoryId: String? = null,
     val excessLabel: String? = null,
+    // D2 — ⚠️ NOT authoritative, and the rule is subtler than the others: absent LEAVES THE OWNER AS IT WAS when
+    // the bucket id is unchanged, and otherwise means "this account". Sending the bucket id alone (which is what
+    // this app does today) must not silently re-home a working cross-account link.
+    val linkedDebtAccountId: String? = null,
 )
 
 /** PUT /accounts/{id}/recurring/{recurringId}/active — pause or resume (a paused item never falls due). */

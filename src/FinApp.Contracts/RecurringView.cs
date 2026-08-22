@@ -39,7 +39,12 @@ public record RecurringRowDto(
     // so all of it services the loan (the pre-C behaviour). The name is resolved here, like LinkedDebtName.
     Guid? ExcessCategoryId = null,
     string? ExcessCategoryName = null,
-    string? ExcessLabel = null);
+    string? ExcessLabel = null,
+    // D2: set when the loan this bill services lives in ANOTHER account. Null on an ordinary bill.
+    // ⚠️ LinkedDebtName is resolved in THIS account, so it is null for a foreign loan — the name lives where the
+    // bucket does. A client that wants it has to read the other account; one that doesn't should say "a loan in
+    // <account>" rather than printing nothing.
+    Guid? LinkedDebtAccountId = null);
 
 /// <summary>A debt bucket a bill can be linked to. <see cref="PaymentDriven"/> mirrors the bucket's "I log each
 /// installment here" switch — a linked bill only drives the balance when it's on, which is the user's call, so the
@@ -64,4 +69,9 @@ public record RecurringViewDto(
 
 /// <summary>The delta a recurring mutation returns (superset of <see cref="MutationResultDto"/>): new version, the
 /// affected item id, and the refreshed view.</summary>
-public record RecurringMutationDto(long Version, Guid? EntityId, RecurringViewDto View);
+/// <param name="LoanUnreachable">D2 — true when a debt-linked bill had to post as a plain lump expense because its
+/// loan could not be reached (a deleted bucket, or an account this call could not open). ⚠️ <b>The payment is still
+/// posted</b>, because losing the split is worse than losing the payment — but the client must SAY so. Left silent,
+/// a month books as one lump while the balance quietly stalls, and nobody finds out for a quarter. Trailing and
+/// false by default, so an older client is merely uninformed rather than wrong.</param>
+public record RecurringMutationDto(long Version, Guid? EntityId, RecurringViewDto View, bool LoanUnreachable = false);

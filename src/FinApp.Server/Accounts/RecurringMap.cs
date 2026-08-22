@@ -35,12 +35,27 @@ public static class RecurringMap
     }
 
     /// <summary>A bill can only be linked to a bucket that exists and is actually a debt — otherwise there'd be no
-    /// schedule to split the payment against. Null (no link) is always fine.</summary>
-    public static void ValidateDebtLink(Account account, Guid? bucketId)
+    /// schedule to split the payment against. Null (no link) is always fine.
+    /// <para>⚠️ <paramref name="debtAccount"/> is the account that OWNS the bucket, which for a cross-account link
+    /// (D2) is not the account holding the bill. Pass the right one or a valid foreign link reads as a broken
+    /// same-account one.</para></summary>
+    public static void ValidateDebtLink(Account debtAccount, Guid? bucketId)
     {
         if (bucketId is not { } id || id == Guid.Empty) return;
-        if (account.FindSavingCategory(id) is not { IsDebt: true })
+        if (debtAccount.FindSavingCategory(id) is not { IsDebt: true })
             throw new InvalidOperationException("That debt doesn't exist in this account.");
+    }
+
+    /// <summary>
+    /// Both accounts must use the same currency before a bill in one can service a loan in the other (D2).
+    /// <para>⚠️ A hard gate, not a display nicety: the installment rows are posted in the bill's currency and the
+    /// principal is subtracted from a balance denominated in the loan's, so a mismatch would move a figure by a
+    /// number that means something else. Same rule as a settlement or a cross-account trip.</para>
+    /// </summary>
+    public static void ValidateSameCurrency(Account billAccount, Account debtAccount)
+    {
+        if (!string.Equals(billAccount.Currency, debtAccount.Currency, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("Both accounts must use the same currency.");
     }
 
     /// <summary>The excess line has to file somewhere real — a spend category that exists here. Null (never told)
@@ -60,15 +75,17 @@ public static class RecurringMap
     /// claiming "due on the 30th" on the debt row and "day 15" on the bill that pays it.
     /// <para>Call after the link is set. No-op for an unlinked bill or a bucket that isn't a debt.</para>
     /// </summary>
-    public static void SyncLoanDueDay(Account account, RecurringItem item)
+    /// <param name="debtAccount">The account that owns the bucket — <b>not</b> the one holding the bill, on a
+    /// cross-account link (D2). This writes to it, which is why linking is itself a two-account operation.</param>
+    public static void SyncLoanDueDay(Account debtAccount, RecurringItem item)
     {
         if (item.LinkedDebtBucketId is not { } bucketId) return;
-        if (account.FindSavingCategory(bucketId) is not { IsDebt: true } debt) return;
+        if (debtAccount.FindSavingCategory(bucketId) is not { IsDebt: true } debt) return;
 
         if (debt.DebtInstallmentDay is { } loanDay)
             item.SetDayOfMonth(loanDay);
         else
-            account.SetSavingDebtInstallmentDay(bucketId, item.DayOfMonth);
+            debtAccount.SetSavingDebtInstallmentDay(bucketId, item.DayOfMonth);
     }
 
     /// <summary>
@@ -87,12 +104,13 @@ public static class RecurringMap
     /// this changes what moves the balance from here on and never the figure itself.
     /// </para>
     /// </remarks>
-    public static void DefaultLoanToPaymentDriven(Account account, RecurringItem item, bool wasLinkedToSameBucket, DateOnly today)
+    /// <param name="debtAccount">The account that owns the bucket — see <see cref="SyncLoanDueDay"/>.</param>
+    public static void DefaultLoanToPaymentDriven(Account debtAccount, RecurringItem item, bool wasLinkedToSameBucket, DateOnly today)
     {
         if (wasLinkedToSameBucket) return;
         if (item.LinkedDebtBucketId is not { } bucketId) return;
-        if (account.FindSavingCategory(bucketId) is not { IsDebt: true, DebtPaymentDriven: false }) return;
-        account.SetSavingDebtPaymentDriven(bucketId, true, today);
+        if (debtAccount.FindSavingCategory(bucketId) is not { IsDebt: true, DebtPaymentDriven: false }) return;
+        debtAccount.SetSavingDebtPaymentDriven(bucketId, true, today);
     }
 
     /// <summary>
@@ -104,16 +122,25 @@ public static class RecurringMap
     /// earlier rows already carry, so a user who first logged an installment in the Bulgarian UI keeps their own tags.
     /// </para>
     /// </summary>
-    public static void Post(Account account, FinApp.Domain.Periods.Period period, RecurringItem item, decimal amount, Guid memberId)
+    /// <param name="debtAccount">Where the loan lives. Defaults to <paramref name="account"/> — the ordinary case —
+    /// and is the OTHER account on a cross-account link (D2), which only a two-account caller can supply.
+    /// ⚠️ The tags stay in <paramref name="account"/>: the expense rows are posted there, so that is where a label
+    /// on them has to exist.</param>
+    /// <returns>True when a debt-linked bill had to post as a plain lump because its loan could not be reached —
+    /// the caller must surface it. See <see cref="FinApp.Domain.Periods.Period.LastPostDegradedToLump"/>.</returns>
+    public static bool Post(Account account, FinApp.Domain.Periods.Period period, RecurringItem item, decimal amount, Guid memberId,
+        Account? debtAccount = null)
     {
         var fundSynced = account.FindFund(item.FundId)?.IsSynced ?? false;
-        var debt = item.LinkedDebtBucketId is { } bucketId ? account.FindSavingCategory(bucketId) : null;
+        var owner = debtAccount ?? account;
+        var debt = item.LinkedDebtBucketId is { } bucketId ? owner.FindSavingCategory(bucketId) : null;
         if (debt is not { IsDebt: true })
         {
             period.PostRecurring(item, amount, memberId, fundSynced);
-            return;
+            return period.LastPostDegradedToLump;
         }
         var (principalTag, interestTag) = account.EnsureInstallmentTags(debt.Id, "Loan principal", "Loan interest");
         period.PostRecurring(item, amount, memberId, fundSynced, debt, principalTag, interestTag);
+        return period.LastPostDegradedToLump;
     }
 }

@@ -105,17 +105,33 @@ public sealed class Expense : Entity
     /// <see cref="SourceSavingCategoryId"/> it draws nothing down; it only says which loan the money serviced.</summary>
     public Guid? DebtBucketId { get; private set; }
 
+    /// <summary>
+    /// The account that owns <see cref="DebtBucketId"/>, when the loan lives in a <b>different</b> account (D2).
+    /// Null — the ordinary case — means the bucket is one of this account's own.
+    /// <para>
+    /// ⚠️ Without this the <b>undo</b> silently stops working: removing an installment reverses the principal
+    /// against the bucket the caller hands it, and a caller that only ever looks in this account finds nothing for
+    /// a foreign loan — the rows vanish from the ledger while the balance keeps the payment. A half-undo is worse
+    /// than either outcome.
+    /// </para>
+    /// <para>Body data — snapshot, EF-ignored like <see cref="DebtBucketId"/> itself.</para>
+    /// </summary>
+    public Guid? DebtBucketAccountId { get; private set; }
+
     /// <summary>True when this expense is one row of a logged installment.</summary>
     public bool IsInstallmentPart => InstallmentGroupId is not null;
 
     /// <summary>Mark this expense as one row of a logged installment (or clear it with nulls). A setter rather than
     /// constructor arguments because these are snapshot body data, not relational columns — and EF cannot bind an
     /// ignored property to a constructor parameter, so the ledger fields it *does* map must stay the whole ctor.</summary>
-    public void SetInstallmentLink(Guid? groupId, InstallmentPart? part, Guid? debtBucketId)
+    public void SetInstallmentLink(Guid? groupId, InstallmentPart? part, Guid? debtBucketId, Guid? debtBucketAccountId = null)
     {
         InstallmentGroupId = groupId;
         Part = part;
         DebtBucketId = debtBucketId;
+        // Same rule as SetTrip: clearing the bucket clears the account that owned it, so no row is left naming an
+        // account for a link it no longer has.
+        DebtBucketAccountId = debtBucketId is null || debtBucketAccountId is not { } a || a == Guid.Empty ? null : a;
     }
 
     private readonly List<Guid> _tagIds = [];
@@ -311,7 +327,7 @@ public sealed class Expense : Entity
     public void CopyBodyDataTo(Expense rebuilt)
     {
         ArgumentNullException.ThrowIfNull(rebuilt);
-        rebuilt.SetInstallmentLink(InstallmentGroupId, Part, DebtBucketId);
+        rebuilt.SetInstallmentLink(InstallmentGroupId, Part, DebtBucketId, DebtBucketAccountId);
         rebuilt.SetTags(_tagIds);
         // ⚠️ The account too. Drop it and correcting an amount, settling or refunding silently unlinks a
         // cross-account trip attachment — the row keeps its trip id, pointing at a trip in the wrong account.

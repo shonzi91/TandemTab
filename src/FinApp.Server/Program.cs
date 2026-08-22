@@ -1292,13 +1292,36 @@ accounts.MapDelete("/{id:guid}/installments/{groupId:guid}", async (Guid id, Gui
 {
     var userId = user.UserId();
     var bank = await bankSvc.GetStatusAsync(userId, id, ct);
-    var (version, overview) = await svc.MutateAsync(userId, id, account =>
+
+    // ⚠️ D2 — undoing a cross-account installment has to reverse the principal in the OTHER account, so a pre-read
+    // decides the spine. Without it the rows would vanish from the ledger while the balance kept the payment, which
+    // is the half-undo RemoveInstallmentGroup exists to prevent.
+    Guid? debtElsewhere = null;
+    if (await svc.GetAsync(userId, id, ct) is { Payload.Length: > 0 } undoPre
+        && AccountSnapshotSerializer.Deserialize(undoPre.Payload).CurrentPeriod?.InstallmentGroup(groupId).FirstOrDefault()
+           is { DebtBucketAccountId: { } owner })
+        debtElsewhere = ForeignDebtAccount(owner, id);
+
+    AccountOverviewDto Undo(Account account, Account debtAccount)
     {
         var period = account.CurrentPeriod ?? throw new InvalidOperationException("There's no open period.");
         var bucketId = period.InstallmentGroup(groupId).FirstOrDefault()?.DebtBucketId;
-        period.RemoveInstallmentGroup(groupId, bucketId is { } bid ? account.FindSavingCategory(bid) : null);
+        period.RemoveInstallmentGroup(groupId, bucketId is { } bid ? debtAccount.FindSavingCategory(bid) : null);
         return SpendingMap.Overview(account, period, bank.Balance, bank.BalanceCurrency);
-    }, ct);
+    }
+
+    long version;
+    AccountOverviewDto overview;
+    if (debtElsewhere is { } undoDebtAccountId)
+    {
+        var (v, debtVersion, o) = await svc.MutateTwoAsync(userId, id, undoDebtAccountId, Undo, ct);
+        version = v; overview = o;
+        await notifier.AccountChangedAsync(undoDebtAccountId, userId, debtVersion);
+    }
+    else
+    {
+        (version, overview) = await svc.MutateAsync(userId, id, a => Undo(a, a), ct);
+    }
     await notifier.AccountChangedAsync(id, userId, version);
     return Results.Ok(new InstallmentMutationDto(version, groupId, [], overview));
 });
@@ -2513,6 +2536,12 @@ accounts.MapDelete("/{id:guid}/contribution-categories/{catId:guid}", async (Gui
     return Results.Ok(new MutationResultDto(version, catId));
 });
 
+// D2: normalise "which account owns this bill's loan" to either null (this one — the ordinary case, single-account
+// spine) or the other account's id. Guid.Empty and this account's own id both mean "here": the client says
+// Guid.Empty to state it outright, and an older one says nothing at all.
+static Guid? ForeignDebtAccount(Guid? debtAccountId, Guid billAccountId) =>
+    debtAccountId is { } a && a != Guid.Empty && a != billAccountId ? a : null;
+
 // --- Recurring items (bills / income expectations) -----------------------------------------------------------
 // CRUD + pause/resume, plus the due-item handlers: confirm (posts a real expense/income with the actual amount, tunes
 // a "typical" estimate, marks handled) and skip (marks handled, posts nothing). Posting goes through the shared
@@ -2521,23 +2550,43 @@ accounts.MapPost("/{id:guid}/recurring", async (Guid id, AddRecurringRequest req
 {
     var userId = user.UserId();
     var today = DateOnly.FromDateTime(DateTime.UtcNow);
-    var (version, recurringId) = await svc.MutateAsync(userId, id, account =>
+    // D2: a loan in ANOTHER account makes even CREATING the bill two-account — SyncLoanDueDay and
+    // DefaultLoanToPaymentDriven both write to the bucket's side.
+    var debtElsewhere = ForeignDebtAccount(req.LinkedDebtAccountId, id);
+
+    // One body, run against (bill account, debt account) — the same pair on an ordinary bill. Written once so the
+    // cross-account path cannot drift from the ordinary one; idempotent, as MutateTwoAsync requires.
+    Guid Create(Account account, Account debtAccount)
     {
+        if (debtElsewhere is not null) RecurringMap.ValidateSameCurrency(account, debtAccount);
         var kind = RecurringMap.Kind(req.Kind);
         RecurringMap.ValidateRefs(account, kind, req.CategoryId, req.FundId);
         var item = new RecurringItem(req.Name, kind, RecurringMap.Mode(req.Mode), req.Expected, req.DayOfMonth,
             req.CategoryId, req.FundId, req.Icon, req.AutoPost);
         item.SetCreatedOn(today);   // can't fall due before it existed
-        RecurringMap.ValidateDebtLink(account, req.LinkedDebtBucketId);
-        item.SetLinkedDebtBucket(req.LinkedDebtBucketId);
-        RecurringMap.ValidateExcessCategory(account, req.ExcessCategoryId);
+        RecurringMap.ValidateDebtLink(debtAccount, req.LinkedDebtBucketId);
+        item.SetLinkedDebtBucket(req.LinkedDebtBucketId, debtElsewhere);
+        RecurringMap.ValidateExcessCategory(account, req.ExcessCategoryId);   // the excess files HERE, where it is spent
         item.SetExcess(req.ExcessCategoryId, req.ExcessLabel);   // after the link — SetExcess self-clears without one
-        RecurringMap.SyncLoanDueDay(account, item);   // a linked loan owns the due date
+        RecurringMap.SyncLoanDueDay(debtAccount, item);   // a linked loan owns the due date
         // A brand-new bill is always a fresh link, so the loan starts following what gets logged here.
-        RecurringMap.DefaultLoanToPaymentDriven(account, item, wasLinkedToSameBucket: false, today);
+        RecurringMap.DefaultLoanToPaymentDriven(debtAccount, item, wasLinkedToSameBucket: false, today);
         account.AddRecurring(item);
         return item.Id;
-    }, ct);
+    }
+
+    long version;
+    Guid recurringId;
+    if (debtElsewhere is { } debtAccountId)
+    {
+        var (v, debtVersion, rid) = await svc.MutateTwoAsync(userId, id, debtAccountId, Create, ct);
+        version = v; recurringId = rid;
+        await notifier.AccountChangedAsync(debtAccountId, userId, debtVersion);
+    }
+    else
+    {
+        (version, recurringId) = await svc.MutateAsync(userId, id, a => Create(a, a), ct);
+    }
     await notifier.AccountChangedAsync(id, userId, version);
     return Results.Ok(new MutationResultDto(version, recurringId));
 });
@@ -2546,16 +2595,36 @@ accounts.MapPut("/{id:guid}/recurring/{recurringId:guid}", async (Guid id, Guid 
 {
     var userId = user.UserId();
     var today = DateOnly.FromDateTime(DateTime.UtcNow);
-    var (version, _) = await svc.MutateAsync<object?>(userId, id, account =>
+
+    // ⚠️ A pre-read, because whether this is a two-account write depends on what is STORED: an older client that
+    // has never heard of LinkedDebtAccountId re-sends the bucket id alone, and that must not silently re-home a
+    // working cross-account link. See UpdateRecurringRequest.LinkedDebtAccountId for the rule.
+    Guid? storedDebtAccount = null, storedBucket = null;
+    if (await svc.GetAsync(userId, id, ct) is { Payload.Length: > 0 } preRead
+        && AccountSnapshotSerializer.Deserialize(preRead.Payload).FindRecurring(recurringId) is { } stored)
     {
+        storedDebtAccount = stored.LinkedDebtAccountId;
+        storedBucket = stored.LinkedDebtBucketId;
+    }
+    var effectiveDebtAccount = req.LinkedDebtBucketId is not { } wantBucket || wantBucket == Guid.Empty
+        ? null                                                        // unlinking: no loan, no second account
+        : req.LinkedDebtAccountId is { } given
+            ? (given == Guid.Empty ? null : given)                    // stated outright
+            : (wantBucket == storedBucket ? storedDebtAccount : null); // unchanged bucket keeps its owner
+    var debtElsewhere = ForeignDebtAccount(effectiveDebtAccount, id);
+
+    object? Edit(Account account, Account debtAccount)
+    {
+        if (debtElsewhere is not null) RecurringMap.ValidateSameCurrency(account, debtAccount);
         var item = account.FindRecurring(recurringId) ?? throw new InvalidOperationException("That recurring item doesn't exist in this account.");
         // Captured BEFORE the link is overwritten: the payment-driven default fires on the transition into a link
         // only, so that re-saving a bill can't undo a user's deliberate switch back to schedule-driven.
         var previousLink = item.LinkedDebtBucketId;
+        var previousOwner = item.LinkedDebtAccountId;
         RecurringMap.ValidateRefs(account, item.Kind, req.CategoryId, req.FundId);   // kind can't change on edit
         item.Update(req.Name, RecurringMap.Mode(req.Mode), req.Expected, req.DayOfMonth, req.CategoryId, req.FundId, req.Icon, req.AutoPost);
-        RecurringMap.ValidateDebtLink(account, req.LinkedDebtBucketId);
-        item.SetLinkedDebtBucket(req.LinkedDebtBucketId);   // authoritative: null unlinks
+        RecurringMap.ValidateDebtLink(debtAccount, req.LinkedDebtBucketId);
+        item.SetLinkedDebtBucket(req.LinkedDebtBucketId, debtElsewhere);   // authoritative: null unlinks
         // ⚠️ Deliberately NOT authoritative, unlike the line above. Absent leaves it as it was, Guid.Empty clears
         // it — see UpdateRecurringRequest.ExcessCategoryId. There is a live older Android client on this route,
         // and null-means-clear would have it wipe the excess configuration on every unrelated bill edit.
@@ -2564,10 +2633,28 @@ accounts.MapPut("/{id:guid}/recurring/{recurringId:guid}", async (Guid id, Guid 
             RecurringMap.ValidateExcessCategory(account, reqExcess);
             item.SetExcess(reqExcess == Guid.Empty ? null : reqExcess, req.ExcessLabel);
         }
-        RecurringMap.SyncLoanDueDay(account, item);         // a linked loan owns the due date
-        RecurringMap.DefaultLoanToPaymentDriven(account, item, previousLink == item.LinkedDebtBucketId, today);
+        RecurringMap.SyncLoanDueDay(debtAccount, item);    // a linked loan owns the due date
+        // "Same bucket" now means same bucket IN THE SAME ACCOUNT — moving a bill onto another household's loan is
+        // a fresh link, and that loan should start following the payments logged here just as a new one would.
+        // ★ The account the link moved AWAY from is deliberately left alone: DefaultLoanToPaymentDriven only ever
+        // turns the setting ON, and un-setting it behind the user's back would be a third account to write and a
+        // choice to unmake. That is what keeps this to two accounts.
+        RecurringMap.DefaultLoanToPaymentDriven(debtAccount, item,
+            previousLink == item.LinkedDebtBucketId && previousOwner == item.LinkedDebtAccountId, today);
         return null;
-    }, ct);
+    }
+
+    long version;
+    if (debtElsewhere is { } editDebtAccountId)
+    {
+        var (v, debtVersion, _) = await svc.MutateTwoAsync(userId, id, editDebtAccountId, Edit, ct);
+        version = v;
+        await notifier.AccountChangedAsync(editDebtAccountId, userId, debtVersion);
+    }
+    else
+    {
+        (version, _) = await svc.MutateAsync(userId, id, a => Edit(a, a), ct);
+    }
     await notifier.AccountChangedAsync(id, userId, version);
     return Results.Ok(new MutationResultDto(version, recurringId));
 });
@@ -2600,16 +2687,41 @@ accounts.MapDelete("/{id:guid}/recurring/{recurringId:guid}", async (Guid id, Gu
 accounts.MapPost("/{id:guid}/recurring/{recurringId:guid}/confirm", async (Guid id, Guid recurringId, ConfirmRecurringRequest req, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
 {
     var userId = user.UserId();
-    var (version, view) = await svc.MutateAsync(userId, id, account =>
+
+    // ⚠️ D2 — this is the route that runs every month, and for a cross-account bill it is a genuine two-account
+    // WRITE: expense rows land here, the loan's balance moves there. A pre-read decides which spine to use; it
+    // costs one snapshot read on the ordinary path too, which is the price of the posting never drifting.
+    Guid? debtElsewhere = null;
+    if (await svc.GetAsync(userId, id, ct) is { Payload.Length: > 0 } confirmPre
+        && AccountSnapshotSerializer.Deserialize(confirmPre.Payload).FindRecurring(recurringId) is { } confirmStored)
+        debtElsewhere = ForeignDebtAccount(confirmStored.LinkedDebtAccountId, id);
+
+    // ★ Returns the view AND whether the post had to degrade to a lump, so the caller can say so rather than
+    // leaving a month booked as one lump while the loan quietly stalls.
+    (RecurringViewDto View, bool Degraded) Confirm(Account account, Account debtAccount)
     {
         var period = account.CurrentPeriod ?? throw new InvalidOperationException("There's no open period.");
         var item = account.FindRecurring(recurringId) ?? throw new InvalidOperationException("That recurring item doesn't exist in this account.");
         if (req.ActualAmount > 0m) item.LearnFromActual(req.ActualAmount);   // tune a "typical" estimate toward reality
-        RecurringMap.Post(account, period, item, req.ActualAmount, userId);
-        return RecurringView.Of(account, 0);
-    }, ct);
+        var degraded = RecurringMap.Post(account, period, item, req.ActualAmount, userId, debtAccount);
+        return (RecurringView.Of(account, 0), degraded);
+    }
+
+    long version;
+    (RecurringViewDto View, bool Degraded) result;
+    if (debtElsewhere is { } confirmDebtAccountId)
+    {
+        var (v, debtVersion, r) = await svc.MutateTwoAsync(userId, id, confirmDebtAccountId, Confirm, ct);
+        version = v; result = r;
+        await notifier.AccountChangedAsync(confirmDebtAccountId, userId, debtVersion);
+    }
+    else
+    {
+        (version, result) = await svc.MutateAsync(userId, id, a => Confirm(a, a), ct);
+    }
     await notifier.AccountChangedAsync(id, userId, version);
-    return Results.Ok(new RecurringMutationDto(version, recurringId, view with { Version = version }));
+    return Results.Ok(new RecurringMutationDto(version, recurringId, result.View with { Version = version },
+        LoanUnreachable: result.Degraded));
 });
 
 accounts.MapPost("/{id:guid}/recurring/{recurringId:guid}/skip", async (Guid id, Guid recurringId, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>

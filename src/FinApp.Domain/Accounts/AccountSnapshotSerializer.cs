@@ -42,7 +42,7 @@ public static class AccountSnapshotSerializer
             account.AchievementsAnchor,
             account.AchievementLog.Count == 0 ? null : new Dictionary<string, DateOnly>(account.AchievementLog),
             account.RecurringItems.Count == 0 ? null : account.RecurringItems.Select(r => new RecurringItemNode(
-                r.Id, r.Name, r.Kind, r.AmountMode, r.ExpectedAmount, r.DayOfMonth, r.CategoryId, r.FundId, r.Active, r.Icon, r.LastHandledPeriodFrom, r.AutoPost, r.CreatedOn, r.LinkedDebtBucketId, r.LastHandledWasSkip, r.ExcessCategoryId, r.ExcessLabel)).ToList(),
+                r.Id, r.Name, r.Kind, r.AmountMode, r.ExpectedAmount, r.DayOfMonth, r.CategoryId, r.FundId, r.Active, r.Icon, r.LastHandledPeriodFrom, r.AutoPost, r.CreatedOn, r.LinkedDebtBucketId, r.LastHandledWasSkip, r.ExcessCategoryId, r.ExcessLabel, r.LinkedDebtAccountId)).ToList(),
             account.OnboardingDismissed,
             account.Tags.Count == 0 ? null : account.Tags.Select(t => new TagNode(t.Id, t.Name, t.Icon, t.IsArchived, t.CategoryId, t.IsTripTag)).ToList(),
             account.RoundUpTo, account.RoundUpBucketId, account.HourlyRate,
@@ -155,7 +155,7 @@ public static class AccountSnapshotSerializer
             // Restored verbatim, including null: a legacy item has no creation date, and stamping today's would
             // suppress it for a period it should genuinely fire in.
             item.SetCreatedOn(r.CreatedOn);
-            item.SetLinkedDebtBucket(r.LinkedDebtBucketId);
+            item.SetLinkedDebtBucket(r.LinkedDebtBucketId, r.LinkedDebtAccountId);
             // ⚠️ After the link, never before: SetExcess self-clears on an item that is not debt-linked.
             item.SetExcess(r.ExcessCategoryId, r.ExcessLabel);
             account.AddRecurring(item);
@@ -194,7 +194,7 @@ public static class AccountSnapshotSerializer
         p.InitialBalances.Select(b => new InitialBalanceNode(b.Id, b.FundId, b.Amount.Amount, b.Informative)).ToList(),
         p.Contributions.Select(c => new ContributionNode(c.Id, c.MemberId, c.Paid.Amount, c.CategoryId, c.FundId, c.Date, c.FundSynced, c.AccountTransferId, c.FromAccountId)).ToList(),
         p.Budgets.Select(b => new BudgetNode(b.Id, b.CategoryId, b.Allocated.Amount, b.AlertThreshold, b.NotifyOnEveryExpense)).ToList(),
-        p.Expenses.Select(e => new ExpenseNode(e.Id, e.CategoryId, e.Amount.Amount, e.Date, e.MemberId, e.FundId, e.Note, e.SourceSavingCategoryId, e.OnBehalfOfOtherAccount, e.SettlementId, e.SettledToAccountId, e.SettledFromAccountId, e.SettledAmount, e.FundSynced, e.BankExternalId, e.AutoFiled, e.TagIds.Count == 0 ? null : e.TagIds.ToList(), e.InstallmentGroupId, e.Part, e.DebtBucketId, e.TripId, e.ForeignAmount, e.ForeignCurrency, e.Time, e.RefundedAmount, e.TripAccountId)).ToList(),
+        p.Expenses.Select(e => new ExpenseNode(e.Id, e.CategoryId, e.Amount.Amount, e.Date, e.MemberId, e.FundId, e.Note, e.SourceSavingCategoryId, e.OnBehalfOfOtherAccount, e.SettlementId, e.SettledToAccountId, e.SettledFromAccountId, e.SettledAmount, e.FundSynced, e.BankExternalId, e.AutoFiled, e.TagIds.Count == 0 ? null : e.TagIds.ToList(), e.InstallmentGroupId, e.Part, e.DebtBucketId, e.TripId, e.ForeignAmount, e.ForeignCurrency, e.Time, e.RefundedAmount, e.TripAccountId, e.DebtBucketAccountId)).ToList(),
         p.SavingAllocations.Select(a => new SavingAllocationNode(a.Id, a.SavingCategoryId, a.Amount.Amount, a.Date, a.Note, a.SourceExpenseId, a.BudgetCategoryId, a.TransferPairId, a.SourceExternalTransferId)).ToList(),
         p.FundTransfers.Select(t => new FundTransferNode(t.Id, t.FromFundId, t.ToFundId, t.Amount.Amount, t.Date, t.Note, t.FromSynced, t.ToSynced, t.BankExternalId, t.AutoFiled)).ToList(),
         p.ExternalTransfers.Select(t => new ExternalTransferNode(t.Id, t.FundId, t.Amount.Amount, t.Date, t.ToAccountId, t.Note, t.FundSynced, t.AccountTransferId, t.CategoryId)).ToList());
@@ -265,7 +265,7 @@ public static class AccountSnapshotSerializer
         SetField(p, "_expenses", n.Expenses.Select(e =>
         {
             var expense = Build(new Expense(e.CategoryId, M(e.Amount), e.Date, e.MemberId, e.FundId, e.Note, e.SourceSavingCategoryId, e.OnBehalfOfOtherAccount, e.SettlementId, e.SettledToAccountId, e.SettledFromAccountId, e.SettledAmount), e.Id);
-            expense.SetInstallmentLink(e.InstallmentGroupId, e.Part, e.DebtBucketId);
+            expense.SetInstallmentLink(e.InstallmentGroupId, e.Part, e.DebtBucketId, e.DebtBucketAccountId);
             expense.SetFundSynced(e.FundSynced);
             expense.SetBankLink(e.BankExternalId, e.AutoFiled);
             if (e.TagIds is { Count: > 0 }) expense.SetTags(e.TagIds);
@@ -375,7 +375,10 @@ public static class AccountSnapshotSerializer
         // C: where the part of a debt-linked bill ABOVE the contractual installment is filed (insurance, a fee).
         // Null on every item written before this existed — i.e. "we were never told", which is exactly the old
         // behaviour: the whole payment services the loan. See RecurringItem.ExcessCategoryId.
-        Guid? ExcessCategoryId = null, string? ExcessLabel = null);
+        Guid? ExcessCategoryId = null, string? ExcessLabel = null,
+        // D2: the account that owns LinkedDebtBucketId, when the loan lives elsewhere. Null on every item written
+        // before this existed — i.e. "the loan is this account's own", which is what they all were.
+        Guid? LinkedDebtAccountId = null);
 
     private record MemberNode(Guid Id, Guid UserId, string DisplayName);
     private record ContributionCategoryNode(Guid Id, string Name, string? Icon = null);
@@ -446,7 +449,10 @@ public static class AccountSnapshotSerializer
         // The account that owns TripId, when the trip belongs to ANOTHER account (D1). Null on every node written
         // before this existed and on every ordinary attachment — i.e. "the trip is this account's own", which is
         // what they all were. See Expense.TripAccountId: the money stays here, only the recap reaches across.
-        Guid? TripAccountId = null);
+        Guid? TripAccountId = null,
+        // D2: the account that owns DebtBucketId, when the loan lives elsewhere. Null on every node written before
+        // this existed. Without it the installment UNDO cannot find the bucket to reverse against.
+        Guid? DebtBucketAccountId = null);
     private record SavingAllocationNode(Guid Id, Guid SavingCategoryId, decimal Amount, DateOnly Date, string? Note, Guid? SourceExpenseId, Guid? BudgetCategoryId = null, Guid? TransferPairId = null, Guid? SourceExternalTransferId = null);
     private record FundTransferNode(Guid Id, Guid FromFundId, Guid ToFundId, decimal Amount, DateOnly Date, string? Note, bool FromSynced = false, bool ToSynced = false, string? BankExternalId = null, bool AutoFiled = false);
     private record ExternalTransferNode(Guid Id, Guid FundId, decimal Amount, DateOnly Date, Guid? ToAccountId, string? Note, bool FundSynced = false,

@@ -3530,6 +3530,35 @@ else
                     }
                 </text>;
 
+                @* ★ D1 — a journey the household is taking together, where the trip lives in another account and
+                   this card paid for part of it. The expense does NOT move: it stays in this account's period,
+                   spending and budgets, because this account paid. It simply starts counting toward that trip's
+                   total, labelled with where it came from.
+                   ⚠️ Same-currency accounts only (ForeignTripOptionsAsync), and each chip names its account — two
+                   households can easily both have a "Rome".
+                   One fragment, rendered by BOTH the add and edit forms: it shipped on the edit form alone, so a
+                   trip in the joint account could only be reached by logging an expense and then editing it. *@
+                RenderFragment foreignTripRow =
+                @<text>
+                    @if (_foreignTrips.Count > 0)
+                    {
+                        <span class="lbl-row trip-other-lbl">@Loc["Or a trip in another account"]</span>
+                        <div class="qp-row">
+                            @foreach (var ft in _foreignTrips)
+                            {
+                                var fTrip = ft;
+                                <button type="button" class="tag-chip @(_expTripId == fTrip.Trip.Id && _expTripAccountId == fTrip.AccountId ? "tag-chip-on" : "")" @onclick="() => OnForeignTripPicked(fTrip)">
+                                    @TripMark(fTrip.Trip.Icon)@fTrip.Trip.Name <span class="fund-chip-ccy">@fTrip.AccountName</span>
+                                </button>
+                            }
+                        </div>
+                        @if (_expTripAccountId != Guid.Empty)
+                        {
+                            <small class="hint"><Icon Name="swap" /> @string.Format(Loc["This stays in {0}'s spending and budgets — it just counts toward that trip's total too."], State.AccountName(State.CurrentAccountId))</small>
+                        }
+                    }
+                </text>;
+
                 RenderFragment tagPicker =
                 @<div class="modal-field">
                     <span class="lbl-row">@(onTrip ? Loc["What kind of spend?"] : Loc["Tag (optional)"])</span>
@@ -4461,7 +4490,10 @@ else
                        running or booked the whole block renders nothing and the form is exactly as it was.
                        Past trips are deliberately absent: attaching something you forgot is the rarer case and it
                        has its own door, "Add something already paid" on the trip's own card. *@
-                    @if (FormTripOptions.Count > 0)
+                    @* ⚠️ The whole block renders nothing unless there is a trip to pick — here OR in another
+                       account. A "Part of a trip" heading over a lone "Not a trip" chip is a question with one
+                       answer. *@
+                    @if (FormTripOptions.Count > 0 || _foreignTrips.Count > 0)
                     {
                         <div class="modal-field trip-pick-field">
                             <span class="lbl-row">@Loc["Part of a trip"]</span>
@@ -4470,11 +4502,15 @@ else
                                 @foreach (var t in FormTripOptions)
                                 {
                                     var tripOpt = t;
-                                    <button type="button" class="tag-chip @(_expTripId == tripOpt.Id ? "tag-chip-on" : "")" @onclick="() => OnExpenseTripPicked(tripOpt.Id)">
+                                    <button type="button" class="tag-chip @(_expTripId == tripOpt.Id && _expTripAccountId == Guid.Empty ? "tag-chip-on" : "")" @onclick="() => OnExpenseTripPicked(tripOpt.Id)">
                                         @TripMark(tripOpt.Icon)@tripOpt.Name
                                     </button>
                                 }
                             </div>
+                            @* D1 — the same cross-account row the edit form has. It was missing here, so a journey
+                               tracked in the joint account could only be reached by logging the expense and then
+                               editing it. *@
+                            @foreignTripRow
                         </div>
                     }
                     @* Staged expenses: "+ Add another expense" parks the current entry here as a compact row and clears
@@ -4704,29 +4740,7 @@ else
                                     </button>
                                 }
                             </div>
-                            @* ★ D1 — a journey the household is taking together, where the trip lives in the other
-                               account and this card paid for part of it. The expense does NOT move: it stays in
-                               this account's period, spending and budgets, because this account paid. It simply
-                               starts counting toward that trip's total, labelled with where it came from.
-                               ⚠️ Same-currency accounts only (ForeignTripOptionsAsync), and each chip names its
-                               account — two households can easily both have a "Rome". *@
-                            @if (_foreignTrips.Count > 0)
-                            {
-                                <span class="lbl-row trip-other-lbl">@Loc["Or a trip in another account"]</span>
-                                <div class="qp-row">
-                                    @foreach (var ft in _foreignTrips)
-                                    {
-                                        var fTrip = ft;
-                                        <button type="button" class="tag-chip @(_expTripId == fTrip.Trip.Id && _expTripAccountId == fTrip.AccountId ? "tag-chip-on" : "")" @onclick="() => OnForeignTripPicked(fTrip)">
-                                            @TripMark(fTrip.Trip.Icon)@fTrip.Trip.Name <span class="fund-chip-ccy">@fTrip.AccountName</span>
-                                        </button>
-                                    }
-                                </div>
-                                @if (_expTripAccountId != Guid.Empty)
-                                {
-                                    <small class="hint"><Icon Name="swap" /> @string.Format(Loc["This stays in {0}'s spending and budgets — it just counts toward that trip's total too."], State.AccountName(State.CurrentAccountId))</small>
-                                }
-                            }
+                            @foreignTripRow
                         </div>
                     }
                     @* NOT a <label> — see CategoryPicker: a label re-dispatches every click inside it onto the
@@ -5842,7 +5856,8 @@ else
                        states one it takes over the field rather than sitting beside it disagreeing — which is what
                        used to happen (the debt row saying "due on the 30th" over a bill set to day 15). With no day
                        on the loan, the bill's own day fills it in on save. *@
-                    var _recLoanDay = State.LoanDueDayFor(_recDebtId == Guid.Empty ? null : _recDebtId);
+                    @* The picked loan's own day — resolved wherever the loan lives (D2), not just in this account. *@
+                    var _recLoanDay = RecurringPickedDebt()?.DebtInstallmentDay;
                     @if (_recLoanDay is { } _rld)
                     {
                         <div class="modal-field">
@@ -5858,31 +5873,57 @@ else
                     {
                         <Switch @bind-Value="_recAutoPost">@Loc["Post automatically when due (don't ask me)"]</Switch>
                     }
-                    @* A bill can service a loan. Only offered for expenses, and only when there's a debt to point at. *@
-                    @if (_recKind == RecurringKind.Expense && State.LinkableDebts.Count > 0)
+                    @* A bill can service a loan. Only offered for expenses, and only when there's a debt to point at
+                       — here or (D2) in another of the user's accounts. *@
+                    @if (_recKind == RecurringKind.Expense && (State.LinkableDebts.Count > 0 || _foreignDebts.Count > 0))
                     {
                         <label>@Loc["This is a loan installment for"]
-                            <select @bind="_recDebtId">
+                            @* ⚠️ Not @bind: the value is a bucket id but the FACT is (bucket, account), and only
+                               the handler can resolve which account an id came from. See OnRecurringDebtPicked. *@
+                            <select value="@_recDebtId" @onchange="OnRecurringDebtPicked">
                                 <option value="@Guid.Empty">@Loc["Not a loan payment"]</option>
                                 @foreach (var d in State.LinkableDebts)
                                 {
                                     <option value="@d.Id">@d.Name</option>
+                                }
+                                @* ★ D2 — the household case: the mortgage is tracked in the joint account and paid
+                                   by one person's direct debit. Grouped by account and named, because two accounts
+                                   can easily both have a "Car loan". Same-currency accounts only. *@
+                                @foreach (var grp in _foreignDebts.GroupBy(o => o.AccountName))
+                                {
+                                    <optgroup label="@grp.Key">
+                                        @foreach (var o in grp)
+                                        {
+                                            <option value="@o.Bucket.Id">@o.Bucket.Name</option>
+                                        }
+                                    </optgroup>
                                 }
                             </select>
                         </label>
                         @if (_recDebtId != Guid.Empty)
                         {
                             <small class="hint">@Loc["Each payment will be split into interest and principal rows against that loan, instead of one lump expense."]</small>
+                            @if (_recDebtAccountId != Guid.Empty)
+                            {
+                                @* ⚠️ Say what crossing the boundary does and does not do. The expense is this
+                                   account's — this account paid — while the balance that moves is over there. *@
+                                <small class="hint"><Icon Name="swap" /> @string.Format(Loc["The payment is recorded here, in {0}; the loan it pays down lives in {1}."],
+                                    State.AccountName(State.CurrentAccountId), State.AccountName(_recDebtAccountId))</small>
+                            }
                             @* Linking says "I pay this loan through this app", so the loan switches onto logged
                                payments on save. Announced rather than done silently — it changes what moves the
                                balance. It only fires on the transition into a link, so a user who later sets the
                                loan back to its own schedule keeps that choice. *@
-                            var _recLinkSwitches = State.LinkingWouldSwitchLoanToPaymentDriven(_recDebtId, _recEditId == Guid.Empty ? null : State.RecurringItems.FirstOrDefault(x => x.Id == _recEditId)?.LinkedDebtBucketId);
-                            @if (_recLinkSwitches)
+                            @* ⚠️ Read off the PICKED loan, wherever it lives. The State.SavingBucket* helpers all
+                               look in the current account, so on a foreign loan they answer about nothing — the
+                               hints would silently describe a bucket that isn't the one being linked. *@
+                            var _recPickedDebt = RecurringPickedDebt();
+                            var _recPrevBucket = _recEditId == Guid.Empty ? null : State.RecurringItems.FirstOrDefault(x => x.Id == _recEditId)?.LinkedDebtBucketId;
+                            @if (_recPickedDebt is { DebtPaymentDriven: false } && _recPrevBucket != _recDebtId)
                             {
                                 <small class="hint"><Icon Name="note" /> @Loc["Saving this will also switch that loan's balance onto the payments you log, since you're telling us you pay it from here. What's owed today is kept exactly as it is; only what moves it from now on changes — and you can set it back on the loan."]</small>
                             }
-                            else if (!State.SavingBucketDebtPaymentDriven(_recDebtId))
+                            else if (_recPickedDebt is { DebtPaymentDriven: false })
                             {
                                 <small class="hint">@Loc["That loan's balance follows its own schedule by your choice, so confirming this bill will log the payment but won't move the balance. Change it on the loan under “What moves the balance”."]</small>
                             }
@@ -5895,7 +5936,7 @@ else
                                Offered whenever the loan states an installment, including while the amount is
                                under it — a field that appears and disappears as a number is typed reads as a bug,
                                and the amount can be raised at confirm time anyway. *@
-                            var _recInst = State.SavingBucketDebtInstallment(_recDebtId);
+                            var _recInst = _recPickedDebt?.DebtInstallment ?? 0m;
                             @if (_recInst > 0m)
                             {
                                 <label>@Loc["Anything above the installment is"]
@@ -9065,6 +9106,8 @@ else
             // Auto-post any due Fixed items opted into it. Converges (items are marked handled synchronously), so this
             // runs at most once per due item; the returned notice surfaces the move in the bell (never silent).
             var posted = await State.AutoPostDueRecurringAsync();
+            // ⚠️ An auto-post is the worst place for a silent degrade — nobody was watching it happen.
+            if (State.LastAutoPostLoanUnreachable) _loanUnreachableCount++;
             if (posted.Count > 0) { _autoPostedNotices.AddRange(posted); StateHasChanged(); }
         }
     }
@@ -10205,6 +10248,7 @@ else
         // should default to that trip even if you're back home when you enter it.
         _expTripId = State.AllTrips.FirstOrDefault(t => t.IsActiveOn(_expenseDate))?.Id ?? Guid.Empty;
         _expTripAccountId = Guid.Empty;
+        _ = LoadForeignTripOptionsAsync();
         ApplyTripCategoryDefault();
     }
 
@@ -11309,6 +11353,16 @@ else
                 Loc["Expenses ate into your savings earmark. This will need to be covered next period (from a savings bucket or fresh contributions)."],
                 null, null, null, null, true));
 
+        // ⚠️ D2 — a debt-linked bill whose loan could not be reached posted as one lump instead of a split. The
+        // PAYMENT is fine; the loan did not move. Urgent, because the failure mode is silence: left unsaid, the
+        // ledger looks right, the balance quietly stalls, and it surfaces a quarter later as "why is this still
+        // owed?". Dismissible, since the fix (restore the bucket, or re-point the bill) is not a one-tap action.
+        if (_loanUnreachableCount > 0)
+            list.Add(new Notification("card",
+                Loc["A loan payment posted as one expense, not a split."],
+                Loc["The loan it services couldn't be reached — its bucket may have been removed, or it lives in an account this one can no longer open. The money is recorded; the loan's balance hasn't moved. Re-point the bill on the loan, or relink it under Recurring."],
+                null, null, null, () => _loanUnreachableCount = 0, true));
+
         // Recurring items posted automatically this session — surfaced so the money move is never silent.
         foreach (var ap in _autoPostedNotices)
         {
@@ -11696,10 +11750,48 @@ else
     private Guid _recDebtId;   // the loan this bill services (Guid.Empty = an ordinary bill)
     private Guid _recExcessCatId;      // where the part above the installment files (Guid.Empty = onto the loan)
     private string? _recExcessLabel;   // what that line is called on the ledger (null = the bill's own name)
+    // D2: the account that owns _recDebtId, when the loan is not this account's. Guid.Empty = here.
+    private Guid _recDebtAccountId;
+    // Other accounts' loans this bill could service. Loaded when the editor opens; empty for a single-account user,
+    // so the picker simply shows no groups.
+    private IReadOnlyList<BudgetingState.ForeignDebtOption> _foreignDebts = [];
+
+    /// <summary>The loan currently picked in the bill editor, wherever it lives. ⚠️ The <c>State.SavingBucket*</c>
+    /// helpers all look in the CURRENT account, so on a cross-account link they answer about nothing — every hint
+    /// that uses one has to come through here instead.</summary>
+    private SavingCategory? RecurringPickedDebt()
+    {
+        if (_recDebtId == Guid.Empty) return null;
+        return _recDebtAccountId == Guid.Empty
+            ? State.FindSavingBucket(_recDebtId)
+            : State.FindForeignDebt(_recDebtId)?.Bucket;
+    }
+
+    /// <summary>Resolve which account a picked loan came from. The bucket id alone cannot say — ids are unique, so
+    /// the answer is "this account if it holds it, otherwise whichever foreign account offered it".</summary>
+    private void OnRecurringDebtPicked(ChangeEventArgs e)
+    {
+        _recDebtId = Guid.TryParse(e.Value?.ToString(), out var picked) ? picked : Guid.Empty;
+        _recDebtAccountId = _recDebtId != Guid.Empty && State.FindSavingBucket(_recDebtId) is null
+            ? State.FindForeignDebt(_recDebtId)?.AccountId ?? Guid.Empty
+            : Guid.Empty;
+    }
+
+    private async Task LoadForeignDebtsAsync()
+    {
+        try { _foreignDebts = await State.LinkableForeignDebtsAsync(); }
+        catch { _foreignDebts = []; }   // an unreadable account offers no loans; the rest of the form is unaffected
+        StateHasChanged();
+    }
     private Guid _recConfirmId;
     private decimal _recConfirmAmount;
     // Recurring items auto-posted this session — shown once in the bell so the money move isn't silent.
     private readonly List<(string Name, Money Amount, RecurringKind Kind)> _autoPostedNotices = new();
+
+    // D2: how many posts this session had to degrade to a lump because their loan was unreachable. A count rather
+    // than a bool so a second one re-raises a notice the user has already dismissed — the second month it happens
+    // is exactly when they need to hear it again.
+    private int _loanUnreachableCount;
 
     private void OpenRecurring() { _acctMenuOpen = false; _modal = Modal.Recurring; }
 
@@ -11707,10 +11799,13 @@ else
     {
         _recEditId = Guid.Empty; _recName = ""; _recIcon = null; _recKind = RecurringKind.Expense;
         _recMode = RecurringAmountMode.Fixed; _recAmount = 0; _recDay = 1; _recAutoPost = false; _recDebtId = Guid.Empty;
-        _recExcessCatId = Guid.Empty; _recExcessLabel = null;
+        _recExcessCatId = Guid.Empty; _recExcessLabel = null; _recDebtAccountId = Guid.Empty;
         _recFundId = State.SelectableFunds.FirstOrDefault()?.Id ?? State.RootFunds.FirstOrDefault()?.Id ?? Guid.Empty;
         ResetRecurringCategory();
         _modal = Modal.RecurringEdit;
+        // Fired here, not per render: the other accounts' loans need a fetch, and the picker is markup. The modal
+        // opens immediately without the groups and grows them when the list lands.
+        _ = LoadForeignDebtsAsync();
     }
 
     private void OpenEditRecurring(Guid id)
@@ -11719,8 +11814,12 @@ else
         _recEditId = r.Id; _recName = r.Name; _recIcon = r.Icon; _recKind = r.Kind; _recMode = r.AmountMode;
         _recAmount = r.ExpectedAmount; _recDay = r.DayOfMonth; _recCategoryId = r.CategoryId; _recFundId = r.FundId; _recAutoPost = r.AutoPost;
         _recDebtId = r.LinkedDebtBucketId ?? Guid.Empty;
+        _recDebtAccountId = r.LinkedDebtAccountId ?? Guid.Empty;
         _recExcessCatId = r.ExcessCategoryId ?? Guid.Empty; _recExcessLabel = r.ExcessLabel;
         _modal = Modal.RecurringEdit;
+        // ⚠️ Needed to RENDER an existing cross-account link, not just to offer new ones: without the list loaded,
+        // RecurringPickedDebt cannot resolve the foreign bucket and every hint below silently reads as "no loan".
+        _ = LoadForeignDebtsAsync();
     }
 
     // When switching income/expense, point the category at a valid one for that kind.
@@ -11739,10 +11838,14 @@ else
         // Android client) and Guid.Empty as "clear it". This form always knows the answer, so it always says it —
         // otherwise turning the picker back to "extra payment onto the loan" would save nothing.
         var excessCat = debtId is not null && _recExcessCatId != Guid.Empty ? _recExcessCatId : Guid.Empty;
+        // ★ Guid.Empty, never null, for the same reason as the excess category: the update route reads null as
+        // "leave the owner as it was" (for the older Android client), so a form that knows the answer must say it —
+        // otherwise moving a bill back onto one of THIS account's loans would keep the old foreign owner.
+        var debtAccount = debtId is not null ? _recDebtAccountId : Guid.Empty;
         if (_recEditId == Guid.Empty)
-            await State.AddRecurring(_recName, _recKind, _recMode, _recAmount, _recDay, _recCategoryId, _recFundId, _recIcon, _recAutoPost, debtId, excessCat, _recExcessLabel);
+            await State.AddRecurring(_recName, _recKind, _recMode, _recAmount, _recDay, _recCategoryId, _recFundId, _recIcon, _recAutoPost, debtId, excessCat, _recExcessLabel, debtAccount);
         else
-            await State.UpdateRecurring(_recEditId, _recName, _recMode, _recAmount, _recDay, _recCategoryId, _recFundId, _recIcon, _recAutoPost, debtId, excessCat, _recExcessLabel);
+            await State.UpdateRecurring(_recEditId, _recName, _recMode, _recAmount, _recDay, _recCategoryId, _recFundId, _recIcon, _recAutoPost, debtId, excessCat, _recExcessLabel, debtAccount);
         _modal = Modal.Recurring;
     });
 
@@ -11760,8 +11863,12 @@ else
     private Task DoConfirmRecurring() => RunModal(async () =>
     {
         if (_recConfirmAmount <= 0m) return;
-        await State.ConfirmRecurring(_recConfirmId, _recConfirmAmount, Loc["Loan principal"], Loc["Loan interest"]);
+        var unreachable = await State.ConfirmRecurring(_recConfirmId, _recConfirmAmount, Loc["Loan principal"], Loc["Loan interest"]);
         CloseModal();
+        // ⚠️ The payment WAS posted — as one lump, because its loan could not be reached (a deleted bucket, or
+        // another account that has gone). Said out loud rather than swallowed: a month that books as a lump while
+        // the balance quietly stalls is found a quarter later, if at all.
+        if (unreachable) _loanUnreachableCount++;
     });
 
     private Task DoSkipRecurring() => RunModal(async () => { await State.SkipRecurring(_recConfirmId); CloseModal(); });
@@ -12112,6 +12219,7 @@ else
         _focusAmount = focusAmount;
         _expTripId = State.ActiveTrip?.Id ?? Guid.Empty;   // trip mode: default it, don't enforce it
         _expTripAccountId = Guid.Empty;
+        _ = LoadForeignTripOptionsAsync();   // the cross-account row, same as the edit form (D1)
         // ★ And take the trip's category with it. Applying this only when a trip CHIP is tapped meant the form
         // opened on the running trip while still showing the last-used everyday category — the setting looked
         // broken precisely for the person who never touches the trip row because it is already correct.
@@ -12543,10 +12651,17 @@ else
         CloseModal();
     });
 
-    /// <summary>Trips offered by the EDIT form: every one, newest departure first. Unlike the add form this keeps
-    /// finished trips — attaching a forgotten booking to a journey that is over is the main reason to be here.</summary>
+    /// <summary>Trips offered by the EDIT and bank-confirm forms: the ones still going, newest departure first,
+    /// <b>plus whichever is currently attached</b> even when it is over.
+    /// <para>⚠️ It used to be every trip the account had ever taken, which on a well-used account is a wall of dead
+    /// chips — reported as "weird". Keeping the SELECTED one is what preserves the two cases that actually needed
+    /// finished trips: an expense already filed against a past journey still shows it (and can be detached), and
+    /// bank-confirm's date-based default still lands on the holiday you have just got back from.</para></summary>
     private IReadOnlyList<FinApp.Domain.Budgeting.Trip> EditTripOptions =>
-        State.AllTrips.OrderByDescending(t => t.From).ToList();
+        State.AllTrips
+            .Where(t => !t.IsFinishedOn(State.TodayDate) || (t.Id == _expTripId && _expTripAccountId == Guid.Empty))
+            .OrderByDescending(t => t.From)
+            .ToList();
 
     /// <summary>Set while the edit modal was opened from a trip's own ledger — see <see cref="TripEditExpense"/>.
     /// There the trip IS the context, so the picker belongs even with nothing running.</summary>
@@ -12568,7 +12683,11 @@ else
     /// appears.</para></summary>
     private bool EditShowsTripPicker =>
         (EditTripOptions.Count > 0 || _foreignTrips.Count > 0)
-        && (State.ActiveTrip is not null || _editOpenedFromTrip || _expTripId != Guid.Empty || _foreignTrips.Count > 0);
+        && (State.ActiveTrip is not null || _editOpenedFromTrip || _expTripId != Guid.Empty
+            // ⚠️ A RUNNING foreign trip, not merely any — otherwise a journey the joint account took last year
+            // puts a row of trip chips on every grocery edit forever, which is the noise this predicate exists to
+            // stop. A household mid-trip still gets the row; one that is not, does not.
+            || _foreignTrips.Any(o => o.Trip.IsActiveOn(State.TodayDate)));
 
     /// <summary>Moving the date off today drops an auto-stamped time: "now" describes the moment the form is open,
     /// which says nothing about a purchase being back-dated to last Tuesday. Moving it back onto today re-stamps it.</summary>

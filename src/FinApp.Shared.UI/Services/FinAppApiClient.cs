@@ -342,8 +342,12 @@ public sealed class FinAppApiClient(HttpClient http)
         SendAsync<MutationResultDto>(HttpMethod.Put, $"/accounts/{id}/recurring/{recurringId}/active", new SetActiveRequest(active), ct);
     public Task<MutationResultDto> RemoveRecurringAsync(Guid id, Guid recurringId, CancellationToken ct = default) =>
         SendAsync<MutationResultDto>(HttpMethod.Delete, $"/accounts/{id}/recurring/{recurringId}", null, ct);
-    public Task<MutationResultDto> ConfirmRecurringAsync(Guid id, Guid recurringId, decimal actualAmount, CancellationToken ct = default) =>
-        SendAsync<MutationResultDto>(HttpMethod.Post, $"/accounts/{id}/recurring/{recurringId}/confirm", new ConfirmRecurringRequest(actualAmount), ct);
+    /// <summary>⚠️ Reads the route's own <see cref="RecurringMutationDto"/> rather than the narrower
+    /// <see cref="MutationResultDto"/> it used to: the superset carries <c>LoanUnreachable</c>, and a payment that
+    /// silently posted as a lump because its loan could not be reached is exactly what must not be dropped on the
+    /// way back. Same wire, one more field read.</summary>
+    public Task<RecurringMutationDto> ConfirmRecurringAsync(Guid id, Guid recurringId, decimal actualAmount, CancellationToken ct = default) =>
+        SendAsync<RecurringMutationDto>(HttpMethod.Post, $"/accounts/{id}/recurring/{recurringId}/confirm", new ConfirmRecurringRequest(actualAmount), ct);
     public Task<MutationResultDto> SkipRecurringAsync(Guid id, Guid recurringId, CancellationToken ct = default) =>
         SendAsync<MutationResultDto>(HttpMethod.Post, $"/accounts/{id}/recurring/{recurringId}/skip", null, ct);
     public Task<MutationResultDto> UnskipRecurringAsync(Guid id, Guid recurringId, CancellationToken ct = default) =>

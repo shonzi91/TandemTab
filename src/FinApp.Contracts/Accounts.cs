@@ -343,7 +343,11 @@ public record AddRecurringRequest(string Name, string Kind, string Mode, decimal
     // C: file the part of the payment ABOVE the loan's contractual installment here — insurance, a servicing fee,
     // whatever the bank bundled into the mandate — instead of onto the loan as principal. Trailing optional: an
     // older client sends nothing and gets the pre-C behaviour, which is the whole payment servicing the loan.
-    Guid? ExcessCategoryId = null, string? ExcessLabel = null);
+    Guid? ExcessCategoryId = null, string? ExcessLabel = null,
+    // D2: the account that owns LinkedDebtBucketId, when the loan lives in another one. Absent = this account's own.
+    // ⚠️ Posting such a bill writes BOTH accounts — expense rows here, the balance there — so the confirm route
+    // goes through MutateTwoAsync. Both accounts must use the same currency.
+    Guid? LinkedDebtAccountId = null);
 
 /// <summary>Edit a recurring item (its kind can't change). Fields as in <see cref="AddRecurringRequest"/>. Mirrors
 /// <c>BudgetingState.UpdateRecurring</c>.</summary>
@@ -355,7 +359,14 @@ public record UpdateRecurringRequest(string Name, string Mode, decimal Expected,
     // for the same reason. Android WRITES this endpoint, so a null-means-clear field would have an older app
     // silently wipe the excess configuration every time someone edited an unrelated field on the bill, and the
     // next €700 would quietly go back to being €700 of loan servicing.
-    Guid? ExcessCategoryId = null, string? ExcessLabel = null);
+    Guid? ExcessCategoryId = null, string? ExcessLabel = null,
+    // D2: the account that owns LinkedDebtBucketId. ⚠️ Also not authoritative, and the rule is subtler: absent
+    // LEAVES IT AS IT WAS when the bucket id is unchanged, and otherwise means "this account". An older client
+    // that has never heard of this field re-sends the bucket id alone on every unrelated edit; read plainly as
+    // "this account", that would turn a working cross-account link into a broken same-account one and the next
+    // post would book a silent lump. Changing the BUCKET does restate the pair — bucket and owner are one fact —
+    // so a different bucket id always takes the incoming account, or this one when none is given.
+    Guid? LinkedDebtAccountId = null);
 
 /// <summary>Pause or resume a recurring item (a paused item never falls due).</summary>
 public record SetActiveRequest(bool Active);

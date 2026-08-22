@@ -1929,6 +1929,10 @@ public sealed class Localizer(IJSRuntime js)
         ["Or a trip in another account"] = "Или пътуване в друга сметка",
         ["This stays in {0}'s spending and budgets — it just counts toward that trip's total too."] = "Разходът си остава в разходите и бюджетите на {0} — просто се брои и към общата сума на онова пътуване.",
         ["{0} of this was paid from {1}."] = "{0} от това е платено от {1}.",
+        // D2 — a bill here servicing a loan in another account.
+        ["The payment is recorded here, in {0}; the loan it pays down lives in {1}."] = "Плащането се записва тук, в {0}; кредитът, който то погасява, е в {1}.",
+        ["A loan payment posted as one expense, not a split."] = "Вноска по кредит беше вписана като един разход, не разделена.",
+        ["The loan it services couldn't be reached — its bucket may have been removed, or it lives in an account this one can no longer open. The money is recorded; the loan's balance hasn't moved. Re-point the bill on the loan, or relink it under Recurring."] = "Кредитът, който обслужва, не беше достъпен — кутията му може да е премахната или е в сметка, която вече не може да бъде отворена. Парите са записани; салдото на кредита не е променено. Насочи сметката към кредита отново или я свържи наново в „Повтарящи се“.",
         ["Kept at the end of each month"] = "Задържано в края на всеки месец",
         ["{0} of this went onto a loan — the balance fell because the debt did."] =
             "{0} от това отиде по кредит — балансът падна, защото падна и дългът.",

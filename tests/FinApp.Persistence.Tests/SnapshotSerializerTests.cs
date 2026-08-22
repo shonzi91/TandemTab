@@ -401,6 +401,53 @@ public class SnapshotSerializerTests
     }
 
     [Fact]
+    public void A_bills_cross_account_loan_link_round_trips()
+    {
+        // Lose the account half and the bucket id is looked up here, finds nothing, and the next post books a
+        // silent lump while the other account's balance stalls.
+        var account = new Account("Mine", "EUR");
+        account.AssignOwner(Guid.NewGuid(), "Me");
+        account.AddDefaultFunds();
+        var category = account.AddCategory("Loan").Id;
+        var ownerAccountId = Guid.NewGuid();
+        var foreignBucketId = Guid.NewGuid();
+        var bill = new FinApp.Domain.Recurring.RecurringItem("Mortgage", FinApp.Domain.Recurring.RecurringKind.Expense,
+            FinApp.Domain.Recurring.RecurringAmountMode.Fixed, 600m, 10, category, account.FundId("Bank"));
+        bill.SetLinkedDebtBucket(foreignBucketId, ownerAccountId);
+        account.AddRecurring(bill);
+
+        var copied = AccountSnapshotSerializer.Deserialize(AccountSnapshotSerializer.Serialize(account)).RecurringItems.Single();
+
+        Assert.Equal(foreignBucketId, copied.LinkedDebtBucketId);
+        Assert.Equal(ownerAccountId, copied.LinkedDebtAccountId);
+        Assert.True(copied.IsCrossAccountInstallment);
+    }
+
+    [Fact]
+    public void An_installment_rows_loan_account_round_trips()
+    {
+        // Without it the UNDO cannot find the bucket to reverse against — the rows would go and the other
+        // account's balance would keep the payment.
+        var account = new Account("Mine", "EUR");
+        account.AssignOwner(Guid.NewGuid(), "Me");
+        account.AddDefaultFunds();
+        var category = account.AddCategory("Loan").Id;
+        var period = account.StartPeriod(new DateOnly(2026, 6, 1), new DateOnly(2026, 6, 30));
+        period.SetInitialBalance(account.FundId("Bank"), new FinApp.Domain.Common.Money(3000m, "EUR"));
+        var ownerAccountId = Guid.NewGuid();
+        var expense = period.AddExpense(new FinApp.Domain.Budgeting.Expense(category,
+            new FinApp.Domain.Common.Money(500m, "EUR"), new DateOnly(2026, 6, 10), Guid.NewGuid(),
+            account.FundId("Bank"), "Mortgage"));
+        expense.SetInstallmentLink(Guid.NewGuid(), FinApp.Domain.Budgeting.InstallmentPart.Principal,
+            Guid.NewGuid(), ownerAccountId);
+
+        var copied = AccountSnapshotSerializer.Deserialize(AccountSnapshotSerializer.Serialize(account))
+            .CurrentPeriod!.Expenses.Single();
+
+        Assert.Equal(ownerAccountId, copied.DebtBucketAccountId);
+    }
+
+    [Fact]
     public void A_recurring_bills_excess_line_round_trips()
     {
         // Lose it and next month's €700 quietly goes back to being €700 of loan servicing, dropping ~€100 more

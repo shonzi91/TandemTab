@@ -167,13 +167,40 @@ public sealed class RecurringItem : Entity
     /// </summary>
     public Guid? LinkedDebtBucketId { get; private set; }
 
-    /// <summary>Link this bill to a debt bucket (or unlink with null / <see cref="Guid.Empty"/>). Ignored for income —
-    /// there is no installment to split.</summary>
-    public void SetLinkedDebtBucket(Guid? bucketId) =>
+    /// <summary>
+    /// The account that owns <see cref="LinkedDebtBucketId"/>, when the loan lives in a <b>different</b> account
+    /// (D2). Null — the ordinary case — means the bucket is one of this account's own.
+    /// <para>
+    /// ★ Unlike a cross-account trip link, this one is not a reporting fact: posting the bill writes expense rows
+    /// <b>here</b> and moves the balance <b>there</b>, so every post is a genuine two-account write. The expense
+    /// still belongs to the account that paid; only the loan it services lives elsewhere.
+    /// </para>
+    /// <para>
+    /// ⚠️ A dangling pointer degrades rather than corrupts: <see cref="Periods.Period.PostRecurring"/> already falls
+    /// back to a plain lump expense when the bucket cannot be found, which is the right outcome for "the other
+    /// account is unreachable" — losing the split is better than losing the payment. It must be <i>surfaced</i>
+    /// though, or a month books as a lump while the loan quietly stalls.
+    /// </para>
+    /// <para>Body data (snapshot, not EF).</para>
+    /// </summary>
+    public Guid? LinkedDebtAccountId { get; private set; }
+
+    /// <summary>Link this bill to a debt bucket (or unlink with null / <see cref="Guid.Empty"/>), optionally naming
+    /// the account that owns it when the loan is not this account's. Ignored for income — there is no installment
+    /// to split.
+    /// <para>★ One setter for both, as with <see cref="Budgeting.Expense.SetTrip"/>: a bucket id and the account
+    /// that owns it are a single fact, and two setters would be two chances to store half of it.</para></summary>
+    public void SetLinkedDebtBucket(Guid? bucketId, Guid? debtAccountId = null)
+    {
         LinkedDebtBucketId = Kind == RecurringKind.Expense && bucketId is { } b && b != Guid.Empty ? b : null;
+        LinkedDebtAccountId = LinkedDebtBucketId is null || debtAccountId is not { } a || a == Guid.Empty ? null : a;
+    }
 
     /// <summary>True when posting this item should log an installment rather than a plain expense.</summary>
     public bool IsLoanInstallment => LinkedDebtBucketId is not null;
+
+    /// <summary>True when the loan this bill services lives in another account — i.e. posting it needs both.</summary>
+    public bool IsCrossAccountInstallment => LinkedDebtBucketId is not null && LinkedDebtAccountId is not null;
 
     /// <summary>
     /// Where the part of this bill that is <b>above</b> the loan's contractual installment gets filed. Set it, and

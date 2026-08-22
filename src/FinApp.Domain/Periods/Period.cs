@@ -407,6 +407,11 @@ public sealed class Period : Entity
         return edited;
     }
 
+    /// <summary>Set by the last <see cref="PostRecurring"/> call when a debt-linked bill had to post as a plain lump
+    /// expense because its loan could not be reached. Not persisted — it describes the call, not the period — and
+    /// reset at the top of every post, so a caller reads it immediately or not at all.</summary>
+    public bool LastPostDegradedToLump { get; private set; }
+
     /// <summary>
     /// Post a due recurring item's amount as a real transaction and mark it handled for this period: a
     /// <see cref="RecurringKind.Expense"/> becomes an <see cref="Expense"/>, income a <see cref="Contribution"/>
@@ -414,10 +419,16 @@ public sealed class Period : Entity
     /// nothing (a skip) but still marks the item handled. Single source of truth for confirm + auto-post, on both
     /// the web client and the server-side confirm endpoint, so the posting can't drift.
     /// </summary>
+    /// <param name="linkedDebt">The loan this bill services, when the caller could find it. ⚠️ For a
+    /// <see cref="RecurringItem.IsCrossAccountInstallment"/> bill it lives in ANOTHER account, so only a caller
+    /// holding both can supply it — see the two-account confirm route. Null falls back to a plain lump expense,
+    /// which is the right outcome for "the other account is unreachable" and the wrong one to leave silent:
+    /// <see cref="LastPostDegradedToLump"/> says so.</param>
     public void PostRecurring(RecurringItem item, decimal amount, Guid memberId, bool fundSynced,
         SavingCategory? linkedDebt = null, Guid? principalTagId = null, Guid? interestTagId = null)
     {
         ArgumentNullException.ThrowIfNull(item);
+        LastPostDegradedToLump = false;
         if (amount > 0m)
         {
             var date = item.DueDateWithin(From, To);
@@ -445,10 +456,16 @@ public sealed class Period : Entity
                     LogInstallment(linkedDebt, new Money(amount, Currency), date, memberId, item.FundId,
                         item.CategoryId, item.CategoryId, additional: extras,
                         principalTagId: principalTagId, interestTagId: interestTagId,
-                        note: item.Name, fundSynced: fundSynced);
+                        note: item.Name, fundSynced: fundSynced,
+                        bucketAccountId: item.LinkedDebtAccountId);
                     item.MarkHandled(From);
                     return;
                 }
+                // ⚠️ The bill says it services a loan and we could not reach one — a deleted bucket, or (D2) another
+                // account this caller could not open. The payment is still posted, as a lump, because losing the
+                // split is better than losing the payment; but it is flagged so the caller can SAY so. A month that
+                // books as a lump while the loan quietly stalls is the kind of thing found a quarter later.
+                if (item.IsLoanInstallment) LastPostDegradedToLump = true;
                 var expense = new Expense(item.CategoryId, new Money(amount, Currency), date, memberId, item.FundId, item.Name);
                 expense.SetFundSynced(fundSynced);
                 AddExpense(expense);
@@ -497,7 +514,10 @@ public sealed class Period : Entity
         Guid? principalTagId = null,
         Guid? interestTagId = null,
         string? note = null,
-        bool fundSynced = false)
+        bool fundSynced = false,
+        // D2: the account that owns this bucket, when the loan lives elsewhere. Stamped onto every row so the undo
+        // can find the bucket again — see Expense.DebtBucketAccountId.
+        Guid? bucketAccountId = null)
     {
         ArgumentNullException.ThrowIfNull(bucket);
         EnsureCurrency(total);
@@ -536,13 +556,13 @@ public sealed class Period : Entity
         // clutter the user would have to scroll past every month.
         if (!principal.IsZero)
             rows.Add(PostInstallmentRow(principalCategoryId, principal, date, memberId, fundId, note,
-                groupId, InstallmentPart.Principal, bucket.Id, principalTagId, fundSynced));
+                groupId, InstallmentPart.Principal, bucket.Id, principalTagId, fundSynced, bucketAccountId));
         if (!interest.IsZero)
             rows.Add(PostInstallmentRow(interestCategoryId, interest, date, memberId, fundId, note,
-                groupId, InstallmentPart.Interest, bucket.Id, interestTagId, fundSynced));
+                groupId, InstallmentPart.Interest, bucket.Id, interestTagId, fundSynced, bucketAccountId));
         foreach (var extra in extras)
             rows.Add(PostInstallmentRow(extra.CategoryId, extra.Amount, date, memberId, fundId, extra.Note ?? note,
-                groupId, InstallmentPart.Additional, bucket.Id, extra.TagId, fundSynced));
+                groupId, InstallmentPart.Additional, bucket.Id, extra.TagId, fundSynced, bucketAccountId));
 
         // ★ isExtraRepayment stays FALSE, and a linked bill's excess line is why that is now right rather than
         // merely tolerated. With `servicing` capped at the contractual installment (see PostRecurring), principal
@@ -557,10 +577,11 @@ public sealed class Period : Entity
     }
 
     private Expense PostInstallmentRow(Guid categoryId, Money amount, DateOnly date, Guid memberId, Guid fundId,
-        string? note, Guid groupId, InstallmentPart part, Guid bucketId, Guid? tagId, bool fundSynced)
+        string? note, Guid groupId, InstallmentPart part, Guid bucketId, Guid? tagId, bool fundSynced,
+        Guid? bucketAccountId = null)
     {
         var expense = new Expense(categoryId, amount, date, memberId, fundId, note);
-        expense.SetInstallmentLink(groupId, part, bucketId);
+        expense.SetInstallmentLink(groupId, part, bucketId, bucketAccountId);
         expense.SetFundSynced(fundSynced);
         expense.SetTag(tagId);
         _expenses.Add(expense);
