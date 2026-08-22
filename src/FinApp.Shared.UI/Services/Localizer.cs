@@ -1940,7 +1940,13 @@ public sealed class Localizer(IJSRuntime js)
         // Goals: the row's qualifier line under the name, now that the money column holds only the set-aside.
         ["{0} of {1} left"] = "{0} от {1} остават",
         ["of {0} goal"] = "от целта {0}",
+        // ⚠️ Orphaned: the Goals-activity caption dropped its label when the figure moved into the rows' money
+        // column. Kept rather than deleted because the phrase is the app's name for this figure and the next
+        // person to label it should get the existing translation, not invent a second one.
         ["saved this period"] = "заделено този период",
+        // The rule splitting Goals activity: below it are the rows outside "saved this period" — a disbursement
+        // or a bucket-to-bucket move, neither of which changes what is set aside.
+        ["Not counted above"] = "Не влиза в сумата горе",
         ["One-off — pay what you've set aside now"] = "Еднократно — плати заделеното сега",
         // Privacy mode — the shoulder-surfing toggle's indicator.
         ["Figures hidden"] = "Сумите са скрити",

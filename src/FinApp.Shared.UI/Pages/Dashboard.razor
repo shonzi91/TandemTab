@@ -3395,21 +3395,58 @@ else
                the figure would have nowhere to live and simply vanish. *@
             @if (State.SavingDepositsThisPeriod.Any() || State.SavingMovementsThisPeriod.Any() || State.SavingsThisPeriod.Amount > 0m)
             {
-                <section class="panel">
+                // ★ The list is split on the ARITHMETIC, not on the row's kind: everything above the rule is a
+                // term in the figure at the top, everything below it is not. That is the whole point of the
+                // separator — the reader can add up what they see and land on the number that is printed.
+                // ⚠️ Disbursements are the ones the owner named ("applied to goal"), but a bucket-to-bucket
+                // transfer is outside the sum for exactly the same reason, so it goes below with them. Splitting
+                // on "is it a disbursement" would put a row that changes nothing right in the middle of the
+                // rows that do, and the rule would then mean nothing at all.
+                var actCounted = State.SavingMovementsThisPeriod.Where(CountsTowardSetAside).ToList();
+                var actOutside = State.SavingMovementsThisPeriod.Where(m => !CountsTowardSetAside(m)).ToList();
+                RenderFragment<FinApp.Domain.Savings.SavingAllocation> movementRow = m =>
+                    @<li>
+                        <span class="row-main row-stack">
+                            <span class="row-title">@MovementIcon(m) <span class="row-title-txt">@State.SavingMovementTarget(m)</span></span>
+                            <span class="row-sub"><span>@m.Date.ToString("dd MMM")</span></span>
+                        </span>
+                        @* A disbursement is the saving doing its job — the loan prepaid, the bill the fund
+                           was filling up for. It leaves the account like spending, but red is the one
+                           colour here that means "this hurt you", so it goes amber instead. *@
+                        <span class="amt @(m.IsDisbursement ? "deploy" : "debit")">@Fmt(-m.Amount.Amount)</span>
+                        <span class="row-actions">
+                            @if (State.IsPeriodOpen)
+                            {
+                                @if (!m.IsDisbursement)
+                                {
+                                    <button class="exp-edit" title="@Loc["Edit"]" @onclick="() => OpenEditSavingMovement(m.Id)"><Icon Name="pencil" /></button>
+                                }
+                                else
+                                {
+                                    @* ⚠️ Reserve the missing slot — this is what `.exp-edit-slot` exists for. A
+                                       disbursement has no edit, and without the slot its lone bin lands in the
+                                       PENCIL column and drags the row's amount 24px right of every other one. That
+                                       rag was invisible until a caption sat on top claiming to head the column. *@
+                                    <span class="exp-edit-slot"></span>
+                                }
+                                <button class="exp-edit" title="@Loc["Remove"]" @onclick="() => OpenDeleteSavingMovement(m.Id)"><Icon Name="trash" /></button>
+                            }
+                        </span>
+                    </li>;
+
+                <section class="panel act-panel">
                     <h2>@Loc["Goals activity"]</h2>
                     @* ★ The period figure lives HERE, with the movements, and deliberately not with the goals.
                        It is a period delta; the column above is a set of accumulated balances. Sitting it under
                        the goals' total invited exactly the reading it cannot support — that the two are the same
                        population measured twice — when in fact it does not contain the goals' figures at all.
-                       ⚠️ It is NOT a sum of the rows below it either, and is styled as a caption rather than
-                       aligned into their amount column for that reason: `SavingsSetAsideTotal` is deposits minus
-                       what was released to a budget, while this list also shows bucket-to-bucket movements the
-                       total ignores. Right-aligning it into the column would promise an addition that fails. *@
+                       ★ It sits in the rows' own money column now, and the split below is what earns that: the
+                       rows above the rule are its terms. The rate rides the left of the line where the label used
+                       to be — with the figure over a column of figures, the words naming it were furniture. *@
                     @if (State.SavingsThisPeriod.Amount > 0m)
                     {
                         <p class="goal-period-line">
                             <span class="goal-stat-k2">
-                                @Loc["saved this period"]
                                 @if (State.PeriodMoneyInRate is { } prate && prate > 0m)
                                 {
                                     <span class="settle-tag" title="@string.Format(Loc["Money in this period: {0} came in, plus {1} carried over from before."], Fmt(State.FreshInThisPeriod), Fmt(State.CarriedInThisPeriod))">@FmtPct(Math.Round(prate * 100m))% @Loc["of money in"]</span>
@@ -3436,30 +3473,24 @@ else
                                 </span>
                             </li>
                         }
-                        @foreach (var m in State.SavingMovementsThisPeriod)
-                        {
-                            <li>
-                                <span class="row-main row-stack">
-                                    <span class="row-title">@MovementIcon(m) <span class="row-title-txt">@State.SavingMovementTarget(m)</span></span>
-                                    <span class="row-sub"><span>@m.Date.ToString("dd MMM")</span></span>
-                                </span>
-                                @* A disbursement is the saving doing its job — the loan prepaid, the bill the fund
-                                   was filling up for. It leaves the account like spending, but red is the one
-                                   colour here that means "this hurt you", so it goes amber instead. *@
-                                <span class="amt @(m.IsDisbursement ? "deploy" : "debit")">@Fmt(-m.Amount.Amount)</span>
-                                <span class="row-actions">
-                                    @if (State.IsPeriodOpen)
-                                    {
-                                        @if (!m.IsDisbursement)
-                                        {
-                                            <button class="exp-edit" title="@Loc["Edit"]" @onclick="() => OpenEditSavingMovement(m.Id)"><Icon Name="pencil" /></button>
-                                        }
-                                        <button class="exp-edit" title="@Loc["Remove"]" @onclick="() => OpenDeleteSavingMovement(m.Id)"><Icon Name="trash" /></button>
-                                    }
-                                </span>
-                            </li>
-                        }
+                        @foreach (var m in actCounted) { @movementRow(m) }
                     </ul>
+                    @if (actOutside.Count > 0)
+                    {
+                        @* The rule says what it divides. A bare line would read as decoration and leave the reader
+                           to work out for themselves why the column below doesn't add up — which is the question
+                           the split exists to answer.
+                           ⚠️ Only when there is something above it to be counted. A period whose only activity is
+                           a disbursement would otherwise open with "Not counted above" over nothing at all, which
+                           names a comparison the screen isn't making. *@
+                        @if (State.SavingDepositsThisPeriod.Any() || actCounted.Count > 0)
+                        {
+                            <p class="act-split">@Loc["Not counted above"]</p>
+                        }
+                        <ul class="list list-even">
+                            @foreach (var m in actOutside) { @movementRow(m) }
+                        </ul>
+                    }
                 </section>
             }
         </div>
@@ -13332,6 +13363,20 @@ else
     /// <summary>Icon for a savings-activity movement row: ➡️ for a move into a budget, 🔁 for a bucket-to-bucket transfer.</summary>
     private static string MovementIcon(FinApp.Domain.Savings.SavingAllocation m) =>
         m.BudgetCategoryId is not null ? "➡️" : m.IsDisbursement ? "🎯" : "🔁";
+
+    /// <summary>
+    /// Whether a Goals-activity movement is a term in "saved this period", and so belongs above the rule that
+    /// splits the list.
+    /// <para>
+    /// ⚠️ This is <c>Period.SavingsSetAsideTotal</c>'s own predicate restated, and it has to stay that way: the
+    /// figure at the top of that panel is only honest if the rows printed under it are exactly the ones it added
+    /// up. Money released to a budget subtracts from what is set aside; a disbursement is the saving being spent
+    /// on what it was for, and a bucket-to-bucket transfer just moves it — neither changes the total, which is
+    /// why they sit below the line rather than in a column that refuses to add up.
+    /// </para>
+    /// </summary>
+    private static bool CountsTowardSetAside(FinApp.Domain.Savings.SavingAllocation m) =>
+        m.BudgetCategoryId is not null && m.TransferPairId is null;
 
     // --- Per-fund operation popups ----------------------------------------
 

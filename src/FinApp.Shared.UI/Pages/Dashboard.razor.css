@@ -1813,23 +1813,56 @@ html.dark .goal-sub-done { color: #57d9a3; }
    pair above) — this is a demotion in scale, not in meaning. */
 .goal-total-line .goal-stat-v { font-size: .95rem; }
 .goal-stat-fig { justify-self: end; text-align: right; white-space: nowrap; }
-/* "saved this period", now a caption under the Goals-activity heading rather than line two of the goals header.
-   ★ Left-aligned, NOT in the rows' amount column, and that is a statement rather than laziness: the figure is
-   neither a sum of the goal column (it is a period delta over accumulated balances) nor a sum of the movements
-   listed under it (it nets deposits against releases to budget and ignores bucket-to-bucket transfers). Putting
-   it at the head of a column of numbers would promise an addition that does not work out. */
-.goal-period-line { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 8px; margin: 2px 0 10px; }
-/* Lower-case running text rather than the total's upper-case eyebrow, and it carries the rate pill inline
-   because the rate qualifies the WORDS, not the number. */
+/* "saved this period" — a caption at the head of the Goals-activity list, its figure in the same column as the
+   rows beneath it.
+   ★ It earns that column because the list is now SPLIT on the figure's own arithmetic: everything above the rule
+   is a term in it. A figure heading a column of figures that don't add up to it is the "two figures about one
+   number" trap; a figure heading a column that does is the whole point.
+     --act-acts-w  the widest the trailing button cluster ever gets on THIS list, which the amount must clear.
+     --act-gap     `.list-even li`'s flex gap, which sits between the amount and that cluster.
+   ⚠️ 70px is MEASURED, not taken from the shared `.list-even .row-actions { min-width: 58px }` — which is what
+   caught me first time. The real edit+remove pair renders 70px, so it overflows 58 and the min-width governs
+   nothing; the activity column has been ragged by that difference all along, invisible until a caption sat on
+   top claiming to head it.
+   ⚠️ And 94px below the breakpoint, because `.exp-edit` grows to the 44px touch target there — the same reason
+   `.fund-row-acts` re-declares 112px a few rules down. Both figures were measured in the browser at 1280 and 375.
+   ⚠️ Scoped to `.act-panel`. `.list-even` is also fund movements, deposits and half a dozen other lists; widening
+   the shared rule would pad all of them to fix one.
+   ⚠️ This pins the COLUMN; `.exp-edit-slot` in the movement row pins the ICONS inside it. Both are needed and they
+   do different jobs — the min-width holds the gutter open when a closed period renders no buttons at all, which
+   is a case no amount of slot-reserving reaches.
+   Re-measure with `min-width: 0` rather than re-deriving if these rows ever grow a third button. */
+.act-panel { --act-acts-w: 70px; --act-gap: 8px; }
+.act-panel .list-even .row-actions { min-width: var(--act-acts-w); }
+@media (pointer: coarse), (max-width: 560px) { .act-panel { --act-acts-w: 94px; } }
+.goal-period-line {
+    display: grid; grid-template-columns: 1fr auto; align-items: baseline;
+    gap: 8px;
+    padding-right: calc(var(--act-acts-w) + var(--act-gap));
+    margin: 2px 0 8px;
+}
+/* The label is gone — over a column of figures the words naming it were furniture. What is left of this cell is
+   the rate pill, which says something the column cannot. It keeps its own colour pair for the case where there
+   is no rate and the cell is simply empty. */
 .goal-stat-k2 { text-transform: none; letter-spacing: 0; font-size: .74rem; font-weight: 600; color: #6b7d72;
-    display: inline-flex; align-items: center; flex-wrap: wrap; gap: 4px 6px; }
+    display: inline-flex; align-items: center; flex-wrap: wrap; gap: 4px 6px; min-width: 0; }
 html.dark .goal-stat-k2 { color: #9fb0a6; }
-/* Muted body colour rather than the total's brand green — this is a different measurement of a different
+/* Muted body colour rather than the goals total's brand green — this is a different measurement of a different
    population, and painting it the same green would say it was the same kind of fact. */
-.goal-stat-v2 { font-size: .84rem; font-weight: 700; color: #6b7d72; }
+.goal-stat-v2 { font-size: .84rem; font-weight: 700; color: #6b7d72; text-align: right; white-space: nowrap; }
 html.dark .goal-stat-v2 { color: #9fb0a6; }
-/* The pill is already spaced by the flex gap; its own left margin would double it. */
+/* The pill is already spaced by the grid gap; its own left margin would double it. */
 .goal-period-line .settle-tag { margin-left: 0; }
+/* The rule under the counted rows. It carries its own label because a bare line reads as decoration and leaves
+   the reader to work out why the figures below are outside the total — the question the split exists to answer.
+   ⚠️ `.list li:last-child` drops its own border, so the first list ends flush and this border is the only line
+   between the two groups; without it they would read as one uninterrupted column. */
+.act-split {
+    margin: 0; padding: 9px 0 3px;
+    border-top: 1px solid #e6ece9;
+    font-size: .68rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: #8a97a0;
+}
+html.dark .act-split { border-top-color: #293049; color: #7f8b9a; }
 @media (max-width: 560px) {
     /* ★ Below 560 the base rule drops `.cat-row-acts` onto a full-width line of its own, so there is no cluster
        left to clear and the column's only inset is the hit button's padding. Re-declaring the property moves the
