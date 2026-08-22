@@ -3,8 +3,12 @@
 Last updated: 2026-08-22 (Session 114 — **five items from the owner's daily use. Two of the five turned out to be
 the same root cause; one was a money bug that had been mis-splitting a real loan payment every month; and the
 cross-account ask got the half that is safe to build.**
-**546 + 54 + 395 green, pairscan 0.** Commits `60bb66d` (A+B+C), `0ae94e9` (D1), `118faaf` (what the browser
-caught). ⚠️ **Deploy status is recorded at the end of this entry** — check it before assuming what is live.)
+**546 + 54 + 395 green, pairscan 0. LIVE: `finapp-00323-2mn`, 100% LATEST** — image `finapp:f1e0b90`
+(digest `sha256:0e6575c4…`); roots 200 on both hosts, 5 `secretKeyRef`s, no WARNING+ on the new revision.
+Commits `60bb66d` (A+B+C), `0ae94e9` (D1), `118faaf` (what the browser caught).
+★ **One deploy this session.** ✅ The served scoped-CSS bundle carries all five `.trend-focus-sel` rules —
+including comment text written in the last commit, which is what proves the image is that commit rather than a
+matching tag on older bytes.)
 
 #### ★★ C — a bill can be bigger than its loan, and the excess is not principal
 
