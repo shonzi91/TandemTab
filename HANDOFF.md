@@ -1,6 +1,143 @@
 # TandemTab (FinApp) — session handoff
 
-Last updated: 2026-08-21 (Session 113 — **the owner's list is DONE (O14 closed); the Breakdown was rebuilt then
+Last updated: 2026-08-22 (Session 114 — **five items from the owner's daily use. Two of the five turned out to be
+the same root cause; one was a money bug that had been mis-splitting a real loan payment every month; and the
+cross-account ask got the half that is safe to build.**
+**546 + 54 + 395 green, pairscan 0.** Commits `60bb66d` (A+B+C), `0ae94e9` (D1), `118faaf` (what the browser
+caught). ⚠️ **Deploy status is recorded at the end of this entry** — check it before assuming what is live.)
+
+#### ★★ C — a bill can be bigger than its loan, and the excess is not principal
+
+**The money bug.** `Period.PostRecurring` handed the **whole confirmed amount** to `LogInstallment`, and
+`bucket.DebtInstallment` was never consulted on that path. A €700 direct debit against a €600 loan therefore booked
+interest on the balance and **everything else as principal** — roughly €100/month of principal that was really
+health + property insurance the bank had bundled into the same mandate. Spending totals were right; the split was
+wrong, every month, silently.
+
+★ Servicing is now capped at the contractual installment and the rest becomes its own `InstallmentPart.Additional`
+row under its own category. `RecurringItem.ExcessCategoryId` / `ExcessLabel` / `ExcessOn(amount, installment)` —
+one arithmetic, read by the post, the editor's hint and the confirm preview, so a preview cannot promise a split
+the post won't perform.
+
+⚠️ **Deliberately NOT extra principal**, and the owner's call: crediting a loan with money that never touched it
+moves the balance and the payoff date on a guess.
+⚠️ **Silence must not change money.** No excess category → exactly the old behaviour. An existing €700-on-€600 bill
+would otherwise have sprouted a new ledger row and dropped its principal on the first post after deploy, with
+nobody having touched anything. The null state is written as a *choice* — the picker's first option reads "Extra
+payment onto the loan".
+★ **`RecordDebtPayment(…, isExtraRepayment: false)` is now RIGHT rather than merely tolerated**: with servicing
+capped, that principal is by construction the scheduled principal. Before this it was arguably wrong — the €700
+really did push unscheduled principal in and never banked it, which is why `AheadOfScheduleOn` could never fire for
+these users.
+⚠️ **`UpdateRecurringRequest.ExcessCategoryId` is deliberately NOT authoritative** (null = leave alone,
+`Guid.Empty` = clear). Android writes this route; null-means-clear would have an older build wipe the setting on
+every unrelated bill edit. `RecurringItem` is **not** EF-mapped, so no `Ignore()` was needed — that rule is for
+`Expense`/`SavingCategory`.
+✅ **Browser-verified:** three rows (€500 principal + €100 interest + €100 Insurance "Health + property"), day total
+€700, and the loan moved **€20,000 → €19,500** — the capped figure, not the €600-derived one.
+
+#### ★★ D1 — an expense can count toward another account's trip
+
+`Expense.TripAccountId` qualifies the trip id. **The write stays one-sided and only the read fans out**, which is
+the whole safety argument: the expense never leaves its own period, spending or budgets, because that account paid.
+**Double counting is structurally impossible** — every account-level total sums `_periods` directly and a foreign
+row is never added to the host's `_periods`; only `TripRecapService`, which *reads* periods, changed.
+
+Three things the asymmetry did not cover, each answered rather than hoped over:
+⚠️ **Read auth.** Gating the fan-out on the *viewer* would make one trip total differ per viewer (€1,200 for one
+partner, €900 for the other) — the contradiction class S113 spent a session fixing. So
+`SnapshotService.GetTripFanOutAsync` **deliberately skips the contributor check**, and the shape is what makes that
+acceptable: the `Account` is deserialized inside the method and **never escapes it**, and what comes back is only
+rows somebody deliberately attached to that one trip, carrying only fields a recap already renders. One call site.
+Do not add a second without re-arguing it.
+⚠️ **Bounding.** `Trip.SourceAccountIds` is a directory of where to look, written by the attach — which makes the
+attach a two-account write on `MutateTwoAsync`. **Needed for discoverability, not for the money.** Without it, one
+trip's total means deserializing every account the viewer contributes to, on every view.
+⚠️ **Lifecycle.** Deleting a trip cannot reach another account's expense, so the pointer dangles — deliberately
+harmless: the row renders as a plain expense, and Guids are never reused so a new trip cannot adopt the orphan.
+
+★ **Currency is a hard gate at the attach**, not a display choice: `Money`'s `+` throws, and that sum feeds the
+host's whole Trips screen server-side. The client offers only same-currency accounts by reusing
+`TransferableAccounts`.
+⚠️ **`TripDto.Spent` stays own-account-only**; the combined figure is a trailing field. Same
+`RecurringRowDto.Pending` discipline — leave an old client *consistent*, not partially updated.
+⚠️ **Two things that would have looked broken and are fixed here:** a foreign category id resolves to nothing in
+the host, so slices and rows carry names resolved in the account that **minted** them rather than "—"; and the Pro
+gate on a finished trip read the **wrong account's** snapshot, silently skipping itself.
+⚠️ **The route id, never the aggregate's `Id`.** The fan-out first used `account.Id` from the deserialized payload,
+which is not necessarily the account row id — the trip simply looked like it had no shared spend. Every
+cross-account link in `Program.cs` is written with the route id; the read must match.
+✅ **Browser-verified:** Joint's Rome trip reads €480 with *"€480.00 of this was paid from Mine"*, the ring slice
+labelled **Flights** (a category Joint does not have, so the foreign-name path is what produced it) and the row
+tagged **Mine**. Mine's SPENT unchanged, Joint's own SPENT still €0. An append-only edit minted a new expense id
+and the link **survived `CopyBodyDataTo`** — the single most likely thing to have been missed.
+
+#### ★ A — a trip must not teach the merchant rule
+
+The trip id never leaked (auto-filing passes none) — **its influence did**. Picking a trip runs
+`ApplyTripCategoryDefault`, which overwrites the category, and swaps the tag chips to the trip labels; the rule then
+remembered the **trip's** category and a **trip** tag and filed next month's supermarket run under Travel.
+★ Owner's call, and simpler than the three options offered: **no rule at all while a trip is picked.** One
+predicate (`BankRuleOffered`) read by both the markup and `ConfirmBankFromModal`, so they cannot drift.
+⚠️ **Not verified in a browser** — the bank-confirm modal needs a connected bank, which the local allowlist does not
+grant. Compile and inspection only; nothing more is claimed.
+⚠️ **Item 2's answer, for the record:** past trips *are* offered on bank-confirm and edit-expense (`EditTripOptions`
+is every trip ever taken); the manual add form hides finished ones (`FormTripOptions`). Left alone on the owner's
+instruction — reviewing a statement after you are home is exactly when a finished trip should still be attachable.
+⚠️ **Flagged, not fixed:** `OpenBankConfirm` bypasses `MayLogAgainstTrip`, so a free-plan user can get a finished
+trip auto-attached with no Pro gate. Same shape at `:9524` and `:9965`.
+
+#### ★ B — Trends' lower chart answers for itself now
+
+One `int? _trendHover` was shared by both charts, and the only tooltip markup lived in the upper one. Hovering the
+**lower** chart popped the **upper** chart's five numbers, **above the upper chart**, dimmed the upper chart's bars,
+and showed nothing at all on the chart the pointer was over. Worst exactly where it mattered: with a category
+focused (O14), the focused number was the one figure missing from the screen.
+★ Two nullable ints behind a `TrendChartId`-keyed accessor, **not** a `(chart, col)` tuple: every read site stays a
+plain `== i` the compiler checks, and "no cross-highlight" becomes structural rather than a rule to remember.
+★ The lower chart gets a **one-row** readout off `TrendPick` — the same focus-aware selector the line is drawn from,
+so the tooltip cannot disagree with the shape it annotates — plus its own x-axis.
+★ Labels carry the year when the window straddles one; twelve-month windows used to print three columns all reading
+"Jan".
+⚠️ `BreakCollapseAll` now clears both hovers: a column index means a different month once the window changes.
+✅ **Browser-verified:** two axes, both *"Aug 25 Nov 25 Feb 26 May 26 Aug 26"*; hovering the lower chart leaves the
+upper blank and undimmed; the two hold independent open columns; narrowed to Food the tip says **"APR 26 | Food |
+€610.00"**.
+
+#### ⚠️ What the browser caught that the tests could not
+
+★★ **The O14 focus dropdown was invisible in dark mode.** Adding `.trend-focus-sel` to the shared **light** field
+rule as a bare class made the scoped `.trend-focus-sel[b-x]` (0,2,0) outrank app.css's `html.dark select` (0,1,1),
+so it kept a white background while the text went `#e8eaf0`. The app's other selects escape this only because
+app.css names each of them **specifically**. ⚠️ **`pairscan` returned 0 throughout** — it does not catch this.
+Build-clean and test-green prove nothing about how a control looks.
+★ **The cross-account trip row was stricter than the row above it**, excluding finished trips while the edit form's
+own trip row offers them. Same form, same act, two rules. Now matches `EditTripOptions`.
+
+#### Next session
+1. **D2 — a recurring bill in one account bound to a debt bucket in another — is specified, not started.** It is a
+   two-account **write on every post** and drags in `RecurringMap.Post`, the client's optimistic mirror
+   (`PostRecurringItem`, `ConfirmRecurring`, `AutoPostDueRecurringAsync`), three same-account validators, the
+   linking side effects (`SyncLoanDueDay`, `DefaultLoanToPaymentDriven`), `RemoveInstallmentGroup`, and three
+   single-account read helpers that would under-report on the debt card. Full risk list in the session plan at
+   `~/.claude/plans/sequential-greeting-frog.md`. **Do not start it before D1 has been used.**
+2. **Item A is unverified in a browser** — it needs a bank connection. Worth doing on an allowlisted account.
+3. **The emulator session is still the biggest untouched gap**, now one session older. Android gained only DTO
+   fields this round (`excess*`, `paidFrom*`, `tripAccountId`, `spentIncludingOtherAccounts`) — additive and inert,
+   `:app:compileDebugKotlin` clean, and **nothing more is claimed**.
+4. **Then the ranked queue**: the foreign-cash wallet figure on Android, the phone-linked bank connection, and
+   `POST /bank/ack` without its undo.
+
+⚠️ **Fixture notes worth keeping.** A second account is Pro-gated — insert a `PlanOverrides` row (`pro`) for the
+user id. A new account needs `POST /accounts/{id}/bootstrap` before anything can be written to it. `/auth/login`
+takes `usernameOrEmail`, not `emailOrUsername`. Periods cannot be rolled while the current one is still running, so
+a multi-period history has to be written straight into the snapshot — and when you do, **clone the real nodes
+rather than writing them by hand**: a positional record's field order is part of the contract, and an invented
+`ContributionNode` put a bool where a number belonged and 500'd every read. Guid tails must be **12 hex chars**.
+
+---
+
+Previously: 2026-08-21 (Session 113 — **the owner's list is DONE (O14 closed); the Breakdown was rebuilt then
 half-reverted after pushback; and five figures that contradicted each other on screen were traced to real bugs.**
 **524 + 50 + 380 green, pairscan 0. LIVE: `finapp-00322-dh6`, 100% LATEST** — image `finapp:8df7dd7`
 (digest `sha256:6f02ded8…`); the served WASM carries `BalanceBefore`×1, `DebtOwedOn`×3 and `ExtraRepaidAfter`×4,
