@@ -735,6 +735,12 @@ data class AddExpenseRequest(
     // edit, which is also why this sheet must not re-convert an amount it pre-filled.
     val foreignAmount: Double? = null,
     val foreignCurrency: String? = null,
+    // ★ T0 — the idempotency key, and the reason it is on the DRAFT rather than added at send time: it has to be
+    // the same on every attempt at this one expense. A request that lands but whose response is lost looks exactly
+    // like one that never arrived, so retrying is all a phone can do — and without this the retry logs the dinner
+    // twice. Null means "no claim about duplicates"; the server accepts that and treats the write as new.
+    // ⚠️ ADD only. An edit is already idempotent by id, and a key on it would claim something it does not mean.
+    val clientId: String? = null,
 )
 
 /** What POST/PUT/DELETE /expenses returns: the new snapshot version, the row's id, the (added/edited) row for the

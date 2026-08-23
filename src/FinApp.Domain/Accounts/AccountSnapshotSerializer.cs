@@ -194,7 +194,7 @@ public static class AccountSnapshotSerializer
         p.InitialBalances.Select(b => new InitialBalanceNode(b.Id, b.FundId, b.Amount.Amount, b.Informative)).ToList(),
         p.Contributions.Select(c => new ContributionNode(c.Id, c.MemberId, c.Paid.Amount, c.CategoryId, c.FundId, c.Date, c.FundSynced, c.AccountTransferId, c.FromAccountId)).ToList(),
         p.Budgets.Select(b => new BudgetNode(b.Id, b.CategoryId, b.Allocated.Amount, b.AlertThreshold, b.NotifyOnEveryExpense)).ToList(),
-        p.Expenses.Select(e => new ExpenseNode(e.Id, e.CategoryId, e.Amount.Amount, e.Date, e.MemberId, e.FundId, e.Note, e.SourceSavingCategoryId, e.OnBehalfOfOtherAccount, e.SettlementId, e.SettledToAccountId, e.SettledFromAccountId, e.SettledAmount, e.FundSynced, e.BankExternalId, e.AutoFiled, e.TagIds.Count == 0 ? null : e.TagIds.ToList(), e.InstallmentGroupId, e.Part, e.DebtBucketId, e.TripId, e.ForeignAmount, e.ForeignCurrency, e.Time, e.RefundedAmount, e.TripAccountId, e.DebtBucketAccountId)).ToList(),
+        p.Expenses.Select(e => new ExpenseNode(e.Id, e.CategoryId, e.Amount.Amount, e.Date, e.MemberId, e.FundId, e.Note, e.SourceSavingCategoryId, e.OnBehalfOfOtherAccount, e.SettlementId, e.SettledToAccountId, e.SettledFromAccountId, e.SettledAmount, e.FundSynced, e.BankExternalId, e.AutoFiled, e.TagIds.Count == 0 ? null : e.TagIds.ToList(), e.InstallmentGroupId, e.Part, e.DebtBucketId, e.TripId, e.ForeignAmount, e.ForeignCurrency, e.Time, e.RefundedAmount, e.TripAccountId, e.DebtBucketAccountId, e.ClientId)).ToList(),
         p.SavingAllocations.Select(a => new SavingAllocationNode(a.Id, a.SavingCategoryId, a.Amount.Amount, a.Date, a.Note, a.SourceExpenseId, a.BudgetCategoryId, a.TransferPairId, a.SourceExternalTransferId)).ToList(),
         p.FundTransfers.Select(t => new FundTransferNode(t.Id, t.FromFundId, t.ToFundId, t.Amount.Amount, t.Date, t.Note, t.FromSynced, t.ToSynced, t.BankExternalId, t.AutoFiled)).ToList(),
         p.ExternalTransfers.Select(t => new ExternalTransferNode(t.Id, t.FundId, t.Amount.Amount, t.Date, t.ToAccountId, t.Note, t.FundSynced, t.AccountTransferId, t.CategoryId)).ToList());
@@ -273,6 +273,7 @@ public static class AccountSnapshotSerializer
             expense.SetForeign(e.ForeignAmount, e.ForeignCurrency);
             expense.SetTime(e.Time);
             expense.SetRefunded(e.RefundedAmount);
+            expense.SetClientId(e.ClientId);
             return expense;
         }).ToList());
         SetField(p, "_savingAllocations", n.SavingAllocations.Select(a =>
@@ -452,7 +453,13 @@ public static class AccountSnapshotSerializer
         Guid? TripAccountId = null,
         // D2: the account that owns DebtBucketId, when the loan lives elsewhere. Null on every node written before
         // this existed. Without it the installment UNDO cannot find the bucket to reverse against.
-        Guid? DebtBucketAccountId = null);
+        Guid? DebtBucketAccountId = null,
+        // T0: the idempotency key of the write that created this row, so a retry after an ambiguous failure finds
+        // the expense instead of making a second one. Null on every node written before this existed and on every
+        // write that sent no key — which reads as "no claim about duplicates", the honest answer for those.
+        // ⚠️ Positional record: this goes LAST, and the next field goes after it. See RecurringRowDto's comment
+        // for what happens when two branches each append "the" trailing optional field.
+        Guid? ClientId = null);
     private record SavingAllocationNode(Guid Id, Guid SavingCategoryId, decimal Amount, DateOnly Date, string? Note, Guid? SourceExpenseId, Guid? BudgetCategoryId = null, Guid? TransferPairId = null, Guid? SourceExternalTransferId = null);
     private record FundTransferNode(Guid Id, Guid FromFundId, Guid ToFundId, decimal Amount, DateOnly Date, string? Note, bool FromSynced = false, bool ToSynced = false, string? BankExternalId = null, bool AutoFiled = false);
     private record ExternalTransferNode(Guid Id, Guid FundId, decimal Amount, DateOnly Date, Guid? ToAccountId, string? Note, bool FundSynced = false,

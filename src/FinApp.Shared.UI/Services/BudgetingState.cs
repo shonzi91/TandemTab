@@ -1334,6 +1334,17 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     /// <c>Expense.Time</c> for why an unknown time is not recorded as midnight.</param>
     public Task AddExpense(Guid categoryId, decimal amount, Guid fundId, string? note, DateOnly date, bool onBehalfOfOtherAccount = false, Guid? tagId = null, Guid? tripId = null,
         decimal? foreignAmount = null, string? foreignCurrency = null, TimeOnly? time = null) =>
+        AddExpenseWithKey(Guid.NewGuid(), categoryId, amount, fundId, note, date, onBehalfOfOtherAccount, tagId, tripId, foreignAmount, foreignCurrency, time);
+
+    /// <summary>The body of <see cref="AddExpense"/> with its idempotency key hoisted into a parameter.
+    ///
+    /// <para>★ T0. The key is minted <b>once per call</b> and travels on both the optimistic row and the request,
+    /// so a retry of this write — whether a future automatic one or a user pressing Save twice on a slow
+    /// connection — is recognised by the server as the same intention rather than logged as a second expense.
+    /// Split out rather than defaulted inline because a default argument would be evaluated per call site, which
+    /// is the one thing a key must not be.</para></summary>
+    private Task AddExpenseWithKey(Guid clientId, Guid categoryId, decimal amount, Guid fundId, string? note, DateOnly date, bool onBehalfOfOtherAccount = false, Guid? tagId = null, Guid? tripId = null,
+        decimal? foreignAmount = null, string? foreignCurrency = null, TimeOnly? time = null) =>
         ExecuteOptimisticAsync(() =>
         {
             var expense = new Expense(categoryId, Money(amount), date, CurrentMemberId, fundId, note, onBehalfOfOtherAccount: onBehalfOfOtherAccount);
@@ -1341,6 +1352,7 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
             expense.SetTag(tagId);
             expense.SetTrip(tripId);
             expense.SetTime(time);
+            expense.SetClientId(clientId);
             // Remember what was typed before conversion, so the row can show "€14.63 · £12.50" for ever after. The
             // caller passes the pre-conversion figure; deriving it later from the wallet's rate would restate old
             // expenses every time that wallet is reloaded at a new rate.
@@ -1350,7 +1362,7 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
             // so the optimistic paint matches what the refetch brings back.
             _roundUps.Sweep(Account, Period, expense.Amount, expense.Date);
         },
-        id => api.AddExpenseAsync(id, new AddExpenseRequest(categoryId, amount, fundId, date, note, onBehalfOfOtherAccount, tagId, tripId, foreignAmount, foreignCurrency, time)),
+        id => api.AddExpenseAsync(id, new AddExpenseRequest(categoryId, amount, fundId, date, note, onBehalfOfOtherAccount, tagId, tripId, foreignAmount, foreignCurrency, time, clientId)),
         refetchAfter: true);
 
     // Bank-confirm flows only — bank provenance (externalId + auto-filed badge) isn't in the command API yet.

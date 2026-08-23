@@ -118,6 +118,29 @@ public sealed class SnapshotService(FinAppDbContext db, ISnapshotCipher cipher, 
     public async Task<(long Version, T Result)> MutateAsync<T>(
         Guid userId, Guid accountId, Func<Account, T> mutate, CancellationToken ct = default)
     {
+        var (version, _, result) = await MutateOrSkipAsync(userId, accountId, a => (true, mutate(a)), ct);
+        return (version, result);
+    }
+
+    /// <summary>
+    /// <see cref="MutateAsync{T}"/> for a command that may turn out to have <b>nothing to do</b>: the mutation
+    /// answers with a <c>Changed</c> flag alongside its result, and a <c>false</c> skips the save entirely —
+    /// returning the version the account already had, and telling the caller not to announce a change.
+    ///
+    /// <para><b>★ Why this exists (T0, idempotency).</b> A retried write whose original already landed must be a
+    /// no-op, and "write the identical snapshot back under a new version number" is not one: it churns the row,
+    /// bumps the version every other client is watching, and pushes them all to re-pull for a change that never
+    /// happened. The honest answer to a duplicate is silence — the caller still gets the original's result, which
+    /// is what makes the retry look successful to the client that sent it.</para>
+    ///
+    /// <para>⚠️ The check that sets <c>Changed</c> belongs <b>inside</b> the mutation, not before the call. Only
+    /// there does it run against the same snapshot the write commits to, which is what makes it safe against two
+    /// identical requests genuinely in flight at once (a double-tapped Save) rather than only against the
+    /// sequential retry.</para>
+    /// </summary>
+    public async Task<(long Version, bool Changed, T Result)> MutateOrSkipAsync<T>(
+        Guid userId, Guid accountId, Func<Account, (bool Changed, T Result)> mutate, CancellationToken ct = default)
+    {
         await EnsureContributorAsync(userId, accountId, ct);
 
         var row = await db.AccountSnapshots.FindAsync([accountId], ct);
@@ -130,10 +153,10 @@ public sealed class SnapshotService(FinAppDbContext db, ISnapshotCipher cipher, 
             // Work from the row's current state (freshened by ReloadAsync on a retry), applying the mutation to a
             // fresh aggregate each attempt so a re-run can't compound.
             var account = AccountSnapshotSerializer.Deserialize(await cipher.UnprotectAsync(row.Payload, ct));
-            T result;
+            (bool Changed, T Result) outcome;
             try
             {
-                result = mutate(account);
+                outcome = mutate(account);
             }
             catch (Exception ex) when (ex is InvalidOperationException or ArgumentException)
             {
@@ -142,13 +165,17 @@ public sealed class SnapshotService(FinAppDbContext db, ISnapshotCipher cipher, 
                 throw new BadRequestException(ex.CleanMessage());
             }
 
+            // Nothing to write. Note this returns the version the account is *already* on, which is the truthful
+            // answer to "what version is my change in?" when the change was made by an earlier attempt.
+            if (!outcome.Changed) return (row.Version, false, outcome.Result);
+
             row.Payload = await cipher.ProtectAsync(AccountSnapshotSerializer.Serialize(account), ct);
             row.Version++;
             row.UpdatedAt = DateTimeOffset.UtcNow;
             try
             {
                 await db.SaveChangesAsync(ct);
-                return (row.Version, result);
+                return (row.Version, true, outcome.Result);
             }
             catch (DbUpdateConcurrencyException) when (attempt < maxAttempts)
             {

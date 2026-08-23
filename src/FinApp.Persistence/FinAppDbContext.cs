@@ -349,6 +349,7 @@ public sealed class FinAppDbContext(DbContextOptions<FinAppDbContext> options) :
             e.Ignore(x => x.RefundedMoney);       // computed
             e.Ignore(x => x.IsRefunded);          // computed
             e.Ignore(x => x.AmountBeforeRefund);  // computed
+            e.Ignore(x => x.ClientId);            // body data — the write's idempotency key rides in the snapshot
         });
 
         b.Entity<SavingAllocation>(s =>

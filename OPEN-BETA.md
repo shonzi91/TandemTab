@@ -480,9 +480,9 @@ cheaper than the breakdown one — and the add sheet was going to pay for it any
 
 **⬜ What is left in this phase** (nothing below was started): the **server slice** — Trends + the whole-stack
 payoff plan, batched, plus the **week recap**; the **PWA** shell (manifest, service worker, `theme-color`); the
-phone→web rows (**always-visible milestones**, an **auto-mask trigger**); and **T0 idempotency keys**, which is
-the live bug and the largest single risk here. ✅ The bills-card disagreement is **settled and built** — see the
-Phone → web paragraph above. All three of the phase's client rows are done.
+phone→web rows (**always-visible milestones**, an **auto-mask trigger**); and the **rest of T0** — the automatic
+retry UX and the writes other than add-expense. ✅ The bills-card disagreement is **settled and built** (see the
+Phone → web paragraph), all three client rows are done, and **T0's duplicate-expense bug is closed**.
 
 **Phone → web.** The **always-visible milestones line** (the phone's rule is better and `HomeScreen.kt` argues
 why); an auto-mask trigger to match the phone's face-down sensor; and ⚠️ **the bills card, which is a genuine
@@ -510,6 +510,17 @@ after an **ambiguous** failure — sent, response lost, the ordinary failure on 
 **duplicate expense**. This is live today, offline or not, and the bank-import duplicate detector does not cover
 manually-added rows. Client-generated key + server-side dedupe, and the add-expense sheet keeps its contents and
 retries instead of erroring.
+
+✅ **Done for the add-expense path (S117).** `AddExpenseRequest.ClientId` → `Expense.ClientId` (body data, no
+migration), and the handler recognises a repeat before it validates anything. ★ It **writes nothing** on a
+recognised retry: `SnapshotService.MutateOrSkipAsync` lets a mutation answer "nothing to do", so the version every
+other client watches does not move and no one is told to re-pull for a change that did not happen. The key is
+minted **per row, when the row is composed** — one key for a batch would make the server drop rows 2..n as
+duplicates, and a key minted at send time would change on every retry and mean nothing. Proven end to end: a
+phone-written row's key was replayed as a lost-response retry and returned the original's id, with no new row and
+no version bump. ⬜ **Still open:** the *automatic* retry UX (the sheet keeps its contents on failure, but the
+user presses Save again), and the other writes — deposits, transfers, savings — which carry the same shape of
+risk and no key yet.
 
 ⚠️ **Nothing in this phase starts before [QUEUE.md](QUEUE.md) #1** — a large Android surface is live and has
 never been run. Every row here adds to that pile if it lands first.

@@ -295,6 +295,33 @@ public sealed class Expense : Entity
     /// <see cref="SetForeign"/>: EF cannot bind an ignored property to a constructor parameter.</summary>
     public void SetRefunded(decimal amount) => RefundedAmount = amount;
 
+    /// <summary>
+    /// The client's own id for the <b>write</b> that created this row — an idempotency key, not an identity.
+    ///
+    /// <para><b>★ Why a row carries one.</b> A client sends "add this expense", the request lands, and the response
+    /// is lost on the way back. That is the ordinary failure on a bad connection, and it is *ambiguous*: the client
+    /// cannot tell a request that never arrived from one that arrived and was applied. Retrying is the only useful
+    /// thing it can do, and without a key on the row the second attempt creates a second expense. The user sees one
+    /// dinner charged twice and has no way to know which is real.</para>
+    ///
+    /// <para>The key is generated once, when the draft is composed, and reused by every attempt at sending it — so
+    /// it identifies the user's <i>intention to log this expense</i>, not the network call. It is deliberately not
+    /// derived from the contents: two genuinely separate €3 coffees on the same day are not a duplicate, and any
+    /// content hash would call them one.</para>
+    ///
+    /// <para>⚠️ It survives a rebuild (see <see cref="CopyBodyDataTo"/>). A retry that arrives after the row has
+    /// been edited must still find it — otherwise correcting an amount quietly re-opens the very window this
+    /// closes. Null on every row written before this existed, and on any write that did not send a key, which reads
+    /// as "no claim about duplicates" — exactly right for those.</para>
+    ///
+    /// Body data — travels in the account snapshot, not the relational header.
+    /// </summary>
+    public Guid? ClientId { get; private set; }
+
+    /// <summary>Stamp the write's idempotency key. A setter for the same reason as <see cref="SetForeign"/>:
+    /// EF cannot bind an ignored property to a constructor parameter.</summary>
+    public void SetClientId(Guid? clientId) => ClientId = clientId;
+
     /// <summary>The refunded total as <see cref="Money"/> (in this expense's currency).</summary>
     public Money RefundedMoney => new(RefundedAmount, Amount.Currency);
 
@@ -337,6 +364,10 @@ public sealed class Expense : Entity
         rebuilt.SetBankLink(BankExternalId, AutoFiled);
         rebuilt.SetForeign(ForeignAmount, ForeignCurrency);
         rebuilt.SetRefunded(RefundedAmount);
+        // ⚠️ The idempotency key too. A late retry of the original add must still find this row after it has been
+        // edited, settled or refunded — drop the key here and correcting an amount silently re-opens the duplicate
+        // window the key exists to close.
+        rebuilt.SetClientId(ClientId);
     }
 
     public Expense(

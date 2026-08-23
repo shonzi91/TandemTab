@@ -269,6 +269,94 @@ public class ExpenseMutationApiTests : IClassFixture<FinAppServerFactory>
         Assert.Equal(tag, after.TagId);
     }
 
+    // ── T0: idempotency ────────────────────────────────────────────────────────────────────────────────────
+    // The failure these exist for is the ordinary one on a bad connection: the request lands, the response is
+    // lost, and the client cannot tell that from a request that never arrived. Retrying is all it can do.
+
+    [Fact]
+    public async Task Retrying_an_add_with_the_same_key_logs_one_expense_and_answers_the_same_way()
+    {
+        var (client, auth) = await _factory.RegisterAndAuthAsync("exp_idem");
+        var account = await CreateAccount(client, "Retry");
+        var (cat, fund) = await SeedAsync(client, account.Id, auth.UserId);
+        var key = Guid.NewGuid();
+
+        var first = (await (await client.PostAsJsonAsync($"/accounts/{account.Id}/expenses",
+            new AddExpenseRequest(cat, 42m, fund, When, "Dinner", ClientId: key)))
+            .Content.ReadFromJsonAsync<ExpenseMutationDto>())!;
+        var second = (await (await client.PostAsJsonAsync($"/accounts/{account.Id}/expenses",
+            new AddExpenseRequest(cat, 42m, fund, When, "Dinner", ClientId: key)))
+            .Content.ReadFromJsonAsync<ExpenseMutationDto>())!;
+
+        // One row, and the retry answered with the original's id — which is what makes it look like success.
+        var spending = (await client.GetFromJsonAsync<SpendingViewDto>($"/accounts/{account.Id}/spending"))!;
+        Assert.Single(spending.Expenses);
+        Assert.Equal(first.EntityId, second.EntityId);
+        Assert.Equal(42m, (await Overview(client, account.Id))!.Spent);
+        // ...and it wrote nothing: same version, so no other client is told to re-pull for a change that did not
+        // happen. This is the half a naive "return the existing row" would still get wrong.
+        Assert.Equal(first.Version, second.Version);
+    }
+
+    [Fact]
+    public async Task Two_expenses_that_look_alike_both_land_when_their_keys_differ()
+    {
+        var (client, auth) = await _factory.RegisterAndAuthAsync("exp_idem_two");
+        var account = await CreateAccount(client, "Coffees");
+        var (cat, fund) = await SeedAsync(client, account.Id, auth.UserId);
+
+        // Two €3 coffees on one day are not a duplicate — which is exactly why the key is not a content hash.
+        (await client.PostAsJsonAsync($"/accounts/{account.Id}/expenses",
+            new AddExpenseRequest(cat, 3m, fund, When, "Coffee", ClientId: Guid.NewGuid()))).EnsureSuccessStatusCode();
+        (await client.PostAsJsonAsync($"/accounts/{account.Id}/expenses",
+            new AddExpenseRequest(cat, 3m, fund, When, "Coffee", ClientId: Guid.NewGuid()))).EnsureSuccessStatusCode();
+
+        Assert.Equal(2, (await client.GetFromJsonAsync<SpendingViewDto>($"/accounts/{account.Id}/spending"))!.Expenses.Count);
+        Assert.Equal(6m, (await Overview(client, account.Id))!.Spent);
+    }
+
+    [Fact]
+    public async Task A_write_without_a_key_makes_no_claim_about_duplicates()
+    {
+        var (client, auth) = await _factory.RegisterAndAuthAsync("exp_idem_none");
+        var account = await CreateAccount(client, "Legacy");
+        var (cat, fund) = await SeedAsync(client, account.Id, auth.UserId);
+
+        // Every client that predates T0 sends none, and must keep working exactly as before — including its
+        // ability to log the same figure twice on purpose.
+        (await client.PostAsJsonAsync($"/accounts/{account.Id}/expenses",
+            new AddExpenseRequest(cat, 8m, fund, When, "Bus"))).EnsureSuccessStatusCode();
+        (await client.PostAsJsonAsync($"/accounts/{account.Id}/expenses",
+            new AddExpenseRequest(cat, 8m, fund, When, "Bus"))).EnsureSuccessStatusCode();
+
+        Assert.Equal(2, (await client.GetFromJsonAsync<SpendingViewDto>($"/accounts/{account.Id}/spending"))!.Expenses.Count);
+    }
+
+    [Fact]
+    public async Task A_retry_that_arrives_after_the_row_was_edited_still_finds_it()
+    {
+        var (client, auth) = await _factory.RegisterAndAuthAsync("exp_idem_edited");
+        var account = await CreateAccount(client, "Edited");
+        var (cat, fund) = await SeedAsync(client, account.Id, auth.UserId);
+        var key = Guid.NewGuid();
+
+        var added = (await (await client.PostAsJsonAsync($"/accounts/{account.Id}/expenses",
+            new AddExpenseRequest(cat, 20m, fund, When, "Lunch", ClientId: key)))
+            .Content.ReadFromJsonAsync<ExpenseMutationDto>())!;
+
+        // An edit REBUILDS the row (append-only ledger, new id). If the key were not carried across, the retry
+        // below would find nothing and log a second lunch — months after anyone could connect the two.
+        (await client.PutAsJsonAsync($"/accounts/{account.Id}/expenses/{added.EntityId}",
+            new EditExpenseRequest(cat, 25m, fund, When, "Lunch"))).EnsureSuccessStatusCode();
+
+        (await client.PostAsJsonAsync($"/accounts/{account.Id}/expenses",
+            new AddExpenseRequest(cat, 20m, fund, When, "Lunch", ClientId: key))).EnsureSuccessStatusCode();
+
+        var spending = (await client.GetFromJsonAsync<SpendingViewDto>($"/accounts/{account.Id}/spending"))!;
+        Assert.Single(spending.Expenses);
+        Assert.Equal(25m, (await Overview(client, account.Id))!.Spent);   // the edit stands; the retry changed nothing
+    }
+
     [Fact]
     public async Task Stranger_cannot_add_an_expense()
     {

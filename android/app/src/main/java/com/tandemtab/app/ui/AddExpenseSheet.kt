@@ -74,6 +74,7 @@ import java.time.LocalTime
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import java.util.UUID
 
 /** One parked expense in the staged multi-add batch (S68). Keeps only what a POST needs. */
 private data class ExpenseDraft(
@@ -96,6 +97,11 @@ private data class ExpenseDraft(
     val tagId: String? = null,
     // Per row too: a batch staged across an evening should not stamp every row with the moment Save was pressed.
     val time: String? = null,
+    // ★ T0 — this row's idempotency key. Per row and NOT per save, for two reasons that pull in opposite
+    // directions and are both fatal to get wrong: one key for the whole batch would make the server dedupe row 2
+    // against row 1 and silently drop it, while a key minted at send time would change on every retry and defeat
+    // the mechanism entirely. It belongs to the *row*, from the moment the row exists.
+    val clientId: String = UUID.randomUUID().toString(),
 )
 
 private enum class AddMode { Expense, Income }
@@ -191,6 +197,11 @@ fun AddSheet(
     var note by remember(editing) { mutableStateOf(editing?.note ?: "") }
     var date by remember(spending.loaded, editing, editingDeposit) { mutableStateOf(editing?.date ?: editingDeposit?.date ?: today) }
     var staged by remember { mutableStateOf(listOf<ExpenseDraft>()) }
+    // ★ T0 — the idempotency key of the row currently in the form. Held here rather than minted inside
+    // `currentDraft()` because that runs on every save attempt: a per-attempt key is no key at all. It is rolled
+    // at exactly the two moments the form stops describing this row — when it is parked into the batch, and when
+    // the batch is saved — so the next row is genuinely new. See [ExpenseDraft.clientId].
+    var currentKey by remember { mutableStateOf(UUID.randomUUID().toString()) }
     var confirmingUndoRefund by remember { mutableStateOf(false) }
     var catExpanded by remember { mutableStateOf(false) }
     var catSearch by remember { mutableStateOf("") }
@@ -235,6 +246,9 @@ fun AddSheet(
             categoryId!!, fundId!!, amountToLog(parsed!!),
             typedAmount = parsed, foreignCurrency = foreignFund?.currency,
             note = note.trim(), date = date, tripId = tripId, tagId = tagId, time = timeForWire(timeText),
+            // ⚠️ The REMEMBERED key, never a fresh one. This function is called on every save attempt, so minting
+            // here would give each retry a different identity and the server would log them all.
+            clientId = currentKey,
         ) else null
 
     val pendingCount = staged.size + (if (currentValid) 1 else 0)
@@ -248,6 +262,10 @@ fun AddSheet(
         }
         staged = staged + d
         amountText = ""; note = ""   // keep category/fund/date for the next row
+        // The row that was in the form now lives in the batch, carrying this key with it — so the form needs a
+        // new one. Without this roll the next row would be born claiming to be the one just parked, and the
+        // server would recognise it as a duplicate and drop it.
+        currentKey = UUID.randomUUID().toString()
         hint = null
         return true
     }
@@ -321,10 +339,18 @@ fun AddSheet(
                         // expense claim a conversion that never happened, and the ledger renders that pair.
                         foreignAmount = it.foreignCurrency?.let { _ -> it.typedAmount },
                         foreignCurrency = it.foreignCurrency,
+                        clientId = it.clientId,
                     )
                 }
                 if (batch.isEmpty()) { hint = "Enter an amount."; return }
-                onSaveExpenses(batch) { staged = emptyList(); amountText = ""; note = ""; onDismiss() }
+                // ⚠️ Nothing is rolled or cleared until the save SUCCEEDS. A failed attempt leaves the batch, the
+                // form and every key exactly as they were, so pressing Save again is a retry of the same rows
+                // rather than a second set of expenses — which is the whole reason the keys exist.
+                onSaveExpenses(batch) {
+                    staged = emptyList(); amountText = ""; note = ""
+                    currentKey = UUID.randomUUID().toString()
+                    onDismiss()
+                }
             }
             else -> {
                 val f = incFundId; val amt = incParsed
@@ -753,6 +779,11 @@ fun AddSheet(
                                         staged = base.filterIndexed { idx, _ -> idx != i }
                                         categoryId = d.categoryId; fundId = d.fundId
                                         amountText = trimAmount(d.amount); note = d.note; date = d.date
+                                        // ⚠️ The pulled-back row keeps its OWN key, and it must: the row it
+                                        // displaced was just parked carrying the form's old one. Leave the form
+                                        // holding that and two rows in the same batch would claim one identity,
+                                        // and the server — correctly — would save only the first of them.
+                                        currentKey = d.clientId
                                     },
                                     onRemove = { staged = staged.filterIndexed { idx, _ -> idx != i } },
                                 )

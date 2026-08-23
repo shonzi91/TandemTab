@@ -69,6 +69,10 @@ public class ExpenseBodyDataTests
         expense.SetBankLink("bank-tx-1", autoFiled: true);
         expense.SetForeign(12.50m, "GBP");
         expense.SetInstallmentLink(Guid.NewGuid(), InstallmentPart.Principal, Guid.NewGuid());
+        // ⚠️ Same reasoning as TripAccountId above: the reflection sweep only catches the idempotency key being
+        // dropped if the fixture carries one. Left null here, an edit could silently un-key every row — and the
+        // duplicate that a stale retry then creates would arrive months later, with these tests still green.
+        expense.SetClientId(Guid.NewGuid());
         return (account, period, expense);
     }
 

@@ -1203,13 +1203,28 @@ accounts.MapPost("/{id:guid}/expenses", async (Guid id, AddExpenseRequest req, C
 {
     var userId = user.UserId();
     var bank = await bankSvc.GetStatusAsync(userId, id, ct);   // for the delta's bank-adjusted overview
-    var (version, delta) = await svc.MutateAsync(userId, id, account =>
+    var (version, changed, delta) = await svc.MutateOrSkipAsync(userId, id, account =>
     {
         var period = account.CurrentPeriod ?? throw new InvalidOperationException("There's no open period to add an expense to.");
+        // ★ T0 — the retry check, and it runs FIRST, before any validation that could reject the second attempt
+        // for a reason the first never hit (a category deleted in between, the period rolled). A retry is a
+        // question about a write that already happened; re-litigating its inputs answers the wrong one.
+        // ⚠️ Scoped to the open period, not the whole account. A retry arrives seconds after its original, so the
+        // period cannot have rolled in between — and searching every period would walk the entire ledger on every
+        // expense anyone logs, to catch a case that cannot occur.
+        if (req.ClientId is { } key && key != Guid.Empty &&
+            period.Expenses.FirstOrDefault(e => e.ClientId == key) is { } already)
+        {
+            // The original's own delta, computed from the account as it stands now. Same shape, same id, same
+            // figures the first response would have carried — which is what makes the retry indistinguishable
+            // from success to the client that sent it.
+            return (false, (already.Id, SpendingMap.ToDto(account, already), SpendingMap.Overview(account, period, bank.Balance, bank.BalanceCurrency)));
+        }
         if (account.FindCategory(req.CategoryId) is null) throw new InvalidOperationException("That category doesn't exist in this account.");
         var fund = account.FindFund(req.FundId) ?? throw new InvalidOperationException("That fund doesn't exist in this account.");
         var expense = new Expense(req.CategoryId, new Money(req.Amount, account.Currency), req.Date, userId, req.FundId, req.Note,
             onBehalfOfOtherAccount: req.OnBehalfOfOtherAccount);
+        expense.SetClientId(req.ClientId is { } k && k != Guid.Empty ? k : null);
         expense.SetFundSynced(fund.IsSynced);   // synced funds aren't debited — the real bank balance handles it
         if (req.TagId is { } addTag && account.FindTag(addTag) is not null) expense.SetTag(addTag);
         // Guarded like the tag: a trip that isn't in this account is dropped rather than stored as a dangling id.
@@ -1231,9 +1246,11 @@ accounts.MapPost("/{id:guid}/expenses", async (Guid id, AddExpenseRequest req, C
         // savings rows — the config lives on the aggregate, so nothing about it needs to travel in the request.
         new RoundUpService().Sweep(account, period, expense.Amount, expense.Date);
         // The delta a thin client reconciles from (the thick client reads only Version/EntityId — a superset).
-        return (expense.Id, SpendingMap.ToDto(account, expense), SpendingMap.Overview(account, period, bank.Balance, bank.BalanceCurrency));
+        return (true, (expense.Id, SpendingMap.ToDto(account, expense), SpendingMap.Overview(account, period, bank.Balance, bank.BalanceCurrency)));
     }, ct);
-    await notifier.AccountChangedAsync(id, userId, version);
+    // Announced only when something actually changed. A recognised retry moved nothing, and telling every other
+    // client to re-pull for it would undo half the point of recognising it.
+    if (changed) await notifier.AccountChangedAsync(id, userId, version);
     return Results.Ok(new ExpenseMutationDto(version, delta.Id, delta.Item2, delta.Item3));
 });
 
