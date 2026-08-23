@@ -171,6 +171,12 @@ Deferred on purpose until somebody actually has a goal list long enough to scrol
   even the page's own `private Task ReopenTrip(...)` all exist and work — there is no `@onclick` anywhere that
   reaches it, and Android has nothing. ⚠️ **Ask before removing** — deleting a working path is not the same as
   removing dead code.
+- **Two income editors on the phone** (S117): `IncomeEditor` (inside `AddExpenseSheet.kt`, driven by the add
+  sheet's recall-last flow) and `AddIncomeSheet` (`WalletsSheets.kt`, now also the edit sheet for the income
+  list). Same four fields, same two endpoints, two implementations — and the second grew a wallet picker the
+  first already had. ⚠️ Not urgent and **not a bug today**: they were separate before this row existed, and each
+  reads its own surface's saving/error flags, which is the part that must not be merged away. Worth one pass to
+  extract the fields once the shapes have stopped moving.
 - **Five stale `.bak` files in the Android tree** (S116): `MainActivity.kt.bak`, `AddExpenseSheet.kt.bak`,
   `BankSheet.kt.bak`, `HomeScreen.kt.bak`, `SettingsSheet.kt.bak`. Unlike the row above these are plainly dead —
   they match every `grep -r` over `android/`, so any web-vs-phone comparison reads each hit twice. Delete.

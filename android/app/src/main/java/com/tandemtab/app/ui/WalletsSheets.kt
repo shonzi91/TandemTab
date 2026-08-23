@@ -46,6 +46,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.tandemtab.app.WalletsUi
 import com.tandemtab.app.data.CategoryOptionDto
+import com.tandemtab.app.data.DepositRowDto
 import com.tandemtab.app.data.FundCurrencyEdit
 import com.tandemtab.app.data.FundRowDto
 import com.tandemtab.app.data.FundTransferRowDto
@@ -144,24 +145,33 @@ fun AddIncomeSheet(
     to: FundRowDto,
     wallets: WalletsUi,
     onDismiss: () -> Unit,
-    onSubmit: (categoryId: String, amount: Double, date: String, onDone: () -> Unit) -> Unit,
+    onSubmit: (fundId: String, categoryId: String, amount: Double, date: String, onDone: () -> Unit) -> Unit,
+    // Editing an existing row rather than adding one. Seeds the fields and adds a **wallet** picker: adding starts
+    // from a fund row, so the destination is already answered, but an edit arrived from the income list, where
+    // nothing has been picked yet — and the web lets an edit move the money to another wallet. Null keeps this
+    // the plain add sheet it has always been.
+    existing: DepositRowDto? = null,
+    // Offered only when editing — there is nothing to remove otherwise.
+    onRemove: (() -> Unit)? = null,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    var categoryId by remember { mutableStateOf(GENERAL_INCOME) }
-    var amountText by remember { mutableStateOf("") }
-    var date by remember { mutableStateOf(LocalDate.now().toString()) }
+    var categoryId by remember { mutableStateOf(existing?.categoryId ?: GENERAL_INCOME) }
+    var fundId by remember { mutableStateOf(existing?.fundId ?: to.id) }
+    var amountText by remember { mutableStateOf(existing?.let { trimAmount(it.amount) } ?: "") }
+    var date by remember { mutableStateOf(existing?.date ?: LocalDate.now().toString()) }
     var hint by remember { mutableStateOf<String?>(null) }
+    var confirmingRemove by remember { mutableStateOf(false) }
     val amount = amountText.replace(',', '.').toDoubleOrNull()?.takeIf { it > 0 }
 
     SheetScaffold(
-        title = "Add income to ${to.name}",
+        title = if (existing != null) "Edit income" else "Add income to ${to.name}",
         saving = wallets.saving,
         canSave = amount != null && !wallets.saving,
         onDismiss = onDismiss,
         onSave = {
             val amt = amount
             if (amt == null) hint = "Enter an amount."
-            else onSubmit(categoryId, amt, date) { onDismiss() }
+            else onSubmit(fundId, categoryId, amt, date) { onDismiss() }
         },
         sheetState = sheetState,
     ) {
@@ -185,9 +195,61 @@ fun AddIncomeSheet(
         }
         Spacer(Modifier.height(14.dp))
 
+        // Only while editing: adding already knows the wallet, because the row you tapped to get here *is* one.
+        if (existing != null) {
+            FieldLabel("Into wallet")
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                wallets.funds.forEach { f ->
+                    PickChip(label = f.name, icon = f.icon, selected = fundId == f.id) { fundId = f.id }
+                }
+            }
+            Spacer(Modifier.height(14.dp))
+        }
+
         FieldLabel("Date")
         DateField(date) { date = it }
         Hints(hint, wallets.saveError)
+
+        // Confirmed, like every delete in this app — and this one is worth the extra tap: removing a deposit takes
+        // the money back out of the wallet it landed in, and income is what every figure on Home is measured
+        // against, so the whole page moves.
+        val removable = existing
+        onRemove?.takeIf { removable != null }?.let { remove ->
+            Spacer(Modifier.height(6.dp))
+            TextButton(
+                onClick = { confirmingRemove = true },
+                enabled = !wallets.saving,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("Remove this income", color = LocalTandemColors.current.spent)
+            }
+            if (confirmingRemove) {
+                AlertDialog(
+                    onDismissRequest = { if (!wallets.saving) confirmingRemove = false },
+                    title = { Text("Remove this income?") },
+                    text = {
+                        Column {
+                            Text("${moneyFormatter(wallets.currency)(removable!!.amount)} comes back out of ${removable.fundName}.")
+                            wallets.saveError?.let {
+                                Spacer(Modifier.height(10.dp))
+                                Text(it, color = MaterialTheme.colorScheme.error, fontSize = 13.sp)
+                            }
+                        }
+                    },
+                    confirmButton = {
+                        Button(
+                            onClick = remove,
+                            enabled = !wallets.saving,
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                        ) {
+                            if (wallets.saving) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onError)
+                            else Text("Remove")
+                        }
+                    },
+                    dismissButton = { TextButton(onClick = { confirmingRemove = false }, enabled = !wallets.saving) { Text("Cancel") } },
+                )
+            }
+        }
     }
 }
 

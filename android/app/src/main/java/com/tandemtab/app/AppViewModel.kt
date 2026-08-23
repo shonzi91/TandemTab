@@ -440,6 +440,10 @@ data class WalletsUi(
     // create, edit and delete one were reachable only by a client that already knew an id it couldn't learn.
     val accountTransfers: List<AccountTransferRowDto> = emptyList(),
     val incomeCategories: List<CategoryOptionDto> = emptyList(),
+    // This period's income rows. ⚠️ Two call sites already fetched `/income` and threw the deposits away — the
+    // picker one kept `categories`, the recall-last one kept `maxByOrNull { it.date }` — so the phone paid for
+    // this list twice and rendered it never. Both now land it here; it is the same request either way.
+    val deposits: List<DepositRowDto> = emptyList(),
     val saving: Boolean = false,
     val saveError: String? = null,
 )
@@ -1522,30 +1526,45 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             try {
                 val v = api.wallets(accountId, _state.value.selectedPeriod)
-                _state.update { it.copy(wallets = walletsFrom(v, it.wallets.incomeCategories)) }
+                _state.update { it.copy(wallets = walletsFrom(v, it.wallets)) }
+                refreshIncome(accountId)
             } catch (e: Exception) {
                 _state.update { it.copy(wallets = it.wallets.copy(loading = false, error = e.message ?: "Couldn't load your wallets.")) }
             }
         }
     }
 
-    private fun walletsFrom(v: WalletsViewDto, incomeCategories: List<CategoryOptionDto>) = WalletsUi(
+    /** Rebuild the Wallets tab from a fresh `/wallets` read. [prev] carries forward the two lists that view does
+     *  not answer with — the income rows and the source picker, both of which come from `/income`. */
+    private fun walletsFrom(v: WalletsViewDto, prev: WalletsUi) = WalletsUi(
         loaded = true, currency = v.currency, current = v.overview.current,
-        funds = v.funds, archivedFunds = v.archivedFunds, transfers = v.transfers, accountTransfers = v.accountTransfers, incomeCategories = incomeCategories,
+        funds = v.funds, archivedFunds = v.archivedFunds, transfers = v.transfers, accountTransfers = v.accountTransfers,
+        incomeCategories = prev.incomeCategories, deposits = prev.deposits,
     )
+
+    /**
+     * Read `/income` and land ALL of it — this period's rows and the source picker.
+     *
+     * ⚠️ Failure is swallowed on purpose. Income is a second request behind the Wallets view, and a tab that
+     * blanks itself because its *last* section could not load is worse than one missing that section: the funds,
+     * the ring and the transfers in hand are all still true. The section simply doesn't draw.
+     */
+    private suspend fun refreshIncome(accountId: String) {
+        val inc = runCatching { api.income(accountId) }.getOrNull() ?: return
+        _state.update { it.copy(wallets = it.wallets.copy(deposits = inc.deposits, incomeCategories = inc.categories)) }
+    }
 
     /** Clear any stale write error before opening a Wallets action sheet. */
     fun prepareTransfer() = _state.update { it.copy(wallets = it.wallets.copy(saveError = null)) }
 
-    /** Prep the Add-income sheet: clear stale errors and pull the contribution-category picker from /income. */
+    /** Prep the Add-income sheet: clear stale errors, and make sure the source picker is in hand. The Wallets
+     *  load already fetches it, so this only pays for a request when the sheet is opened from somewhere that
+     *  hasn't (or when that read failed) — and it lands the rows as well as the picker either way. */
     fun prepareAddIncome() {
         val accountId = _state.value.selectedAccountId ?: return
         _state.update { it.copy(wallets = it.wallets.copy(saveError = null)) }
         if (_state.value.wallets.incomeCategories.isNotEmpty()) return
-        viewModelScope.launch {
-            val inc = runCatching { api.income(accountId) }.getOrNull() ?: return@launch
-            _state.update { it.copy(wallets = it.wallets.copy(incomeCategories = inc.categories)) }
-        }
+        viewModelScope.launch { refreshIncome(accountId) }
     }
 
     /** Move money between two funds (S68 fund-row Transfer). The write returns a refreshed Wallets view, so
@@ -1559,7 +1578,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 _state.update {
                     it.copy(
                         overview = mut.view.overview,
-                        wallets = walletsFrom(mut.view, it.wallets.incomeCategories),
+                        wallets = walletsFrom(mut.view, it.wallets),
                     )
                 }
                 onDone()
@@ -1581,12 +1600,74 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 _state.update {
                     it.copy(
                         overview = mut.overview,
-                        wallets = walletsFrom(v, it.wallets.incomeCategories),
+                        wallets = walletsFrom(v, it.wallets),
+                        // Money in moves the savings caps and the free-to-spend figure, neither of which is in
+                        // this view — the same reason deleting a deposit re-reads Spending.
+                        spending = it.spending.copy(loaded = false),
                     )
                 }
+                refreshIncome(accountId)
                 onDone()
             } catch (e: Exception) {
                 _state.update { it.copy(wallets = it.wallets.copy(saving = false, saveError = e.message ?: "Couldn't record income.")) }
+            }
+        }
+    }
+
+    // --- Editing an income row from the Wallets tab (S117) ------------------------------------------------------
+    // The twins of [editDeposit] / [deleteDeposit], which drive the Home add-sheet's "recall last" flow. Same two
+    // endpoints; what differs is which surface's saving/error flags they raise and what they refresh afterwards.
+    // ⚠️ Keeping them apart is deliberate, and follows [addIncome] vs [addIncomeFromAdd]: a sheet reading
+    // `wallets.saving` never spins if the write flipped `spending.saving`, and the failure is silent — the sheet
+    // just sits there looking idle while the row it edits has already changed underneath it.
+
+    /** Save an edit to an income row shown on the Wallets tab. Re-reads Wallets (the fund balance moved) and the
+     *  income list (the row's own fields did); [onDone] fires only on success, so the sheet stays open on failure. */
+    fun editDepositFromWallets(depositId: String, fundId: String, categoryId: String, amount: Double, date: String, onDone: () -> Unit) {
+        val accountId = _state.value.selectedAccountId ?: return
+        _state.update { it.copy(wallets = it.wallets.copy(saving = true, saveError = null)) }
+        viewModelScope.launch {
+            try {
+                val mut = api.editDeposit(accountId, depositId, AddDepositRequest(categoryId, fundId, amount, date))
+                val v = api.wallets(accountId)
+                _state.update {
+                    it.copy(
+                        overview = mut.overview,
+                        wallets = walletsFrom(v, it.wallets),
+                        spending = it.spending.copy(loaded = false),
+                    )
+                }
+                refreshIncome(accountId)
+                onDone()
+            } catch (e: Exception) {
+                _state.update { it.copy(wallets = it.wallets.copy(saving = false, saveError = e.message ?: "Couldn't save the change.")) }
+            }
+        }
+    }
+
+    /** Remove an income row shown on the Wallets tab. Confirmed in the UI first — deleting a deposit takes the
+     *  money back out of the fund it landed in, and there is no undo. */
+    fun deleteDepositFromWallets(depositId: String, onDone: () -> Unit) {
+        val accountId = _state.value.selectedAccountId ?: return
+        _state.update { it.copy(wallets = it.wallets.copy(saving = true, saveError = null)) }
+        viewModelScope.launch {
+            try {
+                api.deleteDeposit(accountId, depositId)
+                val v = api.wallets(accountId)
+                _state.update {
+                    it.copy(
+                        overview = v.overview,
+                        wallets = walletsFrom(v, it.wallets),
+                        spending = it.spending.copy(loaded = false),
+                        // The Home sheet may be holding this very row as its "last income". Nothing else drops it,
+                        // and re-opening on a deleted id edits a row the server no longer has.
+                        editingDeposit = it.editingDeposit?.takeIf { d -> d.id != depositId },
+                    )
+                }
+                refreshIncome(accountId)
+                onDone()
+            } catch (e: Exception) {
+                _state.update { it.copy(wallets = it.wallets.copy(saving = false, saveError = e.message ?: "Couldn't remove that income.")) }
             }
         }
     }
@@ -1889,7 +1970,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
      *  header total all move together. Keeps the income-category picker already fetched for the Add-income sheet. */
     private suspend fun refreshWallets(accountId: String) {
         val v = api.wallets(accountId, _state.value.selectedPeriod)
-        _state.update { it.copy(overview = v.overview, wallets = walletsFrom(v, it.wallets.incomeCategories)) }
+        _state.update { it.copy(overview = v.overview, wallets = walletsFrom(v, it.wallets)) }
     }
 
     /** Lazily load the Home Health card + Insights modal the first time Home is shown, or when forced. */
@@ -2061,7 +2142,15 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             val income = runCatching { api.income(accountId) }.getOrNull() ?: return@launch
             val last = income.deposits.maxByOrNull { it.date }
-            _state.update { it.copy(editingDeposit = last) }
+            // The whole list is kept, not just the newest row: this request already paid for it, and the Wallets
+            // tab renders it. Discarding it here is what made "edit the last one" the only income editing on the
+            // phone — the other rows were fetched and dropped on every recall.
+            _state.update {
+                it.copy(
+                    editingDeposit = last,
+                    wallets = it.wallets.copy(deposits = income.deposits, incomeCategories = income.categories),
+                )
+            }
         }
     }
 

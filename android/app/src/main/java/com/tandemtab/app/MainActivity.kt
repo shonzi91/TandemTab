@@ -171,6 +171,8 @@ private fun App(vm: AppViewModel, onGoogle: () -> Unit) {
             onPrepareEditLastIncome = vm::prepareEditLastIncome,
             onEditDeposit = vm::editDeposit,
             onDeleteDeposit = vm::deleteDeposit,
+            onEditWalletDeposit = vm::editDepositFromWallets,
+            onDeleteWalletDeposit = vm::deleteDepositFromWallets,
             onClearEditingIncome = vm::clearEditingIncome,
             onBeginEditExpense = vm::beginEdit,
             // An installment row is never removed on its own: its rows are one payment and the server drops them

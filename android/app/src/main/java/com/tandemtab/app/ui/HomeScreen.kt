@@ -193,6 +193,10 @@ fun HomeScreen(
     onPrepareEditLastIncome: () -> Unit,
     onEditDeposit: (String, String, String, Double, String, () -> Unit) -> Unit,
     onDeleteDeposit: (depositId: String, onDone: () -> Unit) -> Unit,
+    // The same two writes as above, driven from the Wallets tab's income list. Separate because they raise that
+    // tab's saving/error flags rather than the add sheet's — see the note on the pair in AppViewModel.
+    onEditWalletDeposit: (String, String, String, Double, String, () -> Unit) -> Unit,
+    onDeleteWalletDeposit: (depositId: String, onDone: () -> Unit) -> Unit,
     onClearEditingIncome: () -> Unit,
     onBeginEditExpense: (com.tandemtab.app.data.ExpenseDto) -> Unit,
     onDeleteExpense: (com.tandemtab.app.data.ExpenseDto) -> Unit,
@@ -564,6 +568,8 @@ fun HomeScreen(
                             onPrepareAddIncome = onPrepareAddIncome,
                             onTransfer = onTransfer,
                             onAddIncome = onAddIncome,
+                            onEditDeposit = onEditWalletDeposit,
+                            onDeleteDeposit = onDeleteWalletDeposit,
                             onPrepareFund = onPrepareFund,
                             onSaveFund = onSaveFund,
                             // Same feature as trips, and deliberately the same gate: a foreign-cash wallet is what

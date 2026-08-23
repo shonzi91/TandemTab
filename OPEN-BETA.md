@@ -443,12 +443,21 @@ all** and can edit only the most recent deposit, against a full web section with
 counts as **called**. That is MOBILE.md's own warning — *"read a 'called' row as 'not blocked', never as
 'done'"* — caught in the act, and it is the reason a second pass is needed rather than a bigger denominator.
 
+✅ **Built (S117).** An **INCOME THIS PERIOD** section on the Wallets tab — where the web keeps it, on the same
+tab — with per-row edit and a confirmed remove. ★ **Two call sites were fetching `/income` and discarding the
+rows** (the picker kept `categories`, recall-last kept the newest); both now land the list, so the section costs
+no request the app was not already paying for. ✅ **Observed on the emulator, not just compiled**: rows, the
+sub-line, an edit that moved Bank €2,530 → €2,580, the remove confirm, the empty state, and the amounts masking
+to `+•••••` face-down. What is *not* done: the section has no add affordance of its own (adding stays on the
+fund rows and the Home sheet), and ⚠️ **there are now two income editors** — `IncomeEditor` in the add sheet and
+`AddIncomeSheet` on Wallets — which is a drift risk filed in [QUEUE.md](QUEUE.md).
+
 **Web → phone.** Three are **server-read rows wearing Kotlin clothes** and must not be sized as client work:
 **Trends** (`TrendRows()` walks `State.Account.Periods`; no thin contract carries per-period totals), the
 **whole-stack payoff plan** (avalanche/snowball, debt-free date, clearing order — the server exposes only
 *per-bucket* `/savings/{id}/payoff`, which is likely most of QUEUE #8), and the **week recap**. ★ The first two
 **batch into one server slice** — both are "per-period aggregates the thin contracts don't carry". Three are
-client rows: the **income list**, the **live-trip hero** on Home, and a **visible door to the Breakdown** (its
+client rows: the **income list** (✅ done S117), the **live-trip hero** on Home, and a **visible door to the Breakdown** (its
 only route in today is an undiscoverable left-swipe, itself one of QUEUE #1's unverified gesture risks).
 
 **Phone → web.** The **always-visible milestones line** (the phone's rule is better and `HomeScreen.kt` argues

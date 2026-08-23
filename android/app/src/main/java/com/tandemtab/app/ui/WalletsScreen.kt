@@ -44,6 +44,7 @@ import androidx.compose.ui.unit.sp
 import com.tandemtab.app.WalletsUi
 import com.tandemtab.app.data.AccountSummaryDto
 import com.tandemtab.app.data.AccountTransferRowDto
+import com.tandemtab.app.data.DepositRowDto
 import com.tandemtab.app.data.FundCurrencyEdit
 import com.tandemtab.app.data.FundRowDto
 import com.tandemtab.app.data.FundTransferRowDto
@@ -67,6 +68,9 @@ fun WalletsScreen(
     onPrepareAddIncome: () -> Unit,
     onTransfer: (fromFundId: String, toFundId: String, amount: Double, date: String, note: String?, onDone: () -> Unit) -> Unit,
     onAddIncome: (fundId: String, categoryId: String, amount: Double, date: String, onDone: () -> Unit) -> Unit,
+    // Editing and removing a row in the income list. Defaulted so the screen still previews without them.
+    onEditDeposit: (depositId: String, fundId: String, categoryId: String, amount: Double, date: String, onDone: () -> Unit) -> Unit = { _, _, _, _, _, _ -> },
+    onDeleteDeposit: (depositId: String, onDone: () -> Unit) -> Unit = { _, _ -> },
     onPrepareFund: () -> Unit = {},
     onSaveFund: (fundId: String?, name: String, icon: String?, note: String?, openingBalance: Double?, currency: FundCurrencyEdit?, onDone: () -> Unit) -> Unit = { _, _, _, _, _, _, _ -> },
     // Holding a wallet in another currency is the Pro half of trips. False draws the crowned row instead of the
@@ -113,6 +117,9 @@ fun WalletsScreen(
     // Same id-not-a-row rule as the fund editor: the list is re-read after every write.
     var sendingFrom by remember { mutableStateOf<FundRowDto?>(null) }
     var editingAccountTransferId by remember { mutableStateOf<String?>(null) }
+    // Same id-not-a-row rule again: an income edit re-reads the list, and a captured row would keep showing the
+    // amount it had before the edit landed.
+    var editingDepositId by remember { mutableStateOf<String?>(null) }
     var showArchived by remember { mutableStateOf(false) }
 
     fun findFund(id: String?): FundRowDto? = id?.let { f ->
@@ -120,6 +127,7 @@ fun WalletsScreen(
     }
     val editingFund = findFund(editingFundId)
     val editingTransfer = editingTransferId?.let { id -> wallets.transfers.firstOrNull { it.id == id } }
+    val editingDeposit = editingDepositId?.let { id -> wallets.deposits.firstOrNull { it.id == id } }
     val editingAccountTransfer = editingAccountTransferId?.let { id -> wallets.accountTransfers.firstOrNull { it.id == id } }
 
     when {
@@ -230,6 +238,41 @@ fun WalletsScreen(
                 }
             }
 
+            // Money IN, this period (the web's Income panel, which sits on this same tab). ⚠️ Until now the phone
+            // rendered no income list at all: `/income` was fetched twice — once for the source picker, once for
+            // "recall the last one" — and its rows discarded both times, so the only income you could ever edit
+            // was the most recent, and only from the add sheet. Every other deposit was reachable on the web and
+            // invisible here.
+            //
+            // Unlike the transfer lists below, this section draws even when empty. Those are a record of things
+            // you did; this is the surface income *lives* on, and a tab that hides it until it exists is how it
+            // went unnoticed for as long as it did.
+            Spacer(Modifier.height(20.dp))
+            Text(
+                "INCOME THIS PERIOD",
+                fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.8.sp,
+                color = tandem.muted, modifier = Modifier.padding(start = 4.dp, bottom = 8.dp),
+            )
+            Column(
+                Modifier.fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(14.dp))
+                    .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(14.dp)),
+            ) {
+                if (wallets.deposits.isEmpty()) {
+                    Text(
+                        "Nothing in yet — add income from a wallet above.",
+                        fontSize = 13.sp, color = tandem.muted, modifier = Modifier.padding(14.dp),
+                    )
+                } else {
+                    wallets.deposits.forEachIndexed { i, d ->
+                        IncomeRow(d, fmt) { onPrepareAddIncome(); editingDepositId = d.id }
+                        if (i < wallets.deposits.lastIndex) {
+                            Box(Modifier.fillMaxWidth().height(1.dp).padding(horizontal = 14.dp).background(tandem.hairline))
+                        }
+                    }
+                }
+            }
+
             // Money that LEFT for another account, kept apart from the wallet-to-wallet moves above: one changes
             // where the money sits, the other changes how much there is, and one list of both explains neither.
             if (wallets.accountTransfers.isNotEmpty()) {
@@ -316,7 +359,19 @@ fun WalletsScreen(
             to = to,
             wallets = wallets,
             onDismiss = { incomeTo = null },
-            onSubmit = { cat, amt, date, onDone -> onAddIncome(to.id, cat, amt, date, onDone) },
+            onSubmit = { fund, cat, amt, date, onDone -> onAddIncome(fund, cat, amt, date, onDone) },
+        )
+    }
+    // The same sheet in edit dress. `to` is the wallet the money is in today — it seeds the picker, which the
+    // edit may then move somewhere else.
+    editingDeposit?.let { d ->
+        AddIncomeSheet(
+            to = findFund(d.fundId) ?: FundRowDto(id = d.fundId, name = d.fundName, balance = 0.0),
+            wallets = wallets,
+            onDismiss = { editingDepositId = null },
+            onSubmit = { fund, cat, amt, date, onDone -> onEditDeposit(d.id, fund, cat, amt, date, onDone) },
+            existing = d,
+            onRemove = { onDeleteDeposit(d.id) { editingDepositId = null } },
         )
     }
 
@@ -632,6 +687,40 @@ private fun AccountTransferRow(t: AccountTransferRowDto, fmt: (Double) -> String
             Spacer(Modifier.width(6.dp))
             Icon(TandemIcons.Pencil, contentDescription = "Edit transfer", tint = tandem.muted, modifier = Modifier.size(15.dp))
         }
+    }
+}
+
+/**
+ * One income row: what it was for, then who it came from and where it landed, then the amount.
+ *
+ * The amount is drawn in the positive accent and signed — money in is the one thing on this tab that adds, and
+ * the transfer rows underneath deliberately stay neutral because nothing arrives on those. `fmt` is the shared
+ * formatter, so a masked account masks this figure with the rest; the sub-line carries no money and stays.
+ */
+@Composable
+private fun IncomeRow(d: DepositRowDto, fmt: (Double) -> String, onEdit: () -> Unit) {
+    val tandem = LocalTandemColors.current
+    Row(
+        Modifier.fillMaxWidth().clickable(onClick = onEdit).padding(14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        CatIcon(d.categoryIcon, d.categoryName.ifBlank { "General income" })
+        Spacer(Modifier.width(10.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                d.categoryName.ifBlank { "General income" },
+                fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface, maxLines = 1,
+            )
+            // Member first, then destination — "who paid this in" identifies the row on a shared account, where
+            // two people can file the same source in the same month.
+            val who = d.memberName.takeIf { it.isNotBlank() }
+            val sub = listOfNotNull(formatTransferDate(d.date), who, "to ${d.fundName}").joinToString(" · ")
+            Text(sub, fontSize = 12.sp, color = tandem.muted, maxLines = 1)
+        }
+        Spacer(Modifier.width(8.dp))
+        Text("+${fmt(d.amount)}", fontWeight = FontWeight.Bold, color = tandem.positive)
+        Spacer(Modifier.width(6.dp))
+        Icon(TandemIcons.Pencil, contentDescription = "Edit income", tint = tandem.muted, modifier = Modifier.size(15.dp))
     }
 }
 
