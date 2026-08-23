@@ -6,9 +6,13 @@ checked against the code, not carried forward from an older write-up.*
 | | |
 |---|---|
 | **Opened** | 2026-08-20 (Session 111) |
+| **Reviewed** | 2026-08-23 — every row re-checked against the code after both outstanding branches were merged |
 | **Sources** | [BETA-FINDINGS.md](BETA-FINDINGS.md), [UX-BACKLOG.md](UX-BACKLOG.md), [BACKLOG.md](BACKLOG.md), [docs/MOBILE.md](docs/MOBILE.md), the carried "still open" lists in [HANDOFF.md](HANDOFF.md) |
 | **Not in here** | Anything a roadmap phase already owns — R3's assistant, R4's migration, R5's billing. See [OPEN-BETA.md](OPEN-BETA.md) |
-| **Status** | ▶️ **Live again.** The owner's list is down to **O14** (S112 closed the other thirteen), so the ranked rows below are next. |
+| **Status** | ✅ **The owner's list is closed** — O14 shipped in S114 and this file had not been ticked. **The old #1 (the foreign-cash wallet) is built and live.** What is left is led by a different kind of risk: a large amount of Android code is *deployed and has never been run*. |
+
+> ⚠️ **Two rows on this list were stale when it was reviewed**, both in the same direction — work that had shipped
+> and never been struck off. Re-check against the code before starting anything here, the way the S111 sweep did.
 
 ---
 
@@ -32,36 +36,43 @@ found the code disagreeing with the report I have said so rather than smoothing 
 | O11 | Money moved from a bucket **into a budget** still counts as saved — €500 in, €200 budgeted out, card still says €500 | Bug | ✅ S111 |
 | O12 | Make **"Total saved X (this period · % of money in)"** prettier | S | ✅ S112 |
 | O13 | **Debt owed in Trends** disagrees with the debt bucket | Bug | ✅ S111 |
-| O14 | Trends' **Spent** and **Set aside** charts should be switchable to a **category** / a **bucket** and drawn for it | M | ⬜ |
+| O14 | Trends' **Spent** and **Set aside** charts should be switchable to a **category** / a **bucket** and drawn for it | M | ✅ S114 |
+
+✅ **All fourteen are closed.** O14 shipped with the Trends focus picker (`trend-focus-sel`, two `<select>`s — one
+for a category, one for a bucket — plus `TrendFocused` / `TrendFocusValue`); the row was simply never ticked here.
 
 ---
 
-> **How to read the order.** The top three are wrong numbers or lost data; below them it is polish and product
-> judgement. A row marked ⛔ is *deliberately* waiting on something — don't "clear" it by building it.
+> **How to read the order.** The top row is the largest *unverified* surface: code that is live and has never been
+> run. Below it, the wrong-numbers rows are gone — the last of them shipped — so what remains is blocked work,
+> product judgement and polish. A row marked ⛔ is *deliberately* waiting on something; don't "clear" it by
+> building it.
 
 ---
 
-## 1. ⚠️ Android stores the wrong figure for a foreign-cash wallet
+## 1. ⚠️⚠️ A large amount of Android code is LIVE and has never been run
 
-**What happens.** On the web, picking a foreign-cash wallet changes what the Amount field *means* — the modal says
-so: *"Amounts spent from this wallet are typed in {CUR} and stored in {account currency}."* The client converts once
-at entry and sends both figures; the server stores what it is given and does not re-convert. **Android has neither
-the wallet's currency nor its rate**, so the same expense typed on the phone is stored at face value in the account
-currency — 100 kr becomes €100, in the one situation the feature exists for: standing in another country with the
-phone in your hand.
+**What happened.** Session 115 wrote nine Android commits — the foreign-cash wallet fix, statement import, merchant
+rules, the wallets ring, debt payoff, gestures, a `GET /breakdown` read — and its own handoff says plainly: *not one
+line of this session was seen running*. The emulator booted and installed but stopped at a sign-in the agent could
+not complete. Those commits are now merged and deployed (`finapp-00327-t6g`).
 
-**Why it is first.** Everything else on this list is missing, slow or ugly. This one is *wrong*, silently, in the
-ledger, and no total downstream can tell.
+**Why it is first.** Every other row here is missing, blocked, or a judgement call. This one is a large surface of
+*unknown* code in front of users. And the specific risks are the kind that look perfectly fine when read: a swipe
+that fights the scroll view, a ring drawn with a seam, a slider that snaps to the wrong point, a column mapper
+against a real bank CSV.
 
-**First step is on the SERVER, not in Kotlin.** No thin contract carries a fund's currency or rate: `FundRowDto` is
-id/name/icon/note/balance/openingBalance/synced/archived/availableToTransferOut, and `Currency` appears in
-`FinApp.Contracts` only as the *account's*. Add `Currency` + `Rate` to `FundRowDto` and `FundOptionDto`, then the
-add-expense sheet can label the field and convert the way the web does.
+**It also now covers the merge's own repairs.** Merging S115 into main broke three screens in ways only one of
+which the compiler could see — `BreakdownSheet`, `PayoffSheet` (calling a deleted formatter), `NotificationsSheet`
+and `ImportSheet` (rendering money that escaped privacy mode). Those fixes are reasoned and compiled, **not
+observed**, and two of them are about figures being hidden, which is exactly the class of thing you cannot confirm
+by reading.
 
-**Reproducing it needs** a Pro account with a foreign-cash wallet — it is verified by construction (the fields are
-absent from the contract, the DTO and the sheet), not on a device.
-
-**Related:** the same missing read is what makes `PUT /funds/{id}/currency` a stated lag rather than an S–M row.
+**And it absorbs the older rows:** batch 5's dialogs, the sectioned recurring list, the landing-tab chips (S112)
+and the Android refund row (S110) have all been compiled-only for the same reason. ⚠️ **The sign-in blocker is
+gone** — `5706699` drove a signed-in emulator on API 35 and verified masking against real balances, after S115's
+handoff was written. Recipe and traps are in the Android toolchain notes; verifying against a *local* server needs
+two temporary edits that must be reverted before commit.
 
 ## 2. ⚠️ A phone-linked bank connection tracks the aggregator's first account, permanently
 
@@ -105,34 +116,76 @@ decision** to be taken here on purpose, not a theme bug to be fixed in passing.
 The **chart animations** and **F6's shared-account "together" line** have never been seen with real data. Both are
 cheap to check against a seeded account and have been carried for twenty sessions on the strength of "it compiles".
 
-## 7. The Android refund row was never exercised
+## 7. Notifications and achievements bake amounts into prose
 
-Built in S110, Kotlin compiles clean, and nothing beyond that is claimed — the emulator run stopped at the sign-in
-screen. **This is an emulator session, not a build.** ⚠️ Verifying against a local server needs two temporary edits
-(debug `API_BASE_URL` → `http://10.0.2.2:5179`, plus `usesCleartextTraffic`) that must be reverted before commit.
+`NotificationsMap` and `AchievementsMap` build strings like *"Off balance — overspent by €4,760.00."* server-side,
+so **no client formatter ever sees those figures**. Privacy mode therefore cannot reach them the way it reaches
+everything else, and both clients paper over it: the web and the phone each run a regex (`maskServerText` on
+Android) written against `MoneyText.Format`'s actual output.
 
-## 8. ⛔ BACKLOG #16 — audit the fourth savings-bucket kind (`Investment`)
+⚠️ **The regex is correct today and coupled to a format it does not own** — if `MoneyText.Format` ever changes
+shape, this is the other end of that change, and the failure is silent (a real figure under a bar promising it is
+hidden). Found on the emulator, not by reading the code. **The proper fix is those payloads carrying code + args
+like `InsightMessageDto` already does**, so the client formats them and inherits masking for free. That is a
+contract change across the server mapper and every string in it — its own session, deliberately not smuggled into
+the one that found it.
+
+## 8. The debt figures differ between web and phone, beyond payoff
+
+The owner reported a web-vs-phone difference on debt and said *"maybe other stuff too I don't know"*. S115 built
+the payoff read (`743ec4a`) and **deliberately did not guess at the rest** rather than invent a list. Now that the
+payoff read exists, the honest next step is to diff the two surfaces field by field and write down what actually
+differs.
+
+## 9. Tests whose comments assert what their code does not
+
+Removing `AddCategory`'s ignored parent parameter (`c8c4d16`) exposed four silent callers, **two of them tests
+whose comments claimed a nesting that never happened**. A test that documents behaviour it does not exercise is
+worse than no test: it is read as evidence. ⚠️ Named as a question rather than a task — *where else?* — and
+`AccountRoundTripTests` is the place to start, since it was preserving a structure it had never created.
+
+## 10. ⛔ BACKLOG #16 — audit the fourth savings-bucket kind (`Investment`)
 
 A permanent extra toggle on the add/edit bucket modal plus a Goals filter chip, and it is not obvious they earn
 their keep. **Deliberately blocked on real usage data** — removing a `SavingKind` burns the enum value, as the
 reverted `PlannedExpense` kind did. Decide it with users, not with a hunch.
 
-## 9. ⛔ UX-BACKLOG #10 — pin or sort a focus debt
+## 11. ⛔ UX-BACKLOG #10 — pin or sort a focus debt
 
 Deferred on purpose until somebody actually has a goal list long enough to scroll.
 
-## 10. Housekeeping
+## 12. Housekeeping
 
-- **Dead CSS:** `.debt-progress` and `.debt-prog-cap` in `Dashboard.razor.css` — no markup references either.
-- **`ReopenTrip` has zero callers.** The domain method, the endpoint and the client method all exist and work; the
-  button was never placed. ⚠️ **Ask before removing** — deleting a working path is not the same as removing dead
-  code.
+- **Dead CSS:** `.debt-progress` and `.debt-prog-cap` in `Dashboard.razor.css` — re-checked 2026-08-23: two rules
+  each, zero references in the markup.
+- **`ReopenTrip` has zero callers.** Re-checked 2026-08-23: the domain method, the endpoint, `BudgetingState` and
+  even the page's own `private Task ReopenTrip(...)` all exist and work — there is no `@onclick` anywhere that
+  reaches it, and Android has nothing. ⚠️ **Ask before removing** — deleting a working path is not the same as
+  removing dead code.
 
-## 11. ⛔ Production risk (not a bug): Neon's connection ceiling
+## 13. ⛔ Production risk (not a bug): Neon's connection ceiling
 
 A traffic spike fans Cloud Run instances out into Neon's connection limit, and **promotion is that spike**. R4
 (Railway) retires it. **If R4 slips, the mitigation stops being optional:** a pooled connection string plus a
 `max-instances` cap, before R7.
+
+---
+
+## Closed 2026-08-23 — the merge session
+
+- ✅ **The foreign-cash wallet (the old #1).** The write side always carried `ForeignAmount`; the gap was the READ,
+  since no thin contract carried a fund's currency or rate. `Currency`/`Rate` on `FundRowDto` **and**
+  `FundOptionDto` closed it, and a wallet's currency can now be set from the phone as well. ⚠️ Conversion is on the
+  **add** path only — an edit is pre-filled with the stored, already-converted figure, so treating it as foreign
+  would divide a real expense. **Live, but see #1: never run.**
+- ✅ **O14 (Trends focus picker)** — shipped in S114 and never ticked here.
+- ✅ **Both of R2's stated lags** (wallet currency, statement import) are closed; parity 108/120 → **115/122 (94%)**.
+- ⚠️ **The merge itself created four defects**, three of which no compiler would catch — see [HANDOFF.md](HANDOFF.md).
+  The lesson generalises: a conflict is where two edits touch one line, but the dangerous case is one side
+  *deleting* a shared symbol while the other writes new callers of it. **Grep the merged tree for deleted symbols.**
+- ⚠️ **Two branches each appended a trailing optional field to `RecurringRowDto`** as the last parameter. "Trailing
+  and optional" is safe against an old *client* and says nothing about a second branch. Both kept; the positional
+  order is now written down in the contract.
 
 ---
 
