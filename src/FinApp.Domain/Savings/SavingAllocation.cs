@@ -45,4 +45,14 @@ public sealed class SavingAllocation : Entity
 
     /// <summary>True when this is the drawdown half of a saving disbursement (deployed to a goal, not consumed).</summary>
     public bool IsDisbursement => SourceExternalTransferId is not null;
+
+    /// <summary>T0 — the idempotency key of the write that set this money aside, so a retry after an ambiguous
+    /// failure finds it instead of earmarking the same €200 twice. Same contract as
+    /// <see cref="Budgeting.Expense.ClientId"/>. Null on every row written before this existed, on every write that
+    /// sent no key, and on every allocation the server mints for itself (a round-up sweep, a drawdown) — none of
+    /// which a client can retry on its own.
+    /// <para>Body data — rides in the snapshot, so a setter rather than a ctor parameter.</para></summary>
+    public Guid? ClientId { get; private set; }
+
+    public void SetClientId(Guid? clientId) => ClientId = clientId;
 }

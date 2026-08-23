@@ -702,6 +702,22 @@ data class TripTagSeed(val name: String, val icon: String? = null, val categoryI
 @Serializable
 data class SeedTripTagsRequest(val tags: List<TripTagSeed>)
 
+/**
+ * ★ T0 — a write this app may safely send twice, mirroring `FinApp.Contracts.IIdempotentRequest`.
+ *
+ * A request that lands but whose response is lost is indistinguishable, from here, from one that never arrived —
+ * so re-sending is all a phone can do, and **re-sending a write with no key is how you guarantee the duplicate you
+ * were trying to avoid**. Declaring it on the type is what lets [TandemTabApi] retry an ambiguous failure on its
+ * own: it retries a body that implements this and nothing else, which is checkable by reading the request list
+ * rather than by auditing every call site.
+ *
+ * ⚠️ Implementing this is a promise the SERVER keeps its half of. Don't add it to a request whose handler does not
+ * recognise the key before it validates anything.
+ */
+interface IdempotentRequest {
+    val clientId: String?
+}
+
 // --- Add-expense write flow (mirrors FinApp.Contracts) ------------------------------------------------
 // POST /accounts/{id}/expenses. The member is the caller and FundSynced is derived server-side, so neither
 // travels in the request. `date` is an ISO yyyy-MM-dd string (maps to the server's DateOnly).
@@ -740,8 +756,8 @@ data class AddExpenseRequest(
     // like one that never arrived, so retrying is all a phone can do — and without this the retry logs the dinner
     // twice. Null means "no claim about duplicates"; the server accepts that and treats the write as new.
     // ⚠️ ADD only. An edit is already idempotent by id, and a key on it would claim something it does not mean.
-    val clientId: String? = null,
-)
+    override val clientId: String? = null,
+) : IdempotentRequest
 
 /** What POST/PUT/DELETE /expenses returns: the new snapshot version, the row's id, the (added/edited) row for the
  *  client to splice into its list, and the recomputed bank-adjusted overview — so a thin client reconciles with no
@@ -910,7 +926,9 @@ data class AddSavingDepositRequest(
     val amount: Double,
     val date: String,
     val note: String? = null,
-)
+    // ★ T0 — the idempotency key. See AddExpenseRequest.clientId; same contract, same reason.
+    override val clientId: String? = null,
+) : IdempotentRequest
 
 /** POST /accounts/{id}/savings/spend — draw a bucket down as a real expense. `fundId` empty = the server's
  *  default spendable fund. */
@@ -1090,7 +1108,10 @@ data class TransferToAccountRequest(
     val destinationFundId: String? = null,
     val note: String? = null,
     val date: String? = null,
-)
+    // ★ T0 — the idempotency key, and the write where a duplicate costs the most: it moves real money out of one
+    // account and into another a second time, on both sides. See AddExpenseRequest.clientId.
+    override val clientId: String? = null,
+) : IdempotentRequest
 
 /** The empty Guid, which several handlers read as "you choose" rather than as a value. */
 const val EMPTY_GUID = "00000000-0000-0000-0000-000000000000"
@@ -1145,7 +1166,9 @@ data class TransferFundsRequest(
     val amount: Double,
     val date: String? = null,
     val note: String? = null,
-)
+    // ★ T0 — the idempotency key. See AddExpenseRequest.clientId.
+    override val clientId: String? = null,
+) : IdempotentRequest
 
 /** What a fund write (transfer / fund CRUD) returns: the new version, the affected entity id, and a fully
  *  refreshed Wallets view so the client reconciles balances/transfers with no re-fetch. */
@@ -1363,15 +1386,18 @@ data class SetFundCurrencyRequest(val currency: String? = null, val rate: Double
  *  is the state that keeps a rename off a Pro-gated endpoint. */
 data class FundCurrencyEdit(val currency: String?, val rate: Double?)
 
-/** POST /accounts/{id}/deposits — record income into a fund. `categoryId` empty = general income; deposits with
- *  the same (member, category, fund) merge server-side. `date` is an ISO yyyy-MM-dd string. */
+/** POST /accounts/{id}/deposits — record income into a fund. `categoryId` empty = general income. One row per
+ *  deposit: two payments in a month are two rows. `date` is an ISO yyyy-MM-dd string. */
 @Serializable
 data class AddDepositRequest(
     val categoryId: String,
     val fundId: String,
     val amount: Double,
     val date: String,
-)
+    // ★ T0 — the idempotency key. See AddExpenseRequest.clientId; the risk is the same shape and larger per row,
+    // because a salary is not a €3 coffee.
+    override val clientId: String? = null,
+) : IdempotentRequest
 
 /** What a deposit write returns: the new version, the (merged) deposit row id, and the recomputed overview
  *  (income moves Contributed/Current/Free, not the fund/transfer lists — so re-fetch Wallets for balances). */

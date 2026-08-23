@@ -1424,14 +1424,20 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     }
 
     /// <summary>Record a deposit for the signed-in user, classified by category and attributed to a fund.</summary>
-    public Task RecordDeposit(Guid categoryId, Guid fundId, decimal amount, DateOnly date) =>
-        ExecuteOptimisticAsync(() =>
-        {
-            var contribution = Period.Deposit(CurrentMemberId, Money(amount), categoryId, fundId, date);
-            contribution.SetFundSynced(FundIsSynced(fundId));
-        },
-        id => api.AddDepositAsync(id, new AddDepositRequest(categoryId, fundId, amount, date)),
-        refetchAfter: true);   // a fresh row mints an id (a merge reuses one) — reconcile to be safe
+    public Task RecordDeposit(Guid categoryId, Guid fundId, decimal amount, DateOnly date)
+    {
+        // ★ T0 — minted once per call, in a local, so the optimistic row and every attempt at the request carry the
+        // same one. Not a default argument, which would be evaluated per call site (see AddExpenseWithKey).
+        var clientId = Guid.NewGuid();
+        return ExecuteOptimisticAsync(() =>
+            {
+                var contribution = Period.Deposit(CurrentMemberId, Money(amount), categoryId, fundId, date);
+                contribution.SetFundSynced(FundIsSynced(fundId));
+                contribution.SetClientId(clientId);
+            },
+            id => api.AddDepositAsync(id, new AddDepositRequest(categoryId, fundId, amount, date, clientId)),
+            refetchAfter: true);   // a fresh row mints an id — reconcile so the local one matches the server's
+    }
 
     /// <summary>Edit one of the signed-in user's own deposit rows.</summary>
     public Task EditDeposit(Guid contributionId, Guid categoryId, Guid fundId, decimal amount, DateOnly date)
@@ -1976,9 +1982,14 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
         ExecuteOptimisticAsync(() => Account.RemoveContributionCategory(id),
             acct => api.RemoveContributionCategoryAsync(acct, id), refetchAfter: false);
 
-    public Task AllocateSaving(Guid savingCategoryId, decimal amount, string? note) =>
-        ExecuteOptimisticAsync(() => Period.AllocateToSavings(savingCategoryId, Money(amount), Today(), note, PriorSaved),
-            id => api.AddSavingDepositAsync(id, new AddSavingDepositRequest(savingCategoryId, amount, Today(), note)), refetchAfter: true);
+    public Task AllocateSaving(Guid savingCategoryId, decimal amount, string? note)
+    {
+        var clientId = Guid.NewGuid();   // ★ T0 — one key per call; see RecordDeposit
+        return ExecuteOptimisticAsync(
+            () => Period.AllocateToSavings(savingCategoryId, Money(amount), Today(), note, PriorSaved).SetClientId(clientId),
+            id => api.AddSavingDepositAsync(id, new AddSavingDepositRequest(savingCategoryId, amount, Today(), note, clientId)),
+            refetchAfter: true);
+    }
 
     public Task EditSavingDeposit(Guid allocationId, decimal amount) =>
         ExecuteOptimisticAsync(() => Period.EditSavingDeposit(allocationId, Money(amount), PriorSaved),
@@ -2581,13 +2592,17 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     public async Task ArchiveFund(Guid fundId, Guid? moveBalanceTo, decimal amount)
     {
         if (moveBalanceTo is { } target && target != Guid.Empty && amount > 0m)
+        {
+            var clientId = Guid.NewGuid();   // ★ T0 — one key per call; see RecordDeposit
             await ExecuteOptimisticAsync(() =>
             {
                 var transfer = Period.TransferFunds(fundId, target, Money(amount), Today(), null);
                 transfer.SetSyncedSides(FundIsSynced(fundId), FundIsSynced(target));
+                transfer.SetClientId(clientId);
             },
-            id => api.TransferFundsAsync(id, new TransferFundsRequest(fundId, target, amount, Today())),
+            id => api.TransferFundsAsync(id, new TransferFundsRequest(fundId, target, amount, Today(), null, clientId)),
             refetchAfter: true);
+        }
         await ExecuteOptimisticAsync(() => Account.SetFundArchived(fundId, true),
             id => api.SetFundArchivedAsync(id, fundId, true), refetchAfter: true);
     }
@@ -2600,14 +2615,18 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
         ExecuteOptimisticAsync(() => Period.SetInitialBalance(fundId, Money(amount)),
             id => api.SetFundOpeningBalanceAsync(id, fundId, amount), refetchAfter: true);
 
-    public Task TransferFunds(Guid fromFundId, Guid toFundId, decimal amount, string? note) =>
-        ExecuteOptimisticAsync(() =>
+    public Task TransferFunds(Guid fromFundId, Guid toFundId, decimal amount, string? note)
+    {
+        var clientId = Guid.NewGuid();   // ★ T0 — one key per call; see RecordDeposit
+        return ExecuteOptimisticAsync(() =>
         {
             var transfer = Period.TransferFunds(fromFundId, toFundId, Money(amount), Today(), note);
             transfer.SetSyncedSides(FundIsSynced(fromFundId), FundIsSynced(toFundId));
+            transfer.SetClientId(clientId);
         },
-        id => api.TransferFundsAsync(id, new TransferFundsRequest(fromFundId, toFundId, amount, Today(), note)),
+        id => api.TransferFundsAsync(id, new TransferFundsRequest(fromFundId, toFundId, amount, Today(), note, clientId)),
         refetchAfter: true);
+    }
 
     public FundTransfer? FindFundTransfer(Guid id) => Period.FundTransfers.FirstOrDefault(t => t.Id == id);
 
@@ -2666,8 +2685,9 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     public async Task TransferToAccount(Guid destinationAccountId, Guid fromFundId, decimal amount, string? note, Guid destinationFundId = default, Guid? categoryId = null)
     {
         if (amount <= 0m) return;
+        var clientId = Guid.NewGuid();   // ★ T0 — one key per call; see RecordDeposit
         await ExecuteAsync(id => api.TransferToAccountAsync(id, new TransferToAccountRequest(
-            destinationAccountId, fromFundId, amount, destinationFundId, note, Today(), categoryId)));
+            destinationAccountId, fromFundId, amount, destinationFundId, note, Today(), categoryId, clientId)));
         _cache.Remove(destinationAccountId); // its snapshot changed server-side — a switch must refetch
     }
 

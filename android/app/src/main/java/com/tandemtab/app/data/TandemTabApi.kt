@@ -20,6 +20,7 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
 import io.ktor.serialization.kotlinx.json.json
+import kotlinx.coroutines.delay
 import kotlinx.serialization.json.Json
 import java.time.Instant
 import java.time.OffsetDateTime
@@ -32,6 +33,10 @@ import java.time.OffsetDateTime
  * paywall the client never predicted still land as an explanation — see AppViewModel.raiseProBlocked.
  */
 class ApiException(val status: Int, override val message: String, val feature: String? = null) : Exception(message)
+
+/** Statuses that mean "the request may not have been processed" — a gateway or a starting/overloaded instance
+ *  answering for the app rather than the app answering for itself. See [TandemTabApi.sendWithAmbiguityRetries]. */
+private val AMBIGUOUS_STATUSES = setOf(408, 502, 503, 504)
 
 /**
  * Thin HTTP client over the TandemTab server API. Holds the session in memory and mirrors it to a
@@ -816,21 +821,60 @@ class TandemTabApi(
         return resp to bytes
     }
 
-    /** POST an authed endpoint with a JSON body, same stale/401 refresh handling as [authedGet]. */
+    /** POST an authed endpoint with a JSON body, same stale/401 refresh handling as [authedGet], plus the
+     *  ambiguous-failure retry for bodies that carry an idempotency key (see [sendWithAmbiguityRetries]). */
     private suspend inline fun <reified T> authedPost(path: String, body: T): HttpResponse {
         ensureFreshToken()
-        var resp = client.post(path) {
-            header(HttpHeaders.Authorization, "Bearer ${requireToken()}")
-            setBody(body)
-        }
-        if (resp.status == HttpStatusCode.Unauthorized && tryRefresh()) {
-            resp = client.post(path) {
+        var resp = sendWithAmbiguityRetries(body) {
+            client.post(path) {
                 header(HttpHeaders.Authorization, "Bearer ${requireToken()}")
                 setBody(body)
             }
         }
+        if (resp.status == HttpStatusCode.Unauthorized && tryRefresh()) {
+            resp = sendWithAmbiguityRetries(body) {
+                client.post(path) {
+                    header(HttpHeaders.Authorization, "Bearer ${requireToken()}")
+                    setBody(body)
+                }
+            }
+        }
         ensureOk(resp.status, resp.bodyAsText(), "That didn't save. Please try again.")
         return resp
+    }
+
+    /**
+     * ★ T0 — the automatic half of the retry. A request that dies in transport, or comes back 502/503/504/408, is
+     * **ambiguous**: it may have been applied server-side with only the answer lost. Re-sending is the only move
+     * available, and it is safe here for exactly one reason — the body carries an idempotency key, so the server
+     * recognises the second arrival as the same intention rather than as a second salary.
+     *
+     * ⚠️ Gated on [IdempotentRequest] with a real key, and **nothing else is ever retried**. Re-sending a keyless
+     * write turns "we don't know if it landed" into a guaranteed duplicate, which is worse than the error message
+     * it was trying to avoid.
+     *
+     * ⚠️ A 500 is deliberately NOT retried: it means the server ran and threw, which a second identical request
+     * reproduces. The statuses below mean the request may never have been run at all. A 4xx is an answer.
+     *
+     * Three attempts over ~1.2s — long enough to ride out a tunnel or a cold instance, short enough that someone
+     * staring at a spinner does not out-wait it and press Save themselves.
+     */
+    suspend fun sendWithAmbiguityRetries(body: Any?, send: suspend () -> HttpResponse): HttpResponse {
+        val key = (body as? IdempotentRequest)?.clientId
+        if (key.isNullOrBlank()) return send()
+        val backoffMs = longArrayOf(200, 1000)
+        var attempt = 0
+        while (true) {
+            val last = attempt >= backoffMs.size
+            if (last) return send()
+            val resp = try {
+                send()
+            } catch (e: java.io.IOException) {
+                delay(backoffMs[attempt]); attempt++; continue
+            }
+            if (resp.status.value !in AMBIGUOUS_STATUSES) return resp
+            delay(backoffMs[attempt]); attempt++
+        }
     }
 
     /** PUT an authed endpoint with a JSON body, same stale/401 refresh handling as [authedPost]. */

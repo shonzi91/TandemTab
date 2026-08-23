@@ -895,16 +895,29 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     ?: api.spending(accountId).categories.firstOrNull { it.name.equals("Adjustment", true) }?.id
                     ?: api.createCategory(accountId, CreateCategoryRequest("Adjustment", null, "⚖️")).entityId
                     ?: continue
-                api.addExpense(accountId, AddExpenseRequest(expenseCat, -gap, fundId, dateIso, "Reconciliation"))
+                api.addExpense(accountId, AddExpenseRequest(expenseCat, -gap, fundId, dateIso, "Reconciliation",
+                    clientId = newWriteKey()))
             } else if (gap > 0) {
                 contribCat = contribCat
                     ?: api.income(accountId).categories.firstOrNull { it.name.equals("Adjustment", true) }?.id
                     ?: api.createContributionCategory(accountId, CreateContributionCategoryRequest("Adjustment", "⚖️")).entityId
                     ?: continue
-                api.addDeposit(accountId, AddDepositRequest(contribCat, fundId, gap, dateIso))
+                api.addDeposit(accountId, AddDepositRequest(contribCat, fundId, gap, dateIso, newWriteKey()))
             }
         }
     }
+
+    /**
+     * ★ T0 — one idempotency key per attempted write, minted here at the call site rather than inside the API
+     * client. The distinction is the whole point: a key minted at SEND time would be different on every attempt
+     * and identify nothing, so [TandemTabApi.sendWithAmbiguityRetries] can only re-send a request whose key was
+     * fixed before the first attempt.
+     *
+     * ⚠️ This covers the AUTOMATIC retry (the transport re-sending after an ambiguous failure), which is the one
+     * this app performs on its own. It does not, by itself, make two separate Save presses into one write — that
+     * needs the key to live on the sheet's draft, the way [ui.ExpenseDraft.clientId] does.
+     */
+    private fun newWriteKey(): String = java.util.UUID.randomUUID().toString()
 
     /** A period write changes every figure on every tab, so drop back to the (new) open period and refetch. */
     private suspend fun reloadAfterPeriodChange(accountId: String) {
@@ -1177,7 +1190,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         _state.update { it.copy(spending = it.spending.copy(saving = true, saveError = null)) }
         viewModelScope.launch {
             try {
-                val mut = api.addDeposit(accountId, AddDepositRequest(categoryId, fundId, amount, date))
+                val mut = api.addDeposit(accountId, AddDepositRequest(categoryId, fundId, amount, date, newWriteKey()))
                 _state.update {
                     it.copy(
                         overview = mut.overview,
@@ -1408,7 +1421,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         _state.update { it.copy(goals = it.goals.copy(saving = true, saveError = null)) }
         viewModelScope.launch {
             try {
-                val mut = api.allocateSaving(accountId, AddSavingDepositRequest(bucketId, amount, date, note?.ifBlank { null }))
+                val mut = api.allocateSaving(accountId, AddSavingDepositRequest(bucketId, amount, date, note?.ifBlank { null }, newWriteKey()))
                 _state.update { it.copy(overview = mut.view.overview, goals = goalsFrom(mut.view)) }
                 onDone()
             } catch (e: Exception) {
@@ -1594,7 +1607,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         _state.update { it.copy(wallets = it.wallets.copy(saving = true, saveError = null)) }
         viewModelScope.launch {
             try {
-                val mut = api.transferFunds(accountId, TransferFundsRequest(fromFundId, toFundId, amount, date, note?.ifBlank { null }))
+                val mut = api.transferFunds(accountId, TransferFundsRequest(fromFundId, toFundId, amount, date, note?.ifBlank { null }, newWriteKey()))
                 _state.update {
                     it.copy(
                         overview = mut.view.overview,
@@ -1615,7 +1628,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         _state.update { it.copy(wallets = it.wallets.copy(saving = true, saveError = null)) }
         viewModelScope.launch {
             try {
-                val mut = api.addDeposit(accountId, AddDepositRequest(categoryId, fundId, amount, date))
+                val mut = api.addDeposit(accountId, AddDepositRequest(categoryId, fundId, amount, date, newWriteKey()))
                 val v = api.wallets(accountId)
                 _state.update {
                     it.copy(
@@ -1870,7 +1883,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 if (archived && moveBalanceTo != null && amount > 0.0) {
                     api.transferFunds(
                         accountId,
-                        TransferFundsRequest(fundId, moveBalanceTo, amount, LocalDate.now().toString(), null),
+                        TransferFundsRequest(fundId, moveBalanceTo, amount, LocalDate.now().toString(), null, newWriteKey()),
                     )
                 }
                 api.archiveFund(accountId, fundId, archived)
@@ -1943,7 +1956,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     ) = accountTransferWrite(onDone, "Couldn't send that money.") { acct ->
         api.transferToAccount(acct, TransferToAccountRequest(
             destinationAccountId = destinationAccountId, fromFundId = fromFundId,
-            amount = amount, note = note?.ifBlank { null }, date = date,
+            amount = amount, note = note?.ifBlank { null }, date = date, clientId = newWriteKey(),
         ))
     }
 
@@ -3215,7 +3228,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         _state.update { it.copy(bank = it.bank.copy(handlingId = externalId, error = null)) }
         viewModelScope.launch {
             try {
-                val mut = api.addDeposit(accountId, AddDepositRequest(categoryId, fundId, kotlin.math.abs(amount), date))
+                val mut = api.addDeposit(accountId, AddDepositRequest(categoryId, fundId, kotlin.math.abs(amount), date, newWriteKey()))
                 api.ackBank(accountId, externalId, confirmed = true)
                 _state.update {
                     it.copy(

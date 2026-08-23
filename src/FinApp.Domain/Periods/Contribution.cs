@@ -40,6 +40,15 @@ public sealed class Contribution : Entity
         FromAccountId = fromAccountId;
     }
 
+    /// <summary>T0 — the idempotency key of the write that recorded this deposit, so a retry after an ambiguous
+    /// failure finds it instead of banking the salary twice. Same contract as <see cref="Budgeting.Expense.ClientId"/>:
+    /// minted once when the row is composed, reused by every attempt, and never derived from the contents. Null on
+    /// every row written before this existed and on any write that sent no key.
+    /// <para>Body data (rides in the snapshot, ignored by EF), so a setter rather than a ctor parameter.</para></summary>
+    public Guid? ClientId { get; private set; }
+
+    public void SetClientId(Guid? clientId) => ClientId = clientId;
+
     public Contribution(Guid memberId, Money paid, Guid categoryId = default, Guid fundId = default, DateOnly date = default)
     {
         if (paid.IsNegative)

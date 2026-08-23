@@ -192,12 +192,12 @@ public static class AccountSnapshotSerializer
     private static PeriodNode ToNode(Period p) => new(
         p.Id, p.Currency, p.From, p.To, p.Status, p.CarriedIn.Amount,
         p.InitialBalances.Select(b => new InitialBalanceNode(b.Id, b.FundId, b.Amount.Amount, b.Informative)).ToList(),
-        p.Contributions.Select(c => new ContributionNode(c.Id, c.MemberId, c.Paid.Amount, c.CategoryId, c.FundId, c.Date, c.FundSynced, c.AccountTransferId, c.FromAccountId)).ToList(),
+        p.Contributions.Select(c => new ContributionNode(c.Id, c.MemberId, c.Paid.Amount, c.CategoryId, c.FundId, c.Date, c.FundSynced, c.AccountTransferId, c.FromAccountId, c.ClientId)).ToList(),
         p.Budgets.Select(b => new BudgetNode(b.Id, b.CategoryId, b.Allocated.Amount, b.AlertThreshold, b.NotifyOnEveryExpense)).ToList(),
         p.Expenses.Select(e => new ExpenseNode(e.Id, e.CategoryId, e.Amount.Amount, e.Date, e.MemberId, e.FundId, e.Note, e.SourceSavingCategoryId, e.OnBehalfOfOtherAccount, e.SettlementId, e.SettledToAccountId, e.SettledFromAccountId, e.SettledAmount, e.FundSynced, e.BankExternalId, e.AutoFiled, e.TagIds.Count == 0 ? null : e.TagIds.ToList(), e.InstallmentGroupId, e.Part, e.DebtBucketId, e.TripId, e.ForeignAmount, e.ForeignCurrency, e.Time, e.RefundedAmount, e.TripAccountId, e.DebtBucketAccountId, e.ClientId)).ToList(),
-        p.SavingAllocations.Select(a => new SavingAllocationNode(a.Id, a.SavingCategoryId, a.Amount.Amount, a.Date, a.Note, a.SourceExpenseId, a.BudgetCategoryId, a.TransferPairId, a.SourceExternalTransferId)).ToList(),
-        p.FundTransfers.Select(t => new FundTransferNode(t.Id, t.FromFundId, t.ToFundId, t.Amount.Amount, t.Date, t.Note, t.FromSynced, t.ToSynced, t.BankExternalId, t.AutoFiled)).ToList(),
-        p.ExternalTransfers.Select(t => new ExternalTransferNode(t.Id, t.FundId, t.Amount.Amount, t.Date, t.ToAccountId, t.Note, t.FundSynced, t.AccountTransferId, t.CategoryId)).ToList());
+        p.SavingAllocations.Select(a => new SavingAllocationNode(a.Id, a.SavingCategoryId, a.Amount.Amount, a.Date, a.Note, a.SourceExpenseId, a.BudgetCategoryId, a.TransferPairId, a.SourceExternalTransferId, a.ClientId)).ToList(),
+        p.FundTransfers.Select(t => new FundTransferNode(t.Id, t.FromFundId, t.ToFundId, t.Amount.Amount, t.Date, t.Note, t.FromSynced, t.ToSynced, t.BankExternalId, t.AutoFiled, t.ClientId)).ToList(),
+        p.ExternalTransfers.Select(t => new ExternalTransferNode(t.Id, t.FundId, t.Amount.Amount, t.Date, t.ToAccountId, t.Note, t.FundSynced, t.AccountTransferId, t.CategoryId, t.ClientId)).ToList());
 
     // --- node -> domain ---------------------------------------------------
 
@@ -259,6 +259,7 @@ public static class AccountSnapshotSerializer
             var contribution = Build(new Contribution(c.MemberId, M(c.Paid), c.CategoryId, c.FundId, c.Date), c.Id);
             contribution.SetFundSynced(c.FundSynced);
             contribution.SetAccountTransferLink(c.AccountTransferId, c.FromAccountId);
+            contribution.SetClientId(c.ClientId);
             return contribution;
         }).ToList());
         SetField(p, "_budgets", n.Budgets.Select(b => Build(new Budget(b.CategoryId, M(b.Allocated), b.AlertThreshold, b.NotifyOnEveryExpense), b.Id)).ToList());
@@ -280,6 +281,7 @@ public static class AccountSnapshotSerializer
         {
             var alloc = Build(new SavingAllocation(a.SavingCategoryId, M(a.Amount), a.Date, a.Note, a.SourceExpenseId, a.BudgetCategoryId, a.TransferPairId), a.Id);
             if (a.SourceExternalTransferId is { } xid) alloc.MarkDisbursement(xid);
+            alloc.SetClientId(a.ClientId);
             return alloc;
         }).ToList());
         SetField(p, "_fundTransfers", n.FundTransfers.Select(t =>
@@ -287,6 +289,7 @@ public static class AccountSnapshotSerializer
             var transfer = Build(new FundTransfer(t.FromFundId, t.ToFundId, M(t.Amount), t.Date, t.Note), t.Id);
             transfer.SetSyncedSides(t.FromSynced, t.ToSynced);
             transfer.SetBankLink(t.BankExternalId, t.AutoFiled);
+            transfer.SetClientId(t.ClientId);
             return transfer;
         }).ToList());
         SetField(p, "_externalTransfers", (n.ExternalTransfers ?? []).Select(t =>
@@ -295,6 +298,7 @@ public static class AccountSnapshotSerializer
             transfer.SetFundSynced(t.FundSynced);
             transfer.SetAccountTransferLink(t.AccountTransferId);
             transfer.SetCategory(t.CategoryId);
+            transfer.SetClientId(t.ClientId);
             return transfer;
         }).ToList());
         return p;
@@ -424,7 +428,9 @@ public static class AccountSnapshotSerializer
         Guid CategoryId = default, Guid FundId = default, DateOnly Date = default, bool FundSynced = false,
         // R2: the receiving half of an account-to-account transfer. Null on every node written before this and on
         // every ordinary deposit — a missing JSON property lands on the default, so old snapshots read unchanged.
-        Guid? AccountTransferId = null, Guid? FromAccountId = null);
+        Guid? AccountTransferId = null, Guid? FromAccountId = null,
+        // T0: the write's idempotency key. Trailing and optional — see ExpenseNode.ClientId.
+        Guid? ClientId = null);
     private record BudgetNode(Guid Id, Guid CategoryId, decimal Allocated, decimal AlertThreshold, bool NotifyOnEveryExpense);
     private record ExpenseNode(Guid Id, Guid CategoryId, decimal Amount, DateOnly Date, Guid MemberId, Guid FundId, string? Note, Guid? SourceSavingCategoryId, bool OnBehalfOfOtherAccount = false,
         Guid? SettlementId = null, Guid? SettledToAccountId = null, Guid? SettledFromAccountId = null, decimal SettledAmount = 0m, bool FundSynced = false, string? BankExternalId = null, bool AutoFiled = false,
@@ -460,13 +466,22 @@ public static class AccountSnapshotSerializer
         // ⚠️ Positional record: this goes LAST, and the next field goes after it. See RecurringRowDto's comment
         // for what happens when two branches each append "the" trailing optional field.
         Guid? ClientId = null);
-    private record SavingAllocationNode(Guid Id, Guid SavingCategoryId, decimal Amount, DateOnly Date, string? Note, Guid? SourceExpenseId, Guid? BudgetCategoryId = null, Guid? TransferPairId = null, Guid? SourceExternalTransferId = null);
-    private record FundTransferNode(Guid Id, Guid FromFundId, Guid ToFundId, decimal Amount, DateOnly Date, string? Note, bool FromSynced = false, bool ToSynced = false, string? BankExternalId = null, bool AutoFiled = false);
+    private record SavingAllocationNode(Guid Id, Guid SavingCategoryId, decimal Amount, DateOnly Date, string? Note, Guid? SourceExpenseId, Guid? BudgetCategoryId = null, Guid? TransferPairId = null, Guid? SourceExternalTransferId = null,
+        // T0: the write's idempotency key. Trailing and optional, like ExpenseNode.ClientId — and for the same
+        // reason the comment there spells out, a new field goes AFTER it rather than in front.
+        Guid? ClientId = null);
+    private record FundTransferNode(Guid Id, Guid FromFundId, Guid ToFundId, decimal Amount, DateOnly Date, string? Note, bool FromSynced = false, bool ToSynced = false, string? BankExternalId = null, bool AutoFiled = false,
+        // T0: the write's idempotency key. Distinct from BankExternalId above — that is the bank's key for a row it
+        // filed, this is the client's key for a row a person asked for.
+        Guid? ClientId = null);
     private record ExternalTransferNode(Guid Id, Guid FundId, decimal Amount, DateOnly Date, Guid? ToAccountId, string? Note, bool FundSynced = false,
         // R2: the shared id of the deposit this created in the other account. Null on legacy transfers, which stay
         // one-sided on purpose — see ExternalTransfer.AccountTransferId.
         Guid? AccountTransferId = null,
         // S111: the budget category this outflow is planned under, when the user names one. Null on every transfer
         // written before this existed, which reads as "counted in Spent, in no budget" — exactly the old behaviour.
-        Guid? CategoryId = null);
+        Guid? CategoryId = null,
+        // T0: the write's idempotency key, on the outflow half only — see ExternalTransfer.ClientId for why one
+        // side carries it for both.
+        Guid? ClientId = null);
 }

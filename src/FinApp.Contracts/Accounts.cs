@@ -45,6 +45,27 @@ public record SaveAccountRequest(string Payload, long ExpectedVersion);
 // The client used to mutate the aggregate locally and PUT the whole snapshot; these let a thin (native) client send
 // just the command — the server applies it through the same domain, so the money maths can't drift between clients.
 
+/// <summary>
+/// ★ T0 — a write a client may safely send twice. The key identifies the user's <b>intention</b> (minted once when
+/// the draft is composed, reused by every attempt), so the server recognises the second arrival and answers with
+/// the first one's result instead of writing a second row.
+///
+/// <para><b>★ Why an interface and not just a convention.</b> An ambiguous failure — sent, response lost — is
+/// indistinguishable from one that never arrived, so retrying is all a client can do, and <b>retrying a write with
+/// no key is how you guarantee the duplicate you were trying to avoid</b>. Declaring the capability in the type
+/// system is what lets the transport retry automatically: it retries a body that implements this and nothing else,
+/// which is checkable by reading the request list rather than by auditing every call site.</para>
+///
+/// <para>⚠️ Implementing this is a <b>promise the server keeps its half of</b>. A request type must not carry the
+/// interface until its handler recognises the key before it validates anything (see the add-expense handler).</para>
+/// </summary>
+public interface IIdempotentRequest
+{
+    /// <summary>The client-minted key, or null / <see cref="Guid.Empty"/> for "no claim about duplicates" — which
+    /// every client predating T0 sends, and which the transport must never retry.</summary>
+    Guid? ClientId { get; }
+}
+
 /// <summary>Seed a freshly-created account's starter body server-side (default categories/funds + the first period),
 /// so a thin client doesn't need the domain to initialize an account. <see cref="Today"/> dates the first period to
 /// the caller's local month; when null the server uses its own UTC date. Fails (409) if the account is already set up.</summary>
@@ -71,7 +92,7 @@ public record AddExpenseRequest(Guid CategoryId, decimal Amount, Guid FundId, Da
     // server recognises the second attempt and answers with the first one's result; without one it logs the dinner
     // twice. Null is accepted and means "no claim about duplicates" — every client that predates this sends none.
     // ⚠️ It must NOT be derived from the contents: two separate €3 coffees on one day are not a duplicate.
-    Guid? ClientId = null);
+    Guid? ClientId = null) : IIdempotentRequest;
 
 /// <summary>Replace an existing expense's category/amount/fund/note/date (an append-only edit — see
 /// <c>Period.EditExpense</c>). The expense id travels in the route. <see cref="TagId"/> sets the expense's single
@@ -104,10 +125,14 @@ public record EditExpenseRequest(Guid CategoryId, decimal Amount, Guid FundId, D
 /// <summary>
 /// Record income (a deposit) for the caller in the open period, computed server-side. The member is the caller and
 /// the fund's "synced" flag is derived from the fund. <see cref="CategoryId"/> is an optional <b>contribution</b>
-/// category (Salary, Vouchers…); pass <see cref="System.Guid.Empty"/> for general income. Deposits with the same
-/// (member, category, fund) <b>merge</b> into one row. Mirrors <c>BudgetingState.RecordDeposit</c>.
+/// category (Salary, Vouchers…); pass <see cref="System.Guid.Empty"/> for general income. <b>One row per deposit</b>
+/// — two salary payments in a month are two rows, each with its own date (see <c>Contribution</c>, which says the
+/// same). Mirrors <c>BudgetingState.RecordDeposit</c>.
 /// </summary>
-public record AddDepositRequest(Guid CategoryId, Guid FundId, decimal Amount, DateOnly Date);
+public record AddDepositRequest(Guid CategoryId, Guid FundId, decimal Amount, DateOnly Date,
+    // ★ T0 — the idempotency key. See AddExpenseRequest.ClientId for the whole contract; the risk is identical and
+    // larger per row, because a salary is not €3. Null means "no claim about duplicates".
+    Guid? ClientId = null) : IIdempotentRequest;
 
 /// <summary>Overwrite one of the caller's own deposit rows (amount/category/fund/date). The deposit id travels in the
 /// route; a caller may only change their own deposits (else 403). Mirrors <c>BudgetingState.EditDeposit</c>.</summary>
@@ -116,7 +141,9 @@ public record EditDepositRequest(Guid CategoryId, Guid FundId, decimal Amount, D
 /// <summary>Set money aside into a savings bucket ("Add to savings"), computed server-side. A plain (un-noted) deposit
 /// stays editable/removable; a note turns it into a non-editable annotated allocation (as in the web). Amount must be
 /// positive (draw down via the spend endpoint). Mirrors <c>BudgetingState.AllocateSaving</c>.</summary>
-public record AddSavingDepositRequest(Guid SavingCategoryId, decimal Amount, DateOnly Date, string? Note = null);
+public record AddSavingDepositRequest(Guid SavingCategoryId, decimal Amount, DateOnly Date, string? Note = null,
+    // ★ T0 — the idempotency key. See AddExpenseRequest.ClientId.
+    Guid? ClientId = null) : IIdempotentRequest;
 
 /// <summary>Change the amount of a manual savings deposit (append-only — the row is replaced, keeping its original
 /// date/bucket). The allocation id travels in the route. Mirrors <c>BudgetingState.EditSavingDeposit</c>.</summary>
@@ -399,7 +426,10 @@ public record ConfirmRecurringRequest(decimal ActualAmount);
 /// budget is a per-category cap and a transfer used to have no category to be capped under. Omit it and the transfer
 /// behaves exactly as it always has — in "Spent", in no budget.</para>
 public record TransferToAccountRequest(Guid DestinationAccountId, Guid FromFundId, decimal Amount,
-    Guid DestinationFundId = default, string? Note = null, DateOnly? Date = null, Guid? CategoryId = null);
+    Guid DestinationFundId = default, string? Note = null, DateOnly? Date = null, Guid? CategoryId = null,
+    // ★ T0 — the idempotency key, and the write where an ambiguous failure costs the most: a duplicate here moves
+    // real money out of one account and into another a second time, on both sides. See AddExpenseRequest.ClientId.
+    Guid? ClientId = null) : IIdempotentRequest;
 
 /// <summary>Change an account-to-account transfer — <b>both halves at once</b>: the outflow here and the deposit it
 /// created in <see cref="DestinationAccountId"/>. Addressed by the pair id both rows carry, so a transfer recorded
@@ -486,7 +516,9 @@ public record SetFundOpeningBalanceRequest(decimal Amount);
 /// money sits changes), so the source may go negative — no balance cap. The funds must differ and the amount be
 /// positive. <see cref="Date"/> defaults to the server date. Synced sides are recorded but not moved (the real bank
 /// balance is authoritative). Mirrors <c>BudgetingState.TransferFunds</c>.</summary>
-public record TransferFundsRequest(Guid FromFundId, Guid ToFundId, decimal Amount, DateOnly? Date = null, string? Note = null);
+public record TransferFundsRequest(Guid FromFundId, Guid ToFundId, decimal Amount, DateOnly? Date = null, string? Note = null,
+    // ★ T0 — the idempotency key. See AddExpenseRequest.ClientId.
+    Guid? ClientId = null) : IIdempotentRequest;
 
 /// <summary>Edit a fund transfer (its original date is preserved). Fields as in <see cref="TransferFundsRequest"/>,
 /// minus the date. Bank provenance is kept but the auto-filed badge is cleared. Mirrors

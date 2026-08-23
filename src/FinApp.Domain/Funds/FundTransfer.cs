@@ -47,6 +47,16 @@ public sealed class FundTransfer : Entity
     /// automatically; editing it does not change where it came from.</para></summary>
     public bool AutoFiled { get; private set; }
 
+    /// <summary>T0 — the idempotency key of the write that moved this money between funds, so a retry after an
+    /// ambiguous failure finds it instead of moving it twice. Same contract as
+    /// <see cref="Budgeting.Expense.ClientId"/>. Null on every row written before this existed, on any write that
+    /// sent no key, and on every transfer a bank sync files for itself (those dedupe on
+    /// <see cref="BankExternalId"/>, which is the bank's key rather than a client's).
+    /// <para>Body data — rides in the snapshot, so a setter rather than a ctor parameter.</para></summary>
+    public Guid? ClientId { get; private set; }
+
+    public void SetClientId(Guid? clientId) => ClientId = clientId;
+
     /// <summary>Record (or clear) this transfer's bank origin. See <see cref="BankExternalId"/> and <see cref="AutoFiled"/>.</summary>
     public void SetBankLink(string? externalId, bool autoFiled)
     {

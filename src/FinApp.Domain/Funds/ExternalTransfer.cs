@@ -68,6 +68,16 @@ public sealed class ExternalTransfer : Entity
     /// <summary>Set (or clear, with null) the budget category this outflow is planned under.</summary>
     public void SetCategory(Guid? categoryId) => CategoryId = categoryId is { } c && c != Guid.Empty ? c : null;
 
+    /// <summary>T0 — the idempotency key of the write that sent this money, so a retry after an ambiguous failure
+    /// finds it instead of sending it twice. Same contract as <see cref="Budgeting.Expense.ClientId"/>.
+    /// <para>⚠️ It is stamped on the <b>outflow only</b>, and that is enough: the pair is written in one
+    /// two-account mutation, so an outflow carrying the key implies its deposit landed too. Looking for it on the
+    /// source side also keeps the retry check inside the account the request is addressed to.</para>
+    /// <para>Body data — rides in the snapshot, so a setter rather than a ctor parameter.</para></summary>
+    public Guid? ClientId { get; private set; }
+
+    public void SetClientId(Guid? clientId) => ClientId = clientId;
+
     /// <summary>Overwrite the editable fields of a transfer (both sides are edited together — see the
     /// <c>transfers-out</c> PUT endpoint, which keeps this and its counterpart deposit in step).</summary>
     public void Update(Money amount, DateOnly date, Guid fundId, string? note)

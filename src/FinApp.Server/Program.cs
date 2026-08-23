@@ -1384,18 +1384,23 @@ accounts.MapPost("/{id:guid}/deposits", async (Guid id, AddDepositRequest req, C
 {
     var userId = user.UserId();
     var bank = await bankSvc.GetStatusAsync(userId, id, ct);
-    var (version, delta) = await svc.MutateAsync(userId, id, account =>
+    var (version, changed, delta) = await svc.MutateOrSkipAsync(userId, id, account =>
     {
         var period = account.CurrentPeriod ?? throw new InvalidOperationException("There's no open period to record income in.");
+        // ★ T0 — the retry check, before any validation, for the reason spelled out on the add-expense route.
+        if (req.ClientId is { } key && key != Guid.Empty &&
+            period.Contributions.FirstOrDefault(c => c.ClientId == key) is { } already)
+            return (false, (already.Id, SpendingMap.Overview(account, period, bank.Balance, bank.BalanceCurrency)));
         if (req.CategoryId != Guid.Empty && account.FindContributionCategory(req.CategoryId) is null)
             throw new InvalidOperationException("That income category doesn't exist in this account.");
         var fund = req.FundId == Guid.Empty ? null
             : account.FindFund(req.FundId) ?? throw new InvalidOperationException("That fund doesn't exist in this account.");
         var contribution = period.Deposit(userId, new Money(req.Amount, account.Currency), req.CategoryId, req.FundId, req.Date);
         contribution.SetFundSynced(fund?.IsSynced ?? false);   // synced destination fund isn't credited here
-        return (contribution.Id, SpendingMap.Overview(account, period, bank.Balance, bank.BalanceCurrency));
+        contribution.SetClientId(req.ClientId is { } k && k != Guid.Empty ? k : null);
+        return (true, (contribution.Id, SpendingMap.Overview(account, period, bank.Balance, bank.BalanceCurrency)));
     }, ct);
-    await notifier.AccountChangedAsync(id, userId, version);
+    if (changed) await notifier.AccountChangedAsync(id, userId, version);
     return Results.Ok(new DepositMutationDto(version, delta.Id, delta.Item2));
 });
 
@@ -1501,8 +1506,14 @@ accounts.MapPost("/{id:guid}/transfers-out", async (Guid id, TransferToAccountRe
 {
     var userId = user.UserId();
     var date = req.Date ?? DateOnly.FromDateTime(DateTime.UtcNow);
-    var (version, destVersion, transferId) = await svc.MutateTwoAsync(userId, id, req.DestinationAccountId, (source, dest) =>
+    var (version, destVersion, changed, transferId) = await svc.MutateTwoOrSkipAsync(userId, id, req.DestinationAccountId, (source, dest) =>
     {
+        // ★ T0 — the retry check, before any validation, and on the SOURCE side only: the pair is written in one
+        // two-account mutation, so an outflow carrying the key proves its deposit landed with it. Skipping is
+        // all-or-nothing for the same reason (see MutateTwoOrSkipAsync).
+        if (req.ClientId is { } key && key != Guid.Empty && source.CurrentPeriod is { } open &&
+            open.ExternalTransfers.FirstOrDefault(t => t.ClientId == key) is { } already)
+            return (false, already.Id);
         if (req.Amount <= 0m) throw new InvalidOperationException("The amount must be positive.");
         if (!string.Equals(source.Currency, dest.Currency, StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException("Both accounts must use the same currency.");
@@ -1529,10 +1540,17 @@ accounts.MapPost("/{id:guid}/transfers-out", async (Guid id, TransferToAccountRe
         var destDeposit = destPeriod.Deposit(userId, new Money(req.Amount, dest.Currency), Guid.Empty, destFundId, date);
         destDeposit.SetFundSynced(dest.FindFund(destFundId)?.IsSynced ?? false);
         destDeposit.SetAccountTransferLink(pairId, id);
-        return outflow.Id;
+        // ⚠️ The key goes on the outflow only, NOT on the deposit. The deposit's own key would collide with an
+        // ordinary income write in the destination account carrying the same one, and the pair already shares
+        // pairId — a second identity for the same two rows is one more thing that can disagree.
+        outflow.SetClientId(req.ClientId is { } k && k != Guid.Empty ? k : null);
+        return (true, outflow.Id);
     }, ct);
-    await notifier.AccountChangedAsync(id, userId, version);
-    await notifier.AccountChangedAsync(req.DestinationAccountId, userId, destVersion);
+    if (changed)
+    {
+        await notifier.AccountChangedAsync(id, userId, version);
+        await notifier.AccountChangedAsync(req.DestinationAccountId, userId, destVersion);
+    }
     return Results.Ok(new MutationResultDto(version, transferId));
 });
 
@@ -1788,15 +1806,20 @@ accounts.MapPost("/{id:guid}/savings/deposits", async (Guid id, AddSavingDeposit
 {
     var userId = user.UserId();
     var bank = await bankSvc.GetStatusAsync(userId, id, ct);
-    var (version, delta) = await svc.MutateAsync(userId, id, account =>
+    var (version, changed, delta) = await svc.MutateOrSkipAsync(userId, id, account =>
     {
         var period = account.CurrentPeriod ?? throw new InvalidOperationException("There's no open period to save into.");
+        // ★ T0 — the retry check, before any validation (see the add-expense route).
+        if (req.ClientId is { } key && key != Guid.Empty &&
+            period.SavingAllocations.FirstOrDefault(a => a.ClientId == key) is { } already)
+            return (false, (already.Id, SavingsMap.View(account, 0, bank.Balance, bank.BalanceCurrency)));
         if (account.FindSavingCategory(req.SavingCategoryId) is null)
             throw new InvalidOperationException("That savings bucket doesn't exist in this account.");
         var allocation = period.AllocateToSavings(req.SavingCategoryId, new Money(req.Amount, account.Currency), req.Date, req.Note);
-        return (allocation.Id, SavingsMap.View(account, 0, bank.Balance, bank.BalanceCurrency));
+        allocation.SetClientId(req.ClientId is { } k && k != Guid.Empty ? k : null);
+        return (true, (allocation.Id, SavingsMap.View(account, 0, bank.Balance, bank.BalanceCurrency)));
     }, ct);
-    await notifier.AccountChangedAsync(id, userId, version);
+    if (changed) await notifier.AccountChangedAsync(id, userId, version);
     return Results.Ok(new SavingsMutationDto(version, delta.Id, delta.Item2 with { Version = version }));
 });
 
@@ -2508,16 +2531,21 @@ accounts.MapPost("/{id:guid}/fund-transfers", async (Guid id, TransferFundsReque
     var userId = user.UserId();
     var date = req.Date ?? DateOnly.FromDateTime(DateTime.UtcNow);
     var bank = await bankSvc.GetStatusAsync(userId, id, ct);
-    var (version, delta) = await svc.MutateAsync(userId, id, account =>
+    var (version, changed, delta) = await svc.MutateOrSkipAsync(userId, id, account =>
     {
+        // ★ T0 — the retry check, before any validation (see the add-expense route).
+        if (req.ClientId is { } key && key != Guid.Empty && account.CurrentPeriod is { } open &&
+            open.FundTransfers.FirstOrDefault(t => t.ClientId == key) is { } already)
+            return (false, (already.Id, WalletsMap.View(account, 0, bank.Balance, bank.BalanceCurrency)));
         var from = account.FindFund(req.FromFundId) ?? throw new InvalidOperationException("The source fund doesn't exist in this account.");
         var to = account.FindFund(req.ToFundId) ?? throw new InvalidOperationException("The destination fund doesn't exist in this account.");
         var period = account.CurrentPeriod ?? throw new InvalidOperationException("There's no open period.");
         var transfer = period.TransferFunds(req.FromFundId, req.ToFundId, new Money(req.Amount, account.Currency), date, req.Note);
         transfer.SetSyncedSides(from.IsSynced, to.IsSynced);   // a synced side's real bank balance already reflects it
-        return (transfer.Id, WalletsMap.View(account, 0, bank.Balance, bank.BalanceCurrency));
+        transfer.SetClientId(req.ClientId is { } k && k != Guid.Empty ? k : null);
+        return (true, (transfer.Id, WalletsMap.View(account, 0, bank.Balance, bank.BalanceCurrency)));
     }, ct);
-    await notifier.AccountChangedAsync(id, userId, version);
+    if (changed) await notifier.AccountChangedAsync(id, userId, version);
     return Results.Ok(new FundMutationDto(version, delta.Id, delta.Item2 with { Version = version }));
 });
 

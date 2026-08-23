@@ -545,16 +545,64 @@ public sealed class FinAppApiClient(HttpClient http)
     private async Task<HttpResponseMessage> SendRawAsync(HttpMethod method, string path, object? body, CancellationToken ct)
     {
         var tokenUsed = Token;
-        var response = await SendOnceAsync(method, path, body, ct);
+        var response = await SendWithAmbiguityRetriesAsync(method, path, body, ct);
         if (response.StatusCode == HttpStatusCode.Unauthorized
             && OnUnauthorized is not null && !IsAuthPath(path) && !string.IsNullOrEmpty(tokenUsed))
         {
             response.Dispose();
             await OnUnauthorized(tokenUsed);              // refreshes Token, or clears it if the session is dead
-            response = await SendOnceAsync(method, path, body, ct);  // retry with whatever token we now hold
+            response = await SendWithAmbiguityRetriesAsync(method, path, body, ct);  // retry with whatever token we now hold
         }
         return response;
     }
+
+    /// <summary>How many extra attempts an idempotent write gets, and how long it waits between them. Three
+    /// attempts over ~1.2s: long enough to ride out a tunnel or a cold instance, short enough that a person who is
+    /// staring at a spinner does not out-wait it and press the button themselves.</summary>
+    private static readonly TimeSpan[] AmbiguityBackoff = [TimeSpan.FromMilliseconds(200), TimeSpan.FromMilliseconds(1000)];
+
+    /// <summary>
+    /// ★ T0 — the automatic half of the retry. A request that dies in transport, or comes back 502/503/504/408, is
+    /// <b>ambiguous</b>: it may have been applied server-side with only the answer lost. Re-sending it is the only
+    /// move available, and it is safe here for exactly one reason — the body carries an idempotency key, so the
+    /// server recognises the second arrival as the same intention.
+    ///
+    /// <para>⚠️ Gated on <see cref="IIdempotentRequest"/> with a real key, and <b>nothing else is ever retried</b>.
+    /// Retrying a keyless write turns "we don't know if it landed" into a guaranteed duplicate, which is worse than
+    /// the error message it was trying to avoid. A GET is left alone too: it costs nothing to fail and the caller's
+    /// own reload is the honest retry for a read.</para>
+    ///
+    /// <para>⚠️ A 500 is deliberately NOT retried. It means the server ran and threw — a bug or bad data that a
+    /// second identical request reproduces — while the codes listed here mean the request may never have been run
+    /// at all. And a 4xx is an answer, not a failure to get one.</para>
+    /// </summary>
+    private async Task<HttpResponseMessage> SendWithAmbiguityRetriesAsync(HttpMethod method, string path, object? body, CancellationToken ct)
+    {
+        if (body is not IIdempotentRequest { ClientId: { } key } || key == Guid.Empty)
+            return await SendOnceAsync(method, path, body, ct);
+
+        for (var attempt = 0; ; attempt++)
+        {
+            var last = attempt >= AmbiguityBackoff.Length;
+            try
+            {
+                var response = await SendOnceAsync(method, path, body, ct);
+                if (last || !IsAmbiguousStatus(response.StatusCode)) return response;
+                response.Dispose();
+            }
+            catch (HttpRequestException) when (!last) { }
+            // A timeout surfaces as TaskCanceledException with the caller's token un-cancelled; a real cancellation
+            // has it set, and that one must propagate rather than be retried into.
+            catch (TaskCanceledException) when (!last && !ct.IsCancellationRequested) { }
+            await Task.Delay(AmbiguityBackoff[attempt], ct);
+        }
+    }
+
+    /// <summary>Statuses that mean "the request may not have been processed" — a gateway or an overloaded/starting
+    /// instance answering for the app rather than the app answering for itself.</summary>
+    private static bool IsAmbiguousStatus(HttpStatusCode status) =>
+        status is HttpStatusCode.RequestTimeout or HttpStatusCode.BadGateway
+               or HttpStatusCode.ServiceUnavailable or HttpStatusCode.GatewayTimeout;
 
     /// <summary>Bodies at or above this compress before going on the wire; smaller ones aren't worth the gzip
     /// header and the CPU. The account snapshot is the reason this exists — it's ~260KB of JSON re-sent on every

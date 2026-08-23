@@ -255,6 +255,7 @@ public sealed class FinAppDbContext(DbContextOptions<FinAppDbContext> options) :
             t.Ignore(x => x.FundSynced);         // body data — synced-fund marker rides in the snapshot
             t.Ignore(x => x.AccountTransferId);  // body data — the two-sided transfer link rides in the snapshot
             t.Ignore(x => x.CategoryId);         // body data — the optional budget category rides in the snapshot
+            t.Ignore(x => x.ClientId);           // body data — the write's idempotency key rides in the snapshot
         });
 
         b.Entity<InitialBalance>(i =>
@@ -279,6 +280,7 @@ public sealed class FinAppDbContext(DbContextOptions<FinAppDbContext> options) :
             t.Ignore(x => x.ToSynced);
             t.Ignore(x => x.BankExternalId);   // body data — bank provenance rides in the snapshot
             t.Ignore(x => x.AutoFiled);        // body data — auto-filed marker rides in the snapshot
+            t.Ignore(x => x.ClientId);         // body data — the write's idempotency key rides in the snapshot
         });
 
         b.Entity<Contribution>(c =>
@@ -294,6 +296,7 @@ public sealed class FinAppDbContext(DbContextOptions<FinAppDbContext> options) :
             c.Ignore(x => x.AccountTransferId);  // body data — the two-sided transfer link rides in the snapshot
             c.Ignore(x => x.FromAccountId);
             c.Ignore(x => x.IsTransferIn);       // computed from AccountTransferId
+            c.Ignore(x => x.ClientId);           // body data — the write's idempotency key rides in the snapshot
         });
 
         b.Entity<Budget>(bu =>
@@ -365,6 +368,7 @@ public sealed class FinAppDbContext(DbContextOptions<FinAppDbContext> options) :
             s.Property(x => x.TransferPairId);
             s.Ignore(x => x.SourceExternalTransferId);   // body data — the disbursement link rides in the snapshot
             s.Ignore(x => x.IsDisbursement);             // computed from SourceExternalTransferId
+            s.Ignore(x => x.ClientId);                   // body data — the write's idempotency key rides in the snapshot
         });
     }
 

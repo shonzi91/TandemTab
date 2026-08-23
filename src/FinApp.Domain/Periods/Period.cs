@@ -124,7 +124,9 @@ public sealed class Period : Entity
         var old = _fundTransfers.FirstOrDefault(t => t.Id == transferId)
             ?? throw new InvalidOperationException("Transfer not found in this period.");
         _fundTransfers.Remove(old);
-        return TransferFunds(fromFundId, toFundId, amount, old.Date, note);
+        var rebuilt = TransferFunds(fromFundId, toFundId, amount, old.Date, note);
+        rebuilt.SetClientId(old.ClientId);   // T0 — the key survives the rebuild; see EditSavingDeposit for why
+        return rebuilt;
     }
 
     public void RemoveFundTransfer(Guid transferId)
@@ -752,7 +754,14 @@ public sealed class Period : Entity
 
         _savingAllocations.Remove(old);
         if (!newAmount.IsZero) // over-saving is advisory, not blocked
-            _savingAllocations.Add(new SavingAllocation(old.SavingCategoryId, newAmount, old.Date));
+        {
+            var rebuilt = new SavingAllocation(old.SavingCategoryId, newAmount, old.Date);
+            // T0: the idempotency key survives the rebuild, exactly as Expense.CopyBodyDataTo carries it. A retry
+            // arriving after the amount was corrected must still find this row — otherwise editing quietly re-opens
+            // the duplicate window the key exists to close.
+            rebuilt.SetClientId(old.ClientId);
+            _savingAllocations.Add(rebuilt);
+        }
     }
 
     /// <summary>

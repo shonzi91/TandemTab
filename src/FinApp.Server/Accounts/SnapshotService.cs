@@ -202,6 +202,25 @@ public sealed class SnapshotService(FinAppDbContext db, ISnapshotCipher cipher, 
     public async Task<(long PrimaryVersion, long SecondaryVersion, T Result)> MutateTwoAsync<T>(
         Guid userId, Guid primaryId, Guid secondaryId, Func<Account, Account, T> mutate, CancellationToken ct = default)
     {
+        var (primaryVersion, secondaryVersion, _, result) =
+            await MutateTwoOrSkipAsync(userId, primaryId, secondaryId, (a, b) => (true, mutate(a, b)), ct);
+        return (primaryVersion, secondaryVersion, result);
+    }
+
+    /// <summary>
+    /// <see cref="MutateTwoAsync{T}"/> for a cross-account command that may turn out to have <b>nothing to do</b> —
+    /// the two-account counterpart of <see cref="MutateOrSkipAsync{T}"/>, and it exists for the same reason (T0):
+    /// a retried transfer whose original already landed must move no money and bump no version.
+    ///
+    /// <para>⚠️ It skips <b>both</b> accounts or neither. A transfer is one write with two halves, so "changed on
+    /// the source, skipped on the destination" is not a state that can exist — and a check that could produce it
+    /// would be worse than no check at all. That is why the flag is one boolean for the pair rather than one per
+    /// account.</para>
+    /// </summary>
+    public async Task<(long PrimaryVersion, long SecondaryVersion, bool Changed, T Result)> MutateTwoOrSkipAsync<T>(
+        Guid userId, Guid primaryId, Guid secondaryId, Func<Account, Account, (bool Changed, T Result)> mutate,
+        CancellationToken ct = default)
+    {
         if (primaryId == secondaryId)
             throw new BadRequestException("The two accounts must be different.");
         await EnsureContributorAsync(userId, primaryId, ct);
@@ -219,15 +238,19 @@ public sealed class SnapshotService(FinAppDbContext db, ISnapshotCipher cipher, 
         {
             var a = AccountSnapshotSerializer.Deserialize(await cipher.UnprotectAsync(primary.Payload, ct));
             var b = AccountSnapshotSerializer.Deserialize(await cipher.UnprotectAsync(secondary.Payload, ct));
-            T result;
+            (bool Changed, T Result) outcome;
             try
             {
-                result = mutate(a, b);
+                outcome = mutate(a, b);
             }
             catch (Exception ex) when (ex is InvalidOperationException or ArgumentException)
             {
                 throw new BadRequestException(ex.CleanMessage());
             }
+
+            // Nothing to write on either side — the versions both accounts are already on are the truthful answer.
+            if (!outcome.Changed) return (primary.Version, secondary.Version, false, outcome.Result);
+            var result = outcome.Result;
 
             primary.Payload = await cipher.ProtectAsync(AccountSnapshotSerializer.Serialize(a), ct);
             primary.Version++;
@@ -238,7 +261,7 @@ public sealed class SnapshotService(FinAppDbContext db, ISnapshotCipher cipher, 
             try
             {
                 await db.SaveChangesAsync(ct);   // one transaction → both rows commit together, or neither
-                return (primary.Version, secondary.Version, result);
+                return (primary.Version, secondary.Version, true, result);
             }
             catch (DbUpdateConcurrencyException) when (attempt < maxAttempts)
             {
