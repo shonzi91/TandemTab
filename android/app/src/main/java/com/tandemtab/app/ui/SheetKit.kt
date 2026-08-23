@@ -231,10 +231,20 @@ internal fun SheetActionBar(
             .padding(horizontal = 18.dp, vertical = 12.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        OutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f)) { Text("Cancel") }
-        Button(onClick = onSave, enabled = canSave, modifier = Modifier.weight(1f)) {
-            if (saving) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
-            else Text(saveLabel)
+        // A read-only sheet passes an empty saveLabel because it has nothing to save. It used to still get the
+        // button: a dead grey pill taking half the bar, with no text in it — on Breakdown, Payoff and the
+        // notification list alike. An empty control reads as something broken rather than as nothing to do, so
+        // there is simply no second button, and the one that remains says "Close" rather than "Cancel" — there
+        // is nothing to cancel on a sheet that only shows you things.
+        val readOnly = saveLabel.isBlank()
+        OutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f)) {
+            Text(if (readOnly) "Close" else "Cancel")
+        }
+        if (!readOnly) {
+            Button(onClick = onSave, enabled = canSave, modifier = Modifier.weight(1f)) {
+                if (saving) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
+                else Text(saveLabel)
+            }
         }
     }
 }

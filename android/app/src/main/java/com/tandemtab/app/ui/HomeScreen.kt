@@ -24,8 +24,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Velocity
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -404,9 +408,42 @@ fun HomeScreen(
         // render pages it has no content for, and a swipe that briefly shows the wrong month's figures is worse
         // than no animation. Nothing happens at either end of the list, and a drag under the threshold is a scroll.
         var dragX by remember { mutableStateOf(0f) }
-        var dragY by remember { mutableStateOf(0f) }
         // Hoisted so the pull-down gesture can ask whether the page is actually at the top before claiming a drag.
         val homeScroll = rememberScrollState()
+
+        // The pull-down that opens the full notification list. It watches what the scrolling Column could not
+        // use: at the top of the list a downward drag scrolls nothing, so the whole delta arrives here as
+        // leftover, and that leftover is the pull. Anything the list DID consume is ordinary scrolling and is
+        // none of our business.
+        val pullThresholdPx = with(LocalDensity.current) { 110.dp.toPx() }
+        var pulled by remember { mutableStateOf(0f) }
+        val pullDown = remember(pullThresholdPx) {
+            object : NestedScrollConnection {
+                override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
+                    // Only a real finger, and only downward leftover. An upward drag means the reader is going
+                    // back into the list, so the pull is abandoned rather than merely paused.
+                    if (source != NestedScrollSource.Drag || available.y == 0f) return Offset.Zero
+                    if (available.y < 0f) { pulled = 0f; return Offset.Zero }
+                    pulled += available.y
+                    // ⚠️ CONSUME it, and this is the half that makes the gesture work at all. Returning Zero
+                    // leaves the leftover to the stretch overscroll, which swallows it to draw the stretch — a
+                    // measured 1000px drag then reached this connection as **89px** of leftover, against a 289px
+                    // threshold it could never cross. Not "the gesture is flaky": it was arithmetically
+                    // unreachable, and it looked like the nested-scroll wiring was wrong. Claiming the delta is
+                    // what pull-to-refresh does for the same reason. Cost: no stretch at the top of Home, which
+                    // is the affordance this gesture replaces anyway.
+                    return Offset(0f, available.y)
+                }
+
+                // Fires when the finger lifts, whatever the velocity — so this is the gesture's end, not just a
+                // fling. Reset unconditionally: a pull that fell short must not add to the next one.
+                override suspend fun onPreFling(available: Velocity): Velocity {
+                    if (pulled >= pullThresholdPx) showNotifications = true
+                    pulled = 0f
+                    return Velocity.Zero
+                }
+            }
+        }
         Box(
             Modifier
                 .fillMaxSize()
@@ -430,19 +467,16 @@ fun HomeScreen(
                         onDragCancel = { dragX = 0f },
                     ) { _, delta -> dragX += delta }
                 }
-                // Pull down for the full notification list. ⚠️ Only from the very top: this Box wraps a
-                // verticalScroll column, and an ungated vertical gesture would swallow ordinary scrolling. The
-                // scroll position is the gate, the way pull-to-refresh does it.
-                .pointerInput(Unit) {
-                    detectVerticalDragGestures(
-                        onDragStart = { dragY = 0f },
-                        onDragEnd = {
-                            if (dragY >= 110.dp.toPx() && homeScroll.value == 0) showNotifications = true
-                            dragY = 0f
-                        },
-                        onDragCancel = { dragY = 0f },
-                    ) { _, delta -> if (homeScroll.value == 0) dragY += delta }
-                },
+                // Pull down for the full notification list.
+                // ⚠️⚠️ This MUST be nested scroll, not a second `pointerInput`. It was one, and the gesture never
+                // fired once on a device: this Box wraps a `verticalScroll` Column, and the inner scrollable is
+                // hit first, so it claims every vertical drag — including the ones at offset 0 that scroll
+                // nothing. The outer detector was therefore never handed a drag to measure. The horizontal
+                // detector above survives only because nothing inside it consumes horizontal drags, which is
+                // exactly why the bug looked impossible from the code: its identical-looking sibling works.
+                // Nested scroll is how pull-to-refresh actually does it — the child scrolls first and reports
+                // what it could NOT use, and overscroll at the top is precisely that leftover.
+                .nestedScroll(pullDown),
         ) {
             run {
                 Column(
@@ -1071,7 +1105,14 @@ private fun BalanceHero(
                 // No rate at all when nothing came in — the server sends null rather than a zero, and printing
                 // "0% of money in" to someone who has just started reads as a verdict on them.
                 overview.savedRate?.takeIf { it > 0.0 }?.let {
-                    HeroSub("${Math.round(it * 100)}% of money in", tandem.muted)
+                    // ⚠️ Through maskPct. This line sat directly under a masked figure, on the screen the bar
+                    // says "Figures hidden" on, and printed the savings rate in full — found on the emulator,
+                    // not by reading. A rate beside a hidden amount is an invitation to work out what it is a
+                    // rate OF, and the web has always masked its half of this pair with FmtPct.
+                    // ⚠️ Only the NUMBER goes through the mask, exactly as the web does it — masking the whole
+                    // phrase takes "of money in" with it and leaves a bare row of dots that says nothing about
+                    // what was hidden. The label is not the secret; the figure is.
+                    HeroSub("${maskPct(Math.round(it * 100).toString())}% of money in", tandem.muted)
                 }
             }
         }

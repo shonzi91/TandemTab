@@ -24,6 +24,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.foundation.systemGestureExclusion
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -172,6 +173,13 @@ fun PayoffSheet(
                     // actually calculated. `steps` counts the gaps BETWEEN stops, hence the -2.
                     valueRange = 0f..payoff.curve.lastIndex.toFloat(),
                     steps = (payoff.curve.size - 2).coerceAtLeast(0),
+                    // ⚠️ At rest the handle sits at the left end, about 20dp in — inside the ~30dp strip Android
+                    // reserves for the back gesture. Dragging it from there did not move the slider, it CLOSED
+                    // THE SHEET, which is the first thing anyone tries. Tapping the track always worked, so this
+                    // is invisible unless you actually drag from rest. systemGestureExclusion is the platform's
+                    // answer for exactly this case; the system caps how much a window may claim, so it costs
+                    // nothing elsewhere.
+                    modifier = Modifier.systemGestureExclusion(),
                 )
                 FigureLine("Extra each month", money(point.extra), strong = true)
                 FigureLine("Finishes sooner by", "${point.monthsSaved} months")

@@ -152,7 +152,9 @@ private fun AchievementCell(a: AchievementDto) {
         Text(maskServerText(a.desc), fontSize = 10.sp, textAlign = TextAlign.Center, color = tandem.muted)
         val sub = when {
             a.earned -> a.earnedOn?.let { prettyEarnedOn(it) }
-            (a.percent ?: 0) > 0 -> "${a.percent}%"
+            // Masked like the title and description above it: progress toward a money goal is a fact about
+            // the money, and this sheet already hides the rest of it.
+            (a.percent ?: 0) > 0 -> maskPct("${a.percent}%")
             else -> null
         }
         sub?.let {

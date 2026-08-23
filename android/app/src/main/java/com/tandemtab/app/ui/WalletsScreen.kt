@@ -203,11 +203,18 @@ fun WalletsScreen(
             if (bankEnabled) {
                 Spacer(Modifier.height(12.dp))
                 BankEntryRow(connected = bankConnected, reviewCount = bankReviewCount, onClick = onOpenBank)
-                Spacer(Modifier.height(10.dp))
-                // Next to the bank row on purpose: both answer "money that happened elsewhere", and import is the
-                // one that works at every bank rather than only the connected ones.
-                ImportEntryRow(proLocked = !canImport, onClick = { if (canImport) onOpenImport() else onImportProBlocked() })
             }
+
+            // Import sits NEXT TO the bank row but OUTSIDE its gate, and the difference is the whole point.
+            // ⚠️ It used to be inside `if (bankEnabled)`, which read naturally — "both answer money that happened
+            // elsewhere" — and quietly made import unreachable for almost everyone. `bankEnabled` means external
+            // sync is available: a configured provider, an allowlisted email, a verified address. Import needs
+            // none of that. It parses a file already on the phone and posts the rows the reader approved, which
+            // is exactly why it is the one that "works at every bank rather than only the connected ones" — and
+            // that sentence was sitting two lines above the gate that made it false.
+            // Its own gate is Pro, which `proLocked` already applies.
+            Spacer(Modifier.height(if (bankEnabled) 10.dp else 12.dp))
+            ImportEntryRow(proLocked = !canImport, onClick = { if (canImport) onOpenImport() else onImportProBlocked() })
 
             // One entry rather than a fourth icon on every wallet row — the sheet asks which wallet it comes out
             // of, which is a question, not a pre-selection worth three more taps' worth of chrome.
