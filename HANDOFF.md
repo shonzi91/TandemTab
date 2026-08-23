@@ -4,10 +4,13 @@ Last updated: 2026-08-23 (Session 118 — **both of the next session's headline 
 every write that moves money, and the R2.5 server slice built and rendering on the phone.**
 Three commits. **559 + 56 + 461 green (+28), Kotlin green, pairscan 0. R2 parity 115/122 → 117/124 (94%)** —
 two new routes, both called from Kotlin the same session, so the denominator and the numerator moved together.
-⚠️ **NOT PUSHED AND NOT DEPLOYED.** Live is still `finapp-00328-zmd` (image `finapp:4035f48`) and `origin/main`
-is still `5a60562`; all four commits are **local only**. Two new read routes and four changed writes are on
-nobody's server — see "Next session" item 1. ⚠️ This is the failure mode the S116 merge wrote up (*"deployed but
-unpushed while the branches were pushed but unmerged"*), so it is stated here rather than assumed.
+**LIVE: `finapp-00329-c2g`, 100% LATEST** — image `finapp:c08247b` (digest `sha256:15285a76…`); `origin/main` is
+`c08247b` too, so all three agree. Roots 200 on both hosts, 5 `secretKeyRef`s, and the only WARNING+ lines on the
+new revision are the four probe 401s below. **No archived-purge race this deploy** — not a stack frame on it.
+✅ **Proven on the served bytes, and for once easily.** Both new routes answer **401 unauthenticated on both
+hosts** — meaning the route matched and the auth filter ran — while the control
+`/accounts/{guid}/not-a-real-route` answers **200** (the SPA fallback), which is what makes the 401 evidence
+rather than noise. `/trends` and `/savings/plan` exist only in this deploy.
 ★ **Driven on the emulator, and it found five things a code read did not** — including the one worth carrying
 forward: the payoff plan's date and the "at your current pace" date **contradict each other on one screen**.
 ⚠️ **The local dev DB's `Emu Verify` session was cleared** to sign in as a seeded multi-period user. The account
@@ -61,10 +64,9 @@ retry and not the double tap. (`AddExpenseSheet`'s `ExpenseDraft.clientId` is th
 pattern the others should copy.)
 
 #### Next session
-1. ⭐ **Push, then deploy.** Four commits are local and none of them is live. ✅ Unusually easy to verify this
-   time: `GET /accounts/{guid}/trends` and `/savings/plan` should return **401** on both hosts (route matched,
-   auth filter ran) while the control `/accounts/{guid}/not-a-real-route` returns **200** — see the deploy note
-   in [[reference-build-deploy-thisdevice]] for why 401 is the proof and 404 is not available.
+1. ✅ **Pushed and deployed** (`finapp-00329-c2g`), verified on the served bytes — see the header. Nothing is
+   outstanding on the delivery side for the web. ★ **The Android half still reaches nobody**: the plan card and
+   the Trends drawer are live on a server whose only phone client is un-shipped. Item 6.
 2. ⬜ **The week recap** — the third server-read row of R2.5, deliberately not batched with the two above.
 3. ⬜ **The PWA shell** (manifest, service worker, `theme-color`). With iOS on hold the mobile web *is* the iOS
    product and cannot be installed. Also the first half of R4.5.
