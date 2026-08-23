@@ -44,7 +44,16 @@ public record RecurringRowDto(
     // ⚠️ LinkedDebtName is resolved in THIS account, so it is null for a foreign loan — the name lives where the
     // bucket does. A client that wants it has to read the other account; one that doesn't should say "a loan in
     // <account>" rather than printing nothing.
-    Guid? LinkedDebtAccountId = null);
+    Guid? LinkedDebtAccountId = null,
+    // Active and unhandled, but its first due date is still ahead of this period (added after this month's day had
+    // passed). ⚠️ NOT derivable client-side: it is Pending=false like a posted bill, Active=true unlike a paused one,
+    // and SkippedThisPeriod=false like both — three flags that cannot separate "never happened yet" from "already
+    // done". Trailing and optional; false on an older server, which is exactly today's behaviour (no marker).
+    // ⚠️ This and LinkedDebtAccountId above were each written as the LAST parameter, on branches that did not know
+    // about each other. Both are trailing and optional, so the pair is safe in either order — but the order here is
+    // the positional constructor, so RecurringMap.View.cs passes them in exactly this sequence and a future field
+    // goes after both.
+    bool StartsLater = false);
 
 /// <summary>A debt bucket a bill can be linked to. <see cref="PaymentDriven"/> mirrors the bucket's "I log each
 /// installment here" switch — a linked bill only drives the balance when it's on, which is the user's call, so the

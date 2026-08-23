@@ -1415,6 +1415,10 @@ data class RecurringRowDto(
     // D2 — set when the loan this bill services lives in ANOTHER account. `linkedDebtName` above is resolved in
     // THIS account, so it is null for a foreign loan: say "a loan in another account" rather than nothing at all.
     val linkedDebtAccountId: String? = null,
+    // Active and unhandled, but its first due date is still ahead of this period — added after this month's day had
+    // already gone by. NOT derivable here: `pending` is false as on a posted bill, `active` true unlike a paused one,
+    // `skippedThisPeriod` false like both. Without it such a row is identical to one already paid.
+    val startsLater: Boolean = false,
 )
 
 /** A debt bucket a bill can be linked to. `paymentDriven` mirrors the bucket's "I log each installment here"

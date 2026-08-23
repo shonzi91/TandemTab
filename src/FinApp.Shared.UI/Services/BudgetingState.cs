@@ -1456,6 +1456,11 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     /// <summary>How many days until a recurring item is due, within the current period.</summary>
     public int RecurringDaysUntilDue(RecurringItem r) => r.DaysUntilDue(Period.From, Period.To, Today());
 
+    /// <summary>Added after its day had already passed this period, so it first falls due next one. Sits in the
+    /// lower section (it is not pending) and must say so on the row, or it is indistinguishable from a bill that
+    /// really was paid — see <see cref="RecurringSections"/>.</summary>
+    public bool RecurringStartsLater(RecurringItem r) => IsPeriodOpen && r.StartsLater(Period.From, Period.To);
+
     /// <summary>
     /// The recurring list split the way it is read (O5): what is <b>still expected</b> this period, soonest first,
     /// and what is <b>behind you</b>, most recent first. The web list had no ordering at all — it rendered raw
@@ -1464,6 +1469,11 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     /// ⚠️ A <b>paused</b> item is not pending, so it sits in the lower group. That is the honest place for it — it
     /// is not coming — and the row already says "paused" beside its name, so nothing is claimed that isn't true.
     /// </para>
+    /// <para>⚠️ That rule is "loose heading, precise row", and it applies to a <b>third</b> population the lower
+    /// group holds: an item that has <b>not started yet</b> (added after this month's day had passed, so it first
+    /// falls due next period). It is not pending either — correctly, or it would nag for a bill nobody owes — but
+    /// it had no marker until <see cref="RecurringStartsLater"/>, so it rendered exactly like one already paid,
+    /// under a heading saying it had happened. Anything filed here must name itself.</para>
     /// <para>Overdue items are pending with a <i>negative</i> days-until-due, which sorts them to the very top of
     /// "coming up" — where something you have missed belongs.</para>
     /// </summary>

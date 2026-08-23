@@ -1,16 +1,19 @@
 # TandemTab (FinApp) — session handoff
 
-Last updated: 2026-08-23 (**the merge — Session 115's Android branch lands on main, and the five commits main
-never wrote up.** Two lines of work had been running in parallel since `0ae94e9` and neither document admitted the
-other existed. **553 + 56 + 428 green, 28 Kotlin green, pairscan 0.**
-⚠️ **The merge is NOT deployed.** What is live is *pre-merge main* — verified on the served bytes rather than the
-tag: the scoped bundle carries `.act-split` and `.goal-period-line`, which exist only in `ac46b86`, and served
-`app.css?v=45` is byte-identical to the local file. **`origin/main` is still `a021a5d`**, so main's five commits
-are deployed but unpushed, which is the reverse of the branch's problem and just as easy to misread.
-★ **Four defects the merge itself created, and only one of them would have failed the build.** Two files
+Last updated: 2026-08-23 (**the merge — both outstanding branches land on main, alongside the five commits main
+never wrote up.** Three lines of work had been running in parallel since `0ae94e9` and no document admitted the
+others existed. **559 + 56 + 429 green, 28 Kotlin green, pairscan 0. Parity 108/120 → 115/122 (94%).**
+★ **Four defects the first merge created, and only one of them would have failed the build.** Two files
 conflicted; the damage was in the files that auto-merged *cleanly*. All four are one shape — main made masking
-universal by deleting the six per-screen money formatters, and the branch had meanwhile written three new screens
-against the world where those formatters still existed.)
+universal by deleting the six per-screen money formatters, and Session 115 had meanwhile written three new screens
+against the world where those formatters still existed.
+⚠️ **`fix/recurring-not-started` was NOT conflict-free**, though the previous handoff expected it to be: it and
+the Android branch each appended a trailing optional field to `RecurringRowDto`, each as the last parameter, on
+branches that could not see one another. Both are kept — see the second table — and the fix is only obvious in
+hindsight, which is the point: "trailing optional" is safe against an old *client*, and says nothing at all about
+a second branch doing the same thing to the same record.
+⚠️ Before this, main's five commits were deployed but **unpushed** while the branches were pushed but **unmerged**
+— opposite failure modes, and each looks like the other in a one-line status check.)
 
 #### ⭐ What the merge had to resolve
 
@@ -27,14 +30,28 @@ damage was where one side *deleted* a shared thing and the other side wrote new 
 silently, correctly, line by line, into something that does not hold. **Grepping the merged tree for the deleted
 symbol is what found it**, not the conflict list and not the build.
 
+#### ⭐ And what the second merge had to resolve
+
+`fix/recurring-not-started` (`276321c`) was expected to be clean and was not. Three conflicts, all one shape:
+
+| File | What |
+|---|---|
+| `RecurringView.cs` | Both branches added a **trailing optional field to `RecurringRowDto` as the last parameter** — D2's `LinkedDebtAccountId` and this one's `StartsLater`. Kept both. `LinkedDebtAccountId` holds its position because it is the one already live; `StartsLater` goes after it. ⚠️ The order is the **positional constructor**, so a comment there now says the mapper passes them in that sequence and a future field goes after both. |
+| `RecurringMap.View.cs` | The other end of the same record — the single construction site, which is why the order only had to be decided once. `StartsLater` is gated on `open`, like every other due-state flag on the row. |
+| `Dtos.kt` | The phone's copy. Ordering is cosmetic there (kotlinx deserialises by name), so both were kept in the contract's order to keep the two files readable side by side. |
+
+⚠️ **"Trailing and optional" protects against an old *client*. It says nothing about a second branch doing the
+same thing to the same record** — both were written to be the safe kind of change, and that is exactly why they
+collided. Worth remembering the next time two branches are open on one DTO.
+
 #### Next session
 1. ⭐ **Drive it on the emulator** — still S115's item 1, and no longer blocked. That handoff says the agent could
    not get past sign-in; `5706699` on main then verified masking against real balances on API 35, so the sign-in
    problem was solved after that handoff was written. The swipe that may fight the scroll view, the ring that may
    show a seam and the slider that may snap wrong are all still unobserved.
-2. **Deploy and push.** One deploy now covers both lines. Note `origin/main` is five commits behind *before* this
-   merge commit.
-3. `fix/recurring-not-started` (`276321c`) is still unmerged and pushed, and should be conflict-free.
+2. **Both branches are merged; nothing is left unmerged.** They can be deleted once the deploy is confirmed.
+3. ⚠️ **The Android work is on main now but still has never been RUN** — merging moved it, it did not verify it.
+   Everything above about masking the three new sheets is reasoned and compiled, not observed.
 4. ⚠️ **A stale-claim sweep is overdue**: [QUEUE.md](QUEUE.md) still lists the foreign-cash wallet as the top open
    row (built on the branch, and now merged), and the roadmap artifact still names `00322` as live with "+2
    commits awaiting deploy".

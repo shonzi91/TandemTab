@@ -5945,7 +5945,7 @@ else
                             }
                             <span class="row-main">
                                 <span class="cat-ico">@IconOrEmoji(r.Icon ?? (r.Kind == RecurringKind.Income ? "note" : "repeat"))</span> @r.Name
-                                <span class="row-note">· @amountText · @Loc["day"] @r.DayOfMonth@(r.AutoPost ? " · ⚡" + @Loc["auto"] : "")@(r.Active ? "" : " · " + @Loc["paused"])</span>
+                                <span class="row-note">· @amountText · @Loc["day"] @r.DayOfMonth@(r.AutoPost ? " · ⚡" + @Loc["auto"] : "")@(r.Active ? "" : " · " + @Loc["paused"])@(State.RecurringStartsLater(r) ? " · " + @Loc["starts next period"] : "")</span>
                                 @if (r.LinkedDebtBucketId is { } rdebt)
                                 {
                                     <span class="inst-tag" title="@Loc["Each payment will be split into interest and principal rows against that loan, instead of one lump expense."]">🧾 @State.SavingBucketName(rdebt)</span>
