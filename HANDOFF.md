@@ -3,6 +3,15 @@
 Last updated: 2026-08-23 (**the merge — both outstanding branches land on main, alongside the five commits main
 never wrote up.** Three lines of work had been running in parallel since `0ae94e9` and no document admitted the
 others existed. **559 + 56 + 429 green, 28 Kotlin green, pairscan 0. Parity 108/120 → 115/122 (94%).**
+**LIVE: `finapp-00327-t6g`, 100% LATEST** — image `finapp:edff80b` (digest `sha256:6ee58af7…`); `origin/main` is
+`edff80b` too, so for the first time in three sessions the three of them agree.
+✅ **Proven on the served bytes, not the tag.** Nothing greppable changed — no CSS, and a `.razor` edit compiles
+into the wasm — so the proof is the route probe instead: `GET /accounts/{guid}/breakdown` returns **401 on both
+hosts**, meaning the route matched and the auth filter ran, while the control `/accounts/{guid}/not-a-real-route`
+returns **200** (the SPA fallback). `/breakdown` exists only in `9666fde`, which arrived in this deploy. Roots 200
+on both hosts, 5 `secretKeyRef`s. The archived-purge race fired as it does on most multi-instance deploys — **0
+`Program.<Main>$` frames**, so caught and healthy, with the startup probe succeeded (see the deploy note in
+[[reference-build-deploy-thisdevice]] for why severity tells you nothing there).
 ★ **Four defects the first merge created, and only one of them would have failed the build.** Two files
 conflicted; the damage was in the files that auto-merged *cleanly*. All four are one shape — main made masking
 universal by deleting the six per-screen money formatters, and Session 115 had meanwhile written three new screens
@@ -13,7 +22,8 @@ branches that could not see one another. Both are kept — see the second table 
 hindsight, which is the point: "trailing optional" is safe against an old *client*, and says nothing at all about
 a second branch doing the same thing to the same record.
 ⚠️ Before this, main's five commits were deployed but **unpushed** while the branches were pushed but **unmerged**
-— opposite failure modes, and each looks like the other in a one-line status check.)
+— opposite failure modes, and each looks like the other in a one-line status check.
+⚠️ **Deployed is still not observed.** The Android half of this deploy has never been run; see item 1 below.)
 
 #### ⭐ What the merge had to resolve
 
