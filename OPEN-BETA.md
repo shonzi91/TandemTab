@@ -478,11 +478,26 @@ of the web's `ShowTripsTab(id)`: switches to Spending **and** opens that journey
 `/trips` read, which is **cached per account** and already invalidated after any expense write, so it is far
 cheaper than the breakdown one — and the add sheet was going to pay for it anyway.
 
-**⬜ What is left in this phase** (nothing below was started): the **server slice** — Trends + the whole-stack
-payoff plan, batched, plus the **week recap**; the **PWA** shell (manifest, service worker, `theme-color`); the
-phone→web rows (**always-visible milestones**, an **auto-mask trigger**); and the **rest of T0** — the automatic
-retry UX and the writes other than add-expense. ✅ The bills-card disagreement is **settled and built** (see the
-Phone → web paragraph), all three client rows are done, and **T0's duplicate-expense bug is closed**.
+✅ **The server slice landed (S118), and the phone renders both halves.** `GET /trends` returns one row per
+period — money in, spent, kept, set aside, the closing balance, debt repaid, and a second series narrowed to one
+category or bucket. `GET /savings/plan` returns the whole-stack payoff plan: avalanche or snowball, one shared
+extra per month, the clearing order, the debt-free date and the interest. ⚠️ **The window SELECTS periods, it
+does not slice them** — a period overlapping the window comes back whole, because a half-month drawn beside full
+ones invites exactly the comparison the chart exists to support. On the phone, **Trends shares the Breakdown
+drawer** rather than taking a card on Home (the web pairs the two in one glance row), and the plan gets a Goals
+card shown only with **two or more debts**.
+
+★ **The finding worth carrying forward: the plan's date and the "at your pace" date contradict each other on one
+screen**, and with *no extra at all* the plan still clears sooner. The difference is entirely the rollover — the
+plan keeps paying the cleared debt's installment onto the next one, and the do-nothing forecast lets each debt
+run its own installment out. Found by reading both against one live account, never by reasoning about either
+alone. It is now a sentence on the sheet, a warning on `DebtPlanDto.PaceMonths`, and a test.
+
+**⬜ What is left in this phase**: the **week recap** (the third server-read row, not batched with the two above);
+the **PWA** shell (manifest, service worker, `theme-color`); the phone→web rows (**always-visible milestones**, an
+**auto-mask trigger**); and the last of T0 — the writes that are still keyless (see below). ✅ The bills-card
+disagreement is **settled and built** (see the Phone → web paragraph), all three client rows are done, **T0's
+duplicate-expense bug is closed**, and the server slice is done.
 
 **Phone → web.** The **always-visible milestones line** (the phone's rule is better and `HomeScreen.kt` argues
 why); an auto-mask trigger to match the phone's face-down sensor; and ⚠️ **the bills card, which is a genuine
@@ -518,9 +533,27 @@ other client watches does not move and no one is told to re-pull for a change th
 minted **per row, when the row is composed** — one key for a batch would make the server drop rows 2..n as
 duplicates, and a key minted at send time would change on every retry and mean nothing. Proven end to end: a
 phone-written row's key was replayed as a lost-response retry and returned the original's id, with no new row and
-no version bump. ⬜ **Still open:** the *automatic* retry UX (the sheet keeps its contents on failure, but the
-user presses Save again), and the other writes — deposits, transfers, savings — which carry the same shape of
-risk and no key yet.
+no version bump.
+
+✅ **The rest of T0 landed (S118).** Deposits, savings deposits, wallet-to-wallet transfers and account-to-account
+transfers all take a key now, each with the same dedupe-before-validation rule and the same "write nothing on a
+recognised retry". The two-account transfer needed a new spine — `MutateTwoOrSkipAsync` — and its skip is
+**all-or-nothing**: a transfer is one movement with two ends, so a check that could skip the source and still
+write the destination would be worse than no check at all.
+
+★ **And the automatic half, which is what the whole thing was for.** `IIdempotentRequest` (`IdempotentRequest` in
+Kotlin) declares which request types a transport may re-send. Both clients now retry a transport failure or a
+502/503/504/408 up to three attempts over ~1.2s — **and only for a body carrying a real key**. Re-sending a
+keyless write turns "we don't know if it landed" into a guaranteed duplicate, which is worse than the error it
+was avoiding; a 500 is deliberately not retried, because it means the server ran and threw, which a second
+identical request reproduces.
+
+⬜ **Still open:** the keys stop at the writes that move money. The installment log, the statement import,
+settlements, refunds and the savings draw-downs (`/savings/spend`, `/savings/disburse`, `/savings/transfer`) all
+still send none — which is *safe*, because nothing retries them automatically, but it means a person pressing
+Save twice on a slow connection is still on their own there. And on both clients the key is minted per Save
+press rather than living on the sheet's draft, so it closes the automatic retry and not the double tap (the
+add-expense sheet is the exception — its draft carries one).
 
 ⚠️ **Nothing in this phase starts before [QUEUE.md](QUEUE.md) #1** — a large Android surface is live and has
 never been run. Every row here adds to that pile if it lands first.

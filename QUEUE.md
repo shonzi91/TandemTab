@@ -6,7 +6,7 @@ checked against the code, not carried forward from an older write-up.*
 | | |
 |---|---|
 | **Opened** | 2026-08-20 (Session 111) |
-| **Reviewed** | 2026-08-23 — every row re-checked against the code after both outstanding branches were merged |
+| **Reviewed** | 2026-08-23 — every row re-checked after the merge; #8's payoff half struck off after S118 built it |
 | **Sources** | [BETA-FINDINGS.md](BETA-FINDINGS.md), [UX-BACKLOG.md](UX-BACKLOG.md), [BACKLOG.md](BACKLOG.md), [docs/MOBILE.md](docs/MOBILE.md), the carried "still open" lists in [HANDOFF.md](HANDOFF.md) |
 | **Not in here** | Anything a roadmap phase already owns — R3's assistant, R4's migration, R5's billing. See [OPEN-BETA.md](OPEN-BETA.md) |
 | **Status** | ✅ **The owner's list is closed** — O14 shipped in S114 and this file had not been ticked. **The old #1 (the foreign-cash wallet) is built and live.** What is left is led by a different kind of risk: a large amount of Android code is *deployed and has never been run*. |
@@ -137,14 +137,18 @@ the payoff read (`743ec4a`) and **deliberately did not guess at the rest** rathe
 payoff read exists, the honest next step is to diff the two surfaces field by field and write down what actually
 differs.
 
-✅ **S116's surface sweep found the first half, and it is a server-read row.** The web's Goals tab carries a
-**whole-stack payoff plan** — one extra amount across every debt, **Avalanche vs Snowball**, a debt-free date,
-total interest and the per-debt clearing order — computed in the thick client from `FinApp.Forecasting.LoanForecast`
-over the snapshot. The server exposes only **per-bucket** `GET /savings/{bucketId}/payoff` (`Program.cs:963`),
-which is what `PayoffSheet.kt` renders. **So the phone can answer *when does this loan end* and cannot answer
-*when am I debt-free*.** ⚠️ Size it as a **server slice**, not Kotlin — and batch it with the Trends read, since
-both are per-period aggregates no thin contract carries. The row now lives in **R2.5**
-([OPEN-BETA.md](OPEN-BETA.md)); what remains open here is the *rest* of the field-by-field diff.
+✅ **The payoff half is BUILT and rendering (S118).** `GET /accounts/{id}/savings/plan` returns the whole-stack
+plan — avalanche or snowball, one shared extra per month, the clearing order, the debt-free date and the total
+interest — and the phone draws it from a Goals card shown with two or more debts. The phone can now answer *when
+am I debt-free*, which it could not before. Batched with `GET /trends` as one server slice, as this row asked.
+
+★ **The diff it did surface, and it was hiding in plain sight on both clients:** the whole-stack plan and the
+Home "Debt-free" line are **different questions**, and the second is routinely a later date. The plan rolls each
+cleared debt's installment onto the next; the Home forecast lets each debt run its own installment out. Neither
+was wrong; nothing said they were different. Both figures are now on one screen with a sentence explaining it.
+
+⬜ **What is still open here is the rest of the field-by-field diff** — the owner's *"maybe other stuff too I
+don't know"*. The payoff row is closed; nobody has yet walked the two debt surfaces field by field.
 
 ## 9. Tests whose comments assert what their code does not
 

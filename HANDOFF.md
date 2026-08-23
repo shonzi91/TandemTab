@@ -1,6 +1,81 @@
 # TandemTab (FinApp) — session handoff
 
-Last updated: 2026-08-23 (Session 117 — **R2.5 opens and takes four rows: the phone gets an income list, the
+Last updated: 2026-08-23 (Session 118 — **both of the next session's headline rows, done: T0 finished across
+every write that moves money, and the R2.5 server slice built and rendering on the phone.**
+Three commits. **559 + 56 + 461 green (+28), Kotlin green, pairscan 0. R2 parity 115/122 → 117/124 (94%)** —
+two new routes, both called from Kotlin the same session, so the denominator and the numerator moved together.
+⚠️ **NOT PUSHED AND NOT DEPLOYED.** Live is still `finapp-00328-zmd` (image `finapp:4035f48`) and `origin/main`
+is still `5a60562`; all four commits are **local only**. Two new read routes and four changed writes are on
+nobody's server — see "Next session" item 1. ⚠️ This is the failure mode the S116 merge wrote up (*"deployed but
+unpushed while the branches were pushed but unmerged"*), so it is stated here rather than assumed.
+★ **Driven on the emulator, and it found five things a code read did not** — including the one worth carrying
+forward: the payoff plan's date and the "at your current pace" date **contradict each other on one screen**.
+⚠️ **The local dev DB's `Emu Verify` session was cleared** to sign in as a seeded multi-period user. The account
+is untouched server-side; the emulator just needs a fresh sign-in (and now carries a second debt bucket I added
+to make the plan card appear).)
+
+#### ⭐ What Session 118 took
+
+| Commit | Row | The thing worth remembering |
+|---|---|---|
+| `1395bd3` | **T0, the rest of it** | Deposits, savings deposits, fund transfers and account transfers all take a key. ★ The two-account transfer needed `MutateTwoOrSkipAsync`, and its skip is **all-or-nothing** — a check that could skip the source and still write the destination would be worse than no check at all. |
+| `478b555` | **The server slice** | `GET /trends` (per-period aggregates) and `GET /savings/plan` (the whole-stack payoff). Batched because both are the same kind of thing: a total no thin contract carries. |
+| `e3bc675` | **The phone renders both** | Trends shares the **Breakdown drawer**; the plan gets a Goals card at two-or-more debts. Five emulator findings, below. |
+
+#### ★★ The contradiction the emulator found
+
+The plan says **Debt-free Feb 2029**. The pace forecast on the same sheet says **Dec 2029**. And with **no extra
+at all** the plan still wins — which reads as a bug and is not one: the plan keeps paying a cleared debt's
+installment onto the next one, and the do-nothing forecast lets each debt run its own installment out.
+
+★ **Neither figure was wrong and nothing said they were different.** The web has shipped both for months without
+ever putting them on one screen — Home shows the pace, Goals shows the plan — so the disagreement had nowhere to
+be noticed. The fix is words: the section is headed *"If nothing changes"* and says outright that it does not
+assume the rollover. Also written onto `DebtPlanDto.PaceMonths`, so the next client to render both inherits the
+warning rather than the bug, and pinned by
+`DebtPlanApiTests.With_no_pace_the_plan_beats_doing_nothing_because_it_rolls_installments_on`.
+
+⭐ It also cross-checks the port: the sheet's pace date matches Home's existing "on track for Debt-free" line
+exactly (Dec 2029 · 3y 4m), and that line comes from `/targets`, which this work never touched.
+
+#### The other four the device found
+
+| What | Why it mattered |
+|---|---|
+| Extra-per-month chips read **"+39 +78 +156 +390"** | A formula's output (`totalInstallments / 10`), with no currency symbol. Nobody picks €39. Now +€50 +€100 +€200 +€500, rounded up to the next 25 — the ladder still scales with the debt. |
+| The plan card said **"2 debts — see when they clear"** | The one fact it had (a date) was behind the tap the card was meant to earn. Goals now fetches the plan when — and only when — the card will be drawn: two or more live debts, once per account. |
+| **One period drew a lone orange stick** in 150dp of empty space | A trend needs two points. Below that the chart is skipped and the row underneath already says everything. |
+| The bars had **no month axis**, then the axis floated clear of the chart | Labels sit under the whole canvas, so every unused pixel below the baseline becomes a gap. Height and baseline are now tuned against each other, with a comment saying so. |
+
+★ **Also confirmed on the device**, because none of it can be confirmed by reading: the Free history gate fires
+on *12 months* / *All time* and leaves the chips showing the range it actually drew; the strategy and extra chips
+re-fetch and move every figure; and a replayed deposit key returned the original's id with no second row.
+
+#### ⚠️ What T0 still does not cover
+
+The keys stop at the writes that move money between the places money lives. **The installment log, statement
+import, settlements, refunds and the savings draw-downs still send none** — which is *safe*, because nothing
+retries them automatically, but a person pressing Save twice on a slow connection is still on their own there.
+And on both clients the key is minted **per Save press**, not on the sheet's draft, so it closes the automatic
+retry and not the double tap. (`AddExpenseSheet`'s `ExpenseDraft.clientId` is the one exception, and it is the
+pattern the others should copy.)
+
+#### Next session
+1. ⭐ **Push, then deploy.** Four commits are local and none of them is live. ✅ Unusually easy to verify this
+   time: `GET /accounts/{guid}/trends` and `/savings/plan` should return **401** on both hosts (route matched,
+   auth filter ran) while the control `/accounts/{guid}/not-a-real-route` returns **200** — see the deploy note
+   in [[reference-build-deploy-thisdevice]] for why 401 is the proof and 404 is not available.
+2. ⬜ **The week recap** — the third server-read row of R2.5, deliberately not batched with the two above.
+3. ⬜ **The PWA shell** (manifest, service worker, `theme-color`). With iOS on hold the mobile web *is* the iOS
+   product and cannot be installed. Also the first half of R4.5.
+4. ⬜ The two phone→web rows: the always-visible milestones line, and an auto-mask trigger.
+5. ⬜ **Move the idempotency key onto the sheet drafts** (see above) and cover the remaining writes.
+6. ⚠️ **Android tagging (`android-v0.1.0`) is still the owner's call**, and the built-but-unshipped gap grew
+   again this session.
+
+---
+
+Previously: 2026-08-23 (Session 117 — **R2.5 opens and takes four rows: the phone gets an income list, the
 Breakdown gets a door you can see, Home shows the trip you are on, and a retried expense stops becoming two.**
 Five commits, every one of them driven on the emulator rather than reasoned about.
 **559 + 56 + 433 green (+4), 28 Kotlin green, pairscan 0. Parity 115/122 (94%) — unchanged, and that is the
