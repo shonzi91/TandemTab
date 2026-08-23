@@ -271,4 +271,110 @@ public static class SavingsMap
             Curve = curve,
         };
     }
+
+    /// <summary>
+    /// The whole-stack payoff plan (<see cref="DebtPlanDto"/>): one spare amount across every debt, the clearing
+    /// order under avalanche or snowball, the debt-free date and the total interest — plus the separate
+    /// "where am I actually heading" forecast at the pace the user has demonstrated.
+    ///
+    /// <para>★ Its own read rather than a field on <see cref="View"/>, for the same reason the per-bucket payoff
+    /// is: it runs an amortisation per debt per call, and every Goals render would otherwise pay for a plan
+    /// nobody has opened. Unlike the per-bucket one it takes the caller's <paramref name="extraPerMonth"/> and
+    /// <paramref name="strategy"/>, because those are the two things the screen exists to let you change.</para>
+    ///
+    /// <para>⚠️ <b>Not Pro-gated, deliberately.</b> The web's planner card is free — only the per-bucket modelling
+    /// of the bank's alternatives is withheld — and a 402 here would withhold the debt-free date the Home card has
+    /// always shown for nothing.</para>
+    /// </summary>
+    /// <param name="extraPerMonth">The spare amount thrown at the stack each month, on top of every installment.</param>
+    /// <param name="strategy">"avalanche" (default, highest rate first) or "snowball" (smallest balance first).</param>
+    public static DebtPlanDto Plan(Account account, decimal extraPerMonth = 0m, string? strategy = null, Period? viewPeriod = null)
+    {
+        ArgumentNullException.ThrowIfNull(account);
+        var period = viewPeriod ?? account.CurrentPeriod;
+        var mode = string.Equals(strategy, "snowball", StringComparison.OrdinalIgnoreCase)
+            ? LoanForecast.Strategy.Snowball
+            : LoanForecast.Strategy.Avalanche;
+        var modeName = mode == LoanForecast.Strategy.Snowball ? "snowball" : "avalanche";
+        var extra = Math.Max(0m, extraPerMonth);
+
+        // Mirrors BudgetingState.DebtLoanInputs exactly: live debt only. An archived bucket or a cleared one is
+        // not part of "when am I debt-free", and including either would push the date out for a debt nobody owes.
+        var debts = account.SavingCategories
+            .Where(b => b is { IsDebt: true, IsArchived: false } && b.DebtBalance > 0m)
+            .ToList();
+
+        var basics = DebtPlanDto.None with
+        {
+            Currency = account.Currency,
+            DebtCount = debts.Count,
+            Strategy = modeName,
+            ExtraPerMonth = extra,
+            TotalOwed = decimal.Round(debts.Sum(b => b.DebtBalance), 2),
+            TotalInstallments = decimal.Round(debts.Sum(b => b.DebtInstallment), 2),
+        };
+        if (debts.Count == 0) return basics;
+
+        // The date the plan is counted from — the period being looked at, not "now", so this agrees with the
+        // per-bucket payoff read beside it rather than drifting by however long ago that period started.
+        var anchor = period?.From ?? DateOnly.FromDateTime(DateTime.UtcNow);
+        var report = new SavingsReportService();
+
+        // ── The forecast half: each debt at its installment + the pace actually demonstrated. This is the Home
+        // "Debt-free" line, and it is a different question from the plan — see the contract.
+        var paceMonths = 0;
+        var paceInterestSaved = 0m;
+        var paceClears = true;
+        foreach (var d in debts)
+        {
+            var pace = report.AverageDepositPace(account, d.Id)?.Amount ?? 0m;
+            if (LoanForecast.PayOff(d.DebtBalance, d.DebtAnnualRatePercent, d.DebtInstallment + pace) is not { } p)
+            {
+                paceClears = false;   // one debt never clears at that amount → no honest date to promise
+                break;
+            }
+            paceMonths = Math.Max(paceMonths, p.Months);   // you are debt-free when the LAST one clears
+            if (pace > 0m &&
+                LoanForecast.SimulateExtra(d.DebtBalance, d.DebtAnnualRatePercent, d.DebtInstallment, pace) is { } sim)
+                paceInterestSaved += sim.InterestSaved;
+        }
+        basics = basics with
+        {
+            PaceMonths = paceClears ? paceMonths : null,
+            PaceDebtFreeOn = paceClears ? anchor.AddMonths(paceMonths) : null,
+            PaceInterestSaved = paceClears ? decimal.Round(paceInterestSaved, 2) : 0m,
+        };
+
+        // ── The plan half: the strategy, at the extra the caller is considering.
+        var inputs = debts
+            .Select(b => new LoanForecast.LoanInput(b.Id, b.Name, b.DebtBalance, b.DebtAnnualRatePercent, b.DebtInstallment))
+            .ToList();
+        // ⚠️ Null means the stack never clears at these installments — the minimums don't cover the interest.
+        // That is an honest "we can't say", and the client's job is to ask for an extra amount, not to print a
+        // date. Same rule the per-bucket schedule takes when PayOff returns null.
+        if (LoanForecast.PlanPayoff(inputs, extra, mode) is not { } plan) return basics;
+
+        // The baseline is the SAME strategy with no extra — the only comparison that isolates what the extra buys.
+        var baseline = extra > 0m ? LoanForecast.PlanPayoff(inputs, 0m, mode) : plan;
+
+        return basics with
+        {
+            Available = true,
+            Months = plan.Months,
+            DebtFreeOn = anchor.AddMonths(plan.Months),
+            TotalInterest = plan.TotalInterest,
+            MonthsSaved = baseline is { } b0 ? Math.Max(0, b0.Months - plan.Months) : 0,
+            InterestSaved = baseline is { } b1 ? decimal.Round(Math.Max(0m, b1.TotalInterest - plan.TotalInterest), 2) : 0m,
+            Order = plan.Order.Select(o =>
+            {
+                var bucket = account.FindSavingCategory(o.Id);
+                return new PlanLoanDto(o.Id, o.Name, bucket?.Icon,
+                    decimal.Round(bucket?.DebtBalance ?? 0m, 2),
+                    bucket?.DebtAnnualRatePercent ?? 0m,
+                    decimal.Round(bucket?.DebtInstallment ?? 0m, 2),
+                    o.ClearedInMonth,
+                    anchor.AddMonths(o.ClearedInMonth));
+            }).ToList(),
+        };
+    }
 }

@@ -204,3 +204,69 @@ public record DebtPayoffDto(
     public static readonly DebtPayoffDto None =
         new(false, "", 0m, 0m, 0m, 0, null, 0m, 0m, 0m, 0, 0m, false, [], []);
 }
+
+// --- The whole-stack payoff plan (R2.5 server slice, QUEUE #8) -------------------------------------------------
+// ⚠️ The gap this closes, stated plainly: the server exposed only the PER-BUCKET payoff, so a thin client could
+// answer "when does this loan end" and could not answer "when am I debt-free". The web has answered the second
+// since the multi-debt planner shipped, computing it in the thick client from FinApp.Forecasting.LoanForecast over
+// the whole snapshot — which is precisely the sort of number a second implementation gets plausibly wrong.
+
+/// <summary>One debt in the plan's clearing order, with the month it is cleared in and the date that lands on.
+/// <see cref="ClearedInMonth"/> is counted from the plan's start, so 1 is "next month".</summary>
+public record PlanLoanDto(
+    Guid BucketId,
+    string Name,
+    string? Icon,
+    decimal Balance,
+    decimal AnnualRatePercent,
+    decimal Installment,
+    int ClearedInMonth,
+    DateOnly ClearedOn);
+
+/// <summary>
+/// The whole-stack payoff plan: one spare amount thrown at every debt each month on top of every installment,
+/// with each cleared debt's installment rolling onto the next.
+///
+/// <para>★ <b>Two answers, not one, and they are asked differently.</b> <see cref="Months"/> is the PLAN — a
+/// strategy plus an extra amount you are considering. <see cref="PaceMonths"/> is the FORECAST — each debt at its
+/// installment plus the pace you have actually demonstrated, which is what the Home "Debt-free" line has always
+/// shown. They answer "what if I did this" and "where am I heading", and a client that showed one where the other
+/// belongs would be making a promise out of a hypothetical.</para>
+///
+/// <para>⚠️ <see cref="Available"/> is false when the stack <b>never clears</b> — installments that cannot out-run
+/// the interest have no honest debt-free date, and the right response is to say so and ask for an extra amount,
+/// not to print a date fifty years out. <see cref="DebtCount"/> is stated rather than acted on: the web draws this
+/// card only with two or more debts (with one, the plan IS that loan's own payoff), and a client applies its own
+/// threshold rather than inheriting one baked into the read.</para>
+///
+/// <para><see cref="MonthsSaved"/> / <see cref="InterestSaved"/> compare the plan against the same strategy with
+/// <b>no</b> extra — the honest baseline for "what is the extra buying me", and zero when there is no extra.</para>
+/// </summary>
+public record DebtPlanDto(
+    bool Available,
+    string Currency,
+    int DebtCount,
+    /// <summary>"avalanche" (highest rate first, cheapest overall) or "snowball" (smallest balance first), echoed
+    /// back so the client can render the strategy note against the figures it actually produced.</summary>
+    string Strategy,
+    decimal ExtraPerMonth,
+    decimal TotalOwed,
+    decimal TotalInstallments,
+    int Months,
+    DateOnly? DebtFreeOn,
+    decimal TotalInterest,
+    int MonthsSaved,
+    decimal InterestSaved,
+    IReadOnlyList<PlanLoanDto> Order,
+    /// <summary>Months to debt-free at the pace actually demonstrated (installment + the average set aside per
+    /// period, per debt) — the Home line's figure. Null when there are no debts, or one of them never clears at
+    /// that amount, which is the same "no honest date to promise" answer <see cref="Available"/> gives.</summary>
+    int? PaceMonths,
+    DateOnly? PaceDebtFreeOn,
+    /// <summary>Interest the demonstrated pace saves across every debt versus paying just the installments. Zero
+    /// when nothing extra is being paid, so the line only claims a saving when there is one.</summary>
+    decimal PaceInterestSaved)
+{
+    public static readonly DebtPlanDto None =
+        new(false, "", 0, "avalanche", 0m, 0m, 0m, 0, null, 0m, 0, 0m, [], null, null, 0m);
+}

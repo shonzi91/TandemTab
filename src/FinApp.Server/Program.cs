@@ -970,6 +970,34 @@ accounts.MapGet("/{id:guid}/savings/{bucketId:guid}/payoff", async (Guid id, Gui
     return Results.Ok(SavingsMap.Payoff(account, bucketId, proDebt, ResolvePeriod(account, period)));
 });
 
+// The whole-stack payoff plan: every debt at once, under avalanche or snowball, with one shared extra per month.
+// ★ Distinct from /savings/{bucketId}/payoff above, which answers "when does THIS loan end". Until this existed a
+// thin client could not answer "when am I debt-free" at all — the web computed it in the thick client, which is
+// exactly the kind of number a second implementation gets plausibly wrong.
+// ⚠️ Ungated on purpose: the web's planner card is free, and the debt-free date is on its Home card for everyone.
+accounts.MapGet("/{id:guid}/savings/plan", async (Guid id, decimal? extra, string? strategy, int? period,
+        ClaimsPrincipal user, SnapshotService svc, CancellationToken ct) =>
+{
+    var snap = await svc.GetAsync(user.UserId(), id, ct);
+    if (string.IsNullOrEmpty(snap.Payload)) return Results.Ok(DebtPlanDto.None);
+    var account = AccountSnapshotSerializer.Deserialize(snap.Payload);
+    return Results.Ok(SavingsMap.Plan(account, extra ?? 0m, strategy, ResolvePeriod(account, period)));
+});
+
+// Trends: one row per period — money in, spent, kept, set aside, the closing balance and debt repaid.
+// ★ The largest read of the R2.5 slice, and a SERVER row rather than a client one: no other thin contract carries
+// a per-period total, so without this a client would have to fetch every period's surface read and re-add them.
+// `from`/`to` select whole periods that overlap the window; omitting BOTH means all time (see TrendsViewDto).
+// `focus`/`focusId` narrow the second series to one category or one bucket (the web's O14 picker).
+accounts.MapGet("/{id:guid}/trends", async (Guid id, DateOnly? from, DateOnly? to, string? focus, Guid? focusId,
+        ClaimsPrincipal user, SnapshotService svc, CancellationToken ct) =>
+{
+    var snap = await svc.GetAsync(user.UserId(), id, ct);
+    if (string.IsNullOrEmpty(snap.Payload)) return Results.Ok(TrendsViewDto.Empty);
+    var account = AccountSnapshotSerializer.Deserialize(snap.Payload);
+    return Results.Ok(TrendsMap.View(account, from, to, focus, focusId ?? Guid.Empty));
+});
+
 // Path-B thin-Budgets read: every budgeted category with its coverage. Paired with the budget writes (delta below).
 accounts.MapGet("/{id:guid}/budgets", async (Guid id, int? period, ClaimsPrincipal user, SnapshotService svc, CancellationToken ct) =>
 {
