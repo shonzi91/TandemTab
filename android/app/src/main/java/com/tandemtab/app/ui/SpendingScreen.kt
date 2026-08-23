@@ -127,6 +127,11 @@ fun SpendingScreen(
     // time the segment is opened rather than on every visit to the tab.
     LaunchedEffect(view) { if (view == SpendView.Trips) onLoadTrips() }
 
+    // Arriving with a trip already open means somebody tapped Home's live-trip hero: land on the segment that
+    // shows it rather than on the expense list with an invisible card expanded underneath. Driven off the state
+    // the tap already sets, so no second navigation argument has to be threaded down here.
+    LaunchedEffect(trips.detailTripId) { if (trips.detailTripId != null) view = SpendView.Trips }
+
     when {
         spending.loading && spending.expenses.isEmpty() && spending.budgets.isEmpty() ->
             Box(Modifier.fillMaxWidth().height(220.dp), contentAlignment = Alignment.Center) {

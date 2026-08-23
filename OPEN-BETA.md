@@ -457,7 +457,7 @@ fund rows and the Home sheet), and ⚠️ **there are now two income editors** �
 **whole-stack payoff plan** (avalanche/snowball, debt-free date, clearing order — the server exposes only
 *per-bucket* `/savings/{id}/payoff`, which is likely most of QUEUE #8), and the **week recap**. ★ The first two
 **batch into one server slice** — both are "per-period aggregates the thin contracts don't carry". Three are
-client rows: the **income list** (✅ done S117), the **live-trip hero** on Home, and a **visible door to the
+client rows: the **income list** (✅ done S117), the **live-trip hero** on Home (✅ done S117), and a **visible door to the
 Breakdown** (✅ **done S117** — see below; its only route in had been an undiscoverable left-swipe, itself one of
 QUEUE #1's unverified gesture risks).
 
@@ -470,6 +470,20 @@ exactly like an invisible gesture nobody tried. ⚠️ It costs **one more Home 
 same class as `/runway` and `/targets`, which Home already fetches unconditionally) — and it is not purely a
 cost: the sheet is **seeded** from it, so the swipe now opens on content rather than a spinner. The ring is
 extracted as `BreakdownRing` and shared by card and sheet, so there is one of it rather than two.
+
+✅ **The live-trip hero (S117).** The web's `trip-hero`, ported: name, "Day 4 of 8 · Italy", a days bar, "So far"
+against "of €900.00 planned · €530.30 left", a capped spend bar, and the **booked-ahead / while-away** split —
+the one figure in the app that deliberately does not mean "what I spent this week". Tapping it does both halves
+of the web's `ShowTripsTab(id)`: switches to Spending **and** opens that journey's card. It costs Home one
+`/trips` read, which is **cached per account** and already invalidated after any expense write, so it is far
+cheaper than the breakdown one — and the add sheet was going to pay for it anyway.
+
+**⬜ What is left in this phase** (nothing below was started): the **server slice** — Trends + the whole-stack
+payoff plan, batched, plus the **week recap**; the **PWA** shell (manifest, service worker, `theme-color`); the
+phone→web rows (**always-visible milestones**, an **auto-mask trigger**); **T0 idempotency keys**, which is the
+live bug and the largest single risk here; and ⚠️ **the bills card, which is the owner's call and not a build
+task** — Android puts it on Home, the web deliberately keeps bills in the bell, and one of them has to change
+its mind before either is touched.
 
 **Phone → web.** The **always-visible milestones line** (the phone's rule is better and `HomeScreen.kt` argues
 why); an auto-mask trigger to match the phone's face-down sensor; and ⚠️ **the bills card, which is a genuine

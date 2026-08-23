@@ -86,6 +86,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
+import com.tandemtab.app.TripsUi
 import com.tandemtab.app.UiState
 import com.tandemtab.app.data.AccountSummaryDto
 import com.tandemtab.app.data.BreakdownViewDto
@@ -500,6 +501,10 @@ fun HomeScreen(
                             // Same destination as the left-swipe above, which is the point: the gesture stays,
                             // and stops being the only way in.
                             onOpenBreakdown = { onOpenBreakdown(null) },
+                            // Both halves of the web's `ShowTripsTab(id)`: switch tabs, and open that journey's
+                            // card. Spending starts on its Trips segment because a trip is open — the flag it
+                            // reads is state, not a second navigation argument threaded through the screen.
+                            onOpenLiveTrip = { id -> onOpenTrip(id); dest = NavDest.Spending },
                             // The catalogue is only fetched when it's asked for — the tally on the line is the
                             // cheap half, and most visits to Home never open this.
                             onOpenAchievements = { onLoadAchievements(false); showAchievements = true },
@@ -786,6 +791,7 @@ private fun HomePage(
     onOpenHealth: () -> Unit,
     onOpenRunway: () -> Unit,
     onOpenBreakdown: () -> Unit,
+    onOpenLiveTrip: (String) -> Unit,
     onOpenAchievements: () -> Unit,
     onAcceptInvitation: (String) -> Unit,
     onDeclineInvitation: (String) -> Unit,
@@ -818,6 +824,10 @@ private fun HomePage(
                 GettingStartedCard(state.onboarding, onDismissOnboarding)
                 Spacer(Modifier.height(14.dp))
             }
+            // While a journey is running it sits above everything else on the tab, as on the web: every figure
+            // below is being distorted by the trip, so the card that explains that comes first. (The web puts it
+            // under its three action buttons; the phone's equivalent is the FAB, which is not in this column.)
+            TripHeroCard(state.trips, onOpen = onOpenLiveTrip)
             // Order per the design: health score on top, then bills, then "on track for", and finally the runway.
             HealthCard(health = state.health, onOpen = onOpenHealth)
             // The urgent strip hangs directly off the score, as on web, so "how am I doing" reads as one block.
@@ -1227,6 +1237,102 @@ private fun HeroDivider() {
             .width(1.dp)
             .background(LocalTandemColors.current.hairline),
     )
+}
+
+/**
+ * The live-trip hero — Home's card for the journey being lived right now, ported from the web's `trip-hero`.
+ *
+ * ★ **No dismiss and no pulse.** It is self-limiting: it appears the morning the trip starts and is gone the
+ * moment the trip is over, so there is nothing to dismiss — and a glow above the fold for eight straight days
+ * would be the nag this whole feature exists not to be.
+ *
+ * Two bars, and they measure different things on purpose. The **days** bar cannot be behind or ahead of
+ * anything, so it reads as pure context for the **spend** bar, which can. The spend fill is capped at 100% so an
+ * overspend cannot run off the end of the card; the figure beside it states the overspend and is not capped.
+ *
+ * ⚠️ `spent` is this account's own total, not `spentIncludingOtherAccounts` — matching the trip card on the
+ * Trips tab. The combined figure may only be shown next to `paidFromOtherAccounts`, and a hero has no room to
+ * label it; an unlabelled shared figure is one nobody can reconcile.
+ */
+@Composable
+private fun TripHeroCard(trips: TripsUi, onOpen: (String) -> Unit) {
+    val tandem = LocalTandemColors.current
+    val trip = trips.live ?: return
+    val fmt = moneyFormatter(trips.currency)
+    val over = trip.overBudget
+    val day = trip.day ?: 1
+    // Day 1 of 1 must read as a full bar, not 100% of nothing — hence day/length, both ends inclusive.
+    val dayPct = (day.toFloat() / trip.lengthInDays.coerceAtLeast(1)).coerceIn(0f, 1f)
+    val budget: Double? = if ((trip.budget ?: 0.0) > 0.0) trip.budget else null
+    // Capped at 100% so an overspend can't run the fill off the end of the card; the figure beside it states the
+    // overspend and is not capped.
+    val spendPct: Float = if (budget == null) 0f else (trip.spent / budget).toFloat().coerceIn(0f, 1f)
+    val accent = if (over) tandem.spent else tandem.positive
+
+    Column(
+        Modifier.fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(16.dp))
+            .border(1.dp, accent.copy(alpha = 0.45f), RoundedCornerShape(16.dp))
+            .clickable { onOpen(trip.id) }
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            CatIcon(trip.icon ?: "plane", trip.name, size = 20.dp)
+            Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f)) {
+                Text(trip.name, fontWeight = FontWeight.Bold, fontSize = 15.sp, color = MaterialTheme.colorScheme.onSurface, maxLines = 1)
+                val where = trip.destination.orEmpty().trim()
+                val line = if (where.isEmpty()) "Day $day of ${trip.lengthInDays}"
+                else "Day $day of ${trip.lengthInDays} · $where"
+                Text(line, fontSize = 12.sp, color = tandem.muted, maxLines = 1)
+            }
+            OpenChip()
+        }
+
+        MiniBar(fraction = dayPct, fill = tandem.muted)
+
+        Row(verticalAlignment = Alignment.Bottom) {
+            Column(Modifier.weight(1f)) {
+                Text("So far", fontSize = 11.sp, color = tandem.muted)
+                Text(fmt(trip.spent), fontWeight = FontWeight.Bold, fontSize = 17.sp, color = MaterialTheme.colorScheme.onSurface)
+            }
+            if (budget != null) {
+                Column(horizontalAlignment = Alignment.End) {
+                    Text("of ${fmt(budget)} planned", fontSize = 11.sp, color = tandem.muted)
+                    val delta = kotlin.math.abs(trip.spent - budget)
+                    Text(
+                        if (over) "${fmt(delta)} over" else "${fmt(delta)} left",
+                        fontWeight = FontWeight.Bold, fontSize = 15.sp, color = accent,
+                    )
+                }
+            }
+        }
+        if (budget != null) MiniBar(fraction = spendPct, fill = accent)
+
+        // Stated here rather than left to be found on the Trips tab: this headline is the one figure in the app
+        // that deliberately does NOT mean "what I spent this week" — a flight bought in March is inside it.
+        if (trip.prePaid != 0.0) {
+            Text(
+                "${fmt(trip.prePaid)} booked ahead · ${fmt(trip.onTrip)} while away",
+                fontSize = 11.sp, color = tandem.muted,
+            )
+        }
+    }
+    Spacer(Modifier.height(14.dp))
+}
+
+/** A flat progress rail. Two of these sit on the trip hero measuring different things, so it takes its fill
+ *  colour from the caller rather than deciding one. */
+@Composable
+private fun MiniBar(fraction: Float, fill: Color) {
+    Box(
+        Modifier.fillMaxWidth().height(5.dp)
+            .clip(RoundedCornerShape(999.dp))
+            .background(MaterialTheme.colorScheme.outline),
+    ) {
+        Box(Modifier.fillMaxWidth(fraction).height(5.dp).clip(RoundedCornerShape(999.dp)).background(fill))
+    }
 }
 
 /**

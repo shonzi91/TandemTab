@@ -768,6 +768,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         _state.update { it.copy(homeBreakdown = null) }
         runCatching { api.breakdown(accountId, _state.value.selectedPeriod, null) }
             .getOrNull()?.let { b -> _state.update { it.copy(homeBreakdown = b) } }
+        // Trips, for Home's live-trip hero. Cheaper than it looks and cheaper than the line above: this read is
+        // cached per account (`loaded`), survives period paging on purpose — a journey belongs to the account,
+        // not the month — and is already invalidated after any expense write by [refreshTripsIfLoaded]. So it
+        // costs one request per account per session, and the add sheet was going to pay it anyway.
+        loadTrips(false)
         // Alerts are only ever computed for the CURRENT period server-side, so a user browsing a past period would
         // otherwise see this month's warnings attached to a month that already closed. Clear them instead.
         val alerts = if (_state.value.selectedPeriod == null)
