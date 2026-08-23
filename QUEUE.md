@@ -137,6 +137,15 @@ the payoff read (`743ec4a`) and **deliberately did not guess at the rest** rathe
 payoff read exists, the honest next step is to diff the two surfaces field by field and write down what actually
 differs.
 
+✅ **S116's surface sweep found the first half, and it is a server-read row.** The web's Goals tab carries a
+**whole-stack payoff plan** — one extra amount across every debt, **Avalanche vs Snowball**, a debt-free date,
+total interest and the per-debt clearing order — computed in the thick client from `FinApp.Forecasting.LoanForecast`
+over the snapshot. The server exposes only **per-bucket** `GET /savings/{bucketId}/payoff` (`Program.cs:963`),
+which is what `PayoffSheet.kt` renders. **So the phone can answer *when does this loan end* and cannot answer
+*when am I debt-free*.** ⚠️ Size it as a **server slice**, not Kotlin — and batch it with the Trends read, since
+both are per-period aggregates no thin contract carries. The row now lives in **R2.5**
+([OPEN-BETA.md](OPEN-BETA.md)); what remains open here is the *rest* of the field-by-field diff.
+
 ## 9. Tests whose comments assert what their code does not
 
 Removing `AddCategory`'s ignored parent parameter (`c8c4d16`) exposed four silent callers, **two of them tests
@@ -162,6 +171,9 @@ Deferred on purpose until somebody actually has a goal list long enough to scrol
   even the page's own `private Task ReopenTrip(...)` all exist and work — there is no `@onclick` anywhere that
   reaches it, and Android has nothing. ⚠️ **Ask before removing** — deleting a working path is not the same as
   removing dead code.
+- **Five stale `.bak` files in the Android tree** (S116): `MainActivity.kt.bak`, `AddExpenseSheet.kt.bak`,
+  `BankSheet.kt.bak`, `HomeScreen.kt.bak`, `SettingsSheet.kt.bak`. Unlike the row above these are plainly dead —
+  they match every `grep -r` over `android/`, so any web-vs-phone comparison reads each hit twice. Delete.
 
 ## 13. ⛔ Production risk (not a bug): Neon's connection ceiling
 

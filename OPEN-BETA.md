@@ -223,7 +223,9 @@ env vars, so changing the allowance is a revision update, not a deploy.
 
 ## The road to promotion — the ordered plan (set 2026-08-05, Session 89)
 
-**Owner's sequence.** Seven phases, in this order, ending with actually promoting the app. The ordering is
+**Owner's sequence.** Seven phases, in this order, ending with actually promoting the app — plus two half-steps
+and a deferral added in Session 116 (**R2.5** the surface sweep, **R4.5** Trip Mode, **R8** full offline sync,
+deferred by decision). The ordering is
 deliberate and mostly self-justifying: **R1 freezes the feature set**, which is the precondition every later
 phase leans on — R5's landing rewrite and paywall pass are explicitly "do this LAST" work, and doing them
 against a moving feature set is work that gets redone. R4 lands before R7 for the one reason that matters:
@@ -232,12 +234,15 @@ against a moving feature set is work that gets redone. R4 lands before R7 for th
 | # | Phase | Ends when | Size |
 |---|-------|-----------|------|
 | **R1** | Clear the feature backlog | The feature set is declared **frozen** | L · ✅ **done 2026-08-05** |
-| **R2** | Android catch-up + theme verification **+ an APK pipeline** | Android at web parity; light/dark swept on **both** surfaces; **and CI can produce a release APK that runs on a real device** | L · ✅ **done 2026-08-20 (S111)** — all four exit criteria met. **108/120 (90%)**, and every one of the 12 remaining routes is *decided*: 7 deferred, 3 non-gaps, 2 stated lags |
+| **R2** | Android catch-up + theme verification **+ an APK pipeline** | Android at web parity; light/dark swept on **both** surfaces; **and CI can produce a release APK that runs on a real device** | L · ✅ **done 2026-08-20 (S111)** — all four exit criteria met. **Now 115/122 (94%)** after the merge session closed both stated lags; every one of the 7 remaining routes is *decided*: 4 deferred (bank), 3 non-gaps, **0 stated lags** |
+| **R2.5** | **The surface sweep** — the differences a route scanner cannot see | Every remaining web⇄phone difference is either built or **written down as a decision** | M · ⬜ **new (S116)** |
 | **R3** | AI assistant | See the scoping note — the whole of it is not one phase | L+ |
 | **R4** | Railway migration (hosting **and** DB) | Serving from Railway, Neon + Cloud Run retired | M–L |
+| **R4.5** | **Trip Mode** (bounded offline) | The phone opens, shows cached figures with their staleness, takes an expense with no signal, and posts **exactly one** row on reconnect | M per platform · ⬜ **proposed (S116)** |
 | **R5** | Landing, terms, privacy + Pro-split final verification **+ billing go-live** | The page describes the real product; the paywall is settled **and can actually take money** | M–L |
 | **R6** | SEO | Indexed, measurable, bilingual | S–M |
-| **R7** | Promote **+ ship the Android app** | The door is open — on the web, and (owner's call, S110) on a phone | — |
+| **R7** | Promote **+ ship the Android app** **+ the installable web app** | The door is open — on the web, and (owner's call, S110) on a phone | — |
+| **R8** | ⛔ Full offline sync | **Deferred by decision** — see the box under R4.5 | L+ |
 
 ### R1 — Clear the feature backlog
 - **[FEATURE-BACKLOG.md](FEATURE-BACKLOG.md) F1–F7**: quick add (S), tag→category (S–M), left-to-spend-today (S),
@@ -422,6 +427,55 @@ against a moving feature set is work that gets redone. R4 lands before R7 for th
 >    ⚠️ **The parity table in MOBILE.md was also reconciled against `r2scan` the same day** — seven rows had been
 >    sitting there as open backlog long after the path was wired. A backlog nobody re-measures overstates itself.
 
+### R2.5 — the surface sweep (added Session 116, 2026-08-23)
+
+**Why this is a phase and not a footnote.** R2's exit criteria were all *route reachability*, and
+[docs/MOBILE.md](docs/MOBILE.md) says outright what that instrument does not measure: it *"measures whether an
+endpoint is reachable, never whether the screen around it looks like this year's app."* At **115/122 (94%)** with
+all 7 remaining routes decided, **the scanner is finished as an instrument** — every difference left between the
+two clients is UI shape or a missing server read, and no re-run will ever print one.
+
+⚠️ **`node tools/r2scan.js --list` stays the source for the number** — re-run it, don't copy the one above.
+
+**★ The finding that justifies the phase.** `AppViewModel.prepareEditLastIncome()` fetches the **whole** income
+list and keeps `deposits.maxByOrNull { it.date }`, discarding the rest. The phone renders **no income list at
+all** and can edit only the most recent deposit, against a full web section with per-row edit/delete. `/income`
+counts as **called**. That is MOBILE.md's own warning — *"read a 'called' row as 'not blocked', never as
+'done'"* — caught in the act, and it is the reason a second pass is needed rather than a bigger denominator.
+
+**Web → phone.** Three are **server-read rows wearing Kotlin clothes** and must not be sized as client work:
+**Trends** (`TrendRows()` walks `State.Account.Periods`; no thin contract carries per-period totals), the
+**whole-stack payoff plan** (avalanche/snowball, debt-free date, clearing order — the server exposes only
+*per-bucket* `/savings/{id}/payoff`, which is likely most of QUEUE #8), and the **week recap**. ★ The first two
+**batch into one server slice** — both are "per-period aggregates the thin contracts don't carry". Three are
+client rows: the **income list**, the **live-trip hero** on Home, and a **visible door to the Breakdown** (its
+only route in today is an undiscoverable left-swipe, itself one of QUEUE #1's unverified gesture risks).
+
+**Phone → web.** The **always-visible milestones line** (the phone's rule is better and `HomeScreen.kt` argues
+why); an auto-mask trigger to match the phone's face-down sensor; and ⚠️ **the bills card, which is a genuine
+disagreement, not an oversight** — Android puts `RecurringCard` on Home, the web deliberately keeps bills in the
+bell (*"no Home link"*, per its own comment). Two opposite decisions, neither recording that the other exists.
+**Pick one and write it down.**
+
+**⭐ The web is not a PWA** — no manifest, no service worker, no `theme-color`, no `apple-mobile-web-app-*`. With
+iOS on hold indefinitely, **the mobile web *is* the iOS product**, and it cannot be installed. The responsive CSS
+is real (13 rules at `max-width: 560px`, plus `pointer: coarse` and `hover: none` branches), so the *looking
+right* work is largely done and the *being an app* work has not started. Pairs with R7's Android ship.
+
+**Also in this phase (T0 of the offline work — a bug fix, not a feature).** ⛔ **There are no idempotency keys
+anywhere.** `AddExpenseRequest` carries no client id and the handler does `new Expense(...)`, so a write retried
+after an **ambiguous** failure — sent, response lost, the ordinary failure on a bad connection — creates a
+**duplicate expense**. This is live today, offline or not, and the bank-import duplicate detector does not cover
+manually-added rows. Client-generated key + server-side dedupe, and the add-expense sheet keeps its contents and
+retries instead of erroring.
+
+⚠️ **Nothing in this phase starts before [QUEUE.md](QUEUE.md) #1** — a large Android surface is live and has
+never been run. Every row here adds to that pile if it lands first.
+
+⚠️ **Ordering note against R3:** the assistant's own backlog is **mobile-first**, and this phase's finding is
+that the phone is the surface with the thinner screens. R3's recommended split is unchanged — but an assistant
+that navigates to screens is worth less when the screens are missing.
+
 ### R3 — AI assistant — ⚠️ scope this before starting
 **Two different assistants are specced in this repo, and only one of them is a pre-promotion-sized job.**
 - **[AI-ASSISTANT-BACKLOG.md](AI-ASSISTANT-BACKLOG.md)** — on-device, **mobile-first**, constrained typed
@@ -448,6 +502,63 @@ call makes "never fed to AI" a lie, and that claim is the reason to exist.
 - **Exit:** served-bytes + endpoint probes green on the new host, DNS cut over, old revisions retired.
 - ⚠️ **Railway is a new sub-processor** and the DB may change region — that is a **privacy-policy edit** (feeds
   R5), not a footnote.
+
+### R4.5 — Trip Mode (bounded offline) — ⬜ proposed Session 116, advisory until the owner rules
+
+**The story.** Trips are first-class, and a trip is exactly when you are on an expensive or absent connection
+holding the device with the least data on it. Today: **offline on Android is a blank app, and offline on web is
+a page that will not load.**
+
+**★ Build Trip Mode, not "offline mode".** "Offline mode" is unbounded — every screen, every write, both
+platforms, shared-account merge. Trip Mode is the same story with a boundary: **one account, one open period,
+one entity that matters (the expense), opt-in**. It fits the standing guardrail (opt-in or
+invisible-until-useful; a property on something that already exists, not a new section).
+
+**What the architecture already gives you, and it is more than expected:**
+
+- ✅ **Both clients already write via command endpoints** — `BudgetingState`: *"Writes go through the server's
+  command endpoints (the Option-A cutover)"*. A command is the right unit for a queue.
+- ✅ ★ **`SnapshotService.MutateAsync` already replays a command against a newer snapshot.** Its contract says the
+  mutation *"must therefore be a pure function of the account it's handed — it can run more than once"*, retried
+  up to four attempts. **A late-arriving offline command is the problem the server already solves.**
+- ✅ **`SyncHub` pushes signals only, never contents** (*"receivers re-pull"*) — no diff protocol to invent.
+- ✅ Expense writes already return a **delta**, so the path that would cost most abroad is already the cheap one.
+
+**What blocks it:**
+
+- ⛔ **No idempotency keys** — pulled forward into R2.5 above, because it is a bug today.
+- ⛔ **Android has no local persistence**: `data/` holds `TokenStore` and nothing else. Every screen is a live read.
+- ⛔ **The web has no service worker**, so the WASM shell will not boot offline — ★ **the web holds the entire
+  account and cannot start; the phone can start and holds nothing.** The PWA row in R2.5 is the first half of this.
+- ⚠️⚠️ **Shared accounts are the hazard, and sharing is the Pro feature.** One serialized aggregate per account,
+  `Version` optimistic concurrency, a hard 409 on the whole-snapshot path. One member abroad and offline for a
+  week — a deferred *snapshot* push on reconnect would **silently erase the partner's month**. **Therefore an
+  offline design is an outbox of commands, never a deferred snapshot push**, and the 13 remaining
+  `TODO(cutover)` flows in `BudgetingState.cs` (bank confirms, achievements stamping, account settings) **cannot**
+  go offline until they have command endpoints.
+- ⚠️ **A local cache is account data at rest on the device.** Server snapshots are encrypted (`SnapshotCipher`,
+  KMS); a plaintext local mirror is a **privacy-policy and GDPR-surface change** that feeds R5's legal re-read
+  exactly as R4's new sub-processor does. Not a footnote.
+
+**Scope here (T1):** Android persists last-good DTOs per screen and renders them behind an *"as of 14:20"*
+staleness banner, with a durable outbox for **expense adds only**; web gets the PWA shell plus the last snapshot
+in IndexedDB, **read-only** offline.
+
+⚠️ **Product call for R5, not for the build:** Trip Mode is a plausible **Pro** feature, since trips already are.
+Decide it when the split is frozen.
+
+⚠️ **Why this sits after R4 and not before R3.** R3 is already **L+** with its own note that *"the whole of it is
+not one phase"*, and the feature-freeze line R5 depends on is declared **when R3 lands**. A sync engine inserted
+before that freeze moves the freeze, and R5 and R7 move with it. **Offline before promotion is how a roadmap
+stops ending.** T0 is a bug fix and belongs now; this is a real feature and is scheduled as one.
+
+### R8 — ⛔ full offline sync — DEFERRED by decision (Session 116)
+
+Every command queued, conflict-resolution UI, a shared-account merge story, and the 13 cutover flows finished.
+**L+, and post-promotion.** Written down here rather than left implicit so it stops being rediscovered as though
+it were a fresh idea — the same reason bank's back half has a box in [docs/MOBILE.md](docs/MOBILE.md).
+**Un-defer when** R4.5 is live and users are actually hitting its boundary (queued writes other than expenses,
+or offline edits rather than adds).
 
 ### R5 — Landing, terms, privacy + Pro split — final verification
 The ⬜ TODOs written below **are** this phase: the landing rewrite, the Free/Pro re-validation, and **billing

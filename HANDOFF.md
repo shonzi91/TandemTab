@@ -55,16 +55,32 @@ same thing to the same record** — both were written to be the safe kind of cha
 collided. Worth remembering the next time two branches are open on one DTO.
 
 #### Next session
-1. ⭐ **Drive it on the emulator** — still S115's item 1, and no longer blocked. That handoff says the agent could
-   not get past sign-in; `5706699` on main then verified masking against real balances on API 35, so the sign-in
-   problem was solved after that handoff was written. The swipe that may fight the scroll view, the ring that may
-   show a seam and the slider that may snap wrong are all still unobserved.
+1. ✅ **Driven on the emulator (`cda2852`) — done, and it found five defects a code read could not.** The three
+   risks named here were real in shape if not in detail: the swipe *did* fight the scroll view (the notification
+   pull-down had never fired once, and it is the only caller of `showNotifications`), and the slider *did*
+   misbehave (its handle rests inside the back-gesture strip, so dragging it closed the sheet) — while the ring
+   was fine, its slices summing to the centre figure and to the hero tile. ⭐ Two nobody had predicted: statement
+   import was gated behind `bankEnabled` (a two-address allowlist in prod, so R2's "stated lag closed" shipped
+   hidden from almost everyone), and every read-only sheet drew a dead grey Save pill.
 2. **Both branches are merged; nothing is left unmerged.** They can be deleted once the deploy is confirmed.
-3. ⚠️ **The Android work is on main now but still has never been RUN** — merging moved it, it did not verify it.
-   Everything above about masking the three new sheets is reasoned and compiled, not observed.
-4. ⚠️ **A stale-claim sweep is overdue**: [QUEUE.md](QUEUE.md) still lists the foreign-cash wallet as the top open
-   row (built on the branch, and now merged), and the roadmap artifact still names `00322` as live with "+2
-   commits awaiting deploy".
+3. ✅ **Closed by item 1.** All four of the merge's masking repairs are confirmed on a device rather than reasoned
+   about — the notification sheet's only *after* its gesture was fixed, since until then no user could reach the
+   screen the repair was on. ⚠️ **Noted and not fixed:** the file picker accepts an image, and the import then
+   walks on to the column mapper showing PNG bytes as data instead of saying it cannot read the file.
+4. ✅ **The stale-claim sweep is done (Session 116).** QUEUE.md's foreign-cash row and the roadmap artifact were
+   both already corrected before this was read — ⚠️ *this item was itself the stale claim*, which is the joke and
+   also the lesson: a "check X is stale" note goes stale exactly like the thing it points at. The artifact is on
+   `00327` at 115/122 and now carries **R2.5, R4.5 and R8**.
+5. ⭐ **A web⇄phone surface sweep ran (Session 116) and the parity scanner is finished as an instrument.**
+   115/122 (94%), all 7 remaining routes decided. Three facts in [docs/MOBILE.md](docs/MOBILE.md) are **stale** —
+   statement import, `PUT /funds/{id}/currency` and the `GET /breakdown` read are all shipped and still written
+   up as missing; that table wants the S111 treatment. The findings are now a phase (**R2.5**) in
+   [OPEN-BETA.md](OPEN-BETA.md), not a loose list. ★ The sharpest: `prepareEditLastIncome()` fetches the whole
+   income list and keeps `maxByOrNull { it.date }` — the phone renders **no income list at all**, and `/income`
+   counts as *called*. Full write-up in the session's plan file.
+6. ⬜ **Offline was assessed and answered "yes, but bounded" — R4.5 Trip Mode, with R8 deferred in writing.**
+   ⚠️ It surfaced a **live bug that is not about offline at all**: there are **no idempotency keys anywhere**, so
+   a write retried after an ambiguous failure duplicates the expense. Pulled forward into R2.5.
 
 ---
 
