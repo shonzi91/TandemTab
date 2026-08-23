@@ -1315,6 +1315,91 @@ data class DebtPayoffDto(
     val curve: List<PayoffCurvePointDto> = emptyList(),
 )
 
+// --- Trends (GET /accounts/{id}/trends, R2.5) ---------------------------------------------------------
+// ⚠️ Every figure here is computed server-side, and the reason is not tidiness: no other read carries a
+// per-period total, so a client adding these up itself would be re-implementing the aggregation the web does
+// over the whole aggregate — in a second language, where "spent" can quietly stop counting out-transfers on the
+// phone and keep counting them on the web.
+
+/** One period as a row of the Trends charts. `net` is income − spent, sent rather than derived so the two clients
+ *  cannot disagree about it. `saved` is floored at zero (a bucket paying out is not negative saving) and
+ *  `debtPaid` counts only a payout onto a DEBT bucket. `balance` is a STOCK where the rest are FLOWS — it wants
+ *  its own axis, and is routinely an order of magnitude bigger. */
+@Serializable
+data class TrendRowDto(
+    val from: String = "",
+    val to: String = "",
+    val income: Double = 0.0,
+    val spent: Double = 0.0,
+    val saved: Double = 0.0,
+    val balance: Double = 0.0,
+    val debtPaid: Double = 0.0,
+    /** The same month narrowed to the focused category or bucket; 0 when nothing is focused. */
+    val focus: Double = 0.0,
+    val net: Double = 0.0,
+)
+
+/** The Trends read: one row per period, oldest→newest. `focusKind` is "category", "bucket" or null. Omitting the
+ *  window on the request means ALL TIME; a window SELECTS whole periods that overlap it rather than slicing them. */
+@Serializable
+data class TrendsViewDto(
+    val currency: String = "",
+    val from: String? = null,
+    val to: String? = null,
+    val focusKind: String? = null,
+    val focusId: String? = null,
+    val focusName: String? = null,
+    val rows: List<TrendRowDto> = emptyList(),
+)
+
+// --- The whole-stack payoff plan (GET /accounts/{id}/savings/plan, R2.5 / QUEUE #8) ---------------------
+
+/** One debt in the plan's clearing order. `clearedInMonth` counts from the plan's start, so 1 is "next month". */
+@Serializable
+data class PlanLoanDto(
+    val bucketId: String = "",
+    val name: String = "",
+    val icon: String? = null,
+    val balance: Double = 0.0,
+    val annualRatePercent: Double = 0.0,
+    val installment: Double = 0.0,
+    val clearedInMonth: Int = 0,
+    val clearedOn: String = "",
+)
+
+/**
+ * Every debt at once: one spare amount thrown at the stack each month on top of every installment, with each
+ * cleared debt's installment rolling onto the next.
+ *
+ * ★ **Two answers, and they are asked differently.** [months] is the PLAN — a strategy plus an extra you are
+ * considering. [paceMonths] is the FORECAST — each debt at its installment plus the pace you have actually
+ * demonstrated. Showing one where the other belongs turns a hypothetical into a promise.
+ *
+ * ⚠️ [available] is false when the stack NEVER clears (installments that cannot out-run the interest). The right
+ * response is to say so and ask for an extra amount, not to draw a date fifty years out. [debtCount] is stated
+ * rather than acted on — the web draws its card only with two or more debts, and each client applies its own
+ * threshold instead of inheriting one baked into the read.
+ */
+@Serializable
+data class DebtPlanDto(
+    val available: Boolean = false,
+    val currency: String = "",
+    val debtCount: Int = 0,
+    val strategy: String = "avalanche",
+    val extraPerMonth: Double = 0.0,
+    val totalOwed: Double = 0.0,
+    val totalInstallments: Double = 0.0,
+    val months: Int = 0,
+    val debtFreeOn: String? = null,
+    val totalInterest: Double = 0.0,
+    val monthsSaved: Int = 0,
+    val interestSaved: Double = 0.0,
+    val order: List<PlanLoanDto> = emptyList(),
+    val paceMonths: Int? = null,
+    val paceDebtFreeOn: String? = null,
+    val paceInterestSaved: Double = 0.0,
+)
+
 /** A saved "always file this merchant here" rule. `matchKey` is the normalized description the rule is stored
  *  under; `kind` is "category" (file it as spending) or "fund" (it came from one of your own wallets, so it is a
  *  transfer). `tagId` is an optional label the rule also applies — debit rules only. */

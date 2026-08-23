@@ -468,6 +468,30 @@ class TandemTabApi(
     suspend fun debtPayoff(accountId: String, bucketId: String, period: Int? = null): DebtPayoffDto =
         authedGet("/accounts/$accountId/savings/$bucketId/payoff${periodQ(period)}").body()
 
+    /** The whole-stack payoff plan: every debt at once under avalanche or snowball, with one shared [extra] per
+     *  month. Distinct from [debtPayoff], which answers "when does THIS loan end" — this one answers "when am I
+     *  debt-free", which the phone could not ask at all before R2.5. Never a 402: the web's planner is free too. */
+    suspend fun debtPlan(accountId: String, extra: Double = 0.0, strategy: String = "avalanche", period: Int? = null): DebtPlanDto =
+        authedGet("/accounts/$accountId/savings/plan${periodQ(period)}" +
+            (if (period == null) "?" else "&") + "extra=$extra&strategy=$strategy").body()
+
+    /** Money in / spent / kept / set aside, month by month, one row per period. Omit [from] and [to] for all time;
+     *  a window SELECTS whole periods that overlap it rather than slicing them. [focus]/[focusId] narrow the second
+     *  series to one category ("category") or one bucket ("bucket"). */
+    suspend fun trends(
+        accountId: String,
+        from: String? = null,
+        to: String? = null,
+        focus: String? = null,
+        focusId: String? = null,
+    ): TrendsViewDto {
+        val q = buildList {
+            if (from != null && to != null) { add("from=$from"); add("to=$to") }
+            if (focus != null && focusId != null) { add("focus=$focus"); add("focusId=$focusId") }
+        }
+        return authedGet("/accounts/$accountId/trends" + if (q.isEmpty()) "" else "?" + q.joinToString("&")).body()
+    }
+
     /** The saved merchant rules. Used by statement import as well as by bank sync — a rule is the user's filing
      *  decision about a merchant, not a property of the connection, which is why this read is NOT part of the
      *  deferred bank-connection back half. */

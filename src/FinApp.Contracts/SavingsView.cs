@@ -260,7 +260,11 @@ public record DebtPlanDto(
     IReadOnlyList<PlanLoanDto> Order,
     /// <summary>Months to debt-free at the pace actually demonstrated (installment + the average set aside per
     /// period, per debt) — the Home line's figure. Null when there are no debts, or one of them never clears at
-    /// that amount, which is the same "no honest date to promise" answer <see cref="Available"/> gives.</summary>
+    /// that amount, which is the same "no honest date to promise" answer <see cref="Available"/> gives.
+    /// <para>⚠️ <b>It is routinely LATER than <see cref="Months"/> even at a zero extra</b>, and a client showing
+    /// both must say why or the pair reads as a contradiction: the plan rolls each cleared debt's installment onto
+    /// the next, and this does not — every debt simply runs its own installment out. That is the right assumption
+    /// for "what happens if nothing changes", since the freed-up money usually just gets spent.</para></summary>
     int? PaceMonths,
     DateOnly? PaceDebtFreeOn,
     /// <summary>Interest the demonstrated pace saves across every debt versus paying just the installments. Zero

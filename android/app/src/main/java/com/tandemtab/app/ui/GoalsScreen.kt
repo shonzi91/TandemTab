@@ -68,6 +68,15 @@ fun GoalsScreen(
     // Open the payoff drawer for a debt bucket. Takes the name too, so the sheet can be titled before its figures
     // land — a drawer that opens blank and untitled reads as a failure rather than as loading.
     onOpenPayoff: (bucketId: String, bucketName: String) -> Unit = { _, _ -> },
+    // R2.5 — the whole-stack plan, which is a different question from any one bucket's payoff above. Held in the
+    // view model rather than here because the extra and the strategy each cost a round trip.
+    debtPlan: com.tandemtab.app.data.DebtPlanDto? = null,
+    debtPlanOpen: Boolean = false,
+    debtPlanLoading: Boolean = false,
+    debtPlanExtra: Double = 0.0,
+    onOpenDebtPlan: () -> Unit = {},
+    onCloseDebtPlan: () -> Unit = {},
+    onSetDebtPlan: (Double?, String?) -> Unit = { _, _ -> },
     onLogInstallment: (bucketId: String, total: Double, fundId: String, date: String, categoryId: String, note: String?, onDone: () -> Unit) -> Unit,
     canSetInitial: Boolean,
     onPrepareBucket: () -> Unit,
@@ -166,6 +175,15 @@ fun GoalsScreen(
                 }
             }
 
+            // ★ The plan sits under the list rather than above it, and under the DEBTS filter it is the first
+            // thing past the rows it is about. It draws itself away when there are fewer than two debts, so this
+            // is not a section that appears empty — see DebtPlanCard.
+            val liveDebts = active.count { it.kind == "debt" }
+            if (liveDebts >= 2) {
+                Spacer(Modifier.height(14.dp))
+                DebtPlanCard(debtPlan, liveDebts, onOpen = onOpenDebtPlan)
+            }
+
             SavingsActivity(goals, fmt, onEditDeposit, onRemoveDeposit, onUndoMovement)
 
             // Archived buckets are kept out of the way but reachable — archiving is the answer when a delete is
@@ -187,6 +205,17 @@ fun GoalsScreen(
                 }
             }
         }
+    }
+
+    if (debtPlanOpen) {
+        DebtPlanSheet(
+            plan = debtPlan,
+            loading = debtPlanLoading,
+            extra = debtPlanExtra,
+            strategy = debtPlan?.strategy ?: "avalanche",
+            onSet = onSetDebtPlan,
+            onDismiss = onCloseDebtPlan,
+        )
     }
 
     editing?.let { (isNew, bucket) ->

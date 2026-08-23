@@ -188,6 +188,25 @@ public class DebtPlanApiTests : IClassFixture<FinAppServerFactory>
     }
 
     [Fact]
+    public async Task With_no_pace_the_plan_beats_doing_nothing_because_it_rolls_installments_on()
+    {
+        var (client, auth) = await _factory.RegisterAndAuthAsync("plan_rollover");
+        var account = await CreateAccount(client, "Two debts");
+        await SeedTwoDebtsAsync(client, account.Id, auth.UserId);
+
+        var p = (await Plan(client, account.Id, "?extra=0"))!;
+
+        // ★ Found by reading both figures against one live account rather than by reasoning about either alone,
+        // and it is the trap any screen showing the two together walks into: with NO extra at all, the plan still
+        // clears sooner than "nothing changes". The difference is entirely the rollover — the plan keeps paying
+        // the €450 total as the card clears, and the do-nothing forecast lets each debt run its own installment
+        // out. A client that prints both without saying so is printing a contradiction.
+        Assert.NotNull(p.PaceMonths);
+        Assert.True(p.Months < p.PaceMonths, $"plan {p.Months} should beat do-nothing {p.PaceMonths}");
+        Assert.Equal(0, p.MonthsSaved);   // ...and the extra is still credited with nothing, because there is none
+    }
+
+    [Fact]
     public async Task An_archived_or_cleared_debt_is_not_part_of_being_debt_free()
     {
         var (client, auth) = await _factory.RegisterAndAuthAsync("plan_archived");

@@ -10,6 +10,8 @@ import com.tandemtab.app.data.AddDepositRequest
 import com.tandemtab.app.data.BankMappingDto
 import com.tandemtab.app.data.BreakdownViewDto
 import com.tandemtab.app.data.DebtPayoffDto
+import com.tandemtab.app.data.DebtPlanDto
+import com.tandemtab.app.data.TrendsViewDto
 import com.tandemtab.app.data.FundCurrencyEdit
 import com.tandemtab.app.data.ImportRowDto
 import com.tandemtab.app.data.ImportTransactionsRequest
@@ -148,12 +150,33 @@ data class UiState(
     // silently changed what its ring means because of a chip tapped inside a sheet would be a chart that lies.
     // This one is always the default (category) grouping for the period being viewed.
     val homeBreakdown: BreakdownViewDto? = null,
+    // ── Trends, which shares the Breakdown's drawer rather than taking a section of its own. The two answer
+    // "where did it go" and "how has it been going" about the same money, and the web pairs them in one glance
+    // row for that reason; a second Home card would have been a second thing to scroll past.
+    // ⚠️ `trendsRange` is the phone's copy of the web's BreakRange. It selects PERIODS, not days — see
+    // TrendsViewDto — so it is a request parameter rather than something to filter the rows by afterwards.
+    val trendsOverTime: Boolean = false,
+    val trendsRange: String = "3m",
+    val trendsLoading: Boolean = false,
+    val trends: TrendsViewDto? = null,
     // The debt-payoff drawer: which bucket is open, and what the server said about it. Held here rather than in
     // the bucket row so the row stays a pure render of the list read — the forecast is a second, slower call.
     val payoffBucketId: String? = null,
     val payoffBucketName: String = "",
     val payoffLoading: Boolean = false,
     val payoff: DebtPayoffDto? = null,
+    // ── The whole-stack plan: every debt at once, rather than the one bucket `payoff` above answers for. The
+    // extra and the strategy are the two things the screen exists to change, so they are held here and re-sent —
+    // the amortisation is the server's, and a client that re-ran it locally would be a second opinion about a
+    // debt-free date.
+    // ⚠️ `debtPlan`, not `plan` — that name is taken by the SUBSCRIPTION tier a few fields up, and a state class
+    // where `plan` could mean either the user's billing tier or their route out of debt is one substitution away
+    // from a very confusing bug.
+    val debtPlanOpen: Boolean = false,
+    val debtPlanLoading: Boolean = false,
+    val debtPlanExtra: Double = 0.0,
+    val debtPlanStrategy: String = "avalanche",
+    val debtPlan: DebtPlanDto? = null,
     // Saved merchant rules, keyed by the server's match key. Read by statement import; shared with bank sync,
     // because a rule is the user's filing decision about a merchant rather than a property of a connection.
     val bankMappings: Map<String, BankMappingDto> = emptyMap(),
@@ -747,6 +770,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 selectedPeriod = normalized,
                 periodLabel = row?.let { formatPeriod(it) } ?: st.periodLabel,
                 overview = null, busy = true,
+                // The plan is anchored on the period being looked at (its dates count from that period's start),
+                // so paging back invalidates it. Trends is NOT: its rows are every period in the window, which is
+                // the same set whichever one you are standing in.
+                debtPlan = null,
                 spending = SpendingUi(), goals = GoalsUi(), wallets = WalletsUi(), recurring = RecurringUi(),
             )
         }
@@ -943,6 +970,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 // The breakdown goes with them: another account's ring under this account's name is the same
                 // class of wrong as its runway would be.
                 runway = null, targets = emptyList(), homeBreakdown = null, breakdown = null,
+                // ...and so do the two cross-period reads. Trends and the debt plan are about the WHOLE of an
+                // account's history, which makes them more misleading than a stale ring, not less: another
+                // account's debt-free date under this one's name is a promise about somebody else's money.
+                trends = null, debtPlan = null,
                 spending = SpendingUi(), goals = GoalsUi(), wallets = WalletsUi(), health = HealthUi(), recurring = RecurringUi(),
                 // Trips belong to the account, not to the period — so they survive paging back through months and
                 // are dropped only when the account itself changes.
@@ -1259,6 +1290,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             try {
                 _state.update { it.copy(goals = goalsFrom(api.savings(accountId, _state.value.selectedPeriod))) }
+                // ★ Fetch the plan when — and only when — the card that shows it will actually be drawn: two or
+                // more live debts. Observed on a device: without this the card sat there reading "2 debts — see
+                // when they clear" until somebody opened it once, so the one thing it had to offer (a date) was
+                // behind the tap it was meant to earn. One request, for the accounts that have two debts, once.
+                val liveDebts = _state.value.goals.buckets.count { b -> b.kind == "debt" && !b.archived }
+                if (liveDebts >= 2 && _state.value.debtPlan == null) loadDebtPlan()
             } catch (e: Exception) {
                 _state.update { it.copy(goals = it.goals.copy(loading = false, error = e.message ?: "Couldn't load your goals.")) }
             }
@@ -1749,6 +1786,77 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun closeBreakdown() = _state.update { it.copy(breakdownOpen = false) }
+
+    /**
+     * Switch the drawer between "where it went" (the ring, this period) and "over time" (Trends, many periods).
+     * Fetches on the first switch and whenever the range changes; the rows are kept afterwards, so flipping back
+     * and forth costs nothing.
+     */
+    fun showTrends(overTime: Boolean, range: String? = null) {
+        // The deeper windows are the Pro history entitlement, exactly as on the web — and the gate is here rather
+        // than server-side because /trends is ungated, like /breakdown beside it. ⚠️ Raised BEFORE the state
+        // changes, so a refused range does not leave the chips showing a selection the chart never drew.
+        val wanted = range ?: _state.value.trendsRange
+        if (overTime && wanted != "3m" && !requirePro(com.tandemtab.app.data.PlanFeatures.HISTORY)) return
+        val changed = range != null && range != _state.value.trendsRange
+        _state.update { it.copy(trendsOverTime = overTime, trendsRange = wanted) }
+        if (!overTime) return
+        if (_state.value.trends != null && !changed) return
+        loadTrends()
+    }
+
+    private fun loadTrends() {
+        val accountId = _state.value.selectedAccountId ?: return
+        val range = _state.value.trendsRange
+        _state.update { it.copy(trendsLoading = true) }
+        viewModelScope.launch {
+            // ⚠️ "All" sends NO window, which is not the same as sending a very wide one: the server takes every
+            // period regardless of its dates, because a date window anchored on the earliest activity can sit
+            // inside a later period once dates have been edited. See TrendsViewDto.
+            val today = LocalDate.now()
+            val from = when (range) {
+                "3m" -> today.minusMonths(3).toString()
+                "12m" -> today.minusMonths(12).toString()
+                else -> null
+            }
+            val result = runCatching { api.trends(accountId, from, if (from == null) null else today.toString()) }.getOrNull()
+            _state.update { it.copy(trendsLoading = false, trends = result ?: it.trends) }
+        }
+    }
+
+    /** Open the whole-stack payoff plan and fetch it at the current extra/strategy. */
+    fun openDebtPlan() {
+        _state.update { it.copy(debtPlanOpen = true) }
+        loadDebtPlan()
+    }
+
+    fun closeDebtPlan() = _state.update { it.copy(debtPlanOpen = false) }
+
+    /**
+     * Re-run the plan with a different spare amount or a different strategy. Both re-fetch: the amortisation, the
+     * clearing order and the debt-free date are the server's, and a phone that recomputed any of them would be a
+     * second implementation of the number this read exists to make authoritative.
+     */
+    fun setDebtPlan(extra: Double? = null, strategy: String? = null) {
+        _state.update {
+            it.copy(
+                debtPlanExtra = extra?.coerceAtLeast(0.0) ?: it.debtPlanExtra,
+                debtPlanStrategy = strategy ?: it.debtPlanStrategy,
+            )
+        }
+        loadDebtPlan()
+    }
+
+    private fun loadDebtPlan() {
+        val accountId = _state.value.selectedAccountId ?: return
+        val extra = _state.value.debtPlanExtra
+        val strategy = _state.value.debtPlanStrategy
+        _state.update { it.copy(debtPlanLoading = true) }
+        viewModelScope.launch {
+            val result = runCatching { api.debtPlan(accountId, extra, strategy, _state.value.selectedPeriod) }.getOrNull()
+            _state.update { it.copy(debtPlanLoading = false, debtPlan = result ?: it.debtPlan) }
+        }
+    }
 
     /**
      * Open the payoff drawer for one debt bucket and fetch its forecast.

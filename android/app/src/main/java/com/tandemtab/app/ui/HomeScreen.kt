@@ -251,9 +251,17 @@ fun HomeScreen(
     onLoadBankMappings: () -> Unit,
     onPinMerchant: (description: String, categoryId: String, currentlyPinned: Boolean) -> Unit,
     onOpenPayoff: (bucketId: String, bucketName: String) -> Unit,
+    // R2.5 — the whole-stack plan on the Goals tab. Separate from onOpenPayoff above: that one is about a single
+    // loan, this one about being debt-free.
+    onOpenDebtPlan: () -> Unit,
+    onCloseDebtPlan: () -> Unit,
+    onSetDebtPlan: (Double?, String?) -> Unit,
     onClosePayoff: () -> Unit,
     onOpenBreakdown: (String?) -> Unit,
     onCloseBreakdown: () -> Unit,
+    // R2.5 — Trends shares the Breakdown drawer, so one callback drives both the switcher and the range chips
+    // inside it. A null range means "leave the range as it is".
+    onShowTrends: (Boolean, String?) -> Unit,
     onArchiveFund: (String, Boolean, String?, Double, () -> Unit) -> Unit,
     onDeleteFund: (String, String?, () -> Unit) -> Unit,
     onEditTransfer: (String, String, String, Double, String?, () -> Unit) -> Unit,
@@ -550,6 +558,13 @@ fun HomeScreen(
                             spending = state.spending,
                             onRetry = { onLoadGoals(true) },
                             onOpenPayoff = onOpenPayoff,
+                            debtPlan = state.debtPlan,
+                            debtPlanOpen = state.debtPlanOpen,
+                            debtPlanLoading = state.debtPlanLoading,
+                            debtPlanExtra = state.debtPlanExtra,
+                            onOpenDebtPlan = onOpenDebtPlan,
+                            onCloseDebtPlan = onCloseDebtPlan,
+                            onSetDebtPlan = onSetDebtPlan,
                             onPrepareAllocate = onPrepareAllocate,
                             onPrepareSpend = onPrepareSpend,
                             onAllocate = onAllocate,
@@ -730,6 +745,11 @@ fun HomeScreen(
             BreakdownSheet(
                 breakdown = state.breakdown,
                 loading = state.breakdownLoading,
+                trends = state.trends,
+                trendsOverTime = state.trendsOverTime,
+                trendsLoading = state.trendsLoading,
+                trendsRange = state.trendsRange,
+                onShowTrends = onShowTrends,
                 onDismiss = onCloseBreakdown,
                 onGroupBy = { onOpenBreakdown(it) },
             )

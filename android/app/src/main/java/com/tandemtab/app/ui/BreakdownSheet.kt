@@ -38,6 +38,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.tandemtab.app.data.BreakdownSliceDto
 import com.tandemtab.app.data.BreakdownViewDto
+import com.tandemtab.app.data.TrendsViewDto
 import com.tandemtab.app.ui.theme.LocalTandemColors
 
 /**
@@ -49,12 +50,22 @@ import com.tandemtab.app.ui.theme.LocalTandemColors
  * a chart whose total disagrees with its own wedges is the bug all of this was written to prevent.
  *
  * Every figure and every colour comes from the server ([BreakdownViewDto]); this file only draws them.
+ *
+ * ★ **Trends lives in this drawer too** (R2.5), behind the switcher at the top, rather than in a card of its own
+ * on Home. The two answer "where did it go" and "how has it been going" about the same money, and the web pairs
+ * them in one glance row for exactly that reason — while a second Home card would have been one more thing to
+ * scroll past on a screen that already carries five.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BreakdownSheet(
     breakdown: BreakdownViewDto?,
     loading: Boolean,
+    trends: TrendsViewDto?,
+    trendsOverTime: Boolean,
+    trendsLoading: Boolean,
+    trendsRange: String,
+    onShowTrends: (Boolean, String?) -> Unit,
     onDismiss: () -> Unit,
     onGroupBy: (String) -> Unit,
 ) {
@@ -63,7 +74,9 @@ fun BreakdownSheet(
     val money = moneyFormatter(breakdown?.currency.orEmpty())
 
     SheetScaffold(
-        title = "Where your money went",
+        // The title moves with the view. A drawer headed "Where your money went" while drawing eight months of
+        // bars would be naming the wrong question.
+        title = if (trendsOverTime) "Money over time" else "Where your money went",
         saving = false,
         canSave = false,
         onDismiss = onDismiss,
@@ -71,6 +84,17 @@ fun BreakdownSheet(
         sheetState = sheetState,
         saveLabel = "",
     ) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            PickChip(label = "This period", icon = null, selected = !trendsOverTime) { onShowTrends(false, null) }
+            PickChip(label = "Over time", icon = null, selected = trendsOverTime) { onShowTrends(true, null) }
+        }
+        Spacer(Modifier.height(16.dp))
+
+        if (trendsOverTime) {
+            TrendsView(trends, trendsLoading, trendsRange) { r -> onShowTrends(true, r) }
+            return@SheetScaffold
+        }
+
         if (loading || breakdown == null) {
             Box(Modifier.fillMaxWidth().height(200.dp), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
