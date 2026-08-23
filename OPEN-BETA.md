@@ -457,8 +457,19 @@ fund rows and the Home sheet), and ⚠️ **there are now two income editors** �
 **whole-stack payoff plan** (avalanche/snowball, debt-free date, clearing order — the server exposes only
 *per-bucket* `/savings/{id}/payoff`, which is likely most of QUEUE #8), and the **week recap**. ★ The first two
 **batch into one server slice** — both are "per-period aggregates the thin contracts don't carry". Three are
-client rows: the **income list** (✅ done S117), the **live-trip hero** on Home, and a **visible door to the Breakdown** (its
-only route in today is an undiscoverable left-swipe, itself one of QUEUE #1's unverified gesture risks).
+client rows: the **income list** (✅ done S117), the **live-trip hero** on Home, and a **visible door to the
+Breakdown** (✅ **done S117** — see below; its only route in had been an undiscoverable left-swipe, itself one of
+QUEUE #1's unverified gesture risks).
+
+✅ **The Breakdown door (S117).** Home now carries **"Where your money went"** — the web's `home-brk-card`,
+ported: the ring, the total, the top four slices, tapping through to the sheet. It sits directly above the
+runway card because the web pairs those two in one glance row. ★ **The swipe stays and is no longer
+load-bearing** — which matters more than the card does: the pull-down gesture on this same screen had never
+fired once, and nobody noticed for as long as it took to run the app, because an invisible gesture failing looks
+exactly like an invisible gesture nobody tried. ⚠️ It costs **one more Home read** (`GET /breakdown`, ungated,
+same class as `/runway` and `/targets`, which Home already fetches unconditionally) — and it is not purely a
+cost: the sheet is **seeded** from it, so the swipe now opens on content rather than a spinner. The ring is
+extracted as `BreakdownRing` and shared by card and sheet, so there is one of it rather than two.
 
 **Phone → web.** The **always-visible milestones line** (the phone's rule is better and `HomeScreen.kt` argues
 why); an auto-mask trigger to match the phone's face-down sensor; and ⚠️ **the bills card, which is a genuine

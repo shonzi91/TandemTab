@@ -138,10 +138,16 @@ data class UiState(
     val overview: AccountOverviewDto? = null,
     val periodLabel: String? = null,
     // Period navigation: the account's periods, its open/current index, and which one is being viewed (null = current).
-    // The Breakdown drawer, reached by swiping left on Home.
+    // The Breakdown drawer, reached by swiping left on Home — or, since S117, by the card that swipe never
+    // advertised.
     val breakdownOpen: Boolean = false,
     val breakdownLoading: Boolean = false,
     val breakdown: BreakdownViewDto? = null,
+    // The same read, held for Home's "Where your money went" card. ⚠️ Kept apart from `breakdown` above on
+    // purpose: that one follows whatever the sheet was last regrouped by (label, wallet), and a Home card that
+    // silently changed what its ring means because of a chip tapped inside a sheet would be a chart that lies.
+    // This one is always the default (category) grouping for the period being viewed.
+    val homeBreakdown: BreakdownViewDto? = null,
     // The debt-payoff drawer: which bucket is open, and what the server said about it. Held here rather than in
     // the bucket row so the row stays a pure render of the list read — the forecast is a second, slower call.
     val payoffBucketId: String? = null,
@@ -755,6 +761,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private suspend fun loadForecast(accountId: String) {
         runCatching { api.runway(accountId) }.onSuccess { r -> _state.update { it.copy(runway = r) } }
         runCatching { api.targets(accountId) }.getOrNull()?.let { t -> _state.update { it.copy(targets = t.targets) } }
+        // Home's breakdown card. Cleared FIRST, for the same reason the alerts below are: this is a per-period
+        // read, and leaving August's ring under September's header for the length of a request shows a figure
+        // that is wrong rather than a figure that is late. It is not extra work — the sheet's own read is seeded
+        // from it, so the swipe (and now the card) opens on content instead of a spinner.
+        _state.update { it.copy(homeBreakdown = null) }
+        runCatching { api.breakdown(accountId, _state.value.selectedPeriod, null) }
+            .getOrNull()?.let { b -> _state.update { it.copy(homeBreakdown = b) } }
         // Alerts are only ever computed for the CURRENT period server-side, so a user browsing a past period would
         // otherwise see this month's warnings attached to a month that already closed. Clear them instead.
         val alerts = if (_state.value.selectedPeriod == null)
@@ -909,7 +922,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         _state.update {
             it.copy(
                 busy = true, selectedAccountId = accountId, overview = null, periodLabel = null,
-                runway = null, targets = emptyList(),
+                // The breakdown goes with them: another account's ring under this account's name is the same
+                // class of wrong as its runway would be.
+                runway = null, targets = emptyList(), homeBreakdown = null, breakdown = null,
                 spending = SpendingUi(), goals = GoalsUi(), wallets = WalletsUi(), health = HealthUi(), recurring = RecurringUi(),
                 // Trips belong to the account, not to the period — so they survive paging back through months and
                 // are dropped only when the account itself changes.
@@ -1702,7 +1717,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
      */
     fun openBreakdown(groupBy: String? = null) {
         val accountId = _state.value.selectedAccountId ?: return
-        _state.update { it.copy(breakdownOpen = true, breakdownLoading = it.breakdown == null || groupBy != null) }
+        _state.update {
+            // Seed from Home's copy when the sheet is opening on the default grouping — it is the same request
+            // for the same period, already answered. Preferred over whatever `breakdown` holds, which may be an
+            // earlier period's or an earlier grouping's. A regroup gets no seed: that is a different chart.
+            val seed = if (groupBy == null) it.homeBreakdown ?: it.breakdown else it.breakdown
+            it.copy(breakdownOpen = true, breakdown = seed, breakdownLoading = seed == null || groupBy != null)
+        }
         viewModelScope.launch {
             val result = runCatching { api.breakdown(accountId, _state.value.selectedPeriod, groupBy) }.getOrNull()
             _state.update { it.copy(breakdownLoading = false, breakdown = result ?: it.breakdown) }

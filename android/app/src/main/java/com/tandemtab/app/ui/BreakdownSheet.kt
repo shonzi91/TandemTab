@@ -33,8 +33,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.tandemtab.app.data.BreakdownSliceDto
 import com.tandemtab.app.data.BreakdownViewDto
 import com.tandemtab.app.ui.theme.LocalTandemColors
 
@@ -88,26 +90,7 @@ fun BreakdownSheet(
             Text("Nothing has left the account in this period yet.", fontSize = 13.sp, color = tandem.muted)
         } else {
             Box(Modifier.fillMaxWidth().height(200.dp), contentAlignment = Alignment.Center) {
-                val total = breakdown.slices.sumOf { it.amount }
-                val trackColor = MaterialTheme.colorScheme.outline
-                Canvas(Modifier.size(180.dp)) {
-                    val stroke = Stroke(width = 26.dp.toPx(), cap = StrokeCap.Butt)
-                    val inset = 26.dp.toPx() / 2f
-                    val arcSize = Size(size.width - inset * 2, size.height - inset * 2)
-                    val topLeft = Offset(inset, inset)
-                    drawArc(trackColor, 0f, 360f, false, topLeft, arcSize, style = stroke)
-                    if (breakdown.slices.size == 1) {
-                        // A full ring, not a 360° arc — two butt caps meeting at the same angle leave a seam.
-                        drawCircle(parseColor(breakdown.slices[0].color), radius = arcSize.width / 2f, style = stroke)
-                    } else {
-                        var start = -90f
-                        breakdown.slices.forEach { s ->
-                            val sweep = if (total > 0.0) (s.amount / total * 360.0).toFloat() else 0f
-                            drawArc(parseColor(s.color), start, sweep, false, topLeft, arcSize, style = stroke)
-                            start += sweep
-                        }
-                    }
-                }
+                BreakdownRing(breakdown.slices, size = 180.dp, stroke = 26.dp)
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(money(breakdown.spent), fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.onBackground)
                     // "used", not "spent": the word under the total has to move with the figure, and this total is
@@ -145,6 +128,37 @@ fun BreakdownSheet(
     }
 }
 
+/**
+ * The spending ring itself — every colour and every amount the server's, this only draws them.
+ *
+ * Shared by the sheet and by Home's card so there is exactly one of these on the phone: the seam rule below is
+ * the kind of thing that gets fixed in one copy and not the other. Draw the centre content by stacking it in a
+ * [Box] over this — the ring keeps no opinion about what sits in its hole.
+ */
+@Composable
+fun BreakdownRing(slices: List<BreakdownSliceDto>, size: Dp, stroke: Dp) {
+    val total = slices.sumOf { it.amount }
+    val trackColor = MaterialTheme.colorScheme.outline
+    Canvas(Modifier.size(size)) {
+        val strokeStyle = Stroke(width = stroke.toPx(), cap = StrokeCap.Butt)
+        val inset = stroke.toPx() / 2f
+        val arcSize = Size(this.size.width - inset * 2, this.size.height - inset * 2)
+        val topLeft = Offset(inset, inset)
+        drawArc(trackColor, 0f, 360f, false, topLeft, arcSize, style = strokeStyle)
+        if (slices.size == 1) {
+            // A full ring, not a 360° arc — two butt caps meeting at the same angle leave a seam.
+            drawCircle(parseColor(slices[0].color), radius = arcSize.width / 2f, style = strokeStyle)
+        } else {
+            var start = -90f
+            slices.forEach { s ->
+                val sweep = if (total > 0.0) (s.amount / total * 360.0).toFloat() else 0f
+                drawArc(parseColor(s.color), start, sweep, false, topLeft, arcSize, style = strokeStyle)
+                start += sweep
+            }
+        }
+    }
+}
+
 @Composable
 private fun SummaryLine(label: String, value: String, good: Boolean = false) {
     val tandem = LocalTandemColors.current
@@ -160,7 +174,8 @@ private fun SummaryLine(label: String, value: String, good: Boolean = false) {
 }
 
 /** "#rrggbb" from the server. Falls back to grey rather than throwing — a chart with one odd wedge is far better
- *  than a screen that crashes because a colour string changed shape. */
-private fun parseColor(hex: String): Color = runCatching {
+ *  than a screen that crashes because a colour string changed shape. Internal because Home's card paints its
+ *  legend dots with the same server colours the ring uses; a second parser would be a second fallback. */
+internal fun parseColor(hex: String): Color = runCatching {
     Color(android.graphics.Color.parseColor(if (hex.startsWith("#")) hex else "#$hex"))
 }.getOrDefault(Color(0xFF9AA5B1))

@@ -88,6 +88,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import com.tandemtab.app.UiState
 import com.tandemtab.app.data.AccountSummaryDto
+import com.tandemtab.app.data.BreakdownViewDto
 import com.tandemtab.app.data.FundCurrencyEdit
 import com.tandemtab.app.data.ImportRowDto
 import com.tandemtab.app.data.MemberDto
@@ -496,6 +497,9 @@ fun HomeScreen(
                             onOpenRecurring = { showRecurring = true },
                             onOpenHealth = { showHealth = true },
                             onOpenRunway = { showRunway = true },
+                            // Same destination as the left-swipe above, which is the point: the gesture stays,
+                            // and stops being the only way in.
+                            onOpenBreakdown = { onOpenBreakdown(null) },
                             // The catalogue is only fetched when it's asked for — the tally on the line is the
                             // cheap half, and most visits to Home never open this.
                             onOpenAchievements = { onLoadAchievements(false); showAchievements = true },
@@ -781,6 +785,7 @@ private fun HomePage(
     onOpenRecurring: () -> Unit,
     onOpenHealth: () -> Unit,
     onOpenRunway: () -> Unit,
+    onOpenBreakdown: () -> Unit,
     onOpenAchievements: () -> Unit,
     onAcceptInvitation: (String) -> Unit,
     onDeclineInvitation: (String) -> Unit,
@@ -821,6 +826,9 @@ private fun HomePage(
             RecurringCard(recurring = state.recurring, onOpen = onOpenRecurring)
             Spacer(Modifier.height(14.dp))
             TargetsCard(state.targets, fmt)
+            // Directly above the runway, as the web pairs them: "where it went" and "at this rate" are one glance
+            // there (`home-glance`), and the phone stacks what the web puts side by side.
+            BreakdownCard(state.homeBreakdown, onOpen = onOpenBreakdown)
             RunwayCard(state.runway, fmt, onOpen = onOpenRunway)
             MilestonesLine(state.milestones, onOpen = onOpenAchievements)
         }
@@ -1219,6 +1227,61 @@ private fun HeroDivider() {
             .width(1.dp)
             .background(LocalTandemColors.current.hairline),
     )
+}
+
+/**
+ * "Where your money went" — Home's door to the Breakdown, ported from the web's `home-brk-card`.
+ *
+ * ⚠️ **This exists because the Breakdown had no visible door at all.** Its only route in was a left-swipe on
+ * Home: undiscoverable, undocumented anywhere in the app, and — as the notification pull-down proved on the same
+ * screen — a gesture nobody can see is a gesture that can stop working without anyone noticing. The swipe stays;
+ * it is no longer load-bearing.
+ *
+ * Hidden until there is spend, exactly as on the web: a ring of nothing promotes nothing. The figures come from
+ * the shared [moneyFormatter], so a masked account masks the total and the legend with everything else.
+ */
+@Composable
+private fun BreakdownCard(breakdown: BreakdownViewDto?, onOpen: () -> Unit) {
+    val tandem = LocalTandemColors.current
+    val b = breakdown ?: return
+    if (b.spent <= 0.0 || b.slices.isEmpty()) return
+    val money = moneyFormatter(b.currency)
+    Column(
+        Modifier.fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(16.dp))
+            .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(16.dp))
+            .clickable(onClick = onOpen)
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            // No figure inside a ring this small — at 62dp the total would be a few points of type fighting the
+            // wedges. It goes beside the title instead, where it has room to be read.
+            BreakdownRing(b.slices, size = 62.dp, stroke = 11.dp)
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    "Where your money went",
+                    fontWeight = FontWeight.Bold, fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurface,
+                )
+                Text("${money(b.spent)} used", fontSize = 12.sp, color = tandem.muted)
+            }
+            OpenChip()
+        }
+        // The web shows its top four; so does this. The rest are one tap away, and the card's job is to say
+        // "there is a shape to this" rather than to be the chart.
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            b.slices.take(4).forEach { s ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.size(8.dp).clip(RoundedCornerShape(2.dp)).background(parseColor(s.color)))
+                    Spacer(Modifier.width(8.dp))
+                    Text(s.label, fontSize = 12.sp, color = tandem.muted, maxLines = 1, modifier = Modifier.weight(1f))
+                    Text(money(s.amount), fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
+                }
+            }
+        }
+    }
+    Spacer(Modifier.height(14.dp))
 }
 
 /** The Home "At this rate…" runway card, driven by the server's cash-flow projection (GET /runway). Amber when the
