@@ -480,16 +480,24 @@ cheaper than the breakdown one — and the add sheet was going to pay for it any
 
 **⬜ What is left in this phase** (nothing below was started): the **server slice** — Trends + the whole-stack
 payoff plan, batched, plus the **week recap**; the **PWA** shell (manifest, service worker, `theme-color`); the
-phone→web rows (**always-visible milestones**, an **auto-mask trigger**); **T0 idempotency keys**, which is the
-live bug and the largest single risk here; and ⚠️ **the bills card, which is the owner's call and not a build
-task** — Android puts it on Home, the web deliberately keeps bills in the bell, and one of them has to change
-its mind before either is touched.
+phone→web rows (**always-visible milestones**, an **auto-mask trigger**); and **T0 idempotency keys**, which is
+the live bug and the largest single risk here. ✅ The bills-card disagreement is **settled and built** — see the
+Phone → web paragraph above. All three of the phase's client rows are done.
 
 **Phone → web.** The **always-visible milestones line** (the phone's rule is better and `HomeScreen.kt` argues
 why); an auto-mask trigger to match the phone's face-down sensor; and ⚠️ **the bills card, which is a genuine
 disagreement, not an oversight** — Android puts `RecurringCard` on Home, the web deliberately keeps bills in the
 bell (*"no Home link"*, per its own comment). Two opposite decisions, neither recording that the other exists.
 **Pick one and write it down.**
+
+✅ **Settled by the owner, 2026-08-23: bills go in the notification list.** The web's answer wins; Android's
+`RecurringCard` is deleted and a **BILLS & INCOME** line now heads `NotificationsSheet`, carrying the two things
+the alerts cannot — the "all bills handled for now" reassurance, and the door to managing them. ⚠️ **One thing
+was added that the decision did not ask for, and the reason is on the record:** the notification list's only
+route in was the pull-down, and that is the gesture which *had never fired once* until `cda2852`. Bills now
+living behind it made a single silent gesture regression enough to hide them, so **the Home alert strip is
+tappable to the same sheet** — a second, visible door, no new chrome. (A third already existed and had been
+overlooked in the sweep: Account settings → *Recurring bills & income*.)
 
 **⭐ The web is not a PWA** — no manifest, no service worker, no `theme-color`, no `apple-mobile-web-app-*`. With
 iOS on hold indefinitely, **the mobile web *is* the iOS product**, and it cannot be installed. The responsive CSS

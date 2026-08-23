@@ -495,7 +495,7 @@ fun HomeScreen(
                         NavDest.Home -> HomePage(
                             state,
                             darkTheme = darkTheme,
-                            onOpenRecurring = { showRecurring = true },
+                            onOpenNotifications = { showNotifications = true },
                             onOpenHealth = { showHealth = true },
                             onOpenRunway = { showRunway = true },
                             // Same destination as the left-swipe above, which is the point: the gesture stays,
@@ -742,6 +742,10 @@ fun HomeScreen(
                     showNotifications = false
                     NavDest.entries.firstOrNull { it.name.equals(tab, ignoreCase = true) }?.let { dest = it }
                 },
+                recurring = state.recurring,
+                // One sheet closes as the other opens: Compose only reliably drives one modal at a time, which
+                // is the same reason the recurring editor lives *inside* its own sheet rather than above it.
+                onManageBills = { showNotifications = false; showRecurring = true },
             )
         }
         state.payoffBucketId?.let {
@@ -787,7 +791,7 @@ fun HomeScreen(
 private fun HomePage(
     state: UiState,
     darkTheme: Boolean,
-    onOpenRecurring: () -> Unit,
+    onOpenNotifications: () -> Unit,
     onOpenHealth: () -> Unit,
     onOpenRunway: () -> Unit,
     onOpenBreakdown: () -> Unit,
@@ -828,12 +832,16 @@ private fun HomePage(
             // below is being distorted by the trip, so the card that explains that comes first. (The web puts it
             // under its three action buttons; the phone's equivalent is the FAB, which is not in this column.)
             TripHeroCard(state.trips, onOpen = onOpenLiveTrip)
-            // Order per the design: health score on top, then bills, then "on track for", and finally the runway.
+            // Order per the design: health score on top, then "on track for", and finally the runway.
+            // ⚠️ **Bills are no longer a card here** (owner's call, S117). They live in the notification list —
+            // which is where the web has always kept them, with its own `no Home link` comment saying so. The
+            // two clients had opposite answers and neither recorded that the other existed; this is the one
+            // being kept. The list is reached by the pull-down and by tapping the strip below.
             HealthCard(health = state.health, onOpen = onOpenHealth)
             // The urgent strip hangs directly off the score, as on web, so "how am I doing" reads as one block.
-            AlertStrip(state.alerts)
-            Spacer(Modifier.height(14.dp))
-            RecurringCard(recurring = state.recurring, onOpen = onOpenRecurring)
+            // Bills that are actually DUE already arrive here as urgent alerts from the server, so the summary
+            // the card used to carry has not gone anywhere — only its permanent slot has.
+            AlertStrip(state.alerts, onOpenAll = onOpenNotifications)
             Spacer(Modifier.height(14.dp))
             TargetsCard(state.targets, fmt)
             // Directly above the runway, as the web pairs them: "where it went" and "at this rate" are one glance
@@ -1021,7 +1029,7 @@ private fun InvitationsCard(
  * the bell, and repeating them on Home is how a warning strip becomes wallpaper.
  */
 @Composable
-private fun AlertStrip(alerts: List<com.tandemtab.app.data.NotificationDto>) {
+private fun AlertStrip(alerts: List<com.tandemtab.app.data.NotificationDto>, onOpenAll: () -> Unit) {
     val tandem = LocalTandemColors.current
     val urgent = alerts.filter { it.urgent }
     if (urgent.isEmpty()) return
@@ -1033,9 +1041,15 @@ private fun AlertStrip(alerts: List<com.tandemtab.app.data.NotificationDto>) {
             var shown by remember(group.first().text, group.size) { mutableStateOf(0) }
             val item = group[shown % group.size]
             Row(
+                // ⚠️ Tapping the strip opens the full list, and that is not decoration. Since bills moved into
+                // the notification list (owner's call, S117), the pull-down became the only route to them — and
+                // that pull-down is the gesture that had never fired once until `cda2852`. A second, *visible*
+                // door to the same sheet is what stops one silent gesture regression from hiding the bills.
                 Modifier.fillMaxWidth()
+                    .clip(RoundedCornerShape(14.dp))
                     .background(tandem.alertBg, RoundedCornerShape(14.dp))
                     .border(1.dp, tandem.alertBorder, RoundedCornerShape(14.dp))
+                    .clickable(onClick = onOpenAll)
                     .padding(horizontal = 14.dp, vertical = 11.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {

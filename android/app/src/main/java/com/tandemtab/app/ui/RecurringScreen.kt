@@ -81,37 +81,11 @@ private val MODES = listOf(
     Triple("reminder", "Reminder only", "No amount — you'll enter the real figure each time it's due (good for a variable salary)."),
 )
 
-/** The Home "Bills & income" card — a compact due/upcoming summary that opens the full sheet. Hidden when there
- *  are no recurring items at all. */
-@Composable
-fun RecurringCard(recurring: RecurringUi, onOpen: () -> Unit) {
-    val tandem = LocalTandemColors.current
-    if (!recurring.loaded || recurring.items.isEmpty()) return
-    val active = recurring.items.filter { it.active }
-    val due = active.count { it.due }
-    val upcoming = active.count { it.upcoming && !it.due }
-
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(16.dp))
-            .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(16.dp))
-            .clickable(onClick = onOpen)
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text("BILLS & INCOME", fontSize = 10.sp, letterSpacing = 1.2.sp, fontWeight = FontWeight.Bold, color = tandem.muted, modifier = Modifier.weight(1f))
-            Text("Manage ›", color = MaterialTheme.colorScheme.primary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-        }
-        val summary = when {
-            due > 0 -> "$due due now" + (if (upcoming > 0) " · $upcoming upcoming" else "")
-            upcoming > 0 -> "$upcoming upcoming"
-            else -> "All bills handled for now"
-        }
-        Text(summary, fontWeight = FontWeight.Bold, color = if (due > 0) tandem.spent else MaterialTheme.colorScheme.onSurface, fontSize = 16.sp)
-    }
-}
+// ⚠️ **`RecurringCard` — the Home "Bills & income" card — was removed here in S117**, on the owner's call that
+// bills belong in the notification list (the web's long-standing answer; see `NotificationsSheet.BillsLine`).
+// Deleted rather than left as an uncalled composable, because a dead public one reads as "somewhere this is
+// still used". `git show 4493460:android/app/src/main/java/com/tandemtab/app/ui/RecurringScreen.kt` has it back
+// if the call is ever reversed.
 
 /** What the sheet is showing: the list, or the editor on a new item / an existing one. Kept *inside* the one
  *  ModalBottomSheet rather than stacking a second sheet on top — Compose only reliably drives one at a time, and
