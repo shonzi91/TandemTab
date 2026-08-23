@@ -35,7 +35,7 @@ public static class IncomeMap
             .ToList();
         var funds = account.RootFunds
             .Where(f => !f.IsArchived)
-            .Select(f => new FundOptionDto(f.Id, f.Name, f.IsSynced))
+            .Select(f => new FundOptionDto(f.Id, f.Name, f.IsSynced, f.Currency, f.Rate))
             .ToList();
 
         return new IncomeViewDto(version, account.Currency,

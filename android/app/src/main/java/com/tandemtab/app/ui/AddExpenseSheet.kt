@@ -79,7 +79,14 @@ import java.util.Locale
 private data class ExpenseDraft(
     val categoryId: String,
     val fundId: String,
+    // ⚠️ ALREADY CONVERTED into the account's currency — a draft never carries a foreign figure in this field, so
+    // the running total and the batch POST can both add rows up without knowing which wallet each came from.
     val amount: Double,
+    // What was typed, and what it was typed in. Per row, like the trip and the tag: a batch staged on one evening
+    // can legitimately mix the kronor wallet and the euro one, and a per-sheet currency would mis-state whichever
+    // row was not the last one picked.
+    val typedAmount: Double = 0.0,
+    val foreignCurrency: String? = null,
     val note: String,
     val date: String,
     // Which journey this row is filed to, if any. Carried per staged row rather than per sheet, so a batch can
@@ -210,11 +217,29 @@ fun AddSheet(
 
     val parsed = amountText.replace(',', '.').toDoubleOrNull()?.takeIf { it > 0 }
     val currentValid = parsed != null && categoryId != null && fundId != null
+
+    // The wallet the Amount field is being read in, when it holds foreign cash. Picking the wallet is what changes
+    // the meaning of the field, which is why the fund sits above the amount on this sheet.
+    // ⚠️ Deliberately null while EDITING, and the same predicate drives both the prefix and the conversion so the
+    // two cannot disagree. An edit is pre-filled with the STORED amount, which is already in the account's
+    // currency — the expense read carries no record of what was originally typed — so treating the field as
+    // foreign would convert an already-converted figure and quietly divide a real expense. The web draws the same
+    // line: it converts on add and sends the edit's amount through untouched.
+    val foreignFund = if (editingMode) null else fundId?.let { fundById[it] }?.takeIf { it.hasRate }
+
+    /** What this expense costs the account — the typed figure converted, on a foreign wallet, and itself otherwise. */
+    fun amountToLog(typed: Double): Double = foreignFund?.toAccountCurrency(typed) ?: typed
+
     fun currentDraft(): ExpenseDraft? =
-        if (currentValid) ExpenseDraft(categoryId!!, fundId!!, parsed!!, note.trim(), date, tripId, tagId, timeForWire(timeText)) else null
+        if (currentValid) ExpenseDraft(
+            categoryId!!, fundId!!, amountToLog(parsed!!),
+            typedAmount = parsed, foreignCurrency = foreignFund?.currency,
+            note = note.trim(), date = date, tripId = tripId, tagId = tagId, time = timeForWire(timeText),
+        ) else null
 
     val pendingCount = staged.size + (if (currentValid) 1 else 0)
-    val pendingTotal = staged.sumOf { it.amount } + (if (currentValid) parsed!! else 0.0)
+    // Converted on both halves, or the running total would add kronor to euros and print a number that is neither.
+    val pendingTotal = staged.sumOf { it.amount } + (if (currentValid) amountToLog(parsed!!) else 0.0)
 
     fun stageCurrent(): Boolean {
         val d = currentDraft() ?: run {
@@ -288,7 +313,16 @@ fun AddSheet(
                 val batch = buildList {
                     addAll(staged)
                     currentDraft()?.let { add(it) }
-                }.map { AddExpenseRequest(it.categoryId, it.amount, it.fundId, it.date, it.note.ifBlank { null }, tagId = it.tagId, tripId = it.tripId, time = it.time) }
+                }.map {
+                    AddExpenseRequest(
+                        it.categoryId, it.amount, it.fundId, it.date, it.note.ifBlank { null },
+                        tagId = it.tagId, tripId = it.tripId, time = it.time,
+                        // Only on a foreign row: sending the typed figure for an ordinary wallet would make every
+                        // expense claim a conversion that never happened, and the ledger renders that pair.
+                        foreignAmount = it.foreignCurrency?.let { _ -> it.typedAmount },
+                        foreignCurrency = it.foreignCurrency,
+                    )
+                }
                 if (batch.isEmpty()) { hint = "Enter an amount."; return }
                 onSaveExpenses(batch) { staged = emptyList(); amountText = ""; note = ""; onDismiss() }
             }
@@ -363,16 +397,32 @@ fun AddSheet(
                 else -> {
                     Spacer(Modifier.height(8.dp))
 
-                    // Amount.
+                    // Amount. On a foreign-cash wallet the field is read in THAT wallet's currency, so it must be
+                    // prefixed with it — a field prefixed "€" while you stand in Sweden typing kronor is the whole
+                    // bug, and it is silent: the figure looks perfectly reasonable in the ledger afterwards.
                     OutlinedTextField(
                         value = amountText,
                         onValueChange = { amountText = it; hint = null },
-                        label = { Text("Amount") },
-                        prefix = { Text(currencySymbol(spending.currency)) },
+                        label = { Text(if (foreignFund != null) "Amount in ${foreignFund.currency}" else "Amount") },
+                        prefix = { Text(currencySymbol(foreignFund?.currency ?: spending.currency)) },
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                         modifier = Modifier.fillMaxWidth(),
                     )
+                    if (foreignFund != null) {
+                        Spacer(Modifier.height(6.dp))
+                        // The converted figure, before it becomes a ledger entry. A rate is somebody's fixed guess,
+                        // so the honest thing is to show what will actually be stored while it can still be changed.
+                        Text(
+                            if (parsed != null)
+                                "Logs as ${currencySymbol(spending.currency)}${trimAmount(amountToLog(parsed))}" +
+                                    " — ${foreignFund.name}'s rate."
+                            else
+                                "Typed in ${foreignFund.currency}, stored in ${spending.currency}. Card payments " +
+                                    "don't come through here — they leave your bank already converted.",
+                            color = tandem.muted, fontSize = 12.sp,
+                        )
+                    }
                     Spacer(Modifier.height(14.dp))
 
                     // Category — most-used chips + a searchable picker.

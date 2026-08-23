@@ -246,14 +246,17 @@ public class CategoryFlattenTests
     }
 
     [Fact]
-    public void A_parent_id_posted_by_an_older_client_files_at_the_top_level_instead_of_failing()
+    public void Every_category_the_app_can_create_is_top_level()
     {
+        // ⚠️ This used to pass a parent id to AddCategory and assert it was ignored. The parameter is gone — it
+        // invited callers to nest and then silently didn't, which is how the phone's editor came to offer a parent
+        // picker that changed nothing — so tolerating one is now a WIRE concern, pinned by
+        // CategoryApiTests.A_parent_id_from_an_older_client_is_ignored_rather_than_rejected.
         var account = new Account("Personal", Eur);
-        var food = account.AddCategory("Food");
+        account.AddCategory("Food");
+        account.AddCategory("Groceries");
 
-        var groceries = account.AddCategory("Groceries", food.Id);
-
-        Assert.True(groceries.IsRoot);
+        Assert.All(account.Categories, c => Assert.True(c.IsRoot));
         Assert.Equal(2, account.Categories.Count);
     }
 }

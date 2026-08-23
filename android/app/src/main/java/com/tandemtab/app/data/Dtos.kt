@@ -2,6 +2,8 @@ package com.tandemtab.app.data
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import java.math.BigDecimal
+import java.math.RoundingMode
 
 /**
  * Wire models mirroring FinApp.Contracts. The server serializes records with camelCase property names
@@ -144,8 +146,29 @@ data class ExpenseDto(
 @Serializable
 data class CategoryOptionDto(val id: String, val name: String, val icon: String? = null, val parentId: String? = null)
 
+/** `currency`/`rate` describe a wallet holding FOREIGN cash: what it is denominated in, and what one unit of it is
+ *  worth in the ACCOUNT's currency (1 SEK = 0.087 EUR → 0.087). Both null on an ordinary wallet, which is nearly
+ *  always. They mean nothing apart — see [hasRate]. */
 @Serializable
-data class FundOptionDto(val id: String, val name: String, val synced: Boolean = false)
+data class FundOptionDto(
+    val id: String,
+    val name: String,
+    val synced: Boolean = false,
+    val currency: String? = null,
+    val rate: Double? = null,
+) {
+    /** Mirrors the domain's `Fund.HasRate`. A currency with no rate is a labelled wallet nobody has priced yet:
+     *  it must NOT convert, because converting by a missing rate is how face value gets stored as if it had been
+     *  through the arithmetic. */
+    val hasRate: Boolean get() = !currency.isNullOrBlank() && (rate ?: 0.0) > 0.0
+
+    /** What `typed` (in this wallet's currency) is worth in the account's — the same round-half-away-from-zero to
+     *  two places the server's `Fund.ToAccountCurrency` applies, so both clients store the identical figure. */
+    fun toAccountCurrency(typed: Double): Double =
+        if (hasRate) BigDecimal.valueOf(typed).multiply(BigDecimal.valueOf(rate!!))
+            .setScale(2, RoundingMode.HALF_UP).toDouble()
+        else typed
+}
 
 /** A tag as a picker option. `categoryId` is the category picking it files the expense into (so a label is a filing
  *  decision, not a note); `tripTag` marks the seeded trip label set, which only the trip entry form offers. */
@@ -705,6 +728,13 @@ data class AddExpenseRequest(
     // as "leave it alone" (it used to CLEAR it, which is what stripped labels off rows edited from this app). So
     // "No label" now has to be said out loud.
     val clearTag: Boolean = false,
+    // What was TYPED, before conversion, when the wallet holds foreign cash — `amount` is already the converted
+    // figure. Display only: the row renders "€8.70 · 100.00 kr" from these, and they are recorded rather than
+    // re-derived so editing the wallet's rate later can never rewrite what a past expense cost.
+    // ⚠️ Meaningful on an ADD only. The edit route does not carry them; the server keeps the stored pair across an
+    // edit, which is also why this sheet must not re-convert an amount it pre-filled.
+    val foreignAmount: Double? = null,
+    val foreignCurrency: String? = null,
 )
 
 /** What POST/PUT/DELETE /expenses returns: the new snapshot version, the row's id, the (added/edited) row for the
@@ -995,6 +1025,9 @@ data class FundRowDto(
     val synced: Boolean = false,
     val archived: Boolean = false,
     val availableToTransferOut: Double = 0.0,
+    // The foreign cash this wallet holds and its rate into the account's currency — see FundOptionDto.
+    val currency: String? = null,
+    val rate: Double? = null,
 )
 
 @Serializable
@@ -1172,6 +1205,157 @@ data class EditFundRequest(
  *  Overwrites any existing opening balance. */
 @Serializable
 data class SetFundOpeningBalanceRequest(val amount: Double)
+
+/** One wedge of the Breakdown ring. `key` is the category/tag/fund id, or one of two sentinels — `…00fe` is the
+ *  "Everything else" rollup and `…00fd` is "Transfers out". `color` is chosen server-side so both clients draw the
+ *  same category in the same colour. */
+@Serializable
+data class BreakdownSliceDto(
+    val key: String = "",
+    val label: String = "",
+    val icon: String? = null,
+    val amount: Double = 0.0,
+    val color: String = "",
+)
+
+/** A bucket that received money in the window, so "Paid to goals" can name where it went. */
+@Serializable
+data class BreakdownPayoutDto(val bucketId: String = "", val name: String = "", val amount: Double = 0.0)
+
+/** GET /accounts/{id}/breakdown — where the money went, plus the four figures that reconcile to what the balance
+ *  did.
+ *
+ *  ★★ THE RING IS SPENDING. Savings are not slices (the money never left) and goal payouts are not slices (a pie is
+ *  a composition chart, and a 12,000 prepayment beside 30 of groceries is not one — measured, the payout took 77.5%
+ *  of the ring and squeezed the only actionable slice to 2.7%). Both are stated as figures instead, so nothing is
+ *  hidden. `spent` EQUALS the sum of `slices`; if a client ever draws a total that disagrees with its own wedges,
+ *  that is the bug those two agreeing was meant to prevent. */
+@Serializable
+data class BreakdownViewDto(
+    val currency: String = "",
+    val from: String = "",
+    val to: String = "",
+    val groupBy: String = "category",
+    val income: Double = 0.0,
+    val spent: Double = 0.0,
+    val setAside: Double = 0.0,
+    val paidToGoals: Double = 0.0,
+    val slices: List<BreakdownSliceDto> = emptyList(),
+    val payouts: List<BreakdownPayoutDto> = emptyList(),
+)
+
+/** One alternative a bank might offer after a lump payment. `kind` is "shorter" (same installment, finishes
+ *  sooner) or "lower" (same end date, pay less each month). */
+@Serializable
+data class PayoffOfferDto(
+    val kind: String,
+    val perMonth: Double = 0.0,
+    val months: Int = 0,
+    val newInterest: Double = 0.0,
+    val savedInterest: Double = 0.0,
+)
+
+/** One point on the "extra per month" curve. ⚠️ The curve is a handful of precomputed steps, and the slider SNAPS
+ *  to them — the maths stays on the server (where the amortisation is tested) without the slider needing a
+ *  round-trip per drag. */
+@Serializable
+data class PayoffCurvePointDto(val extra: Double = 0.0, val monthsSaved: Int = 0, val interestSaved: Double = 0.0)
+
+/** GET /accounts/{id}/savings/{bucketId}/payoff — what a loan's future looks like, computed server-side.
+ *
+ *  ⚠️ `available` false means there is NO schedule to walk: a payment-driven loan, or an installment that cannot
+ *  out-run the interest. Every figure is then zero and the screen must say so rather than draw a payoff date that
+ *  will never arrive. `offers`/`curve` are empty on a Free plan — the read still succeeds, because taking the
+ *  payoff date away from a Free user is not what Pro is selling. */
+@Serializable
+data class DebtPayoffDto(
+    val available: Boolean = false,
+    val currency: String = "",
+    val balance: Double = 0.0,
+    val installment: Double = 0.0,
+    val annualRatePercent: Double = 0.0,
+    val months: Int = 0,
+    val payoffOn: String? = null,
+    val totalInterest: Double = 0.0,
+    val setAside: Double = 0.0,
+    val lumpBalanceAfter: Double = 0.0,
+    val lumpMonthsSaved: Int = 0,
+    val lumpInterestSaved: Double = 0.0,
+    val lumpClearsTheLoan: Boolean = false,
+    val offers: List<PayoffOfferDto> = emptyList(),
+    val curve: List<PayoffCurvePointDto> = emptyList(),
+)
+
+/** A saved "always file this merchant here" rule. `matchKey` is the normalized description the rule is stored
+ *  under; `kind` is "category" (file it as spending) or "fund" (it came from one of your own wallets, so it is a
+ *  transfer). `tagId` is an optional label the rule also applies — debit rules only. */
+@Serializable
+data class BankMappingDto(
+    val matchKey: String,
+    val kind: String,
+    val targetId: String,
+    val tagId: String? = null,
+)
+
+/** PUT /accounts/{id}/bank/mappings — save a rule from a transaction's description. ⚠️ The rule is written WHOLE
+ *  every time, so an absent tag is a CLEARED tag, not an untouched one. That is the opposite of the expense-edit
+ *  rule and it is deliberate: there is no older client to protect on this route. */
+@Serializable
+data class SetBankMappingRequest(
+    val description: String,
+    val kind: String,
+    val targetId: String,
+    val tagId: String? = null,
+)
+
+/** One reviewed statement row, ready to post. `amount` is SIGNED — negative books an expense against a spend
+ *  category, positive books income against a contribution category — and the server validates the category against
+ *  the sign, so the two must be chosen together. */
+@Serializable
+data class ImportRowDto(
+    val amount: Double,
+    val date: String,
+    val categoryId: String,
+    val fundId: String,
+    val note: String? = null,
+)
+
+/** POST /accounts/{id}/import — a batch of reviewed rows in ONE save, all-or-nothing: a row naming a category or
+ *  fund that doesn't exist fails the whole batch with 400 rather than importing most of a statement.
+ *
+ *  `skipDuplicates` compares each row against what is ALREADY in the period (same date + amount + fund), so
+ *  re-importing the same statement is safe. ⚠️ Duplicates *within* one batch still post — two identical coffees on
+ *  one day are a real thing that happens, and the check is against pre-existing data only. */
+@Serializable
+data class ImportTransactionsRequest(val rows: List<ImportRowDto>, val skipDuplicates: Boolean = true)
+
+/** What an import did: how many rows posted, how many were dropped as unusable, and how many the server recognised
+ *  as already present. All three are reported — "imported 12" alone leaves the other rows unaccounted for. */
+@Serializable
+data class ImportResultDto(
+    val version: Long = 0,
+    val imported: Int = 0,
+    val skipped: Int = 0,
+    val duplicates: Int = 0,
+)
+
+/** PUT /accounts/{id}/funds/{fundId}/currency — make this wallet a pile of foreign cash, or put it back to the
+ *  account's own currency.
+ *
+ *  ⚠️ Both null CLEARS it, and clearing is deliberately NOT Pro-gated on the server: a downgrade has to be able to
+ *  return a wallet to the account currency. Setting one is gated on the trips feature.
+ *
+ *  ⚠️ Its own endpoint, separate from [EditFundRequest] — which is a full overwrite of (name, note, icon), so
+ *  folding the currency into it would mean every rename re-stated the rate, and a client that had not learned
+ *  about currencies yet would wipe it. Write this only when it actually changed, or a Free user renaming an
+ *  ordinary wallet trips a paywall over a field they never touched. */
+@Serializable
+data class SetFundCurrencyRequest(val currency: String? = null, val rate: Double? = null)
+
+/** What a wallet editor decided about the currency — both null meaning "an ordinary wallet in the account's own
+ *  money". Distinct from the request because the ABSENCE of one of these means "not touched, don't write", which
+ *  is the state that keeps a rename off a Pro-gated endpoint. */
+data class FundCurrencyEdit(val currency: String?, val rate: Double?)
 
 /** POST /accounts/{id}/deposits — record income into a fund. `categoryId` empty = general income; deposits with
  *  the same (member, category, fund) merge server-side. `date` is an ISO yyyy-MM-dd string. */

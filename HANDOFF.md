@@ -1,6 +1,47 @@
 # TandemTab (FinApp) — session handoff
 
-Last updated: 2026-08-22 (Session 114, second half — **D2 shipped after all, the tag box was three bugs wearing
+Last updated: 2026-08-23 (**the merge — Session 115's Android branch lands on main, and the five commits main
+never wrote up.** Two lines of work had been running in parallel since `0ae94e9` and neither document admitted the
+other existed. **553 + 56 + 428 green, 28 Kotlin green, pairscan 0.**
+⚠️ **The merge is NOT deployed.** What is live is *pre-merge main* — verified on the served bytes rather than the
+tag: the scoped bundle carries `.act-split` and `.goal-period-line`, which exist only in `ac46b86`, and served
+`app.css?v=45` is byte-identical to the local file. **`origin/main` is still `a021a5d`**, so main's five commits
+are deployed but unpushed, which is the reverse of the branch's problem and just as easy to misread.
+★ **Four defects the merge itself created, and only one of them would have failed the build.** Two files
+conflicted; the damage was in the files that auto-merged *cleanly*. All four are one shape — main made masking
+universal by deleting the six per-screen money formatters, and the branch had meanwhile written three new screens
+against the world where those formatters still existed.)
+
+#### ⭐ What the merge had to resolve
+
+| File | What |
+|---|---|
+| `WalletsScreen.kt` | The only code conflict. The branch still defined `rememberWalletsMoney`; main had deleted it. **Resolved toward main** — reinstating it would have re-created exactly the "five screens mask and the sixth quietly renders" state `5706699` existed to end. |
+| `HANDOFF.md` | The other conflict, and not a real one: two sessions each writing themselves at the top. Both entries are kept, in the order they ran — S114's second half (17:02) above S115 (09:12), because the Android session ran *between* S114's two halves. |
+| `BreakdownSheet.kt`, `PayoffSheet.kt` | ⚠️ Auto-merged clean and **broken**: both called the formatter main had deleted. Repointed at `moneyFormatter`. The only one of the four the compiler would have caught. |
+| `NotificationsSheet.kt` | ⚠️⚠️ Auto-merged clean and **silently wrong**. It renders `NotificationsMap`'s server-formatted prose, which no client formatter ever sees — the exact leak main had just fixed on the Home alert strip, arriving through the merge as the *full list* of the figures that strip shows a subset of. Masking the strip but not the sheet would hide a figure and then show it one tap later. `maskServerText` on both fields now. |
+| `ImportSheet.kt` | ⚠️ Silent for a different reason: the review row builds its money string by hand (`currencySymbol` + `trimAmount`) because the sign carries meaning there, so it never touched a formatter to begin with. Masked by hand, for that same reason. ★ The `currencySymbol` prefixes on the amount *fields* in the other sheets are deliberately left alone — you cannot hide a number the user is typing at that moment, and the web draws the same line. |
+
+★ **The pattern is worth more than the four fixes.** A conflict is where two edits touch the same line. This
+damage was where one side *deleted* a shared thing and the other side wrote new callers of it — which git merges
+silently, correctly, line by line, into something that does not hold. **Grepping the merged tree for the deleted
+symbol is what found it**, not the conflict list and not the build.
+
+#### Next session
+1. ⭐ **Drive it on the emulator** — still S115's item 1, and no longer blocked. That handoff says the agent could
+   not get past sign-in; `5706699` on main then verified masking against real balances on API 35, so the sign-in
+   problem was solved after that handoff was written. The swipe that may fight the scroll view, the ring that may
+   show a seam and the slider that may snap wrong are all still unobserved.
+2. **Deploy and push.** One deploy now covers both lines. Note `origin/main` is five commits behind *before* this
+   merge commit.
+3. `fix/recurring-not-started` (`276321c`) is still unmerged and pushed, and should be conflict-free.
+4. ⚠️ **A stale-claim sweep is overdue**: [QUEUE.md](QUEUE.md) still lists the foreign-cash wallet as the top open
+   row (built on the branch, and now merged), and the roadmap artifact still names `00322` as live with "+2
+   commits awaiting deploy".
+
+---
+
+Previously: 2026-08-22 (Session 114, second half — **D2 shipped after all, the tag box was three bugs wearing
 one coat, and the Goals tab got a real money column plus a shoulder-surfing toggle.**
 **550 + 56 + 407 green, pairscan 0. LIVE: `finapp-00324-ghp`, 100% LATEST** — image `finapp:c2e7c08`
 (digest `sha256:b29747be…`); roots 200 on both hosts, 5 `secretKeyRef`s, no WARNING+ on the new revision.
@@ -126,6 +167,52 @@ blur; survives a server restart + reload; typing "h" in an input does not toggle
 `IsExpensesFund` booleans, and a wrong guess silently creates a plain savings bucket. Savings are funded through
 `POST /savings/deposits` (`AddSavingDepositRequest`), not an `/allocations` route. The rest of the fixture traps are
 in [[reference-fixture-snapshot-traps]].
+
+---
+
+Previously: 2026-08-22 (Session 115 — **the Android session. Both of R2's stated lags are closed, the phone stops
+storing 100 kr as €100, and the module has its first tests.** **546 + 54 + 414 green, 28 Kotlin green, pairscan 0.
+Parity 108/120 → 115/122 (94%).**
+⚠️ **Superseded 2026-08-23:** this header said nothing from the session was deployed or on main, and that was true
+when it was written. The ten commits are merged into main now — the merge entry above records what that cost.
+⚠️ **Not one line of this session was seen running.** Everything is compiled, unit-tested and reasoned about; the
+emulator boots and installs but stops at a sign-in the agent cannot complete. Read every "verified" below as
+"tested", never as "observed" — still true after the merge.)
+
+#### ⭐ Session 115 — what landed, on branches
+
+| Commit | What |
+|---|---|
+| `5d7f9ee` | **100 kr stopped being stored as €100.** The write side always carried `ForeignAmount`; the gap was the READ — no thin contract carried a fund's currency or rate anywhere, so a client never told the rate cannot convert by it. `Currency`/`Rate` added to `FundRowDto` **and** `FundOptionDto` (the option is the one that matters — picking the wallet is what changes the Amount field's meaning). ⚠️ **Conversion is on the ADD path only**: an edit is pre-filled with the stored, already-converted figure, so treating it as foreign would divide a real expense. One predicate drives both the prefix and the conversion so they cannot disagree. The web draws the same line. |
+| `5ff77b1` | **A wallet's currency can be set from the phone** — closes stated lag #1. Written only when it changed (the endpoint is Pro-gated on *setting*, so folding it into every save would 402 a Free user for renaming an ordinary wallet). ⚠️ **An already-foreign wallet keeps its fields on a downgraded plan**, or the way back sits behind the paywall it is trying to leave. The server already drew that line and **nothing pinned it** — the gating suite does now. |
+| `a9175d1` | **Statement import** — closes stated lag #2 — **and the Android module's first tests.** ★ The file never leaves the device; only reviewed rows are posted. That is why there are now two parsers, and why `BankFileParserTest` copies the C# fixtures **verbatim**: a European date read as American files rent in April. XML/HTML are detected but unported, and the sheet says so rather than showing an empty list. ⚠️ Rows dated outside the period are dropped with a count — the server has no opinion about dates, so this guard exists only if the client writes it. |
+| `470797c` | **Merchant rules** — imported rows file themselves; the pin teaches new ones. Token-subset, most-specific-wins, ported. ⚠️ **The pin is not optimistic**: it updates only after the write lands, because a pin is a claim that a rule *exists*. The three `/bank/mappings` routes are **not** part of bank's deferred back half — a rule is a filing decision about a merchant, read here with no bank linked at all. |
+| `0b5dc2f` | **The wallets ring** (Wallets tab only — owner's call: no chart on Home, since the breakdown gets its own swipe) **and trip flags.** ⚠️ Only positive balances get an arc; a single fund draws a full circle, not a 360° arc with a seam; a synced wallet uses its live bank balance or it vanishes from a chart of where the money is. ⚠️ The trip card was **not** missing actions — only chrome; `TripAction` is a `.btn-soft` pill now. |
+| `743ec4a` | **Debt payoff**, as a server read. ★ The precedent already existed (`SavingsMap` has called `LoanForecast` since the thin Goals read shipped). ⚠️ **The gate is inside the response, not a 402**: Free keeps the payoff date, only the modelling is withheld. **The slider snaps to server-computed points** — interpolating would invent figures nothing calculated. `available:false` is a real state and the sheet says so in words. |
+| `49febf3` | **Gestures.** Pull down (only at scroll-top, or it eats the scroll) for the full notification list — ⚠️ the phone had been computing notifications and rendering only the *urgent* subset, so the rest were unreachable. Right → Spending (where trips live). ★ **Period stepping did not vanish with the gesture**: the chip grew prev/next arrows, because it was given the swipe originally for costing chip + menu + tap. |
+| `9666fde` | **`GET /breakdown` exists at last** — no route stood behind that chart, which is why `docs/MOBILE.md` records the same mis-sizing eight times. **Ported, not redesigned**, with a test per rule: the ring is spending; **Spent equals the sum of the slices**; Set aside never negative; Income/Set aside take the period's own hero figures when the window *is* the period; a transfer is **ranked in**, not appended. Left swipe wired to it. |
+| `c8c4d16` | **`AddCategory` stops offering a parent it was always going to drop.** The ignoring was deliberate and tested; the *parameter* was the trap. Honouring it would be worse — `FlattenCategoryTree` runs inside `Deserialize`, so a sub-category becomes a Tag on the first read back. Tolerating one is now pinned at the **wire**. ⚠️ Removing it exposed **four silent callers**, two of them tests whose comments claimed nesting that never happened. |
+
+#### ⚠️ Corrections to things said out loud this session
+
+- **The phone's category editor does NOT offer a parent picker.** It was removed in S109 and the comment there says
+  so; a new draft always carries `null`. The trap was the domain parameter plus two comments describing behaviour
+  that did not exist — not a live user-facing bug. Stated wrongly first, corrected on inspection.
+- **The two donuts are different charts.** `home-brk-donut` is the expense breakdown; `fund-donut` is "where your
+  money is". They were conflated in planning and the owner corrected it.
+- **The roadmap artifact in memory had been deleted** — an artifact URL can go stale, so check it resolves before
+  promising an in-place update. Republished: `https://claude.ai/code/artifact/b546fe9d-fc1f-4816-bfb6-275a120ef543`.
+
+#### Next session
+1. ⭐ **Sign in on the emulator and drive all of it.** This is the whole outstanding risk of the session: a swipe
+   that fights the scroll view, a ring with a seam, a slider that snaps wrong, and a column mapper on a real bank
+   CSV all look perfectly fine in code. The emulator is booted and the APK installed.
+2. **Merge and deploy.** Both branches are pushed and green; main and origin/main are behind. Note the previous
+   session's two commits are still undeployed as well.
+3. **Left over from the owner's batch:** the debt web-vs-phone diff beyond payoff ("maybe other stuff too I don't
+   know") was deliberately not guessed at — worth listing now that the payoff read exists.
+4. ⚠️ **`AddCategory`'s sibling traps are worth a look**: `AccountRoundTripTests` was preserving a structure it had
+   never created. Where else does a test's *comment* assert something its code does not?
 
 ---
 

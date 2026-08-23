@@ -65,6 +65,9 @@ fun GoalsScreen(
     onAllocate: (bucketId: String, amount: Double, date: String, note: String?, onDone: () -> Unit) -> Unit,
     onSpend: (bucketId: String, categoryId: String, fundId: String, amount: Double, date: String, note: String?, onDone: () -> Unit) -> Unit,
     onPrepareInstallment: () -> Unit,
+    // Open the payoff drawer for a debt bucket. Takes the name too, so the sheet can be titled before its figures
+    // land — a drawer that opens blank and untitled reads as a failure rather than as loading.
+    onOpenPayoff: (bucketId: String, bucketName: String) -> Unit = { _, _ -> },
     onLogInstallment: (bucketId: String, total: Double, fundId: String, date: String, categoryId: String, note: String?, onDone: () -> Unit) -> Unit,
     canSetInitial: Boolean,
     onPrepareBucket: () -> Unit,
@@ -154,6 +157,10 @@ fun GoalsScreen(
                             // nowhere to land since S91. Offered on every debt (not just payment-driven ones) — the
                             // web does too, since logging the split is useful even when the balance walks a schedule.
                             onLogInstallment = if (b.kind == "debt") { { onPrepareInstallment(); installmentBucket = b } } else null,
+                            // Debt-only, and a drawer rather than more rows on the card: the payoff is four
+                            // blocks of figures, and the standing preference here is against making a card into
+                            // a screen.
+                            onPayoff = if (b.kind == "debt") { { onOpenPayoff(b.id, b.name) } } else null,
                         )
                     }
                 }
@@ -261,6 +268,7 @@ private fun GoalRow(
     onEdit: () -> Unit,
     onMove: (() -> Unit)? = null,
     onLogInstallment: (() -> Unit)? = null,
+    onPayoff: (() -> Unit)? = null,
 ) {
     val tandem = LocalTandemColors.current
     var expanded by remember(b.id) { mutableStateOf(false) }
@@ -343,6 +351,10 @@ private fun GoalRow(
             Spacer(Modifier.weight(1f))
             // Debt-only: log an actual payment (splits into interest/principal). Distinct from "Add", which sets
             // money aside toward the debt rather than paying the lender.
+            onPayoff?.let {
+                ActionPill(TandemIcons.Trending, "Payoff", tandem.muted, it)
+                Spacer(Modifier.width(8.dp))
+            }
             onLogInstallment?.let {
                 ActionPill(TandemIcons.Note, "Log payment", MaterialTheme.colorScheme.primary, it)
                 Spacer(Modifier.width(8.dp))

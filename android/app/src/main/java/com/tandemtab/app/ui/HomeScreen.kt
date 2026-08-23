@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -83,6 +84,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import com.tandemtab.app.UiState
 import com.tandemtab.app.data.AccountSummaryDto
+import com.tandemtab.app.data.FundCurrencyEdit
+import com.tandemtab.app.data.ImportRowDto
 import com.tandemtab.app.data.MemberDto
 import com.tandemtab.app.data.ExpenseDto
 import com.tandemtab.app.data.MilestonesDto
@@ -233,7 +236,14 @@ fun HomeScreen(
     onTransfer: (String, String, Double, String, String?, () -> Unit) -> Unit,
     onAddIncome: (String, String, Double, String, () -> Unit) -> Unit,
     onPrepareFund: () -> Unit,
-    onSaveFund: (String?, String, String?, String?, Double?, () -> Unit) -> Unit,
+    onSaveFund: (String?, String, String?, String?, Double?, FundCurrencyEdit?, () -> Unit) -> Unit,
+    onImportTransactions: (List<ImportRowDto>, Boolean, (Int, Int) -> Unit) -> Unit,
+    onLoadBankMappings: () -> Unit,
+    onPinMerchant: (description: String, categoryId: String, currentlyPinned: Boolean) -> Unit,
+    onOpenPayoff: (bucketId: String, bucketName: String) -> Unit,
+    onClosePayoff: () -> Unit,
+    onOpenBreakdown: (String?) -> Unit,
+    onCloseBreakdown: () -> Unit,
     onArchiveFund: (String, Boolean, String?, Double, () -> Unit) -> Unit,
     onDeleteFund: (String, String?, () -> Unit) -> Unit,
     onEditTransfer: (String, String, String, Double, String?, () -> Unit) -> Unit,
@@ -271,6 +281,8 @@ fun HomeScreen(
     var showProfile by remember { mutableStateOf(false) }
     var showAccount by remember { mutableStateOf(false) }
     var showBank by remember { mutableStateOf(false) }
+    var showImport by remember { mutableStateOf(false) }
+    var showNotifications by remember { mutableStateOf(false) }
     var showNextPeriod by remember { mutableStateOf(false) }
     var showEditPeriod by remember { mutableStateOf(false) }
     var showRemovePeriod by remember { mutableStateOf(false) }
@@ -391,35 +403,52 @@ fun HomeScreen(
         // gesture rather than a pager because the app holds ONE period's data at a time: a pager would have to
         // render pages it has no content for, and a swipe that briefly shows the wrong month's figures is worse
         // than no animation. Nothing happens at either end of the list, and a drag under the threshold is a scroll.
-        val periodIdx = state.selectedPeriod ?: state.currentPeriodIndex
-        val firstIdx = state.periods.firstOrNull()?.index
-        val lastIdx = state.periods.lastOrNull()?.index
         var dragX by remember { mutableStateOf(0f) }
+        var dragY by remember { mutableStateOf(0f) }
+        // Hoisted so the pull-down gesture can ask whether the page is actually at the top before claiming a drag.
+        val homeScroll = rememberScrollState()
         Box(
             Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .pointerInput(periodIdx, state.periods.size) {
+                // ⚠️ The horizontal swipe used to step PERIODS. Owner's call to reassign it. Right opens
+                // SPENDING, which is where trips live — trips is a section of that tab, not a tab of its own, so
+                // "swipe right for trips" is honestly "swipe right to the screen holding them".
+                // Month stepping did not simply vanish with it — the period chip grew prev/next arrows (see
+                // PeriodSwitcher), because it was given the gesture originally for costing chip + menu + tap.
+                // Left opens the Breakdown, which now has a server read behind it (GET /breakdown, added S115 —
+                // before that there was nothing for this gesture to open, which is why it was left unassigned).
+                .pointerInput(Unit) {
                     detectHorizontalDragGestures(
                         onDragStart = { dragX = 0f },
                         onDragEnd = {
                             val threshold = 96.dp.toPx()
-                            if (dragX <= -threshold && lastIdx != null && periodIdx < lastIdx) {
-                                onSelectPeriod(periodIdx + 1)
-                            } else if (dragX >= threshold && firstIdx != null && periodIdx > firstIdx) {
-                                onSelectPeriod(periodIdx - 1)
-                            }
+                            if (dragX >= threshold) dest = NavDest.Spending
+                            else if (dragX <= -threshold) onOpenBreakdown(null)
                             dragX = 0f
                         },
                         onDragCancel = { dragX = 0f },
                     ) { _, delta -> dragX += delta }
+                }
+                // Pull down for the full notification list. ⚠️ Only from the very top: this Box wraps a
+                // verticalScroll column, and an ungated vertical gesture would swallow ordinary scrolling. The
+                // scroll position is the gate, the way pull-to-refresh does it.
+                .pointerInput(Unit) {
+                    detectVerticalDragGestures(
+                        onDragStart = { dragY = 0f },
+                        onDragEnd = {
+                            if (dragY >= 110.dp.toPx() && homeScroll.value == 0) showNotifications = true
+                            dragY = 0f
+                        },
+                        onDragCancel = { dragY = 0f },
+                    ) { _, delta -> if (homeScroll.value == 0) dragY += delta }
                 },
         ) {
             run {
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
-                        .verticalScroll(rememberScrollState())
+                        .verticalScroll(homeScroll)
                         .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 24.dp),
                 ) {
                     when (dest) {
@@ -473,6 +502,7 @@ fun HomeScreen(
                             goals = state.goals,
                             spending = state.spending,
                             onRetry = { onLoadGoals(true) },
+                            onOpenPayoff = onOpenPayoff,
                             onPrepareAllocate = onPrepareAllocate,
                             onPrepareSpend = onPrepareSpend,
                             onAllocate = onAllocate,
@@ -502,6 +532,15 @@ fun HomeScreen(
                             onAddIncome = onAddIncome,
                             onPrepareFund = onPrepareFund,
                             onSaveFund = onSaveFund,
+                            // Same feature as trips, and deliberately the same gate: a foreign-cash wallet is what
+                            // a trip abroad spends from, so the two are one entitlement.
+                            canHoldForeignCash = state.allowsPro(PlanFeatures.TRIPS),
+                            onProBlocked = { onProBlocked(PlanFeatures.TRIPS) },
+                            canImport = state.allowsPro(PlanFeatures.IMPORT),
+                            // Rules are fetched when the sheet opens, not on every Wallets render — they only
+                            // matter to this one flow, and an import is rare.
+                            onOpenImport = { onLoadBankMappings(); showImport = true },
+                            onImportProBlocked = { onProBlocked(PlanFeatures.IMPORT) },
                             onArchiveFund = onArchiveFund,
                             onDeleteFund = onDeleteFund,
                             onEditTransfer = onEditTransfer,
@@ -636,6 +675,49 @@ fun HomeScreen(
                 onConfirmRefund = onConfirmBankRefund,
                 onDismissPending = onDismissBankPending,
                 onDismiss = { showBank = false },
+            )
+        }
+        if (state.breakdownOpen) {
+            BreakdownSheet(
+                breakdown = state.breakdown,
+                loading = state.breakdownLoading,
+                onDismiss = onCloseBreakdown,
+                onGroupBy = { onOpenBreakdown(it) },
+            )
+        }
+        if (showNotifications) {
+            NotificationsSheet(
+                alerts = state.alerts,
+                onDismiss = { showNotifications = false },
+                onOpenTab = { tab ->
+                    showNotifications = false
+                    NavDest.entries.firstOrNull { it.name.equals(tab, ignoreCase = true) }?.let { dest = it }
+                },
+            )
+        }
+        state.payoffBucketId?.let {
+            PayoffSheet(
+                bucketName = state.payoffBucketName,
+                payoff = state.payoff,
+                loading = state.payoffLoading,
+                onDismiss = onClosePayoff,
+                onProBlocked = { onProBlocked(PlanFeatures.DEBT) },
+            )
+        }
+        if (showImport) {
+            ImportSheet(
+                currency = state.spending.currency,
+                funds = state.spending.funds,
+                categories = state.spending.categories,
+                incomeCategories = state.spending.incomeCategories,
+                periodFrom = state.viewedPeriod?.from,
+                periodTo = state.viewedPeriod?.to,
+                saving = state.spending.saving,
+                saveError = state.spending.saveError,
+                rules = state.bankMappings,
+                onDismiss = { showImport = false },
+                onImport = onImportTransactions,
+                onPinMerchant = onPinMerchant,
             )
         }
         // The bank-link URL is a one-shot: open the bank's consent page in a browser, then clear it. The result
@@ -1270,16 +1352,46 @@ private fun PeriodSwitcher(
     var open by remember { mutableStateOf(false) }
     val viewing = state.selectedPeriod ?: state.currentPeriodIndex
     val onLatest = viewing == state.periods.lastOrNull()?.index
-    Row(
-        Modifier.clip(RoundedCornerShape(999.dp)).clickable(enabled = state.periods.isNotEmpty()) { open = true }
-            .padding(horizontal = 8.dp, vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(label, fontSize = 13.sp, color = tandem.muted, fontWeight = FontWeight.Medium, maxLines = 1)
-        if (state.periods.size > 1) {
-            Spacer(Modifier.width(2.dp))
-            Icon(TandemIcons.Chevron, null, tint = tandem.muted, modifier = Modifier.size(14.dp).rotate(90f))
+    // ⚠️ Arrows, because the horizontal swipe no longer steps months. Stepping used to cost chip + menu + tap,
+    // which is why it was given the gesture in the first place; handing the gesture to the breakdown without
+    // putting stepping back within one tap would trade one complaint for another.
+    val firstIdx = state.periods.firstOrNull()?.index
+    val lastIdx = state.periods.lastOrNull()?.index
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        val canBack = firstIdx != null && viewing > firstIdx
+        Icon(
+            TandemIcons.Chevron,
+            contentDescription = "Previous month",
+            tint = if (canBack) tandem.muted else tandem.muted.copy(alpha = 0.3f),
+            modifier = Modifier
+                .size(26.dp)
+                .clip(RoundedCornerShape(999.dp))
+                .clickable(enabled = canBack) { onSelectPeriod(viewing - 1) }
+                .padding(6.dp)
+                .rotate(180f),
+        )
+        Row(
+            Modifier.clip(RoundedCornerShape(999.dp)).clickable(enabled = state.periods.isNotEmpty()) { open = true }
+                .padding(horizontal = 8.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(label, fontSize = 13.sp, color = tandem.muted, fontWeight = FontWeight.Medium, maxLines = 1)
+            if (state.periods.size > 1) {
+                Spacer(Modifier.width(2.dp))
+                Icon(TandemIcons.Chevron, null, tint = tandem.muted, modifier = Modifier.size(14.dp).rotate(90f))
+            }
         }
+        val canForward = lastIdx != null && viewing < lastIdx
+        Icon(
+            TandemIcons.Chevron,
+            contentDescription = "Next month",
+            tint = if (canForward) tandem.muted else tandem.muted.copy(alpha = 0.3f),
+            modifier = Modifier
+                .size(26.dp)
+                .clip(RoundedCornerShape(999.dp))
+                .clickable(enabled = canForward) { onSelectPeriod(viewing + 1) }
+                .padding(6.dp),
+        )
     }
     DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
         state.periods.sortedByDescending { it.index }.forEach { p ->

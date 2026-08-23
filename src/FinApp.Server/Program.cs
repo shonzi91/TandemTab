@@ -943,6 +943,33 @@ accounts.MapGet("/{id:guid}/savings", async (Guid id, int? period, ClaimsPrincip
     return Results.Ok(SavingsMap.View(account, snap.Version, bank.Balance, bank.BalanceCurrency, ResolvePeriod(account, period)));
 });
 
+// The Breakdown ring + the four figures beside it. ★ Until now NO server read stood behind this chart at all, so
+// every attempt to size it as client work was sizing the wrong half — the rules are the expensive part and they
+// live in BreakdownMap. `from`/`to` default to the viewed period; `groupBy` is category (default), tag or fund.
+accounts.MapGet("/{id:guid}/breakdown", async (Guid id, int? period, DateOnly? from, DateOnly? to, string? groupBy,
+        ClaimsPrincipal user, SnapshotService svc, CancellationToken ct) =>
+{
+    var snap = await svc.GetAsync(user.UserId(), id, ct);
+    if (string.IsNullOrEmpty(snap.Payload)) return Results.Ok(BreakdownViewDto.Empty);
+    var account = AccountSnapshotSerializer.Deserialize(snap.Payload);
+    return Results.Ok(BreakdownMap.View(account, ResolvePeriod(account, period), from, to, groupBy));
+});
+
+// The debt-payoff forecast for one bucket. ★ Its own read rather than a fatter /savings: it is only ever wanted
+// for the ONE debt somebody has opened, it runs an amortisation per call, and folding it into the list read would
+// make every Goals render pay for a schedule nobody is looking at.
+// ⚠️ Gated INSIDE the map, not at the door: the schedule and the lump-sum figures are Free (the web shows those
+// too), and only the modelling of the bank's alternatives is withheld. A 402 here would withhold the whole screen.
+accounts.MapGet("/{id:guid}/savings/{bucketId:guid}/payoff", async (Guid id, Guid bucketId, int? period,
+        ClaimsPrincipal user, SnapshotService svc, EntitlementService entitlements, CancellationToken ct) =>
+{
+    var snap = await svc.GetAsync(user.UserId(), id, ct);
+    if (string.IsNullOrEmpty(snap.Payload)) return Results.Ok(DebtPayoffDto.None);
+    var account = AccountSnapshotSerializer.Deserialize(snap.Payload);
+    var proDebt = await entitlements.AllowsAsync(user.UserId(), PlanFeatures.Debt, ct);
+    return Results.Ok(SavingsMap.Payoff(account, bucketId, proDebt, ResolvePeriod(account, period)));
+});
+
 // Path-B thin-Budgets read: every budgeted category with its coverage. Paired with the budget writes (delta below).
 accounts.MapGet("/{id:guid}/budgets", async (Guid id, int? period, ClaimsPrincipal user, SnapshotService svc, CancellationToken ct) =>
 {
@@ -1945,7 +1972,10 @@ accounts.MapPost("/{id:guid}/categories", async (Guid id, CreateCategoryRequest 
     var userId = user.UserId();
     var (version, categoryId) = await svc.MutateAsync(userId, id, account =>
     {
-        var category = account.AddCategory(req.Name, req.ParentId, req.Icon);   // validates parent + unique name
+        // ⚠️ req.ParentId is deliberately NOT passed: nesting cannot be created (see Account.AddCategory), and the
+        // old comment here claimed this call "validates parent", which it never did. The field stays on the wire
+        // for older clients that still send one — it is ignored, and the category comes back top-level.
+        var category = account.AddCategory(req.Name, req.Icon);   // validates the unique name
         if (req.Essential) account.SetCategoryEssential(category.Id, true);
         return category.Id;
     }, ct);

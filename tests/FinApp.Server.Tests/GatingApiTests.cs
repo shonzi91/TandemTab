@@ -17,13 +17,15 @@ public sealed class GatingServerFactory : FinAppServerFactory
     public const string AdminEmail2 = "gate.admin2@example.com";
     public const string AdminEmail3 = "gate.admin3@example.com";
     public const string AdminEmail4 = "gate.admin4@example.com";
+    public const string AdminEmail5 = "gate.admin5@example.com";
+    public const string AdminEmail6 = "gate.admin6@example.com";
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         base.ConfigureWebHost(builder);
         // One address per test that needs to act as an admin — the host (and its user table) is shared across
         // the class, so re-using an address 409s in whichever test happens to run second.
-        builder.UseSetting("Admin:Emails", $"{AdminEmail},{AdminEmail2},{AdminEmail3},{AdminEmail4}");
+        builder.UseSetting("Admin:Emails", $"{AdminEmail},{AdminEmail2},{AdminEmail3},{AdminEmail4},{AdminEmail5},{AdminEmail6}");
     }
 }
 
@@ -152,6 +154,100 @@ public class GatingApiTests : IClassFixture<GatingServerFactory>
         var after = await client.GetFromJsonAsync<UserDto>("/me");
         Assert.Equal("pro", after!.Plan);
         Assert.True(after.ProBadge);
+    }
+
+    /// <summary>
+    /// <summary>
+    /// The debt-payoff read gates <b>inside</b> the response, not at the door — the one gate on this surface that
+    /// is not a 402.
+    /// <para>
+    /// ⚠️ That is deliberate and worth pinning: refusing the whole read would take the payoff DATE away from a Free
+    /// user, and the web shows them that. What Pro buys is the modelling of the bank's alternatives — the offers
+    /// and the extra-per-month curve. A client renders one screen either way; only two blocks disappear. Both
+    /// clients now build on that shape, so it needs to be a fact rather than an implementation detail.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task Free_still_sees_when_the_loan_ends_but_not_what_the_bank_might_offer()
+    {
+        var (client, auth) = await _factory.RegisterAndAuthAsync("gatepayoff", GatingServerFactory.AdminEmail6);
+        var acct = (await (await client.PostAsJsonAsync("/accounts", new CreateAccountRequest("Loan", "EUR")))
+            .Content.ReadFromJsonAsync<AccountSummaryDto>())!;
+
+        var agg = new Account("Loan", "EUR");
+        agg.AddDefaultFunds();
+        agg.AddMember(auth.UserId, "Me");
+        agg.StartPeriod(new DateOnly(2026, 1, 1), new DateOnly(2026, 1, 31));
+        var loan = agg.AddSavingCategory("Car loan");
+        loan.ConfigureDebt(10_000m, 6m, 300m, originalBalance: 10_000m, balanceAsOf: new DateOnly(2026, 1, 1));
+        (await client.PutAsJsonAsync($"/accounts/{acct.Id}/snapshot",
+            new SaveAccountRequest(AccountSnapshotSerializer.Serialize(agg), 0))).EnsureSuccessStatusCode();
+
+        (await client.PostAsJsonAsync("/admin/plan-override", new PlanOverrideRequest("free"))).EnsureSuccessStatusCode();
+        var free = (await client.GetFromJsonAsync<DebtPayoffDto>($"/accounts/{acct.Id}/savings/{loan.Id}/payoff"))!;
+
+        // 200, not 402 — and the schedule itself is there.
+        Assert.True(free.Available);
+        Assert.True(free.Months > 0);
+        Assert.True(free.TotalInterest > 0m);
+        // The withheld half.
+        Assert.Empty(free.Offers);
+        Assert.Empty(free.Curve);
+
+        (await client.PostAsJsonAsync("/admin/plan-override", new PlanOverrideRequest("pro"))).EnsureSuccessStatusCode();
+        var pro = (await client.GetFromJsonAsync<DebtPayoffDto>($"/accounts/{acct.Id}/savings/{loan.Id}/payoff"))!;
+
+        Assert.Equal(free.Months, pro.Months);          // the same loan; only the modelling appears
+        Assert.NotEmpty(pro.Curve);
+        // ⚠️ Offers need money set aside to model a lump against — this account has none, so an empty Offers list
+        // here is correct rather than a gate failure, and the curve is what proves Pro took effect.
+        Assert.All(pro.Curve, p => Assert.True(p.Extra > 0m));
+    }
+
+    /// <summary>
+    /// The wallet-currency gate, which is the same "never strand state" rule as the trips one above, applied to a
+    /// setting rather than an action: <b>setting</b> a foreign currency is Pro, <b>clearing</b> it never is.
+    /// <para>A lapsed subscriber whose holiday wallet is stuck in kronor has an account that converts every
+    /// expense from it by a rate they can no longer reach — we would have broken their ledger to sell them
+    /// something. The route says so in as many words; nothing pinned it until this, and both clients now build UI
+    /// on the asymmetry (the phone keeps the fields visible on a downgraded plan when a currency is already set,
+    /// precisely so the way back is not behind the paywall it is trying to leave).</para>
+    /// </summary>
+    [Fact]
+    public async Task Free_cannot_set_a_wallets_currency_but_can_always_clear_one()
+    {
+        var (client, _) = await _factory.RegisterAndAuthAsync("gatewallet", GatingServerFactory.AdminEmail5);
+        var acct = (await (await client.PostAsJsonAsync("/accounts", new CreateAccountRequest("Holiday", "EUR")))
+            .Content.ReadFromJsonAsync<AccountSummaryDto>())!;
+
+        var agg = new Account("Holiday", "EUR");
+        agg.AddDefaultFunds();
+        agg.AddMember(Guid.NewGuid(), "Me");
+        agg.StartPeriod(new DateOnly(2026, 1, 1), new DateOnly(2026, 1, 31));
+        var cash = agg.FundId("Cash");
+        (await client.PutAsJsonAsync($"/accounts/{acct.Id}/snapshot",
+            new SaveAccountRequest(AccountSnapshotSerializer.Serialize(agg), 0))).EnsureSuccessStatusCode();
+
+        // Set while still unlimited — this is the wallet the downgrade will strand.
+        (await client.PutAsJsonAsync($"/accounts/{acct.Id}/funds/{cash}/currency",
+            new SetFundCurrencyRequest("SEK", 0.087m))).EnsureSuccessStatusCode();
+
+        (await client.PostAsJsonAsync("/admin/plan-override", new PlanOverrideRequest("free"))).EnsureSuccessStatusCode();
+
+        // Free may not set one — not even re-stating the rate on the wallet it already has.
+        var blocked = await client.PutAsJsonAsync($"/accounts/{acct.Id}/funds/{cash}/currency",
+            new SetFundCurrencyRequest("SEK", 0.09m));
+        Assert.Equal(HttpStatusCode.PaymentRequired, blocked.StatusCode);
+        Assert.Equal(PlanFeatures.Trips, (await blocked.Content.ReadFromJsonAsync<GateError>())!.Feature);
+
+        // But it may always put the wallet back to the account's own money.
+        (await client.PutAsJsonAsync($"/accounts/{acct.Id}/funds/{cash}/currency",
+            new SetFundCurrencyRequest(null, null))).EnsureSuccessStatusCode();
+
+        var fund = (await client.GetFromJsonAsync<WalletsViewDto>($"/accounts/{acct.Id}/wallets"))!
+            .Funds.Single(f => f.Id == cash);
+        Assert.Null(fund.Currency);
+        Assert.Null(fund.Rate);
     }
 
     /// <summary>

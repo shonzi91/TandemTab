@@ -87,10 +87,13 @@ public class AccountRoundTripTests : IDisposable
         var stoyan = account.AddMember(Guid.NewGuid(), "Stoyan");
         var partner = account.AddMember(Guid.NewGuid(), "Partner");
 
+        // ⚠️ These two were written as children of Food and Kids and never were — AddCategory took a parent id and
+        // dropped it. All four are top-level, which is the only shape the app can produce now; legacy nesting is
+        // exercised where it belongs, in CategoryFlattenTests, from raw snapshot JSON.
         var food = account.AddCategory("Food");
-        account.AddCategory("Restaurants", food.Id);
+        account.AddCategory("Restaurants");
         var kids = account.AddCategory("Kids");
-        account.AddCategory("Kid1", kids.Id);
+        account.AddCategory("Kid1");
         var vacations = account.AddSavingCategory("Vacations");
 
         var period = account.StartPeriod(new DateOnly(2026, 1, 1), new DateOnly(2026, 1, 31));

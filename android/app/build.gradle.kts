@@ -117,6 +117,11 @@ dependencies {
     implementation(libs.androidx.compose.material.icons.extended)
     debugImplementation(libs.androidx.compose.ui.tooling)
 
+    // ★ The module's first tests (Session 115). Added for the statement parser specifically: it is a faithful port
+    // of FinApp.Contracts.BankFileParser, the two must agree about what a bank file means, and the C# one is the
+    // only half that had tests. A parser that drifts silently mis-reads somebody's statement into real money.
+    testImplementation(libs.junit)
+
     implementation(libs.ktor.client.core)
     implementation(libs.ktor.client.okhttp)
     implementation(libs.ktor.client.content.negotiation)

@@ -104,7 +104,7 @@ public static class SpendingMap
             .ToList();
         var funds = account.RootFunds
             .Where(f => !f.IsArchived)
-            .Select(f => new FundOptionDto(f.Id, f.Name, f.IsSynced))
+            .Select(f => new FundOptionDto(f.Id, f.Name, f.IsSynced, f.Currency, f.Rate))
             .ToList();
         // ⚠️ Counted across EVERY period, not just this one: "most used" is a fact about the user's habits, and a
         // shortlist rebuilt from a fresh month would be empty on the 1st and reshuffle all through it.

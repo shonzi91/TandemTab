@@ -7,6 +7,12 @@ import androidx.lifecycle.viewModelScope
 import com.tandemtab.app.data.AccountOverviewDto
 import com.tandemtab.app.data.AccountSummaryDto
 import com.tandemtab.app.data.AddDepositRequest
+import com.tandemtab.app.data.BankMappingDto
+import com.tandemtab.app.data.BreakdownViewDto
+import com.tandemtab.app.data.DebtPayoffDto
+import com.tandemtab.app.data.FundCurrencyEdit
+import com.tandemtab.app.data.ImportRowDto
+import com.tandemtab.app.data.ImportTransactionsRequest
 import com.tandemtab.app.data.AddExpenseRequest
 import com.tandemtab.app.data.AddSavingDepositRequest
 import com.tandemtab.app.data.ApiException
@@ -132,6 +138,19 @@ data class UiState(
     val overview: AccountOverviewDto? = null,
     val periodLabel: String? = null,
     // Period navigation: the account's periods, its open/current index, and which one is being viewed (null = current).
+    // The Breakdown drawer, reached by swiping left on Home.
+    val breakdownOpen: Boolean = false,
+    val breakdownLoading: Boolean = false,
+    val breakdown: BreakdownViewDto? = null,
+    // The debt-payoff drawer: which bucket is open, and what the server said about it. Held here rather than in
+    // the bucket row so the row stays a pure render of the list read — the forecast is a second, slower call.
+    val payoffBucketId: String? = null,
+    val payoffBucketName: String = "",
+    val payoffLoading: Boolean = false,
+    val payoff: DebtPayoffDto? = null,
+    // Saved merchant rules, keyed by the server's match key. Read by statement import; shared with bank sync,
+    // because a rule is the user's filing decision about a merchant rather than a property of a connection.
+    val bankMappings: Map<String, BankMappingDto> = emptyMap(),
     val periods: List<PeriodRowDto> = emptyList(),
     val currentPeriodIndex: Int = -1,
     val selectedPeriod: Int? = null,
@@ -1587,7 +1606,119 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
      * it on if the second call fails — a fund with the wrong opening balance is visible and fixable; an opening
      * balance with no fund is nothing.
      */
-    fun saveFund(fundId: String?, name: String, icon: String?, note: String?, openingBalance: Double?, onDone: () -> Unit) {
+    /**
+     * Post a batch of reviewed statement rows. The file was parsed on the device — see [ImportSheet] — so what
+     * travels here is only what the user kept.
+     *
+     * ⚠️ All-or-nothing server-side: a row naming a category or fund that doesn't exist 400s the whole batch. That
+     * is the right trade for an import (half a statement is worse than none), and it means the error string is
+     * worth showing verbatim rather than replacing with a generic one.
+     */
+    /**
+     * Open the Breakdown and fetch it. [groupBy] re-fetches rather than regrouping locally — the grouping rules
+     * (which key an expense falls under, when a long tail rolls up, where a transfer ranks) live server-side with
+     * the rest of this chart's argued-over shape, and a client that regrouped would be a second opinion about it.
+     */
+    fun openBreakdown(groupBy: String? = null) {
+        val accountId = _state.value.selectedAccountId ?: return
+        _state.update { it.copy(breakdownOpen = true, breakdownLoading = it.breakdown == null || groupBy != null) }
+        viewModelScope.launch {
+            val result = runCatching { api.breakdown(accountId, _state.value.selectedPeriod, groupBy) }.getOrNull()
+            _state.update { it.copy(breakdownLoading = false, breakdown = result ?: it.breakdown) }
+        }
+    }
+
+    fun closeBreakdown() = _state.update { it.copy(breakdownOpen = false) }
+
+    /**
+     * Open the payoff drawer for one debt bucket and fetch its forecast.
+     *
+     * ⚠️ Its own call, not part of the Goals list read: it runs an amortisation per bucket, and folding it into
+     * `/savings` would make every Goals render pay for schedules nobody has opened.
+     */
+    fun openPayoff(bucketId: String, bucketName: String) {
+        val accountId = _state.value.selectedAccountId ?: return
+        _state.update {
+            it.copy(payoffBucketId = bucketId, payoffBucketName = bucketName, payoffLoading = true, payoff = null)
+        }
+        viewModelScope.launch {
+            val result = runCatching { api.debtPayoff(accountId, bucketId, _state.value.selectedPeriod) }.getOrNull()
+            _state.update {
+                // Only apply if this is still the bucket that is open — tapping two loans quickly must not land
+                // the first one's schedule under the second one's name.
+                if (it.payoffBucketId != bucketId) it
+                else it.copy(payoffLoading = false, payoff = result)
+            }
+        }
+    }
+
+    fun closePayoff() = _state.update {
+        it.copy(payoffBucketId = null, payoffBucketName = "", payoffLoading = false, payoff = null)
+    }
+
+    /** Load the saved merchant rules so an import can file rows before anyone looks at them. Best-effort: an
+     *  import without rules still works, it just starts every row on the default. */
+    fun loadBankMappings() {
+        val accountId = _state.value.selectedAccountId ?: return
+        viewModelScope.launch {
+            runCatching { api.bankMappings(accountId) }.getOrNull()?.let { list ->
+                _state.update { it.copy(bankMappings = list.associateBy { m -> m.matchKey }) }
+            }
+        }
+    }
+
+    /**
+     * Pin or unpin "always file this merchant here".
+     *
+     * ⚠️ The local map is updated only AFTER the write succeeds. Optimism is wrong here specifically: the pin is a
+     * claim that a rule exists, and a row showing a pin for a rule the server never stored would file the next
+     * statement somewhere the user was told it would not go.
+     */
+    fun pinMerchant(description: String, categoryId: String, currentlyPinned: Boolean) {
+        val accountId = _state.value.selectedAccountId ?: return
+        if (description.isBlank() || categoryId.isBlank()) return
+        viewModelScope.launch {
+            try {
+                if (currentlyPinned) {
+                    api.removeBankMapping(accountId, description)
+                } else {
+                    api.setBankMapping(accountId, description, "category", categoryId)
+                }
+                runCatching { api.bankMappings(accountId) }.getOrNull()?.let { list ->
+                    _state.update { it.copy(bankMappings = list.associateBy { m -> m.matchKey }) }
+                }
+            } catch (e: Exception) {
+                _state.update { it.copy(spending = it.spending.copy(saveError = e.message ?: "Couldn't save that merchant rule.")) }
+            }
+        }
+    }
+
+    fun importTransactions(rows: List<ImportRowDto>, skipDuplicates: Boolean, onDone: (imported: Int, duplicates: Int) -> Unit) {
+        val accountId = _state.value.selectedAccountId ?: return
+        if (rows.isEmpty()) return
+        _state.update { it.copy(spending = it.spending.copy(saving = true, saveError = null)) }
+        viewModelScope.launch {
+            try {
+                val result = api.importTransactions(accountId, ImportTransactionsRequest(rows, skipDuplicates))
+                _state.update { it.copy(spending = it.spending.copy(saving = false)) }
+                loadSpending(force = true)
+                runCatching { api.overview(accountId) }.getOrNull()?.let { ov -> _state.update { it.copy(overview = ov) } }
+                onDone(result.imported, result.duplicates)
+            } catch (e: Exception) {
+                if (handledAsPaywall(e)) {
+                    _state.update { it.copy(spending = it.spending.copy(saving = false)) }
+                } else {
+                    _state.update { it.copy(spending = it.spending.copy(saving = false, saveError = e.message ?: "Couldn't import that statement.")) }
+                }
+            }
+        }
+    }
+
+    fun saveFund(
+        fundId: String?, name: String, icon: String?, note: String?, openingBalance: Double?,
+        currency: FundCurrencyEdit? = null,
+        onDone: () -> Unit,
+    ) {
         val accountId = _state.value.selectedAccountId ?: return
         _state.update { it.copy(wallets = it.wallets.copy(saving = true, saveError = null)) }
         viewModelScope.launch {
@@ -1599,10 +1730,21 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     fundId
                 }
                 if (openingBalance != null && id != null) api.setFundOpeningBalance(accountId, id, openingBalance)
+                // Last, and only when the editor said it changed. It rides its own endpoint so a rename cannot
+                // wipe it, and it is the one call here that can be refused by the paywall — putting it after the
+                // rest means a Free user who somehow reaches it still keeps every other edit they just made.
+                if (currency != null && id != null) api.setFundCurrency(accountId, id, currency.currency, currency.rate)
                 refreshWallets(accountId)
                 onDone()
             } catch (e: Exception) {
-                _state.update { it.copy(wallets = it.wallets.copy(saving = false, saveError = e.message ?: "Couldn't save that fund.")) }
+                // A 402 here raises the upgrade prompt instead of a red line — the wallet was still created or
+                // renamed, so the only thing that failed is the currency, and saying so twice would be worse.
+                if (handledAsPaywall(e)) {
+                    refreshWallets(accountId)
+                    _state.update { it.copy(wallets = it.wallets.copy(saving = false)) }
+                } else {
+                    _state.update { it.copy(wallets = it.wallets.copy(saving = false, saveError = e.message ?: "Couldn't save that fund.")) }
+                }
             }
         }
     }

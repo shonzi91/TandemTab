@@ -6,6 +6,7 @@ import io.ktor.client.call.body
 import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.plugins.defaultRequest
+import io.ktor.http.encodeURLParameter
 import io.ktor.client.request.delete
 import io.ktor.client.request.get
 import io.ktor.client.request.header
@@ -447,6 +448,46 @@ class TandemTabApi(
     /** Set what a fund held at the start of the open period (overwrites any existing opening balance). */
     suspend fun setFundOpeningBalance(accountId: String, fundId: String, amount: Double): MutationResultDto =
         authedPut("/accounts/$accountId/funds/$fundId/opening-balance", SetFundOpeningBalanceRequest(amount)).body()
+
+    /** Where the money went: the ring's slices and the four figures beside it. `groupBy` is category (default),
+     *  tag or fund. ⚠️ Until S115 no server read stood behind this chart at all. */
+    suspend fun breakdown(accountId: String, period: Int? = null, groupBy: String? = null): BreakdownViewDto =
+        authedGet(
+            "/accounts/$accountId/breakdown${periodQ(period)}" +
+                (groupBy?.let { (if (period == null) "?" else "&") + "groupBy=$it" } ?: ""),
+        ).body()
+
+    /** One debt bucket's payoff forecast — schedule, the lump-sum case, the bank's alternatives and the
+     *  extra-per-month curve, all computed server-side. Never a 402: a Free plan gets the schedule with the
+     *  modelling blocks empty. */
+    suspend fun debtPayoff(accountId: String, bucketId: String, period: Int? = null): DebtPayoffDto =
+        authedGet("/accounts/$accountId/savings/$bucketId/payoff${periodQ(period)}").body()
+
+    /** The saved merchant rules. Used by statement import as well as by bank sync — a rule is the user's filing
+     *  decision about a merchant, not a property of the connection, which is why this read is NOT part of the
+     *  deferred bank-connection back half. */
+    suspend fun bankMappings(accountId: String): List<BankMappingDto> =
+        authedGet("/accounts/$accountId/bank/mappings").body()
+
+    /** Save (or overwrite) a merchant rule. */
+    suspend fun setBankMapping(accountId: String, description: String, kind: String, targetId: String, tagId: String? = null) {
+        authedPut("/accounts/$accountId/bank/mappings", SetBankMappingRequest(description, kind, targetId, tagId))
+    }
+
+    /** Forget a merchant rule. Only stops FUTURE auto-filing; nothing already filed moves. */
+    suspend fun removeBankMapping(accountId: String, description: String) {
+        authedDelete("/accounts/$accountId/bank/mappings?description=${description.encodeURLParameter()}")
+    }
+
+    /** Post a batch of reviewed statement rows. Pro-gated (402). ⚠️ The FILE never comes here — it is parsed on the
+     *  device and only the rows the user kept are sent, which is the whole privacy argument for statement import. */
+    suspend fun importTransactions(accountId: String, req: ImportTransactionsRequest): ImportResultDto =
+        authedPost("/accounts/$accountId/import", req).body()
+
+    /** Hold this wallet in another currency at a fixed rate, or pass nulls to put it back to the account's own.
+     *  Setting one is Pro-gated server-side (402); clearing never is — see [SetFundCurrencyRequest]. */
+    suspend fun setFundCurrency(accountId: String, fundId: String, currency: String?, rate: Double?): MutationResultDto =
+        authedPut("/accounts/$accountId/funds/$fundId/currency", SetFundCurrencyRequest(currency, rate)).body()
 
     /** Record income into a fund (a deposit). Returns the recomputed overview. */
     suspend fun addDeposit(accountId: String, req: AddDepositRequest): DepositMutationDto =

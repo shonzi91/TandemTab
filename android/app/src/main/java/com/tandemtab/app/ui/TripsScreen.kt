@@ -49,6 +49,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.tandemtab.app.TripsUi
 import com.tandemtab.app.data.CategoryOptionDto
+import com.tandemtab.app.data.DestinationFlags
 import com.tandemtab.app.data.ExpenseDto
 import com.tandemtab.app.data.TripDetailDto
 import com.tandemtab.app.data.TripDto
@@ -444,7 +445,9 @@ private fun TripCard(
             // The opt-in. Trip mode never switches itself on, so the day the dates arrive this is the tap that
             // does it — put where someone looking at the trip itself would reach for it.
             when {
-                trip.isAwaitingStart -> TripAction(TandemIcons.Plane, "Let's go — start the trip", enabled = !busy, onClick = onStart)
+                // The web fills this one and only this one: on a trip that has not begun, starting it is the whole
+                // point of the card.
+                trip.isAwaitingStart -> TripAction(TandemIcons.Plane, "Let's go — start the trip", enabled = !busy, primary = true, onClick = onStart)
                 trip.isActive -> TripAction(TandemIcons.Flag, "Finish trip", enabled = !busy, onClick = onFinish)
                 trip.finishedOn != null -> TripAction(TandemIcons.Rotate, "Not finished after all", enabled = !busy, onClick = onReopen)
             }
@@ -588,6 +591,29 @@ private fun SplitFigure(label: String, value: String) {
     }
 }
 
+/**
+ * One tappable trip mark: either an emoji ([mark], used for the country flag) or a name from the app's own
+ * line-icon set ([iconName]). Square rather than a labelled pill — the glyph is the whole content, and a row of
+ * pills each holding one character would be mostly padding.
+ */
+@Composable
+private fun TripMarkChip(mark: String?, iconName: String? = null, selected: Boolean, onClick: () -> Unit) {
+    val bg = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface
+    val border = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
+    val fg = if (selected) MaterialTheme.colorScheme.onPrimary else LocalTandemColors.current.catAccent
+    Box(
+        Modifier
+            .size(40.dp)
+            .background(bg, RoundedCornerShape(12.dp))
+            .border(1.dp, border, RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (mark != null) Text(mark, fontSize = 18.sp)
+        else CatIcon(iconName, iconName.orEmpty(), size = 18.dp, tint = fg)
+    }
+}
+
 @Composable
 private fun FundedLine(icon: androidx.compose.ui.graphics.vector.ImageVector, text: String) {
     val tandem = LocalTandemColors.current
@@ -604,21 +630,43 @@ private fun TripAction(
     label: String,
     enabled: Boolean,
     danger: Boolean = false,
+    // The web's .btn-soft.primary — a filled pill, used for the one action that IS the card's next step.
+    primary: Boolean = false,
     onClick: () -> Unit,
 ) {
     val tandem = LocalTandemColors.current
     val color = when {
         !enabled -> tandem.muted
         danger -> tandem.spent
+        primary -> MaterialTheme.colorScheme.onPrimary
         else -> MaterialTheme.colorScheme.primary
     }
+    // The web's .btn-soft: a pill with a tinted fill and a 1px border, not bare text. The chrome is what makes a
+    // row of these read as a set of ACTIONS rather than as links buried in the card's prose — which matters more on
+    // a phone, where there is no hover to reveal that a word is tappable.
+    val background = when {
+        !enabled -> androidx.compose.ui.graphics.Color.Transparent
+        primary -> MaterialTheme.colorScheme.primary
+        else -> MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)
+    }
+    val borderColor = when {
+        !enabled -> tandem.muted.copy(alpha = 0.35f)
+        primary -> MaterialTheme.colorScheme.primary
+        danger -> tandem.spent.copy(alpha = 0.45f)
+        else -> MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)
+    }
     Row(
-        Modifier.clip(RoundedCornerShape(8.dp)).clickable(enabled = enabled, onClick = onClick).padding(vertical = 4.dp),
+        Modifier
+            .clip(RoundedCornerShape(999.dp))
+            .background(background, RoundedCornerShape(999.dp))
+            .border(1.dp, borderColor, RoundedCornerShape(999.dp))
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(14.dp))
-        Spacer(Modifier.width(5.dp))
-        Text(label, color = color, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+        Spacer(Modifier.width(6.dp))
+        Text(label, color = color, fontSize = 13.sp, fontWeight = FontWeight.Bold)
     }
 }
 
@@ -712,6 +760,32 @@ private fun TripSheet(
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
         )
+
+        // The mark for this trip. A country flag is offered when the destination (or failing that, the name) names
+        // a place — ⚠️ as a chip to TAP, never written into the field, because a wrong guess must cost a tap and
+        // nothing more. The generic marks are always there so a road trip or a conference has something to pick.
+        Spacer(Modifier.height(14.dp))
+        FieldLabel("Mark")
+        val flag = remember(form.destination, form.name) {
+            DestinationFlags.guess(form.destination.ifBlank { null }, form.name.ifBlank { null })
+        }
+        Row(
+            Modifier.horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (flag != null) {
+                // First, because when it is there it is almost always the one wanted.
+                TripMarkChip(mark = flag, selected = form.icon == flag) {
+                    form = form.copy(icon = if (form.icon == flag) null else flag)
+                }
+            }
+            DestinationFlags.generic.forEach { name ->
+                TripMarkChip(mark = null, iconName = name, selected = form.icon == name) {
+                    form = form.copy(icon = if (form.icon == name) null else name)
+                }
+            }
+        }
         Spacer(Modifier.height(14.dp))
 
         FieldLabel("Leaves")
