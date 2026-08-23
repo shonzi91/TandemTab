@@ -1,6 +1,94 @@
 # TandemTab (FinApp) — session handoff
 
-Last updated: 2026-08-23 (**the merge — both outstanding branches land on main, alongside the five commits main
+Last updated: 2026-08-23 (Session 117 — **R2.5 opens and takes four rows: the phone gets an income list, the
+Breakdown gets a door you can see, Home shows the trip you are on, and a retried expense stops becoming two.**
+Five commits, every one of them driven on the emulator rather than reasoned about.
+**559 + 56 + 433 green (+4), 28 Kotlin green, pairscan 0. Parity 115/122 (94%) — unchanged, and that is the
+point: the scanner cannot see any of this.**
+**LIVE: `finapp-00328-zmd`, 100% LATEST** — image `finapp:4035f48`; `origin/main` is `4035f48`, so all three
+agree. Roots 200 on both hosts, 5 `secretKeyRef`s, **0 WARNING+ on the new revision**.
+⚠️ **Deploy verification is weaker than usual, and honestly so.** The change adds no route and no CSS, and
+System.Text.Json ignores unknown properties — so **no read-only probe distinguishes old server from new**. The
+evidence is the revision serving the digest built from `4035f48` plus clean health checks; the behaviour itself
+was proven locally, end to end (see T0 below). Do not read this as "verified on the served bytes".
+★ **Four of the five commits are Android-only and reached nobody.** Distribution is R7. The phone work now
+outweighs anything the web gained this session, and none of it is in a user's hands.
+⚠️ **One owner decision was made mid-session and is now built:** bills live in the notification list, not in a
+Home card. See its row below.)
+
+#### ⭐ What R2.5 took, in order
+
+| Commit | Row | The thing worth remembering |
+|---|---|---|
+| `689d834` | **Income list** (Wallets) | ★ `/income` was already being fetched **twice and discarded both times** — the picker kept `categories`, recall-last kept `maxByOrNull { it.date }`. The list cost no request the app was not already paying for. |
+| `ec34a8d` | **A visible door to the Breakdown** | The card matters less than what it removes: the left-swipe was the **only** way in, and an invisible gesture that fails looks exactly like one nobody tried — which is how the pull-down stayed dead for months. `BreakdownRing` is now shared by card and sheet. |
+| `4493460` | **The live-trip hero** on Home | The web's `trip-hero`, ported. Tapping does both halves of `ShowTripsTab(id)` — switch tab *and* open that journey — driven off state rather than a second nav argument. |
+| `78557b1` | **Bills → the bell** (owner's call) | `RecurringCard` deleted; a BILLS & INCOME line heads `NotificationsSheet`. ⚠️ Plus one thing the decision did not ask for — see below. |
+| `4035f48` | **T0 — idempotency keys** | The only live *bug* in the phase. Deployed. |
+
+★ **The pattern across all four: the parity scanner is finished as an instrument and this session is the proof.**
+Every row here was invisible to it — `/income` counted as *called* while the phone rendered no income list at
+all — and the number it reports (115/122) did not move by a single point for any of this work.
+
+#### ★★ T0 — a retried expense is the same expense
+
+A request lands, the response is lost. From the client's side that is **indistinguishable** from a request that
+never arrived, so retrying is all it can do — and until now the retry logged the dinner twice. The bank-import
+duplicate detector never covered manually-added rows.
+
+`AddExpenseRequest.ClientId` → `Expense.ClientId`, body data, **no migration** (`Ignore()` + a trailing optional
+field on the snapshot node). Three decisions carry the weight:
+
+- ★ **A recognised retry writes nothing.** New `SnapshotService.MutateOrSkipAsync` lets a mutation answer
+  "nothing to do". Writing the identical snapshot back under a new version would churn the row and push every
+  other client to re-pull for a change that never happened. `MutateAsync` is one line on top of it, so no call
+  site moved.
+- ⚠️ **The dedupe check runs BEFORE validation.** A retry asks about a write that already happened;
+  re-litigating its inputs can fail the second attempt for a reason the first never hit — a category deleted in
+  between, the period rolled.
+- ⚠️ **The key is per ROW and minted when the row is composed**, and both halves pull opposite ways: one key per
+  batch makes the server drop rows 2..n as duplicates; a key minted at send time changes every attempt and means
+  nothing. ★ It also **follows a staged row back into the form** when you tap to edit one — the row it displaced
+  was just parked carrying the form's old key, and without that line two rows in one batch would claim one
+  identity and the server would correctly save only the first.
+
+✅ **Proven end to end, not just unit-tested.** Four new server tests, then the half tests cannot reach: logged
+€17.40 from the phone, read it back out of the snapshot carrying `clientId=a9a2cdde-…` (the API-seeded rows
+beside it carry none), and replayed that exact write as a lost-response retry — **original's id returned, no new
+row, version stayed on 25.** A server that dedupes on a key nobody sends fixes nothing, and that is the only way
+to find out.
+
+#### ⚠️ The bills decision, and the line that was added to it
+
+The owner settled R2.5's one non-build row: **bills go in the notification list** (the web's answer, which its
+own `no Home link` comment had been stating alone for months). `RecurringCard` is deleted rather than left
+uncalled — `git show 4493460:…/RecurringScreen.kt` restores it if the call is reversed.
+
+⚠️ **One thing was added that the decision did not ask for, and it should be re-examined rather than inherited:**
+moving bills there made the pull-down their only route, and that pull-down is the gesture which *had never fired
+once* until `cda2852`. So **the Home alert strip is now tappable to the same sheet** — a second, visible door.
+★ A third turned out to exist already and the surface sweep had missed it: Account settings → *Recurring bills &
+income*. The sweep that found six differences missed a door that had been there all along.
+
+#### Next session
+1. ⭐ **The server slice — Trends + the whole-stack payoff plan, batched.** The largest R2.5 row left, and the
+   one that must **not** be sized as Kotlin: both are per-period aggregates no thin contract carries. QUEUE #8's
+   field-by-field diff is the other half of the same job.
+2. ⬜ **The rest of T0.** The *automatic* retry UX (the sheet keeps its contents on failure, but a person still
+   presses Save), and every write that is not add-expense — deposits, transfers, savings allocations all carry
+   the same shape of risk and no key yet.
+3. ⬜ **The PWA shell** (manifest, service worker, `theme-color`). ⚠️ With iOS on hold, the mobile web *is* the
+   iOS product, and it cannot be installed. This is also the first half of R4.5.
+4. ⬜ The two phone→web rows: the always-visible milestones line, and an auto-mask trigger.
+5. ⚠️ **Four Android commits are live on main and in nobody's hands.** Tagging `android-v0.1.0` is R7 and the
+   owner's call — but the gap between "built and verified" and "reaching a user" grew by four commits today.
+6. ⚠️ **[[reference-roadmap-artifact]] had its two URLs backwards** and was corrected this session; the roadmap
+   artifact itself was four sessions stale (S109, `00312-qwd`, 106/118, R1–R7) and is now rebuilt at `00328`.
+   Re-run `r2scan` and read Cloud Run before quoting either figure — both were wrong on the page.
+
+---
+
+Previously: 2026-08-23 (**the merge — both outstanding branches land on main, alongside the five commits main
 never wrote up.** Three lines of work had been running in parallel since `0ae94e9` and no document admitted the
 others existed. **559 + 56 + 429 green, 28 Kotlin green, pairscan 0. Parity 108/120 → 115/122 (94%).**
 **LIVE: `finapp-00327-t6g`, 100% LATEST** — image `finapp:edff80b` (digest `sha256:6ee58af7…`); `origin/main` is
