@@ -5,11 +5,15 @@ Owner report: *"I've paid 2 months ago for a group and a member gave me their pa
 review's refund picker listed the open period only, so the single most common case was unreachable, with nothing
 on screen saying why the row was missing.
 **567 + 56 + 470 green (+16), Kotlin green, pairscan 0. R2 parity 117/124 → 118/125.**
-**LIVE: `finapp-00330-cxx`, 100% LATEST** — image `finapp:514fe15` (digest `sha256:259bd843…`); `origin/main` is
-`514fe15`, so all three agree. Roots 200 on both hosts, 5 `secretKeyRef`s, no archived-purge race.
-✅ **Proven on the served bytes:** `GET /accounts/{guid}/expenses/search` returns **401 on both hosts** (route
-matched, auth filter ran) against a **200** control from the SPA fallback. The only WARNING+ lines on the
-revision are those two probes.
+**LIVE: `finapp-00331-6v6`, 100% LATEST** — image `finapp:8bcc44c`; `origin/main` is `8bcc44c`, so all three
+agree. Roots 200 on both hosts, 5 `secretKeyRef`s, **zero WARNING+ lines** on the revision, no purge race.
+✅ **Proven on the served bytes twice over.** The route probe from `00330`:
+`GET /accounts/{guid}/expenses/search` → **401 on both hosts** (route matched, auth filter ran) against a **200**
+control from the SPA fallback. And for `00331`, which is **`.razor`-only** and therefore has no route and no CSS
+to grep — ⭐ **the WASM bundle itself was grepped**: `_framework/FinApp.Shared.UI.<hash>.wasm` contains
+`FindExpenseAnywhere` and `RefundOptionsFor`, both symbols that exist **only** in `8bcc44c`, on both hosts at an
+identical 1,860,373 bytes. ★ This retires the standing "a .razor change has nothing greppable" problem — .NET
+method names live in the metadata strings heap as plain UTF-8, so any new member name is a served-bytes probe.
 
 #### ★★ The picker was the ask. The ledger was the work.
 
