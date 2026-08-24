@@ -5051,7 +5051,9 @@ else
                         </ul>
                     }
                     <div class="modal-actions">
-                        <button class="ghost" @onclick="() => { _findRefundRow = null; _modal = Modal.None; }">@Loc["Cancel"]</button>
+                        @* Back(), not CloseModal(): cancelling a picker opened FROM the review must land back in
+                           the review — see PickBankCredit for the bug this shape fixes. *@
+                        <button class="ghost" @onclick="() => { _findRefundRow = null; Back(); }">@Loc["Cancel"]</button>
                     </div>
                     break;
 
@@ -9715,13 +9717,17 @@ else
                            back. The dropdown keeps the most recent few so the common case stays one tap; anything
                            older is reached through "Find an older expense…", which opens the searchable picker —
                            the same answer the trip-attach flow already gives to the same problem. *@
-                        @{ var refundables = State.RefundableExpenses(take: 8); }
+                        @* ⚠️ The picked row is PINNED into the options, and this is not a nicety: a `<select>` whose
+                           value matches no option renders blank, so choosing a six-month-old expense in the picker
+                           looked exactly like choosing nothing — and left the row unconfirmable. The cap is what
+                           the search exists to escape; the escape has to survive coming back. *@
+                        @{ var refundables = RefundOptionsFor(id); }
                         @if (refundables.Count > 0)
                         {
                             <optgroup label="@Loc["Money back on an expense"]">
                                 @foreach (var e in refundables)
                                 {
-                                    <option value="refund:@e.Id">@e.Date.ToString("dd MMM") · @State.CategoryName(e.CategoryId) · @Fmt(e.Amount)@(string.IsNullOrEmpty(e.Note) ? "" : " · " + e.Note)</option>
+                                    <option value="refund:@e.Id">@e.Date.ToString("dd MMM yyyy") · @State.CategoryName(e.CategoryId) · @Fmt(e.Amount)@(string.IsNullOrEmpty(e.Note) ? "" : " · " + e.Note)</option>
                                 }
                                 <option value="findrefund">@Loc["Find an older expense…"]</option>
                             </optgroup>
@@ -9850,6 +9856,11 @@ else
         {
             _findRefundRow = rowId;
             _findRefundSearch = "";
+            // ⚠️ The review list IS a modal, so opening the picker REPLACES it. Without pushing the way back,
+            // closing the picker closed the review with it — the reported symptom exactly: "the modal just
+            // disappears, nothing happens". The selection was in fact stored; the screen it belonged to was gone.
+            // Same idiom as OpenBankConfirm, which had this right already.
+            _modalBack.Push(() => _modal = Modal.BankReview);
             _modal = Modal.FindRefundExpense;
             return;
         }
@@ -9857,12 +9868,32 @@ else
     }
 
     /// <summary>Take the picked expense back to the row that opened the picker, as an ordinary "refund:{id}"
-    /// selection — so everything downstream (confirm, ack, the rule refusal) stays exactly as it was.</summary>
+    /// selection — so everything downstream (confirm, ack, the rule refusal) stays exactly as it was — and return
+    /// to the review list rather than out of it.</summary>
     private void ChooseRefundTarget(Guid expenseId)
     {
         if (_findRefundRow is { } rowId) _bankRowCredit[rowId] = $"refund:{expenseId}";
         _findRefundRow = null;
-        _modal = Modal.None;
+        Back();
+    }
+
+    /// <summary>
+    /// The options a money-in row's refund group offers: the most recent few, plus <b>whatever that row already
+    /// has picked</b>, however old it is.
+    ///
+    /// <para>⚠️ The pin is what makes the search usable. A <c>&lt;select&gt;</c> whose bound value matches no
+    /// option shows blank, so a six-month-old expense chosen in the picker read as "nothing was chosen" — and the
+    /// row could not be confirmed. The cap is precisely what the picker exists to escape, so the escape has to
+    /// survive the trip back.</para>
+    /// </summary>
+    private IReadOnlyList<FinApp.Domain.Budgeting.Expense> RefundOptionsFor(string rowId)
+    {
+        var recent = State.RefundableExpenses(take: 8);
+        if (RowCredit(rowId) is not { } picked || !picked.StartsWith("refund:", StringComparison.Ordinal)
+            || !Guid.TryParse(picked["refund:".Length..], out var pickedId)
+            || recent.Any(e => e.Id == pickedId))
+            return recent;
+        return State.FindExpenseAnywhere(pickedId) is { } row ? recent.Prepend(row).ToList() : recent;
     }
 
     /// <summary>Linking requires bank-link consent first (recorded each time — re-consent on relink).</summary>

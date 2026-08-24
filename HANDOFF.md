@@ -46,14 +46,37 @@ account permanently richer.
 | **Server** | `GET /accounts/{id}/expenses/search?q=&take=&refundableOnly=` — every period, newest first, matching note / category / **amount** ("46.8" finds €46.80 mid-keystroke). The refund routes now find the expense in any period. |
 | **Phone** | The review sheet's picker is now that server search with a search box, and the synced-wallet filter is **gone** — it existed only because the confirm named no wallet. It does now, so the server can move the money across. |
 
+#### ⚠️⚠️ The picker shipped broken, and the fix is the lesson
+
+Owner: *"when I find the expense and click, the modal just disappears, nothing happens."* **Two bugs, both
+findable by reading the code I was editing, neither found because I did not read far enough.**
+
+1. **The review list IS a modal.** Opening the picker *replaced* it, and closing the picker set
+   `_modal = Modal.None` — so the review closed with it. The selection was in fact stored; the screen it belonged
+   to was gone. The codebase already had the answer three hundred lines away: `OpenBankConfirm` pushes
+   `_modalBack.Push(() => _modal = Modal.BankReview)` with the comment *"Cancel returns to the list, not out of
+   the review."* Both paths now use `Back()`.
+2. **A `<select>` whose value matches no option renders blank.** Even fixed, picking a six-month-old expense
+   would have looked like picking nothing, because the dropdown only carries the 8 most recent — the cap the
+   picker exists to escape. The chosen row is now **pinned** into the options. Same pin added to the phone, where
+   searching again after choosing would have scrolled the picked row out from under an enabled Save button.
+
+★ **And the reason it shipped unverified is now itself fixed: the bank review IS reachable locally.** The
+allowlist is empty in Development (so everyone is allowed), `eb.IsEnabled` only checks that two config strings
+are non-empty (dummies do), and the connection + pending rows are plain local SQLite. Recipe and the
+Guid-case trap that cost a round are in [[reference_browser_verify_recipe]]. ✅ The flow was then driven for real:
+click a June expense → back in the review with *"12 Jun 2026 · Food · €2,610.00"* selected; Cancel likewise
+returns and keeps the previous pick.
+
 #### ⚠️ Two things this does NOT do
 
 1. **The manual "Money came back on this" is still unreachable on a CLOSED period** — confirmed in the browser:
    a closed period's row offers *Label expense* only, so the edit modal that hosts the link never opens. The
    domain and the API allow it; the web has no door. A friend handing back cash for a June dinner still needs
    the bank-review route. Worth a small entry point next session.
-2. The phone's picker is **compiled and unrun** — the review list needs a live bank connection, which is
-   allowlisted in prod and cannot be simulated locally. The server half of it *was* driven end to end.
+2. The phone's picker is **compiled and unrun**. ⚠️ The claim that this *could not* be verified locally was
+   wrong — see above; the web half was reached exactly this way. The phone needs the same fixture plus an
+   emulator run, which is the obvious next thing to do rather than a limitation to write down.
 
 ✅ **Verified on a running server, not reasoned about**: a two-period-old expense refunded €20 → `current`
 420 → 440, `spent` unchanged, `contributed` unchanged; the undo put all three back exactly. And the ordinary

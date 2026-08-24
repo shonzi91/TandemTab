@@ -263,9 +263,17 @@ private fun PendingRow(
     // ⚠️ The synced-wallet filter is gone with it. It existed because the confirm named no wallet, so a refund on
     // an expense paid elsewhere would have un-spent money there while the cash arrived here; the confirm now names
     // the synced wallet and the server moves the money across (Account.RefundExpense).
-    val refundable = refundResults
     var asRefund by remember { mutableStateOf(false) }
     var refundExpenseId by remember { mutableStateOf<String?>(null) }
+    // ⚠️ The picked row is PINNED into the list. Searching again after choosing would otherwise scroll the chosen
+    // expense out of the results while `refundExpenseId` still held it — a Save button that is enabled with
+    // nothing on screen showing what it will act on. The web's dropdown needed the same pin for the same reason.
+    var pickedRow by remember { mutableStateOf<ExpenseDto?>(null) }
+    val refundable = remember(refundResults, pickedRow) {
+        val picked = pickedRow
+        if (picked == null || refundResults.any { it.id == picked.id }) refundResults
+        else listOf(picked) + refundResults
+    }
     // Load the opening list once the user says this is money back, not on every row's first render.
     LaunchedEffect(asRefund) { if (asRefund && refundResults.isEmpty()) onSearchRefundable("") }
 
@@ -335,7 +343,7 @@ private fun PendingRow(
                                     if (picked) tandem.positive else MaterialTheme.colorScheme.outline,
                                     RoundedCornerShape(10.dp),
                                 )
-                                .clickable { refundExpenseId = e.id }
+                                .clickable { refundExpenseId = e.id; pickedRow = e }
                                 .padding(horizontal = 10.dp, vertical = 8.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {

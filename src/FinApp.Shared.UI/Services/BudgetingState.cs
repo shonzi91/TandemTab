@@ -1049,6 +1049,12 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
 
     public Expense? FindExpense(Guid id) => Period.Expenses.FirstOrDefault(e => e.Id == id);
 
+    /// <summary>The same lookup across <b>every</b> period. Separate from <see cref="FindExpense"/> rather than
+    /// replacing it: most callers are asking about the row on screen, and quietly widening that would let a
+    /// period-scoped screen act on a row from a month it is not showing.</summary>
+    public Expense? FindExpenseAnywhere(Guid id) =>
+        Account.Periods.SelectMany(p => p.Expenses).FirstOrDefault(e => e.Id == id);
+
     // --- Faster expense entry (#11) --------------------------------------------------------------
     // Manual entries only (AutoFiled bank rows reflect the bank, not a deliberate choice), newest first:
     // periods newest→oldest, and within a period the last-added expense first (list order ≈ entry order).
