@@ -5,6 +5,11 @@ Owner report: *"I've paid 2 months ago for a group and a member gave me their pa
 review's refund picker listed the open period only, so the single most common case was unreachable, with nothing
 on screen saying why the row was missing.
 **567 + 56 + 470 green (+16), Kotlin green, pairscan 0. R2 parity 117/124 → 118/125.**
+**LIVE: `finapp-00330-cxx`, 100% LATEST** — image `finapp:514fe15` (digest `sha256:259bd843…`); `origin/main` is
+`514fe15`, so all three agree. Roots 200 on both hosts, 5 `secretKeyRef`s, no archived-purge race.
+✅ **Proven on the served bytes:** `GET /accounts/{guid}/expenses/search` returns **401 on both hosts** (route
+matched, auth filter ran) against a **200** control from the SPA fallback. The only WARNING+ lines on the
+revision are those two probes.
 
 #### ★★ The picker was the ask. The ledger was the work.
 
