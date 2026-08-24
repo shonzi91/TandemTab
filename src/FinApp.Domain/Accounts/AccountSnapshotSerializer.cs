@@ -194,7 +194,7 @@ public static class AccountSnapshotSerializer
         p.InitialBalances.Select(b => new InitialBalanceNode(b.Id, b.FundId, b.Amount.Amount, b.Informative)).ToList(),
         p.Contributions.Select(c => new ContributionNode(c.Id, c.MemberId, c.Paid.Amount, c.CategoryId, c.FundId, c.Date, c.FundSynced, c.AccountTransferId, c.FromAccountId, c.ClientId)).ToList(),
         p.Budgets.Select(b => new BudgetNode(b.Id, b.CategoryId, b.Allocated.Amount, b.AlertThreshold, b.NotifyOnEveryExpense)).ToList(),
-        p.Expenses.Select(e => new ExpenseNode(e.Id, e.CategoryId, e.Amount.Amount, e.Date, e.MemberId, e.FundId, e.Note, e.SourceSavingCategoryId, e.OnBehalfOfOtherAccount, e.SettlementId, e.SettledToAccountId, e.SettledFromAccountId, e.SettledAmount, e.FundSynced, e.BankExternalId, e.AutoFiled, e.TagIds.Count == 0 ? null : e.TagIds.ToList(), e.InstallmentGroupId, e.Part, e.DebtBucketId, e.TripId, e.ForeignAmount, e.ForeignCurrency, e.Time, e.RefundedAmount, e.TripAccountId, e.DebtBucketAccountId, e.ClientId)).ToList(),
+        p.Expenses.Select(e => new ExpenseNode(e.Id, e.CategoryId, e.Amount.Amount, e.Date, e.MemberId, e.FundId, e.Note, e.SourceSavingCategoryId, e.OnBehalfOfOtherAccount, e.SettlementId, e.SettledToAccountId, e.SettledFromAccountId, e.SettledAmount, e.FundSynced, e.BankExternalId, e.AutoFiled, e.TagIds.Count == 0 ? null : e.TagIds.ToList(), e.InstallmentGroupId, e.Part, e.DebtBucketId, e.TripId, e.ForeignAmount, e.ForeignCurrency, e.Time, e.RefundedAmount, e.TripAccountId, e.DebtBucketAccountId, e.ClientId, e.RefundedToFundId)).ToList(),
         p.SavingAllocations.Select(a => new SavingAllocationNode(a.Id, a.SavingCategoryId, a.Amount.Amount, a.Date, a.Note, a.SourceExpenseId, a.BudgetCategoryId, a.TransferPairId, a.SourceExternalTransferId, a.ClientId)).ToList(),
         p.FundTransfers.Select(t => new FundTransferNode(t.Id, t.FromFundId, t.ToFundId, t.Amount.Amount, t.Date, t.Note, t.FromSynced, t.ToSynced, t.BankExternalId, t.AutoFiled, t.ClientId)).ToList(),
         p.ExternalTransfers.Select(t => new ExternalTransferNode(t.Id, t.FundId, t.Amount.Amount, t.Date, t.ToAccountId, t.Note, t.FundSynced, t.AccountTransferId, t.CategoryId, t.ClientId)).ToList());
@@ -275,6 +275,7 @@ public static class AccountSnapshotSerializer
             expense.SetTime(e.Time);
             expense.SetRefunded(e.RefundedAmount);
             expense.SetClientId(e.ClientId);
+            expense.SetRefundedToFund(e.RefundedToFundId);
             return expense;
         }).ToList());
         SetField(p, "_savingAllocations", n.SavingAllocations.Select(a =>
@@ -465,7 +466,10 @@ public static class AccountSnapshotSerializer
         // write that sent no key — which reads as "no claim about duplicates", the honest answer for those.
         // ⚠️ Positional record: this goes LAST, and the next field goes after it. See RecurringRowDto's comment
         // for what happens when two branches each append "the" trailing optional field.
-        Guid? ClientId = null);
+        Guid? ClientId = null,
+        // S119: the wallet a CROSS-PERIOD refund's money arrived in, so the undo can take it back out of the same
+        // one. Null on every same-period refund and on every row nobody refunded. See Expense.RefundedToFundId.
+        Guid? RefundedToFundId = null);
     private record SavingAllocationNode(Guid Id, Guid SavingCategoryId, decimal Amount, DateOnly Date, string? Note, Guid? SourceExpenseId, Guid? BudgetCategoryId = null, Guid? TransferPairId = null, Guid? SourceExternalTransferId = null,
         // T0: the write's idempotency key. Trailing and optional, like ExpenseNode.ClientId — and for the same
         // reason the comment there spells out, a new field goes AFTER it rather than in front.

@@ -744,24 +744,72 @@ public sealed class Account : Entity
     /// <para>⚠️ Only the <i>added</i> amount moves. Restating a running total that has already been part-moved
     /// would transfer the same euros twice, so the transfer is for the delta against what had come back before.</para>
     /// </summary>
+    /// <para>★ <b>The expense may live in ANY period, not just the open one</b> (owner report: paid for a group in
+    /// June, a member handed their share back in August). The refund is applied to the period that owns the
+    /// expense, so what that purchase turned out to cost is recorded where the purchase is — see the
+    /// <c>allowClosed</c> note on <see cref="Period.SetRefund"/> for why a closed period is not an obstacle here.</para>
+    ///
+    /// <para>⚠️⚠️ <b>A cross-period refund has to say where the money is NOW, and that is the whole difficulty.</b>
+    /// Shrinking a June expense credits June's closing balance — and opening balances are <b>snapshotted when a
+    /// period rolls</b> ("carried money simply sits in the opening fund balances"), so nothing carries that credit
+    /// forward. Left there the money would be truthfully recorded and invisible: the app would show less cash than
+    /// the wallet holds, silently, which is worse than the refusal this replaces. So the current period's
+    /// <b>opening balance</b> for the receiving wallet is raised by the same amount — not a fudge, but the exact
+    /// mechanism the app already uses to carry money between periods, and the money genuinely was in that wallet
+    /// all along. A <b>synced</b> wallet is left alone: its balance is the bank's, and the bank has already
+    /// counted the credit.</para>
+    ///
+    /// <para>★ <b>It is still not income, and the books still balance</b> — the two things that had to stay true.
+    /// <c>Contributed</c> (fresh income this period) does not move, which is the promise a refund has always made.
+    /// <c>MoneyIn</c> does, because its other half is carry-in and that is exactly what this money is: an earlier
+    /// period's, available now. Putting the credit anywhere else — straight onto the balance, say — would leave
+    /// <c>Current</c> larger than <c>MoneyIn − Spent</c>, and the Home hero would quietly stop adding up.</para>
     /// <returns>The rebuilt expense — its id is new, the ledger being append-only.</returns>
     public Expense RefundExpense(Guid expenseId, Money totalRefunded, Guid? toFundId = null)
     {
-        var period = CurrentPeriod ?? throw new InvalidOperationException("There's no open period.");
-        var before = period.Expenses.FirstOrDefault(e => e.Id == expenseId)
-            ?? throw new InvalidOperationException("That expense doesn't exist in this period.");
+        var current = CurrentPeriod ?? throw new InvalidOperationException("There's no open period.");
+        var owning = _periods.FirstOrDefault(p => p.Expenses.Any(e => e.Id == expenseId))
+            ?? throw new InvalidOperationException("That expense doesn't exist in this account.");
+        var before = owning.Expenses.First(e => e.Id == expenseId);
         var sourceFundId = before.FundId;
         var added = totalRefunded.Amount - before.RefundedAmount;
+        var isCurrent = ReferenceEquals(owning, current);
 
-        var refunded = period.SetRefund(expenseId, totalRefunded);
+        var refunded = owning.SetRefund(expenseId, totalRefunded, allowClosed: !isCurrent);
 
-        if (toFundId is { } destination && destination != sourceFundId && added > 0m)
+        if (isCurrent)
         {
-            var from = FindFund(sourceFundId) ?? throw new InvalidOperationException("The expense's wallet doesn't exist in this account.");
-            var to = FindFund(destination) ?? throw new InvalidOperationException("That wallet doesn't exist in this account.");
-            var transfer = period.TransferFunds(sourceFundId, destination, new Money(added, Currency), refunded.Date,
-                $"Refund · {before.Note}".TrimEnd(' ', '·'));
-            transfer.SetSyncedSides(from.IsSynced, to.IsSynced);
+            // Same period: the shrink already credits this period's wallet, so the only thing left to say is that
+            // the money landed somewhere else — "paid by card, handed back in cash".
+            if (toFundId is { } destination && destination != sourceFundId && added > 0m)
+            {
+                var from = FindFund(sourceFundId) ?? throw new InvalidOperationException("The expense's wallet doesn't exist in this account.");
+                var to = FindFund(destination) ?? throw new InvalidOperationException("That wallet doesn't exist in this account.");
+                var transfer = owning.TransferFunds(sourceFundId, destination, new Money(added, Currency), refunded.Date,
+                    $"Refund · {before.Note}".TrimEnd(' ', '·'));
+                transfer.SetSyncedSides(from.IsSynced, to.IsSynced);
+            }
+        }
+        else if (added != 0m)
+        {
+            // Cross-period. ⚠️ Signed, not `> 0`: undoing a refund on an older expense has to take the same money
+            // back out of the opening balance, or the undo would leave the account permanently richer.
+            // ⚠️ And out of the SAME wallet it went into — which is why the row remembers it. On the way in the
+            // caller names the wallet; on the way back out the stored one wins, because an undo arriving from a
+            // route that only knows the expense would otherwise guess the expense's own wallet.
+            var wallet = added < 0m && before.RefundedToFundId is { } previous
+                ? previous
+                : toFundId is { } d && d != Guid.Empty ? d : sourceFundId;
+            var fund = FindFund(wallet) ?? throw new InvalidOperationException("That wallet doesn't exist in this account.");
+            refunded.SetRefundedToFund(totalRefunded.IsZero ? null : wallet);
+            if (!fund.IsSynced)
+            {
+                // ⚠️ Carry the row's own `informative` flag across. A sub-fund's opening balance only breaks down
+                // its parent and must not start counting toward the period's real total because money came back
+                // into it — writing the default here would silently promote it.
+                var informative = current.InitialBalances.FirstOrDefault(b => b.FundId == wallet)?.Informative ?? false;
+                current.SetInitialBalance(wallet, current.OpeningBalanceOf(wallet) + new Money(added, Currency), informative);
+            }
         }
         return refunded;
     }

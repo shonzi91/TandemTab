@@ -2934,9 +2934,20 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     /// offer only expenses paid from it — which made a refund a bank-only feature and left money handed back in cash
     /// with nowhere to go. Where the money arrived is now an argument (see <see cref="Account.RefundExpense"/>)
     /// rather than an assumption.</para>
-    public IReadOnlyList<Expense> RefundableExpenses =>
-        Period.Expenses.Where(e => e.Amount.Amount > 0m)
-                       .OrderByDescending(e => e.Date).ThenByDescending(e => e.SortTime).ToList();
+    /// <para>★★ <b>Spans every period</b> (owner report, S119): *"I've paid 2 months ago for a group and a member
+    /// gave me their part this one."* The money comes back on its own schedule, and scoping the candidates to the
+    /// open period made the common case — a share of something paid a while ago — unreachable, with nothing on
+    /// screen saying why the row was missing. Same requirement, and the same answer, as the trip-attach picker:
+    /// search across all of it rather than scroll (see <see cref="RecentExpensesAcrossPeriods"/>).</para>
+    /// <param name="search">Free text over the note, the category and the amount — see
+    /// <see cref="RecentExpensesAcrossPeriods"/>, which this delegates to so the two pickers cannot come to search
+    /// differently.</param>
+    /// <param name="take">The cap applied AFTER the search, so an older row is reachable by typing.</param>
+    public IReadOnlyList<Expense> RefundableExpenses(string? search = null, int take = 60) =>
+        RecentExpensesAcrossPeriods(take * 3, search)
+            .Where(e => e.Amount.Amount > 0m)
+            .Take(take)
+            .ToList();
 
     /// <summary>
     /// Money came back on an expense, recorded by hand rather than spotted in a bank feed. <paramref name="amount"/>
@@ -2946,8 +2957,8 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     public async Task RecordRefund(Guid expenseId, decimal amount, Guid? toFundId = null)
     {
         if (amount <= 0m) throw new InvalidOperationException("Enter how much came back.");
-        var expense = Period.Expenses.FirstOrDefault(e => e.Id == expenseId)
-            ?? throw new InvalidOperationException("That expense is no longer in this period.");
+        var expense = Account.Periods.SelectMany(p => p.Expenses).FirstOrDefault(e => e.Id == expenseId)
+            ?? throw new InvalidOperationException("That expense is no longer in this account.");
         Account.RefundExpense(expenseId, Money(expense.RefundedAmount + amount), toFundId);
         await SaveAsync();
     }
@@ -2956,7 +2967,12 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     /// and is not resurrected — this undoes the deduction, not the sync.</summary>
     public async Task UndoRefund(Guid expenseId)
     {
-        Period.SetRefund(expenseId, Money(0m));
+        // ⚠️ Through RefundExpense, not straight to the period's SetRefund. Undoing a CROSS-PERIOD refund also has
+        // to take the money back out of this period's opening balance — the half a bare SetRefund skips, which
+        // would leave the account permanently richer by whatever was undone. Mirrors the server's DELETE route.
+        var expense = Account.Periods.SelectMany(p => p.Expenses).FirstOrDefault(e => e.Id == expenseId)
+            ?? throw new InvalidOperationException("That expense is no longer in this account.");
+        Account.RefundExpense(expenseId, Money(0m), expense.FundId);
         await SaveAsync();
     }
 
@@ -2985,8 +3001,9 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
             // income: booking it as one would leave "spent" claiming the full charge and inflate "money in" by a
             // sum nobody earned. The expense it came back on shrinks instead, so the category, the budget and the
             // period total all correct themselves at once.
-            var expense = Period.Expenses.FirstOrDefault(e => e.Id == targetId)
-                ?? throw new InvalidOperationException("That expense is no longer in this period.");
+            // ★ Any period. The credit arrives whenever it arrives; the charge it belongs to does not move.
+            var expense = Account.Periods.SelectMany(p => p.Expenses).FirstOrDefault(e => e.Id == targetId)
+                ?? throw new InvalidOperationException("That expense is no longer in this account.");
             // ★ The credit landed in the SYNCED wallet — that is what a bank feed means — so that is the wallet
             // named here. When the expense was paid from a different one (bought in cash, refunded to the card),
             // RefundExpense also moves the money across; it used to simply refuse the case.

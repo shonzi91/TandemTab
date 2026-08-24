@@ -1,6 +1,67 @@
 # TandemTab (FinApp) — session handoff
 
-Last updated: 2026-08-23 (Session 118 — **both of the next session's headline rows, done: T0 finished across
+Last updated: 2026-08-24 (Session 119 — **money can come back on an expense from any month, not just this one.**
+Owner report: *"I've paid 2 months ago for a group and a member gave me their part this one"* — the transaction
+review's refund picker listed the open period only, so the single most common case was unreachable, with nothing
+on screen saying why the row was missing.
+**567 + 56 + 470 green (+16), Kotlin green, pairscan 0. R2 parity 117/124 → 118/125.**
+
+#### ★★ The picker was the ask. The ledger was the work.
+
+Widening the list is four lines. What it exposes is that **shrinking a June expense credits June's closing
+balance — and opening balances are snapshotted when a period rolls**, so nothing carries that credit into August.
+Left there the refund would be recorded truthfully and be **invisible**: the app would show less cash than the
+wallet holds, silently, which is a worse bug than the refusal it replaces.
+
+So a cross-period refund does two things. The charge is corrected **where the charge lives** (June's dinner turned
+out to cost €40, and June's Food budget corrects itself with it), and the **current period's opening balance** for
+the receiving wallet is raised by the same amount — not a fudge, but the exact mechanism the app already uses to
+carry money between periods, and the money genuinely was in that wallet all along.
+
+★ **The two things that had to stay true, both checked against a running server:** it is still **not income**
+(`Contributed` does not move — the promise a refund has always made), and **the books still balance**
+(`MoneyIn − Spent − TransfersOut = Current`, 2420 − 1980 = 440). `MoneyIn` *does* rise, because its other half is
+carry-in and that is exactly what this money is. Putting the credit straight onto the balance instead would have
+left the Home hero quietly failing to add up.
+
+⚠️ **A synced wallet is left alone** — its balance is the bank's, and the bank counted the credit when it landed.
+Adjusting it too would show the €20 twice, which is the mirror of the bug the adjustment exists to prevent.
+
+⚠️ **The undo has to reverse the same wallet the money went into**, so the row remembers it
+(`Expense.RefundedToFundId`, body data, no migration). The undo route knows only the expense, so without it a
+refund taken into a different wallet would credit one and debit another. Both clients now route the undo through
+`RefundExpense` rather than straight to `Period.SetRefund` — the half a bare undo skips, which would leave the
+account permanently richer.
+
+#### What each surface got
+
+| Where | What |
+|---|---|
+| **Web** — bank review | The dropdown keeps the most recent 8 so the common case stays one tap; **"Find an older expense…"** opens a searchable picker over every period. Same shape as the trip-attach flow, which the owner named as the model. ⚠️ `"findrefund"` is a **door, not a value** — storing it would leave the select showing it as the chosen answer and the row unconfirmable. |
+| **Server** | `GET /accounts/{id}/expenses/search?q=&take=&refundableOnly=` — every period, newest first, matching note / category / **amount** ("46.8" finds €46.80 mid-keystroke). The refund routes now find the expense in any period. |
+| **Phone** | The review sheet's picker is now that server search with a search box, and the synced-wallet filter is **gone** — it existed only because the confirm named no wallet. It does now, so the server can move the money across. |
+
+#### ⚠️ Two things this does NOT do
+
+1. **The manual "Money came back on this" is still unreachable on a CLOSED period** — confirmed in the browser:
+   a closed period's row offers *Label expense* only, so the edit modal that hosts the link never opens. The
+   domain and the API allow it; the web has no door. A friend handing back cash for a June dinner still needs
+   the bank-review route. Worth a small entry point next session.
+2. The phone's picker is **compiled and unrun** — the review list needs a live bank connection, which is
+   allowlisted in prod and cannot be simulated locally. The server half of it *was* driven end to end.
+
+✅ **Verified on a running server, not reasoned about**: a two-period-old expense refunded €20 → `current`
+420 → 440, `spent` unchanged, `contributed` unchanged; the undo put all three back exactly. And the ordinary
+same-period refund was re-driven through the real web UI (SPENT 1980 → 1950, MONEY IN still 2400) to prove the
+common path did not regress.
+
+#### Next session
+1. ⬜ A door to "money came back" on a **closed** period's expense (see above).
+2. ⬜ Everything R2.5 still owes — the week recap, the PWA shell, the phone→web rows.
+
+---
+
+Previously: 2026-08-23 (Session 118 — **both of the next session's headline rows, done: T0 finished across
 every write that moves money, and the R2.5 server slice built and rendering on the phone.**
 Three commits. **559 + 56 + 461 green (+28), Kotlin green, pairscan 0. R2 parity 115/122 → 117/124 (94%)** —
 two new routes, both called from Kotlin the same session, so the denominator and the numerator moved together.

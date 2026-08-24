@@ -659,10 +659,18 @@ public sealed class Period : Entity
     /// across explicitly. Dropping the bank link here would be the expensive one: the row would stop matching the
     /// bank transaction it came from, and duplicate detection would offer to log it a second time.</para>
     /// </summary>
-    public Expense SetRefund(Guid expenseId, Money totalRefunded)
+    /// <param name="allowClosed">Permit the write on a <b>closed</b> period. Set only by
+    /// <see cref="Accounts.Account.RefundExpense"/>, and only when the money came back on an expense from an
+    /// earlier month.
+    /// <para>⚠️ This is the one deliberate hole in "a closed period is settled", and the reason it is defensible
+    /// is that recording a refund is not a spending decision being revised — it is the record of a purchase being
+    /// <i>completed</i>. A friend paying back their share of a dinner in August does not change what August's
+    /// budget allowed or what June's did; it changes what June's dinner turned out to cost. Refusing it would
+    /// leave the only truthful place to put the money unreachable, which is how it was until now.</para></param>
+    public Expense SetRefund(Guid expenseId, Money totalRefunded, bool allowClosed = false)
     {
         EnsureCurrency(totalRefunded);
-        EnsureOpen();
+        if (!allowClosed) EnsureOpen();
         var old = _expenses.FirstOrDefault(e => e.Id == expenseId)
             ?? throw new InvalidOperationException("Expense not found in this period.");
         var before = old.AmountBeforeRefund;

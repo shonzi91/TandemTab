@@ -296,6 +296,22 @@ public sealed class Expense : Entity
     public void SetRefunded(decimal amount) => RefundedAmount = amount;
 
     /// <summary>
+    /// The wallet the refunded money actually arrived in, when the expense belongs to an <b>earlier</b> period.
+    ///
+    /// <para>★ Recorded only because the <b>undo</b> needs it. A cross-period refund raises the current period's
+    /// opening balance for the receiving wallet (see <see cref="Accounts.Account.RefundExpense"/>), and undoing it
+    /// has to take the same money out of the <i>same</i> wallet. Without this the undo would guess the expense's
+    /// own wallet and, whenever the money had arrived somewhere else, quietly credit one wallet and debit
+    /// another.</para>
+    ///
+    /// <para>Null on every same-period refund (nothing was adjusted, so there is nothing to reverse), on every
+    /// row written before this existed, and on every expense nobody refunded. Body data — no schema change.</para>
+    /// </summary>
+    public Guid? RefundedToFundId { get; private set; }
+
+    public void SetRefundedToFund(Guid? fundId) => RefundedToFundId = fundId is { } f && f != Guid.Empty ? f : null;
+
+    /// <summary>
     /// The client's own id for the <b>write</b> that created this row — an idempotency key, not an identity.
     ///
     /// <para><b>★ Why a row carries one.</b> A client sends "add this expense", the request lands, and the response
@@ -364,6 +380,7 @@ public sealed class Expense : Entity
         rebuilt.SetBankLink(BankExternalId, AutoFiled);
         rebuilt.SetForeign(ForeignAmount, ForeignCurrency);
         rebuilt.SetRefunded(RefundedAmount);
+        rebuilt.SetRefundedToFund(RefundedToFundId);
         // ⚠️ The idempotency key too. A late retry of the original add must still find this row after it has been
         // edited, settled or refunded — drop the key here and correcting an amount silently re-opens the duplicate
         // window the key exists to close.

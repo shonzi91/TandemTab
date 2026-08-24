@@ -1142,7 +1142,13 @@ data class SettleExpenseRequest(
  * would mean read-modify-write, and the second phone's stale read would silently erase the first phone's refund.
  */
 @Serializable
-data class RefundExpenseRequest(val amount: Double)
+data class RefundExpenseRequest(
+    val amount: Double,
+    // Where the money actually arrived. On a bank credit that is the SYNCED wallet, whatever wallet the charge was
+    // paid from — see Account.RefundExpense, which moves the money across when the two differ and leaves a synced
+    // destination alone because the bank balance already counts it.
+    val toFundId: String? = null,
+)
 
 /** PUT /accounts/{id}/account-transfers/{pairId} — rewrite BOTH halves at once. Null fund ids and a null date keep
  *  what the transfer already has. */
@@ -1313,6 +1319,20 @@ data class DebtPayoffDto(
     val lumpClearsTheLoan: Boolean = false,
     val offers: List<PayoffOfferDto> = emptyList(),
     val curve: List<PayoffCurvePointDto> = emptyList(),
+)
+
+/**
+ * GET /accounts/{id}/expenses/search — expenses from EVERY period, newest first.
+ *
+ * ★ The phone holds one period at a time, and the charge a refund belongs to is routinely months back: *"I've
+ * paid 2 months ago for a group and a member gave me their part this one."* [totalCount] is how many exist
+ * altogether, so a capped list can say what it is not showing instead of letting the cap look like the end.
+ */
+@Serializable
+data class ExpenseSearchDto(
+    val currency: String = "",
+    val totalCount: Int = 0,
+    val rows: List<ExpenseDto> = emptyList(),
 )
 
 // --- Trends (GET /accounts/{id}/trends, R2.5) ---------------------------------------------------------

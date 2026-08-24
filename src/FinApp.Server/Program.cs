@@ -1007,6 +1007,18 @@ accounts.MapGet("/{id:guid}/budgets", async (Guid id, int? period, ClaimsPrincip
     return Results.Ok(BudgetsMap.View(account, snap.Version, ResolvePeriod(account, period)));
 });
 
+// Search every period's expenses — what a thin client's "find an older expense" pickers need. ★ Every other
+// spending read is period-scoped, and the charge a refund belongs to is routinely two months back (owner report,
+// S119). `refundableOnly` keeps rows that still carry money; `q` matches note, category and amount.
+accounts.MapGet("/{id:guid}/expenses/search", async (Guid id, string? q, int? take, bool? refundableOnly,
+        ClaimsPrincipal user, SnapshotService svc, CancellationToken ct) =>
+{
+    var snap = await svc.GetAsync(user.UserId(), id, ct);
+    if (string.IsNullOrEmpty(snap.Payload)) return Results.Ok(ExpenseSearchDto.Empty);
+    var account = AccountSnapshotSerializer.Deserialize(snap.Payload);
+    return Results.Ok(ExpenseSearchMap.View(account, q, take ?? 60, refundableOnly ?? false));
+});
+
 // Path-B faster-expense-entry read: recent manual expenses the add-expense modal derives its chips/suggestions from
 // (account-level — spans all periods, not period-scoped).
 accounts.MapGet("/{id:guid}/expense-entry", async (Guid id, ClaimsPrincipal user, SnapshotService svc, CancellationToken ct) =>
@@ -1731,9 +1743,11 @@ accounts.MapPost("/{id:guid}/expenses/{expenseId:guid}/refund", async (Guid id, 
     var (version, newId) = await svc.MutateAsync(userId, id, account =>
     {
         if (req.Amount <= 0m) throw new InvalidOperationException("The amount must be positive.");
-        var period = account.CurrentPeriod ?? throw new InvalidOperationException("There's no open period.");
-        var expense = period.Expenses.FirstOrDefault(e => e.Id == expenseId)
-            ?? throw new InvalidOperationException("That expense doesn't exist in this period.");
+        // ★ ANY period, not just the open one — the money often comes back months after the purchase (owner
+        // report: paid for a group in June, a member handed their share back in August). Where the credit then
+        // has to land is the interesting half, and it is decided in Account.RefundExpense.
+        var expense = account.Periods.SelectMany(p => p.Expenses).FirstOrDefault(e => e.Id == expenseId)
+            ?? throw new InvalidOperationException("That expense doesn't exist in this account.");
         // Domain guards the ceiling (0 ≤ total ≤ the original charge) and says the figure in its message. ToFundId is
         // where the money actually arrived — only meaningful when that is a different wallet; see Account.RefundExpense.
         return account.RefundExpense(expenseId, new Money(expense.RefundedAmount + req.Amount, account.Currency), req.ToFundId).Id;
@@ -1749,11 +1763,13 @@ accounts.MapDelete("/{id:guid}/expenses/{expenseId:guid}/refund", async (Guid id
     var userId = user.UserId();
     var (version, newId) = await svc.MutateAsync(userId, id, account =>
     {
-        var period = account.CurrentPeriod ?? throw new InvalidOperationException("There's no open period.");
-        var expense = period.Expenses.FirstOrDefault(e => e.Id == expenseId)
-            ?? throw new InvalidOperationException("That expense doesn't exist in this period.");
+        var expense = account.Periods.SelectMany(p => p.Expenses).FirstOrDefault(e => e.Id == expenseId)
+            ?? throw new InvalidOperationException("That expense doesn't exist in this account.");
         if (!expense.IsRefunded) throw new InvalidOperationException("Nothing has come back on that expense.");
-        return period.SetRefund(expenseId, new Money(0m, account.Currency)).Id;
+        // ⚠️ Through RefundExpense, not straight to the period's SetRefund. Undoing a cross-period refund must
+        // also take the money back out of this period's opening balance — the half a bare SetRefund would skip,
+        // leaving the account permanently richer by the amount that was undone.
+        return account.RefundExpense(expenseId, new Money(0m, account.Currency), expense.FundId).Id;
     }, ct);
     await notifier.AccountChangedAsync(id, userId, version);
     return Results.Ok(new MutationResultDto(version, newId));

@@ -401,8 +401,8 @@ class TandemTabApi(
      *  booked as income. `amount` is what came back NOW, not a running total: the server adds it under its own lock,
      *  so two devices acking two credits against one dinner both land instead of overwriting each other.
      *  ⚠️ Returns a NEW expense id (the ledger is append-only) — hold on to it, the old one no longer resolves. */
-    suspend fun refundExpense(accountId: String, expenseId: String, amount: Double): MutationResultDto =
-        authedPost("/accounts/$accountId/expenses/$expenseId/refund", RefundExpenseRequest(amount)).body()
+    suspend fun refundExpense(accountId: String, expenseId: String, amount: Double, toFundId: String? = null): MutationResultDto =
+        authedPost("/accounts/$accountId/expenses/$expenseId/refund", RefundExpenseRequest(amount, toFundId)).body()
 
     /** Put the whole charge back. Addressed by the expense's CURRENT id, and mints another new one. The bank
      *  transaction that prompted the refund stays acknowledged — this undoes the deduction, not the sync. */
@@ -467,6 +467,14 @@ class TandemTabApi(
      *  modelling blocks empty. */
     suspend fun debtPayoff(accountId: String, bucketId: String, period: Int? = null): DebtPayoffDto =
         authedGet("/accounts/$accountId/savings/$bucketId/payoff${periodQ(period)}").body()
+
+    /** Expenses from every period, newest first — the pool the "find an older expense" picker draws from. [q]
+     *  matches the note, the category and the amount; [refundableOnly] keeps rows that still carry money. */
+    suspend fun searchExpenses(accountId: String, q: String? = null, take: Int = 40, refundableOnly: Boolean = false): ExpenseSearchDto =
+        authedGet(
+            "/accounts/$accountId/expenses/search?take=$take&refundableOnly=$refundableOnly" +
+                (q?.takeIf { it.isNotBlank() }?.let { "&q=" + it.encodeURLParameter() } ?: ""),
+        ).body()
 
     /** The whole-stack payoff plan: every debt at once under avalanche or snowball, with one shared [extra] per
      *  month. Distinct from [debtPayoff], which answers "when does THIS loan end" — this one answers "when am I

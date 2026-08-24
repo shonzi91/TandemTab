@@ -26,12 +26,14 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -41,6 +43,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.tandemtab.app.BankUi
 import com.tandemtab.app.SpendingUi
+import com.tandemtab.app.data.ExpenseDto
 import com.tandemtab.app.data.PendingBankTransactionDto
 import com.tandemtab.app.ui.theme.LocalTandemColors
 import com.tandemtab.app.ui.theme.TandemIcons
@@ -71,6 +74,12 @@ fun BankSheet(
     onConfirmRefund: (externalId: String, expenseId: String, amount: Double, onDone: () -> Unit) -> Unit,
     onDismissPending: (String) -> Unit,
     onDismiss: () -> Unit,
+    // S119 — the "money back on" pool, searched server-side across EVERY period. Passed down rather than derived
+    // from `spending`, which only ever holds the period being viewed.
+    refundResults: List<ExpenseDto> = emptyList(),
+    refundSearch: String = "",
+    refundSearching: Boolean = false,
+    onSearchRefundable: (String) -> Unit = {},
 ) {
     val tandem = LocalTandemColors.current
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -144,6 +153,8 @@ fun BankSheet(
                                 tx = tx, spending = spending, fmt = fmt, busy = bank.handlingId == tx.externalId,
                                 onConfirmExpense = onConfirmExpense, onConfirmIncome = onConfirmIncome,
                                 onConfirmRefund = onConfirmRefund, onDismiss = { id -> dismissing = bank.pending.firstOrNull { it.externalId == id } },
+                                refundResults = refundResults, refundSearch = refundSearch,
+                                refundSearching = refundSearching, onSearchRefundable = onSearchRefundable,
                             )
                         }
                     }
@@ -223,6 +234,12 @@ private fun PendingRow(
     onConfirmIncome: (String, String, String, Double, String, () -> Unit) -> Unit,
     onConfirmRefund: (String, String, Double, () -> Unit) -> Unit,
     onDismiss: (String) -> Unit,
+    // The cross-period "money back on" pool and its search — server-side, so it spans every period rather than the
+    // one `spending` happens to be showing.
+    refundResults: List<ExpenseDto>,
+    refundSearch: String,
+    refundSearching: Boolean,
+    onSearchRefundable: (String) -> Unit,
 ) {
     val tandem = LocalTandemColors.current
     val isCredit = tx.amount > 0
@@ -236,16 +253,21 @@ private fun PendingRow(
     var categoryId by remember { mutableStateOf(categories.firstOrNull()?.id) }
     var fundId by remember { mutableStateOf(defaultFund) }
 
-    // Money back on something already logged — a refund, or a friend's share of a bill you covered. Offered only on
-    // credits, and only for expenses paid from the SAME synced wallet: refunding one paid from another wallet would
-    // un-spend money there while the cash arrives here. Nothing to refund → the choice never appears.
-    val syncedFundId = funds.firstOrNull { it.synced }?.id
-    val refundable = remember(spending.expenses, syncedFundId) {
-        if (syncedFundId == null) emptyList()
-        else spending.expenses.filter { it.fundId == syncedFundId && it.amount > 0.0 }
-    }
+    // Money back on something already logged — a refund, or a friend's share of a bill you covered.
+    //
+    // ★★ **The pool is EVERY period, and it is searched on the server** (S119, owner report: *"I've paid 2 months
+    // ago for a group and a member gave me their part this one"*). It used to be `spending.expenses` filtered to
+    // the synced wallet — this period only — which put the single most common case, a share of something paid a
+    // while back, out of reach with nothing on screen saying why the row was missing.
+    //
+    // ⚠️ The synced-wallet filter is gone with it. It existed because the confirm named no wallet, so a refund on
+    // an expense paid elsewhere would have un-spent money there while the cash arrived here; the confirm now names
+    // the synced wallet and the server moves the money across (Account.RefundExpense).
+    val refundable = refundResults
     var asRefund by remember { mutableStateOf(false) }
     var refundExpenseId by remember { mutableStateOf<String?>(null) }
+    // Load the opening list once the user says this is money back, not on every row's first render.
+    LaunchedEffect(asRefund) { if (asRefund && refundResults.isEmpty()) onSearchRefundable("") }
 
     Column(
         Modifier.fillMaxWidth()
@@ -266,9 +288,10 @@ private fun PendingRow(
         if (expanded) {
             Spacer(Modifier.height(12.dp))
 
-            // What KIND of money-in this is. Only shown when there is something it could be money back on, so the
-            // ordinary credit keeps its one-question flow.
-            if (isCredit && refundable.isNotEmpty()) {
+            // What KIND of money-in this is. ⚠️ Offered on every credit now, not only when this period happens to
+            // hold a refundable row — the pool is fetched after the choice is made, so gating the choice on it
+            // would hide the option precisely when the charge is old enough to need searching for.
+            if (isCredit) {
                 FieldLabel("What is this?")
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     PickChip("Income", null, selected = !asRefund) { asRefund = false }
@@ -279,6 +302,25 @@ private fun PendingRow(
 
             if (isCredit && asRefund) {
                 FieldLabel("Money back on")
+                // ★ Search rather than scroll — the same answer the trip-attach picker gives to the same problem.
+                // It runs over every period on the server, so "dinner" or "46.80" reaches a charge from months ago
+                // that no amount of scrolling would have found.
+                OutlinedTextField(
+                    value = refundSearch,
+                    onValueChange = onSearchRefundable,
+                    singleLine = true,
+                    placeholder = { Text("Search any month — “dinner”, “tickets”, 46.80…", fontSize = 13.sp) },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(Modifier.height(8.dp))
+                if (refundable.isEmpty()) {
+                    Text(
+                        if (refundSearching) "Searching…"
+                        else if (refundSearch.isBlank()) "Nothing logged yet."
+                        else "Nothing matches that.",
+                        fontSize = 12.sp, color = tandem.muted,
+                    )
+                }
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     refundable.forEach { e ->
                         val picked = e.id == refundExpenseId

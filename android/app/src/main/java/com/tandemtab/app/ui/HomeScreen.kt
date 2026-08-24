@@ -251,6 +251,8 @@ fun HomeScreen(
     onLoadBankMappings: () -> Unit,
     onPinMerchant: (description: String, categoryId: String, currentlyPinned: Boolean) -> Unit,
     onOpenPayoff: (bucketId: String, bucketName: String) -> Unit,
+    // S119 — the bank review's "money back on" search, which spans every period rather than the one on screen.
+    onSearchRefundable: (String) -> Unit,
     // R2.5 — the whole-stack plan on the Goals tab. Separate from onOpenPayoff above: that one is about a single
     // loan, this one about being debt-free.
     onOpenDebtPlan: () -> Unit,
@@ -739,6 +741,10 @@ fun HomeScreen(
                 onConfirmRefund = onConfirmBankRefund,
                 onDismissPending = onDismissBankPending,
                 onDismiss = { showBank = false },
+                refundResults = state.refundResults,
+                refundSearch = state.refundSearch,
+                refundSearching = state.refundSearching,
+                onSearchRefundable = onSearchRefundable,
             )
         }
         if (state.breakdownOpen) {

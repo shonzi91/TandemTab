@@ -166,6 +166,82 @@ public class RefundApiTests : IClassFixture<FinAppServerFactory>
         Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
     }
 
+    // ── Cross-period (S119, owner report) ──────────────────────────────────────────────────────────────────
+
+    /// <summary>June's dinner, then July and August rolled on top with the closing balance carried forward each
+    /// time — the snapshot behaviour that makes a retroactive edit to June invisible to August.</summary>
+    private static async Task<(Guid ExpenseId, Guid Cash)> SeedOlderExpenseAsync(HttpClient client, Guid accountId, Guid memberId)
+    {
+        var agg = new Account("Seed", "EUR");
+        agg.AddDefaultFunds();
+        var food = agg.AddCategory("Food").Id;
+        agg.AddMember(memberId, "Me");
+        var cash = agg.FundId("Cash");
+
+        var june = agg.StartPeriod(new DateOnly(2026, 6, 1), new DateOnly(2026, 6, 30));
+        june.SetInitialBalance(cash, new Money(500m, "EUR"));
+        var dinner = new Expense(food, new Money(60m, "EUR"), new DateOnly(2026, 6, 12), memberId, cash, "Group dinner");
+        june.AddExpense(dinner);
+        var july = agg.StartPeriod(new DateOnly(2026, 7, 1), new DateOnly(2026, 7, 31));
+        july.SetInitialBalance(cash, june.ExpectedClosingBalance);
+        var august = agg.StartPeriod(new DateOnly(2026, 8, 1), new DateOnly(2026, 8, 31));
+        august.SetInitialBalance(cash, july.ExpectedClosingBalance);
+
+        (await client.PutAsJsonAsync($"/accounts/{accountId}/snapshot",
+            new SaveAccountRequest(AccountSnapshotSerializer.Serialize(agg), 0))).EnsureSuccessStatusCode();
+        return (dinner.Id, cash);
+    }
+
+    [Fact]
+    public async Task Money_can_come_back_on_an_expense_from_two_periods_ago()
+    {
+        var (client, auth) = await _factory.RegisterAndAuthAsync("rf_older");
+        var account = await CreateAccount(client, "Personal");
+        var (expenseId, cash) = await SeedOlderExpenseAsync(client, account.Id, auth.UserId);
+
+        var overviewBefore = (await client.GetFromJsonAsync<AccountOverviewDto>($"/accounts/{account.Id}/overview"))!;
+
+        var resp = await client.PostAsJsonAsync(
+            $"/accounts/{account.Id}/expenses/{expenseId}/refund", new RefundExpenseRequest(20m, cash));
+        resp.EnsureSuccessStatusCode();
+
+        // ★★ The half that matters: the money has to be visible in the period it actually arrived in. June's
+        // ledger being corrected is necessary and not sufficient — nothing carries a retroactive credit forward.
+        var overviewAfter = (await client.GetFromJsonAsync<AccountOverviewDto>($"/accounts/{account.Id}/overview"))!;
+        Assert.Equal(overviewBefore.Current + 20m, overviewAfter.Current);
+        // ...and August's own spending is untouched: the charge was June's and stays June's.
+        Assert.Equal(overviewBefore.Spent, overviewAfter.Spent);
+
+        // ★★ **The refund is still not income**, which is the promise the whole design rests on: `Contributed`
+        // (fresh income this period) does not move. What does move is `MoneyIn`, whose other half is carry-in —
+        // and that is exactly what this €20 is: money from an earlier period that is available now.
+        Assert.Equal(overviewBefore.Contributed, overviewAfter.Contributed);
+        Assert.Equal(overviewBefore.MoneyIn + 20m, overviewAfter.MoneyIn);
+        // ⚠️ And the books still balance. This is the reason the credit goes into the opening balance rather than
+        // straight onto `Current`: a balance that grew without anything on the money-in side growing with it would
+        // no longer reconcile against its own inputs, and the hero would quietly stop adding up.
+        Assert.Equal(overviewAfter.MoneyIn - overviewAfter.Spent - overviewAfter.TransfersOut, overviewAfter.Current);
+    }
+
+    [Fact]
+    public async Task Undoing_an_older_refund_leaves_the_account_where_it_started()
+    {
+        var (client, auth) = await _factory.RegisterAndAuthAsync("rf_older_undo");
+        var account = await CreateAccount(client, "Personal");
+        var (expenseId, cash) = await SeedOlderExpenseAsync(client, account.Id, auth.UserId);
+
+        var before = (await client.GetFromJsonAsync<AccountOverviewDto>($"/accounts/{account.Id}/overview"))!;
+
+        var newId = await IdOf(await client.PostAsJsonAsync(
+            $"/accounts/{account.Id}/expenses/{expenseId}/refund", new RefundExpenseRequest(20m, cash)));
+        (await client.DeleteAsync($"/accounts/{account.Id}/expenses/{newId}/refund")).EnsureSuccessStatusCode();
+
+        // ⚠️ An undo that only put the expense back would leave the account permanently €20 richer — a worse bug
+        // than the one the cross-period refund fixes, and a silent one.
+        var after = (await client.GetFromJsonAsync<AccountOverviewDto>($"/accounts/{account.Id}/overview"))!;
+        Assert.Equal(before.Current, after.Current);
+    }
+
     [Fact]
     public async Task A_stranger_cannot_refund_someone_elses_expense()
     {

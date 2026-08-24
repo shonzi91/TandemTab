@@ -219,6 +219,7 @@ private fun App(vm: AppViewModel, onGoogle: () -> Unit) {
             onLoadBankMappings = vm::loadBankMappings,
             onPinMerchant = vm::pinMerchant,
             onOpenPayoff = vm::openPayoff,
+            onSearchRefundable = vm::searchRefundable,
             onOpenDebtPlan = vm::openDebtPlan,
             onCloseDebtPlan = vm::closeDebtPlan,
             onSetDebtPlan = vm::setDebtPlan,

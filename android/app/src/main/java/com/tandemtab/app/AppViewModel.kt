@@ -177,6 +177,11 @@ data class UiState(
     val debtPlanExtra: Double = 0.0,
     val debtPlanStrategy: String = "avalanche",
     val debtPlan: DebtPlanDto? = null,
+    // ── The "money back on" picker's pool (S119). Held at the top rather than inside the bank sheet because it is
+    // a SERVER search across every period, not a filter over the period the sheet happens to be showing.
+    val refundSearch: String = "",
+    val refundSearching: Boolean = false,
+    val refundResults: List<ExpenseDto> = emptyList(),
     // Saved merchant rules, keyed by the server's match key. Read by statement import; shared with bank sync,
     // because a rule is the user's filing decision about a merchant rather than a property of a connection.
     val bankMappings: Map<String, BankMappingDto> = emptyMap(),
@@ -3289,10 +3294,17 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
      */
     fun confirmPendingRefund(externalId: String, expenseId: String, amount: Double, onDone: () -> Unit) {
         val accountId = _state.value.selectedAccountId ?: return
+        // ★ Name the wallet the money arrived in — the synced one, because that is what a bank feed means. It used
+        // to be omitted, which told the server "back where it was paid from"; harmless while the picker only
+        // offered rows paid from this same wallet, and wrong the moment it offers any expense at all.
+        // ⚠️ Either list, because the bank sheet opens from Home and Wallets may not have been visited yet — the
+        // Spending read carries the same flag and is loaded first.
+        val syncedFundId = _state.value.wallets.funds.firstOrNull { f -> f.synced }?.id
+            ?: _state.value.spending.funds.firstOrNull { f -> f.synced }?.id
         _state.update { it.copy(bank = it.bank.copy(handlingId = externalId, error = null)) }
         viewModelScope.launch {
             try {
-                api.refundExpense(accountId, expenseId, kotlin.math.abs(amount))
+                api.refundExpense(accountId, expenseId, kotlin.math.abs(amount), syncedFundId)
                 api.ackBank(accountId, externalId, confirmed = true)
                 _state.update {
                     it.copy(
@@ -3307,6 +3319,29 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 onDone()
             } catch (e: Exception) {
                 _state.update { it.copy(bank = it.bank.copy(handlingId = null, error = e.message ?: "Couldn't record that refund.")) }
+            }
+        }
+    }
+
+    /**
+     * Search every period's expenses for the "money back on" picker.
+     *
+     * ★ A server read, not a filter over `spending.expenses` — the phone holds one period at a time, and the
+     * charge money comes back on is routinely two months old (owner report: paid for a group in June, a member
+     * handed their share back in August). The blank-term call is the list the picker opens on.
+     *
+     * ⚠️ Best-effort and silent on failure: this is a picker inside a sheet that is already rendering, so a failed
+     * search should leave the previous rows on screen rather than replace a list with an error.
+     */
+    fun searchRefundable(q: String) {
+        val accountId = _state.value.selectedAccountId ?: return
+        _state.update { it.copy(refundSearch = q, refundSearching = true) }
+        viewModelScope.launch {
+            val result = runCatching { api.searchExpenses(accountId, q, take = 40, refundableOnly = true) }.getOrNull()
+            _state.update {
+                // Drop a result the user has already typed past — a slow request must not overwrite a newer one.
+                if (it.refundSearch != q) it
+                else it.copy(refundSearching = false, refundResults = result?.rows ?: it.refundResults)
             }
         }
     }

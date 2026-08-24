@@ -5016,6 +5016,45 @@ else
                     </div>
                     break;
 
+                case Modal.FindRefundExpense:
+                    <h3>@Loc["Which expense did this come back on?"]</h3>
+                    @* ★ The same shape as AttachToTrip, and for the same reason: a cap is not a history. A share
+                       of a group dinner is handed back when the friend gets round to it, so the row is routinely
+                       months old and two periods back. Nothing here is period-scoped. *@
+                    <p class="hint">@Loc["Search anything you've paid — any month. The money comes off that expense rather than being logged as income, so \"money in\" stays honest."]</p>
+                    <label class="attach-search">
+                        <Icon Name="search" />
+                        <input type="text" placeholder="@Loc["Search every month — “dinner”, “tickets”, 46.80…"]" @bind="_findRefundSearch" @bind:event="oninput" />
+                    </label>
+                    var refundTargets = State.RefundableExpenses(_findRefundSearch);
+                    @if (refundTargets.Count == 0)
+                    {
+                        <p class="hint">@(string.IsNullOrWhiteSpace(_findRefundSearch) ? Loc["Nothing logged yet."] : Loc["Nothing matches that."])</p>
+                    }
+                    else
+                    {
+                        <ul class="attach-list">
+                            @foreach (var candidate in refundTargets)
+                            {
+                                var row = candidate;
+                                <li class="attach-row">
+                                    <button type="button" class="attach-main" @onclick="() => ChooseRefundTarget(row.Id)">
+                                        <CatIcon Name="@State.CategoryIcon(row.CategoryId)" />
+                                        <span class="attach-id">
+                                            <span class="attach-cat">@(string.IsNullOrWhiteSpace(row.Note) ? State.CategoryName(row.CategoryId) : row.Note)</span>
+                                            <span class="attach-when">@row.Date.ToString("dd MMM yyyy") · @State.CategoryName(row.CategoryId)</span>
+                                        </span>
+                                        <span class="attach-amt">@Fmt(row.Amount)</span>
+                                    </button>
+                                </li>
+                            }
+                        </ul>
+                    }
+                    <div class="modal-actions">
+                        <button class="ghost" @onclick="() => { _findRefundRow = null; _modal = Modal.None; }">@Loc["Cancel"]</button>
+                    </div>
+                    break;
+
                 case Modal.TagExpense:
                     <h3>@Loc["Label this expense"]</h3>
                     @if (State.FindExpense(_tagExpenseId) is { } tex)
@@ -7483,7 +7522,7 @@ else
 }
 
 @code {
-    private enum Modal { None, Confirm, BankReview, BankConfirm, BankConsent, AddCat, AddBudget, DisburseSaving, PayoffProjection, GoalProjection, InvestmentProjection, BankTransfer, ExternalAccounts, HealthScore, RunwayMath, EditCat, DeleteCat, DeleteBudget, EditAccountTransfer, DeleteAccountTransfer, CategoryDetail, AddAccount, EditAccount, DeleteAccount, RemoveMember, LeaveAccount, AddExpense, NextPeriod, RemovePeriod, EditExpense, DeleteExpense, SettleExpense, AddBucket, EditBucket, DeleteBucket, EditCost, AddFund, EditFund, DeleteFund, Invite, Transfer, Deposit, EditDeposit, DeleteDeposit, ManageCats, ManageContribCats, ContribCat, DeleteContribCat, AddSaving, BudgetSaving, SpendSaving, EditSavingDeposit, DeleteSavingDeposit, EditTransfer, DeleteTransfer, EditPeriod, EditSavingMovement, DeleteSavingMovement, DeleteExternalTransfer, Achievements, Reallocate, Recurring, RecurringEdit, RecurringConfirm, Import, AddOrImport, ArchiveFund, FundMovements, Archived, ManageTags, EditTag, LogInstallment, DeleteInstallment, WeekRecap, TripEdit, DeleteTrip, AttachToTrip, UseTripSavings, TagExpense, UndoRefund, RecordRefund }
+    private enum Modal { None, Confirm, BankReview, BankConfirm, BankConsent, AddCat, AddBudget, DisburseSaving, PayoffProjection, GoalProjection, InvestmentProjection, BankTransfer, ExternalAccounts, HealthScore, RunwayMath, EditCat, DeleteCat, DeleteBudget, EditAccountTransfer, DeleteAccountTransfer, CategoryDetail, AddAccount, EditAccount, DeleteAccount, RemoveMember, LeaveAccount, AddExpense, NextPeriod, RemovePeriod, EditExpense, DeleteExpense, SettleExpense, AddBucket, EditBucket, DeleteBucket, EditCost, AddFund, EditFund, DeleteFund, Invite, Transfer, Deposit, EditDeposit, DeleteDeposit, ManageCats, ManageContribCats, ContribCat, DeleteContribCat, AddSaving, BudgetSaving, SpendSaving, EditSavingDeposit, DeleteSavingDeposit, EditTransfer, DeleteTransfer, EditPeriod, EditSavingMovement, DeleteSavingMovement, DeleteExternalTransfer, Achievements, Reallocate, Recurring, RecurringEdit, RecurringConfirm, Import, AddOrImport, ArchiveFund, FundMovements, Archived, ManageTags, EditTag, LogInstallment, DeleteInstallment, WeekRecap, TripEdit, DeleteTrip, AttachToTrip, UseTripSavings, TagExpense, UndoRefund, RecordRefund, FindRefundExpense }
     private enum Tab { Overview, Account, Budgets, Savings }
 
     /// <summary>Which kind of goal the Goals grid is showing. Defaults to All so the filter narrows on request
@@ -9654,7 +9693,7 @@ else
                 }
                 else
                 {
-                    <select class="bank-sel" value="@RowCredit(id)" @onchange="e => _bankRowCredit[id] = e.Value?.ToString() ?? string.Empty">
+                    <select class="bank-sel" value="@RowCredit(id)" @onchange="e => PickBankCredit(id, e.Value?.ToString())">
                         <option value="">@Loc["From… (source)"]</option>
                         <optgroup label="@Loc["Wallets"]">
                             @foreach (var f in State.RootFunds.Where(f => f.Id != State.SyncedFundId))
@@ -9670,15 +9709,21 @@ else
                         </optgroup>
                         @* Money back on something already logged — a refund, or a friend's share of a split bill.
                            Booking that as income would leave "spent" claiming the full charge, so it comes off the
-                           expense instead. Only expenses paid from this same synced wallet are offered: refunding
-                           one paid from another wallet would un-spend money there while the cash arrives here. *@
-                        @if (State.RefundableExpenses.Count > 0)
+                           expense instead.
+                           ★ The list spans EVERY period (S119, owner report): the share of a group dinner arrives
+                           whenever the friend gets round to it, and the row it belongs to is routinely months
+                           back. The dropdown keeps the most recent few so the common case stays one tap; anything
+                           older is reached through "Find an older expense…", which opens the searchable picker —
+                           the same answer the trip-attach flow already gives to the same problem. *@
+                        @{ var refundables = State.RefundableExpenses(take: 8); }
+                        @if (refundables.Count > 0)
                         {
                             <optgroup label="@Loc["Money back on an expense"]">
-                                @foreach (var e in State.RefundableExpenses)
+                                @foreach (var e in refundables)
                                 {
                                     <option value="refund:@e.Id">@e.Date.ToString("dd MMM") · @State.CategoryName(e.CategoryId) · @Fmt(e.Amount)@(string.IsNullOrEmpty(e.Note) ? "" : " · " + e.Note)</option>
                                 }
+                                <option value="findrefund">@Loc["Find an older expense…"]</option>
                             </optgroup>
                         }
                     </select>
@@ -9786,6 +9831,39 @@ else
     private Guid RowCat(string id) => _bankRowCat.TryGetValue(id, out var v) ? v : Guid.Empty;
     private Guid RowFund(string id) => _bankRowFund.TryGetValue(id, out var v) ? v : Guid.Empty;
     private string RowCredit(string id) => _bankRowCredit.TryGetValue(id, out var v) ? v : "";
+
+    /// <summary>Which bank row the "find an older expense" picker is choosing a refund target for. Held rather
+    /// than passed, because the picker is a modal and the row it came from has to survive the round trip.</summary>
+    private string? _findRefundRow;
+    private string _findRefundSearch = "";
+
+    /// <summary>
+    /// Store the picked source for a bank credit — except the one option that is not a source at all.
+    ///
+    /// <para>⚠️ <c>"findrefund"</c> is a <b>door, not a value</b>: storing it would leave the select showing "Find
+    /// an older expense…" as the chosen answer and the row unconfirmable. It opens the searchable picker and
+    /// leaves whatever was selected before untouched, so cancelling costs nothing.</para>
+    /// </summary>
+    private void PickBankCredit(string rowId, string? value)
+    {
+        if (value == "findrefund")
+        {
+            _findRefundRow = rowId;
+            _findRefundSearch = "";
+            _modal = Modal.FindRefundExpense;
+            return;
+        }
+        _bankRowCredit[rowId] = value ?? "";
+    }
+
+    /// <summary>Take the picked expense back to the row that opened the picker, as an ordinary "refund:{id}"
+    /// selection — so everything downstream (confirm, ack, the rule refusal) stays exactly as it was.</summary>
+    private void ChooseRefundTarget(Guid expenseId)
+    {
+        if (_findRefundRow is { } rowId) _bankRowCredit[rowId] = $"refund:{expenseId}";
+        _findRefundRow = null;
+        _modal = Modal.None;
+    }
 
     /// <summary>Linking requires bank-link consent first (recorded each time — re-consent on relink).</summary>
     private void LinkBankAsync() => RequestBankConsent("bank_link",

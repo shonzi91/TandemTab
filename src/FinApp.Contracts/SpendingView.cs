@@ -54,6 +54,19 @@ public record ExpenseDto(
     // undo is unreachable, and undoing a refund needs to know there is one.
     decimal RefundedAmount = 0m);
 
+/// <summary>
+/// Expenses from <b>every</b> period, newest first — the pool a thin client's "find an older expense" picker draws
+/// from (S119). <see cref="TotalCount"/> is how many exist altogether, so a capped list can say what it is not
+/// showing rather than letting the cap look like the end of the history.
+///
+/// <para>★ It exists because every other spending read is period-scoped, and the thing a refund attaches to is
+/// routinely months old: *"I've paid 2 months ago for a group and a member gave me their part this one."*</para>
+/// </summary>
+public record ExpenseSearchDto(string Currency, int TotalCount, IReadOnlyList<ExpenseDto> Rows)
+{
+    public static readonly ExpenseSearchDto Empty = new("", 0, []);
+}
+
 /// <summary>A spend category as a picker option — id, label, stored icon, and parent for indentation. No money.</summary>
 public record CategoryOptionDto(Guid Id, string Name, string? Icon, Guid? ParentId);
 
