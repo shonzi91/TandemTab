@@ -12,10 +12,38 @@
     <link rel="stylesheet" href="css/app.css?v=45" />
     <link rel="stylesheet" href="FinApp.App.Web.styles.css" />
     <link rel="icon" type="image/svg+xml" href="favicon.svg">
+
+    <!-- Installable web app (OPEN-BETA R2.5). With iOS on hold indefinitely the mobile web IS the iOS
+         product, so "add to home screen" is not a nicety here — it is the only way this app becomes an app
+         on half the phones that will meet it. -->
+    <link rel="manifest" href="manifest.webmanifest" />
+    <!-- Seeded to the dark ground because dark is the app's default (see the theme script below); the script
+         corrects it for a user who has chosen light, before first paint. -->
+    <meta name="theme-color" content="#0f1322" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <!-- iOS reads none of the manifest: the standalone flag, the title and the icon all have to be repeated
+         here, and the icon must be a PNG. -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="TandemTab" />
+    <!-- ⚠️ Deliberately `black`, not `black-translucent`. Translucent draws the page under the status bar,
+         and nothing in this app pads for `env(safe-area-inset-top)` — the header would sit under the notch. -->
+    <meta name="apple-mobile-web-app-status-bar-style" content="black" />
+    <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+
     <script>
         // Apply the saved theme before first paint to avoid a flash. Default is dark (the "Tandem × Midnight"
         // direction) — only an explicit 'light' choice opts out.
         try { if (localStorage.getItem('finapp-theme') !== 'light') document.documentElement.classList.add('dark'); } catch (e) { }
+        // The browser chrome around an installed app is painted from <meta name="theme-color">, which is a
+        // static tag while this app's theme is a per-device choice. Keep the two in step here and in
+        // finappSetTheme, or an installed light-theme app wears a dark title bar for as long as it is open.
+        window.finappPaintThemeColor = () => {
+            try {
+                const tag = document.querySelector('meta[name="theme-color"]');
+                if (tag) tag.setAttribute('content', document.documentElement.classList.contains('dark') ? '#0f1322' : '#eef3f0');
+            } catch (e) { }
+        };
+        window.finappPaintThemeColor();
         // ⚠️ Privacy mode used to add a `private` class here, before first paint, so the charts were blurred by CSS
         // the moment the document existed. The charts are no longer covered (numbers only — see app.css), so the
         // class had nothing left to style and is gone. Masking is now entirely FmtCurrency's, which means it
@@ -96,6 +124,7 @@
             const dark = theme === 'dark';
             document.documentElement.classList.toggle('dark', dark);
             try { localStorage.setItem('finapp-theme', dark ? 'dark' : 'light'); } catch (e) { }
+            window.finappPaintThemeColor();
         };
         // Which tab the app opens on (O9). Mirrors the theme preference exactly, and for the same reason: there is
         // no user-settings endpoint and UserDto carries nothing preference-shaped, so a per-device localStorage key
@@ -253,6 +282,17 @@
         })();
     </script>
     <script src="_framework/blazor.webassembly.js"></script>
+    <script>
+        // ⚠️ Registered on `load`, not inline. The published worker precaches the whole runtime on install, and
+        // doing that while Blazor is still pulling that same runtime makes a first visit fight itself for the
+        // connection. After load the assets are in the HTTP cache, so the precache is mostly 304s.
+        // In development this registers the no-op worker — see the comment in service-worker.js.
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('service-worker.js').catch(() => { /* never block the app over the shell cache */ });
+            });
+        }
+    </script>
 
 </body>
 

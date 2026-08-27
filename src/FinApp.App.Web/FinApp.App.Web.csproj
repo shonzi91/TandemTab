@@ -7,11 +7,24 @@
     <!-- Skip the publish-time Emscripten native relink. It's only a size optimization but is slow
          (and needs python/emcc); disabling it keeps CI fast and the build self-contained. -->
     <WasmBuildNative>false</WasmBuildNative>
+    <!-- PWA. Publish swaps service-worker.published.js in over service-worker.js and generates this manifest
+         beside it — the list of published assets with their integrity hashes, which the worker precaches and
+         which gives the cache its version. It exists only in a published output, which is why the worker that
+         runs in development is a no-op. -->
+    <ServiceWorkerAssetsManifest>service-worker-assets.js</ServiceWorkerAssetsManifest>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" Version="9.0.6" />
     <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" Version="9.0.6" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- ⚠️ The property above is only half of it. The swap and the manifest copy hang off this ITEM, not off
+         the property: with the property alone the SDK still writes service-worker-assets.js into obj and then
+         publishes the development worker verbatim — an app that registers an inert worker, caches nothing, and
+         looks exactly like a working PWA from the outside. Caught by publishing and reading the output. -->
+    <ServiceWorker Include="wwwroot\service-worker.js" PublishedContent="wwwroot\service-worker.published.js" />
   </ItemGroup>
 
   <ItemGroup>
