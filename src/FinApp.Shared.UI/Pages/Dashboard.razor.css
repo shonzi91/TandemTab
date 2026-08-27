@@ -421,6 +421,11 @@ html.dark .home-ms-line:hover { color: #3fe0c5; }
 .acct-nm { display: flex; flex-direction: column; line-height: 1.14; min-width: 0; text-align: left; }
 .acct-nm { font-weight: 800; font-size: .92rem; color: #16202b; letter-spacing: -.01em; }
 .acct-nm small { font-weight: 600; font-size: .68rem; color: #7c8794; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The account name and its Trip-mode badge share line one; the members line owns line two. `min-width: 0` on both
+   is what lets the NAME be the part that truncates — without it the flex item refuses to shrink and the badge is
+   pushed out of the chip instead, which is the opposite of what should give way. Layout only, no colour. */
+.acct-nm-top { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.acct-nm-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .acct-car { color: #9aa2ad; font-size: .68rem; margin-left: 1px; flex: 0 0 auto; }
 
 /* Account dropdown — the same rounded, bordered card treatment as the mockup */
@@ -3770,9 +3775,12 @@ html.dark .trip-fx { color: #9db6ea; }
 /* Dark: a white plate against navy glass would be the brightest thing on the screen, so it becomes a deep plate
    and the two-tone goes to the wordmark's own dark pair (sky accent, muted grey) — the same relationship one
    layer down. */
-/* The account chip is a two-line block (name over the members line), so the badge's natural cross-axis centre sits
-   below the NAME it qualifies. Pinned to the top and nudged down to the name's optical middle instead. */
-.acct-chip .tripmode-tag { align-self: flex-start; margin-top: 3px; }
+/* ⚠️ The old `align-self: flex-start; margin-top: 3px` here is GONE, and removing it is half the fix. It existed
+   because the badge was a sibling of the whole two-line block, so its natural cross-axis centre landed between the
+   name and the members line; the nudge dragged it back up to the name's optical middle. The badge now lives on
+   the name's own line, where centring is simply correct — leaving the nudge in place would have pushed it 3px
+   below the text it sits beside. It only must not shrink when the name is long. */
+.acct-chip .tripmode-tag { flex: 0 0 auto; }
 html.dark .tripmode-tag { background: #16233a; border-color: rgba(157, 182, 234, .26); box-shadow: 0 2px 8px rgba(0, 0, 0, .5); }
 html.dark .tmt-trip { color: #7cc4f0; }
 html.dark .tmt-mode { color: rgba(195, 204, 216, .70); }

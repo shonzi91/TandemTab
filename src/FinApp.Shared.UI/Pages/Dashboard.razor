@@ -76,16 +76,24 @@ else
                             <Avatar Name="@m.DisplayName" Picture="@State.MemberAvatar(m.UserId)" Size="26" />
                         }
                     </span>
-                    <span class="acct-nm">@State.Account.Name<small>@MembersLine(State.RealUsers)</small></span>
                     @* ★ The TripMode badge sits with the ACCOUNT, not with the product wordmark. A trip belongs to
                        one account — switch accounts and it is simply not on — whereas the app bar's brand spans all
                        of them, so a badge up there claimed something wider than it meant.
-                       Inside the chip, between the name and the caret: it qualifies the account NAME, and anything
-                       outside the button reads as a separate object sitting near it rather than part of it. *@
-                    @if (State.ActiveTrip is { } acctTrip)
-                    {
-                        @TripModeTag(acctTrip)
-                    }
+                       ★★ And it sits on the NAME's own line, not beside the two-line block. Next to the block it
+                       floated against both lines and belonged to neither, which read as a separate object parked
+                       near the chip. On the name's line it qualifies the name, which is the thing it is actually
+                       about — the members line underneath answers a different question and is unaffected by a
+                       trip. *@
+                    <span class="acct-nm">
+                        <span class="acct-nm-top">
+                            <span class="acct-nm-name">@State.Account.Name</span>
+                            @if (State.ActiveTrip is { } acctTrip)
+                            {
+                                @TripModeTag(acctTrip)
+                            }
+                        </span>
+                        <small>@MembersLine(State.RealUsers)</small>
+                    </span>
                     <span class="acct-car">▾</span>
                 </button>
                 @if (_acctDropOpen)
