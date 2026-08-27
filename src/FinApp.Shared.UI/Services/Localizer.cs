@@ -1474,6 +1474,7 @@ public sealed class Localizer(IJSRuntime js)
         ["Settle part onto another account"] = "Уреди част към друга сметка",
         // Refunds. These shipped untranslated — every one of them rendered its English key in Bulgarian too.
         ["Refund"] = "Върнати пари",
+        ["New"] = "Нова",
         ["Settle"] = "Уреди",
         ["{0} settled"] = "{0} уредени",
         ["{0} back"] = "{0} върнати",

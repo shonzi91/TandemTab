@@ -1067,6 +1067,12 @@ html.dark .exp-tag { background: #222a37; color: #a9b6ad; }
 .tag-chip-on { background: #e4f6ee; border-color: #13a06e; color: #0f7a54; }
 html.dark .tag-chip { background: #171d26; border-color: #2c3644; color: #cdd4de; }
 html.dark .tag-chip-on { background: #16261f; border-color: #3fe0c5; color: #57d9a3; }
+/* "New" as the last chip in a category/fund row. It replaced a `+` sitting in the LABEL row above, because making
+   one and choosing one are the same question and belong in the same row of answers. Dashed and muted so it reads
+   as the end of the list rather than another option in it — it is never a selection, so it never goes `-on`. */
+.tag-chip-new { border-style: dashed; color: #6b7480; font-weight: 650; }
+.tag-chip-new svg { width: 12px; height: 12px; }
+html.dark .tag-chip-new { color: #8b96a4; }
 /* F2: confirmation that picking a tag moved the category. Green (something happened correctly), not amber — this is
    the feature working, not a warning. */
 .tag-filed { display: flex; align-items: center; gap: 5px; margin-top: 6px; color: #0f7a54; font-weight: 600; }
@@ -2964,11 +2970,8 @@ html.dark .repeat-last { background: #16241d; border-color: #2b4438; color: #57d
 /* Add-expense quick-pick + fund chips (reuse the .tag-chip look): a wrapping chip row that sits under a field label. */
 .qp-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 2px 0 4px; }
 
-/* F1 recent-amount hints: tappable shortcuts under the Amount field. Deliberately quieter than the category/fund
-   chips (lighter weight, tabular figures) — these are suggestions, not the selection they sit beside. */
-.amt-hints { margin: -2px 0 8px; }
-.amt-hint { font-variant-numeric: tabular-nums; font-weight: 600; color: #6b7480; }
-html.dark .amt-hint { color: #8b96a4; }
+/* (The F1 recent-amount hint chips and their rules were removed — a full row under the Amount field, on the most
+   common path, to save typing two digits into a box the cursor was already in.) */
 
 /* Multi-expense staged list: compact rows for the expenses queued to save, above the editor. */
 .draft-list { list-style: none; margin: 0 0 12px; padding: 0; display: flex; flex-direction: column; gap: 4px; }
@@ -3498,7 +3501,11 @@ html.dark .cal-cell:hover:not(.cal-out) { border-color: #3a8f6c; background: #16
 .exp-settled-txt { display: inline-flex; align-items: center; gap: 6px; font-size: .84rem; color: #48607a; }
 .exp-settled-txt svg { width: 15px; height: 15px; }
 .exp-settled-txt strong { color: #1f2430; }
-.exp-add-note { align-self: flex-start; display: inline-flex; align-items: center; gap: 5px; }
+/* The typed note, restated on the settled line. Italic and dimmer than the facts beside it — it is the one part
+   of that line the user wrote rather than the form deciding, and it must never be hidden: a note folded away
+   behind a link is a note nobody can see they have written. Truncates so a long one cannot push out the date. */
+.exp-settled-note { font-style: italic; color: #6b7c8f; max-width: 14rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+html.dark .exp-settled-note { color: #8b96a4; }
 .tag-new-open { align-self: flex-start; display: inline-flex; align-items: center; gap: 5px; }
 .tag-new-open svg { width: 13px; height: 13px; }
 /* The wallet's currency on its chip in the fund row — so "which pocket" and "which money" are one glance, and the
@@ -3511,7 +3518,6 @@ html.dark .amt-fx, html.dark .fund-row-fx { color: #7c8a99; }
 /* (CurrencyPicker's own rules live in the GLOBAL app.css, not here — a component with no .razor.css of its own
    renders WITHOUT a scope attribute, so a scoped `.ccy-code[b-…]` can never match it. Same trap and same reason as
    .alert-inline-link above. Caught by reading computed styles: the markup looked right and was entirely unstyled.) */
-.exp-add-note svg { width: 13px; height: 13px; }
 html.dark .exp-settled-txt { color: #93a3b5; }
 html.dark .exp-settled-txt strong { color: #e6edf5; }
 
@@ -3580,7 +3586,8 @@ html.dark .exp-settled-txt strong { color: #e6edf5; }
 .trip-funded { margin: 0; font-size: .74rem; color: #0e7c55; display: flex; align-items: center; gap: 6px; }
 /* D1 — the cross-account bits. Both are labels on rows that already carry their own palette (.lbl-row inside the
    trip field, .brk-exp-when on a ledger row), so these set spacing only and inherit both themes for free. */
-.trip-other-lbl { margin-top: 8px; }
+/* (.trip-other-lbl removed — the "Or a trip in another account" heading and the second chip row under it are one
+   merged row now; a foreign chip names its own account, which is all the heading was there to say.) */
 .trip-from-acct { display: inline-flex; align-items: center; gap: 3px; }
 .trip-biggest { margin: 0; font-size: .72rem; color: #64748b; }
 /* What the trip cost in working time — a quiet aside under the split, not a headline figure. */

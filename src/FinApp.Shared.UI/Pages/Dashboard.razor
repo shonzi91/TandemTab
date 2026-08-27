@@ -3611,36 +3611,27 @@ else
                     {
                         <small class="hint time-cost"><Icon Name="clock" /> @string.Format(Loc["≈ {0} of work"], timeCost)</small>
                     }
-                    @* Recent amounts for this category as tappable hints. Never pre-filled — the amount is the one
-                       field that really changes each time, so a wrong default here writes a wrong ledger entry.
-                       Suppressed while converting: these are past amounts in the ACCOUNT currency, and tapping one
-                       into a field being read as pounds would log a number nobody meant. *@
-                    @{
-                        var amtHints = FormForeignFund is not null
-                            ? Array.Empty<decimal>() : (IReadOnlyList<decimal>)State.RecentAmountsForCategory(_categoryId);
-                    }
-                    @if (amtHints.Count > 0 && _expenseDrafts.Count == 0)
-                    {
-                        <div class="qp-row amt-hints">
-                            @foreach (var h in amtHints)
-                            {
-                                var hint = h;
-                                <button type="button" class="tag-chip amt-hint @(_amount == hint ? "tag-chip-on" : "")" @onclick="() => UseAmountHint(hint)">@Fmt(hint)</button>
-                            }
-                        </div>
-                    }
+                    @* ⚠️ The recent-amount hint chips were removed here. Their own comment conceded the case
+                       against them — the amount "is the one field that really changes each time" — which argues
+                       against a default and just as hard against three tappable ones. They cost a full row on the
+                       most common path, directly under the field the cursor is already in with the keypad
+                       already up, to save typing two digits. "Repeat last" above still carries the whole entry in
+                       one tap, which is the case they were standing in for. *@
                 </text>;
 
                 RenderFragment fundField =
                 @<text>
-                    <div class="modal-field"><span class="lbl-row">@Loc["Fund"] <button type="button" class="lbl-add" title="@Loc["New fund"]" @onclick="ExpenseAddFund">+</button></span>
-                        @* Funds are few, so the whole list is chips — no dropdown. Selected one highlighted; 🏦 = synced. *@
+                    <div class="modal-field"><span class="lbl-row">@Loc["Fund"]</span>
+                        @* Funds are few, so the whole list is chips — no dropdown. Selected one highlighted; 🏦 = synced.
+                           ★ "New fund" is the last chip rather than a "+" in the label row, for the same reason as
+                           the category one: making a wallet and choosing a wallet are the same question. *@
                         <div class="qp-row">
                             @foreach (var f in State.ExpensableFunds)
                             {
                                 var qpFund = f.Id;
                                 <button type="button" class="tag-chip @(_fundId == qpFund ? "tag-chip-on" : "")" @onclick="() => _fundId = qpFund"><CatIcon Name="@State.FundIcon(qpFund)" /> @f.Name@(f.IsSynced ? " 🏦" : "")@if (State.ForeignFund(qpFund) is { } ffx) { <span class="fund-chip-ccy">@ffx.Currency</span> }</button>
                             }
+                            <button type="button" class="tag-chip tag-chip-new" title="@Loc["New fund"]" @onclick="ExpenseAddFund"><Icon Name="plus" /> @Loc["New"]</button>
                         </div>
                     </div>
                     @if (State.FundIsSynced(_fundId))
@@ -3657,24 +3648,16 @@ else
                    households can easily both have a "Rome".
                    One fragment, rendered by BOTH the add and edit forms: it shipped on the edit form alone, so a
                    trip in the joint account could only be reached by logging an expense and then editing it. *@
-                RenderFragment foreignTripRow =
+                @* The cross-account hint. The row itself is now merged into the single trip chip row (see
+                   TripPicks) — a foreign chip carries its account name, which is the same thing the old
+                   "Or a trip in another account" heading was there to say, so the heading and its second chip
+                   row were saying it twice. This survives because it says something the chips do not: that the
+                   money stays here and only the trip's TOTAL reaches across. *@
+                RenderFragment foreignTripHint =
                 @<text>
-                    @if (VisibleForeignTrips is { Count: > 0 } visibleForeign)
+                    @if (_expTripAccountId != Guid.Empty)
                     {
-                        <span class="lbl-row trip-other-lbl">@Loc["Or a trip in another account"]</span>
-                        <div class="qp-row">
-                            @foreach (var ft in visibleForeign)
-                            {
-                                var fTrip = ft;
-                                <button type="button" class="tag-chip @(_expTripId == fTrip.Trip.Id && _expTripAccountId == fTrip.AccountId ? "tag-chip-on" : "")" @onclick="() => OnForeignTripPicked(fTrip)">
-                                    @TripMark(fTrip.Trip.Icon)@fTrip.Trip.Name <span class="fund-chip-ccy">@fTrip.AccountName</span>
-                                </button>
-                            }
-                        </div>
-                        @if (_expTripAccountId != Guid.Empty)
-                        {
-                            <small class="hint"><Icon Name="swap" /> @string.Format(Loc["This stays in {0}'s spending and budgets — it just counts toward that trip's total too."], State.AccountName(State.CurrentAccountId))</small>
-                        }
+                        <small class="hint"><Icon Name="swap" /> @string.Format(Loc["This stays in {0}'s spending and budgets — it just counts toward that trip's total too."], State.AccountName(State.CurrentAccountId))</small>
                     }
                 </text>;
 
@@ -4646,18 +4629,15 @@ else
                             <span class="lbl-row">@Loc["Part of a trip"]</span>
                             <div class="qp-row">
                                 <button type="button" class="tag-chip @(_expTripId == Guid.Empty ? "tag-chip-on" : "")" @onclick="() => OnExpenseTripPicked(Guid.Empty)">@Loc["Not a trip"]</button>
-                                @foreach (var t in FormTripOptions)
+                                @foreach (var tp in TripPicks(FormTripOptions))
                                 {
-                                    var tripOpt = t;
-                                    <button type="button" class="tag-chip @(_expTripId == tripOpt.Id && _expTripAccountId == Guid.Empty ? "tag-chip-on" : "")" @onclick="() => OnExpenseTripPicked(tripOpt.Id)">
-                                        @TripMark(tripOpt.Icon)@tripOpt.Name
+                                    var pick = tp;
+                                    <button type="button" class="tag-chip @(_expTripId == pick.Trip.Id && _expTripAccountId == pick.AccountId ? "tag-chip-on" : "")" @onclick="() => OnTripPicked(pick)">
+                                        @TripMark(pick.Trip.Icon)@pick.Trip.Name@if (pick.AccountName is { } acctName) { <span class="fund-chip-ccy">@acctName</span> }
                                     </button>
                                 }
                             </div>
-                            @* D1 — the same cross-account row the edit form has. It was missing here, so a journey
-                               tracked in the joint account could only be reached by logging the expense and then
-                               editing it. *@
-                            @foreignTripRow
+                            @foreignTripHint
                         </div>
                     }
                     @* Staged expenses: "+ Add another expense" parks the current entry here as a compact row and clears
@@ -4684,12 +4664,12 @@ else
                     }
                     @if (State.LastExpense is { } lastExp && _expenseDrafts.Count == 0)
                     {
-                        @* Repeat = log a fresh copy; Edit = change that same last entry. Kept on ONE row: the "last"
-                           word is dropped (icon + short verb carry it, full label in the tooltip) and the category·amount
-                           context truncates so two buttons always fit the row. *@
+                        @* Repeat = log a fresh copy of the last entry.
+                           ⚠️ "Edit last" used to sit beside it and is gone: it was an EDIT door on a CREATE form,
+                           and it already had an obvious other one — the row itself, sitting in the list behind
+                           this modal. Halving the row costs nothing anybody was using. *@
                         <div class="last-actions">
                             <button type="button" class="repeat-last" title="@Loc["Repeat last"]" @onclick="RepeatLastExpense"><Icon Name="rotate" /> <span class="last-act-verb">@Loc["Repeat"]</span> <span class="last-act-ctx"><strong>@State.CategoryName(lastExp.CategoryId)</strong> · @Fmt(lastExp.Amount)</span></button>
-                            <button type="button" class="repeat-last" title="@Loc["Edit last"]" @onclick="() => OpenEditExpense(lastExp.Id)"><Icon Name="pencil" /> <span class="last-act-verb">@Loc["Edit"]</span> <span class="last-act-ctx"><strong>@State.CategoryName(lastExp.CategoryId)</strong> · @Fmt(lastExp.Amount)</span></button>
                         </div>
                     }
                     @* ★ MONEY FIRST on a trip. The trip is picked above; after that the thing someone opened the app
@@ -4712,29 +4692,28 @@ else
                        One line, with a way out for the rare exception. Nothing is removed: "Change" brings the
                        whole picker back exactly as it was, for this one expense. *@
                     var tripSettlesCategory = FormTrip is not null && _categoryId != Guid.Empty;
-                    @if (tripSettlesCategory && !_expShowCategory)
+                    @if (tripSettlesCategory && !_expShowDetails)
                     {
-                        <div class="modal-field exp-settled">
-                            <span class="exp-settled-txt">@Loc["Files into"] <CatIcon Name="@State.CategoryIcon(_categoryId)" /> <strong>@State.CategoryName(_categoryId)</strong></span>
-                            <button type="button" class="link" @onclick="() => _expShowCategory = true">@Loc["Change"]</button>
-                        </div>
+                        @* Nothing here: on a trip the category joins the one details line below, rather than
+                           spending a row of its own on an answer the trip already gave. *@
                     }
                     else
                     {
                     var qpCats = State.RecentCategories(6);
-                    <div class="modal-field"><span class="lbl-row">@Loc["Category"] <button type="button" class="lbl-add" title="@Loc["Add category"]" @onclick="ExpenseAddCategory">+</button></span>
+                    <div class="modal-field"><span class="lbl-row">@Loc["Category"]</span>
                         @* Most-used categories as one-tap chips right above the picker; the picker (type to search)
-                           covers everything else, so it scales when there are many categories. *@
-                        @if (qpCats.Count > 0)
-                        {
-                            <div class="qp-row">
-                                @foreach (var cid in qpCats)
-                                {
-                                    var qpCat = cid;
-                                    <button type="button" class="tag-chip @(_categoryId == qpCat ? "tag-chip-on" : "")" @onclick="() => OnExpenseCategoryPicked(qpCat)"><CatIcon Name="@State.CategoryIcon(qpCat)" /> @State.CategoryName(qpCat)</button>
-                                }
-                            </div>
-                        }
+                           covers everything else, so it scales when there are many categories.
+                           ★ "New category" is the last CHIP now, not a "+" squatting in the label row. It is the
+                           same act as picking one — you are choosing where this goes — so it belongs in the same
+                           row of choices, and the label row goes back to being a label. *@
+                        <div class="qp-row">
+                            @foreach (var cid in qpCats)
+                            {
+                                var qpCat = cid;
+                                <button type="button" class="tag-chip @(_categoryId == qpCat ? "tag-chip-on" : "")" @onclick="() => OnExpenseCategoryPicked(qpCat)"><CatIcon Name="@State.CategoryIcon(qpCat)" /> @State.CategoryName(qpCat)</button>
+                            }
+                            <button type="button" class="tag-chip tag-chip-new" title="@Loc["Add category"]" @onclick="ExpenseAddCategory"><Icon Name="plus" /> @Loc["New"]</button>
+                        </div>
                         <CategoryPicker Value="_categoryId" ValueChanged="OnExpenseCategoryPicked" Options="State.CategoryOptions" />
                     </div>
                     }
@@ -4748,13 +4727,27 @@ else
                        bought — and it already defaults there. Shown as a line rather than a date input: a full
                        picker for a field nobody changes is the single largest control on the form earning nothing.
                        Off a trip it keeps its input, where back-dating is a normal thing to do. *@
-                    @if (FormTrip is not null && !_expShowDate)
+                    @if (!_expShowDetails)
                     {
+                        @* ★★ ONE line for everything the form has already answered, with one way in.
+                           It used to be three separate rows — category + Change, date + Change, note + "Add a
+                           note" — each stating a settled fact and each carrying its own escape hatch, and all of
+                           it only on a trip. Off a trip the same three were fully expanded, so an ordinary
+                           expense showed a date picker, a time picker and an empty note box that almost nobody
+                           touches. The date is stated, never hidden, so nothing is lost by not spending a
+                           control on it.
+                           ⚠️ A note that has been TYPED always shows here. A note written and then folded away
+                           behind a link would be a note nobody could see they had written. *@
                         <div class="modal-field exp-settled">
-                            <span class="exp-settled-txt"><Icon Name="calendar" />
-                                @(_expenseDate == State.TodayDate ? Loc["Today"] : _expenseDate.ToString("d MMM"))@if (_expenseTime is { } collapsedTime) { <text> · @collapsedTime.ToString("HH:mm")</text> }
+                            <span class="exp-settled-txt">
+                                @if (tripSettlesCategory)
+                                {
+                                    <CatIcon Name="@State.CategoryIcon(_categoryId)" /><strong>@State.CategoryName(_categoryId)</strong> <text>·</text>
+                                }
+                                <Icon Name="calendar" />
+                                @(_expenseDate == State.TodayDate ? Loc["Today"] : _expenseDate.ToString("d MMM"))@if (_expenseTime is { } collapsedTime) { <text> · @collapsedTime.ToString("HH:mm")</text> }@if (!string.IsNullOrWhiteSpace(_note)) { <text> · </text><em class="exp-settled-note">@_note</em> }
                             </span>
-                            <button type="button" class="link" @onclick="() => _expShowDate = true">@Loc["Change"]</button>
+                            <button type="button" class="link" @onclick="() => _expShowDetails = true">@Loc["Change"]</button>
                         </div>
                     }
                     else
@@ -4771,14 +4764,9 @@ else
                     {
                         @fundField
                     }
-                    @* Same treatment as the date: on a trip the note is genuinely optional and usually skipped, so
-                       it collapses to a link until it is wanted. Only while it is EMPTY — a note that had been
-                       typed and then hidden behind a link would be a note nobody could see they had written. *@
-                    @if (FormTrip is not null && !_expShowNote && string.IsNullOrEmpty(_note))
-                    {
-                        <button type="button" class="link exp-add-note" @onclick="() => _expShowNote = true"><Icon Name="plus" /> @Loc["Add a note"]</button>
-                    }
-                    else
+                    @* The note travels with the date now — both live behind the one "Change" above, and both are
+                       stated on that line when they carry anything. *@
+                    @if (_expShowDetails)
                     {
                         <label>@Loc["Note (optional)"] <input type="text" @bind="_note" /></label>
                     }
@@ -4881,15 +4869,15 @@ else
                             <span class="lbl-row">@Loc["Part of a trip"]</span>
                             <div class="qp-row">
                                 <button type="button" class="tag-chip @(_expTripId == Guid.Empty ? "tag-chip-on" : "")" @onclick="() => OnExpenseTripPicked(Guid.Empty)">@Loc["Not a trip"]</button>
-                                @foreach (var t in EditTripOptions)
+                                @foreach (var tp in TripPicks(EditTripOptions))
                                 {
-                                    var editTripOpt = t;
-                                    <button type="button" class="tag-chip @(_expTripId == editTripOpt.Id && _expTripAccountId == Guid.Empty ? "tag-chip-on" : "")" @onclick="() => OnExpenseTripPicked(editTripOpt.Id)">
-                                        @TripMark(editTripOpt.Icon)@editTripOpt.Name
+                                    var pick = tp;
+                                    <button type="button" class="tag-chip @(_expTripId == pick.Trip.Id && _expTripAccountId == pick.AccountId ? "tag-chip-on" : "")" @onclick="() => OnTripPicked(pick)">
+                                        @TripMark(pick.Trip.Icon)@pick.Trip.Name@if (pick.AccountName is { } acctName) { <span class="fund-chip-ccy">@acctName</span> }
                                     </button>
                                 }
                             </div>
-                            @foreignTripRow
+                            @foreignTripHint
                         </div>
                     }
                     @* ★ The two things you can DO to an already-logged expense, side by side and near the top.
@@ -10990,6 +10978,30 @@ else
     /// own option list is unusable (the same trap <see cref="RefundOptionsFor"/> pins against).</para>
     /// <para>Without this the row was strictly looser than the own-account row directly above it: every trip from
     /// every same-currency shared account, forever, uncapped.</para></summary>
+    /// <summary>One trip the form can offer, whichever account it lives in. <c>AccountName</c> is null for our
+    /// own — that null is what the chip uses to decide whether to wear a sub-label.</summary>
+    private sealed record TripPick(FinApp.Domain.Budgeting.Trip Trip, Guid AccountId, string? AccountName);
+
+    /// <summary>Every trip the expense form offers, **as one list**: ours first, then the other accounts'.
+    /// <para>★ It used to be two chip rows with a heading between them — and the heading, "Or a trip in another
+    /// account", was telling the user something the chips were already saying, because a foreign chip has always
+    /// carried its account name. Two unbounded rows and a label to answer one question.</para>
+    /// <para>⚠️ Merging is only safe now that <see cref="VisibleForeignTrips"/> filters by the expense's date.
+    /// Unfiltered, this would pour every trip ever taken in every shared account into the same row as this
+    /// month's.</para></summary>
+    private IReadOnlyList<TripPick> TripPicks(IReadOnlyList<FinApp.Domain.Budgeting.Trip> ownTrips) =>
+        ownTrips.Select(t => new TripPick(t, Guid.Empty, null))
+            .Concat(VisibleForeignTrips.Select(o => new TripPick(o.Trip, o.AccountId, o.AccountName)))
+            .ToList();
+
+    /// <summary>One chip, one handler. Dispatches on whose trip it is, because the two are genuinely different
+    /// acts: ours re-files the expense, theirs only lends the trip a total.</summary>
+    private void OnTripPicked(TripPick pick)
+    {
+        if (pick.AccountId == Guid.Empty) OnExpenseTripPicked(pick.Trip.Id);
+        else OnForeignTripPicked(new BudgetingState.ForeignTripOption(pick.AccountId, pick.AccountName ?? "", pick.Trip));
+    }
+
     private IReadOnlyList<BudgetingState.ForeignTripOption> VisibleForeignTrips =>
         _foreignTrips.Where(o => !o.Trip.IsFinishedOn(State.TodayDate)
                                  || o.Trip.Covers(_expenseDate)
@@ -12712,7 +12724,7 @@ else
         _expenseTime = _expenseDate == State.TodayDate ? TimeOnly.FromDateTime(DateTime.Now) : null;
         _expenseHadTime = false;
         _fundId = DefaultFundForCategory(categoryId); _modal = Modal.AddExpense;
-        _expShowCategory = false; _expShowDate = false; _expShowNote = false; _tagNewOpen = false;
+        _expShowDetails = false; _tagNewOpen = false;
         _focusAmount = focusAmount;
         _expTripId = State.ActiveTrip?.Id ?? Guid.Empty;   // trip mode: default it, don't enforce it
         _expTripAccountId = Guid.Empty;
@@ -12735,10 +12747,11 @@ else
         if (cat != Guid.Empty) _categoryId = cat;
     }
 
-    // Trip mode settles the category, the date and (usually) the note, so the form STATES them instead of asking.
-    // These three are the "actually, let me change that" escapes — reset every time the modal opens, because a
-    // form that stayed expanded from last time would defeat the point on the next expense.
-    private bool _expShowCategory, _expShowDate, _expShowNote;
+    // The form STATES what it already knows — the date, the note, and on a trip the category — on one line,
+    // instead of spending a control on each. This is the single "actually, let me change that" escape behind it.
+    // ⚠️ Reset every time the modal opens: a form that stayed expanded from last time would defeat the point on
+    // the next expense. It replaced three separate flags, one per row, which is what the three rows cost.
+    private bool _expShowDetails;
     // The inline "new tag" box, behind its ＋ until asked for. Closed again once a tag is created.
     private bool _tagNewOpen;
 
@@ -12755,10 +12768,6 @@ else
         _focusAmount = false;
         try { await _amountInput.FocusAsync(); } catch { /* not attached — no focus, no harm */ }
     }
-
-    /// <summary>Apply a recent-amount hint chip (F1's booster). A tap, never a pre-fill — see
-    /// <c>BudgetingState.RecentAmountsForCategory</c> for why the amount is the one field that must not be guessed.</summary>
-    private void UseAmountHint(decimal amount) => _amount = amount;
 
     /// <summary>Fund to pre-select for a category: the one last used for it (#11), falling back to the first selectable.</summary>
     private Guid DefaultFundForCategory(Guid categoryId) =>
