@@ -231,7 +231,7 @@ public sealed class TripRecapService
             spent,
             expenses.Count,
             PrePaid: Sum(expenses.Where(e => e.Date < trip.From)),
-            OnTrip: Sum(expenses.Where(e => e.Date >= trip.From && e.Date <= trip.To)),
+            OnTrip: Sum(expenses.Where(e => trip.Covers(e.Date))),
             AfterReturn: Sum(expenses.Where(e => e.Date > trip.To)),
             FundedFromSavings: fundedFromSavings,
             Budget: trip.Budget,

@@ -3488,6 +3488,12 @@ html.dark .cal-cell:hover:not(.cal-out) { border-color: #3a8f6c; background: #16
 /* ⚠️ `flex-direction: row` is not redundant here: `.modal .modal-field` is (0,2,0) and sets `column`, and this
    element carries BOTH classes — so without it the fact and its "Change" link stacked and centred, which read as
    two separate controls rather than one settled line. */
+/* Settle + Refund, side by side near the top of the edit-expense modal. Layout only — .btn-soft carries its own
+   light and dark palettes, and restating them here is exactly the mistake the control classes exist to prevent.
+   ⚠️ Deliberately NOT `.modal-field`: that selector outranks a bare class inside `.modal` and forces a column,
+   which is the same trap `.exp-settled` above had to be rescued from. */
+.exp-acts { display: flex; flex-wrap: wrap; gap: 8px; margin: 2px 0; }
+.exp-acts .btn-soft { min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .modal .exp-settled { flex-direction: row; align-items: center; justify-content: flex-start; gap: 8px; flex-wrap: wrap; }
 .exp-settled-txt { display: inline-flex; align-items: center; gap: 6px; font-size: .84rem; color: #48607a; }
 .exp-settled-txt svg { width: 15px; height: 15px; }
@@ -3523,7 +3529,14 @@ html.dark .exp-settled-txt strong { color: #e6edf5; }
    head with the icons absolutely positioned over it — that old arrangement dropped them straight on the amount. */
 .trip-top { display: flex; align-items: center; }
 .trip-head { display: flex; align-items: center; gap: 10px; flex: 1 1 auto; min-width: 0; padding: 12px 4px 12px 14px; background: none; border: 0; text-align: left; cursor: pointer; }
-.trip-top:hover .trip-head, .trip-top:hover .trip-total { background: #f6faf8; }
+/* ⚠️ The highlight belongs to the ROW, not to the two buttons in it. Painting `.trip-head` and `.trip-total`
+   individually skipped `.trip-corner` sitting between them, so one hover drew two rectangles with an unpainted
+   gutter down the middle — and the right-hand one read as a detached box floating on top of the amount. All three
+   children are `background: none`, so the parent simply shows through as one continuous band. `.trip-card` is
+   `overflow: hidden` with its own radius, which clips this without the row needing corners of its own.
+   ⚠️ `(hover: hover)` is not optional here: on a touchscreen `:hover` LATCHES to the last thing tapped, so
+   without the guard the broken highlight became permanent rather than momentary. */
+@media (hover: hover) { .trip-top:hover { background: #f6faf8; } }
 /* The mark is the trip's own flag; the status badge rides its bottom-right, because the two answer different
    questions ("where" and "when") and stacking them keeps the row to one leading object.
    ⚠️ The padding is what stops the badge landing ON the mark. A flag emoji is one glyph on a phone but TWO LETTERS
@@ -3542,7 +3555,10 @@ html.dark .exp-settled-txt strong { color: #e6edf5; }
 .trip-card.now .trip-status { background: #d9f5e9; color: #0e7c55; }
 .trip-card.soon .trip-status { background: #e8eefc; color: #35538f; }
 .trip-id { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
-.trip-name { font-weight: 650; color: #0f172a; }
+/* Clamped like its twin on the Home hero (.trip-hero-name). `.trip-top` has no flex-wrap and `.trip-head` is the
+   only child that can shrink, so at 375px an unclamped name pushed against the Day-N pill, both icons and the
+   total in one non-wrapping row. */
+.trip-name { font-weight: 650; color: #0f172a; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .trip-when { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: .72rem; color: #64748b; }
 .trip-pill { border-radius: 999px; padding: 1px 7px; font-size: .65rem; font-weight: 650; }
 .trip-pill.now { background: #d9f5e9; color: #0e7c55; }
@@ -3647,13 +3663,23 @@ html.dark .btn-soft.primary { background: #0f7a54; border-color: #0f7a54; color:
 .trip-corner-b svg { width: 15px; height: 15px; }
 .trip-corner-b:hover { background: #eef3f0; color: #0f7a54; }
 .trip-corner-b.danger:hover { background: #fdecec; color: #dc2626; }
+/* The trip card's pencil/trash were the one icon pair in the app that never got the touch bump — no width or
+   pointer query reached this header at all, so it shipped byte-identical at 1440px and at 375px. Two 28px targets
+   2px apart, with the DELETE immediately left of the amount button, is a mis-tap away from a destructive action.
+   ⚠️ This block has to sit AFTER the base .trip-corner-b rule, not with the other touch bumps up at ~line 900:
+   scoped CSS gives both the same specificity, so source order decides and the earlier one loses. Measured at
+   375px — placed above, the buttons stayed 28px and the fix looked applied while doing nothing. */
+@media (pointer: coarse), (max-width: 560px) {
+    .trip-corner-b { width: 44px; height: 44px; }
+    .trip-corner { gap: 6px; }
+}
 html.dark .trip-corner-b { color: #93a3ad; }
 html.dark .trip-corner-b:hover { background: #22312a; color: #57d9a3; }
 html.dark .trip-corner-b.danger:hover { background: #3a2222; color: #f87171; }
 .trips-add { align-self: flex-start; }
 
 html.dark .trip-card { border-color: #2a3342; background: #131820; }
-html.dark .trip-top:hover .trip-head, html.dark .trip-top:hover .trip-total { background: #1b2230; }
+@media (hover: hover) { html.dark .trip-top:hover { background: #1b2230; } }
 html.dark .trip-name,
 html.dark .trip-total,
 html.dark .tws-v,

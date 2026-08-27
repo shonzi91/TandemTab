@@ -281,6 +281,17 @@ public sealed class Trip : Entity
     public bool IsAwaitingStart(DateOnly today) =>
         FinishedOn is null && StartedOn is null && today >= From && today <= To;
 
+    /// <summary>Does this date fall inside the trip's window? Both ends inclusive.</summary>
+    /// <remarks>
+    /// ⚠️ This is deliberately NOT <see cref="IsActiveOn"/>. That one asks "is the app wearing this trip right
+    /// now" and so gates on StartedOn/FinishedOn; this asks the plainer question "does this date belong to the
+    /// trip", which stays true forever once the trip is over. Asking the first when you meant the second hides
+    /// every finished trip — which is exactly how an expense dated inside a trip that ended yesterday became
+    /// impossible to file against it.
+    /// <para>The same test was open-coded in six places before this existed; they all route here now.</para>
+    /// </remarks>
+    public bool Covers(DateOnly date) => date >= From && date <= To;
+
     /// <summary>Which day of the trip it is ("Day 4"), or null when the trip isn't running today.</summary>
     public int? DayOn(DateOnly today) => IsActiveOn(today) ? today.DayNumber - From.DayNumber + 1 : null;
 

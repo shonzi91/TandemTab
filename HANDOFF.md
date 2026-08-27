@@ -1,6 +1,166 @@
 # TandemTab (FinApp) — session handoff
 
-Last updated: 2026-08-24 (Session 119 — **money can come back on an expense from any month, not just this one.**
+Last updated: 2026-08-27 (Session 120 — **three owner-reported UI bugs fixed, and a written proposal for the
+fourth.** Trip-card chrome fixed for hover and touch; refund renamed, promoted onto one row, and reachable
+from Add income; the expense form stops offering trips that have nothing to do with the expense's date.
+**569 + 56 + 470 green (+2), pairscan 0.** ⚠️ **NOT DEPLOYED** — verified on a running local server and
+committed, but no revision has been cut. Deploying is the first thing next session.)
+
+#### The four items, and what each turned out to be
+
+| # | Reported as | What it actually was |
+|---|---|---|
+| 1 | "fix this UI when hovering/opening in mobile view" | **Three defects in one row** — below |
+| 2 | rename to refund; add it to Add income; refund + settle on one row, higher up | Built, all three parts |
+| 3 | past trips still offered in "Or a trip in another account" | That row had **zero** date filtering |
+| 4 | suggest a way to simplify the expense modals | **Proposal only, by the owner's call** |
+
+★ **None of the four was already done.** Checked against `QUEUE.md`, `UX-BACKLOG.md`, `BACKLOG.md`,
+`FEATURE-BACKLOG.md` and this file: no row covered any of them. ⚠️ One earlier note reads the other way and
+is worth not being fooled by — S117 recorded *"Trip card head measured at 375px: no overflow"*. That was a
+**different bug in the same row** (`.trip-corner` was `position: absolute` and dropped the icons onto the
+amount); it was genuinely fixed, and the old rule is still at zero in the served bundle. What the owner
+photographed is what that fix left behind.
+
+#### ★★ 1 — the hover was painting two boxes with a hole between them
+
+`.trip-top` is three children: `.trip-head` · `.trip-corner` (pencil + trash) · `.trip-total`. The hover rule
+named **two of the three**:
+
+```css
+.trip-top:hover .trip-head, .trip-top:hover .trip-total { background: #f6faf8; }
+```
+
+So one hover drew a left rectangle and a right rectangle with an unpainted gutter between them — and the
+right-hand one, wrapping the amount, read as a **detached box floating on the header**. That is the box in
+the screenshot. The fix is to paint the **row**: all three children are already `background: none`, so the
+parent shows through as one band, and `.trip-card`'s `overflow: hidden` clips it.
+
+⚠️ **And it had to be guarded `@media (hover: hover)`** — the "in mobile view" half of the report. On a
+touchscreen `:hover` **latches** to the last thing tapped, so the broken highlight was not a flicker there,
+it was permanent.
+
+★ **Two more defects in the same row, both found by measuring rather than reading.** No width or pointer
+query reached this card **at all** — the header was byte-identical at 1440px and at 375px. So
+`.trip-corner-b` never got the 44px touch bump every other icon pair in the app gets, leaving two **28px**
+targets **2px** apart with the **delete** immediately left of the amount. And `.trip-name` had no ellipsis
+clamp, while its Home twin `.trip-hero-name` does.
+
+⚠️⚠️ **The tap-target fix shipped inert the first time, and only measuring caught it.** Added to the existing
+touch block at ~line 900, it sat **before** `.trip-corner-b`'s base rule — scoped CSS gives both the same
+specificity, so source order decided and the later 28px won. In the browser at 375px the buttons stayed 28px
+while the diff looked completely correct. It now lives directly after the base rule, with a comment saying
+why. **A CSS fix that is never measured is a CSS fix that might not exist.**
+
+✅ Verified on the served bytes and on computed styles, both themes: old two-child rule **0 occurrences**,
+new row rule **2** (light + dark), both inside `@media (hover: hover)`; hovering the gutter gives
+`.trip-top` = `#1b2230` dark / `#f6faf8` light with **all three children transparent**; at 375px with touch
+emulation the icons measure **44×44**, gap 6px, `(hover: hover)` false, name ellipsised, zero page overflow.
+
+#### 2 — refund: renamed, promoted, and reachable where refunds actually arrive
+
+**The three stacked links are now one row of two pills.** Settle and Refund were three full-width underlined
+`button.link`s at the very **bottom** of the edit modal, below the tag picker — and **all three could render
+at once**. They are now one `.exp-acts` row of `.btn-soft` pills, second child of the modal, directly under
+the title. ⭐ Measured at 380px wide, two pills, no wrap.
+
+⚠️ **`settle-link` matched no CSS rule anywhere in `src/`.** Those links were styled entirely by
+`button.link`; the class was dead weight on four call sites. Removed.
+
+★ **Three became two because refund and undo are one subject.** `BudgetingState.RecordRefund`
+**accumulates** (`RefundedAmount + amount`), so a single Refund door loses nothing — recording again on a
+partly-refunded expense already worked. The undo moved **inside** `Modal.RecordRefund` as a `ghost danger`
+button, the one slot in `.modal-actions` that keeps its words instead of collapsing to a ✕/✓ glyph. The modal
+now also *says* it accumulates, which it never did.
+
+⚠️ `.modal-actions` is **not a footer** — `order: -3`, sticky top, glyph-collapsed. Cancel/Save already float
+in the header, which is why "move refund and settle higher" cost nothing.
+
+★★ **Add income can put part of the money back onto an expense — and it splits.** Money coming in is very
+often money coming *back*, and logging that as income is the one thing it is not. `Modal.FindRefundExpense`
+already existed as the searchable every-period picker; it needed a **second caller**, not a second UI —
+`_findRefundFor` says who asked, and `_modalBack.Push` brings you back.
+
+⚠️⚠️ **The split is the whole point, and getting it wrong would double the money.** Logging €100 as income
+*and* recording a €30 refund credits the wallet **€130** for €100 received, because shrinking the expense
+already raises the balance. So it writes **€30 off the charge + €70 of income**, and when the refund covers
+the whole amount there is **no income row at all** — a refund is not income. The refund goes **first**: if
+the income write then fails, the refund still stands and is undoable.
+
+✅ **Driven end to end on a running server against a two-period-old expense.** €100 income, €30 onto the
+**12 Jun** charge: **June €2,610.00 → €2,580.00** (every other period untouched), **SPENT unchanged at
+€1,950.00**, **SAFE TO SPEND €450 → €550** — up by exactly the €100 received, not €130 — and **MONEY IN
+€2,400 → €2,500** (€70 income + €30 carry-in), so the hero still adds up: 2500 − 1950 = 550. The ledger shows
+a **€70.00** income row and no €100 one. Cancelling out of the picker returns to Add income with the amount
+intact — the S119 disappearing-modal bug did not come back.
+
+⚠️ **A trap for whoever reads the fixture next:** the *August* expense carries a "↩ €30.00 back" badge that
+has nothing to do with this session. It is S119's own verification run (1980 → 1950) still sitting in the
+local DB. June is the one this session moved.
+
+#### 3 — the foreign-trip row was strictly looser than the row above it
+
+`ForeignTripOptionsAsync` returns `acct.TripsByDeparture` **whole** — every trip from every same-currency
+shared account, forever, no predicate, no cap — while the own-account row directly above it filters
+`!IsFinishedOn(today)`. It was the only genuinely unbounded control on the form.
+
+New `Trip.Covers(DateOnly)` joins `IsActiveOn` / `IsUpcomingOn` / `IsFinishedOn`; the same containment test
+was open-coded in **six** places, which all route through it now. ⚠️ It is a **method returning bool**, so no
+`p.Ignore()` and no migration.
+
+★ **`IsActiveOn` is not this, and that distinction is the bug.** It also requires `StartedOn` / `FinishedOn`,
+so it answers "is trip mode running", not "does this date belong to the trip" — and the form was using the
+first to decide what to **offer**. The gap is reachable inside one open period: a trip ending on the 29th is
+finished on the 30th, but an expense dated the 27th still belongs to it.
+
+The rule: offer a foreign trip when it is **not finished** (booking ahead is first-class — the card leads
+with "Booked ahead"), **or covers the expense's date**, **or is already attached** (pinned, or the control
+shows a value missing from its own option list).
+
+⚠️ **The filter alone would have changed nothing visible.** `EditShowsTripPicker` has a *second* gate that
+needed a matching clause — without it the picker still never appeared for the very case this exists for: a
+trip that ended yesterday is not active, the expense is not yet attached, and there may be no own trip
+running. ⚠️ Also added the **Pro gate** `OnForeignTripPicked` never had; it could not use
+`MayLogAgainstTrip`, which resolves through `State.FindTrip` and so only ever sees *this* account's trips.
+
+✅ **Both directions driven in the browser** with a second account holding two finished trips: editing the
+**12 Aug** expense offers **Vienna (10–14 Aug)** and hides **Paris (1–5 Aug)**; the own-account chip is
+unaffected; changing the date re-filters live.
+
+⬜ **Pre-existing, not introduced, worth a look:** with no trip running, moving an expense's date to one no
+trip covers hides the picker entirely — so an expense **booked ahead** for an upcoming trip cannot be
+attached from the form. This change only ever *adds* a reason to show the picker, so the gap is older than it.
+
+#### 4 — the simplification proposal (not built)
+
+Add-expense has **up to 17 button rows or groups**, six of them unbounded chip rows, in a `flex-direction:
+column` modal where every one is a full-width band. Ranked proposal, in the plan file: ① merge the two trip
+chip rows (needs #3, now in) ② collapse Date/Note for everyone, not just in trip mode ③ fold the three
+trip-mode "settled" rows into one `.exp-settled` line ④ cut the amount-hint chips ⑤ cut "Edit last", keep
+"Repeat" ⑥ move the two `+` buttons into their pickers. Keep the recent-category chips, the fund chips, the
+draft flow and every `<small class="hint">` — the ask was too many *buttons*, not too many sentences.
+
+#### ⚠️ Local fixture notes
+
+- The dev account is **`test` cohort**, so **New trip is Pro-locked**. Verifying trips locally takes one line,
+  and it was **reverted** after use:
+  `sqlite3 src/FinApp.Server/finapp-server.db "UPDATE UserSignups SET Cohort='beta' WHERE UserId='<id>'"`.
+- ⚠️ **The Browser pane's screenshots do not match its coordinate frame** on this machine — the page renders
+  into roughly a fifth of the image, so `region` crops and pixel-picking are useless. Computed styles and the
+  served CSS text are the reliable read; `read_page` refs and `form_input` work fine.
+
+#### Next session
+1. ⬜ **Deploy** — this is committed and unshipped.
+2. ⬜ Item 4's proposal, if approved — ① is unblocked now that #3 has landed.
+3. ⬜ Still open from S119: a door to "money came back" on a **closed** period's expense; the phone's refund
+   picker is compiled and unrun.
+4. ⬜ Two defects found while counting, both pre-existing: **Edit-expense's date input has no `min`/`max`**
+   while Add clamps to the period; and `Dashboard.razor.bak` / `Dashboard.razor.css.bak` shadow every grep
+   over this area.
+
+---
+
+Previously: 2026-08-24 (Session 119 — **money can come back on an expense from any month, not just this one.**
 Owner report: *"I've paid 2 months ago for a group and a member gave me their part this one"* — the transaction
 review's refund picker listed the open period only, so the single most common case was unreachable, with nothing
 on screen saying why the row was missing.

@@ -757,4 +757,34 @@ public class TripTests
         var restored = AccountSnapshotSerializer.Deserialize(AccountSnapshotSerializer.Serialize(account));
         Assert.Equal(750m, restored.FindTrip(trip.Id)!.SavingsApplied);
     }
+
+    [Fact]
+    public void Covers_is_inclusive_at_both_ends()
+    {
+        var account = new Account("Personal", Eur);
+        var trip = account.AddTrip("Katerini", new DateOnly(2026, 8, 25), new DateOnly(2026, 8, 29));
+
+        Assert.False(trip.Covers(new DateOnly(2026, 8, 24)));
+        Assert.True(trip.Covers(new DateOnly(2026, 8, 25)));   // departure day
+        Assert.True(trip.Covers(new DateOnly(2026, 8, 27)));
+        Assert.True(trip.Covers(new DateOnly(2026, 8, 29)));   // return day
+        Assert.False(trip.Covers(new DateOnly(2026, 8, 30)));
+    }
+
+    [Fact]
+    public void A_finished_trip_still_covers_its_own_dates()
+    {
+        // ★ The distinction the expense form got wrong. IsActiveOn asks "is the app wearing this trip right now",
+        // so it goes false the moment the trip ends — and the form used it to decide which trips to OFFER. That
+        // made the expense dated inside the trip the one expense that could never be filed against it.
+        var account = new Account("Personal", Eur);
+        var trip = account.AddTrip("Katerini", new DateOnly(2026, 8, 25), new DateOnly(2026, 8, 29));
+        account.StartTrip(trip.Id, new DateOnly(2026, 8, 25));
+        account.FinishTrip(trip.Id, new DateOnly(2026, 8, 29));
+
+        var afterwards = new DateOnly(2026, 8, 30);
+        Assert.True(trip.IsFinishedOn(afterwards));
+        Assert.False(trip.IsActiveOn(afterwards));
+        Assert.True(trip.Covers(new DateOnly(2026, 8, 27)));
+    }
 }

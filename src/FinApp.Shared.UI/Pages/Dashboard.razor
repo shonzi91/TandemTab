@@ -1614,7 +1614,7 @@ else
                             // seeing the block is how "the flight was before we left" stops being an abstraction.
                             // Any trip covering the day, not just the running one: the grid is as often read about a
                             // month that is finished as about the one you're in.
-                            var calTrip = State.AllTrips.FirstOrDefault(t => d >= t.From && d <= t.To);
+                            var calTrip = State.AllTrips.FirstOrDefault(t => t.Covers(d));
                             var tripStart = calTrip is not null && d == calTrip.From;
                             var tripEnd = calTrip is not null && d == calTrip.To;
                             // ★ A colour per trip, so two journeys in one month are told apart at a glance rather
@@ -1682,7 +1682,7 @@ else
                         @* A day inside a trip says so, in the trip's own colour — the same lookup and the same
                            palette index the calendar band uses, so the two views agree about which journey a day
                            belongs to. It answers "why was this Tuesday expensive" without opening anything. *@
-                        var sepTrip = State.AllTrips.FirstOrDefault(t => day >= t.From && day <= t.To);
+                        var sepTrip = State.AllTrips.FirstOrDefault(t => t.Covers(day));
                         <button class="date-sep" @onclick="() => GoToDay(day)">
                             <span class="date-sep-lbl">@DateSepLabel(day)</span>
                             @if (sepTrip is not null)
@@ -3659,11 +3659,11 @@ else
                    trip in the joint account could only be reached by logging an expense and then editing it. *@
                 RenderFragment foreignTripRow =
                 @<text>
-                    @if (_foreignTrips.Count > 0)
+                    @if (VisibleForeignTrips is { Count: > 0 } visibleForeign)
                     {
                         <span class="lbl-row trip-other-lbl">@Loc["Or a trip in another account"]</span>
                         <div class="qp-row">
-                            @foreach (var ft in _foreignTrips)
+                            @foreach (var ft in visibleForeign)
                             {
                                 var fTrip = ft;
                                 <button type="button" class="tag-chip @(_expTripId == fTrip.Trip.Id && _expTripAccountId == fTrip.AccountId ? "tag-chip-on" : "")" @onclick="() => OnForeignTripPicked(fTrip)">
@@ -3881,7 +3881,7 @@ else
                            which is right for a one-word "Unsettle" and wrong for a sentence. As a link in the body
                            it reads as what it is: a secondary path, next to the thing it is an alternative to.
                            Same verb as the ✗ on the review row, so it is one action with one name. *@
-                        <button type="button" class="link settle-link" @onclick="ConfirmDismissFromBankConfirm" disabled="@_busy">
+                        <button type="button" class="link" @onclick="ConfirmDismissFromBankConfirm" disabled="@_busy">
                             <Icon Name="x" /> @Loc["Not an expense — dismiss it"]
                         </button>
                         <div class="modal-actions">
@@ -4640,7 +4640,7 @@ else
                     @* ⚠️ The whole block renders nothing unless there is a trip to pick — here OR in another
                        account. A "Part of a trip" heading over a lone "Not a trip" chip is a question with one
                        answer. *@
-                    @if (FormTripOptions.Count > 0 || _foreignTrips.Count > 0)
+                    @if (FormTripOptions.Count > 0 || VisibleForeignTrips.Count > 0)
                     {
                         <div class="modal-field trip-pick-field">
                             <span class="lbl-row">@Loc["Part of a trip"]</span>
@@ -4892,6 +4892,36 @@ else
                             @foreignTripRow
                         </div>
                     }
+                    @* ★ The two things you can DO to an already-logged expense, side by side and near the top.
+                       They used to be three full-width underlined links at the very bottom of the form, below the
+                       tag picker — and all three could render at once, so the most common way to meet them was as
+                       a stack of green sentences with no clue which was which. .btn-soft is the shape this app
+                       already settled on for "do something to money" inside a card (see the trip card's actions).
+                       ⚠️ Guard the WRAPPER, not the buttons: .modal is a flex column with gap 9px, so an empty
+                       <div> is a visible hole. Zero slots is reachable — a settlement destination on a
+                       single-account setup offers neither.
+                       ⚠️ NOT class="modal-field": `.modal .modal-field` outranks this and forces a column. *@
+                    var actExp = State.FindExpense(_editExpenseId);
+                    var canSettle = actExp is { IsSettlementDestination: false } && State.TransferableAccounts.Any();
+                    @* One refund door, not two. Recording and undoing are the same subject, and RecordRefund
+                       ACCUMULATES (BudgetingState: RefundedAmount + amount), so a second refund on a partly
+                       refunded expense still works — the undo lives inside that modal now. *@
+                    var canRefund = actExp is not null && (actExp.Amount.Amount > 0m || actExp.IsRefunded);
+                    @if (canSettle || canRefund)
+                    {
+                        <div class="exp-acts">
+                            @if (canSettle)
+                            {
+                                <button type="button" class="btn-soft" title="@(actExp!.IsSettlementSource ? Loc["Edit settlement onto another account"] : Loc["Settle part onto another account"])" @onclick="() => OpenSettleExpense(_editExpenseId)"><Icon Name="users" /> @(actExp.IsSettlementSource ? string.Format(Loc["{0} settled"], Fmt(actExp.SettledMoney)) : Loc["Settle"])</button>
+                            }
+                            @if (canRefund)
+                            {
+                                @* The label states the fact once it exists, in the same words the ledger row's
+                                   badge uses — the modal and the row should not describe one refund two ways. *@
+                                <button type="button" class="btn-soft" title="@Loc["Money came back on this"]" @onclick="() => OpenRecordRefund(_editExpenseId)"><Icon Name="swap" /> @(actExp!.IsRefunded ? string.Format(Loc["{0} back"], Fmt(actExp.RefundedMoney)) : Loc["Refund"])</button>
+                            }
+                        </div>
+                    }
                     @* NOT a <label> — see CategoryPicker: a label re-dispatches every click inside it onto the
                        picker's trigger button, which pinned the dropdown open with the whole modal unreachable.
                        This is the same modal-field/lbl-row pairing the add-expense modal uses. *@
@@ -4934,24 +4964,8 @@ else
                         }
                     }
                     @tagPicker
-                    @if (State.FindExpense(_editExpenseId) is { IsSettlementDestination: false } && State.TransferableAccounts.Any())
-                    {
-                        <button type="button" class="link settle-link" @onclick="() => OpenSettleExpense(_editExpenseId)"><Icon Name="users" /> @(State.FindExpense(_editExpenseId)!.IsSettlementSource ? Loc["Edit settlement onto another account"] : Loc["Settle part onto another account"])</button>
-                    }
-                    @* The undo for a refund. It lives here rather than on the row because the bank transaction it
-                       came from is already acknowledged and will not come back — this restores the charge, and the
-                       user needs to see which charge that is while they do it. *@
-                    @if (State.FindExpense(_editExpenseId) is { IsRefunded: true } refExp)
-                    {
-                        <button type="button" class="link settle-link" @onclick="() => OpenUndoRefund(_editExpenseId)"><Icon Name="swap" /> @string.Format(Loc["{0} came back on this — undo"], Fmt(refExp.RefundedMoney))</button>
-                    }
-                    @* Recording a refund by hand. It used to be reachable only by matching a bank credit in the
-                       review list, which made "money came back" a feature of having a synced wallet — no help at
-                       all when a friend hands you cash for their share. *@
-                    @if (State.FindExpense(_editExpenseId) is { } refundable && refundable.Amount.Amount > 0m)
-                    {
-                        <button type="button" class="link settle-link" @onclick="() => OpenRecordRefund(_editExpenseId)"><Icon Name="swap" /> @Loc["Money came back on this"]</button>
-                    }
+                    @* Settle / Refund used to stack here as three underlined links — they are one .exp-acts row
+                       near the top of this modal now. *@
                     <div class="modal-actions">
                         <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
                         <button @onclick="SaveEditExpense" disabled="@(_amount <= 0)">@Loc["Save"]</button>
@@ -4971,10 +4985,17 @@ else
                     break;
 
                 case Modal.RecordRefund:
-                    <h3>@Loc["Money came back"]</h3>
+                    <h3>@Loc["Refund"]</h3>
                     @if (State.FindExpense(_editExpenseId) is { } rfx)
                     {
                         <p class="hint">@rfx.Date.ToString("dd MMM") · @State.CategoryName(rfx.CategoryId) · @Fmt(rfx.Amount)</p>
+                        @* ⚠️ Recording a refund ACCUMULATES — the domain adds this to whatever came back before.
+                           The UI never said so, which made a second refund on the same expense look like it would
+                           replace the first. It is also why this modal can be the only refund door. *@
+                        @if (rfx.IsRefunded)
+                        {
+                            <small class="hint">@string.Format(Loc["{0} has already come back on this. Anything you record here is added to that."], Fmt(rfx.RefundedMoney))</small>
+                        }
                         <label>@Loc["How much came back"] <DecimalInput @bind-Value="_refundAmount" /></label>
                         @* Which wallet actually received it. Defaulting to the expense's own wallet is the common
                            case and needs no movement at all — shrinking the expense already credits it. Naming a
@@ -4994,7 +5015,15 @@ else
                             <small class="hint warn-text">@string.Format(Loc["That is more than the {0} still on this expense."], Fmt(rfx.Amount))</small>
                         }
                     }
+                    @* The undo lives here, not as a fourth button on the edit form. ⚠️ `rfx` is scoped to the @if
+                       above and this row sits outside it, so the guard has to resolve the expense again. Only
+                       .ghost.danger keeps its words in this row — everything else collapses to a ✕/✓ glyph — which
+                       is why it is one word. *@
                     <div class="modal-actions">
+                        @if (State.FindExpense(_editExpenseId) is { IsRefunded: true })
+                        {
+                            <button class="ghost danger" @onclick="() => OpenUndoRefund(_editExpenseId)">@Loc["Undo"]</button>
+                        }
                         <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
                         <button @onclick="ConfirmRecordRefund" disabled="@(_refundAmount <= 0)">@Loc["Take it off"]</button>
                     </div>
@@ -5561,10 +5590,46 @@ else
                         </select>
                     </label>
                     <label>@Loc["Amount"] <DecimalInput @bind-Value="_depAmount" /></label>
+                    @* ★ Money coming in is very often money coming BACK — a friend settling their half, a
+                       cancelled booking, a returned pair of shoes. Logging that as income is the one thing it is
+                       not: it inflates "money in" and leaves the original charge overstated forever. This is the
+                       same searchable picker the bank review uses, over every period, so the dinner it belongs to
+                       can be three months old. *@
+                    @if (_depRefundExpenseId != Guid.Empty && State.FindExpenseAnywhere(_depRefundExpenseId) is { } depRfx)
+                    {
+                        <div class="modal-field">
+                            <span class="lbl-row">@Loc["Money back on"]</span>
+                            <div class="exp-acts">
+                                <button type="button" class="btn-soft" @onclick="PickDepositRefundTarget"><CatIcon Name="@State.CategoryIcon(depRfx.CategoryId)" /> @depRfx.Date.ToString("dd MMM yyyy") · @Fmt(depRfx.Amount)</button>
+                                @* Plain .btn-soft, not .btn-soft.danger — there is no such rule, and a class that
+                                   styles nothing is how controls quietly stop matching the app. *@
+                                <button type="button" class="btn-soft" title="@Loc["Remove"]" @onclick="() => { _depRefundExpenseId = Guid.Empty; _depRefundAmount = 0m; }"><Icon Name="x" /> @Loc["Remove"]</button>
+                            </div>
+                        </div>
+                        <label>@Loc["How much of it comes off that expense"] <DecimalInput @bind-Value="_depRefundAmount" /></label>
+                        @if (DepRefundPart > depRfx.Amount.Amount)
+                        {
+                            <small class="hint warn-text">@string.Format(Loc["That is more than the {0} still on this expense."], Fmt(depRfx.Amount))</small>
+                        }
+                        else if (DepRefundPart > 0m)
+                        {
+                            @* Says the split out loud, because the arithmetic is the part that surprises people:
+                               the refunded half is NOT logged as income, so "money in" stays honest. *@
+                            <small class="hint"><Icon Name="swap" /> @(DepIncomePart > 0m
+                                ? string.Format(Loc["{0} comes off that expense; {1} is logged as income."], Fmt(DepRefundPart), Fmt(DepIncomePart))
+                                : string.Format(Loc["All {0} comes off that expense — nothing is logged as income."], Fmt(DepRefundPart)))</small>
+                        }
+                    }
+                    else
+                    {
+                        <button type="button" class="link" @onclick="PickDepositRefundTarget"><Icon Name="swap" /> @Loc["Part of this is money back on an expense"]</button>
+                    }
                     <label>@Loc["Date"] <input type="date" @bind="_depDate" min="@State.Period.From.ToString("yyyy-MM-dd")" max="@State.Period.To.ToString("yyyy-MM-dd")" /></label>
                     <div class="modal-actions">
                         <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
-                        <button @onclick="RecordDeposit" disabled="@(_depAmount <= 0)">@Loc["Add income"]</button>
+                        @* The verb has to follow the split: with the whole amount going back onto a charge,
+                           nothing is being added as income and a button saying so would be false. *@
+                        <button @onclick="RecordDeposit" disabled="@(_depAmount <= 0 || DepRefundOverruns)">@(DepRefundPart > 0m && DepIncomePart <= 0m ? Loc["Take it off"] : Loc["Add income"])</button>
                     </div>
                     break;
 
@@ -9843,6 +9908,19 @@ else
     private string? _findRefundRow;
     private string _findRefundSearch = "";
 
+    /// <summary>Who asked for the refund picker. It has two callers now — a bank credit being matched to a
+    /// charge, and the Add-income form putting part of the money back onto one — and the picker has to hand the
+    /// answer to the right one. Held rather than passed for the same reason as <see cref="_findRefundRow"/>: the
+    /// picker is a modal, so the caller has to survive the round trip.</summary>
+    private enum RefundPickerFor { BankRow, Deposit }
+    private RefundPickerFor _findRefundFor = RefundPickerFor.BankRow;
+
+    /// <summary>The expense the Add-income form is putting part of its money back onto, and how much of it.
+    /// <para>Both are cleared by <see cref="OpenDeposit"/>, so the choice never leaks from one income into the
+    /// next.</para></summary>
+    private Guid _depRefundExpenseId;
+    private decimal _depRefundAmount;
+
     /// <summary>
     /// Store the picked source for a bank credit — except the one option that is not a source at all.
     ///
@@ -9856,6 +9934,7 @@ else
         {
             _findRefundRow = rowId;
             _findRefundSearch = "";
+            _findRefundFor = RefundPickerFor.BankRow;
             // ⚠️ The review list IS a modal, so opening the picker REPLACES it. Without pushing the way back,
             // closing the picker closed the review with it — the reported symptom exactly: "the modal just
             // disappears, nothing happens". The selection was in fact stored; the screen it belonged to was gone.
@@ -9867,14 +9946,40 @@ else
         _bankRowCredit[rowId] = value ?? "";
     }
 
-    /// <summary>Take the picked expense back to the row that opened the picker, as an ordinary "refund:{id}"
-    /// selection — so everything downstream (confirm, ack, the rule refusal) stays exactly as it was — and return
-    /// to the review list rather than out of it.</summary>
+    /// <summary>Take the picked expense back to whoever opened the picker, and return to that screen rather than
+    /// out of it.
+    /// <para>For a bank row it lands as an ordinary <c>"refund:{id}"</c> selection, so everything downstream
+    /// (confirm, ack, the rule refusal) stays exactly as it was. For the Add-income form it fills the refund
+    /// target and, if nothing has been typed yet, offers the smaller of the income and what is still on the
+    /// expense — the two amounts that are actually possible.</para></summary>
     private void ChooseRefundTarget(Guid expenseId)
     {
-        if (_findRefundRow is { } rowId) _bankRowCredit[rowId] = $"refund:{expenseId}";
+        if (_findRefundFor == RefundPickerFor.Deposit)
+        {
+            _depRefundExpenseId = expenseId;
+            if (_depRefundAmount <= 0m && State.FindExpenseAnywhere(expenseId) is { } picked)
+                _depRefundAmount = Math.Min(_depAmount > 0m ? _depAmount : picked.Amount.Amount, picked.Amount.Amount);
+        }
+        else if (_findRefundRow is { } rowId)
+        {
+            _bankRowCredit[rowId] = $"refund:{expenseId}";
+        }
         _findRefundRow = null;
         Back();
+    }
+
+    /// <summary>Open the refund picker from the Add-income form.
+    /// <para>⚠️ <see cref="_modalBack"/> is not optional. The picker <b>replaces</b> the modal that opened it, so
+    /// without the way back the Add-income form disappears on cancel and takes the amount already typed with it —
+    /// the exact bug this picker shipped with the first time, reported as "the modal just disappears, nothing
+    /// happens".</para></summary>
+    private void PickDepositRefundTarget()
+    {
+        _findRefundSearch = "";
+        _findRefundRow = null;
+        _findRefundFor = RefundPickerFor.Deposit;
+        _modalBack.Push(() => _modal = Modal.Deposit);
+        _modal = Modal.FindRefundExpense;
     }
 
     /// <summary>
@@ -10060,7 +10165,7 @@ else
         if (category == Guid.Empty) { _bankError = Loc["Pick a category first."]; return; }
         var fund = State.HasSyncedFund ? State.SyncedFundId : RowFund(tx.ExternalId);
         if (fund == Guid.Empty) { _bankError = Loc["Pick a wallet first."]; return; }
-        var trip = State.AllTrips.FirstOrDefault(tr => tx.Date >= tr.From && tx.Date <= tr.To)?.Id;
+        var trip = State.AllTrips.FirstOrDefault(tr => tr.Covers(tx.Date))?.Id;
         // A rule that also names a label applies it here too, exactly as it does when auto-filing (O2b).
         var tag = MappingFor(tx.Description) is { Kind: "category" } m && m.TagId is { } rt && State.AllTags.Any(t => t.Id == rt) ? rt : (Guid?)null;
 
@@ -10119,7 +10224,7 @@ else
         _expenseTime = tx.Time;   // only when the bank stated one — see Expense.Time
         _fTagId = null; _newTagName = null; _tagFiledTo = null; _tagNewOpen = false;
         // Defaulted, never enforced: the weekly shop still happens on the day you fly home, so "Not a trip" is one tap.
-        _expTripId = State.AllTrips.FirstOrDefault(t => tx.Date >= t.From && tx.Date <= t.To)?.Id ?? Guid.Empty;
+        _expTripId = State.AllTrips.FirstOrDefault(t => t.Covers(tx.Date))?.Id ?? Guid.Empty;
         _expTripAccountId = Guid.Empty;   // the bank form never reaches across accounts — see OnForeignTripPicked
         ApplyTripCategoryDefault();
         // Pre-load the rule's word chooser so flipping the switch has something to show immediately.
@@ -10725,14 +10830,55 @@ else
         _depFundId = State.SelectableFunds.FirstOrDefault()?.Id ?? Guid.Empty;
         _depAmount = 0;
         _depDate = DateOnly.FromDateTime(DateTime.Today);
+        _depRefundExpenseId = Guid.Empty;
+        _depRefundAmount = 0m;
         _modal = Modal.Deposit;
     }
 
+    /// <summary>How much of the income being entered is still income, once any refund part is taken off.</summary>
+    private decimal DepIncomePart => Math.Max(0m, _depAmount - DepRefundPart);
+
+    /// <summary>How much of the income is going back onto an expense. Clamped to the money actually received:
+    /// a refund cannot be larger than the payment it arrived in.</summary>
+    private decimal DepRefundPart =>
+        _depRefundExpenseId == Guid.Empty ? 0m : Math.Max(0m, Math.Min(_depRefundAmount, _depAmount));
+
+    /// <summary>Whether the refund part asks for more than is still on the chosen expense. Blocks the save
+    /// rather than letting the server refuse it after the tap.</summary>
+    private bool DepRefundOverruns =>
+        _depRefundExpenseId != Guid.Empty
+        && State.FindExpenseAnywhere(_depRefundExpenseId) is { } e
+        && DepRefundPart > e.Amount.Amount;
+
+    /// <summary>
+    /// Record the income — and, when part of it is money coming back on an expense, <b>split it</b>.
+    ///
+    /// <para>★ The split is the whole point. Logging the full amount as income <i>and</i> recording the refund
+    /// would credit the wallet twice: shrinking the expense already raises the balance by the refunded part, so
+    /// €100 received against a €30 refund would leave the account €130 better off. What actually happened is €30
+    /// off a charge and €70 of new money, and that is what gets written.</para>
+    ///
+    /// <para>⚠️ The refund goes <b>first</b>. If the income write then fails, the refund stands on its own and is
+    /// undoable; the other order would leave income recorded against an expense that never shrank.</para>
+    ///
+    /// <para>⚠️ When the refund covers the whole amount there is <b>no income row at all</b> — a refund is not
+    /// income, which is the promise the feature has always made.</para>
+    ///
+    /// <para>The refund is credited to the fund picked for the income, because that field already means "where
+    /// the money landed" — exactly what the refund's destination wallet is asking.</para>
+    /// </summary>
     private Task RecordDeposit() => RunModal(async () =>
     {
         if (_depAmount <= 0) return;
-        await State.RecordDeposit(_depCategoryId, _depFundId, _depAmount, _depDate);
+        var refundPart = DepRefundPart;
+        var incomePart = DepIncomePart;
+        if (refundPart > 0m)
+            await State.RecordRefund(_depRefundExpenseId, refundPart, _depFundId == Guid.Empty ? null : _depFundId);
+        if (incomePart > 0m)
+            await State.RecordDeposit(_depCategoryId, _depFundId, incomePart, _depDate);
         _depAmount = 0;
+        _depRefundExpenseId = Guid.Empty;
+        _depRefundAmount = 0m;
         CloseModal();
     });
 
@@ -10828,6 +10974,27 @@ else
     // The other accounts' trips this form may offer. Loaded when the edit modal opens (see OpenEditExpense) and
     // empty for a single-account user, so the row simply doesn't render.
     private IReadOnlyList<BudgetingState.ForeignTripOption> _foreignTrips = [];
+
+    /// <summary>The other accounts' trips this form should actually <b>offer</b>, filtered by the expense's own
+    /// date.
+    /// <para>⚠️ <see cref="BudgetingState.ForeignTripOptionsAsync"/> deliberately returns every trip those
+    /// accounts have ever taken, and caches it — so it cannot be the place this happens: the expense's date
+    /// changes <i>within</i> one modal open, and a filter baked into the cache would go stale the moment the date
+    /// field is edited. Same split as <see cref="FormTripOptions"/> / <see cref="EditTripOptions"/>, which both
+    /// project one unfiltered <c>State.AllTrips</c> under different rules.</para>
+    /// <para>Three ways in, and each earns its place. <b>Not finished</b> — booking ahead is a first-class idea in
+    /// this app (the trip card leads with "Booked ahead"), so a future trip must stay offered whatever today's
+    /// date says. <b>Covers the expense's date</b> — the case this was reported for: a trip that ended on the 29th
+    /// is finished on the 30th, but an expense dated the 27th still belongs to it, and the whole thing can happen
+    /// inside one open period. <b>Already attached</b> — pinned, because a control whose value is missing from its
+    /// own option list is unusable (the same trap <see cref="RefundOptionsFor"/> pins against).</para>
+    /// <para>Without this the row was strictly looser than the own-account row directly above it: every trip from
+    /// every same-currency shared account, forever, uncapped.</para></summary>
+    private IReadOnlyList<BudgetingState.ForeignTripOption> VisibleForeignTrips =>
+        _foreignTrips.Where(o => !o.Trip.IsFinishedOn(State.TodayDate)
+                                 || o.Trip.Covers(_expenseDate)
+                                 || (o.Trip.Id == _expTripId && o.AccountId == _expTripAccountId))
+            .ToList();
 
     /// <summary>The trip currently picked on the expense form, when there is one <b>in this account</b>. A trip in
     /// another account is deliberately not resolved here: every caller of this uses it to read this account's own
@@ -10953,7 +11120,7 @@ else
     /// <summary>Where one expense sits against the trip's own dates — the three-way split the recap headline is
     /// built on, said again per row so a March flight in a June list explains itself.</summary>
     private string TripWhenLabel(FinApp.Domain.Budgeting.Trip trip, DateOnly date) =>
-        date < trip.From ? Loc["booked ahead"] : date > trip.To ? Loc["after getting back"] : Loc["while away"];
+        trip.Covers(date) ? Loc["while away"] : date < trip.From ? Loc["booked ahead"] : Loc["after getting back"];
 
     /// <summary>End a running trip today. Not a delete and not an archive: everything about trip mode — the shell,
     /// Home's hero, the expense form's default — is derived from the dates, so pulling the end date to today is the
@@ -13014,6 +13181,13 @@ else
             _expTripId = Guid.Empty; _expTripAccountId = Guid.Empty;   // tapping the chip again detaches
             return;
         }
+        // Same Pro rule as our own trips: free on a journey still running, Pro on a finished one. This row never
+        // applied it — harmless while the row offered nothing finished, but now that a trip whose window covers
+        // the expense's date is deliberately offered again, a finished one is reachable here. ⚠️ Not
+        // MayLogAgainstTrip: that resolves through State.FindTrip, which only ever sees THIS account's trips, so
+        // it would find nothing and wave every foreign trip through. The server enforces this either way; the
+        // client gate is what stops the refusal arriving after the tap.
+        if (option.Trip.IsFinishedOn(State.TodayDate) && !Gate.Require(PlanFeatures.Trips)) return;
         _expTripId = option.Trip.Id;
         _expTripAccountId = option.AccountId;
         _bcRemember = false;   // same rule as any other trip — see BankRuleOffered
@@ -13070,12 +13244,18 @@ else
     /// running trip of its own, and without this the row that would let them count this card's share never
     /// appears.</para></summary>
     private bool EditShowsTripPicker =>
-        (EditTripOptions.Count > 0 || _foreignTrips.Count > 0)
+        (EditTripOptions.Count > 0 || VisibleForeignTrips.Count > 0)
         && (State.ActiveTrip is not null || _editOpenedFromTrip || _expTripId != Guid.Empty
             // ⚠️ A RUNNING foreign trip, not merely any — otherwise a journey the joint account took last year
             // puts a row of trip chips on every grocery edit forever, which is the noise this predicate exists to
             // stop. A household mid-trip still gets the row; one that is not, does not.
-            || _foreignTrips.Any(o => o.Trip.IsActiveOn(State.TodayDate)));
+            || _foreignTrips.Any(o => o.Trip.IsActiveOn(State.TodayDate))
+            // ★ …and a foreign trip whose window CONTAINS this expense's date, which is the case the whole date
+            // filter exists for. Without this clause the row still never appears for it: a trip that ended
+            // yesterday is not active, the expense is not yet attached, and there may be no own trip running — so
+            // the very expense that belongs to it is the one that cannot be filed against it. Narrow by
+            // construction: it asks about THIS expense's date, so it cannot come back as noise on a grocery edit.
+            || _foreignTrips.Any(o => o.Trip.Covers(_expenseDate)));
 
     /// <summary>Moving the date off today drops an auto-stamped time: "now" describes the moment the form is open,
     /// which says nothing about a purchase being back-dated to last Tuesday. Moving it back onto today re-stamps it.</summary>
