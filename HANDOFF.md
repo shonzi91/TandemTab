@@ -3,8 +3,21 @@
 Last updated: 2026-08-27 (Session 120 — **three owner-reported UI bugs fixed, and a written proposal for the
 fourth.** Trip-card chrome fixed for hover and touch; refund renamed, promoted onto one row, and reachable
 from Add income; the expense form stops offering trips that have nothing to do with the expense's date.
-**569 + 56 + 470 green (+2), pairscan 0.** ⚠️ **NOT DEPLOYED** — verified on a running local server and
-committed, but no revision has been cut. Deploying is the first thing next session.)
+**569 + 56 + 470 green (+2), pairscan 0.**
+**LIVE: `finapp-00332-24q`, 100% LATEST** — image `finapp:a12a203` (digest `sha256:a3ca707c…`); `origin/main`
+is `a12a203`, so all three agree. Roots 200 on both hosts, 5 `secretKeyRef`s, and the only WARNING+ lines on
+the revision are **two Kestrel cold-start heartbeat warnings** — thread-pool contention, not ours. ⭐ **No
+archived-purge race at all this deploy**: `PurgeExpiredAsync` 0 frames, `Program.<Main>$` 0,
+`DbUpdateConcurrencyException` 0, `STARTUP TCP probe succeeded` ×2, `Now listening` ×2.
+
+✅ **Proven on the served bytes, both ways, on both hosts.** The scoped bundle is **390,531 bytes identical**
+on the run URL and tandemtab.com, and carries the shape of the fix rather than just a new hash: the old
+`.trip-top:hover .trip-head` pair at **0**, the new `.trip-top:hover` row rule at **2** (light + dark), both
+inside `@media (hover: hover)` (**2**), plus `.trip-corner-b { width: 44px }` (**1**) and `.exp-acts` (**1**).
+★ And for the `.razor`-only half, the **WASM symbol probe**: `FinApp.Shared.UI.iz6v31pfqo.wasm` (1,865,493
+bytes, identical on both hosts) contains `VisibleForeignTrips`, `DepRefundPart` and
+`PickDepositRefundTarget`; `FinApp.Domain.6msnhm7kuh.wasm` contains `Covers`. All four exist only in
+`a12a203`.)
 
 #### The four items, and what each turned out to be
 
@@ -150,11 +163,10 @@ draft flow and every `<small class="hint">` — the ask was too many *buttons*, 
   served CSS text are the reliable read; `read_page` refs and `form_input` work fine.
 
 #### Next session
-1. ⬜ **Deploy** — this is committed and unshipped.
-2. ⬜ Item 4's proposal, if approved — ① is unblocked now that #3 has landed.
-3. ⬜ Still open from S119: a door to "money came back" on a **closed** period's expense; the phone's refund
+1. ⬜ Item 4's proposal, if approved — ① is unblocked now that #3 has landed.
+2. ⬜ Still open from S119: a door to "money came back" on a **closed** period's expense; the phone's refund
    picker is compiled and unrun.
-4. ⬜ Two defects found while counting, both pre-existing: **Edit-expense's date input has no `min`/`max`**
+3. ⬜ Two defects found while counting, both pre-existing: **Edit-expense's date input has no `min`/`max`**
    while Add clamps to the period; and `Dashboard.razor.bak` / `Dashboard.razor.css.bak` shadow every grep
    over this area.
 
