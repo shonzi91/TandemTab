@@ -69,7 +69,7 @@ else
         }
         <div class="hdr-top">
             <div class="acct-wrap">
-                <button class="acct-chip" title="@Loc["Switch account"]" @onclick="() => _acctDropOpen = !_acctDropOpen">
+                <button class="acct-chip" title="@Loc["Switch account"]" @onclick="ToggleAccountDrop">
                     <span class="ava-stack">
                         @foreach (var m in State.RealUsers.Take(3))
                         {
@@ -109,7 +109,19 @@ else
                                        listed here fall back to their initials until that account is opened. *@
                                     @foreach (var m in a.Members.Take(3)) { <Avatar Name="@m.DisplayName" Picture="@State.MemberAvatar(m.UserId)" Size="22" /> }
                                 </span>
-                                <span class="acct-nm">@a.Name<small>@MembersLine(a.Members)</small></span>
+                                @* Same two-line shape as the chip above: name + Trip-mode badge on line one,
+                                   members on line two. The badge answers "which of these is on a journey" without
+                                   switching into each one to find out, which is the whole reason to show it here. *@
+                                <span class="acct-nm">
+                                    <span class="acct-nm-top">
+                                        <span class="acct-nm-name">@a.Name</span>
+                                        @if (_acctTrips.FirstOrDefault(t => t.AccountId == aid) is { } rowTrip)
+                                        {
+                                            @TripModeTag(rowTrip.TripName)
+                                        }
+                                    </span>
+                                    <small>@MembersLine(a.Members)</small>
+                                </span>
                                 @if (aid == State.CurrentAccountId) { <span class="acct-check"><Icon Name="check" /></span> }
                             </button>
                         }
@@ -11817,8 +11829,13 @@ else
     /// <para>One fragment, two call sites (the account chip and the expense modal's title) so they can't drift. Not
     /// localized: it is a brand lockup, like TandemTab itself, not a sentence. The trip's name is the tooltip.</para>
     /// </summary>
-    private RenderFragment TripModeTag(FinApp.Domain.Budgeting.Trip trip) =>
-        @<span class="tripmode-tag" title="@trip.Name"><span class="tmt-trip">Trip</span><span class="tmt-mode">Mode</span></span>;
+    private RenderFragment TripModeTag(FinApp.Domain.Budgeting.Trip trip) => TripModeTag(trip.Name);
+
+    /// <summary>The badge by name alone, for the places that hold a trip as a DTO rather than a domain object —
+    /// the account switcher reads other accounts' trips over the wire. One definition of the badge's markup, so
+    /// the switcher's copy cannot drift from the header's.</summary>
+    private RenderFragment TripModeTag(string tripName) =>
+        @<span class="tripmode-tag" title="@tripName"><span class="tmt-trip">Trip</span><span class="tmt-mode">Mode</span></span>;
 
     private RenderFragment TagMark(string? icon) => builder =>
     {
@@ -13921,6 +13938,24 @@ else
     private bool _spendMenuOpen;   // Spending-tab header ⋯ menu (Import statement / Manage categories)
     private void RunAcct(Action a) { _acctMenuOpen = false; a(); }
     private bool _acctDropOpen;   // header account switcher (avatars) dropdown
+
+    /// <summary>Which of the user's accounts are travelling, for the switcher's Trip-mode badges. Empty until the
+    /// switcher is first opened — see <see cref="BudgetingState.ActiveTripsAsync"/> for why this is not simply a
+    /// field on the account list.</summary>
+    private IReadOnlyList<ActiveTripDto> _acctTrips = [];
+
+    /// <summary>Open/close the switcher, fetching the travelling-accounts list the first time it is opened.
+    /// <para>⚠️ The fetch is deliberately <b>not</b> awaited before the menu appears. It costs a snapshot read per
+    /// account, and blocking the switcher on that would make a menu that used to open instantly feel broken. The
+    /// rows render immediately and the badges arrive a beat later, which is the right way round: the names are
+    /// what the user came for.</para></summary>
+    private async Task ToggleAccountDrop()
+    {
+        _acctDropOpen = !_acctDropOpen;
+        if (!_acctDropOpen) return;
+        _acctTrips = await State.ActiveTripsAsync();
+        StateHasChanged();
+    }
     private bool _periodMenuOpen; // period chip popover (dates + edit/remove/start-next + status)
     private Task SwitchAccountTo(Guid id) => Run(async () => { _acctDropOpen = false; await State.SwitchAccount(id); });
     // "just you" / "you & Alex" / "you + 2" sub-line for the account chip and switcher rows.

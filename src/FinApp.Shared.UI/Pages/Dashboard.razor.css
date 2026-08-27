@@ -3780,7 +3780,7 @@ html.dark .trip-fx { color: #9db6ea; }
    name and the members line; the nudge dragged it back up to the name's optical middle. The badge now lives on
    the name's own line, where centring is simply correct — leaving the nudge in place would have pushed it 3px
    below the text it sits beside. It only must not shrink when the name is long. */
-.acct-chip .tripmode-tag { flex: 0 0 auto; }
+.acct-chip .tripmode-tag, .acct-drop-item .tripmode-tag { flex: 0 0 auto; }
 html.dark .tripmode-tag { background: #16233a; border-color: rgba(157, 182, 234, .26); box-shadow: 0 2px 8px rgba(0, 0, 0, .5); }
 html.dark .tmt-trip { color: #7cc4f0; }
 html.dark .tmt-mode { color: rgba(195, 204, 216, .70); }

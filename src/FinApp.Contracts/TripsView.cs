@@ -128,3 +128,20 @@ public record TripsViewDto(long Version, string Currency, IReadOnlyList<TripDto>
 {
     public static readonly TripsViewDto Empty = new(0, "", [], []);
 }
+
+/// <summary>
+/// "Which of my accounts is on a journey right now" — one row per account that has a trip running, and nothing
+/// at all for the rest.
+/// <para>
+/// ★ It exists because a trip is <b>body data</b>: trips live in the encrypted account snapshot, not the
+/// relational header, so <see cref="AccountSummaryDto"/> cannot carry this and the account list cannot answer it.
+/// </para>
+/// <para>
+/// ⚠️ <b>Deliberately its own endpoint rather than a field on the account list.</b> Answering it costs one
+/// snapshot read per account — and a snapshot read is a KMS unwrap (a network round-trip) plus a gunzip of a
+/// payload measured in hundreds of KB. The account list is fetched at startup and on every account switch;
+/// putting that cost there would slow the app's first paint to render a badge. This is fetched only when
+/// something actually asks — the account switcher being opened — and cached for the session.
+/// </para>
+/// </summary>
+public record ActiveTripDto(Guid AccountId, string TripName, string? Icon);

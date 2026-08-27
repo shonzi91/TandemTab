@@ -3428,6 +3428,7 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
         {
             if (started) Account.StartTrip(tripId, Today());
             else Account.UnstartTrip(tripId);
+            ResetActiveTrips();   // this account just started/stopped travelling — see ActiveTripsAsync
         },
             id => api.StartTripAsync(id, tripId, started), refetchAfter: true);
 
@@ -3438,6 +3439,7 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
         {
             if (finished) Account.FinishTrip(tripId, Today());
             else Account.ReopenTrip(tripId);
+            ResetActiveTrips();   // see StartTrip
         },
             id => api.FinishTripAsync(id, tripId, finished), refetchAfter: true);
 
@@ -3611,6 +3613,31 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
 
     /// <summary>Forget the cached list — after attaching, or after switching account.</summary>
     public void ResetForeignTripOptions() => _foreignTripOptions = null;
+
+    private IReadOnlyList<ActiveTripDto>? _activeTrips;
+
+    /// <summary>
+    /// Which of the user's accounts are on a journey right now, so the account switcher can say so without being
+    /// opened first.
+    /// <para>⚠️ <b>Lazy and cached on purpose.</b> Trips are body data, so the server answers this by reading one
+    /// encrypted snapshot per account — a KMS unwrap plus a gunzip each. That is far too much to hang off the
+    /// account list, which loads at startup; it is affordable exactly once, when the user opens the switcher.
+    /// A failure yields an empty list rather than throwing: a missing badge is a much smaller problem than a
+    /// switcher that will not open.</para>
+    /// <para>⚠️ Not cleared on account switch — unlike the "other accounts' trips/debts" caches, this one is not
+    /// computed relative to the current account, so it stays true across a switch. It IS cleared when a trip
+    /// starts or finishes, which are the only two things that can change the answer.</para>
+    /// </summary>
+    public async Task<IReadOnlyList<ActiveTripDto>> ActiveTripsAsync()
+    {
+        if (_activeTrips is { } cached) return cached;
+        try { _activeTrips = await api.GetActiveTripsAsync(TodayDate); }
+        catch { _activeTrips = []; }
+        return _activeTrips;
+    }
+
+    /// <summary>Forget which accounts are travelling — after a trip is started or finished.</summary>
+    public void ResetActiveTrips() => _activeTrips = null;
 
     /// <summary>The name of the account a trip row was paid from, or null when this account paid it. ⚠️ A UI
     /// rendering trip rows must show this: an unlabelled foreign row reads as this account's spending, which is

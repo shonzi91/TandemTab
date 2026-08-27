@@ -295,4 +295,55 @@ public class TripsViewApiTests : IClassFixture<FinAppServerFactory>
         Assert.Equal("Restaurants", option.Name);
         Assert.False(option.TripTag);
     }
+
+    private static Task<List<ActiveTripDto>?> ActiveTrips(HttpClient client, DateOnly today) =>
+        client.GetFromJsonAsync<List<ActiveTripDto>>($"/accounts/active-trips?today={today:yyyy-MM-dd}");
+
+    [Fact]
+    public async Task Active_trips_names_every_account_that_is_travelling_and_nothing_else()
+    {
+        // The account switcher's badge. It cannot be a field on the account list: trips are BODY data, so the
+        // question costs a snapshot read per account, and that list is fetched at startup and on every switch.
+        var (client, auth) = await _factory.RegisterAndAuthAsync("activetrips_multi");
+
+        var travelling = await CreateAccount(client, "Travelling");
+        await SeedAsync(client, travelling.Id, auth.UserId);
+        var tripId = await CreateTrip(client, travelling.Id, "Rome", RunFrom, RunTo);
+
+        var homebody = await CreateAccount(client, "Homebody");
+        await SeedAsync(client, homebody.Id, auth.UserId);
+
+        // ★ A dated trip nobody has confirmed leaving on is awaiting-start, NOT active — so no badge yet. Same
+        // rule the header badge follows, and the reason this reads state rather than comparing dates.
+        Assert.Empty((await ActiveTrips(client, Today))!);
+
+        (await client.PutAsJsonAsync($"/accounts/{travelling.Id}/trips/{tripId}/started", new StartTripRequest(true)))
+            .EnsureSuccessStatusCode();
+
+        var running = Assert.Single((await ActiveTrips(client, Today))!);
+        Assert.Equal(travelling.Id, running.AccountId);
+        Assert.Equal("Rome", running.TripName);
+
+        // The account with no journey is simply absent — the response carries rows, not a row per account.
+        Assert.DoesNotContain((await ActiveTrips(client, Today))!, t => t.AccountId == homebody.Id);
+
+        // Past the last day it drops out on its own, with no Finish needed.
+        Assert.Empty((await ActiveTrips(client, RunTo.AddDays(1)))!);
+    }
+
+    [Fact]
+    public async Task Active_trips_answers_on_the_callers_own_date_not_the_servers()
+    {
+        // Whether a trip is running is a question about the traveller's day. A server in UTC would flip it hours
+        // early or late for half the world, which is why the date is a parameter here as it is on /trips.
+        var (client, auth) = await _factory.RegisterAndAuthAsync("activetrips_today");
+        var account = await CreateAccount(client, "Trips");
+        await SeedAsync(client, account.Id, auth.UserId);
+        var tripId = await CreateTrip(client, account.Id, "Rome", RunFrom, RunTo);
+        (await client.PutAsJsonAsync($"/accounts/{account.Id}/trips/{tripId}/started", new StartTripRequest(true)))
+            .EnsureSuccessStatusCode();
+
+        Assert.Single((await ActiveTrips(client, RunTo))!);            // last day: still on the road
+        Assert.Empty((await ActiveTrips(client, RunTo.AddDays(1)))!);  // one day later: home
+    }
 }

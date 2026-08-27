@@ -132,6 +132,11 @@ public sealed class FinAppApiClient(HttpClient http)
         SendAsync(HttpMethod.Post, $"/accounts/{id}/transfer-ownership", new TransferOwnershipRequest(newOwnerUserId), ct);
     public Task<List<ArchivedAccountDto>> GetArchivedAccountsAsync(CancellationToken ct = default) =>
         SendAsync<List<ArchivedAccountDto>>(HttpMethod.Get, "/accounts/archived", null, ct);
+
+    /// <summary>Which of the caller's accounts have a trip running today. <paramref name="today"/> is the caller's
+    /// own local date — a server in UTC would flip a trip's state hours early or late for half the world.</summary>
+    public Task<List<ActiveTripDto>> GetActiveTripsAsync(DateOnly today, CancellationToken ct = default) =>
+        SendAsync<List<ActiveTripDto>>(HttpMethod.Get, $"/accounts/active-trips?today={today:yyyy-MM-dd}", null, ct);
     public Task ReactivateAccountAsync(Guid id, CancellationToken ct = default) =>
         SendAsync(HttpMethod.Post, $"/accounts/{id}/reactivate", null, ct);
 

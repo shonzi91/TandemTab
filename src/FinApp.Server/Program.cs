@@ -2181,6 +2181,36 @@ accounts.MapDelete("/{id:guid}/tags/{tagId:guid}", async (Guid id, Guid tagId, C
 // which is why Android had no trips at all rather than a smaller version of them.
 // `today` is the caller's own local date (as on /bootstrap): whether a trip is running is a question about the
 // traveller's day, and a server in UTC would flip a trip's state hours early or late for half the world.
+// Which of the caller's accounts is on a journey right now — one row each, nothing for accounts that aren't.
+// ⚠️ NOT a field on the account list, and that is a cost decision rather than a tidiness one: trips are body data,
+// so answering this means a snapshot read per account, and a snapshot read is a KMS unwrap (network round-trip)
+// plus a gunzip of a payload measured in hundreds of KB. The account list is fetched at startup and on every
+// switch; this is fetched only when something asks, and the client caches it for the session.
+// ⚠️ Route order/shape: "active-trips" cannot collide with "/{id:guid}" because of the guid constraint.
+// `today` is the caller's own local date, for the same reason as /trips: whether a trip is running is a question
+// about the traveller's day, and a server in UTC flips it hours early or late for half the world.
+accounts.MapGet("/active-trips", async (DateOnly? today, ClaimsPrincipal user, AccountService accountSvc, SnapshotService svc, CancellationToken ct) =>
+{
+    var on = today ?? DateOnly.FromDateTime(DateTime.UtcNow);
+    var summaries = await accountSvc.ListForUserAsync(user.UserId(), ct);
+    var running = new List<ActiveTripDto>();
+    foreach (var summary in summaries)
+    {
+        // ⚠️ Per-account try/catch on purpose. One unreadable or half-migrated snapshot must cost its own badge and
+        // nothing else — a 500 here would break the account switcher for every account the user has.
+        try
+        {
+            var snap = await svc.GetAsync(user.UserId(), summary.Id, ct);
+            if (string.IsNullOrEmpty(snap.Payload)) continue;
+            var account = AccountSnapshotSerializer.Deserialize(snap.Payload);
+            if (account.TripsByDeparture.FirstOrDefault(t => t.IsActiveOn(on)) is { } active)
+                running.Add(new ActiveTripDto(summary.Id, active.Name, active.Icon));
+        }
+        catch { /* this account simply reports no journey */ }
+    }
+    return Results.Ok(running);
+});
+
 accounts.MapGet("/{id:guid}/trips", async (Guid id, DateOnly? today, ClaimsPrincipal user, SnapshotService svc, CancellationToken ct) =>
 {
     var snap = await svc.GetAsync(user.UserId(), id, ct);
