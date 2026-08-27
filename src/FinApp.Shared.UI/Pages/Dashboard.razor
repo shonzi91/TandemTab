@@ -1447,6 +1447,33 @@ else
                             }
                             else
                             {
+                                @* ★★ …and money CAN still come back, which is the one exception the rule above has
+                                   to make room for. A refund is not a late edit to a settled month: S119 built it
+                                   to cross the boundary deliberately — the charge is corrected where the charge
+                                   lives (June's dinner really did cost €40, and June's Food budget corrects itself
+                                   with it) while the cash lands on the CURRENT period's opening balance, the same
+                                   mechanism the app already uses to carry money between periods.
+                                   ⚠️ So the closed month's OWN figures do move, and that is correct rather than a
+                                   leak: its spent falls by the refund and its closing/carried line recomputes with
+                                   it, because the month really did cost less. Measured — €15 back on a €1,400 July
+                                   charge: July spent 1,400 → 1,385 and carried 50 → 65, while THIS period's
+                                   balance rose by 15 and its spent did not move at all. Fifteen, once, not twice.
+                                   ⚠️ Everything under this button was already cross-period and only the door was
+                                   missing: BudgetingState.RecordRefund searches every period, the PUT route is
+                                   addressed by expense id rather than by the open period, and the PHONE could do
+                                   this from its bank-review picker while the web could not. The owner's report is
+                                   the shape of that gap — "I paid two months ago for a group and a member gave me
+                                   their part this one" — and the row they were looking at had no way to say so.
+                                   ★ It wears the already-refunded total for the same reason the edit modal's pill
+                                   does: recording ACCUMULATES, so the row has to say what is already off it. *@
+                                @if (ctx.E.IsRefunded)
+                                {
+                                    <button class="exp-edit" title="@string.Format(Loc["{0} came back — record more"], Fmt(ctx.E.RefundedMoney))" @onclick="() => OpenRecordRefund(ctx.E.Id)"><Icon Name="swap" /></button>
+                                }
+                                else
+                                {
+                                    <button class="exp-edit" title="@Loc["Money came back on this"]" @onclick="() => OpenRecordRefund(ctx.E.Id)"><Icon Name="swap" /></button>
+                                }
                                 @* ★ A closed month is closed for the MONEY, not for what a row is called. Labels are
                                    the axis Breakdown-by-tag and the trip recap read history on, and both are done
                                    long after the period shut — the trip's own attach list already carries a tag row
@@ -4942,7 +4969,12 @@ else
                     </div>
                     <label>@Loc["Amount"] <DecimalInput @bind-Value="_amount" /></label>
                     <div class="field-row">
-                        <label>@Loc["Date"] <input type="date" @bind="_expenseDate" /></label>
+                        @* ⚠️ Clamped for the same reason Add is, and it was missing here: nothing below this input
+                           checks the date. Period.AddExpense validates currency and open-ness but not the day, and
+                           the PUT route edits account.CurrentPeriod unconditionally — so a date typed outside the
+                           period used to be stored verbatim on a row that stays in THIS period, leaving an expense
+                           dated 5 Sep sitting inside August and counting toward it. The min/max IS the validation. *@
+                        <label>@Loc["Date"] <input type="date" @bind="_expenseDate" min="@State.Period.From.ToString("yyyy-MM-dd")" max="@State.Period.To.ToString("yyyy-MM-dd")" /></label>
                         <label>@Loc["Time (optional)"] <input type="time" @bind="_expenseTime" /></label>
                     </div>
                     @if (State.FindExpense(_editExpenseId) is { FundSynced: true })

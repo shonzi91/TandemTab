@@ -1481,6 +1481,7 @@ public sealed class Localizer(IJSRuntime js)
         ["{0} settled"] = "{0} уредени",
         ["{0} back"] = "{0} върнати",
         ["Money came back on this"] = "Върнаха се пари по този разход",
+        ["{0} came back — record more"] = "{0} са върнати — запиши още",
         ["{0} has already come back on this. Anything you record here is added to that."] = "Вече са върнати {0} по този разход. Каквото запишеш тук, се добавя към тях.",
         ["Money back on"] = "Върнати пари по",
         ["Part of this is money back on an expense"] = "Част от това са върнати пари по разход",
