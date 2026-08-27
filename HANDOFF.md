@@ -3,7 +3,10 @@
 Last updated: 2026-08-28 (Session 123 — **the week recap is built, and with it R2.5 has no web→phone rows left.**
 `GET /week-recap` plus a Home card and a sheet on the phone, ported from the web. **569 + 56 + 479 green, Kotlin
 green.** ⭐ **Run on the emulator, not compiled and assumed** — which is the only reason two layout defects and
-one behaviour gap got found. ⬜ **NOT deployed.**)
+one behaviour gap got found.
+✅ **LIVE: `finapp-00339-bh7`, 100% LATEST** — image `finapp:459cb34`; `origin/main` is `459cb34`, so all three
+agree. Roots 200 on both hosts, 5 `secretKeyRef`s, no purge race, and the only WARNING+ lines on the revision
+are **my own four 401 probes**. ⬜ The phone half ships with the APK pipeline, not with this revision.)
 
 ### ★ The map that owns no rules, which is the whole point
 
@@ -67,9 +70,27 @@ invalidation evidence), and that account's recap is **dismissed** for the week o
 ⚠️ **A third account cannot be created as `refund9`** — it is a `@test.local` cohort, so Free, and account #3 is
 Pro-gated. That is what ruled out a clean throwaway account for this.
 
+#### ✅ DEPLOYED — `finapp-00339-bh7`, 100% LATEST
+
+Image `finapp:459cb34` (digest `sha256:a615a593…`); `origin/main` is `459cb34`. Roots **200** on both hosts,
+**5** `secretKeyRef`s, `STARTUP TCP probe succeeded` ×2, `Now listening` ×2, and no purge race at all
+(`PurgeExpiredAsync` 0, `Program.<Main>$` 0, `DbUpdateConcurrencyException` 0).
+
+⭐ **The proof for a new API route is a 401, not a 404** — the SPA fallback answers **200** to anything it does
+not match, so "did my endpoint deploy?" cannot be answered with a missing-route control. Measured all three ways
+on both hosts: `/accounts/{guid}/week-recap` → **401** (the route matched and the auth filter ran),
+`/accounts/{guid}/not-a-route` → **200** (the fallback, which is what makes the 401 mean something), and
+`/trends` → **401** as the positive control.
+⚠️ **Those four 401s are then the only WARNING+ lines on the revision** — they are the probe, not a problem.
+
+★ **A second, independent probe was available and worth taking:** `FinApp.Contracts` ships to the web client
+too, so the new contract is greppable in the served WASM. `FinApp.Contracts.5rpxi36915.wasm`, **468,245 bytes
+identical on both hosts**, contains `WeeklyRecapViewDto`, `RecapBiggestDto` and `IncomeIsTypical` (ASCII —
+member names, not string literals), against `TrendsViewDto` as the control.
+
 #### Next session
-1. ⬜ **Deploy this** — built, green, unshipped. The phone half needs an `android-v*` tag as well; the repo still
-   has **zero tags**.
+1. ⬜ The phone half is still only on `main`: it needs an `android-v*` tag to reach a Release APK, and the repo
+   has **zero tags**. Nobody is running an unreleased build.
 2. ⬜ R2.5's remaining rows are all phone→web now: **always-visible milestones** and an **auto-mask trigger**.
 3. ⬜ The phone's account switcher still has no trip-mode badge — and the parity scanner now names it:
    `GET /active-trips` is the 8th uncalled route.
