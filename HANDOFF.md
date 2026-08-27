@@ -3,9 +3,11 @@
 Last updated: 2026-08-27 (Session 120 — **three owner-reported UI bugs fixed, and a written proposal for the
 fourth.** Trip-card chrome fixed for hover and touch; refund renamed, promoted onto one row, and reachable
 from Add income; the expense form stops offering trips that have nothing to do with the expense's date.
-**569 + 56 + 470 green (+2), pairscan 0.**
-**LIVE: `finapp-00332-24q`, 100% LATEST** — image `finapp:a12a203` (digest `sha256:a3ca707c…`); `origin/main`
-is `a12a203`, so all three agree. Roots 200 on both hosts, 5 `secretKeyRef`s, and the only WARNING+ lines on
+**569 + 56 + 472 green, pairscan 0.**
+⭐ **Latest of the day: `finapp-00336-77c`** (image `finapp:326afff`) — see the continuation below; the
+figures in the rest of this entry are as at the first deploy.
+**First deploy of the session: `finapp-00332-24q`, 100% LATEST** — image `finapp:a12a203`
+(digest `sha256:a3ca707c…`); `origin/main` was `a12a203`, so all three agreed. Roots 200 on both hosts, 5 `secretKeyRef`s, and the only WARNING+ lines on
 the revision are **two Kestrel cold-start heartbeat warnings** — thread-pool contention, not ours. ⭐ **No
 archived-purge race at all this deploy**: `PurgeExpiredAsync` 0 frames, `Program.<Main>$` 0,
 `DbUpdateConcurrencyException` 0, `STARTUP TCP probe succeeded` ×2, `Now listening` ×2.
@@ -162,7 +164,44 @@ draft flow and every `<small class="hint">` — the ask was too many *buttons*, 
   into roughly a fifth of the image, so `region` crops and pixel-picking are useless. Computed styles and the
   served CSS text are the reliable read; `read_page` refs and `form_input` work fine.
 
-### Session 120, continued — three more deploys the same day
+### Session 120, continued — four more deploys the same day
+
+#### ★★ The account switcher says which account is on a journey (`326afff` → `finapp-00336-77c`)
+
+Owner: *"can you show the tripmode tag in the dropdown values too"*. It reads like a rendering change and is
+not one — the header badge only ever knew about the account you are **in**.
+
+⚠️⚠️ **Trips are body data.** They live in the encrypted account snapshot, not the relational header, so
+`AccountSummaryDto` cannot carry this and `ListForUserAsync` (which touches only `db.Accounts`) cannot answer
+it. Answering costs **one snapshot read per account** — and a snapshot read is a **KMS unwrap** (a network
+round-trip; the file's own note measures the wrap at **~70ms**) plus a gunzip of a payload measured in
+hundreds of KB.
+
+★ **So it is deliberately NOT a field on the account list.** That list loads at startup and on every account
+switch; hanging N key unwraps off it would slow first paint to draw a badge. New
+`GET /accounts/active-trips?today=` returns one row per **travelling** account and nothing for the rest,
+fetched only when the switcher is opened and cached for the session.
+
+- ⚠️ **The fetch is not awaited before the menu opens.** Rows render immediately, badges arrive a beat later —
+  the names are what the user opened it for.
+- ⚠️ **The cache is NOT cleared on account switch**, unlike the two `Foreign*` caches beside it: those are
+  computed *relative to* the current account and go stale when it changes; this one is a fact about every
+  account. It is cleared on trip **start/finish**, the only two things that can change the answer.
+- ⚠️ **Per-account `try/catch`** — one unreadable or half-migrated snapshot costs its own badge and nothing
+  else. A throw there would break the switcher for every account the user has.
+- `today` is the **caller's** local date, same rule as `/trips`. An awaiting-start trip earns **no** badge,
+  matching the header.
+- `TripModeTag` gained a by-name overload so the switcher's badge cannot drift from the header's.
+
+✅ **Cross-account proven in the browser, not just unit-tested**: Vienna started in *Household*, then switched
+to *Trend demo* → the **Household** row (not the current account) carries the badge titled **"Vienna"** while
+*Trend demo* carries **"Katerini…"**. Geometry at 375px: badge and name share a mid-line to `0.0px`, badge
+above the members line, `flex: 0 0`, zero row overflow. +2 server tests (**472**).
+✅ **Served-bytes proof, the good kind**: `/accounts/active-trips` answers **401 on both hosts** (route
+matched, auth filter ran) against a **200** control from the SPA fallback — and `ActiveTripsAsync`,
+`ResetActiveTrips`, `ToggleAccountDrop` are all in the served WASM.
+
+---
 
 **LIVE: `finapp-00335-8gg`** — image `finapp:c38b729`; `origin/main` is `c38b729`. Roots 200 on both hosts,
 5 `secretKeyRef`s, probe ×2, listening ×2, zero `Program.<Main>$` / `DbUpdateConcurrencyException` /
