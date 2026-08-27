@@ -1,6 +1,82 @@
 # TandemTab (FinApp) — session handoff
 
-Last updated: 2026-08-28 (Session 122 — **R2.5's PWA row is built: TandemTab is an installable app that opens
+Last updated: 2026-08-28 (Session 123 — **the week recap is built, and with it R2.5 has no web→phone rows left.**
+`GET /week-recap` plus a Home card and a sheet on the phone, ported from the web. **569 + 56 + 479 green, Kotlin
+green.** ⭐ **Run on the emulator, not compiled and assumed** — which is the only reason two layout defects and
+one behaviour gap got found. ⬜ **NOT deployed.**)
+
+### ★ The map that owns no rules, which is the whole point
+
+`WeeklyRecapService` already existed and the web calls it directly against the account it holds. So the server
+read resolves ids to names and icons, flattens `Money` to decimals, and **does nothing else** — every judgement
+in the recap stays in the one service both clients now read through.
+
+That matters more than it sounds. The service is ~40 lines of arithmetic and about eight rules that each look
+like a detail until one is missing: which week is covered, that a disbursement is not negative saving, that
+carryover is not income, that "left over" is measured against a **typical** week rather than the one week a
+month that salary lands in. A Kotlin port would have been those eight rules written a second time, drifting the
+first time either side was edited — and drifting *silently*, because both versions would still produce a
+plausible-looking week.
+
+⚠️ **The DTO therefore carries every figure the UI prints, including the ones that are a single subtraction.**
+`Change`, `Net` and `EffectiveIncome` are each trivial to recompute and each has *operands* that were argued
+over. A client that recomputes them is a client that can pick different ones.
+
+★ **Twenty domain tests already cover the arithmetic**, so the seven new API tests deliberately do not re-test
+it. They pin what is only true at the boundary: that ids arrive already named and iconed, that the **caller's**
+date decides the week, and that both kinds of empty report `IsEmpty`.
+⚠️ **One of those tests failed first and the test was wrong, not the code.** I asserted a fresh account echoes
+its currency; it does not, because with no snapshot the route short-circuits before the map runs. There are two
+empty paths that do not answer alike, so the test now pins **both** and says which gate a client may trust.
+
+### ⭐ What running it found
+
+**A stale card, and it is the ordinary case.** The recap is cached per account — it is not period-scoped, so
+paging the month must not refetch it — but an expense **dated into the covered week** does change it. That is
+filing Saturday's lunch on Monday, or correcting a date, and without a re-read the card stays wrong until the
+next account switch. Now: a write re-reads only when a date falls inside the covered week, which is a string
+comparison and no request at all for an expense dated today.
+✅ **Seen working**: a €30 expense back-dated to 26 Aug moved the card **€1,970 → €2,000 in place**, no switch.
+
+⚠️ **Two layout defects that reading the code could not show.** The sheet's four tiles use `surfaceVariant` on a
+`surface` sheet, which in the dark theme is so close to the background that they read as loose text rather than
+as four figures — the web's `.wk-tile` is a bordered card and now so is this. And the two tiles in a row drew at
+**different heights**, because only one of them carries a footnote. Both fixed, both invisible in a diff.
+
+★ **The gate is inherited, and it is why the card took three attempts to see at all.** The web only draws the
+recap when no journey is running, and both fixture accounts had a live trip. That is correct behaviour on both
+clients — while you are away, last week at home is the least interesting thing on the screen — but it means the
+card cannot be verified without either ending a trip or moving past one.
+
+#### How it was verified
+
+Emulator `tandemtab_test` against a local server, account *Trend demo*, **device clock moved to 2 Sep 2026** so
+both fixture trips had ended and the covered week (24–30 Aug) held real data. That also exercises the contract's
+own claim that the **caller's** date picks the week, since the server was never told anything else.
+
+- Card: €1,970.00, "€1,951.25 more than the week before" in the warn colour, "Most of it 🍴 Food".
+- Sheet: the income tile reads **"Typical income"**, not "Money in" — the server said `incomeIsTypical`, and the
+  same figure under the other label would be a claim that money arrived. Left over −€1,371.73 "vs a typical
+  week". "3 transactions · €656.67 on average". Biggest: Food, *Dinner with Ana*, €1,950.00, Thu 27 Aug. No
+  **Labels** section, because the account does not tag — which is the normal case, not a gap.
+- Dismissal: ✕ retires the card and it is **still gone after a full restart** (per device, per account, keyed by
+  the week's start so next Monday's card arrives on its own).
+
+⚠️ **Fixture residue, deliberate:** *Trend demo* now carries a **€30 Food expense dated 26 Aug** (the
+invalidation evidence), and that account's recap is **dismissed** for the week of 24 Aug in the emulator's prefs.
+⚠️ **A third account cannot be created as `refund9`** — it is a `@test.local` cohort, so Free, and account #3 is
+Pro-gated. That is what ruled out a clean throwaway account for this.
+
+#### Next session
+1. ⬜ **Deploy this** — built, green, unshipped. The phone half needs an `android-v*` tag as well; the repo still
+   has **zero tags**.
+2. ⬜ R2.5's remaining rows are all phone→web now: **always-visible milestones** and an **auto-mask trigger**.
+3. ⬜ The phone's account switcher still has no trip-mode badge — and the parity scanner now names it:
+   `GET /active-trips` is the 8th uncalled route.
+
+---
+
+Previously: 2026-08-28 (Session 122 — **R2.5's PWA row is built: TandemTab is an installable app that opens
 with no connection at all.** Manifest, three rasterised icons, a maskable one, the iOS tags, a live
 `theme-color`, and a service worker that precaches the published app. **569 + 56 + 472 green.**
 ⭐ **Proven with the server process killed, in a production-shaped run: the app boots and renders the whole

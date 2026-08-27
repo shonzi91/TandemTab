@@ -455,8 +455,10 @@ fund rows and the Home sheet), and ⚠️ **there are now two income editors** �
 **Web → phone.** Three are **server-read rows wearing Kotlin clothes** and must not be sized as client work:
 **Trends** (`TrendRows()` walks `State.Account.Periods`; no thin contract carries per-period totals), the
 **whole-stack payoff plan** (avalanche/snowball, debt-free date, clearing order — the server exposes only
-*per-bucket* `/savings/{id}/payoff`, which is likely most of QUEUE #8), and the **week recap**. ★ The first two
-**batch into one server slice** — both are "per-period aggregates the thin contracts don't carry". Three are
+*per-bucket* `/savings/{id}/payoff`, which is likely most of QUEUE #8), and the **week recap** (✅ all three done —
+the first two in S118, the recap in S123). ★ The first two **batch into one server slice** — both are "per-period
+aggregates the thin contracts don't carry"; the recap did **not** batch with them, because its unit is a *week*
+that straddles two periods for roughly a quarter of the year. Three are
 client rows: the **income list** (✅ done S117), the **live-trip hero** on Home (✅ done S117), and a **visible door to the
 Breakdown** (✅ **done S117** — see below; its only route in had been an undiscoverable left-swipe, itself one of
 QUEUE #1's unverified gesture risks).
@@ -493,11 +495,42 @@ plan keeps paying the cleared debt's installment onto the next one, and the do-n
 run its own installment out. Found by reading both against one live account, never by reasoning about either
 alone. It is now a sentence on the sheet, a warning on `DebtPlanDto.PaceMonths`, and a test.
 
-**⬜ What is left in this phase**: the **week recap** (the third server-read row, not batched with the two above);
-the phone→web rows (**always-visible milestones**, an **auto-mask trigger**); and the last of T0 — the writes that
-are still keyless (see below). ✅ The bills-card disagreement is **settled and built** (see the Phone → web
-paragraph), all three client rows are done, **T0's duplicate-expense bug is closed**, the server slice is done,
-and ✅ **the PWA shell landed (S122)** — see below.
+**⬜ What is left in this phase**: the phone→web rows (**always-visible milestones**, an **auto-mask trigger**);
+and the last of T0 — the writes that are still keyless (see below). ✅ The bills-card disagreement is **settled and
+built** (see the Phone → web paragraph), all three client rows are done, **T0's duplicate-expense bug is closed**,
+the server slice is done, ✅ **the PWA shell landed (S122)**, and ✅ **the week recap landed (S123)** — which was
+the third and last server-read row, so **every web→phone row in this phase is now built**.
+
+#### ✅ The week recap (S123) — the last server-read row
+
+`GET /accounts/{id}/week-recap` returns "your week in money" for the last completed Monday–Sunday, and the phone
+draws it as a Home card with a sheet behind it, ported from the web's `week-recap` section and `Modal.WeekRecap`.
+
+★ **The map owns no rules.** Every judgement — which week is covered, that a disbursement is not negative saving,
+that carryover is not income, that "left over" is measured against a *typical* week rather than the one salary
+lands in — already lived in `WeeklyRecapService`, which the web calls directly against the account it holds. The
+server read resolves ids to names and icons and flattens `Money` to decimals; **nothing else**. That is what makes
+it a shared computation rather than a description implemented twice. Twenty existing domain tests cover the
+arithmetic, so the seven new API tests cover only what is true at the boundary.
+
+⚠️ **The DTO carries every figure the UI prints, including the ones that are one subtraction.** `Change`, `Net`
+and `EffectiveIncome` are each trivial to recompute and each has *operands* that were argued over; a client that
+recomputes them is a client that can pick different ones, which is how one week comes to read differently on two
+screens with nothing saying which is lying.
+
+★ **Not period-scoped, and that shapes the client.** The covered week is the same whichever month is on screen, so
+the phone caches it per account rather than refetching on every period page — but it **does** re-read after an
+expense write whose date falls inside the covered week. That is the "filed Saturday's lunch on Monday" case, and
+without it the card stays wrong until the next account switch. An expense dated today — nearly all of them —
+skips the request entirely.
+
+✅ **Driven on the emulator against a local server**, not compiled and assumed: the card renders €1,970 with
+"€1,951.25 more than the week before" and the top category's own icon; the sheet's income tile reads **"Typical
+income"** rather than "Money in" because the server said `incomeIsTypical`; a €30 expense back-dated into the
+covered week moved the card to €2,000 **in place, with no account switch**; and dismissal survives a full
+restart. ⚠️ Two things only the device showed: the tiles had **no visible container** in the dark theme
+(`surfaceVariant` on a `surface` sheet), and the two tiles in a row drew at different heights because only one
+carries a footnote. Both fixed.
 
 **Phone → web.** The **always-visible milestones line** (the phone's rule is better and `HomeScreen.kt` argues
 why); an auto-mask trigger to match the phone's face-down sensor; and ⚠️ **the bills card, which is a genuine
