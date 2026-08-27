@@ -6,7 +6,10 @@ with no connection at all.** Manifest, three rasterised icons, a maskable one, t
 ⭐ **Proven with the server process killed, in a production-shaped run: the app boots and renders the whole
 landing page.** ⚠️ Two traps found on the way, both of which look exactly like success until you go offline —
 the MSBuild property that does nothing without its item, and a settings file whose only job is to exist.
-⬜ **NOT deployed** — built, verified locally, and waiting on a deploy authorization.)
+✅ **LIVE: `finapp-00338-7mq`, 100% LATEST** — image `finapp:f399354`; `origin/main` is `f399354`, so all three
+agree. Roots 200 on both hosts, 5 `secretKeyRef`s, **zero WARNING+ lines**, no purge race.
+⭐⭐ **And the deployed site was proven offline on itself**: with `tandemtab.com` mapped to a dead port,
+**tandemtab.com renders its whole landing page** from a worker it installed minutes earlier.)
 
 ### ★★ The two things that looked like success and were not
 
@@ -110,12 +113,30 @@ costs whatever was typed into an open form.
   control measuring byte-identical to a nonsense family — so **whether Quicksand actually renders is still
   unverified**, and it wants a real browser rather than a guess either way.
 
+#### ✅ DEPLOYED — `finapp-00338-7mq`, 100% LATEST
+
+Image `finapp:f399354` (digest `sha256:a17f3e17…`); `origin/main` is `f399354`. Roots **200** on both hosts,
+**5** `secretKeyRef`s, `STARTUP TCP probe succeeded` ×2, `Now listening` ×2, **zero WARNING+ lines**, and no
+purge race at all (`PurgeExpiredAsync` 0, `Program.<Main>$` 0, `DbUpdateConcurrencyException` 0).
+
+⭐ **The served-bytes proof for this one is the trap itself.** A matching revision proves nothing here, because
+the failure mode I spent the session finding is *shipping the wrong worker*. So the probe is the worker's own
+first line: `/* Manifest version: x6lnjoie */`, stamped by publish, **matching `service-worker-assets.js`'s
+`"version"` exactly** on both hosts — and the served file **does not** contain `deliberately inert`, which is
+the development twin's opening comment. **94 assets** in the manifest on both hosts; `index.html` carries
+`rel="manifest"`, `name="theme-color"` and the registration call.
+
+⭐⭐ **Then the real test, on the deployed site.** A throwaway Chrome profile visited `tandemtab.com` once
+(112 MB of profile, worker installed), then loaded it again with
+`--host-resolver-rules="MAP tandemtab.com 127.0.0.1:1"` — the origin itself pointed at a dead port, fonts too.
+**The whole landing page rendered.** Not a local rig, not a stub: the production origin, unreachable, serving
+itself out of its own cache.
+
 #### Next session
-1. ⬜ **Deploy this** — it is built, green and unshipped. Then re-verify on the served bytes: `manifest.webmanifest`
-   and `service-worker-assets.js` should both be 200 on **both** hosts, and the worker should carry the
-   `/* Manifest version: … */` stamp publish puts on line 1.
-2. ⬜ The **week recap** — the last server-read row of R2.5.
-3. ⬜ The phone's account switcher still has no trip-mode badge; the web gained one in `326afff`.
+1. ⬜ The **week recap** — the last server-read row of R2.5.
+2. ⬜ The phone's account switcher still has no trip-mode badge; the web gained one in `326afff`.
+3. ⬜ Whether Quicksand actually renders (see above) — one real browser, five minutes, and it either matters or
+   is struck off for good.
 
 ---
 
