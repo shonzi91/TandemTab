@@ -1,6 +1,125 @@
 # TandemTab (FinApp) — session handoff
 
-Last updated: 2026-08-27 (Session 121 — **the phone's two carried items were run rather than compiled, and
+Last updated: 2026-08-28 (Session 122 — **R2.5's PWA row is built: TandemTab is an installable app that opens
+with no connection at all.** Manifest, three rasterised icons, a maskable one, the iOS tags, a live
+`theme-color`, and a service worker that precaches the published app. **569 + 56 + 472 green.**
+⭐ **Proven with the server process killed, in a production-shaped run: the app boots and renders the whole
+landing page.** ⚠️ Two traps found on the way, both of which look exactly like success until you go offline —
+the MSBuild property that does nothing without its item, and a settings file whose only job is to exist.
+⬜ **NOT deployed** — built, verified locally, and waiting on a deploy authorization.)
+
+### ★★ The two things that looked like success and were not
+
+**1. `<ServiceWorkerAssetsManifest>` on its own does nothing, and says nothing.** The property is what every
+guide names, so that is what I set. Publish then wrote `service-worker-assets.js` into `obj/` — proof the
+targets ran — and shipped the **development** worker to `wwwroot` anyway. The swap and the manifest copy hang
+off a separate **item**:
+
+`<ServiceWorker Include="wwwroot\service-worker.js" PublishedContent="wwwroot\service-worker.published.js" />`
+
+★ **What makes this worth writing down is the failure's shape.** The app would have registered a worker that
+does nothing, Chrome would still have offered to install it (the inert dev worker has an empty `fetch`
+listener, which is the whole installability bar), and the only symptom would have been that offline did not
+work — on a feature whose entire point is offline. **Caught by reading the published output**, not the build
+log, which was clean and green both times.
+
+**2. A missing `appsettings.{Environment}.json` is a 404 online and a failed fetch offline.** The host stamps
+the client's environment, so the deployed app asks for `appsettings.Production.json` at boot — a file that
+**did not exist in this repo**. Online that is a 404 and the config loader shrugs. Offline the same request is
+a network error, and the loader does not survive it: the app stopped dead at **"Loading…" under the error
+bar**, on a dark themed page served perfectly well from the cache.
+
+⭐ **The diagnosis came from an experiment, not from reading**: I put the one settings file my worker was
+excluding back into the precache, reinstalled, killed the server — and the app booted. That named the cause in
+one run after a lot of wrong guesses (I had been hunting a duplicate in the asset list).
+✅ `wwwroot/appsettings.Production.json` now exists **purely to be fetchable**; its value is the same
+same-origin fallback `Program.cs` already applies. Delete it and offline start breaks and nothing else does.
+⚠️ And the exclusion that caused it is gone: I had left `appsettings.Development.json` out of the cache on the
+reasoning that a developer's localhost address should not ride along to a user's phone. It ships in the
+published output either way, the production client never asks for it, and excluding it made **dev-offline
+behave differently from prod-offline** — which is exactly what hid the real fault.
+
+### What was built
+
+| Piece | Note |
+|---|---|
+| `manifest.webmanifest` | name, `scope: /`, `standalone`, the dark ground `#0f1322` as background + theme |
+| `icon-192` / `icon-512` / `icon-maskable-512` | rasterised from the existing `favicon.svg` mark |
+| `apple-touch-icon` + `apple-mobile-web-app-*` | iOS reads **none** of the manifest — the flag, title and icon all have to be repeated in `<head>` |
+| `theme-color`, kept live | `finappSetTheme` repaints it; a static tag leaves an installed light-theme app wearing a dark title bar |
+| `service-worker.published.js` | precaches the published app (**94 entries, ~13.7 MB**), cache-first, one generation at a time |
+| `service-worker.js` | the inert development twin — its empty `fetch` listener is load-bearing, not decoration |
+
+⚠️ **No `orientation` and no `shortcuts`, on purpose.** A locked orientation would fight the desktop install of
+a responsive app, and the app has **one route** whose tabs are a `localStorage` preference — there is no URL to
+deep-link a tab to, so every shortcut would land on the same screen.
+
+★ **The rule the stock Blazor worker gets wrong for this app.** It answers *every* navigation with
+`index.html`. This app serves four real pages of its own — `privacy.html`, `terms.html` and their `.bg`
+twins — linked from `AuthPanel`, `Landing`, `MainLayout` and `Dashboard`. The stock rule would have replaced
+all four **with the app**, offline and online alike. Navigations to a path ending in `.html` now get that page.
+
+⚠️ `ignoreSearch` on the cache lookup is also load-bearing: `index.html` asks for `css/app.css?v=45` (the
+manual cache-bust) while the manifest lists the file without a query. The probe measured both —
+**`cssBusted=true`, `cssExact=false`** — so the flag is the only reason the app is not unstyled offline.
+
+### How it was verified, given the pane cannot do this
+
+⚠️ **The Browser pane refuses every service-worker registration** — including files whose contents are
+unrelated, which is what proves it is the pane and not the code. Cache Storage works there; registration does
+not. Chrome is installed but not connected to the browser tools, so verification went three ways:
+
+1. **A Node harness** running the real published worker with the browser stubbed, against the real asset
+   manifest: 10 routing cases green, including the four legal pages, the `?v=` bust, an API read, a SignalR
+   poll and a POST.
+2. **A probe page driven by real headless Chrome**, reporting through `/client-errors` (the server logs it) —
+   because nothing else could get a result out of a browser I could not script. `installed → activating →
+   activated`, **94 entries**, `index/privacy/manifest/boot = true`, `swSelf = false`, and on the second load
+   `controlled=true`, `css=200`, `boot=200`, **`apiPassthrough=401`** — the 401 being the proof the API read
+   reached the real server instead of a cache.
+3. **The server killed, then screenshots.** Root and a deep SPA route come back **byte-identical**
+   (18,485 bytes), `/privacy.html` comes back as the privacy page, and the production-shaped run **renders the
+   entire landing page** with nothing listening on the port.
+
+⚠️ **One unexplained flake, recorded rather than smoothed over.** Three early Chrome runs failed
+`cache.addAll` with `InvalidAccessError: Entry already exists` on the *first* entry into an empty cache, which
+sent me hunting a duplicate in the asset list that does not exist. Later runs of the **same bytes** installed
+cleanly, twice, in fresh profiles. Chrome was logging
+`ERROR:disk_cache\simple\simple_index_file.cc: Could not create a directory to hold the index file` throughout,
+which is the likeliest culprit — a temp-profile disk-cache problem, not ours. **Do not chase this in the app.**
+
+### ⬜ The known cost, taken deliberately
+
+**One generation at a time.** A new build installs in the background and **waits until every tab of the app is
+closed**. A returning user with the app still open keeps the previous client until they close it. The
+alternative, `skipWaiting`, swaps the runtime under a page that is still using it. ⚠️ This changes the deploy
+story slightly: the server's existing `no-cache, must-revalidate` on `index.html` is no longer the last word
+for an installed user. If it bites, the fix is skipWaiting plus a one-shot reload on `controllerchange`, and it
+costs whatever was typed into an open form.
+
+#### Also seen, not fixed (neither is mine to smuggle in)
+
+- ⚠️ **`app.UseResponseCompression()` sits at line 418, after `UseStaticFiles` at 390** — so the static app is
+  served **uncompressed**, and the `.br`/`.gz` files publish writes beside every asset are never used (classic
+  `UseStaticFiles` does not negotiate them). That is why the precache is 13.7 MB rather than roughly a third of
+  it. Moving one line is not obviously safe and was not measured, so it is written down, not done.
+- ⚠️ **The CSP has `font-src 'self'` and `style-src 'self' 'unsafe-inline'` while `index.html` loads Quicksand
+  from `fonts.googleapis.com`.** On the face of it that blocks the brand font. It does **not** appear to: the
+  Google stylesheet is present in `document.styleSheets` on a production-shaped load and **no CSP violation is
+  reported at all**. I could not finish the measurement — the pane's font metrics are unusable, a `serif`
+  control measuring byte-identical to a nonsense family — so **whether Quicksand actually renders is still
+  unverified**, and it wants a real browser rather than a guess either way.
+
+#### Next session
+1. ⬜ **Deploy this** — it is built, green and unshipped. Then re-verify on the served bytes: `manifest.webmanifest`
+   and `service-worker-assets.js` should both be 200 on **both** hosts, and the worker should carry the
+   `/* Manifest version: … */` stamp publish puts on line 1.
+2. ⬜ The **week recap** — the last server-read row of R2.5.
+3. ⬜ The phone's account switcher still has no trip-mode badge; the web gained one in `326afff`.
+
+---
+
+Previously: 2026-08-27 (Session 121 — **the phone's two carried items were run rather than compiled, and
 running them found a bug neither of them was about.** Then the three standing web items: the closed-period
 refund door is built, the edit form's date is clamped, the `.bak` files are gone, and the fourth turned out
 to be **already fixed**. **569 + 56 + 472 green, Kotlin green.**

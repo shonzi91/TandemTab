@@ -494,10 +494,10 @@ run its own installment out. Found by reading both against one live account, nev
 alone. It is now a sentence on the sheet, a warning on `DebtPlanDto.PaceMonths`, and a test.
 
 **⬜ What is left in this phase**: the **week recap** (the third server-read row, not batched with the two above);
-the **PWA** shell (manifest, service worker, `theme-color`); the phone→web rows (**always-visible milestones**, an
-**auto-mask trigger**); and the last of T0 — the writes that are still keyless (see below). ✅ The bills-card
-disagreement is **settled and built** (see the Phone → web paragraph), all three client rows are done, **T0's
-duplicate-expense bug is closed**, and the server slice is done.
+the phone→web rows (**always-visible milestones**, an **auto-mask trigger**); and the last of T0 — the writes that
+are still keyless (see below). ✅ The bills-card disagreement is **settled and built** (see the Phone → web
+paragraph), all three client rows are done, **T0's duplicate-expense bug is closed**, the server slice is done,
+and ✅ **the PWA shell landed (S122)** — see below.
 
 **Phone → web.** The **always-visible milestones line** (the phone's rule is better and `HomeScreen.kt` argues
 why); an auto-mask trigger to match the phone's face-down sensor; and ⚠️ **the bills card, which is a genuine
@@ -514,10 +514,42 @@ living behind it made a single silent gesture regression enough to hide them, so
 tappable to the same sheet** — a second, visible door, no new chrome. (A third already existed and had been
 overlooked in the sweep: Account settings → *Recurring bills & income*.)
 
-**⭐ The web is not a PWA** — no manifest, no service worker, no `theme-color`, no `apple-mobile-web-app-*`. With
-iOS on hold indefinitely, **the mobile web *is* the iOS product**, and it cannot be installed. The responsive CSS
-is real (13 rules at `max-width: 560px`, plus `pointer: coarse` and `hover: none` branches), so the *looking
-right* work is largely done and the *being an app* work has not started. Pairs with R7's Android ship.
+**⭐ The web was not a PWA** — no manifest, no service worker, no `theme-color`, no `apple-mobile-web-app-*`. With
+iOS on hold indefinitely, **the mobile web *is* the iOS product**, and it could not be installed. The responsive
+CSS was already real (13 rules at `max-width: 560px`, plus `pointer: coarse` and `hover: none` branches), so the
+*looking right* work was largely done and the *being an app* work had not started. Pairs with R7's Android ship.
+
+#### ✅ Built, Session 122 — and it opens with no connection at all
+
+`manifest.webmanifest` (name, scope, `standalone`, the dark ground as `background_color`), three PNG icons
+rasterised from the existing `favicon.svg` mark (192, 512, and a **maskable** 512), an `apple-touch-icon` plus the
+`apple-mobile-web-app-*` tags iOS needs because it reads none of the manifest, and a `theme-color` that
+**`finappSetTheme` keeps in step** — a static tag would otherwise leave an installed light-theme app wearing a
+dark title bar. The worker precaches the published app (**94 entries, ~13.7 MB**) and serves it cache-first.
+
+⭐ **Measured with the server process killed, in a production-shaped run:** the app **boots and renders the full
+landing page**, `/some/deep/route` returns byte-identical index.html, and `/privacy.html` still returns the
+**privacy page**. That last one is not free — the stock Blazor worker answers *every* navigation with index.html,
+which would have replaced all four legal pages (linked from `AuthPanel`, `Landing`, `MainLayout` and `Dashboard`)
+with the app.
+
+⚠️⚠️ **Two traps, both of which look exactly like success until you go offline:**
+1. **`<ServiceWorkerAssetsManifest>` alone does nothing.** The swap and the manifest copy hang off a
+   `<ServiceWorker Include=… PublishedContent=…>` **item**. With the property alone, publish still writes
+   `service-worker-assets.js` into `obj/` and then ships the **development** worker — an app that registers an
+   inert worker, caches nothing, and is indistinguishable from a working PWA from the outside. Found by reading
+   the published output, not the build log.
+2. **A missing `appsettings.{Environment}.json` is a 404 online and a *failed fetch* offline**, and the config
+   loader does not survive the second. The host stamps the client's environment, so the deployed app asks for
+   `appsettings.Production.json` — which **did not exist**. Offline the app stopped at "Loading…" under the error
+   bar. `wwwroot/appsettings.Production.json` now exists for the sole purpose of being fetchable; deleting it
+   breaks offline start and nothing else.
+
+⬜ **The known cost, accepted deliberately:** one generation at a time. A new build installs in the background and
+**waits until every tab of the app is closed**, so a returning user with the app open keeps the previous client
+until they close it. `skipWaiting` would swap the runtime under a page still using it, which is worse. If this
+ever bites, the fix is the controlled-reload pattern (skipWaiting + a one-shot reload on `controllerchange`), and
+it costs an in-progress form.
 
 **Also in this phase (T0 of the offline work — a bug fix, not a feature).** ⛔ **There are no idempotency keys
 anywhere.** `AddExpenseRequest` carries no client id and the handler does `new Expense(...)`, so a write retried
@@ -614,8 +646,10 @@ invisible-until-useful; a property on something that already exists, not a new s
 
 - ⛔ **No idempotency keys** — pulled forward into R2.5 above, because it is a bug today.
 - ⛔ **Android has no local persistence**: `data/` holds `TokenStore` and nothing else. Every screen is a live read.
-- ⛔ **The web has no service worker**, so the WASM shell will not boot offline — ★ **the web holds the entire
-  account and cannot start; the phone can start and holds nothing.** The PWA row in R2.5 is the first half of this.
+- ✅ **No longer true as of S122: the web has a service worker and the shell boots offline** — verified with the
+  server killed. ★ The old asymmetry (*"the web holds the entire account and cannot start; the phone can start and
+  holds nothing"*) is now half closed: the web **starts**. What it still has offline is **nothing to show** — no
+  snapshot in IndexedDB, so it starts at the landing page and every read fails. That remainder is T1 below.
 - ⚠️⚠️ **Shared accounts are the hazard, and sharing is the Pro feature.** One serialized aggregate per account,
   `Version` optimistic concurrency, a hard 409 on the whole-snapshot path. One member abroad and offline for a
   week — a deferred *snapshot* push on reconnect would **silently erase the partner's month**. **Therefore an
@@ -627,8 +661,8 @@ invisible-until-useful; a property on something that already exists, not a new s
   exactly as R4's new sub-processor does. Not a footnote.
 
 **Scope here (T1):** Android persists last-good DTOs per screen and renders them behind an *"as of 14:20"*
-staleness banner, with a durable outbox for **expense adds only**; web gets the PWA shell plus the last snapshot
-in IndexedDB, **read-only** offline.
+staleness banner, with a durable outbox for **expense adds only**; web gets ~~the PWA shell plus~~ (✅ shell done
+S122) the last snapshot in IndexedDB, **read-only** offline.
 
 ⚠️ **Product call for R5, not for the build:** Trip Mode is a plausible **Pro** feature, since trips already are.
 Decide it when the split is frozen.
