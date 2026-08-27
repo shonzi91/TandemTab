@@ -1,6 +1,113 @@
 # TandemTab (FinApp) — session handoff
 
-Last updated: 2026-08-27 (Session 120 — **three owner-reported UI bugs fixed, and a written proposal for the
+Last updated: 2026-08-27 (Session 121 — **the phone's two carried items were run rather than compiled, and
+running them found a bug neither of them was about.** Then the three standing web items: the closed-period
+refund door is built, the edit form's date is clamped, the `.bak` files are gone, and the fourth turned out
+to be **already fixed**. **569 + 56 + 472 green, Kotlin green. Not deployed** — two commits sit on `main`
+ahead of `finapp-00336-77c`.)
+
+### ★★ The emulator run — and the bug that was not on the list
+
+Both carried Session 120 items are now **seen working**, against a local server on the emulator:
+
+- **The cross-period refund picker** reaches back to **May** from the phone. Taking €20 off the **12 Jul**
+  charge moved it €1,420 → €1,400 and credited the current period's wallet by exactly €20 — a closed period
+  two months back, driven from the review sheet with no income row minted.
+- **The bank filing clock** stamps for real: two rows the feed gave no time (`PINGO DOCE EMU`, `CAFE EMU TWO`)
+  came out at **21:51:33** and **21:58:20**, the device clock at the moment each was confirmed.
+
+⭐ **And the run found what reading could not.** After filing either one, the wallet on screen kept its old
+figure. Server −1,411.15, screen **−1,398.75**. The four bank-sheet writes invalidate rather than re-read:
+`wallets.loaded = false` only arms the **next navigation**, and the one screen that cannot navigate is the
+**Wallets tab — which is where the bank sheet is opened from**. Leaving the tab and coming back showed the
+right number, which is the whole diagnosis: the data was never wrong, the screen had no reason to ask again.
+
+⚠️⚠️ **`confirmPendingExpense` was the worse half — it never set the flag at all**, so its wallet stayed
+wrong through a **full tab round-trip**, and only a period change, an account switch or a restart corrected
+it. All four now force a `loadWallets(true)`, which also refreshes the income list on the credit path.
+✅ Re-verified after the fix: **−1,411.15 → −1,418.75** on a €7.60 confirm, sheet closed, tab never left.
+
+⚠️ **The fixture trap that cost the first twenty minutes:** the phone was signed in as `trendy7@test.local`,
+whose **email is not verified** — every bank endpoint sits behind `RequireVerifiedEmailAsync`, the status read
+fails, `loadBank` falls back to `enabled = false`, and the whole feature **hides itself silently**. There is no
+error and no empty state; the Wallets tab simply has no bank row. Sign in as `refund9` (verified) instead.
+⬜ **Worth a thought later:** a feature that hides on a *transport* failure is indistinguishable from a feature
+you do not have. Not fixed here — it is the documented gate, not a bug.
+
+★ **Also seen, not fixed:** the phone's account switcher carries **no trip-mode badge**, while `326afff` gave
+the web one the same day. Household was on day 3 of Vienna and its row said nothing.
+
+### The three web items, and the fourth that was already done
+
+| # | Item | Outcome |
+|---|---|---|
+| 1 | A door to "money came back" on a **closed** period's expense | ⭐ Built — below |
+| 2 | Edit-expense's date has no `min`/`max` while Add clamps | ✅ Clamped |
+| 3 | `.bak` files shadow every grep over Dashboard | ✅ 15 of them gone |
+| 4 | An expense **booked ahead** can't reach an upcoming trip | ⬜ **Not reproducible — already fixed** |
+
+#### ⭐ 1 — the door was the only thing missing
+
+A closed period's row offered exactly **one** action, *Label expense*. So the owner's case — *"I paid two
+months ago for a group and a member gave me their part this one"* — had to be filed from the bank review or
+from Add income, **both of which start from the money arriving rather than from the charge it belongs to**.
+
+★ **Everything under the new button was already cross-period.** `RecordRefund` searches every period, the
+route is addressed by **expense id** rather than by the open one, `Period.SetRefund` takes `allowClosed`, and
+there is a domain test literally named `A_closed_period_is_no_obstacle_to_recording_what_a_purchase_cost`.
+The **phone** could do this from its picker while the web could not. One button, no new mechanism.
+
+The row wears the amount already off it (*"€20.00 came back — record more"*) because recording **accumulates**
+— a bare *Refund* would read as replace.
+
+✅ **Driven from the closed month's own row on a running server:** July **€1,400 → €1,385**, refunded
+**20 → 35**; this period's balance **−1,460.75 → −1,445.75**; **this period's spent unchanged**.
+⚠️ **A claim I had to correct against the measurement:** my first comment said the closed month's own figures
+stay put. They don't — July's spent went 1,400 → 1,385 and its carried line 50 → 65, which is the *honest*
+outcome (the month really did cost less) and **not** a double count: the €15 shows up once on each side of
+the same boundary, and `MoneyIn − Spent = Current` still holds (2,535 − 3,980.75 = −1,445.75).
+
+#### 2 — the min/max IS the validation
+
+Nothing below that input checks the date. `Period.AddExpense` validates currency and open-ness **but not the
+day**, and the PUT route edits `account.CurrentPeriod` unconditionally — so a date typed outside the period
+was stored verbatim on a row that **stays in this period**. An expense dated 5 Sep could sit inside August and
+count toward it. ✅ Measured after: `min=2026-08-01`, `max=2026-08-31`, matching Add exactly.
+
+#### 4 — struck off by measurement, not by fixing
+
+Built the exact reported state (one **upcoming** trip, nothing running, an expense dated 5 Aug that no trip
+covers) and the picker **renders with the upcoming trip in it**. Attaching worked end to end: the expense
+landed on the trip as **prePaid €42** — "booked ahead". S120's own item 4, which merged the two trip rows
+behind one `FormTripOptions.Count > 0 || VisibleForeignTrips.Count > 0` gate, closed it; the note was written
+against the pre-merge code. ★ The same run confirmed S120's date filter from the other side: a *finished*
+Household trip appeared in the row only once the date moved to a day it **covers**.
+
+#### ⬜ Not deployed
+
+`178b304` (phone) and `64e43ea` (web) are on `main`; live is still `finapp-00336-77c` (`326afff`).
+
+#### Fixture notes for whoever runs this next
+
+- `refund9` / **`Testpass123`** now signs in — the password hash was replaced from a throwaway account, which
+  was then deleted. Verified email, owns *Household* and *Trend demo*.
+- ⚠️ **This session's residue in the local DB:** the 12 Jul charge carries **€35 back** (€20 from the phone,
+  €15 from the web) and August holds a **€12.40** and a **€7.60** bank-filed expense with real filing clocks.
+  All four are the evidence, not accidents.
+- ✅ **Restored:** the Katerini trip (active, 25→29 Aug, started 27th) after being finished for the item-4
+  test, the temporary `PlanOverrides` Pro row (creating a trip is Pro-gated), and the test trip and its €42.
+- ⭐ **There IS a `sqlite3` on this box** — `%LOCALAPPDATA%\Android\Sdk\platform-tools\sqlite3.exe`. The older
+  note claiming there is none, and routing through gcloud's bundled python, is stale.
+
+#### Next session
+1. ⬜ **Deploy** — two commits are unshipped.
+2. ⬜ The phone's account switcher has no trip-mode badge; the web gained one in `326afff`.
+3. ⬜ Consider whether a bank feature that **hides itself** when its status read fails should say something
+   instead — today an unverified email and a dead network look identical to not having the feature.
+
+---
+
+Previously: 2026-08-27 (Session 120 — **three owner-reported UI bugs fixed, and a written proposal for the
 fourth.** Trip-card chrome fixed for hover and touch; refund renamed, promoted onto one row, and reachable
 from Add income; the expense form stops offering trips that have nothing to do with the expense's date.
 **569 + 56 + 472 green, pairscan 0.**
@@ -8525,3 +8632,4 @@ EF migrations: `dotnet ef migrations add <Name> --project src\FinApp.Persistence
 - Carryover pool = previous period's leftover; allocations land in the **current** period.
 - **Spend savings**: convert-to-budget releases the earmark at conversion; under-spending a budget flows the remainder into next period's carryover. (The one-off "Spend now" path was dropped from the UI in Session 2.)
 - **Fund transfers** are total-preserving and modelled as a ledger; they never appear in `ExpectedClosingBalance`.
+
