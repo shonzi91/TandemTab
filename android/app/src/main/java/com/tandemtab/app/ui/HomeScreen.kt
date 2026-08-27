@@ -98,6 +98,8 @@ import com.tandemtab.app.data.MilestonesDto
 import com.tandemtab.app.data.PlanFeatures
 import com.tandemtab.app.data.RunwayDto
 import com.tandemtab.app.data.TargetDto
+import com.tandemtab.app.data.WeeklyRecapViewDto
+import kotlin.math.abs
 import com.tandemtab.app.ui.theme.BrandGreen
 import com.tandemtab.app.ui.theme.BrandGreenDark
 import com.tandemtab.app.ui.theme.Mint
@@ -261,6 +263,9 @@ fun HomeScreen(
     onClosePayoff: () -> Unit,
     onOpenBreakdown: (String?) -> Unit,
     onCloseBreakdown: () -> Unit,
+    onOpenWeekRecap: () -> Unit,
+    onCloseWeekRecap: () -> Unit,
+    onDismissWeekRecap: () -> Unit,
     // R2.5 — Trends shares the Breakdown drawer, so one callback drives both the switcher and the range chips
     // inside it. A null range means "leave the range as it is".
     onShowTrends: (Boolean, String?) -> Unit,
@@ -511,6 +516,8 @@ fun HomeScreen(
                             // Same destination as the left-swipe above, which is the point: the gesture stays,
                             // and stops being the only way in.
                             onOpenBreakdown = { onOpenBreakdown(null) },
+                            onOpenWeekRecap = onOpenWeekRecap,
+                            onDismissWeekRecap = onDismissWeekRecap,
                             // Both halves of the web's `ShowTripsTab(id)`: switch tabs, and open that journey's
                             // card. Spending starts on its Trips segment because a trip is open — the flag it
                             // reads is state, not a second navigation argument threaded through the screen.
@@ -760,6 +767,11 @@ fun HomeScreen(
                 onGroupBy = { onOpenBreakdown(it) },
             )
         }
+        if (state.weekRecapOpen) {
+            // The card's own gate already proved there is something to show; guarding again here keeps the sheet
+            // from opening on a null if the account is switched while it is up.
+            state.weekRecap?.let { WeekRecapSheet(recap = it, onDismiss = onCloseWeekRecap) }
+        }
         if (showNotifications) {
             NotificationsSheet(
                 alerts = state.alerts,
@@ -823,6 +835,8 @@ private fun HomePage(
     onOpenBreakdown: () -> Unit,
     onOpenLiveTrip: (String) -> Unit,
     onOpenAchievements: () -> Unit,
+    onOpenWeekRecap: () -> Unit,
+    onDismissWeekRecap: () -> Unit,
     onAcceptInvitation: (String) -> Unit,
     onDeclineInvitation: (String) -> Unit,
     onDismissOnboarding: () -> Unit,
@@ -858,6 +872,17 @@ private fun HomePage(
             // below is being distorted by the trip, so the card that explains that comes first. (The web puts it
             // under its three action buttons; the phone's equivalent is the FAB, which is not in this column.)
             TripHeroCard(state.trips, onOpen = onOpenLiveTrip)
+            // The week recap takes the slot directly under the hero — and only when no journey is running, which
+            // is the web's own gate. While you are away, "last week at home" is the least interesting thing on
+            // the screen, and the two cards are the same shape competing for the same glance.
+            if (state.trips.live == null) {
+                WeekRecapCard(
+                    recap = state.weekRecap,
+                    dismissedFrom = state.weekRecapDismissed,
+                    onOpen = onOpenWeekRecap,
+                    onDismiss = onDismissWeekRecap,
+                )
+            }
             // Order per the design: health score on top, then "on track for", and finally the runway.
             // ⚠️ **Bills are no longer a card here** (owner's call, S117). They live in the notification list —
             // which is where the web has always kept them, with its own `no Home link` comment saying so. The
@@ -1423,6 +1448,105 @@ private fun BreakdownCard(breakdown: BreakdownViewDto?, onOpen: () -> Unit) {
                     Spacer(Modifier.width(8.dp))
                     Text(s.label, fontSize = 12.sp, color = tandem.muted, maxLines = 1, modifier = Modifier.weight(1f))
                     Text(money(s.amount), fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
+                }
+            }
+        }
+    }
+    Spacer(Modifier.height(14.dp))
+}
+
+/**
+ * "Your week in money" — Home's week recap, ported from the web's `week-recap` section (R2.5, the last of the
+ * three server-read rows).
+ *
+ * ★ It is a **look back at a finished week**, not a running total: the covered week is the last completed
+ * Monday–Sunday, so the card says the same thing all week and dismissing it retires it until next Monday. A
+ * recap of the week you are still in changes every time you open it, and its comparison puts three days against
+ * seven — which reads as a spending collapse every Tuesday.
+ *
+ * ⚠️ Three gates, all of them deliberate, and the card draws nothing unless all three pass: the read has landed,
+ * the server says there is something to report ([WeeklyRecapViewDto.isEmpty]), and this week has not already been
+ * waved away. The dismissal is read from prefs in the same pass as the recap, so the card cannot appear and then
+ * vanish a moment later.
+ */
+@Composable
+private fun WeekRecapCard(
+    recap: WeeklyRecapViewDto?,
+    dismissedFrom: String?,
+    onOpen: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val tandem = LocalTandemColors.current
+    val r = recap ?: return
+    if (r.isEmpty || r.from == dismissedFrom) return
+    val money = moneyFormatter(r.currency)
+    val down = r.change < 0.0
+
+    Column(
+        Modifier.fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(16.dp))
+            .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(16.dp))
+            .clickable(onClick = onOpen)
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    "Your week in money",
+                    fontWeight = FontWeight.Bold, fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurface,
+                )
+                Text("${weekDayLabel(r.from)} – ${weekDayLabel(r.to)}", fontSize = 12.sp, color = tandem.muted)
+            }
+            // ⚠️ Dismissal is its own hit target next to the chevron rather than a swipe. It is not destructive —
+            // the card comes back next Monday — so it does not get a confirm; but it is also not something to
+            // find by accident, which is what a swipe on a card in a scrolling column would be.
+            Text(
+                "✕",
+                fontSize = 15.sp, color = tandem.muted,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable(onClick = onDismiss)
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+            )
+            OpenChip()
+        }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(18.dp)) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text("Spent", fontSize = 11.sp, color = tandem.muted)
+                Text(
+                    money(r.spent), fontSize = 16.sp, fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                // Only against a week that actually had spending — the server decides that, not this card.
+                if (r.hasComparison) {
+                    Text(
+                        "${money(abs(r.change))} ${if (down) "less" else "more"}",
+                        fontSize = 10.sp, color = if (down) tandem.positive else tandem.spent,
+                    )
+                }
+            }
+            r.topCategoryName?.let { top ->
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text("Most of it", fontSize = 11.sp, color = tandem.muted)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        CatIcon(r.topCategoryIcon, top, size = 15.dp)
+                        Spacer(Modifier.width(5.dp))
+                        Text(
+                            top, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                    }
+                    Text(money(r.topCategorySpent), fontSize = 10.sp, color = tandem.muted)
+                }
+            }
+            if (r.saved > 0.0) {
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text("Set aside", fontSize = 11.sp, color = tandem.muted)
+                    Text(
+                        money(r.saved), fontSize = 16.sp, fontWeight = FontWeight.Bold,
+                        color = tandem.positive,
+                    )
                 }
             }
         }

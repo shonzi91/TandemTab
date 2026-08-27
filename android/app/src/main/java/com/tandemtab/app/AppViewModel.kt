@@ -12,6 +12,7 @@ import com.tandemtab.app.data.BreakdownViewDto
 import com.tandemtab.app.data.DebtPayoffDto
 import com.tandemtab.app.data.DebtPlanDto
 import com.tandemtab.app.data.TrendsViewDto
+import com.tandemtab.app.data.WeeklyRecapViewDto
 import com.tandemtab.app.data.FundCurrencyEdit
 import com.tandemtab.app.data.ImportRowDto
 import com.tandemtab.app.data.ImportTransactionsRequest
@@ -152,6 +153,15 @@ data class UiState(
     // silently changed what its ring means because of a chip tapped inside a sheet would be a chart that lies.
     // This one is always the default (category) grouping for the period being viewed.
     val homeBreakdown: BreakdownViewDto? = null,
+    // ── The week recap: "your week in money" for the last COMPLETED week.
+    // ⚠️ Not period-scoped, and deliberately not cleared when the period changes. The covered week is the last
+    // completed one whatever month you happen to be browsing, so clearing it on every page would cost a request
+    // to fetch back an identical answer. It IS cleared on an account switch, with everything else that is.
+    val weekRecap: WeeklyRecapViewDto? = null,
+    val weekRecapOpen: Boolean = false,
+    // The Monday of the week the user has already waved away for this account, ISO. Read from prefs when the
+    // account loads; until then the card stays hidden, so it cannot flash on screen and then vanish.
+    val weekRecapDismissed: String? = null,
     // ── Trends, which shares the Breakdown's drawer rather than taking a section of its own. The two answer
     // "where did it go" and "how has it been going" about the same money, and the web pairs them in one glance
     // row for that reason; a second Home card would have been a second thing to scroll past.
@@ -807,6 +817,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         // not the month — and is already invalidated after any expense write by [refreshTripsIfLoaded]. So it
         // costs one request per account per session, and the add sheet was going to pay it anyway.
         loadTrips(false)
+        // The week recap, on the same terms as the trips above and for the same reason: cached per account, so
+        // paging the period does not pay for it again. It answers a question about a week, not about a month.
+        loadWeekRecap(accountId)
         // Alerts are only ever computed for the CURRENT period server-side, so a user browsing a past period would
         // otherwise see this month's warnings attached to a month that already closed. Clear them instead.
         val alerts = if (_state.value.selectedPeriod == null)
@@ -980,7 +993,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 // ...and so do the two cross-period reads. Trends and the debt plan are about the WHOLE of an
                 // account's history, which makes them more misleading than a stale ring, not less: another
                 // account's debt-free date under this one's name is a promise about somebody else's money.
-                trends = null, debtPlan = null,
+                trends = null, debtPlan = null, weekRecap = null, weekRecapDismissed = null,
                 spending = SpendingUi(), goals = GoalsUi(), wallets = WalletsUi(), health = HealthUi(), recurring = RecurringUi(),
                 // Trips belong to the account, not to the period — so they survive paging back through months and
                 // are dropped only when the account itself changes.
@@ -1043,6 +1056,47 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** Today as the server wants it — the caller's own local date, which is what decides a trip's state. */
     private fun todayIso(): String = LocalDate.now().toString()
 
+    /**
+     * Home's week recap. Cached per account: unlike the breakdown beside it this is **not** a per-period read —
+     * the covered week is the last completed one whichever month is on screen — so paging the period must not
+     * refetch it. One request per account per session.
+     *
+     * The dismissal is read from prefs in the same pass rather than separately, so the card's two gates (is there
+     * anything to say, and has it already been waved away) land together and it cannot appear and then disappear.
+     */
+    private fun loadWeekRecap(accountId: String) {
+        if (_state.value.weekRecap != null) return
+        viewModelScope.launch {
+            val dismissed = uiPrefs.getString(recapKey(accountId), null)
+            // Best-effort, exactly like the runway and the targets: a recap that fails to load is a card that is
+            // not there, which is the harmless direction for a look back at a week that has already happened.
+            val recap = runCatching { api.weekRecap(accountId, todayIso()) }.getOrNull()
+            _state.update { it.copy(weekRecap = recap, weekRecapDismissed = dismissed) }
+        }
+    }
+
+    private fun recapKey(accountId: String) = "recap_dismissed_$accountId"
+
+    fun openWeekRecap() = _state.update { it.copy(weekRecapOpen = true) }
+
+    fun closeWeekRecap() = _state.update { it.copy(weekRecapOpen = false) }
+
+    /**
+     * Wave the card away until next Monday. Keyed by the covered week's start rather than by a boolean, so it
+     * retires *this* week's card and the next one arrives on its own — a plain "hidden" flag would need
+     * un-setting by something, and nothing would be watching.
+     *
+     * ⚠️ Per device, in the same prefs file as the theme and the landing tab, for the same reason the web keeps
+     * its twin in localStorage rather than on the account: "have I read this" is a fact about a person, and one
+     * member dismissing the recap must not clear it out from under the other.
+     */
+    fun dismissWeekRecap() {
+        val accountId = _state.value.selectedAccountId ?: return
+        val from = _state.value.weekRecap?.from ?: return
+        uiPrefs.edit().putString(recapKey(accountId), from).apply()
+        _state.update { it.copy(weekRecapDismissed = from) }
+    }
+
     fun loadTrips(force: Boolean = false) {
         val accountId = _state.value.selectedAccountId ?: return
         val cur = _state.value.trips
@@ -1100,6 +1154,26 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
      * any expense write invalidates them — the same lesson as S95's "removing an installment refetches Savings".
      * Silent (no spinner, no error surfaced): a stale trip card is worth fixing, never worth failing a save over.
      */
+    /**
+     * Re-read the recap after an expense write — but **only when the written row could actually be inside the
+     * week it covers**.
+     *
+     * ★ The cheap check is the point. The recap is about a week that has already ended, so an expense dated today
+     * — which is nearly all of them — cannot change it, and refreshing on every write would buy a request that is
+     * guaranteed to return the same answer. What is NOT rare is filing Saturday's lunch on Monday, or correcting
+     * a date; those land in the covered week and the card would otherwise stay wrong until the next account
+     * switch. ISO dates compare lexicographically, which is why this needs no parsing.
+     */
+    private fun refreshWeekRecapIfAffected(vararg dates: String?) {
+        val accountId = _state.value.selectedAccountId ?: return
+        val recap = _state.value.weekRecap ?: return
+        if (dates.filterNotNull().none { it >= recap.from && it <= recap.to }) return
+        viewModelScope.launch {
+            val v = runCatching { api.weekRecap(accountId, todayIso()) }.getOrNull() ?: return@launch
+            _state.update { it.copy(weekRecap = v) }
+        }
+    }
+
     private fun refreshTripsIfLoaded() {
         val accountId = _state.value.selectedAccountId ?: return
         if (!_state.value.trips.loaded) return
@@ -1270,6 +1344,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     )
                 }
                 refreshTripsIfLoaded()   // a row may have been filed onto a journey
+                // …and a row dated back into last week changes the recap, which is the "filed Saturday's lunch
+                // on Monday" case. Dated today — the usual case — this costs nothing.
+                refreshWeekRecapIfAffected(*drafts.map { it.date }.toTypedArray())
                 onDone()
             } catch (e: Exception) {
                 // Some rows may have saved before the failure — reflect those and let the user retry the rest.
@@ -2394,6 +2471,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun deleteExpense(expenseId: String, onDone: () -> Unit = {}) {
         val accountId = _state.value.selectedAccountId ?: return
+        // Read before the row leaves the list — afterwards there is nothing left to ask what week it was in.
+        val goneDate = _state.value.spending.expenses.firstOrNull { it.id == expenseId }?.date
         _state.update { it.copy(spending = it.spending.copy(saving = true, saveError = null)) }
         viewModelScope.launch {
             try {
@@ -2409,6 +2488,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     )
                 }
                 refreshTripsIfLoaded()   // the row may have been on a journey
+                refreshWeekRecapIfAffected(goneDate)
                 onDone()
             } catch (e: Exception) {
                 _state.update { it.copy(spending = it.spending.copy(saving = false, saveError = e.message ?: "Couldn't delete the expense.")) }
@@ -2427,6 +2507,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
      *  list and reflects the recomputed overview; [onDone] fires only on success so the sheet can close. */
     fun editExpense(expenseId: String, req: AddExpenseRequest, onDone: () -> Unit) {
         val accountId = _state.value.selectedAccountId ?: return
+        // Both dates matter: an edit can move a row INTO the covered week or OUT of it, and either changes the
+        // recap. Checking only the new one would leave the card counting an expense that is no longer there.
+        val wasDate = _state.value.spending.expenses.firstOrNull { it.id == expenseId }?.date
         _state.update { it.copy(spending = it.spending.copy(saving = true, saveError = null)) }
         viewModelScope.launch {
             try {
@@ -2442,6 +2525,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     )
                 }
                 refreshTripsIfLoaded()   // an amount change moves its trip's total
+                refreshWeekRecapIfAffected(wasDate, req.date)
                 onDone()
             } catch (e: Exception) {
                 _state.update { it.copy(spending = it.spending.copy(saving = false, saveError = e.message ?: "Couldn't save the change.")) }

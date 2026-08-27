@@ -1372,6 +1372,79 @@ data class TrendsViewDto(
     val rows: List<TrendRowDto> = emptyList(),
 )
 
+// --- The week recap (GET /accounts/{id}/week-recap, R2.5) -----------------------------------------------
+
+/** One label's share of the week. [count] is how many expenses made it up — what separates one big buy from a
+ *  habit, and the reason the sheet can say "4 transactions" beside a total. */
+@Serializable
+data class RecapSliceDto(
+    val id: String = "",
+    val label: String = "",
+    val icon: String? = null,
+    val total: Double = 0.0,
+    val count: Int = 0,
+)
+
+/** The single largest expense of the week. [note] is usually the only thing that names the purchase — without it
+ *  the row reads "Food, €80" and the reader is left to remember which €80. */
+@Serializable
+data class RecapBiggestDto(
+    val amount: Double = 0.0,
+    val categoryId: String = "",
+    val categoryName: String = "",
+    val categoryIcon: String? = null,
+    val date: String = "",
+    val note: String? = null,
+)
+
+/**
+ * "Your week in money" for the **last completed** Monday–Sunday.
+ *
+ * ★ **Every figure this screen prints is a field here and none of them is computed on the phone.** [change],
+ * [net] and [effectiveIncome] are each one subtraction — and each is one whose *operands* were argued over on the
+ * web. Recomputing them here is how the same week comes to read differently on two screens with nothing on
+ * either saying which one is lying. That is also why this is a server read at all: the rules behind these numbers
+ * (which week, what counts as income, what counts as saving) live in one `WeeklyRecapService`, not in two.
+ *
+ * ⚠️ [effectiveIncome] is usually **not** [income]. Salary lands in one week a month, so the literal in-week
+ * income is zero three weeks in four and "left over" would report a loss on every one of them. When the account
+ * has a basis for a steady figure that is used instead and [incomeIsTypical] is true — which the UI **must**
+ * surface, because the tile then means "a typical week" rather than "money that arrived".
+ *
+ * ⚠️ [roundUpsSaved] is a **subset** of [saved], never additional to it. [tags] is empty for most accounts;
+ * that is the normal case and not a gap, so an empty "Tags" heading must not be drawn.
+ */
+@Serializable
+data class WeeklyRecapViewDto(
+    val currency: String = "",
+    val from: String = "",
+    val to: String = "",
+    val spent: Double = 0.0,
+    val previousSpent: Double = 0.0,
+    /** Spent minus the week before. **Negative is the good direction.** */
+    val change: Double = 0.0,
+    /** False when the week before had no spending — the UI then draws no comparison at all, because
+     *  "100% less than last week" for a first week of use is noise wearing the costume of an insight. */
+    val hasComparison: Boolean = false,
+    val topCategoryId: String? = null,
+    val topCategoryName: String? = null,
+    val topCategoryIcon: String? = null,
+    val topCategorySpent: Double = 0.0,
+    val saved: Double = 0.0,
+    val roundUpsSaved: Double = 0.0,
+    val expenseCount: Int = 0,
+    val income: Double = 0.0,
+    val effectiveIncome: Double = 0.0,
+    val incomeIsTypical: Boolean = false,
+    val net: Double = 0.0,
+    val biggest: RecapBiggestDto? = null,
+    val categories: List<RecapSliceDto> = emptyList(),
+    val tags: List<RecapSliceDto> = emptyList(),
+    /** Nothing happened in either week, or the account has no periods. **The card's only gate** — a recap
+     *  reporting zeroes is worse than no recap. */
+    val isEmpty: Boolean = true,
+)
+
 // --- The whole-stack payoff plan (GET /accounts/{id}/savings/plan, R2.5 / QUEUE #8) ---------------------
 
 /** One debt in the plan's clearing order. `clearedInMonth` counts from the plan's start, so 1 is "next month". */

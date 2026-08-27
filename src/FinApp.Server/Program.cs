@@ -998,6 +998,21 @@ accounts.MapGet("/{id:guid}/trends", async (Guid id, DateOnly? from, DateOnly? t
     return Results.Ok(TrendsMap.View(account, from, to, focus, focusId ?? Guid.Empty));
 });
 
+// The week recap: "your week in money" for the last completed Monday–Sunday. The third and last of R2.5's
+// server-read rows, and a server row for the same reason as Trends — WeeklyRecapService walks every period's
+// expenses, savings and contributions, and no thin contract carries a week-shaped total. The week is not a slice
+// of a period either: it straddles two of them for roughly a quarter of the weeks in a year.
+// `today` is the caller's own local date, as on /active-trips: which week counts as "last completed" is a
+// question about the reader's day, and a server in UTC flips it a day early or late for half the world.
+accounts.MapGet("/{id:guid}/week-recap", async (Guid id, DateOnly? today,
+        ClaimsPrincipal user, SnapshotService svc, CancellationToken ct) =>
+{
+    var snap = await svc.GetAsync(user.UserId(), id, ct);
+    if (string.IsNullOrEmpty(snap.Payload)) return Results.Ok(WeeklyRecapViewDto.Empty);
+    var account = AccountSnapshotSerializer.Deserialize(snap.Payload);
+    return Results.Ok(RecapMap.View(account, today ?? DateOnly.FromDateTime(DateTime.UtcNow)));
+});
+
 // Path-B thin-Budgets read: every budgeted category with its coverage. Paired with the budget writes (delta below).
 accounts.MapGet("/{id:guid}/budgets", async (Guid id, int? period, ClaimsPrincipal user, SnapshotService svc, CancellationToken ct) =>
 {

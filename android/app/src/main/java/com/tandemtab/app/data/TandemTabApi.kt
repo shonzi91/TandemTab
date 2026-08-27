@@ -500,6 +500,16 @@ class TandemTabApi(
         return authedGet("/accounts/$accountId/trends" + if (q.isEmpty()) "" else "?" + q.joinToString("&")).body()
     }
 
+    /** "Your week in money" for the last completed Monday–Sunday: what went out, what that left, where it went.
+     *
+     *  [today] is **this device's** date, not the server's, and it is not a nicety — it decides which week counts
+     *  as last completed, so a server in UTC would roll the card over a day early or late for half the world.
+     *
+     *  ⚠️ Not period-scoped. The answer is the same whichever month you are browsing, which is why the caller
+     *  caches it per account rather than refetching it on every period change. */
+    suspend fun weekRecap(accountId: String, today: String): WeeklyRecapViewDto =
+        authedGet("/accounts/$accountId/week-recap?today=$today").body()
+
     /** The saved merchant rules. Used by statement import as well as by bank sync — a rule is the user's filing
      *  decision about a merchant, not a property of the connection, which is why this read is NOT part of the
      *  deferred bank-connection back half. */
