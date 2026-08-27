@@ -1475,6 +1475,8 @@ public sealed class Localizer(IJSRuntime js)
         // Refunds. These shipped untranslated — every one of them rendered its English key in Bulgarian too.
         ["Refund"] = "Върнати пари",
         ["New"] = "Нова",
+        ["Filed automatically at this time"] = "Заведено автоматично в този час",
+        ["Reviewed and filed at this time"] = "Прегледано и заведено в този час",
         ["Settle"] = "Уреди",
         ["{0} settled"] = "{0} уредени",
         ["{0} back"] = "{0} върнати",

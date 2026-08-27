@@ -87,6 +87,8 @@ import com.tandemtab.app.data.ReschedulePeriodRequest
 import com.tandemtab.app.data.SaveSavingBucketRequest
 import com.tandemtab.app.data.StartNextPeriodRequest
 import java.time.LocalDate
+import java.time.LocalTime
+import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -3264,7 +3266,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         _state.update { it.copy(bank = it.bank.copy(handlingId = externalId, error = null)) }
         viewModelScope.launch {
             try {
-                val mut = api.addExpense(accountId, AddExpenseRequest(categoryId, kotlin.math.abs(amount), fundId, date, note?.ifBlank { null }))
+                // ★ Stamp WHEN IT WAS FILED. The feed states a booking date and almost never a clock, so an
+                // imported row used to carry no time at all — showing a blank where every other row shows one and
+                // sorting after everything typed by hand that day. The moment it was confirmed is the one honest
+                // clock such a row has. Matches the web (BudgetingState.ConfirmBankTransaction).
+                val filedAt = LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm:ss"))
+                val mut = api.addExpense(accountId, AddExpenseRequest(categoryId, kotlin.math.abs(amount), fundId, date, note?.ifBlank { null }, time = filedAt))
                 api.ackBank(accountId, externalId, confirmed = true)
                 _state.update {
                     it.copy(

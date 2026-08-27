@@ -1384,7 +1384,11 @@ else
                                 @* When it happened, on rows that know. Leads the sub-line because within a day —
                                    which is how this list is grouped — the clock is what orders the rows, so it is
                                    the one thing that says where you are in the day. Absent, not blank, when unknown. *@
-                                @if (ctx.E.Time is { } rowTime) { <span class="exp-time">@rowTime.ToString("HH:mm")</span> }
+                                @* ⚠️ On a bank row this clock is when the transaction was FILED, not when the
+                                   purchase happened — the feed rarely states one. Same glyph either way, because
+                                   it orders the day the same; the tooltip is what stops it being read as a
+                                   claim about the shop. *@
+                                @if (ctx.E.Time is { } rowTime) { <span class="exp-time" title="@(ctx.E.BankExternalId is null ? "" : ctx.E.AutoFiled ? Loc["Filed automatically at this time"] : Loc["Reviewed and filed at this time"])">@rowTime.ToString("HH:mm")</span> }
                                 <span class="sub-to">@State.FundName(ctx.E.FundId)</span>
                                 @if (ctx.E.IsFromSavings) { <span><Icon Name="coins" /> @Loc["saving"]</span> }
                                 @if (!string.IsNullOrEmpty(ctx.E.Note)) { <span class="sub-note">@ctx.E.Note</span> }

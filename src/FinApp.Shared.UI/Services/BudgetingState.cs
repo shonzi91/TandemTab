@@ -2856,11 +2856,28 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     public Task SelectBankAccount(string bankAccountRef) => api.SelectBankAccountAsync(CurrentAccountId, bankAccountRef);
 
     /// <summary>Turn a staged bank transaction into an expense in the given category/fund, then mark it handled.</summary>
+    /// <param name="time">The time the <b>bank</b> stated, when it stated one. Most feeds report a booking date and
+    /// no clock, so this is usually null — and then the row is stamped with the moment it was filed instead.</param>
+    /// <remarks>
+    /// ★ <b>An imported row used to carry no time at all</b>, which left every bank expense sorting after everything
+    /// typed by hand on the same day and showing a blank where every other row shows a clock. The filing moment is
+    /// the one honest clock such a row has, so that is what it gets — whether it was filed by a rule or confirmed
+    /// by hand, since both are the same act from the ledger's point of view: the moment this transaction became an
+    /// expense.
+    /// <para>⚠️ This is deliberately <b>not</b> the midnight default <see cref="Expense.Time"/> warns against. 00:00
+    /// is a fiction that sorts a whole day's imports above everything logged that morning; the filing time is a real
+    /// event that happened, and it orders the day the way the user actually met these rows.</para>
+    /// <para>⚠️ Safe to default here because <b>no bank path lets the user blank the time</b> — the review modal has
+    /// no time input, it only carries whatever the bank said (see <c>OpenBankConfirm</c>). If one ever gains a time
+    /// field, this fallback has to move behind an explicit "the user left it empty" flag, exactly like
+    /// <c>EditExpenseRequest</c>'s <c>clearTime</c>.</para>
+    /// </remarks>
     // TODO(cutover): rides the local bank-provenance path until AddExpenseRequest carries bankExternalId/autoFiled.
     public async Task ConfirmBankTransaction(string externalId, Guid categoryId, decimal amount, Guid fundId, string? note, DateOnly date, bool autoFiled = false,
         Guid? tagId = null, Guid? tripId = null, TimeOnly? time = null)
     {
-        await AddExpenseWithBankLink(categoryId, amount, fundId, note, date, externalId, autoFiled, tagId, tripId, time);
+        await AddExpenseWithBankLink(categoryId, amount, fundId, note, date, externalId, autoFiled, tagId, tripId,
+            time ?? TimeOnly.FromDateTime(DateTime.Now));
         await api.AckBankTransactionAsync(CurrentAccountId, externalId, confirmed: true);
     }
 

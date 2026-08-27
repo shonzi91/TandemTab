@@ -217,6 +217,14 @@ public sealed class Expense : Entity
     /// without one simply shows no time and sorts after the timed rows on its day.
     /// </para>
     /// <para>
+    /// ★ <b>A bank-imported row is the exception, and it is not a violation of the rule above.</b> When the feed
+    /// states no clock, the row is stamped with the moment it was <i>filed</i> — auto-filed by a rule or confirmed
+    /// in the review list, both being the same event: when this transaction became an expense. That is a real
+    /// thing that happened at a real time, unlike a midnight default, so it orders the day the way the user met
+    /// the rows rather than piling every import above the morning's typing. See
+    /// <c>BudgetingState.ConfirmBankTransaction</c>.
+    /// </para>
+    /// <para>
     /// <b>Deliberately separate from <see cref="Date"/> rather than widening it to a DateTime.</b> The date is what
     /// every period, budget and total in the app keys off, and it is the field a user edits when an entry is on the
     /// wrong day. Time is decoration on the ledger row — it orders a day and jogs the memory — so it is carried
