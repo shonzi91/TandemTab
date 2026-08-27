@@ -26,7 +26,7 @@ bytes, identical on both hosts) contains `VisibleForeignTrips`, `DepRefundPart` 
 | 1 | "fix this UI when hovering/opening in mobile view" | **Three defects in one row** — below |
 | 2 | rename to refund; add it to Add income; refund + settle on one row, higher up | Built, all three parts |
 | 3 | past trips still offered in "Or a trip in another account" | That row had **zero** date filtering |
-| 4 | suggest a way to simplify the expense modals | **Proposal only, by the owner's call** |
+| 4 | suggest a way to simplify the expense modals | Proposed, then **approved and built** — see the continuation below |
 
 ★ **None of the four was already done.** Checked against `QUEUE.md`, `UX-BACKLOG.md`, `BACKLOG.md`,
 `FEATURE-BACKLOG.md` and this file: no row covered any of them. ⚠️ One earlier note reads the other way and
@@ -162,13 +162,108 @@ draft flow and every `<small class="hint">` — the ask was too many *buttons*, 
   into roughly a fifth of the image, so `region` crops and pixel-picking are useless. Computed styles and the
   served CSS text are the reliable read; `read_page` refs and `form_input` work fine.
 
+### Session 120, continued — three more deploys the same day
+
+**LIVE: `finapp-00335-8gg`** — image `finapp:c38b729`; `origin/main` is `c38b729`. Roots 200 on both hosts,
+5 `secretKeyRef`s, probe ×2, listening ×2, zero `Program.<Main>$` / `DbUpdateConcurrencyException` /
+unhandled. Three revisions landed in sequence: `00333-f4j` (item 4), `00334-v8p` (the header), `00335-8gg`
+(the bank clock).
+
+#### ⭐ Item 4 shipped — the expense form stops asking what it already knows (`70a6c87`)
+
+Five cuts, none of which removes a capability. **On a trip 12 stacked blocks → 9; off a trip 12 → 10.**
+
+| Cut | What it was |
+|---|---|
+| **Two trip rows → one** | A foreign chip already names its account, so the "Or a trip in another account" heading said it twice and bought a second unbounded row to do it. ⚠️ Only safe because the date filter landed first. |
+| **Three settled rows → one line** | Category + Change, date + Change, note + "Add a note" all stated things the form knew. One line, one `Change` — and the collapse now applies **off** a trip too, where a date picker, a time picker and an empty note box sat expanded. |
+| **Amount hint chips cut** | Their own comment made the case against them: the amount "is the one field that really changes each time". |
+| **"New" joins the chips** | The two `+` buttons squatting in label rows became the last chip in their own row, dashed. |
+| **"Edit last" cut** | An edit door on a create form, with an obvious other one — the row behind the modal. |
+
+★ **A typed note always reaches the collapsed line** (italic, dimmed, truncating). A note folded behind a
+link is a note nobody can see they wrote. Verified via Repeat: `Food · Today · 15:59 · Dinner with Ana`.
+
+★ **The Pro gate added in item 3 fired for real during this round** — Vienna is a *finished* foreign trip,
+and on the `test` cohort the chip refused to select. That gate did not exist before this session.
+
+⬜ **Left alone on purpose:** recent-category chips, fund chips, the draft flow, every `<small class="hint">`
+— the ask was too many *buttons*, not too many sentences. And the **Edit** modal keeps its date and note
+expanded: editing is precisely when those change, so collapsing there costs a tap instead of saving one.
+
+📐 **Mockups artifact:** https://claude.ai/code/artifact/d86c35f2-317d-4957-8ccd-d24c74cb2d39
+
+#### The Trip-mode badge moves onto the account name's line (`f46dd27`)
+
+Owner: *"account name + tripmode tag on the first (members on the second)"*. The badge was a sibling of the
+whole two-line block, so its cross-axis centre landed **between** the two lines and belonged to neither.
+
+★ **Deleting the old workaround is half the fix.** It carried `align-self: flex-start; margin-top: 3px`,
+which existed only to drag it back up to the name's optical middle from a centre that was wrong. On the
+name's own line, centring is simply correct — leaving the nudge would have pushed it 3px low.
+✅ Measured: name and badge share a mid-line to `0.0px`; badge bottom `95.4` == members top `95.4`. At 375px
+with a long name the **name** ellipsises and the badge stays inside the chip — that is what `min-width: 0`
+on both flex items buys, and without it the badge is pushed out instead, which is backwards.
+
+#### ★★ An imported expense gets the clock it was filed at (`c38b729`)
+
+Owner: *"reviewed transactions do not have time, can you put the time of mapping — manual or auto"*. Bank
+feeds state a booking date and almost never a clock, so a reviewed row carried **none** — a blank where
+every other row shows one, sorting after everything typed by hand that day.
+
+The filing moment is the one honest clock such a row has. Auto-filed by a rule and confirmed in the review
+list are the same event — *when this transaction became an expense* — so both stamp it. **One choke point
+in `ConfirmBankTransaction` covers all three paths**, and the phone's own path was given the same stamp.
+
+⚠️ **This is not the midnight default `Expense.Time` warns against.** 00:00 is a fiction that sorts a day's
+imports above the morning's typing; a filing time is a real event, and it orders the day the way the user
+actually met the rows.
+
+⚠️⚠️ **It does change what the clock MEANS on those rows** — from *when I bought it* to *when it was filed* —
+and a bare number would let that pass unnoticed. The row's time now carries a tooltip **on bank rows only**,
+naming which of the two it was. ✅ Driven end to end: a seeded `LIDL LISBOA` with `Time = NULL` confirmed at
+16:41 → the row reads **16:41** with *"Reviewed and filed at this time"*, while the hand-typed 15:59 row
+beside it has no tooltip at all.
+
+⚠️ Safe to default there because **no bank path lets the user blank a time** — the review modal has no time
+input. If one ever gains a field, the fallback must move behind an explicit empty flag, like
+`EditExpenseRequest.clearTime`.
+
+#### ⭐⭐ The bank review is now reachable locally, permanently
+
+`appsettings.Development.json` gained **fake** `BankSync:EnableBanking` credentials.
+`EnableBankingClient.IsEnabled` only checks the two strings are non-empty, and the review list is served
+entirely from local SQLite — so the whole **sync → review → confirm** flow can be driven on this machine.
+Without them `/bank/status` reports `enabled: false` and the review UI never appears, **which is why that
+flow once shipped unverified**. Same "fake by construction" convention as the `Admin` and `Beta` blocks
+already in that file. ⚠️ Repo is PUBLIC — never a real ApplicationId or PEM.
+
+To seed a row to review:
+`INSERT INTO PendingBankTransactions (AccountId, ExternalId, Date, Amount, Description, Status, Time) VALUES (…,'Pending',NULL);`
+
+#### ⚠️ A verification trap I walked into despite having written the warning down
+
+The served-WASM probe reported **False** for both new tooltip strings and looked exactly like a failed
+deploy. **String literals are UTF-16 in metadata; only member names are ASCII** — my own deploy note says
+so and I ran the ASCII grep anyway. Decode the same bytes both ways and pick per probe:
+`[Text.Encoding]::Unicode.GetString($bytes)` for literals, `::ASCII` for members. ⭐ The strongest single
+probe is a **deleted** member (`UseAmountHint` → absent) beside a new one: "the old one is gone" proves a
+fresh build in a way "a new one exists" never quite does. ⚠️ A CSS class used only in markup
+(`acct-nm-top`) is greppable in **neither** — check the served scoped bundle for those.
+
+---
+
 #### Next session
-1. ⬜ Item 4's proposal, if approved — ① is unblocked now that #3 has landed.
+1. ✅ Item 4's proposal — **approved and built the same day**; see the continuation above.
 2. ⬜ Still open from S119: a door to "money came back" on a **closed** period's expense; the phone's refund
-   picker is compiled and unrun.
+   picker is compiled and unrun. ★ The phone is now the bigger gap of the two — the Kotlin bank-confirm
+   stamp added in `c38b729` is **compiled and unrun** as well, and the emulator recipe exists.
 3. ⬜ Two defects found while counting, both pre-existing: **Edit-expense's date input has no `min`/`max`**
    while Add clamps to the period; and `Dashboard.razor.bak` / `Dashboard.razor.css.bak` shadow every grep
    over this area.
+4. ⬜ Pre-existing, surfaced by item 3's work: with no trip running, moving an expense's date to one no trip
+   covers hides the trip picker entirely — so an expense **booked ahead** for an upcoming trip cannot be
+   attached from the form.
 
 ---
 
