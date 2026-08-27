@@ -3,8 +3,9 @@
 Last updated: 2026-08-27 (Session 121 — **the phone's two carried items were run rather than compiled, and
 running them found a bug neither of them was about.** Then the three standing web items: the closed-period
 refund door is built, the edit form's date is clamped, the `.bak` files are gone, and the fourth turned out
-to be **already fixed**. **569 + 56 + 472 green, Kotlin green. Not deployed** — two commits sit on `main`
-ahead of `finapp-00336-77c`.)
+to be **already fixed**. **569 + 56 + 472 green, Kotlin green.**
+✅ **LIVE: `finapp-00337-5fk`, 100% LATEST** — image `finapp:4f55cb3`; `origin/main` is `4f55cb3`, so all
+three agree. Roots 200 on both hosts, 5 `secretKeyRef`s, **zero WARNING+ lines**, no purge race.)
 
 ### ★★ The emulator run — and the bug that was not on the list
 
@@ -83,9 +84,23 @@ behind one `FormTripOptions.Count > 0 || VisibleForeignTrips.Count > 0` gate, cl
 against the pre-merge code. ★ The same run confirmed S120's date filter from the other side: a *finished*
 Household trip appeared in the row only once the date moved to a day it **covers**.
 
-#### ⬜ Not deployed
+#### ✅ DEPLOYED — `finapp-00337-5fk`, 100% LATEST
 
-`178b304` (phone) and `64e43ea` (web) are on `main`; live is still `finapp-00336-77c` (`326afff`).
+Image `finapp:4f55cb3` (digest `sha256:c31c99a7…`); `origin/main` is `4f55cb3`, so all three agree. Roots
+**200** on both hosts, **5** `secretKeyRef`s, `STARTUP TCP probe succeeded` ×2, `Now listening` ×2, and
+**zero WARNING+ lines** on the revision — no purge race at all (`PurgeExpiredAsync` 0, `Program.<Main>$` 0,
+`DbUpdateConcurrencyException` 0).
+
+⭐ **The served-bytes proof had to be the UTF-16 one, and this deploy is the clean demonstration of why.**
+Nothing here adds a new route or a new CSS rule, and the only *new* symbols are **string literals** — so the
+ASCII grep that usually works returns **False** and looks exactly like a failed deploy. Decoding the same
+bytes both ways: `record more` **UTF-16 True / ASCII False**, the Bulgarian `запиши още` **UTF-16 True**,
+against an ASCII control (`OpenRecordRefund`, a member name) of **True**. Same asset on both hosts —
+`FinApp.Shared.UI.et1rt4zx65.wasm`, **1,869,589 bytes identical**, and a different hash and size from S120's
+`iz6v31pfqo.wasm` (1,865,493), which is what says the bundle is genuinely fresh.
+
+⬜ The phone half (`178b304`) ships with the **APK pipeline**, not with this revision — Cloud Run serves the
+web client only.
 
 #### Fixture notes for whoever runs this next
 
@@ -100,7 +115,8 @@ Household trip appeared in the row only once the date moved to a day it **covers
   note claiming there is none, and routing through gcloud's bundled python, is stale.
 
 #### Next session
-1. ⬜ **Deploy** — two commits are unshipped.
+1. ✅ **Deployed** — `finapp-00337-5fk`, same day. ⬜ The **phone** half is still only on `main`: it needs an
+   `android-v*` tag to reach a Release APK, and nobody is running an unreleased build.
 2. ⬜ The phone's account switcher has no trip-mode badge; the web gained one in `326afff`.
 3. ⬜ Consider whether a bank feature that **hides itself** when its status read fails should say something
    instead — today an unverified email and a dead network look identical to not having the feature.
