@@ -3280,6 +3280,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                         spending = it.spending.copy(loaded = false),   // a new expense landed → re-fetch Spending
                     )
                 }
+                // ⚠️ The wallet it was paid from is now wrong on screen, and this path did not even invalidate
+                // it — so it stayed wrong through a full tab round-trip, not just until the next one. The sheet
+                // opens from the Wallets tab, so re-read rather than arm a flag. Measured on the emulator: a
+                // €12.40 confirm left the screen on -1,398.75 while the server held -1,411.15.
+                loadWallets(true)
                 onDone()
             } catch (e: Exception) {
                 _state.update { it.copy(bank = it.bank.copy(handlingId = null, error = e.message ?: "Couldn't file that transaction.")) }
@@ -3321,6 +3326,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     )
                 }
                 loadSpending(true)
+                // ⚠️ FORCED, not merely invalidated. `loaded = false` above only arms the next *navigation* —
+                // and the one screen that cannot navigate is the Wallets tab, which is where the bank sheet is
+                // opened from. Left to the flag, the wallet the money just landed in keeps showing its
+                // pre-refund balance until the user leaves the tab and comes back. Measured on the emulator:
+                // server -1,398.75, screen -1,418.75, until a tab round-trip.
+                loadWallets(true)
                 runCatching { api.overview(accountId, _state.value.selectedPeriod) }
                     .getOrNull()?.let { ov -> _state.update { it.copy(overview = ov) } }
                 onDone()
@@ -3364,6 +3375,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     it.copy(spending = it.spending.copy(loaded = false), wallets = it.wallets.copy(loaded = false))
                 }
                 loadSpending(true)
+                loadWallets(true)   // same reason as the refund it reverses — see confirmPendingRefund
                 runCatching { api.overview(accountId, _state.value.selectedPeriod) }
                     .getOrNull()?.let { ov -> _state.update { it.copy(overview = ov) } }
                 onDone()
@@ -3387,6 +3399,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                         wallets = it.wallets.copy(loaded = false),   // fund balances moved → re-fetch Wallets
                     )
                 }
+                // …and re-read now: the flag alone waits for a navigation the Wallets tab never makes, and this
+                // one moves the income list too, which `loadWallets` refreshes on the same pass.
+                loadWallets(true)
                 onDone()
             } catch (e: Exception) {
                 _state.update { it.copy(bank = it.bank.copy(handlingId = null, error = e.message ?: "Couldn't file that transaction.")) }
