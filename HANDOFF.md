@@ -198,8 +198,16 @@ this change and not present in production data going forward.
 
 #### ✅ DEPLOYED — `finapp-00341-nlc`, 100% LATEST
 
-Image `finapp:4b01347` (digest `sha256:792727eb…`); `origin/main` is `4b01347`, so all three agree. Roots
-**200** on both hosts, **5** `secretKeyRef`s, **no ERROR lines at all** on the revision, and no purge race.
+Image `finapp:4b01347` (digest `sha256:792727eb…`), superseded the same day by `finapp:92896c4` /
+`finapp-00342-sq6`. Roots **200** on both hosts, **5** `secretKeyRef`s, **no ERROR lines at all** on the
+revision, and no purge race.
+
+⚠️⚠️ **CORRECTION to my own write-up: `origin/main` is NOT up to date, and I claimed it was.** This section
+originally read *"`origin/main` is `4b01347`, so all three agree"* — I copied the phrasing from previous
+sessions without running the check. `origin/main` is still **`8f2bc74`** (Session 124); everything from
+`5577984` onward is **local only and unpushed**. Production is built from local source so the *served* code is
+correct, but **git sha → image tag → revision is not a chain that closes here** — the sha is on this machine
+and nowhere else. Push before trusting that line, and run `git status -sb` rather than assuming.
 
 ⭐ **Both halves are proven at byte level on both hosts.** `service-worker.js` carries `spaRoutes` and — the
 stronger probe — **no longer carries `isOwnPage`**; `FinApp.Shared.UI.czw5yh1t5k.wasm` is the **same hash on
@@ -243,10 +251,18 @@ the instruction that works. That is precisely the hole `skipWaiting` now fills.
    so the thing it exists for — a bad worker replacing itself with no user action — is still unobserved. The
    next ordinary deploy is the test: a page open across it should pick up the new build on **one reload**. If it
    does not, the claim in this write-up is wrong and the file header's argument needs revisiting.
-3. ⬜ **NATIVE Android only: the account switcher shows initials where the web shows pictures.** `AccountAvatar`
-   (`HomeScreen.kt:1706`, used at :1689) stacks `AvatarCircle(initialOf(…))` and never reads
-   `state.sharing.avatars`; the web's equivalent (`Dashboard.razor:110`) does render them. Small parity row,
-   blocked behind the APK anyway.
+3. ✅ ~~NATIVE Android: the account switcher shows initials where the web shows pictures~~ — **built.**
+   `AccountAvatar` now takes the avatar map and `AvatarCircle` renders a decoded `data:` URL, falling back to
+   the initial. ★ The 2.dp ring is the detail: a `border` draws *under* a Box's content, so a picture would
+   have painted over the very ring that makes an overlapping row readable as separate people — the image is
+   inset by the same 2.dp instead, with the ring colour behind it. The dead `MemberAvatars` is deleted and
+   `decodeDataUrlImage` is now `internal` so one decoder serves both screens.
+   ⚠️ **Compiled, NOT observed** — `assembleDebug` is green and that is all. Seeing it needs a signed-in
+   account on the emulator, which I did not create. This is exactly the QUEUE #1 class of change (a rendering
+   difference you cannot confirm by reading), so **run it before believing it**.
+   ⚠️ Known and deliberate: `state.sharing.avatars` only holds the **selected** account's members, so other
+   rows in the dropdown still show initials. The web does the same thing for the same reason; the comment on
+   `AccountAvatar` says so, so nobody "fixes" it into several requests for a rarely-opened dropdown.
    ⚠️ **I first wrote this up as "the phone never renders member pictures at all", and that was wrong** — worth
    keeping as a caution about grepping for a *definition* and calling it a screen. `MemberAvatars` (plural,
    `HomeScreen.kt:1835`) has **no call site anywhere**: it is dead code, not a rendered surface. `SettingsSheet
@@ -254,22 +270,26 @@ the instruction that works. That is precisely the hole `skipWaiting` now fills.
    invitation arrives before there is any avatar for the inviter. ⭐ And the owner's own check settled the wider
    claim: **mobile web is fine**, because mobile web is the same Blazor client as desktop and never had this gap
    — only the native app does. Confirm a call site before reporting a rendering bug.
-4. ⬜ **Delete the dead `MemberAvatars`** (`HomeScreen.kt:1835`) while in that file — an uncalled composable that
-   looks like a live screen is what produced the wrong diagnosis above.
-5. ⬜ **The APK pipeline.** Zero tags in the repo; no `android-v*` means no Release APK, so #3 and S124's phone
-   half cannot reach anybody. Carried from Session 123.
-6. ⬜ **Two guards worth building, both for the same class of bug — a failure with no failing test.** (a) The
+4. ✅ ~~Delete the dead `MemberAvatars`~~ — done, in the same pass.
+5. ⬜⬜ **PUSH. `origin/main` is seven commits behind and this is now the biggest single risk in the repo.**
+   Everything this session shipped — including the fix for a two-day auth outage — exists only on this machine.
+   Production was built from local source, so the running code is right, but nothing is backed up and the
+   `android.yml` CI APK cannot be produced from an unpushed commit either.
+6. ⬜ **The APK pipeline.** The workflow exists (`.github/workflows/android.yml`: an artifact on every push, a
+   Release APK on an `android-v*` tag) but the repo has **zero tags**, so no release build has ever gone out.
+   Until it does, #3 and S124's phone half cannot reach anybody. Carried from Session 123.
+7. ⬜ **Two guards worth building, both for the same class of bug — a failure with no failing test.** (a) The
    service worker's route allowlist has no test in the suite; the 16-case check lives in a scratch file. (b)
    Nothing fails when `wwwroot` HTML references a cross-origin resource its own CSP forbids — which is how the
    font went unnoticed for as long as the header has existed.
-7. ⬜ If a picker field is ever added to Dashboard, it has to be added to `RepairPickers` too.
-8. ⬜ R2.5's remaining rows are all phone→web: **always-visible milestones**, an **auto-mask trigger**, the
+8. ⬜ If a picker field is ever added to Dashboard, it has to be added to `RepairPickers` too.
+9. ⬜ R2.5's remaining rows are all phone→web: **always-visible milestones**, an **auto-mask trigger**, the
    phone's account switcher trip-mode badge (`GET /active-trips`, one of the 8 uncalled routes), and the tail of
    T0 — refunds, settlements, the installment log, statement import and the savings draw-downs still send no
    idempotency key.
-9. ⬜ **Bulgarian renders in a different typeface to English** and always has (see above). Not a bug to fix in
+10. ⬜ **Bulgarian renders in a different typeface to English** and always has (see above). Not a bug to fix in
    code — a decision to take about the typeface.
-10. ⬜ **A stray empty `WARNING` file is tracked at the repo root.** It is the scar of a PowerShell quoting trap:
+11. ⬜ **A stray empty `WARNING` file is tracked at the repo root.** It is the scar of a PowerShell quoting trap:
    `gcloud logging read 'severity>=WARNING'` lets `>` through as a redirect and creates it. Delete the file, and
    filter on `severity=ERROR` (no `>`) when reading logs.
 
