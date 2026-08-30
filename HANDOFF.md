@@ -1,11 +1,81 @@
 # TandemTab (FinApp) — session handoff
 
-Last updated: 2026-08-30 (Session 125 — **the app has never once rendered in its own typeface in production, and
-the CSP that was blocking it turned out to be the correct half of the pair.** Quicksand is now self-hosted; the
-policy is untouched. **569 + 56 + 488 green** (no new tests — see the honest note on that below).
-⭐ **The defect was measured on the live site before a line changed, and it is worse than the carried note said:
-not "a fallback font" but *the 500 and 600 weights not existing at all*.**
-⬜ **NOT deployed.** This is a client static-asset change plus a comment; it ships with the next revision.)
+Last updated: 2026-08-30 (Session 125 — **started as a font fix and turned into a production outage: Google
+sign-in had been broken for two days and nobody knew, because every one of its failure paths was silent.**
+The PWA service worker was eating the OAuth callback. Also: the app had never once rendered in its own
+typeface in production, and the CSP blocking it was the *correct* half of the pair. **569 + 56 + 488 green.**
+⭐ **Both defects were measured on the live site before a line changed** — the font by glyph metrics, the
+outage by an *absence* in the request log, which is the harder of the two to go looking for.
+✅ **LIVE: `finapp-00341-nlc`, 100% LATEST** — image `finapp:4b01347`. Roots 200 on both hosts, 5
+`secretKeyRef`s, **no ERROR lines on the revision**, no purge race, and the same WASM hash on both hosts.)
+
+### ⛔⛔ The headline: Google sign-in was down for two days, silently
+
+Reported as "still cannot see avatars", then "when I try to sign in with google it just redirects to landing
+page and nothing happens". The avatars were the **symptom**: adoption runs inside the OAuth callback, and the
+callback had stopped happening.
+
+★ **`service-worker.published.js` was answering the OAuth callback out of the cache.** Its navigation rule was
+a blocklist — serve the cached shell for every same-origin navigation that isn't a `.html` page. The return
+leg from Google is `GET /auth/external/google/callback?code=…`: same-origin, top-level, no `.html`. So the
+shell was served, **Google's `code` was discarded, and the request never reached the server at all.** The app
+booted on the landing page with nothing to exchange.
+
+| | |
+|---|---|
+| Last OAuth callback to reach the server | **2026-08-26** |
+| The PWA worker shipped (`bdb5d9f`, S122) | **2026-08-28** |
+| Callbacks in the 24h before the fix | **zero**, against one `302` out to Google |
+
+⭐ **The mechanism is the part worth carrying, because it explains why this passed review and looked
+intermittent.** Navigating away to accounts.google.com releases the last client the old worker controlled, so
+a worker sitting in `waiting` **activates while the user is on Google's consent screen** — and then catches
+the return. The start of the flow reaches the network and the end of it does not, *within one sign-in*. Any
+mental model that asks "is the worker active?" as a yes/no gets this wrong.
+
+⚠️ **The worker's own comment proves the author thought about OAuth** — "a cross-origin read (the Google Fonts
+stylesheet, an OAuth redirect)… goes to the network untouched". Only the **cross-origin** leg was guarded. The
+leg that matters is same-origin, and naming OAuth in the comment is exactly what made it look handled.
+
+★ **The rule is now an allowlist**: `/` plus the seven `/thin-*` routes — the whole of the SPA's `@page`
+surface. Everything else falls through to the network. Forgetting to add a new `@page` here costs that route
+its offline boot; getting it wrong the other way costs an endpoint its existence. The legal pages needed no
+special case after all — they are precached under their own URLs, so the plain request match finds them.
+
+### ⛔ Why it went unreported for two days: both halves failed silently
+
+This is the more general finding, and it is the reason the outage is a two-day one rather than a two-hour one.
+
+- The server's `Fail()` redirected to `/?authError=1` — and **nothing in the client read that flag.** Grep for
+  `authError` in `FinApp.Shared.UI` returned zero hits.
+- The client's code exchange was a bare **`catch { }`**.
+- `FetchInlineAvatarAsync` ended in `catch { return null; }` with **no logging on any branch**.
+- The callback handler's five failure paths were **one silent `Fail()`**.
+
+⚠️ **A sign-in that puts you back where you started with no message is indistinguishable from one you never
+attempted.** That is why the only trace of a total auth outage was an *absence* in the request log — and an
+absence is only visible to somebody who already suspects it. All four are now fixed: the sign-in card says the
+attempt failed, and the callback logs which of its branches fired under `FinApp.ExternalAuth`. The state check
+in particular is split — **"the state cookie was not sent back" is a different fault from "the state did not
+match"**, and collapsing them hid which was happening.
+
+#### How the sign-in half was verified
+
+⚠️ **Not by driving a sign-in.** The Browser pane cannot register service workers, so there is no end-to-end
+run behind this. Read the evidence as what it is:
+
+- The route predicate was **extracted from the shipped worker file** (not retyped) and exercised over 16 cases:
+  `/auth/external/google/callback` → network, `/` and all seven `/thin-*` → shell, legal pages → own entry.
+  16/16.
+- The log timeline above — zero callbacks since 2026-08-26 against a worker that shipped 2026-08-28.
+- ⭐ **After deploying, a live cookie-less probe of the callback returned `302 → /?authError=1` and produced
+  the exact new log line: `External sign-in (google) failed: the state cookie was not sent back.`** That is the
+  server half proven in production, including the branch-naming.
+- Served bytes: both hosts carry `spaRoutes`, and — the stronger probe — **`isOwnPage` is gone from both**.
+
+⚠️ **The fix does not reach a user the moment it deploys.** The new worker installs and waits; it takes over
+only once every TandemTab tab is closed (`skipWaiting` is deliberately not used, and that decision is still
+right). So: deploy → close all tabs → reopen. Until then email-and-password sign-in is the way in.
 
 ### ★ The CSP was not the bug. It was the only part of this that was right.
 
@@ -123,28 +193,49 @@ surface, so the login gate is not in the way for once.
 requests. Those are the pre-S124 remote URLs stored on the local `avatest@example.com` fixture, not a fault in
 this change and not present in production data going forward.
 
-#### ⬜ NOT DEPLOYED
+#### ✅ DEPLOYED — `finapp-00341-nlc`, 100% LATEST
 
-Committed to `main`, not shipped. Static client assets and one comment — it rides the next revision, and the
-served-bytes check for it is easy when it goes: fetch `/css/fonts/quicksand-latin.woff2` on both hosts and
-confirm the root's CSP header still reads `font-src 'self'` with no `fonts.gstatic.com` in it.
+Image `finapp:4b01347` (digest `sha256:792727eb…`); `origin/main` is `4b01347`, so all three agree. Roots
+**200** on both hosts, **5** `secretKeyRef`s, **no ERROR lines at all** on the revision, and no purge race.
+
+⭐ **Both halves are proven at byte level on both hosts.** `service-worker.js` carries `spaRoutes` and — the
+stronger probe — **no longer carries `isOwnPage`**; `FinApp.Shared.UI.czw5yh1t5k.wasm` is the **same hash on
+both hosts** and contains `ExternalSignInFailed` while still carrying S124's `RepairPickers`.
+`/css/fonts/quicksand-latin.woff2` returns 200 on both, the root CSP still reads `font-src 'self'`, and the
+only `fonts.googleapis.com` string left in the served `index.html` is the comment explaining why it went.
+
+★ And the one live functional proof: a cookie-less callback probe returned `302 → /?authError=1` and logged
+`External sign-in (google) failed: the state cookie was not sent back.` The route is reachable and the new
+branch-naming works in production.
 
 #### Next session
-1. ⬜ **Bug 1 (S124) is still only half-shipped, and this is now the top of the list.** The phone needs an
-   `android-v*` tag to reach a Release APK and the repo has **zero tags** — carried from Session 123, and it has
-   been blocking a user-visible avatar fix since Session 124.
-2. ⬜ **A guard against the class of bug this session fixed.** Nothing anywhere fails when the client references
-   a cross-origin resource its own CSP forbids. A test asserting `wwwroot`'s HTML carries no external
-   `href`/`src` would have caught this the day the header landed, and would protect the same-origin property the
-   avatar work and this session both spent effort establishing.
-3. ⬜ If a picker field is ever added to Dashboard, it has to be added to `RepairPickers` too, or a deleted
-   option leaves it pointing at nothing.
-4. ⬜ R2.5's remaining rows are all phone→web: **always-visible milestones**, an **auto-mask trigger**, the
+1. ⬜⬜ **Confirm the sign-in fix on a real browser, and do it first.** Everything behind it is inference plus a
+   server-side probe. The clean signal is cheap: a **callback appearing in the Cloud Run request log again**,
+   the first since 2026-08-26. Until one does, treat this as fixed-in-theory. Remember the tabs must all be
+   closed once for the new worker to take over.
+2. ⬜ **The avatar backfill still needs a Google sign-in that works** — it fires on `!IsInline(stored)` in the
+   callback, so nothing changes for an existing user until they complete one. Check `FinApp.ExternalAuth` for
+   `Avatar adoption:` lines after the first successful sign-in; that path is no longer silent.
+3. ⬜ **The phone never renders member pictures at all — a second, separate bug from S124's.** `MemberAvatars`
+   and `AccountAvatar` in `HomeScreen.kt` draw `AvatarCircle(initialOf(…))` and never read
+   `state.sharing.avatars`, the map the app already fetches; only `SettingsSheet.kt:432` uses the real picture.
+   S124 fixed the storage *format*, not this. Blocked behind the APK either way.
+4. ⬜ **The APK pipeline.** Zero tags in the repo; no `android-v*` means no Release APK, so #3 and S124's phone
+   half cannot reach anybody. Carried from Session 123.
+5. ⬜ **Two guards worth building, both for the same class of bug — a failure with no failing test.** (a) The
+   service worker's route allowlist has no test in the suite; the 16-case check lives in a scratch file. (b)
+   Nothing fails when `wwwroot` HTML references a cross-origin resource its own CSP forbids — which is how the
+   font went unnoticed for as long as the header has existed.
+6. ⬜ If a picker field is ever added to Dashboard, it has to be added to `RepairPickers` too.
+7. ⬜ R2.5's remaining rows are all phone→web: **always-visible milestones**, an **auto-mask trigger**, the
    phone's account switcher trip-mode badge (`GET /active-trips`, one of the 8 uncalled routes), and the tail of
    T0 — refunds, settlements, the installment log, statement import and the savings draw-downs still send no
    idempotency key.
-5. ⬜ **Bulgarian renders in a different typeface to English** and always has (see above). Not a bug to fix in
+8. ⬜ **Bulgarian renders in a different typeface to English** and always has (see above). Not a bug to fix in
    code — a decision to take about the typeface.
+9. ⬜ **A stray empty `WARNING` file is tracked at the repo root.** It is the scar of a PowerShell quoting trap:
+   `gcloud logging read 'severity>=WARNING'` lets `>` through as a redirect and creates it. Delete the file, and
+   filter on `severity=ERROR` (no `>`) when reading logs.
 
 ---
 
