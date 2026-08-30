@@ -1,6 +1,135 @@
 # TandemTab (FinApp) — session handoff
 
-Last updated: 2026-08-28 (Session 123 — **the week recap is built, and with it R2.5 has no web→phone rows left.**
+Last updated: 2026-08-30 (Session 124 — **two reported bugs, and both were somewhere other than where they were
+reported.** Google profile pictures were never a web rendering fault; fields "reselecting" in add/edit expense
+was never a Blazor `<select>` quirk. **569 + 56 + 488 green** (9 new).
+⭐ **Both were reproduced in a browser before a line was changed, and re-run after** — the first one is the only
+reason the fix landed on the server instead of in CSS.
+✅ **LIVE: `finapp-00340-p4f`, 100% LATEST** — image `finapp:311c6c3`; `origin/main` is `311c6c3`, so all three
+agree. Roots 200 on both hosts, 5 `secretKeyRef`s, **zero WARNING+ lines**, no purge race. ⬜ The phone half of
+bug 1 ships with the APK pipeline, not with this revision.)
+
+### ★ Bug 1: the picture was fine. Nothing but a browser could read it.
+
+The report was "profile pics from Google are not loading". The first hour went into the web client and found
+**nothing wrong**, which is the finding: I stored a `lh3.googleusercontent.com` URL on a test user through
+`PUT /me/avatar` and the web app rendered it. CSP already allows `img-src https:`, the service worker passes
+cross-origin reads straight through, `.avatar img` is correct. A Referer test on the host came back 200 both
+with and without.
+
+⭐ **The bug is on the phone, and it is total.** `SettingsSheet.decodeDataUrlImage` decodes an avatar by
+base64-decoding everything after the first comma, and `android/app/build.gradle.kts` carries **no image loader
+at all** — no Coil, no Glide. An https URL has no comma, so it returns null and the app falls back to the
+coloured initial. Signing in with Google has **never** produced a picture on Android, for the signed-in user or
+for any member row in a shared account.
+
+★ **So the fix is server-side, and that is the whole point of it.** `ExternalAuthService.FetchInlineAvatarAsync`
+downloads the provider picture during the OAuth callback and stores it as a `data:` URL. Every client then reads
+avatars through the one path that already worked — the upload path — and none of them has to grow an HTTP image
+loader to show a profile picture. Fixing this in Kotlin would have been the same capability built a second time,
+in the client that has the least room for it.
+
+⚠️ **The allowlist is doing SSRF duty now, not just privacy duty.** `AvatarService.IsTrustedProviderPicture` was
+a *render* guard; it is now also the guard on a **server-side fetch of a URL that arrived over the wire**. That
+is a different job with a different blast radius, which is why it is `public` with a name that says what it
+bounds, and why five of the nine new tests are on it (suffix match must not be substring match:
+`googleusercontent.com.evil.example` is refused).
+
+★ **It also closes a beacon the code's own comments were already worried about.** A stored provider URL is an
+`<img src>` that every viewer of a shared account fetches from Google — handing Google their IP. The
+`IsAcceptableAvatar` comment names exactly that risk for *other* hosts and then let the provider's own host
+through. Inlining removes the request entirely.
+
+⚠️ **The backfill is the `!IsInline(stored)` test, and it is not instant.** Everyone who signed in before this
+has a remote URL stored; it is replaced on their **next Google sign-in**, not today. An avatar somebody uploaded
+is already inline, so re-adoption can never overwrite one. Guards on the download: https only, trusted host, 5s
+leash, `image/*` content type, 250 KB cap (base64 inflates 4/3 against the 400 KB store limit), and a `catch`
+that lets the sign-in continue with no picture — **a missing avatar must never cost somebody their login.**
+
+### ⛔ Bug 2: it was never the `<select>`. It was the refresh handler.
+
+Reported as "in some cases when selecting something in add/edit expense, other inputs reselect". There is a
+memory from Session 65 blaming Blazor's `<select>` diffing and prescribing capture-and-restore. **That
+diagnosis was wrong**, and it had been wrong for 59 sessions.
+
+`Dashboard.OnChanged` answered **every** `State.Changed` — which is every save, every refetch, every background
+refresh — by calling `ResetPickers()`, which re-defaults `_categoryId`, `_fundId`, `_savingBucketId`, the
+`_spend*`, `_dep*` and `_transfer*` fields to their first option. **While a modal was open and half filled in.**
+Chip rows were hit exactly as hard as native selects, which is the tell nobody followed: a `<select>` quirk
+cannot move a `<button class="tag-chip">`.
+
+⭐ **Reproduced before touching anything, and it is worse than "reselect".** Add expense → category **Fuel**,
+wallet **Cash** → tap the fund row's ＋ New → create a wallet → the category is silently **Food**, with the
+amount and note still on screen. Press Add and the expense files into the wrong budget with nothing saying so.
+The mirror case — add a category inline — sends the fund back to the first wallet.
+
+⚠️ **`AddTagFromModal`'s keepCat/keepFund pair is why this survived.** It patched the one route somebody
+happened to hit, so the symptom disappeared from the tag path and stayed live on every other one — and the
+comment it left behind actively pointed the next reader at Blazor. It is kept (it is correct, and it restores
+across an `await`), but it is no longer what holds the form together.
+
+★ **The fix separates the two things `OnChanged` was conflating.** A full `ResetPickers()` now runs **only when
+`State.CurrentAccountId` changed** — the one event where the ids genuinely belong to an account that has gone
+away and there is nothing to preserve. Everything else calls `RepairPickers()`, which puts back only the
+selections that have stopped being real and leaves the rest where the user put them. That ordering is also the
+safety net: even if the account-change detection ever missed, repair validates against the *current* account.
+
+⚠️ **Same class, second instance, found by sweeping rather than by report.** Changing the date on the add form
+overwrote a time the user had typed — off today it blanked the 09:15, back onto today it replaced it with "now".
+`OnExpenseDateChanged` ran unconditionally. **A time somebody typed is an answer, not a default**, so it is now
+behind `_expenseTimeTyped`; the auto-stamp still works while the clock is still ours.
+
+★ The tag→category auto-file and trip→category filing were checked and left alone. Those are the *intended*
+version of this behaviour, and the user named the first one as such when reporting.
+
+#### How it was verified
+
+Local server on `:5179`, a throwaway account driven through the real UI (the seeder is still stale). Each check
+was a state snapshot of the open modal — selected chips, picker label, every input value — diffed across one
+click, which is what turned "some cases" into a named repro.
+
+- Bug 1: the googleusercontent URL rendered in the web app, `naturalWidth` **96** — the finding that moved the
+  fix to the server. The download guards were checked against the real asset: **567 bytes, `image/png`,
+  `content-length` present**.
+- Bug 2, before: **Fuel → Food** on an inline fund create; **Cash → Bank** on an inline category create.
+- Bug 2, after: the untouched field holds in both directions, the newly created thing is still selected, and a
+  second account created and switched to shows **its own** categories and funds — the reset path still works.
+- Time: a typed **09:15** survives a date change to 28 Aug; on a fresh form an untouched clock still clears
+  moving off today and re-stamps coming back.
+
+⚠️ **Fixture residue:** local `finapp-server.db` now holds an `avatest@example.com` user with accounts *Repro*
+and *Second*. Local only — nothing was created in production.
+
+#### ✅ DEPLOYED — `finapp-00340-p4f`, 100% LATEST
+
+Image `finapp:311c6c3` (digest `sha256:6326b4a3…`); `origin/main` is `311c6c3`. Roots **200** on both hosts,
+**5** `secretKeyRef`s, **no WARNING+ lines at all** on the revision, and no purge race this time.
+
+⭐ **The client half is proven at byte level**: `FinApp.Shared.UI.ies5v1fl56.wasm`, the **same asset hash on
+both hosts**, contains `RepairPickers`, `_pickerAccountId` and `_expenseTimeTyped` (ASCII — member and field
+names, not string literals). Same hash on both means tandemtab.com is not sitting on a cached older build.
+
+⚠️ **Be honest about the server half: there is no probe for it.** This commit adds no route, so the 401 trick
+does not apply and `FetchInlineAvatarAsync` never reaches the WASM. Its proof is the chain — git sha → image tag
+→ digest → running revision — plus the tests. That is weaker than a served-bytes grep and should be read as
+such.
+
+#### Next session
+1. ⬜ **The CSP blocks the app's own web font.** Every page load logs a violation for the Quicksand stylesheet
+   (`style-src 'self' 'unsafe-inline'`, and `font-src 'self'` would block the font files too) — the app has been
+   rendering in a fallback system font in production, not just in dev. Either allow the two Google Fonts hosts
+   or self-host the woff2; self-hosting fits the privacy posture the avatar work just took.
+2. ⬜ **Bug 1 is only half-shipped until the APK moves.** The phone still needs an `android-v*` tag to reach a
+   Release APK and the repo has **zero tags** — carried over from Session 123 and now blocking a user-visible
+   fix, not just a feature.
+3. ⬜ If a picker field is ever added to Dashboard, it has to be added to `RepairPickers` too, or a deleted
+   option leaves it pointing at nothing.
+4. ⬜ R2.5's remaining rows are all phone→web: **always-visible milestones** and an **auto-mask trigger**; the
+   phone's account switcher still has no trip-mode badge (`GET /active-trips` is the 8th uncalled route).
+
+---
+
+Previously: 2026-08-28 (Session 123 — **the week recap is built, and with it R2.5 has no web→phone rows left.**
 `GET /week-recap` plus a Home card and a sheet on the phone, ported from the web. **569 + 56 + 479 green, Kotlin
 green.** ⭐ **Run on the emulator, not compiled and assumed** — which is the only reason two layout defects and
 one behaviour gap got found.
