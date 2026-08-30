@@ -252,9 +252,14 @@ else
                         <Icon Name="bank" /><span class="review-badge" aria-hidden="true">@_reviewCount</span>
                     </button>
                 }
-                @* R3. One control, in the header — deliberately NOT a Home section: an assistant is supposed to
-                   replace stacked panels with an on-demand answer, not become another one. *@
-                <button class="link hdr-ask" title="@Loc["Ask"]" aria-label="@Loc["Ask"]" @onclick="OpenAssistant"><Icon Name="search" /></button>
+                @* R3. Deliberately NOT a Home section: an assistant is supposed to replace stacked panels with an
+                   on-demand answer, not become another one. It is tinted rather than left as a fourth grey glyph —
+                   the one place in this row that gets to say the app grew something. Rendered only once the status
+                   read says the feature exists at all (see LoadAssistantStatusAsync). *@
+                @if (_aiAvailable)
+                {
+                    <button class="link hdr-ask" title="@Loc["Ask"]" aria-label="@Loc["Ask"]" @onclick="OpenAssistant"><Icon Name="chat" /></button>
+                }
                 <button class="link hdr-trophy" title="@Loc["Achievements"]" @onclick="() => _modal = Modal.Achievements"><Icon Name="trophy" /></button>
                 <span class="acct-menu">
                     <button class="link" title="@Loc["Account actions"]" @onclick="() => _acctMenuOpen = !_acctMenuOpen"><Icon Name="sliders" /></button>
@@ -622,6 +627,18 @@ else
                     <div class="tile-transfer action-card">
                         <span class="card-act-row">
                             <button class="card-act card-act-transfer" @onclick="OpenTransferFromDefaultFund"><Icon Name="swap" /> @Loc["Transfer"]</button>
+                        </span>
+                    </div>
+                }
+                @* R3's desktop entrance. The FAB below is `display: none` until 640px and this row is hidden
+                   inside that same query — they are the two halves of one thing, so an assistant that lived only
+                   in the FAB would be a phone-only feature. Last in the row: the three money actions are what
+                   someone opens the app to do. *@
+                @if (_aiAvailable)
+                {
+                    <div class="tile-ask action-card">
+                        <span class="card-act-row">
+                            <button class="card-act card-act-ask" @onclick="OpenAssistant"><Icon Name="chat" /> @Loc["Ask"]</button>
                         </span>
                     </div>
                 }
@@ -3565,6 +3582,12 @@ else
                where it can name what it would edit. A single FAB entry had to guess between the three, and a
                destructive-ish action that picks its own target is the wrong thing to put under a ＋. *@
             <div class="qfab-menu">
+                @* First in the markup means furthest from the thumb, which is where this belongs: asking a
+                   question is not the most-used action here, and the three writes below it are. *@
+                @if (_aiAvailable)
+                {
+                    <button class="qfab-item" @onclick="FabAssistant"><Icon Name="chat" /> @Loc["Ask"]</button>
+                }
                 @if (CanTransfer)
                 {
                     <button class="qfab-item" @onclick="FabTransfer"><Icon Name="swap" /> @Loc["Transfer"]</button>
@@ -9446,6 +9469,28 @@ else
         // dashboard (and the Add-expense fast button) behind the bank. The account renders now on its own figures;
         // the live balance fills in with a loader where it's shown (see LiveBalancePending).
         _ = LoadBankOnEntryAsync();
+        // Same reasoning as the bank load, and the same shape: OFF the critical path. There are now three ways in
+        // to the assistant, and all three must stay hidden on a deployment that has no key configured — "a
+        // control that always fails is worse than no control" — so the answer has to arrive before they render.
+        // Awaiting it here would put a fourth round-trip in front of the first paint, which this method's own
+        // history says not to do.
+        _ = LoadAssistantStatusAsync();
+    }
+
+    /// <summary>Whether the assistant exists on this deployment, and what is left of the month. Failure is silent
+    /// and lands on "not available", which hides the entrances — the safe direction.</summary>
+    private async Task LoadAssistantStatusAsync()
+    {
+        try
+        {
+            var status = await Api.GetAssistantStatusAsync();
+            _aiAvailable = status.Available;
+            _aiRemaining = status.MonthlyRemaining;
+            _aiCap = status.MonthlyCap;
+            _aiChecked = true;
+            StateHasChanged();
+        }
+        catch { /* no assistant, no entrances */ }
     }
 
     /// <summary>The on-entry bank load + OAuth-return handling + provider sync + review prompt, run off the first
@@ -13316,6 +13361,9 @@ else
 
     // Floating quick-add (mobile web): a single ＋ that expands to the two add flows.
     private bool _fabOpen;
+    // ⚠️ _fabOpen = false FIRST, like its siblings: the FAB is hidden while a modal is open, so leaving the flag
+    // set would strand an open menu behind the sheet and reveal it again on close.
+    private Task FabAssistant() { _fabOpen = false; return OpenAssistant(); }
     private void FabAddExpense() { _fabOpen = false; OpenAddExpenseTab(); }
     private void FabAddIncome() { _fabOpen = false; OpenDeposit(); }
     private Task FabTransfer() { _fabOpen = false; return OpenTransferFromDefaultFund(); }
