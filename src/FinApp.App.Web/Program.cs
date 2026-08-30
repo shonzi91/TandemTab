@@ -24,6 +24,7 @@ builder.Services.AddScoped<SyncClient>();
 builder.Services.AddScoped<BudgetingState>();
 builder.Services.AddScoped<ClientErrorReporter>();
 builder.Services.AddScoped<PlanGate>();          // P4: gates that stay inert until the monetization flag lifts
+builder.Services.AddScoped<AssistantResolver>(); // R3: masks a question against this account before it is sent
 
 // Error reporting (OPEN-BETA B1). An unhandled Blazor render exception surfaces as a Critical log from
 // WebAssemblyRenderer — exactly what BUG-1 produced — so forwarding Error/Critical logs catches that whole class

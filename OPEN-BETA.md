@@ -236,13 +236,14 @@ against a moving feature set is work that gets redone. R4 lands before R7 for th
 | **R1** | Clear the feature backlog | The feature set is declared **frozen** | L · ✅ **done 2026-08-05** |
 | **R2** | Android catch-up + theme verification **+ an APK pipeline** | Android at web parity; light/dark swept on **both** surfaces; **and CI can produce a release APK that runs on a real device** | L · ✅ **done 2026-08-20 (S111)** — all four exit criteria met. **Now 115/122 (94%)** after the merge session closed both stated lags; every one of the 7 remaining routes is *decided*: 4 deferred (bank), 3 non-gaps, **0 stated lags** |
 | **R2.5** | **The surface sweep** — the differences a route scanner cannot see | Every remaining web⇄phone difference is either built or **written down as a decision** | M · ⬜ **new (S116)** |
-| **R3** | AI assistant | See the scoping note — the whole of it is not one phase | L+ |
+| **R3** | AI assistant — **narrate and navigate** | ✅ **scoped + built 2026-08-30 (S126)**; ⬜ one real reply still unparsed (no key) | M |
 | **R4** | Railway migration (hosting **and** DB) | Serving from Railway, Neon + Cloud Run retired | M–L |
 | **R4.5** | **Trip Mode** (bounded offline) | The phone opens, shows cached figures with their staleness, takes an expense with no signal, and posts **exactly one** row on reconnect | M per platform · ⬜ **proposed (S116)** |
 | **R5** | Landing, terms, privacy + Pro-split final verification **+ billing go-live** | The page describes the real product; the paywall is settled **and can actually take money** | M–L |
 | **R6** | SEO | Indexed, measurable, bilingual | S–M |
 | **R7** | Promote **+ ship the Android app** **+ the installable web app** | The door is open — on the web, and (owner's call, S110) on a phone | — |
 | **R8** | ⛔ Full offline sync | **Deferred by decision** — see the box under R4.5 | L+ |
+| **R9** | ⛔ The on-device **write** assistant | **Deferred past promotion** — split out of R3 on 2026-08-30 | L+ |
 
 ### R1 — Clear the feature backlog
 - **[FEATURE-BACKLOG.md](FEATURE-BACKLOG.md) F1–F7**: quick add (S), tag→category (S–M), left-to-spend-today (S),
@@ -644,6 +645,53 @@ Leave the on-device LLM itself for last, or for after promotion. **Red line, non
 capture/categorisation using ML runs **strictly on-device with zero raw-data egress** — one convenient cloud
 call makes "never fed to AI" a lie, and that claim is the reason to exist.
 
+#### ✅ SCOPED AND BUILT — Session 126 (2026-08-30)
+
+**R3 is #17, web first. The on-device write assistant is split out as [R9](#r9) and deferred past promotion**,
+in writing, the same way R8 was. That line is the deliverable: without it R3 is unbounded, and the feature
+freeze — and therefore R5, R6 and R7 — never happens.
+
+★ **The design's load-bearing idea, and it is stricter than the backlog asked for.** #17 says "aggregated /
+anonymised inputs". The honest version of that turned out to be reachable: the thick web client already holds
+the whole account, so it **resolves the user's own vocabulary locally and sends the model a masked question** —
+*"how is my {1} doing"*, with a separate list saying `{1}` is a goal. Every digit is replaced with `#` on the
+way out, because the model has no use for a figure and stripping one is cheaper than trusting it not to matter.
+Guaranteed deterministically: **no category, goal, wallet or journey name, and no number, leaves the origin.**
+
+⚠️ **Where it leaks, written down rather than claimed away.** A word the app has never seen — a shop, a person —
+cannot be recognised, so it travels. `AssistantMasker` flags the strongest available signal (a quoted token, or a
+capitalised word that is not opening the sentence), **strict mode refuses to send those and is on by default**,
+and the sheet shows the exact string before it goes. The promise is "everything we can name is removed, every
+number is removed, and you see the rest" — not "nothing personal can possibly get through". A lower-case
+merchant name passes, and a fig-leaf claim here would be worse than no claim, per #17's own warning.
+
+**What shipped.** `POST /accounts/{id}/assistant/ask` behind consent (`ai_assistant`, per account — a shared
+account is shared money) → the Pro gate (`assistant`; every question is a real per-use cost, the first in the
+app) → a per-**user** rate-limit bucket → a per-user daily cap and answer cache. Three read-only intents:
+**navigate** to one of 22 screens that already exist, **explain** from the app's own translated copy, and
+**report**, where the model picks a topic and the client reads the figure out of the engine and prints it
+through `Fmt` — which is also what makes those answers obey privacy mode for free.
+
+★ **The prompt is generated from `AssistantCatalogue` in Contracts**, which the client's navigation switch reads
+too. Two hand-maintained copies of one list would drift silently: the model would confidently return a key
+nothing handles, and the user would get "I didn't follow that" for a question the app can answer.
+
+★ **A reply that does not validate is not an error, it is `unknown`** — an unlisted key, a key from the wrong
+catalogue, a missing slot, or a slot naming the wrong *kind* of entity all end in suggestion chips. Throwing
+would turn a model's bad day into a broken screen. Fourteen API tests pin that, driven with a fake parser; **no
+test in the suite calls a model.**
+
+⬜ **Not verified, and it needs the owner:** there is no API key on this machine, so no real reply has ever been
+parsed. What *was* proven live is everything up to and after it — the masking preview, strict mode declining to
+POST at all, and a live call that reached Anthropic and came back `invalid x-api-key`, which degraded to
+`unknown` with a 200 exactly as designed. **Set `Anthropic__ApiKey` as a 6th Cloud Run secret before deploying**
+(the deploy verify's `secretKeyRef` count moves 5 → 6), and drive one real question.
+
+⬜ **Also deliberately not built:** the add-expense / income / transfer / new-goal **forms** as navigation
+targets. Each is opened today by a method that seeds its draft first, and a form reached without that seeding
+misbehaves in ways only a person driving it would notice. Worth adding one at a time, each verified on a
+running app.
+
 ### R4 — Railway migration (hosting **and** database)
 - Cloud Run → Railway **and** Neon → Railway Postgres, per the standing plan.
 - **This is the phase that retires the only live production risk:** a traffic spike fans Cloud Run instances out
@@ -712,6 +760,25 @@ Every command queued, conflict-resolution UI, a shared-account merge story, and 
 it were a fresh idea — the same reason bank's back half has a box in [docs/MOBILE.md](docs/MOBILE.md).
 **Un-defer when** R4.5 is live and users are actually hitting its boundary (queued writes other than expenses,
 or offline edits rather than adds).
+
+<a id="r9"></a>
+### R9 — ⛔ the on-device **write** assistant — DEFERRED past promotion (Session 126)
+
+Everything in [AI-ASSISTANT-BACKLOG.md](AI-ASSISTANT-BACKLOG.md) that R3 did not build: typed write actions
+(log an expense, adjust a budget, move money) parsed **on-device**, applied only behind a confirm-and-undo chip.
+
+**Why it is not R3, which is the decision that let R3 start.** The on-device tier is per-platform — Apple
+Foundation Models *and* Gemini Nano, or a bundled ONNX model costing 1–2 GB. iOS is on hold, so this lands
+**Android-only**: the largest item on the roadmap, delivered to the smaller surface, immediately after the sweep
+whose central finding was that the phone is the surface with the thinner screens.
+
+★ **R3 already built the expensive half.** The backlog's own estimate is the model at 20% and the action-and-trust
+layer at 80%; `AssistantMasker` + the local resolver **is** the name→entity layer, and `IAssistantParser` is the
+seam an on-device model drops into. R9 is a parser swap plus the confirm chip, not a rewrite.
+
+**Un-defer when** iOS comes off hold (so Tier A is worth writing twice), or when the Android app is actually
+shipped and in enough hands that a phone-only user's inability to type "12 eur lunch" is a complaint rather than
+a hypothesis.
 
 ### R5 — Landing, terms, privacy + Pro split — final verification
 The ⬜ TODOs written below **are** this phase: the landing rewrite, the Free/Pro re-validation, and **billing

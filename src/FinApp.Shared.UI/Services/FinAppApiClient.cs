@@ -137,6 +137,17 @@ public sealed class FinAppApiClient(HttpClient http)
     /// own local date — a server in UTC would flip a trip's state hours early or late for half the world.</summary>
     public Task<List<ActiveTripDto>> GetActiveTripsAsync(DateOnly today, CancellationToken ct = default) =>
         SendAsync<List<ActiveTripDto>>(HttpMethod.Get, $"/accounts/active-trips?today={today:yyyy-MM-dd}", null, ct);
+    // --- Assistant (R3) ---------------------------------------------------
+    /// <summary>Ask the assistant to classify a question. ⚠️ <paramref name="req"/> must already be masked — build
+    /// it with <see cref="AssistantResolver.Mask"/> and never from raw user text, or the one guarantee this feature
+    /// makes stops being true.</summary>
+    public Task<AssistantReplyDto> AskAssistantAsync(Guid accountId, AssistantAskRequest req, CancellationToken ct = default) =>
+        SendAsync<AssistantReplyDto>(HttpMethod.Post, $"/accounts/{accountId}/assistant/ask", req, ct);
+
+    /// <summary>Whether this deployment has the assistant configured at all.</summary>
+    public Task<AssistantStatusDto> GetAssistantStatusAsync(CancellationToken ct = default) =>
+        SendAsync<AssistantStatusDto>(HttpMethod.Get, "/accounts/assistant/status", null, ct);
+
     public Task ReactivateAccountAsync(Guid id, CancellationToken ct = default) =>
         SendAsync(HttpMethod.Post, $"/accounts/{id}/reactivate", null, ct);
 

@@ -404,6 +404,22 @@ html.dark .home-ms-line:hover { color: #3fe0c5; }
 /* Icons + period are borderless segments inside the single hdr-top border; a divider sets the icons apart. */
 .hdr-icons { display: flex; align-items: center; gap: 2px; margin-left: auto; padding-left: 8px; border-left: 1px solid #e9edf1; }
 .hdr-trophy { font-size: 1.1rem; }
+/* R3's one piece of header chrome. Same size as the trophy beside it — it is a peer, not a promotion. */
+.hdr-ask { font-size: 1.1rem; }
+
+/* The ask sheet. ★ The preview block is the only part with a look of its own, and deliberately so: it is the
+   claim the feature makes, so it reads as a quoted artefact rather than as body copy. */
+.ask-preview { margin: 10px 0 4px; padding: 8px 10px; border: 1px solid #cfe9dd; border-radius: 10px; background: #f4fbf7; }
+.ask-preview code { display: block; margin-top: 4px; font-size: .82rem; color: #0f7a54; word-break: break-word; }
+html.dark .ask-preview { border-color: #2c3142; background: #131820; }
+html.dark .ask-preview code { color: var(--tm-mint); }
+
+.ask-strict { margin: 10px 0; }
+
+.ask-answer { margin: 12px 0 4px; font-size: .95rem; color: #1f2430; }
+html.dark .ask-answer { color: #e6ecf2; }
+
+.ask-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 4px; }
 
 /* Account switcher chip — partner avatars + name + who's on it */
 /* The account chip and its TripMode badge sit on one row — the badge is a property of the account beside it, not a

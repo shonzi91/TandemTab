@@ -44,6 +44,7 @@ public sealed class MonetizationService
         new PlanFeatureDto(PlanFeatures.History,  InFree: false, InPro: true),
         new PlanFeatureDto(PlanFeatures.Caps,     InFree: false, InPro: true),
         new PlanFeatureDto(PlanFeatures.Trips,    InFree: false, InPro: true),
+        new PlanFeatureDto(PlanFeatures.Assistant, InFree: false, InPro: true),
     };
 
     /// <summary>The plan an account is on. While the flag is off everyone is "unlimited" (no gating). When on,

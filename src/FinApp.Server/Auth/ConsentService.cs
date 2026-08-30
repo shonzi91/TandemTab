@@ -26,6 +26,10 @@ public sealed class ConsentService(FinAppDbContext db)
         public const string BankLink = "bank_link";  // authorized linking a bank to an account
         public const string BankSync = "bank_sync";  // authorized syncing a fund to the linked account
         public const string BankShared = "bank_shared"; // a member acknowledged they can see a shared account's real bank data
+
+        /// <summary>The assistant (R3) may run for this account. Off by default, and per account rather than per
+        /// user: a shared account is shared money, and one member switching it on is not the other agreeing.</summary>
+        public const string Assistant = "ai_assistant";
     }
 
     public Task EnsureSchemaAsync(CancellationToken ct = default) =>

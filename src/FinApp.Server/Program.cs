@@ -10,6 +10,7 @@ using FinApp.Domain.Services;
 using FinApp.Forecasting;
 using FinApp.Persistence;
 using FinApp.Server.Accounts;
+using FinApp.Server.Assistant;
 using FinApp.Server.Auth;
 using FinApp.Server.BankSync;
 using FinApp.Server.Infrastructure;
@@ -105,6 +106,11 @@ builder.Services.AddSingleton<IPaymentProvider>(sp => sp.GetRequiredService<Paym
     _ => new SandboxPaymentProvider(),
 });
 builder.Services.AddScoped<ExternalAuthService>();
+// The assistant (R3). Singletons because both hold process-lifetime state: the parser holds one API client, and
+// the service holds the daily counters and the answer cache. Swapping IAssistantParser for an on-device or a fake
+// implementation is the only change either the tests or R9 need.
+builder.Services.AddSingleton<IAssistantParser, AnthropicAssistantParser>();
+builder.Services.AddSingleton<AssistantService>();
 builder.Services.AddHttpClient();
 builder.Services.AddScoped<AccountService>();
 builder.Services.AddScoped<ArchivedAccountsService>();
@@ -215,6 +221,20 @@ builder.Services.AddRateLimiter(options =>
         ? System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
             context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
             _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions { PermitLimit = 5, Window = TimeSpan.FromHours(1) })
+        : System.Threading.RateLimiting.RateLimitPartition.GetNoLimiter("dev"));
+    // The assistant is the one endpoint whose cost is somebody else's meter, so it gets the tightest burst bucket
+    // in the app. ⚠️ Partitioned by USER, not by IP, unlike every policy above: this route is authenticated, a
+    // household behind one address is the normal case here, and an IP key would let one member's questions
+    // throttle their partner's. AssistantService owns the slower daily ceiling; this only stops a stuck client
+    // from spending in a loop.
+    options.AddPolicy("assistant", context => throttleAuth
+        ? System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
+            // Same claim resolution as ClaimsPrincipalExtensions.UserId() — "sub" first, then NameIdentifier,
+            // because whether the JWT handler maps one onto the other is a setting, not a guarantee.
+            context.User.FindFirst("sub")?.Value
+                ?? context.User.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                ?? context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions { PermitLimit = 8, Window = TimeSpan.FromMinutes(1) })
         : System.Threading.RateLimiting.RateLimitPartition.GetNoLimiter("dev"));
 });
 
@@ -3184,6 +3204,28 @@ invitations.MapPost("/{id:guid}/decline", async (Guid id, ClaimsPrincipal user, 
     await svc.DeclineAsync(user.UserId(), id, ct);
     return Results.NoContent();
 });
+
+// ── The assistant (R3) ────────────────────────────────────────────────────────────────────────────────────
+// ⚠️ Read AssistantAskRequest before touching this: the question arriving here is MASKED by the client, which is
+// the only place that holds the vocabulary to mask it. Nothing about the account is read on this path — the id in
+// the route exists to scope the consent record and the gate, not to fetch anything — which is why there is no
+// snapshot call and no membership check here. The reply is an intent key; the client does the rest.
+accounts.MapPost("/{id:guid}/assistant/ask", async (
+    Guid id, AssistantAskRequest req, ClaimsPrincipal user, AssistantService assistant,
+    ConsentService consent, EntitlementService entitlements, CancellationToken ct) =>
+{
+    // Consent first, and per account: the assistant is opt-in and off by default, so an account that never turned
+    // it on must not be able to reach the model even with a hand-written request.
+    if (!await consent.IsActiveAsync(user.UserId(), id, ConsentService.Scope.Assistant, ct))
+        return Results.Json(new { error = "The assistant is off for this account." }, statusCode: StatusCodes.Status403Forbidden);
+    await entitlements.RequireAsync(user.UserId(), PlanFeatures.Assistant, ct);
+    return Results.Ok(await assistant.AskAsync(user.UserId(), req, ct));
+}).RequireRateLimiting("assistant");
+
+// Whether the assistant can be offered at all on this deployment. No key configured means no feature: the client
+// hides the control rather than showing one that always fails.
+accounts.MapGet("/assistant/status", (AssistantService assistant) =>
+    Results.Ok(new AssistantStatusDto(assistant.Available)));
 
 app.MapHub<SyncHub>("/hubs/sync").RequireAuthorization();
 

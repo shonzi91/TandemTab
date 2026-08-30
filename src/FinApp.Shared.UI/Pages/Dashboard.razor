@@ -8,6 +8,7 @@
 @inject NavigationManager Nav
 @inject ClientErrorReporter Errors
 @inject PlanGate Gate
+@inject AssistantResolver Resolver
 
 @if (_busy)
 {
@@ -251,6 +252,9 @@ else
                         <Icon Name="bank" /><span class="review-badge" aria-hidden="true">@_reviewCount</span>
                     </button>
                 }
+                @* R3. One control, in the header — deliberately NOT a Home section: an assistant is supposed to
+                   replace stacked panels with an on-demand answer, not become another one. *@
+                <button class="link hdr-ask" title="@Loc["Ask"]" aria-label="@Loc["Ask"]" @onclick="OpenAssistant"><Icon Name="search" /></button>
                 <button class="link hdr-trophy" title="@Loc["Achievements"]" @onclick="() => _modal = Modal.Achievements"><Icon Name="trophy" /></button>
                 <span class="acct-menu">
                     <button class="link" title="@Loc["Account actions"]" @onclick="() => _acctMenuOpen = !_acctMenuOpen"><Icon Name="sliders" /></button>
@@ -4300,6 +4304,88 @@ else
                     }
                     break;
 
+                case Modal.Assistant:
+                    <div class="modal-head">
+                        <h3><Icon Name="search" /> @Loc["Ask"]</h3>
+                        <span class="modal-head-actions">
+                            <button class="exp-edit" title="@Loc["Close"]" @onclick="Back"><Icon Name="x" /></button>
+                        </span>
+                    </div>
+                    @if (!_aiAvailable)
+                    {
+                        <p class="hint">@Loc["The assistant isn't switched on for this app yet."]</p>
+                    }
+                    else if (!_aiConsented)
+                    {
+                        @* Consent is a screen, not a checkbox, because what it is asking is not obvious: a question
+                           leaves the device. What does NOT leave it is the interesting half, so it is stated first. *@
+                        <p>@Loc["The assistant takes you to the right screen and explains how things work. It can also read out figures — the app works them out, so it can't get one wrong."]</p>
+                        <p class="hint">@Loc["Your question is masked here on your device first: the names of your categories, goals, wallets and journeys are replaced with placeholders and every number is removed. You see exactly what would be sent before you send it. The reply is only ever an instruction like 'open the goals tab' — never a sentence about your money."]</p>
+                        <div class="modal-actions">
+                            <button class="ghost" @onclick="Back">@Loc["Not now"]</button>
+                            <button class="primary" @onclick="GrantAssistantConsent"><Icon Name="check" /> @Loc["Turn it on"]</button>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="modal-field">
+                            <span class="lbl-row">@Loc["Your question"]</span>
+                            <input type="text" value="@_aiQuestion" @oninput="OnAssistantInput"
+                                   @onkeydown="@(async (KeyboardEventArgs k) => { if (k.Key == "Enter") await AskAssistant(); })"
+                                   placeholder="@Loc["e.g. what's safe to spend?"]" autocomplete="off" />
+                        </div>
+
+                        @if (_aiMasked is { } masked)
+                        {
+                            @* ★ The preview IS the promise. It is not a debug affordance and it does not get hidden
+                               behind a disclosure: the claim "we take your names out" is only worth anything if the
+                               person can see what is left. *@
+                            <div class="ask-preview">
+                                <span class="lbl-row">@Loc["This is what gets sent"]</span>
+                                <code>@masked.Text</code>
+                                @if (!masked.IsClean)
+                                {
+                                    <p class="hint warn-text">@string.Format(Loc["We don't recognise: {0}. Strict mode won't send it."], string.Join(", ", masked.Suspect))</p>
+                                }
+                            </div>
+                        }
+
+                        @* Switch renders its own <label>; wrapping it in another one nests two labels and hands
+                           every click on the text to the wrong control. *@
+                        <Switch @bind-Value="_aiStrict" Class="ask-strict">@Loc["Strict — never send a word we can't account for"]</Switch>
+
+                        @if (_aiNote is not null)
+                        {
+                            <p class="hint warn-text">@_aiNote</p>
+                        }
+                        @if (_aiAnswer is not null)
+                        {
+                            <p class="ask-answer">@_aiAnswer</p>
+                        }
+                        @if (_aiUnknown)
+                        {
+                            <p class="hint">@Loc["I didn't follow that one. These I can do:"]</p>
+                        }
+                        @if (_aiAnswer is null || _aiUnknown)
+                        {
+                            <div class="ask-chips">
+                                @foreach (var s in AssistantSuggestions)
+                                {
+                                    <button type="button" class="chip" @onclick="() => AskSuggestion(Loc[s])">@Loc[s]</button>
+                                }
+                            </div>
+                        }
+
+                        <div class="modal-actions">
+                            <button class="ghost" @onclick="Back">@Loc["Close"]</button>
+                            <button class="primary" disabled="@(_aiBusy || _aiMasked is null)" @onclick="AskAssistant">
+                                @if (_aiBusy) { <Spinner /> } else { <Icon Name="arrow-right" /> }
+                                @Loc["Ask"]
+                            </button>
+                        </div>
+                    }
+                    break;
+
                 case Modal.Achievements:
                     <div class="modal-head">
                         <h3><Icon Name="trophy" /> @Loc["Achievements"]</h3>
@@ -7634,7 +7720,7 @@ else
 }
 
 @code {
-    private enum Modal { None, Confirm, BankReview, BankConfirm, BankConsent, AddCat, AddBudget, DisburseSaving, PayoffProjection, GoalProjection, InvestmentProjection, BankTransfer, ExternalAccounts, HealthScore, RunwayMath, EditCat, DeleteCat, DeleteBudget, EditAccountTransfer, DeleteAccountTransfer, CategoryDetail, AddAccount, EditAccount, DeleteAccount, RemoveMember, LeaveAccount, AddExpense, NextPeriod, RemovePeriod, EditExpense, DeleteExpense, SettleExpense, AddBucket, EditBucket, DeleteBucket, EditCost, AddFund, EditFund, DeleteFund, Invite, Transfer, Deposit, EditDeposit, DeleteDeposit, ManageCats, ManageContribCats, ContribCat, DeleteContribCat, AddSaving, BudgetSaving, SpendSaving, EditSavingDeposit, DeleteSavingDeposit, EditTransfer, DeleteTransfer, EditPeriod, EditSavingMovement, DeleteSavingMovement, DeleteExternalTransfer, Achievements, Reallocate, Recurring, RecurringEdit, RecurringConfirm, Import, AddOrImport, ArchiveFund, FundMovements, Archived, ManageTags, EditTag, LogInstallment, DeleteInstallment, WeekRecap, TripEdit, DeleteTrip, AttachToTrip, UseTripSavings, TagExpense, UndoRefund, RecordRefund, FindRefundExpense }
+    private enum Modal { None, Confirm, BankReview, BankConfirm, BankConsent, AddCat, AddBudget, DisburseSaving, PayoffProjection, GoalProjection, InvestmentProjection, BankTransfer, ExternalAccounts, HealthScore, RunwayMath, EditCat, DeleteCat, DeleteBudget, EditAccountTransfer, DeleteAccountTransfer, CategoryDetail, AddAccount, EditAccount, DeleteAccount, RemoveMember, LeaveAccount, AddExpense, NextPeriod, RemovePeriod, EditExpense, DeleteExpense, SettleExpense, AddBucket, EditBucket, DeleteBucket, EditCost, AddFund, EditFund, DeleteFund, Invite, Transfer, Deposit, EditDeposit, DeleteDeposit, ManageCats, ManageContribCats, ContribCat, DeleteContribCat, AddSaving, BudgetSaving, SpendSaving, EditSavingDeposit, DeleteSavingDeposit, EditTransfer, DeleteTransfer, EditPeriod, EditSavingMovement, DeleteSavingMovement, DeleteExternalTransfer, Achievements, Reallocate, Recurring, RecurringEdit, RecurringConfirm, Import, AddOrImport, ArchiveFund, FundMovements, Archived, ManageTags, EditTag, LogInstallment, DeleteInstallment, WeekRecap, TripEdit, DeleteTrip, AttachToTrip, UseTripSavings, TagExpense, UndoRefund, RecordRefund, FindRefundExpense, Assistant }
     private enum Tab { Overview, Account, Budgets, Savings }
 
     /// <summary>Which kind of goal the Goals grid is showing. Defaults to All so the filter narrows on request
@@ -12738,6 +12824,270 @@ else
         _spendAmount = 0;
         CloseModal();
     });
+
+    // ── The assistant (R3) ────────────────────────────────────────────────────────────────────────────────────
+    // ⚠️ Read AssistantResolver before changing anything here. The rule the whole feature rests on: the string that
+    // leaves this page is ALWAYS _aiMasked.Text and never _aiQuestion. There is exactly one call site, below, and
+    // it is the only place that may build an AssistantAskRequest.
+
+    private bool _aiAvailable;            // the deployment has a key; null-checked once per session
+    private bool _aiChecked;
+    private bool _aiConsented;
+    private string _aiQuestion = "";
+    private MaskedQuestion? _aiMasked;
+    private bool _aiBusy;
+    private string? _aiAnswer;            // narrated from Loc + Fmt only — never a word the model wrote
+    private string? _aiNote;              // why nothing was sent, when nothing was sent
+    private bool _aiUnknown;              // show the suggestions instead of an answer
+
+    /// <summary>Strict mode: refuse to send a question still carrying something that looks like a name the app
+    /// does not know. ⚠️ Default ON, and the toggle is deliberately in the sheet rather than buried in settings —
+    /// turning it off is the user accepting that an unrecognised word will travel, and that is a decision they
+    /// should make while looking at the word.</summary>
+    private bool _aiStrict = true;
+
+    private async Task OpenAssistant()
+    {
+        if (!Gate.Require(PlanFeatures.Assistant)) return;
+        _aiQuestion = "";
+        _aiMasked = null;
+        _aiAnswer = null;
+        _aiNote = null;
+        _aiUnknown = false;
+        _modal = Modal.Assistant;
+
+        if (!_aiChecked)
+        {
+            _aiChecked = true;
+            try { _aiAvailable = (await Api.GetAssistantStatusAsync()).Available; } catch { _aiAvailable = false; }
+        }
+        try { _aiConsented = (await Api.GetConsentAsync(AssistantConsentScope, State.CurrentAccountId)).Active; }
+        catch { _aiConsented = false; }
+    }
+
+    private const string AssistantConsentScope = "ai_assistant";
+
+    private async Task GrantAssistantConsent()
+    {
+        await State.RecordConsent(AssistantConsentScope, State.CurrentAccountId);
+        _aiConsented = true;
+    }
+
+    /// <summary>Re-mask on every keystroke, because the preview under the box is the promise: what you see there is
+    /// the whole of what would be sent.</summary>
+    private void OnAssistantInput(ChangeEventArgs e)
+    {
+        _aiQuestion = e.Value?.ToString() ?? "";
+        _aiMasked = string.IsNullOrWhiteSpace(_aiQuestion) ? null : Resolver.Mask(_aiQuestion);
+        _aiNote = null;
+    }
+
+    private async Task AskAssistant()
+    {
+        if (_aiBusy || _aiMasked is not { } masked || string.IsNullOrWhiteSpace(masked.Text)) return;
+
+        if (_aiStrict && !masked.IsClean)
+        {
+            _aiNote = string.Format(
+                Loc["This still mentions {0}, which isn't anything in your account — so it wasn't sent. Rephrase it, or turn off strict mode."],
+                string.Join(", ", masked.Suspect));
+            _aiAnswer = null;
+            _aiUnknown = false;
+            return;
+        }
+
+        _aiBusy = true;
+        _aiAnswer = null;
+        _aiNote = null;
+        _aiUnknown = false;
+        try
+        {
+            // ★ The one call. masked.Text and the slot KINDS — never masked.Slots, which carry the names.
+            var reply = await Api.AskAssistantAsync(State.CurrentAccountId,
+                new AssistantAskRequest(masked.Text, masked.Slots.Select(s => s.Kind).ToList()));
+            await ApplyAssistantReply(reply, masked);
+        }
+        catch (Exception ex)
+        {
+            _aiNote = ex.Message;
+        }
+        finally { _aiBusy = false; }
+    }
+
+    private async Task ApplyAssistantReply(AssistantReplyDto reply, MaskedQuestion masked)
+    {
+        switch (reply.Intent)
+        {
+            case AssistantIntents.Navigate when reply.Target is { } target:
+                _modal = Modal.None;                       // the destination is the answer; the sheet is in the way
+                await NavigateAssistant(target, Resolver.SlotFor(reply, masked));
+                return;
+
+            case AssistantIntents.Explain when reply.Target is { } key:
+                _aiAnswer = ExplainerText(key);
+                if (_aiAnswer is null) _aiUnknown = true;
+                return;
+
+            case AssistantIntents.Report when reply.Target is { } topic:
+                _aiAnswer = ReportText(topic);
+                if (_aiAnswer is null) _aiUnknown = true;
+                return;
+
+            default:
+                _aiUnknown = true;
+                return;
+        }
+    }
+
+    /// <summary>
+    /// Every destination the assistant may reach, each one calling the same method the button for it calls.
+    /// ★ That is the rule, not a coincidence: the openers seed drafts, apply Pro gates and reset pickers, and a
+    /// route that sets <c>_modal</c> directly to skip them is how this feature would start producing screens that
+    /// are subtly wrong in ways nobody sees from the code.
+    /// </summary>
+    private async Task NavigateAssistant(string target, AssistantSlot? slot)
+    {
+        switch (target)
+        {
+            case "tab.dashboard": _tab = Tab.Overview; break;
+            case "tab.spending":  ShowExpensesTab(); break;
+            case "tab.goals":     _tab = Tab.Savings; break;
+            case "tab.wallets":   _tab = Tab.Account; break;
+
+            case "open.goal" when slot is { } g:
+                _tab = Tab.Savings;
+                if (_expandedGoalId != g.Id) ToggleGoalRow(g.Id);
+                break;
+            case "open.category" when slot is { } c:
+                ShowBudgetsTab();
+                if (_expandedCatId != c.Id) ToggleCatRow(c.Id);
+                break;
+            case "open.wallet" when slot is { } w:
+                _tab = Tab.Account;
+                OpenFundMovements(w.Id);
+                break;
+            case "open.trip" when slot is { } t:
+                ShowTripsTab(t.Id);
+                break;
+
+            case "open.breakdown":    OpenBreakdown(); break;
+            case "open.trends":       _tab = Tab.Budgets; ShowTrends(); break;
+            case "open.weekRecap":    _modal = Modal.WeekRecap; break;
+            case "open.achievements": _modal = Modal.Achievements; break;
+            case "open.healthScore":  OpenHealthScore(); break;
+            case "open.runwayMath":   OpenRunwayMath(); break;
+            case "open.recurring":    OpenRecurring(); break;
+            case "open.bankReview":   await MaybeOpenBankReviewAsync(bypassDismiss: true); break;
+            case "open.import":       await OpenImport(); break;
+            case "open.archived":     _modal = Modal.Archived; break;
+            case "open.categories":   OpenManageCats(); break;
+            case "open.tags":         OpenManageTags(); break;
+            case "open.budgets":      ShowBudgetsTab(); break;
+            case "open.invite":       OpenInvite(); break;
+            case "open.nextPeriod":   OpenNextPeriod(); break;
+
+            // A target with no case, or an entity target that arrived without its entity. The server validates
+            // both, so reaching here means the two lists have drifted — say so rather than doing nothing.
+            default:
+                _modal = Modal.Assistant;
+                _aiUnknown = true;
+                break;
+        }
+    }
+
+    /// <summary>The explainers, from this app's own translated strings. ⚠️ Not one word of this comes from a
+    /// model — that is the difference between an assistant that cannot be wrong about the product and one that
+    /// invents a feature you do not have.</summary>
+    private string? ExplainerText(string key) => key switch
+    {
+        "explain.runway" => Loc["Runway is how long your money lasts at your recent rate of spending: what you hold now, divided by what a typical recent period costs you. It's a pace, not a promise — a big one-off purchase moves it."],
+        "explain.safeToSpend" => Loc["Safe to spend is what's left after money you've set aside for goals. Budgets are plans, so they don't reserve anything — which is why the figure can be healthy while a budget is already over. The 'after bills' line takes off the recurring costs still expected this period."],
+        "explain.healthScore" => Loc["The health score reads four things: whether you're spending less than comes in, whether budgets are holding, whether you're setting money aside, and whether debts are shrinking. It's computed here, on your device, from your own figures."],
+        "explain.budgets" => Loc["A budget is an advisory plan for a category, not a pot of money. Setting one doesn't move anything — it just tells you when you're past what you meant to spend. Money is only really reserved when you set it aside in a goal."],
+        "explain.savings" => Loc["Setting money aside moves it out of 'safe to spend' and into a goal. A debt works the same way in reverse: paying it down is progress. Money in a goal is still yours and still in a wallet — it's just spoken for."],
+        "explain.debtFree" => Loc["Two dates, and they're different questions. The payoff plan rolls each cleared debt's payment onto the next one, so it clears sooner. The 'at your pace' date lets each debt run its own payment out. Neither is wrong; the plan assumes you keep paying the same total each month."],
+        "explain.periods" => Loc["A period is your budgeting month. Starting the next one closes this one, carries the balance forward, and optionally copies your budgets. A closed period stays readable and editable — you can still record a refund on a purchase from months ago."],
+        "explain.trips" => Loc["A journey groups the spending for a trip, including what you booked and paid before you left. That's why a trip's total can be bigger than what you spent while away — the two figures are shown separately."],
+        "explain.sharing" => Loc["Sharing an account gives another person the same view of it: the same wallets, budgets and goals, updating live for both of you. Income is pooled — there's no per-person balance."],
+        "explain.privacy" => Loc["Your question is answered in two halves. The names of your own categories, goals, wallets and journeys are recognised here on your device and replaced with placeholders, and every number is stripped, before anything is sent — the preview under the box is exactly what leaves. The reply is only ever an instruction like 'open the goals tab'; every figure you see is computed here, so the assistant cannot state a wrong one. ⚠️ A word we don't recognise — a shop, a person — can't be masked, which is what strict mode refuses to send."],
+        "explain.bank" => Loc["A linked bank is checked when you open the app, when you switch account, and when you refresh by hand — at most once every 15 minutes. New transactions wait for you to confirm them; nothing files itself without a rule you made."],
+        _ => null,
+    };
+
+    /// <summary>
+    /// The narrated figures. ★ Every number here is read from the engine and printed through <c>Fmt</c>, which is
+    /// also what makes these answers obey privacy mode without knowing it exists.
+    /// </summary>
+    private string? ReportText(string topic)
+    {
+        if (!State.IsReady) return null;
+        var bank = _bankStatus?.Balance;
+        var bankCur = _bankStatus?.BalanceCurrency;
+
+        switch (topic)
+        {
+            case "report.spent":
+                return string.Format(Loc["You've spent {0} this period."], Fmt(State.TotalMoneyOut));
+
+            case "report.safeToSpend":
+                var free = State.DisplayFreeToAllocate(bank, bankCur);
+                var afterBills = free - State.BillsDueThisPeriod;
+                return State.BillsDueThisPeriod.Amount > 0m
+                    ? string.Format(Loc["{0} is safe to spend — {1} once the bills still due this period are paid."], Fmt(free), Fmt(afterBills))
+                    : string.Format(Loc["{0} is safe to spend."], Fmt(free));
+
+            case "report.saved":
+                // ⚠️ The rate is null when nothing came in — no denominator, not a zero. Saying "0% of money in"
+                // to somebody with no income this period would be a figure that reads as a judgement.
+                return State.PeriodMoneyInRate is { } rate
+                    ? string.Format(Loc["You've set aside {0} this period, which is {1}% of the money that came in."],
+                        Fmt(State.SavingsThisPeriod), decimal.Round(rate, 0))
+                    : string.Format(Loc["You've set aside {0} this period."], Fmt(State.SavingsThisPeriod));
+
+            case "report.topCategory":
+                var top = State.AllCategories
+                    .Select(c => (c.Name, Spent: State.SpentInCategory(c.Id).Amount))
+                    .Where(x => x.Spent > 0m)
+                    .OrderByDescending(x => x.Spent)
+                    .FirstOrDefault();
+                return top.Name is null
+                    ? Loc["Nothing has been spent in a category yet this period."]
+                    : string.Format(Loc["{0} has taken the most this period: {1}."], top.Name, Fmt(top.Spent));
+
+            case "report.budgets":
+                var over = State.AllCategories
+                    .Where(c => State.BudgetFor(c.Id) is { } b && State.SpentInCategory(c.Id).Amount > b.Allocated.Amount)
+                    .Select(c => c.Name)
+                    .ToList();
+                return over.Count == 0
+                    ? Loc["No budget is over yet this period."]
+                    : over.Count == 1
+                        ? string.Format(Loc["One budget is over: {0}."], over[0])
+                        : string.Format(Loc["{0} budgets are over: {1}."], over.Count, string.Join(", ", over));
+
+            default:
+                return null;
+        }
+    }
+
+    /// <summary>What to offer when the answer was "I don't know". Keys, not sentences, so they translate — and the
+    /// same list doubles as the empty state, because a blank box with a cursor teaches nobody what to type.</summary>
+    private static readonly string[] AssistantSuggestions =
+    [
+        "How much have I spent this period?",
+        "What's safe to spend?",
+        "Which budgets are over?",
+        "How does the runway work?",
+        "What does this assistant send?",
+        "Take me to my goals",
+    ];
+
+    private async Task AskSuggestion(string text)
+    {
+        _aiQuestion = text;
+        _aiMasked = Resolver.Mask(text);
+        await AskAssistant();
+    }
 
     private void OpenNextPeriod()
     {

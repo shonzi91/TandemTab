@@ -85,6 +85,11 @@ public static class PlanFeatures
     public const string History = "history";
     public const string Caps = "caps";
 
+    /// <summary>The assistant (R3). Pro because every question costs a real call to a model provider — the first
+    /// per-use cost in the app. Free loses nothing it could otherwise reach: every screen the assistant navigates
+    /// to is one tap away without it.</summary>
+    public const string Assistant = "assistant";
+
     /// <summary>
     /// Trips. The line is <b>starting a journey, not running one</b> — Free cannot create a trip, edit one, fund it
     /// from a savings pot, or spend it in another currency.

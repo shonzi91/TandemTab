@@ -16,6 +16,9 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- The assistant (R3). Server-side only, deliberately: the client's CSP keeps connect-src 'self', so the
+         browser never talks to a model provider — and the key never leaves this process. -->
+    <PackageReference Include="Anthropic" Version="12.44.0" />
     <PackageReference Include="ClosedXML" Version="0.105.0" />
     <!-- Envelope-encrypt the account snapshot at rest: a per-write data key wrapped by a Cloud KMS key. -->
     <PackageReference Include="Google.Cloud.Kms.V1" Version="3.14.0" />
