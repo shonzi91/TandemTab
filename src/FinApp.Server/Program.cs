@@ -13,6 +13,7 @@ using FinApp.Server.Accounts;
 using FinApp.Server.Assistant;
 using FinApp.Server.Auth;
 using FinApp.Server.BankSync;
+using FinApp.Server.Health;
 using FinApp.Server.Infrastructure;
 using FinApp.Server.Invitations;
 using FinApp.Server.Sync;
@@ -112,6 +113,10 @@ builder.Services.AddScoped<ExternalAuthService>();
 builder.Services.AddSingleton<IAssistantParser, AnthropicAssistantParser>();
 builder.Services.AddSingleton<AssistantService>();
 builder.Services.AddScoped<AssistantUsageStore>();     // the spend counters; scoped because it rides the DbContext
+// Health signals + the watchdog that turns them into an email. A push, not a pull — see HealthSignals for the
+// outage that is the reason this exists at all.
+builder.Services.AddSingleton<HealthSignals>();
+builder.Services.AddHostedService<HealthWatchdog>();
 builder.Services.AddHttpClient();
 builder.Services.AddScoped<AccountService>();
 builder.Services.AddScoped<ArchivedAccountsService>();
@@ -544,9 +549,13 @@ auth.MapPost("/password", async (ChangePasswordRequest req, ClaimsPrincipal user
 auth.MapGet("/providers", (ExternalAuthService ext) =>
     Results.Ok(new ExternalProvidersDto(ext.IsEnabled("google"), ext.IsEnabled("facebook"))));
 
-auth.MapGet("/external/{provider}", (string provider, HttpContext http, ExternalAuthService ext, IConfiguration cfg) =>
+auth.MapGet("/external/{provider}", (string provider, HttpContext http, ExternalAuthService ext,
+    HealthSignals signals, IConfiguration cfg) =>
 {
     if (!ext.IsEnabled(provider)) return Results.NotFound();
+    // One half of the pair. A start with no matching completion is the only trace the August outage left, so it
+    // is counted before anything can go wrong with the leg that follows.
+    signals.Record(HealthSignal.ExternalSignInStarted);
     var redirectUri = ExternalRedirectUri(http, cfg, provider);
     var state = Guid.NewGuid().ToString("N");
     var oauthCookie = new CookieOptions
@@ -563,8 +572,8 @@ auth.MapGet("/external/{provider}", (string provider, HttpContext http, External
 
 auth.MapGet("/external/{provider}/callback", async (string provider, string? code, string? state,
     HttpContext http, ExternalAuthService ext, AuthService authSvc, AuthCodeService authCodes,
-    AvatarService avatars, ExternalIdentityService identities, IConfiguration cfg, ILoggerFactory logs,
-    CancellationToken ct) =>
+    AvatarService avatars, ExternalIdentityService identities, HealthSignals signals, IConfiguration cfg,
+    ILoggerFactory logs, CancellationToken ct) =>
 {
     // ⚠️ Named "FinApp.ExternalAuth" so it is greppable in Cloud Logging (textPayload:"FinApp.ExternalAuth").
     // Every exit from this handler used to be silent, and the cost of that was real: when Google sign-in broke
@@ -614,6 +623,9 @@ auth.MapGet("/external/{provider}/callback", async (string provider, string? cod
         // for the real access + refresh token, keeping session tokens out of the URL/history/Referer.
         var authCode = await authCodes.IssueAsync(userId, ct);
         log.LogInformation("External sign-in ({Provider}) completed; handing back a one-time code.", provider);
+        // The other half of the pair the watchdog watches. Recorded here, at the point the round trip actually
+        // closed — not at the redirect, and not on a Fail(), because the fault this catches produces neither.
+        signals.Record(HealthSignal.ExternalSignInCompleted);
         return Results.Redirect(Ok(authCode));
     }
     catch (Exception ex)
@@ -648,10 +660,13 @@ app.MapPost("/consent", async (RecordConsentRequest req, ClaimsPrincipal user, C
 //
 // Logged, not stored: it goes to ILogger as structured fields and lands in Cloud Logging, which we already query
 // when verifying deploys. No table, no migration, no third-party processor to declare in the privacy policy.
-app.MapPost("/client-errors", (ClientErrorReport report, ILoggerFactory logs, ClaimsPrincipal? user) =>
+app.MapPost("/client-errors", (ClientErrorReport report, HealthSignals signals, ILoggerFactory logs, ClaimsPrincipal? user) =>
 {
     var clean = ErrorScrubber.Clean(report);
     if (clean.Message.Length == 0) return Results.NoContent();   // nothing to say; don't log an empty row
+
+    // B1 has always collected these and always required somebody to go and look. This is the half that tells them.
+    signals.Record(HealthSignal.ClientError);
 
     // Named so it can be isolated in Cloud Logging. We log via the default text console, so the entry lands in
     // textPayload (not jsonPayload) — match on the substring:

@@ -44,11 +44,13 @@ public sealed class AnthropicAssistantParser : IAssistantParser
 
     private readonly AnthropicClient? _client;
     private readonly ILogger<AnthropicAssistantParser> _log;
+    private readonly Health.HealthSignals _signals;
     private readonly string _model;
 
-    public AnthropicAssistantParser(IConfiguration config, ILogger<AnthropicAssistantParser> log)
+    public AnthropicAssistantParser(IConfiguration config, Health.HealthSignals signals, ILogger<AnthropicAssistantParser> log)
     {
         _log = log;
+        _signals = signals;
         _model = config["Anthropic:Model"] ?? DefaultModel;
         var key = config["Anthropic:ApiKey"];
         _client = string.IsNullOrWhiteSpace(key) ? null : new AnthropicClient { ApiKey = key };
@@ -110,11 +112,14 @@ public sealed class AnthropicAssistantParser : IAssistantParser
             }, cancellationToken: ct);
 
             var json = string.Concat(response.Content.Select(b => b.Value).OfType<TextBlock>().Select(t => t.Text));
-            if (string.IsNullOrWhiteSpace(json)) return null;
+            if (string.IsNullOrWhiteSpace(json)) { _signals.Record(Health.HealthSignal.AssistantCallFailed); return null; }
 
             var parsed = JsonSerializer.Deserialize<Raw>(json);
-            if (parsed is null) return null;
+            if (parsed is null) { _signals.Record(Health.HealthSignal.AssistantCallFailed); return null; }
 
+            // ⚠️ "Succeeded" means the call came back parseable, not that the answer was any good — a model that
+            // returns a valid key for the wrong question is a quality problem, and no counter can see that one.
+            _signals.Record(Health.HealthSignal.AssistantCallSucceeded);
             return new AssistantReplyDto(
                 parsed.intent ?? AssistantIntents.Unknown,
                 string.IsNullOrWhiteSpace(parsed.target) ? null : parsed.target,
@@ -123,7 +128,9 @@ public sealed class AnthropicAssistantParser : IAssistantParser
         catch (Exception ex)
         {
             // ⚠️ Logged with the SHAPE of the question and never the question — the same rule the wire follows.
-            // A failed ask degrades to suggestion chips; it does not take a screen down.
+            // A failed ask degrades to suggestion chips; it does not take a screen down. ★ Which is exactly why it
+            // is also counted: a failure nobody sees is a failure nobody fixes, and this one is invisible by design.
+            _signals.Record(Health.HealthSignal.AssistantCallFailed);
             _log.LogWarning(ex, "Assistant: the parse call failed ({Length} chars, {Slots} slots).",
                 req.Question.Length, req.Slots.Count);
             return null;

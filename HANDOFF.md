@@ -1,8 +1,9 @@
 # TandemTab (FinApp) — session handoff
 
-Last updated: 2026-08-30 (Session 126 — **R3, scoped and built. The assistant takes your words out of the
-question before it asks anyone, and answers most questions without asking at all.**
-**569 + 56 + 554 green** (34 new), pairscan 0. ⚠️ **NOT DEPLOYED and NOT verified against a real key** — there is
+Last updated: 2026-08-30 (Session 126 — **R3, scoped and built — and then the thing that would have caught
+August's outage.** The assistant takes your words out of the question before it asks anyone, answers most
+questions without asking at all, and **something finally watches whether the app is working.**
+**569 + 56 + 572 green** (52 new), pairscan 0. ⚠️ **NOT DEPLOYED and NOT verified against a real key** — there is
 none on this machine, so no model reply has ever been parsed. `Anthropic__ApiKey` must become a **6th Cloud Run
 secret** before deploy, which moves the deploy verify's `secretKeyRef` count 5 → 6.
 ⭐ **The scoping was the deliverable.** Two different assistants were specced in this repo; R3 is BACKLOG #17's
@@ -97,6 +98,45 @@ which is the range the figure is read in.
 1` is unqualified because that form means "the existing row" on **both** SQLite and Postgres. Tested on SQLite;
 production is Postgres.
 
+### ⭐⭐ And then the alerting row, which is the one the August outage earned
+
+Sign-in was down for two days and the only evidence was an **absence** in a log nobody was reading. The four
+silent failure paths were fixed in S125; **nobody was still being told.** `HealthWatchdog` is a background loop
+that reads a rolling window of counters, runs three rules, and emails the owner.
+
+⭐ **The rule that matters is a ratio, and that is the whole insight.** *Sign-ins started with a provider ≥ 3 and
+completed = 0.* In the failure that actually happened **nothing errored anywhere** — the redirect out worked, the
+consent screen worked, the return leg silently vanished — so no error-counting alarm could ever have seen it. What
+broke was a **pair that stopped pairing**, and that is what to count.
+
+⚠️ **Deliberately not "sign-ins fell to zero".** On a thirty-user beta a quiet night would fire that nightly, and
+an alarm that cries wolf gets muted inside a week — at which point it is worse than not having built it. The
+ratio only fires when people are actively trying and **none** of them are getting through, which is a state with
+almost no innocent explanation.
+
+The other two rules: a burst of **client errors** (B1 has collected these since Session 82 and has always required
+somebody to go and look — this is the half that tells them), and the **assistant's model calls failing**, which is
+invisible by construction because a failed parse degrades to "I didn't follow that".
+
+★ **Three behaviours, each answering a way monitoring usually fails.** Say it **once** (an alert every ten minutes
+teaches its reader to filter it); say it **again** after 6 hours if still broken (silence is indistinguishable from
+"fixed"); say when it **recovers** (otherwise the reader has to go and check, which is the pull-not-push habit
+this exists to end).
+
+★ **Logged every cycle, healthy or not.** A monitor that is silent when all is well is indistinguishable from a
+monitor that has stopped running — the same failure this feature is about, reproduced one level up.
+
+⚠️ **In the app, not in Cloud Monitoring**, because R4 moves hosting off Google Cloud and log-metric policies would
+be work with a known expiry date. This needs a clock, a counter and an email sender, all of which exist anywhere.
+⚠️ **It is per instance**, so a marginal condition can be missed and a real one reported twice — the right trade
+against putting a shared store on the sign-in hot path, but a reason not to tune the thresholds tight.
+
+✅ **Driven on a running server** with a 1-minute window: four client errors posted, and the next cycle logged
+`Health watchdog: sign-ins 0→0, client errors 4, assistant 0/0 failed. Firing: client-errors.` followed by the
+alert itself and `no mail transport configured; [client-errors] was logged only` — which is the designed local
+fallback, and proof the send path is reached rather than skipped. ⚠️ The temporary `Alerts` block in
+`appsettings.Development.json` was **reverted**; production wants the defaults (60-minute window, checked every 10).
+
 ### How it was verified, and what is still unproven
 
 ✅ **Driven on a running app** (masking preview, strict refusal, local answers, fall-through):
@@ -126,6 +166,10 @@ mystery. Widened; the filter then ran three times clean.
 #### Next session
 1. ⭐ **Set `Anthropic__ApiKey` as a 6th Cloud Run secret and deploy** (`secretKeyRef` count 5 → 6 in the verify),
    then ask one real question and read the reply. That is the only gap in this feature.
+   ⚠️ **Set `Alerts__Email` in the same pass** (it falls back to the first address on `Admin:Emails`, which is
+   right, but worth being deliberate about) — and confirm on the deployed revision that the heartbeat line appears
+   ~10 minutes after boot. **An alerting system nobody has seen run in production is exactly the thing it exists
+   to prevent.**
 2. ⬜ **Read the `LocalHits` ratio** after real use — `Assistant: answered by the model (N answered locally…)`. If
    N is high the model call is a rare fallback and the model choice stops mattering; if it is low, the matcher's
    rule tables want the questions people actually asked. ⚠️ It is structurally pessimistic: a session the matcher

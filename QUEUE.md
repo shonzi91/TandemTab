@@ -50,7 +50,39 @@ for a category, one for a bucket — plus `TrendFocused` / `TrendFocusValue`); t
 
 ---
 
-## 1. ⚠️⚠️ A large amount of Android code is LIVE and has never been run
+---
+
+# ✅ Closed 2026-08-30 (Session 126) — and what that does to the order
+
+⚠️ **This file was last reviewed on 2026-08-23 and the numbering below is now wrong in two places.** It wants the
+S111 treatment (re-check every row against the code); until then, read the two corrections here first.
+
+- ✅ **#1 is CLOSED.** "A large amount of Android code is live and has never been run" was true when written and
+  is not now: **four emulator sessions** have driven it since (S116 `cda2852`, S117, S121, S123), and running it
+  found five defects a code read could not — the notification pull-down had **never fired once**, the payoff
+  slider's handle sat inside the system back-gesture strip, statement import was gated behind `bankEnabled` so it
+  shipped hidden from almost everyone, every read-only sheet drew a dead grey Save pill, and a bank write left
+  the Wallets screen showing a stale balance. ⭐ The ring, for the record, was fine.
+
+- ✅ **"Nothing alerts on anything" is CLOSED** — it was the top row of the published roadmap and it never had a
+  number here. **`HealthWatchdog`** now checks three rules on a rolling window and **emails the owner**, saying it
+  once, repeating after 6 hours, and saying so again when it recovers.
+  - ⭐ **The rule that matters is a ratio, not a count.** *Sign-ins started with a provider ≥ 3 and completed = 0.*
+    That is the exact shape of the 26–28 August outage — the redirect out works, the callback never arrives, and
+    **nothing errors anywhere**, so no error-counting alarm can see it. ⚠️ Deliberately not "sign-ins fell to
+    zero": on a thirty-user beta a quiet night would fire that nightly, and an alarm that cries wolf gets muted.
+  - The other two: a burst of **client errors** (B1 has always collected them and always needed somebody to go and
+    look — this is the half that tells them), and the **assistant's model calls failing**, which is invisible by
+    design because a failed parse degrades to "I didn't follow that".
+  - ⚠️ **It is per instance**, so a marginal condition can be missed and a real one reported twice. That is the
+    right trade at this size — the alternative is a shared store on the sign-in hot path — but it is a reason not
+    to tune the thresholds tight.
+  - ⚠️ **In the app, not in Cloud Monitoring**, because R4 moves hosting off Google Cloud and log-metric policies
+    would be work with a known expiry date. This travels: a clock, a counter and an email sender.
+
+---
+
+## 1. ✅ CLOSED — Android code that was live and had never been run
 
 **What happened.** Session 115 wrote nine Android commits — the foreign-cash wallet fix, statement import, merchant
 rules, the wallets ring, debt payoff, gestures, a `GET /breakdown` read — and its own handoff says plainly: *not one
