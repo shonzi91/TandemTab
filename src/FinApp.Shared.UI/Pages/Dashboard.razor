@@ -4369,9 +4369,9 @@ else
                         @if (_aiAnswer is null || _aiUnknown)
                         {
                             <div class="ask-chips">
-                                @foreach (var s in AssistantSuggestions)
+                                @foreach (var chip in AssistantSuggestions)
                                 {
-                                    <button type="button" class="chip" @onclick="() => AskSuggestion(Loc[s])">@Loc[s]</button>
+                                    <button type="button" class="chip" @onclick="() => AskSuggestion(chip)">@Loc[chip.Text]</button>
                                 }
                             </div>
                         }
@@ -12839,6 +12839,7 @@ else
     private string? _aiAnswer;            // narrated from Loc + Fmt only — never a word the model wrote
     private string? _aiNote;              // why nothing was sent, when nothing was sent
     private bool _aiUnknown;              // show the suggestions instead of an answer
+    private int _aiLocalHits;             // answered on the device since the last question that needed the model
 
     /// <summary>Strict mode: refuse to send a question still carrying something that looks like a name the app
     /// does not know. ⚠️ Default ON, and the toggle is deliberately in the sheet rather than buried in settings —
@@ -12896,15 +12897,28 @@ else
             return;
         }
 
-        _aiBusy = true;
         _aiAnswer = null;
         _aiNote = null;
         _aiUnknown = false;
+
+        // ★ Local first. Most questions are variations on a handful of the catalogue's 39 keys, and one answered
+        // here costs nothing, waits for nothing, and never leaves the device at all — which is a stronger thing to
+        // be able to say than "we masked it before sending".
+        var kinds = masked.Slots.Select(s => s.Kind).ToList();
+        if (AssistantLocalMatcher.Match(masked.Text, kinds) is { } local)
+        {
+            _aiLocalHits++;
+            await ApplyAssistantReply(local, masked);
+            return;
+        }
+
+        _aiBusy = true;
         try
         {
             // ★ The one call. masked.Text and the slot KINDS — never masked.Slots, which carry the names.
             var reply = await Api.AskAssistantAsync(State.CurrentAccountId,
-                new AssistantAskRequest(masked.Text, masked.Slots.Select(s => s.Kind).ToList()));
+                new AssistantAskRequest(masked.Text, kinds, _aiLocalHits));
+            _aiLocalHits = 0;   // reported; start the next tally
             await ApplyAssistantReply(reply, masked);
         }
         catch (Exception ex)
@@ -13070,23 +13084,31 @@ else
         }
     }
 
-    /// <summary>What to offer when the answer was "I don't know". Keys, not sentences, so they translate — and the
-    /// same list doubles as the empty state, because a blank box with a cursor teaches nobody what to type.</summary>
-    private static readonly string[] AssistantSuggestions =
+    /// <summary>
+    /// What to offer when the answer was "I don't know" — and the empty state, because a blank box with a cursor
+    /// teaches nobody what to type.
+    /// <para>★ <b>Each chip carries its own answer.</b> These are fixed questions with known answers, so routing
+    /// them through the matcher (let alone the network) would be paying to rediscover something already written
+    /// down here. It also makes them immune to translation: a Bulgarian chip resolves identically.</para>
+    /// </summary>
+    private static readonly (string Text, AssistantReplyDto Reply)[] AssistantSuggestions =
     [
-        "How much have I spent this period?",
-        "What's safe to spend?",
-        "Which budgets are over?",
-        "How does the runway work?",
-        "What does this assistant send?",
-        "Take me to my goals",
+        ("How much have I spent this period?", new(AssistantIntents.Report, "report.spent", null)),
+        ("What's safe to spend?",              new(AssistantIntents.Report, "report.safeToSpend", null)),
+        ("Which budgets are over?",            new(AssistantIntents.Report, "report.budgets", null)),
+        ("How does the runway work?",          new(AssistantIntents.Explain, "explain.runway", null)),
+        ("What does this assistant send?",     new(AssistantIntents.Explain, "explain.privacy", null)),
+        ("Take me to my goals",                new(AssistantIntents.Navigate, "tab.goals", null)),
     ];
 
-    private async Task AskSuggestion(string text)
+    private async Task AskSuggestion((string Text, AssistantReplyDto Reply) chip)
     {
-        _aiQuestion = text;
-        _aiMasked = Resolver.Mask(text);
-        await AskAssistant();
+        _aiQuestion = Loc[chip.Text];
+        _aiMasked = Resolver.Mask(_aiQuestion);
+        _aiNote = null;
+        _aiUnknown = false;
+        _aiLocalHits++;
+        await ApplyAssistantReply(chip.Reply, _aiMasked);
     }
 
     private void OpenNextPeriod()

@@ -63,6 +63,11 @@ public sealed partial class AssistantService(IAssistantParser parser, ILogger<As
 
         var reply = Validate(await parser.ParseAsync(req, ct), req);
         if (_cache.Count < 5_000) _cache[(userId, key)] = reply;
+
+        // The only place the local hit rate is observable. Read it as "for every N answered free on the device,
+        // one was paid for here" — it is what says whether the model call is still earning its keep.
+        log.LogInformation("Assistant: answered by the model ({LocalHits} answered locally since the last one, intent {Intent}).",
+            req.LocalHits, reply.Intent);
         return reply;
     }
 

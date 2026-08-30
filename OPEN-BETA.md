@@ -676,6 +676,46 @@ through `Fmt` — which is also what makes those answers obey privacy mode for f
 too. Two hand-maintained copies of one list would drift silently: the model would confidently return a key
 nothing handles, and the user would get "I didn't follow that" for a question the app can answer.
 
+#### ⭐ Local first — the model is the fallback, not the path
+
+**The measured cost of a question decided the shape.** The system prompt is **4,586 chars ≈ 1,240 tokens**, so on
+`claude-opus-5` an ask was **~$0.011** and an engaged user (10/day) would have cost **$3.30/month against €2.50 of
+Pro revenue**. Two changes fixed that, and the first matters more than the second:
+
+1. **`AssistantLocalMatcher` runs on the client before any network call.** The catalogue is 39 fixed keys and most
+   questions are variations on a handful, so the common case is a lookup, not an inference. ★ Two signals do the
+   work: **the slot kinds are already resolved** (a `{1}` that is a *goal*, with no "how does" phrasing, is
+   `open.goal` — the largest target group, free), and **question class is a small closed set** (how does → explain,
+   how much → report, take me to → navigate). ⚠️ **Report is classified before explain, and that order is
+   load-bearing**: "what's *my* safe to spend" and "what is safe to spend" differ by one word and are different
+   questions. A question it answers **never leaves the device at all**, which is a stronger claim than masking.
+2. **The model is `claude-haiku-4-5`** (config-overridable via `Anthropic:Model`). By the time a question reaches
+   it, the easy ones are gone and what is left is unusual phrasing — a vocabulary problem, not a reasoning one —
+   under a strict schema with a validation layer behind it.
+
+★ **The failure mode is what makes a keyword matcher acceptable here at all.** A rule that stops matching costs a
+cent and a round-trip, not a wrong answer. It also runs its own catalogue check on its own output, so a typo in a
+rule table falls through to the model instead of producing a key nothing handles.
+
+★ **The six suggestion chips carry their own answers** and never touch the matcher or the network — they were
+costing an API call each, which was paying to rediscover something already written down.
+
+⬜ **The hit rate is measured, not assumed.** `AssistantAskRequest.LocalHits` rides a request that was happening
+anyway and reports how many questions the device answered since the last one that needed the model — a count,
+never a question, no new endpoint. ⚠️ It is structurally pessimistic: a session the matcher answers *entirely*
+never reports its perfect score. That is the right bias, since that is the session with no bill.
+
+⚠️ **Bulgarian is partial on purpose.** The stems are lifted from the app's own translations rather than invented;
+coverage is thinner than English and the shortfall falls through to a model that handles any language.
+
+**Where the bill lands** (300 asks/month): Opus, no matcher **$3.30** → local-first + Haiku **~$0.12**.
+
+⚠️⚠️ **Two request settings are coupled to the model and both fail silently** — `Effort` is *rejected* by Haiku
+(400 → every question becomes `unknown`), and thinking is *on by default* on Opus 5 with thinking tokens counted
+against `MaxTokens` (256 truncates the reply → every question becomes `unknown`). Same symptom, opposite causes,
+and it looks exactly like a model that never understands anything. `AnthropicAssistantParser` branches on the
+model for both; the reasoning is written next to the branch.
+
 ★ **A reply that does not validate is not an error, it is `unknown`** — an unlisted key, a key from the wrong
 catalogue, a missing slot, or a slot naming the wrong *kind* of entity all end in suggestion chips. Throwing
 would turn a model's bad day into a broken screen. Fourteen API tests pin that, driven with a fake parser; **no

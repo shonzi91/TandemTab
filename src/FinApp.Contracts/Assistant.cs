@@ -21,7 +21,15 @@ public sealed record AssistantAskRequest(
     /// <summary>What each placeholder is, in order — one of <see cref="AssistantSlotKinds"/>. The model needs the
     /// <em>kind</em> to route ("open my {1}" means a different screen for a goal than for a wallet); it does not
     /// need, and never receives, the name.</summary>
-    IReadOnlyList<string> Slots);
+    IReadOnlyList<string> Slots,
+    /// <summary>How many questions <see cref="AssistantLocalMatcher"/> answered on the device since the last time
+    /// one reached here.
+    /// <para>★ It rides a request that was happening anyway, so measuring the local hit rate costs no endpoint, no
+    /// extra call and no new privacy surface — it is a count, never a question. ⚠️ It is also structurally
+    /// pessimistic: a session where the matcher answers <em>everything</em> never sends a request, so its perfect
+    /// score is never reported. That is the right bias — the case it under-counts is the case with no bill.</para>
+    /// </summary>
+    int LocalHits = 0);
 
 /// <summary>
 /// What the model decided the question was. <see cref="Intent"/> is one of <see cref="AssistantIntents"/>;
