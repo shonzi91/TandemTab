@@ -243,24 +243,33 @@ the instruction that works. That is precisely the hole `skipWaiting` now fills.
    so the thing it exists for — a bad worker replacing itself with no user action — is still unobserved. The
    next ordinary deploy is the test: a page open across it should pick up the new build on **one reload**. If it
    does not, the claim in this write-up is wrong and the file header's argument needs revisiting.
-3. ⬜ **The phone never renders member pictures at all — a second, separate bug from S124's.** `MemberAvatars`
-   and `AccountAvatar` in `HomeScreen.kt` draw `AvatarCircle(initialOf(…))` and never read
-   `state.sharing.avatars`, the map the app already fetches; only `SettingsSheet.kt:432` uses the real picture.
-   S124 fixed the storage *format*, not this. Blocked behind the APK either way.
-4. ⬜ **The APK pipeline.** Zero tags in the repo; no `android-v*` means no Release APK, so #3 and S124's phone
+3. ⬜ **NATIVE Android only: the account switcher shows initials where the web shows pictures.** `AccountAvatar`
+   (`HomeScreen.kt:1706`, used at :1689) stacks `AvatarCircle(initialOf(…))` and never reads
+   `state.sharing.avatars`; the web's equivalent (`Dashboard.razor:110`) does render them. Small parity row,
+   blocked behind the APK anyway.
+   ⚠️ **I first wrote this up as "the phone never renders member pictures at all", and that was wrong** — worth
+   keeping as a caution about grepping for a *definition* and calling it a screen. `MemberAvatars` (plural,
+   `HomeScreen.kt:1835`) has **no call site anywhere**: it is dead code, not a rendered surface. `SettingsSheet
+   .kt:432` does render real pictures, and the invitation card at `:1039` passes `null` **correctly** — an
+   invitation arrives before there is any avatar for the inviter. ⭐ And the owner's own check settled the wider
+   claim: **mobile web is fine**, because mobile web is the same Blazor client as desktop and never had this gap
+   — only the native app does. Confirm a call site before reporting a rendering bug.
+4. ⬜ **Delete the dead `MemberAvatars`** (`HomeScreen.kt:1835`) while in that file — an uncalled composable that
+   looks like a live screen is what produced the wrong diagnosis above.
+5. ⬜ **The APK pipeline.** Zero tags in the repo; no `android-v*` means no Release APK, so #3 and S124's phone
    half cannot reach anybody. Carried from Session 123.
-5. ⬜ **Two guards worth building, both for the same class of bug — a failure with no failing test.** (a) The
+6. ⬜ **Two guards worth building, both for the same class of bug — a failure with no failing test.** (a) The
    service worker's route allowlist has no test in the suite; the 16-case check lives in a scratch file. (b)
    Nothing fails when `wwwroot` HTML references a cross-origin resource its own CSP forbids — which is how the
    font went unnoticed for as long as the header has existed.
-6. ⬜ If a picker field is ever added to Dashboard, it has to be added to `RepairPickers` too.
-7. ⬜ R2.5's remaining rows are all phone→web: **always-visible milestones**, an **auto-mask trigger**, the
+7. ⬜ If a picker field is ever added to Dashboard, it has to be added to `RepairPickers` too.
+8. ⬜ R2.5's remaining rows are all phone→web: **always-visible milestones**, an **auto-mask trigger**, the
    phone's account switcher trip-mode badge (`GET /active-trips`, one of the 8 uncalled routes), and the tail of
    T0 — refunds, settlements, the installment log, statement import and the savings draw-downs still send no
    idempotency key.
-8. ⬜ **Bulgarian renders in a different typeface to English** and always has (see above). Not a bug to fix in
+9. ⬜ **Bulgarian renders in a different typeface to English** and always has (see above). Not a bug to fix in
    code — a decision to take about the typeface.
-9. ⬜ **A stray empty `WARNING` file is tracked at the repo root.** It is the scar of a PowerShell quoting trap:
+10. ⬜ **A stray empty `WARNING` file is tracked at the repo root.** It is the scar of a PowerShell quoting trap:
    `gcloud logging read 'severity>=WARNING'` lets `>` through as a redirect and creates it. Delete the file, and
    filter on `severity=ERROR` (no `>`) when reading logs.
 
