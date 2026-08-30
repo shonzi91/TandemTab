@@ -349,6 +349,13 @@ app.Use(async (context, next) =>
     h["Referrer-Policy"] = "strict-origin-when-cross-origin";
     h["Permissions-Policy"] = "camera=(), microphone=(), geolocation=(), payment=(), usb=()";
     h["Strict-Transport-Security"] = "max-age=63072000; includeSubDomains; preload";
+    // ⚠️ `font-src 'self'` and `style-src` without a CDN are LOAD-BEARING, not leftovers. Until 2026-08-30
+    // index.html carried a fonts.googleapis.com stylesheet that this policy refused on every single page
+    // load, and the whole app rendered in the system fallback in production for as long as that header has
+    // existed — a violation nobody read because the page still looked plausible. The font is now self-hosted
+    // (css/fonts/*.woff2, @font-face at the top of app.css). If a web font is ever needed again, ship the
+    // bytes from this origin; do NOT re-open this policy to a font CDN. Self-hosting also keeps the client
+    // free of cross-origin requests entirely, which is the same privacy line the inlined avatars took.
     h["Content-Security-Policy"] =
         "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; " +
         "img-src 'self' data: https:; font-src 'self'; connect-src 'self'; style-src 'self' 'unsafe-inline'; " +

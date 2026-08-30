@@ -1,3 +1,43 @@
+/* ── Quicksand, self-hosted ────────────────────────────────────────────────────────────────────────
+   ⚠️ This used to be a <link> to fonts.googleapis.com, and the CSP has been silently refusing it:
+   `style-src 'self' 'unsafe-inline'` blocks that stylesheet, and `font-src 'self'` would have blocked
+   the woff2 behind it even if the stylesheet had loaded. The app has been rendering in the system
+   fallback in production since the header went in — a violation logged on every page load that
+   nothing ever read. Self-hosting fixes it WITHOUT loosening the policy, which is the right
+   direction: it also removes the last cross-origin request the client made, so no visitor's IP
+   reaches Google merely for opening the page.
+
+   ★ Two files, not eight. Google serves Quicksand as a VARIABLE font — one woff2 per subset spanning
+   the whole 300–700 axis — so the four weights this app uses (400/500/600/700) are interpolated out
+   of one file. Asking the API for wght@400;500;600;700 returns the same URL four times over, and the
+   `font-weight: 300 700` range below is what tells the browser it may do that. Do not "helpfully"
+   split this into static per-weight faces; that is four times the bytes for the same rendering.
+
+   ⚠️ There is no Cyrillic subset of Quicksand — Google does not publish one. The Bulgarian UI
+   (Localizer.cs) has therefore ALWAYS rendered in the fallback stack and still does. That is a
+   property of the typeface, not something this change broke or can fix, and a `cyrillic` file added
+   here would simply 404. If Bulgarian ever needs to stop looking like a different app, that is a
+   typeface decision, not a loading one.
+
+   Vietnamese is the third subset Google publishes and is deliberately not carried — no part of this
+   product is in Vietnamese, and the service worker precaches every woff2 it finds. */
+@font-face {
+    font-family: 'Quicksand';
+    font-style: normal;
+    font-weight: 300 700;
+    font-display: swap;
+    src: url('fonts/quicksand-latin-ext.woff2') format('woff2');
+    unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+    font-family: 'Quicksand';
+    font-style: normal;
+    font-weight: 300 700;
+    font-display: swap;
+    src: url('fonts/quicksand-latin.woff2') format('woff2');
+    unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
 /*#if (SampleContent)*/
 html, body {
     font-family: 'Quicksand', system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;

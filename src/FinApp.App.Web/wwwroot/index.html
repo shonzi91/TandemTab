@@ -5,11 +5,15 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>TandemTab — track together, save together</title>
     <base href="/" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Quicksand:wght@400;500;600;700&display=swap" />
+    <!-- Quicksand is served from our own origin (the @font-face pair lives at the top of app.css). It was a
+         fonts.googleapis.com <link> until 2026-08-30, and the CSP had been refusing it the whole time — see
+         the note in app.css. `crossorigin` is not optional on a font preload even for a same-origin file:
+         fonts are always fetched in CORS mode, and without it the browser fetches this twice. Only the latin
+         subset is preloaded — every user needs it (digits and currency signs live there), while latin-ext is
+         a minority of names and is left to the normal unicode-range fetch. -->
+    <link rel="preload" href="css/fonts/quicksand-latin.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="stylesheet" href="css/bootstrap/bootstrap.min.css" />
-    <link rel="stylesheet" href="css/app.css?v=45" />
+    <link rel="stylesheet" href="css/app.css?v=46" />
     <link rel="stylesheet" href="FinApp.App.Web.styles.css" />
     <link rel="icon" type="image/svg+xml" href="favicon.svg">
 
