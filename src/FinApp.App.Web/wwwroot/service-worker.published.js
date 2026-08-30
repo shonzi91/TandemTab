@@ -9,10 +9,12 @@
 // R4.5 (Trip Mode) and are deliberately not smuggled in here.
 //
 // ⚠️ One generation at a time. Every entry is precached under a cache name carrying the build's asset-manifest
-// version, so a running page can never mix a new index.html with an old .wasm. The price is bounded staleness:
-// a new build installs in the background and waits, and takes over once every tab of the app is closed. That is
-// the standard trade and it is the safe half of it — the alternative (skipWaiting) swaps the runtime under a
-// page that is still using it. See the note in OPEN-BETA.md if this ever needs revisiting.
+// version, so a fresh boot can never mix a new index.html with an old .wasm.
+//
+// ⚠️ It used to ALSO wait for every tab to close before taking over, and it no longer does — `skipWaiting` in
+// onInstall, `clients.claim` in onActivate. That reversal was forced by this worker breaking Google sign-in
+// and then being unable to ship its own fix; the full argument is at the bottom of onInstall, and it should
+// be read before anyone restores the old behaviour on general principle.
 
 self.importScripts('./service-worker-assets.js');
 
@@ -70,6 +72,24 @@ async function onInstall() {
     // addAll is all-or-nothing: a half-populated cache would boot an app missing an assembly, which fails
     // later and further away than a failed install does.
     await caches.open(cacheName).then(cache => cache.addAll(assetsRequests));
+
+    // ⚠️⚠️ THIS REVERSES A DELIBERATE DECISION, 2026-08-30, and the reason it was reversed matters more than
+    // the decision itself. The original design refused `skipWaiting` on sound grounds — claiming a page that
+    // is already running swaps the runtime under it, and can leave it asking for an asset from a cache
+    // generation that has just been retired. The price was stated as "bounded staleness": a new build waits
+    // until every tab of the app is closed.
+    //
+    // ⛔ That price turned out not to be staleness. When this worker shipped a bug that ate the OAuth
+    // callback, "waits until every tab is closed" meant **every affected user's sign-in stayed broken until
+    // they happened to close all their tabs**, which most never do — and closing tabs is not even reliable
+    // advice, because an installed PWA window counts as a client too. A worker that cannot deliver its own
+    // repair is a worker that turns any bug in it into a permanent one.
+    //
+    // ★ The staleness risk this re-accepts is small *for this app specifically*, and that is the whole basis
+    // for the trade: Blazor loads every assembly in `blazor.boot.json` at boot and this app configures no
+    // lazy-loaded assemblies, so a running page has what it needs in memory and rarely fetches `_framework`
+    // again. If lazy loading is ever turned on, come back and re-argue this — the trade changes.
+    self.skipWaiting();
 }
 
 async function onActivate() {
@@ -79,6 +99,11 @@ async function onActivate() {
     await Promise.all(cacheKeys
         .filter(key => key.startsWith(cacheNamePrefix) && key !== cacheName)
         .map(key => caches.delete(key)));
+
+    // Take over the pages that are already open, rather than only the ones opened from now on. Without this,
+    // `skipWaiting` above just means this worker becomes *active* while the old one keeps serving every tab
+    // that is currently on screen — which is exactly the situation this pair exists to end.
+    await self.clients.claim();
 }
 
 async function onFetch(event) {
