@@ -1,6 +1,154 @@
 # TandemTab (FinApp) — session handoff
 
-Last updated: 2026-08-30 (Session 124 — **two reported bugs, and both were somewhere other than where they were
+Last updated: 2026-08-30 (Session 125 — **the app has never once rendered in its own typeface in production, and
+the CSP that was blocking it turned out to be the correct half of the pair.** Quicksand is now self-hosted; the
+policy is untouched. **569 + 56 + 488 green** (no new tests — see the honest note on that below).
+⭐ **The defect was measured on the live site before a line changed, and it is worse than the carried note said:
+not "a fallback font" but *the 500 and 600 weights not existing at all*.**
+⬜ **NOT deployed.** This is a client static-asset change plus a comment; it ships with the next revision.)
+
+### ★ The CSP was not the bug. It was the only part of this that was right.
+
+The carried item read "the CSP blocks the app's own web font — either allow the two Google Fonts hosts or
+self-host". Framed that way it is a policy decision with two acceptable answers. It is not: `index.html` was
+asking for a resource the app's own security header forbids, and **the header is the half that is correct**.
+`font-src 'self'` on a personal-finance app is not an oversight to be relaxed, and the Google Fonts `<link>` was
+the **only** cross-origin request the entire web client made. Loosening the policy would have re-opened it to
+keep a convenience; self-hosting closes it and keeps the policy. So `Program.cs` gains a comment and **not one
+character of the CSP changed**.
+
+⚠️ **That comment is the actual deliverable in the server project.** The next person to want a web font will
+reach for a CDN link, watch it fail, and — reasonably — "fix" the CSP, which is how this defect gets rebuilt.
+The header now says in place that `font-src 'self'` and a CDN-free `style-src` are load-bearing and that the
+answer is to ship the bytes from this origin.
+
+### ⭐ What production was actually doing — measured, not inferred
+
+The header was already proof enough to act on. It was not proof of the *symptom*, so the live site was measured
+first, and the symptom is bigger than the note claimed.
+
+| On `tandemtab.com`, before | Value | Reading |
+|---|---|---|
+| `document.fonts.size` | **0** | not one `@font-face` ever loaded |
+| the stylesheet fetch | `transferSize: 0`, twice | refused, exactly as the CSP promises |
+| `Quicksand` @ 400 | **229.96** | — |
+| a **bogus family name** @ 400 | **229.96** | *identical* — so "Quicksand" resolves to nothing |
+| `Quicksand` @ 500 | **229.96** | collapsed onto 400 |
+| `Quicksand` @ 700 | 237.82 | browser-synthesised faux bold |
+
+★ **500 and 600 have never existed in production.** The app's design system leans on them for chips, labels and
+section headers; every one of those has been rendering at regular weight, with 700 a synthetic smear rather than
+the drawn bold. "Renders in a fallback font" undersells it — the *weight hierarchy* was gone, which is why the
+pages still looked plausible enough for this to survive as long as it did.
+
+⚠️ **One wrong turn, worth recording because it nearly became the finding.** `document.fonts.check('400 16px
+Quicksand')` returned **true** on production, and the Quicksand measurement differed from `system-ui` — which
+reads exactly like "Quicksand is installed on this machine, so the bug is invisible here". It is not: `check()`
+answers about *pending* faces, and the app's fallback stack starts at `system-ui` while an unresolvable family
+falls to the *browser default*, which is a different font again. The **bogus-family control** is what settled it
+— same width as Quicksand, so nothing was resolving. **Two measurements that disagree need a third that cannot
+be true**, or the plausible reading wins.
+
+### ★ Two files, not eight — because Quicksand is a variable font
+
+Asking the css2 API for `wght@400;500;600;700` returns **the same URL four times over**, once per subset: Google
+publishes Quicksand as one variable woff2 per subset spanning the whole **300–700** axis. Confirmed by asking
+for the range form (`wght@300..700`) and getting byte-identical URLs back with `font-weight: 300 700`.
+
+So `wwwroot/css/fonts/` holds exactly two files — `quicksand-latin.woff2` (28 KB) and
+`quicksand-latin-ext.woff2` (27 KB) — declared as two `@font-face` rules with the axis range, at the top of
+`app.css`. The unicode-ranges are kept verbatim, which is not decoration: on the landing page latin-ext reports
+`status=unloaded` while latin reports `loaded`, i.e. the subsetting still does its job and a page of English
+never pays for the extended block.
+
+⚠️ **Do not "helpfully" split this into static per-weight faces** — it is four times the bytes for identical
+rendering, and it is the obvious-looking wrong move. The proof the axis is live is four *monotonic* widths off
+one file: **254.74 / 258.66 / 262.58 / 266.38** at 400/500/600/700. Snapped or faux weights do not produce an
+even ramp.
+
+★ **Vietnamese is the third subset Google publishes and is deliberately not carried** — no part of this product
+is in Vietnamese, and the service worker precaches every `.woff2` it finds, so an unused subset is a cost paid
+by every install.
+
+### ⛔ The Bulgarian half cannot be fixed here, and the reason is the typeface
+
+**Quicksand has no Cyrillic subset.** Google does not publish one — the family ships latin, latin-ext and
+vietnamese, and that is the whole list. `Localizer.cs` carries real Cyrillic UI strings, so **the Bulgarian UI
+has always rendered in the fallback stack and still does after this change.** That is not a regression this
+introduced and not something a loading fix can reach; a `cyrillic` file added beside the other two would simply
+404. It is written into the CSS so the next reader does not spend an hour rediscovering it. If Bulgarian should
+stop looking like a different app, that is a **typeface** decision and belongs with the design work, not here.
+
+### The rest of the change
+
+- **`index.html`** — the two `preconnect`s and the stylesheet `<link>` are gone, replaced by a same-origin
+  `<link rel="preload" as="font">` for the **latin** file only. Everyone needs latin (digits and currency signs
+  live in `U+0000-00FF`); latin-ext is a minority of names and is left to the normal unicode-range fetch.
+  ⚠️ **`crossorigin` is not optional on a font preload even same-origin** — fonts are always fetched in CORS
+  mode, and without the attribute the browser fetches the file *twice*. Verified: one request, initiator `link`.
+- **`app.css?v=45` → `?v=46`** — the standing rule for any edit to the global sheet, and this edit is one that
+  returning users must not miss.
+- ★ **The PWA gets something the CDN could never give it.** `service-worker.published.js` already matches
+  `/\.woff2?$/` in `offlineAssetsInclude`, so the font is now precached with the shell — an installed app opened
+  with no connection renders in its own typeface. Nothing was changed to make this true; it fell out of the font
+  becoming a first-party asset.
+- ✅ **The client is now entirely same-origin.** The Google Fonts link was the last cross-origin request in it.
+  Same line the S124 avatar inlining drew, arrived at from the other side.
+- The legal pages (`privacy.html`, `terms.html` and both `.bg` variants) specify `system-ui` **on purpose** and
+  were left alone.
+
+#### How it was verified
+
+Local server on `:5179` through the real UI. No sign-in was needed — the font applies to the landing and auth
+surface, so the login gate is not in the way for once.
+
+- `GET /css/fonts/quicksand-latin.woff2` → **200, `font/woff2`, 28244 bytes**.
+- **Zero CSP violations** in the console on a full load (the pre-change page logs one on every load).
+- `performance` resource list: **one** font request, same-origin, initiator `link`; **no** request to
+  `fonts.googleapis.com` or `fonts.gstatic.com`.
+- Two faces declared, `latin` **loaded** and `latin-ext` **unloaded** — the unicode-range split working.
+- The four-weight ramp above, plus Quicksand ≠ the fallback width.
+- Production measured for the before-state, per the table.
+
+⚠️ **Be honest about two things.**
+1. **There is no screenshot.** The Browser pane was not compositing frames, so `screenshot` timed out. The
+   evidence here is *numeric* — glyph metrics and network entries — which is stronger than a picture for a
+   weight-axis claim and weaker than one for "does the page look right". Nobody has *looked* at this.
+2. **No tests were added.** The suite is green at its previous counts because a font file, a `<link>` and a
+   comment are not things it covers — there is no unit test that can fail when a CDN stylesheet is CSP-blocked,
+   which is precisely why this ran unnoticed for as long as the header has existed. A real guard would be a
+   check that `wwwroot` contains no cross-origin `<link>`/`<script>`; that is worth doing and was not done here.
+
+⚠️ **Fixture residue, unchanged from S124:** the local run showed two `lh3.googleusercontent.com` avatar
+requests. Those are the pre-S124 remote URLs stored on the local `avatest@example.com` fixture, not a fault in
+this change and not present in production data going forward.
+
+#### ⬜ NOT DEPLOYED
+
+Committed to `main`, not shipped. Static client assets and one comment — it rides the next revision, and the
+served-bytes check for it is easy when it goes: fetch `/css/fonts/quicksand-latin.woff2` on both hosts and
+confirm the root's CSP header still reads `font-src 'self'` with no `fonts.gstatic.com` in it.
+
+#### Next session
+1. ⬜ **Bug 1 (S124) is still only half-shipped, and this is now the top of the list.** The phone needs an
+   `android-v*` tag to reach a Release APK and the repo has **zero tags** — carried from Session 123, and it has
+   been blocking a user-visible avatar fix since Session 124.
+2. ⬜ **A guard against the class of bug this session fixed.** Nothing anywhere fails when the client references
+   a cross-origin resource its own CSP forbids. A test asserting `wwwroot`'s HTML carries no external
+   `href`/`src` would have caught this the day the header landed, and would protect the same-origin property the
+   avatar work and this session both spent effort establishing.
+3. ⬜ If a picker field is ever added to Dashboard, it has to be added to `RepairPickers` too, or a deleted
+   option leaves it pointing at nothing.
+4. ⬜ R2.5's remaining rows are all phone→web: **always-visible milestones**, an **auto-mask trigger**, the
+   phone's account switcher trip-mode badge (`GET /active-trips`, one of the 8 uncalled routes), and the tail of
+   T0 — refunds, settlements, the installment log, statement import and the savings draw-downs still send no
+   idempotency key.
+5. ⬜ **Bulgarian renders in a different typeface to English** and always has (see above). Not a bug to fix in
+   code — a decision to take about the typeface.
+
+---
+
+Previously: 2026-08-30 (Session 124 — **two reported bugs, and both were somewhere other than where they were
 reported.** Google profile pictures were never a web rendering fault; fields "reselecting" in add/edit expense
 was never a Blazor `<select>` quirk. **569 + 56 + 488 green** (9 new).
 ⭐ **Both were reproduced in a browser before a line was changed, and re-run after** — the first one is the only
