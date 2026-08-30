@@ -41,9 +41,12 @@ public sealed record AssistantAskRequest(
 /// </summary>
 public sealed record AssistantReplyDto(string Intent, string? Target, int? Slot);
 
-/// <summary>Whether this deployment can run the assistant at all. A build with no key configured says so once, and
-/// the client hides the control — a button that always fails is worse than no button.</summary>
-public sealed record AssistantStatusDto(bool Available);
+/// <summary>Whether this deployment can run the assistant at all, and what is left of this month's budget.
+/// <para>A build with no key configured says so once and the client hides the control — a button that always
+/// fails is worse than no button. <see cref="MonthlyRemaining"/> counts only questions that reach the model;
+/// everything answered on the device is free and unlimited, which is why the number can sit still all day.</para>
+/// </summary>
+public sealed record AssistantStatusDto(bool Available, int MonthlyRemaining = 0, int MonthlyCap = 0);
 
 public static class AssistantIntents
 {

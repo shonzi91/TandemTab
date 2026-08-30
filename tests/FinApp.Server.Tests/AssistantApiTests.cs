@@ -202,7 +202,9 @@ public class AssistantApiTests : IClassFixture<FinAppServerFactory>
                      Ask(new string('a', AssistantService.MaxQuestionLength + 1)),
                  })
         {
-            var reply = await AskWith(parser, $"ai-illformed{Guid.NewGuid():N}"[..14], bad);
+            // ⚠️ A truncated guid was 2 hex characters here, i.e. 256 possible names across three registrations
+            // in one run — a collision fails registration, not the assertion, and reads as a mystery flake.
+            var reply = await AskWith(parser, $"ai-ill-{Guid.NewGuid():N}"[..20], bad);
             Assert.Equal(AssistantIntents.Unknown, reply.Intent);
         }
 
@@ -226,24 +228,155 @@ public class AssistantApiTests : IClassFixture<FinAppServerFactory>
         Assert.Equal(1, parser.Calls);
     }
 
+    /// <summary>A tiny cap, so the ceiling can be driven into in a test rather than described.</summary>
+    private WebApplicationFactory<Program> WithCap(IAssistantParser parser, int monthly, int daily) =>
+        _factory.WithWebHostBuilder(b =>
+        {
+            b.UseSetting("Assistant:MonthlyCallCap", monthly.ToString());
+            b.UseSetting("Assistant:DailyCallCap", daily.ToString());
+            b.ConfigureServices(services =>
+            {
+                services.RemoveAll<IAssistantParser>();
+                services.AddSingleton(parser);
+                services.RemoveAll<AssistantService>();
+                services.AddSingleton<AssistantService>();
+            });
+        });
+
     [Fact]
-    public async Task Past_the_daily_cap_the_answer_is_a_refusal_not_a_call()
+    public async Task Past_the_monthly_cap_the_answer_is_a_refusal_not_a_call()
     {
         var parser = new FakeParser(new AssistantReplyDto(AssistantIntents.Report, "report.spent", 0));
-        using var app = WithParser(parser);
-        var (client, _) = await _factory.RegisterAndAuthAsync("ai-cap");
+        using var app = WithCap(parser, monthly: 3, daily: 100);
+        var (client, _) = await _factory.RegisterAndAuthAsync("ai-monthcap");
         var accountId = await CreateAccountAsync(client);
         await ConsentAsync(client, accountId);
         var scoped = app.CreateClient();
         scoped.DefaultRequestHeaders.Authorization = client.DefaultRequestHeaders.Authorization;
 
         HttpResponseMessage? last = null;
-        for (var i = 0; i <= AssistantService.DailyCap; i++)
+        for (var i = 0; i < 4; i++)
             // A distinct question each time, or the cache would answer and never reach the counter.
             last = await scoped.PostAsJsonAsync($"/accounts/{accountId}/assistant/ask", Ask($"question number {i} please"));
 
         Assert.Equal(HttpStatusCode.TooManyRequests, last!.StatusCode);
-        Assert.Equal(AssistantService.DailyCap, parser.Calls);
+        Assert.Equal(3, parser.Calls);      // the fourth never reached the model
+    }
+
+    [Fact]
+    public async Task The_daily_cap_bites_before_the_month_is_spent()
+    {
+        var parser = new FakeParser(new AssistantReplyDto(AssistantIntents.Report, "report.spent", 0));
+        using var app = WithCap(parser, monthly: 100, daily: 2);
+        var (client, _) = await _factory.RegisterAndAuthAsync("ai-daycap");
+        var accountId = await CreateAccountAsync(client);
+        await ConsentAsync(client, accountId);
+        var scoped = app.CreateClient();
+        scoped.DefaultRequestHeaders.Authorization = client.DefaultRequestHeaders.Authorization;
+
+        HttpResponseMessage? last = null;
+        for (var i = 0; i < 3; i++)
+            last = await scoped.PostAsJsonAsync($"/accounts/{accountId}/assistant/ask", Ask($"another question {i}"));
+
+        Assert.Equal(HttpStatusCode.TooManyRequests, last!.StatusCode);
+        Assert.Equal(2, parser.Calls);
+    }
+
+    [Fact]
+    public async Task The_cap_survives_a_restart()
+    {
+        // ⚠️⚠️ The reason the counter is in the database rather than in memory. The old in-memory tally reset on
+        // every deploy, which made the "limit" a suggestion — and a deploy is the most ordinary event there is.
+        var parser = new FakeParser(new AssistantReplyDto(AssistantIntents.Report, "report.spent", 0));
+        var (client, _) = await _factory.RegisterAndAuthAsync("ai-restart");
+        var accountId = await CreateAccountAsync(client);
+        await ConsentAsync(client, accountId);
+
+        using (var app = WithCap(parser, monthly: 2, daily: 100))
+        {
+            var first = app.CreateClient();
+            first.DefaultRequestHeaders.Authorization = client.DefaultRequestHeaders.Authorization;
+            for (var i = 0; i < 2; i++)
+                await first.PostAsJsonAsync($"/accounts/{accountId}/assistant/ask", Ask($"before the restart {i}"));
+        }
+
+        // A second host — new AssistantService, new everything in memory, same database.
+        using var restarted = WithCap(parser, monthly: 2, daily: 100);
+        var after = restarted.CreateClient();
+        after.DefaultRequestHeaders.Authorization = client.DefaultRequestHeaders.Authorization;
+        var resp = await after.PostAsJsonAsync($"/accounts/{accountId}/assistant/ask", Ask("after the restart"));
+
+        Assert.Equal(HttpStatusCode.TooManyRequests, resp.StatusCode);
+        Assert.Equal(2, parser.Calls);
+    }
+
+    [Fact]
+    public async Task A_repeated_question_costs_no_budget()
+    {
+        // The answer cache sits in front of the counter, so asking the same thing twice spends once. Anything the
+        // client answered locally never arrives at all, which is the larger half of the same idea.
+        var parser = new FakeParser(new AssistantReplyDto(AssistantIntents.Report, "report.spent", 0));
+        using var app = WithCap(parser, monthly: 2, daily: 100);
+        var (client, _) = await _factory.RegisterAndAuthAsync("ai-nocharge");
+        var accountId = await CreateAccountAsync(client);
+        await ConsentAsync(client, accountId);
+        var scoped = app.CreateClient();
+        scoped.DefaultRequestHeaders.Authorization = client.DefaultRequestHeaders.Authorization;
+
+        for (var i = 0; i < 5; i++)
+            await scoped.PostAsJsonAsync($"/accounts/{accountId}/assistant/ask", Ask("the very same question"));
+
+        Assert.Equal(1, parser.Calls);
+        var status = await scoped.GetFromJsonAsync<AssistantStatusDto>("/accounts/assistant/status");
+        Assert.Equal(1, status!.MonthlyRemaining);   // one of two spent, not five
+    }
+
+    [Fact]
+    public async Task The_status_endpoint_reports_what_is_left()
+    {
+        var parser = new FakeParser(new AssistantReplyDto(AssistantIntents.Report, "report.spent", 0));
+        using var app = WithCap(parser, monthly: 5, daily: 100);
+        var (client, _) = await _factory.RegisterAndAuthAsync("ai-remaining");
+        var accountId = await CreateAccountAsync(client);
+        await ConsentAsync(client, accountId);
+        var scoped = app.CreateClient();
+        scoped.DefaultRequestHeaders.Authorization = client.DefaultRequestHeaders.Authorization;
+
+        var before = await scoped.GetFromJsonAsync<AssistantStatusDto>("/accounts/assistant/status");
+        Assert.Equal(5, before!.MonthlyRemaining);
+        Assert.Equal(5, before.MonthlyCap);
+
+        await scoped.PostAsJsonAsync($"/accounts/{accountId}/assistant/ask", Ask("one question"));
+        await scoped.PostAsJsonAsync($"/accounts/{accountId}/assistant/ask", Ask("a different question"));
+
+        var after = await scoped.GetFromJsonAsync<AssistantStatusDto>("/accounts/assistant/status");
+        Assert.Equal(3, after!.MonthlyRemaining);
+    }
+
+    [Fact]
+    public async Task One_users_spending_is_not_another_users_problem()
+    {
+        var parser = new FakeParser(new AssistantReplyDto(AssistantIntents.Report, "report.spent", 0));
+        using var app = WithCap(parser, monthly: 1, daily: 100);
+
+        var (heavy, _) = await _factory.RegisterAndAuthAsync("ai-heavy");
+        var heavyAccount = await CreateAccountAsync(heavy);
+        await ConsentAsync(heavy, heavyAccount);
+        var heavyClient = app.CreateClient();
+        heavyClient.DefaultRequestHeaders.Authorization = heavy.DefaultRequestHeaders.Authorization;
+
+        var (light, _) = await _factory.RegisterAndAuthAsync("ai-light");
+        var lightAccount = await CreateAccountAsync(light);
+        await ConsentAsync(light, lightAccount);
+        var lightClient = app.CreateClient();
+        lightClient.DefaultRequestHeaders.Authorization = light.DefaultRequestHeaders.Authorization;
+
+        await heavyClient.PostAsJsonAsync($"/accounts/{heavyAccount}/assistant/ask", Ask("heavy asks once"));
+        var heavySecond = await heavyClient.PostAsJsonAsync($"/accounts/{heavyAccount}/assistant/ask", Ask("heavy asks twice"));
+        var lightFirst = await lightClient.PostAsJsonAsync($"/accounts/{lightAccount}/assistant/ask", Ask("light asks once"));
+
+        Assert.Equal(HttpStatusCode.TooManyRequests, heavySecond.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, lightFirst.StatusCode);
     }
 
     [Fact]

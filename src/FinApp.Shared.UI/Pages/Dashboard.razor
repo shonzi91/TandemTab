@@ -4354,6 +4354,12 @@ else
                            every click on the text to the wrong control. *@
                         <Switch @bind-Value="_aiStrict" Class="ask-strict">@Loc["Strict — never send a word we can't account for"]</Switch>
 
+                        @* Only when it is nearly gone. A counter shown from day one turns every question into a
+                           decision about whether it is worth spending one, which is not the feeling wanted here. *@
+                        @if (_aiCap > 0 && _aiRemaining <= _aiCap / 5)
+                        {
+                            <p class="hint">@string.Format(Loc["{0} questions left this month that need the assistant's help. Everything the app answers on its own is unlimited."], _aiRemaining)</p>
+                        }
                         @if (_aiNote is not null)
                         {
                             <p class="hint warn-text">@_aiNote</p>
@@ -12840,6 +12846,8 @@ else
     private string? _aiNote;              // why nothing was sent, when nothing was sent
     private bool _aiUnknown;              // show the suggestions instead of an answer
     private int _aiLocalHits;             // answered on the device since the last question that needed the model
+    private int _aiRemaining;             // model calls left this month
+    private int _aiCap;
 
     /// <summary>Strict mode: refuse to send a question still carrying something that looks like a name the app
     /// does not know. ⚠️ Default ON, and the toggle is deliberately in the sheet rather than buried in settings —
@@ -12857,11 +12865,17 @@ else
         _aiUnknown = false;
         _modal = Modal.Assistant;
 
-        if (!_aiChecked)
+        // Re-read on every open, not once per session: the budget moves as questions are asked, and a stale
+        // "12 left" is worse than none.
+        try
         {
-            _aiChecked = true;
-            try { _aiAvailable = (await Api.GetAssistantStatusAsync()).Available; } catch { _aiAvailable = false; }
+            var status = await Api.GetAssistantStatusAsync();
+            _aiAvailable = status.Available;
+            _aiRemaining = status.MonthlyRemaining;
+            _aiCap = status.MonthlyCap;
         }
+        catch { _aiAvailable = _aiChecked && _aiAvailable; }
+        _aiChecked = true;
         try { _aiConsented = (await Api.GetConsentAsync(AssistantConsentScope, State.CurrentAccountId)).Active; }
         catch { _aiConsented = false; }
     }

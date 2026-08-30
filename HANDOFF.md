@@ -1,6 +1,144 @@
 # TandemTab (FinApp) — session handoff
 
-Last updated: 2026-08-30 (Session 125 — **started as a font fix and turned into a production outage: Google
+Last updated: 2026-08-30 (Session 126 — **R3, scoped and built. The assistant takes your words out of the
+question before it asks anyone, and answers most questions without asking at all.**
+**569 + 56 + 554 green** (34 new), pairscan 0. ⚠️ **NOT DEPLOYED and NOT verified against a real key** — there is
+none on this machine, so no model reply has ever been parsed. `Anthropic__ApiKey` must become a **6th Cloud Run
+secret** before deploy, which moves the deploy verify's `secretKeyRef` count 5 → 6.
+⭐ **The scoping was the deliverable.** Two different assistants were specced in this repo; R3 is BACKLOG #17's
+narrate-and-navigate layer, web first, and the on-device *write* assistant is now **R9**, deferred past promotion
+in writing the way R8 was. Without that line R3 is unbounded and the freeze R5 stands on never happens.
+⭐ **Measuring the cost changed the architecture** — see the local-first section. 300 asks/month went from **$3.30
+to ~$0.12**, and the per-user spend limit is now in the database rather than in a process.)
+
+### ⭐⭐ The design: the model is told the shape of the question, never its contents
+
+The thick web client already holds the whole account, so it recognises the user's own words without asking
+anyone. *"how is my Car fund doing after the 250 I put in at Lidl"* leaves as:
+
+```
+how is my {1} doing after the ### I put in at Lidl
+```
+
+with a separate list saying `{1}` is a *goal*. **Guaranteed deterministically: no category, goal, wallet or
+journey name, and no digit, leaves the origin.** Digits go out as `#` because the model has no use for a figure
+and stripping one is cheaper than trusting it not to matter. A journey's **destination** is masked as well as its
+name — it is a second name for the same thing, and it is the one people say out loud.
+
+⚠️ **Where it leaks, written down rather than claimed away.** A word the app has never seen — a shop, a person —
+cannot be recognised, so it travels. `AssistantMasker` flags the strongest available signal (a quoted token, or a
+capitalised word not opening the sentence), **strict mode refuses to send those and is on by default**, and the
+sheet shows the exact string first. The honest promise is *"everything we can name is removed, every number is
+removed, and you see the rest"* — not *"nothing personal can get through"*. A lower-case merchant name passes.
+BACKLOG #17's own warning is that a fig-leaf privacy badge would wreck the trust brand faster than shipping no
+AI; this is the version that survives being read closely.
+
+★ **The model emits no figures at all.** It picks one of 39 keys; the client reads every number out of the engine
+and prints it through `Fmt`, which is also what makes these answers obey privacy mode without knowing it exists.
+
+### ⭐⭐ Local first — the model is the fallback, not the path
+
+**The bill decided the shape.** The system prompt is **4,586 chars ≈ 1,240 tokens**, so on `claude-opus-5` an ask
+was **~$0.011**, and an engaged user at 10/day would have cost **$3.30/month against €2.50 of Pro revenue**.
+
+★ **`AssistantLocalMatcher` runs on the client before any network call.** Two signals do the work: **the slot
+kinds are already resolved** (a `{1}` that is a *goal*, with no "how does" phrasing, is `open.goal` — the largest
+target group, free), and **question class is a small closed set**. ⚠️ **Report is classified before explain, and
+that order is load-bearing:** *"what's **my** safe to spend"* and *"what is safe to spend"* differ by one word and
+are different questions.
+
+★ **A question it answers never leaves the device at all** — a stronger claim than masking, and it works offline
+under the PWA shell.
+
+★ **The failure mode is what makes a keyword matcher acceptable here.** A rule that stops matching costs a cent
+and a round-trip, not a wrong answer. It also runs the catalogue check on **its own** output, so a typo in a rule
+table falls through to the model rather than producing a key nothing handles.
+
+★ **The six chips carry their own answers** — they were costing an API call each, which was paying to rediscover
+something written down two lines above them.
+
+⚠️ **Bulgarian is partial on purpose.** The stems are lifted from the app's own translations rather than invented;
+what it misses falls through to a model that handles any language.
+
+**Model is `claude-haiku-4-5`** (`Anthropic:Model` overrides it). By the time a question gets there the easy ones
+are gone and what is left is unusual phrasing — a vocabulary problem, not a reasoning one.
+
+⚠️⚠️ **Two request settings are coupled to the model and both fail the same silent way.** `Effort` is **rejected**
+by Haiku (400), and thinking is **on by default on Opus 5** with its tokens counted against `MaxTokens`, so the
+256-token budget that was ample for a three-field JSON reply truncates it. Either one turns *every* question into
+`unknown` and looks exactly like a model that understands nothing. `AnthropicAssistantParser` branches on the
+model; the reasoning is written next to the branch.
+
+### ⛔ The spend limit is in the database now, because the old one was not a limit
+
+The first cut counted calls in a `ConcurrentDictionary`. That is not a cap: it lives in **one process**, so the
+real ceiling was the number times however many instances Cloud Run decided to run, and **it reset to zero on
+every deploy** — the most ordinary event there is.
+
+`AssistantUsageStore` is a standalone table on the migration-free `CREATE TABLE IF NOT EXISTS` pattern
+(`ConsentService`'s), keyed `(UserId, Bucket)` where Bucket is `2026-08` or `2026-08-30`.
+
+| | |
+|---|---|
+| **`Assistant:MonthlyCallCap`** | **300** — the real budget. ~$0.60/month on Haiku against €2.50 of Pro revenue |
+| `Assistant:DailyCallCap` | 50 — blast radius, so a month cannot be spent in an afternoon |
+| Rate limit | 8/min, partitioned **per user** (not per IP: a household behind one address is normal here) |
+
+★ **Only calls that reach the model are counted.** Anything the local matcher, the chips or the answer cache
+handle costs nothing and consumes nothing — so a user who exhausts the month **still has a working assistant** for
+everything the device can answer, which is most of it.
+
+★ **Increment first, then compare.** The other order lets two instances read the same "one left" and both spend
+it. The cost is that a refused attempt still counts, so the stored number drifts above the true call count *for a
+user already at their limit* — who by definition is not spending anything more. Below the cap they are identical,
+which is the range the figure is read in.
+
+⚠️ **One piece of dialect-sensitive SQL**, flagged where it lives: the upsert's `DO UPDATE SET "Calls" = "Calls" +
+1` is unqualified because that form means "the existing row" on **both** SQLite and Postgres. Tested on SQLite;
+production is Postgres.
+
+### How it was verified, and what is still unproven
+
+✅ **Driven on a running app** (masking preview, strict refusal, local answers, fall-through):
+
+| What | Result |
+|---|---|
+| Typed a question naming a real goal and a real amount | preview showed `how is my {1} doing after the ### I put in at Lidl` |
+| Pressed Ask on it | **no POST at all** — strict mode refused, and the network log proves it |
+| Chip "How much have I spent this period?" | *"You've spent €0.00 this period."*, **no request** |
+| Typed "how is my Car fund doing" | Goals tab + that goal's drawer open, **no request** |
+| Typed "did the parcel arrive yet" | fell through → `unknown`; server logged **"answered by the model (2 answered locally since the last one)"** |
+| Both themes | computed styles correct in each; pairscan 0 |
+
+⭐ **The live call reached Anthropic and came back `invalid x-api-key`** (a real `request_id`), which degraded to
+`unknown` with a 200 exactly as designed. So the SDK wiring, the schema and the auth header are right; only the
+key is bogus. ⚠️ **The log line read `the parse call failed (25 chars, 0 slots)`** — the shape, never the question.
+The log-hygiene rule holds in practice, not just in the comment.
+
+⬜ **Unproven, and it needs the owner:** no real reply has ever been parsed, so nothing confirms Haiku accepts the
+request as shaped. Set the key and drive one question.
+
+⚠️ **A flaky test was found and its cause fixed rather than shrugged at.** `An_ill_formed_question…` failed once
+in a full run and passed alone: its username was a guid truncated to **two hex characters**, i.e. 256 possible
+names across three registrations, and a collision fails registration rather than the assertion — which reads as a
+mystery. Widened; the filter then ran three times clean.
+
+#### Next session
+1. ⭐ **Set `Anthropic__ApiKey` as a 6th Cloud Run secret and deploy** (`secretKeyRef` count 5 → 6 in the verify),
+   then ask one real question and read the reply. That is the only gap in this feature.
+2. ⬜ **Read the `LocalHits` ratio** after real use — `Assistant: answered by the model (N answered locally…)`. If
+   N is high the model call is a rare fallback and the model choice stops mattering; if it is low, the matcher's
+   rule tables want the questions people actually asked. ⚠️ It is structurally pessimistic: a session the matcher
+   answers *entirely* never reports its perfect score, which is the session with no bill.
+3. ⬜ **The forms are deliberately not navigation targets** (add expense / income / transfer / new goal). Each is
+   opened by a method that seeds its draft first, and a form reached without that seeding misbehaves in ways only
+   a person driving it would notice. One at a time, each verified on a running app.
+4. ⬜ **R2.5's last two rows** are still open: the always-visible milestones line, and an auto-mask trigger to
+   match the phone's face-down sensor.
+
+---
+
+Previously: 2026-08-30 (Session 125 — **started as a font fix and turned into a production outage: Google
 sign-in had been broken for two days and nobody knew, because every one of its failure paths was silent.**
 The PWA service worker was eating the OAuth callback. Also: the app had never once rendered in its own
 typeface in production, and the CSP blocking it was the *correct* half of the pair. **569 + 56 + 488 green.**

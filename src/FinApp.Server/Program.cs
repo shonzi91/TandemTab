@@ -111,6 +111,7 @@ builder.Services.AddScoped<ExternalAuthService>();
 // implementation is the only change either the tests or R9 need.
 builder.Services.AddSingleton<IAssistantParser, AnthropicAssistantParser>();
 builder.Services.AddSingleton<AssistantService>();
+builder.Services.AddScoped<AssistantUsageStore>();     // the spend counters; scoped because it rides the DbContext
 builder.Services.AddHttpClient();
 builder.Services.AddScoped<AccountService>();
 builder.Services.AddScoped<ArchivedAccountsService>();
@@ -322,6 +323,8 @@ using (var scope = app.Services.CreateScope())
         await scope.ServiceProvider.GetRequiredService<SignupService>().EnsureSchemaAsync();
         await scope.ServiceProvider.GetRequiredService<SubscriptionService>().EnsureSchemaAsync();
         await scope.ServiceProvider.GetRequiredService<PlanOverrideService>().EnsureSchemaAsync();
+        // The assistant's per-user spend counters (R3). Durable and shared on purpose — see the type's own note.
+        await scope.ServiceProvider.GetRequiredService<AssistantUsageStore>().EnsureSchemaAsync();
         // Refresh-token store (rotation + reuse detection) — same idempotent-create pattern.
         await scope.ServiceProvider.GetRequiredService<RefreshTokenService>().EnsureSchemaAsync();
         // One-time auth codes for external sign-in (keeps session tokens out of the redirect URL).
@@ -3222,10 +3225,13 @@ accounts.MapPost("/{id:guid}/assistant/ask", async (
     return Results.Ok(await assistant.AskAsync(user.UserId(), req, ct));
 }).RequireRateLimiting("assistant");
 
-// Whether the assistant can be offered at all on this deployment. No key configured means no feature: the client
-// hides the control rather than showing one that always fails.
-accounts.MapGet("/assistant/status", (AssistantService assistant) =>
-    Results.Ok(new AssistantStatusDto(assistant.Available)));
+// Whether the assistant can be offered at all on this deployment, and what is left of the caller's monthly
+// budget. No key configured means no feature: the client hides the control rather than showing one that always
+// fails. The remaining count is read here so a cap is something a person sees coming, not walks into.
+accounts.MapGet("/assistant/status", async (ClaimsPrincipal user, AssistantService assistant, CancellationToken ct) =>
+    Results.Ok(assistant.Available
+        ? new AssistantStatusDto(true, await assistant.RemainingThisMonthAsync(user.UserId(), ct), assistant.MonthlyCap)
+        : new AssistantStatusDto(false)));
 
 app.MapHub<SyncHub>("/hubs/sync").RequireAuthorization();
 
