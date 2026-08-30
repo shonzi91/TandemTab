@@ -6,8 +6,11 @@ The PWA service worker was eating the OAuth callback. Also: the app had never on
 typeface in production, and the CSP blocking it was the *correct* half of the pair. **569 + 56 + 488 green.**
 ⭐ **Both defects were measured on the live site before a line changed** — the font by glyph metrics, the
 outage by an *absence* in the request log, which is the harder of the two to go looking for.
-✅ **LIVE: `finapp-00341-nlc`, 100% LATEST** — image `finapp:4b01347`. Roots 200 on both hosts, 5
-`secretKeyRef`s, **no ERROR lines on the revision**, no purge race, and the same WASM hash on both hosts.)
+✅ **LIVE: `finapp-00342-sq6`, 100% LATEST** — image `finapp:92896c4`. Roots 200 on both hosts, 5
+`secretKeyRef`s, **no ERROR lines on the revision**, no purge race.
+⭐ **CONFIRMED FIXED by the owner and in the log**: a real callback → `/auth/exchange` → `/auth/2fa`, twice, at
+13:12 — the first callback to reach this server since **2026-08-26** — and the avatar backfilled itself in the
+same request (`Avatar adoption: inlined a image/jpeg picture of 2251 bytes`).)
 
 ### ⛔⛔ The headline: Google sign-in was down for two days, silently
 
@@ -204,18 +207,42 @@ both hosts** and contains `ExternalSignInFailed` while still carrying S124's `Re
 `/css/fonts/quicksand-latin.woff2` returns 200 on both, the root CSP still reads `font-src 'self'`, and the
 only `fonts.googleapis.com` string left in the served `index.html` is the comment explaining why it went.
 
-★ And the one live functional proof: a cookie-less callback probe returned `302 → /?authError=1` and logged
-`External sign-in (google) failed: the state cookie was not sent back.` The route is reachable and the new
-branch-naming works in production.
+★ And the one live functional proof at deploy time: a cookie-less callback probe returned `302 → /?authError=1`
+and logged `External sign-in (google) failed: the state cookie was not sent back.`
+
+### ⭐ It is fixed, and the log says so — but read *which* deploy did it
+
+Owner confirmed sign-in works. The log carries the whole chain, twice, at **13:12**:
+
+| Time | Line |
+|---|---|
+| 13:12:17 | `302 GET /auth/external/google/callback?…code=4/0ATsMZq…` — **the first real callback since 2026-08-26** |
+| 13:12:17 | `Avatar adoption: inlined a image/jpeg picture of 2251 bytes.` |
+| 13:12:18 | `External sign-in (google) completed; handing back a one-time code.` |
+| 13:12:18 | `200 POST /auth/exchange` |
+| 13:12:34 | `200 POST /auth/2fa` — the challenge the owner said never appeared |
+
+⭐ **The avatar fixed itself in the same request**, which is the whole argument for putting the fix in the
+callback: no backfill job, no migration. The *second* sign-in at 13:12:42 logs no adoption line at all —
+`!IsInline(stored)` is now false — so the re-adoption guard is idempotent in production, not just in tests.
+
+⚠️⚠️ **Be honest about the sequencing: `skipWaiting` is NOT what unblocked this.** Those sign-ins are at 13:12;
+the `00342` build was not submitted until **13:14** and went live around **13:20**. So the login that worked ran
+on **`00341`** — the route allowlist — after the owner cleared the stale worker **by hand** (DevTools →
+Application → Service Workers → Unregister). `skipWaiting` is insurance for the *next* bad worker, and it has
+not yet been observed doing its job. Do not let this write-up read as though it had.
+
+⚠️ And the instruction that failed is worth keeping: **"close all tabs and reopen" is not reliable advice** —
+Chrome keeps a worker alive while any client is controlled, and an installed PWA window counts. Unregister is
+the instruction that works. That is precisely the hole `skipWaiting` now fills.
 
 #### Next session
-1. ⬜⬜ **Confirm the sign-in fix on a real browser, and do it first.** Everything behind it is inference plus a
-   server-side probe. The clean signal is cheap: a **callback appearing in the Cloud Run request log again**,
-   the first since 2026-08-26. Until one does, treat this as fixed-in-theory. Remember the tabs must all be
-   closed once for the new worker to take over.
-2. ⬜ **The avatar backfill still needs a Google sign-in that works** — it fires on `!IsInline(stored)` in the
-   callback, so nothing changes for an existing user until they complete one. Check `FinApp.ExternalAuth` for
-   `Avatar adoption:` lines after the first successful sign-in; that path is no longer silent.
+1. ✅ ~~Confirm the sign-in fix on a real browser~~ — done, see the table above. ✅ ~~The avatar backfill~~ — it
+   fired in the same request.
+2. ⬜ **`skipWaiting` has never been seen working.** It shipped *after* the sign-in was already fixed by hand,
+   so the thing it exists for — a bad worker replacing itself with no user action — is still unobserved. The
+   next ordinary deploy is the test: a page open across it should pick up the new build on **one reload**. If it
+   does not, the claim in this write-up is wrong and the file header's argument needs revisiting.
 3. ⬜ **The phone never renders member pictures at all — a second, separate bug from S124's.** `MemberAvatars`
    and `AccountAvatar` in `HomeScreen.kt` draw `AvatarCircle(initialOf(…))` and never read
    `state.sharing.avatars`, the map the app already fetches; only `SettingsSheet.kt:432` uses the real picture.
