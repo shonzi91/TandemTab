@@ -33,10 +33,31 @@ const offlineAssetsInclude = [/\.dll$/, /\.wasm/, /\.html$/, /\.js$/, /\.json$/,
 // takes the whole app down. Excluding it cost an hour and hid the same fault in the production shape.
 const offlineAssetsExclude = [/^service-worker\.js$/];
 
-// Navigations to these are real pages of their own, not app routes. They are linked from four places inside
-// the app (AuthPanel, Landing, MainLayout, Dashboard), so answering them with index.html — which is what a
-// naive "serve the SPA shell for every navigation" rule does — would replace the legal pages with the app.
-const isOwnPage = path => /\.html$/i.test(path);
+// ⛔⛔ THE SHELL IS SERVED FOR THESE PATHS AND NOTHING ELSE. This list is the whole of the SPA's routing
+// surface (`@page` in Dashboard.razor and the seven Thin pages) and it is an ALLOWLIST on purpose.
+//
+// ⚠️ It used to be a blocklist — "serve index.html for every navigation that isn't a .html page" — and that
+// took Google sign-in down in production for two days (last callback to reach the server: 2026-08-26; this
+// worker shipped 2026-08-28). The OAuth return leg is
+// `GET /auth/external/google/callback?code=…`: same-origin, top-level, no `.html` on the end. The old rule
+// answered it out of the cache, so Google's `code` was thrown away and the request never reached the server
+// at all. The app then booted on the landing page with nothing to exchange — "it redirects back and nothing
+// happens" — and no error anywhere, because from the server's side the sign-in simply never occurred.
+//
+// ★ The mechanism is worth keeping, because it is why this looked intermittent and why it survived review:
+// navigating away to accounts.google.com releases the last client this worker controlled, so a NEW worker
+// that was sitting in `waiting` activates *while the user is on Google's consent screen* — and then catches
+// the return. The start of the flow reaches the network and the end of it does not, in one sign-in.
+//
+// The rule to hold on to: a navigation this worker does not positively recognise as a page of the SPA
+// belongs to the SERVER. Adding a `@page` route means adding it here; forgetting only costs that route its
+// offline boot. Getting it wrong the other way costs an endpoint its existence.
+const spaRoutes = new Set([
+    '/',
+    '/thin-home', '/thin-goals', '/thin-dash', '/thin-wallets', '/thin-recurring', '/thin-spending', '/thin-budgets',
+]);
+// Trailing slashes only — no query, no hash: `path` is already `URL.pathname`.
+const isSpaRoute = path => spaRoutes.has(path.length > 1 ? path.replace(/\/+$/, '') : path);
 
 async function onInstall() {
     const assetsRequests = self.assetsManifest.assets
@@ -70,7 +91,11 @@ async function onFetch(event) {
 
     const path = new URL(request.url).pathname;
     const isNavigation = request.mode === 'navigate';
-    const key = isNavigation && !isOwnPage(path) ? 'index.html' : request;
+    // Only a route the SPA actually owns is answered with the shell. Everything else — the OAuth callback
+    // above all — falls through to `request`, misses the cache, and reaches the server. The legal pages need
+    // no special case any more: they are precached under their own URLs, so the plain `request` match finds
+    // them and they still open offline.
+    const key = isNavigation && isSpaRoute(path) ? 'index.html' : request;
 
     const cache = await caches.open(cacheName);
     // ⚠️ ignoreSearch matters for one specific reason: index.html asks for `css/app.css?v=45` (the manual

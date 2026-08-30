@@ -173,6 +173,15 @@ public sealed class AuthState
         }
     }
 
+    /// <summary>Set when an external (Google/Facebook) sign-in came back and did not sign anybody in, so the
+    /// sign-in card can say so instead of the user landing silently on the landing page. Read once and cleared
+    /// by <c>AuthPanel</c>.
+    /// <para>⚠️ Both halves of that round trip used to fail silently: the server's <c>?authError=1</c> was read
+    /// by nothing, and the client's code exchange was wrapped in a bare <c>catch { }</c>. A sign-in that just
+    /// puts you back where you started, with no message, is indistinguishable from one you never attempted —
+    /// which is exactly how a two-day production outage of Google sign-in went unreported.</para></summary>
+    public bool ExternalSignInFailed { get; set; }
+
     /// <summary>Re-fetch the signed-in user's profile (e.g. after enabling 2FA or verifying email).</summary>
     public async Task RefreshProfileAsync()
     {

@@ -1229,12 +1229,20 @@
         // which we exchange (over POST) for real session tokens — keeping tokens out of the URL.
         string? authCode = null;
         try { authCode = await JS.InvokeAsync<string?>("finappTakeAuthCode"); } catch { /* host without the helper */ }
+        // The server sends us back to `/?authError=1` when the callback itself failed. Nothing read that flag
+        // until now, which is half of why a broken Google sign-in looked like nothing happening at all.
+        try { if (await JS.InvokeAsync<bool>("finappTakeAuthError")) Auth.ExternalSignInFailed = true; }
+        catch { /* host without the helper */ }
         var signedIn = false;
         if (!string.IsNullOrEmpty(authCode))
         {
             // May return a 2FA challenge (Auth.PendingTwoFactorTicket) instead of signing in — the sign-in
             // screen then prompts for the second factor.
-            try { signedIn = (await Auth.SignInWithCodeAsync(authCode)).SignedIn; } catch { /* fall through */ }
+            // ⚠️ The other half: this used to be a bare `catch { }`. An exchange that threw dropped the user on
+            // the landing page with no message and no report — say so instead, on the card they will be looking at.
+            try { signedIn = (await Auth.SignInWithCodeAsync(authCode)).SignedIn; }
+            catch { Auth.ExternalSignInFailed = true; }
+            if (!signedIn && Auth.PendingTwoFactorTicket is null) Auth.ExternalSignInFailed = true;
         }
         if (!signedIn && Auth.PendingTwoFactorTicket is null)
         {

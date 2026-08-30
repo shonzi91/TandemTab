@@ -11,7 +11,7 @@ namespace FinApp.Server.Auth;
 /// A provider is "enabled" only when its client id + secret are configured (Auth:Google / Auth:Facebook),
 /// so the feature stays inert until credentials are supplied.
 /// </summary>
-public sealed class ExternalAuthService(IHttpClientFactory httpFactory, IConfiguration config)
+public sealed class ExternalAuthService(IHttpClientFactory httpFactory, IConfiguration config, ILogger<ExternalAuthService> log)
 {
     public bool IsEnabled(string provider) =>
         !string.IsNullOrWhiteSpace(ClientId(provider)) && !string.IsNullOrWhiteSpace(ClientSecret(provider));
@@ -79,9 +79,24 @@ public sealed class ExternalAuthService(IHttpClientFactory httpFactory, IConfigu
     /// </summary>
     public async Task<string?> FetchInlineAvatarAsync(string pictureUrl, CancellationToken ct)
     {
+        // ⚠️ Every `return null` below is logged, and that is not decoration. This whole path used to be silent:
+        // it runs once, inside somebody else's sign-in, and its only visible symptom is a picture that isn't
+        // there — which looks exactly like "this user never had one". When a picture was reported missing there
+        // was no signal anywhere to say which branch had fired, or whether it had run at all. A best-effort path
+        // that swallows its own failures needs to say so somewhere; Information for the outcomes we expect,
+        // Warning for the ones that mean something is actually wrong.
+        //
+        // Deliberately no user id and no email here — the host and the reason are what diagnose this, and the
+        // URL is the user's own profile picture. `pictureUrl` is logged only for the untrusted-host refusal,
+        // where the whole point is to see what was refused.
+
         // Only ever reach out to a host we already trust to hold a profile picture — this is a server-side fetch of
         // a URL that arrived over the wire, so the allowlist is doing SSRF duty here, not just privacy duty.
-        if (!AvatarService.IsTrustedProviderPicture(pictureUrl)) return null;
+        if (!AvatarService.IsTrustedProviderPicture(pictureUrl))
+        {
+            log.LogWarning("Avatar adoption: refused an untrusted provider picture URL ({Url}).", pictureUrl);
+            return null;
+        }
         try
         {
             var http = httpFactory.CreateClient();
@@ -89,19 +104,43 @@ public sealed class ExternalAuthService(IHttpClientFactory httpFactory, IConfigu
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
             timeout.CancelAfter(TimeSpan.FromSeconds(5));
             using var resp = await http.GetAsync(pictureUrl, timeout.Token);
-            if (!resp.IsSuccessStatusCode) return null;
+            if (!resp.IsSuccessStatusCode)
+            {
+                log.LogWarning("Avatar adoption: provider returned {Status} for the picture.", (int)resp.StatusCode);
+                return null;
+            }
 
             var mediaType = resp.Content.Headers.ContentType?.MediaType;
-            if (mediaType is null || !mediaType.StartsWith("image/", StringComparison.OrdinalIgnoreCase)) return null;
+            if (mediaType is null || !mediaType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+            {
+                log.LogWarning("Avatar adoption: picture had content type {MediaType}, not an image.", mediaType ?? "(none)");
+                return null;
+            }
             // Base64 inflates by 4/3 and AvatarService caps the stored string at 400 KB, so anything past ~250 KB
             // raw could not be stored anyway. A provider avatar is a few KB; this is a bound, not a resize.
-            if (resp.Content.Headers.ContentLength is > MaxAvatarBytes) return null;
+            if (resp.Content.Headers.ContentLength is > MaxAvatarBytes)
+            {
+                log.LogWarning("Avatar adoption: picture declared {Bytes} bytes, over the {Max} cap.",
+                    resp.Content.Headers.ContentLength, MaxAvatarBytes);
+                return null;
+            }
 
             var bytes = await resp.Content.ReadAsByteArrayAsync(timeout.Token);
-            if (bytes.Length is 0 or > MaxAvatarBytes) return null;
+            if (bytes.Length is 0 or > MaxAvatarBytes)
+            {
+                log.LogWarning("Avatar adoption: picture body was {Bytes} bytes (empty, or over the {Max} cap).",
+                    bytes.Length, MaxAvatarBytes);
+                return null;
+            }
+            log.LogInformation("Avatar adoption: inlined a {MediaType} picture of {Bytes} bytes.", mediaType, bytes.Length);
             return $"data:{mediaType};base64,{Convert.ToBase64String(bytes)}";
         }
-        catch { return null; }   // timeout, DNS, 429, truncated body — the sign-in carries on without a picture
+        catch (Exception ex)
+        {
+            // timeout, DNS, 429, truncated body — the sign-in carries on without a picture
+            log.LogWarning(ex, "Avatar adoption: the picture download failed; signing in without one.");
+            return null;
+        }
     }
 
     private const int MaxAvatarBytes = 250_000;

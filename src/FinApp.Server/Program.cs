@@ -540,20 +540,37 @@ auth.MapGet("/external/{provider}", (string provider, HttpContext http, External
 
 auth.MapGet("/external/{provider}/callback", async (string provider, string? code, string? state,
     HttpContext http, ExternalAuthService ext, AuthService authSvc, AuthCodeService authCodes,
-    AvatarService avatars, ExternalIdentityService identities, IConfiguration cfg, CancellationToken ct) =>
+    AvatarService avatars, ExternalIdentityService identities, IConfiguration cfg, ILoggerFactory logs,
+    CancellationToken ct) =>
 {
+    // ⚠️ Named "FinApp.ExternalAuth" so it is greppable in Cloud Logging (textPayload:"FinApp.ExternalAuth").
+    // Every exit from this handler used to be silent, and the cost of that was real: when Google sign-in broke
+    // in production the only trace anywhere was an ABSENCE — no callback in the request log — which you can
+    // only notice if you already suspect it. A one-time redirect endpoint that can fail five different ways
+    // has to say which one.
+    var log = logs.CreateLogger("FinApp.ExternalAuth");
     // Was this flow started from the native app? Route the outcome back into the app via its deep link.
     var native = http.Request.Cookies["finapp_oauth_native"] == "1";
     http.Response.Cookies.Delete("finapp_oauth_native");
-    string Fail() => native ? "com.tandemtab.app://auth/callback?error=1" : "/?authError=1";
+    string Fail(string why)
+    {
+        log.LogWarning("External sign-in ({Provider}) failed: {Why}.", provider, why);
+        return native ? "com.tandemtab.app://auth/callback?error=1" : "/?authError=1";
+    }
     string Ok(string authCode) => native
         ? $"com.tandemtab.app://auth/callback?authCode={Uri.EscapeDataString(authCode)}"
         : $"/?authCode={Uri.EscapeDataString(authCode)}";
 
-    if (!ext.IsEnabled(provider) || string.IsNullOrEmpty(code)) return Results.Redirect(Fail());
+    if (!ext.IsEnabled(provider)) return Results.Redirect(Fail("the provider is not configured"));
+    if (string.IsNullOrEmpty(code)) return Results.Redirect(Fail("the provider returned no authorization code"));
     var expectedState = http.Request.Cookies["finapp_oauth_state"];
     http.Response.Cookies.Delete("finapp_oauth_state");
-    if (string.IsNullOrEmpty(state) || state != expectedState) return Results.Redirect(Fail());
+    // Distinguished deliberately: a MISSING cookie is the browser not sending it back (SameSite, a stripped
+    // cookie, a flow older than the 10-minute leash), while a MISMATCH is the state not being ours at all.
+    // Collapsing the two hid which of them was happening for as long as this was one silent branch.
+    if (string.IsNullOrEmpty(state)) return Results.Redirect(Fail("the provider returned no state"));
+    if (string.IsNullOrEmpty(expectedState)) return Results.Redirect(Fail("the state cookie was not sent back"));
+    if (state != expectedState) return Results.Redirect(Fail("the state did not match the cookie"));
     try
     {
         var redirectUri = ExternalRedirectUri(http, cfg, provider);
@@ -573,9 +590,14 @@ auth.MapGet("/external/{provider}/callback", async (string provider, string? cod
         // Hand the caller a one-time code (not a token) in the query string. The client POSTs it to /auth/exchange
         // for the real access + refresh token, keeping session tokens out of the URL/history/Referer.
         var authCode = await authCodes.IssueAsync(userId, ct);
+        log.LogInformation("External sign-in ({Provider}) completed; handing back a one-time code.", provider);
         return Results.Redirect(Ok(authCode));
     }
-    catch { return Results.Redirect(Fail()); }
+    catch (Exception ex)
+    {
+        log.LogWarning(ex, "External sign-in ({Provider}) threw during the token exchange or user lookup.", provider);
+        return Results.Redirect(Fail("an exception during completion"));
+    }
 });
 
 // --- Consent (audit-logged: login / bank-link / bank-sync) ---------------

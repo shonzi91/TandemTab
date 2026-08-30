@@ -155,6 +155,13 @@
         // a code would land on "set a new password" instead of the code prompt.
         _resetToken = _twoFactorTicket is null ? ResetToken : null;   // reset link → show the set-new-password form
         try { _providers = await Api.GetProvidersAsync(); } catch { /* providers endpoint unreachable — hide buttons */ }
+        // An external sign-in that came back without signing anybody in. Read it once and clear it, so the
+        // message belongs to the attempt that just failed and does not greet the next visit to this card.
+        if (Auth.ExternalSignInFailed)
+        {
+            Auth.ExternalSignInFailed = false;
+            _error = Loc["That sign-in didn’t complete. Please try again, or sign in with your email and password."];
+        }
     }
 
     /// <summary>Full-page navigate to the server's OAuth start endpoint (it redirects to the provider, then back with a token).</summary>

@@ -110,6 +110,21 @@
             } catch (e) { }
             return null;
         };
+        // ⚠️ The server's OAuth callback redirects to `/?authError=1` when a sign-in fails, and until
+        // 2026-08-30 NOTHING read this flag — the user was returned to the landing page with no indication
+        // that anything had gone wrong. Read and strip it the same way as the auth code, so a failure says so.
+        window.finappTakeAuthError = () => {
+            try {
+                const params = new URLSearchParams(window.location.search);
+                if (params.get('authError')) {
+                    params.delete('authError');
+                    const qs = params.toString();
+                    history.replaceState(null, '', window.location.pathname + (qs ? '?' + qs : '') + window.location.hash);
+                    return true;
+                }
+            } catch (e) { }
+            return false;
+        };
         window.finappTakeResetToken = () => {
             try {
                 const params = new URLSearchParams(window.location.search);
