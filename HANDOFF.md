@@ -271,10 +271,10 @@ the instruction that works. That is precisely the hole `skipWaiting` now fills.
    claim: **mobile web is fine**, because mobile web is the same Blazor client as desktop and never had this gap
    — only the native app does. Confirm a call site before reporting a rendering bug.
 4. ✅ ~~Delete the dead `MemberAvatars`~~ — done, in the same pass.
-5. ⬜⬜ **PUSH. `origin/main` is seven commits behind and this is now the biggest single risk in the repo.**
-   Everything this session shipped — including the fix for a two-day auth outage — exists only on this machine.
-   Production was built from local source, so the running code is right, but nothing is backed up and the
-   `android.yml` CI APK cannot be produced from an unpushed commit either.
+5. ✅ ~~PUSH~~ — done at the end of the session. `origin/main` is **`b14f6c9`** and `git status -sb` reports no
+   divergence, so the sha → image → revision chain closes now. ★ The push also fired all three workflows
+   (Build and publish image, CI, **Android APK**), which means an installable APK artifact exists for
+   `b14f6c9` — that is the cheapest route to running item 3 rather than believing it.
 6. ⬜ **The APK pipeline.** The workflow exists (`.github/workflows/android.yml`: an artifact on every push, a
    Release APK on an `android-v*` tag) but the repo has **zero tags**, so no release build has ever gone out.
    Until it does, #3 and S124's phone half cannot reach anybody. Carried from Session 123.
