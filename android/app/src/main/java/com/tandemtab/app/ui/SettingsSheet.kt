@@ -794,7 +794,10 @@ private fun TwoFactorSection(
 }
 
 /** Decode a `data:image/...;base64,...` URL to an ImageBitmap, or null if absent/unparseable. */
-private fun decodeDataUrlImage(dataUrl: String?): androidx.compose.ui.graphics.ImageBitmap? {
+/** `internal`, not file-private, because the account switcher on Home draws the same pictures. Every avatar in
+ *  this app arrives as a `data:` URL — uploads always were, and provider pictures have been since the server
+ *  started inlining them — so this one decoder is the only path any screen needs. */
+internal fun decodeDataUrlImage(dataUrl: String?): androidx.compose.ui.graphics.ImageBitmap? {
     if (dataUrl.isNullOrBlank()) return null
     val comma = dataUrl.indexOf(',')
     if (comma < 0) return null

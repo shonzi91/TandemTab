@@ -30,6 +30,7 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Velocity
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -80,6 +81,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -92,7 +94,6 @@ import com.tandemtab.app.data.AccountSummaryDto
 import com.tandemtab.app.data.BreakdownViewDto
 import com.tandemtab.app.data.FundCurrencyEdit
 import com.tandemtab.app.data.ImportRowDto
-import com.tandemtab.app.data.MemberDto
 import com.tandemtab.app.data.ExpenseDto
 import com.tandemtab.app.data.MilestonesDto
 import com.tandemtab.app.data.PlanFeatures
@@ -1686,7 +1687,7 @@ private fun AccountSwitcher(state: UiState, onSelectAccount: (String) -> Unit, o
             DropdownMenuItem(
                 text = { Text(a.name, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal, color = MaterialTheme.colorScheme.onSurface) },
                 onClick = { onSelectAccount(a.id); open = false },
-                leadingIcon = { AccountAvatar(a, i) },
+                leadingIcon = { AccountAvatar(a, i, state.sharing.avatars) },
                 trailingIcon = if (selected) {
                     { Icon(TandemIcons.Check, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp)) }
                 } else null,
@@ -1701,9 +1702,17 @@ private fun AccountSwitcher(state: UiState, onSelectAccount: (String) -> Unit, o
     }
 }
 
-/** A small avatar for an account row: the members' initials stacked (up to 3), or a colour-coded account initial. */
+/** A small avatar for an account row: the members' pictures stacked (up to 3, falling back to initials), or a
+ *  colour-coded account initial when an account has no members to show.
+ *
+ *  ⚠️ `avatars` only ever holds the **selected** account's members — it comes from
+ *  `GET /accounts/{id}/avatars` for the account currently open. So rows for the *other* accounts in this
+ *  dropdown fall back to initials, and that is not a bug to fix here: the web behaves identically
+ *  (`Dashboard.razor:110` looks up the same per-account map), and fetching every account's avatars to decorate
+ *  a dropdown would be several requests for a row most people never open. A person who appears in more than
+ *  one of your accounts is shown their picture on the row that is loaded, their initial on the rest. */
 @Composable
-private fun AccountAvatar(account: AccountSummaryDto, index: Int) {
+private fun AccountAvatar(account: AccountSummaryDto, index: Int, avatars: Map<String, String>) {
     val members = account.members
     if (members.isEmpty()) {
         AvatarCircle(initialOf(account.name), avatarPalette[index % avatarPalette.size])
@@ -1712,7 +1721,7 @@ private fun AccountAvatar(account: AccountSummaryDto, index: Int) {
     val shown = members.take(3)
     Row(horizontalArrangement = Arrangement.spacedBy((-8).dp)) {
         for (i in shown.indices) {
-            AvatarCircle(initialOf(shown[i].displayName), avatarPalette[i % avatarPalette.size])
+            AvatarCircle(initialOf(shown[i].displayName), avatarPalette[i % avatarPalette.size], avatars[shown[i].userId])
         }
     }
 }
@@ -1831,37 +1840,33 @@ private val avatarPalette = listOf(
     Color(0xFF13A06E), Color(0xFF3B82F6), Color(0xFFF59E0B), Color(0xFF8B5CF6), Color(0xFFEF4444),
 )
 
+/** One stacked avatar: the person's picture if we hold one, else their initial on a palette colour.
+ *
+ *  ⚠️ The 2.dp ring is what makes an overlapping row readable as separate people, so the picture must not
+ *  paint over it. A `border` draws under the Box's content, so the image is inset by the same 2.dp instead and
+ *  the ring colour is painted as the background behind it — same ring either way, picture or initial. */
 @Composable
-private fun MemberAvatars(members: List<MemberDto>) {
-    if (members.isEmpty()) return
-    val tandem = LocalTandemColors.current
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Row(horizontalArrangement = Arrangement.spacedBy((-10).dp)) {
-            members.take(4).forEachIndexed { i, m ->
-                AvatarCircle(initialOf(m.displayName), avatarPalette[i % avatarPalette.size])
-            }
-            if (members.size > 4) AvatarCircle("+${members.size - 4}", tandem.muted)
-        }
-        Spacer(Modifier.width(10.dp))
-        val names = members.joinToString(", ") { it.displayName.ifBlank { "—" } }
-        Text(
-            if (names.length > 26) names.take(24) + "…" else names,
-            fontSize = 12.sp, color = tandem.muted, maxLines = 1, fontWeight = FontWeight.Medium,
-        )
-    }
-}
-
-@Composable
-private fun AvatarCircle(text: String, color: Color) {
+private fun AvatarCircle(text: String, color: Color, dataUrl: String? = null) {
+    val bitmap = remember(dataUrl) { decodeDataUrlImage(dataUrl) }
+    val ring = MaterialTheme.colorScheme.surface
     Box(
         Modifier
             .size(30.dp)
             .clip(CircleShape)
-            .background(color)
-            .border(2.dp, MaterialTheme.colorScheme.surface, CircleShape),
+            .background(if (bitmap != null) ring else color)
+            .border(2.dp, ring, CircleShape),
         contentAlignment = Alignment.Center,
     ) {
-        Text(text, color = Color.White, fontSize = if (text.length > 1) 11.sp else 13.sp, fontWeight = FontWeight.Bold)
+        if (bitmap != null) {
+            Image(
+                bitmap,
+                contentDescription = null,
+                modifier = Modifier.size(30.dp).padding(2.dp).clip(CircleShape),
+                contentScale = ContentScale.Crop,
+            )
+        } else {
+            Text(text, color = Color.White, fontSize = if (text.length > 1) 11.sp else 13.sp, fontWeight = FontWeight.Bold)
+        }
     }
 }
 
