@@ -60,6 +60,52 @@ public sealed class ExternalAuthService(IHttpClientFactory httpFactory, IConfigu
         return await FetchUserAsync(http, provider, accessToken, ct);
     }
 
+    /// <summary>
+    /// Download a provider profile picture and return it as a <c>data:image/…;base64,…</c> URL, or null if it can't
+    /// be had cheaply and safely.
+    /// <para>
+    /// ⚠️ <b>Why we don't just store the provider's URL.</b> A browser renders
+    /// <c>&lt;img src="https://lh3.googleusercontent.com/…"&gt;</c> happily, so the web app always looked fine — but
+    /// that URL is the *only* thing a Google sign-in ever produced, and no other client can render it. The Android
+    /// app decodes avatars straight from the data URL (SettingsSheet.decodeDataUrlImage) and has no image loader at
+    /// all, so it silently fell back to the coloured initial: signing in with Google gave you no picture on the
+    /// phone, ever. Inlining here fixes every client at once and needs none of them to grow an HTTP image path.
+    /// </para>
+    /// It also closes the beacon the stored URL opened: every viewer of a shared account fetched that image from
+    /// Google, handing Google their IP — the exact leak <see cref="AvatarService.IsTrustedProviderPicture"/>'s
+    /// allowlist exists to bound.
+    /// <para>⚠️ Best effort by design. The caller keeps signing the user in when this returns null: a missing
+    /// picture must never cost somebody their login.</para>
+    /// </summary>
+    public async Task<string?> FetchInlineAvatarAsync(string pictureUrl, CancellationToken ct)
+    {
+        // Only ever reach out to a host we already trust to hold a profile picture — this is a server-side fetch of
+        // a URL that arrived over the wire, so the allowlist is doing SSRF duty here, not just privacy duty.
+        if (!AvatarService.IsTrustedProviderPicture(pictureUrl)) return null;
+        try
+        {
+            var http = httpFactory.CreateClient();
+            // Short leash: this sits inside the OAuth callback, between the user and their own sign-in.
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            timeout.CancelAfter(TimeSpan.FromSeconds(5));
+            using var resp = await http.GetAsync(pictureUrl, timeout.Token);
+            if (!resp.IsSuccessStatusCode) return null;
+
+            var mediaType = resp.Content.Headers.ContentType?.MediaType;
+            if (mediaType is null || !mediaType.StartsWith("image/", StringComparison.OrdinalIgnoreCase)) return null;
+            // Base64 inflates by 4/3 and AvatarService caps the stored string at 400 KB, so anything past ~250 KB
+            // raw could not be stored anyway. A provider avatar is a few KB; this is a bound, not a resize.
+            if (resp.Content.Headers.ContentLength is > MaxAvatarBytes) return null;
+
+            var bytes = await resp.Content.ReadAsByteArrayAsync(timeout.Token);
+            if (bytes.Length is 0 or > MaxAvatarBytes) return null;
+            return $"data:{mediaType};base64,{Convert.ToBase64String(bytes)}";
+        }
+        catch { return null; }   // timeout, DNS, 429, truncated body — the sign-in carries on without a picture
+    }
+
+    private const int MaxAvatarBytes = 250_000;
+
     private async Task<string> ExchangeCodeAsync(HttpClient http, string provider, string code, string redirectUri, CancellationToken ct)
     {
         var form = new Dictionary<string, string>

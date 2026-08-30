@@ -52,4 +52,26 @@ public class AvatarApiTests : IClassFixture<FinAppServerFactory>
 
         Assert.Equal("data:image/png;base64,CCCC", Assert.Contains(account.OwnerUserId, avatars));
     }
+
+    // ★ These pin the two predicates the OAuth callback now leans on to decide whether a provider picture should be
+    // downloaded and stored inline. The download itself needs Google on the other end and is not tested here; what
+    // is testable — and what actually matters — is that the reach-out is bounded to the providers' own image hosts
+    // (this is a server-side fetch of a URL that arrived over the wire) and that an avatar the user uploaded is
+    // recognised as inline, so re-adopting a remote picture can never overwrite one.
+    [Theory]
+    [InlineData("https://lh3.googleusercontent.com/a/ACg8ocABC=s96-c", true)]
+    [InlineData("https://platform-lookaside.fbsbx.com/platform/profilepic/?psid=1", true)]
+    [InlineData("https://googleusercontent.com.evil.example/a/pic", false)]   // suffix match must not be substring match
+    [InlineData("http://lh3.googleusercontent.com/a/pic", false)]             // https only
+    [InlineData("https://example.com/pic.png", false)]
+    [InlineData("data:image/png;base64,AAAA", false)]                        // already inline; nothing to fetch
+    public void Only_provider_image_hosts_are_fetchable(string value, bool expected) =>
+        Assert.Equal(expected, FinApp.Server.Auth.AvatarService.IsTrustedProviderPicture(value));
+
+    [Theory]
+    [InlineData("data:image/png;base64,AAAA", true)]
+    [InlineData("https://lh3.googleusercontent.com/a/pic", false)]
+    [InlineData(null, false)]
+    public void Inline_is_what_every_client_can_render(string? value, bool expected) =>
+        Assert.Equal(expected, FinApp.Server.Auth.AvatarService.IsInline(value));
 }

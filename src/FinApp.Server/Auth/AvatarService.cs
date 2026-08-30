@@ -116,10 +116,14 @@ public sealed class AvatarService(FinAppDbContext db)
     /// <summary>An avatar is acceptable only if it's an inline image (<c>data:image/*</c>) or an https picture from a
     /// trusted sign-in provider host. Any other external URL is rejected — rendered as an <c>&lt;img src&gt;</c> it would
     /// beacon the viewer's IP to an arbitrary server and could deanonymise shared-account members (BACKLOG P0 #5).</summary>
-    private static bool IsAcceptableAvatar(string value)
+    private static bool IsAcceptableAvatar(string value) =>
+        value.StartsWith("data:image/", StringComparison.OrdinalIgnoreCase) || IsTrustedProviderPicture(value);
+
+    /// <summary>True for an https picture on one of the sign-in providers' own image hosts. Public because it is
+    /// also the fetch allowlist: <see cref="ExternalAuthService.FetchInlineAvatarAsync"/> downloads the picture so
+    /// it can be stored inline, and it must only ever reach out to a host we already trust to hold one.</summary>
+    public static bool IsTrustedProviderPicture(string value)
     {
-        if (value.StartsWith("data:image/", StringComparison.OrdinalIgnoreCase))
-            return true;
         if (!Uri.TryCreate(value, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps)
             return false;
         var host = uri.Host;
@@ -127,6 +131,11 @@ public sealed class AvatarService(FinAppDbContext db)
             host.Equals(h, StringComparison.OrdinalIgnoreCase) ||
             host.EndsWith("." + h, StringComparison.OrdinalIgnoreCase));
     }
+
+    /// <summary>True when a stored avatar is already an inline image. What it really answers is "does every client
+    /// have a hope of rendering this?" — see the note on adoption in the OAuth callback.</summary>
+    public static bool IsInline(string? value) =>
+        value is not null && value.StartsWith("data:", StringComparison.OrdinalIgnoreCase);
 
     private static async Task<bool> OpenAsync(System.Data.Common.DbConnection conn, CancellationToken ct)
     {

@@ -553,9 +553,16 @@ auth.MapGet("/external/{provider}/callback", async (string provider, string? cod
         var (email, name, picture) = await ext.CompleteAsync(provider, code, redirectUri, ct);
         var userId = await authSvc.FindOrCreateExternalUserAsync(email, name, ct);
         await identities.MarkAsync(userId, provider, ct);   // so the UI can hide "change password" for them
-        // Adopt the provider's profile picture only if the user hasn't set one of their own.
-        if (!string.IsNullOrWhiteSpace(picture) && await avatars.GetAsync(userId, ct) is null)
-            await avatars.SetAsync(userId, picture, ct);
+        // Adopt the provider's profile picture only if the user hasn't set one of their own — and adopt it INLINE,
+        // never as the provider's URL (see ExternalAuthService.FetchInlineAvatarAsync for why: a stored
+        // googleusercontent URL renders in a browser and nowhere else, so the phone showed no picture at all).
+        // ⚠️ The `!IsInline` test is also the backfill: everyone who signed in before this has a remote URL stored,
+        // and it is replaced on their next sign-in. An avatar the user uploaded themselves is already inline, so
+        // this never overwrites one. A failed download changes nothing — the old value stands.
+        var storedAvatar = await avatars.GetAsync(userId, ct);
+        if (!string.IsNullOrWhiteSpace(picture) && !AvatarService.IsInline(storedAvatar)
+            && await ext.FetchInlineAvatarAsync(picture, ct) is { } inlineAvatar)
+            await avatars.SetAsync(userId, inlineAvatar, ct);
         // Hand the caller a one-time code (not a token) in the query string. The client POSTs it to /auth/exchange
         // for the real access + refresh token, keeping session tokens out of the URL/history/Referer.
         var authCode = await authCodes.IssueAsync(userId, ct);

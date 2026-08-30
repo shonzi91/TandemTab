@@ -4808,7 +4808,8 @@ else
                            today, which is the overwhelming case and the one where the value is free and accurate. *@
                         <div class="field-row">
                             <label>@Loc["Date"] <input type="date" @bind="_expenseDate" @bind:after="OnExpenseDateChanged" min="@State.Period.From.ToString("yyyy-MM-dd")" max="@State.Period.To.ToString("yyyy-MM-dd")" /></label>
-                            <label>@Loc["Time (optional)"] <input type="time" @bind="_expenseTime" /></label>
+                            @* :after marks the clock as the user's, so a later date change stops re-stamping it. *@
+                            <label>@Loc["Time (optional)"] <input type="time" @bind="_expenseTime" @bind:after="() => _expenseTimeTyped = true" /></label>
                         </div>
                     }
                     @if (!onTrip)
@@ -10634,7 +10635,12 @@ else
 
     private void OnChanged()
     {
-        ResetPickers();
+        // ⚠️ A full reset ONLY when the account changed — the ids the pickers hold belong to the account that just
+        // went away, so there is nothing to preserve. On every other change (which is every save, every refetch,
+        // every background refresh) the selections are repaired, not replaced: see RepairPickers for what a
+        // wholesale reset was doing to a modal that was still open.
+        if (_pickerAccountId != State.CurrentAccountId) ResetPickers();
+        else RepairPickers();
         // Account switched (e.g. via the account switcher) → refresh the per-account bank connection. Swap straight to
         // the NEW account's last-known bank figures (cached, or null if never loaded) so the previous account's values
         // can't bleed onto it AND there's no blank flash while the network call runs — then refresh in the background.
@@ -10687,6 +10693,7 @@ else
     /// <summary>Open the add-expense modal pre-dated to a specific calendar day.</summary>
     private void OpenAddExpenseOn(DateOnly d)
     {
+        _expenseTimeTyped = false;   // a fresh form's clock is ours again, whatever the last one's was
         _categoryId = State.AllCategories.FirstOrDefault()?.Id ?? Guid.Empty;
         _amount = 0; _note = null;
         _expenseDate = ClampToPeriod(d);
@@ -10700,9 +10707,14 @@ else
         ApplyTripCategoryDefault();
     }
 
+    // The account these pickers were last defaulted for. Switching accounts is the ONE event that has to throw
+    // every selection away, because the ids belong to the account that just went away. See OnChanged.
+    private Guid _pickerAccountId;
+
     private void ResetPickers()
     {
         if (!State.IsReady || !State.HasAccounts) return;
+        _pickerAccountId = State.CurrentAccountId;
         // Keep the focused day across saves (feature 6) — only re-clamp it into the current period's range.
         if (_dayView is { } dv) _dayView = ClampToPeriod(dv);
         _categoryId = State.AllCategories.FirstOrDefault()?.Id ?? Guid.Empty;
@@ -10722,6 +10734,56 @@ else
             _ = OnInlineDestChanged();   // preload the destination account's funds for the picker (feature 4)
         else
             _transferDestFundId = Guid.Empty;
+    }
+
+    /// <summary>
+    /// What runs instead of <see cref="ResetPickers"/> on an ordinary refetch: put back only the selections that
+    /// have stopped being real, and leave every other one exactly where the user put it.
+    /// <para>
+    /// ⛔ <b>This is the "other fields change themselves" bug.</b> Every save refetches the snapshot and raises
+    /// <c>Changed</c>, and <c>OnChanged</c> used to answer that by re-defaulting every picker in the page — while a
+    /// modal was open and half filled in. Adding a wallet from inside Add-expense (the ＋ New chip, right there on
+    /// the form) sent the CATEGORY back to the first one in the list, silently, with the form still showing the
+    /// amount and note you had typed: press Add and the expense filed into the wrong budget. Adding a category the
+    /// same way sent the FUND back to the first wallet. The deposit, spend-from-savings and transfer forms shared
+    /// the same reset, so the same tap moved their pickers too.
+    /// </para>
+    /// ★ <c>AddTagFromModal</c>'s keepCat/keepFund pair was a point patch for one route into this — creating a tag.
+    /// It is left where it is (it is correct, and it also restores across an await), but it is no longer the thing
+    /// holding the form together.
+    /// </summary>
+    private void RepairPickers()
+    {
+        if (!State.IsReady || !State.HasAccounts) return;
+        // The period can move under us (a new month, a period removed), so the focused day is re-clamped either way.
+        if (_dayView is { } dv) _dayView = ClampToPeriod(dv);
+
+        Guid Keep(Guid current, IEnumerable<Guid> valid, Guid fallback) => valid.Contains(current) ? current : fallback;
+
+        var categories = State.AllCategories.Select(c => c.Id).ToList();
+        var funds = State.SelectableFunds.Select(f => f.Id).ToList();
+        var buckets = State.SavingBuckets.Select(b => b.Bucket.Id).ToList();
+        var contribCats = State.ContributionCategories.Select(c => c.Id).ToList();
+        var firstCategory = categories.FirstOrDefault();
+        var firstFund = funds.FirstOrDefault();
+        var firstBucket = buckets.FirstOrDefault();
+
+        _categoryId = Keep(_categoryId, categories, firstCategory);
+        _savingBucketId = Keep(_savingBucketId, buckets, firstBucket);
+        _spendBucketId = Keep(_spendBucketId, buckets, firstBucket);
+        _spendDestId = Keep(_spendDestId, categories, firstCategory);
+        _spendExpBucketId = Keep(_spendExpBucketId, buckets, firstBucket);
+        _spendExpCategoryId = Keep(_spendExpCategoryId, categories, firstCategory);
+        _fundId = Keep(_fundId, funds, firstFund);
+        _depCategoryId = Keep(_depCategoryId, contribCats, contribCats.FirstOrDefault());
+        _depFundId = Keep(_depFundId, funds, firstFund);
+        _transferFromId = Keep(_transferFromId, funds, firstFund);
+        // A transfer destination is either one of our own funds or another account, so it is checked against both.
+        var destinations = State.RootFunds.Select(f => f.Id).Concat(State.TransferableAccounts.Select(a => a.Id));
+        _transferDestId = Keep(_transferDestId, destinations,
+            State.RootFunds.Skip(1).FirstOrDefault()?.Id ?? State.TransferableAccounts.FirstOrDefault()?.Id ?? Guid.Empty);
+        // ⚠️ _depDate is deliberately NOT touched here. Re-stamping it to today is the same class of bug: it would
+        // rewrite a date the user had just typed into the deposit form.
     }
 
     private async Task Run(Func<Task> action)
@@ -12783,7 +12845,7 @@ else
         // Stamp the clock only when the form really is about today — the Expenses tab can open this on a day the
         // user is browsing, and "now" would be a fact about the wrong day. See Expense.Time.
         _expenseTime = _expenseDate == State.TodayDate ? TimeOnly.FromDateTime(DateTime.Now) : null;
-        _expenseHadTime = false;
+        _expenseHadTime = false; _expenseTimeTyped = false;
         _fundId = DefaultFundForCategory(categoryId); _modal = Modal.AddExpense;
         _expShowDetails = false; _tagNewOpen = false;
         _focusAmount = focusAmount;
@@ -12851,7 +12913,7 @@ else
         // A repeat is a NEW purchase happening now — deliberately not the old row's time, which would date the
         // fresh entry to whenever the original one was bought.
         _expenseTime = _expenseDate == State.TodayDate ? TimeOnly.FromDateTime(DateTime.Now) : null;
-        _expenseHadTime = false;
+        _expenseHadTime = false; _expenseTimeTyped = false;
         _fundId = State.SelectableFunds.Any(f => f.Id == e.FundId) ? e.FundId : DefaultFundForCategory(e.CategoryId);
         _modal = Modal.AddExpense;
     }
@@ -13328,12 +13390,19 @@ else
             || _foreignTrips.Any(o => o.Trip.Covers(_expenseDate)));
 
     /// <summary>Moving the date off today drops an auto-stamped time: "now" describes the moment the form is open,
-    /// which says nothing about a purchase being back-dated to last Tuesday. Moving it back onto today re-stamps it.</summary>
+    /// which says nothing about a purchase being back-dated to last Tuesday. Moving it back onto today re-stamps it.
+    /// <para>⚠️ Only while the clock is still ours to set. This used to run unconditionally, so typing 09:15 and
+    /// THEN correcting the date threw the 09:15 away — and correcting it back to today replaced it with "now".
+    /// A time the user typed is an answer, not a default, and nothing here may overwrite it.</para></summary>
     private void OnExpenseDateChanged()
     {
-        if (_modal != Modal.AddExpense) return;
+        if (_modal != Modal.AddExpense || _expenseTimeTyped) return;
         _expenseTime = _expenseDate == State.TodayDate ? TimeOnly.FromDateTime(DateTime.Now) : null;
     }
+
+    // Set the moment the user touches the time field on the add form, and cleared with the form. It is the whole
+    // difference between "the clock we stamped" and "the time they told us".
+    private bool _expenseTimeTyped;
 
     /// <summary>Label for one row of a logged installment: which part it is, and which loan it serviced.</summary>
     private string InstallmentPartLabel(FinApp.Domain.Budgeting.Expense e)
