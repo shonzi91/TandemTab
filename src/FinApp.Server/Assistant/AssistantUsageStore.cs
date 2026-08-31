@@ -34,10 +34,21 @@ public sealed class AssistantUsageStore(FinAppDbContext db)
 
     /// <summary>
     /// Add one to a bucket and return the new total, atomically.
-    /// <para>⚠️ <b>The one piece of dialect-sensitive SQL in this file.</b> <c>ON CONFLICT … DO UPDATE SET
-    /// "Calls" = "Calls" + 1</c> is written unqualified because that form means "the existing row" on both SQLite
-    /// and Postgres; a qualified reference is accepted by one and not reliably by the other. The increment must
-    /// be a single statement — read-then-write would let two instances hand out the same last call.</para>
+    /// <para>
+    /// ⚠️⚠️ <b>The table name in <c>SET "Calls" = "AssistantUsage"."Calls" + 1</c> is load-bearing, and this
+    /// shipped broken once for want of it.</b> Inside <c>ON CONFLICT … DO UPDATE</c>, Postgres sees two rows in
+    /// scope — the existing one and <c>excluded</c> — so a bare <c>"Calls"</c> on the right-hand side is
+    /// <c>42702: column reference "Calls" is ambiguous</c> and every write 500s. SQLite resolves the same
+    /// expression happily, which is exactly why the test suite passed: <b>the tests run on SQLite and production
+    /// runs on Postgres</b>. Qualifying with the table name is unambiguous on both.
+    /// </para>
+    /// <para>
+    /// ★ For the avoidance of the other mistake: it must be the <b>table</b> name, not <c>excluded</c>.
+    /// <c>excluded."Calls"</c> is the value this statement proposed — always 1 — so that form would pin every
+    /// counter to 1 and silently cap nobody.
+    /// </para>
+    /// <para>The increment stays a single statement: read-then-write would let two instances hand out the same
+    /// last call.</para>
     /// </summary>
     public async Task<int> BumpAsync(Guid userId, string bucket, CancellationToken ct = default)
     {
@@ -49,7 +60,7 @@ public sealed class AssistantUsageStore(FinAppDbContext db)
             {
                 cmd.CommandText =
                     "INSERT INTO \"AssistantUsage\" (\"UserId\", \"Bucket\", \"Calls\") VALUES (@uid, @bucket, 1) " +
-                    "ON CONFLICT (\"UserId\", \"Bucket\") DO UPDATE SET \"Calls\" = \"Calls\" + 1";
+                    "ON CONFLICT (\"UserId\", \"Bucket\") DO UPDATE SET \"Calls\" = \"AssistantUsage\".\"Calls\" + 1";
                 AddParam(cmd, "@uid", userId.ToString());
                 AddParam(cmd, "@bucket", bucket);
                 await cmd.ExecuteNonQueryAsync(ct);

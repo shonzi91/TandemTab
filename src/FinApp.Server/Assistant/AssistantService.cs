@@ -18,6 +18,7 @@ public sealed partial class AssistantService(
     IAssistantParser parser,
     IServiceScopeFactory scopes,
     IConfiguration config,
+    Health.HealthSignals signals,
     ILogger<AssistantService> log)
 {
     /// <summary>Long enough for a real spoken question, short enough that this endpoint is not a way to push text
@@ -70,8 +71,29 @@ public sealed partial class AssistantService(
         var key = CacheKey(req);
         if (_cache.TryGetValue((userId, key), out var cached)) return cached;
 
-        await ChargeAsync(userId, ct);
+        // ⚠️⚠️ Everything from here is inside the failure counter, and that is a correction, not a flourish. The
+        // first production ask threw in ChargeAsync — BEFORE the parser was reached — so no AssistantCallFailed
+        // was ever recorded, and the watchdog cheerfully logged "assistant 0/0 failed" while every question in
+        // production was returning a 500. A health signal that only covers the half of a path somebody thought
+        // would break is the same blind spot this whole feature was built to close.
+        // ApiException is excluded on purpose: a 429 at the cap and a 503 with no key are deliberate refusals
+        // working exactly as designed, and counting them would fire the alarm on correct behaviour.
+        try
+        {
+            await ChargeAsync(userId, ct);
+            return await ParseAndCacheAsync(userId, key, req, ct);
+        }
+        catch (ApiException) { throw; }
+        catch
+        {
+            signals.Record(Health.HealthSignal.AssistantCallFailed);
+            throw;
+        }
+    }
 
+    private async Task<AssistantReplyDto> ParseAndCacheAsync(
+        Guid userId, string key, AssistantAskRequest req, CancellationToken ct)
+    {
         var reply = Validate(await parser.ParseAsync(req, ct), req);
         if (_cache.Count < 5_000) _cache[(userId, key)] = reply;
 
