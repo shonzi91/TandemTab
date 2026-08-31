@@ -736,6 +736,37 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
         return BudgetCoverageService.SpentIn(Period, ids);
     }
 
+    /// <summary>The period before the selected one, or null when this is the first. Comparison answers need it and
+    /// the index it depends on is private.</summary>
+    public Period? PreviousPeriod => _selectedIndex > 0 ? Account.Periods[_selectedIndex - 1] : null;
+
+    /// <summary>
+    /// Money out of <b>any</b> period — expenses plus out-transfers — optionally narrowed to one root category and
+    /// optionally cut off at a date.
+    /// <para>
+    /// ★ <b>One definition, called by everything that draws or states a period's spending.</b> The Trends chart
+    /// carried this arithmetic inline with a comment warning that a second copy would make the Food trend disagree
+    /// with the Food budget on the screen beside it. Adding a comparison answer would have been that second copy,
+    /// so the arithmetic moved here and the chart now calls it too.
+    /// </para>
+    /// <para>⚠️ Gross, not net of refunds — matching <see cref="Periods.Period.ExpensesTotal"/> and the chart. A
+    /// figure here that quietly netted refunds would disagree with every other spending number in the app.</para>
+    /// <para><paramref name="upTo"/> is what makes an open period comparable with a closed one: measuring three
+    /// weeks against a full month always reads as a fall, whoever is asking.</para>
+    /// </summary>
+    public decimal SpentDuring(Period p, Guid rootCategoryId = default, DateOnly? upTo = null)
+    {
+        bool Within(DateOnly d) => upTo is not { } cut || d <= cut;
+        bool Matches(Guid? categoryId) =>
+            rootCategoryId == Guid.Empty || (categoryId is { } c && RootCategoryId(c) == rootCategoryId);
+
+        var spent = p.Expenses.Where(e => Within(e.Date) && Matches(e.CategoryId))
+                        .Sum(e => Math.Abs(e.Amount.Amount))
+                  + p.AccountTransfersOut.Where(t => Within(t.Date) && Matches(t.CategoryId))
+                        .Sum(t => Math.Abs(t.Amount.Amount));
+        return decimal.Round(spent, 2);
+    }
+
     /// <summary>How many rows a category and its sub-categories account for this period — expenses plus the
     /// money-out transfers filed under them. It has to match what <see cref="SpentInCategory"/> adds up, or a row
     /// reads "1 · €460" while two things made that €460.</summary>

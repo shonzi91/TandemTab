@@ -8216,14 +8216,10 @@ else
     /// </summary>
     private decimal TrendFocusValue(FinApp.Domain.Periods.Period p)
     {
+        // ★ The arithmetic moved to BudgetingState.SpentDuring so the assistant's comparison answer and this chart
+        // cannot drift apart — which is the failure the comment below was already warning about.
         if (_trendSeries == TrendSeries.Spent && _trendCatId != Guid.Empty)
-        {
-            var spent = p.Expenses.Where(e => State.RootCategoryId(e.CategoryId) == _trendCatId)
-                            .Sum(e => Math.Abs(e.Amount.Amount))
-                      + p.AccountTransfersOut.Where(t => t.CategoryId is { } c && State.RootCategoryId(c) == _trendCatId)
-                            .Sum(t => Math.Abs(t.Amount.Amount));
-            return decimal.Round(spent, 2);
-        }
+            return State.SpentDuring(p, _trendCatId);
         if (_trendSeries == TrendSeries.Saved && _trendBucketId != Guid.Empty)
         {
             var net = p.SavingAllocations.Where(a => a.SavingCategoryId == _trendBucketId).Sum(a => a.Amount.Amount);
@@ -9532,6 +9528,19 @@ else
         // Tell the error reporter where the user is, so a crash report says which tab and modal were open
         // instead of just "the dashboard". Set on every render because it's the cheap way to always be current.
         Errors.Where = _modal == Modal.None ? _tab.ToString() : $"{_tab}/{_modal}";
+
+        // Keep the assistant transcript pinned to its newest message. ★ Guarded on a signature rather than run
+        // every render: this method fires on every state change in a very busy page, and an unconditional scroll
+        // would fight the user the moment they tried to read back through the conversation.
+        // The signature counts the spinner too, so the "thinking" bubble scrolls into view as well as the answer
+        // that replaces it.
+        var askSignature = _modal == Modal.Assistant ? _aiTurns.Count * 2 + (_aiBusy ? 1 : 0) : -1;
+        if (askSignature != _askScrolledAt)
+        {
+            _askScrolledAt = askSignature;
+            if (askSignature >= 0)
+                try { await JS.InvokeVoidAsync("finappScrollToEnd", ".ask-log"); } catch { /* host without the shim */ }
+        }
 
         // ⚠️ The on-open provider sync is NOT started here any more. It used to be, and it could never work: it
         // ran before OnInitializedAsync's bank load had returned, so BankSyncDue tested a null status and said no.
@@ -12900,6 +12909,7 @@ else
         string? GoTarget = null, AssistantSlot? GoSlot = null, string? GoLabel = null);
 
     private readonly List<AssistantTurn> _aiTurns = [];
+    private int _askScrolledAt = -1;      // signature of the transcript state the view was last scrolled for
     private int _aiRemaining;             // model calls left this month
     private int _aiCap;
 
@@ -13029,7 +13039,7 @@ else
                 _aiTurns.Add(new AssistantTurn(true, explanation));
                 return;
 
-            case AssistantIntents.Report when ReportText(reply.Target ?? "") is { } figure:
+            case AssistantIntents.Report when ReportText(reply.Target ?? "", Resolver.SlotFor(reply, masked)) is { } figure:
                 _aiTurns.Add(new AssistantTurn(true, figure));
                 return;
 
@@ -13160,7 +13170,7 @@ else
     /// The narrated figures. ★ Every number here is read from the engine and printed through <c>Fmt</c>, which is
     /// also what makes these answers obey privacy mode without knowing it exists.
     /// </summary>
-    private string? ReportText(string topic)
+    private string? ReportText(string topic, AssistantSlot? slot)
     {
         if (!State.IsReady) return null;
         var bank = _bankStatus?.Balance;
@@ -13207,9 +13217,78 @@ else
                         ? string.Format(Loc["One budget is over: {0}."], over[0])
                         : string.Format(Loc["{0} budgets are over: {1}."], over.Count, string.Join(", ", over));
 
+            case "report.compare":
+                return CompareText(slot);
+
             default:
                 return null;
         }
+    }
+
+    /// <summary>
+    /// This period against the one before it, account-wide or narrowed to a category.
+    /// <para>
+    /// ⚠️⚠️ <b>The like-for-like cut is not a refinement, it is the difference between an answer and a lie.</b> An
+    /// open period is part-way through. Measuring three weeks of it against a complete month always reads as a
+    /// fall, so on the 8th of the month this would cheerfully report that spending is down 70% on everything.
+    /// When the period is still running it therefore compares the first N days of each, and says that it did.
+    /// </para>
+    /// <para>★ Every figure comes from <see cref="BudgetingState.SpentDuring"/>, the same method the Trends chart
+    /// uses — so this answer and that chart cannot disagree about what a month cost.</para>
+    /// </summary>
+    private string? CompareText(AssistantSlot? slot)
+    {
+        if (State.PreviousPeriod is not { } previous)
+            return Loc["This is your first period, so there's nothing to compare it with yet."];
+
+        var current = State.Period;
+        var rootCat = slot is { Kind: AssistantSlotKinds.Category } c ? State.RootCategoryId(c.Id) : Guid.Empty;
+
+        // How far into the current period we are. Only applies while it is genuinely mid-flight: a closed or
+        // fully-elapsed period is compared whole.
+        var today = DateOnly.FromDateTime(DateTime.Today);
+        DateOnly? cut = null;
+        var days = 0;
+        if (today >= current.From && today < current.To)
+        {
+            days = today.DayNumber - current.From.DayNumber + 1;
+            var end = previous.From.AddDays(days - 1);
+            cut = end > previous.To ? previous.To : end;
+        }
+
+        var now = State.SpentDuring(current, rootCat);
+        var then = State.SpentDuring(previous, rootCat, cut);
+        var what = slot is null ? null : slot.Name;
+
+        if (now == 0m && then == 0m)
+            return what is null
+                ? Loc["Nothing has gone out in either period."]
+                : string.Format(Loc["Nothing has gone out on {0} in either period."], what);
+
+        if (then == 0m)
+            return what is null
+                ? string.Format(Loc["{0} so far this period, against nothing at all last — so there's no change to measure."], Fmt(now))
+                : string.Format(Loc["{0} on {1} this period, against nothing last — so there's no change to measure."], Fmt(now), what);
+
+        var delta = now - then;
+        var pct = Math.Abs(decimal.Round(delta / then * 100m, 0));
+        var scope = what is null
+            ? string.Format(Loc["{0} this period against {1} last"], Fmt(now), Fmt(then))
+            : string.Format(Loc["{0} on {1} this period against {2} last"], Fmt(now), what, Fmt(then));
+
+        // Under 5% either way is noise, and calling it a rise invites someone to go looking for a cause that
+        // isn't there.
+        var verdict = pct < 5m
+            ? Loc["— about the same."]
+            : string.Format(delta > 0m ? Loc["— up {0}%."] : Loc["— down {0}%."], pct);
+
+        // ⚠️ Day one of a period is not a rare edge — it happens every month, and "the first 1 days" is the sort
+        // of thing that makes a careful answer look careless.
+        var basis = cut is null ? ""
+            : days == 1 ? " " + Loc["(the first day of each, since this period is still running)"]
+            : " " + string.Format(Loc["(the first {0} days of each, since this period is still running)"], days);
+
+        return $"{scope} {verdict}{basis}";
     }
 
     /// <summary>

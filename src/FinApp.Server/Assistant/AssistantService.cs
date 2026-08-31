@@ -175,7 +175,16 @@ public sealed partial class AssistantService(
                 return AssistantCatalogue.IsExplainer(reply.Target) ? reply with { Slot = null } : UnknownReply;
 
             case AssistantIntents.Report:
-                return AssistantCatalogue.IsTopic(reply.Target) ? reply with { Slot = null } : UnknownReply;
+            {
+                if (!AssistantCatalogue.IsTopic(reply.Target)) return UnknownReply;
+                // A topic's slot is optional, so a bad one is dropped rather than fatal — the topic still answers
+                // account-wide. That is the difference from a target, where the wrong entity would open the wrong
+                // screen and the only safe move is to refuse.
+                var takes = AssistantCatalogue.TopicSlotKindFor(reply.Target!);
+                if (takes is null || reply.Slot is not { } n || n < 1 || n > req.Slots.Count || req.Slots[n - 1] != takes)
+                    return reply with { Slot = null };
+                return reply;
+            }
 
             case AssistantIntents.Navigate:
                 if (!AssistantCatalogue.IsTarget(reply.Target)) return UnknownReply;

@@ -73,9 +73,16 @@ public static class AssistantSlotKinds
     public const string Trip = "trip";          // a journey
 }
 
-/// <summary>One destination, explainer or topic the assistant may choose, with the one-line description that goes
-/// into the model's prompt. <see cref="NeedsSlot"/> marks the targets that are meaningless without an entity.</summary>
-public sealed record AssistantOption(string Key, string What, string? NeedsSlot = null);
+/// <summary>
+/// One destination, explainer or topic the assistant may choose, with the one-line description that goes into the
+/// model's prompt.
+/// <para><see cref="NeedsSlot"/> marks the targets that are <b>meaningless</b> without an entity — "open my {1}"
+/// with no {1} is not an answer. <see cref="TakesSlot"/> marks the ones that are complete on their own but
+/// sharpen with an entity: comparing periods works account-wide, and works better narrowed to one category.
+/// ⚠️ Two properties rather than one flag with two meanings, because "required" and "optional" answer different
+/// questions in the validator and collapsing them is how a required slot quietly becomes optional.</para>
+/// </summary>
+public sealed record AssistantOption(string Key, string What, string? NeedsSlot = null, string? TakesSlot = null);
 
 /// <summary>
 /// The closed set of things the assistant can do. <b>The prompt is generated from this list</b>, so a key can
@@ -147,6 +154,14 @@ public static class AssistantCatalogue
         new("report.topCategory",  "which category has taken the most this period"),
         new("report.saved",        "how much has been set aside this period, and at what rate"),
         new("report.safeToSpend",  "how much is safe to spend right now"),
+        // ★ The first topic that answers a question about CHANGE rather than a current figure, and the reason it
+        // exists: "why did my grocery bill jump" reached the model, parsed perfectly, and still came back unknown,
+        // because nothing in this list could answer it. The model still computes nothing — it picks this key, and
+        // the client subtracts two periods the engine already holds.
+        new("report.compare",
+            "how this period compares with the previous one — spending up or down, and by how much. " +
+            "Use it for anything asking whether something rose, fell, or changed, or how it compares to last month",
+            TakesSlot: AssistantSlotKinds.Category),
     ];
 
     public static bool IsTarget(string? key) => key is not null && Targets.Any(t => t.Key == key);
@@ -155,4 +170,8 @@ public static class AssistantCatalogue
 
     /// <summary>The slot kind a target requires, or null when it needs none.</summary>
     public static string? SlotKindFor(string key) => Targets.FirstOrDefault(t => t.Key == key)?.NeedsSlot;
+
+    /// <summary>The slot kind a topic will use if one is offered, or null when it never takes one. Unlike
+    /// <see cref="SlotKindFor"/> this is permission, not a requirement — a topic without its slot still answers.</summary>
+    public static string? TopicSlotKindFor(string key) => Topics.FirstOrDefault(t => t.Key == key)?.TakesSlot;
 }

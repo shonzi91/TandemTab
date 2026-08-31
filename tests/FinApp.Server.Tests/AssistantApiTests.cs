@@ -181,6 +181,38 @@ public class AssistantApiTests : IClassFixture<FinAppServerFactory>
     }
 
     [Fact]
+    public async Task A_topic_may_keep_a_slot_it_is_allowed_to_take()
+    {
+        var reply = await AskWith(new FakeParser(new AssistantReplyDto(AssistantIntents.Report, "report.compare", 1)),
+            "ai-topicslot", Ask("did {1} go up", AssistantSlotKinds.Category));
+
+        Assert.Equal(AssistantIntents.Report, reply.Intent);
+        Assert.Equal(1, reply.Slot);
+    }
+
+    [Fact]
+    public async Task A_topics_wrong_slot_is_dropped_rather_than_refused()
+    {
+        // ★ The difference from a target: a topic answers account-wide without its slot, so a bad one costs
+        // precision. A target with the wrong entity would open the wrong screen, which is why that one refuses.
+        var reply = await AskWith(new FakeParser(new AssistantReplyDto(AssistantIntents.Report, "report.compare", 1)),
+            "ai-topicbadslot", Ask("did {1} go up", AssistantSlotKinds.Wallet));
+
+        Assert.Equal(AssistantIntents.Report, reply.Intent);
+        Assert.Equal("report.compare", reply.Target);
+        Assert.Null(reply.Slot);
+    }
+
+    [Fact]
+    public async Task A_topic_that_takes_no_slot_never_keeps_one()
+    {
+        var reply = await AskWith(new FakeParser(new AssistantReplyDto(AssistantIntents.Report, "report.spent", 1)),
+            "ai-noslottopic", Ask("what did {1} cost", AssistantSlotKinds.Category));
+
+        Assert.Null(reply.Slot);
+    }
+
+    [Fact]
     public async Task A_failed_model_call_becomes_unknown_rather_than_an_error()
     {
         var reply = await AskWith(new FakeParser(null), "ai-nullreply", Ask("what is safe to spend"));

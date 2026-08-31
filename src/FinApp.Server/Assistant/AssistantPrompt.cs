@@ -60,9 +60,15 @@ public static class AssistantPrompt
     {
         sb.AppendLine(title);
         foreach (var o in options)
-            sb.AppendLine(o.NeedsSlot is null
-                ? $"  {o.Key} — {o.What}"
-                : $"  {o.Key} — {o.What} (requires a placeholder of kind '{o.NeedsSlot}'; put its number in slot)");
+        {
+            var slot = o.NeedsSlot is not null
+                ? $" (requires a placeholder of kind '{o.NeedsSlot}'; put its number in slot)"
+                : o.TakesSlot is not null
+                    ? $" (if the question names a placeholder of kind '{o.TakesSlot}', put its number in slot; " +
+                      "otherwise send slot as 0 and it answers for the whole account)"
+                    : "";
+            sb.AppendLine($"  {o.Key} — {o.What}{slot}");
+        }
         sb.AppendLine();
     }
 

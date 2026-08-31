@@ -57,6 +57,55 @@ public class AssistantLocalMatcherTests
         Assert.Equal(target, reply.Target);
     }
 
+    // ── Comparison: the failure that motivated the topic ──────────────────────────────────────────────────────
+
+    [Theory]
+    [InlineData("why did my grocery bill jump")]
+    [InlineData("am I spending more than last month")]
+    [InlineData("how does this compare to last period")]
+    [InlineData("has my spending gone up")]
+    [InlineData("did it increase")]
+    public void Questions_about_change_are_comparisons(string question)
+    {
+        // ⭐ Every one of these used to answer "I didn't follow that one" — "why" sent them to the explainers,
+        // which have nothing to say about change.
+        var reply = Match(question);
+
+        Assert.Equal(AssistantIntents.Report, reply!.Intent);
+        Assert.Equal("report.compare", reply.Target);
+    }
+
+    [Fact]
+    public void A_comparison_about_one_category_carries_it()
+    {
+        // "why did my {1} jump" is an explain-class question by its words and an entity question by its
+        // placeholder, and is neither. Comparison is tested before both.
+        var reply = Match("why did my {1} bill jump", AssistantSlotKinds.Category);
+
+        Assert.Equal("report.compare", reply!.Target);
+        Assert.Equal(1, reply.Slot);
+    }
+
+    [Fact]
+    public void A_comparison_naming_something_that_is_not_a_category_still_answers()
+    {
+        // The slot is optional here: a wallet cannot narrow a spending comparison, so it is dropped and the
+        // account-wide answer stands rather than the whole question failing.
+        var reply = Match("did my {1} go up", AssistantSlotKinds.Wallet);
+
+        Assert.Equal("report.compare", reply!.Target);
+        Assert.Null(reply.Slot);
+    }
+
+    [Fact]
+    public void Ordinary_questions_are_not_dragged_into_comparisons()
+    {
+        // ⚠️ The guard on a keyword list this eager. "How much have I spent" is a question about now.
+        Assert.Equal("report.spent", Match("how much have i spent")!.Target);
+        Assert.Equal("explain.periods", Match("how do periods work")!.Target);
+        Assert.Equal(AssistantIntents.Navigate, Match("take me to my goals")!.Intent);
+    }
+
     [Fact]
     public void One_word_apart_is_a_different_question()
     {

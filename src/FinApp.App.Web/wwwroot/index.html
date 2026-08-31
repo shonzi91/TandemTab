@@ -150,6 +150,16 @@
         // is the whole mechanism — no contract, no server, no migration. Unset means "Dashboard", the old fixed one.
         window.finappGetLandingTab = () => { try { return localStorage.getItem('finapp-landing-tab') || ''; } catch (e) { return ''; } };
         window.finappSetLandingTab = (tab) => { try { localStorage.setItem('finapp-landing-tab', tab || ''); } catch (e) { } };
+        // Pin a scrolling box to its newest content — the assistant transcript. A chat that leaves you looking at
+        // the top of the conversation after an answer arrives is a chat you have to operate.
+        // ⚠️ Instant, not smooth: this runs from OnAfterRenderAsync, and a smooth scroll started on one render can
+        // still be animating when the next one lands, which lands you between two messages instead of at the end.
+        window.finappScrollToEnd = (selector) => {
+            try {
+                const el = document.querySelector(selector);
+                if (el) el.scrollTop = el.scrollHeight;
+            } catch (e) { }
+        };
         // --- Privacy mode (Ctrl/Cmd+Shift+H) -------------------------------------------------------------
         // JS owns only the SHORTCUT and the persistence; the masking itself is all C# (FmtCurrency). This lives
         // here rather than in Blazor because a document-level keydown is the one thing a component cannot bind

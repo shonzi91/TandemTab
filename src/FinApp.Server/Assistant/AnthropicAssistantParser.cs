@@ -101,15 +101,27 @@ public sealed class AnthropicAssistantParser : IAssistantParser
                 MaxTokens = MaxTokens,
                 System = new List<TextBlockParam>
                 {
-                    // The prompt is generated from a static catalogue, so it is byte-stable across every request in
-                    // a deployment. ⚠️ It is ~1,240 tokens, and the minimum cacheable prefix is ~1,024 — trimming
-                    // the catalogue could drop it under the bar, at which point caching silently stops happening
-                    // and the only symptom is a bigger bill.
-                    new() { Text = AssistantPrompt.System, CacheControl = new CacheControlEphemeral() },
+                    // ⚠️⚠️ NO cache_control here, and that is a correction rather than an omission. Caching looked
+                    // free and is not: a cache WRITE bills at 1.25× the base input rate and a read at 0.1×, so it
+                    // only pays once enough calls land inside the 5-minute window to amortise the writes — roughly
+                    // a 1-in-5 hit rate. At this app's volume calls arrive minutes or hours apart, so essentially
+                    // every one was writing a fresh entry nothing ever read: a flat 25% surcharge dressed as an
+                    // optimisation. Put it back when the assistant is busy enough to hit the window, and confirm
+                    // it with the CacheRead figure logged below rather than by assuming.
+                    new() { Text = AssistantPrompt.System },
                 },
                 OutputConfig = output,
                 Messages = [new() { Role = Role.User, Content = $"{slots}\n\nQuestion: {req.Question}" }],
             }, cancellationToken: ct);
+
+            // ⭐ The actual token bill, per call. Every cost figure for this feature so far has been arithmetic on
+            // a CHARACTER count — which under-read it, because a catalogue of dotted keys and punctuation
+            // tokenizes far worse than prose and because the output schema is sent on every request and was never
+            // counted at all. A number from the API is worth more than a better estimate.
+            _log.LogInformation(
+                "Assistant: {Model} used {In} input + {Out} output tokens (cache write {CacheWrite}, read {CacheRead}).",
+                _model, response.Usage.InputTokens, response.Usage.OutputTokens,
+                response.Usage.CacheCreationInputTokens, response.Usage.CacheReadInputTokens);
 
             var json = string.Concat(response.Content.Select(b => b.Value).OfType<TextBlock>().Select(t => t.Text));
             if (string.IsNullOrWhiteSpace(json)) { _signals.Record(Health.HealthSignal.AssistantCallFailed); return null; }

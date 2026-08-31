@@ -34,6 +34,19 @@ public static partial class AssistantLocalMatcher
         var kind = FirstSlot(maskedQuestion, slotKinds);
         var kls = Classify(q);
 
+        // ⭐ Comparison is tested FIRST, ahead of both the entity rule and the classes, and the order is the whole
+        // point. "why did my {1} jump" is an Explain-class question by its words and an entity question by its
+        // placeholder, and it is neither: it is a question about change. Left to the rules below, the "why" sent it
+        // to the explainers, which have nothing to say about it, and it came back "I didn't follow that one" — the
+        // single most common failure this matcher had.
+        if (Comparison.Any(p => q.Contains(p, StringComparison.Ordinal)))
+        {
+            // A category sharpens it; anything else is ignored rather than refused, since the topic answers
+            // account-wide perfectly well on its own.
+            var slotNo = kind is { Kind: AssistantSlotKinds.Category, Index: var i } ? i : (int?)null;
+            return Checked(new AssistantReplyDto(AssistantIntents.Report, "report.compare", slotNo));
+        }
+
         // An entity in the question beats any generic answer — "how much have I spent on {1}" is a question about
         // {1}, and answering it with the period's whole total would be answering a different question. The one
         // exception is an explainer: "how do {1} goals work" is about the feature, not that row.
@@ -111,8 +124,22 @@ public static partial class AssistantLocalMatcher
 
     private static readonly string[] Explain =
     [
-        "how does", "how do", "how da", "what is", "what are", "what does", "what happens", "why",
+        "how does", "how do", "what is", "what are", "what does", "what happens", "why",
         "explain", "means", "mean by", "как работи", "какво е", "какво озна", "защо",
+    ];
+
+    /// <summary>Words that make a question about <b>change</b> rather than a current figure. ⚠️ Kept narrow on
+    /// purpose: "more" and "less" alone appear in plenty of questions that are not comparisons, and a false hit
+    /// here answers the wrong question confidently rather than falling through to the model.</summary>
+    private static readonly string[] Comparison =
+    [
+        "last month", "last period", "previous month", "previous period", "than last", "than before",
+        "compare", "compared", "comparison", "vs ", "versus",
+        "jump", "spike", "increase", "decrease",
+        "went up", "gone up", "going up", "go up", "goes up",
+        "went down", "gone down", "going down", "go down", "goes down",
+        "rise", "risen", "rose", "fell", "fallen", "higher", "lower", "more than usual", "changed",
+        "миналия месец", "минал месец", "сравн", "спрямо",
     ];
 
     private static (string Kind, int Index)? FirstSlot(string question, IReadOnlyList<string> slotKinds)
