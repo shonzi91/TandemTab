@@ -426,23 +426,78 @@ html.dark .from-ai .ask-bubble { background: #232a36; color: #e6ecf2; }
 html.dark .from-me .ask-bubble { background: #17a877; color: #fff; }
 .ask-go { align-self: flex-start; }
 
-/* Composer: the input and its send button read as one control. */
-.ask-composer { display: flex; gap: 8px; align-items: center; margin-top: 10px; }
-.ask-composer input { flex: 1 1 auto; min-width: 0; }
+/* Composer: the input and its send button read as one control, and it is the biggest thing in the sheet — it is
+   what the sheet is FOR, and the previous field looked like one more row on a form. */
+.ask-composer {
+    display: flex; gap: 8px; align-items: center; margin-top: 12px; padding: 6px 6px 6px 8px;
+    background: #fff; border: 1.5px solid #cfe9dd; border-radius: 16px;
+    transition: border-color .15s, box-shadow .15s;
+}
+.ask-composer:focus-within { border-color: #13a06e; box-shadow: 0 0 0 4px rgba(19,160,110,.13); }
+.ask-composer input {
+    flex: 1 1 auto; min-width: 0; border: none; background: none; outline: none;
+    padding: 12px 6px; font: inherit; font-size: 1rem; color: #1f2430;
+}
+.ask-composer input::placeholder { color: #8a97a0; }
+html.dark .ask-composer { background: #131820; border-color: #2c3142; }
+html.dark .ask-composer:focus-within { border-color: var(--tm-mint); box-shadow: 0 0 0 4px rgba(63,224,197,.14); }
+html.dark .ask-composer input { color: #e6ecf2; }
+html.dark .ask-composer input::placeholder { color: #93a3ad; }
+
 .ask-send {
-    flex: 0 0 auto; width: 40px; height: 40px; border-radius: 50%; border: none; cursor: pointer;
+    flex: 0 0 auto; width: 42px; height: 42px; border-radius: 50%; border: none; cursor: pointer;
     display: inline-flex; align-items: center; justify-content: center; background: #13a06e; color: #fff;
 }
 .ask-send:disabled { background: #cbd5cf; cursor: default; }
 html.dark .ask-send { background: #17a877; }
 html.dark .ask-send:disabled { background: #3a4453; }
 
+/* ⚠️ One scrolling row, not a wrapped block. Six wrapped chips were taking half the sheet, which pushed the
+   transcript and the composer — the two things actually being used — below the fold. */
+.ask-chips-row {
+    display: flex; gap: 6px; margin: 10px 0 2px; overflow-x: auto; padding-bottom: 4px;
+    scrollbar-width: none;
+}
+.ask-chips-row::-webkit-scrollbar { display: none; }
+.ask-chips-row .chip { flex: 0 0 auto; font-size: .72rem; padding: 4px 10px; }
+
+/* The dock. The glow is the whole point of it being noticeable at all, so it is a real (soft) shadow rather
+   than a border — and it settles rather than pulsing, because a thing that blinks forever at the bottom of a
+   budgeting app is a thing people learn to resent. */
+.ask-dock {
+    position: fixed; left: 50%; transform: translateX(-50%);
+    bottom: calc(18px + env(safe-area-inset-bottom, 0px));
+    z-index: 55; width: min(560px, calc(100vw - 36px));
+    display: flex; align-items: center; gap: 10px; padding: 11px 14px;
+    border-radius: 999px; border: 1.5px solid #cfe9dd; background: #fff; cursor: pointer;
+    box-shadow: 0 4px 14px rgba(19,160,110,.16), 0 0 0 6px rgba(19,160,110,.05);
+    /* ⚠️ `transform` is deliberately NOT in the transition. It is not decoration here — it is what centres the
+       dock — and the phone breakpoint switches it off entirely. Transitioning a property that flips layout modes
+       makes the bar visibly slide across the screen on a resize, and in a non-compositing preview it pins at the
+       old value and reads exactly like a dead selector. */
+    font: inherit; text-align: left; transition: box-shadow .2s, border-color .2s;
+}
+.ask-dock:hover { border-color: #13a06e; box-shadow: 0 6px 20px rgba(19,160,110,.26), 0 0 0 7px rgba(19,160,110,.08); }
+.ask-dock-ic { display: inline-flex; color: #13a06e; font-size: 1.05rem; }
+.ask-dock-text { flex: 1 1 auto; color: #6b7280; font-size: .9rem; }
+.ask-dock-go { display: inline-flex; color: #13a06e; }
+html.dark .ask-dock { background: #131820; border-color: #2c3142; box-shadow: 0 4px 14px rgba(63,224,197,.14), 0 0 0 6px rgba(63,224,197,.05); }
+html.dark .ask-dock:hover { border-color: var(--tm-mint); box-shadow: 0 6px 20px rgba(63,224,197,.22), 0 0 0 7px rgba(63,224,197,.08); }
+html.dark .ask-dock-ic { color: var(--tm-mint); }
+html.dark .ask-dock-text { color: #93a3ad; }
+html.dark .ask-dock-go { color: var(--tm-mint); }
+
+/* ⚠️ On a phone the ＋ owns the bottom-right corner, so the dock stops short of it rather than sliding
+   underneath — two overlapping floating controls is how one of them stops being pressable. */
+@media (max-width: 640px) {
+    .ask-dock { left: 16px; right: 88px; transform: none; width: auto; bottom: calc(24px + env(safe-area-inset-bottom, 0px)); }
+}
+
 .ask-strict { margin: 10px 0; }
 
 .ask-answer { margin: 12px 0 4px; font-size: .95rem; color: #1f2430; }
 html.dark .ask-answer { color: #e6ecf2; }
 
-.ask-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 4px; }
 
 /* Account switcher chip — partner avatars + name + who's on it */
 /* The account chip and its TripMode badge sit on one row — the badge is a property of the account beside it, not a
@@ -3476,13 +3531,6 @@ html.dark .card-act-transfer { color: #c3ccd6; box-shadow: inset 0 0 0 1px #3a44
 html.dark .card-act-transfer:hover { background: #2a313c; color: #e8eaf0; }
 html.dark .card-act-income { background: #17a877; }
 html.dark .card-act-spend { background: #566173; }
-
-/* Sits beside two filled buttons and an outlined one. Tinted rather than filled on purpose: asking a question is
-   not a money action, so it should read as a peer of Transfer, not compete with Add income. */
-.action-card .card-act-ask { background: #eaf7f1; color: #0f7a54; box-shadow: inset 0 0 0 1px #cfe9dd; }
-.action-card .card-act-ask:hover { background: #d9efe8; color: #0b6344; }
-html.dark .card-act-ask { background: #14251f; color: var(--tm-mint); box-shadow: inset 0 0 0 1px #2c3142; }
-html.dark .card-act-ask:hover { background: #1b3229; color: var(--tm-mint); }
 
 /* Primary "Add…" button with a compact quiet "Edit last" beside it (edit the most recently logged item). */
 .card-act-row { display: flex; align-items: stretch; gap: 8px; margin-top: auto; }

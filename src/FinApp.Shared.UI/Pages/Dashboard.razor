@@ -625,18 +625,6 @@ else
                         </span>
                     </div>
                 }
-                @* R3's desktop entrance. The FAB below is `display: none` until 640px and this row is hidden
-                   inside that same query — they are the two halves of one thing, so an assistant that lived only
-                   in the FAB would be a phone-only feature. Last in the row: the three money actions are what
-                   someone opens the app to do. *@
-                @if (_aiAvailable)
-                {
-                    <div class="tile-ask action-card">
-                        <span class="card-act-row">
-                            <button class="card-act card-act-ask" @onclick="OpenAssistant"><Icon Name="chat" /> @Loc["Ask a question"]</button>
-                        </span>
-                    </div>
-                }
             </section>
 
             @* ★ While a trip is running it sits directly under the three everyday actions — above the score, the
@@ -3577,12 +3565,8 @@ else
                where it can name what it would edit. A single FAB entry had to guess between the three, and a
                destructive-ish action that picks its own target is the wrong thing to put under a ＋. *@
             <div class="qfab-menu">
-                @* First in the markup means furthest from the thumb, which is where this belongs: asking a
-                   question is not the most-used action here, and the three writes below it are. *@
-                @if (_aiAvailable)
-                {
-                    <button class="qfab-item" @onclick="FabAssistant"><Icon Name="chat" /> @Loc["Ask a question"]</button>
-                }
+                @* No assistant item here any more — it has its own dock along the bottom, on every tab. The ＋ is
+                   for writing money down, which is what it has always been. *@
                 @if (CanTransfer)
                 {
                     <button class="qfab-item" @onclick="FabTransfer"><Icon Name="swap" /> @Loc["Transfer"]</button>
@@ -3593,6 +3577,19 @@ else
         }
         <button class="qfab-main" title="@Loc["Add"]" @onclick="() => _fabOpen = !_fabOpen"><Icon Name="plus" /></button>
     </div>
+}
+
+@* ★ The assistant's dock. It replaced a card in the Home action row and an item in the FAB, and the reason is
+   reach rather than looks: both of those lived on ONE tab, so the assistant vanished the moment you went to
+   Spending or Goals. This sits on every tab, reads as the thing you type into, and opens the sheet on a tap.
+   ⚠️ Hidden while a modal is open — it would otherwise sit on top of the sheet it just opened. *@
+@if (_aiAvailable && _modal == Modal.None)
+{
+    <button type="button" class="ask-dock" @onclick="OpenAssistant">
+        <span class="ask-dock-ic"><Icon Name="chat" /></span>
+        <span class="ask-dock-text">@Loc["Ask the assistant"]</span>
+        <span class="ask-dock-go"><Icon Name="arrow-right" /></span>
+    </button>
 }
 
 @* F6: the goal-milestone moment. Sits above the FAB and below the modal layer — it should never cover a form the
@@ -3630,7 +3627,7 @@ else
         @* Review modals hold rows of data rather than a column of fields, so they get the wider box.
            A trip picked on the expense form puts the whole modal into trip mode — the same blue the app bar and the
            Home hero wear while you're away, so the form you log into looks like the trip it logs against. *@
-        <div class="modal @(_modal is Modal.BankReview or Modal.Import ? "modal-wide" : "") @((_modal is Modal.AddExpense or Modal.EditExpense or Modal.BankConfirm) && _expTripId != Guid.Empty ? "modal-trip" : "")">
+        <div class="modal @(_modal is Modal.BankReview or Modal.Import or Modal.Assistant ? "modal-wide" : "") @((_modal is Modal.AddExpense or Modal.EditExpense or Modal.BankConfirm) && _expTripId != Guid.Empty ? "modal-trip" : "")">
             @if (_modalError is not null)
             {
                 <div class="modal-error">@_modalError</div>
@@ -4324,7 +4321,7 @@ else
 
                 case Modal.Assistant:
                     <div class="modal-head">
-                        <h3><Icon Name="chat" /> @Loc["Ask a question"]</h3>
+                        <h3><Icon Name="chat" /> @Loc["Assistant"]</h3>
                         <span class="modal-head-actions">
                             <button class="exp-edit" title="@Loc["Close"]" @onclick="Back"><Icon Name="x" /></button>
                         </span>
@@ -4375,7 +4372,7 @@ else
                         @* Always on show, not just as an empty state. They are the menu — the honest list of what
                            this can actually do — and hiding them after the first question is how someone ends up
                            typing at a box that only answers a shape they were never told about. *@
-                        <div class="ask-chips">
+                        <div class="ask-chips-row">
                             @foreach (var chip in AssistantSuggestions)
                             {
                                 <button type="button" class="chip" @onclick="() => AskSuggestion(chip)">@Loc[chip.Text]</button>
@@ -13438,9 +13435,6 @@ else
 
     // Floating quick-add (mobile web): a single ＋ that expands to the two add flows.
     private bool _fabOpen;
-    // ⚠️ _fabOpen = false FIRST, like its siblings: the FAB is hidden while a modal is open, so leaving the flag
-    // set would strand an open menu behind the sheet and reveal it again on close.
-    private Task FabAssistant() { _fabOpen = false; return OpenAssistant(); }
     private void FabAddExpense() { _fabOpen = false; OpenAddExpenseTab(); }
     private void FabAddIncome() { _fabOpen = false; OpenDeposit(); }
     private Task FabTransfer() { _fabOpen = false; return OpenTransferFromDefaultFund(); }
