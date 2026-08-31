@@ -106,6 +106,46 @@ public class AssistantMaskerTests
         Assert.Contains("Groceriesland", masked.Text);
     }
 
+    [Theory]
+    [InlineData("Groceries", "how did my grocery bill change")]
+    [InlineData("Bills", "what about my bill")]
+    [InlineData("Boxes", "what about my box")]
+    public void A_name_is_recognised_in_its_singular_too(string categoryName, string question)
+    {
+        // ⚠️ The failure this prevents was silent and therefore worse than a miss: "grocery" did not match
+        // "Groceries", the question fell back to an account-wide comparison, and that answer was returned as
+        // though it had been the one asked.
+        var id = Guid.NewGuid();
+        var vocab = new List<AssistantSlot> { new(AssistantSlotKinds.Category, id, categoryName) };
+
+        var masked = AssistantMasker.Mask(question, vocab);
+
+        Assert.Contains("{1}", masked.Text);
+        Assert.Equal(id, Assert.Single(masked.Slots).Id);
+        // The slot keeps the name as the user WROTE it in their account, not the stem it matched on.
+        Assert.Equal(categoryName, masked.Slots[0].Name);
+    }
+
+    [Fact]
+    public void The_singular_rule_refuses_to_produce_a_dangerous_stem()
+    {
+        // "Gas" must never start matching "Ga", and a double-s word is not a plural.
+        foreach (var name in new[] { "Gas", "Fitness" })
+        {
+            var vocab = new List<AssistantSlot> { new(AssistantSlotKinds.Category, Guid.NewGuid(), name) };
+            Assert.Empty(AssistantMasker.Mask($"what about ga and fitnes", vocab).Slots);
+        }
+    }
+
+    [Fact]
+    public void Matching_a_singular_still_consumes_exactly_what_it_matched()
+    {
+        // The scan advances by the length matched, not the name's — otherwise a stem leaves a stray character.
+        var vocab = new List<AssistantSlot> { new(AssistantSlotKinds.Category, Guid.NewGuid(), "Groceries") };
+
+        Assert.Equal("did {1} rise", AssistantMasker.Mask("did grocery rise", vocab).Text);
+    }
+
     [Fact]
     public void A_name_too_short_to_match_safely_is_left_alone()
     {

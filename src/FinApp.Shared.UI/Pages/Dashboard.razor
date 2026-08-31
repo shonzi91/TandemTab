@@ -13272,8 +13272,13 @@ else
 
         var delta = now - then;
         var pct = Math.Abs(decimal.Round(delta / then * 100m, 0));
+        // ⚠️⚠️ "Across everything" is not padding. Without it, a question naming a category we failed to recognise
+        // — "why did my grocery bill jump", where the category is called "Groceries" — was answered with the
+        // ACCOUNT-WIDE figure and no hint that the category had been ignored. Two different questions came back
+        // with identical numbers and nothing on screen explained why. Naming the scope makes a missed category
+        // visible in the answer instead of silently changing what was asked.
         var scope = what is null
-            ? string.Format(Loc["{0} this period against {1} last"], Fmt(now), Fmt(then))
+            ? string.Format(Loc["Across everything, {0} this period against {1} last"], Fmt(now), Fmt(then))
             : string.Format(Loc["{0} on {1} this period against {2} last"], Fmt(now), what, Fmt(then));
 
         // Under 5% either way is noise, and calling it a rise invites someone to go looking for a cause that

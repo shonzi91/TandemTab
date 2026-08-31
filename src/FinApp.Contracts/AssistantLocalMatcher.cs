@@ -194,7 +194,9 @@ public static partial class AssistantLocalMatcher
         ("open.invite",       ["invite", "share account", "покан"]),
         ("open.nextPeriod",   ["next period", "start next", "new month", "следващ период"]),
         ("open.budgets",      ["budget", "бюджет"]),
-        ("tab.goals",         ["goal", "debt", "цел", "дълг"]),
+        // "loan" and "mortgage" sit here because the app's word is "debt" and nobody else's is. "is it worth
+        // overpaying the loan" answered "I didn't follow that one" against an app with a whole payoff planner.
+        ("tab.goals",         ["goal", "debt", "loan", "mortgage", "payoff", "цел", "дълг", "заем", "кредит"]),
         ("tab.spending",      ["spending", "expenses", "expense", "разход"]),
         ("tab.wallets",       ["wallet", "bank", "balance", "портфейл", "банк"]),
         ("tab.dashboard",     ["dashboard", "home", "overview", "табло"]),

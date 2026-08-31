@@ -101,14 +101,15 @@ public sealed class AnthropicAssistantParser : IAssistantParser
                 MaxTokens = MaxTokens,
                 System = new List<TextBlockParam>
                 {
-                    // ⚠️⚠️ NO cache_control here, and that is a correction rather than an omission. Caching looked
-                    // free and is not: a cache WRITE bills at 1.25× the base input rate and a read at 0.1×, so it
-                    // only pays once enough calls land inside the 5-minute window to amortise the writes — roughly
-                    // a 1-in-5 hit rate. At this app's volume calls arrive minutes or hours apart, so essentially
-                    // every one was writing a fresh entry nothing ever read: a flat 25% surcharge dressed as an
-                    // optimisation. Put it back when the assistant is busy enough to hit the window, and confirm
-                    // it with the CacheRead figure logged below rather than by assuming.
-                    new() { Text = AssistantPrompt.System },
+                    // ⚠️⚠️ This breakpoint was removed and then restored within a day, and the round trip is the
+                    // lesson. A cache WRITE bills at 1.25× base and a read at 0.1×, so caching pays above roughly
+                    // a 1-in-5 hit rate inside the 5-minute window. It was removed on the ASSUMPTION that calls
+                    // arrive minutes apart. The production log then showed five calls inside 55 seconds: people
+                    // use an assistant in BURSTS, so four of those five would have been reads. Measured over that
+                    // burst, caching is ~3× cheaper — 2,554 token-equivalents against 7,740.
+                    // ★ The usage line below is what settled it, and is why it stays: the CacheRead figure turns
+                    // this from a question about traffic shape into a number.
+                    new() { Text = AssistantPrompt.System, CacheControl = new CacheControlEphemeral() },
                 },
                 OutputConfig = output,
                 Messages = [new() { Role = Role.User, Content = $"{slots}\n\nQuestion: {req.Question}" }],

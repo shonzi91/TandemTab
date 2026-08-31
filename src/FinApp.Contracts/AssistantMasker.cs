@@ -50,12 +50,22 @@ public static class AssistantMasker
     {
         if (string.IsNullOrWhiteSpace(question)) return new MaskedQuestion("", [], []);
 
-        // Longest first, so "car fund" wins over "car" — the alternative leaves half a name in the sentence.
-        var vocab = vocabulary
-            .Where(v => !string.IsNullOrWhiteSpace(v.Name) && v.Name.Trim().Length >= MinNameLength)
-            .Select(v => v with { Name = v.Name.Trim() })
-            .OrderByDescending(v => v.Name.Length)
-            .ToList();
+        // Every written form of every name, longest first so "car fund" wins over "car" — the alternative leaves
+        // half a name in the sentence.
+        // ★ A name is matched under its singular as well as as written. People type "grocery bill", not
+        // "Groceries bill", and before this the mismatch was invisible in the worst way: the category simply did
+        // not register, the question fell back to an account-wide answer, and that answer was returned as though
+        // it were the one asked for.
+        var vocab = new List<(string Form, AssistantSlot Slot)>();
+        foreach (var v in vocabulary)
+        {
+            if (string.IsNullOrWhiteSpace(v.Name)) continue;
+            var slot = v with { Name = v.Name.Trim() };
+            if (slot.Name.Length < MinNameLength) continue;
+            vocab.Add((slot.Name, slot));
+            if (Singular(slot.Name) is { } singular) vocab.Add((singular, slot));
+        }
+        vocab = vocab.OrderByDescending(v => v.Form.Length).ToList();
 
         var slots = new List<AssistantSlot>();
         var sb = new StringBuilder();
@@ -65,10 +75,12 @@ public static class AssistantMasker
         {
             if (MatchAt(question, i, vocab) is { } hit)
             {
-                var index = slots.FindIndex(s => s.Id == hit.Id && s.Kind == hit.Kind);
-                if (index < 0) { slots.Add(hit); index = slots.Count - 1; }
+                // ⚠️ Advance by the LENGTH MATCHED, not by the name's length — they differ whenever a singular
+                // form matched, and using the name would leave a character behind or eat one too many.
+                var index = slots.FindIndex(s => s.Id == hit.Slot.Id && s.Kind == hit.Slot.Kind);
+                if (index < 0) { slots.Add(hit.Slot); index = slots.Count - 1; }
                 sb.Append('{').Append(index + 1).Append('}');
-                i += hit.Name.Length;
+                i += hit.Length;
                 continue;
             }
             // Figures never travel. The model picks a topic and the app owns every number the user reads, so a
@@ -82,20 +94,47 @@ public static class AssistantMasker
     }
 
     /// <summary>A vocabulary hit starting exactly at <paramref name="i"/>, on word boundaries at both ends so
-    /// "Food" does not match inside "Foodie".</summary>
-    private static AssistantSlot? MatchAt(string question, int i, List<AssistantSlot> vocab)
+    /// "Food" does not match inside "Foodie". Returns the entity and how many characters it consumed.</summary>
+    private static (AssistantSlot Slot, int Length)? MatchAt(
+        string question, int i, List<(string Form, AssistantSlot Slot)> vocab)
     {
         if (i > 0 && char.IsLetterOrDigit(question[i - 1])) return null;
 
-        foreach (var entry in vocab)
+        foreach (var (form, slot) in vocab)
         {
-            var n = entry.Name.Length;
+            var n = form.Length;
             if (i + n > question.Length) continue;
-            if (string.Compare(question, i, entry.Name, 0, n, StringComparison.CurrentCultureIgnoreCase) != 0) continue;
+            if (string.Compare(question, i, form, 0, n, StringComparison.CurrentCultureIgnoreCase) != 0) continue;
             if (i + n < question.Length && char.IsLetterOrDigit(question[i + n])) continue;
-            return entry;
+            return (slot, n);
         }
         return null;
+    }
+
+    /// <summary>
+    /// The singular of a name, or null when there isn't a safe one.
+    /// <para>⚠️ Deliberately timid. It only strips endings English is reliable about, and it refuses to produce a
+    /// stem shorter than four characters — a category called "Gas" must never start matching "Ga", because a
+    /// wrong match here does not fail loudly, it masks the wrong span and changes the question.</para>
+    /// </summary>
+    private static string? Singular(string name)
+    {
+        // Three, not four: "Boxes" → "Box" is a real singular and a four-character floor threw it away. Three
+        // still rejects the cases that matter — "Gas" and "Bus" stem to two characters and are refused.
+        const int minStem = 3;
+        string? stem =
+            name.EndsWith("ies", StringComparison.CurrentCultureIgnoreCase) ? name[..^3] + "y" :
+            name.EndsWith("ches", StringComparison.CurrentCultureIgnoreCase) ||
+            name.EndsWith("shes", StringComparison.CurrentCultureIgnoreCase) ||
+            name.EndsWith("xes", StringComparison.CurrentCultureIgnoreCase) ||
+            name.EndsWith("ses", StringComparison.CurrentCultureIgnoreCase) ? name[..^2] :
+            name.EndsWith("ss", StringComparison.CurrentCultureIgnoreCase) ? null :
+            name.EndsWith("s", StringComparison.CurrentCultureIgnoreCase) ? name[..^1] :
+            null;
+
+        return stem is { Length: >= minStem } && !stem.Equals(name, StringComparison.CurrentCultureIgnoreCase)
+            ? stem
+            : null;
     }
 
     private static List<string> Suspects(string masked)
