@@ -1055,6 +1055,11 @@ public sealed class Localizer(IJSRuntime js)
         ["Due"] = "Предстоящи",
         ["Suggestions"] = "Предложения",
         ["Achievements"] = "Постижения",
+        // R3's entrances. ⚠️ These two are the only assistant strings translated so far — the sheet's explainer
+        // paragraphs and consent copy are still English-only, which is a real gap in a bilingual app and is
+        // recorded as such rather than left to be discovered. Worth a native read before the door opens.
+        ["Ask a question"] = "Задай въпрос",
+        ["Ask"] = "Питай",
         ["View all"] = "Виж всички",
         ["{0} of {1} earned"] = "{0} от {1} получени",
         ["You can start next month once this period's end date has passed."] =

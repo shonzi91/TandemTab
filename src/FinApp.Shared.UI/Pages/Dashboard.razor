@@ -252,14 +252,9 @@ else
                         <Icon Name="bank" /><span class="review-badge" aria-hidden="true">@_reviewCount</span>
                     </button>
                 }
-                @* R3. Deliberately NOT a Home section: an assistant is supposed to replace stacked panels with an
-                   on-demand answer, not become another one. It is tinted rather than left as a fourth grey glyph —
-                   the one place in this row that gets to say the app grew something. Rendered only once the status
-                   read says the feature exists at all (see LoadAssistantStatusAsync). *@
-                @if (_aiAvailable)
-                {
-                    <button class="link hdr-ask" title="@Loc["Ask"]" aria-label="@Loc["Ask"]" @onclick="OpenAssistant"><Icon Name="chat" /></button>
-                }
+                @* ⚠️ No assistant entrance in this row, by decision (2026-08-31): the header was already four
+                   icons deep beside the bell and a fifth made it a glyph soup. It lives in the Home action row
+                   and, on a phone, in the FAB. *@
                 <button class="link hdr-trophy" title="@Loc["Achievements"]" @onclick="() => _modal = Modal.Achievements"><Icon Name="trophy" /></button>
                 <span class="acct-menu">
                     <button class="link" title="@Loc["Account actions"]" @onclick="() => _acctMenuOpen = !_acctMenuOpen"><Icon Name="sliders" /></button>
@@ -638,7 +633,7 @@ else
                 {
                     <div class="tile-ask action-card">
                         <span class="card-act-row">
-                            <button class="card-act card-act-ask" @onclick="OpenAssistant"><Icon Name="chat" /> @Loc["Ask"]</button>
+                            <button class="card-act card-act-ask" @onclick="OpenAssistant"><Icon Name="chat" /> @Loc["Ask a question"]</button>
                         </span>
                     </div>
                 }
@@ -3586,7 +3581,7 @@ else
                    question is not the most-used action here, and the three writes below it are. *@
                 @if (_aiAvailable)
                 {
-                    <button class="qfab-item" @onclick="FabAssistant"><Icon Name="chat" /> @Loc["Ask"]</button>
+                    <button class="qfab-item" @onclick="FabAssistant"><Icon Name="chat" /> @Loc["Ask a question"]</button>
                 }
                 @if (CanTransfer)
                 {
@@ -4329,7 +4324,7 @@ else
 
                 case Modal.Assistant:
                     <div class="modal-head">
-                        <h3><Icon Name="search" /> @Loc["Ask"]</h3>
+                        <h3><Icon Name="chat" /> @Loc["Ask a question"]</h3>
                         <span class="modal-head-actions">
                             <button class="exp-edit" title="@Loc["Close"]" @onclick="Back"><Icon Name="x" /></button>
                         </span>

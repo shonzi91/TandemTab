@@ -405,7 +405,6 @@ html.dark .home-ms-line:hover { color: #3fe0c5; }
 .hdr-icons { display: flex; align-items: center; gap: 2px; margin-left: auto; padding-left: 8px; border-left: 1px solid #e9edf1; }
 .hdr-trophy { font-size: 1.1rem; }
 /* R3's one piece of header chrome. Same size as the trophy beside it — it is a peer, not a promotion. */
-.hdr-ask { font-size: 1.1rem; }
 
 /* The ask sheet. ★ The preview block is the only part with a look of its own, and deliberately so: it is the
    claim the feature makes, so it reads as a quoted artefact rather than as body copy. */
@@ -3453,17 +3452,6 @@ html.dark .card-act-transfer { color: #c3ccd6; box-shadow: inset 0 0 0 1px #3a44
 html.dark .card-act-transfer:hover { background: #2a313c; color: #e8eaf0; }
 html.dark .card-act-income { background: #17a877; }
 html.dark .card-act-spend { background: #566173; }
-
-/* R3's entrances — the header pill and the Home card.
-   ⚠️⚠️ Written as `button.hdr-ask` and placed HERE, far below `.hdr-ask { font-size }` at the top of this file,
-   and that is not tidiness: `button.link` (≈1003) sets `background: none` at specificity (0,1,1). A plain
-   `.hdr-ask` background is (0,1,0) and loses outright; an equal-specificity `button.hdr-ask` written ABOVE it
-   loses on source order. Both failures are silent — the rule is simply never applied.
-   ★ The header buttons are already brand green, so tint alone cannot single this one out. The soft pill can. */
-button.hdr-ask { background: #eaf7f1; border-radius: 999px; padding: 3px 7px; }
-button.hdr-ask:hover { background: #d9efe8; }
-html.dark button.hdr-ask { background: #14251f; }
-html.dark button.hdr-ask:hover { background: #1b3229; }
 
 /* Sits beside two filled buttons and an outlined one. Tinted rather than filled on purpose: asking a question is
    not a money action, so it should read as a peer of Transfer, not compete with Add income. */
