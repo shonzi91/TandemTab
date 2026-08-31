@@ -404,15 +404,6 @@ html.dark .home-ms-line:hover { color: #3fe0c5; }
 /* Icons + period are borderless segments inside the single hdr-top border; a divider sets the icons apart. */
 .hdr-icons { display: flex; align-items: center; gap: 2px; margin-left: auto; padding-left: 8px; border-left: 1px solid #e9edf1; }
 .hdr-trophy { font-size: 1.1rem; }
-/* R3's one piece of header chrome. Same size as the trophy beside it — it is a peer, not a promotion. */
-
-/* The ask sheet. ★ The preview block is the only part with a look of its own, and deliberately so: it is the
-   claim the feature makes, so it reads as a quoted artefact rather than as body copy. */
-.ask-preview { margin: 10px 0 4px; padding: 8px 10px; border: 1px solid #cfe9dd; border-radius: 10px; background: #f4fbf7; }
-.ask-preview code { display: block; margin-top: 4px; font-size: .82rem; color: #0f7a54; word-break: break-word; }
-html.dark .ask-preview { border-color: #2c3142; background: #131820; }
-html.dark .ask-preview code { color: var(--tm-mint); }
-
 /* The transcript. Capped and scrollable so a long session can't push the composer off the sheet — the input is
    the one thing that must never require scrolling to reach. */
 .ask-log { display: flex; flex-direction: column; gap: 10px; max-height: 46vh; overflow-y: auto; padding: 4px 2px 8px; }
@@ -464,10 +455,28 @@ html.dark .ask-send:disabled { background: #3a4453; }
 /* The dock. The glow is the whole point of it being noticeable at all, so it is a real (soft) shadow rather
    than a border — and it settles rather than pulsing, because a thing that blinks forever at the bottom of a
    budgeting app is a thing people learn to resent. */
+/* ⚠️⚠️ STICKY, not fixed, and this is structural rather than cosmetic. `.app-legal` (the Privacy/Terms/Contact
+   row) and `.app-fb` (the beta feedback card) live OUTSIDE `.app-body`, which is the scroller — they are pinned
+   chrome at the bottom of the viewport, not page content. A fixed dock therefore covered them at every scroll
+   position, and no amount of bottom padding on the scroller could have helped. Sticky keeps the dock inside
+   `.app-body`, so it can never reach past the end of the scroll area and onto the chrome below it.
+   ★ It also retires the transform: centring is margin: auto now, so there is no transform to freeze, animate,
+   or have to switch off at a breakpoint. */
+/* ★ One sticky row holds the dock and the ＋ so they share a baseline. Before this they were two independently
+   positioned floats, and the moment the dock moved up to clear the footer the ＋ stayed behind at the viewport
+   edge — 84px out of line, and still sitting on top of the legal footer itself. */
+.dock-row {
+    position: sticky; bottom: calc(18px + env(safe-area-inset-bottom, 0px));
+    z-index: 55; display: flex; align-items: center; gap: 10px; margin-top: 8px; padding: 0 16px;
+    pointer-events: none;                 /* the row is only a rail; its children take the clicks */
+}
+.dock-row > * { pointer-events: auto; }
+/* The ＋ keeps the bottom-right corner it has always had. Ordered rather than reordered in markup, because the
+   FAB block owns its own open/close state and moving it would put that logic after the thing it controls. */
+.dock-row .qfab { order: 2; }
+
 .ask-dock {
-    position: fixed; left: 50%; transform: translateX(-50%);
-    bottom: calc(18px + env(safe-area-inset-bottom, 0px));
-    z-index: 55; width: min(560px, calc(100vw - 36px));
+    flex: 1 1 auto; margin: 0 auto; max-width: 560px;
     display: flex; align-items: center; gap: 10px; padding: 11px 14px;
     border-radius: 999px; border: 1.5px solid #cfe9dd; background: #fff; cursor: pointer;
     box-shadow: 0 4px 14px rgba(19,160,110,.16), 0 0 0 6px rgba(19,160,110,.05);
@@ -489,11 +498,12 @@ html.dark .ask-dock-go { color: var(--tm-mint); }
 
 /* ⚠️ On a phone the ＋ owns the bottom-right corner, so the dock stops short of it rather than sliding
    underneath — two overlapping floating controls is how one of them stops being pressable. */
+/* On a phone the ＋ is a row member rather than something to dodge, so the dock simply takes the space left
+   over — no reserved gutter and no chance of the two overlapping. */
 @media (max-width: 640px) {
-    .ask-dock { left: 16px; right: 88px; transform: none; width: auto; bottom: calc(24px + env(safe-area-inset-bottom, 0px)); }
+    .dock-row { bottom: calc(20px + env(safe-area-inset-bottom, 0px)); }
 }
 
-.ask-strict { margin: 10px 0; }
 
 .ask-answer { margin: 12px 0 4px; font-size: .95rem; color: #1f2430; }
 html.dark .ask-answer { color: #e6ecf2; }
@@ -3479,8 +3489,10 @@ html.dark .card-score .card-value.score-bad { color: #ef6f6f; }
 html.dark .qfab-item { background: #1c2431; color: #e8eaf0; }
 html.dark .qfab-item ::deep svg { color: #3fe0c5; }
 @media (max-width: 640px) {
-    /* The FAB takes over the two everyday Add actions on narrow screens; the inline Home buttons step aside. */
-    .qfab { display: block; position: fixed; right: 18px; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); z-index: 60; }
+    /* The FAB takes over the two everyday Add actions on narrow screens; the inline Home buttons step aside.
+       ⚠️ `relative`, not `fixed`, since 2026-08-31: it now rides the sticky dock row so the two stay on one line.
+       Relative keeps it a containing block for `.qfab-menu`, which is absolutely positioned against it. */
+    .qfab { display: block; position: relative; z-index: 60; }
     .action-cards { display: none; }
 }
 .action-card .quick-spend { position: relative; }

@@ -3552,6 +3552,13 @@ else
     </div>
 </div>
 
+@* ★ ONE sticky rail carries both the assistant's dock and the quick-add ＋, and that is why they stay on a single
+   line. They used to be two independent floats pinned to the viewport; when the dock moved up to stop covering the
+   legal footer and the feedback card — which sit OUTSIDE the scroll area, so no page padding could ever have
+   cleared them — the ＋ stayed behind at the viewport edge, 84px out of line and still on top of the footer.
+   Being sticky rather than fixed is what keeps the pair inside the scroller and off the chrome below it. *@
+<div class="dock-row">
+
 @* Floating quick-add — mobile web only (CSS hides it on desktop, where the inline Home buttons stay). One ＋ that
    expands to Add expense / Add income from any tab, mirroring the native app's FAB. Hidden while a modal is open. *@
 @if (_modal == Modal.None && State.IsPeriodOpen)
@@ -3591,6 +3598,8 @@ else
         <span class="ask-dock-go"><Icon Name="arrow-right" /></span>
     </button>
 }
+
+</div>
 
 @* F6: the goal-milestone moment. Sits above the FAB and below the modal layer — it should never cover a form the
    user is mid-way through, and CheckCelebrationsAsync only fires from the render loop, not from a save handler. *@
@@ -4393,24 +4402,12 @@ else
                             </button>
                         </div>
 
-                        @if (_aiMasked is { } masked)
-                        {
-                            @* ★ The preview IS the promise. It is not a debug affordance and it does not get hidden
-                               behind a disclosure: the claim "we take your names out" is only worth anything if the
-                               person can see what is left. *@
-                            <div class="ask-preview">
-                                <span class="lbl-row">@Loc["This is what gets sent"]</span>
-                                <code>@masked.Text</code>
-                                @if (!masked.IsClean)
-                                {
-                                    <p class="hint warn-text">@string.Format(Loc["We don't recognise: {0}. Strict mode won't send it."], string.Join(", ", masked.Suspect))</p>
-                                }
-                            </div>
-                        }
-
-                        @* Switch renders its own <label>; wrapping it in another one nests two labels and hands
-                           every click on the text to the wrong control. *@
-                        <Switch @bind-Value="_aiStrict" Class="ask-strict">@Loc["Strict — never send a word we can't account for"]</Switch>
+                        @* ⚠️ The "this is what gets sent" preview and the strict toggle were removed on 2026-08-31:
+                           a running commentary on masking under every message is noise in a chat, and a toggle is a
+                           question nobody wants asked twice. THE PROTECTION DID NOT GO WITH THEM — masking still
+                           runs on every question, and the strict rule is now simply always on, surfacing as a
+                           message in the transcript when it holds something back. The consent screen still
+                           describes the whole arrangement before anyone opts in. *@
 
                         @* Only when it is nearly gone. A counter shown from day one turns every question into a
                            decision about whether it is worth spending one, which is not the feeling wanted here. *@
@@ -12906,11 +12903,6 @@ else
     private int _aiRemaining;             // model calls left this month
     private int _aiCap;
 
-    /// <summary>Strict mode: refuse to send a question still carrying something that looks like a name the app
-    /// does not know. ⚠️ Default ON, and the toggle is deliberately in the sheet rather than buried in settings —
-    /// turning it off is the user accepting that an unrecognised word will travel, and that is a decision they
-    /// should make while looking at the word.</summary>
-    private bool _aiStrict = true;
 
     private async Task OpenAssistant()
     {
@@ -12965,11 +12957,17 @@ else
     {
         if (_aiBusy || _aiMasked is not { } masked || string.IsNullOrWhiteSpace(masked.Text)) return;
 
-        if (_aiStrict && !masked.IsClean)
+        // ★ Always on now that the toggle is gone. It holds back a question carrying a word the app cannot account
+        // for — a shop, a person — and says so IN the transcript rather than as a note beside it, so the refusal
+        // reads as part of the conversation instead of an error about a control that no longer exists.
+        if (!masked.IsClean)
         {
-            _aiNote = string.Format(
-                Loc["This still mentions {0}, which isn't anything in your account — so it wasn't sent. Rephrase it, or turn off strict mode."],
-                string.Join(", ", masked.Suspect));
+            _aiTurns.Add(new AssistantTurn(false, _aiQuestion.Trim()));
+            _aiTurns.Add(new AssistantTurn(true, string.Format(
+                Loc["I left that one here rather than sending it — it mentions {0}, which isn't anything in your account. Try it without that word."],
+                string.Join(", ", masked.Suspect))));
+            _aiQuestion = "";
+            _aiMasked = null;
             _aiUnknown = false;
             return;
         }
