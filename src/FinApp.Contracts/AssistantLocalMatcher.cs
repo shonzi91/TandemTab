@@ -117,6 +117,11 @@ public static partial class AssistantLocalMatcher
     [
         "how much", "how many", "what's my", "whats my", "what is my", "am i", "do i have",
         "have i spent", "can i spend", "what did i", "колко", "имам ли",
+        // ⚠️ "when will my loans be paid off" is a question about MY figures, but none of the words above appear
+        // in it — it was landing in the navigate class and being answered with a screen. The class list is what
+        // decides which rule table runs, so a phrase added only to the rules below never gets reached.
+        "how long", "when will", "when do", "when does", "when am", "what bills", "still due", "coming out",
+        "докога", "кога ще",
         // "which budgets are over" reads as navigation by every other test here, and it is not: the answer is a
         // sentence naming them, and sending someone to the list to count for themselves is a worse one.
         "which budget", "over budget", "anything over",
@@ -139,7 +144,7 @@ public static partial class AssistantLocalMatcher
         "went up", "gone up", "going up", "go up", "goes up",
         "went down", "gone down", "going down", "go down", "goes down",
         "rise", "risen", "rose", "fell", "fallen", "higher", "lower", "more than usual", "changed",
-        "миналия месец", "минал месец", "сравн", "спрямо",
+        "миналия месец", "минал месец", "сравн", "спрямо", "вдигна", "покачи", "увеличи", "намаля", "скочи",
     ];
 
     private static (string Kind, int Index)? FirstSlot(string question, IReadOnlyList<string> slotKinds)
@@ -155,6 +160,13 @@ public static partial class AssistantLocalMatcher
 
     private static readonly (string Target, string[] Phrases)[] ReportRules =
     [
+        // ⚠️ These three come FIRST because they are the specific questions. "how long will my money last" also
+        // contains nothing that would match below it, but "when am I debt free" contains "debt", which would
+        // otherwise be swallowed by the savings rule and answered with a set-aside total.
+        ("report.runway",      ["last", "run out", "runway", "how long", "стигнат", "докога"]),
+        ("report.debtFree",    ["debt free", "debt-free", "paid off", "pay off", "payoff", "clear my debt",
+                                "cleared", "без дълг"]),
+        ("report.bills",       ["bill", "due", "coming out", "recurring", "subscription", "сметк", "падеж"]),
         ("report.safeToSpend", ["safe to spend", "can i spend", "left to spend", "свободно", "харчене"]),
         ("report.budgets",     ["over budget", "budgets over", "budget", "бюджет"]),
         ("report.topCategory", ["most", "top category", "biggest", "largest", "най"]),

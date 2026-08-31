@@ -64,6 +64,15 @@ public static class CategoryIcons
         ["tag"] = "#64748b",
     };
 
+    /// <summary>
+    /// The keyword rules, exposed for the assistant.
+    /// <para>★ These already map an English word to an icon in order to <em>guess</em> one for a new category.
+    /// That makes them the only language-independent handle the app has on what a category IS: a user whose
+    /// categories are named in Bulgarian still has one wearing the "cart" icon, and "grocery" still points at
+    /// it. Reusing the table is what lets somebody ask in one language about a category named in another.</para>
+    /// </summary>
+    public static IEnumerable<(string[] Keywords, string Icon)> KeywordRules => Rules;
+
     // Ordered keyword → icon rules; first match wins. Lowercased "contains" matching.
     private static readonly (string[] Keywords, string Icon)[] Rules =
     [

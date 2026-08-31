@@ -106,6 +106,32 @@ public class AssistantLocalMatcherTests
         Assert.Equal(AssistantIntents.Navigate, Match("take me to my goals")!.Intent);
     }
 
+    [Theory]
+    [InlineData("how long will my money last", "report.runway")]
+    [InlineData("when will I run out", "report.runway")]
+    [InlineData("when am I debt free", "report.debtFree")]
+    [InlineData("when will my loans be paid off", "report.debtFree")]
+    [InlineData("what bills are still due", "report.bills")]
+    [InlineData("what's coming out this month", "report.bills")]
+    public void The_headline_figures_are_reported_not_navigated_to(string question, string topic)
+    {
+        // ⭐ Each of these used to open a SCREEN. Being shown the runway page when you asked how long the money
+        // lasts is an answer to a different question.
+        var reply = Match(question);
+
+        Assert.Equal(AssistantIntents.Report, reply!.Intent);
+        Assert.Equal(topic, reply.Target);
+    }
+
+    [Fact]
+    public void Debt_free_is_not_swallowed_by_the_savings_rule()
+    {
+        // ⚠️ The ordering this protects: "when am I debt free" contains "debt", which the savings rule matches.
+        // Answered there it would report a set-aside total against a question about a date.
+        Assert.Equal("report.debtFree", Match("when am i debt free")!.Target);
+        Assert.Equal("report.saved", Match("how much have i set aside")!.Target);
+    }
+
     [Fact]
     public void One_word_apart_is_a_different_question()
     {

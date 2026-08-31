@@ -13220,6 +13220,46 @@ else
             case "report.compare":
                 return CompareText(slot);
 
+            case "report.runway":
+            {
+                // ⚠️ ProjectCashFlow returns null on purpose when there is no trustworthy basis — its own note
+                // says a projection with no income signal reports certain ruin for someone who simply hasn't
+                // filled that in yet. Saying "not yet" is the honest answer; inventing a runway is not.
+                var opening = State.DisplayClosingBalance(bank, bankCur);
+                if (State.ProjectCashFlow(opening) is not { } run)
+                    return Loc["There isn't enough history yet to project a runway — it needs a completed period to average, or some recurring income and bills declared."];
+                return run.FirstShortfallMonth is { } shortfall
+                    ? string.Format(Loc["At your recent pace the balance runs short around {0}."], shortfall.ToString("MMMM yyyy"))
+                    : Loc["At your recent pace the balance holds up for the whole projection — nothing runs short in the next six months."];
+            }
+
+            case "report.debtFree":
+            {
+                if (DebtFreeMonthsAtPace() is not { } months)
+                    return Loc["No debts are being tracked, so there's no payoff date to project."];
+                // Same helper the Home card prints, so the two cannot disagree about the month.
+                return months == 0
+                    ? Loc["Your debts are already cleared."]
+                    : string.Format(Loc["At the pace you're paying, every debt is cleared around {0}."], PayoffDate(months));
+            }
+
+            case "report.bills":
+            {
+                if (!State.IsPeriodOpen) return Loc["This period is closed, so nothing more is due in it."];
+                var dueTotal = State.BillsDueThisPeriod;
+                if (dueTotal.Amount <= 0m) return Loc["Nothing else is due to go out this period."];
+                // ⚠️ Named next only when one is genuinely coming up. UpcomingRecurring is a short window by
+                // design, so an empty result means "nothing imminent", not "nothing left" — the total above
+                // already said what is left.
+                var next = State.UpcomingRecurring(14).OrderBy(State.RecurringDaysUntilDue).FirstOrDefault();
+                if (next is null)
+                    return string.Format(Loc["{0} of bills is still expected this period."], Fmt(dueTotal));
+                var days = State.RecurringDaysUntilDue(next);
+                return days <= 0
+                    ? string.Format(Loc["{0} of bills is still expected this period. {1} is due today."], Fmt(dueTotal), next.Name)
+                    : string.Format(Loc["{0} of bills is still expected this period. Next up is {1}, in {2} days."], Fmt(dueTotal), next.Name, days);
+            }
+
             default:
                 return null;
         }

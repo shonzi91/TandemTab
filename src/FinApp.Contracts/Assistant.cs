@@ -162,6 +162,12 @@ public static class AssistantCatalogue
             "how this period compares with the previous one — spending up or down, and by how much. " +
             "Use it for anything asking whether something rose, fell, or changed, or how it compares to last month",
             TakesSlot: AssistantSlotKinds.Category),
+
+        // ★ Three headline figures the app already computes and previously would only NAVIGATE to. Asking "how
+        // long will my money last" and being shown the runway screen is an answer to a different question.
+        new("report.runway",   "how long the money lasts at the current pace, and when it would run short"),
+        new("report.debtFree", "when every debt is projected to be cleared at the pace being paid"),
+        new("report.bills",    "what is still due to go out this period, and what is next"),
     ];
 
     public static bool IsTarget(string? key) => key is not null && Targets.Any(t => t.Key == key);
