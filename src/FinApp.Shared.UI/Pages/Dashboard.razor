@@ -4346,11 +4346,54 @@ else
                     }
                     else
                     {
-                        <div class="modal-field">
-                            <span class="lbl-row">@Loc["Your question"]</span>
+                        @* ⚠️ A transcript, not a conversation, and the greeting says so. Nothing carries between
+                           turns — each question is looked up on its own — so a follow-up like "and last month?"
+                           cannot work. Looking like a chat while quietly failing at the one thing a chat implies
+                           would be a worse lie than the plain form this replaced. *@
+                        <div class="ask-log">
+                            @foreach (var turn in _aiTurns)
+                            {
+                                <div class="ask-turn @(turn.FromAssistant ? "from-ai" : "from-me")">
+                                    <span class="ask-bubble">@turn.Text</span>
+                                    @if (turn.GoTarget is not null)
+                                    {
+                                        @* ★ A navigation is OFFERED, never taken. Auto-jumping is what made this
+                                           read as "it just closed the box": the sheet vanished, the app landed on
+                                           a tab, and nothing anywhere said why. *@
+                                        <button type="button" class="btn-soft primary ask-go" @onclick="() => GoFromAssistant(turn)">
+                                            <Icon Name="arrow-right" /> @turn.GoLabel
+                                        </button>
+                                    }
+                                </div>
+                            }
+                            @if (_aiBusy)
+                            {
+                                <div class="ask-turn from-ai"><span class="ask-bubble"><Spinner /></span></div>
+                            }
+                        </div>
+
+                        @* Always on show, not just as an empty state. They are the menu — the honest list of what
+                           this can actually do — and hiding them after the first question is how someone ends up
+                           typing at a box that only answers a shape they were never told about. *@
+                        <div class="ask-chips">
+                            @foreach (var chip in AssistantSuggestions)
+                            {
+                                <button type="button" class="chip" @onclick="() => AskSuggestion(chip)">@Loc[chip.Text]</button>
+                            }
+                        </div>
+
+                        @if (_aiNote is not null)
+                        {
+                            <p class="hint warn-text">@_aiNote</p>
+                        }
+
+                        <div class="ask-composer">
                             <input type="text" value="@_aiQuestion" @oninput="OnAssistantInput"
                                    @onkeydown="@(async (KeyboardEventArgs k) => { if (k.Key == "Enter") await AskAssistant(); })"
-                                   placeholder="@Loc["e.g. what's safe to spend?"]" autocomplete="off" />
+                                   placeholder="@Loc["Ask about your money, or where to find something"]" autocomplete="off" />
+                            <button class="ask-send" disabled="@(_aiBusy || _aiMasked is null)" title="@Loc["Ask"]" @onclick="AskAssistant">
+                                <Icon Name="arrow-right" />
+                            </button>
                         </div>
 
                         @if (_aiMasked is { } masked)
@@ -4378,35 +4421,6 @@ else
                         {
                             <p class="hint">@string.Format(Loc["{0} questions left this month that need the assistant's help. Everything the app answers on its own is unlimited."], _aiRemaining)</p>
                         }
-                        @if (_aiNote is not null)
-                        {
-                            <p class="hint warn-text">@_aiNote</p>
-                        }
-                        @if (_aiAnswer is not null)
-                        {
-                            <p class="ask-answer">@_aiAnswer</p>
-                        }
-                        @if (_aiUnknown)
-                        {
-                            <p class="hint">@Loc["I didn't follow that one. These I can do:"]</p>
-                        }
-                        @if (_aiAnswer is null || _aiUnknown)
-                        {
-                            <div class="ask-chips">
-                                @foreach (var chip in AssistantSuggestions)
-                                {
-                                    <button type="button" class="chip" @onclick="() => AskSuggestion(chip)">@Loc[chip.Text]</button>
-                                }
-                            </div>
-                        }
-
-                        <div class="modal-actions">
-                            <button class="ghost" @onclick="Back">@Loc["Close"]</button>
-                            <button class="primary" disabled="@(_aiBusy || _aiMasked is null)" @onclick="AskAssistant">
-                                @if (_aiBusy) { <Spinner /> } else { <Icon Name="arrow-right" /> }
-                                @Loc["Ask"]
-                            </button>
-                        </div>
                     }
                     break;
 
@@ -12882,10 +12896,16 @@ else
     private string _aiQuestion = "";
     private MaskedQuestion? _aiMasked;
     private bool _aiBusy;
-    private string? _aiAnswer;            // narrated from Loc + Fmt only — never a word the model wrote
     private string? _aiNote;              // why nothing was sent, when nothing was sent
     private bool _aiUnknown;              // show the suggestions instead of an answer
     private int _aiLocalHits;             // answered on the device since the last question that needed the model
+
+    /// <summary>One line of the transcript. <see cref="GoTarget"/> is set only on a navigation answer, which is
+    /// offered as a button rather than performed.</summary>
+    private sealed record AssistantTurn(bool FromAssistant, string Text,
+        string? GoTarget = null, AssistantSlot? GoSlot = null, string? GoLabel = null);
+
+    private readonly List<AssistantTurn> _aiTurns = [];
     private int _aiRemaining;             // model calls left this month
     private int _aiCap;
 
@@ -12900,10 +12920,17 @@ else
         if (!Gate.Require(PlanFeatures.Assistant)) return;
         _aiQuestion = "";
         _aiMasked = null;
-        _aiAnswer = null;
         _aiNote = null;
         _aiUnknown = false;
         _modal = Modal.Assistant;
+
+        // ★ The transcript survives closing the sheet — reopening mid-session and finding the last answer gone is
+        // the thing that makes a chat feel like a form. It is cleared on sign-out with the rest of the page state.
+        if (_aiTurns.Count == 0)
+            _aiTurns.Add(new AssistantTurn(true,
+                Loc["Hello. Ask me where something is, how something works, or what one of your figures is right now. " +
+                    "I work every number out from your own data rather than guessing at it — and I take each question " +
+                    "on its own, so I won't remember the last one yet."]));
 
         // Re-read on every open, not once per session: the budget moves as questions are asked, and a stale
         // "12 left" is worse than none.
@@ -12946,12 +12973,15 @@ else
             _aiNote = string.Format(
                 Loc["This still mentions {0}, which isn't anything in your account — so it wasn't sent. Rephrase it, or turn off strict mode."],
                 string.Join(", ", masked.Suspect));
-            _aiAnswer = null;
             _aiUnknown = false;
             return;
         }
 
-        _aiAnswer = null;
+        // The question joins the transcript before anything is attempted, so a slow or failed answer still leaves
+        // a record of what was asked rather than an empty box and a stale note.
+        _aiTurns.Add(new AssistantTurn(false, _aiQuestion.Trim()));
+        _aiQuestion = "";
+        _aiMasked = null;
         _aiNote = null;
         _aiUnknown = false;
 
@@ -12984,28 +13014,77 @@ else
 
     private async Task ApplyAssistantReply(AssistantReplyDto reply, MaskedQuestion masked)
     {
+        _aiUnknown = false;
         switch (reply.Intent)
         {
             case AssistantIntents.Navigate when reply.Target is { } target:
-                _modal = Modal.None;                       // the destination is the answer; the sheet is in the way
-                await NavigateAssistant(target, Resolver.SlotFor(reply, masked));
+            {
+                // ⚠️⚠️ This used to close the sheet and jump. From the far side that reads as "I asked it something
+                // and it just shut the box" — and when the destination was the tab you were already on, it looked
+                // like it had done nothing whatsoever. The answer is now a sentence plus a button you press.
+                var slot = Resolver.SlotFor(reply, masked);
+                var where = DestinationName(target, slot);
+                if (where is null) { Unknown(); return; }
+                _aiTurns.Add(new AssistantTurn(true,
+                    string.Format(Loc["{0} is where you'll find that."], where), target, slot, Loc["Take me there"]));
+                return;
+            }
+
+            case AssistantIntents.Explain when ExplainerText(reply.Target ?? "") is { } explanation:
+                _aiTurns.Add(new AssistantTurn(true, explanation));
                 return;
 
-            case AssistantIntents.Explain when reply.Target is { } key:
-                _aiAnswer = ExplainerText(key);
-                if (_aiAnswer is null) _aiUnknown = true;
-                return;
-
-            case AssistantIntents.Report when reply.Target is { } topic:
-                _aiAnswer = ReportText(topic);
-                if (_aiAnswer is null) _aiUnknown = true;
+            case AssistantIntents.Report when ReportText(reply.Target ?? "") is { } figure:
+                _aiTurns.Add(new AssistantTurn(true, figure));
                 return;
 
             default:
-                _aiUnknown = true;
+                Unknown();
                 return;
         }
+
+        void Unknown()
+        {
+            _aiUnknown = true;
+            _aiTurns.Add(new AssistantTurn(true, Loc["I didn't follow that one. Here's what I can do:"]));
+        }
     }
+
+    /// <summary>Perform a navigation the assistant offered. Closing the sheet is right HERE — the person asked for
+    /// the destination by pressing the button, so arriving at it is the expected outcome rather than a surprise.</summary>
+    private async Task GoFromAssistant(AssistantTurn turn)
+    {
+        if (turn.GoTarget is null) return;
+        _modal = Modal.None;
+        await NavigateAssistant(turn.GoTarget, turn.GoSlot);
+    }
+
+    /// <summary>What to call a destination in a sentence. An entity target uses the user's own name for the thing —
+    /// which is safe to print because it never left the device in the first place.</summary>
+    private string? DestinationName(string target, AssistantSlot? slot) => target switch
+    {
+        _ when slot is not null => slot.Name,
+        "tab.dashboard" => Loc["The Dashboard tab"],
+        "tab.spending" => Loc["The Spending tab"],
+        "tab.goals" => Loc["The Goals tab"],
+        "tab.wallets" => Loc["The Wallets tab"],
+        "open.breakdown" => Loc["The spending breakdown"],
+        "open.trends" => Loc["Trends"],
+        "open.weekRecap" => Loc["Your week in money"],
+        "open.achievements" => Loc["Achievements"],
+        "open.healthScore" => Loc["The health score"],
+        "open.runwayMath" => Loc["The runway working"],
+        "open.recurring" => Loc["Recurring bills and income"],
+        "open.bankReview" => Loc["The bank review list"],
+        "open.import" => Loc["Statement import"],
+        "open.archived" => Loc["Archived items"],
+        "open.categories" => Loc["Your categories"],
+        "open.tags" => Loc["Your tags"],
+        "open.budgets" => Loc["Your budgets"],
+        "open.invite" => Loc["Sharing this account"],
+        "open.nextPeriod" => Loc["Starting the next period"],
+        _ => null,
+    };
 
     /// <summary>
     /// Every destination the assistant may reach, each one calling the same method the button for it calls.
@@ -13157,12 +13236,15 @@ else
 
     private async Task AskSuggestion((string Text, AssistantReplyDto Reply) chip)
     {
-        _aiQuestion = Loc[chip.Text];
-        _aiMasked = Resolver.Mask(_aiQuestion);
+        var text = Loc[chip.Text];
+        var masked = Resolver.Mask(text);
+        _aiTurns.Add(new AssistantTurn(false, text));   // a chip is a question too, and reads as one in the log
+        _aiQuestion = "";
+        _aiMasked = null;
         _aiNote = null;
         _aiUnknown = false;
         _aiLocalHits++;
-        await ApplyAssistantReply(chip.Reply, _aiMasked);
+        await ApplyAssistantReply(chip.Reply, masked);
     }
 
     private void OpenNextPeriod()
