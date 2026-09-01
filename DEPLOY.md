@@ -26,6 +26,7 @@ The server supports two database providers, chosen at runtime:
 | **Database path** | `ConnectionStrings__FinApp` | Defaults to `Data Source=/data/finapp-server.db` (the mounted volume). |
 | **Bind URL/port** | `ASPNETCORE_URLS` | Defaults to `http://+:8080`. Put TLS termination at your load balancer / reverse proxy. |
 | JWT issuer/audience/expiry | `Jwt__Issuer`, `Jwt__Audience`, `Jwt__ExpiryHours` | Optional; sensible defaults in `appsettings.json`. |
+| **Experimental-feature allowlists** | `BankSync__AllowedEmails`, `Assistant__AllowedEmails` | Comma- or semicolon-separated account emails; case-insensitive. ⚠️ **Empty or unset means the feature is on for EVERYONE** — these open, they do not close. Set both, or the two features are live for every beta user. Widening a rollout is an edit here, not a code change. |
 
 ## Database & persistence
 SQLite file at `/data/finapp-server.db`. **Mount a persistent volume at `/data`** or the data is lost on

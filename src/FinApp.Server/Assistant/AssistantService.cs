@@ -30,10 +30,14 @@ public sealed partial class AssistantService(
 
     /// <summary>
     /// The hard monthly ceiling on model calls per user — the actual spend limit.
-    /// <para>★ <b>Why 300 is the default.</b> A question that reaches the model costs roughly $0.002 on Haiku, so
-    /// 300 is about $0.60 a month against €2.50 of Pro revenue on the annual plan — a fifth of it, in the worst
-    /// case, for a user who never stops asking. And because the local matcher answers the ordinary questions
-    /// before this counter is ever touched, 300 model calls is a great many <em>unusual</em> questions.</para>
+    /// <para>★ <b>Why 300 is the default — measured in production on 2026-09-01, not estimated.</b> A call bills
+    /// ~1,550 input + ~19 output tokens on <c>claude-haiku-4-5</c>, which at $1/$5 per MTok is <b>$0.0016</b>. So
+    /// 300 is about <b>$0.50 a month</b> against €2.50 of Pro revenue on the annual plan — a fifth of it, in the
+    /// worst case, for a user who never stops asking.</para>
+    /// <para>⚠️ Every earlier figure written here was arithmetic on a character count and every one was wrong (in
+    /// both directions: $0.011, then $0.0004). The parser logs real token usage per call now — read that, don't
+    /// re-derive this. ⚠️ And the local matcher answering "the ordinary questions before this counter is touched"
+    /// is the design, not yet the observation: the first week ran 16 local against 21 model calls.</para>
     /// </summary>
     public int MonthlyCap => config.GetValue("Assistant:MonthlyCallCap", 300);
 

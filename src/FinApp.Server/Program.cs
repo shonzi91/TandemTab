@@ -113,6 +113,7 @@ builder.Services.AddScoped<ExternalAuthService>();
 builder.Services.AddSingleton<IAssistantParser, AnthropicAssistantParser>();
 builder.Services.AddSingleton<AssistantService>();
 builder.Services.AddScoped<AssistantUsageStore>();     // the spend counters; scoped because it rides the DbContext
+builder.Services.AddSingleton<AssistantAccessPolicy>(); // experimental allowlist — same shape as BankAccessPolicy
 // Health signals + the watchdog that turns them into an email. A push, not a pull — see HealthSignals for the
 // outage that is the reason this exists at all.
 builder.Services.AddSingleton<HealthSignals>();
@@ -3260,9 +3261,16 @@ invitations.MapPost("/{id:guid}/decline", async (Guid id, ClaimsPrincipal user, 
 // snapshot call and no membership check here. The reply is an intent key; the client does the rest.
 accounts.MapPost("/{id:guid}/assistant/ask", async (
     Guid id, AssistantAskRequest req, ClaimsPrincipal user, AssistantService assistant,
-    ConsentService consent, EntitlementService entitlements, CancellationToken ct) =>
+    ConsentService consent, EntitlementService entitlements, AssistantAccessPolicy access,
+    FinAppDbContext db, CancellationToken ct) =>
 {
-    // Consent first, and per account: the assistant is opt-in and off by default, so an account that never turned
+    // The experimental allowlist, outermost and before anything is read: while it is configured, this feature does
+    // not exist for anyone off the list. The client hides its entrances on the same answer from /assistant/status,
+    // so reaching here at all means a hand-written request — which is exactly the case a UI-only gate misses.
+    if (!access.IsAllowed((await db.Users.FindAsync([user.UserId()], ct))?.Email))
+        return Results.Json(new { error = "The assistant is not enabled for this account." }, statusCode: StatusCodes.Status403Forbidden);
+
+    // Consent second, and per account: the assistant is opt-in and off by default, so an account that never turned
     // it on must not be able to reach the model even with a hand-written request.
     if (!await consent.IsActiveAsync(user.UserId(), id, ConsentService.Scope.Assistant, ct))
         return Results.Json(new { error = "The assistant is off for this account." }, statusCode: StatusCodes.Status403Forbidden);
@@ -3270,13 +3278,22 @@ accounts.MapPost("/{id:guid}/assistant/ask", async (
     return Results.Ok(await assistant.AskAsync(user.UserId(), req, ct));
 }).RequireRateLimiting("assistant");
 
-// Whether the assistant can be offered at all on this deployment, and what is left of the caller's monthly
-// budget. No key configured means no feature: the client hides the control rather than showing one that always
-// fails. The remaining count is read here so a cap is something a person sees coming, not walks into.
-accounts.MapGet("/assistant/status", async (ClaimsPrincipal user, AssistantService assistant, CancellationToken ct) =>
-    Results.Ok(assistant.Available
+// Whether the assistant can be offered at all to THIS caller, and what is left of their monthly budget. No key
+// configured means no feature, and neither does being off the experimental allowlist: the client hides the
+// control rather than showing one that always fails. The remaining count is read here so a cap is something a
+// person sees coming, not walks into.
+// ⚠️ This is the gate that does the hiding. The on-device matcher answers without a network call, so a user the
+// allowlist excludes must be told "unavailable" HERE — otherwise they get a local assistant that works until the
+// first question it cannot answer, which is a worse experience than not having one.
+accounts.MapGet("/assistant/status", async (
+    ClaimsPrincipal user, AssistantService assistant, AssistantAccessPolicy access,
+    FinAppDbContext db, CancellationToken ct) =>
+{
+    var allowed = access.IsAllowed((await db.Users.FindAsync([user.UserId()], ct))?.Email);
+    return Results.Ok(assistant.Available && allowed
         ? new AssistantStatusDto(true, await assistant.RemainingThisMonthAsync(user.UserId(), ct), assistant.MonthlyCap)
-        : new AssistantStatusDto(false)));
+        : new AssistantStatusDto(false));
+});
 
 app.MapHub<SyncHub>("/hubs/sync").RequireAuthorization();
 

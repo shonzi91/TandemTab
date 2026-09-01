@@ -1,16 +1,114 @@
 # TandemTab (FinApp) — session handoff
 
-Last updated: 2026-08-30 (Session 126 — **R3, scoped and built — and then the thing that would have caught
+Last updated: 2026-09-01 (Session 127 — **R3 is live, and the first thing production said about it was
+uncomfortable.** The assistant and the watchdog are both serving; then the owner put the assistant back behind an
+allowlist, because *experimental* is a decision you can only take before everybody has it.
+**579 + 56 + 599 green** (4 new). ✅ **LIVE: `finapp-00352-zhg`, 100% LATEST** — image `finapp:bda30b8`, **6
+`secretKeyRef`s** (the Anthropic key is the sixth), watchdog heartbeat logging every 10 minutes on both instances.
+⚠️⚠️ **This file was two days and ten commits out of date, and said R3 was undeployed while it was serving.**
+Everything in this entry that describes production was read from Cloud Run and its logs, not from a header.
+⭐ **The measured numbers, finally.** A call bills ~1,550 in + ~19 out on `claude-haiku-4-5` = **$0.0016**, so the
+300-call cap is **~$0.50/month**, not the $3.30 or the $0.12 this file has claimed at various points — both of
+those were arithmetic on a character count. `cache write 0, read 0` on every line confirms the caching breakpoint
+is gone.
+⛔ **And the finding: 21 questions reached the model in seven days and 15 came back `unknown`.** 16 more were
+answered on the device. The local matcher took 43% of traffic, not the majority the design assumed — see below
+before believing it, the sample is one person probing his own app.)
+
+### ⛔ The assistant is behind an allowlist now, and the reason is not cost
+
+Same two emails as external bank sync, same shape of gate, same env var habit: **`Assistant__AllowedEmails`**,
+comma- or semicolon-separated, read by `AssistantAccessPolicy` — a deliberate copy of `BankAccessPolicy` down to
+the empty-means-everyone default, because two gates that behave differently is how one of them gets misread.
+
+⚠️ **The direction of the default is the thing to know.** An empty or unset value **opens** the feature. That is
+right for a rollout — widening it is an env-var edit, no code change and no deploy of new code — and it is exactly
+wrong for an accident. The test that pins it says so in its own comment.
+
+★ **The gate is read by `/assistant/status`, and that is what makes it a real gate rather than a hidden button.**
+The client already hides every entrance when status says unavailable, and the on-device matcher only runs from
+inside that UI — so an excluded user gets **no assistant at all**, not a local one that works until the first
+question it cannot answer. The ask endpoint checks it too, outermost and before consent, because a UI-only gate
+misses the hand-written request.
+
+⚠️ **The email comes from the database, not the token.** `BankSyncService` reads it the same way. A JWT's email
+claim goes stale the moment somebody changes their address, and on a two-name allowlist a stale claim is the
+difference between the feature existing and not.
+
+The reason it is gated is **not** the bill — $0.0016 a question with a 300-call cap is already bounded. It is that
+this feature sends a masked question to a **third party**, and that three quarters of what reached the model came
+back as "I didn't follow that one". Both are things to be sure about with a known handful of people before they
+are true for everyone.
+
+### ⭐⭐ What the deploy found: fifteen of twenty-one answers were `unknown`
+
+Seven days of production logs, read from Cloud Run:
+
+| | |
+|---|---|
+| Questions that reached the model | **21** — 15 `unknown`, 4 `report`, 1 `navigate`, 1 `explain` |
+| Answered on the device, never sent | **16** (43% of the 37 total) |
+| Cost per model call | ~1,550 input + ~19 output tokens = **$0.0016** |
+| Spend so far | about **$0.03** |
+
+⚠️ **Read it as a place to look, not a score.** It is almost certainly one person probing his own app, deliberate
+nonsense included — "did the parcel arrive yet" was a *designed* fall-through. But it is the only production
+evidence that exists, and the design predicted the opposite split.
+
+★ **The fix it points at is the rule tables, not the model.** The structural trap is already documented and has
+already been hit once: **the question class decides which rule table runs**, so a phrase added only to the rules is
+unreachable — "when will my loans be paid off" sat in the navigate class and never reached the report rules it had
+just been added to. Before adding a rule, check which class the phrase lands in.
+
+### The ten commits that were never written up (31 Aug – 1 Sep)
+
+- **The dock.** The entrances were a Home-tab card and a FAB item — both on *one* tab, so on Spending or Goals the
+  assistant did not exist. It is now a dock on every tab, sharing **one sticky row** with the ＋ so the two
+  floating controls cannot overlap, and it no longer sits on the legal footer. Sticky rather than fixed, because
+  `.app-legal` and `.app-fb` live *outside* the scroller and no amount of page padding reaches them.
+- **The masking UI came out; the masking did not.** Strict mode is always on now and surfaces as a message in the
+  transcript when it holds something back, instead of a running commentary under every message.
+- **`report.compare`.** "Why did my grocery bill jump" parsed cleanly and still failed, because nothing in the
+  catalogue could answer a question about *change*. ★ Its like-for-like cut is the difference between an answer and
+  a lie: an open period measured whole against a finished month always reads as a fall.
+- **★ An English word can find a Bulgarian category.** `CategoryIcons` maps "grocer" to the cart icon to guess an
+  icon for a new category, and the icon is language-independent — so the keyword finds the category wearing it
+  whatever it is named. ⚠️ Only when **exactly one** live category wears that icon; with two the word is ambiguous
+  and a confident answer about the wrong category is worse than no match, because it looks right.
+- **The reconciliation stamp.** Two reported bugs, one cause: an adjustment was a *derived* figure stored as an
+  *independent* transaction with nothing linking it to what derived it. Rollover entries carry
+  `ReconciliationForPeriodId` now. ⚠️ The trap worth keeping: once −20 is booked the fund **reads 80**, which is the
+  entered figure, so a naive recompute reports no drift and shrinks the adjustment to zero on every edit.
+- **A cost correction.** Prompt caching was added as an optimisation and was the opposite: a cache write bills
+  1.25× and a read 0.1×, so it only pays above roughly a 1-in-5 hit rate inside five minutes. At this volume calls
+  arrive minutes apart and essentially every one wrote an entry nothing ever read — a flat 25% surcharge.
+
+#### Next session
+1. ⭐ **Deploy the allowlist.** The code is committed and tested but the gate does nothing until
+   **`Assistant__AllowedEmails`** is set on Cloud Run — and until it is deployed, the assistant is open to every
+   beta user. Build + deploy + `update-traffic --to-latest`, then verify: `/accounts/assistant/status` returns
+   `Available: false` for a non-listed account and `true` for a listed one.
+2. ⬜ **Read the 15 unknowns.** The questions are in the log. Work out which class each lands in *before* adding a
+   rule, or the rule is unreachable.
+3. ⬜ **Declare the feature freeze.** R1 froze the backlog on 5 August conditional on R3 landing. R3 has landed.
+   R5 cannot be priced until somebody writes the sentence down.
+4. ⬜ **The forms are deliberately not navigation targets** (add expense / income / transfer / new goal). Each is
+   opened by a method that seeds its draft first, and a form reached without that seeding misbehaves in ways only
+   a person driving it would notice. One at a time, each verified on a running app.
+5. ⬜ **R2.5's last two rows** are still open: the always-visible milestones line, and an auto-mask trigger to
+   match the phone's face-down sensor. They have been "what's left" for three write-ups running.
+
+---
+
+Previously: 2026-08-30 (Session 126 — **R3, scoped and built — and then the thing that would have caught
 August's outage.** The assistant takes your words out of the question before it asks anyone, answers most
 questions without asking at all, and **something finally watches whether the app is working.**
-**569 + 56 + 572 green** (52 new), pairscan 0. ⚠️ **NOT DEPLOYED and NOT verified against a real key** — there is
-none on this machine, so no model reply has ever been parsed. `Anthropic__ApiKey` must become a **6th Cloud Run
-secret** before deploy, which moves the deploy verify's `secretKeyRef` count 5 → 6.
+**569 + 56 + 572 green** (52 new), pairscan 0.
 ⭐ **The scoping was the deliverable.** Two different assistants were specced in this repo; R3 is BACKLOG #17's
 narrate-and-navigate layer, web first, and the on-device *write* assistant is now **R9**, deferred past promotion
 in writing the way R8 was. Without that line R3 is unbounded and the freeze R5 stands on never happens.
-⭐ **Measuring the cost changed the architecture** — see the local-first section. 300 asks/month went from **$3.30
-to ~$0.12**, and the per-user spend limit is now in the database rather than in a process.)
+⭐ **Measuring the cost changed the architecture** — see the local-first section. ⚠️ Both cost figures this entry
+quoted were wrong; the measured one is in the S127 entry above.)
 
 ### ⭐⭐ The design: the model is told the shape of the question, never its contents
 
@@ -155,25 +253,22 @@ fallback, and proof the send path is reached rather than skipped. ⚠️ The tem
 key is bogus. ⚠️ **The log line read `the parse call failed (25 chars, 0 slots)`** — the shape, never the question.
 The log-hygiene rule holds in practice, not just in the comment.
 
-⬜ **Unproven, and it needs the owner:** no real reply has ever been parsed, so nothing confirms Haiku accepts the
-request as shaped. Set the key and drive one question.
+~~⬜ **Unproven, and it needs the owner:** no real reply has ever been parsed.~~ ✅ **Closed on 1 September** —
+21 replies parsed in production. Haiku accepts the request as shaped; what it does *with* it is the S127 entry's
+problem.
 
 ⚠️ **A flaky test was found and its cause fixed rather than shrugged at.** `An_ill_formed_question…` failed once
 in a full run and passed alone: its username was a guid truncated to **two hex characters**, i.e. 256 possible
 names across three registrations, and a collision fails registration rather than the assertion — which reads as a
 mystery. Widened; the filter then ran three times clean.
 
-#### Next session
-1. ⭐ **Set `Anthropic__ApiKey` as a 6th Cloud Run secret and deploy** (`secretKeyRef` count 5 → 6 in the verify),
-   then ask one real question and read the reply. That is the only gap in this feature.
-   ⚠️ **Set `Alerts__Email` in the same pass** (it falls back to the first address on `Admin:Emails`, which is
-   right, but worth being deliberate about) — and confirm on the deployed revision that the heartbeat line appears
-   ~10 minutes after boot. **An alerting system nobody has seen run in production is exactly the thing it exists
-   to prevent.**
-2. ⬜ **Read the `LocalHits` ratio** after real use — `Assistant: answered by the model (N answered locally…)`. If
-   N is high the model call is a rare fallback and the model choice stops mattering; if it is low, the matcher's
-   rule tables want the questions people actually asked. ⚠️ It is structurally pessimistic: a session the matcher
-   answers *entirely* never reports its perfect score, which is the session with no bill.
+#### Next session — ⚠️ superseded; kept for the reasoning, see S127's list at the top
+1. ✅ **DONE.** `Anthropic__ApiKey` is the 6th Cloud Run secret, the deploy happened, and the watchdog heartbeat
+   appears every 10 minutes on the live revision.
+2. ✅ **READ, and it is low.** `Assistant: answered by the model (N answered locally…)` totals **16 local against
+   21 model calls** — so the matcher is *not* the rare-fallback shape this item hoped for, and its rule tables want
+   the questions people actually asked. ⚠️ It is structurally pessimistic: a session the matcher answers *entirely*
+   never reports its perfect score, which is the session with no bill — so 43% is a floor, not the figure.
 3. ⬜ **The forms are deliberately not navigation targets** (add expense / income / transfer / new goal). Each is
    opened by a method that seeds its draft first, and a form reached without that seeding misbehaves in ways only
    a person driving it would notice. One at a time, each verified on a running app.

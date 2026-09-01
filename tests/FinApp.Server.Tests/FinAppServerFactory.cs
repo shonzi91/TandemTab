@@ -35,6 +35,10 @@ public class FinAppServerFactory : WebApplicationFactory<Program>
         // off-by-default behaviour (admin fails closed; monetization is "unlimited"), so pin them off here.
         builder.UseSetting("Admin:Emails", "");
         builder.UseSetting("Monetization:Enabled", "false");
+        // The assistant's experimental allowlist is an env var in production, so a developer who has it set would
+        // otherwise turn every assistant test into "not enabled for this account". Empty means unrestricted, which
+        // is the assumption the rest of the suite is written against; the two tests that want a list set their own.
+        builder.UseSetting("Assistant:AllowedEmails", "");
         // The free-beta seat cap is REAL and would apply to the suite: nearly every test registers a user, and
         // the production default of 30 is well under the number this suite creates. Left alone, the suite would
         // start failing with "the free beta is full" the moment it grew past the cap — a confusing failure with

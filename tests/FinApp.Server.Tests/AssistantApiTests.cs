@@ -37,16 +37,22 @@ public class AssistantApiTests : IClassFixture<FinAppServerFactory>
         }
     }
 
-    private WebApplicationFactory<Program> WithParser(IAssistantParser parser) =>
-        _factory.WithWebHostBuilder(b => b.ConfigureServices(services =>
+    private WebApplicationFactory<Program> WithParser(IAssistantParser parser, string? allowedEmails = null) =>
+        _factory.WithWebHostBuilder(b =>
         {
-            services.RemoveAll<IAssistantParser>();
-            services.AddSingleton(parser);
-            // AssistantService holds the per-user counters, so it must be rebuilt alongside the parser or a
-            // previous test's daily tally would come with it.
-            services.RemoveAll<AssistantService>();
-            services.AddSingleton<AssistantService>();
-        }));
+            // The experimental allowlist, when a test wants one. Set before ConfigureServices so the singleton
+            // policy is built from it.
+            if (allowedEmails is not null) b.UseSetting("Assistant:AllowedEmails", allowedEmails);
+            b.ConfigureServices(services =>
+            {
+                services.RemoveAll<IAssistantParser>();
+                services.AddSingleton(parser);
+                // AssistantService holds the per-user counters, so it must be rebuilt alongside the parser or a
+                // previous test's daily tally would come with it.
+                services.RemoveAll<AssistantService>();
+                services.AddSingleton<AssistantService>();
+            });
+        });
 
     private static async Task<Guid> CreateAccountAsync(HttpClient client) =>
         (await (await client.PostAsJsonAsync("/accounts", new CreateAccountRequest("Main", "GBP")))
@@ -117,6 +123,47 @@ public class AssistantApiTests : IClassFixture<FinAppServerFactory>
 
         var resp = await scoped.PostAsJsonAsync($"/accounts/{accountId}/assistant/ask", Ask("what is safe to spend"));
         Assert.Equal(HttpStatusCode.ServiceUnavailable, resp.StatusCode);
+    }
+
+    [Fact]
+    public async Task Off_the_allowlist_the_assistant_does_not_exist()
+    {
+        // The whole feature, not just the model call. Status is what the client reads to decide whether to draw
+        // the dock at all, and the on-device matcher lives inside that UI — so "unavailable" here is what makes
+        // the local half disappear too. Assert both halves; either alone leaves a way in.
+        var parser = new FakeParser(new AssistantReplyDto(AssistantIntents.Navigate, "tab.goals", 0));
+        using var app = WithParser(parser, allowedEmails: "allowed@example.com");
+        var (client, _) = await _factory.RegisterAndAuthAsync("ai-notlisted", "notlisted@example.com");
+        var accountId = await CreateAccountAsync(client);
+        await ConsentAsync(client, accountId);      // consent granted, and it still does not open the door
+        var scoped = app.CreateClient();
+        scoped.DefaultRequestHeaders.Authorization = client.DefaultRequestHeaders.Authorization;
+
+        Assert.False((await scoped.GetFromJsonAsync<AssistantStatusDto>("/accounts/assistant/status"))!.Available);
+
+        var resp = await scoped.PostAsJsonAsync($"/accounts/{accountId}/assistant/ask", Ask("take me to my goals"));
+
+        Assert.Equal(HttpStatusCode.Forbidden, resp.StatusCode);
+        Assert.Equal(0, parser.Calls);              // the point: the gate stops the CALL, not just the answer
+    }
+
+    [Fact]
+    public async Task On_the_allowlist_nothing_changes()
+    {
+        // The other direction, which is the one that would fail silently: a gate that refuses everybody looks
+        // exactly like a gate that works, until the two people it is for try to use it.
+        var parser = new FakeParser(new AssistantReplyDto(AssistantIntents.Navigate, "tab.goals", 0));
+        using var app = WithParser(parser, allowedEmails: "listed@example.com, other@example.com");
+        var (client, _) = await _factory.RegisterAndAuthAsync("ai-listed", "Listed@Example.com");
+        var accountId = await CreateAccountAsync(client);
+        await ConsentAsync(client, accountId);
+        var scoped = app.CreateClient();
+        scoped.DefaultRequestHeaders.Authorization = client.DefaultRequestHeaders.Authorization;
+
+        Assert.True((await scoped.GetFromJsonAsync<AssistantStatusDto>("/accounts/assistant/status"))!.Available);
+        Assert.Equal(HttpStatusCode.OK,
+            (await scoped.PostAsJsonAsync($"/accounts/{accountId}/assistant/ask", Ask("take me to my goals"))).StatusCode);
+        Assert.Equal(1, parser.Calls);
     }
 
     [Fact]
