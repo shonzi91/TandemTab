@@ -25,7 +25,7 @@
         <header><span class="logo">TT</span> <strong>TandemTab</strong>
             <span class="lang"><strong>EN</strong> · <a href="/privacy.bg.html">BG</a></span></header>
         <h1>Privacy Policy</h1>
-        <p class="updated">Last updated: 5 August 2026</p>
+        <p class="updated">Last updated: 1 September 2026</p>
 
         <p>TandemTab ("we", "us") is a personal budgeting app that helps you track spending, budgets and savings.
         All the data in the app is what you choose to enter or <strong>import yourself</strong> — for example from a
@@ -79,6 +79,31 @@
         reads the transactions locally to prepare draft entries; nothing becomes a budgeting entry until you review and
         confirm it. You decide what to import and what to leave out.</p>
 
+        <h2 id="assistant">The assistant</h2>
+        <p>TandemTab has an optional assistant that answers questions about your money and takes you to the right
+        screen. It is <strong>off unless you turn it on</strong>, and turning it on is a separate, explicit consent you
+        can withdraw at any time by not using it.</p>
+        <p><strong>Most questions never leave your device.</strong> The app already holds your account, so it answers
+        what it can locally. When a question needs interpreting, we send it to <strong>Anthropic</strong> (model
+        <code>claude-haiku-4-5</code>) — but not as you typed it.</p>
+        <p><strong>Your words are taken out first, on your device.</strong> The names of your categories, goals,
+        wallets and journeys are replaced with numbered placeholders, and <strong>every number is removed</strong>. A
+        question like <em>“how is my Car fund doing after the 250 I put in at Lidl”</em> leaves as
+        <em>“how is my {1} doing after the ### I put in at Lidl”</em>, with a separate note saying only that
+        <code>{1}</code> is a goal. If a word looks personal and the app does not recognise it, the question is
+        <strong>not sent at all</strong> — the assistant tells you so instead of guessing.</p>
+        <p>What this means in practice: <strong>no balance, amount, category, goal, wallet or journey name is ever
+        sent</strong>, and no part of your account, its history or its documents is sent. Only the reshaped sentence
+        above and the list of placeholder types go. Each question is sent on its own — no earlier questions, answers or
+        conversation history travel with it — and we do not store the question ourselves.</p>
+        <p>Any figure the assistant reads back to you was <strong>worked out on your own device</strong> from your own
+        data. The model is never given a number and never returns one, so it cannot get one wrong.</p>
+        <p><strong>Where it goes.</strong> Anthropic is based in the United States, so this step involves a transfer
+        outside the EU. It is limited to the reshaped question described above. Anthropic processes it to produce the
+        answer and handles it under its own terms as our processor; we do not authorise it to be used to train models.
+        If you would rather nothing left your device at all, leave the assistant off — everything else in TandemTab
+        works exactly the same.</p>
+
         <h2>Shared accounts</h2>
         <p>A TandemTab account can be shared: the owner may invite other people, who then become members and can see
         and edit that account's contents. The owner can remove a member, transfer ownership, or leave the account at
@@ -88,7 +113,7 @@
         <h2>Why we process it (legal bases)</h2>
         <ul>
             <li><strong>Performance of a contract</strong> — to provide the budgeting service you sign up for.</li>
-            <li><strong>Your consent</strong> — for optional features such as signing in with Google or Facebook, which you can withdraw at any time.</li>
+            <li><strong>Your consent</strong> — for optional features such as signing in with Google or Facebook, or turning on the assistant, which you can withdraw at any time.</li>
         </ul>
 
         <h2>Who we share it with</h2>
@@ -97,6 +122,8 @@
             <!-- <li><strong>Enable Banking Oy</strong> — Open Banking connectivity (only when you link a bank).</li> -->
             <li><strong>Google Cloud</strong> — hosting and database, in the EU (europe-west1 region).</li>
             <li><strong>Google / Facebook</strong> — only if you choose to sign in with them.</li>
+            <li><strong>Anthropic</strong> (United States) — only if you turn the assistant on, and only the reshaped
+            question described under <a href="#assistant">The assistant</a>: no names, no amounts, no account data.</li>
         </ul>
 
         <h2>Storage, security and retention</h2>

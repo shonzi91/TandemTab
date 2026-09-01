@@ -920,21 +920,30 @@ go-live**. Added here:
   `FinApp.ClientError` — you have to go and look. A log-based alert is cheap. Without it, the first you hear of
   a crash on a stranger's device is a review.
 
-## ⛔ TODO before the door opens (R5) — the privacy policy does not mention the assistant's model provider
+## ✅ WRITTEN 2026-09-01 (R5) — the privacy policy now discloses the assistant's model provider
 
-⭐⭐ **Found 2026-09-01 while correcting the app's AI copy, and it is the sharpest thing on this page.** The
-policy's *"Who we share it with"* list names Google Cloud, Google/Facebook and the rest — and **nothing about the
-third party that receives assistant questions**. The feature has been live in production since R3 landed.
+The gap: the policy's *"Who we share it with"* list named Google Cloud and Google/Facebook and **nothing about the
+third party receiving assistant questions**, in either language, while the feature had been live since R3 landed.
 
-⚠️ **Deliberately not written by an agent.** Adding a processor to a live public policy needs facts only the owner
-can settle: whether to name the vendor outright, the region the call lands in, what the provider retains and for
-how long, and the legal basis (consent is already collected in-app, which helps). The disclosure is owed either
-way — the masking design is a *good* story and reads as one, but it has to be told in the policy rather than only
-in a consent screen. **Both languages** (`privacy.html`, `privacy.bg.html`).
+**What was added**, to `privacy.html` and `privacy.bg.html` alike: a new **"The assistant" / "Асистентът"** section
+placed beside the other feature sections, an **Anthropic (United States)** row in the processor list linking to it,
+the assistant named under the **consent** legal basis, and the date moved to 1 September.
 
-★ What is already true and worth putting in it: no category, goal, wallet or journey name and no digit ever
-leaves the device; strict mode refuses to send anything else that looks personal; every figure in a reply is
-computed on the device, so the model is never given a number and never returns one.
+★ **It states the mechanism rather than reassuring.** Opt-in and off by default; most questions never leave the
+device; what does leave is the reshaped sentence with names replaced by numbered placeholders and every digit
+removed — with the *"how is my {1} doing after the ### I put in at Lidl"* example spelled out; an unrecognised
+personal-looking word means the question is **not sent at all**; each question travels alone with no history; and
+every figure in a reply was computed on the device, so the model is never given a number and never returns one.
+
+### ⬜ Two things in it are the owner's to confirm — they are claims, not code
+
+- ⛔ **"we do not authorise it to be used to train models."** True of Anthropic's commercial API terms by default,
+  but it is a statement about *your* contract. Confirm it matches the account's actual terms before promotion.
+- ⛔ **No transfer mechanism is named.** The text says plainly that Anthropic is US-based and that this is a
+  transfer outside the EU, which is honest — but GDPR wants the *safeguard* named (SCCs via the provider's DPA,
+  typically). **Sign the DPA, then name it here.** This is the one part a lawyer would ask for first.
+- ⚠️ Deliberately **no retention period is stated** for the provider, because none could be verified from this
+  repo. Do not invent one; either cite the DPA or leave it as it stands.
 
 ### ✅ Done in the same pass — the in-app claims that had gone stale (2026-09-01)
 
