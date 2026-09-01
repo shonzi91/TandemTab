@@ -64,7 +64,7 @@ else
         @if (PrivacyMode)
         {
             <button type="button" class="privacy-bar" @onclick="ExitPrivacyMode">
-                <Icon Name="lock" /> <span>@Loc["Figures hidden"]</span>
+                <Icon Name="lock" /> <span>@(_autoMaskExplain ? Loc["Figures hidden while you were away"] : Loc["Figures hidden"])</span>
                 <span class="privacy-bar-key">@Loc["Ctrl/⌘ + Shift + H to show"]</span>
             </button>
         }
@@ -946,14 +946,26 @@ else
                 </section>
             }
 
-            @{ var milestones = HomeMilestones(); }
-            @if (milestones.Count > 0)
+            @{
+                var milestones = HomeMilestones();
+                var msAll = CurrentAchievements();
+                var msEarned = msAll.Count(a => a.Earned);
+            }
+            @* One line, not a panel of bars: the full progress lives in the 🏆 Achievements modal, so Home just
+               points to it rather than stacking a second motivational section under "You're on track for".
+
+               ⚠️ R2.5 (2026-09-01): this line used to appear ONLY while something was in progress, which meant it
+               vanished exactly when you had just earned the last one you were working on — Home went quiet at the
+               moment it had the most to say. Android had already departed from it for a different reason (no room
+               for a trophy in a phone header, so the line was its only door) and the phone's rule is the better
+               one on both surfaces, so the web now follows it: once anything is earned the line stays put and
+               reads "N of M earned". Still nothing at all on an account that has neither started nor earned one —
+               a brand-new account gets no motivational furniture it has not touched yet. *@
+            @if (msAll.Count > 0 && (milestones.Count > 0 || msEarned > 0))
             {
-                @* One line, not a panel of bars: the full progress lives in the 🏆 Achievements modal, so Home just
-                   points to it rather than stacking a second motivational section under "You're on track for". *@
                 <button class="home-ms-line" @onclick="() => _modal = Modal.Achievements">
-                    <span class="home-ms-lead"><Icon Name="trophy" /> @Loc["Milestones in progress"]</span>
-                    <span class="home-ms-n">@milestones.Count</span>
+                    <span class="home-ms-lead"><Icon Name="trophy" /> @(milestones.Count > 0 ? Loc["Milestones in progress"] : Loc["Milestones"])</span>
+                    <span class="home-ms-n">@(milestones.Count > 0 ? milestones.Count.ToString() : string.Format(Loc["{0} of {1} earned"], msEarned, msAll.Count))</span>
                     <span class="home-ms-arrow">›</span>
                 </button>
             }
@@ -4344,7 +4356,14 @@ else
                         @* Consent is a screen, not a checkbox, because what it is asking is not obvious: a question
                            leaves the device. What does NOT leave it is the interesting half, so it is stated first. *@
                         <p>@Loc["The assistant takes you to the right screen and explains how things work. It can also read out figures — the app works them out, so it can't get one wrong."]</p>
-                        <p class="hint">@Loc["Your question is masked here on your device first: the names of your categories, goals, wallets and journeys are replaced with placeholders and every number is removed. You see exactly what would be sent before you send it. The reply is only ever an instruction like 'open the goals tab' — never a sentence about your money."]</p>
+                        @* ⚠️ This paragraph describes CONSENT, so it has to track what the app actually does, not
+                           what it did when the feature shipped. Two of its earlier sentences went stale inside a
+                           fortnight and were corrected on 2026-09-01: it promised a preview of the outgoing text
+                           ("you see exactly what would be sent"), which was removed with the masking UI on
+                           2026-08-31, and it promised the reply was "never a sentence about your money", which
+                           stopped being true when the assistant began reading figures out. Both read as
+                           reassurance, which is the kind of sentence that must never outlive its mechanism. *@
+                        <p class="hint">@Loc["Your question is masked here on your device first: the names of your categories, goals, wallets and journeys are replaced with placeholders and every number is removed. If a word looks personal and the app doesn't recognise it, the question isn't sent at all — the assistant tells you so instead of guessing. Any figure in a reply was worked out by the app on your device: the model is never given a number, and never sends one back."]</p>
                         <div class="modal-actions">
                             <button class="ghost" @onclick="Back">@Loc["Not now"]</button>
                             <button class="primary" @onclick="GrantAssistantConsent"><Icon Name="check" /> @Loc["Turn it on"]</button>
@@ -6949,7 +6968,7 @@ else
                                     <span>@Loc["Money out / month"]@if (_whatIfPct != 0) { <span class="rm-src">@(_whatIfPct > 0 ? "+" : "")@(_whatIfPct)%</span> }</span><span class="rm-num debit">− @Fmt(State.Money(outM))</span>
                                     <span class="rm-net">@Loc["Net / month"]</span><span class="rm-num rm-net @(inM - outM < 0 ? "debit" : "credit")">@(inM - outM < 0 ? "− " : "+ ")@Fmt(State.Money(Math.Abs(inM - outM)))</span>
                                 </div>
-                                <p class="runway-basis">@Loc["Each month adds the money in and takes the money out; the runway is how long your balance stays above zero. No AI, no guesswork — just this arithmetic on your own numbers."]</p>
+                                <p class="runway-basis">@Loc["Each month adds the money in and takes the money out; the runway is how long your balance stays above zero. No AI and no guesswork in this figure — just arithmetic on your own numbers."]</p>
                                 @* Pro: modelling a different future is the "intelligence" half of the paywall line.
                                    The HEADER stays visible on Free — you can see the tool exists and what it does,
                                    which is the honest version of a paywall; only the controls and their output are
@@ -9633,12 +9652,26 @@ else
         StateHasChanged();
     }
 
-    /// <summary>Turn privacy mode off from the indicator. Deliberately one-way: the only way IN is the shortcut or
-    /// (on a phone) the flip gesture, and the only visible control is the way OUT — a button that could turn it on
-    /// would be one more thing to hit by accident on a screen full of money.</summary>
+    /// <summary>Turn privacy mode off from the indicator. Deliberately one-way: the only way IN is the shortcut,
+    /// the auto-hide trigger or (on a phone) the flip gesture, and the only visible control is the way OUT — a
+    /// button that could turn it on would be one more thing to hit by accident on a screen full of money.</summary>
     private async Task ExitPrivacyMode()
     {
+        _autoMaskExplain = false;
         try { await JS.InvokeVoidAsync("finappSetPrivate", false); } catch { PrivacyMode = false; }
+    }
+
+    /// <summary>Shown once, ever: the first time auto-hide masks the screen on its own. Everything after that is a
+    /// mode the user has now seen work, and a banner that keeps explaining it is noise.</summary>
+    private bool _autoMaskExplain;
+
+    /// <summary>Invoked from JS the first time the tab is hidden with auto-hide on. The masking itself already
+    /// happened via <c>OnPrivacyChanged</c>; this only adds the sentence that says why.</summary>
+    [JSInvokable]
+    public void OnAutoMaskedFirstTime()
+    {
+        _autoMaskExplain = true;
+        StateHasChanged();
     }
 
     // --- Which tab the app opens on (O9) -------------------------------------------------------

@@ -235,7 +235,7 @@ against a moving feature set is work that gets redone. R4 lands before R7 for th
 |---|-------|-----------|------|
 | **R1** | Clear the feature backlog | The feature set is declared **frozen** | L · ✅ **done 2026-08-05** · 🔒 **FROZEN 2026-09-01** — the line is drawn; see the box under R1 for what the freeze does and does not cover |
 | **R2** | Android catch-up + theme verification **+ an APK pipeline** | Android at web parity; light/dark swept on **both** surfaces; **and CI can produce a release APK that runs on a real device** | L · ✅ **done 2026-08-20 (S111)** — all four exit criteria met. **Now 115/122 (94%)** after the merge session closed both stated lags; every one of the 7 remaining routes is *decided*: 4 deferred (bank), 3 non-gaps, **0 stated lags** |
-| **R2.5** | **The surface sweep** — the differences a route scanner cannot see | Every remaining web⇄phone difference is either built or **written down as a decision** | M · 🔨 **two rows left** — no web→phone rows remain; the always-visible milestones line and the auto-mask trigger do. Both are **repairs, inside the freeze** |
+| **R2.5** | **The surface sweep** — the differences a route scanner cannot see | Every remaining web⇄phone difference is either built or **written down as a decision** | M · ✅ **surface rows DONE 2026-09-01** — the last two (always-visible milestones line, auto-mask trigger) are built and were driven on the running app. ⬜ **T0's tail is all that remains** under this phase |
 | **R3** | AI assistant — **narrate and navigate** | ✅ **LIVE 2026-09-01** on `finapp-00355-2v5`, verified in the served WASM — and gated to two addresses by `Assistant__AllowedEmails`. **It drew R1's freeze line the same day.** ⬜ Open: 15 of 21 escalated questions returned `unknown`, and the rule tables are the fix | M |
 | **R4** | Railway migration (hosting **and** DB) | Serving from Railway, Neon + Cloud Run retired | M–L |
 | **R4.5** | **Trip Mode** (bounded offline) | The phone opens, shows cached figures with their staleness, takes an expense with no signal, and posts **exactly one** row on reconnect | M per platform · ⬜ **proposed (S116)** |
@@ -919,6 +919,36 @@ go-live**. Added here:
 - ⚠️ **Before promoting, make error reporting a push, not a pull.** B1 notes it plainly: nothing *alerts* on
   `FinApp.ClientError` — you have to go and look. A log-based alert is cheap. Without it, the first you hear of
   a crash on a stranger's device is a review.
+
+## ⛔ TODO before the door opens (R5) — the privacy policy does not mention the assistant's model provider
+
+⭐⭐ **Found 2026-09-01 while correcting the app's AI copy, and it is the sharpest thing on this page.** The
+policy's *"Who we share it with"* list names Google Cloud, Google/Facebook and the rest — and **nothing about the
+third party that receives assistant questions**. The feature has been live in production since R3 landed.
+
+⚠️ **Deliberately not written by an agent.** Adding a processor to a live public policy needs facts only the owner
+can settle: whether to name the vendor outright, the region the call lands in, what the provider retains and for
+how long, and the legal basis (consent is already collected in-app, which helps). The disclosure is owed either
+way — the masking design is a *good* story and reads as one, but it has to be told in the policy rather than only
+in a consent screen. **Both languages** (`privacy.html`, `privacy.bg.html`).
+
+★ What is already true and worth putting in it: no category, goal, wallet or journey name and no digit ever
+leaves the device; strict mode refuses to send anything else that looks personal; every figure in a reply is
+computed on the device, so the model is never given a number and never returns one.
+
+### ✅ Done in the same pass — the in-app claims that had gone stale (2026-09-01)
+
+Three, and **none of them was on the landing page** (which says nothing about AI at all — the assumption that it
+did was wrong, and checking cost one grep):
+- **The consent screen promised a preview that no longer exists** — *"You see exactly what would be sent before
+  you send it"*, written when the composer showed the outgoing text. That preview was removed with the masking UI
+  on 2026-08-31. ⛔ **Consent copy describing a control the user does not have is the worst of the three.**
+- **The same screen said the reply is "never a sentence about your money"** — untrue since the assistant began
+  reading figures out, and the paragraph above it already said so. The screen contradicted itself.
+- **The profile panel's *"never feed your raw data to any AI"*** was still literally true but misleading by
+  omission in an app that now has an assistant. It states the mechanism instead.
+- **The runway's "No AI, no guesswork"** was an app-wide boast; it is scoped to the figure. The claim itself is
+  still true and worth keeping — R3's model emits no numbers by design. Android's copy moved with it.
 
 ## ⬜ TODO before the door opens (R5) — rewrite the landing page
 

@@ -230,6 +230,13 @@ html.dark .pm-trial { color: #34d399; }
 .pm-privacy { list-style: none; margin: 6px 0 4px; padding: 0; display: flex; flex-direction: column; gap: 7px; }
 .pm-privacy li { display: flex; gap: 8px; font-size: .8rem; line-height: 1.4; color: #4b5563; }
 html.dark .pm-privacy li { color: #c3cad4; }
+/* The one changeable promise in the panel (R2.5's auto-hide). Ruled off from the four statements above it so a
+   control does not read as a fifth claim, and its hint indents under the switch rather than under the icon column
+   the <li>s use. Colours come from .pm-hint and <Switch>; this rule is layout only. */
+.pm-privacy-opt { display: flex; flex-direction: column; gap: 4px; margin: 10px 0 2px; padding-top: 10px;
+    border-top: 1px solid rgba(107,114,128,.18); }
+html.dark .pm-privacy-opt { border-top-color: rgba(195,202,212,.16); }
+.pm-privacy-opt .pm-hint { padding-left: 2px; }
 /* P2 — owner-only usage metrics: a compact stat grid + a small sign-ups sparkline. */
 .pm-admin-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin: 8px 0 6px; }
 .pm-admin-grid > div { display: flex; flex-direction: column; gap: 1px; padding: 8px 10px; border-radius: 9px;

@@ -83,7 +83,9 @@ fun RunwaySheet(runway: RunwayDto, fmt: (Double) -> String, onDismiss: () -> Uni
                     MathRow("Net / month", (if (net < 0) "− " else "+ ") + fmt(kotlin.math.abs(net)), null, if (net < 0) tandem.spent else tandem.positive, bold = true)
                 }
                 Text(
-                    "Each month adds the money in and takes the money out; the runway is how long your balance stays above zero. No AI, no guesswork — just this arithmetic on your own numbers.",
+                    // Kept word-for-word with the web's runway line (Dashboard.razor). Scoped to the figure on
+                    // 2026-09-01: "No AI" was written before the app had an assistant.
+                    "Each month adds the money in and takes the money out; the runway is how long your balance stays above zero. No AI and no guesswork in this figure — just arithmetic on your own numbers.",
                     color = tandem.muted, fontSize = 12.sp,
                 )
                 if (runway.monthlyCommitted > 0) {

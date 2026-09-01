@@ -170,12 +170,48 @@
         // then only ever turn masking ON. A variable degrades to "works, just doesn't survive a reload".
         let finappPrivate = (() => { try { return localStorage.getItem('finapp-private') === '1'; } catch (e) { return false; } })();
         window.finappIsPrivate = () => finappPrivate;
+        // R2.5's auto-mask trigger — the web's answer to the phone's flip-face-down gesture, and deliberately the
+        // same design rather than a second one:
+        //   • ONE-DIRECTIONAL. Leaving masks; coming back does NOT unmask. Returning to a tab is not evidence that
+        //     the person who walked past has gone, and the cost of being wrong is one tap either way. The phone's
+        //     comment argues this at length; it is the same argument.
+        //   • OPT-IN, off by default. Masking a screen nobody asked to have masked is a bug, not a feature.
+        //   • Persisted per device in localStorage, exactly like the mode itself and the landing tab.
+        // ⚠️ visibilitychange ONLY — not blur. Blur fires when focus moves to the address bar or devtools, which
+        // is not somebody reading over your shoulder; on a laptop that would mask several times a minute and the
+        // setting would be off again by lunchtime. Hidden means switched tab, minimised, or screen locked, which
+        // is the closest the web has to a phone being turned face-down: a thing the user actually did.
+        let finappAutoHide = (() => { try { return localStorage.getItem('finapp-autohide') === '1'; } catch (e) { return false; } })();
+        let finappAutoHideExplained = (() => { try { return localStorage.getItem('finapp-autohide-explained') === '1'; } catch (e) { return false; } })();
+        window.finappGetAutoHide = () => finappAutoHide;
+        window.finappSetAutoHide = (on) => {
+            finappAutoHide = !!on;
+            try { localStorage.setItem('finapp-autohide', on ? '1' : '0'); } catch (e) { }
+        };
         window.finappPrivacy = {
             dotnet: null,
             init(ref) {
                 this.dotnet = ref;
                 document.removeEventListener('keydown', this.onkey);
                 document.addEventListener('keydown', this.onkey);
+                document.removeEventListener('visibilitychange', this.onvis);
+                document.addEventListener('visibilitychange', this.onvis);
+            },
+            // Not a method on `this` by accident: addEventListener stores the function, so a body that reached for
+            // `this` would be called with `document` as the receiver. Everything here goes through window, the way
+            // onkey already does.
+            onvis() {
+                if (!document.hidden) return;                    // one-directional: only ever ON
+                if (!finappAutoHide || window.finappIsPrivate()) return;
+                window.finappSetPrivate(true);
+                // Say it once, the first time it ever happens. Coming back to a masked screen you did not mask
+                // yourself is a bug report waiting to happen, and the fix is one sentence shown once.
+                if (!finappAutoHideExplained) {
+                    finappAutoHideExplained = true;
+                    try { localStorage.setItem('finapp-autohide-explained', '1'); } catch (e) { }
+                    const ref = window.finappPrivacy.dotnet;
+                    if (ref) ref.invokeMethodAsync('OnAutoMaskedFirstTime');
+                }
             },
             onkey(e) {
                 if (!e.shiftKey || !(e.ctrlKey || e.metaKey)) return;

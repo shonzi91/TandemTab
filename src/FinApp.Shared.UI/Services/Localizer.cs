@@ -1080,8 +1080,11 @@ public sealed class Localizer(IJSRuntime js)
         ["Money in / month"] = "Приход / месец",
         ["Money out / month"] = "Разход / месец",
         ["Net / month"] = "Нето / месец",
-        ["Each month adds the money in and takes the money out; the runway is how long your balance stays above zero. No AI, no guesswork — just this arithmetic on your own numbers."] =
-            "Всеки месец добавя прихода и изважда разхода; резервът е колко дълго балансът ти остава над нулата. Без изкуствен интелект, без гадаене — само тази аритметика върху твоите числа.",
+        // ⚠️ "No AI" was an app-wide boast when it was written and the app now has an assistant, so the claim is
+        // scoped to the figure it is actually about. The runway is still pure arithmetic — R3's model emits no
+        // numbers by design — which is exactly why this line is worth keeping rather than deleting.
+        ["Each month adds the money in and takes the money out; the runway is how long your balance stays above zero. No AI and no guesswork in this figure — just arithmetic on your own numbers."] =
+            "Всеки месец добавя прихода и изважда разхода; резервът е колко дълго балансът ти остава над нулата. В това число няма изкуствен интелект и няма гадаене — само аритметика върху твоите числа.",
         ["What if I spent differently?"] = "Ами ако харчех различно?",
         ["Additional income"] = "Допълнителен доход",
         ["≈ {0}/mo from your investments"] = "≈ {0}/мес. от твоите инвестиции",
@@ -1095,8 +1098,13 @@ public sealed class Localizer(IJSRuntime js)
         // Profile → Your data & privacy panel
         ["Your data & privacy"] = "Твоите данни и поверителност",
         ["Your data is encrypted and stored per account."] = "Данните ти са криптирани и се съхраняват по сметка.",
-        ["We never sell your data, and never feed your raw data to any AI."] =
-            "Никога не продаваме данните ти и никога не подаваме суровите ти данни към изкуствен интелект.",
+        // R2.5's auto-hide trigger — the web's counterpart to the phone's flip-face-down gesture.
+        ["Hide figures when I switch away"] = "Скрий числата, когато превключа другаде",
+        ["Masks the screen when this tab is hidden or the computer is locked. Showing them again is always yours to do."] =
+            "Маскира екрана, когато този раздел е скрит или компютърът е заключен. Показването им отново винаги зависи от теб.",
+        ["Figures hidden while you were away"] = "Числата са скрити, докато те нямаше",
+        ["We never sell your data. Your account is never fed to any AI — before a question reaches the assistant, your category, goal and wallet names become placeholders and every number is stripped."] =
+            "Никога не продаваме данните ти. Сметката ти никога не се подава към изкуствен интелект — преди въпрос да стигне до асистента, имената на категориите, целите и портфейлите ти стават заместители, а всички числа се премахват.",
         ["Statement import runs on your device — a file you choose, not a bank login we hold."] =
             "Импортът на извлечения се извършва на твоето устройство — файл, който ти избираш, а не банков достъп, който пазим.",
         ["You can export any account to a spreadsheet at any time — from the account menu (⋯) → Export to Excel."] =

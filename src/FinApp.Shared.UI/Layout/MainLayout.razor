@@ -663,7 +663,11 @@
                         <summary>@Loc["Your data & privacy"]</summary>
                         <ul class="pm-privacy">
                             <li><Icon Name="lock" /> @Loc["Your data is encrypted and stored per account."]</li>
-                            <li><Icon Name="x" /> @Loc["We never sell your data, and never feed your raw data to any AI."]</li>
+                            @* ⚠️ Until 2026-09-01 this read "…and never feed your raw data to any AI", written when
+                               the app had no assistant at all. It was still literally true — the masker guarantees
+                               no name and no digit leaves — but a flat denial in a list of promises, in an app that
+                               now has an assistant, is misleading by omission. It states the mechanism instead. *@
+                            <li><Icon Name="x" /> @Loc["We never sell your data. Your account is never fed to any AI — before a question reaches the assistant, your category, goal and wallet names become placeholders and every number is stripped."]</li>
                             <li><Icon Name="receipt" /> @Loc["Statement import runs on your device — a file you choose, not a bank login we hold."]</li>
                             @* The export BUTTON used to sit here too, running the identical
                                State.ExportCurrentAccountAsync() as the account ⋯ menu's "Export to Excel" — two
@@ -671,6 +675,14 @@
                                what this privacy section is for) and points at the one place that does it. *@
                             <li><Icon Name="share" /> @Loc["You can export any account to a spreadsheet at any time — from the account menu (⋯) → Export to Excel."]</li>
                         </ul>
+                        @* R2.5's last row: the web's counterpart to the phone's flip-face-down gesture. It sits in
+                           this panel rather than in a settings list because it is the one privacy promise here the
+                           user can actually change, and a switch among four statements reads as "and you can do
+                           this too". ⚠️ Off by default and one-directional — see the note in index.html. *@
+                        <label class="pm-privacy-opt">
+                            <Switch @bind-Value="AutoHideFigures">@Loc["Hide figures when I switch away"]</Switch>
+                            <span class="pm-hint">@Loc["Masks the screen when this tab is hidden or the computer is locked. Showing them again is always yours to do."]</span>
+                        </label>
                         @* A real person to reach — the same address the privacy policy names as the GDPR/data contact. *@
                         <p class="pm-hint"><Icon Name="mail" /> @Loc["Questions, or a privacy request?"] <a href="mailto:admin@tandemtab.com">admin@tandemtab.com</a></p>
                     </details>
@@ -792,6 +804,26 @@
     {
         _landingTab = e.Value?.ToString() is { Length: > 0 } v ? v : "Overview";
         try { await JS.InvokeVoidAsync("finappSetLandingTab", _landingTab); } catch { /* ignore */ }
+    }
+
+    // Auto-hide (R2.5). Per device in localStorage, like the theme and the landing tab — no contract, no server
+    // change, no migration. ⚠️ The setter is fire-and-forget on purpose: <Switch> binds to a plain bool, and the
+    // flag that MATTERS lives in JS (it is what the visibilitychange handler reads). This property is the mirror,
+    // so it is written first and pushed after; a failed push leaves the switch honest about what JS will do.
+    private bool _autoHide;
+    private bool AutoHideFigures
+    {
+        get => _autoHide;
+        set
+        {
+            _autoHide = value;
+            _ = PushAutoHideAsync(value);
+        }
+    }
+
+    private async Task PushAutoHideAsync(bool on)
+    {
+        try { await JS.InvokeVoidAsync("finappSetAutoHide", on); } catch { /* host without the helper */ }
     }
     private bool _dark;
     private string? _avatarError;
@@ -1257,6 +1289,7 @@
         try { _dark = (await JS.InvokeAsync<string>("finappGetTheme")) == "dark"; } catch { /* host without the helper */ }
         try { _landingTab = await JS.InvokeAsync<string>("finappGetLandingTab") is { Length: > 0 } lt ? lt : "Overview"; }
         catch { /* host without the helper */ }
+        try { _autoHide = await JS.InvokeAsync<bool>("finappGetAutoHide"); } catch { /* host without the helper */ }
         await LoadFeedbackDoneAsync();
         await LoadLoginConsentAsync();
     }

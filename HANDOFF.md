@@ -274,8 +274,25 @@ it is the second time this session the existing guard rails caught a change that
 4. ⬜ **The forms are deliberately not navigation targets** (add expense / income / transfer / new goal). Each is
    opened by a method that seeds its draft first, and a form reached without that seeding misbehaves in ways only
    a person driving it would notice. One at a time, each verified on a running app.
-5. ⬜ **R2.5's last two rows** are still open: the always-visible milestones line, and an auto-mask trigger to
-   match the phone's face-down sensor. They have been "what's left" for three write-ups running.
+5. ✅ **R2.5's last two rows are BUILT and were driven on the running app** (2026-09-01), after being "what's
+   left" for four write-ups running. **579 + 609 green.** ⬜ What still stands under R2.5 is **T0's tail** only.
+   - **The always-visible milestones line.** The web drew it only while something was *in progress*, so Home went
+     silent at the exact moment it had most to say — you finish the last milestone you were working on and the
+     line vanishes. It now follows Android's rule: once anything is earned it stays and reads "N of M earned".
+     ⭐ **All three states were observed, not reasoned about**: hidden on a fresh account (0 earned, 0 in
+     progress), "Milestones in progress · 2" after one expense, and — the new branch — **"Milestones · 1 of 25
+     earned"** after creating a savings bucket, which earns *Piggy* without moving any percentage milestone.
+     That last state is the whole point of the change and is the one a code read would have called unreachable.
+   - **The auto-mask trigger** — the web's answer to the phone's flip-face-down gesture, and deliberately the
+     same design: **one-directional** (leaving masks, returning does not unmask), **opt-in, off by default**,
+     persisted per device, with a one-time explainer the first time it fires.
+     ⚠️ **`visibilitychange` only, never `blur`.** Blur fires when focus moves to the address bar or devtools;
+     on a laptop that masks several times a minute and the setting is off again by lunchtime. Hidden means
+     switched tab, minimised or screen locked — the closest the web has to a phone turned face-down.
+     ✅ Verified end to end on the running app with the **real** event, not by calling the handler: switch off →
+     hiding does nothing; switch on → figures mask (`SAFE TO SPEND •••••`) and the bar reads *"Figures hidden
+     while you were away"*; returning leaves it masked; and the second time the bar is back to plain *"Figures
+     hidden"*, because it says it once.
 
 ---
 
