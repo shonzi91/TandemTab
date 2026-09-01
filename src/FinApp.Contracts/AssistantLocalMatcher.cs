@@ -131,6 +131,12 @@ public static partial class AssistantLocalMatcher
     [
         "how does", "how do", "what is", "what are", "what does", "what happens", "why",
         "explain", "means", "mean by", "как работи", "какво е", "какво озна", "защо",
+        // ⚠️⚠️ DO NOT "fix" the missing contractions by adding bare "what's"/"whats" here. It was tried, and the
+        // probe caught what a reading would not: an entity question is skipped when the class is Explain (see
+        // Match), so "what's in my {wallet}" stopped resolving to open.wallet and started costing a model call.
+        // One phrasing gained, one lost. The uncontracted "what is in my {wallet}" has the SAME defect today —
+        // which is the real bug, and it is in the entity/Explain interaction, not in this list.
+        // See tools/FinApp.AssistantProbe: `dotnet run --project tools/FinApp.AssistantProbe -- --misses`.
     ];
 
     /// <summary>Words that make a question about <b>change</b> rather than a current figure. ⚠️ Kept narrow on

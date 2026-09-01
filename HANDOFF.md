@@ -61,6 +61,71 @@ already been hit once: **the question class decides which rule table runs**, so 
 unreachable — "when will my loans be paid off" sat in the navigate class and never reached the report rules it had
 just been added to. Before adding a rule, check which class the phrase lands in.
 
+### ⭐⭐ The probe, and the two defects it found in an hour
+
+```bash
+dotnet run --project tools/FinApp.AssistantProbe             # the built-in corpus
+dotnet run --project tools/FinApp.AssistantProbe -- q.txt    # one question per line
+dotnet run --project tools/FinApp.AssistantProbe -- --misses # only what falls through
+```
+
+It drives the **real** `AssistantMasker` and `AssistantLocalMatcher` — the production types, not copies — over a
+corpus and prints, per question, the masked form, the slots, the suspect words and where it lands: answered on the
+device, refused by strict mode, or **fallen through to a paid model call**. ★ **No key, no account, no server, no
+browser.** The expensive half of the question ("which phrasings miss?") turns out to be answerable for nothing.
+
+⚠️ **The built-in corpus is a stand-in, not evidence about users.** It is written in natural phrasing rather than
+copied from the rule tables — a corpus lifted from the rules would score 100% and prove nothing — and it carries a
+deliberate **control group** (`did the parcel arrive yet`, `what's the weather like`) so that a low fall-through
+rate can be told from a matcher that says yes to everything. Replace it with the owner's real phrasings the moment
+they exist. On 57 questions: **45 local, 12 to the model, 4 of those 12 correct refusals.**
+
+#### ⛔ Defect 1 — the app teaches the one phrasing its matcher handles worst
+
+The chip reads **"What's safe to spend?"**. Type those exact words and they reach the model.
+
+| Phrasing | Lands |
+|---|---|
+| `what is safe to spend` | `explain.safeToSpend` — pinned by a test |
+| `what's my safe to spend` | `report.safeToSpend` — pinned by a test |
+| **`what's safe to spend`** | **nothing. Report wants "my", Explain knows only the uncontracted "what is"** |
+
+`Report` carries all three forms of *"what's my" / "whats my" / "what is my"*; `Explain` carries only *"what is"*.
+The gap between the two lists is exactly that sentence — and it is the sentence printed on a button.
+
+⚠️ **The chip disagrees with the matcher about what it means.** The chip's hard-coded reply is
+`report.safeToSpend`; the matcher's tested rule says a phrasing without "my" is the *explainer*. The chip does not
+break — it bypasses the matcher and carries its own answer — but the app is training people to type a sentence
+that behaves differently when typed. **The cheapest fix is one word of copy: "What's my safe to spend?"**, which
+makes the chip agree with the tested design instead of relitigating it.
+
+#### ⛔⛔ Defect 2 — an Explain-class opener silently eats the entity
+
+**This is the class-level one, and it was found by trying to fix Defect 1 the obvious way.** Adding bare
+`"what's"` to the Explain list fixed the chip sentence and **broke `what's in my {wallet}`** — because `Match`
+skips the entity rule entirely when the class is Explain. One phrasing gained, one lost.
+
+The `what's` form only works today **by accident**: it is absent from the Explain list, so it falls to Navigate,
+where the entity rule still runs. The uncontracted form has the defect already:
+
+| | |
+|---|---|
+| `what's in my Main account` | ✅ `open.wallet` — works *because* the contraction is missing from Explain |
+| `what is in my Main account` | ❌ model |
+| `what is left in my Car fund` | ❌ model (but `how much is left in my Car fund` is fine — "how much" is Report, tested first) |
+| `why is my Car fund behind` | ❌ model |
+| `what does my Mortgage cost` | ❌ model |
+
+The guard exists for a good reason — *"how do {1} goals work"* is about the feature, not the row — but it is far
+too blunt: it drops the entity for **every** Explain-class question. ⭐ **The shape of the fix:** try the explainer
+table first for Explain-class questions and fall back to the entity rule when nothing matches, instead of
+discarding the entity up front. That only adds matches where there are none today. ⚠️ **Not applied** — it changes
+a load-bearing ordering in a file that warns about ordering three times, and the first "obviously safe" change
+this session was a regression. It wants its own pass with the tests in front of you.
+
+⭐ **The reverted change is documented where it would be re-attempted**, as a comment in the Explain list, so the
+next person to notice the missing contractions finds out why they are missing before they add them.
+
 ### The ten commits that were never written up (31 Aug – 1 Sep)
 
 - **The dock.** The entrances were a Home-tab card and a FAB item — both on *one* tab, so on Spending or Goals the
@@ -109,6 +174,7 @@ just been added to. Before adding a rule, check which class the phrase lands in.
    - ⬜ **Ask in the client.** An `unknown` already renders suggestion chips; "tell us what you meant" beside them
      is opt-in, honest, and the most work.
    Whichever: work out which **class** a phrase lands in *before* adding a rule, or the rule is unreachable.
+   ✅ **The first of those is built: `tools/FinApp.AssistantProbe`.** See the section below.
 3. ⬜ **Declare the feature freeze.** R1 froze the backlog on 5 August conditional on R3 landing. R3 has landed.
    R5 cannot be priced until somebody writes the sentence down.
 4. ⬜ **The forms are deliberately not navigation targets** (add expense / income / transfer / new goal). Each is
