@@ -13419,7 +13419,12 @@ else
     private static readonly (string Text, AssistantReplyDto Reply)[] AssistantSuggestions =
     [
         ("How much have I spent this period?", new(AssistantIntents.Report, "report.spent", null)),
-        ("What's safe to spend?",              new(AssistantIntents.Report, "report.safeToSpend", null)),
+        // ⚠️ "my" is load-bearing and is not a typo. The matcher reads a safe-to-spend question WITHOUT "my" as a
+        // request for the explainer and one WITH it as a request for the figure — a tested distinction. This chip
+        // hands back report.safeToSpend, so its words have to be the words that mean that. It used to read
+        // "What's safe to spend?", which meant the app printed one phrasing on a button and answered a different
+        // question when somebody typed those same words back at it.
+        ("What's my safe to spend?",           new(AssistantIntents.Report, "report.safeToSpend", null)),
         ("Which budgets are over?",            new(AssistantIntents.Report, "report.budgets", null)),
         ("How does the runway work?",          new(AssistantIntents.Explain, "explain.runway", null)),
         ("What does this assistant send?",     new(AssistantIntents.Explain, "explain.privacy", null)),

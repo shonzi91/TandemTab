@@ -166,12 +166,16 @@ public static partial class AssistantLocalMatcher
     [
         "how does", "how do", "what is", "what are", "what does", "what happens", "why",
         "explain", "means", "mean by", "как работи", "какво е", "какво озна", "защо",
-        // ⚠️ The contractions are absent here on purpose and it is now SAFE to add them — but read Match's late
-        // entity fallback first. Adding bare "what's"/"whats" once broke "what's in my {wallet}", because an
-        // entity used to be discarded outright for the Explain class; the fallback at the end of Match is what
-        // fixed that, and it is what makes this list's contents a smaller decision than it was.
-        // Verify any change with `dotnet run --project tools/FinApp.AssistantProbe -- --misses` — the log cannot
-        // see this, which is why the tool exists.
+        // ⚠️ These two were missing while Report carried all three forms of "what's my", and the gap between the
+        // lists was one sentence: "what's safe to spend" has no "my" so Report declines it, and Explain knew only
+        // the uncontracted "what is" — so it fell to Navigate, matched nothing, and cost a model call.
+        // ⚠️⚠️ Adding them was tried ONCE BEFORE and reverted, because an entity used to be discarded outright for
+        // the Explain class and "what's in my {wallet}" stopped resolving. That only worked by accident — the
+        // contraction's absence here was what kept it in the Navigate class. Match's late entity fallback is what
+        // makes this safe, so do not remove that and leave these.
+        // Verify any change with `dotnet run --project tools/FinApp.AssistantProbe -- --misses`; the log cannot
+        // see any of this, which is why the tool exists.
+        "what's", "whats",
     ];
 
     /// <summary>Words that make a question about <b>change</b> rather than a current figure. ⚠️ Kept narrow on

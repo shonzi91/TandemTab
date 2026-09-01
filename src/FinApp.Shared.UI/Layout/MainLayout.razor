@@ -68,6 +68,10 @@
                         <a href="@TermsUrl" target="_blank" rel="noopener">@Loc["Terms"]</a>
                     </p>
                     <Switch @bind-Value="_consentChecked">@Loc["I have read and accept the Terms of Service and Privacy Policy."]</Switch>
+                    @if (_consentError is not null)
+                    {
+                        <div class="pm-msg pm-error">@_consentError</div>
+                    }
                     <button class="primary" @onclick="AcceptLoginConsent" disabled="@(!_consentChecked || _consentBusy)">@Loc["Accept & continue"]</button>
                 </div>
             </div>
@@ -1280,6 +1284,7 @@
     // --- Consent (accept the terms once at login) -------------------------
     private bool? _loginConsent;   // null = unknown/not-signed-in, true/false = active?
     private bool _consentChecked, _consentBusy;
+    private string? _consentError;
 
     private async Task LoadLoginConsentAsync()
     {
@@ -1290,11 +1295,25 @@
         await InvokeAsync(StateHasChanged);
     }
 
+    /// <summary>
+    /// Record acceptance of the terms and let the person in.
+    /// <para>⚠️ <b>This used to swallow every failure in a bare <c>catch</c> commented "surface via retry".</b>
+    /// Nothing surfaced anything: on a failed POST the button simply re-enabled and the gate stayed up, so the
+    /// experience was pressing Accept and having the app do nothing at all, with no message and nothing to
+    /// retry. It sits in front of <em>every new sign-up</em>, and it is the same silent-failure shape as the
+    /// two-day sign-in outage — a thing that did not work and said so to nobody.</para>
+    /// </summary>
     private async Task AcceptLoginConsent()
     {
         _consentBusy = true;
-        try { await Api.RecordConsentAsync("login", null, true); _loginConsent = true; }
-        catch { /* surface via retry */ }
+        _consentError = null;
+        try
+        {
+            await Api.RecordConsentAsync("login", null, true);
+            _loginConsent = true;
+        }
+        catch (ApiException ex) { _consentError = ex.Message; }
+        catch { _consentError = Loc["Couldn’t reach the server. Check your connection and try again."]; }
         finally { _consentBusy = false; }
     }
 

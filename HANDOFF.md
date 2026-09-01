@@ -84,7 +84,42 @@ deliberate **control group** (`did the parcel arrive yet`, `what's the weather l
 rate can be told from a matcher that says yes to everything. Replace it with the owner's real phrasings the moment
 they exist. On 57 questions: **45 local, 12 to the model, 4 of those 12 correct refusals.**
 
-#### ⛔ Defect 1 — the app teaches the one phrasing its matcher handles worst
+#### ✅ Defect 1 — FIXED, both halves
+
+The chip now reads **"What's my safe to spend?"**, and `"what's"` / `"whats"` joined the Explain class list so the
+bare contraction resolves locally instead of costing a call. ⚠️ **Adding those two words is the change that was
+reverted earlier in this same session** — it is safe *only* because Match's late entity fallback now rescues
+`what's in my {wallet}`. Re-verified with the probe rather than assumed: entity cases still 10/10 local.
+
+✅ Driven on the running app: the chip renders its new text and answers **"€1,269.55 is safe to spend."**
+
+#### ⛔⛔ A correction: there was no terms-button bug, and I reported one
+
+**I was wrong twice in the same reading**, and both mistakes are worth writing down because the tools invite them:
+- **`read_page` lists `#blazor-error-ui` whether or not it is visible.** "An unhandled error has occurred" is a
+  permanently-present element in `index.html` with `display: none`. It appears in every accessibility tree of this
+  app. **Check `getComputedStyle(el).display` before believing it.**
+- **The accessibility tree renders the consent toggle as `switch "on"` while `checked === false`.** "on" is the
+  role's label, not its state. The button was correctly `disabled` and my clicks did nothing; I read that as a
+  handler throwing.
+
+⚠️ Both of my earlier `ERR_CONNECTION_REFUSED` sightings were the dev server being restarted underneath the page.
+
+#### ✅ But the button *did* have a real defect, one layer down
+
+`AcceptLoginConsent` swallowed every failure in a bare `catch { /* surface via retry */ }`. Nothing surfaced
+anything: on a failed POST the button re-enabled, the gate stayed, and the app did **nothing at all** with no
+message and nothing to retry. **It sits in front of every new sign-up**, and it is the same silent-failure shape
+as the two-day sign-in outage.
+
+✅ **Verified by simulating the failure** — `window.fetch` patched to reject `POST /consent`, which produced
+*"Couldn't reach the server. Check your connection and try again."* with the button re-enabled and the gate
+intact; then unpatched, and the same click cleared the gate to onboarding.
+
+⬜ **For queue row 05 (accessibility):** the consent toggle is not exposed as an interactive control at all — it
+appears only under `filter: all`, and its accessible state contradicts its DOM state.
+
+#### ⛔ Defect 1, as found — the app teaches the one phrasing its matcher handles worst
 
 The chip reads **"What's safe to spend?"**. Type those exact words and they reach the model.
 
