@@ -302,7 +302,35 @@ it is the second time this session the existing guard rails caught a change that
    - ⚠️ **The refund key SUPERSEDES the add-key** the row carried forward through every edit (one row, one key).
      Deliberate: a late retry of the original *add* is a seconds-wide window that closed months ago, while the
      refund's response may be in flight right now.
-   ⚠️ **Android's half is compiled, not run.** Same standing reason: no tag, no APK, reaches nobody.
+   ✅ **DRIVEN ON THE EMULATOR (2026-09-01), and the badge renders.** `[T] TripCheck ✈ Rome ✓` in the account
+   switcher, against a live "Rome" trip on a local server — which also confirms the lazy fetch fires on open and
+   that the case-insensitive GUID match works (a case-sensitive one would have shown no badge and no error).
+   ★ The **live-trip hero card** ("Rome — Day 3 of 12 · Rome, Italy") was confirmed on the same screen; it had
+   been code-verified only since S117.
+   ⚠️ **T0's tail on the phone is still unexercised** — the refund/disburse/installment keys are covered by the
+   server's tests, not by a device on a bad connection.
+   ✅ **The APK now reaches people:** `android-v0.1.0` (the repo's first tag) built green and published a signed
+   release. The "Attach the APK to a GitHub Release" step passing is itself the proof the real keystore was
+   used — it `exit 1`s rather than publish a debug-key build.
+
+#### ⚠️⚠️ The emulator needed four fixes before it could be driven at all — worth knowing before the next run
+
+A cold-booted AVD on this box went into an **ANR storm**: `System UI isn't responding`, then `TandemTab`, then
+`Digital Wellbeing`, then `Settings` — dialogs stealing focus so that taps and `input text` landed on the dialog
+instead of the app (the username field stayed empty while the text "went in"). ⭐ **Logcat is what settled the
+question of whose fault it was:** `Displayed com.tandemtab.app/.MainActivity for user 0: +50s998ms`, with **no
+exceptions** — 51 seconds to first frame is the software renderer, not the app. What fixed it:
+1. **Stop competing work.** The Gradle daemon and a Blazor WASM page open in the browser pane were both eating
+   the same cores. `gradlew --stop`, close the pane.
+2. **More machine:** `-memory 4096 -cores 4` on the emulator command line.
+3. **Animations off** (`window_animation_scale` / `transition_animation_scale` / `animator_duration_scale` = 0)
+   and `pm disable-user` on **wellbeing** and **googlequicksearchbox**, which were the loudest ANR sources.
+4. ★ **`adb root` then `pkill -f com.android.systemui`** — a wedged SystemUI cannot be restarted without it
+   (`killall` answers *Operation not permitted*), and it is the difference between a usable device and a loop.
+★ **And the technique that actually landed the login:** send the whole sequence in **one** `adb shell` round trip
+(`input tap …; input text …; input keyevent 4; input tap …`) so it completes inside the gap between dialogs.
+Six separate `adb shell` calls will not — the dialog returns partway through and eats the rest.
+⚠️ **Git Bash rewrites `/sdcard/...` into a Windows path**; `screencap`/`pull` need `MSYS_NO_PATHCONV=1`.
    - **The always-visible milestones line.** The web drew it only while something was *in progress*, so Home went
      silent at the exact moment it had most to say — you finish the last milestone you were working on and the
      line vanishes. It now follows Android's rule: once anything is earned it stays and reads "N of M earned".
