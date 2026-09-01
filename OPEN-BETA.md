@@ -238,7 +238,8 @@ against a moving feature set is work that gets redone. R4 lands before R7 for th
 | **R2.5** | **The surface sweep** — the differences a route scanner cannot see | Every remaining web⇄phone difference is either built or **written down as a decision** | M · ✅ **DONE 2026-09-01.** All four rows: the always-visible milestones line and the auto-mask trigger (driven on the running app), the phone's **trip badge** (`GET /active-trips` — the last uncalled route that was a real gap), and **T0's tail**. ✅ **Driven on the emulator** — the badge renders (`TripCheck ✈ Rome`), and the APK now reaches people: `android-v0.1.0` is tagged, built and published |
 | **R3** | AI assistant — **narrate and navigate** | ✅ **LIVE 2026-09-01** on `finapp-00355-2v5`, verified in the served WASM — and gated to two addresses by `Assistant__AllowedEmails`. **It drew R1's freeze line the same day.** ⬜ Open: 15 of 21 escalated questions returned `unknown`, and the rule tables are the fix | M |
 | **R4.5** | **Trip Mode** (bounded offline) — ⭐ **moved AHEAD of R4/R5 by owner's decision, 2026-09-01** | The phone opens, shows cached figures with their staleness, takes an expense with no signal, and posts **exactly one** row on reconnect | M per platform · ✅ **accepted — next up**. It is a new feature, so taking it **moves the freeze**; that price was named and paid deliberately, see the box under R1 |
-| **R4** | Railway migration (hosting **and** DB) | Serving from Railway, Neon + Cloud Run retired | M–L · now **after** R4.5 |
+| **R4.6** | **The command palette** — ⭐ **new phase, 2026-09-01 (owner)** | One place to type a command and have the app do it. Navigation first (the ~20 `open.*`/`tab.*` targets already exist), then **add-expense** as the first write | M · ⬜ **after R4.5**. The freeze's **second** named exception — see the box under R1 |
+| **R4** | Railway migration (hosting **and** DB) | Serving from Railway, Neon + Cloud Run retired | M–L · now **after R4.5 and R4.6** |
 | **R5** | Landing, terms, privacy + Pro-split final verification **+ billing go-live** | The page describes the real product; the paywall is settled **and can actually take money** | M–L |
 | **R6** | SEO | Indexed, measurable, bilingual | S–M |
 | **R7** | Promote **+ ship the Android app** **+ the installable web app** | The door is open — on the web, and (owner's call, S110) on a phone | — |
@@ -290,6 +291,20 @@ cleared on 2026-08-05, and the line is drawn today.
   ⚠️ **This does not widen the freeze by a millimetre.** The test below is unchanged, and *"Trip Mode is going
   ahead"* is not an argument for any other new feature. A second exception is a second decision with its own
   price, taken the same way — out loud, with the cost named — or the freeze is over.
+- ⭐ **EXCEPTION #2 — R4.6, the command palette** (owner, same day, after the owner asked for fast expense entry
+  and then generalised it). Taken the way the line above demands: **out loud, numbered, and placed in the order**
+  (R4.5 → **R4.6** → R4 → R5) rather than carved out, so the cost lands somewhere visible.
+  ⚠️⚠️ **Two exceptions in one day is worth saying plainly**, because that is how a freeze stops meaning
+  anything. What keeps this one honest is that it is a *phase* with a position and a size, not a favour — and
+  that R5 and R7 have now moved twice. **A third would need a much better argument than either of these.**
+  ★ **It is mostly not an AI feature, which is why it is M and not L+.** Commands are a closed set; fuzzy-matching
+  typed text against a fixed list is deterministic, instant, offline and cannot leak. **Build it that way first
+  and find the real wall before trading anything**, because there may be no wall.
+  ⛔ **The privacy claim is NOT pre-committed as spendable.** The owner offered to change the policy if the model
+  turns out to be needed; the answer is *not yet, and probably never* — a palette is closed-vocabulary, which is
+  the opposite of what a model is for. ⚠️ And the price rose today: the policy went live in **two languages**
+  saying digits are stripped and names never leave. Unsaying that days after publishing it is re-consenting
+  users, not editing a page.
   ⛔ **R8 and R9 were considered for the same move and declined**, on their own stated terms rather than on
   taste: R8 un-defers when *users are hitting R4.5's boundary* and R9 when *the read-only assistant has enough
   real traffic to say what people ask it to do*. Both conditions need users, and users arrive at R7 — so
@@ -895,6 +910,48 @@ Decide it when the split is frozen.
 not one phase"*, and the feature-freeze line R5 depends on is declared **when R3 lands**. A sync engine inserted
 before that freeze moves the freeze, and R5 and R7 move with it. **Offline before promotion is how a roadmap
 stops ending.** T0 is a bug fix and belongs now; this is a real feature and is scheduled as one.
+
+### R4.6 — The command palette — ⭐ NEW PHASE, accepted 2026-09-01, runs after R4.5
+
+**The ask, in the owner's words:** *"one place to execute commands in the app, adding expense is just the first of
+the commands."* It began as *"let me tell the assistant to log an expense quickly"* and generalised, and the
+general version is the better one.
+
+★ **The reframe is what makes it affordable.** A palette is **not an AI feature**. Commands are a **closed set**,
+and fuzzy-matching typed text against a fixed list is deterministic, instant, offline and incapable of leaking.
+The model is for *open-ended* language; a palette is the opposite of open-ended.
+
+**Slices, in order — each one shippable and each one evidence for the next:**
+1. **The shell, over navigation only.** ~20 `open.*` / `tab.*` targets already exist, are already tested and are
+   already reachable from typed text. This is a UI shell over built logic, and it proves the interaction is
+   actually faster before anything expensive exists.
+2. **Add-expense, the first write.** ⭐ **Do not build a new write path** — parse the sentence and *pre-fill the
+   existing add-expense sheet*, so it inherits the existing validation, the category-create affordance, the fund
+   picker and, crucially, **T0's idempotency key**. No new endpoint, no server change.
+   - ✅ **Category: create-if-missing is fine.** `RemoveCategoryReassigning` can merge a typo away later, so the
+     mistake is recoverable. Offer the create explicitly rather than doing it silently.
+   - ⛔ **Fund: never auto-create.** A category is a label; **a fund is a wallet** — a place money physically is,
+     with a balance, a currency and an `IsSynced` flag that decides *whether the expense debits at all*. Auto-made
+     from a misheard word it is negative on creation and the account total is wrong. An unrecognised fund is the
+     one thing the confirmation asks about, defaulting to the usual wallet. That is free: the confirm step exists.
+3. **Then read what still does not parse.** That list — not a hunch — is the evidence for whether a model is ever
+   needed. Same probe-driven method that took the assistant from 80.7% to 89.5% on 1 September.
+
+★ **Part of slice 2 is a repair, not a feature.** Today *"add 40 euros for petrol"* reaches the model, costs
+$0.0016 and returns *"I didn't follow that one"* — the app **charges you to fail**. Routing write-intents to a
+local parser removes a paid failure.
+
+⚠️ **Bulgarian from day one.** The rule-table repair on the same day found the tables were built English-first
+throughout, with `report.debtFree` carrying one Bulgarian phrase against English's six. Do not repeat that here.
+
+### ⬜⬜ What this does to R9 — re-examine it, do not inherit it
+
+**R9 is "the on-device *write* assistant".** If R4.6 handles writes deterministically, **most of R9's reason to
+exist goes with it**, and what remains is only *natural language for things the palette cannot express*. That is a
+much smaller and much less certain feature than the one currently deferred under R9's name.
+★ **So R9 must be re-scoped after R4.6 ships, not picked up as written.** Its un-defer condition ("enough real
+traffic to say what people ask it to do") is now partly answerable from the palette's own miss list, which is
+cheaper evidence than production logs that do not record the question.
 
 ### R8 — ⛔ full offline sync — DEFERRED by decision (Session 116)
 

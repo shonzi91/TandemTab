@@ -292,7 +292,27 @@ it is the second time this session the existing guard rails caught a change that
    Does something already promised now work, work correctly, or work for everyone → repair, it ships.
    ⚠️ **R4.5 Trip Mode is inside the freeze**, deliberately. It stays the owner's call, but taking it *moves*
    the freeze rather than being an exception to it — and moving it moves R5 and R7 with it.
-5. ⭐⭐ **THE ORDER CHANGED: R4.5 → R4 → R5** (owner, 2026-09-01). Trip Mode was proposed in S116 and advisory
+5. ⭐⭐ **THE ORDER CHANGED AGAIN, later the same day: R4.5 → R4.6 → R4 → R5.** The owner asked for fast expense
+   entry through the assistant, then generalised it to *"one place to execute commands in the app"* — and the
+   general version is the better one. It is now **R4.6, the command palette**, a numbered phase rather than a
+   carve-out, precisely so the cost lands somewhere visible.
+   ★ **It is affordable because it is not an AI feature.** Commands are a **closed set**; fuzzy-matching typed
+   text against a fixed list is deterministic, offline and cannot leak. Slice 1 is a shell over the **~20
+   `open.*`/`tab.*` targets that already exist and are already tested** — UI over built logic. Slice 2 is
+   add-expense, and ⭐ **it must pre-fill the existing sheet rather than add a write path**, so it inherits
+   validation, the category-create affordance, the fund picker and T0's idempotency key. No server change.
+   ⛔ **Never auto-create a fund.** A category is a label and a typo is mergeable (`RemoveCategoryReassigning`);
+   **a fund is a wallet** with a balance, a currency and an `IsSynced` flag that decides whether the expense
+   debits at all. Auto-made from a misheard word it is negative on creation and the account total is wrong.
+   ⛔⛔ **The privacy claim is not pre-committed as spendable.** The owner offered to change the policy if the
+   model turns out to be needed. The answer recorded is **not yet, and probably never** — and the price rose
+   today, because the policy went live in two languages saying digits are stripped. Build deterministic, find the
+   real wall, then decide.
+   ⚠️⚠️ **Two freeze exceptions in one day**, and that is said out loud because it is how a freeze stops meaning
+   anything. R5 and R7 have now moved twice. **A third needs a much better argument than either of these had.**
+   ⬜ **And R9 must be RE-SCOPED after R4.6, not inherited** — if the palette writes deterministically, most of
+   R9's reason to exist goes with it.
+6. ⭐⭐ **THE ORDER CHANGED: R4.5 → R4 → R5** (owner, 2026-09-01). Trip Mode was proposed in S116 and advisory
    since; it is **accepted and it is next**, ahead of the Railway migration and the landing/billing pass.
    ★ **Why it is right rather than merely wanted:** Trip Mode puts account data **at rest on the device**, which
    is a GDPR change — and R5 owns the legal re-read. Building it after R5 does that pass twice. Same for the
@@ -321,10 +341,10 @@ it is the second time this session the existing guard rails caught a change that
    guessing at the answers those conditions exist to supply. ⚠️ **Before R9 ever starts, the read-only
    assistant's rule tables are the free fix**: 15 of 21 escalated questions came back `unknown`, and the probe
    measures it without a key or an account.
-6. ⬜ **The forms are deliberately not navigation targets** (add expense / income / transfer / new goal). Each is
+7. ⬜ **The forms are deliberately not navigation targets** (add expense / income / transfer / new goal). Each is
    opened by a method that seeds its draft first, and a form reached without that seeding misbehaves in ways only
    a person driving it would notice. One at a time, each verified on a running app.
-7. 🔨 **Two of R2.5's rows are BUILT and were driven on the running app** (2026-09-01), after being "what's left"
+8. 🔨 **Two of R2.5's rows are BUILT and were driven on the running app** (2026-09-01), after being "what's left"
    for four write-ups running. **579 + 609 green.**
    ⛔⛔ **But R2.5 is NOT finished, and this list is why it looked like it was.** The S127 entry above called
    these "the last two rows"; **S124's entry named a third** — the phone's account-switcher **trip badge**
