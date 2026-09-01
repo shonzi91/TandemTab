@@ -3,9 +3,13 @@
 Last updated: 2026-09-01 (Session 127 — **R3 is live, and the first thing production said about it was
 uncomfortable.** The assistant and the watchdog are both serving; then the owner put the assistant back behind an
 allowlist, because *experimental* is a decision you can only take before everybody has it.
-**579 + 56 + 599 green** (4 new). ✅ **LIVE: `finapp-00353-fbh`, 100% LATEST** — image `finapp:0a00832` (this
-session's commit), **6 `secretKeyRef`s** (the Anthropic key is the sixth), `Assistant__AllowedEmails` set to the
-two addresses, both hosts 200, **no WARNING+ lines on the revision**, no purge race.
+**579 + 56 + 609 green** (14 new). ✅ **LIVE: `finapp-00354-j6d`, 100% LATEST** — image `finapp:2622a06` (this
+session's last commit), **6 `secretKeyRef`s** (the Anthropic key is the sixth), `Assistant__AllowedEmails` set to
+the two addresses, both hosts 200, **no WARNING+ lines on the revision**, no purge race.
+⭐ **Verified on the served bytes, not on the revision name:** `FinApp.Shared.UI.5kr1kgowl1.wasm` carries
+`EntityFigure` and `DisplayFundBalance`, and `FinApp.Contracts.c278901kbv.wasm` carries `EntityTarget`, on **both**
+hosts — the member-name probe from the build/deploy notes, which is the only proof a `.razor`-only change actually
+shipped.
 ⚠️⚠️ **This file was two days and ten commits out of date, and said R3 was undeployed while it was serving.**
 Everything in this entry that describes production was read from Cloud Run and its logs, not from a header.
 ⭐ **The measured numbers, finally.** A call bills ~1,550 in + ~19 out on `claude-haiku-4-5` = **$0.0016**, so the
