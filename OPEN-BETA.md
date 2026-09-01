@@ -825,6 +825,27 @@ running app.
 >
 > ⛔ **R8 and R9 were considered for this move and declined**, on their own un-defer conditions rather than on
 > taste — both need users, and users arrive at R7. See the freeze box.
+>
+> ### ✅ **Trip Mode is Pro** (owner, 2026-09-01) — and it costs almost nothing to make it so
+>
+> **It inherits an entitlement that already exists.** Trips are *already* Pro, whole, and enforced **server-side**
+> — `entitlements.RequireAsync(userId, PlanFeatures.Trips, ct)` guards the trip routes with a 402 backstop
+> (`Program.cs:2404`, owner's call recorded in MONETIZATION.md), and both clients already gate their entrances on
+> `PlanFeatures.TRIPS`. So this is **not a new gate**: Trip Mode is the offline half of a feature that is already
+> behind the paywall, which is also why it does not need a new upsell surface.
+>
+> ⛔⛔ **The trap, and it has to be designed for rather than discovered — decide it before the build, not after.**
+> Entitlement is checked **server-side**, and Trip Mode's whole point is that there is no server. So the client
+> must decide from a **cached** plan. Now: a Pro subscription lapses while somebody is offline mid-trip. The
+> cached plan still says Pro, so the phone keeps taking expenses all week; on reconnect every queued write hits
+> `RequireAsync` and comes back **402**. That is a week of a paying-until-Tuesday customer's data rejected at the
+> door — the exact loss the outbox exists to prevent, arriving by a different route.
+> ★ **The resolution to write into R4.5's spec: entitlement is checked when Trip Mode is ARMED (online, at the
+> start of the journey), not when each queued row lands.** Once armed for a trip, that trip's queued writes are
+> accepted on reconnect whatever the plan says by then. Offline capture cannot be a promise the server retracts
+> after the fact.
+> ⚠️ **And the gate will be invisible until R7:** beta accounts are `unlimited`, so nobody in the beta will ever
+> meet it. It ships unexercised by real usage — the same shape of risk as the assistant's allowlist.
 
 **The story.** Trips are first-class, and a trip is exactly when you are on an expensive or absent connection
 holding the device with the least data on it. Today: **offline on Android is a blank app, and offline on web is
@@ -1045,6 +1066,12 @@ is in the right place. Open questions to settle in that pass:
   back-navigation** past that window is not. Confirm the exact Free horizon and gate navigation to match.
 - **Price**: ✅ **resolved 2026-08-05 — €29.99/yr (+ €3.99/mo)**, the config default the app already serves.
   `docs/BILLING.md`'s superseded 3-tier `$39.99` table is annotated as such; MONETIZATION.md is authoritative.
+- **Trip Mode**: ✅ **Pro** (owner, 2026-09-01), decided *before* the build rather than around it. Cheap, because
+  it inherits the existing `PlanFeatures.Trips` entitlement — trips are already Pro whole and already enforced
+  server-side with a 402 — so there is no new gate and no new upsell surface. ⛔ **But see R4.5 for the trap it
+  creates:** entitlement is a server-side check and Trip Mode's point is that there is no server, so the plan
+  must be read when the mode is **armed**, not when each queued row lands. Otherwise a subscription lapsing
+  mid-journey 402s a week of already-captured expenses on reconnect.
 
 ## ⬜ TODO before the door opens (R5) — billing go-live: a real payment provider + the Pro trial
 

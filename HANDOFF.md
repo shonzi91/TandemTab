@@ -283,6 +283,18 @@ it is the second time this session the existing guard rails caught a change that
    ★ **R4's urgency is coupled to promotion, not the calendar** — Neon's ceiling only fires on a traffic spike
    and the spike *is* R7. But R4 still lands **before R5**: migrating after billing means migrating a live
    payment integration, and every deploy until then pays the Windows `gcloud` tax.
+   ✅ **And Trip Mode is Pro** (owner, same day) — decided *before* the build, which is the whole point of asking
+   now. ★ **It costs almost nothing:** trips are *already* Pro whole and *already* enforced server-side
+   (`entitlements.RequireAsync(userId, PlanFeatures.Trips, ct)`, `Program.cs:2404`), so this is the offline half
+   of a feature that is already behind the paywall — no new gate, no new upsell surface.
+   ⛔⛔ **The trap to design for, not discover:** entitlement is a **server-side** check and Trip Mode's point is
+   that there is no server, so the client must read a **cached** plan. A subscription lapsing while somebody is
+   offline mid-trip means the phone keeps taking expenses all week and then every queued write 402s on
+   reconnect — a week of a paying-until-Tuesday customer's data rejected, which is the exact loss the outbox
+   exists to prevent. ★ **Write into R4.5's spec: check the plan when Trip Mode is ARMED (online), not when each
+   queued row lands.** Once armed, that trip's rows are accepted whatever the plan says by then.
+   ⚠️ Beta accounts are `unlimited`, so **nobody in the beta will ever meet this gate** — it ships unexercised
+   by real usage, the same shape of risk as the assistant's allowlist.
    ⛔ **R8 and R9 were considered for the same move and declined on their own un-defer conditions** — R8 needs
    users hitting R4.5's boundary, R9 needs real assistant traffic; both arrive at R7, so building them first is
    guessing at the answers those conditions exist to supply. ⚠️ **Before R9 ever starts, the read-only
