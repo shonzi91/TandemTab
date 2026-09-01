@@ -85,14 +85,30 @@ just been added to. Before adding a rule, check which class the phrase lands in.
   arrive minutes apart and essentially every one wrote an entry nothing ever read — a flat 25% surcharge.
 
 #### Next session
-1. ✅ **The allowlist is deployed** (`finapp-00353-fbh`, image `finapp:0a00832`, env var set to both addresses).
-   ⬜ **What is NOT proven on production is the negative case.** Both directions are covered by tests, and the
-   image provably contains the code, but nobody has watched a *non-listed* account get `Available: false` on the
-   live service — that needs a second real account, and registering one burns a beta seat. The cheap half is
-   worth doing on sight: open the app as the owner and confirm the dock is still there. If it has vanished, the
-   allowlist is not matching the stored email and the gate has closed on everyone.
-2. ⬜ **Read the 15 unknowns.** The questions are in the log. Work out which class each lands in *before* adding a
-   rule, or the rule is unreachable.
+1. ✅ **The allowlist is deployed and half-verified** (`finapp-00353-fbh`, image `finapp:0a00832`, env var set to
+   both addresses). The owner confirmed on sight that the dock is still there, so the allowlist **matches the
+   stored email** and the gate has not closed on everyone — which was the failure worth checking first.
+   ⬜ **The negative case is still unproven on production.** Both directions are covered by tests and the image
+   provably contains the code, but nobody has watched a *non-listed* account get `Available: false` live — that
+   needs a second real account, and registering one burns a beta seat. Take it the next time a real second
+   account exists rather than manufacturing one.
+2. ⬜ **Diagnose the unknowns — and NOT from the log.** ⚠️⚠️ **Correction, written down because it was asserted
+   here in the last edit and it is false: the questions are not recoverable.** Nothing logs one. An `unknown`
+   emits only `answered by the model (N answered locally…, intent unknown)`; the *only* per-call shape data
+   (`{Length} chars, {Slots} slots`) is on the **exception** path, and these fifteen did not throw — they parsed
+   cleanly and returned a key nothing handles. **The privacy design that makes this feature defensible is the same
+   thing that makes its failure mode invisible**, and that trade was made deliberately; it just was not noticed
+   from this end until somebody tried to act on the number.
+   Three ways out, cheapest first:
+   - ⭐ **Reproduce.** The sample is one person who can simply ask again — type the questions into a dev build
+     with the real key and read what comes back. Zero privacy cost, zero build, and it is the whole sample.
+   - ⬜ **Log the masked question on the `unknown` path only.** It is strictly less than the wire already carries,
+     and strict mode (always on) has already refused anything with flagged free text — so what remains is the
+     low-signal residue, a lower-case merchant word. ⚠️ Still a real step, and it contradicts a rule the code
+     states twice. Do not take it casually.
+   - ⬜ **Ask in the client.** An `unknown` already renders suggestion chips; "tell us what you meant" beside them
+     is opt-in, honest, and the most work.
+   Whichever: work out which **class** a phrase lands in *before* adding a rule, or the rule is unreachable.
 3. ⬜ **Declare the feature freeze.** R1 froze the backlog on 5 August conditional on R3 landing. R3 has landed.
    R5 cannot be priced until somebody writes the sentence down.
 4. ⬜ **The forms are deliberately not navigation targets** (add expense / income / transfer / new goal). Each is
