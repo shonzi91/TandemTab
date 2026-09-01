@@ -935,6 +935,13 @@ removed — with the *"how is my {1} doing after the ### I put in at Lidl"* exam
 personal-looking word means the question is **not sent at all**; each question travels alone with no history; and
 every figure in a reply was computed on the device, so the model is never given a number and never returns one.
 
+⚠️ **It also says the assistant is not switched on for most accounts** — added on the owner's question, and the
+question was the right one. `privacy.html` is a **static public page**: no sign-in, linked from the landing
+footer and from inside the app, so all ~93 accounts read it while two can use the feature. The section has to
+stay (the two accounts using it today are owed the disclosure) but without that sentence it read as a promise to
+everyone, and an excluded user who went looking would find nothing — the gate hides every entrance.
+★ **Delete that paragraph when the allowlist widens.** It is the one part of this section with an expiry date.
+
 ### ⬜ Two things in it are the owner's to confirm — they are claims, not code
 
 - ⛔ **"we do not authorise it to be used to train models."** True of Anthropic's commercial API terms by default,
