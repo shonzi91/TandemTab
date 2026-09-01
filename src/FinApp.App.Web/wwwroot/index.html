@@ -13,7 +13,7 @@
          a minority of names and is left to the normal unicode-range fetch. -->
     <link rel="preload" href="css/fonts/quicksand-latin.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="stylesheet" href="css/bootstrap/bootstrap.min.css" />
-    <link rel="stylesheet" href="css/app.css?v=46" />
+    <link rel="stylesheet" href="css/app.css?v=47" />
     <link rel="stylesheet" href="FinApp.App.Web.styles.css" />
     <link rel="icon" type="image/svg+xml" href="favicon.svg">
 
@@ -230,6 +230,54 @@
             try { localStorage.setItem('finapp-private', on ? '1' : '0'); } catch (e) { }
             const ref = window.finappPrivacy.dotnet;
             if (ref) ref.invokeMethodAsync('OnPrivacyChanged', !!on);
+        };
+        // --- R4.5 Trip Mode: the last-good snapshot, kept on the device ------------------------------------
+        // The shell has booted offline since S122; what it had was nothing to show, because every read went to
+        // the server. This is that half: one row per account holding the snapshot the app last loaded, so an
+        // offline start renders real figures instead of an error.
+        //
+        // ⚠️ IndexedDB rather than localStorage, and the reason is size and blocking: a snapshot is ~260KB of
+        // JSON, localStorage is synchronous, and writing that on every account open would jank the main thread
+        // on the exact device this feature exists for.
+        // ⚠️⚠️ This is ACCOUNT DATA AT REST ON THE DEVICE, in plaintext. Server snapshots are encrypted under
+        // KMS; this mirror is not, and that is a privacy-policy surface change owed to R5's legal re-read — the
+        // same debt R4's new sub-processor creates. It is written down in OPEN-BETA under R4.5, not implied here.
+        // ★ It is cleared on sign-out (finappCache.clear), which is the one mitigation that costs nothing.
+        const FINAPP_DB = 'finapp-cache', FINAPP_STORE = 'snapshots';
+        let finappDb = null;
+        const finappOpenDb = () => finappDb ? Promise.resolve(finappDb) : new Promise((resolve, reject) => {
+            let req;
+            // A browser with IndexedDB disabled (some private modes) throws on open rather than returning null.
+            try { req = indexedDB.open(FINAPP_DB, 1); } catch (e) { reject(e); return; }
+            req.onupgradeneeded = () => {
+                const db = req.result;
+                if (!db.objectStoreNames.contains(FINAPP_STORE)) db.createObjectStore(FINAPP_STORE, { keyPath: 'accountId' });
+            };
+            req.onsuccess = () => { finappDb = req.result; resolve(finappDb); };
+            req.onerror = () => reject(req.error);
+        });
+        const finappTx = (mode, run) => finappOpenDb().then(db => new Promise((resolve, reject) => {
+            const tx = db.transaction(FINAPP_STORE, mode);
+            const out = run(tx.objectStore(FINAPP_STORE));
+            tx.oncomplete = () => resolve(out && 'result' in out ? out.result : undefined);
+            tx.onerror = () => reject(tx.error);
+            tx.onabort = () => reject(tx.error);
+        }));
+        window.finappCache = {
+            // ⚠️ Every one of these swallows its failure and answers "no cache". A device that cannot store the
+            // snapshot must still run the app online — a caching layer that can break the app it is meant to
+            // protect is worse than no caching layer.
+            put(accountId, version, payload) {
+                return finappTx('readwrite', s => s.put({ accountId, version, payload, at: Date.now() }))
+                    .then(() => true).catch(() => false);
+            },
+            get(accountId) {
+                return finappTx('readonly', s => s.get(accountId))
+                    .then(r => r ?? null).catch(() => null);
+            },
+            clear() {
+                return finappTx('readwrite', s => s.clear()).then(() => true).catch(() => false);
+            },
         };
         window.finappPickImage = () => new Promise(resolve => {
             const input = document.createElement('input');

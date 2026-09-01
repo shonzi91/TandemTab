@@ -33,6 +33,43 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     // Remembers the last account the user was on, so a reload lands back where they left off (not always the first).
     private const string LastAccountKey = "finapp-last-account";
 
+    /// <summary>
+    /// ★ R4.5 (Trip Mode, T1). When the figures on screen came from the device rather than the server, this is
+    /// <b>when they were last true</b>; null means they are live. The UI must say so — figures with no date on
+    /// them are the whole reason offline caching is dangerous rather than merely useful.
+    /// </summary>
+    public DateTimeOffset? OfflineAsOf { get; private set; }
+
+    /// <summary>Keep the snapshot the server just gave us, so the next start works without one. Failures are
+    /// swallowed: a device that cannot store 260KB must still run the app.</summary>
+    private async Task CacheSnapshotAsync(Guid accountId, AccountSnapshot snapshot)
+    {
+        if (string.IsNullOrEmpty(snapshot.Payload)) return;
+        try { await js.InvokeVoidAsync("finappCache.put", accountId, snapshot.Version, snapshot.Payload); }
+        catch { /* no IndexedDB, or a host without the helper — online still works, which is the point */ }
+    }
+
+    /// <summary>
+    /// The last snapshot this device stored for the account, with the moment it was stored.
+    /// <para>⚠️⚠️ <b>Only a TRANSPORT failure may reach this.</b> An <see cref="ApiException"/> means the server
+    /// answered — a 402, a 409, a 500 — and answering that with stale figures would hide a real error behind
+    /// numbers that look fine. <c>HttpRequestException</c> and a timeout are the only "there is no server right
+    /// now" signals; the API client already retries both before giving up.</para>
+    /// </summary>
+    private async Task<(AccountSnapshot? Snapshot, DateTimeOffset At)> CachedSnapshotAsync(Guid accountId)
+    {
+        try
+        {
+            var row = await js.InvokeAsync<CachedSnapshotRow?>("finappCache.get", accountId);
+            if (row is null || string.IsNullOrEmpty(row.Payload)) return (null, default);
+            return (new AccountSnapshot(accountId, row.Version, row.Payload), DateTimeOffset.FromUnixTimeMilliseconds(row.At));
+        }
+        catch { return (null, default); }
+    }
+
+    /// <summary>The IndexedDB row shape from <c>finappCache</c>. <c>At</c> is JS epoch milliseconds.</summary>
+    private sealed record CachedSnapshotRow(Guid AccountId, long Version, string Payload, long At);
+
     private List<AccountSummaryDto> _summaries = [];
     private Account? _account;
     private long _version;
@@ -380,7 +417,21 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
             return;
         }
 
-        var snapshot = await api.GetSnapshotAsync(summary.Id);
+        // ★ R4.5 (Trip Mode, T1): the snapshot comes from the server when there is one, and from the device when
+        // there is not. See CachedSnapshotAsync for why only a TRANSPORT failure is allowed to fall back.
+        AccountSnapshot snapshot;
+        try
+        {
+            snapshot = await api.GetSnapshotAsync(summary.Id);
+            OfflineAsOf = null;
+        }
+        catch (Exception e) when (e is HttpRequestException or TaskCanceledException)
+        {
+            var (cached, at) = await CachedSnapshotAsync(summary.Id);
+            if (cached is null) throw;   // nothing stored for this account — the error is the honest answer
+            snapshot = cached;
+            OfflineAsOf = at;
+        }
         _version = snapshot.Version;
 
         if (string.IsNullOrEmpty(snapshot.Payload))
@@ -397,6 +448,9 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
         ReconcileHeader(_account, summary);
 
         _cache[summary.Id] = new CachedAccount(_account, _version);
+        // Only what came from the server is worth keeping — re-writing a snapshot we just read from the device
+        // would refresh its timestamp and make week-old figures look like this morning's.
+        if (OfflineAsOf is null) await CacheSnapshotAsync(summary.Id, snapshot);
         _selectedIndex = _account.Periods.Count - 1;
         // Anchor achievements to "now" the first time this account is ever loaded, so they count from the current
         // period onward (not retroactively) and can't be farmed by back-dating periods. Persisted on the next save.

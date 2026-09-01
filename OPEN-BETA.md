@@ -903,8 +903,33 @@ invisible-until-useful; a property on something that already exists, not a new s
 staleness banner, with a durable outbox for **expense adds only**; web gets ~~the PWA shell plus~~ (✅ shell done
 S122) the last snapshot in IndexedDB, **read-only** offline.
 
-⚠️ **Product call for R5, not for the build:** Trip Mode is a plausible **Pro** feature, since trips already are.
-Decide it when the split is frozen.
+### ✅ The web half is BUILT and observed (2026-09-01) — the phone's outbox is what remains
+
+`finappCache` (IndexedDB, one row per account) stores the snapshot the server last gave us; `BudgetingState`
+falls back to it and exposes `OfflineAsOf`, which the dashboard renders as an amber strip above the header.
+**579 + 622 green.**
+
+⭐ **Driven, not reasoned about.** With the snapshot GET failing as a transport error and everything else served,
+a fresh sign-in rendered the seeded account **from the device** — `SPENT €37.50`, `SAFE TO SPEND €-37.50` — under
+*"Offline — showing what this device last knew · as of 1 Sep, 18:51"*.
+
+★ **Only a TRANSPORT failure may fall back**, and this is the design decision most worth keeping: an
+`ApiException` means the server *answered* (a 402, a 409, a 500), and answering that with stale figures hides a
+real error behind numbers that look fine. `HttpRequestException` and a timeout are the only "there is no server"
+signals, and the API client already retries both before giving up.
+★ **A cache read never refreshes the timestamp.** Re-storing a snapshot that came from the device would make
+week-old figures look like this morning's — the one bug that would make the strip lie.
+✅ **The cache is cleared on sign-out**, verified 1 → 0 rows. That is the one cheap mitigation for plaintext
+account data at rest; the policy change it still owes belongs to R5's legal re-read.
+
+⚠️ **What is NOT verified: the offline *start*.** The browser pane cannot register service workers, so killing
+the server there kills the shell before any of this code runs. The fallback was proven by failing the snapshot
+request instead. Confirming the whole path (dead server → SW serves the shell → cache renders) needs the
+headless-Chrome recipe. ⚠️ And the **stale-WASM trap bit again**: the sign-out clear appeared not to work until
+the dev server was restarted, because it was still serving the pre-edit build.
+
+✅ **Product call, settled 2026-09-01: Trip Mode is Pro.** See the box under the phase header — it inherits
+`PlanFeatures.Trips`, and the entitlement must be read when the mode is **armed**, not per queued row.
 
 ⚠️ **Why this sits after R4 and not before R3.** R3 is already **L+** with its own note that *"the whole of it is
 not one phase"*, and the feature-freeze line R5 depends on is declared **when R3 lands**. A sync engine inserted

@@ -1098,6 +1098,10 @@ public sealed class Localizer(IJSRuntime js)
         // Profile → Your data & privacy panel
         ["Your data & privacy"] = "Твоите данни и поверителност",
         ["Your data is encrypted and stored per account."] = "Данните ти са криптирани и се съхраняват по сметка.",
+        // R4.5 Trip Mode — the offline strip. ⚠️ The time is not decoration: a figure of unknown age is worse
+        // than no figure, because it is spendable.
+        ["Offline — showing what this device last knew"] = "Офлайн — показваме последното, което устройството знае",
+        ["as of {0}"] = "към {0}",
         // R2.5's auto-hide trigger — the web's counterpart to the phone's flip-face-down gesture.
         ["Hide figures when I switch away"] = "Скрий числата, когато превключа другаде",
         ["Masks the screen when this tab is hidden or the computer is locked. Showing them again is always yours to do."] =

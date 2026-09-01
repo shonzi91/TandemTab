@@ -503,6 +503,21 @@ html.dark .alert-inline-link:focus-visible { outline-color: #f0c069; }
     text-align: left;
 }
 .privacy-bar:hover { background: #e5d9f8; }
+/* R4.5 — the offline strip. Deliberately the same shape as .privacy-bar (full width, above the header, small
+   text) because it says the same KIND of thing: the figures below are not what they normally are. Amber rather
+   than the brand green, because this is a caveat and not a success — and not red, because nothing is wrong. */
+.offline-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 6px 14px;
+    background: #fdf1d8;
+    color: #8a5a05;
+    font-size: .76rem;
+}
+.offline-bar-when { margin-left: auto; font-weight: 600; opacity: .8; white-space: nowrap; }
+html.dark .offline-bar { background: #33290f; color: #e6b45a; }
 .privacy-bar-key { margin-left: auto; font-weight: 600; opacity: .75; white-space: nowrap; }
 html.dark .privacy-bar { background: #241d37; color: #c4b5fd; }
 html.dark .privacy-bar:hover { background: #2e2545; }

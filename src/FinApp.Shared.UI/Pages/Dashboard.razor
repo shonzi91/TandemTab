@@ -61,6 +61,17 @@ else
            know it existed. It names the shortcut so the way out is on screen, and it is the ONLY visible control
            for the mode: a button that could turn masking ON would be one more thing to hit by accident on a
            screen full of money. *@
+        @* ★ R4.5 — figures that came from the device, not the server. It sits above the header for the same
+           reason the privacy strip does: it changes how everything below it should be read, so it cannot be
+           somewhere you have to scroll to. ⚠️ The TIME is the whole point — "offline" alone would leave someone
+           deciding what is safe to spend from a figure of unknown age. *@
+        @if (State.OfflineAsOf is { } asOf)
+        {
+            <div class="offline-bar">
+                <Icon Name="alert" /> <span>@Loc["Offline — showing what this device last knew"]</span>
+                <span class="offline-bar-when">@string.Format(Loc["as of {0}"], asOf.ToLocalTime().ToString("d MMM, HH:mm"))</span>
+            </div>
+        }
         @if (PrivacyMode)
         {
             <button type="button" class="privacy-bar" @onclick="ExitPrivacyMode">

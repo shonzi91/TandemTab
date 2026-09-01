@@ -1396,6 +1396,10 @@
         // user leaves — and signing out clears Auth.CurrentUser, which the modal body dereferences on every
         // line. Leaving it open meant the post-sign-out re-render threw and the app stalled on "Loading…".
         _profileOpen = false;
+        // ★ R4.5: drop the on-device snapshot cache. It is account data at rest in plaintext, and signing out is
+        // the one moment the user has plainly said this device should stop holding it. ⚠️ Before the session's
+        // token, so a failure here cannot leave the data behind with the session already gone.
+        try { await JS.InvokeVoidAsync("finappCache.clear"); } catch { /* host without the helper */ }
         await State.ResetAsync();
         await Auth.SignOutAsync();
     }
