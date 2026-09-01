@@ -82,6 +82,7 @@ import com.tandemtab.app.data.RunwayDto
 import com.tandemtab.app.data.SavingBucketDto
 import com.tandemtab.app.data.TargetDto
 import com.tandemtab.app.data.TandemTabApi
+import com.tandemtab.app.data.PlanFeatures
 import com.tandemtab.app.data.SpendingViewDto
 import com.tandemtab.app.data.OfflineStore
 import com.tandemtab.app.data.QueuedExpense
@@ -227,6 +228,10 @@ data class UiState(
     // figure, because it is spendable. And [pendingExpenses] is how many writes are waiting for a signal.
     val offlineAsOf: Long? = null,
     val pendingExpenses: Int = 0,
+    // ★ Trip Mode is opt-in. Nothing is stored on the device until this is on for the account — which is what
+    // makes the plaintext-at-rest cost a choice rather than something every user pays without being asked.
+    val tripModeArmed: Boolean = false,
+    val tripModeError: String? = null,
     // Which of the user's accounts are travelling, for the switcher's Trip-mode badges. Empty until the switcher
     // is first opened — it costs a snapshot read per account, so it is not hung off the account list. See
     // [loadActiveTrips].
@@ -525,6 +530,67 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
      */
     private fun isOffline(e: Throwable) = e !is ApiException
 
+    /**
+     * Turn Trip Mode on or off for the open account.
+     *
+     * ⭐⭐ **The entitlement is checked HERE and nowhere else, and that is the design decision this feature turns
+     * on.** Trips are Pro, so Trip Mode is; but the check lives on the server and the whole point of the mode is
+     * that there is no server. Checking per queued row would mean a subscription lapsing mid-journey 402s a week
+     * of already-captured expenses on reconnect — the exact loss the outbox exists to prevent, arriving by a
+     * different route. Arming happens ONLINE, once, and what it buys cannot be retracted after the fact.
+     *
+     * ⚠️ Disarming clears the cached figures but **keeps the outbox**. Unsent rows are the user's money, not a
+     * setting; they still flush when a network appears.
+     */
+    fun setTripMode(on: Boolean) {
+        val accountId = _state.value.selectedAccountId ?: return
+        if (on && !_state.value.allowsPro(PlanFeatures.TRIPS)) {
+            _state.update { it.copy(tripModeError = "Trip Mode is part of Pro, like trips themselves.") }
+            return
+        }
+        viewModelScope.launch {
+            offline.setArmed(accountId, on)
+            _state.update { it.copy(tripModeArmed = on, tripModeError = null) }
+            if (on) {
+                // Fill it immediately: arming and then flying with an empty cache would be the worst outcome,
+                // and the user is online right now by definition.
+                loadSpending(force = true)
+            } else {
+                offline.clearView(accountId, _state.value.selectedPeriod)
+                _state.update { it.copy(offlineAsOf = null) }
+            }
+        }
+    }
+
+    fun clearTripModeError() = _state.update { it.copy(tripModeError = null) }
+
+    /**
+     * The rows this device is holding for the open account, as the list renders them.
+     *
+     * ⚠️ Built from the outbox rather than remembered in state, so they survive a restart: without this a person
+     * who queued three expenses and reopened the app offline would see the count say "3 to send" and an empty
+     * list underneath it. ★ They are given their own **client key as the row id**, which is also what makes them
+     * disappear cleanly — the next successful load replaces the list wholesale with the server's copy.
+     */
+    private fun pendingRows(accountId: String, queued: List<QueuedExpense>): List<ExpenseDto> =
+        queued.filter { it.accountId == accountId }.mapNotNull { q ->
+            val cats = _state.value.spending.categories
+            val funds = _state.value.spending.funds
+            val cat = cats.firstOrNull { it.id == q.request.categoryId }
+            val fund = funds.firstOrNull { it.id == q.request.fundId }
+            ExpenseDto(
+                id = q.request.clientId ?: return@mapNotNull null,
+                categoryId = q.request.categoryId,
+                categoryName = cat?.name ?: "—",
+                categoryIcon = cat?.icon,
+                fundId = q.request.fundId,
+                fundName = fund?.name ?: "—",
+                amount = q.request.amount,
+                date = q.request.date,
+                note = q.request.note,
+            )
+        }
+
     private val _state = MutableStateFlow(UiState())
     val state: StateFlow<UiState> = _state.asStateFlow()
 
@@ -714,6 +780,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 )
             }
             selected?.let { loadPeriodLabel(it.id); loadForecast(it.id); loadMemberAvatars(it.id) }
+            selected?.let { acc -> _state.update { it.copy(tripModeArmed = offline.isArmed(acc.id)) } }
             // ★ R4.5: send anything written with no signal, HERE — reaching Home is the first moment we know
             // there is a network again. ⚠️ Found by running it: the flush used to hang off loadSpending alone,
             // so an expense typed abroad sat in the queue until the user happened to open the Spending tab.
@@ -1069,9 +1136,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                         categories = v.categories, funds = v.funds, tags = v.tags,
                     ))
                 }
-                // Keep it for the next start with no signal. Categories and funds ride along in this payload,
-                // which is why it is the one worth caching: it is both what Home shows and what the add sheet needs.
-                runCatching { offline.putView(accountId, period, offlineJson.encodeToString(v)) }
+                // Keep it for the next start with no signal — but ONLY if the user armed Trip Mode. Writing the
+                // mirror unconditionally would put a plaintext copy of every user's finances on every device,
+                // which is the cost this feature is supposed to make optional.
+                if (offline.isArmed(accountId)) {
+                    runCatching { offline.putView(accountId, period, offlineJson.encodeToString(v)) }
+                }
                 flushOutbox()   // a working network is the only cue the queue ever gets
                 // Budget coverage rides alongside for the Categories view (best-effort — don't fail the tab on it).
                 runCatching { api.budgets(accountId, period) }.getOrNull()?.let { b ->
@@ -1083,12 +1153,25 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 val cached = if (isOffline(e)) offline.getView(accountId, period) else null
                 val view = cached?.let { c -> runCatching { offlineJson.decodeFromString<SpendingViewDto>(c.payload) }.getOrNull() }
                 if (view != null) {
+                    // Categories and funds have to land BEFORE the pending rows are built, because that is what
+                    // gives a queued row its category name instead of a dash.
                     _state.update {
                         it.copy(offlineAsOf = cached.at, spending = it.spending.copy(
                             loading = false, loaded = true, error = null,
                             currency = view.currency, spent = view.overview.spent, expenses = view.expenses,
                             categories = view.categories, funds = view.funds, tags = view.tags,
                         ))
+                    }
+                    // ★ Then put the unsent rows back on top, newest first, so "3 to send" is not a claim about
+                    // an empty list. They carry their client key as id and vanish on the next successful load,
+                    // which replaces the list with the server's copy wholesale.
+                    val queued = offline.pending()
+                    val mine = pendingRows(accountId, queued)
+                    if (mine.isNotEmpty()) {
+                        _state.update {
+                            it.copy(pendingExpenses = queued.count { q -> q.accountId == accountId },
+                                spending = it.spending.copy(expenses = mine.reversed() + it.spending.expenses))
+                        }
                     }
                 } else {
                     _state.update { it.copy(spending = it.spending.copy(loading = false, error = e.message ?: "Couldn't load spending.")) }
@@ -1436,16 +1519,22 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 // to the outbox and the sheet closes as if it had saved — because from the user's side it has:
                 // the row is theirs, it is dated, and it will land. ⚠️ saveError stays NULL on this path; an
                 // error message here would tell somebody standing in a shop abroad that their expense was lost.
-                if (isOffline(e)) {
+                // ⚠️ Queueing requires Trip Mode to be ARMED. Without it there is no promise to keep: an app that
+                // silently held a write it never told the user it was holding would be worse than one that says
+                // it failed. Unarmed, this falls through to the ordinary error below.
+                if (isOffline(e) && offline.isArmed(accountId)) {
                     val unsent = drafts.drop(added.size)
                     for (d in unsent) offline.enqueue(QueuedExpense(accountId, d, System.currentTimeMillis()))
+                    // ★ Show them. The row is the user's and they just typed it; a count with no rows under it
+                    // is exactly the anxiety this mode exists to remove.
+                    val mine = pendingRows(accountId, offline.pending())
                     _state.update {
                         it.copy(
                             overview = lastOverview ?: it.overview,
-                            pendingExpenses = it.pendingExpenses + unsent.size,
+                            pendingExpenses = offline.pending().count { q -> q.accountId == accountId },
                             spending = it.spending.copy(
                                 saving = false, saveError = null,
-                                expenses = if (added.isEmpty()) it.spending.expenses else added.reversed() + it.spending.expenses,
+                                expenses = mine.reversed() + added.reversed() + it.spending.expenses,
                                 spent = lastOverview?.spent ?: it.spending.spent,
                             ),
                         )

@@ -48,6 +48,29 @@ class OfflineStore(private val context: Context) {
 
     private val outboxKey = stringPreferencesKey("outbox")
 
+    private fun armedKey(accountId: String) = stringPreferencesKey("armed:$accountId")
+
+    /**
+     * ★ Trip Mode is **opt-in**, and this flag is the whole reason it can be. Nothing is written to the device
+     * until the user turns it on for an account — so a person who never leaves home never has a plaintext copy
+     * of their finances sitting in app storage, and the phase's privacy cost is one they chose to pay.
+     *
+     * ⚠️ Read on the write path as well as the read path. Gating only the *reads* would still leave the mirror
+     * being written for everybody, which is the half that actually matters.
+     */
+    suspend fun setArmed(accountId: String, on: Boolean) {
+        runCatching { context.offlineDataStore.edit { it[armedKey(accountId)] = if (on) "1" else "0" } }
+    }
+
+    suspend fun isArmed(accountId: String): Boolean = runCatching {
+        context.offlineDataStore.data.firstOrNull()?.get(armedKey(accountId)) == "1"
+    }.getOrNull() ?: false
+
+    /** Forget the cached view for one account, leaving the outbox alone — see [clearViews]' note. */
+    suspend fun clearView(accountId: String, period: Int?) {
+        runCatching { context.offlineDataStore.edit { it.remove(viewKey(accountId, period)) } }
+    }
+
     /** Keep what the server just said, so the next start has something true to show. */
     suspend fun putView(accountId: String, period: Int?, payload: String) {
         runCatching {
@@ -99,7 +122,13 @@ class OfflineStore(private val context: Context) {
         }
     }
 
-    /** Everything this device is holding. Called on sign-out — see the class note on data at rest. */
+    /**
+     * Everything this device is holding. Called on sign-out — see the class note on data at rest.
+     *
+     * ⚠️ This takes the OUTBOX with it, which is deliberate but is the one destructive thing in this class: rows
+     * the user typed and has not sent are discarded along with the account they belong to. The pending count is
+     * on screen so that choice is visible rather than silent.
+     */
     suspend fun clear() {
         runCatching { context.offlineDataStore.edit { it.clear() } }
     }

@@ -1102,6 +1102,9 @@ public sealed class Localizer(IJSRuntime js)
         // than no figure, because it is spendable.
         ["Offline — showing what this device last knew"] = "Офлайн — показваме последното, което устройството знае",
         ["as of {0}"] = "към {0}",
+        ["Trip Mode"] = "Режим Пътуване",
+        ["Keeps this account on this device so it opens with no connection. Turning it off forgets the copy."] =
+            "Запазва тази сметка на устройството, за да се отваря без връзка. Изключването забравя копието.",
         // R2.5's auto-hide trigger — the web's counterpart to the phone's flip-face-down gesture.
         ["Hide figures when I switch away"] = "Скрий числата, когато превключа другаде",
         ["Masks the screen when this tab is hidden or the computer is locked. Showing them again is always yours to do."] =

@@ -102,6 +102,7 @@ fun ProfileSheet(
     onCancelTwoFactorSetup: () -> Unit,
     onDismissRecoveryCodes: () -> Unit,
     onRestoreAccount: (String) -> Unit,
+    onSetTripMode: (Boolean) -> Unit,
     onSignOut: () -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -250,6 +251,27 @@ fun ProfileSheet(
                 Spacer(Modifier.width(12.dp))
                 Switch(checked = Privacy.flipToHide, onCheckedChange = { Privacy.flipToHide = it })
             }
+        }
+
+        // ★ R4.5 Trip Mode. It sits with the privacy switches rather than with the trips, because what the user
+        // is agreeing to is not "a travel feature" — it is "keep a copy of this account on this phone". That is
+        // a privacy decision and belongs where the other one is.
+        // ⚠️ OFF by default and per account. Nothing is written to the device until it is on, which is what makes
+        // the plaintext-at-rest cost a choice rather than something everybody pays unasked.
+        Row(Modifier.fillMaxWidth().padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Trip Mode", color = MaterialTheme.colorScheme.onSurface)
+                Text(
+                    if (state.pendingExpenses > 0)
+                        "Keeps this account on your phone so it works with no signal. ${state.pendingExpenses} expense(s) waiting to send."
+                    else
+                        "Keeps this account on your phone so it works with no signal, and holds expenses you add until you're back online.",
+                    color = tandem.muted, fontSize = 12.sp,
+                )
+                state.tripModeError?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 12.sp) }
+            }
+            Spacer(Modifier.width(12.dp))
+            Switch(checked = state.tripModeArmed, onCheckedChange = onSetTripMode)
         }
 
         // Deleted accounts still inside their grace window. Shown only when there ARE any — an empty section

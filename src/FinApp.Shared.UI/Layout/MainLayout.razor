@@ -683,6 +683,12 @@
                             <Switch @bind-Value="AutoHideFigures">@Loc["Hide figures when I switch away"]</Switch>
                             <span class="pm-hint">@Loc["Masks the screen when this tab is hidden or the computer is locked. Showing them again is always yours to do."]</span>
                         </label>
+                        @* R4.5 — the same choice the phone offers, in the same place as the other privacy switch,
+                           because what is being agreed to is "keep a copy of this account on this device". *@
+                        <label class="pm-privacy-opt">
+                            <Switch @bind-Value="TripMode">@Loc["Trip Mode"]</Switch>
+                            <span class="pm-hint">@Loc["Keeps this account on this device so it opens with no connection. Turning it off forgets the copy."]</span>
+                        </label>
                         @* A real person to reach — the same address the privacy policy names as the GDPR/data contact. *@
                         <p class="pm-hint"><Icon Name="mail" /> @Loc["Questions, or a privacy request?"] <a href="mailto:admin@tandemtab.com">admin@tandemtab.com</a></p>
                     </details>
@@ -824,6 +830,23 @@
     private async Task PushAutoHideAsync(bool on)
     {
         try { await JS.InvokeVoidAsync("finappSetAutoHide", on); } catch { /* host without the helper */ }
+    }
+
+    // R4.5 Trip Mode, same shape as AutoHideFigures above: the flag JS reads is the one that matters, this is
+    // the mirror the switch binds to. ⚠️ Turning it OFF also drops what was already stored — see finappSetTripMode.
+    private bool _tripMode;
+    private bool TripMode
+    {
+        get => _tripMode;
+        set { _tripMode = value; _ = PushTripModeAsync(value); }
+    }
+
+    private async Task PushTripModeAsync(bool on)
+    {
+        try { await JS.InvokeVoidAsync("finappSetTripMode", on); } catch { /* host without the helper */ }
+        // ⚠️ Fill it immediately. Arming and then closing the laptop with an empty cache would leave the setting
+        // claiming the account is on this device when it is not — the one outcome worse than not having offered.
+        if (on) { try { await State.FillOfflineCacheAsync(); } catch { /* best effort */ } }
     }
     private bool _dark;
     private string? _avatarError;
@@ -1290,6 +1313,7 @@
         try { _landingTab = await JS.InvokeAsync<string>("finappGetLandingTab") is { Length: > 0 } lt ? lt : "Overview"; }
         catch { /* host without the helper */ }
         try { _autoHide = await JS.InvokeAsync<bool>("finappGetAutoHide"); } catch { /* host without the helper */ }
+        try { _tripMode = await JS.InvokeAsync<bool>("finappGetTripMode"); } catch { /* host without the helper */ }
         await LoadFeedbackDoneAsync();
         await LoadLoginConsentAsync();
     }

@@ -45,6 +45,9 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     private async Task CacheSnapshotAsync(Guid accountId, AccountSnapshot snapshot)
     {
         if (string.IsNullOrEmpty(snapshot.Payload)) return;
+        // ⚠️ Opt-in. Writing the mirror unconditionally would put a plaintext copy of every user's finances into
+        // browser storage without anyone being asked — which is the cost Trip Mode exists to make optional.
+        try { if (!await js.InvokeAsync<bool>("finappGetTripMode")) return; } catch { return; }
         try { await js.InvokeVoidAsync("finappCache.put", accountId, snapshot.Version, snapshot.Payload); }
         catch { /* no IndexedDB, or a host without the helper — online still works, which is the point */ }
     }
@@ -391,6 +394,18 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
         _summaries = await api.GetAccountsAsync();
         var idx = _summaries.FindIndex(a => a.Id == accountId);
         _accountIndex = idx >= 0 ? idx : Math.Max(0, Math.Min(_accountIndex, _summaries.Count - 1));
+    }
+
+    /// <summary>
+    /// ★ R4.5: fill the on-device copy now, because the user just asked for it.
+    /// <para>⚠️ Arming Trip Mode and <b>then</b> flying with an empty cache is the worst possible outcome of this
+    /// feature — the setting says the account is on the device and it is not. Arming happens online by
+    /// definition, so there is no reason to wait for the next account open. Android does the same thing.</para>
+    /// </summary>
+    public async Task FillOfflineCacheAsync()
+    {
+        if (_account is null) return;
+        await LoadSelectedAccountAsync(forceRefresh: true);
     }
 
     private async Task LoadSelectedAccountAsync(bool forceRefresh = false)

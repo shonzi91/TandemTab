@@ -237,7 +237,7 @@ against a moving feature set is work that gets redone. R4 lands before R7 for th
 | **R2** | Android catch-up + theme verification **+ an APK pipeline** | Android at web parity; light/dark swept on **both** surfaces; **and CI can produce a release APK that runs on a real device** | L · ✅ **done 2026-08-20 (S111)** — all four exit criteria met. **Now 115/122 (94%)** after the merge session closed both stated lags; every one of the 7 remaining routes is *decided*: 4 deferred (bank), 3 non-gaps, **0 stated lags** |
 | **R2.5** | **The surface sweep** — the differences a route scanner cannot see | Every remaining web⇄phone difference is either built or **written down as a decision** | M · ✅ **DONE 2026-09-01.** All four rows: the always-visible milestones line and the auto-mask trigger (driven on the running app), the phone's **trip badge** (`GET /active-trips` — the last uncalled route that was a real gap), and **T0's tail**. ✅ **Driven on the emulator** — the badge renders (`TripCheck ✈ Rome`), and the APK now reaches people: `android-v0.1.0` is tagged, built and published |
 | **R3** | AI assistant — **narrate and navigate** | ✅ **LIVE 2026-09-01** on `finapp-00355-2v5`, verified in the served WASM — and gated to two addresses by `Assistant__AllowedEmails`. **It drew R1's freeze line the same day.** ⬜ Open: 15 of 21 escalated questions returned `unknown`, and the rule tables are the fix | M |
-| **R4.5** | **Trip Mode** (bounded offline) — ⭐ **moved AHEAD of R4/R5 by owner's decision, 2026-09-01** | The phone opens, shows cached figures with their staleness, takes an expense with no signal, and posts **exactly one** row on reconnect | M per platform · 🔨 **T1 BUILT on both surfaces, 2026-09-01** — the web caches the snapshot read-only; the phone caches the spending view and carries a durable outbox, and **the exit criterion above was driven on the emulator**. ⬜ Left: the queued row is not shown in the local list, and arming/entitlement is not built. It is a new feature, so it **moved the freeze** — see the box under R1 |
+| **R4.5** | **Trip Mode** (bounded offline) — ⭐ **moved AHEAD of R4/R5 by owner's decision, 2026-09-01** | The phone opens, shows cached figures with their staleness, takes an expense with no signal, and posts **exactly one** row on reconnect | M per platform · ✅ **T1 DONE on both surfaces, 2026-09-01** — opt-in arming (entitlement checked at arm time), the web caches the snapshot read-only, the phone caches the spending view and carries a durable outbox showing its queued rows. **The exit criterion was driven on the emulator: 0 rows offline → exactly 1 on reconnect.** ⬜ Left: Trip Mode never auto-disarms when a journey ends. It is a new feature, so it **moved the freeze** — see the box under R1 |
 | **R4.6** | **The command palette** — ⭐ **new phase, 2026-09-01 (owner)** | One place to type a command and have the app do it. Navigation first (the ~20 `open.*`/`tab.*` targets already exist), then **add-expense** as the first write | M · ⬜ **after R4.5**. The freeze's **second** named exception — see the box under R1 |
 | **R4** | Railway migration (hosting **and** DB) | Serving from Railway, Neon + Cloud Run retired | M–L · now **after R4.5 and R4.6** |
 | **R5** | Landing, terms, privacy + Pro-split final verification **+ billing go-live** | The page describes the real product; the paywall is settled **and can actually take money** | M–L |
@@ -929,10 +929,38 @@ S122) the last snapshot in IndexedDB, **read-only** offline.
 > key and gets the original's result. "Exactly one row" is a property of the request, not of this loop's
 > bookkeeping. ⚠️ And rows are removed **by key, never by index** — the queue can grow while a flush is running.
 >
-> ⚠️ **Known gap, deliberately not fixed here:** a queued expense does **not** appear in the local expense list
-> while offline — only the strip's count says it exists. Showing it needs the local row to be reconciled against
-> the real one by `clientId` when it lands, or the user sees it twice. That is the next slice, and it matters:
-> "I typed it and it is not in my list" is exactly the anxiety this phase exists to remove.
+> ✅ **CLOSED the same day: the queued row is now shown.** *"Food · Bank · €88.10"* renders under TODAY with the
+> strip reading "1 to send". It is rebuilt from the outbox rather than remembered in state, so it survives a
+> restart — otherwise somebody who queued three and reopened offline would see "3 to send" over an empty list.
+> ★ Each carries its **client key as the row id**, which is also what makes it vanish cleanly: the next
+> successful load replaces the list with the server's copy wholesale, so there is nothing to reconcile.
+> ⚠️ The period total does **not** count queued rows — arguably right (it has not left the account yet) but it
+> does look odd beside a row that is on screen. Left as-is; worth a decision rather than a silent fix.
+
+### ✅✅ ARMING — Trip Mode is opt-in, on both surfaces (2026-09-01)
+
+This is the half that makes the phase's privacy cost defensible, and it was built and **verified last**:
+
+- ⭐ **Nothing is written to a device until the user turns Trip Mode on for that account.** Verified on the
+  emulator from a clean install: signing in and loading Spending with the switch OFF left **no
+  `offline.preferences_pb` at all** — only `auth`. Arming it produced the file **within seconds** (1378 B).
+  The web behaves identically: **no `finapp-cache` database existed** until the switch went on, at which point
+  it appeared with one row.
+- ⭐⭐ **Arming fills the cache immediately**, on both surfaces. ⚠️ **This was a real gap found by running the
+  web:** the flag went on and nothing was stored until the next account open, so arming and then closing the
+  laptop would leave the setting claiming the account was on the device when it was not — the one outcome worse
+  than never offering it. `FillOfflineCacheAsync` (web) and `loadSpending(force = true)` (Android) close it.
+  Arming happens online by definition, so there is no reason to wait.
+- ⭐ **The entitlement is checked here and nowhere else** — `PlanFeatures.TRIPS` at arm time, exactly as decided
+  before the build. A lapse mid-journey therefore cannot 402 a week of already-captured expenses.
+- ⚠️ **Disarming forgets the stored copy** but **keeps the outbox**: unsent rows are the user's money, not a
+  setting, and they still flush when a network appears.
+- ⚠️ The toggle sits with the **privacy switches**, not with the trips, on both surfaces — what is being agreed
+  to is *"keep a copy of this account on this device"*, which is a privacy decision.
+
+⬜ **What R4.5 still does not have:** the mode is armed per account but never *disarms itself* — it is not tied
+to a trip's dates, so it stays on until switched off. Auto-disarm when a journey finishes is the obvious
+refinement and is deliberately not guessed at here.
 > ⚠️ **Sign-out clears the mirror *and any unsent rows*** — the honest trade for data at rest, and the reason the
 > outbox count is on screen: signing out with rows waiting should be a visible choice, not a silent loss.
 

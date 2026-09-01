@@ -263,6 +263,18 @@
             tx.onerror = () => reject(tx.error);
             tx.onabort = () => reject(tx.error);
         }));
+        // ★ Trip Mode is opt-in on the web too, and for the same reason it is on the phone: nothing is written
+        // to the device until the user asks for it, so somebody who never travels never has a plaintext copy of
+        // their finances in browser storage. ⚠️ localStorage rather than the IndexedDB row, so the answer is
+        // available synchronously before the first cache write is attempted.
+        let finappArmed = (() => { try { return localStorage.getItem('finapp-tripmode') === '1'; } catch (e) { return false; } })();
+        window.finappGetTripMode = () => finappArmed;
+        window.finappSetTripMode = (on) => {
+            finappArmed = !!on;
+            try { localStorage.setItem('finapp-tripmode', on ? '1' : '0'); } catch (e) { }
+            // Disarming forgets what was already stored — leaving it would keep the copy the user just declined.
+            if (!on) { try { window.finappCache.clear(); } catch (e) { } }
+        };
         window.finappCache = {
             // ⚠️ Every one of these swallows its failure and answers "no cache". A device that cannot store the
             // snapshot must still run the app online — a caching layer that can break the app it is meant to

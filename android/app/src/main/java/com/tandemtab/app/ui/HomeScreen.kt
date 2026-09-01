@@ -170,6 +170,7 @@ fun HomeScreen(
     onDismissOnboarding: () -> Unit,
     onLoadMilestones: () -> Unit,
     onLoadActiveTrips: () -> Unit,
+    onSetTripMode: (Boolean) -> Unit,
     onLoadAchievements: (Boolean) -> Unit,
     onBeginSettle: (ExpenseDto) -> Unit,
     onClearSettling: () -> Unit,
@@ -696,6 +697,7 @@ fun HomeScreen(
                 // Closes the sheet on the way: the restored account is re-selectable from the account switcher,
                 // and leaving the profile open over a list that just lost its only row reads like nothing happened.
                 onRestoreAccount = { showProfile = false; onRestoreAccount(it) },
+                onSetTripMode = onSetTripMode,
                 onSignOut = { showProfile = false; onSignOut() },
                 onDismiss = { showProfile = false },
             )

@@ -124,6 +124,7 @@ private fun App(vm: AppViewModel, onGoogle: () -> Unit) {
             onCancelTwoFactorSetup = vm::cancelTwoFactorSetup,
             onDismissRecoveryCodes = vm::dismissRecoveryCodes,
             onRestoreAccount = vm::restoreAccount,
+            onSetTripMode = vm::setTripMode,
             onRenameAccount = vm::renameAccount,
             onSetSavingsTarget = vm::setSavingsTarget,
             onLeaveAccount = vm::leaveAccount,
