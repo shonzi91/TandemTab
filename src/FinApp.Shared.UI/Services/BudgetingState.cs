@@ -654,9 +654,16 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     /// the sum of the fund rows — so the "Closed with" headline and the Wallets donut agree with them, where the plain
     /// <see cref="ClosingBalance"/> understated by synced funds' carry-in. Open periods use
     /// <see cref="DisplayClosingBalance"/> (live bank-adjust) instead.</summary>
-    public Money ClosedFundTotal =>
-        Money(RootFunds.Sum(f =>
-            (FundIsSynced(f.Id) ? (SyncedFundClosingBalance(f.Id) ?? FundBalance(f.Id)) : FundBalance(f.Id)).Amount));
+    public Money ClosedFundTotal => Money(RootFunds.Sum(f => DisplayFundBalance(f.Id).Amount));
+
+    /// <summary>One fund's balance the way the Wallets row shows it: a synced fund's captured closing balance
+    /// where there is one, its ledger balance otherwise.
+    /// <para>★ Extracted rather than copied. This rule used to live inline inside <see cref="ClosedFundTotal"/>,
+    /// and the assistant needed it to answer "what is in my {wallet}" — a second inline copy is how the answer in
+    /// the sheet starts disagreeing with the row on the screen behind it, which is the same trap
+    /// <c>SpentDuring</c> carries a warning about.</para></summary>
+    public Money DisplayFundBalance(Guid fundId) =>
+        FundIsSynced(fundId) ? (SyncedFundClosingBalance(fundId) ?? FundBalance(fundId)) : FundBalance(fundId);
 
     /// <summary>The account total (and free-to-allocate) for display, with the synced fund's ledger position swapped
     /// for its <b>live</b> bank balance so the header reflects real external money (incl. transactions not yet

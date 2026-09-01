@@ -50,18 +50,8 @@ public static partial class AssistantLocalMatcher
         // An entity in the question beats any generic answer — "how much have I spent on {1}" is a question about
         // {1}, and answering it with the period's whole total would be answering a different question. The one
         // exception is an explainer: "how do {1} goals work" is about the feature, not that row.
-        if (kind is { } slot && kls != Class.Explain)
-        {
-            var target = slot.Kind switch
-            {
-                AssistantSlotKinds.Goal => "open.goal",
-                AssistantSlotKinds.Category => "open.category",
-                AssistantSlotKinds.Wallet => "open.wallet",
-                AssistantSlotKinds.Trip => "open.trip",
-                _ => null,
-            };
-            if (target is not null) return Checked(new AssistantReplyDto(AssistantIntents.Navigate, target, slot.Index));
-        }
+        if (kind is { } slot && kls != Class.Explain && EntityTarget(slot.Kind) is { } entity)
+            return Checked(new AssistantReplyDto(AssistantIntents.Navigate, entity, slot.Index));
 
         var rules = kls switch
         {
@@ -74,8 +64,53 @@ public static partial class AssistantLocalMatcher
             if (phrases.Any(p => q.Contains(p, StringComparison.Ordinal)))
                 return Checked(new AssistantReplyDto(IntentFor(kls), target, null));
 
+        // ⭐⭐ The entity rule, a second time, for the Explain class only — and the ORDER is what makes it correct.
+        // The guard above skips an entity when the question reads as documentation, because "how do {1} goals
+        // work" is about the feature and not that row. But it was skipping the entity for EVERY question with an
+        // explain-ish opener, and most of those are not documentation questions at all: "what is in my {wallet}",
+        // "why is my {goal} behind", "what does my {goal} cost" all named a thing the app can open, and all
+        // reached the model instead.
+        // Running it here rather than up there is the whole fix: a real explainer question matches the table above
+        // and never gets this far ("how do {1} goals work" contains "goal" → explain.savings), so the intent is
+        // preserved. What arrives here is a question that started with an explain word, matched no explainer, and
+        // names an entity — which is an entity question wearing a hat.
+        // ⚠️⚠️ Except when the question carries a documentation VERB, and that exception is not a nicety — it is
+        // An_explainer_is_not_hijacked_by_a_thing_that_happens_to_be_named, which this fallback failed on the
+        // first attempt. A goal named "budgets" turns "how do budgets work" into "how do {1} work": the word that
+        // said WHICH explainer was wanted has been masked away, and the honest answer is to decline and let the
+        // model see it. Opening the row is the one thing that must never happen — the user asked how a feature
+        // works and would be shown a savings drawer.
+        // So the cut is: is the entity the SUBJECT BEING EXPLAINED ("how do {1} work") or the OBJECT of an
+        // ordinary question ("what is in my {1}")? A documentation verb is what tells them apart.
+        // ⚠️ This can only ADD matches. Everything reaching this line was returning null and costing a model call.
+        if (kind is { } late && kls == Class.Explain
+            && !Documentation.Any(p => q.Contains(p, StringComparison.Ordinal))
+            && EntityTarget(late.Kind) is { } lateTarget)
+            return Checked(new AssistantReplyDto(AssistantIntents.Navigate, lateTarget, late.Index));
+
         return null;
     }
+
+    /// <summary>
+    /// Words that make a question documentation about a thing rather than a question about it — the difference
+    /// between "how does my {1} <b>work</b>" and "what is in my {1}".
+    /// <para>⚠️ Deliberately tiny, and only consulted by Match's late entity fallback. It is not a class test: a
+    /// question with one of these still reaches the explainer table normally. All it does is stop an entity being
+    /// opened when the entity is the subject the question wanted explained — and masking may already have removed
+    /// the word that said which explainer that was, in which case declining is the right answer.</para>
+    /// </summary>
+    private static readonly string[] Documentation =
+        ["work", "mean", "explain", "работи", "означава", "обясни"];
+
+    /// <summary>The screen that opens one named thing, or null for a slot kind with no screen of its own.</summary>
+    private static string? EntityTarget(string slotKind) => slotKind switch
+    {
+        AssistantSlotKinds.Goal => "open.goal",
+        AssistantSlotKinds.Category => "open.category",
+        AssistantSlotKinds.Wallet => "open.wallet",
+        AssistantSlotKinds.Trip => "open.trip",
+        _ => null,
+    };
 
     /// <summary>
     /// The same validation the server applies to a model's answer, applied to our own. ★ A key here that the
@@ -131,12 +166,12 @@ public static partial class AssistantLocalMatcher
     [
         "how does", "how do", "what is", "what are", "what does", "what happens", "why",
         "explain", "means", "mean by", "как работи", "какво е", "какво озна", "защо",
-        // ⚠️⚠️ DO NOT "fix" the missing contractions by adding bare "what's"/"whats" here. It was tried, and the
-        // probe caught what a reading would not: an entity question is skipped when the class is Explain (see
-        // Match), so "what's in my {wallet}" stopped resolving to open.wallet and started costing a model call.
-        // One phrasing gained, one lost. The uncontracted "what is in my {wallet}" has the SAME defect today —
-        // which is the real bug, and it is in the entity/Explain interaction, not in this list.
-        // See tools/FinApp.AssistantProbe: `dotnet run --project tools/FinApp.AssistantProbe -- --misses`.
+        // ⚠️ The contractions are absent here on purpose and it is now SAFE to add them — but read Match's late
+        // entity fallback first. Adding bare "what's"/"whats" once broke "what's in my {wallet}", because an
+        // entity used to be discarded outright for the Explain class; the fallback at the end of Match is what
+        // fixed that, and it is what makes this list's contents a smaller decision than it was.
+        // Verify any change with `dotnet run --project tools/FinApp.AssistantProbe -- --misses` — the log cannot
+        // see this, which is why the tool exists.
     ];
 
     /// <summary>Words that make a question about <b>change</b> rather than a current figure. ⚠️ Kept narrow on

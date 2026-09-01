@@ -99,7 +99,35 @@ break — it bypasses the matcher and carries its own answer — but the app is 
 that behaves differently when typed. **The cheapest fix is one word of copy: "What's my safe to spend?"**, which
 makes the chip agree with the tested design instead of relitigating it.
 
-#### ⛔⛔ Defect 2 — an Explain-class opener silently eats the entity
+#### ✅ Defect 2 — FIXED, and the assistant answers with figures now
+
+Both landed together because they are the same code path. **Driven on a running app with seeded figures**, not
+asserted:
+
+| Typed | Answered |
+|---|---|
+| `how is my Car fund doing` | **Car fund: €820.00 of €2,000.00 set aside — 41%.** + *Take me there* |
+| `what is in my Bank` | **Bank holds €2,089.55.** (€2,400 in − €310.45 out) |
+| `why is Groceries so high` | **Groceries: €310.45 spent this period, of a €400.00 budget.** |
+
+★ **No `POST /assistant/ask` in the network log for any of them** — every one was answered on the device. The
+middle two are Defect-2 phrasings that cost a model call before this pass.
+
+⭐ **The figure did not need new catalogue keys.** The entity targets already carry the kind, the id and the name,
+so `EntityFigure` sits on the navigation path and the client decides how much it can say about the screen it is
+offering. Three new `report.*` keys would have meant three more things for the model to choose wrongly between and
+a longer prompt on every call, to say what the client already knows. **The button stays** — the number is rarely
+the whole of what someone wanted next.
+
+⚠️ `DisplayFundBalance` was **extracted, not copied**. The synced-fund rule lived inline in `ClosedFundTotal`; a
+second inline copy is how the sheet starts disagreeing with the row on the screen behind it — the trap
+`SpentDuring` already carries a warning about.
+
+⚠️ **The reply is untrusted and `SlotFor` does not check that the slot's kind suits the target.** Naming the wrong
+thing was survivable; looking a category's id up in the savings engine is not. `EntityFigure` checks the kind and
+returns null on a mismatch, which falls back to the old sentence.
+
+#### ⛔⛔ Defect 2, as found — an Explain-class opener silently eats the entity
 
 **This is the class-level one, and it was found by trying to fix Defect 1 the obvious way.** Adding bare
 `"what's"` to the Explain list fixed the chip sentence and **broke `what's in my {wallet}`** — because `Match`
@@ -116,15 +144,23 @@ where the entity rule still runs. The uncontracted form has the defect already:
 | `why is my Car fund behind` | ❌ model |
 | `what does my Mortgage cost` | ❌ model |
 
-The guard exists for a good reason — *"how do {1} goals work"* is about the feature, not the row — but it is far
-too blunt: it drops the entity for **every** Explain-class question. ⭐ **The shape of the fix:** try the explainer
-table first for Explain-class questions and fall back to the entity rule when nothing matches, instead of
-discarding the entity up front. That only adds matches where there are none today. ⚠️ **Not applied** — it changes
-a load-bearing ordering in a file that warns about ordering three times, and the first "obviously safe" change
-this session was a regression. It wants its own pass with the tests in front of you.
+The guard exists for a good reason — *"how do {1} goals work"* is about the feature, not the row — but it was far
+too blunt: it dropped the entity for **every** Explain-class question.
 
-⭐ **The reverted change is documented where it would be re-attempted**, as a comment in the Explain list, so the
-next person to notice the missing contractions finds out why they are missing before they add them.
+✅ **Fixed by moving it, not by loosening it.** The entity rule now runs a *second* time, after the explainer table
+has been tried and matched nothing. A real explainer question never reaches it (*"how do {1} goals work"* contains
+"goal" → `explain.savings`), so the intent is preserved; what arrives is a question that started with an explain
+word, matched no explainer, and names an entity.
+
+⚠️⚠️ **And there is a second condition, which the test suite forced.** The first version had no `Documentation`
+check and failed `An_explainer_is_not_hijacked_by_a_thing_that_happens_to_be_named`: a goal called *"budgets"*
+turns *"how do budgets work"* into *"how do {1} work"* — masking has removed the word that said **which**
+explainer was wanted, so declining and paying for the model is correct, and opening the savings drawer is the one
+outcome that must never happen. The cut is whether the entity is the **subject being explained** (`work`, `mean`,
+`explain`) or the **object of an ordinary question**. ★ **That test was a better argument than my reasoning was** —
+it is the second time this session the existing guard rails caught a change that read as obviously safe.
+
+⭐ **10 new matcher tests** pin both halves, including the note that `what's in my {1}` used to work *by accident*.
 
 ### The ten commits that were never written up (31 Aug – 1 Sep)
 

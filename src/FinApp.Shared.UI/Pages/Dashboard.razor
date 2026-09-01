@@ -13041,8 +13041,13 @@ else
                 var slot = Resolver.SlotFor(reply, masked);
                 var where = DestinationName(target, slot);
                 if (where is null) { Unknown(); return; }
+                // ⭐ Answer with the figure when there is one, and keep the button either way. Being told "Car fund
+                // is where you'll find that" when you asked how the Car fund is doing is a signpost, not an answer
+                // — the app already knows the number and was making the person go and look at it. The button stays
+                // because the number is rarely the whole of what they wanted next.
                 _aiTurns.Add(new AssistantTurn(true,
-                    string.Format(Loc["{0} is where you'll find that."], where), target, slot, Loc["Take me there"]));
+                    EntityFigure(target, slot) ?? string.Format(Loc["{0} is where you'll find that."], where),
+                    target, slot, Loc["Take me there"]));
                 return;
             }
 
@@ -13073,6 +13078,63 @@ else
         if (turn.GoTarget is null) return;
         _modal = Modal.None;
         await NavigateAssistant(turn.GoTarget, turn.GoSlot);
+    }
+
+    /// <summary>
+    /// The figure for a named thing, or null when there isn't a sensible one — in which case the caller falls back
+    /// to naming the destination.
+    /// <para>★ <b>Why this sits on the navigation path rather than being new report keys.</b> The entity targets
+    /// already carry everything an answer needs: the kind, the id and the name. Adding <c>report.goal</c> /
+    /// <c>report.category</c> / <c>report.wallet</c> would mean three more keys for the model to choose wrongly
+    /// between, a longer prompt on every call, and a second way to say the same thing — for an answer the client
+    /// can simply give. The model still picks the screen; the client decides how much it can say about it.</para>
+    /// <para>⚠️ Every figure here comes from the engine and is printed through <see cref="Fmt"/>, which is what
+    /// makes these obey privacy mode without knowing it exists. The <em>name</em> is safe to print because it
+    /// never left the device — it was masked out before the question was sent.</para>
+    /// <para>⚠️ A journey deliberately has no figure. Its screen leads with a hero the sheet would have to
+    /// paraphrase, and a worse restatement of something one tap away is not an improvement.</para>
+    /// </summary>
+    private string? EntityFigure(string target, AssistantSlot? slot)
+    {
+        if (slot is null || !State.IsReady) return null;
+
+        // ⚠️⚠️ The reply is UNTRUSTED and SlotFor does not check that the slot's kind suits the target — a model
+        // may answer "open.goal" pointing at a slot that is a category. Naming the wrong thing was survivable
+        // (a sentence and a button that went somewhere odd); looking its id up in the savings engine is not.
+        // Answering nothing here falls back to the destination sentence, which is the old behaviour.
+        var expected = AssistantCatalogue.SlotKindFor(target);
+        if (expected is null || slot.Kind != expected) return null;
+
+        switch (target)
+        {
+            case "open.goal":
+            {
+                var p = State.SavingGoal(slot.Id);
+                return p.Goal is { } goal
+                    ? string.Format(Loc["{0}: {1} of {2} set aside — {3}%."],
+                        slot.Name, Fmt(p.Accumulated), Fmt(goal), p.Percent ?? 0)
+                    : string.Format(Loc["{0}: {1} set aside."], slot.Name, Fmt(p.Accumulated));
+            }
+
+            case "open.category":
+            {
+                var spent = State.SpentInCategory(slot.Id);
+                return State.BudgetFor(slot.Id) is { } budget
+                    ? string.Format(Loc["{0}: {1} spent this period, of a {2} budget."],
+                        slot.Name, Fmt(spent), Fmt(budget.Allocated))
+                    : string.Format(Loc["{0}: {1} spent this period. No budget is set for it."],
+                        slot.Name, Fmt(spent));
+            }
+
+            // ⚠️ DisplayFundBalance, not FundBalance — a synced fund's row on the Wallets tab shows its captured
+            // closing balance, and an assistant that quoted the raw ledger figure would contradict the screen the
+            // button goes to.
+            case "open.wallet":
+                return string.Format(Loc["{0} holds {1}."], slot.Name, Fmt(State.DisplayFundBalance(slot.Id)));
+
+            default:
+                return null;
+        }
     }
 
     /// <summary>What to call a destination in a sentence. An entity target uses the user's own name for the thing —

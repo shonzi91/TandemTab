@@ -175,6 +175,55 @@ public class AssistantLocalMatcherTests
         Assert.True(reply is null || reply.Intent != AssistantIntents.Navigate);
     }
 
+    [Theory]
+    [InlineData("what is in my {1}", AssistantSlotKinds.Wallet, "open.wallet")]
+    [InlineData("what is left in my {1}", AssistantSlotKinds.Goal, "open.goal")]
+    [InlineData("why is my {1} behind", AssistantSlotKinds.Goal, "open.goal")]
+    [InlineData("what does my {1} cost", AssistantSlotKinds.Goal, "open.goal")]
+    [InlineData("why is {1} so high", AssistantSlotKinds.Category, "open.category")]
+    public void An_explain_word_does_not_swallow_the_thing_the_question_named(
+        string question, string kind, string expected)
+    {
+        // ⚠️ These all reached the MODEL before the late entity fallback existed. The class list decides which
+        // rule table runs, and an explain-ish opener ("what is", "why") sent them to the explainers — which have
+        // nothing to say about a named row — after the entity had already been discarded up front.
+        // ⚠️ "what's in my {1}" worked the whole time, purely by accident: the contraction is missing from the
+        // Explain list, so it fell to Navigate where the entity rule still ran. Adding the contraction without
+        // this fallback broke it, which is how the defect was found.
+        var reply = Match(question, kind);
+
+        Assert.NotNull(reply);
+        Assert.Equal(expected, reply!.Target);
+        Assert.Equal(1, reply.Slot);
+    }
+
+    [Theory]
+    [InlineData("how do {1} work")]
+    [InlineData("how does my {1} work")]
+    [InlineData("explain how my {1} works")]
+    [InlineData("what does {1} mean")]
+    public void A_documentation_verb_still_declines_rather_than_opening_the_row(string question)
+    {
+        // The other half of the fallback, and the reason it is not simply "entity wins". Masking has removed the
+        // word that said WHICH explainer was wanted — a goal named "budgets" makes "how do budgets work" into
+        // "how do {1} work" — so declining and paying for the model is correct. Opening the row would answer a
+        // question about a feature by showing a savings drawer.
+        var reply = Match(question, AssistantSlotKinds.Goal);
+
+        Assert.True(reply is null || reply.Intent != AssistantIntents.Navigate);
+    }
+
+    [Fact]
+    public void A_real_explainer_still_beats_the_entity_when_its_word_survived_masking()
+    {
+        // "how do {1} goals work" — the user named a goal AND said "goals", so the explainer table matches before
+        // the fallback is ever reached. This is what keeps the fallback from being a behaviour change.
+        var reply = Match("how do {1} goals work", AssistantSlotKinds.Goal);
+
+        Assert.Equal(AssistantIntents.Explain, reply?.Intent);
+        Assert.Equal("explain.savings", reply?.Target);
+    }
+
     [Fact]
     public void A_slot_index_with_no_kind_behind_it_is_ignored_rather_than_trusted()
     {
