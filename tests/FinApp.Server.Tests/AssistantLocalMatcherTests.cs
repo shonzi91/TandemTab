@@ -27,6 +27,50 @@ public class AssistantLocalMatcherTests
         Assert.Equal(topic, reply.Target);
     }
 
+    /// <summary>
+    /// The rule-table repair of 2026-09-01. Production said 15 of 21 escalated questions came back
+    /// <c>unknown</c>, and the questions themselves are unrecoverable by design — so these came from the probe
+    /// instead, which drives the real matcher over a corpus and prints what falls through.
+    /// <para>★ Every one is the same shape of bug: <b>the table knew the app's own vocabulary and not the
+    /// user's.</b> "set aside" but not "put aside"; "left to spend" but not "I have left"; the noun
+    /// "achievement" but not the verb "achieved". Two are Bulgarian, in a bilingual app, where the rules carried
+    /// one phrase against English's six.</para>
+    /// </summary>
+    [Theory]
+    [InlineData("how much have i put aside", AssistantIntents.Report, "report.saved")]
+    [InlineData("how much money do i have left", AssistantIntents.Report, "report.safeToSpend")]
+    [InlineData("what have i achieved", AssistantIntents.Navigate, "open.achievements")]
+    // ⚠️ Bulgarian. "кога ще" already put this in the Report class; what was missing was any Bulgarian verb for
+    // paying a loan off, so it reached the right table and matched nothing.
+    [InlineData("кога ще изплатя заемите", AssistantIntents.Report, "report.debtFree")]
+    // ⚠️ Explain, not Report, and deliberately so: "какво е" is an explain opener exactly as "what's" is, so this
+    // is the twin of "what is safe to spend" below. Asking it with a possessive still reaches Report first.
+    [InlineData("какво е безопасно да похарча", AssistantIntents.Explain, "explain.safeToSpend")]
+    public void Phrasings_that_used_to_cost_a_model_call_now_resolve_on_the_device(
+        string question, string intent, string target)
+    {
+        var reply = Match(question);
+
+        Assert.NotNull(reply);
+        Assert.Equal(intent, reply!.Intent);
+        Assert.Equal(target, reply.Target);
+    }
+
+    /// <summary>
+    /// ⚠️ The other half of the same repair, and the one that keeps it honest: a matcher that says yes to
+    /// everything is worse than one that declines. These must keep costing a model call — three are the corpus's
+    /// deliberate control group, and the fourth is a <b>write</b>, which belongs to R9 and is not built.
+    /// </summary>
+    [Theory]
+    [InlineData("did the parcel arrive yet")]
+    [InlineData("what's the weather like")]
+    [InlineData("book me a table for two")]
+    [InlineData("add 40 euros for petrol")]
+    public void Questions_the_app_cannot_answer_still_decline(string question)
+    {
+        Assert.Null(Match(question));
+    }
+
     [Theory]
     [InlineData("how does the runway work", "explain.runway")]
     [InlineData("what is safe to spend", "explain.safeToSpend")]

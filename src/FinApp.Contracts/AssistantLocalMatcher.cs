@@ -209,19 +209,34 @@ public static partial class AssistantLocalMatcher
         // contains nothing that would match below it, but "when am I debt free" contains "debt", which would
         // otherwise be swallowed by the savings rule and answered with a set-aside total.
         ("report.runway",      ["last", "run out", "runway", "how long", "стигнат", "докога"]),
+        // ⚠️ The Bulgarian half was one phrase deep ("без дълг" = "debt free") while the English half had six,
+        // so "кога ще изплатя заемите" — the commonest way to ask this in Bulgarian — reached the right CLASS
+        // ("кога ще" is in Report) and then matched no rule. The verbs are what people actually type: изплатя /
+        // изплащам (pay off), погасявам (repay). Stems only, because Bulgarian conjugates.
         ("report.debtFree",    ["debt free", "debt-free", "paid off", "pay off", "payoff", "clear my debt",
-                                "cleared", "без дълг"]),
+                                "cleared", "без дълг", "изплат", "погас"]),
         ("report.bills",       ["bill", "due", "coming out", "recurring", "subscription", "сметк", "падеж"]),
-        ("report.safeToSpend", ["safe to spend", "can i spend", "left to spend", "свободно", "харчене"]),
+        // ⚠️ "have left" earns its place and bare "left" would not: "left to spend" was already here, but "how
+        // much money do I have left" — the same question without the app's own words — matched nothing and paid
+        // for a model call. Bare "left" would swallow "how much is left in my {goal}", which is a savings
+        // question, so the pronoun is doing the work and has to stay in the phrase.
+        ("report.safeToSpend", ["safe to spend", "can i spend", "left to spend", "i have left", "do i have left",
+                                "свободно", "харчене"]),
         ("report.budgets",     ["over budget", "budgets over", "budget", "бюджет"]),
         ("report.topCategory", ["most", "top category", "biggest", "largest", "най"]),
-        ("report.saved",       ["set aside", "saved", "saving", "спест", "задел"]),
+        // "put aside" is the ordinary English for this and the app's own word is "set aside" — the table knew
+        // only its own vocabulary, which is the shape of most of these misses.
+        ("report.saved",       ["set aside", "put aside", "saved", "saving", "спест", "задел"]),
         ("report.spent",       ["spent", "spend", "gone", "разход", "похарч"]),
     ];
 
     private static readonly (string Target, string[] Phrases)[] ExplainRules =
     [
-        ("explain.safeToSpend", ["safe to spend", "свободно за харчене"]),
+        // ⚠️ The Bulgarian entry knew only the app's own label ("свободно за харчене"). "какво е безопасно да
+        // похарча" is how the question is actually asked, and it lands here rather than in Report for exactly the
+        // reason the English twin does: "какво е" is an explain opener, as "what's" is. Asking it WITH a
+        // possessive ("какво е моето свободно…") still reaches Report first, which is the intended split.
+        ("explain.safeToSpend", ["safe to spend", "свободно за харчене", "безопасно да похарч", "безопасно за харч"]),
         ("explain.runway",      ["runway"]),
         ("explain.healthScore", ["health score", "оценка на здравето"]),
         ("explain.debtFree",    ["debt free", "debt-free", "payoff", "pay off", "paid off"]),
@@ -237,7 +252,10 @@ public static partial class AssistantLocalMatcher
     private static readonly (string Target, string[] Phrases)[] NavigateRules =
     [
         ("open.weekRecap",    ["week", "recap", "седмиц"]),
-        ("open.achievements", ["achievement", "medal", "milestone", "trophy", "постижен"]),
+        // ⚠️ "achievement" is a noun and people use the verb: "what have I achieved" matched nothing, because
+        // "achieved" does not contain "achievement". The stem catches achieve / achieved / achievements without
+        // widening it to anything else — the same trap as "put aside" above, one letter further in.
+        ("open.achievements", ["achieve", "medal", "milestone", "trophy", "постижен"]),
         ("open.healthScore",  ["health score", "оценка на здравето"]),
         ("open.runwayMath",   ["runway"]),
         ("open.breakdown",    ["breakdown", "where my money went", "where the money went", "where did my money"]),

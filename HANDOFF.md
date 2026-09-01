@@ -242,7 +242,28 @@ it is the second time this session the existing guard rails caught a change that
    provably contains the code, but nobody has watched a *non-listed* account get `Available: false` live — that
    needs a second real account, and registering one burns a beta seat. Take it the next time a real second
    account exists rather than manufacturing one.
-2. ⬜ **Diagnose the unknowns — and NOT from the log.** ⚠️⚠️ **Correction, written down because it was asserted
+2. ✅ **The rule tables are repaired: the probe's local-answer rate went 80.7% → 89.5%** (46 → 51 of 57; six
+   fall-throughs left, all deliberate). **579 + 622 green**, 9 new tests. Five rules, and ★ **every one was the
+   same bug: the table knew the app's own vocabulary and not the user's.**
+   - `"set aside"` but not **`"put aside"`** — the ordinary English for it.
+   - `"left to spend"` but not **`"i have left"`**. ⚠️ Bare `"left"` was rejected on purpose: it would swallow
+     *"how much is left in my {goal}"*, which is a savings question. The pronoun does the work.
+   - The noun `"achievement"` but not the verb — *"what have I achieved"* matched nothing because `"achieved"`
+     does not contain `"achievement"`. Now the stem `"achieve"`.
+   - ⭐⭐ **Two were Bulgarian, in a bilingual app**, and this is the finding worth carrying: the class lists
+     were bilingual while the *rule tables* were barely so — `report.debtFree` had one Bulgarian phrase against
+     English's six, so *"кога ще изплатя заемите"* reached the right class and matched nothing. Added the verbs
+     people actually type (`изплат`, `погас`), and `explain.safeToSpend` gained *"безопасно да похарч"*.
+     ⚠️ **The owner is Bulgarian.** If the 15 production unknowns skew Bulgarian, this is the likeliest cause,
+     and the rest of the tables should be swept the same way — they were built English-first throughout.
+   - ★ **The control group is pinned by its own test now**: parcel / weather / restaurant / *"add 40 euros for
+     petrol"* must keep declining. A matcher that says yes to everything is worse than one that declines, and a
+     rate that only goes up is not evidence of anything.
+   ⬜ **Two fall-throughs are left deliberately, and both for the same reason:** *"how do I import a statement"*
+   and *"when does it check my bank"* land in classes whose tables have no matching key — there is **no
+   `explain.import`, and no bank topic in `report`**. Adding one means writing new explainer content, which is
+   new surface and inside the freeze. Left as model fall-throughs on purpose, not overlooked.
+3. ⬜ **Diagnose the unknowns — and NOT from the log.** ⚠️⚠️ **Correction, written down because it was asserted
    here in the last edit and it is false: the questions are not recoverable.** Nothing logs one. An `unknown`
    emits only `answered by the model (N answered locally…, intent unknown)`; the *only* per-call shape data
    (`{Length} chars, {Slots} slots`) is on the **exception** path, and these fifteen did not throw — they parsed
@@ -260,7 +281,7 @@ it is the second time this session the existing guard rails caught a change that
      is opt-in, honest, and the most work.
    Whichever: work out which **class** a phrase lands in *before* adding a rule, or the rule is unreachable.
    ✅ **The first of those is built: `tools/FinApp.AssistantProbe`.** See the section below.
-3. ✅ **The feature freeze is DECLARED** (2026-09-01, at the owner's word). R1 froze the backlog on 5 August
+4. ✅ **The feature freeze is DECLARED** (2026-09-01, at the owner's word). R1 froze the backlog on 5 August
    conditional on R3 landing; R3 landed; the sentence is now written down in
    [OPEN-BETA.md](OPEN-BETA.md) under R1 — **no new user-visible feature before R7**, and R5 can start.
    ⭐ **The half worth reading is what the freeze does NOT cover**, because that is the half that gets
@@ -271,7 +292,7 @@ it is the second time this session the existing guard rails caught a change that
    Does something already promised now work, work correctly, or work for everyone → repair, it ships.
    ⚠️ **R4.5 Trip Mode is inside the freeze**, deliberately. It stays the owner's call, but taking it *moves*
    the freeze rather than being an exception to it — and moving it moves R5 and R7 with it.
-4. ⭐⭐ **THE ORDER CHANGED: R4.5 → R4 → R5** (owner, 2026-09-01). Trip Mode was proposed in S116 and advisory
+5. ⭐⭐ **THE ORDER CHANGED: R4.5 → R4 → R5** (owner, 2026-09-01). Trip Mode was proposed in S116 and advisory
    since; it is **accepted and it is next**, ahead of the Railway migration and the landing/billing pass.
    ★ **Why it is right rather than merely wanted:** Trip Mode puts account data **at rest on the device**, which
    is a GDPR change — and R5 owns the legal re-read. Building it after R5 does that pass twice. Same for the
@@ -300,10 +321,10 @@ it is the second time this session the existing guard rails caught a change that
    guessing at the answers those conditions exist to supply. ⚠️ **Before R9 ever starts, the read-only
    assistant's rule tables are the free fix**: 15 of 21 escalated questions came back `unknown`, and the probe
    measures it without a key or an account.
-5. ⬜ **The forms are deliberately not navigation targets** (add expense / income / transfer / new goal). Each is
+6. ⬜ **The forms are deliberately not navigation targets** (add expense / income / transfer / new goal). Each is
    opened by a method that seeds its draft first, and a form reached without that seeding misbehaves in ways only
    a person driving it would notice. One at a time, each verified on a running app.
-6. 🔨 **Two of R2.5's rows are BUILT and were driven on the running app** (2026-09-01), after being "what's left"
+7. 🔨 **Two of R2.5's rows are BUILT and were driven on the running app** (2026-09-01), after being "what's left"
    for four write-ups running. **579 + 609 green.**
    ⛔⛔ **But R2.5 is NOT finished, and this list is why it looked like it was.** The S127 entry above called
    these "the last two rows"; **S124's entry named a third** — the phone's account-switcher **trip badge**
