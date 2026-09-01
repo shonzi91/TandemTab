@@ -237,7 +237,7 @@ against a moving feature set is work that gets redone. R4 lands before R7 for th
 | **R2** | Android catch-up + theme verification **+ an APK pipeline** | Android at web parity; light/dark swept on **both** surfaces; **and CI can produce a release APK that runs on a real device** | L · ✅ **done 2026-08-20 (S111)** — all four exit criteria met. **Now 115/122 (94%)** after the merge session closed both stated lags; every one of the 7 remaining routes is *decided*: 4 deferred (bank), 3 non-gaps, **0 stated lags** |
 | **R2.5** | **The surface sweep** — the differences a route scanner cannot see | Every remaining web⇄phone difference is either built or **written down as a decision** | M · ✅ **DONE 2026-09-01.** All four rows: the always-visible milestones line and the auto-mask trigger (driven on the running app), the phone's **trip badge** (`GET /active-trips` — the last uncalled route that was a real gap), and **T0's tail**. ✅ **Driven on the emulator** — the badge renders (`TripCheck ✈ Rome`), and the APK now reaches people: `android-v0.1.0` is tagged, built and published |
 | **R3** | AI assistant — **narrate and navigate** | ✅ **LIVE 2026-09-01** on `finapp-00355-2v5`, verified in the served WASM — and gated to two addresses by `Assistant__AllowedEmails`. **It drew R1's freeze line the same day.** ⬜ Open: 15 of 21 escalated questions returned `unknown`, and the rule tables are the fix | M |
-| **R4.5** | **Trip Mode** (bounded offline) — ⭐ **moved AHEAD of R4/R5 by owner's decision, 2026-09-01** | The phone opens, shows cached figures with their staleness, takes an expense with no signal, and posts **exactly one** row on reconnect | M per platform · ✅ **accepted — next up**. It is a new feature, so taking it **moves the freeze**; that price was named and paid deliberately, see the box under R1 |
+| **R4.5** | **Trip Mode** (bounded offline) — ⭐ **moved AHEAD of R4/R5 by owner's decision, 2026-09-01** | The phone opens, shows cached figures with their staleness, takes an expense with no signal, and posts **exactly one** row on reconnect | M per platform · 🔨 **T1 BUILT on both surfaces, 2026-09-01** — the web caches the snapshot read-only; the phone caches the spending view and carries a durable outbox, and **the exit criterion above was driven on the emulator**. ⬜ Left: the queued row is not shown in the local list, and arming/entitlement is not built. It is a new feature, so it **moved the freeze** — see the box under R1 |
 | **R4.6** | **The command palette** — ⭐ **new phase, 2026-09-01 (owner)** | One place to type a command and have the app do it. Navigation first (the ~20 `open.*`/`tab.*` targets already exist), then **add-expense** as the first write | M · ⬜ **after R4.5**. The freeze's **second** named exception — see the box under R1 |
 | **R4** | Railway migration (hosting **and** DB) | Serving from Railway, Neon + Cloud Run retired | M–L · now **after R4.5 and R4.6** |
 | **R5** | Landing, terms, privacy + Pro-split final verification **+ billing go-live** | The page describes the real product; the paywall is settled **and can actually take money** | M–L |
@@ -903,7 +903,40 @@ invisible-until-useful; a property on something that already exists, not a new s
 staleness banner, with a durable outbox for **expense adds only**; web gets ~~the PWA shell plus~~ (✅ shell done
 S122) the last snapshot in IndexedDB, **read-only** offline.
 
-### ✅ The web half is BUILT and observed (2026-09-01) — the phone's outbox is what remains
+### ✅✅ R4.5's EXIT CRITERION IS MET on the phone (2026-09-01) — driven on the emulator
+
+> *"The phone opens, shows cached figures with their staleness, takes an expense with no signal, and posts
+> **exactly one** row on reconnect."*
+>
+> **`OfflineStore`** (DataStore, JSON) keeps the last-good spending view per account and a durable outbox of
+> queued expense adds. `AppViewModel` falls back to the cache, exposes `offlineAsOf` and `pendingExpenses`, and
+> flushes the queue whenever a network appears. Home carries an amber strip above the header.
+>
+> ⭐ **The run, in order:** cached view stored (`offline.preferences_pb`, 1327 B) → **wifi and data disabled** →
+> the add sheet still opened **with categories and funds from the cache** (which is why the *spending view* is
+> the thing worth caching: it is both what Home shows and what the sheet needs) → €42.50 saved with **no error
+> and no lost row**, strip reading **"Waiting for a signal · 1 to send"** → queue file grew to 1786 B, server
+> still had **0 expenses** → network restored → **exactly one row, €42.50.**
+>
+> ⛔⛔ **Running it found a defect a code read would not have.** The flush hung off `loadSpending` alone, so an
+> expense typed abroad sat in the queue **until the user happened to open the Spending tab** — someone who
+> reopens on Dashboard and pockets the phone would never have sent it. `flushOutbox()` now also runs from
+> `loadHome`, which is the first moment we know a network exists. ✅ **Re-verified after the fix: 1 row while
+> offline → 2 rows (€19.99 and €42.50) after a Dashboard-only relaunch**, one each, no duplicates.
+>
+> ★ **T0 is what makes the queue this simple.** Every queued request carries its `clientId` from the moment it
+> was composed, so a flush interrupted after the server wrote but before the queue was updated re-sends the same
+> key and gets the original's result. "Exactly one row" is a property of the request, not of this loop's
+> bookkeeping. ⚠️ And rows are removed **by key, never by index** — the queue can grow while a flush is running.
+>
+> ⚠️ **Known gap, deliberately not fixed here:** a queued expense does **not** appear in the local expense list
+> while offline — only the strip's count says it exists. Showing it needs the local row to be reconciled against
+> the real one by `clientId` when it lands, or the user sees it twice. That is the next slice, and it matters:
+> "I typed it and it is not in my list" is exactly the anxiety this phase exists to remove.
+> ⚠️ **Sign-out clears the mirror *and any unsent rows*** — the honest trade for data at rest, and the reason the
+> outbox count is on screen: signing out with rows waiting should be a visible choice, not a silent loss.
+
+### ✅ The web half is BUILT and observed (2026-09-01)
 
 `finappCache` (IndexedDB, one row per account) stores the snapshot the server last gave us; `BudgetingState`
 falls back to it and exposes `OfflineAsOf`, which the dashboard renders as an amber strip above the header.

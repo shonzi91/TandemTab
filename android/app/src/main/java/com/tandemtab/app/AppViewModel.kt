@@ -82,6 +82,11 @@ import com.tandemtab.app.data.RunwayDto
 import com.tandemtab.app.data.SavingBucketDto
 import com.tandemtab.app.data.TargetDto
 import com.tandemtab.app.data.TandemTabApi
+import com.tandemtab.app.data.SpendingViewDto
+import com.tandemtab.app.data.OfflineStore
+import com.tandemtab.app.data.QueuedExpense
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import com.tandemtab.app.data.TokenStore
 import com.tandemtab.app.data.CreateContributionCategoryRequest
 import com.tandemtab.app.data.MutationResultDto
@@ -217,6 +222,11 @@ data class UiState(
     // The Home milestone tally, and the full catalogue behind it. Null tally = /milestones hasn't answered, which
     // renders as no line at all rather than a "0 of 0" that would be wrong for one frame on every account.
     val milestones: MilestonesDto? = null,
+    // ★ R4.5. When the figures on screen came from the device rather than the server, this is WHEN they were
+    // last true (epoch ms); null means live. The UI must say so — a figure with no age on it is worse than no
+    // figure, because it is spendable. And [pendingExpenses] is how many writes are waiting for a signal.
+    val offlineAsOf: Long? = null,
+    val pendingExpenses: Int = 0,
     // Which of the user's accounts are travelling, for the switcher's Trip-mode badges. Empty until the switcher
     // is first opened — it costs a snapshot read per account, so it is not hung off the account list. See
     // [loadActiveTrips].
@@ -503,6 +513,18 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     private val api: TandemTabApi = TandemTabApi(store = TokenStore(app))
 
+    // R4.5 Trip Mode: what this device last knew, and the writes it has not been able to send yet.
+    private val offline = OfflineStore(app)
+    private val offlineJson = Json { ignoreUnknownKeys = true; encodeDefaults = true }
+
+    /**
+     * ★ The one rule that keeps the offline mirror honest: **fall back only when the server never answered.**
+     * An [ApiException] means it DID — a 402, a 409, a 500 — and answering that with stale figures hides a real
+     * error behind numbers that look fine. Everything else (no radio, no DNS, a dead socket) is "there is no
+     * server right now", which is what the cache is for.
+     */
+    private fun isOffline(e: Throwable) = e !is ApiException
+
     private val _state = MutableStateFlow(UiState())
     val state: StateFlow<UiState> = _state.asStateFlow()
 
@@ -692,6 +714,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 )
             }
             selected?.let { loadPeriodLabel(it.id); loadForecast(it.id); loadMemberAvatars(it.id) }
+            // ★ R4.5: send anything written with no signal, HERE — reaching Home is the first moment we know
+            // there is a network again. ⚠️ Found by running it: the flush used to hang off loadSpending alone,
+            // so an expense typed abroad sat in the queue until the user happened to open the Spending tab.
+            // Somebody who reopens the app on Dashboard and puts the phone away would never have sent it.
+            flushOutbox()
             // Identity for the profile sheet (best-effort — the sheet still works from the stored username).
             runCatching { api.me() }.getOrNull()?.let { me ->
                 _state.update { it.copy(
@@ -1036,19 +1063,70 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             try {
                 val v = api.spending(accountId, period)
                 _state.update {
-                    it.copy(spending = it.spending.copy(
+                    it.copy(offlineAsOf = null, spending = it.spending.copy(
                         loading = false, loaded = true, error = null,
                         currency = v.currency, spent = v.overview.spent, expenses = v.expenses,
                         categories = v.categories, funds = v.funds, tags = v.tags,
                     ))
                 }
+                // Keep it for the next start with no signal. Categories and funds ride along in this payload,
+                // which is why it is the one worth caching: it is both what Home shows and what the add sheet needs.
+                runCatching { offline.putView(accountId, period, offlineJson.encodeToString(v)) }
+                flushOutbox()   // a working network is the only cue the queue ever gets
                 // Budget coverage rides alongside for the Categories view (best-effort — don't fail the tab on it).
                 runCatching { api.budgets(accountId, period) }.getOrNull()?.let { b ->
                     _state.update { it.copy(spending = it.spending.copy(budgets = b.budgets, totalBudgeted = b.totalBudgeted, totalSpent = b.totalSpent)) }
                 }
             } catch (e: Exception) {
-                _state.update { it.copy(spending = it.spending.copy(loading = false, error = e.message ?: "Couldn't load spending.")) }
+                // ★ R4.5: no server — render what this device last knew, dated. A server that ANSWERED badly
+                // still shows its error; see isOffline.
+                val cached = if (isOffline(e)) offline.getView(accountId, period) else null
+                val view = cached?.let { c -> runCatching { offlineJson.decodeFromString<SpendingViewDto>(c.payload) }.getOrNull() }
+                if (view != null) {
+                    _state.update {
+                        it.copy(offlineAsOf = cached.at, spending = it.spending.copy(
+                            loading = false, loaded = true, error = null,
+                            currency = view.currency, spent = view.overview.spent, expenses = view.expenses,
+                            categories = view.categories, funds = view.funds, tags = view.tags,
+                        ))
+                    }
+                } else {
+                    _state.update { it.copy(spending = it.spending.copy(loading = false, error = e.message ?: "Couldn't load spending.")) }
+                }
             }
+        }
+    }
+
+    /**
+     * Send everything the user wrote with no signal, oldest first.
+     *
+     * ★ **Exactly one row per queued expense, guaranteed by the request and not by this loop.** Each carries a
+     * [AddExpenseRequest.clientId] from the moment it was composed, so a flush that is interrupted after the
+     * server wrote but before we recorded it re-sends the same key and gets the original's result back. That is
+     * T0, and it is the reason this queue can be this simple.
+     *
+     * ⚠️ Stops at the first transport failure rather than marching on: the signal is gone again, and the rows
+     * behind it keep their place. ⚠️ A row the server REFUSES (an ApiException — a deleted category, a closed
+     * period) is dropped from the queue rather than retried forever, because re-sending it will never succeed.
+     */
+    fun flushOutbox() {
+        viewModelScope.launch {
+            val queued = offline.pending()
+            if (queued.isEmpty()) { _state.update { it.copy(pendingExpenses = 0) }; return@launch }
+            val sent = mutableSetOf<String>()
+            for (q in queued) {
+                try {
+                    api.addExpense(q.accountId, q.request)
+                    q.request.clientId?.let { sent.add(it) }
+                } catch (e: Exception) {
+                    if (isOffline(e)) break            // still no signal — keep the rest for next time
+                    q.request.clientId?.let { sent.add(it) }   // refused, not undelivered: retrying cannot help
+                }
+            }
+            offline.removeSent(sent)
+            val left = offline.pending().size
+            _state.update { it.copy(pendingExpenses = left) }
+            if (sent.isNotEmpty() && left == 0) loadSpending(force = true)
         }
     }
 
@@ -1354,7 +1432,29 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 refreshWeekRecapIfAffected(*drafts.map { it.date }.toTypedArray())
                 onDone()
             } catch (e: Exception) {
-                // Some rows may have saved before the failure — reflect those and let the user retry the rest.
+                // ★ R4.5: with no signal this is not a failure, it is a queue. Everything not yet accepted goes
+                // to the outbox and the sheet closes as if it had saved — because from the user's side it has:
+                // the row is theirs, it is dated, and it will land. ⚠️ saveError stays NULL on this path; an
+                // error message here would tell somebody standing in a shop abroad that their expense was lost.
+                if (isOffline(e)) {
+                    val unsent = drafts.drop(added.size)
+                    for (d in unsent) offline.enqueue(QueuedExpense(accountId, d, System.currentTimeMillis()))
+                    _state.update {
+                        it.copy(
+                            overview = lastOverview ?: it.overview,
+                            pendingExpenses = it.pendingExpenses + unsent.size,
+                            spending = it.spending.copy(
+                                saving = false, saveError = null,
+                                expenses = if (added.isEmpty()) it.spending.expenses else added.reversed() + it.spending.expenses,
+                                spent = lastOverview?.spent ?: it.spending.spent,
+                            ),
+                        )
+                    }
+                    onDone()
+                    return@launch
+                }
+                // The server answered and refused. Some rows may have saved before it — reflect those and let
+                // the user retry the rest, which is a real error and must say so.
                 _state.update {
                     it.copy(
                         overview = lastOverview ?: it.overview,
@@ -3559,7 +3659,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun signOut() {
         val google = _state.value.googleEnabled
         _state.value = UiState(screen = Screen.Login, googleEnabled = google)
-        viewModelScope.launch { api.signOut() }
+        // ★ R4.5: drop the on-device mirror with the session. It is account data at rest in plaintext, and this
+        // is the one moment the user has plainly said this device should stop holding it.
+        // ⚠️⚠️ This also discards any UNSENT expenses. That is the honest trade — they belong to an account this
+        // device is being told to forget — but it is the reason the outbox count is on screen: signing out with
+        // rows waiting should be a visible choice, not a silent loss.
+        viewModelScope.launch { offline.clear(); api.signOut() }
     }
 
     fun clearError() = _state.update { it.copy(error = null) }

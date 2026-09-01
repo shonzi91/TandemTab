@@ -337,6 +337,9 @@ fun HomeScreen(
             // Privacy mode's indicator, above the header exactly as the web puts it above .hdr-top. It renders
             // only while masking is on, and it is the only way to turn masking off — see PrivacyBar.
             PrivacyBar()
+            // ★ R4.5 — above the header, because it changes how everything below it should be read and so
+            // cannot be something you have to scroll to. Mirrors the web's amber strip.
+            OfflineStrip(asOf = state.offlineAsOf, pending = state.pendingExpenses)
             // Compact one-row header (no logo): account switcher · period · account-actions · profile.
             Row(
                 Modifier.fillMaxWidth().padding(start = 14.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
@@ -1729,6 +1732,45 @@ private fun AccountSwitcher(
             text = { Text("New account", fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary) },
             onClick = { open = false; onCreateAccount() },
             leadingIcon = { Icon(TandemIcons.Plus, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp)) },
+        )
+    }
+}
+
+/**
+ * R4.5 — "these figures are not live, and here is how old they are".
+ *
+ * ⚠️ The TIME is the whole point. "Offline" on its own leaves somebody deciding what is safe to spend from a
+ * figure of unknown age, which is worse than showing nothing. ★ It also carries the outbox count, because a
+ * queued expense is the one thing a person will not simply trust: they typed it and it has not gone anywhere.
+ * ⚠️ Amber, not red — nothing is wrong, and nothing has been lost.
+ */
+@Composable
+private fun OfflineStrip(asOf: Long?, pending: Int) {
+    if (asOf == null && pending == 0) return
+    val when_ = asOf?.let {
+        java.text.SimpleDateFormat("d MMM, HH:mm", java.util.Locale.getDefault()).format(java.util.Date(it))
+    }
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .background(Color(0xFF33290F))
+            .padding(horizontal = 14.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            if (asOf != null) "Offline — showing what this device last knew" else "Waiting for a signal",
+            fontSize = 12.sp, fontWeight = FontWeight.Medium, color = Color(0xFFE6B45A),
+            maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
+        )
+        Spacer(Modifier.width(8.dp))
+        Text(
+            // The queue is the more urgent of the two, so it wins the trailing slot when both are true.
+            when {
+                pending == 1 -> "1 to send"
+                pending > 1 -> "$pending to send"
+                else -> "as of $when_"
+            },
+            fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFFE6B45A), maxLines = 1,
         )
     }
 }
