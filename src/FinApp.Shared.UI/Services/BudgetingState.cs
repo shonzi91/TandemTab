@@ -2064,15 +2064,19 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     /// <summary>Deploy a bucket to its goal (e.g. a loan prepayment) from a chosen fund: money leaves the account but
     /// it's not an expense and doesn't dent the savings figures. The fund is the one physically holding the money.
     /// On a debt bucket the server also records an extra principal payment.</summary>
-    public Task DisburseSaving(Guid savingCategoryId, Guid fundId, decimal amount, string? note) =>
-        ExecuteOptimisticAsync(() =>
+    public Task DisburseSaving(Guid savingCategoryId, Guid fundId, decimal amount, string? note)
+    {
+        var clientId = Guid.NewGuid();   // ★ T0 — one key per call; see RecordDeposit
+        return ExecuteOptimisticAsync(() =>
         {
             var transfer = Period.DisburseSaving(savingCategoryId, fundId, Money(amount), Today(), note);
+            transfer.SetClientId(clientId);
             transfer.SetFundSynced(FundIsSynced(fundId));
             Account.RecordSavingDebtPayment(savingCategoryId, amount, Today());
         },
-        id => api.DisburseSavingAsync(id, new DisburseSavingRequest(savingCategoryId, fundId, amount, Today(), note)),
+        id => api.DisburseSavingAsync(id, new DisburseSavingRequest(savingCategoryId, fundId, amount, Today(), note, clientId)),
         refetchAfter: true);
+    }
 
     /// <summary>
     /// Re-price a loan's monthly payment — the "keep the end date" outcome of a lump-sum payment.
@@ -2379,14 +2383,19 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
         Guid? principalTagId = null, Guid? interestTagId = null, string? note = null)
     {
         var bucket = FindSavingBucket(bucketId) ?? throw new InvalidOperationException("Savings bucket not found.");
+        var clientId = Guid.NewGuid();   // ★ T0 — one key per call; see RecordDeposit
         return ExecuteOptimisticAsync(
+            // ⚠️ The key goes on the PRINCIPAL row (rows[0]) on both sides — the server stamps the same one and
+            // rebuilds the whole group from it. If this ever stamps a different row than the server does, the
+            // retry check still works (it is the server's copy that is searched) but the two ledgers stop
+            // agreeing about which row owns the write, which is the sort of drift nothing would report.
             () => Period.LogInstallment(bucket, Money(total), date, CurrentMemberId, fundId,
                 principalCategoryId, interestCategoryId, additional, principalTagId, interestTagId, note,
-                FundIsSynced(fundId)),
+                FundIsSynced(fundId))[0].SetClientId(clientId),
             id => api.LogInstallmentAsync(id, new LogInstallmentRequest(bucketId, total, fundId, date,
                 principalCategoryId, interestCategoryId,
                 additional?.Select(x => new InstallmentExtraDto(x.Amount.Amount, x.CategoryId, x.TagId, x.Note)).ToList(),
-                principalTagId, interestTagId, note)),
+                principalTagId, interestTagId, note, clientId)),
             refetchAfter: true);
     }
 

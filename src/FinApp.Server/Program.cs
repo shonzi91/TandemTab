@@ -1439,9 +1439,25 @@ accounts.MapPost("/{id:guid}/installments", async (Guid id, LogInstallmentReques
 {
     var userId = user.UserId();
     var bank = await bankSvc.GetStatusAsync(userId, id, ct);
-    var (version, delta) = await svc.MutateAsync(userId, id, account =>
+    // MutateOrSkipAsync — a recognised retry writes nothing; see the refund route for why the version matters.
+    var (version, changed, delta) = await svc.MutateOrSkipAsync(userId, id, account =>
     {
         var period = account.CurrentPeriod ?? throw new InvalidOperationException("There's no open period to log an installment in.");
+        // ★ T0 — the retry check, first, before every guard below. ⚠️ The reconstruction is the interesting half:
+        // one installment is SEVERAL expense rows sharing an InstallmentGroupId, and only the principal row is
+        // stamped with the key — so recognising the retry means finding that row and then answering with its
+        // whole group, in the order the original response carried. Returning just the stamped row would be a
+        // reply the client cannot use.
+        if (req.ClientId is { } key && key != Guid.Empty &&
+            period.Expenses.FirstOrDefault(e => e.ClientId == key) is { InstallmentGroupId: { } gid })
+        {
+            var group = period.Expenses.Where(e => e.InstallmentGroupId == gid).ToList();
+            // ⚠️ `groupId:` is load-bearing, not decoration — an unnamed element here disagrees with the success
+            // return below and C# then infers a tuple with NO names, so `delta.groupId` at the call site stops
+            // compiling. Keep both returns naming it the same.
+            return (false, (groupId: gid, group.Select(r => SpendingMap.ToDto(account, r)).ToList(),
+                SpendingMap.Overview(account, period, bank.Balance, bank.BalanceCurrency)));
+        }
         var bucket = account.FindSavingCategory(req.BucketId) ?? throw new InvalidOperationException("That savings bucket doesn't exist in this account.");
         var fund = account.FindFund(req.FundId) ?? throw new InvalidOperationException("That fund doesn't exist in this account.");
         foreach (var categoryId in new[] { req.PrincipalCategoryId, req.InterestCategoryId }
@@ -1460,11 +1476,15 @@ accounts.MapPost("/{id:guid}/installments", async (Guid id, LogInstallmentReques
             note: req.Note,
             fundSynced: fund.IsSynced);
 
+        // The key goes on the principal row — rows[0] — because the retry check above looks for exactly one
+        // stamped row and rebuilds the group from it. Stamping every row would work too and would make the
+        // "which row carries it" question ambiguous the next time somebody reads this.
+        if (req.ClientId is { } ik && ik != Guid.Empty) rows[0].SetClientId(ik);
         var groupId = rows[0].InstallmentGroupId!.Value;
-        return (groupId, rows.Select(r => SpendingMap.ToDto(account, r)).ToList(),
-            SpendingMap.Overview(account, period, bank.Balance, bank.BalanceCurrency));
+        return (true, (groupId, rows.Select(r => SpendingMap.ToDto(account, r)).ToList(),
+            SpendingMap.Overview(account, period, bank.Balance, bank.BalanceCurrency)));
     }, ct);
-    await notifier.AccountChangedAsync(id, userId, version);
+    if (changed) await notifier.AccountChangedAsync(id, userId, version);
     return Results.Ok(new InstallmentMutationDto(version, delta.groupId, delta.Item2, delta.Item3));
 });
 
@@ -1830,8 +1850,20 @@ accounts.MapDelete("/{id:guid}/expenses/{expenseId:guid}/settle", async (Guid id
 accounts.MapPost("/{id:guid}/expenses/{expenseId:guid}/refund", async (Guid id, Guid expenseId, RefundExpenseRequest req, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
 {
     var userId = user.UserId();
-    var (version, newId) = await svc.MutateAsync(userId, id, account =>
+    // ⚠️ MutateOrSkipAsync, not MutateAsync: a recognised retry must write NOTHING. Re-saving an identical
+    // snapshot under a new version is not a no-op — it bumps the number every other client is watching and pushes
+    // them all to re-pull for a change that did not happen.
+    var (version, changed, newId) = await svc.MutateOrSkipAsync(userId, id, account =>
     {
+        // ★ T0 — the retry check, and it runs FIRST, before the amount guard. A retry is a question about a write
+        // that already happened; re-validating its inputs answers a different one. It matters more here than on a
+        // plain add: this route ADDS to a running total, so a resend that gets past this point does not fail
+        // loudly, it silently credits the refund twice.
+        // ⚠️ Every period, for the same reason the lookup below walks them all — the credit lands in the period
+        // holding the original charge, which is routinely months old.
+        if (req.ClientId is { } key && key != Guid.Empty &&
+            account.Periods.SelectMany(p => p.Expenses).FirstOrDefault(e => e.ClientId == key) is { } already)
+            return (false, already.Id);   // the id the first response carried, which is what the client waits for
         if (req.Amount <= 0m) throw new InvalidOperationException("The amount must be positive.");
         // ★ ANY period, not just the open one — the money often comes back months after the purchase (owner
         // report: paid for a group in June, a member handed their share back in August). Where the credit then
@@ -1840,9 +1872,14 @@ accounts.MapPost("/{id:guid}/expenses/{expenseId:guid}/refund", async (Guid id, 
             ?? throw new InvalidOperationException("That expense doesn't exist in this account.");
         // Domain guards the ceiling (0 ≤ total ≤ the original charge) and says the figure in its message. ToFundId is
         // where the money actually arrived — only meaningful when that is a different wallet; see Account.RefundExpense.
-        return account.RefundExpense(expenseId, new Money(expense.RefundedAmount + req.Amount, account.Currency), req.ToFundId).Id;
+        var refunded = account.RefundExpense(expenseId, new Money(expense.RefundedAmount + req.Amount, account.Currency), req.ToFundId);
+        // ⚠️ This SUPERSEDES the add-key the row carried forward through every edit (see Expense.ClientId). One row
+        // holds one key, and the refund's is the one worth keeping: a late retry of the original *add* is a
+        // seconds-wide window that closed months ago, while the refund's response may be in flight right now.
+        if (req.ClientId is { } k && k != Guid.Empty) refunded.SetClientId(k);
+        return (true, refunded.Id);
     }, ct);
-    await notifier.AccountChangedAsync(id, userId, version);
+    if (changed) await notifier.AccountChangedAsync(id, userId, version);
     return Results.Ok(new MutationResultDto(version, newId));
 });
 
@@ -2069,19 +2106,29 @@ accounts.MapDelete("/{id:guid}/savings/buckets/{bucketId:guid}", async (Guid id,
 accounts.MapPost("/{id:guid}/savings/disburse", async (Guid id, DisburseSavingRequest req, ClaimsPrincipal user, SnapshotService svc, SyncNotifier notifier, CancellationToken ct) =>
 {
     var userId = user.UserId();
-    var (version, transferId) = await svc.MutateAsync(userId, id, account =>
+    // MutateOrSkipAsync — a recognised retry writes nothing at all; see the refund route for why the version
+    // matters as much as the row count.
+    var (version, changed, transferId) = await svc.MutateOrSkipAsync(userId, id, account =>
     {
         var period = account.CurrentPeriod ?? throw new InvalidOperationException("There's no open period.");
+        // ★ T0 — the retry check, first, before the bucket and fund guards. ⚠️ Worth noting what this route does
+        // that a plain add does not: it writes THREE things (the outflow, the drawdown that drains the bucket, and
+        // an extra debt payment on a debt bucket). None of them errors on a second run, so an unrecognised retry
+        // leaves a bucket drained twice and a payoff plan that believes it.
+        if (req.ClientId is { } key && key != Guid.Empty &&
+            period.ExternalTransfers.FirstOrDefault(t => t.ClientId == key) is { } already)
+            return (false, already.Id);
         if (account.FindSavingCategory(req.SavingCategoryId) is null)
             throw new InvalidOperationException("That savings bucket doesn't exist in this account.");
         var fund = account.FindFund(req.FundId) ?? throw new InvalidOperationException("That fund doesn't exist in this account.");
         var transfer = period.DisburseSaving(req.SavingCategoryId, req.FundId, new Money(req.Amount, account.Currency), req.Date, req.Note);
+        transfer.SetClientId(req.ClientId is { } k && k != Guid.Empty ? k : null);
         transfer.SetFundSynced(fund.IsSynced);   // a synced fund's real balance already reflects the outflow
         // On a debt bucket, deploying to the bank is an extra payment on top of the schedule (no-op for other kinds).
         account.RecordSavingDebtPayment(req.SavingCategoryId, req.Amount, req.Date);
-        return transfer.Id;
+        return (true, transfer.Id);
     }, ct);
-    await notifier.AccountChangedAsync(id, userId, version);
+    if (changed) await notifier.AccountChangedAsync(id, userId, version);
     return Results.Ok(new MutationResultDto(version, transferId));
 });
 

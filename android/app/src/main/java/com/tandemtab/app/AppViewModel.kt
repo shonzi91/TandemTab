@@ -61,6 +61,7 @@ import com.tandemtab.app.data.SavingMovementRowDto
 import com.tandemtab.app.data.OnboardingViewDto
 import com.tandemtab.app.data.AchievementsViewDto
 import com.tandemtab.app.data.SettleExpenseRequest
+import com.tandemtab.app.data.ActiveTripDto
 import com.tandemtab.app.data.MilestonesDto
 import com.tandemtab.app.data.TagOptionDto
 import com.tandemtab.app.data.UseTripSavingsRequest
@@ -216,6 +217,10 @@ data class UiState(
     // The Home milestone tally, and the full catalogue behind it. Null tally = /milestones hasn't answered, which
     // renders as no line at all rather than a "0 of 0" that would be wrong for one frame on every account.
     val milestones: MilestonesDto? = null,
+    // Which of the user's accounts are travelling, for the switcher's Trip-mode badges. Empty until the switcher
+    // is first opened — it costs a snapshot read per account, so it is not hung off the account list. See
+    // [loadActiveTrips].
+    val activeTrips: List<ActiveTripDto> = emptyList(),
     val achievements: AchievementsUi = AchievementsUi(),
     val goals: GoalsUi = GoalsUi(),
     val wallets: WalletsUi = WalletsUi(),
@@ -1427,6 +1432,28 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /**
+     * Which accounts are on a journey right now, for the switcher's Trip-mode badges (R2.5's last parity row —
+     * the web has had this since the badge shipped and `GET /accounts/active-trips` was the phone's one genuinely
+     * uncalled route).
+     *
+     * ⚠️ **Lazy, and deliberately not awaited by the caller.** It costs one encrypted-snapshot read per account
+     * server-side, so it is fetched when the switcher is opened rather than at startup, and the menu renders
+     * before it lands: names are what the user opened it for, and badges arriving a beat later is the right way
+     * round. Best-effort like the tally above — a missing badge is a far smaller problem than a switcher that
+     * will not open, so a failure leaves the list exactly as it was.
+     *
+     * ⚠️ **Not cleared on account switch**, matching the web: the answer is about every account, not the one
+     * that happens to be open, so it stays true across a switch. It IS refetched each time the switcher opens,
+     * which is also what makes a trip started or finished on this device show up without a special reset.
+     */
+    fun loadActiveTrips() {
+        viewModelScope.launch {
+            runCatching { api.activeTrips(todayIso()) }.getOrNull()
+                ?.let { v -> _state.update { it.copy(activeTrips = v) } }
+        }
+    }
+
+    /**
      * The full catalogue, for the sheet. Unlike the tally this one DOES surface its error: the user asked for this
      * screen, so an empty sheet with no explanation would just look broken.
      */
@@ -1475,7 +1502,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun disburseSaving(bucketId: String, fundId: String, amount: Double, date: String, note: String?, onDone: () -> Unit = {}) =
         savingsWrite(onDone, "Couldn't deploy that saving.") { acct ->
-            api.disburseSaving(acct, DisburseSavingRequest(bucketId, fundId, amount, date, note?.ifBlank { null }))
+            api.disburseSaving(acct, DisburseSavingRequest(bucketId, fundId, amount, date, note?.ifBlank { null }, newWriteKey()))
         }
 
     fun savingToBudget(bucketId: String, categoryId: String, amount: Double, date: String, note: String?, onDone: () -> Unit = {}) =
@@ -1596,7 +1623,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     LogInstallmentRequest(
                         bucketId = bucketId, total = total, fundId = fundId, date = date,
                         principalCategoryId = categoryId, interestCategoryId = categoryId,
-                        note = note?.ifBlank { null },
+                        note = note?.ifBlank { null }, clientId = newWriteKey(),
                     ),
                 )
                 val v = api.savings(accountId, _state.value.selectedPeriod)
@@ -3400,7 +3427,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         _state.update { it.copy(bank = it.bank.copy(handlingId = externalId, error = null)) }
         viewModelScope.launch {
             try {
-                api.refundExpense(accountId, expenseId, kotlin.math.abs(amount), syncedFundId)
+                api.refundExpense(accountId, expenseId, kotlin.math.abs(amount), syncedFundId, newWriteKey())
                 api.ackBank(accountId, externalId, confirmed = true)
                 _state.update {
                     it.copy(

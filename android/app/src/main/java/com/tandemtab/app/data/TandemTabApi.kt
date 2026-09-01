@@ -179,6 +179,16 @@ class TandemTabApi(
     suspend fun trips(accountId: String, today: String): TripsViewDto =
         authedGet("/accounts/$accountId/trips?today=$today").body()
 
+    /** Which of the user's accounts are on a journey right now, so the account switcher can say so without being
+     *  opened into one at a time. `today` is our own local date, for the same reason [trips] takes one.
+     *
+     *  ⚠️ **Account-scoped in cost, not in path.** The server answers this by reading one encrypted snapshot per
+     *  account — a KMS unwrap plus a gunzip each — which is why the web fetches it lazily when the switcher is
+     *  opened rather than hanging it off the account list at startup. Do the same here; see
+     *  `BudgetingState.ActiveTripsAsync` for the argument. */
+    suspend fun activeTrips(today: String): List<ActiveTripDto> =
+        authedGet("/accounts/active-trips?today=$today").body()
+
     /** One trip opened up: the split behind its total and every expense linked to it. Its own read, because the
      *  list would otherwise carry every expense of every journey to draw a card nobody may open. */
     suspend fun tripDetail(accountId: String, tripId: String, today: String): TripDetailDto =
@@ -401,8 +411,9 @@ class TandemTabApi(
      *  booked as income. `amount` is what came back NOW, not a running total: the server adds it under its own lock,
      *  so two devices acking two credits against one dinner both land instead of overwriting each other.
      *  ⚠️ Returns a NEW expense id (the ledger is append-only) — hold on to it, the old one no longer resolves. */
-    suspend fun refundExpense(accountId: String, expenseId: String, amount: Double, toFundId: String? = null): MutationResultDto =
-        authedPost("/accounts/$accountId/expenses/$expenseId/refund", RefundExpenseRequest(amount, toFundId)).body()
+    suspend fun refundExpense(accountId: String, expenseId: String, amount: Double, toFundId: String? = null,
+                              clientId: String? = null): MutationResultDto =
+        authedPost("/accounts/$accountId/expenses/$expenseId/refund", RefundExpenseRequest(amount, toFundId, clientId)).body()
 
     /** Put the whole charge back. Addressed by the expense's CURRENT id, and mints another new one. The bank
      *  transaction that prompted the refund stays acknowledged — this undoes the deduction, not the sync. */

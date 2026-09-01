@@ -227,7 +227,11 @@ public record LogInstallmentRequest(
     IReadOnlyList<InstallmentExtraDto>? Additional = null,
     Guid? PrincipalTagId = null,
     Guid? InterestTagId = null,
-    string? Note = null);
+    string? Note = null,
+    // ★ T0 — the idempotency key. See AddExpenseRequest.ClientId. One installment is several expense rows sharing
+    // a group id, so an unrecognised retry does not duplicate a row — it duplicates the whole payment, and the
+    // loan's remaining balance moves twice.
+    Guid? ClientId = null) : IIdempotentRequest;
 
 /// <summary>Archive (hide) or restore a resource that supports it (e.g. a savings bucket). Reversible; keeps history.</summary>
 public record SetArchivedRequest(bool Archived);
@@ -235,7 +239,11 @@ public record SetArchivedRequest(bool Archived);
 /// <summary>Deploy a savings bucket to its goal (e.g. a loan prepayment): money leaves the account from <see cref="FundId"/>,
 /// recorded as an external-transfer-out (not consumption, so it doesn't hit the expenses ledger) plus a drawdown that
 /// drains the bucket. On a debt bucket it also counts as an extra principal payment. Mirrors <c>BudgetingState.DisburseSaving</c>.</summary>
-public record DisburseSavingRequest(Guid SavingCategoryId, Guid FundId, decimal Amount, DateOnly Date, string? Note = null);
+public record DisburseSavingRequest(Guid SavingCategoryId, Guid FundId, decimal Amount, DateOnly Date, string? Note = null,
+    // ★ T0 — the idempotency key. See AddExpenseRequest.ClientId. A resend here writes the outflow, the drawdown
+    // AND the extra debt payment a second time: money that left once is recorded as leaving twice, and on a debt
+    // bucket the payoff plan believes it.
+    Guid? ClientId = null) : IIdempotentRequest;
 
 /// <summary>Mature saved money into a spendable budget for this period: release the earmark from <see cref="SavingCategoryId"/>
 /// and add <see cref="Amount"/> to <see cref="CategoryId"/>'s budget (no money physically moves). Mirrors <c>BudgetingState.ConvertSavingToBudget</c>.</summary>
@@ -469,7 +477,11 @@ public record SettleExpenseRequest(Guid DestinationAccountId, Guid DestinationFu
 /// an intra-account transfer, which is total-preserving because the money re-entered the account when the expense
 /// shrank. A synced source is not debited by it — the real bank balance already accounts for that side.
 /// </para></summary>
-public record RefundExpenseRequest(decimal Amount, Guid? ToFundId = null);
+public record RefundExpenseRequest(decimal Amount, Guid? ToFundId = null,
+    // ★ T0 — the idempotency key. See AddExpenseRequest.ClientId. ⚠️ This is the write where a lost response hurts
+    // most subtly: Amount is what came back NOW and the server ADDS it to the running total, so a blind resend
+    // credits the refund twice and the expense quietly shrinks to the wrong figure. Nothing errors.
+    Guid? ClientId = null) : IIdempotentRequest;
 
 // --- Statement import (reviewed rows -> real expenses & income in one save) -----------------------------------
 

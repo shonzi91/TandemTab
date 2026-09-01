@@ -274,8 +274,35 @@ it is the second time this session the existing guard rails caught a change that
 4. ⬜ **The forms are deliberately not navigation targets** (add expense / income / transfer / new goal). Each is
    opened by a method that seeds its draft first, and a form reached without that seeding misbehaves in ways only
    a person driving it would notice. One at a time, each verified on a running app.
-5. ✅ **R2.5's last two rows are BUILT and were driven on the running app** (2026-09-01), after being "what's
-   left" for four write-ups running. **579 + 609 green.** ⬜ What still stands under R2.5 is **T0's tail** only.
+5. 🔨 **Two of R2.5's rows are BUILT and were driven on the running app** (2026-09-01), after being "what's left"
+   for four write-ups running. **579 + 609 green.**
+   ⛔⛔ **But R2.5 is NOT finished, and this list is why it looked like it was.** The S127 entry above called
+   these "the last two rows"; **S124's entry named a third** — the phone's account-switcher **trip badge**
+   (`GET /active-trips`) — and a live `node tools/r2scan.js --list` on 2026-09-01 **agrees with S124**: the route
+   is still uncalled from Kotlin, and the web has called it since the badge shipped
+   (`FinAppApiClient.cs:139`). A row dropped out of a handoff list and two write-ups inherited the shorter one.
+   ⚠️ **The scanner is the tiebreaker here, not the prose.** It is the only source in this repo that cannot
+   forget a row, and it is why the count is checked rather than remembered.
+   ✅ **Both remaining rows were then built, and R2.5 is CLOSED. 579 + 56 + 613 green (4 new).**
+   - **The phone's trip badge.** `activeTrips()` + `ActiveTripDto` + a `TripModeTag` pill on each switcher row,
+     fetched **when the menu opens** and deliberately not awaited before it renders — it costs one encrypted
+     snapshot read per account server-side, and the names are what the user opened the menu for. ⚠️ The id match
+     is `equals(..., ignoreCase = true)`: the two sides do not agree on GUID casing, and a case-sensitive compare
+     here would simply never match — a badge that silently never appears.
+   - **T0's tail**, and the finding is that it was **three writes, not five**. Refund, disburse and the
+     installment log genuinely duplicated on a retry and now take keys. **Settle already did not** — it reuses
+     the expense's existing `SettlementId` and *replaces* the destination expense rather than adding one, so it
+     is idempotent by construction; and **statement import** is protected by its own `SkipDuplicates`, which on a
+     retry matches every row against what the first attempt wrote. ⚠️ Import is only safe while that flag is
+     true, which is its default — a caller passing `false` is back to duplicating.
+   - ⭐ **The trap the tests caught, and it would not have shown up by hand:** all three first used
+     `MutateAsync`, so a recognised retry wrote **no duplicate row but still bumped the version** — which pushes
+     every other client to re-pull for a change that never happened. `MutateOrSkipAsync` exists for exactly this
+     and the row-count assertions passed the whole time. **Assert the version, not just the count.**
+   - ⚠️ **The refund key SUPERSEDES the add-key** the row carried forward through every edit (one row, one key).
+     Deliberate: a late retry of the original *add* is a seconds-wide window that closed months ago, while the
+     refund's response may be in flight right now.
+   ⚠️ **Android's half is compiled, not run.** Same standing reason: no tag, no APK, reaches nobody.
    - **The always-visible milestones line.** The web drew it only while something was *in progress*, so Home went
      silent at the exact moment it had most to say — you finish the last milestone you were working on and the
      line vanishes. It now follows Android's rule: once anything is earned it stays and reads "N of M earned".

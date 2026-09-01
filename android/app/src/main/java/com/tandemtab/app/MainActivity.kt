@@ -138,6 +138,7 @@ private fun App(vm: AppViewModel, onGoogle: () -> Unit) {
             onLoadOnboarding = vm::loadOnboarding,
             onDismissOnboarding = vm::dismissOnboarding,
             onLoadMilestones = vm::loadMilestones,
+            onLoadActiveTrips = vm::loadActiveTrips,
             onLoadAchievements = vm::loadAchievements,
             onBeginSettle = vm::beginSettle,
             onClearSettling = vm::clearSettling,

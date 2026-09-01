@@ -282,6 +282,12 @@ object TripState {
 @Serializable
 data class TripTagDto(val id: String, val name: String, val icon: String? = null, val categoryId: String? = null)
 
+/** One account that is on a journey right now — the account switcher's Trip-mode badge (`GET /accounts/active-trips`).
+ *  Mirrors the web's `ActiveTripDto` field for field; it carries the trip's name and icon and nothing else,
+ *  because a badge is all it is for. */
+@Serializable
+data class ActiveTripDto(val accountId: String, val tripName: String, val icon: String? = null)
+
 /** One wedge of a trip's spending — already labelled and already ranked by the server. */
 @Serializable
 data class TripSliceDto(
@@ -899,7 +905,10 @@ data class LogInstallmentRequest(
     val principalTagId: String? = null,
     val interestTagId: String? = null,
     val note: String? = null,
-)
+    // ★ T0 — the idempotency key. See AddExpenseRequest.clientId. One installment is several expense rows sharing
+    // a group id, so an unrecognised retry duplicates the whole payment and moves the loan's balance twice.
+    override val clientId: String? = null,
+) : IdempotentRequest
 
 /** One non-loan line riding along on an installment (insurance, tax, a fee), with its own budget category. */
 @Serializable
@@ -954,7 +963,11 @@ data class DisburseSavingRequest(
     val amount: Double,
     val date: String,
     val note: String? = null,
-)
+    // ★ T0 — the idempotency key. See AddExpenseRequest.clientId. A resend writes the outflow, the drawdown AND
+    // the extra debt payment again: money that left once is recorded as leaving twice, and the payoff plan
+    // believes it.
+    override val clientId: String? = null,
+) : IdempotentRequest
 
 /** POST /accounts/{id}/savings/to-budget — mature a bucket into a category's budget this period. */
 @Serializable
@@ -1148,7 +1161,11 @@ data class RefundExpenseRequest(
     // paid from — see Account.RefundExpense, which moves the money across when the two differ and leaves a synced
     // destination alone because the bank balance already counts it.
     val toFundId: String? = null,
-)
+    // ★ T0 — the idempotency key. See AddExpenseRequest.clientId. ⚠️ The write where a lost response hurts most
+    // subtly: `amount` is what came back NOW and the server ADDS it to the running total, so a blind resend
+    // credits the refund twice and the expense quietly shrinks to the wrong figure. Nothing errors.
+    override val clientId: String? = null,
+) : IdempotentRequest
 
 /** PUT /accounts/{id}/account-transfers/{pairId} — rewrite BOTH halves at once. Null fund ids and a null date keep
  *  what the transfer already has. */

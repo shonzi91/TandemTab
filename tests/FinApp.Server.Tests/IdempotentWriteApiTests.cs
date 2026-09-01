@@ -38,12 +38,25 @@ public class IdempotentWriteApiTests : IClassFixture<FinAppServerFactory>
         var bank = agg.FundId("Bank");
         var cash = agg.FundId("Cash");
         var bucket = agg.AddSavingCategory("Holiday").Id;
+        // ⚠️ Configured as a LOAN as well as a bucket, because the installment route refuses anything else
+        // ("Only a debt bucket can take a loan installment") — and a 400 from that guard looks exactly like an
+        // idempotency failure in a test that was only trying to post twice. The other writes here neither know
+        // nor care that the bucket has debt terms.
+        agg.ConfigureSavingDebt(bucket, balance: 12_000m, annualRatePercent: 5m, installment: 400m,
+            balanceAsOf: new DateOnly(2026, 1, 1));
         var period = agg.StartPeriod(new DateOnly(2026, 1, 1), new DateOnly(2026, 1, 31));
         if (opening > 0m) period.SetInitialBalance(bank, new Money(opening, "EUR"));
         (await client.PutAsJsonAsync($"/accounts/{accountId}/snapshot",
             new SaveAccountRequest(AccountSnapshotSerializer.Serialize(agg), 0))).EnsureSuccessStatusCode();
         return (bank, cash, bucket);
     }
+
+    /// <summary>A spend category on the live account. The seed above builds funds and a bucket but no categories,
+    /// and an expense needs one — so this goes through the API rather than the aggregate, to keep the snapshot the
+    /// server holds and the one this test reasons about the same object.</summary>
+    private static async Task<Guid> AddCategoryAsync(HttpClient client, Guid accountId, string name) =>
+        (await PostAsync<MutationResultDto>(client, $"/accounts/{accountId}/categories",
+            new CreateCategoryRequest(name))).EntityId!.Value;
 
     private static async Task<Account> LoadAsync(HttpClient client, Guid accountId) =>
         AccountSnapshotSerializer.Deserialize(
@@ -218,6 +231,108 @@ public class IdempotentWriteApiTests : IClassFixture<FinAppServerFactory>
         Assert.Equal(2, (await LoadAsync(client, dest.Id)).CurrentPeriod!.Contributions.Count);
     }
 
+    // ── T0's tail (2026-09-01): the writes that were carried for four sessions as "safe, because nothing ──────
+    // retries them". That safety was a property of the CLIENTS, not of these routes, and it expired the moment
+    // the transport learned to retry an IIdempotentRequest on its own.
+
+    // ── Refund (POST /expenses/{id}/refund) — the one where a resend does not fail loudly ──────────────────
+
+    [Fact]
+    public async Task Retrying_a_refund_with_the_same_key_credits_the_money_back_once()
+    {
+        var (client, auth) = await _factory.RegisterAndAuthAsync("idem_refund");
+        var account = await CreateAccount(client, "Refunds");
+        var (bank, _, _) = await SeedAsync(client, account.Id, auth.UserId);
+        var category = await AddCategoryAsync(client, account.Id, "Food");
+        var expense = await PostAsync<ExpenseMutationDto>(client, $"/accounts/{account.Id}/expenses",
+            new AddExpenseRequest(category, 100m, bank, When, "Group dinner"));
+        var key = Guid.NewGuid();
+        var body = new RefundExpenseRequest(30m, ClientId: key);
+
+        var first = await PostAsync<MutationResultDto>(client, $"/accounts/{account.Id}/expenses/{expense.EntityId}/refund", body);
+        var second = await PostAsync<MutationResultDto>(client, $"/accounts/{account.Id}/expenses/{expense.EntityId}/refund", body);
+
+        // ★ The figure is the assertion, not the row count: this route ADDS to a running total, so an
+        // unrecognised retry leaves ONE expense that has been credited twice — 40 left instead of 70. A test
+        // that only counted rows would pass while the money was wrong.
+        var row = (await LoadAsync(client, account.Id)).Periods.SelectMany(p => p.Expenses).Single();
+        Assert.Equal(30m, row.RefundedAmount);
+        Assert.Equal(first.EntityId, second.EntityId);
+        Assert.Equal(first.Version, second.Version);
+    }
+
+    [Fact]
+    public async Task A_second_refund_on_the_same_expense_lands_when_its_key_differs()
+    {
+        // Two people handing back their share of one bill, minutes apart — separate credits that look alike.
+        var (client, auth) = await _factory.RegisterAndAuthAsync("idem_refund_two");
+        var account = await CreateAccount(client, "Refunds");
+        var (bank, _, _) = await SeedAsync(client, account.Id, auth.UserId);
+        var category = await AddCategoryAsync(client, account.Id, "Food");
+        var expense = await PostAsync<ExpenseMutationDto>(client, $"/accounts/{account.Id}/expenses",
+            new AddExpenseRequest(category, 100m, bank, When, "Group dinner"));
+
+        var first = await PostAsync<MutationResultDto>(client, $"/accounts/{account.Id}/expenses/{expense.EntityId}/refund",
+            new RefundExpenseRequest(30m, ClientId: Guid.NewGuid()));
+        // ⚠️ Addressed by the id the FIRST refund returned — refunding mints a new expense id and the old one
+        // stops resolving. Getting this wrong in a test looks like an idempotency failure and is not one.
+        await PostAsync<MutationResultDto>(client, $"/accounts/{account.Id}/expenses/{first.EntityId}/refund",
+            new RefundExpenseRequest(30m, ClientId: Guid.NewGuid()));
+
+        var row = (await LoadAsync(client, account.Id)).Periods.SelectMany(p => p.Expenses).Single();
+        Assert.Equal(60m, row.RefundedAmount);
+    }
+
+    // ── Deploying a bucket (POST /savings/disburse) — three writes behind one call ─────────────────────────
+
+    [Fact]
+    public async Task Retrying_a_disbursement_with_the_same_key_drains_the_bucket_once()
+    {
+        var (client, auth) = await _factory.RegisterAndAuthAsync("idem_disburse");
+        var account = await CreateAccount(client, "Deploy");
+        var (bank, _, bucket) = await SeedAsync(client, account.Id, auth.UserId);
+        var key = Guid.NewGuid();
+        var body = new DisburseSavingRequest(bucket, bank, 250m, When, "To the loan", key);
+
+        var first = await PostAsync<MutationResultDto>(client, $"/accounts/{account.Id}/savings/disburse", body);
+        var second = await PostAsync<MutationResultDto>(client, $"/accounts/{account.Id}/savings/disburse", body);
+
+        // ★ Both halves, because this call writes both and either one duplicating is a wrong figure: the outflow
+        // that says money left, and the drawdown that says the bucket emptied.
+        var period = (await LoadAsync(client, account.Id)).CurrentPeriod!;
+        Assert.Single(period.ExternalTransfers);
+        Assert.Single(period.SavingAllocations);
+        Assert.Equal(first.EntityId, second.EntityId);
+        Assert.Equal(first.Version, second.Version);
+    }
+
+    // ── The installment log (POST /installments) — several rows, one write ─────────────────────────────────
+
+    [Fact]
+    public async Task Retrying_an_installment_with_the_same_key_logs_one_payment_and_returns_its_whole_group()
+    {
+        var (client, auth) = await _factory.RegisterAndAuthAsync("idem_installment");
+        var account = await CreateAccount(client, "Loan");
+        var (bank, _, bucket) = await SeedAsync(client, account.Id, auth.UserId);
+        var principal = await AddCategoryAsync(client, account.Id, "Loan principal");
+        var interest = await AddCategoryAsync(client, account.Id, "Loan interest");
+        var key = Guid.NewGuid();
+        var body = new LogInstallmentRequest(bucket, 400m, bank, When, principal, interest, ClientId: key);
+
+        var first = await PostAsync<InstallmentMutationDto>(client, $"/accounts/{account.Id}/installments", body);
+        var second = await PostAsync<InstallmentMutationDto>(client, $"/accounts/{account.Id}/installments", body);
+
+        // ★ The rebuild is the part worth pinning. Only the principal row carries the key, so recognising the
+        // retry means finding that row and answering with its WHOLE group — a reply carrying one row of a
+        // multi-row payment would be a success the client cannot use.
+        Assert.Equal(first.Rows.Count, second.Rows.Count);
+        Assert.Equal(first.GroupId, second.GroupId);
+        Assert.Equal(first.Version, second.Version);
+        var expenses = (await LoadAsync(client, account.Id)).CurrentPeriod!.Expenses;
+        Assert.Equal(first.Rows.Count, expenses.Count);
+        Assert.Equal(400m, expenses.Sum(e => e.Amount.Amount));
+    }
+
     // ── The contract itself ────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
@@ -231,6 +346,8 @@ public class IdempotentWriteApiTests : IClassFixture<FinAppServerFactory>
         [
             typeof(AddExpenseRequest), typeof(AddDepositRequest), typeof(AddSavingDepositRequest),
             typeof(TransferFundsRequest), typeof(TransferToAccountRequest),
+            // T0's tail, 2026-09-01.
+            typeof(RefundExpenseRequest), typeof(DisburseSavingRequest), typeof(LogInstallmentRequest),
         ];
         foreach (var t in keyed)
             Assert.True(typeof(IIdempotentRequest).IsAssignableFrom(t), $"{t.Name} carries a key but is not an IIdempotentRequest.");

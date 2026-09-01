@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
@@ -83,6 +84,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.TextUnit
@@ -95,6 +97,7 @@ import com.tandemtab.app.data.BreakdownViewDto
 import com.tandemtab.app.data.FundCurrencyEdit
 import com.tandemtab.app.data.ImportRowDto
 import com.tandemtab.app.data.ExpenseDto
+import com.tandemtab.app.data.ActiveTripDto
 import com.tandemtab.app.data.MilestonesDto
 import com.tandemtab.app.data.PlanFeatures
 import com.tandemtab.app.data.RunwayDto
@@ -166,6 +169,7 @@ fun HomeScreen(
     onLoadOnboarding: () -> Unit,
     onDismissOnboarding: () -> Unit,
     onLoadMilestones: () -> Unit,
+    onLoadActiveTrips: () -> Unit,
     onLoadAchievements: (Boolean) -> Unit,
     onBeginSettle: (ExpenseDto) -> Unit,
     onClearSettling: () -> Unit,
@@ -341,7 +345,14 @@ fun HomeScreen(
                 // Keep the brand mark (icon only, no wordmark) to anchor the compact header.
                 TandemLogo(size = 24.dp)
                 Spacer(Modifier.width(10.dp))
-                Box(Modifier.weight(1f)) { AccountSwitcher(state, onSelectAccount, onCreateAccount = { showCreateAccount = true }) }
+                Box(Modifier.weight(1f)) {
+                    AccountSwitcher(
+                        state,
+                        onSelectAccount,
+                        onCreateAccount = { showCreateAccount = true },
+                        onOpened = onLoadActiveTrips,
+                    )
+                }
                 PeriodSwitcher(
                     state = state,
                     onSelectPeriod = onSelectPeriod,
@@ -1655,7 +1666,12 @@ private fun monthsText(months: Int): String = when {
 /** The account name — a tap-to-switch dropdown when the user has more than one account, else a plain heading. Each
  *  dropdown row leads with the account's avatar (its members stacked, or a coloured initial). */
 @Composable
-private fun AccountSwitcher(state: UiState, onSelectAccount: (String) -> Unit, onCreateAccount: () -> Unit) {
+private fun AccountSwitcher(
+    state: UiState,
+    onSelectAccount: (String) -> Unit,
+    onCreateAccount: () -> Unit,
+    onOpened: () -> Unit,
+) {
     val account = state.selectedAccount
     // No account at all — the phone-only dead-end. Registration makes a user, not an account, so a fresh sign-up
     // lands here with nothing; this is the only way out. Show a plain "create" affordance in place of the name.
@@ -1674,7 +1690,7 @@ private fun AccountSwitcher(state: UiState, onSelectAccount: (String) -> Unit, o
     // account can be made on the phone. Pro-gated: the server 402s a free user's second account.
     var open by remember { mutableStateOf(false) }
     Row(
-        Modifier.clip(RoundedCornerShape(10.dp)).clickable { open = true }.padding(vertical = 2.dp, horizontal = 2.dp),
+        Modifier.clip(RoundedCornerShape(10.dp)).clickable { open = true; onOpened() }.padding(vertical = 2.dp, horizontal = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(account.name, fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.onBackground, maxLines = 1)
@@ -1684,8 +1700,23 @@ private fun AccountSwitcher(state: UiState, onSelectAccount: (String) -> Unit, o
     DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
         state.accounts.forEachIndexed { i, a ->
             val selected = a.id == state.selectedAccountId
+            // R2.5: the web's Trip-mode badge, ported. It answers "which of these is on a journey" without
+            // switching into each one to find out, which is the whole reason it lives on the row rather than
+            // inside the account. Case-insensitive id match — the server hands back GUIDs and the two sides do
+            // not agree on casing, which is exactly the kind of comparison that silently never matches.
+            val trip = state.activeTrips.firstOrNull { it.accountId.equals(a.id, ignoreCase = true) }
             DropdownMenuItem(
-                text = { Text(a.name, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal, color = MaterialTheme.colorScheme.onSurface) },
+                text = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            a.name,
+                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1,
+                        )
+                        if (trip != null) { Spacer(Modifier.width(7.dp)); TripModeTag(trip) }
+                    }
+                },
                 onClick = { onSelectAccount(a.id); open = false },
                 leadingIcon = { AccountAvatar(a, i, state.sharing.avatars) },
                 trailingIcon = if (selected) {
@@ -1698,6 +1729,35 @@ private fun AccountSwitcher(state: UiState, onSelectAccount: (String) -> Unit, o
             text = { Text("New account", fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary) },
             onClick = { open = false; onCreateAccount() },
             leadingIcon = { Icon(TandemIcons.Plus, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp)) },
+        )
+    }
+}
+
+/** The switcher's Trip-mode badge: the journey's icon and name on a tinted pill.
+ *
+ *  ⚠️ The name is truncated rather than wrapped. A dropdown row is one line and a long journey name would either
+ *  push the account's own name out of view or make the row two lines tall — and the account name is what the
+ *  menu is for. The badge is a hint that a trip is running, not the place to read its title. */
+@Composable
+private fun TripModeTag(trip: ActiveTripDto) {
+    // Brand primary in both themes, like the web's .trip-tag — deliberately not the muted grey the rest of the
+    // row wears, because the badge is the one thing on it that is news.
+    Row(
+        Modifier
+            .background(MaterialTheme.colorScheme.primary.copy(alpha = .12f), RoundedCornerShape(7.dp))
+            .padding(horizontal = 6.dp, vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        CatIcon(trip.icon ?: "plane", trip.tripName, size = 12.dp)
+        Spacer(Modifier.width(4.dp))
+        Text(
+            trip.tripName,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.primary,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.widthIn(max = 96.dp),
         )
     }
 }
