@@ -22,6 +22,15 @@ public sealed class Contribution : Entity
 
     public void SetFundSynced(bool synced) => FundSynced = synced;
 
+    /// <summary>The rollover this deposit reconciles, when it is a reconciliation adjustment rather than real
+    /// income — the id of the period being CLOSED. See <see cref="Budgeting.Expense.ReconciliationForPeriodId"/>;
+    /// the deposit half needs the same stamp for the same reason, and needs it more, because it carries no note
+    /// to recognise it by.</summary>
+    public Guid? ReconciliationForPeriodId { get; private set; }
+
+    public void SetReconciliationFor(Guid? periodId) =>
+        ReconciliationForPeriodId = periodId is { } p && p != Guid.Empty ? p : null;
+
     /// <summary>When set, this deposit is the receiving half of a transfer from another account: the shared id of
     /// the <see cref="Funds.ExternalTransfer"/> that created it. Null on every ordinary deposit, and null on
     /// transfers recorded before the link existed (see that property's remarks — legacy pairs are not guessed at).</summary>

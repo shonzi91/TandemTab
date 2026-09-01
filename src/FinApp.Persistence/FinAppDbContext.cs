@@ -295,6 +295,7 @@ public sealed class FinAppDbContext(DbContextOptions<FinAppDbContext> options) :
             c.Ignore(x => x.FundSynced);         // body data — synced-fund marker rides in the snapshot
             c.Ignore(x => x.AccountTransferId);  // body data — the two-sided transfer link rides in the snapshot
             c.Ignore(x => x.FromAccountId);
+            c.Ignore(x => x.ReconciliationForPeriodId);  // body data — the rollover stamp rides in the snapshot
             c.Ignore(x => x.IsTransferIn);       // computed from AccountTransferId
             c.Ignore(x => x.ClientId);           // body data — the write's idempotency key rides in the snapshot
         });
@@ -339,6 +340,7 @@ public sealed class FinAppDbContext(DbContextOptions<FinAppDbContext> options) :
             e.Ignore(x => x.Time);
             e.Ignore(x => x.SortTime);
             e.Ignore(x => x.FundSynced);       // body data — synced-fund marker rides in the snapshot
+            e.Ignore(x => x.ReconciliationForPeriodId);  // body data — the rollover stamp rides in the snapshot
             e.Ignore(x => x.BankExternalId);   // body data — bank provenance rides in the snapshot
             e.Ignore(x => x.AutoFiled);        // body data — auto-filed marker rides in the snapshot
             e.Ignore(x => x.InstallmentGroupId);  // body data — the installment split rides in the snapshot

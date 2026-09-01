@@ -4959,6 +4959,17 @@ else
                 case Modal.RemovePeriod:
                     <h3>@Loc["Remove this period?"]</h3>
                     <p class="hint">@Loc["This deletes period"] @State.PeriodNumber (@State.Period.From.ToString("dd MMM") – @State.Period.To.ToString("dd MMM yyyy")) @Loc["and everything in it, then re-opens the previous period as active."] @Loc["This can't be undone."]</p>
+                    @* ★ Named because it is the surprising half. The adjustments live in the PREVIOUS period, so
+                       "deletes this period and everything in it" reads as though they survive — and until this
+                       release they did, leaving corrections behind for a rollover that no longer existed. *@
+                    @if (State.ReconciliationAdjustmentCount is var adjCount && adjCount > 0)
+                    {
+                        <p class="hint warn-text">
+                            @(adjCount == 1
+                                ? Loc["The reconciliation adjustment that rollover recorded in the previous period is removed with it, so that period's books go back to what they said before."]
+                                : string.Format(Loc["The {0} reconciliation adjustments that rollover recorded in the previous period are removed with it, so that period's books go back to what they said before."], adjCount))
+                        </p>
+                    }
                     <div class="modal-actions">
                         <button class="ghost" @onclick="Back">@Loc["Cancel"]</button>
                         <button class="danger-btn" @onclick="ConfirmRemovePeriod">@Loc["Remove period"]</button>
@@ -13402,17 +13413,16 @@ else
         await DoRolloverAsync();
     });
 
-    private Task RolloverIgnoringGaps() => RunModal(DoRolloverAsync);
+    // "I'll add it myself" — roll over and leave the drift unrecorded, which is a real choice: the books stay as
+    // the user entered them and they reconcile by hand.
+    private Task RolloverIgnoringGaps() => RunModal(async () => await DoRolloverAsync());
 
-    private Task RolloverWithAdjustments() => RunModal(async () =>
-    {
-        // Log the drift as recategorizable "Adjustment" entries in the closing period, so its books reconcile.
-        if (_reconcileGaps is { } gaps)
-            await State.RecordReconciliationAdjustments(gaps, State.Period.To);
-        await DoRolloverAsync();
-    });
+    // ★ The drift now travels WITH the rollover instead of being written first. Two separate writes meant a
+    // rollover that failed after them left "Adjustment" entries behind for a rollover that never happened, and
+    // nothing marked them as adjustments so nothing could clean them up.
+    private Task RolloverWithAdjustments() => RunModal(async () => await DoRolloverAsync(withAdjustments: true));
 
-    private async Task DoRolloverAsync()
+    private async Task DoRolloverAsync(bool withAdjustments = false)
     {
         // Prefer the balance recorded at the closing period's month-end (from sync history) so a late rollover
         // doesn't leak next-month activity in; fall back to the live balance if there's no snapshot that old.
@@ -13422,7 +13432,10 @@ else
             try { syncedClose = (await Api.GetBankBalanceAtAsync(State.CurrentAccountId, State.Period.To)).Balance; } catch { /* fall back */ }
             syncedClose ??= _bankStatus?.Balance;
         }
-        await State.StartNextPeriod(_copyBudgets, _realOpenings, _adjustBudgets, syncedClose);
+        var gaps = withAdjustments && _reconcileGaps is { } g
+            ? g.ToDictionary(x => x.FundId, x => x.Gap)
+            : null;
+        await State.StartNextPeriod(_copyBudgets, _realOpenings, _adjustBudgets, syncedClose, gaps);
         _reconcileGaps = null;
         CloseModal();
         // A fresh month's budgets are the first thing anyone touches — whether they were copied forward (and now

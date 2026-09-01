@@ -2680,6 +2680,26 @@ accounts.MapPut("/{id:guid}/funds/{fundId:guid}/opening-balance", async (Guid id
         var period = account.CurrentPeriod ?? throw new InvalidOperationException("There's no open period.");
         if (account.FindFund(fundId) is null) throw new InvalidOperationException("That fund doesn't exist in this account.");
         period.SetInitialBalance(fundId, new Money(req.Amount, account.Currency));
+
+        // ⚠️⚠️ The opening balance is one half of a pair. If the rollover that created this period booked a
+        // reconciliation adjustment for this fund, that adjustment was sized as (entered − ledger) at the time —
+        // so changing the entered figure without resizing it leaves the two disagreeing, which is the bug this
+        // fixes. ★ Only the AMOUNT is recomputed: the entry keeps its category, note and date, because somebody
+        // may have recategorised or explained the drift and arithmetic has no business overwriting that.
+        if (account.PreviousPeriodOf(period) is { } previous)
+        {
+            // ⚠️ The drift is computed by the period itself so it can exclude its OWN adjustments — recomputing
+            // against the plain balance would compare the new figure against one the old adjustment had already
+            // corrected, shrinking the adjustment towards zero on every edit.
+            var drift = previous.ReconciliationDriftFor(fundId, req.Amount);
+            // False means the drift changed KIND (an expense cannot become a deposit), so the old entry was
+            // cleared and the replacement has to be written here.
+            if (!previous.ResizeReconciliationAdjustment(fundId, drift))
+            {
+                var member = account.Members.FirstOrDefault(m => m.UserId == userId)?.Id ?? Guid.Empty;
+                account.RecordReconciliationAdjustment(previous, fundId, drift, previous.To, member);
+            }
+        }
         return null;
     }, ct);
     await notifier.AccountChangedAsync(id, userId, version);
@@ -3018,6 +3038,16 @@ accounts.MapPost("/{id:guid}/periods/start-next", async (Guid id, StartNextPerio
         // has the old open period; a genuine double-submit against the freshly-opened (future-dated) period is rejected.
         if (previous.To >= today)
             throw new InvalidOperationException("The current period hasn't ended yet — you can only start the next period once it has.");
+
+        // ★ Before the close, and inside the same mutation: the drift entries belong to this rollover, and writing
+        // them separately (as the client used to) left them behind whenever the rollover itself did not land.
+        if (req.ReconciliationGaps is { Count: > 0 } gaps)
+        {
+            var member = account.Members.FirstOrDefault(m => m.UserId == userId)?.Id ?? Guid.Empty;
+            foreach (var (fundId, drift) in gaps)
+                account.RecordReconciliationAdjustment(previous, fundId, drift, previous.To, member);
+        }
+
         previous.Close();
 
         var from = previous.To.AddDays(1);

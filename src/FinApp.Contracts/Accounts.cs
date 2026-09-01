@@ -551,7 +551,14 @@ public record StartNextPeriodRequest(
     bool AdjustBudgets = false,
     IReadOnlyDictionary<Guid, decimal>? FundOpenings = null,
     decimal? SyncedFundClosingBalance = null,
-    DateOnly? Today = null);
+    DateOnly? Today = null,
+    /// <summary>Per-fund drift between the ledger and the real balance entered, to be booked into the CLOSING
+    /// period as stamped reconciliation adjustments.
+    /// <para>★ Sent with the rollover rather than written first by the client: the entries only make sense as part
+    /// of the close, and writing them separately left corrections behind whenever the rollover that justified them
+    /// did not happen. Trailing and optional — an absent value means "reconcile nothing", which is what every
+    /// caller that ignores drift already meant.</para></summary>
+    IReadOnlyDictionary<Guid, decimal>? ReconciliationGaps = null);
 
 /// <summary>Reschedule a period's date range; every later period shifts to stay contiguous, each keeping its length.
 /// The target period is identified positionally (oldest = 0), matching the web's period navigation. Mirrors

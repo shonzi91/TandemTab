@@ -1539,12 +1539,64 @@ public sealed class Account : Entity
     /// Remove the latest period and re-activate the previous one (which becomes editable again).
     /// Only the most recent period can be removed, so the period chain stays contiguous.
     /// </summary>
+    /// <summary>
+    /// Record the drift between a fund's ledger balance and the real balance entered at rollover, as an entry in
+    /// the period being closed, stamped with that period so it can later be resized or undone.
+    /// <para>
+    /// ★ <b>This belongs to the rollover, not to the caller.</b> The web client used to write these as ordinary
+    /// expenses and deposits and then call start-next separately, which left two holes: nothing marked them as
+    /// adjustments, and a rollover that failed after they were written left corrections behind for a rollover that
+    /// never happened. Created here they are stamped and atomic with the close.
+    /// </para>
+    /// <para>A negative drift means the ledger says more than reality — money left without being logged — so it is
+    /// an expense. A positive drift is money that arrived unlogged, so it is a deposit.</para>
+    /// </summary>
+    public void RecordReconciliationAdjustment(Period period, Guid fundId, decimal drift, DateOnly date, Guid memberId)
+    {
+        if (drift == 0m) return;
+
+        if (drift < 0m)
+        {
+            var category = _categories.FirstOrDefault(c => !c.IsArchived &&
+                               string.Equals(c.Name, ReconciliationCategoryName, StringComparison.OrdinalIgnoreCase))
+                           ?? AddCategory(ReconciliationCategoryName, "⚖️");
+            var expense = period.AddExpense(new Expense(category.Id, new Money(Math.Abs(drift), Currency), date,
+                memberId, fundId, ReconciliationNote));
+            expense.SetReconciliationFor(period.Id);
+        }
+        else
+        {
+            var category = _contributionCategories.FirstOrDefault(c =>
+                               string.Equals(c.Name, ReconciliationCategoryName, StringComparison.OrdinalIgnoreCase))
+                           ?? AddContributionCategory(ReconciliationCategoryName);
+            var deposit = period.Deposit(memberId, new Money(drift, Currency), category.Id, fundId, date);
+            deposit.SetReconciliationFor(period.Id);
+        }
+    }
+
+    /// <summary>What the reconciliation category is called when one has to be created. ⚠️ Only ever used to CREATE
+    /// or find it — never to identify an adjustment, which is what the stamp is for. The user may rename it.</summary>
+    public const string ReconciliationCategoryName = "Adjustment";
+    private const string ReconciliationNote = "Reconciliation";
+
+    /// <summary>
+    /// Undo the last rollover: drop the newest period and reopen the one before it.
+    /// <para>
+    /// ⚠️⚠️ <b>The reconciliation adjustments go with it.</b> A rollover may write "Adjustment" entries into the
+    /// period it CLOSES, sized to whatever drift the user entered. Removing the period without them left those
+    /// entries behind — corrections justifying a rollover that no longer existed — and the reopened period's
+    /// closing balance stayed wrong by exactly the drift. They are found by their stamp rather than by the
+    /// "Adjustment" category name, which is renameable and which the deposit half does not carry a note for.
+    /// </para>
+    /// </summary>
     public void RemoveLatestPeriod()
     {
         if (_periods.Count <= 1)
             throw new InvalidOperationException("Cannot remove the only period.");
         _periods.RemoveAt(_periods.Count - 1);
-        _periods[^1].Reopen();
+        var reopened = _periods[^1];
+        reopened.RemoveReconciliationAdjustments();
+        reopened.Reopen();
     }
 
     public Period? PreviousPeriodOf(Period period)

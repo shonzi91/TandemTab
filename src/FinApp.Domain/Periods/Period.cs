@@ -76,6 +76,89 @@ public sealed class Period : Entity
     }
 
     /// <summary>Drop a fund's opening-balance row (used when the fund is removed).</summary>
+    /// <summary>
+    /// What this fund's drift would be if the next period's opening were <paramref name="entered"/> — i.e. the
+    /// figure a reconciliation adjustment should be sized to.
+    /// <para>
+    /// ⚠️⚠️ <b>It excludes this period's own adjustments, and that is the whole point.</b> Once an adjustment is
+    /// booked, the fund's balance equals the figure that was entered — the drift it recorded is gone from the
+    /// ledger by construction. Recomputing against the plain balance after an edit would therefore compare the new
+    /// figure against one already corrected by the old one, and shrink every adjustment towards zero on each edit.
+    /// </para>
+    /// </summary>
+    public decimal ReconciliationDriftFor(Guid fundId, decimal entered)
+    {
+        var booked = _expenses.Where(e => e.ReconciliationForPeriodId == Id && e.FundId == fundId && !e.FundSynced)
+                         .Sum(e => e.Amount.Amount)
+                   - _contributions.Where(c => c.ReconciliationForPeriodId == Id && c.FundId == fundId && !c.FundSynced)
+                         .Sum(c => c.Paid.Amount);
+        // `booked` is what the adjustments took OUT of the balance, so adding it back undoes them.
+        return decimal.Round(entered - (FundBalance(fundId).Amount + booked), 2);
+    }
+
+    /// <summary>Drop every reconciliation adjustment recorded against this period's own rollover. Used when that
+    /// rollover is undone — see <see cref="Accounts.Account.RemoveLatestPeriod"/>.</summary>
+    public void RemoveReconciliationAdjustments()
+    {
+        _expenses.RemoveAll(e => e.ReconciliationForPeriodId == Id);
+        _contributions.RemoveAll(c => c.ReconciliationForPeriodId == Id);
+    }
+
+    /// <summary>
+    /// Resize the reconciliation adjustments this period recorded for <paramref name="fundId"/> to a new drift.
+    /// <para>
+    /// ★ <b>Only the amount moves.</b> The entry keeps its category, its note and its date, because somebody may
+    /// have recategorised or explained it and arithmetic has no business overwriting that. If the drift flips
+    /// sign the old entry cannot be reshaped into the other kind — an expense is not a deposit — so it is removed
+    /// and the caller records the replacement.
+    /// </para>
+    /// <para>⚠️ Returns false when the drift changed KIND, which is the caller's signal that it must write the new
+    /// entry itself. Returning true when nothing was found would silently lose the correction.</para>
+    /// </summary>
+    public bool ResizeReconciliationAdjustment(Guid fundId, decimal drift)
+    {
+        var expenses = _expenses.Where(e => e.ReconciliationForPeriodId == Id && e.FundId == fundId).ToList();
+        var deposits = _contributions.Where(c => c.ReconciliationForPeriodId == Id && c.FundId == fundId).ToList();
+        if (expenses.Count == 0 && deposits.Count == 0) return false;
+
+        // A drift that has gone to nothing leaves no correction to make.
+        if (drift == 0m)
+        {
+            foreach (var e in expenses) _expenses.Remove(e);
+            foreach (var c in deposits) _contributions.Remove(c);
+            return true;
+        }
+
+        // Wrong kind for the new sign: an overspend correction cannot become a top-up. Clear and let the caller
+        // write the right one.
+        if ((drift < 0m && expenses.Count == 0) || (drift > 0m && deposits.Count == 0))
+        {
+            foreach (var e in expenses) _expenses.Remove(e);
+            foreach (var c in deposits) _contributions.Remove(c);
+            return false;
+        }
+
+        if (drift < 0m)
+        {
+            // ⚠️ Expense.Amount is immutable by design, so a resize is a rebuild — the same replace-and-copy shape
+            // EditExpense uses, minus its EnsureOpen: the period holding an adjustment is the CLOSED one, which is
+            // precisely why this cannot simply call EditExpense.
+            var old = expenses[0];
+            _expenses.Remove(old);
+            var resized = new Expense(old.CategoryId, new Money(Math.Abs(drift), Currency), old.Date,
+                old.MemberId, old.FundId, old.Note);
+            old.CopyBodyDataTo(resized);        // carries the stamp, the tag, the time — everything but the amount
+            _expenses.Add(resized);
+            foreach (var extra in expenses.Skip(1)) _expenses.Remove(extra);
+        }
+        else
+        {
+            deposits[0].SetPaid(new Money(drift, Currency));
+            foreach (var extra in deposits.Skip(1)) _contributions.Remove(extra);
+        }
+        return true;
+    }
+
     public void RemoveInitialBalance(Guid fundId) =>
         _initialBalances.RemoveAll(b => b.FundId == fundId);
 

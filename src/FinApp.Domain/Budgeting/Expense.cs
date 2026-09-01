@@ -297,6 +297,25 @@ public sealed class Expense : Entity
     /// the original charge was, and so the refund can be undone — same shape as
     /// <see cref="SettledAmount"/>. Body data — travels in the account snapshot, not the relational header.</para>
     /// </summary>
+    /// <summary>
+    /// Set when this expense exists only to reconcile a period's books at rollover — the id of the period being
+    /// CLOSED when the drift was recorded.
+    /// <para>
+    /// ⚠️ <b>The stamp is what makes the entry undoable.</b> Without it a reconciliation adjustment is an ordinary
+    /// expense indistinguishable from a real one, so removing the period it justified left it behind (correcting a
+    /// rollover that no longer existed) and editing the opening balance it was derived from left it stale. Matching
+    /// on the "Adjustment" category name instead would be guesswork: that category is renameable, and the deposit
+    /// half carries no note at all.
+    /// </para>
+    /// <para>★ It marks ORIGIN, not ownership. The entry stays fully editable — recategorise it, annotate it — and
+    /// only its amount is ever recomputed. Someone who has explained a drift in their own words should not have
+    /// that overwritten by arithmetic.</para>
+    /// </summary>
+    public Guid? ReconciliationForPeriodId { get; private set; }
+
+    public void SetReconciliationFor(Guid? periodId) =>
+        ReconciliationForPeriodId = periodId is { } p && p != Guid.Empty ? p : null;
+
     public decimal RefundedAmount { get; private set; }
 
     /// <summary>Record the total refunded against this expense. A setter for the same reason as
@@ -393,6 +412,9 @@ public sealed class Expense : Entity
         // edited, settled or refunded — drop the key here and correcting an amount silently re-opens the duplicate
         // window the key exists to close.
         rebuilt.SetClientId(ClientId);
+        // ⚠️ Without this an ordinary edit — recategorising an adjustment, or annotating it — silently strips the
+        // stamp, and the entry becomes exactly the orphan this whole mechanism exists to prevent.
+        rebuilt.SetReconciliationFor(ReconciliationForPeriodId);
     }
 
     public Expense(

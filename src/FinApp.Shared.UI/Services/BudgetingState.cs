@@ -740,6 +740,14 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     /// the index it depends on is private.</summary>
     public Period? PreviousPeriod => _selectedIndex > 0 ? Account.Periods[_selectedIndex - 1] : null;
 
+    /// <summary>How many reconciliation adjustments the previous period is carrying from the rollover that opened
+    /// this one — i.e. how many entries removing this period would also take back out. Zero on a rollover where
+    /// nothing drifted, and on every period rolled before adjustments were stamped.</summary>
+    public int ReconciliationAdjustmentCount =>
+        PreviousPeriod is not { } p ? 0
+            : p.Expenses.Count(e => e.ReconciliationForPeriodId == p.Id)
+            + p.Contributions.Count(c => c.ReconciliationForPeriodId == p.Id);
+
     /// <summary>
     /// Money out of <b>any</b> period — expenses plus out-transfers — optionally narrowed to one root category and
     /// optionally cut off at a date.
@@ -3801,8 +3809,12 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
     /// </summary>
     private bool _startingNext;
 
+    /// <param name="reconciliationGaps">Per-fund drift to book into the CLOSING period. ★ Passed here rather than
+    /// written by the caller beforehand: the entries belong to the rollover, and writing them separately left
+    /// corrections behind whenever the rollover that justified them did not land.</param>
     public async Task StartNextPeriod(bool copyBudgets, IReadOnlyDictionary<Guid, decimal> realFundOpenings,
-        bool adjustBudgets = false, decimal? syncedFundClosingBalance = null)
+        bool adjustBudgets = false, decimal? syncedFundClosingBalance = null,
+        IReadOnlyDictionary<Guid, decimal>? reconciliationGaps = null)
     {
         // Double-submit guard. The old local path closed the period synchronously, so a second click bailed on
         // CanStartNextPeriod; now the state only advances when the server's result lands, so hold re-entry too.
@@ -3811,7 +3823,7 @@ public sealed class BudgetingState(FinAppApiClient api, AuthState auth, SyncClie
         try
         {
             await ExecuteAsync(id => api.StartNextPeriodAsync(id, new StartNextPeriodRequest(
-                copyBudgets, adjustBudgets, realFundOpenings, syncedFundClosingBalance, Today())));
+                copyBudgets, adjustBudgets, realFundOpenings, syncedFundClosingBalance, Today(), reconciliationGaps)));
             _selectedIndex = Account.Periods.Count - 1;
             RaiseChanged();
         }
