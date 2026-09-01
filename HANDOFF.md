@@ -271,10 +271,27 @@ it is the second time this session the existing guard rails caught a change that
    Does something already promised now work, work correctly, or work for everyone → repair, it ships.
    ⚠️ **R4.5 Trip Mode is inside the freeze**, deliberately. It stays the owner's call, but taking it *moves*
    the freeze rather than being an exception to it — and moving it moves R5 and R7 with it.
-4. ⬜ **The forms are deliberately not navigation targets** (add expense / income / transfer / new goal). Each is
+4. ⭐⭐ **THE ORDER CHANGED: R4.5 → R4 → R5** (owner, 2026-09-01). Trip Mode was proposed in S116 and advisory
+   since; it is **accepted and it is next**, ahead of the Railway migration and the landing/billing pass.
+   ★ **Why it is right rather than merely wanted:** Trip Mode puts account data **at rest on the device**, which
+   is a GDPR change — and R5 owns the legal re-read. Building it after R5 does that pass twice. Same for the
+   paywall (Trip Mode is a plausible Pro feature; the split cannot be settled around a feature that does not
+   exist) and the landing page (it cannot describe a product about to grow a capability).
+   ⚠️ **The price, accepted knowingly: this MOVES the freeze declared the same morning**, and R5 and R7 move out
+   by the length of R4.5. It is the freeze's **one named exception** — and the test for everything else is
+   unchanged. "Trip Mode is going ahead" is not an argument for a second exception.
+   ★ **R4's urgency is coupled to promotion, not the calendar** — Neon's ceiling only fires on a traffic spike
+   and the spike *is* R7. But R4 still lands **before R5**: migrating after billing means migrating a live
+   payment integration, and every deploy until then pays the Windows `gcloud` tax.
+   ⛔ **R8 and R9 were considered for the same move and declined on their own un-defer conditions** — R8 needs
+   users hitting R4.5's boundary, R9 needs real assistant traffic; both arrive at R7, so building them first is
+   guessing at the answers those conditions exist to supply. ⚠️ **Before R9 ever starts, the read-only
+   assistant's rule tables are the free fix**: 15 of 21 escalated questions came back `unknown`, and the probe
+   measures it without a key or an account.
+5. ⬜ **The forms are deliberately not navigation targets** (add expense / income / transfer / new goal). Each is
    opened by a method that seeds its draft first, and a form reached without that seeding misbehaves in ways only
    a person driving it would notice. One at a time, each verified on a running app.
-5. 🔨 **Two of R2.5's rows are BUILT and were driven on the running app** (2026-09-01), after being "what's left"
+6. 🔨 **Two of R2.5's rows are BUILT and were driven on the running app** (2026-09-01), after being "what's left"
    for four write-ups running. **579 + 609 green.**
    ⛔⛔ **But R2.5 is NOT finished, and this list is why it looked like it was.** The S127 entry above called
    these "the last two rows"; **S124's entry named a third** — the phone's account-switcher **trip badge**

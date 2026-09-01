@@ -237,8 +237,8 @@ against a moving feature set is work that gets redone. R4 lands before R7 for th
 | **R2** | Android catch-up + theme verification **+ an APK pipeline** | Android at web parity; light/dark swept on **both** surfaces; **and CI can produce a release APK that runs on a real device** | L · ✅ **done 2026-08-20 (S111)** — all four exit criteria met. **Now 115/122 (94%)** after the merge session closed both stated lags; every one of the 7 remaining routes is *decided*: 4 deferred (bank), 3 non-gaps, **0 stated lags** |
 | **R2.5** | **The surface sweep** — the differences a route scanner cannot see | Every remaining web⇄phone difference is either built or **written down as a decision** | M · ✅ **DONE 2026-09-01.** All four rows: the always-visible milestones line and the auto-mask trigger (driven on the running app), the phone's **trip badge** (`GET /active-trips` — the last uncalled route that was a real gap), and **T0's tail**. ✅ **Driven on the emulator** — the badge renders (`TripCheck ✈ Rome`), and the APK now reaches people: `android-v0.1.0` is tagged, built and published |
 | **R3** | AI assistant — **narrate and navigate** | ✅ **LIVE 2026-09-01** on `finapp-00355-2v5`, verified in the served WASM — and gated to two addresses by `Assistant__AllowedEmails`. **It drew R1's freeze line the same day.** ⬜ Open: 15 of 21 escalated questions returned `unknown`, and the rule tables are the fix | M |
-| **R4** | Railway migration (hosting **and** DB) | Serving from Railway, Neon + Cloud Run retired | M–L |
-| **R4.5** | **Trip Mode** (bounded offline) | The phone opens, shows cached figures with their staleness, takes an expense with no signal, and posts **exactly one** row on reconnect | M per platform · ⬜ **proposed (S116)** |
+| **R4.5** | **Trip Mode** (bounded offline) — ⭐ **moved AHEAD of R4/R5 by owner's decision, 2026-09-01** | The phone opens, shows cached figures with their staleness, takes an expense with no signal, and posts **exactly one** row on reconnect | M per platform · ✅ **accepted — next up**. It is a new feature, so taking it **moves the freeze**; that price was named and paid deliberately, see the box under R1 |
+| **R4** | Railway migration (hosting **and** DB) | Serving from Railway, Neon + Cloud Run retired | M–L · now **after** R4.5 |
 | **R5** | Landing, terms, privacy + Pro-split final verification **+ billing go-live** | The page describes the real product; the paywall is settled **and can actually take money** | M–L |
 | **R6** | SEO | Indexed, measurable, bilingual | S–M |
 | **R7** | Promote **+ ship the Android app** **+ the installable web app** | The door is open — on the web, and (owner's call, S110) on a phone | — |
@@ -283,9 +283,19 @@ cleared on 2026-08-05, and the line is drawn today.
 **⛔ Frozen — do not build before promotion:**
 - Any **new screen, section, card, chart, bucket kind or entity**. The standing preference for a property or a
   rollup over a new section still applies to everything that isn't frozen.
-- **R4.5 Trip Mode.** It is a new feature and the freeze binds it. It stays the owner's call — but taking it is
-  an explicit decision to **move the freeze**, not an exception to it, and moving it moves R5 and R7 too. That
-  cost is exactly what the phase ordering exists to make visible.
+- ⭐ **R4.5 Trip Mode — TAKEN, on the same day (2026-09-01). The freeze moved with it, exactly as this line said
+  it would.** It is the freeze's **one named exception**, and it is named rather than smuggled: the owner chose
+  it knowing the price, which is that R5 and R7 both move out by the length of R4.5. Written here in the frozen
+  list, not in the shipping list, so nobody later reads it as evidence the freeze was soft.
+  ⚠️ **This does not widen the freeze by a millimetre.** The test below is unchanged, and *"Trip Mode is going
+  ahead"* is not an argument for any other new feature. A second exception is a second decision with its own
+  price, taken the same way — out loud, with the cost named — or the freeze is over.
+  ⛔ **R8 and R9 were considered for the same move and declined**, on their own stated terms rather than on
+  taste: R8 un-defers when *users are hitting R4.5's boundary* and R9 when *the read-only assistant has enough
+  real traffic to say what people ask it to do*. Both conditions need users, and users arrive at R7 — so
+  building them first would be guessing at the very answers the conditions exist to supply. R9 has the sharper
+  version of it: 21 model calls from one person, 15 of them `unknown`, is not a demand signal, and the rule
+  tables in front of it are a free fix.
 - **A background bank check** (QUEUE #4). The queue says it in its own words: *"a real feature, not a fix."*
 - **New assistant intent classes.** `report.compare` was the last one in under the wire. Adding a *class* is new
   surface; adding phrasings to a class that already exists is not — see the line below.
@@ -779,7 +789,11 @@ targets. Each is opened today by a method that seeds its draft first, and a form
 misbehaves in ways only a person driving it would notice. Worth adding one at a time, each verified on a
 running app.
 
-### R4 — Railway migration (hosting **and** database)
+### R4 — Railway migration (hosting **and** database) — ⚠️ now runs AFTER R4.5 (owner, 2026-09-01)
+
+> ⚠️ **Read the R4.5 section below before this one — it goes first now.** The sections are still in their
+> original file order; only the running order changed. R4 stays **before R5**, because migrating after billing
+> means migrating a live payment integration.
 - Cloud Run → Railway **and** Neon → Railway Postgres, per the standing plan.
 - **This is the phase that retires the only live production risk:** a traffic spike fans Cloud Run instances out
   into **Neon's connection ceiling**. Promotion *is* that spike. If R4 slips, the mitigation (pooled connection
@@ -789,7 +803,28 @@ running app.
 - ⚠️ **Railway is a new sub-processor** and the DB may change region — that is a **privacy-policy edit** (feeds
   R5), not a footnote.
 
-### R4.5 — Trip Mode (bounded offline) — ⬜ proposed Session 116, advisory until the owner rules
+### R4.5 — Trip Mode (bounded offline) — ✅ ACCEPTED 2026-09-01, and it goes BEFORE R4 and R5
+
+> ⭐⭐ **Owner's decision, 2026-09-01: R4.5 → R4 → R5.** Proposed in S116 and advisory for a fortnight; taken now,
+> ahead of the migration and the landing/billing pass.
+>
+> **Why this order is right, and it is not just preference.** Trip Mode puts account data **at rest on the
+> device** — a privacy-policy and GDPR change. R5 contains the legal re-read. Building R4.5 *after* R5 means
+> doing that legal pass **twice**. Same argument for the paywall: Trip Mode is a plausible Pro feature, and the
+> Free/Pro split cannot be settled around a feature that does not exist yet. And the landing rewrite cannot
+> describe a product about to grow a major capability.
+>
+> ⚠️ **The price, named rather than discovered:** R4.5 is a new feature, so this **moves the freeze declared the
+> same morning**, and R5 and R7 move out by the length of R4.5 (M per platform, so M–L for both). That is the
+> whole cost and it was accepted with eyes open. See the freeze box under R1 — it is the one named exception.
+>
+> ★ **R4's urgency is coupled to promotion, not to the calendar.** Neon's connection ceiling only fires on a
+> traffic spike and the spike *is* R7, so pushing the migration behind R4.5 costs less than it looks. ⚠️ Two
+> real costs remain: every deploy until R4 keeps paying the Windows `gcloud` tax, and migrating *after* billing
+> would mean migrating a live payment integration — which is why R4 still lands **before** R5.
+>
+> ⛔ **R8 and R9 were considered for this move and declined**, on their own un-defer conditions rather than on
+> taste — both need users, and users arrive at R7. See the freeze box.
 
 **The story.** Trips are first-class, and a trip is exactly when you are on an expensive or absent connection
 holding the device with the least data on it. Today: **offline on Android is a blank app, and offline on web is
