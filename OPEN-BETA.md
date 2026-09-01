@@ -941,6 +941,10 @@ footer and from inside the app, so all ~93 accounts read it while two can use th
 stay (the two accounts using it today are owed the disclosure) but without that sentence it read as a promise to
 everyone, and an excluded user who went looking would find nothing — the gate hides every entrance.
 ★ **Delete that paragraph when the allowlist widens.** It is the one part of this section with an expiry date.
+✅ **Owner's call, 2026-09-01: not widening for now — the allowlist stays at two.** So the paragraph is *correct*
+as it stands and nothing here is pending; it becomes wrong only on the day the gate opens. ⚠️ Widening is an
+env-var edit with no deploy, which is exactly why this is easy to do and forget: **`Assistant__AllowedEmails` and
+this paragraph have to move together.**
 
 ### ⬜ Two things in it are the owner's to confirm — they are claims, not code
 
