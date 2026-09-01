@@ -260,8 +260,17 @@ it is the second time this session the existing guard rails caught a change that
      is opt-in, honest, and the most work.
    Whichever: work out which **class** a phrase lands in *before* adding a rule, or the rule is unreachable.
    ✅ **The first of those is built: `tools/FinApp.AssistantProbe`.** See the section below.
-3. ⬜ **Declare the feature freeze.** R1 froze the backlog on 5 August conditional on R3 landing. R3 has landed.
-   R5 cannot be priced until somebody writes the sentence down.
+3. ✅ **The feature freeze is DECLARED** (2026-09-01, at the owner's word). R1 froze the backlog on 5 August
+   conditional on R3 landing; R3 landed; the sentence is now written down in
+   [OPEN-BETA.md](OPEN-BETA.md) under R1 — **no new user-visible feature before R7**, and R5 can start.
+   ⭐ **The half worth reading is what the freeze does NOT cover**, because that is the half that gets
+   re-argued: repairs to shipped features, R2.5's last two rows, T0's tail, the assistant's rule tables,
+   verification debt, accessibility, and everything R4–R7 own by name (billing go-live included — new code,
+   not new product).
+   ★ **The test for an arguable case:** does a user get something they could not do before → feature, it waits.
+   Does something already promised now work, work correctly, or work for everyone → repair, it ships.
+   ⚠️ **R4.5 Trip Mode is inside the freeze**, deliberately. It stays the owner's call, but taking it *moves*
+   the freeze rather than being an exception to it — and moving it moves R5 and R7 with it.
 4. ⬜ **The forms are deliberately not navigation targets** (add expense / income / transfer / new goal). Each is
    opened by a method that seeds its draft first, and a form reached without that seeding misbehaves in ways only
    a person driving it would notice. One at a time, each verified on a running app.

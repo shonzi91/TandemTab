@@ -14,6 +14,14 @@ checked against the code, not carried forward from an older write-up.*
 > ⚠️ **Two rows on this list were stale when it was reviewed**, both in the same direction — work that had shipped
 > and never been struck off. Re-check against the code before starting anything here, the way the S111 sweep did.
 
+> 🔒 **The feature set was FROZEN on 2026-09-01** (see [OPEN-BETA.md](OPEN-BETA.md) under R1). **Almost everything
+> on this list is still in scope**, because a queue of open issues is repair work by definition — including #5
+> (accessibility + the light-theme palette), #6 (verification debt), #7 (the masking contract), #8 (the debt diff)
+> and #12 (housekeeping). **The exception is #4, a background bank check** — this file's own words call it *"a real
+> feature, not a fix"*, so it is frozen until R7. #2, #3, #10 and #11 were already deferred by their own terms.
+> ★ The test: does a user get something they could not do before → feature, it waits. Does something already
+> promised now work, work correctly, or work for everyone → repair, it ships.
+
 ---
 
 # ⭐ The owner's list (2026-08-20) — this goes first

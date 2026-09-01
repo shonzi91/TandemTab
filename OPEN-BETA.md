@@ -233,10 +233,10 @@ against a moving feature set is work that gets redone. R4 lands before R7 for th
 
 | # | Phase | Ends when | Size |
 |---|-------|-----------|------|
-| **R1** | Clear the feature backlog | The feature set is declared **frozen** | L · ✅ **done 2026-08-05** |
+| **R1** | Clear the feature backlog | The feature set is declared **frozen** | L · ✅ **done 2026-08-05** · 🔒 **FROZEN 2026-09-01** — the line is drawn; see the box under R1 for what the freeze does and does not cover |
 | **R2** | Android catch-up + theme verification **+ an APK pipeline** | Android at web parity; light/dark swept on **both** surfaces; **and CI can produce a release APK that runs on a real device** | L · ✅ **done 2026-08-20 (S111)** — all four exit criteria met. **Now 115/122 (94%)** after the merge session closed both stated lags; every one of the 7 remaining routes is *decided*: 4 deferred (bank), 3 non-gaps, **0 stated lags** |
-| **R2.5** | **The surface sweep** — the differences a route scanner cannot see | Every remaining web⇄phone difference is either built or **written down as a decision** | M · ⬜ **new (S116)** |
-| **R3** | AI assistant — **narrate and navigate** | ✅ **scoped + built 2026-08-30 (S126)**; ⬜ one real reply still unparsed (no key) | M |
+| **R2.5** | **The surface sweep** — the differences a route scanner cannot see | Every remaining web⇄phone difference is either built or **written down as a decision** | M · 🔨 **two rows left** — no web→phone rows remain; the always-visible milestones line and the auto-mask trigger do. Both are **repairs, inside the freeze** |
+| **R3** | AI assistant — **narrate and navigate** | ✅ **LIVE 2026-09-01** on `finapp-00355-2v5`, verified in the served WASM — and gated to two addresses by `Assistant__AllowedEmails`. **It drew R1's freeze line the same day.** ⬜ Open: 15 of 21 escalated questions returned `unknown`, and the rule tables are the fix | M |
 | **R4** | Railway migration (hosting **and** DB) | Serving from Railway, Neon + Cloud Run retired | M–L |
 | **R4.5** | **Trip Mode** (bounded offline) | The phone opens, shows cached figures with their staleness, takes an expense with no signal, and posts **exactly one** row on reconnect | M per platform · ⬜ **proposed (S116)** |
 | **R5** | Landing, terms, privacy + Pro-split final verification **+ billing go-live** | The page describes the real product; the paywall is settled **and can actually take money** | M–L |
@@ -269,6 +269,53 @@ against a moving feature set is work that gets redone. R4 lands before R7 for th
 > [FEATURE-BACKLOG.md](FEATURE-BACKLOG.md) for what each item actually became.
 > **Verification debt closed:** none. The S88 chart animations and F6's shared-account "together" line are both
 > still **unseen with real data** and carry forward.
+
+#### ⛔⛔ THE FEATURE SET IS FROZEN — declared 2026-09-01, effective immediately
+
+The condition written above was *"the freeze line is declared when R3 lands."* **R3 landed** — the assistant is
+serving on `finapp-00355-2v5`, verified in the served WASM. So:
+
+> **No new user-visible feature is built before R7 opens the door.**
+
+R5 now has the stable ground it was waiting for and can start. R1 is closed in both halves: the backlog was
+cleared on 2026-08-05, and the line is drawn today.
+
+**⛔ Frozen — do not build before promotion:**
+- Any **new screen, section, card, chart, bucket kind or entity**. The standing preference for a property or a
+  rollup over a new section still applies to everything that isn't frozen.
+- **R4.5 Trip Mode.** It is a new feature and the freeze binds it. It stays the owner's call — but taking it is
+  an explicit decision to **move the freeze**, not an exception to it, and moving it moves R5 and R7 too. That
+  cost is exactly what the phase ordering exists to make visible.
+- **A background bank check** (QUEUE #4). The queue says it in its own words: *"a real feature, not a fix."*
+- **New assistant intent classes.** `report.compare` was the last one in under the wire. Adding a *class* is new
+  surface; adding phrasings to a class that already exists is not — see the line below.
+- Bank's back half, **R8**, **R9**, the `Investment` bucket-kind audit and pin-a-focus-debt were already deferred
+  by their own terms. The freeze changes nothing about them except that they are now the same kind of thing.
+
+**✅ Not frozen — still expected, and still shippable:**
+1. **Repairs to anything already shipped.** Wrong figures, dead controls, defects found by running the thing.
+2. **The named tail**, which is repair work and must not be re-argued as new scope: R2.5's last two rows (the
+   always-visible milestones line, the auto-mask trigger); **T0's tail** — refunds, settlements, statement
+   import and the savings draw-downs still send no idempotency key; and the assistant's **rule tables**.
+3. **Verification debt.** The S88 chart animations, F6's "together" line, the field-by-field web⇄phone debt diff.
+   Looking at what is already built can only shrink the surface.
+4. **Accessibility and the light-theme palette** (QUEUE #5). A bell that announces "3" is a defect, and the 32
+   sub-4.5:1 findings are a palette decision about colours that already ship.
+5. **Everything R4–R7 own by name**: the migration, the landing rewrite, the Free/Pro re-validation, **billing
+   go-live**, SEO, the Android release. ⚠️ Billing is new *code* and is not new *product* — it is R5's exit
+   criterion, and the paywall it switches on has existed since S87.
+6. **Config, not code.** Widening `Assistant__AllowedEmails` or `BankSync:AllowedEmails` is an env-var edit.
+7. **Privacy-correctness contract changes** — QUEUE #7's notification and achievement payloads carrying code +
+   args instead of baked-in prose. ⚠️ It is a large change across the server mapper and it is still a *repair*:
+   both clients currently regex server-formatted money to honour privacy mode, against a format they do not own,
+   and the failure is silent — a real figure under a bar promising it is hidden.
+
+**★ The line, for when it is arguable.** Does a user get something they could not do before? Then it is a
+feature, and it waits. Does something they were already promised now work, work *correctly*, or work for
+*everyone*? Then it is a repair, and it ships.
+
+**What unfreezes it:** R7. Nothing else — except the owner explicitly moving it for R4.5, which is a decision
+with a named price rather than a loophole.
 
 ### R2 — Android catch-up + theme verification + a build a user can install
 - Android's last commit is **2026-07-30**; the web has had **S74–S89** since. That's a diff-driven catch-up
