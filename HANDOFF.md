@@ -3,8 +3,9 @@
 Last updated: 2026-09-01 (Session 127 — **R3 is live, and the first thing production said about it was
 uncomfortable.** The assistant and the watchdog are both serving; then the owner put the assistant back behind an
 allowlist, because *experimental* is a decision you can only take before everybody has it.
-**579 + 56 + 599 green** (4 new). ✅ **LIVE: `finapp-00352-zhg`, 100% LATEST** — image `finapp:bda30b8`, **6
-`secretKeyRef`s** (the Anthropic key is the sixth), watchdog heartbeat logging every 10 minutes on both instances.
+**579 + 56 + 599 green** (4 new). ✅ **LIVE: `finapp-00353-fbh`, 100% LATEST** — image `finapp:0a00832` (this
+session's commit), **6 `secretKeyRef`s** (the Anthropic key is the sixth), `Assistant__AllowedEmails` set to the
+two addresses, both hosts 200, **no WARNING+ lines on the revision**, no purge race.
 ⚠️⚠️ **This file was two days and ten commits out of date, and said R3 was undeployed while it was serving.**
 Everything in this entry that describes production was read from Cloud Run and its logs, not from a header.
 ⭐ **The measured numbers, finally.** A call bills ~1,550 in + ~19 out on `claude-haiku-4-5` = **$0.0016**, so the
@@ -84,10 +85,12 @@ just been added to. Before adding a rule, check which class the phrase lands in.
   arrive minutes apart and essentially every one wrote an entry nothing ever read — a flat 25% surcharge.
 
 #### Next session
-1. ⭐ **Deploy the allowlist.** The code is committed and tested but the gate does nothing until
-   **`Assistant__AllowedEmails`** is set on Cloud Run — and until it is deployed, the assistant is open to every
-   beta user. Build + deploy + `update-traffic --to-latest`, then verify: `/accounts/assistant/status` returns
-   `Available: false` for a non-listed account and `true` for a listed one.
+1. ✅ **The allowlist is deployed** (`finapp-00353-fbh`, image `finapp:0a00832`, env var set to both addresses).
+   ⬜ **What is NOT proven on production is the negative case.** Both directions are covered by tests, and the
+   image provably contains the code, but nobody has watched a *non-listed* account get `Available: false` on the
+   live service — that needs a second real account, and registering one burns a beta seat. The cheap half is
+   worth doing on sight: open the app as the owner and confirm the dock is still there. If it has vanished, the
+   allowlist is not matching the stored email and the gate has closed on everyone.
 2. ⬜ **Read the 15 unknowns.** The questions are in the log. Work out which class each lands in *before* adding a
    rule, or the rule is unreachable.
 3. ⬜ **Declare the feature freeze.** R1 froze the backlog on 5 August conditional on R3 landing. R3 has landed.
