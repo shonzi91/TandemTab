@@ -1,6 +1,72 @@
 # TandemTab (FinApp) — session handoff
 
-Last updated: 2026-09-01 (Session 127 — **R3 is live, and the first thing production said about it was
+Last updated: 2026-09-01 (Session 128 — **the day the roadmap got a spine: a freeze, two exceptions taken out
+loud, and R4.5 built and driven end to end.** **579 + 56 + 622 green** (13 new).
+✅ **LIVE: `finapp-00357-xxv`, 100% LATEST** — image `finapp:6b2bb05`, 6 `secretKeyRef`s, both hosts 200, **no
+WARNING+ lines on the revision**. ✅ **`android-v0.2.0` tagged** (0.1.0 earlier the same day was the repo's first
+tag ever).
+
+### ⭐ WHERE TO PICK UP — read this first
+
+**The running order is now `R4.6 → R4 → R5 → R6 → R7`.** R1, R2, R2.5, R3 and **R4.5 are done**.
+
+1. ⬜ **R4.6, the command palette — this is next.** New phase, owner's ask, accepted as the freeze's *second*
+   named exception. ★ **Slice 1 is a shell over navigation only** and is nearly free: the ~20 `open.*` / `tab.*`
+   targets already exist, are already tested and are already reachable from typed text. Slice 2 is add-expense,
+   and ⚠️ **it must pre-fill the existing sheet rather than add a write path** — that inherits validation, the
+   category-create affordance, the fund picker and T0's key, so no server change at all. ⛔ **Never auto-create a
+   fund** (a category is a label; a fund is a wallet with a balance and an `IsSynced` flag). ⛔ **The privacy
+   claim is not pre-committed as spendable** — a palette is closed-vocabulary, so build deterministic and find
+   the real wall first. Full spec in [OPEN-BETA.md](OPEN-BETA.md) under R4.6.
+2. ⬜ **R4.5's two known leftovers**, both deliberately not guessed at: Trip Mode never **auto-disarms** when a
+   journey ends, and the period total does **not** count queued rows (arguably right, looks odd on screen —
+   wants a decision, not a silent fix).
+3. ⛔ **Owner-only, still open and now overdue:** sign the **Anthropic DPA and name the transfer safeguard** in
+   the privacy policy (the one real gap in the section written today — the text admits the US transfer but not
+   the mechanism), and **confirm the no-training sentence** against the account's actual terms.
+4. ⚠️ **When the assistant allowlist widens, delete the "not switched on for most accounts" paragraph** from
+   both privacy pages. `Assistant__AllowedEmails` and that paragraph move together — widening is an env-var edit
+   with no deploy, which is exactly what makes it easy to forget.
+5. ⬜ **T0's tail has never been exercised on a handset** — the keys are covered by server tests, not by a phone
+   losing signal mid-write.
+6. ⬜ **Before R9 is ever picked up it must be RE-SCOPED**, not inherited: if R4.6 writes deterministically, most
+   of the on-device write assistant's reason to exist goes with it.
+
+### ⚠️⚠️ The freeze, and what it cost — read before adding anything
+
+**The feature set was frozen on 2026-09-01**, the line R1 made conditional on R3 landing. ⛔ **Two exceptions were
+then taken the same day** — **R4.5** (Trip Mode) and **R4.6** (the palette) — both numbered and placed in the
+order rather than carved out, and R5/R7 moved twice. **A third needs a much better argument than either had.**
+★ The test, when it is arguable: *does a user get something they could not do before → feature, it waits. Does
+something already promised now work, work correctly, or work for everyone → repair, it ships.*
+
+### ⭐⭐ What this session actually proved: running it beats reading it, four times
+
+Every one of these was invisible to a code read, and three were in code I had just written:
+- The **flush only ran from the Spending tab**, so an expense typed abroad sat in the queue until the user
+  happened to open that tab.
+- **Arming set a flag and stored nothing** until the next account open — a setting that claimed the account was
+  on the device when it was not. Worse than not offering it.
+- The **sign-out cache clear looked broken** and was not: the dev server was serving the pre-edit build. ⚠️ The
+  code was right the first time and the *evidence* was stale — restart the server before doubting yourself.
+- The **notification pull-down had never fired once** (S123's finding, confirmed again here by the emulator run).
+
+### ✅ What shipped today
+
+| | |
+|---|---|
+| **The freeze** | Declared, with its exclusions written beside it so the first bug fix cannot reopen it |
+| **R2.5** | **Closed** — trip badge (seen on a device), T0's tail, milestones line, auto-mask trigger |
+| **R3's rule tables** | **80.7% → 89.5%** answered on-device. ⭐ Two of five fixes were **Bulgarian**: the class lists were bilingual, the *rule tables* were not. **The rest of the tables deserve the same sweep** |
+| **The privacy policy** | Now names **Anthropic** and describes **Trip Mode's on-device copy**, both languages, live |
+| **R4.5** | **Done** — opt-in arming, offline cache + staleness strip on both surfaces, durable outbox on the phone |
+| **Android** | `android-v0.1.0` (first tag ever) then **`android-v0.2.0`** with Trip Mode |
+
+⚠️ **Everything Android was exercised on an emulator, never a real handset.**
+
+---
+
+Previously: 2026-09-01 (Session 127 — **R3 is live, and the first thing production said about it was
 uncomfortable.** The assistant and the watchdog are both serving; then the owner put the assistant back behind an
 allowlist, because *experimental* is a decision you can only take before everybody has it.
 **579 + 56 + 609 green** (14 new). ✅ **LIVE: `finapp-00355-2v5`, 100% LATEST** — image `finapp:9b6f33f` (this
